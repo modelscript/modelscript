@@ -127,15 +127,16 @@ function escapeHtmlServer(str: unknown): string {
  * Builds a Twitter-style offline HTML viewer page.
  * Self-contained: 0 external CDN scripts or stylesheets. Runs completely offline.
  */
-export function buildOfflineViewerHtml(bundle: UserArchiveBundle): string {
+export function buildOfflineViewerHtml(bundle: UserArchiveBundle, instanceName = "Ansatz"): string {
   const jsonPayload = JSON.stringify(bundle).replace(/</g, "\\u003c");
+  const safeBrand = escapeHtmlServer(instanceName || "Ansatz");
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ModelScript Archive — @${escapeHtmlServer(bundle.user.username)}</title>
+  <title>${safeBrand} Archive — @${escapeHtmlServer(bundle.user.username)}</title>
   <style>
     :root {
       --bg: #0d1117;
@@ -402,7 +403,7 @@ export function buildOfflineViewerHtml(bundle: UserArchiveBundle): string {
     <div class="brand-header">
       <span style="font-size: 1.4rem;">📐</span>
       <div>
-        <div class="brand-title">ModelScript</div>
+        <div class="brand-title">${safeBrand}</div>
         <div class="brand-badge">Archive Viewer</div>
       </div>
     </div>
@@ -645,7 +646,7 @@ export function buildOfflineViewerHtml(bundle: UserArchiveBundle): string {
             <tr><td><strong>Data Subject:</strong></td><td>@\${escapeHtml(data.user.username || '')} (\${escapeHtml(data.user.email || '')})</td></tr>
             <tr><td><strong>User ID:</strong></td><td>\${data.user.id}</td></tr>
             <tr><td><strong>Export Timestamp:</strong></td><td>\${data.exportedAt}</td></tr>
-            <tr><td><strong>Controller / Organization:</strong></td><td>ModelScript Engineering Platform</td></tr>
+            <tr><td><strong>Controller / Organization:</strong></td><td>${safeBrand} Engineering Platform (powered by ModelScript)</td></tr>
             <tr><td><strong>Third-Party Trackers:</strong></td><td>None (0 third-party analytics or advertising processors)</td></tr>
             <tr><td><strong>IP Address Storage:</strong></td><td>Ephemeral only (Scrubbed in volatile RAM; never retained in analytics tables)</td></tr>
             <tr><td><strong>Right to Erasure:</strong></td><td>To request permanent deletion, navigate to Account Settings &rarr; Delete Account.</td></tr>
@@ -689,14 +690,15 @@ export function generateUserArchiveZip(database: LibraryDatabase, userId: number
   const bundle = gatherUserDataBundle(database, userId);
   if (!bundle) return null;
 
+  const brandName = database.getInstanceSettings().instanceName || "Ansatz";
   const zip = new AdmZip();
 
   // 1. Offline Interactive Viewer
-  const html = buildOfflineViewerHtml(bundle);
+  const html = buildOfflineViewerHtml(bundle, brandName);
   zip.addFile("index.html", Buffer.from(html, "utf-8"));
 
   // 2. Readme Instructions
-  const readme = `ModelScript Account Data Archive
+  const readme = `${brandName} Account Data Archive (powered by ModelScript)
 =================================
 Exported Date: ${bundle.exportedAt}
 Account: @${bundle.user.username} (${bundle.user.email})
@@ -717,7 +719,7 @@ DATA STRUCTURE:
 - data/compliance.json  : Legal privacy compliance declaration
 
 Privacy Notice:
-ModelScript uses zero third-party analytics scripts. IP addresses are scrubbed immediately
+${brandName} uses zero third-party analytics scripts. IP addresses are scrubbed immediately
 in volatile memory upon request and are never stored in user analytics tables.
 `;
   zip.addFile("README.txt", Buffer.from(readme, "utf-8"));
@@ -752,7 +754,7 @@ in volatile memory upon request and are never stored in user analytics tables.
         {
           regulation: "GDPR Article 20 / CCPA Data Portability",
           exportedAt: bundle.exportedAt,
-          controller: "ModelScript Platform",
+          controller: `${brandName} Platform (powered by ModelScript)`,
           thirdPartyTrackers: "None",
           ipRetention: "Ephemeral in-memory only (Scrubbed)",
         },

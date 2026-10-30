@@ -78,4 +78,74 @@ describe("Axios Interceptors & Auth Lifecycle", () => {
     assert.equal(localStorage.getItem("modelscript-auth-token"), null);
     assert.equal(eventFired, true);
   });
+
+  it("dispatches modelscript:branding-updated and modelscript:maintenance-503 events on 503 Maintenance response", async () => {
+    let brandingPayload: any = null;
+    let maint503Payload: any = null;
+
+    dom.window.addEventListener("modelscript:branding-updated", (e: any) => {
+      brandingPayload = e.detail;
+    });
+    dom.window.addEventListener("modelscript:maintenance-503", (e: any) => {
+      maint503Payload = e.detail;
+    });
+
+    const instance = axios.create({ baseURL: "/api/v1" });
+    instance.interceptors.response.use(
+      (res) => res,
+      (error) => {
+        if (error.response && error.response.status === 503) {
+          const data = error.response.data;
+          if (data && data.maintenanceMode) {
+            dom.window.dispatchEvent(
+              new dom.window.CustomEvent("modelscript:branding-updated", {
+                detail: {
+                  maintenanceMode: true,
+                  maintenanceLevel: data.maintenanceLevel || "read_only",
+                  maintenanceEta: data.maintenanceEta || "",
+                  announcementBanner: data.announcementBanner || data.error || "",
+                },
+              }),
+            );
+            dom.window.dispatchEvent(
+              new dom.window.CustomEvent("modelscript:maintenance-503", {
+                detail: {
+                  error: data.error,
+                  maintenanceLevel: data.maintenanceLevel || "read_only",
+                  maintenanceEta: data.maintenanceEta || "",
+                  retryAfterSeconds: data.retryAfterSeconds ?? 300,
+                },
+              }),
+            );
+          }
+        }
+        return Promise.reject(error);
+      },
+    );
+
+    const mock503Error = {
+      response: {
+        status: 503,
+        statusText: "Service Unavailable",
+        data: {
+          error: "Instance is undergoing hard lockdown maintenance.",
+          maintenanceMode: true,
+          maintenanceLevel: "lockdown",
+          maintenanceEta: "2026-10-30T03:00:00Z",
+          retryAfterSeconds: 600,
+        },
+      },
+    };
+
+    const errorHandler = (instance.interceptors.response as any).handlers[0].rejected;
+    await assert.rejects(async () => {
+      await errorHandler(mock503Error);
+    });
+
+    assert.equal(brandingPayload?.maintenanceMode, true);
+    assert.equal(brandingPayload?.maintenanceLevel, "lockdown");
+    assert.equal(brandingPayload?.maintenanceEta, "2026-10-30T03:00:00Z");
+    assert.equal(maint503Payload?.maintenanceLevel, "lockdown");
+    assert.equal(maint503Payload?.retryAfterSeconds, 600);
+  });
 });

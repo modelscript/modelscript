@@ -4,6 +4,7 @@
 const CACHE_NAME = "modelscript-v1";
 const STATIC_ASSETS = [
   "/",
+  "/maintenance.html",
   "/ms-logo.png",
   "/ms-logo-light.png",
   "/favicon.ico",

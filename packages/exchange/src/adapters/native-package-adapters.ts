@@ -5,6 +5,8 @@ import type {
   CanonicalBOMItem,
   CanonicalSubmodelDescriptor,
   CanonicalWorkspaceManifest,
+  DataPackageResourceDescriptor,
+  DataPackageSchemaField,
   PackageJsonProjection,
 } from "../lens/types.js";
 
@@ -701,6 +703,98 @@ export function adaptFpmToml(
 }
 
 /**
+ * Parse and normalize an array of Frictionless / Engineering Data Package resource descriptors.
+ */
+export function parseDataPackageResources(rawResources: unknown): DataPackageResourceDescriptor[] {
+  if (!Array.isArray(rawResources)) return [];
+  const resources: DataPackageResourceDescriptor[] = [];
+
+  for (let i = 0; i < rawResources.length; i++) {
+    const item = rawResources[i];
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const rawPath =
+      typeof rec["path"] === "string"
+        ? rec["path"]
+        : Array.isArray(rec["path"]) && typeof rec["path"][0] === "string"
+          ? rec["path"][0]
+          : "";
+    if (!rawPath) continue;
+
+    const fallbackSlug =
+      rawPath
+        .split("/")
+        .pop()
+        ?.replace(/\.[^.]+$/, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-") || `resource-${i + 1}`;
+    const name = typeof rec["name"] === "string" && rec["name"].trim() ? rec["name"].trim() : fallbackSlug;
+
+    let schema: DataPackageResourceDescriptor["schema"];
+    if (rec["schema"] && typeof rec["schema"] === "object") {
+      const schemaObj = rec["schema"] as Record<string, unknown>;
+      if (Array.isArray(schemaObj["fields"])) {
+        const fields: DataPackageSchemaField[] = [];
+        for (const f of schemaObj["fields"]) {
+          if (!f || typeof f !== "object") continue;
+          const fObj = f as Record<string, unknown>;
+          if (typeof fObj["name"] !== "string" || !fObj["name"].trim()) continue;
+          const rawType = typeof fObj["type"] === "string" ? fObj["type"].toLowerCase() : "string";
+          const normalizedType: DataPackageSchemaField["type"] =
+            rawType === "number" ||
+            rawType === "integer" ||
+            rawType === "boolean" ||
+            rawType === "datetime" ||
+            rawType === "object" ||
+            rawType === "array"
+              ? rawType
+              : "string";
+          fields.push({
+            name: fObj["name"].trim(),
+            type: normalizedType,
+            title: typeof fObj["title"] === "string" ? fObj["title"] : undefined,
+            description: typeof fObj["description"] === "string" ? fObj["description"] : undefined,
+            unit: typeof fObj["unit"] === "string" ? fObj["unit"] : undefined,
+            min: typeof fObj["min"] === "number" ? fObj["min"] : undefined,
+            max: typeof fObj["max"] === "number" ? fObj["max"] : undefined,
+            mean: typeof fObj["mean"] === "number" ? fObj["mean"] : undefined,
+            unique: typeof fObj["unique"] === "number" ? fObj["unique"] : undefined,
+          });
+        }
+        schema = {
+          fields,
+          primaryKey:
+            typeof schemaObj["primaryKey"] === "string" || Array.isArray(schemaObj["primaryKey"])
+              ? (schemaObj["primaryKey"] as string | string[])
+              : undefined,
+        };
+      }
+    }
+
+    const rawStorage = typeof rec["storage"] === "string" ? rec["storage"].toLowerCase() : undefined;
+    const storage: "inline" | "cas" | "s3" | undefined =
+      rawStorage === "cas" || rawStorage === "s3" || rawStorage === "inline" ? rawStorage : undefined;
+
+    resources.push({
+      name,
+      path: rawPath,
+      title: typeof rec["title"] === "string" ? rec["title"] : undefined,
+      description: typeof rec["description"] === "string" ? rec["description"] : undefined,
+      profile: typeof rec["profile"] === "string" ? rec["profile"] : undefined,
+      format: typeof rec["format"] === "string" ? rec["format"] : undefined,
+      mediatype: typeof rec["mediatype"] === "string" ? rec["mediatype"] : undefined,
+      bytes: typeof rec["bytes"] === "number" ? rec["bytes"] : undefined,
+      hash: typeof rec["hash"] === "string" ? rec["hash"] : undefined,
+      storage,
+      rowCount: typeof rec["rowCount"] === "number" ? rec["rowCount"] : undefined,
+      schema,
+    });
+  }
+
+  return resources;
+}
+
+/**
  * Inspect a map of archive/directory files and automatically adapt any supported native manifest
  * across the 44 engineering languages into a CanonicalWorkspaceManifest and NPM PackageJsonProjection.
  */
@@ -736,12 +830,14 @@ export function detectAndAdaptArchiveManifest(
   let format: NativeArchiveFormat = "polyglot";
   let name = fallbackName;
   let version = fallbackVersion;
+  let profile: string | undefined;
   let description: string | undefined;
   let license: string | undefined;
   let author: string | undefined;
   let main: string | undefined;
   let dependencies: Record<string, string> = {};
   let submodels: CanonicalSubmodelDescriptor[] = [];
+  let resources: DataPackageResourceDescriptor[] = [];
 
   // 1. Check modelscript.json or package.json
   const msxJsonEntry = findShallowest((b) => b === "modelscript.json");
@@ -784,6 +880,12 @@ export function detectAndAdaptArchiveManifest(
         typeof parsed["version"] === "string" ? parsed["version"] : undefined,
         fallbackVersion,
       );
+      profile =
+        typeof parsed["profile"] === "string"
+          ? parsed["profile"]
+          : typeof parsedMsx?.["profile"] === "string"
+            ? parsedMsx["profile"]
+            : undefined;
       description =
         typeof parsed["description"] === "string"
           ? parsed["description"]
@@ -811,6 +913,7 @@ export function detectAndAdaptArchiveManifest(
           ? (parsedMsx["dependencies"] as Record<string, string>)
           : {}),
       };
+      resources = parseDataPackageResources(parsed["resources"] ?? parsedMsx?.["resources"]);
       if (Array.isArray(parsedMsx?.["languages"])) {
         for (const l of parsedMsx["languages"]) {
           if (typeof l === "string" && !detectedLangs.includes(l)) detectedLangs.push(l);
@@ -979,15 +1082,31 @@ export function detectAndAdaptArchiveManifest(
       const dpLicenses = Array.isArray(dp["licenses"]) ? dp["licenses"] : undefined;
       const firstLic =
         dpLicenses?.[0] && typeof dpLicenses[0] === "object" ? (dpLicenses[0] as Record<string, unknown>) : undefined;
+      const dpContribs = Array.isArray(dp["contributors"]) ? dp["contributors"] : undefined;
+      const firstContrib =
+        dpContribs?.[0] && typeof dpContribs[0] === "object" ? (dpContribs[0] as Record<string, unknown>) : undefined;
       name = dpName || fallbackName;
       version = normalizeToSemver(typeof dp["version"] === "string" ? dp["version"] : undefined, fallbackVersion);
+      profile = typeof dp["profile"] === "string" ? dp["profile"] : "engineering-data-package";
       description = dpDesc || dpTitle;
+      author =
+        typeof dp["author"] === "string"
+          ? dp["author"]
+          : typeof firstContrib?.["title"] === "string"
+            ? firstContrib["title"]
+            : typeof firstContrib?.["name"] === "string"
+              ? firstContrib["name"]
+              : undefined;
       license =
         typeof firstLic?.["name"] === "string"
           ? firstLic["name"]
           : typeof dp["license"] === "string"
             ? dp["license"]
             : undefined;
+      if (dp["dependencies"] && typeof dp["dependencies"] === "object") {
+        dependencies = { ...(dp["dependencies"] as Record<string, string>) };
+      }
+      resources = parseDataPackageResources(dp["resources"]);
       main = dataPkgEntry.path;
       if (!detectedLangs.includes("csv")) detectedLangs.push("csv");
     } catch {
@@ -1020,6 +1139,19 @@ export function detectAndAdaptArchiveManifest(
     main = ipxactEntry.path;
   }
 
+  // Also merge resources from a co-located datapackage.json if package.json/package.mo was primary
+  if (resources.length === 0 && dataPkgEntry && format !== "datapackage") {
+    try {
+      const dp = JSON.parse(dataPkgEntry.content) as Record<string, unknown>;
+      resources = parseDataPackageResources(dp["resources"]);
+      if (!profile && typeof dp["profile"] === "string") {
+        profile = dp["profile"];
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const scope = name.startsWith("@") ? name.split("/")[0] : undefined;
   const idShort = name.startsWith("@") ? (name.split("/")[1] ?? name) : name;
 
@@ -1029,25 +1161,32 @@ export function detectAndAdaptArchiveManifest(
     title: description || idShort,
     version,
     scope,
+    profile: profile ?? (resources.length > 0 ? "engineering-data-package" : undefined),
     description: description ?? `ModelScript polyglot package (${idShort})`,
     author: author ? { name: author } : undefined,
     license: license ?? "UNLICENSED",
     submodels: submodels.length > 0 ? submodels : undefined,
+    resources: resources.length > 0 ? resources : undefined,
+    dependencies: Object.keys(dependencies).length > 0 ? dependencies : undefined,
   };
 
   const packageJson: PackageJsonProjection = {
     name,
     version,
+    profile: canonical.profile,
     description: canonical.description,
     main: main ?? allPaths[0] ?? "index.msx",
     author,
     license: canonical.license,
     dependencies: Object.keys(dependencies).length > 0 ? dependencies : undefined,
+    resources: resources.length > 0 ? resources : undefined,
     modelscript: {
       globalAssetId: canonical.globalAssetId,
+      profile: canonical.profile,
       submodels: submodels.length > 0 ? submodels.map((s) => s.idShort) : undefined,
       languages: detectedLangs,
       nativeFormat: format,
+      resourcesCount: resources.length > 0 ? resources.length : undefined,
     },
   };
 

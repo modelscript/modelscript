@@ -34,6 +34,11 @@ export class BotMentionWorker {
 
     let processedCount = 0;
     try {
+      try {
+        if (this.#database.getInstanceSettings().maintenanceMode) return 0;
+      } catch {
+        // Proceed if settings unavailable
+      }
       const pendingJobs = this.#database.getPendingBotMentions(batchSize);
       for (const job of pendingJobs) {
         await this.#orchestrator.processMention(job.id);

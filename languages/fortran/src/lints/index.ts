@@ -371,7 +371,7 @@ export function lintFortranSource(
 
     // 4. Program Unit Header (SUBROUTINE, FUNCTION, MODULE, PROGRAM)
     const unitHeaderMatch =
-      /^(?:(?:PURE|ELEMENTAL|RECURSIVE|REAL(?:\s*\([^)]*\))?|INTEGER(?:\s*\([^)]*\))?|DOUBLE\s+PRECISION|LOGICAL)\s+)*(SUBROUTINE|FUNCTION|MODULE|PROGRAM)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?(.*)$/i.exec(
+      /^(?:(?:PURE|ELEMENTAL|RECURSIVE|REAL(?:\([^)]*\))?|INTEGER(?:\([^)]*\))?|DOUBLE\s+PRECISION|LOGICAL)\s+)*(SUBROUTINE|FUNCTION|MODULE|PROGRAM)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?(?:\s+(.*))?$/i.exec(
         trimmed,
       );
     if (unitHeaderMatch) {
@@ -786,7 +786,8 @@ export function lintFortranSource(
     }
 
     // 7b. Static Math Domain Violation (M4084): SQRT(<0), LOG(<=0), LOG10(<=0), ASIN(|x|>1), ACOS(|x|>1)
-    const mathCallRegex = /\b(SQRT|LOG|LOG10|ALOG|ASIN|ACOS)\s*\(\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*\)/gi;
+    const mathCallRegex =
+      /\b(SQRT|LOG|LOG10|ALOG|ASIN|ACOS)\s*\(\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*\)/gi;
     let mathMatch: RegExpExecArray | null;
     while ((mathMatch = mathCallRegex.exec(trimmed)) !== null) {
       const fnName = mathMatch[1]!.toUpperCase();
@@ -1025,10 +1026,14 @@ export function lintFortranSource(
     }
 
     // Check unrecognized statement syntax (M4082)
+    const stmtEqIdx = trimmed.indexOf("=");
+    const isAssignment =
+      stmtEqIdx !== -1 && /^(?:[A-Za-z_$][A-Za-z0-9_$]*)(?:\s*\([^)]*\))?$/.test(trimmed.slice(0, stmtEqIdx).trim());
+
     const isKnownStatement =
       /^(?:IF\s*\(|ELSE\s*IF\s*\(|ELSEIF\s*\(|ELSE\b|RETURN\b|CONTINUE\b|[0-9]+\s+CONTINUE\b|STOP\b|IMPLICIT\b|USE\b|CONTAINS\b|INTERFACE\b|SELECT\s+CASE\b|CASE\b|EXIT\b|CYCLE\b|ALLOCATE\b|DEALLOCATE\b|PUBLIC\b|PRIVATE\b|SAVE\b)/i.test(
         trimmed,
-      ) || /^(?:STORF|STORI|SD|S|X|[A-Za-z_][A-Za-z0-9_]*|\$[A-Za-z0-9_]+)\s*(?:\([^)]*\))?\s*=/.test(trimmed);
+      ) || isAssignment;
 
     if (!isKnownStatement) {
       const col = rawLine.indexOf(trimmed) + 1;

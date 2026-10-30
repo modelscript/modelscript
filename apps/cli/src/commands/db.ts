@@ -34,11 +34,13 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
       .positional("action", {
         type: "string",
         describe:
-          "Action to perform: status | upgrade | verify | backup | backups | restore | prune | export-bundle | import-bundle",
+          "Action to perform: status | upgrade | verify | doctor | support-bundle | backup | backups | restore | prune | export-bundle | import-bundle",
         choices: [
           "status",
           "upgrade",
           "verify",
+          "doctor",
+          "support-bundle",
           "backup",
           "backups",
           "restore",
@@ -332,6 +334,71 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
         );
       } catch (err: unknown) {
         console.error(c.red(`Bundle import request failed: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      }
+    } else if (action === "doctor" || action === "support-bundle") {
+      try {
+        const res = await fetch(`${apiUrl}/api/v1/admin/system/support-bundle`, { headers });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string | undefined };
+          console.error(c.red(`Diagnostics check failed: ${body.error || res.statusText}`));
+          process.exit(1);
+        }
+        const bundle = (await res.json()) as {
+          generatedAt: string;
+          edition: string;
+          runtime: { nodeVersion: string; platform: string; arch: string; uptimeSeconds: number };
+          database: {
+            schemaVersion: string | null;
+            pendingMigrations: number;
+            integrity: { foreignKeysOk: boolean; integrityOk: boolean };
+            diagnostics: { dbSizeBytes: number; walSizeBytes: number };
+          };
+          auditChain: { valid: boolean; totalEntries: number };
+          preflight: {
+            readyForProduction: boolean;
+            checks: {
+              id: string;
+              label: string;
+              status: "pass" | "warn" | "fail";
+              detail: string;
+              remediation?: string;
+            }[];
+          };
+        };
+
+        if (args.file || action === "support-bundle") {
+          const fs = await import("node:fs");
+          const outPath = args.file || `modelscript-support-bundle-${Date.now()}.json`;
+          fs.writeFileSync(outPath, JSON.stringify(bundle, null, 2), "utf8");
+          console.log(c.green(`✔ Exported redacted support diagnostics bundle to ${outPath}`));
+        }
+
+        console.log(c.bold(`\nModelScript Hub Doctor Report (${bundle.edition.toUpperCase()} Edition):`));
+        console.log(
+          `  Production Readiness: ${bundle.preflight.readyForProduction ? c.green("PASS") : c.yellow("WARNINGS / ACTION NEEDED")}`,
+        );
+        console.log(
+          `  Database Schema:      ${bundle.database.schemaVersion || "none"} (${bundle.database.pendingMigrations} pending)`,
+        );
+        console.log(
+          `  Relational Integrity: ${bundle.database.integrity.foreignKeysOk && bundle.database.integrity.integrityOk ? c.green("HEALTHY") : c.red("ISSUES DETECTED")}`,
+        );
+        console.log(
+          `  Audit Hash Chain:     ${bundle.auditChain.valid ? c.green(`VALID (${bundle.auditChain.totalEntries} entries)`) : c.red("TAMPERED / BROKEN")}\n`,
+        );
+        console.log(c.bold("Preflight Checks:"));
+        for (const chk of bundle.preflight.checks) {
+          const badge =
+            chk.status === "pass" ? c.green("✔ PASS") : chk.status === "warn" ? c.yellow("⚠ WARN") : c.red("✖ FAIL");
+          console.log(`  ${badge}  ${c.bold(chk.label)}: ${chk.detail}`);
+          if (chk.remediation) {
+            console.log(`          ${c.dim(`Remediation: ${chk.remediation}`)}`);
+          }
+        }
+        console.log("");
+      } catch (err: unknown) {
+        console.error(c.red(`Doctor request failed: ${err instanceof Error ? err.message : String(err)}`));
         process.exit(1);
       }
     }

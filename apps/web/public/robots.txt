@@ -4,4 +4,4 @@ Disallow: /admin
 Disallow: /oauth/callback
 Disallow: /settings
 
-Sitemap: https://modelscript.org/sitemap.xml
+Sitemap: https://ansatz.social/sitemap.xml

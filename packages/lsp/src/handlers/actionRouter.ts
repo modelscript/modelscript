@@ -118,6 +118,9 @@ export function registerActionRouter(context: LspContext): void {
       }
 
       if (typeof executeFn !== "function") {
+        if (!action) {
+          throw new Error(`[lsp] Action '${params.actionId}' not found on language '${plugin.id}'`);
+        }
         throw new Error(
           `[lsp] Action '${params.actionId}' does not have an execute handler on language '${plugin.id}'`,
         );

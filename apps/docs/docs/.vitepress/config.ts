@@ -291,7 +291,7 @@ export default defineConfig({
       { component: "LanguagesMegaMenu" },
       { component: "DocsMegaMenu" },
       ...(isPricingVisible ? [{ text: "Pricing", link: "/pricing" }] : []),
-      { text: "Hub", link: "/explore", target: "_self" },
+      { text: "Ansatz", link: "https://ansatz.social", target: "_blank" },
       { text: "Playground", link: "/playground", target: "_self" },
     ],
     sidebar: (() => {

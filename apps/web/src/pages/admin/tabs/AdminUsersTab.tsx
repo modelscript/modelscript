@@ -39,6 +39,8 @@ export interface AdminUsersTabProps {
       reason?: string | undefined;
       revokeSessions?: boolean | undefined;
       purgePosts?: boolean | undefined;
+      emailVerified?: boolean | undefined;
+      reset2FA?: boolean | undefined;
     },
   ) => Promise<void>;
   onAdjustUserCredits?: ((userId: number, amount: number, reason: string) => Promise<void>) | undefined;
@@ -69,6 +71,8 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
   const [moderationReason, setModerationReason] = useState("");
   const [revokeSessions, setRevokeSessions] = useState(true);
   const [purgePosts, setPurgePosts] = useState(false);
+  const [markEmailVerified, setMarkEmailVerified] = useState(false);
+  const [resetUser2FA, setResetUser2FA] = useState(false);
 
   const [creditModalUser, setCreditModalUser] = useState<AdminUserSummary | null>(null);
   const [creditDelta, setCreditDelta] = useState<string>("100");
@@ -103,6 +107,8 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
     setModerationReason("");
     setRevokeSessions(nextStatus !== "active");
     setPurgePosts(false);
+    setMarkEmailVerified(false);
+    setResetUser2FA(false);
   };
 
   const handleConfirmGovernance = async () => {
@@ -113,6 +119,8 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
       reason: moderationReason.trim() || undefined,
       revokeSessions,
       purgePosts,
+      ...(markEmailVerified ? { emailVerified: true } : {}),
+      ...(resetUser2FA ? { reset2FA: true } : {}),
     });
     setSelectedUser(null);
   };
@@ -312,6 +320,28 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
                         <span>Suspend</span>
                       </ActionButton>
                     )}
+                    {!u.email_verified && !u.remote_domain && (
+                      <ActionButton
+                        $variant="secondary"
+                        disabled={loading}
+                        onClick={() => void onModerateUser(u.id, { emailVerified: true })}
+                        title="Manually verify user email address"
+                      >
+                        <CheckCircleIcon size={13} />
+                        <span>Verify Email</span>
+                      </ActionButton>
+                    )}
+                    {u.totp_enabled === 1 && (
+                      <ActionButton
+                        $variant="secondary"
+                        disabled={loading}
+                        onClick={() => void onModerateUser(u.id, { reset2FA: true })}
+                        title="Emergency reset two-factor authentication (TOTP) for locked-out user"
+                      >
+                        <ShieldCheckIcon size={13} />
+                        <span>Reset 2FA</span>
+                      </ActionButton>
+                    )}
                     <ActionButton
                       $variant="secondary"
                       disabled={loading || forensicsLoading}
@@ -505,6 +535,42 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
               <input type="checkbox" checked={revokeSessions} onChange={(e) => setRevokeSessions(e.target.checked)} />
               Revoke all active refresh tokens &amp; sign out existing sessions
             </label>
+
+            {!selectedUser.email_verified && !selectedUser.remote_domain && (
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "12px",
+                  color: "var(--color-text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={markEmailVerified}
+                  onChange={(e) => setMarkEmailVerified(e.target.checked)}
+                />
+                Manually mark email address as verified &amp; grant initial compute credits
+              </label>
+            )}
+
+            {selectedUser.totp_enabled === 1 && (
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "12px",
+                  color: "#d29922",
+                  cursor: "pointer",
+                }}
+              >
+                <input type="checkbox" checked={resetUser2FA} onChange={(e) => setResetUser2FA(e.target.checked)} />
+                Emergency reset 2FA (TOTP) &amp; recovery codes for @{selectedUser.username}
+              </label>
+            )}
 
             <label
               style={{

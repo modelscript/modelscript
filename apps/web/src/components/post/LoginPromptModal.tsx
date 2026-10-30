@@ -5,6 +5,7 @@ import { Heading, IconButton, Text } from "@primer/react";
 import React from "react";
 import { createPortal } from "react-dom";
 import styled from "styled-components";
+import { useInstanceBranding } from "../../InstanceBrandingContext";
 import Box from "../Box";
 
 const AnalyticsModalOverlay = styled.div`
@@ -71,6 +72,9 @@ export interface LoginPromptModalProps {
 }
 
 export const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ onClose }) => {
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
+
   const handleOAuthLogin = (provider: string) => {
     window.location.href = `/api/v1/auth/login/${provider}`;
   };
@@ -88,7 +92,7 @@ export const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ onClose }) =
         </Box>
         <Box display="flex" flexDirection="column" alignItems="center" textAlign="center" mb={4}>
           <Heading as="h2" style={{ fontSize: "24px", marginBottom: "8px" }}>
-            Sign in to ModelScript
+            Sign in to {brandName}
           </Heading>
           <Text style={{ color: "var(--color-fg-muted)" }}>
             Join the conversation to like, repost, reply, and bookmark posts.

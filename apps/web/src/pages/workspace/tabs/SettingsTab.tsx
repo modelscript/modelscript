@@ -637,7 +637,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
                 <Text style={{ fontWeight: "bold", display: "block", marginBottom: "8px" }}>Add webhook</Text>
                 <Box display="flex" flexDirection="column" gap={2}>
                   <TextInput
-                    placeholder="https://example.com/webhooks/modelscript"
+                    placeholder="https://example.com/webhooks/ansatz"
                     value={newWebhookUrl}
                     onChange={(e) => setNewWebhookUrl(e.target.value)}
                     block
@@ -704,7 +704,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
                 marginBottom: "16px",
               }}
             >
-              ModelScript Package Documentation Pages
+              Package Documentation Pages
             </Heading>
             <StyledBox p={3}>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>

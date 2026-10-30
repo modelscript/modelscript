@@ -2,6 +2,21 @@
   "name": "@modelscript/mcp",
   "version": "0.0.18",
   "description": "Model Context Protocol (MCP) server, tools, and resources for ModelScript",
+  "keywords": [
+    "modelscript",
+    "ansatz",
+    "mcp",
+    "ai-agents"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/mcp"
+  },
   "license": "AGPL-3.0-or-later",
   "author": "ModelScript Contributors",
   "type": "module",

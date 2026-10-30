@@ -1523,15 +1523,79 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       height,
       opacity: cmp.disabled ? 0.45 : 1,
       angle: cellAngle,
-      markup: markup ?? [
-        { tagName: "rect", selector: "body" },
-        { tagName: "rect", selector: "headerBg" },
-        { tagName: "text", selector: "typeBadge" },
-        { tagName: "text", selector: "label" },
-      ],
-      attrs:
-        attrs ??
-        (markup
+      markup: markup
+        ? markup.some((m) => m.selector === "label")
+          ? markup
+          : [...markup, { tagName: "text", selector: "label" }]
+        : [
+            { tagName: "rect", selector: "body" },
+            { tagName: "rect", selector: "headerBg" },
+            { tagName: "text", selector: "typeBadge" },
+            { tagName: "text", selector: "label" },
+          ],
+      attrs: {
+        ...(attrs ??
+          (markup
+            ? {
+                label: isProbeOrPin
+                  ? {
+                      text: displayLabel,
+                      fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",
+                      fontSize: 8.5,
+                      fontWeight: "bold",
+                      fontFamily: "monospace",
+                      textAnchor: "middle",
+                      textVerticalAnchor: "middle",
+                      refX: 0.5,
+                      refY: 0.5,
+                    }
+                  : {
+                      text: displayLabel,
+                      fill: labelColor,
+                      fontSize: 9.5,
+                      fontWeight: "bold",
+                      fontFamily: "sans-serif",
+                      textAnchor: "middle",
+                      textVerticalAnchor: "top",
+                      refX: 0.5,
+                      refY: height + 6,
+                    },
+              }
+            : {
+                body: {
+                  fill: "#1e293b",
+                  stroke: "#38bdf8",
+                  strokeWidth: 1.5,
+                  rx: 6,
+                  ry: 6,
+                },
+                headerBg: {
+                  refWidth: 1,
+                  height: 18,
+                  fill: "#0f172a",
+                  rx: 6,
+                  ry: 6,
+                },
+                typeBadge: {
+                  text: `«${cleanDefn}»`,
+                  fill: "#38bdf8",
+                  fontSize: 8,
+                  fontStyle: "italic",
+                  refX: 0.5,
+                  refY: 4,
+                  textAnchor: "middle",
+                },
+                label: {
+                  text: cleanName,
+                  fill: "#f8fafc",
+                  fontSize: 11,
+                  fontWeight: "bold",
+                  refX: 0.5,
+                  refY: 26,
+                  textAnchor: "middle",
+                },
+              })),
+        ...(attrs && !attrs["label"]
           ? {
               label: isProbeOrPin
                 ? {
@@ -1557,40 +1621,8 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
                     refY: height + 6,
                   },
             }
-          : {
-              body: {
-                fill: "#1e293b",
-                stroke: "#38bdf8",
-                strokeWidth: 1.5,
-                rx: 6,
-                ry: 6,
-              },
-              headerBg: {
-                refWidth: 1,
-                height: 18,
-                fill: "#0f172a",
-                rx: 6,
-                ry: 6,
-              },
-              typeBadge: {
-                text: `«${cleanDefn}»`,
-                fill: "#38bdf8",
-                fontSize: 8,
-                fontStyle: "italic",
-                refX: 0.5,
-                refY: 4,
-                textAnchor: "middle",
-              },
-              label: {
-                text: cleanName,
-                fill: "#f8fafc",
-                fontSize: 11,
-                fontWeight: "bold",
-                refX: 0.5,
-                refY: 26,
-                textAnchor: "middle",
-              },
-            }),
+          : {}),
+      },
       ports: portItems.length > 0 ? { groups: portGroups, items: portItems } : undefined,
       properties: nodeProperties,
       data: {

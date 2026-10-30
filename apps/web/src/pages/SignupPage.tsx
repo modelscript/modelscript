@@ -4,9 +4,12 @@ import { EyeClosedIcon, EyeIcon, MarkGithubIcon } from "@primer/octicons-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import api from "../api/client";
 import { useAuth } from "../AuthContext";
+import AnsatzMark from "../components/AnsatzLogo";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { usePageTitle } from "../util/title";
-import { GitLabIcon, GoogleIcon, XIcon } from "./login/icons";
+import { GitLabIcon } from "./login/icons";
 import {
   Button,
   Card,
@@ -18,7 +21,6 @@ import {
   FooterText,
   Form,
   Input,
-  LogoBadge,
   PageWrapper,
   PasswordInputWrapper,
   PasswordToggleButton,
@@ -67,6 +69,12 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState(() => {
+    if (typeof window !== "undefined") {
+      return new URLSearchParams(window.location.search).get("invite") || "";
+    }
+    return "";
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -74,12 +82,38 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
+  const [authConfig, setAuthConfig] = useState<{
+    airgapEnforced?: boolean;
+    turnstileEnabled?: boolean;
+    oauthProviders?: string[];
+    oidcEnabled?: boolean;
+    registrationMode?: string;
+  } | null>(null);
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const { register } = useAuth();
   const navigate = useNavigate();
 
   const passwordStrength = evaluatePasswordStrength(password);
-  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+  const rawTurnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+  const turnstileSiteKey =
+    authConfig?.airgapEnforced || authConfig?.turnstileEnabled === false ? undefined : rawTurnstileSiteKey;
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get("/auth/config")
+      .then((res) => {
+        if (active && res.data) {
+          setAuthConfig(res.data);
+        }
+      })
+      .catch(() => {
+        // Fallback to client env defaults
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!turnstileSiteKey || typeof window === "undefined") return;
@@ -164,7 +198,14 @@ export default function SignupPage() {
         return;
       }
 
-      const res = await register(username, email, password, acceptTerms, effectiveCaptchaToken);
+      const res = await register(
+        username,
+        email,
+        password,
+        acceptTerms,
+        effectiveCaptchaToken,
+        inviteCode.trim() || undefined,
+      );
       if (res?.verificationRequired) {
         setVerificationSent(true);
       } else {
@@ -182,14 +223,22 @@ export default function SignupPage() {
     }
   };
 
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
+
   return (
     <PageWrapper>
       <Card>
-        <LogoBadge>
-          <img src="/ms-logo.png" alt="ModelScript" width="34" height="34" />
-        </LogoBadge>
-        <Title>Join ModelScript</Title>
-        <Subtitle>The Collaborative Simulation & Modeling Platform</Subtitle>
+        <div style={{ marginBottom: "12px" }}>
+          <AnsatzMark
+            size={48}
+            logoUrl={branding.brandLogoUrl}
+            alt={brandName}
+            accentColor={branding.brandAccentColor}
+          />
+        </div>
+        <Title>Join {brandName}</Title>
+        <Subtitle>{branding.instanceTagline || "The Federated Scientific & Engineering Network"}</Subtitle>
 
         {verificationSent ? (
           <div style={{ textAlign: "center", padding: "16px 0", width: "100%" }}>
@@ -209,31 +258,59 @@ export default function SignupPage() {
               to activate full features and unlock your <strong>50 free compute credits</strong>!
             </p>
             <Button type="button" onClick={() => navigate("/home")}>
-              Continue to ModelScript
+              Continue to {brandName}
+            </Button>
+          </div>
+        ) : authConfig?.registrationMode === "closed" ? (
+          <div style={{ textAlign: "center", padding: "16px 0", width: "100%" }}>
+            <h2 style={{ fontSize: "18px", fontWeight: 700, color: "var(--color-text-heading)", margin: "0 0 8px 0" }}>
+              Registration Closed
+            </h2>
+            <p
+              style={{
+                fontSize: "14px",
+                color: "var(--color-text-muted)",
+                lineHeight: "1.5",
+                margin: "0 0 20px 0",
+              }}
+            >
+              Self-service registration is disabled on this {brandName} instance. Please contact your instance
+              administrator to provision an account.
+            </p>
+            <Button type="button" onClick={() => navigate("/login")}>
+              Return to Sign In
             </Button>
           </div>
         ) : (
           <>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
-              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
-                <MarkGithubIcon size={16} />
-                Sign up with GitHub
-              </ProviderButton>
-              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
-                <GitLabIcon />
-                Sign up with GitLab
-              </ProviderButton>
-              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
-                <XIcon />
-                Sign up with X
-              </ProviderButton>
-              <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/google")}>
-                <GoogleIcon />
-                Continue with Google
-              </ProviderButton>
-            </div>
+            {!authConfig?.airgapEnforced &&
+              ((authConfig?.oauthProviders && authConfig.oauthProviders.length > 0) ||
+                authConfig?.oidcEnabled ||
+                !authConfig) && (
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
+                    {(!authConfig || authConfig.oauthProviders.includes("github")) && (
+                      <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
+                        <MarkGithubIcon size={16} />
+                        Sign up with GitHub
+                      </ProviderButton>
+                    )}
+                    {(!authConfig || authConfig.oauthProviders.includes("gitlab")) && (
+                      <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
+                        <GitLabIcon />
+                        Sign up with GitLab
+                      </ProviderButton>
+                    )}
+                    {authConfig?.oidcEnabled && (
+                      <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/oidc/login")}>
+                        Sign up with Enterprise SSO (OIDC)
+                      </ProviderButton>
+                    )}
+                  </div>
 
-            <Divider>or</Divider>
+                  <Divider>or</Divider>
+                </>
+              )}
 
             <Form onSubmit={handleSubmit} aria-label="Sign up form">
               {error && (
@@ -258,7 +335,14 @@ export default function SignupPage() {
                 />
               </FieldGroup>
               <FieldGroup>
-                <FieldLabel htmlFor="signup-email">Email address</FieldLabel>
+                <FieldLabel htmlFor="signup-email">
+                  Email address
+                  {authConfig?.registrationMode === "domain_allowlist" && authConfig.allowedEmailDomains && (
+                    <span style={{ fontWeight: 400, color: "var(--color-text-muted)", marginLeft: "6px" }}>
+                      (Allowed: {authConfig.allowedEmailDomains})
+                    </span>
+                  )}
+                </FieldLabel>
                 <Input
                   id="signup-email"
                   name="email"
@@ -338,6 +422,23 @@ export default function SignupPage() {
                     {showConfirmPassword ? <EyeClosedIcon size={16} /> : <EyeIcon size={16} />}
                   </PasswordToggleButton>
                 </PasswordInputWrapper>
+              </FieldGroup>
+              <FieldGroup>
+                <FieldLabel htmlFor="signup-invite-code">
+                  {authConfig?.registrationMode === "invite_only"
+                    ? "Invite Code (required)"
+                    : "Invite Code (if required by instance)"}
+                </FieldLabel>
+                <Input
+                  id="signup-invite-code"
+                  name="inviteCode"
+                  type="text"
+                  value={inviteCode}
+                  onChange={(e) => setInviteCode(e.target.value)}
+                  placeholder="msx-inv-..."
+                  aria-label="Invite Code"
+                  required={authConfig?.registrationMode === "invite_only"}
+                />
               </FieldGroup>
 
               <CheckboxWrapper>

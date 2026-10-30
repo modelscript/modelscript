@@ -36,6 +36,7 @@ interface AuthContextType {
     password: string,
     acceptTerms?: boolean,
     captchaToken?: string,
+    inviteCode?: string,
   ) => Promise<{ verificationRequired?: boolean | undefined; message?: string | undefined }>;
   updateToken: (newToken: string | null) => void;
   logout: () => void;
@@ -55,7 +56,9 @@ const TOKEN_KEY = "modelscript-auth-token";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState<string | null>(() =>
+    typeof localStorage !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null,
+  );
   const [isLoading, setIsLoading] = useState(!!token);
 
   const [unreadCount, setUnreadCount] = useState(0);
@@ -253,6 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password: string,
       acceptTerms: boolean = true,
       captchaToken: string = import.meta.env.VITE_TURNSTILE_SITE_KEY ? "" : "mock-token",
+      inviteCode?: string,
     ) => {
       const { data } = await api.post("/auth/register", {
         username,
@@ -260,6 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password,
         acceptTerms,
         captchaToken,
+        ...(inviteCode ? { inviteCode } : {}),
       });
       if (data.token) {
         localStorage.setItem(TOKEN_KEY, data.token);

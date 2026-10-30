@@ -10,6 +10,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
 import { VsCodeIcon } from "../components/icons/VsCodeIcon";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { useTheme } from "../theme";
 import type { RepositoryDTO } from "../types/api";
 import {
@@ -288,6 +289,8 @@ export const IdeWorkspacePage: React.FC = () => {
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const { theme } = useTheme();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const { openCompose } = useContext(ComposeContext);
 
   const sourceParam = searchParams.get("source");
@@ -468,7 +471,7 @@ export const IdeWorkspacePage: React.FC = () => {
     titleParam,
   ]);
 
-  usePageTitle(hasSpecificHandoff ? `${displayTitle} — ModelScript IDE` : "ModelScript IDE — Select Workspace");
+  usePageTitle(hasSpecificHandoff ? `${displayTitle} — ${brandName} IDE` : `${brandName} IDE — Select Workspace`);
 
   const workbenchUrl = useMemo(() => `/vscode/workbench${folderHash}`, [folderHash]);
 
@@ -551,8 +554,8 @@ export const IdeWorkspacePage: React.FC = () => {
           ? `Here is my updated **${cleanTitle}** workspace:`
           : incomingPayload?.content ||
             (forkedId
-              ? `Forked and modified **${cleanTitle}** (from Artifact #${forkedId}) in ModelScript IDE! 🚀`
-              : `Check out my workspace in the ModelScript IDE: **${cleanTitle}** 🚀`);
+              ? `Forked and modified **${cleanTitle}** (from Artifact #${forkedId}) in ${brandName} IDE! 🚀`
+              : `Check out my workspace in the ${brandName} IDE: **${cleanTitle}** 🚀`);
 
       const composeInit: any = {
         ...(defaultContent !== undefined ? { content: defaultContent } : {}),
@@ -576,7 +579,7 @@ export const IdeWorkspacePage: React.FC = () => {
 
       openCompose(composeInit);
     },
-    [artifactMetadata, displayTitle, editPostId, langParam, openCompose, replyToPostId, resolveForkedFromId],
+    [artifactMetadata, brandName, displayTitle, editPostId, langParam, openCompose, replyToPostId, resolveForkedFromId],
   );
 
   // Listen to messages from standalone VS Code window via BroadcastChannel
@@ -704,10 +707,10 @@ export const IdeWorkspacePage: React.FC = () => {
             </div>
             <Box display="flex" flexDirection="column">
               <Heading as="h1" style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>
-                ModelScript IDE
+                {brandName} IDE
               </Heading>
               <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-                Select a workspace to launch in a dedicated VS Code window
+                Select a workspace to launch in a dedicated VS Code window (powered by ModelScript)
               </Text>
             </Box>
           </Box>

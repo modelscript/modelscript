@@ -75,7 +75,7 @@ function buildFallbackBotReview(mr: GitlabMergeRequest, projectId: string): Repo
     author: "modelscript-bot",
     status: "approved",
     created_at: new Date().toISOString(),
-    summary: `### 🤖 ModelScript Automated Engineering Review — PR #${mr.iid}
+    summary: `### 🤖 Ansatz Automated Engineering Review (Powered by ModelScript) — PR #${mr.iid}
 
 **Verdict:** ✅ **Approved (DAE Balanced & Dimensionally Consistent)**
 
@@ -660,7 +660,8 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
                       fontSize="13px"
                       style={{ display: "block", marginBottom: "12px" }}
                     >
-                      Run the ModelScript AI Reviewer to inspect equation balance, units, and solver stability.
+                      Run the Automated Engineering Reviewer (powered by ModelScript) to inspect equation balance,
+                      units, and solver stability.
                     </Text>
                     <Button variant="primary" leadingVisual={CpuIcon} onClick={() => handleRunBotReview(selectedMr)}>
                       Run AI Bot Review Now

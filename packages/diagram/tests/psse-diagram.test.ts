@@ -25,7 +25,7 @@ test("PSS/E Voltage Colors: Maps voltage levels to standardized colors", () => {
   assert.equal(getVoltageColor(230), "#FB8C00");
   assert.equal(getVoltageColor(138), "#1E88E5");
   assert.equal(getVoltageColor(69), "#43A047");
-  assert.equal(getVoltageColor(13.8), "#8E24AA");
+  assert.equal(getVoltageColor(13.8), "#38BDF8");
 });
 
 test("PSS/E Diagram: Builds X6 graph model with buses, branches, generators, and loads", () => {

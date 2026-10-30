@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import occtimportjs from "occt-import-js";
 import type { LibraryDatabase } from "../database.js";
+import { ALL_44_LANGUAGE_SEED_POSTS } from "../seed/index.js";
 import { safePublicFetch } from "./ssrf.js";
 
 /**
@@ -65,6 +66,12 @@ export function resolveLocalUploadBuffer(url: string): Uint8Array | null {
         return new Uint8Array(fs.readFileSync(resolvedPath));
       }
     }
+  }
+
+  // Fallback to embedded seed catalog for known seed artifacts if not yet written to disk
+  const seedMatch = ALL_44_LANGUAGE_SEED_POSTS.find((p) => p.filename === relativeSubpath);
+  if (seedMatch?.code) {
+    return new TextEncoder().encode(seedMatch.code);
   }
 
   return null;
@@ -654,6 +661,9 @@ export async function convertStepToJson(url: string, database: LibraryDatabase):
   console.log(`[CAD] Fetching and converting STEP: ${url}`);
   let fileData = resolveLocalUploadBuffer(url);
   if (!fileData) {
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      throw new Error(`Local file not found for CAD conversion: ${url}`);
+    }
     const response = await safePublicFetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch STEP file: ${response.status} ${response.statusText}`);

@@ -3,7 +3,7 @@
 
 # @modelscript/api
 
-Backend REST, GraphQL, SPARQL, Git Smart HTTP, and MCP SSE gateway server for ModelScript. Provides endpoints for polyglot package management, simulation, co-simulation orchestration, OMG SysML v2 REST interoperability, Digital Thread governance, Operational Digital Twins, Slurm HPC & CAE compute dispatch, billing, and enterprise authentication.
+Backend REST, GraphQL, SPARQL, Git Smart HTTP, ActivityPub federation, and MCP SSE gateway server for **Ansatz** (`ansatz.social`) and **ModelScript** (`modelscript.org`). Provides endpoints for polyglot package management, simulation, co-simulation orchestration, OMG SysML v2 REST interoperability, Digital Thread governance, Operational Digital Twins, Slurm HPC & CAE compute dispatch, billing, and white-label enterprise authentication.
 
 ---
 

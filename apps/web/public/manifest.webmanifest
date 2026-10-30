@@ -1,13 +1,19 @@
 {
-  "name": "ModelScript — Polyglot Engineering Platform",
-  "short_name": "ModelScript",
-  "description": "Browser-native simulation, modeling, and cyber-physical systems engineering platform.",
+  "name": "Ansatz — The Federated Scientific & Engineering Network",
+  "short_name": "Ansatz",
+  "description": "Browser-native simulation, modeling, and cyber-physical systems engineering network powered by ModelScript.",
   "start_url": "/home",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0d1117",
   "theme_color": "#0d1117",
   "icons": [
+    {
+      "src": "/ansatz-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
     {
       "src": "/ms-logo.png",
       "sizes": "192x192",

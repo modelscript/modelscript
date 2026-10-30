@@ -3,7 +3,7 @@
 import { computeMeshVolumeAndArea, computeProjectedFrontalArea, ManifoldWorker } from "@modelscript/cad";
 import { ScadEvaluator } from "@modelscript/scad";
 import { CodeLens, Range } from "vscode-languageserver";
-import type { LspContext } from "../lsp-context.js";
+import { type LspContext, resolveFeatureFlags } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 export function registerCodeLensProvider(context: LspContext) {
@@ -11,15 +11,32 @@ export function registerCodeLensProvider(context: LspContext) {
     const uri = params.textDocument.uri;
     const lenses: CodeLens[] = [];
 
-    const codeLensCfg = (context as any).settings?.codeLens;
+    const settings = context.settings;
+    const features = resolveFeatureFlags(settings);
+    const codeLensCfg = settings?.codeLens;
     if (codeLensCfg?.enabled === false) {
       return lenses;
     }
-    const showSimulate = codeLensCfg?.simulate ?? true;
-    const showVerification = codeLensCfg?.verification ?? true;
-    const showPolyglotLinks = codeLensCfg?.polyglotLinks ?? true;
-    const showCadMetrics = codeLensCfg?.cadMetrics ?? true;
-    const showFileConversions = codeLensCfg?.fileConversions ?? true;
+
+    const showSimulate = (codeLensCfg?.simulate ?? true) && features.codeLensSimulate;
+    const showDiagram = codeLensCfg?.diagram ?? false;
+
+    const rawVerif = codeLensCfg?.verification;
+    const verificationMode: "all" | "problemsOnly" | "off" =
+      rawVerif === "all" || rawVerif === true
+        ? "all"
+        : rawVerif === "off" || rawVerif === false
+          ? "off"
+          : rawVerif === "problemsOnly"
+            ? "problemsOnly"
+            : features.formalVerification
+              ? "all"
+              : "problemsOnly";
+    const showVerification =
+      verificationMode !== "off" && (features.formalVerification || rawVerif === true || rawVerif === "all");
+    const showPolyglotLinks = (codeLensCfg?.polyglotLinks ?? features.digitalThread) && features.digitalThread;
+    const showCadMetrics = codeLensCfg?.cadMetrics ?? false;
+    const showFileConversions = (codeLensCfg?.fileConversions ?? false) && features.caeWorkbench;
 
     // 1. Modelica files (.mo)
     if (uri.endsWith(".mo")) {
@@ -30,6 +47,36 @@ export function registerCodeLensProvider(context: LspContext) {
       const daeMap = context.validationService?.modelicaDaeVerificationResultsByUri?.get(uri);
       const emittedProofClasses = new Set<string>();
       const emittedDaeClasses = new Set<string>();
+
+      const shouldEmitModelicaProof = (
+        proof: { definiteBugs?: unknown[]; potentialBugs?: unknown[] } | null | undefined,
+      ): boolean => {
+        if (!proof || verificationMode === "off") return false;
+        const hasDefects = (proof.definiteBugs?.length ?? 0) > 0 || (proof.potentialBugs?.length ?? 0) > 0;
+        if (
+          verificationMode === "problemsOnly" &&
+          !features.formalVerification &&
+          rawVerif !== true &&
+          rawVerif !== "all"
+        ) {
+          return hasDefects;
+        }
+        return true;
+      };
+
+      const shouldEmitDaeProof = (daeProof: { issues?: unknown[] } | null | undefined): boolean => {
+        if (!daeProof || verificationMode === "off") return false;
+        const hasIssues = (daeProof.issues?.length ?? 0) > 0;
+        if (
+          verificationMode === "problemsOnly" &&
+          !features.formalVerification &&
+          rawVerif !== true &&
+          rawVerif !== "all"
+        ) {
+          return hasIssues;
+        }
+        return true;
+      };
 
       if (text) {
         const lines = text.split(/\r?\n/);
@@ -51,7 +98,10 @@ export function registerCodeLensProvider(context: LspContext) {
               showSimulate &&
               (rawKind === "model" || rawKind === "block" || rawKind === "study" || rawKind === "process")
             ) {
-              if (name === "DroneSimulation" || uri.includes("DroneSimulation") || uri.includes("drone-reachability")) {
+              const isDroneDemo =
+                features.demos &&
+                (name === "DroneSimulation" || uri.includes("DroneSimulation") || uri.includes("drone-reachability"));
+              if (isDroneDemo) {
                 if (showVerification) {
                   lenses.push({
                     range,
@@ -91,19 +141,21 @@ export function registerCodeLensProvider(context: LspContext) {
                   },
                 });
               }
-              lenses.push({
-                range,
-                command: {
-                  title: "⊞ Open Interactive Diagram",
-                  command: "modelscript.openDiagram",
-                  arguments: [uri],
-                },
-              });
+              if (showDiagram) {
+                lenses.push({
+                  range,
+                  command: {
+                    title: "⊞ Open Interactive Diagram",
+                    command: "modelscript.openDiagram",
+                    arguments: [uri],
+                  },
+                });
+              }
             }
 
             // Formal proof badge for this model/class/function on this exact declaration line
-            const proof = showVerification ? proofMap?.get(name) : undefined;
-            if (proof) {
+            const proof = proofMap?.get(name);
+            if (shouldEmitModelicaProof(proof)) {
               emittedProofClasses.add(name);
               let proofTitle = "✓ Formally Verified (0 RTEs, 100% Proven Safe)";
               if (proof.definiteBugs.length > 0) {
@@ -128,8 +180,8 @@ export function registerCodeLensProvider(context: LspContext) {
             }
 
             // DAE BLT verification badge for this model/class on this exact declaration line
-            const daeProof = showVerification ? daeMap?.get(name) : undefined;
-            if (daeProof) {
+            const daeProof = daeMap?.get(name);
+            if (shouldEmitDaeProof(daeProof)) {
               emittedDaeClasses.add(name);
               let daeTitle =
                 daeProof.verdict?.kind === "proven"
@@ -162,9 +214,9 @@ export function registerCodeLensProvider(context: LspContext) {
 
           // For loop formal verification lens (positioned above the loop)
           const forMatch = /^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^\s]+)\s+loop\b/.exec(line);
-          if (showVerification && forMatch && currentClassName) {
+          if (forMatch && currentClassName) {
             const proof = proofMap?.get(currentClassName);
-            if (proof) {
+            if (shouldEmitModelicaProof(proof)) {
               const col = line.indexOf("for");
               const loopRange = Range.create(lineIdx, col, lineIdx, col + 3);
 
@@ -222,10 +274,11 @@ export function registerCodeLensProvider(context: LspContext) {
 
             if (twinTarget) {
               const isDroneContext =
-                currentClassName === "DroneSimulation" ||
-                uri.includes("DroneSimulation") ||
-                uri.includes("drone-reachability") ||
-                twinTarget.includes("drone_");
+                features.demos &&
+                (currentClassName === "DroneSimulation" ||
+                  uri.includes("DroneSimulation") ||
+                  uri.includes("drone-reachability") ||
+                  twinTarget.includes("drone_"));
               if (isDroneContext && param === "m") {
                 const numVal = parseFloat(val);
                 const isParity = Math.abs(numVal - 1.2) < 0.01;
@@ -302,7 +355,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
           let startLine = sym.selectionRange?.start.line ?? sym.range?.start?.line;
           let startChar = sym.selectionRange?.start.character ?? sym.range?.start?.character;
-          if (startLine === undefined && doc && (sym.startOffset !== undefined || sym.startOffset !== undefined)) {
+          if (startLine === undefined && doc && sym.startOffset !== undefined) {
             const pos = doc.positionAt(sym.startOffset);
             startLine = pos.line;
             startChar = pos.character;
@@ -312,7 +365,7 @@ export function registerCodeLensProvider(context: LspContext) {
           const range = Range.create(startLine, startChar, startLine, startChar);
 
           const proof = proofMap?.get(sym.name);
-          if (proof && !emittedProofClasses.has(sym.name)) {
+          if (shouldEmitModelicaProof(proof) && !emittedProofClasses.has(sym.name)) {
             emittedProofClasses.add(sym.name);
             let proofTitle = "✓ Formally Verified (0 RTEs, 100% Proven Safe)";
             if (proof.definiteBugs.length > 0) {
@@ -337,7 +390,7 @@ export function registerCodeLensProvider(context: LspContext) {
           }
 
           const daeProof = daeMap?.get(sym.name);
-          if (daeProof && !emittedDaeClasses.has(sym.name)) {
+          if (shouldEmitDaeProof(daeProof) && !emittedDaeClasses.has(sym.name)) {
             emittedDaeClasses.add(sym.name);
             // Never display "verified" for anything other than a proven verdict.
             let daeTitle =
@@ -384,16 +437,18 @@ export function registerCodeLensProvider(context: LspContext) {
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
-            const threadEntries = context.workspaceManager?.getThreadsForUri
-              ? context.workspaceManager.getThreadsForUri(uri)
-              : [];
+            const threadEntries =
+              showPolyglotLinks && context.workspaceManager?.getThreadsForUri
+                ? context.workspaceManager.getThreadsForUri(uri)
+                : [];
             const matchingThread =
               threadEntries.find((e: any) => e.meta?.name?.includes(name)) ??
-              (name === "DroneAssembly" || uri.includes("drone_specs") || uri.includes("drone-reachability")
+              (features.demos &&
+              (name === "DroneAssembly" || uri.includes("drone_specs") || uri.includes("drone-reachability"))
                 ? threadEntries[0]
                 : undefined);
 
-            if (matchingThread && context.workspaceManager?.findAlignedElementsBySlot) {
+            if (matchingThread && showPolyglotLinks && context.workspaceManager?.findAlignedElementsBySlot) {
               const aligned = context.workspaceManager.findAlignedElementsBySlot(matchingThread.slot);
               const engAligned = aligned.filter((el: any) => el.domain.toLowerCase() !== "requirements");
               const domainCount = engAligned.length > 0 ? engAligned.length : aligned.length;
@@ -424,61 +479,70 @@ export function registerCodeLensProvider(context: LspContext) {
                   arguments: [uri],
                 },
               });
-              lenses.push({
-                range,
-                command: {
-                  title: "🛡️ Verify Contracts & Hierarchy",
-                  command: "modelscript.openContractExplorer",
-                  arguments: [uri, name],
-                },
-              });
+              if (showVerification) {
+                lenses.push({
+                  range,
+                  command: {
+                    title: "🛡️ Verify Contracts & Hierarchy",
+                    command: "modelscript.openContractExplorer",
+                    arguments: [uri, name],
+                  },
+                });
+              }
             } else {
+              if (showVerification) {
+                lenses.push({
+                  range,
+                  command: {
+                    title: "🛡️ Verify Contracts & Hierarchy",
+                    command: "modelscript.openContractExplorer",
+                    arguments: [uri, name],
+                  },
+                });
+              }
+              if (features.scaffolding) {
+                lenses.push({
+                  range,
+                  command: {
+                    title: "⚡ Scaffold Multi-Domain (SCAD + MO + FEA)",
+                    command: "modelscript.scaffoldMultiDomain",
+                    arguments: [uri, name],
+                  },
+                });
+              }
+              if (features.demos) {
+                lenses.push({
+                  range,
+                  command: {
+                    title: "⚡ Tier 1: Validated | 📈 Tier 2: Pareto Candidates | 🚀 Schedule Tier 3 Confirmation",
+                    command: "modelscript.openCandidateTradeStudy",
+                    arguments: [uri, name],
+                  },
+                });
+              }
+            }
+            if (showDiagram) {
               lenses.push({
                 range,
                 command: {
-                  title: "🛡️ Verify Contracts & Hierarchy",
-                  command: "modelscript.openContractExplorer",
-                  arguments: [uri, name],
-                },
-              });
-              lenses.push({
-                range,
-                command: {
-                  title: "⚡ Scaffold Multi-Domain (SCAD + MO + FEA)",
-                  command: "modelscript.scaffoldMultiDomain",
-                  arguments: [uri, name],
-                },
-              });
-              lenses.push({
-                range,
-                command: {
-                  title: "⚡ Tier 1: Validated | 📈 Tier 2: Pareto Candidates | 🚀 Schedule Tier 3 Confirmation",
-                  command: "modelscript.openCandidateTradeStudy",
-                  arguments: [uri, name],
+                  title: "⊞ Open Interactive Diagram",
+                  command: "modelscript.openDiagram",
+                  arguments: [uri],
                 },
               });
             }
-            lenses.push({
-              range,
-              command: {
-                title: "⊞ Open Interactive Diagram",
-                command: "modelscript.openDiagram",
-                arguments: [uri],
-              },
-            });
           }
 
           // Requirement Def: FlightCeilingRequirement or standard
           const reqMatch = /^\s*(?:abstract\s+)?requirement\s+def\s+([A-Za-z0-9_]+)/.exec(line);
-          if (reqMatch) {
+          if (reqMatch && showVerification) {
             const name = reqMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
 
             if (
-              name === "FlightCeilingRequirement" ||
-              uri.includes("drone_specs") ||
-              uri.includes("drone-reachability")
+              features.demos &&
+              (name === "FlightCeilingRequirement" || uri.includes("drone_specs") || uri.includes("drone-reachability"))
             ) {
               lenses.push({
                 range,
@@ -518,7 +582,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
           // Verification Def
           const verifMatch = /^\s*(?:abstract\s+)?verification\s+def\s+([A-Za-z0-9_]+)/.exec(line);
-          if (verifMatch) {
+          if (verifMatch && showVerification) {
             const name = verifMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
@@ -527,7 +591,9 @@ export function registerCodeLensProvider(context: LspContext) {
               range,
               command: {
                 title: "▶ Run Continuous Reachability Verification (Nelson-Oppen / Salsa)",
-                command: "modelscript.openDroneReachabilityDemo",
+                command: features.demos
+                  ? "modelscript.openDroneReachabilityDemo"
+                  : "modelscript.runReachabilityFlowpipe",
                 arguments: [uri],
               },
             });
@@ -535,7 +601,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
           // Action / Calc Def
           const actionMatch = /^\s*(?:abstract\s+)?(?:action|calc)\s+def\s+([A-Za-z0-9_]+)/.exec(line);
-          if (actionMatch) {
+          if (actionMatch && showVerification) {
             const name = actionMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
@@ -560,7 +626,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
           // State Def / Activity
           const stateMatch = /^\s*(?:state|activity)\s+def\s+([A-Za-z0-9_]+)/.exec(line);
-          if (stateMatch) {
+          if (stateMatch && showVerification) {
             const name = stateMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
@@ -586,7 +652,9 @@ export function registerCodeLensProvider(context: LspContext) {
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
         if (showCadMetrics) {
-          let metricsTitle = "📐 Frontal Area: A = 0.030 m² | Estimated Mass: 1.20 kg";
+          let metricsTitle: string | undefined = features.demos
+            ? "📐 Frontal Area: A = 0.030 m² | Estimated Mass: 1.20 kg"
+            : undefined;
           const treeEntry = (context as any).documentManager?.documentTrees?.get(uri);
           const rootNode = treeEntry?.tree?.rootNode;
           if (rootNode && !text.includes("rotor_stream")) {
@@ -604,17 +672,19 @@ export function registerCodeLensProvider(context: LspContext) {
                 metricsTitle = `📐 Frontal Area: A = ${frontalAreaM2.toFixed(4)} m² | Volume: ${volume.toFixed(1)} mm³ | Estimated Mass: ${massKg.toFixed(3)} kg`;
               }
             } catch {
-              // Fall back to default metrics lens if live CSG evaluation fails
+              // Ignore live CSG evaluation failures in CodeLens
             }
           }
-          lenses.push({
-            range: headerRange,
-            command: {
-              title: metricsTitle,
-              command: "modelscript.openThreadExplorer",
-              arguments: [uri],
-            },
-          });
+          if (metricsTitle) {
+            lenses.push({
+              range: headerRange,
+              command: {
+                title: metricsTitle,
+                command: "modelscript.openThreadExplorer",
+                arguments: [uri],
+              },
+            });
+          }
           lenses.push({
             range: headerRange,
             command: {
@@ -623,14 +693,16 @@ export function registerCodeLensProvider(context: LspContext) {
               arguments: [uri],
             },
           });
-          lenses.push({
-            range: headerRange,
-            command: {
-              title: "⊞ Open Interactive Diagram",
-              command: "modelscript.openDiagram",
-              arguments: [uri],
-            },
-          });
+          if (showDiagram) {
+            lenses.push({
+              range: headerRange,
+              command: {
+                title: "⊞ Open Interactive Diagram",
+                command: "modelscript.openDiagram",
+                arguments: [uri],
+              },
+            });
+          }
         }
         if (showFileConversions) {
           lenses.push({
@@ -693,7 +765,9 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = currentText;
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
-        const isDroneFea = uri.includes("drone_chassis") || text.includes("Drone Chassis") || text.includes("ECHASSIS");
+        const isDroneFea =
+          features.demos &&
+          (uri.includes("drone_chassis") || text.includes("Drone Chassis") || text.includes("ECHASSIS"));
 
         if (isDroneFea) {
           if (showVerification) {
@@ -761,6 +835,8 @@ export function registerCodeLensProvider(context: LspContext) {
               arguments: [uri],
             },
           });
+        }
+        if (showDiagram) {
           lenses.push({
             range: headerRange,
             command: {
@@ -779,7 +855,7 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = currentText;
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
-        const isDroneCfd = uri.includes("drone_aero") || text.includes("rotor_stream");
+        const isDroneCfd = features.demos && (uri.includes("drone_aero") || text.includes("rotor_stream"));
         if (isDroneCfd) {
           if (showCadMetrics) {
             lenses.push({
@@ -815,14 +891,16 @@ export function registerCodeLensProvider(context: LspContext) {
             },
           });
         }
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "⊞ Open Interactive Diagram",
-            command: "modelscript.openDiagram",
-            arguments: [uri],
-          },
-        });
+        if (showDiagram) {
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "⊞ Open Interactive Diagram",
+              command: "modelscript.openDiagram",
+              arguments: [uri],
+            },
+          });
+        }
 
         const lines = text.split(/\r?\n/);
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
@@ -847,7 +925,7 @@ export function registerCodeLensProvider(context: LspContext) {
     if (/\.(step|stp|p21)($|\?|#)/i.test(uri)) {
       const headerRange = Range.create(0, 0, 0, 0);
       const text = currentText;
-      const isDroneStep = uri.includes("drone") || text.includes("ModelScript B-Rep Solid");
+      const isDroneStep = features.demos && (uri.includes("drone") || text.includes("ModelScript B-Rep Solid"));
       if (showCadMetrics) {
         const entityCount = (text.match(/#\d+\s*=/g) || []).length;
         const stepTitle = isDroneStep
@@ -861,6 +939,8 @@ export function registerCodeLensProvider(context: LspContext) {
             arguments: [uri],
           },
         });
+      }
+      if (showDiagram) {
         lenses.push({
           range: headerRange,
           command: {
@@ -896,30 +976,36 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = currentText;
       if (text) {
         const headerRange = Range.create(0, 0, 0, 0);
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "▶ Simulate Multiphase Flow (Drift-Flux DAE)",
-            command: "modelscript.olga.simulate_drift_flux",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "✓ Verify Flow Assurance (WAT, Hydrates, Slugging)",
-            command: "modelscript.olga.verify_flow_assurance",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "⊞ Open Interactive Diagram",
-            command: "modelscript.openDiagram",
-            arguments: [uri],
-          },
-        });
+        if (showSimulate) {
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "▶ Simulate Multiphase Flow (Drift-Flux DAE)",
+              command: "modelscript.olga.simulate_drift_flux",
+              arguments: [uri],
+            },
+          });
+        }
+        if (showVerification) {
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "✓ Verify Flow Assurance (WAT, Hydrates, Slugging)",
+              command: "modelscript.olga.verify_flow_assurance",
+              arguments: [uri],
+            },
+          });
+        }
+        if (showDiagram) {
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "⊞ Open Interactive Diagram",
+              command: "modelscript.openDiagram",
+              arguments: [uri],
+            },
+          });
+        }
 
         const lines = text.split(/\r?\n/);
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
@@ -927,7 +1013,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
           // Flowpath declaration
           const fpMatch = /<Flowpath[^>]*\s(?:name|id)\s*=\s*["']([^"']+)["']/i.exec(line);
-          if (fpMatch) {
+          if (fpMatch && showVerification) {
             const name = fpMatch[1]!;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
@@ -943,7 +1029,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
           // Valve declaration
           const valveMatch = /<Valve[^>]*\s(?:name|id)\s*=\s*["']([^"']+)["']/i.exec(line);
-          if (valveMatch) {
+          if (valveMatch && showSimulate) {
             const name = valveMatch[1]!;
             const openMatch = /opening\s*=\s*["']([0-9.]+)["']/i.exec(line);
             const opening = openMatch ? `${(parseFloat(openMatch[1]!) * 100).toFixed(0)}%` : "100%";
@@ -961,7 +1047,7 @@ export function registerCodeLensProvider(context: LspContext) {
 
           // Pipe declaration
           const pipeMatch = /<Pipe[^>]*\s(?:label|name)\s*=\s*["']([^"']+)["']/i.exec(line);
-          if (pipeMatch) {
+          if (pipeMatch && showSimulate) {
             const name = pipeMatch[1]!;
             const lenMatch = /length\s*=\s*["']([0-9.]+)["']/i.exec(line);
             const diamMatch = /diameter\s*=\s*["']([0-9.]+)["']/i.exec(line);
@@ -1006,16 +1092,18 @@ export function registerCodeLensProvider(context: LspContext) {
       }
       const headerRange = Range.create(targetLine, 0, targetLine, 0);
 
-      lenses.push({
-        range: headerRange,
-        command: {
-          title: `⊞ Open Interactive ${detectedPlugin.name} Diagram`,
-          command: "modelscript.openDiagram",
-          arguments: [uri],
-        },
-      });
+      if (showDiagram) {
+        lenses.push({
+          range: headerRange,
+          command: {
+            title: `⊞ Open Interactive ${detectedPlugin.name} Diagram`,
+            command: "modelscript.openDiagram",
+            arguments: [uri],
+          },
+        });
+      }
 
-      if (detectedPlugin.id === "psse") {
+      if (detectedPlugin.id === "psse" && showSimulate) {
         lenses.push({
           range: headerRange,
           command: {
@@ -1029,9 +1117,13 @@ export function registerCodeLensProvider(context: LspContext) {
       const actions: Array<{ id: string; title: string; category?: string }> =
         (detectedPlugin.languageDef as any)?.actions ?? [];
       if (actions.length > 0) {
+        let emittedSim = false;
         for (const action of actions) {
           const cat = action.category ?? "query";
-          if (cat === "simulate" && !showSimulate) continue;
+          if (cat === "simulate") {
+            if (!showSimulate || (emittedSim && !showVerification && !showFileConversions)) continue;
+            emittedSim = true;
+          }
           if ((cat === "verify" || cat === "query") && !showVerification) continue;
           if ((cat === "transform" || cat === "export") && !showFileConversions) continue;
           const prefix = cat === "simulate" ? "▶ " : cat === "verify" || cat === "query" ? "✓ " : "⇄ ";
@@ -1045,9 +1137,18 @@ export function registerCodeLensProvider(context: LspContext) {
           });
         }
       } else if (detectedPlugin.actionHandlers) {
+        let emittedSim = false;
         for (const actionId of Object.keys(detectedPlugin.actionHandlers)) {
           const isSim = actionId.includes("simulate") || actionId.includes("solve") || actionId.includes("run");
           const isExport = actionId.includes("export") || actionId.includes("project") || actionId.includes("_to_");
+          if (isSim) {
+            if (!showSimulate || (emittedSim && !showVerification && !showFileConversions)) continue;
+            emittedSim = true;
+          } else if (isExport) {
+            if (!showFileConversions) continue;
+          } else {
+            if (!showVerification) continue;
+          }
           const prefix = isSim ? "▶ " : isExport ? "⇄ " : "✓ ";
           const humanTitle = actionId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
           lenses.push({
@@ -1059,7 +1160,7 @@ export function registerCodeLensProvider(context: LspContext) {
             },
           });
         }
-      } else if (detectedPlugin.id === "owl2") {
+      } else if (detectedPlugin.id === "owl2" && showVerification) {
         lenses.push({
           range: headerRange,
           command: {
@@ -1068,7 +1169,7 @@ export function registerCodeLensProvider(context: LspContext) {
             arguments: [uri],
           },
         });
-      } else if (detectedPlugin.id === "csv") {
+      } else if (detectedPlugin.id === "csv" && showSimulate) {
         lenses.push({
           range: headerRange,
           command: {
@@ -1078,22 +1179,26 @@ export function registerCodeLensProvider(context: LspContext) {
           },
         });
       } else if (detectedPlugin.id === "modelscript") {
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "▶ Simulate ModelScript Study",
-            command: "modelscript.action.simulate",
-            arguments: [uri],
-          },
-        });
-        lenses.push({
-          range: headerRange,
-          command: {
-            title: "✓ Verify Formal Contracts",
-            command: "modelscript.openContractExplorer",
-            arguments: [uri],
-          },
-        });
+        if (showSimulate) {
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "▶ Simulate ModelScript Study",
+              command: "modelscript.action.simulate",
+              arguments: [uri],
+            },
+          });
+        }
+        if (showVerification) {
+          lenses.push({
+            range: headerRange,
+            command: {
+              title: "✓ Verify Formal Contracts",
+              command: "modelscript.openContractExplorer",
+              arguments: [uri],
+            },
+          });
+        }
       }
     }
 

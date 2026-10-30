@@ -53,6 +53,11 @@ export class FederationWorker {
     try {
       if (!this.db.db.open) return 0;
       if (process.env["FEDERATION_MODE"] === "disabled") return 0;
+      try {
+        if (this.db.getInstanceSettings().maintenanceMode) return 0;
+      } catch {
+        // Proceed if instance_settings table is not yet initialized
+      }
 
       const items = this.db.fetchPendingFederationDeliveries(batchSize);
       if (items.length === 0) return 0;

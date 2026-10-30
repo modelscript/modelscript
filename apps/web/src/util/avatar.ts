@@ -9,7 +9,7 @@ export function getAvatarUrl(username?: string | null, originalUrl?: string | nu
         : undefined;
   if (candidateUrl) {
     try {
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://modelscript.org";
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://ansatz.social";
       const hostname = new URL(candidateUrl, baseUrl).hostname;
       if (hostname !== "ui-avatars.com" && !hostname.endsWith(".ui-avatars.com")) {
         return candidateUrl;
@@ -51,7 +51,7 @@ export function getBannerUrl(username: string, originalUrl?: string | null): str
   }
 
   let hash = 0;
-  const cleanName = username || "modelscript";
+  const cleanName = username || "ansatz";
   for (let i = 0; i < cleanName.length; i++) {
     hash = cleanName.charCodeAt(i) + ((hash << 5) - hash);
   }

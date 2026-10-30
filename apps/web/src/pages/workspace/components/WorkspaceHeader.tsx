@@ -23,6 +23,7 @@ import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { ComposeContext } from "../../../components/ComposeContext";
 import { useToast } from "../../../components/ToastContext";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { isRepoForked, isRepoStarred, isRepoWatching, setRepoForked, setRepoStarred, setRepoWatching } from "../utils";
 
 export interface WorkspaceHeaderProps {
@@ -59,6 +60,8 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   pullsCount,
   actionsCount,
 }) => {
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const { showToast } = useToast();
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -164,7 +167,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
               {repo?.visibility === "private" ? "Private" : "Public"}
             </Label>
             <Label variant="accent" style={{ textTransform: "capitalize" }}>
-              {provider === "gitlab" ? "GitLab" : provider === "local" ? "ModelScript Git" : "GitHub"}
+              {provider === "gitlab" ? "GitLab" : provider === "local" ? `${brandName} Git` : "GitHub"}
             </Label>
             {externalUrl && (
               <a
@@ -193,7 +196,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
               leadingVisual={CodeIcon}
               size="small"
               onClick={() => navigate(`${basePath}/ide?ref=${encodeURIComponent(repo?.default_branch || "main")}`)}
-              title="Open repository in ModelScript Web IDE"
+              title={`Open repository in ${brandName} Web IDE`}
             >
               Web IDE
             </Button>
@@ -204,7 +207,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
                 size="small"
                 onClick={() =>
                   openCompose({
-                    content: `Exploring **${namespace}/${project}** on ModelScript! 🚀`,
+                    content: `Exploring **${namespace}/${project}** on ${brandName}! 🚀`,
                     repoPayload: {
                       namespace,
                       project,

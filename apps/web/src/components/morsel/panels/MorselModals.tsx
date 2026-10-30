@@ -262,7 +262,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
           <div>
             <img
               src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
-              alt="ModelScript"
+              alt="Ansatz"
               style={{ marginBottom: 8 }}
             />
           </div>

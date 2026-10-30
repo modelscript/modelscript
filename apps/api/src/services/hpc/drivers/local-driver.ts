@@ -159,7 +159,7 @@ export class LocalProcessDriver implements HpcDriver {
       networkIsolation = sandboxConfig?.networkIsolation !== false;
       const readOnly = sandboxConfig?.readOnlyRoot !== false;
       const tmpfsMb = sandboxConfig?.tmpfsSizeMb ?? 2048;
-      const image = sandboxConfig?.image || process.env["HPC_SANDBOX_IMAGE"] || "ghcr.io/modelscript/runner:latest";
+      const image = sandboxConfig?.image || process.env["HPC_SANDBOX_IMAGE"] || "ghcr.io/modelscript/cli:latest";
       const absWorkingDir = path.resolve(spec.workingDir);
 
       const containerArgs: string[] = ["run", "--rm"];

@@ -285,7 +285,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   variant="default"
                   onClick={onOpenCloud}
                   leadingVisual={ServerIcon}
-                  title="Run on ModelScript Cloud HPC"
+                  title="Run on Ansatz Cloud HPC"
                 >
                   Cloud
                 </Button>

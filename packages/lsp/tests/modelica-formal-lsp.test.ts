@@ -153,6 +153,24 @@ end FormalControl;
     registerCodeLensProvider(mockContext);
     assert.ok(codeLensHandler, "CodeLens handler must be registered");
 
+    // In default ('stable' / 'problemsOnly') mode, only defective/unproven functions get badges
+    const defaultLenses = codeLensHandler({ textDocument: { uri: modelicaUri } });
+    assert.strictEqual(
+      defaultLenses.find((l: any) => l.command.title.includes("Formally Verified")),
+      undefined,
+      "Default problemsOnly mode must suppress healthy '✓ Formally Verified' badge on safeFilter",
+    );
+    assert.ok(
+      defaultLenses.find((l: any) => l.command.title.includes("Formal Defect")),
+      "Default problemsOnly mode must still surface '✗ Formal Defect' on dangerousDivision",
+    );
+
+    // In 'preview' channel / verification: 'all', all proof badges are shown
+    mockContext.settings = {
+      features: { channel: "preview" },
+      codeLens: { verification: "all" },
+    };
+
     const lenses = codeLensHandler({ textDocument: { uri: modelicaUri } });
     assert.ok(lenses.length >= 3, `Expected at least 3 lenses, got ${lenses.length}`);
 
@@ -371,6 +389,10 @@ end DaeModel;
         documents: { get: (uri: string) => (uri === daeUri ? daeDoc : undefined) },
         workspaceManager: daeWorkspaceManager,
         validationService,
+        settings: {
+          features: { channel: "preview" },
+          codeLens: { verification: "all" },
+        },
       };
 
       registerCodeLensProvider(mockDaeContext);

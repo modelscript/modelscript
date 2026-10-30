@@ -29,6 +29,18 @@ export interface AuthUser {
   tokenVersion?: number | undefined;
 }
 
+declare module "express-serve-static-core" {
+  interface Request {
+    user?: AuthUser | undefined;
+    tokenScopes?: string[] | undefined;
+    tokenPackagePattern?: string | undefined;
+    tokenId?: number | undefined;
+    rawBody?: Buffer | string | undefined;
+    isDomainSilenced?: boolean | undefined;
+    database?: LibraryDatabase | undefined;
+  }
+}
+
 declare module "express" {
   interface Request {
     user?: AuthUser | undefined;

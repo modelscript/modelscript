@@ -312,10 +312,17 @@ export function parseRepositoryInput(
     provider = "github";
   } else if (host === "gitlab.com" || host.endsWith(".gitlab.com")) {
     provider = "gitlab";
-  } else if (host === "modelscript.org" || host === "localhost" || host.endsWith(".local")) {
+  } else if (
+    host === "ansatz.social" ||
+    host.endsWith(".ansatz.social") ||
+    host === "modelscript.org" ||
+    host.endsWith(".modelscript.org") ||
+    host === "localhost" ||
+    host.endsWith(".local")
+  ) {
     provider = "local";
   } else {
-    throw new Error("Supported providers are GitHub, GitLab, or ModelScript Git (owner/repo)");
+    throw new Error("Supported providers are GitHub, GitLab, or Ansatz Git (owner/repo)");
   }
 
   const parts = parsedUrl.pathname

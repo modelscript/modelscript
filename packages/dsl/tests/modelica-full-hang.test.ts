@@ -16,6 +16,17 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
   let buildResult: any;
 
   beforeAll(async () => {
+    const precompiledWasm = path.resolve(__dirname, "../../../languages/modelica/dist/parser.wasm");
+    const precompiledBindings = path.resolve(__dirname, "../../../languages/modelica/src-gen/bindings.js");
+
+    if (fs.existsSync(precompiledWasm) && fs.existsSync(precompiledBindings)) {
+      const { createWasmParser } = await import("file://" + precompiledBindings);
+      const wasmBytes = fs.readFileSync(precompiledWasm);
+      const { facade } = await createWasmParser(wasmBytes);
+      activeFacade = facade;
+      return;
+    }
+
     const target = path.join(__dirname, "..", "..", "..", "languages", "modelica", "src", "language.ts");
     const mod = await import("file://" + target);
     const result = buildParser({
@@ -143,7 +154,7 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
   }, 600000);
 
   afterAll(() => {
-    if (fs.existsSync(tmpDir)) {
+    if (tmpDir && fs.existsSync(tmpDir)) {
       try {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       } catch {

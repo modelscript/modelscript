@@ -385,9 +385,11 @@ export function oembedRouter(database: LibraryDatabase): Router {
       return;
     }
 
+    const settings = database.getInstanceSettings();
+    const brandName = settings.instanceName || "Ansatz";
     const host = parsedUrl.origin;
-    let title = "ModelScript Interactive Engineering Model";
-    let authorName = "ModelScript Community";
+    let title = `${brandName} Interactive Engineering Model`;
+    let authorName = `${brandName} Community`;
     let authorUrl = host;
     let thumbnailUrl = `${host}/api/v1/artifacts/default-thumb.webp`;
     let embedSrc = "";
@@ -489,7 +491,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
       title,
       author_name: authorName,
       author_url: authorUrl,
-      provider_name: "ModelScript",
+      provider_name: brandName,
       provider_url: host,
       cache_age: 86400,
       thumbnail_url: thumbnailUrl,

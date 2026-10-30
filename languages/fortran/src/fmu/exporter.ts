@@ -70,10 +70,13 @@ export interface FortranFmuResult {
 }
 
 function sanitizeCId(name: string): string {
-  const s = name
-    .replace(/[^A-Za-z0-9_]/g, "_")
-    .replace(/^_+/, "")
-    .replace(/_+$/, "");
+  let s = name.replace(/[^A-Za-z0-9_]/g, "_");
+  while (s.startsWith("_")) {
+    s = s.slice(1);
+  }
+  while (s.endsWith("_")) {
+    s = s.slice(0, -1);
+  }
   if (!s) return "fortran_model";
   return /^[0-9]/.test(s) ? `f_${s}` : s.toLowerCase();
 }

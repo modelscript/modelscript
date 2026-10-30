@@ -54,7 +54,87 @@ export interface LspContext {
   settings?: ModelScriptLspSettings | undefined;
 }
 
+export type FeatureChannel = "stable" | "preview" | "experimental" | "dev";
+
+export interface ModelScriptFeatureFlags {
+  /** '▶ Simulate' / '▶ Run Study' CodeLens above model and study declarations (Tier: stable). */
+  codeLensSimulate: boolean;
+  /** Formal verification, contract checking, DAE structural proofs, and reachability (Tier: preview). */
+  formalVerification: boolean;
+  /** CAD -> FEA/CFD mesh discretization and study generation (Tier: preview). */
+  caeWorkbench: boolean;
+  /** FMI 2.0/3.0 co-simulation orchestrator and live MQTT participants (Tier: preview). */
+  coSimulation: boolean;
+  /** Cross-domain Digital Thread twin alignment, hover cards, and sync (Tier: experimental). */
+  digitalThread: boolean;
+  /** Cross-domain model projection & 3D polyglot visualizer (Tier: experimental). */
+  polyglotProjection: boolean;
+  /** Multi-domain file scaffolding (.scad + .mo + .inp) from SysML v2 parts (Tier: experimental). */
+  scaffolding: boolean;
+  /** AI Copilot sidebar view and closed-loop synthesis (Tier: experimental). */
+  aiCopilot: boolean;
+  /** Domain-specific vertical demos, trade study Tier 1-3 CodeLenses, and showcase workflows (Tier: dev). */
+  demos: boolean;
+}
+
+export const FEATURE_MIN_CHANNEL: Record<keyof ModelScriptFeatureFlags, FeatureChannel> = {
+  codeLensSimulate: "stable",
+  formalVerification: "preview",
+  caeWorkbench: "preview",
+  coSimulation: "preview",
+  digitalThread: "experimental",
+  polyglotProjection: "experimental",
+  scaffolding: "experimental",
+  aiCopilot: "experimental",
+  demos: "dev",
+};
+
+const CHANNEL_RANK: Record<FeatureChannel, number> = {
+  stable: 1,
+  preview: 2,
+  experimental: 3,
+  dev: 4,
+};
+
+/**
+ * Resolves the effective feature flags from user settings (`modelscript.features.*`),
+ * defaulting to the `"stable"` channel when unspecified.
+ */
+export function resolveFeatureFlags(settings?: ModelScriptLspSettings): ModelScriptFeatureFlags {
+  const rawChannel = settings?.features?.channel;
+  const channel: FeatureChannel =
+    rawChannel === "stable" || rawChannel === "preview" || rawChannel === "experimental" || rawChannel === "dev"
+      ? rawChannel
+      : "stable";
+  const currentRank = CHANNEL_RANK[channel];
+
+  const isEnabled = (key: keyof ModelScriptFeatureFlags): boolean => {
+    const explicit = settings?.features?.[key];
+    if (typeof explicit === "boolean") {
+      return explicit;
+    }
+    return currentRank >= CHANNEL_RANK[FEATURE_MIN_CHANNEL[key]];
+  };
+
+  return {
+    codeLensSimulate: isEnabled("codeLensSimulate"),
+    formalVerification: isEnabled("formalVerification"),
+    caeWorkbench: isEnabled("caeWorkbench"),
+    coSimulation: isEnabled("coSimulation"),
+    digitalThread: isEnabled("digitalThread"),
+    polyglotProjection: isEnabled("polyglotProjection"),
+    scaffolding: isEnabled("scaffolding"),
+    aiCopilot: isEnabled("aiCopilot"),
+    demos: isEnabled("demos"),
+  };
+}
+
 export interface ModelScriptLspSettings {
+  features?:
+    | ({
+        channel?: FeatureChannel | undefined;
+      } & Partial<ModelScriptFeatureFlags>)
+    | undefined;
   languages?:
     | {
         maturityTier?: "all" | "betaAndStable" | "stableOnly" | "stable" | "beta" | "experimental" | undefined;
@@ -65,7 +145,8 @@ export interface ModelScriptLspSettings {
     | {
         enabled?: boolean | undefined;
         simulate?: boolean | undefined;
-        verification?: boolean | undefined;
+        diagram?: boolean | undefined;
+        verification?: boolean | "all" | "problemsOnly" | "off" | undefined;
         polyglotLinks?: boolean | undefined;
         cadMetrics?: boolean | undefined;
         fileConversions?: boolean | undefined;
@@ -83,6 +164,8 @@ export interface ModelScriptLspSettings {
     | {
         enabled?: boolean | undefined;
         maxProblems?: number | undefined;
+        maxNumberOfProblems?: number | undefined;
+        disabledRules?: string[] | undefined;
         crossDomainDrift?: "error" | "warning" | "information" | "off" | undefined;
         formalVerificationOnSave?: boolean | undefined;
         daeSingularityCheck?: boolean | undefined;

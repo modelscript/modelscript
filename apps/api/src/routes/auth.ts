@@ -22,6 +22,11 @@ import {
   verifyPasswordResetToken,
 } from "../util/password-reset.js";
 import {
+  evaluateRegistrationPolicy,
+  isEmailDomainAllowed,
+  resolveBrandInstanceName,
+} from "../util/registration-policy.js";
+import {
   generateBackupCodes,
   generateTotpSecret,
   generateTotpUri,
@@ -60,6 +65,42 @@ function clearSessionCookie(res: Response): void {
 
 export function authRouter(database: LibraryDatabase): Router {
   const router = createRouter();
+
+  /**
+   * GET /api/v1/auth/config
+   *
+   * Public capability discovery for login & signup UI across all deployment modes.
+   */
+  router.get("/config", (_req: Request, res: Response): void => {
+    try {
+      const settings = database.getInstanceSettings();
+      const airgapEnforced = process.env["AIRGAP_ENFORCED"] === "true";
+      const turnstileEnabled = !airgapEnforced && Boolean(process.env["TURNSTILE_SECRET_KEY"]);
+      const mailerConfigured = defaultMailer.isConfiguredForLiveDelivery();
+      const oauthProviders: ("github" | "gitlab")[] = [];
+      if (!airgapEnforced) {
+        if (process.env["GITHUB_CLIENT_ID"] || process.env["NODE_ENV"] !== "production") {
+          oauthProviders.push("github");
+        }
+        if (process.env["GITLAB_CLIENT_ID"] || process.env["NODE_ENV"] !== "production") {
+          oauthProviders.push("gitlab");
+        }
+      }
+      res.json({
+        instanceName: settings.instanceName,
+        registrationMode: settings.registrationMode,
+        allowedEmailDomains: settings.allowedEmailDomains,
+        requireAdmin2FA: settings.requireAdmin2FA,
+        airgapEnforced,
+        turnstileEnabled,
+        mailerConfigured,
+        oauthProviders,
+        oidcEnabled: defaultOidcService.isConfigured(),
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to load auth config" });
+    }
+  });
 
   /**
    * POST /api/v1/auth/register
@@ -138,28 +179,7 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       try {
-        const instanceSettings = database.getInstanceSettings();
         const inviteCode = typeof req.body?.inviteCode === "string" ? req.body.inviteCode.trim() : "";
-
-        if (instanceSettings.registrationMode === "closed") {
-          res.status(403).json({
-            error: "Public registration is currently closed on this instance.",
-          });
-          return;
-        }
-
-        if (instanceSettings.registrationMode === "domain_allowlist" && !inviteCode) {
-          const emailDomain = String(email).split("@")[1]?.toLowerCase() || "";
-          const allowed = instanceSettings.allowedEmailDomains.some(
-            (d) => emailDomain === d || emailDomain.endsWith(`.${d}`),
-          );
-          if (!allowed) {
-            res.status(403).json({
-              error: `Registration on this instance is restricted to approved email domains (${instanceSettings.allowedEmailDomains.join(", ") || "none"}).`,
-            });
-            return;
-          }
-        }
 
         const existing = database.getUserByEmail(email);
         if (existing) {
@@ -173,39 +193,28 @@ export function authRouter(database: LibraryDatabase): Router {
           return;
         }
 
-        let redeemedInvite:
-          | {
-              id: number;
-              code: string;
-              initialCredits: number;
-              assignedRole: string;
-            }
-          | undefined;
-
-        if (instanceSettings.registrationMode === "invite_only" || inviteCode) {
-          if (!inviteCode) {
-            res.status(403).json({
-              error: "An invitation code is required to register on this instance.",
-            });
-            return;
-          }
-          const validation = database.validateAndConsumeInstanceInvite(inviteCode);
-          if (!validation.valid || !validation.invite) {
-            res.status(403).json({
-              error: validation.reason || "Invalid invitation code",
-            });
-            return;
-          }
-          redeemedInvite = validation.invite;
+        const policy = evaluateRegistrationPolicy(database, { email, inviteCode });
+        if (!policy.allowed) {
+          res.status(policy.status ?? 403).json({
+            error: policy.error || "Registration is restricted on this instance.",
+          });
+          return;
         }
+        const redeemedInvite = policy.redeemedInvite;
+        const preVerified = Boolean(redeemedInvite || policy.autoVerifiedByAirgap);
+        const initialCredits = redeemedInvite
+          ? redeemedInvite.initialCredits
+          : policy.autoVerifiedByAirgap
+            ? 50.0
+            : 0.0;
 
         const passwordHash = await bcrypt.hash(password, 10);
 
-        // Create user with compute credits withheld until verification (unless invited)
+        // Create user with compute credits withheld until verification (unless invited or airgap-auto-verified)
         let user = database.createUser(username, email, passwordHash, {
-          emailVerified: Boolean(redeemedInvite),
-          initialCredits: redeemedInvite ? redeemedInvite.initialCredits : 0.0,
-          status: redeemedInvite ? "active" : "pending_verification",
+          emailVerified: preVerified,
+          initialCredits,
+          status: preVerified ? "active" : "pending_verification",
           termsAcceptedAt: new Date().toISOString(),
           registrationIp: clientIp,
         });
@@ -247,15 +256,19 @@ export function authRouter(database: LibraryDatabase): Router {
             username: user.username,
             email: user.email,
             ...(redeemedInvite ? { inviteCode: redeemedInvite.code, assignedRole: redeemedInvite.assignedRole } : {}),
+            ...(policy.autoVerifiedByAirgap ? { autoVerifiedByAirgap: true } : {}),
           },
         });
 
         const verificationToken = signEmailVerificationToken(user.id, user.email);
+        const instanceName = resolveBrandInstanceName(database);
 
         // Asynchronously dispatch verification email
-        void defaultMailer.sendVerificationEmail(user.email, user.username, verificationToken).catch((err) => {
-          console.error("[Auth] Failed to dispatch verification email:", err);
-        });
+        void defaultMailer
+          .sendVerificationEmail(user.email, user.username, verificationToken, { instanceName })
+          .catch((err) => {
+            console.error("[Auth] Failed to dispatch verification email:", err);
+          });
 
         const {
           password_hash: _,
@@ -276,9 +289,10 @@ export function authRouter(database: LibraryDatabase): Router {
           token,
           user: safeUser,
           ...(tokenPayload ? { verificationToken: tokenPayload } : {}),
-          verificationRequired: true,
-          message:
-            "Account created successfully. Please verify your email address to unlock your free tier compute credits.",
+          verificationRequired: !preVerified,
+          message: preVerified
+            ? "Account created and verified."
+            : "Account created successfully. Please verify your email address to unlock your free tier compute credits.",
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Registration failed";
@@ -315,7 +329,8 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       const verificationToken = signEmailVerificationToken(user.id, user.email);
-      await defaultMailer.sendVerificationEmail(user.email, user.username, verificationToken);
+      const instanceName = resolveBrandInstanceName(database);
+      await defaultMailer.sendVerificationEmail(user.email, user.username, verificationToken, { instanceName });
 
       const isProduction = process.env["NODE_ENV"] === "production";
       const tokenPayload = isProduction ? undefined : verificationToken;
@@ -683,6 +698,26 @@ export function authRouter(database: LibraryDatabase): Router {
         details: { method: usedBackupCode ? "2fa_backup_code" : "2fa_totp" },
       });
 
+      const backupCodesRemaining = database.getRemainingBackupCodeCount(user.id);
+      if (usedBackupCode) {
+        database.createNotification(user.id, user.id, "security_alert", null, {
+          title: "2FA Backup Recovery Code Used",
+          description: `A single-use backup code was used to sign in (${backupCodesRemaining} remaining).`,
+          skipEmail: true,
+        });
+        if (user.email_verified === 1) {
+          void defaultMailer
+            .sendSecurityAlertEmail(user.email, {
+              username: user.username,
+              eventTitle: "2FA Backup Recovery Code Used",
+              description: `A single-use backup recovery code was used to sign in to your account (${backupCodesRemaining} codes remaining).`,
+              ipAddress: clientIp,
+              instanceName: resolveBrandInstanceName(database),
+            })
+            .catch(() => {});
+        }
+      }
+
       const {
         password_hash,
         github_token: _gh,
@@ -700,8 +735,10 @@ export function authRouter(database: LibraryDatabase): Router {
           credit_balance: user.credit_balance ?? 0,
           has_password: Boolean(password_hash),
           totp_enabled: Boolean(user.totp_enabled),
+          backup_codes_remaining: backupCodesRemaining,
         },
         usedBackupCode,
+        backupCodesRemaining,
       });
     } catch {
       res.status(401).json({ error: "Invalid or expired challenge token" });
@@ -728,6 +765,7 @@ export function authRouter(database: LibraryDatabase): Router {
       database.setPendingTotpSecret(user.id, secret, Date.now() + 15 * 60 * 1000);
       const otpAuthUri = generateTotpUri({
         accountName: user.email,
+        issuer: resolveBrandInstanceName(database),
         secret,
       });
 
@@ -794,10 +832,17 @@ export function authRouter(database: LibraryDatabase): Router {
         details: { backupCodesCount: 10 },
       });
 
+      database.createNotification(req.user!.id, req.user!.id, "security_alert", null, {
+        title: "Two-Factor Authentication Enabled",
+        description: "TOTP two-factor authentication has been activated on your account.",
+        skipEmail: true,
+      });
+
       res.json({
         success: true,
         message: "Two-Factor Authentication enabled successfully.",
         backupCodes: plainCodes,
+        backupCodesRemaining: 10,
       });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to activate 2FA" });
@@ -866,6 +911,12 @@ export function authRouter(database: LibraryDatabase): Router {
         ipAddress: clientIp,
       });
 
+      database.createNotification(userId, userId, "security_alert", null, {
+        title: "Two-Factor Authentication Disabled",
+        description: "Two-factor authentication was disabled on your account.",
+        skipEmail: true,
+      });
+
       res.json({
         success: true,
         message: "Two-factor authentication has been disabled.",
@@ -874,6 +925,84 @@ export function authRouter(database: LibraryDatabase): Router {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to disable 2FA" });
     }
   });
+
+  /**
+   * POST /api/v1/auth/2fa/backup-codes/regenerate
+   *
+   * Generates a fresh set of 10 backup recovery codes, invalidating all previous codes.
+   * Requires password (if account has local password) and a current 6-digit TOTP code.
+   */
+  router.post(
+    "/2fa/backup-codes/regenerate",
+    requireAuth,
+    express.json(),
+    async (req: Request, res: Response): Promise<void> => {
+      const { password, code } = req.body || {};
+      const clientIp = getClientIp(req);
+      const userId = req.user!.id;
+
+      try {
+        const hash = database.getPasswordHash(userId);
+        if (hash) {
+          if (!password || typeof password !== "string") {
+            res.status(400).json({ error: "Password is required to regenerate backup recovery codes" });
+            return;
+          }
+          const validPassword = await bcrypt.compare(password, hash);
+          if (!validPassword) {
+            res.status(401).json({ error: "Incorrect password" });
+            return;
+          }
+        }
+
+        const state2FA = database.getUser2FAState(userId);
+        if (!state2FA || !state2FA.totp_enabled || !state2FA.totp_secret) {
+          res.status(400).json({ error: "Two-factor authentication is not enabled" });
+          return;
+        }
+
+        if (!code || typeof code !== "string" || !/^\d{6}$/.test(code.trim().replace(/\s+/g, ""))) {
+          res.status(400).json({ error: "A valid 6-digit authenticator code is required" });
+          return;
+        }
+
+        const validTotp = verifyTotpCode(state2FA.totp_secret, code.trim(), {
+          preventReplay: process.env["NODE_ENV"] === "production",
+        });
+        if (!validTotp) {
+          res.status(400).json({ error: "Invalid 6-digit authenticator code" });
+          return;
+        }
+
+        const { plainCodes, hashedCodes } = generateBackupCodes(10);
+        database.setUserBackupCodes(userId, hashedCodes);
+
+        database.logAudit({
+          actorId: userId,
+          action: "auth_2fa_backup_codes_regenerated",
+          resourceType: "auth",
+          resourceId: String(userId),
+          ipAddress: clientIp,
+          details: { backupCodesCount: 10 },
+        });
+
+        database.createNotification(userId, userId, "security_alert", null, {
+          title: "2FA Backup Codes Regenerated",
+          description: "A new set of 10 emergency recovery codes was generated; previous codes were invalidated.",
+          skipEmail: true,
+        });
+
+        res.json({
+          success: true,
+          message: "Emergency backup recovery codes have been regenerated.",
+          backupCodes: plainCodes,
+          backupCodesRemaining: 10,
+        });
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : "Failed to regenerate backup codes" });
+      }
+    },
+  );
 
   /**
    * POST /api/v1/auth/logout
@@ -923,9 +1052,12 @@ export function authRouter(database: LibraryDatabase): Router {
           details: { email: user.email },
         });
 
-        void defaultMailer.sendPasswordResetEmail(user.email, user.username, resetToken).catch((err) => {
-          console.error("[Auth] Failed to dispatch password reset email:", err);
-        });
+        const instanceName = resolveBrandInstanceName(database);
+        void defaultMailer
+          .sendPasswordResetEmail(user.email, user.username, resetToken, { instanceName })
+          .catch((err) => {
+            console.error("[Auth] Failed to dispatch password reset email:", err);
+          });
       }
 
       const isProduction = process.env["NODE_ENV"] === "production";
@@ -999,6 +1131,13 @@ export function authRouter(database: LibraryDatabase): Router {
         resourceId: String(user.id),
         ipAddress: getClientIp(req),
         details: { email: user.email },
+      });
+
+      database.createNotification(user.id, user.id, "security_alert", null, {
+        title: "Account Password Reset",
+        description:
+          "Your account password was reset using a recovery link and all other active sessions were revoked.",
+        skipEmail: true,
       });
 
       res.status(200).json({
@@ -1436,6 +1575,15 @@ export function authRouter(database: LibraryDatabase): Router {
           user = existing;
           database.linkOAuthAccount(user.id, provider, providerUserId, accessToken, refreshToken, expiresAt);
         } else {
+          const inviteParam = typeof req.query["invite"] === "string" ? req.query["invite"].trim() : undefined;
+          const policy = evaluateRegistrationPolicy(database, { email, inviteCode: inviteParam });
+          if (!policy.allowed) {
+            const errCode = policy.errorCode || "RegistrationRestricted";
+            res.redirect(
+              `${frontendUrl}/login?error=${encodeURIComponent(errCode)}&message=${encodeURIComponent(policy.error || "Registration is restricted on this instance.")}`,
+            );
+            return;
+          }
           user = database.createOAuthUser(username, email, provider, providerUserId);
           database.updateOAuthTokens(user.id, provider, accessToken, refreshToken, expiresAt);
         }
@@ -1627,13 +1775,21 @@ export function authRouter(database: LibraryDatabase): Router {
         backup_codes: __,
         ...safeUser
       } = user;
+      const totpEnabled = Boolean(user.totp_enabled);
+      const backupCodesRemaining = totpEnabled ? database.getRemainingBackupCodeCount(user.id) : 0;
+      const instanceSettings = database.getInstanceSettings();
+      const requireAdmin2FASetup = Boolean(
+        user.account_type === "admin" && !totpEnabled && instanceSettings.requireAdmin2FA,
+      );
       res.json({
         user: {
           ...safeUser,
           banner_url: user.banner_url ?? null,
           credit_balance: user.credit_balance ?? 0,
           has_password: Boolean(password_hash),
-          totp_enabled: Boolean(user.totp_enabled),
+          totp_enabled: totpEnabled,
+          backup_codes_remaining: backupCodesRemaining,
+          require_admin_2fa_setup: requireAdmin2FASetup,
         },
       });
     } catch {
@@ -1649,7 +1805,7 @@ export function authRouter(database: LibraryDatabase): Router {
    * If the user authenticated via OAuth/SSO with no password hash, profile updates proceed directly.
    */
   router.put("/account", requireAuth, async (req: Request, res: Response): Promise<void> => {
-    const { password, username, email, display_name, avatar_url, banner_url } = req.body;
+    const { password, totpCode, username, email, display_name, avatar_url, banner_url } = req.body;
     const userId = req.user!.id;
 
     try {
@@ -1663,6 +1819,16 @@ export function authRouter(database: LibraryDatabase): Router {
         if (!(await bcrypt.compare(password, hash))) {
           res.status(401).json({ error: "Incorrect password" });
           return;
+        }
+      }
+
+      if (typeof totpCode === "string" && totpCode.trim()) {
+        const state2FA = database.getUser2FAState(userId);
+        if (state2FA?.totp_enabled && state2FA.totp_secret) {
+          if (!verifyTotpCode(state2FA.totp_secret, totpCode.trim())) {
+            res.status(401).json({ error: "Invalid two-factor authentication code" });
+            return;
+          }
         }
       }
 
@@ -1690,6 +1856,16 @@ export function authRouter(database: LibraryDatabase): Router {
             });
             return;
           }
+          const instanceSettings = database.getInstanceSettings();
+          if (
+            instanceSettings.registrationMode === "domain_allowlist" &&
+            !isEmailDomainAllowed(e, instanceSettings.allowedEmailDomains)
+          ) {
+            res.status(403).json({
+              error: `Email address must belong to an approved domain (${instanceSettings.allowedEmailDomains.join(", ") || "none"}).`,
+            });
+            return;
+          }
           const existE = database.getUserByEmail(e);
           if (existE && existE.id !== userId) {
             res.status(409).json({ error: "Email is taken" });
@@ -1700,11 +1876,31 @@ export function authRouter(database: LibraryDatabase): Router {
         database.updateAccount(userId, u, e);
 
         if (emailChanged) {
-          database.setUserEmailVerified(userId, false);
+          const instanceName = resolveBrandInstanceName(database);
+          const autoVerifiedByAirgap =
+            process.env["AIRGAP_ENFORCED"] === "true" && !defaultMailer.isConfiguredForLiveDelivery();
+          database.setUserEmailVerified(userId, autoVerifiedByAirgap);
           const verificationToken = signEmailVerificationToken(userId, e);
-          void defaultMailer.sendVerificationEmail(e, u, verificationToken).catch((err) => {
+          void defaultMailer.sendVerificationEmail(e, u, verificationToken, { instanceName }).catch((err) => {
             console.error("[Auth] Failed to dispatch verification email on email change:", err);
           });
+
+          database.createNotification(userId, userId, "security_alert", null, {
+            title: "Account Email Address Changed",
+            description: `Your primary email address was updated from ${currentEmail} to ${e}.`,
+            skipEmail: true,
+          });
+          if (currentEmail && currentEmail.includes("@")) {
+            void defaultMailer
+              .sendSecurityAlertEmail(currentEmail, {
+                username: u,
+                eventTitle: "Account Email Address Changed",
+                description: `The email address associated with your account (@${u}) was changed from ${currentEmail} to ${e}.`,
+                ipAddress: getClientIp(req),
+                instanceName,
+              })
+              .catch(() => {});
+          }
         }
       }
 
@@ -1771,6 +1967,12 @@ export function authRouter(database: LibraryDatabase): Router {
         resourceType: "auth",
         resourceId: String(userId),
         ipAddress: getClientIp(req),
+      });
+
+      database.createNotification(userId, userId, "security_alert", null, {
+        title: "Account Password Changed",
+        description: "Your account password was changed and other active sessions were revoked.",
+        skipEmail: true,
       });
 
       res.json({ success: true, token: newToken, message: "Password updated successfully" });
@@ -2051,6 +2253,12 @@ export function authRouter(database: LibraryDatabase): Router {
         resourceId: String(tokenId),
         ipAddress: getClientIp(req),
         details: { name: name.trim(), scopes, packagePattern, expiresAt },
+      });
+
+      database.createNotification(req.user!.id, req.user!.id, "security_alert", null, {
+        title: "New Personal Access Token Created",
+        description: `A new API token '${name.trim()}' (${tokenPrefix}...) was created with scopes: ${scopes.join(", ")}.`,
+        skipEmail: true,
       });
 
       res.status(201).json({

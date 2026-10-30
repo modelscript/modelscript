@@ -52,7 +52,7 @@ export class DeterministicEngineeringProvider implements LLMProvider {
 
     return {
       model: options?.model || "modelscript-engineering-v1",
-      content: `I have received your request: "${lastMessage.trim()}". As an engineering bot on ModelScript, I can verify equations, run DAE simulations, and analyze multi-domain digital twins.`,
+      content: `I have received your request: "${lastMessage.trim()}". As an engineering bot on Ansatz (powered by ModelScript), I can verify equations, run DAE simulations, and analyze multi-domain digital twins.`,
     };
   }
 }

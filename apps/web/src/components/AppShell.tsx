@@ -34,6 +34,7 @@ import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
 
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { ComposeContext, type ComposeInitialState } from "./ComposeContext";
 import { OfflineBanner } from "./OfflineBanner";
 
@@ -347,6 +348,8 @@ const AppShell: React.FC = () => {
   const [isMoreOpen, setIsMoreOpen] = React.useState(false);
   const hasCaeJobs = useFeatureFlag("cae_cloud_solver");
   const hasIde = useFeatureFlag("heavy_vscode_ide");
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
 
   const handleToggleDevHeader = React.useCallback((next?: boolean) => {
     setIsDevHeaderVisible((prev) => {
@@ -570,7 +573,7 @@ const AppShell: React.FC = () => {
               <Banner>
                 <BannerContent>
                   <Box display="flex" flexDirection="column" style={{ minWidth: 0 }}>
-                    <BannerTitle>Join the ModelScript community</BannerTitle>
+                    <BannerTitle>Join the {brandName} community</BannerTitle>
                     <BannerSubtitle>Share models, simulations, and results with engineers worldwide.</BannerSubtitle>
                   </Box>
                   <BannerActions>

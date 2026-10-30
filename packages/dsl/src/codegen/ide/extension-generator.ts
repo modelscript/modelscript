@@ -484,6 +484,12 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   // Collect commands, menus, language model tools, and keybindings from language actions
   const commands: any[] = [
     {
+      command: "modelscript.configureFeatures",
+      title: "ModelScript: Configure Features & Release Channel...",
+      category: "ModelScript",
+      icon: "$(sliders)",
+    },
+    {
       command: "modelscript.configureLanguages",
       title: "ModelScript: Configure Languages & Maturity Tiers...",
       category: "ModelScript",
@@ -668,22 +674,22 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   const editorMoreActionsMenus: any[] = [
     {
       command: "modelscript.openDroneReachabilityDemo",
-      when: "editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml",
+      when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml) && modelscript.feature.demos",
       group: "1_verify@1",
     },
     {
       command: "modelscript.syncDigitalThreadParams",
-      when: "editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd",
+      when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd) && modelscript.feature.digitalThread",
       group: "2_thread@1",
     },
     {
       command: "modelscript.generateFeaMesh",
-      when: "activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad",
+      when: "(activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad) && modelscript.feature.caeWorkbench",
       group: "3_cae@1",
     },
     {
       command: "modelscript.generateCfdMesh",
-      when: "activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad",
+      when: "(activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad) && modelscript.feature.caeWorkbench",
       group: "3_cae@2",
     },
   ];
@@ -691,22 +697,22 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   const editorTitleMenus: any[] = [
     {
       command: "modelscript.openDroneReachabilityDemo",
-      when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml) && config.modelscript.ui.editorTitleActions == 'all'",
+      when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml) && config.modelscript.ui.editorTitleActions == 'all' && modelscript.feature.demos",
       group: "navigation@10",
     },
     {
       command: "modelscript.syncDigitalThreadParams",
-      when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd) && config.modelscript.ui.editorTitleActions == 'all'",
+      when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd) && config.modelscript.ui.editorTitleActions == 'all' && modelscript.feature.digitalThread",
       group: "navigation@11",
     },
     {
       command: "modelscript.generateFeaMesh",
-      when: "(activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad) && config.modelscript.ui.editorTitleActions == 'all'",
+      when: "(activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad) && config.modelscript.ui.editorTitleActions == 'all' && modelscript.feature.caeWorkbench",
       group: "navigation@12",
     },
     {
       command: "modelscript.generateCfdMesh",
-      when: "(activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad) && config.modelscript.ui.editorTitleActions == 'all'",
+      when: "(activeCustomEditorId == modelscript.stepEditor || editorLangId == scad || resourceLangId == scad) && config.modelscript.ui.editorTitleActions == 'all' && modelscript.feature.caeWorkbench",
       group: "navigation@13",
     },
   ];
@@ -714,29 +720,29 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   const editorContextMenus: any[] = [
     {
       command: "modelscript.generateFeaMesh",
-      when: "resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad || editorLangId == scad || resourceLangId == scad",
+      when: "(resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad || editorLangId == scad || resourceLangId == scad) && modelscript.feature.caeWorkbench",
       group: "2_transform@2",
     },
     {
       command: "modelscript.generateCfdMesh",
-      when: "resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad || editorLangId == scad || resourceLangId == scad",
+      when: "(resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad || editorLangId == scad || resourceLangId == scad) && modelscript.feature.caeWorkbench",
       group: "2_transform@3",
     },
     {
       command: "modelscript.syncDigitalThreadParams",
-      when: "editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd",
+      when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == fea || resourceLangId == fea || editorLangId == cfd || resourceLangId == cfd) && modelscript.feature.digitalThread",
       group: "4_polyglot@3",
     },
   ];
   const explorerContextMenus: any[] = [
     {
       command: "modelscript.generateFeaMesh",
-      when: "resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad",
+      when: "(resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad) && modelscript.feature.caeWorkbench",
       group: "modelscript_convert@2",
     },
     {
       command: "modelscript.generateCfdMesh",
-      when: "resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad",
+      when: "(resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad) && modelscript.feature.caeWorkbench",
       group: "modelscript_convert@3",
     },
     {
@@ -751,17 +757,46 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     editorContextMenus.push(
       {
         command: "modelscript.projectModel",
-        when: polyglotWhen,
+        when: `(${polyglotWhen}) && modelscript.feature.polyglotProjection`,
         group: "4_polyglot@1",
       },
       {
         command: "modelscript.openPolyglotVisualizer",
-        when: polyglotWhen,
+        when: `(${polyglotWhen}) && modelscript.feature.polyglotProjection`,
         group: "4_polyglot@2",
       },
     );
   }
-  const commandPaletteMenus: any[] = [];
+  const commandPaletteMenus: any[] = [
+    {
+      command: "modelscript.openDroneReachabilityDemo",
+      when: "modelscript.feature.demos",
+    },
+    {
+      command: "modelscript.openVrVisualization",
+      when: "modelscript.feature.demos",
+    },
+    {
+      command: "modelscript.syncDigitalThreadParams",
+      when: "modelscript.feature.digitalThread",
+    },
+    {
+      command: "modelscript.openThreadExplorer",
+      when: "modelscript.feature.digitalThread",
+    },
+    {
+      command: "modelscript.projectModel",
+      when: "modelscript.feature.polyglotProjection",
+    },
+    {
+      command: "modelscript.openPolyglotVisualizer",
+      when: "modelscript.feature.polyglotProjection",
+    },
+    {
+      command: "modelscript.cosimOpenLivePlot",
+      when: "modelscript.feature.coSimulation",
+    },
+  ];
   const languageModelTools: any[] = [];
   const keybindings: any[] = [];
 
@@ -1244,31 +1279,35 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     ],
     "modelscript-sidebar": [
       {
-        id: "modelscript.chat",
-        name: "ModelScript AI Copilot",
-        type: "webview",
-      },
-      {
         id: "modelscript.libraryTree",
         name: "Standard Libraries",
-      },
-      {
-        id: "modelscript.registryView",
-        name: "Package Registry",
-        type: "webview",
       },
       {
         id: "modelscript.experimentsView",
         name: "Experiments & Studies",
       },
       {
+        id: "modelscript.chat",
+        name: "ModelScript AI Copilot",
+        type: "webview",
+        when: "modelscript.feature.aiCopilot || config.modelscript.features.aiCopilot || config.modelscript.features.channel == 'experimental' || config.modelscript.features.channel == 'dev'",
+      },
+      {
+        id: "modelscript.registryView",
+        name: "Package Registry",
+        type: "webview",
+        when: "modelscript.feature.channel != 'stable' || config.modelscript.features.channel != 'stable'",
+      },
+      {
         id: "modelscript.cosimPanel",
         name: "Co-Simulation Orchestrator",
         type: "webview",
+        when: "modelscript.feature.coSimulation || config.modelscript.features.coSimulation || config.modelscript.features.channel != 'stable'",
       },
       {
         id: "modelscript.mqttTree",
         name: "MQTT Participants",
+        when: "modelscript.feature.coSimulation || config.modelscript.features.coSimulation || config.modelscript.features.channel != 'stable'",
       },
     ],
     scm: [
@@ -1324,6 +1363,69 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   }
 
   contributes["configuration"] = [
+    {
+      title: "ModelScript: Features & Release Channel",
+      properties: {
+        "modelscript.features.channel": {
+          type: "string",
+          enum: ["stable", "preview", "experimental", "dev"],
+          default: "stable",
+          enumDescriptions: [
+            "🟢 Stable: Core LSP, 1-click Simulate CodeLens, 2D/3D viewers, Standard Libraries & Experiments views.",
+            "🟡 Preview: Adds Formal Verification, DAE structural proofs, CAE mesh/study workbench, and FMI Co-Simulation.",
+            "🧪 Experimental: Adds Cross-Domain Digital Thread, Polyglot Model Projection, Multi-Domain Scaffolding, and AI Copilot.",
+            "🔬 Dev / Showcase: Enables all internal vertical demos, Trade Study Tier 1-3 CodeLenses, and medical/VR showcases.",
+          ],
+          markdownDescription:
+            "Controls which IDE and LSP feature maturity channel is enabled by default (`🟢 stable`, `🟡 preview`, `🧪 experimental`, or `🔬 dev`). Individual features can also be overridden below.",
+        },
+        "modelscript.features.codeLensSimulate": {
+          type: "boolean",
+          default: true,
+          markdownDescription:
+            "**[🟢 Stable]** Enable inline `▶ Simulate` and `▶ Run Study` CodeLens actions above executable declarations.",
+        },
+        "modelscript.features.formalVerification": {
+          type: "boolean",
+          markdownDescription:
+            "**[🟡 Preview]** Enable contract verification, DAE structural singularity proofs, MC/DC coverage, and reachability analysis.",
+        },
+        "modelscript.features.caeWorkbench": {
+          type: "boolean",
+          markdownDescription:
+            "**[🟡 Preview]** Enable CAD to FEA/CFD mesh discretization (`.inp`, `.su2`) and simulation study generation.",
+        },
+        "modelscript.features.coSimulation": {
+          type: "boolean",
+          markdownDescription:
+            "**[🟡 Preview]** Enable FMI 2.0/3.0 Co-Simulation Orchestrator and live MQTT participants sidebar views.",
+        },
+        "modelscript.features.digitalThread": {
+          type: "boolean",
+          markdownDescription:
+            "**[🧪 Experimental]** Enable cross-domain Digital Thread twin alignment, hover links, and parameter synchronization.",
+        },
+        "modelscript.features.polyglotProjection": {
+          type: "boolean",
+          markdownDescription: "**[🧪 Experimental]** Enable cross-domain model projection and 3D Polyglot Visualizer.",
+        },
+        "modelscript.features.scaffolding": {
+          type: "boolean",
+          markdownDescription:
+            "**[🧪 Experimental]** Enable multi-domain file scaffolding (`.scad` + `.mo` + `.inp`) from SysML v2 parts.",
+        },
+        "modelscript.features.aiCopilot": {
+          type: "boolean",
+          markdownDescription:
+            "**[🧪 Experimental]** Enable ModelScript AI Copilot sidebar view and compiler-in-the-loop synthesis.",
+        },
+        "modelscript.features.demos": {
+          type: "boolean",
+          markdownDescription:
+            "**[🔬 Dev]** Enable vertical showcase demos (Drone Reachability, Candidate Trade Study Tiers 1-3, Pacemaker, VR Factory).",
+        },
+      },
+    },
     {
       title: "ModelScript: Languages & Maturity",
       properties: languageToggleProperties,
@@ -1388,10 +1490,16 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
           default: true,
           description: "Show '▶ Simulate' / '▶ Run Study' CodeLens above model and study declarations.",
         },
+        "modelscript.codeLens.diagram": {
+          type: "boolean",
+          default: false,
+          description:
+            "Show '⊞ Open Interactive Diagram' as an inline CodeLens (disabled by default since Open Diagram is available in the Editor Title Bar).",
+        },
         "modelscript.codeLens.verification": {
           type: "string",
           enum: ["all", "problemsOnly", "off"],
-          default: "all",
+          default: "problemsOnly",
           enumDescriptions: [
             "Show formal verification, DAE singularity, and MC/DC badges on all declarations.",
             "Show formal verification badges only when potential or definite defects exist.",
@@ -1401,17 +1509,17 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         },
         "modelscript.codeLens.polyglotLinks": {
           type: "boolean",
-          default: true,
+          default: false,
           description: "Show Digital Thread cross-domain alignment and parameter twin CodeLenses.",
         },
         "modelscript.codeLens.cadMetrics": {
           type: "boolean",
-          default: true,
+          default: false,
           description: "Show 3D CAD / CAE geometry and mesh metrics CodeLenses.",
         },
         "modelscript.codeLens.fileConversions": {
           type: "boolean",
-          default: true,
+          default: false,
           description: "Show file-level CAD/CAE discretization and STEP export CodeLenses.",
         },
         "modelscript.inlayHints.enabled": {

@@ -295,6 +295,10 @@ describe("Admin Console & Moderation UI Components Suite", () => {
     assert.ok(settingsHtml.includes("ModelScript Enterprise Appliance"));
     assert.ok(settingsHtml.includes("msx-inv-1234567890ab"));
     assert.ok(settingsHtml.includes("Avionics Team"));
+    assert.ok(settingsHtml.includes("Export .env &amp; Docker Config"));
+    assert.ok(settingsHtml.includes("Automated Content Filter Keywords"));
+    assert.ok(settingsHtml.includes("Custom Instance Legal &amp; Compliance Policies"));
+    assert.ok(settingsHtml.includes("Copy Signup Link"));
 
     const systemHtml = renderToStaticMarkup(
       React.createElement(AdminSystemTab, {
@@ -320,6 +324,17 @@ describe("Admin Console & Moderation UI Components Suite", () => {
           geoIpMessage: "MaxMind GeoLite2 active",
           mailerConfigured: true,
           airgapMode: false,
+          preflight: {
+            readyForProduction: true,
+            checks: [
+              {
+                id: "sqlite_wal",
+                label: "SQLite WAL Mode",
+                status: "pass",
+                detail: "SQLite journal_mode is 'wal'.",
+              },
+            ],
+          },
         },
         loading: false,
       }),
@@ -328,6 +343,11 @@ describe("Admin Console & Moderation UI Components Suite", () => {
     assert.ok(systemHtml.includes("Intact"));
     assert.ok(systemHtml.includes("v19 / v19"));
     assert.ok(systemHtml.includes("3 snapshots"));
+    assert.ok(systemHtml.includes("Deployment Preflight &amp; Security Readiness Checklist"));
+    assert.ok(systemHtml.includes("SQLite WAL Mode"));
+    assert.ok(systemHtml.includes("Send Test Email"));
+    assert.ok(systemHtml.includes("Export Redacted Support Bundle"));
+    assert.ok(systemHtml.includes("Inspect Prometheus /metrics"));
 
     const dbHtml = renderToStaticMarkup(
       React.createElement(AdminDatabaseTab, {
@@ -358,6 +378,7 @@ describe("Admin Console & Moderation UI Components Suite", () => {
     assert.ok(dbHtml.includes("0123456789abcdef"));
     assert.ok(dbHtml.includes("Restore"));
     assert.ok(dbHtml.includes("Download"));
+    assert.ok(dbHtml.includes("Upload External .db Snapshot"));
     assert.ok(dbHtml.includes("Export Migration Bundle"));
     assert.ok(dbHtml.includes("Broadcast ActivityPub Move"));
 
@@ -459,9 +480,17 @@ describe("Admin Console & Moderation UI Components Suite", () => {
 
   it("renders SetupWizardPage with 3 deployment tier presets when needsSetup is true and locked view when completed", () => {
     const baseSettings = {
-      instanceName: "ModelScript Engineering Hub",
-      instanceDescription: "Federated engineering hub",
-      contactEmail: "admin@modelscript.org",
+      instanceName: "Ansatz",
+      instanceBadge: "",
+      instanceTagline: "The Federated Scientific & Engineering Network",
+      instanceDescription: "Federated engineering network",
+      contactEmail: "admin@ansatz.social",
+      brandLogoUrl: "",
+      brandLogoDarkUrl: "",
+      brandFaviconUrl: "",
+      brandAccentColor: "#06b6d4",
+      docsBaseUrl: "https://modelscript.org",
+      showPoweredBy: true,
       registrationMode: "invite_only" as const,
       allowedEmailDomains: [],
       federationMode: "open" as const,
@@ -481,6 +510,10 @@ describe("Admin Console & Moderation UI Components Suite", () => {
         federationMode: "open" as const,
         autoQuarantineReportThreshold: 3,
         backupRetentionCount: 7,
+        instanceName: "Ansatz",
+        instanceBadge: "Lab",
+        instanceTagline: "Federated Scientific & Engineering Node",
+        showPoweredBy: true,
       },
       tier2_corporate: {
         id: "tier2_corporate" as const,
@@ -490,6 +523,10 @@ describe("Admin Console & Moderation UI Components Suite", () => {
         federationMode: "disabled" as const,
         autoQuarantineReportThreshold: 5,
         backupRetentionCount: 14,
+        instanceName: "Engineering Intranet",
+        instanceBadge: "Internal",
+        instanceTagline: "Private R&D Modeling & Simulation Appliance",
+        showPoweredBy: false,
       },
       tier3_flagship: {
         id: "tier3_flagship" as const,
@@ -499,6 +536,10 @@ describe("Admin Console & Moderation UI Components Suite", () => {
         federationMode: "open" as const,
         autoQuarantineReportThreshold: 5,
         backupRetentionCount: 30,
+        instanceName: "Ansatz",
+        instanceBadge: "",
+        instanceTagline: "The Federated Scientific & Engineering Network",
+        showPoweredBy: true,
       },
     };
 
@@ -521,7 +562,7 @@ describe("Admin Console & Moderation UI Components Suite", () => {
       ),
     );
 
-    assert.ok(wizardHtml.includes("ModelScript First-Run Install Wizard"));
+    assert.ok(wizardHtml.includes("Ansatz First-Run Install Wizard"));
     assert.ok(wizardHtml.includes("Tier 1: Independent Federated Node"));
     assert.ok(wizardHtml.includes("Tier 2: Corporate Intranet / Air-Gapped Appliance"));
     assert.ok(wizardHtml.includes("Tier 3: Public Flagship Hub"));
@@ -546,5 +587,99 @@ describe("Admin Console & Moderation UI Components Suite", () => {
       ),
     );
     assert.ok(lockedHtml.includes("Instance Setup Already Completed"));
+    assert.ok(lockedHtml.includes("Re-run Setup Wizard"));
+    assert.ok(lockedHtml.includes("Ansatz"));
+
+    const devModeBarSource = fs.readFileSync(new URL("../src/components/DevModeBar.tsx", import.meta.url), "utf-8");
+    assert.ok(devModeBarSource.includes("resetInstanceSetupWizard"));
+    assert.ok(devModeBarSource.includes("Setup Wizard"));
+    assert.ok(devModeBarSource.includes('navigate("/setup")'));
+  });
+
+  it("renders multi-tiered Maintenance Lifecycle controls, ETA presets, MaintenanceExperienceHost, and static maintenance.html fallback", async () => {
+    const { MaintenanceExperienceHost, formatRelativeCountdown, formatElapsed } =
+      await import("../src/components/MaintenanceExperienceHost");
+    const { InstanceBrandingProvider } = await import("../src/InstanceBrandingContext");
+    const { AuthProvider } = await import("../src/AuthContext");
+
+    const settingsHtml = renderToStaticMarkup(
+      React.createElement(
+        MemoryRouter,
+        null,
+        React.createElement(AdminSettingsTab, {
+          settings: {
+            instanceName: "Ansatz",
+            instanceBadge: "Lab",
+            instanceTagline: "The Federated Scientific & Engineering Network",
+            instanceDescription: "Federated engineering network",
+            contactEmail: "admin@ansatz.social",
+            registrationMode: "open",
+            allowedEmailDomains: [],
+            federationMode: "open",
+            maintenanceMode: true,
+            maintenanceLevel: "lockdown",
+            maintenanceEta: "2026-10-30T03:00:00Z",
+            announcementBanner: "Upgrading TimescaleDB hypertables and solver nodes.",
+            announcementLevel: "critical",
+            autoQuarantineReportThreshold: 5,
+            backupRetentionCount: 14,
+            lockedByEnv: ["maintenanceMode"],
+          },
+          invites: [],
+          onSaveSettings: async () => {},
+          onCreateInvite: async () => {},
+          onRevokeInvite: async () => {},
+          loading: false,
+        }),
+      ),
+    );
+    assert.ok(settingsHtml.includes("Maintenance Lifecycle, Takedown Posture &amp; System Announcement Banner"));
+    assert.ok(settingsHtml.includes("Hard Lockdown (Full Status Portal + Offline WASM Sandbox)"));
+    assert.ok(settingsHtml.includes("Locked by MSX_MAINTENANCE_MODE"));
+    assert.ok(settingsHtml.includes("2026-10-30T03:00:00Z"));
+    assert.ok(settingsHtml.includes("+15m"));
+    assert.ok(settingsHtml.includes("+30m"));
+
+    const baseNow = Date.parse("2026-10-30T02:00:00Z");
+    assert.equal(formatRelativeCountdown("2026-10-30T02:15:30Z", baseNow), "15m 30s");
+    assert.equal(formatElapsed("2026-10-30T01:40:00Z", baseNow), "20m elapsed");
+
+    const hostHtml = renderToStaticMarkup(
+      React.createElement(
+        MemoryRouter,
+        null,
+        React.createElement(
+          AuthProvider,
+          null,
+          React.createElement(
+            InstanceBrandingProvider,
+            {
+              initialBranding: {
+                maintenanceMode: true,
+                maintenanceLevel: "lockdown",
+                maintenanceEta: "2026-10-30T03:00:00Z",
+                announcementBanner: "Upgrading TimescaleDB hypertables and solver nodes.",
+                subsystems: {
+                  coreApi: "maintenance",
+                  packageRegistry: "maintenance",
+                  cloudSolvers: "maintenance",
+                  federationQueue: "paused",
+                  wasmSandbox: "operational",
+                },
+              },
+            },
+            React.createElement(MaintenanceExperienceHost),
+          ),
+        ),
+      ),
+    );
+    assert.ok(hostHtml.includes("We’re upgrading Ansatz infrastructure"));
+    assert.ok(hostHtml.includes("Open Offline WASM Playground"));
+    assert.ok(hostHtml.includes("Subsystem Telemetry Status"));
+    assert.ok(hostHtml.includes("Client-Side WASM Compiler &amp; Local DAE Solver"));
+
+    const staticMaintHtml = fs.readFileSync(new URL("../public/maintenance.html", import.meta.url), "utf-8");
+    assert.ok(staticMaintHtml.includes("Launch Offline WASM Playground"));
+    assert.ok(staticMaintHtml.includes("/api/v1/instance/banner"));
   });
 });

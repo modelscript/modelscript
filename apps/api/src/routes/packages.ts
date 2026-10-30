@@ -10,10 +10,12 @@ import semver from "semver";
 import {
   type AasxFileEntry,
   type CanonicalWorkspaceManifest,
+  type DataPackageResourceDescriptor,
   EXTENSION_TO_LANGUAGE_ID,
   KparPackageAdapter,
   ManifestLensEngine,
   OpcAasxPackager,
+  parseDataPackageResources,
   VariantResolver,
 } from "@modelscript/exchange";
 import type { LibraryDatabase } from "../database.js";
@@ -21,6 +23,7 @@ import type { JobQueue, JobStatus } from "../jobs.js";
 import { matchesPackagePattern, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import type { LibraryStorage } from "../storage.js";
 import { inspectClassSource } from "../util/class-source-inspector.js";
+import { getPackageVersionResources, resolveDataPackageLockfile } from "../util/datapackage-indexer.js";
 import { getLanguageIconSvg } from "../util/language-icons.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { renderPolyglotClassDiagramSvg } from "../util/polyglot-doc-indexer.js";
@@ -101,12 +104,80 @@ async function resolveCanonicalManifest(
     if (fs.existsSync(p)) extractedDir = p;
   }
 
-  // 1. Look for modelscript.json in extracted dir
+  const dbResources = getPackageVersionResources(database, name, version);
+  const pkgRecord = database.getPackage(name);
+  const verRow = pkgRecord ? database.getPackageVersion(pkgRecord.id, version) : undefined;
+  let storedDeps: Record<string, string> | undefined;
+  let storedResources: DataPackageResourceDescriptor[] = [];
+  let storedProfile: string | undefined;
+
+  if (verRow?.manifest) {
+    try {
+      const parsed = JSON.parse(verRow.manifest) as Record<string, unknown>;
+      const msx =
+        parsed["modelscript"] && typeof parsed["modelscript"] === "object"
+          ? (parsed["modelscript"] as Record<string, unknown>)
+          : undefined;
+      if (parsed["dependencies"] && typeof parsed["dependencies"] === "object") {
+        storedDeps = parsed["dependencies"] as Record<string, string>;
+      }
+      storedProfile =
+        typeof parsed["profile"] === "string"
+          ? parsed["profile"]
+          : typeof msx?.["profile"] === "string"
+            ? msx["profile"]
+            : undefined;
+      storedResources = parseDataPackageResources(parsed["resources"] ?? msx?.["resources"]);
+    } catch {
+      // ignore
+    }
+  }
+
+  const mergeResources = (base?: DataPackageResourceDescriptor[]): DataPackageResourceDescriptor[] | undefined => {
+    const map = new Map<string, DataPackageResourceDescriptor>();
+    for (const r of base ?? []) map.set(r.path, r);
+    for (const r of storedResources) {
+      if (!map.has(r.path)) map.set(r.path, r);
+    }
+    for (const r of dbResources) {
+      const prev = map.get(r.path);
+      if (prev) {
+        map.set(r.path, {
+          ...r,
+          ...prev,
+          hash: prev.hash ?? r.hash,
+          bytes: prev.bytes ?? r.bytes,
+          rowCount: prev.rowCount ?? r.rowCount,
+          schema: prev.schema ?? r.schema,
+        });
+      } else {
+        map.set(r.path, r);
+      }
+    }
+    return map.size > 0 ? Array.from(map.values()) : undefined;
+  };
+
+  // 1. Look for modelscript.json or datapackage.json in extracted dir
   if (extractedDir) {
+    const dpJsonPath = path.join(extractedDir, "datapackage.json");
+    if (fs.existsSync(dpJsonPath)) {
+      try {
+        const dpManifest = ManifestLensEngine.parseFromDataPackageJson(fs.readFileSync(dpJsonPath, "utf-8"));
+        dpManifest.resources = mergeResources(dpManifest.resources);
+        dpManifest.dependencies = dpManifest.dependencies ?? storedDeps;
+        return { manifest: dpManifest, extractedDir };
+      } catch {
+        // Fall through
+      }
+    }
+
     const msJsonPath = path.join(extractedDir, "modelscript.json");
     if (fs.existsSync(msJsonPath)) {
       try {
         const parsed = JSON.parse(fs.readFileSync(msJsonPath, "utf-8")) as CanonicalWorkspaceManifest;
+        parsed.resources = mergeResources(parsed.resources);
+        parsed.dependencies = parsed.dependencies ?? storedDeps;
+        parsed.profile = parsed.profile ?? storedProfile;
         return { manifest: parsed, extractedDir };
       } catch {
         // Fall through
@@ -127,6 +198,8 @@ async function resolveCanonicalManifest(
             license: parsed.license,
             bom: Array.isArray(parsed.bom) ? parsed.bom : undefined,
             makingInstructions: parsed["making-instructions"],
+            resources: mergeResources(),
+            dependencies: storedDeps,
           },
           extractedDir,
         };
@@ -141,6 +214,8 @@ async function resolveCanonicalManifest(
         const parsed = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
         const scope = parsed.name?.startsWith("@") ? parsed.name.split("/")[0] : undefined;
         const idShort = parsed.name?.startsWith("@") ? parsed.name.split("/")[1] : (parsed.name ?? name);
+        const pkgResources = parseDataPackageResources(parsed.resources ?? parsed.modelscript?.resources);
+        const mergedRes = mergeResources(pkgResources);
         return {
           manifest: {
             globalAssetId: parsed.modelscript?.globalAssetId ?? `urn:modelscript:${parsed.name ?? name}`,
@@ -148,11 +223,18 @@ async function resolveCanonicalManifest(
             title: parsed.title ?? parsed.description ?? idShort,
             version: parsed.version ?? version,
             scope,
+            profile:
+              parsed.profile ??
+              parsed.modelscript?.profile ??
+              storedProfile ??
+              (mergedRes && mergedRes.length > 0 ? "engineering-data-package" : undefined),
             description: parsed.description,
             license: parsed.license,
             homepage: parsed.homepage,
             repository: parsed.repository,
             scripts: parsed.scripts,
+            resources: mergedRes,
+            dependencies: parsed.dependencies ?? storedDeps,
           },
           extractedDir,
         };
@@ -163,9 +245,9 @@ async function resolveCanonicalManifest(
   }
 
   // Fallback: Synthesize from package record
-  const pkgRecord = database.getPackage(name);
   const scope = name.startsWith("@") ? name.split("/")[0] : undefined;
   const idShort = (name.startsWith("@") ? name.split("/")[1] : name) || name;
+  const mergedRes = mergeResources();
 
   return {
     manifest: {
@@ -174,12 +256,15 @@ async function resolveCanonicalManifest(
       title: pkgRecord?.description ?? idShort,
       version,
       scope,
+      profile: storedProfile ?? (mergedRes && mergedRes.length > 0 ? "engineering-data-package" : undefined),
       description: pkgRecord?.description ?? undefined,
       license: pkgRecord?.license ?? "UNLICENSED",
       homepage: pkgRecord?.homepage ?? undefined,
       repository: pkgRecord?.repository_url
         ? { type: pkgRecord.repository_type ?? "git", url: pkgRecord.repository_url }
         : undefined,
+      resources: mergedRes,
+      dependencies: storedDeps,
     },
     extractedDir,
   };
@@ -209,7 +294,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       versionStr === "download" ||
       versionStr === "salsa-index.db" ||
       versionStr === "memos" ||
-      versionStr === "lsp-bundle"
+      versionStr === "lsp-bundle" ||
+      versionStr === "lockfile"
     ) {
       return true;
     }
@@ -251,6 +337,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const author = publisherUser?.username ?? scope ?? undefined;
 
       const domainSet = new Set<string>();
+      let pkgProfile: string | undefined;
+      let resourcesCount = 0;
+
       if (latestVersion) {
         const classes = database.getClasses(name, latestVersion);
         if (classes.length > 0) {
@@ -268,7 +357,37 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
               if (t === "cad" || t === "step") domainSet.add("cad");
               else if (t === "sysml" || t === "sysml2" || t === "kerml") domainSet.add("sysml2");
               else if (t === "fmu") domainSet.add("fmu");
-              else if (t === "dataset" || t === "csv") domainSet.add("dataset");
+              else if (t === "dataset" || t === "csv") {
+                domainSet.add("dataset");
+                resourcesCount += 1;
+              }
+            }
+            if (verRow.manifest) {
+              try {
+                const parsedM = JSON.parse(verRow.manifest) as Record<string, unknown>;
+                const msxM =
+                  parsedM["modelscript"] && typeof parsedM["modelscript"] === "object"
+                    ? (parsedM["modelscript"] as Record<string, unknown>)
+                    : undefined;
+                const prof =
+                  typeof parsedM["profile"] === "string"
+                    ? parsedM["profile"]
+                    : typeof msxM?.["profile"] === "string"
+                      ? msxM["profile"]
+                      : undefined;
+                if (prof) pkgProfile = prof;
+                const declRes = Array.isArray(parsedM["resources"])
+                  ? parsedM["resources"].length
+                  : typeof msxM?.["resourcesCount"] === "number"
+                    ? msxM["resourcesCount"]
+                    : 0;
+                if (declRes > resourcesCount) resourcesCount = declRes;
+                if (prof?.includes("data-package") || declRes > 0 || msxM?.["nativeFormat"] === "datapackage") {
+                  domainSet.add("dataset");
+                }
+              } catch {
+                // ignore
+              }
             }
           }
         }
@@ -281,6 +400,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         name,
         versions,
         latestVersion,
+        profile: pkgProfile ?? (domainSet.has("dataset") ? "engineering-data-package" : "engineering-package"),
+        resourcesCount: resourcesCount > 0 ? resourcesCount : undefined,
         description: pkgRecord?.description ?? undefined,
         license: pkgRecord?.license ?? undefined,
         author,
@@ -767,16 +888,24 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const pkgRecord = database.getPackage(name);
       let manifestAuthor: unknown;
       let manifestLicense: string | undefined;
+      let manifestProfile: string | undefined;
       if (pkgRecord) {
         const pkgVer = database.getPackageVersion(pkgRecord.id, version);
         if (pkgVer?.manifest) {
           try {
-            const parsedManifest = JSON.parse(pkgVer.manifest) as { author?: unknown; license?: string };
+            const parsedManifest = JSON.parse(pkgVer.manifest) as {
+              author?: unknown;
+              license?: string;
+              profile?: string;
+            };
             manifestAuthor = parsedManifest.author;
             manifestLicense = parsedManifest.license;
+            manifestProfile = parsedManifest.profile;
           } catch {}
         }
       }
+      const resources = getPackageVersionResources(database, name, version);
+      const resolvedProfile = manifestProfile ?? (resources.length > 0 ? "engineering-data-package" : undefined);
       const resolvedLicense = pkgRecord?.license ?? manifestLicense ?? undefined;
       const resolvedAuthor =
         typeof manifestAuthor === "string"
@@ -792,6 +921,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           description: pkgRecord.description,
           license: resolvedLicense,
           author: resolvedAuthor,
+          profile: resolvedProfile,
+          resourcesCount: resources.length,
+          resources: resources.length > 0 ? resources : undefined,
           modelicaVersion: version,
           size: file.size,
           contentHash: contentHash || undefined,
@@ -817,6 +949,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           description: parsed.description ?? pkgRecord?.description ?? null,
           license: resolvedLicense,
           author: resolvedAuthor,
+          profile: resolvedProfile,
+          resourcesCount: resources.length,
+          resources: resources.length > 0 ? resources : undefined,
           modelicaVersion: parsed.version,
           size: file.size,
           contentHash: contentHash || undefined,
@@ -830,13 +965,16 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           canManage,
         });
       } catch {
-        // If we cannot parse package.mo from the zip (e.g. polyglot package.json archive), return DB metadata
+        // If we cannot parse package.mo from the zip (e.g. polyglot package.json or datapackage.json archive), return DB metadata
         res.json({
           name,
           version,
           description: pkgRecord?.description ?? null,
           license: resolvedLicense,
           author: resolvedAuthor,
+          profile: resolvedProfile,
+          resourcesCount: resources.length,
+          resources: resources.length > 0 ? resources : undefined,
           modelicaVersion: null,
           size: file.size,
           contentHash: contentHash || undefined,
@@ -1085,7 +1223,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    * GET /api/v1/libraries/:name/:version/manifest
    * GET /api/v1/libraries/:scope/:name/:version/manifest
    * Multi-projection manifest endpoint.
-   * Supports ?lens=npm|aas|okh (default: npm) and optional ?variant=<variantId>.
+   * Supports ?lens=npm|aas|okh|kpar|datapackage|lockfile (default: npm) and optional ?variant=<variantId>.
    */
   router.get(
     ["/:name/:version/manifest", "/:scope/:name/:version/manifest"],
@@ -1101,6 +1239,10 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       try {
+        if (lens === "lockfile") {
+          res.json(resolveDataPackageLockfile(storage, database, name, version));
+          return;
+        }
         const { manifest } = await resolveCanonicalManifest(storage, database, name, version);
         const { resolvedManifest } = VariantResolver.resolveVariant(manifest, variant);
 
@@ -1114,6 +1256,10 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         }
         if (lens === "kpar") {
           res.json(ManifestLensEngine.projectToKpar(resolvedManifest));
+          return;
+        }
+        if (lens === "datapackage") {
+          res.json(ManifestLensEngine.projectToDataPackageJson(resolvedManifest));
           return;
         }
         res.json(ManifestLensEngine.projectToPackageJson(resolvedManifest));
@@ -1258,6 +1404,116 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
     },
   );
+
+  /**
+   * GET /api/v1/libraries/:name/:version/export/datapackage
+   * GET /api/v1/libraries/:scope/:name/:version/export/datapackage
+   * Export a Frictionless Data Package v2 / Engineering Data Package compliant datapackage.json.
+   */
+  router.get(
+    ["/:name/:version/export/datapackage", "/:scope/:name/:version/export/datapackage"],
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+      const variant = req.query["variant"] as string | undefined;
+
+      if (!name || !version) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      try {
+        const { manifest } = await resolveCanonicalManifest(storage, database, name, version);
+        const { resolvedManifest } = VariantResolver.resolveVariant(manifest, variant);
+        const dpJson = ManifestLensEngine.projectToDataPackageJson(resolvedManifest);
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${name.replace(/\//g, "-")}-${version}.datapackage.json"`,
+        );
+        res.json(dpJson);
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
+  /**
+   * GET /api/v1/libraries/:name/:version/lockfile
+   * GET /api/v1/libraries/:scope/:name/:version/lockfile
+   * GET /api/v1/libraries/:name/:version/export/lockfile
+   * GET /api/v1/libraries/:scope/:name/:version/export/lockfile
+   * Generate and export a deterministic, content-addressed datapackage.lock.json
+   * capturing all transitive package dependencies and dataset resource hashes.
+   */
+  router.get(
+    [
+      "/:name/:version/lockfile",
+      "/:scope/:name/:version/lockfile",
+      "/:name/:version/export/lockfile",
+      "/:scope/:name/:version/export/lockfile",
+    ],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+
+      if (!name || !version) {
+        res.status(400).json({ error: "Package name and version are required" });
+        return;
+      }
+
+      try {
+        const lockfile = resolveDataPackageLockfile(storage, database, name, version);
+        if (req.path.endsWith("/export/lockfile")) {
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${name.replace(/\//g, "-")}-${version}.datapackage.lock.json"`,
+          );
+        }
+        res.json(lockfile);
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+  );
+
+  /**
+   * POST /api/v1/libraries/resolve-lockfile
+   * Resolve a deterministic datapackage.lock.json from an ad-hoc workspace manifest or cloud simulation job spec.
+   */
+  router.post("/resolve-lockfile", (req: Request, res: Response): void => {
+    try {
+      const body = (req.body ?? {}) as {
+        name?: string;
+        version?: string;
+        dependencies?: Record<string, string>;
+        sourceContent?: string;
+        engine?: string | { modelscript?: string; compilerTarget?: string; solver?: string };
+        experiment?: {
+          solver?: string;
+          startTime?: number;
+          stopTime?: number;
+          interval?: number;
+          numberOfIntervals?: number;
+          tolerance?: number;
+        };
+      };
+      const rootName = typeof body.name === "string" && body.name.trim() ? body.name.trim() : "workspace";
+      const rootVersion = typeof body.version === "string" && body.version.trim() ? body.version.trim() : "0.0.0";
+      const engineName =
+        typeof body.engine === "string"
+          ? body.engine
+          : body.engine?.compilerTarget || body.engine?.modelscript || undefined;
+      const lockfile = resolveDataPackageLockfile(storage, database, rootName, rootVersion, {
+        extraDependencies: body.dependencies,
+        sourceContent: body.sourceContent,
+        engine: engineName,
+        experiment: body.experiment,
+      });
+      res.json({ lockfile });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
 
   /**
    * GET /api/v1/libraries/:name/:version/lsp-bundle

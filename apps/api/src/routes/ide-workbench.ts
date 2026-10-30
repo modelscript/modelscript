@@ -77,8 +77,8 @@ export function renderWorkbenchHtml(
 
   const productConfiguration: Record<string, unknown> = {
     enableTelemetry: false,
-    nameShort: "ModelScript",
-    nameLong: "ModelScript IDE",
+    nameShort: "Ansatz",
+    nameLong: "Ansatz IDE (Powered by ModelScript)",
     webEndpointUrlTemplate: webEndpoint,
     extensionAllowedProposedApi: ["modelscript.modelscript", "vscode.mermaid-markdown-features"],
     extensionEnabledApiProposals: {
@@ -225,11 +225,11 @@ export function renderWorkbenchHtml(
         }
       }
       if (template.startsWith('artifact-')) {
-        document.title = 'Artifact #' + template.slice(9) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript IDE';
+        document.title = 'Artifact #' + template.slice(9) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Ansatz IDE (Powered by ModelScript)';
       } else if (template.startsWith('package-')) {
-        document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript IDE';
+        document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Ansatz IDE (Powered by ModelScript)';
       } else {
-        document.title = 'New Project — ModelScript IDE';
+        document.title = 'New Project — Ansatz IDE (Powered by ModelScript)';
       }
       config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template };
     } else {
@@ -239,7 +239,7 @@ export function renderWorkbenchHtml(
       var p = ownerRepo.split('/');
       var owner = p[0] || 'modelscript';
       var repo = p[1] || 'modelscript';
-      document.title = owner + '/' + repo + ' — ModelScript IDE';
+      document.title = owner + '/' + repo + ' — Ansatz IDE (Powered by ModelScript)';
       config.folderUri = { scheme: 'github', authority: '', path: '/' + owner + '/' + repo, query: 'ref=' + ref };
     }
   }
@@ -256,7 +256,7 @@ export function renderWorkbenchHtml(
     } catch (e) {}
 
     window.addEventListener('message', function(ev) {
-      if (ev.origin !== window.location.origin && !ev.origin.endsWith('.modelscript.org')) return;
+      if (ev.origin !== window.location.origin && !ev.origin.endsWith('.ansatz.social') && !ev.origin.endsWith('.modelscript.org')) return;
       if (!ev.data || typeof ev.data !== 'object') return;
       if (ev.data.type === 'MODELSCRIPT_AUTH_SYNC' && ev.data.token) {
         try {
@@ -270,7 +270,7 @@ export function renderWorkbenchHtml(
         try {
           sessionStorage.setItem('modelscript.artifact_' + ev.data.artifactId, JSON.stringify(ev.data));
           if (ev.data.title) {
-            document.title = ev.data.title + ' — ModelScript IDE';
+            document.title = ev.data.title + ' — Ansatz IDE (Powered by ModelScript)';
           }
         } catch (e) {}
       }
@@ -367,7 +367,7 @@ function renderWrapper(provider: string, owner: string, repo: string, ref: strin
 
   return `<!DOCTYPE html>
 <html><head>
-<title>${safeOwner}/${safeRepo} — ModelScript IDE</title>
+<title>${safeOwner}/${safeRepo} — Ansatz IDE (Powered by ModelScript)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -381,7 +381,7 @@ function renderWrapper(provider: string, owner: string, repo: string, ref: strin
 </style>
 </head><body>
 <div class="header">
-  <a href="/">ModelScript</a>
+  <a href="/">Ansatz</a>
   <span class="sep">/</span>
   <a href="/${safeProvider}.com/${safeOwner}/${safeRepo}">${safeOwner}<span class="sep">/</span><span class="repo">${safeRepo}</span></a>
   <span class="sep">@</span>

@@ -24,7 +24,7 @@ function unrollConstantDoLoops(lines: string[], constants: Record<string, number
   while (i < lines.length) {
     const raw = lines[i]!;
     const trimmed = raw.trim();
-    const doMatch = /^DO\b(?:\s+[0-9]+)?\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^,]+),\s*([^,]+)(?:,\s*(.+))?$/i.exec(
+    const doMatch = /^DO\s+(?:[0-9]+\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^,]+),\s*([^,]+)(?:,\s*([^,]+))?$/i.exec(
       trimmed,
     );
     if (doMatch) {

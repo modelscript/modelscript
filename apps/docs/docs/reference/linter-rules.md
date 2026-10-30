@@ -1,6 +1,6 @@
 ---
 title: Linter Rules Reference
-description: Every diagnostic rule ModelScript ships — 790 rules across 43 languages, with codes, severities and message templates generated from the source.
+description: Every diagnostic rule ModelScript ships — 794 rules across 43 languages, with codes, severities and message templates generated from the source.
 outline: [2, 2]
 pageClass: lint-reference
 ---
@@ -9,7 +9,7 @@ pageClass: lint-reference
 
 # Linter Rules Reference
 
-ModelScript ships **790 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **794 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -34,14 +34,14 @@ The **CLI** column below shows which command reports each language's rules.
 | [Modelica](#modelica)                     | `@modelscript/modelica`     |   307 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    48 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    10 | `msx reqif lint`        |
-| [SSP](#ssp)                               | `@modelscript/ssp`          |    12 | `msx lint`              |
+| [SSP](#ssp)                               | `@modelscript/ssp`          |    13 | `msx lint`              |
 | [OWL2](#owl2)                             | `@modelscript/owl2`         |    24 | `msx lint`              |
 | [STEP (ISO 10303)](#step)                 | `@modelscript/step`         |     8 | `msx lint`              |
 | [OpenSCAD](#scad)                         | `@modelscript/scad`         |     8 | `msx lint`              |
 | [CFD (SU2 / OpenFOAM)](#cfd)              | `@modelscript/cfd`          |     8 | `msx lint`              |
 | [FEA (CalculiX / Abaqus / NASTRAN)](#fea) | `@modelscript/fea`          |     8 | `msx lint`              |
 | [C](#c)                                   | `@modelscript/c`            |    10 | `msx lint`              |
-| [Fortran](#fortran)                       | `@modelscript/fortran`      |    10 | `msx lint`              |
+| [Fortran](#fortran)                       | `@modelscript/fortran`      |    15 | `msx lint`              |
 | [JSBSim](#jsbsim)                         | `@modelscript/jsbsim`       |    10 | `msx jsbsim lint`       |
 | [NASA ROCETS](#rocets)                    | `@modelscript/rocets`       |    14 | `msx lint`              |
 | [CCSDS](#ccsds)                           | `@modelscript/ccsds`        |     8 | `msx ccsds lint`        |
@@ -54,7 +54,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [GENSYS](#gensys)                         | `@modelscript/gensys`       |     6 | `msx gensys lint`       |
 | [SIMPACK](#simpack)                       | `@modelscript/simpack`      |     6 | `msx simpack lint`      |
 | [PSCAD / EMTDC](#pscad)                   | `@modelscript/pscad`        |    17 | `msx lint`              |
-| [PSS/E](#psse)                            | `@modelscript/psse`         |    15 | `msx psse lint`         |
+| [PSS/E](#psse)                            | `@modelscript/psse`         |    13 | `msx psse lint`         |
 | [OpenDSS](#opendss)                       | `@modelscript/opendss`      |     8 | `msx opendss lint`      |
 | [OLGA](#olga)                             | `@modelscript/olga`         |    13 | `msx olga lint`         |
 | [PipelineStudio](#lps)                    | `@modelscript/lps`          |    12 | `msx lint`              |
@@ -528,22 +528,23 @@ Requirements interchange & contract entailment. **10 rules** · `@modelscript/re
 
 ## SSP {#ssp}
 
-FMU system structure & parameterization. **12 rules** · `@modelscript/ssp` · Source: `languages/ssp/src/errors.ts` · [Language guide](../languages/ssp.md)
+FMU system structure & parameterization. **13 rules** · `@modelscript/ssp` · Source: `languages/ssp/src/errors.ts` · [Language guide](../languages/ssp.md)
 
-| Code                                | Rule                               | Severity                             | Message                                                                                                              |
-| :---------------------------------- | :--------------------------------- | :----------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
-| <span id="ssp-s7001"></span>`S7001` | `SSP_EMPTY_CONNECTOR_NAME`         | <Badge type="danger" text="error" /> | Connector in <code>&lt;owner&gt;</code> has an empty name.                                                           |
-| <span id="ssp-s7002"></span>`S7002` | `SSP_DUPLICATE_CONNECTOR`          | <Badge type="danger" text="error" /> | Duplicate connector '<code>&lt;name&gt;</code>' declared in <code>&lt;owner&gt;</code>.                              |
-| <span id="ssp-s7003"></span>`S7003` | `SSP_INVALID_CONNECTOR_KIND`       | <Badge type="danger" text="error" /> | Invalid connector kind '<code>&lt;kind&gt;</code>'. Must be input, output, inout, parameter, or calculatedParameter. |
-| <span id="ssp-s7004"></span>`S7004` | `SSP_EMPTY_COMPONENT_NAME`         | <Badge type="danger" text="error" /> | Component declared with an empty name attribute.                                                                     |
-| <span id="ssp-s7005"></span>`S7005` | `SSP_DUPLICATE_COMPONENT`          | <Badge type="danger" text="error" /> | Duplicate component '<code>&lt;name&gt;</code>' in system.                                                           |
-| <span id="ssp-s7006"></span>`S7006` | `SSP_EMPTY_SOURCE`                 | <Badge type="danger" text="error" /> | Component '<code>&lt;comp&gt;</code>' has an empty or missing source FMU URI.                                        |
-| <span id="ssp-s7007"></span>`S7007` | `SSP_UNDEFINED_COMPONENT`          | <Badge type="danger" text="error" /> | Referenced component '<code>&lt;comp&gt;</code>' is not defined in system elements.                                  |
-| <span id="ssp-s7008"></span>`S7008` | `SSP_UNDEFINED_CONNECTOR`          | <Badge type="danger" text="error" /> | Referenced connector '<code>&lt;conn&gt;</code>' not found on component '<code>&lt;comp&gt;</code>'.                 |
-| <span id="ssp-s7009"></span>`S7009` | `SSP_CONNECTOR_TYPE_MISMATCH`      | <Badge type="danger" text="error" /> | Connection type mismatch: '<code>&lt;startType&gt;</code>' cannot connect to '<code>&lt;endType&gt;</code>'.         |
-| <span id="ssp-s7010"></span>`S7010` | `SSP_CONNECTOR_CAUSALITY_CONFLICT` | <Badge type="danger" text="error" /> | Connection violates causal flow rules.                                                                               |
-| <span id="ssp-s7011"></span>`S7011` | `SSP_CYCLIC_CONNECTION`            | <Badge type="danger" text="error" /> | Connection creates an algebraic loop or cyclic dependency without delay.                                             |
-| <span id="ssp-s7012"></span>`S7012` | `SSP_INVALID_EXPERIMENT_BOUNDS`    | <Badge type="danger" text="error" /> | DefaultExperiment stopTime must be strictly greater than startTime.                                                  |
+| Code                                | Rule                               | Severity                                | Message                                                                                                              |
+| :---------------------------------- | :--------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| <span id="ssp-s7001"></span>`S7001` | `SSP_EMPTY_CONNECTOR_NAME`         | <Badge type="danger" text="error" />    | Connector in <code>&lt;owner&gt;</code> has an empty name.                                                           |
+| <span id="ssp-s7002"></span>`S7002` | `SSP_DUPLICATE_CONNECTOR`          | <Badge type="danger" text="error" />    | Duplicate connector '<code>&lt;name&gt;</code>' declared in <code>&lt;owner&gt;</code>.                              |
+| <span id="ssp-s7003"></span>`S7003` | `SSP_INVALID_CONNECTOR_KIND`       | <Badge type="danger" text="error" />    | Invalid connector kind '<code>&lt;kind&gt;</code>'. Must be input, output, inout, parameter, or calculatedParameter. |
+| <span id="ssp-s7004"></span>`S7004` | `SSP_EMPTY_COMPONENT_NAME`         | <Badge type="danger" text="error" />    | Component declared with an empty name attribute.                                                                     |
+| <span id="ssp-s7005"></span>`S7005` | `SSP_DUPLICATE_COMPONENT`          | <Badge type="danger" text="error" />    | Duplicate component '<code>&lt;name&gt;</code>' in system.                                                           |
+| <span id="ssp-s7006"></span>`S7006` | `SSP_EMPTY_SOURCE`                 | <Badge type="danger" text="error" />    | Component '<code>&lt;comp&gt;</code>' has an empty or missing source FMU URI.                                        |
+| <span id="ssp-s7007"></span>`S7007` | `SSP_UNDEFINED_COMPONENT`          | <Badge type="danger" text="error" />    | Referenced component '<code>&lt;comp&gt;</code>' is not defined in system elements.                                  |
+| <span id="ssp-s7008"></span>`S7008` | `SSP_UNDEFINED_CONNECTOR`          | <Badge type="danger" text="error" />    | Referenced connector '<code>&lt;conn&gt;</code>' not found on component '<code>&lt;comp&gt;</code>'.                 |
+| <span id="ssp-s7009"></span>`S7009` | `SSP_CONNECTOR_TYPE_MISMATCH`      | <Badge type="danger" text="error" />    | Connection type mismatch: '<code>&lt;startType&gt;</code>' cannot connect to '<code>&lt;endType&gt;</code>'.         |
+| <span id="ssp-s7010"></span>`S7010` | `SSP_CONNECTOR_CAUSALITY_CONFLICT` | <Badge type="danger" text="error" />    | Connection violates causal flow rules.                                                                               |
+| <span id="ssp-s7011"></span>`S7011` | `SSP_CYCLIC_CONNECTION`            | <Badge type="danger" text="error" />    | Connection creates an algebraic loop or cyclic dependency without delay.                                             |
+| <span id="ssp-s7012"></span>`S7012` | `SSP_INVALID_EXPERIMENT_BOUNDS`    | <Badge type="danger" text="error" />    | DefaultExperiment stopTime must be strictly greater than startTime.                                                  |
+| <span id="ssp-s7013"></span>`S7013` | `SSP_CONNECTOR_UNIT_MISMATCH`      | <Badge type="warning" text="warning" /> | Connector unit mismatch: '<code>&lt;startUnit&gt;</code>' connected to '<code>&lt;endUnit&gt;</code>'.               |
 
 ## OWL2 {#owl2}
 
@@ -655,7 +656,7 @@ Numerical & embedded C integration. **10 rules** · `@modelscript/c` · Source: 
 
 ## Fortran {#fortran}
 
-Legacy scientific subroutines. **10 rules** · `@modelscript/fortran` · Source: `languages/fortran/src/lints/index.ts` · [Language guide](../languages/fortran.md)
+Legacy scientific subroutines. **15 rules** · `@modelscript/fortran` · Source: `languages/fortran/src/lints/index.ts` · [Language guide](../languages/fortran.md)
 
 | Code                                    | Rule                        | Severity                                | Message                                                                                                                                        |
 | :-------------------------------------- | :-------------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -669,6 +670,11 @@ Legacy scientific subroutines. **10 rules** · `@modelscript/fortran` · Source:
 | <span id="fortran-m4077"></span>`M4077` | `common-block-mismatch`     | <Badge type="danger" text="error" />    | COMMON block '/<code>&lt;blockName&gt;</code>/' definition conflict: <code>&lt;reason&gt;</code>.                                              |
 | <span id="fortran-m4078"></span>`M4078` | `array-dimension-underflow` | <Badge type="danger" text="error" />    | Array '<code>&lt;arrName&gt;</code>' declared with non-positive dimension size (<code>&lt;dim&gt;</code> &lt;= 0).                             |
 | <span id="fortran-m4079"></span>`M4079` | `obsolete-arithmetic-if`    | <Badge type="info" text="info" />       | Three-way arithmetic IF is obsolescent; prefer structured IF/THEN/ELSE.                                                                        |
+| <span id="fortran-m4080"></span>`M4080` | `identifier-mismatch`       | <Badge type="danger" text="error" />    | End <code>&lt;unitKind&gt;</code> identifier '<code>&lt;endName&gt;</code>' does not match '<code>&lt;startName&gt;</code>'.                   |
+| <span id="fortran-m4081"></span>`M4081` | `intent-in-mutation`        | <Badge type="danger" text="error" />    | Dummy argument '<code>&lt;varName&gt;</code>' declared with 'INTENT(IN)' cannot be modified.                                                   |
+| <span id="fortran-m4082"></span>`M4082` | `invalid-statement-syntax`  | <Badge type="danger" text="error" />    | Syntax error in Fortran statement: <code>&lt;detail&gt;</code>.                                                                                |
+| <span id="fortran-m4083"></span>`M4083` | `unclosed-block`            | <Badge type="danger" text="error" />    | Unclosed or mismatched '<code>&lt;blockName&gt;</code>' block structure.                                                                       |
+| <span id="fortran-m4084"></span>`M4084` | `math-domain-violation`     | <Badge type="danger" text="error" />    | Intrinsic math function '<code>&lt;fnName&gt;</code>' evaluated outside its real domain with argument '<code>&lt;argVal&gt;</code>'.           |
 
 ## JSBSim {#jsbsim}
 
@@ -880,25 +886,23 @@ Electromagnetic transients (EMT). **17 rules** · `@modelscript/pscad` · Source
 
 ## PSS/E {#psse}
 
-Transmission power flow. **15 rules** · `@modelscript/psse` · Source: `languages/psse/src/errors.ts` · [Language guide](../languages/psse.md)
+Transmission power flow. **13 rules** · `@modelscript/psse` · Source: `languages/psse/src/errors.ts` · [Language guide](../languages/psse.md)
 
-| Code                                 | Rule                                 | Severity                                | Message                                                                                                                                                                            |
-| :----------------------------------- | :----------------------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="psse-p1001"></span>`P1001` | `generator-bus-not-found`            | <Badge type="danger" text="error" />    | Generator '<code>&lt;genId&gt;</code>' references non-existent bus <code>&lt;busId&gt;</code>.                                                                                     |
-| <span id="psse-p1002"></span>`P1002` | `generator-negative-power`           | <Badge type="warning" text="warning" /> | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has negative active power output (<code>&lt;pg&gt;</code> MW).                                            |
-| <span id="psse-p1003"></span>`P1003` | `duplicate-generator-id`             | <Badge type="danger" text="error" />    | Duplicate generator ID '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code>.                                                                                             |
-| <span id="psse-p1004"></span>`P1004` | `generator-reactive-limits-inverted` | <Badge type="danger" text="error" />    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted reactive limits (QB = <code>&lt;qMin&gt;</code> &gt; QT = <code>&lt;qMax&gt;</code> Mvar).   |
-| <span id="psse-p1005"></span>`P1005` | `generator-power-limits-inverted`    | <Badge type="danger" text="error" />    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted active power limits (PB = <code>&lt;pMin&gt;</code> &gt; PT = <code>&lt;pMax&gt;</code> MW). |
-| <span id="psse-p2001"></span>`P2001` | `isolated-bus`                       | <Badge type="warning" text="warning" /> | Bus <code>&lt;busId&gt;</code> ('<code>&lt;busName&gt;</code>') has no connected branches or transformers (isolated bus).                                                          |
-| <span id="psse-p2002"></span>`P2002` | `missing-slack-bus`                  | <Badge type="danger" text="error" />    | Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored.                                                                         |
-| <span id="psse-p2003"></span>`P2003` | `multiple-slack-buses`               | <Badge type="warning" text="warning" /> | Power network base case contains <code>&lt;count&gt;</code> swing buses without explicit multi-island partitioning.                                                                |
-| <span id="psse-p2004"></span>`P2004` | `voltage-out-of-bounds`              | <Badge type="warning" text="warning" /> | Initial voltage magnitude at bus <code>&lt;busId&gt;</code> (<code>&lt;value&gt;</code> pu) is outside standard operational limits &#91;0.8, 1.2 pu&#93;.                          |
-| <span id="psse-p3001"></span>`P3001` | `branch-from-bus-not-found`          | <Badge type="danger" text="error" />    | Branch from bus <code>&lt;fromBus&gt;</code> to bus <code>&lt;toBus&gt;</code> references non-existent FROM-bus <code>&lt;fromBus&gt;</code>.                                      |
-| <span id="psse-p3002"></span>`P3002` | `branch-to-bus-not-found`            | <Badge type="danger" text="error" />    | Branch from bus <code>&lt;fromBus&gt;</code> to bus <code>&lt;toBus&gt;</code> references non-existent TO-bus <code>&lt;toBus&gt;</code>.                                          |
-| <span id="psse-p3003"></span>`P3003` | `branch-zero-impedance`              | <Badge type="danger" text="error" />    | Branch between bus <code>&lt;fromBus&gt;</code> and bus <code>&lt;toBus&gt;</code> has zero impedance (R = 0, X = 0).                                                              |
-| <span id="psse-p3004"></span>`P3004` | `branch-negative-resistance`         | <Badge type="warning" text="warning" /> | Branch between bus <code>&lt;fromBus&gt;</code> and bus <code>&lt;toBus&gt;</code> defines negative resistance (<code>&lt;r&gt;</code> pu).                                        |
-| <span id="psse-p3005"></span>`P3005` | `transformer-invalid-ratio`          | <Badge type="danger" text="error" />    | Transformer between bus <code>&lt;fromBus&gt;</code> and bus <code>&lt;toBus&gt;</code> has non-positive turns ratio (<code>&lt;ratio&gt;</code>).                                 |
-| <span id="psse-p4001"></span>`P4001` | `load-bus-not-found`                 | <Badge type="danger" text="error" />    | Load '<code>&lt;loadId&gt;</code>' references non-existent bus <code>&lt;busId&gt;</code>.                                                                                         |
+| Code                                 | Rule                                 | Severity                                | Message                                                                                                                                                                                                        |
+| :----------------------------------- | :----------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="psse-p1001"></span>`P1001` | `bus-not-found`                      | <Badge type="danger" text="error" />    | <code>&lt;entityKind&gt;</code> '<code>&lt;id&gt;</code>' references non-existent <code>&lt;busRole&gt;</code>bus <code>&lt;busId&gt;</code>.                                                                  |
+| <span id="psse-p1002"></span>`P1002` | `generator-negative-power`           | <Badge type="warning" text="warning" /> | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has negative active power output (<code>&lt;pg&gt;</code> MW).                                                                        |
+| <span id="psse-p1003"></span>`P1003` | `duplicate-equipment-id`             | <Badge type="danger" text="error" />    | Duplicate generator ID '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code>.                                                                                                                         |
+| <span id="psse-p2001"></span>`P2001` | `isolated-bus`                       | <Badge type="warning" text="warning" /> | Bus <code>&lt;busId&gt;</code> ('<code>&lt;busName&gt;</code>') is isolated with 0 in-service connecting branches or transformers.                                                                             |
+| <span id="psse-p2002"></span>`P2002` | `missing-slack-bus`                  | <Badge type="danger" text="error" />    | Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored.                                                                                                     |
+| <span id="psse-p2003"></span>`P2003` | `multiple-slack-buses`               | <Badge type="warning" text="warning" /> | Power network base case contains <code>&lt;count&gt;</code> swing buses without explicit multi-island partitioning.                                                                                            |
+| <span id="psse-p2004"></span>`P2004` | `voltage-out-of-bounds`              | <Badge type="warning" text="warning" /> | Initial voltage magnitude at bus <code>&lt;busId&gt;</code> (<code>&lt;value&gt;</code> pu) is outside standard operational limits &#91;0.8, 1.2 pu&#93;.                                                      |
+| <span id="psse-p3001"></span>`P3001` | `generator-reactive-limits-inverted` | <Badge type="danger" text="error" />    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted reactive limits: Qmin (<code>&lt;qMin&gt;</code> MVAR) &gt; Qmax (<code>&lt;qMax&gt;</code> MVAR).                       |
+| <span id="psse-p3002"></span>`P3002` | `generator-power-limits-inverted`    | <Badge type="danger" text="error" />    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted active power limits: Pmin (<code>&lt;pMin&gt;</code> MW) &gt; Pmax (<code>&lt;pMax&gt;</code> MW).                       |
+| <span id="psse-p3003"></span>`P3003` | `generator-scheduled-voltage-bounds` | <Badge type="warning" text="warning" /> | Generator '<code>&lt;genId&gt;</code>' scheduled voltage Vs = <code>&lt;vs&gt;</code> p.u. is outside the typical operating band &#91;0.8, 1.2&#93;.                                                           |
+| <span id="psse-p4001"></span>`P4001` | `branch-invalid-reactance`           | <Badge type="danger" text="error" />    | Transmission branch '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has zero or negative reactance X = <code>&lt;x&gt;</code> p.u.                          |
+| <span id="psse-p4002"></span>`P4002` | `branch-base-kv-mismatch`            | <Badge type="warning" text="warning" /> | Branch '<code>&lt;ckt&gt;</code>' connects bus <code>&lt;fromBus&gt;</code> (<code>&lt;fromKv&gt;</code> kV) to bus <code>&lt;toBus&gt;</code> (<code>&lt;toKv&gt;</code> kV) without a transformer.           |
+| <span id="psse-p4003"></span>`P4003` | `transformer-tap-out-of-bounds`      | <Badge type="warning" text="warning" /> | Transformer '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has off-nominal tap ratio <code>&lt;ratio&gt;</code> outside typical limits &#91;0.7, 1.3&#93;. |
 
 ## OpenDSS {#opendss}
 

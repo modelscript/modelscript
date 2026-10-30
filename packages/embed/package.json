@@ -1,8 +1,24 @@
 {
   "name": "@modelscript/embed",
   "version": "0.0.18",
-  "description": "ModelScript embed client SDK — iframe bridge, Web Component custom elements, and permalink codec",
+  "description": "ModelScript & Ansatz embed client SDK — iframe bridge, Web Component custom elements, and permalink codec",
+  "keywords": [
+    "modelscript",
+    "ansatz",
+    "embed",
+    "web-components"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/embed"
+  },
   "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
   "type": "module",
   "exports": {
     ".": {

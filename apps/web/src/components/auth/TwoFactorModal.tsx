@@ -4,14 +4,16 @@ import { CheckIcon, CopyIcon, DownloadIcon, ShieldCheckIcon, ShieldLockIcon, XIc
 import QRCode from "qrcode";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { disable2FA, setup2FA, verify2FA } from "../../api";
+import { disable2FA, regenerateBackupCodes2FA, setup2FA, verify2FA } from "../../api";
 
 interface TwoFactorModalProps {
   isOpen: boolean;
   onClose: () => void;
   isEnabled: boolean;
   onStatusChange: (enabled: boolean) => void;
+  onBackupCodesRegenerated?: ((remaining: number) => void) | undefined;
   hasPassword?: boolean | undefined;
+  mode?: "manage" | "regenerate" | undefined;
 }
 
 const Overlay = styled.div`
@@ -206,7 +208,9 @@ export default function TwoFactorModal({
   onClose,
   isEnabled,
   onStatusChange,
+  onBackupCodesRegenerated,
   hasPassword = true,
+  mode = "manage",
 }: TwoFactorModalProps) {
   const [step, setStep] = useState<"setup" | "backup">("setup");
   const [loading, setLoading] = useState(false);
@@ -270,6 +274,7 @@ export default function TwoFactorModal({
       setBackupCodes(res.backupCodes || []);
       setStep("backup");
       onStatusChange(true);
+      onBackupCodesRegenerated?.((res.backupCodes || []).length || 10);
     } catch (err: any) {
       setError(err.response?.data?.error || "Invalid verification code. Please try again.");
     } finally {
@@ -282,11 +287,24 @@ export default function TwoFactorModal({
     setError("");
     setLoading(true);
     try {
-      await disable2FA(disablePassword || undefined, disableCode || undefined);
-      onStatusChange(false);
-      onClose();
+      if (mode === "regenerate") {
+        const res = await regenerateBackupCodes2FA(disablePassword || undefined, disableCode || undefined);
+        setBackupCodes(res.backupCodes || []);
+        setAcknowledgedBackup(false);
+        setStep("backup");
+        onBackupCodesRegenerated?.((res.backupCodes || []).length || 10);
+      } else {
+        await disable2FA(disablePassword || undefined, disableCode || undefined);
+        onStatusChange(false);
+        onClose();
+      }
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to disable 2FA. Please verify your credentials.");
+      setError(
+        err.response?.data?.error ||
+          (mode === "regenerate"
+            ? "Failed to regenerate backup codes. Please verify your credentials."
+            : "Failed to disable 2FA. Please verify your credentials."),
+      );
     } finally {
       setLoading(false);
     }
@@ -305,18 +323,18 @@ export default function TwoFactorModal({
   };
 
   const downloadBackupCodes = () => {
-    const text = `ModelScript Two-Factor Authentication Backup Codes\nGenerated: ${new Date().toISOString()}\n\nEach code can only be used once:\n${backupCodes.join("\n")}\n\nKeep these codes in a safe place.`;
+    const text = `Ansatz Two-Factor Authentication Backup Codes\nGenerated: ${new Date().toISOString()}\n\nEach code can only be used once:\n${backupCodes.join("\n")}\n\nKeep these codes in a safe place.`;
     const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `modelscript-backup-codes-${Date.now()}.txt`;
+    a.download = `ansatz-backup-codes-${Date.now()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleRequestClose = () => {
-    if (!isEnabled && step === "backup" && !acknowledgedBackup) {
+    if (step === "backup" && !acknowledgedBackup) {
       setError("Please confirm that you have saved your recovery backup codes before closing.");
       return;
     }
@@ -328,26 +346,31 @@ export default function TwoFactorModal({
       <ModalCard onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
           <ModalTitle>
-            {isEnabled ? (
+            {step === "backup" ? (
+              <>
+                <ShieldCheckIcon size={20} />
+                Save Recovery Backup Codes
+              </>
+            ) : isEnabled && mode === "regenerate" ? (
+              <>
+                <ShieldCheckIcon size={20} />
+                Regenerate Recovery Backup Codes
+              </>
+            ) : isEnabled ? (
               <>
                 <ShieldLockIcon size={20} />
                 Disable Two-Factor Authentication
               </>
-            ) : step === "setup" ? (
-              <>
-                <ShieldCheckIcon size={20} />
-                Set Up Two-Factor Authentication
-              </>
             ) : (
               <>
                 <ShieldCheckIcon size={20} />
-                Save Recovery Backup Codes
+                Set Up Two-Factor Authentication
               </>
             )}
           </ModalTitle>
           <CloseButton
             onClick={handleRequestClose}
-            disabled={!isEnabled && step === "backup" && !acknowledgedBackup}
+            disabled={step === "backup" && !acknowledgedBackup}
             aria-label="Close modal"
           >
             <XIcon size={18} />
@@ -357,11 +380,12 @@ export default function TwoFactorModal({
         <ModalBody>
           {error && <ErrorBanner>{error}</ErrorBanner>}
 
-          {isEnabled ? (
+          {isEnabled && step !== "backup" ? (
             <form onSubmit={handleDisable}>
               <p style={{ color: "var(--color-text-muted)", fontSize: "14px", lineHeight: "1.5", margin: "0 0 16px" }}>
-                Disabling two-factor authentication will remove the extra layer of security on your account. You will
-                only need your email and password to log in.
+                {mode === "regenerate"
+                  ? "Generating new backup recovery codes will immediately invalidate all previously issued recovery codes. Confirm your identity to generate 10 new single-use codes."
+                  : "Disabling two-factor authentication will remove the extra layer of security on your account. You will only need your email and password to log in."}
               </p>
 
               {hasPassword && (
@@ -427,8 +451,14 @@ export default function TwoFactorModal({
                 />
               </div>
 
-              <ActionButton type="submit" $variant="danger" disabled={loading}>
-                {loading ? "Disabling 2FA…" : "Confirm and Disable 2FA"}
+              <ActionButton type="submit" $variant={mode === "regenerate" ? "primary" : "danger"} disabled={loading}>
+                {loading
+                  ? mode === "regenerate"
+                    ? "Generating New Codes…"
+                    : "Disabling 2FA…"
+                  : mode === "regenerate"
+                    ? "Generate 10 New Backup Codes"
+                    : "Confirm and Disable 2FA"}
               </ActionButton>
             </form>
           ) : step === "setup" ? (

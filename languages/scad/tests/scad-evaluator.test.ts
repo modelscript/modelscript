@@ -120,7 +120,7 @@ default_size = 12;
 
   // Verify degenerate polygon (< 3 points) returns null instead of fabricating a triangle
   const degenTree = parser.parse(`polygon([[0, 0], [1, 1]]);`);
-  const degenSolid = evaluator.evaluate(degenTree.rootNode);
+  const degenSolid = new ScadEvaluator().evaluate(degenTree.rootNode);
   if (degenSolid !== null) {
     throw new Error("Expected degenerate 2-point polygon to return null");
   }

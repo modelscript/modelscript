@@ -180,7 +180,7 @@ export const PublishPackageModal: React.FC<PublishPackageModalProps> = ({
     }
   };
 
-  const registryOrigin = typeof window !== "undefined" ? window.location.origin : "https://modelscript.org";
+  const registryOrigin = typeof window !== "undefined" ? window.location.origin : "https://ansatz.social";
   const cliLoginCmd = `npm login --registry=${registryOrigin}/api/v1/registry`;
   const cliPublishCmd = `msx publish`;
 

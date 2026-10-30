@@ -7,6 +7,7 @@ services:
       - "443:443"
     environment:
       - PUBLIC_DOMAIN=${PUBLIC_DOMAIN:-localhost}
+      - DOCS_DOMAIN=${DOCS_DOMAIN:-http://docs.localhost}
     volumes:
       - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -22,8 +23,8 @@ services:
     image: eclipse-mosquitto:2
     profiles: ["internal", "federated"]
     ports:
-      - "1883:1883"
-      - "9001:9001"
+      - "127.0.0.1:1883:1883"
+      - "127.0.0.1:9001:9001"
     volumes:
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - mqtt-data:/mosquitto/data
@@ -38,7 +39,7 @@ services:
     image: timescale/timescaledb:latest-pg16
     profiles: ["internal", "federated"]
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_DB=modelscript_historian
       - POSTGRES_USER=modelscript
@@ -60,7 +61,7 @@ services:
       context: .
       target: api
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - api-data:/app/apps/api/data
       - api-uploads:/app/apps/api/uploads
@@ -74,6 +75,7 @@ services:
       - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:-}
       - TRUST_PROXY=true
       - PUBLIC_URL=${PUBLIC_URL:-http://localhost:3000}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
       - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
       - JWT_SECRET=${JWT_SECRET}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
@@ -111,7 +113,7 @@ services:
       context: .
       target: web
     ports:
-      - "3001:80"
+      - "127.0.0.1:3001:80"
     depends_on:
       api:
         condition: service_healthy
@@ -130,7 +132,7 @@ services:
       context: .
       target: api-ce
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - api-data:/app/apps/api/data
       - api-uploads:/app/apps/api/uploads

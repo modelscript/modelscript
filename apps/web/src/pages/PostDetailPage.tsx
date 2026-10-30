@@ -40,13 +40,7 @@ const PostDetailPage: React.FC = () => {
   );
   const [activeHeadingSlug, setActiveHeadingSlug] = useState<string>("");
 
-  usePageTitle(
-    notebookData?.title
-      ? `${notebookData.title} — ModelScript Tutorial`
-      : post?.username
-        ? `Post by @${post.username}`
-        : "Post",
-  );
+  usePageTitle(notebookData?.title ? notebookData.title : post?.username ? `Post by @${post.username}` : "Post");
   useOembedDiscovery(
     typeof window !== "undefined" ? window.location.href : undefined,
     notebookData?.title || post?.title || (post?.content ? post.content.slice(0, 60) : undefined),

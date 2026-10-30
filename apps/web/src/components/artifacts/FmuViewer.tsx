@@ -494,7 +494,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               size="small"
               variant="primary"
               onClick={handleOpenInPlayground}
-              title="Open FMU interface wrapper in ModelScript Playground"
+              title="Open FMU interface wrapper in Ansatz Playground (powered by ModelScript)"
             >
               <CodeIcon size={14} />
               <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>

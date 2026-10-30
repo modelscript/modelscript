@@ -41,7 +41,7 @@ export function parseFederatedHandle(rawHandle: string | undefined | null): Pars
 /**
  * Builds the canonical WebFinger / ActivityPub resource handle (acct:user@domain).
  */
-export function getAcctUri(username: string, localDomain = "hub.modelscript.org"): string {
+export function getAcctUri(username: string, localDomain = "ansatz.social"): string {
   const parsed = parseFederatedHandle(username);
   const domain = parsed.remoteDomain || localDomain;
   return `acct:${parsed.localUsername}@${domain}`;

@@ -172,8 +172,10 @@ export function inferModelicaPreviewMode(
     /\bpartial\s+(?:encapsulated\s+|expandable\s+)*(?:model|class|block|connector|record|function|package|type|operator)\b/.test(
       code,
     );
-  const isNonSimKind =
-    /^\s*(?:within\s+[^;]+;\s*)*(?:encapsulated\s+)?(?:package|connector|record|function|type|operator)\b/m.test(code);
+  const codeWithoutWithin = code.replace(/^\s*within\b[^;]*;/gm, "");
+  const isNonSimKind = /^\s*(?:encapsulated\s+)?(?:package|connector|record|function|type|operator)\b/m.test(
+    codeWithoutWithin,
+  );
   const hasEquations =
     /\b(?:equation|algorithm)\b/.test(code) &&
     (/\bder\s*\(/.test(code) || /(?:^|\n)\s*[A-Za-z0-9_.(),\s+-/*]+\s*:?=\s*[^;=]+;/m.test(code));

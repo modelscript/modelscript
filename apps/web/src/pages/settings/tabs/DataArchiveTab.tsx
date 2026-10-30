@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { DetailSubtitle, Header, PrimaryButton, SecondaryButton } from "../settingsStyles";
 
 export interface DataArchiveTabProps {
@@ -29,6 +30,8 @@ export interface DataArchiveTabProps {
 
 export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
   const { user } = useAuth();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const [archiveJob, setArchiveJob] = useState<ArchiveJobInfo | null>(null);
   const [isSubmittingArchiveJob, setIsSubmittingArchiveJob] = useState(false);
   const [isDownloadingFinishedArchive, setIsDownloadingFinishedArchive] = useState(false);
@@ -141,7 +144,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
       </Header>
       <Box px={4} pb={4} style={{ overflowY: "auto" }}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
-          Request an archive of your ModelScript data under GDPR Article 20 (Right to Data Portability) and CCPA §
+          Request an archive of your {brandName} data under GDPR Article 20 (Right to Data Portability) and CCPA §
           1798.100. Your archive is compiled directly in real-time.
         </DetailSubtitle>
 

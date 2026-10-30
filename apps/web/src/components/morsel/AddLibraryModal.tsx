@@ -169,7 +169,7 @@ export default function AddLibraryModal({
                 leadingVisual={SearchIcon}
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Search ModelScript packages..."
+                placeholder="Search engineering packages..."
               />
 
               {searching && (

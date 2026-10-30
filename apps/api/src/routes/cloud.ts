@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { DataPackageLockJson } from "@modelscript/exchange";
 import express, { type Request, type Response, type Router } from "express";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -21,6 +22,7 @@ import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-g
 import { prepareNativeSimulation, type NativeSimPrepResult } from "../services/simulation/native-sim-runner.js";
 import type { LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
+import { resolveDataPackageLockfile } from "../util/datapackage-indexer.js";
 
 export interface CloudDispatchPayload {
   domain: "modelica" | "cfd" | "fea" | "monte-carlo";
@@ -65,6 +67,7 @@ export interface CloudJobRecord {
   name: string;
   profile: string;
   payload?: CloudDispatchPayload | undefined;
+  lockfile?: DataPackageLockJson | undefined;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   logs: string[];
   resultPath?: string | undefined;
@@ -98,7 +101,7 @@ export function getActiveCloudJob(jobId: string): CloudJobRecord | undefined {
   return activeJobs.get(jobId);
 }
 
-export function cloudRouter(_storage: LibraryStorage, jobQueue: JobQueue, database?: LibraryDatabase): Router {
+export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, database?: LibraryDatabase): Router {
   const router = express.Router();
   router.use(defaultApiLimiter);
   const hpcEngine = new HpcEngine();
@@ -561,6 +564,38 @@ getErrorString();
       }
 
       const jobId = `cloud_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+      let lockfile: DataPackageLockJson | undefined;
+      if (database) {
+        try {
+          const extraDeps: Record<string, string> = {};
+          for (const dep of payload.dependencies ?? []) {
+            if (dep?.name && dep?.version) {
+              extraDeps[dep.name] = dep.version;
+            }
+          }
+          const rootName = payload.libraryName || name;
+          const rootVersion = payload.libraryVersion || "0.0.0";
+          const solverName = domain === "cfd" ? "su2" : domain === "fea" ? "calculix" : (payload.engine ?? "omc");
+          lockfile = resolveDataPackageLockfile(storage, database, rootName, rootVersion, {
+            extraDependencies: extraDeps,
+            sourceContent: payload.sourceContent || payload.deck?.content,
+            engine: payload.engine ?? (domain === "modelica" ? "omc" : domain),
+            experiment: payload.experiment
+              ? {
+                  solver: solverName,
+                  startTime: payload.experiment.startTime,
+                  stopTime: payload.experiment.stopTime,
+                  interval: payload.experiment.interval,
+                  numberOfIntervals: payload.experiment.numberOfIntervals,
+                  tolerance: payload.experiment.tolerance,
+                }
+              : { solver: solverName },
+          });
+        } catch {
+          // Non-fatal if lockfile generation fails
+        }
+      }
+
       const jobRecord: CloudJobRecord = {
         jobId,
         userId,
@@ -568,9 +603,13 @@ getErrorString();
         name,
         profile: profile.id,
         payload,
+        lockfile,
         status: "queued",
         logs: [
           `[Cloud] Job ${jobId} queued with profile '${profile.name}' (${profile.cpus} CPUs, ${profile.memoryMb}MB RAM)`,
+          ...(lockfile
+            ? [`[Lockfile] Locked ${Object.keys(lockfile.packages).length} package(s) — environment reproducible`]
+            : []),
         ],
         startTime: Date.now(),
         subscribers: [],
@@ -586,7 +625,7 @@ getErrorString();
             "ADHOC",
             domain === "modelica" ? "omc" : domain,
             null,
-            { jobId, profile: profile.id, domain },
+            { jobId, profile: profile.id, domain, lockfilePackages: lockfile ? Object.keys(lockfile.packages) : [] },
             userId,
           );
           jobRecord.dbJobId = dbJobId;
@@ -622,8 +661,9 @@ getErrorString();
         jobId,
         status: "queued",
         profile: profile.id,
+        lockfile,
         streamUrl: `/api/v1/cloud/jobs/${jobId}/events`,
-        message: `Job ${jobId} successfully dispatched to ModelScript Cloud with profile '${profile.name}'.`,
+        message: `Job ${jobId} successfully dispatched to Ansatz Cloud (powered by ModelScript) with profile '${profile.name}'.`,
       });
     },
   );
@@ -695,9 +735,30 @@ getErrorString();
       startTime: job.startTime,
       endTime: job.endTime,
       usage: job.usage,
+      lockfile: job.lockfile,
       error: job.error,
       hasResult: Boolean(job.resultPath && fs.existsSync(job.resultPath)),
     });
+  });
+
+  // ── 5b. GET /api/v1/cloud/jobs/:id/lockfile ──
+  // Export the reproducible datapackage.lock.json associated with this cloud job
+  router.get("/cloud/jobs/:id/lockfile", (req: Request, res: Response): void => {
+    const job = activeJobs.get(req.params["id"] as string);
+    if (!job) {
+      res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
+      return;
+    }
+    if (!isAuthorizedForCloudJob(req, job)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (!job.lockfile) {
+      res.status(404).json({ error: `No lockfile recorded for job '${req.params["id"]}'` });
+      return;
+    }
+    res.setHeader("Content-Disposition", `attachment; filename="${job.jobId}.datapackage.lock.json"`);
+    res.json(job.lockfile);
   });
 
   // ── 6. GET /api/v1/cloud/jobs/:id/logs ──

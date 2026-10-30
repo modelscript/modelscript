@@ -6,11 +6,14 @@ import { Button, Dialog, Heading, Label, Spinner, Text, TextInput } from "@prime
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { createRepo, getRepos } from "../api";
 import Box from "./Box";
 
 export default function ProfileRepos({ username, isOwnProfile }: { username: string; isOwnProfile: boolean }) {
   const { token } = useAuth();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const navigate = useNavigate();
   const [repos, setRepos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -172,7 +175,7 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
                       </Link>
                     </Box>
                     <Label variant="secondary" size="small" style={{ textTransform: "capitalize" }}>
-                      {provider === "gitlab" ? "GitLab" : provider === "local" ? "ModelScript" : "GitHub"}
+                      {provider === "gitlab" ? "GitLab" : provider === "local" ? brandName : "GitHub"}
                     </Label>
                   </Box>
                   <Text

@@ -425,8 +425,11 @@ const PackageDetailPage: React.FC = () => {
 
             {activeTab === "dependencies" && (
               <PackageDependenciesTab
+                name={name}
+                version={version}
                 dependencies={pkg.dependencies}
                 devDependencies={pkg.currentManifest?.devDependencies}
+                resources={pkg.libraryDetail?.resources}
               />
             )}
           </div>

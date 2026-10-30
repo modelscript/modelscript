@@ -189,7 +189,7 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     id: "package",
     category: "Interactive engineering",
     title: "Package or Repository",
-    description: "Embed a ModelScript package or Git repo",
+    description: "Embed an Ansatz package or Git repo",
     icon: <PackageIcon size={14} />,
     keywords: ["package", "repo", "repository", "library", "git"],
   },

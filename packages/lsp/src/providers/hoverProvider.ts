@@ -5,6 +5,7 @@ import { getSymbolDomain, LanguageDomainId } from "@modelscript/runtime";
 import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, Hover, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import type { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 function isStepDocument(document: TextDocument): boolean {
@@ -200,9 +201,9 @@ function enhanceWithDigitalThreadTwin(
     const cadPartName = cadMatch?.[1] || (cDomain === "STEP CAD" ? cName : null);
     if (cadPartName && !hoverContent.includes("command:modelscript.focusCadPart?")) {
       const commandArg = encodeURIComponent(JSON.stringify({ partName: cadPartName }));
-      lines.push(
-        `- **Coupled 3D CAD Anchor:** [🔍 Inspect in 3D Anatomy Canvas](command:modelscript.focusCadPart?${commandArg})`,
-      );
+      const isBio = /ventricle|atrium|myocardium|pacemaker|cannula|catheter|stent/i.test(text);
+      const label = isBio ? "Inspect in 3D Anatomy Canvas" : "Inspect in 3D CAD Viewer";
+      lines.push(`- **Coupled 3D CAD Anchor:** [🔍 ${label}](command:modelscript.focusCadPart?${commandArg})`);
     }
 
     return hoverContent + lines.join("\n");
@@ -211,7 +212,13 @@ function enhanceWithDigitalThreadTwin(
   return hoverContent;
 }
 
-function enhanceWithCadLink(hoverContent: string, token: string, text: string, offset: number): string {
+function enhanceWithCadLink(
+  hoverContent: string,
+  token: string,
+  text: string,
+  offset: number,
+  allowDemoHeuristics = true,
+): string {
   if (!token) return hoverContent;
   if (hoverContent.includes("command:modelscript.focusCadPart?")) return hoverContent;
 
@@ -229,7 +236,7 @@ function enhanceWithCadLink(hoverContent: string, token: string, text: string, o
   if (cadMatch) {
     coupledPartName = cadMatch[1]!;
     isBiomedical = /ventricle|atrium|myocardium|pacemaker|cannula|catheter|stent/i.test(text);
-  } else {
+  } else if (allowDemoHeuristics) {
     const lowerToken = token.toLowerCase();
     const strictBioKeywords = ["cannula", "ventricle", "atrium", "myocardium", "leaflet", "catheter", "stent"];
     const hasBioContext = /ventricle|atrium|myocardium|pacemaker|cannula|catheter|stent/i.test(text);
@@ -268,6 +275,7 @@ export function registerHoverProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
   validationService: any,
+  context?: LspContext,
 ) {
   const documentLSPBridges = validationService.documentLSPBridges;
   connection.onHover((params): Hover | null => {
@@ -470,7 +478,11 @@ export function registerHoverProvider(
               let tokenEnd = offset;
               while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
               const token = text.slice(tokenStart, tokenEnd).trim();
-              const enriched = enhanceWithCadLink(hoverText, token, text, offset);
+              const activeSettings = context?.settings ?? validationService?.context?.settings;
+              const allowDemo = activeSettings?.features
+                ? Boolean(activeSettings.features.demos || activeSettings.features.channel === "dev")
+                : true;
+              const enriched = enhanceWithCadLink(hoverText, token, text, offset, allowDemo);
               return {
                 contents: { kind: "markdown", value: enriched },
                 range: {
@@ -653,16 +665,29 @@ export function registerHoverProvider(
     while (hoveredEnd < text.length && /[a-zA-Z0-9_]/.test(text[hoveredEnd]!)) hoveredEnd++;
     const hoveredToken = text.slice(hoveredStart, hoveredEnd).trim();
 
-    hoverContent = enhanceWithDigitalThreadTwin(
-      hoverContent,
-      hoveredToken,
-      text,
-      offset,
-      document.uri,
-      bridge,
-      validationService,
-    );
-    hoverContent = enhanceWithCadLink(hoverContent, hoveredToken, text, offset);
+    const activeSettings = context?.settings ?? validationService?.context?.settings;
+    const allowDigitalThread = activeSettings?.features
+      ? Boolean(
+          activeSettings.features.digitalThread ??
+          (activeSettings.features.channel === "experimental" || activeSettings.features.channel === "dev"),
+        )
+      : true;
+    const allowDemo = activeSettings?.features
+      ? Boolean(activeSettings.features.demos || activeSettings.features.channel === "dev")
+      : true;
+
+    if (allowDigitalThread) {
+      hoverContent = enhanceWithDigitalThreadTwin(
+        hoverContent,
+        hoveredToken,
+        text,
+        offset,
+        document.uri,
+        bridge,
+        validationService,
+      );
+    }
+    hoverContent = enhanceWithCadLink(hoverContent, hoveredToken, text, offset, allowDemo);
 
     return {
       contents: {

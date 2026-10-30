@@ -652,21 +652,57 @@ The **ModelScript Enterprise Hub** (`@modelscript/api`, `@modelscript/web`, and 
 
 ---
 
-## 1. Administrative Console & Role-Based Access Control (RBAC)
+## 1. First-Run Install Wizard (`/setup`), Console & Staff RBAC
 
-Access to the Platform Administration Console (`/admin`) and `/api/v1/admin/*` endpoints is strictly enforced via JWT authentication and role-based middleware (`requireAdmin`):
+### First-Run Install Wizard (`/setup`) & Headless Bootstrap
 
-- **`admin`**: Full platform superuser privileges (user moderation, runtime feature flag mutation, system maintenance windows, compute wallet minting, and audit log verification).
-- **`moderator`**: Read/moderation access to public registry packages, flagged comments, and community discussions.
+When a new ModelScript instance is deployed without an existing administrator account (`needsSetup: true` on `GET /api/v1/instance/banner` and `GET /api/v1/setup/status`), the web UI displays a `[FIRST-BOOT SETUP]` banner and provides a guided 4-step **First-Run Install Wizard** at `/setup`:
+
+1. **Deployment Architecture Profile & Migration Restore**:
+   - **Tier 1: Independent Federated Node** (`invite_only` registration, `open` ActivityPub S2S federation, `3` report auto-quarantine threshold).
+   - **Tier 2: Corporate Intranet / Air-Gapped Appliance** (`domain_allowlist` registration, `disabled` outbound federation, `14` hot backup retention).
+   - **Tier 3: Public Flagship Hub** (`open` registration with anti-Sybil verification, `open` federation, `30` hot backup retention).
+   - **Optional Migration Restore**: Upload a Portable Instance Migration Bundle (`.json`) directly in Step 1 to clone settings, federation policies, feature flags, and quarantines from a prior instance.
+2. **Founding Administrator Account**: Creates the initial `admin` user (`1,000` initial compute credits) and provisions Ed25519 instance keys plus RSA-2048 ActivityPub actor keys.
+3. **Instance Identity, Registration & Federation Policy**: Configures NodeInfo 2.0/2.1 metadata, email domain allowlists, and moderation auto-quarantine thresholds.
+4. **Starter Invites & Baseline Snapshot**: Generates initial invitation codes, records a `first-boot-baseline` SQLite hot backup (`VACUUM INTO` + SHA-256), signs the founding admin in, and **permanently locks** `POST /api/v1/setup/complete` (`403 Forbidden` on any subsequent calls).
+
+For automated GitOps / Helm / Ansible deployments, setting `ADMIN_INIT_USERNAME` and `ADMIN_INIT_PASSWORD` (or `AUTO_SEED_ADMIN=true`) bootstraps the founding administrator headlessly on boot.
+
+### Role-Based Access Control (RBAC)
+
+Access to the Platform Administration Console (`/admin`) and `/api/v1/admin/*` endpoints is enforced via JWT authentication and tiered staff RBAC (`requireStaffRole`):
+
+- **`admin`**: Full platform superuser privileges across all 9 Admin Console tabs (Moderation, Users & Credits, Analytics, Federation, DMCA & Quarantine, Audit Logs, Database & Backups, Feature Flags, Instance Settings & Invites, and System & License Posture).
+- **`moderator`**: Trust & Safety access to the **Moderation Queue** (`/api/v1/admin/moderation/*`) and **Users & Governance** (`/api/v1/admin/users`, including User Forensic Dossiers). Cannot promote accounts to `admin`/`auditor` or mutate database/system settings.
+- **`auditor`**: Read-only compliance inspector access to **Security & Audit Logs** (`/api/v1/admin/audit-logs`, hash-chain verification), **Analytics & Traffic** (`/api/v1/admin/analytics`), **System Health** (`/api/v1/admin/system`), and **Enterprise Compliance Posture** (`/api/v1/admin/ee/posture`).
 - **`user` / Organization Roles (`owner`, `admin`, `member`, `billing`, `viewer`)**: Scoped access within `/api/v1/organizations/:org` namespaces.
 
-### User & Account Governance (`/api/v1/admin/users`)
+### Instance Admin Console Tabs (`/admin`)
 
-Platform administrators can search, filter, and manage user accounts via the Admin Console or REST API:
+1. **Moderation Queue**: Enriched forensic snapshots, keyboard-driven triage (`j`/`k` navigate, `x` select, `r` resolve, `d` dismiss), bulk resolution, content warnings (`mark_sensitive`), ActivityPub `Delete` tombstone broadcast, outbound `Flag` forwarding, and automated report-threshold quarantine (`autoQuarantineReportThreshold`).
+2. **Users & Governance**: Global status breakdown (`active`, `frozen`, `suspended`, `admins`, `moderators`, `auditors`), role promotion (`user` | `moderator` | `auditor` | `admin`), session token revocation, HPC compute credit grants/deductions (`POST /api/v1/admin/users/:id/credits`), and slide-over **User Forensic Dossiers** (`GET /api/v1/admin/users/:id/forensics`).
+3. **Analytics & Traffic**: First-party privacy-preserving pageview rollups across `web` and `docs` surfaces, bot filtering, geographic heatmaps, and retention pruning.
+4. **Federation Domains & S2S Queue**: Domain policy tiers (`allow`, `silence`, `suspend`), consortium `allowlist` mode, Mastodon/Oliphant CSV & JSON blocklist import/export, live WebFinger + NodeInfo peer connectivity tester, S2S JSON payload inspector, and ActivityPub `Move` (`alsoKnownAs`) migration broadcast.
+5. **DMCA & Universal Resource Quarantine**: Public statutory takedown intake (`POST /api/v1/admin/dmca/notices`), universal resource quarantine across `post`, `package`, `repository`, and `artifact` targets, 17 U.S.C. § 512(g) counter-notice filing (14-day statutory window), and one-click restoration.
+6. **Security & Audit Logs**: Cryptographic SHA-256 hash-chained audit ledger (`GET /api/v1/admin/audit-logs/verify`) with hash-preserving GDPR IP redaction (`POST /api/v1/admin/audit-logs/redact-expired`, replacing expired raw IPs with `REDACTED:<ipToken>` without breaking chain verification).
+7. **Database, Backups & Migration**: Live schema migration dry-run/upgrade, `PRAGMA` relational & physical integrity checks, online SQLite WAL `VACUUM INTO` snapshots with SHA-256 checksums, `.db` snapshot download, point-in-time online restore (with automatic `pre-restore` safety snapshot), retention pruning, and portable instance migration bundles (`/api/v1/admin/bundle/export` & `/import`).
+8. **Instance Settings & Registration Invites**: Dynamic NodeInfo 2.0/2.1 branding (`instanceName`, `instanceDescription`, `contactEmail`), registration policy (`open`, `invite_only`, `domain_allowlist`, `closed`), multi-use registration invite codes with initial compute credit and role grants, and a live global announcement / maintenance mode banner (`/api/v1/instance/banner`).
+9. **System Health & Enterprise Posture**: Live storage & SQLite WAL telemetry, HPC job queue counters, GeoIP/Mailer readiness, and (in Enterprise Edition) Air-Gap / FERC CEII / ITAR compliance posture.
 
-- **Role Assignment (`PATCH /api/v1/admin/users/:id/role`)**: Promote or demote accounts between `user`, `moderator`, and `admin`. Self-demotion by the active administrator is blocked to prevent accidental lockout.
-- **Account Suspension (`POST /api/v1/admin/users/:id/suspend` & `/unsuspend`)**: Immediately revokes active JWT refresh tokens, blocks package publishing, and halts running cloud HPC jobs while preserving historical audit trails.
-- **Platform Telemetry (`GET /api/v1/admin/stats`)**: Real-time metrics covering total registered users, published package versions, active Co-Simulation sessions, cloud HPC queue depth, and object storage consumption.
+### Headless CLI Database & Backup Management (`msx db`)
+
+```bash
+msx db status                                  # View current schema version and pending migrations
+msx db upgrade [--dry-run]                     # Apply pending migrations with automatic pre-flight snapshot
+msx db verify                                  # Run PRAGMA foreign_key_check & integrity_check
+msx db backup [--label pre-release]            # Create online SQLite WAL snapshot with SHA-256 digest
+msx db backups                                 # List available snapshots, sizes, and SHA-256 digests
+msx db restore --file modelscript-backup-..db  # Verify integrity & perform online point-in-time restore
+msx db prune [--keep 7]                        # Prune older snapshots while retaining latest N
+msx db export-bundle --file bundle.json        # Export portable instance migration bundle + snapshot
+msx db import-bundle --file bundle.json        # Import settings, federation rules, flags & quarantines
+```
 
 ---
 
@@ -804,8 +840,7 @@ ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Ed
 | `ghcr.io/modelscript/api`       | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Corporate EE Cluster & `modelscript.org` Cloud           |
 | `ghcr.io/modelscript/cli`       | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Licensed Enterprise CI/CD & HIL codegen runner           |
 | `ghcr.io/modelscript/appliance` | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`, `ENTERPRISE_APPLIANCE=true`, `AIRGAP_ENFORCED=true` | Single-container Air-Gapped Intranet Appliance (`:8080`) |
-| `ghcr.io/modelscript/web`       |                    Shared                    |              N/A              | Nginx SPA (`/`) + VitePress Docs (`/docs`)                                                        | Web UI & Unified Documentation Portal                    |
-| `ghcr.io/modelscript/ide`       |                    Shared                    |              N/A              | `PORT=3003` + local WebLLM weights                                                                | Browser WebAssembly & WebGPU IDE Workbench               |
+| `ghcr.io/modelscript/web`       |                    Shared                    |              N/A              | Nginx SPA (`/`) + VitePress Docs (`/docs`) + IDE (`/ide`)                                         | Web UI, IDE Launcher & Unified Documentation Portal      |
 
 ---
 
@@ -814,8 +849,8 @@ ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Ed
 For individual engineers, universities, and open-source teams running under **GNU AGPLv3** without a commercial license key:
 
 - Uses `ghcr.io/modelscript/api-ce:latest` (which physically excludes `/app/ee`) or sets `MSX_EDITION=ce`.
-- Includes the full 44-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, and Web IDE.
-- Enterprise-only endpoints (`/api/v1/ee/*`, `/api/v1/admin/*`, `/api/v1/organizations`, `/api/v1/cae`, `/api/v1/cloud`, `/api/v1/twins`, `/api/v1/cosim`, `/api/v1/threads`, `/api/v1/sysml2`, `/api/v1/mcp`, `/api/v1/webhooks`, etc.) return `501 Not Implemented`.
+- Includes the full 44-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Web IDE, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
+- Enterprise-only endpoints (`/api/v1/ee/*`, `/api/v1/admin/stats`, `/api/v1/admin/ee/*`, `/api/v1/organizations`, `/api/v1/cae`, `/api/v1/cloud`, `/api/v1/twins`, `/api/v1/cosim`, `/api/v1/threads`, `/api/v1/sysml2`, `/api/v1/mcp`, `/api/v1/webhooks`, etc.) return `501 Not Implemented`.
 
 ```bash
 # Option 1: Run the physically isolated Community Edition API container directly
@@ -826,7 +861,7 @@ docker run -d \
   -v modelscript-data:/app/apps/api/data \
   ghcr.io/modelscript/api-ce:latest
 
-# Option 2: Run the full multi-container stack (Caddy + API + Web + IDE) in Community Edition mode
+# Option 2: Run the full multi-container stack (Caddy + API + Web) in Community Edition mode
 export MSX_EDITION=ce
 export JWT_SECRET="$(openssl rand -hex 32)"
 export PUBLIC_DOMAIN=localhost
@@ -947,7 +982,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml \
 
 #### C.2 Automated CI/CD Rollouts (`.github/workflows/ci.yml` & `.github/workflows/release.yml`)
 
-Every push to `main` and every tagged release in GitHub Actions builds and pushes all 7 Docker images (`api`, `api-ce`, `web`, `ide`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` and triggers the `deploy_modelscript_org` rollout job. Configure either SSH or Webhook secrets in GitHub repository settings:
+Every push to `main` and every tagged release in GitHub Actions builds and pushes all 6 Docker images (`api`, `api-ce`, `web`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` and triggers the `deploy_modelscript_org` rollout job. Configure either SSH or Webhook secrets in GitHub repository settings:
 
 | GitHub Secret                          | Description                                                                                  |
 | :------------------------------------- | :------------------------------------------------------------------------------------------- |
@@ -5959,6 +5994,14 @@ ModelScript delivers first-class support for **ReqIF** (Requirements Interchange
   - Uses the SMT/Nelson-Oppen theory coordinator in `@modelscript/runtime` to prove whether child sub-requirements strictly entail parent system-level requirements:
     $$\bigwedge_{i} \text{SubReq}_i \models \text{ParentReq}$$
   - Generates concrete numeric counterexamples when an entailment gap exists (e.g. child requirements permit a state that violates the parent requirement).
+- **Bidirectional Tabular Editor & 2D Traceability Matrix (`@modelscript/reqif/tabular`):**
+  - Powered by `@modelscript/dsl`'s declarative `TabularConfig`, ReqIF specifications project into 4 synchronized, bidirectional sheets:
+    1. **Requirements Catalog Tree-Table:** Hierarchical WBS (`SPEC-HIERARCHY`) with collapsible sections, inline cell editing for titles, specification text, formal mathematical contracts (`<= 2.5 %`), ISO 26262 ASIL levels, lifecycle status, custom `SPEC-OBJECT-TYPE` attributes, and live Nelson-Oppen SMT entailment badges (`Certified`, `Gap`, `Leaf`).
+    2. **2D Requirements Traceability Matrix (RTM):** Interactive $N \times M$ cross-reference matrix where clicking any cell cycles `<SPEC-RELATION>` links (`satisfies`, `verifies`, `refines`, `allocates`, `derives`, `conflicts`) and writes back losslessly to the ReqIF XML.
+    3. **Spec Relations Table:** Editable table of all `<SPEC-RELATION>` links with inline source, target, and relation stereotype selectors.
+    4. **Types & Schema Explorer:** Inspects `<DATATYPES>`, enumeration values, and `<SPEC-TYPES>` attribute definitions.
+- **2D Requirement Architecture Diagram (`@modelscript/reqif/diagram`):**
+  - Renders hierarchical requirement cards color-coded by ISO 26262 ASIL level, formal contract compartments, SMT entailment badges, parent-child decomposition edges, and typed `SPEC-RELATION` dependency arrows.
 - **Automated Verification Projections:**
   - **OMG SysML v2:** Translates spec-objects into formal `requirement def` items with `doc` annotations, attribute definitions, and `satisfy` links.
   - **Modelica Verification Blocks:** Generates acausal Modelica monitor blocks with assertions that trigger simulation failure when requirement bounds are breached.
@@ -6069,7 +6112,7 @@ When a `.ssp` ZIP archive is loaded into the workspace, `sspLanguage.container` 
 
 ### `.ssd` System Structure Diagnostics (`lintSsd`)
 
-### Diagnostics for SSP (12 rules)
+### Diagnostics for SSP (13 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `S7001` | error | `SSP_EMPTY_CONNECTOR_NAME` | Connector in <owner> has an empty name. |
@@ -6084,6 +6127,7 @@ When a `.ssp` ZIP archive is loaded into the workspace, `sspLanguage.container` 
 | `S7010` | error | `SSP_CONNECTOR_CAUSALITY_CONFLICT` | Connection violates causal flow rules. |
 | `S7011` | error | `SSP_CYCLIC_CONNECTION` | Connection creates an algebraic loop or cyclic dependency without delay. |
 | `S7012` | error | `SSP_INVALID_EXPERIMENT_BOUNDS` | DefaultExperiment stopTime must be strictly greater than startTime. |
+| `S7013` | warning | `SSP_CONNECTOR_UNIT_MISMATCH` | Connector unit mismatch: '<startUnit>' connected to '<endUnit>'. |
 
 ---
 
@@ -6920,7 +6964,7 @@ CANONICAL URL: https://modelscript.org/languages/fortran
 
 The Fortran analyzer surfaces modernization issues and common numeric defects:
 
-### Diagnostics for Fortran (10 rules)
+### Diagnostics for Fortran (15 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `M4070` | error | `undeclared-variable` | Variable '<varName>' referenced without declaration under strict typing. |
@@ -6933,6 +6977,11 @@ The Fortran analyzer surfaces modernization issues and common numeric defects:
 | `M4077` | error | `common-block-mismatch` | COMMON block '/<blockName>/' definition conflict: <reason>. |
 | `M4078` | error | `array-dimension-underflow` | Array '<arrName>' declared with non-positive dimension size (<dim> <= 0). |
 | `M4079` | info | `obsolete-arithmetic-if` | Three-way arithmetic IF is obsolescent; prefer structured IF/THEN/ELSE. |
+| `M4080` | error | `identifier-mismatch` | End <unitKind> identifier '<endName>' does not match '<startName>'. |
+| `M4081` | error | `intent-in-mutation` | Dummy argument '<varName>' declared with 'INTENT(IN)' cannot be modified. |
+| `M4082` | error | `invalid-statement-syntax` | Syntax error in Fortran statement: <detail>. |
+| `M4083` | error | `unclosed-block` | Unclosed or mismatched '<blockName>' block structure. |
+| `M4084` | error | `math-domain-violation` | Intrinsic math function '<fnName>' evaluated outside its real domain with argument '<argVal>'. |
 
 ---
 
@@ -8529,24 +8578,22 @@ flowchart TD
 
 `@modelscript/psse` runs pre-flight static checks across electrical topology, connection consistency, and equipment parameter bounds before simulation or projection:
 
-### Diagnostics for PSS/E (15 rules)
+### Diagnostics for PSS/E (13 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
-| `P1001` | error | `generator-bus-not-found` | Generator '<genId>' references non-existent bus <busId>. |
+| `P1001` | error | `bus-not-found` | <entityKind> '<id>' references non-existent <busRole>bus <busId>. |
 | `P1002` | warning | `generator-negative-power` | Generator '<genId>' at bus <busId> has negative active power output (<pg> MW). |
-| `P1003` | error | `duplicate-generator-id` | Duplicate generator ID '<genId>' at bus <busId>. |
-| `P1004` | error | `generator-reactive-limits-inverted` | Generator '<genId>' at bus <busId> has inverted reactive limits (QB = <qMin> > QT = <qMax> Mvar). |
-| `P1005` | error | `generator-power-limits-inverted` | Generator '<genId>' at bus <busId> has inverted active power limits (PB = <pMin> > PT = <pMax> MW). |
-| `P2001` | warning | `isolated-bus` | Bus <busId> ('<busName>') has no connected branches or transformers (isolated bus). |
+| `P1003` | error | `duplicate-equipment-id` | Duplicate generator ID '<genId>' at bus <busId>. |
+| `P2001` | warning | `isolated-bus` | Bus <busId> ('<busName>') is isolated with 0 in-service connecting branches or transformers. |
 | `P2002` | error | `missing-slack-bus` | Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored. |
 | `P2003` | warning | `multiple-slack-buses` | Power network base case contains <count> swing buses without explicit multi-island partitioning. |
 | `P2004` | warning | `voltage-out-of-bounds` | Initial voltage magnitude at bus <busId> (<value> pu) is outside standard operational limits [0.8, 1.2 pu]. |
-| `P3001` | error | `branch-from-bus-not-found` | Branch from bus <fromBus> to bus <toBus> references non-existent FROM-bus <fromBus>. |
-| `P3002` | error | `branch-to-bus-not-found` | Branch from bus <fromBus> to bus <toBus> references non-existent TO-bus <toBus>. |
-| `P3003` | error | `branch-zero-impedance` | Branch between bus <fromBus> and bus <toBus> has zero impedance (R = 0, X = 0). |
-| `P3004` | warning | `branch-negative-resistance` | Branch between bus <fromBus> and bus <toBus> defines negative resistance (<r> pu). |
-| `P3005` | error | `transformer-invalid-ratio` | Transformer between bus <fromBus> and bus <toBus> has non-positive turns ratio (<ratio>). |
-| `P4001` | error | `load-bus-not-found` | Load '<loadId>' references non-existent bus <busId>. |
+| `P3001` | error | `generator-reactive-limits-inverted` | Generator '<genId>' at bus <busId> has inverted reactive limits: Qmin (<qMin> MVAR) > Qmax (<qMax> MVAR). |
+| `P3002` | error | `generator-power-limits-inverted` | Generator '<genId>' at bus <busId> has inverted active power limits: Pmin (<pMin> MW) > Pmax (<pMax> MW). |
+| `P3003` | warning | `generator-scheduled-voltage-bounds` | Generator '<genId>' scheduled voltage Vs = <vs> p.u. is outside the typical operating band [0.8, 1.2]. |
+| `P4001` | error | `branch-invalid-reactance` | Transmission branch '<ckt>' between bus <fromBus> and <toBus> has zero or negative reactance X = <x> p.u. |
+| `P4002` | warning | `branch-base-kv-mismatch` | Branch '<ckt>' connects bus <fromBus> (<fromKv> kV) to bus <toBus> (<toKv> kV) without a transformer. |
+| `P4003` | warning | `transformer-tap-out-of-bounds` | Transformer '<ckt>' between bus <fromBus> and <toBus> has off-nominal tap ratio <ratio> outside typical limits [0.7, 1.3]. |
 
 ---
 
@@ -11182,7 +11229,7 @@ CANONICAL URL: https://modelscript.org/reference/linter-rules
 
 # Linter Rules Reference
 
-ModelScript ships **790 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **794 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -11207,14 +11254,14 @@ The **CLI** column below shows which command reports each language's rules.
 | [Modelica](#modelica)                     | `@modelscript/modelica`     |   307 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    48 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    10 | `msx reqif lint`        |
-| [SSP](#ssp)                               | `@modelscript/ssp`          |    12 | `msx lint`              |
+| [SSP](#ssp)                               | `@modelscript/ssp`          |    13 | `msx lint`              |
 | [OWL2](#owl2)                             | `@modelscript/owl2`         |    24 | `msx lint`              |
 | [STEP (ISO 10303)](#step)                 | `@modelscript/step`         |     8 | `msx lint`              |
 | [OpenSCAD](#scad)                         | `@modelscript/scad`         |     8 | `msx lint`              |
 | [CFD (SU2 / OpenFOAM)](#cfd)              | `@modelscript/cfd`          |     8 | `msx lint`              |
 | [FEA (CalculiX / Abaqus / NASTRAN)](#fea) | `@modelscript/fea`          |     8 | `msx lint`              |
 | [C](#c)                                   | `@modelscript/c`            |    10 | `msx lint`              |
-| [Fortran](#fortran)                       | `@modelscript/fortran`      |    10 | `msx lint`              |
+| [Fortran](#fortran)                       | `@modelscript/fortran`      |    15 | `msx lint`              |
 | [JSBSim](#jsbsim)                         | `@modelscript/jsbsim`       |    10 | `msx jsbsim lint`       |
 | [NASA ROCETS](#rocets)                    | `@modelscript/rocets`       |    14 | `msx lint`              |
 | [CCSDS](#ccsds)                           | `@modelscript/ccsds`        |     8 | `msx ccsds lint`        |
@@ -11227,7 +11274,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [GENSYS](#gensys)                         | `@modelscript/gensys`       |     6 | `msx gensys lint`       |
 | [SIMPACK](#simpack)                       | `@modelscript/simpack`      |     6 | `msx simpack lint`      |
 | [PSCAD / EMTDC](#pscad)                   | `@modelscript/pscad`        |    17 | `msx lint`              |
-| [PSS/E](#psse)                            | `@modelscript/psse`         |    15 | `msx psse lint`         |
+| [PSS/E](#psse)                            | `@modelscript/psse`         |    13 | `msx psse lint`         |
 | [OpenDSS](#opendss)                       | `@modelscript/opendss`      |     8 | `msx opendss lint`      |
 | [OLGA](#olga)                             | `@modelscript/olga`         |    13 | `msx olga lint`         |
 | [PipelineStudio](#lps)                    | `@modelscript/lps`          |    12 | `msx lint`              |
@@ -11701,22 +11748,23 @@ Requirements interchange & contract entailment. **10 rules** · `@modelscript/re
 
 ## SSP {#ssp}
 
-FMU system structure & parameterization. **12 rules** · `@modelscript/ssp` · Source: `languages/ssp/src/errors.ts` · [Language guide](../languages/ssp.md)
+FMU system structure & parameterization. **13 rules** · `@modelscript/ssp` · Source: `languages/ssp/src/errors.ts` · [Language guide](../languages/ssp.md)
 
-| Code                                | Rule                               | Severity                             | Message                                                                                                              |
-| :---------------------------------- | :--------------------------------- | :----------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
-| <span id="ssp-s7001"></span>`S7001` | `SSP_EMPTY_CONNECTOR_NAME`         | [error] | Connector in <code>&lt;owner&gt;</code> has an empty name.                                                           |
-| <span id="ssp-s7002"></span>`S7002` | `SSP_DUPLICATE_CONNECTOR`          | [error] | Duplicate connector '<code>&lt;name&gt;</code>' declared in <code>&lt;owner&gt;</code>.                              |
-| <span id="ssp-s7003"></span>`S7003` | `SSP_INVALID_CONNECTOR_KIND`       | [error] | Invalid connector kind '<code>&lt;kind&gt;</code>'. Must be input, output, inout, parameter, or calculatedParameter. |
-| <span id="ssp-s7004"></span>`S7004` | `SSP_EMPTY_COMPONENT_NAME`         | [error] | Component declared with an empty name attribute.                                                                     |
-| <span id="ssp-s7005"></span>`S7005` | `SSP_DUPLICATE_COMPONENT`          | [error] | Duplicate component '<code>&lt;name&gt;</code>' in system.                                                           |
-| <span id="ssp-s7006"></span>`S7006` | `SSP_EMPTY_SOURCE`                 | [error] | Component '<code>&lt;comp&gt;</code>' has an empty or missing source FMU URI.                                        |
-| <span id="ssp-s7007"></span>`S7007` | `SSP_UNDEFINED_COMPONENT`          | [error] | Referenced component '<code>&lt;comp&gt;</code>' is not defined in system elements.                                  |
-| <span id="ssp-s7008"></span>`S7008` | `SSP_UNDEFINED_CONNECTOR`          | [error] | Referenced connector '<code>&lt;conn&gt;</code>' not found on component '<code>&lt;comp&gt;</code>'.                 |
-| <span id="ssp-s7009"></span>`S7009` | `SSP_CONNECTOR_TYPE_MISMATCH`      | [error] | Connection type mismatch: '<code>&lt;startType&gt;</code>' cannot connect to '<code>&lt;endType&gt;</code>'.         |
-| <span id="ssp-s7010"></span>`S7010` | `SSP_CONNECTOR_CAUSALITY_CONFLICT` | [error] | Connection violates causal flow rules.                                                                               |
-| <span id="ssp-s7011"></span>`S7011` | `SSP_CYCLIC_CONNECTION`            | [error] | Connection creates an algebraic loop or cyclic dependency without delay.                                             |
-| <span id="ssp-s7012"></span>`S7012` | `SSP_INVALID_EXPERIMENT_BOUNDS`    | [error] | DefaultExperiment stopTime must be strictly greater than startTime.                                                  |
+| Code                                | Rule                               | Severity                                | Message                                                                                                              |
+| :---------------------------------- | :--------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| <span id="ssp-s7001"></span>`S7001` | `SSP_EMPTY_CONNECTOR_NAME`         | [error]    | Connector in <code>&lt;owner&gt;</code> has an empty name.                                                           |
+| <span id="ssp-s7002"></span>`S7002` | `SSP_DUPLICATE_CONNECTOR`          | [error]    | Duplicate connector '<code>&lt;name&gt;</code>' declared in <code>&lt;owner&gt;</code>.                              |
+| <span id="ssp-s7003"></span>`S7003` | `SSP_INVALID_CONNECTOR_KIND`       | [error]    | Invalid connector kind '<code>&lt;kind&gt;</code>'. Must be input, output, inout, parameter, or calculatedParameter. |
+| <span id="ssp-s7004"></span>`S7004` | `SSP_EMPTY_COMPONENT_NAME`         | [error]    | Component declared with an empty name attribute.                                                                     |
+| <span id="ssp-s7005"></span>`S7005` | `SSP_DUPLICATE_COMPONENT`          | [error]    | Duplicate component '<code>&lt;name&gt;</code>' in system.                                                           |
+| <span id="ssp-s7006"></span>`S7006` | `SSP_EMPTY_SOURCE`                 | [error]    | Component '<code>&lt;comp&gt;</code>' has an empty or missing source FMU URI.                                        |
+| <span id="ssp-s7007"></span>`S7007` | `SSP_UNDEFINED_COMPONENT`          | [error]    | Referenced component '<code>&lt;comp&gt;</code>' is not defined in system elements.                                  |
+| <span id="ssp-s7008"></span>`S7008` | `SSP_UNDEFINED_CONNECTOR`          | [error]    | Referenced connector '<code>&lt;conn&gt;</code>' not found on component '<code>&lt;comp&gt;</code>'.                 |
+| <span id="ssp-s7009"></span>`S7009` | `SSP_CONNECTOR_TYPE_MISMATCH`      | [error]    | Connection type mismatch: '<code>&lt;startType&gt;</code>' cannot connect to '<code>&lt;endType&gt;</code>'.         |
+| <span id="ssp-s7010"></span>`S7010` | `SSP_CONNECTOR_CAUSALITY_CONFLICT` | [error]    | Connection violates causal flow rules.                                                                               |
+| <span id="ssp-s7011"></span>`S7011` | `SSP_CYCLIC_CONNECTION`            | [error]    | Connection creates an algebraic loop or cyclic dependency without delay.                                             |
+| <span id="ssp-s7012"></span>`S7012` | `SSP_INVALID_EXPERIMENT_BOUNDS`    | [error]    | DefaultExperiment stopTime must be strictly greater than startTime.                                                  |
+| <span id="ssp-s7013"></span>`S7013` | `SSP_CONNECTOR_UNIT_MISMATCH`      | [warning] | Connector unit mismatch: '<code>&lt;startUnit&gt;</code>' connected to '<code>&lt;endUnit&gt;</code>'.               |
 
 ## OWL2 {#owl2}
 
@@ -11828,7 +11876,7 @@ Numerical & embedded C integration. **10 rules** · `@modelscript/c` · Source: 
 
 ## Fortran {#fortran}
 
-Legacy scientific subroutines. **10 rules** · `@modelscript/fortran` · Source: `languages/fortran/src/lints/index.ts` · [Language guide](../languages/fortran.md)
+Legacy scientific subroutines. **15 rules** · `@modelscript/fortran` · Source: `languages/fortran/src/lints/index.ts` · [Language guide](../languages/fortran.md)
 
 | Code                                    | Rule                        | Severity                                | Message                                                                                                                                        |
 | :-------------------------------------- | :-------------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -11842,6 +11890,11 @@ Legacy scientific subroutines. **10 rules** · `@modelscript/fortran` · Source:
 | <span id="fortran-m4077"></span>`M4077` | `common-block-mismatch`     | [error]    | COMMON block '/<code>&lt;blockName&gt;</code>/' definition conflict: <code>&lt;reason&gt;</code>.                                              |
 | <span id="fortran-m4078"></span>`M4078` | `array-dimension-underflow` | [error]    | Array '<code>&lt;arrName&gt;</code>' declared with non-positive dimension size (<code>&lt;dim&gt;</code> &lt;= 0).                             |
 | <span id="fortran-m4079"></span>`M4079` | `obsolete-arithmetic-if`    | [info]       | Three-way arithmetic IF is obsolescent; prefer structured IF/THEN/ELSE.                                                                        |
+| <span id="fortran-m4080"></span>`M4080` | `identifier-mismatch`       | [error]    | End <code>&lt;unitKind&gt;</code> identifier '<code>&lt;endName&gt;</code>' does not match '<code>&lt;startName&gt;</code>'.                   |
+| <span id="fortran-m4081"></span>`M4081` | `intent-in-mutation`        | [error]    | Dummy argument '<code>&lt;varName&gt;</code>' declared with 'INTENT(IN)' cannot be modified.                                                   |
+| <span id="fortran-m4082"></span>`M4082` | `invalid-statement-syntax`  | [error]    | Syntax error in Fortran statement: <code>&lt;detail&gt;</code>.                                                                                |
+| <span id="fortran-m4083"></span>`M4083` | `unclosed-block`            | [error]    | Unclosed or mismatched '<code>&lt;blockName&gt;</code>' block structure.                                                                       |
+| <span id="fortran-m4084"></span>`M4084` | `math-domain-violation`     | [error]    | Intrinsic math function '<code>&lt;fnName&gt;</code>' evaluated outside its real domain with argument '<code>&lt;argVal&gt;</code>'.           |
 
 ## JSBSim {#jsbsim}
 
@@ -12053,25 +12106,23 @@ Electromagnetic transients (EMT). **17 rules** · `@modelscript/pscad` · Source
 
 ## PSS/E {#psse}
 
-Transmission power flow. **15 rules** · `@modelscript/psse` · Source: `languages/psse/src/errors.ts` · [Language guide](../languages/psse.md)
+Transmission power flow. **13 rules** · `@modelscript/psse` · Source: `languages/psse/src/errors.ts` · [Language guide](../languages/psse.md)
 
-| Code                                 | Rule                                 | Severity                                | Message                                                                                                                                                                            |
-| :----------------------------------- | :----------------------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="psse-p1001"></span>`P1001` | `generator-bus-not-found`            | [error]    | Generator '<code>&lt;genId&gt;</code>' references non-existent bus <code>&lt;busId&gt;</code>.                                                                                     |
-| <span id="psse-p1002"></span>`P1002` | `generator-negative-power`           | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has negative active power output (<code>&lt;pg&gt;</code> MW).                                            |
-| <span id="psse-p1003"></span>`P1003` | `duplicate-generator-id`             | [error]    | Duplicate generator ID '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code>.                                                                                             |
-| <span id="psse-p1004"></span>`P1004` | `generator-reactive-limits-inverted` | [error]    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted reactive limits (QB = <code>&lt;qMin&gt;</code> &gt; QT = <code>&lt;qMax&gt;</code> Mvar).   |
-| <span id="psse-p1005"></span>`P1005` | `generator-power-limits-inverted`    | [error]    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted active power limits (PB = <code>&lt;pMin&gt;</code> &gt; PT = <code>&lt;pMax&gt;</code> MW). |
-| <span id="psse-p2001"></span>`P2001` | `isolated-bus`                       | [warning] | Bus <code>&lt;busId&gt;</code> ('<code>&lt;busName&gt;</code>') has no connected branches or transformers (isolated bus).                                                          |
-| <span id="psse-p2002"></span>`P2002` | `missing-slack-bus`                  | [error]    | Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored.                                                                         |
-| <span id="psse-p2003"></span>`P2003` | `multiple-slack-buses`               | [warning] | Power network base case contains <code>&lt;count&gt;</code> swing buses without explicit multi-island partitioning.                                                                |
-| <span id="psse-p2004"></span>`P2004` | `voltage-out-of-bounds`              | [warning] | Initial voltage magnitude at bus <code>&lt;busId&gt;</code> (<code>&lt;value&gt;</code> pu) is outside standard operational limits &#91;0.8, 1.2 pu&#93;.                          |
-| <span id="psse-p3001"></span>`P3001` | `branch-from-bus-not-found`          | [error]    | Branch from bus <code>&lt;fromBus&gt;</code> to bus <code>&lt;toBus&gt;</code> references non-existent FROM-bus <code>&lt;fromBus&gt;</code>.                                      |
-| <span id="psse-p3002"></span>`P3002` | `branch-to-bus-not-found`            | [error]    | Branch from bus <code>&lt;fromBus&gt;</code> to bus <code>&lt;toBus&gt;</code> references non-existent TO-bus <code>&lt;toBus&gt;</code>.                                          |
-| <span id="psse-p3003"></span>`P3003` | `branch-zero-impedance`              | [error]    | Branch between bus <code>&lt;fromBus&gt;</code> and bus <code>&lt;toBus&gt;</code> has zero impedance (R = 0, X = 0).                                                              |
-| <span id="psse-p3004"></span>`P3004` | `branch-negative-resistance`         | [warning] | Branch between bus <code>&lt;fromBus&gt;</code> and bus <code>&lt;toBus&gt;</code> defines negative resistance (<code>&lt;r&gt;</code> pu).                                        |
-| <span id="psse-p3005"></span>`P3005` | `transformer-invalid-ratio`          | [error]    | Transformer between bus <code>&lt;fromBus&gt;</code> and bus <code>&lt;toBus&gt;</code> has non-positive turns ratio (<code>&lt;ratio&gt;</code>).                                 |
-| <span id="psse-p4001"></span>`P4001` | `load-bus-not-found`                 | [error]    | Load '<code>&lt;loadId&gt;</code>' references non-existent bus <code>&lt;busId&gt;</code>.                                                                                         |
+| Code                                 | Rule                                 | Severity                                | Message                                                                                                                                                                                                        |
+| :----------------------------------- | :----------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="psse-p1001"></span>`P1001` | `bus-not-found`                      | [error]    | <code>&lt;entityKind&gt;</code> '<code>&lt;id&gt;</code>' references non-existent <code>&lt;busRole&gt;</code>bus <code>&lt;busId&gt;</code>.                                                                  |
+| <span id="psse-p1002"></span>`P1002` | `generator-negative-power`           | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has negative active power output (<code>&lt;pg&gt;</code> MW).                                                                        |
+| <span id="psse-p1003"></span>`P1003` | `duplicate-equipment-id`             | [error]    | Duplicate generator ID '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code>.                                                                                                                         |
+| <span id="psse-p2001"></span>`P2001` | `isolated-bus`                       | [warning] | Bus <code>&lt;busId&gt;</code> ('<code>&lt;busName&gt;</code>') is isolated with 0 in-service connecting branches or transformers.                                                                             |
+| <span id="psse-p2002"></span>`P2002` | `missing-slack-bus`                  | [error]    | Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored.                                                                                                     |
+| <span id="psse-p2003"></span>`P2003` | `multiple-slack-buses`               | [warning] | Power network base case contains <code>&lt;count&gt;</code> swing buses without explicit multi-island partitioning.                                                                                            |
+| <span id="psse-p2004"></span>`P2004` | `voltage-out-of-bounds`              | [warning] | Initial voltage magnitude at bus <code>&lt;busId&gt;</code> (<code>&lt;value&gt;</code> pu) is outside standard operational limits &#91;0.8, 1.2 pu&#93;.                                                      |
+| <span id="psse-p3001"></span>`P3001` | `generator-reactive-limits-inverted` | [error]    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted reactive limits: Qmin (<code>&lt;qMin&gt;</code> MVAR) &gt; Qmax (<code>&lt;qMax&gt;</code> MVAR).                       |
+| <span id="psse-p3002"></span>`P3002` | `generator-power-limits-inverted`    | [error]    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted active power limits: Pmin (<code>&lt;pMin&gt;</code> MW) &gt; Pmax (<code>&lt;pMax&gt;</code> MW).                       |
+| <span id="psse-p3003"></span>`P3003` | `generator-scheduled-voltage-bounds` | [warning] | Generator '<code>&lt;genId&gt;</code>' scheduled voltage Vs = <code>&lt;vs&gt;</code> p.u. is outside the typical operating band &#91;0.8, 1.2&#93;.                                                           |
+| <span id="psse-p4001"></span>`P4001` | `branch-invalid-reactance`           | [error]    | Transmission branch '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has zero or negative reactance X = <code>&lt;x&gt;</code> p.u.                          |
+| <span id="psse-p4002"></span>`P4002` | `branch-base-kv-mismatch`            | [warning] | Branch '<code>&lt;ckt&gt;</code>' connects bus <code>&lt;fromBus&gt;</code> (<code>&lt;fromKv&gt;</code> kV) to bus <code>&lt;toBus&gt;</code> (<code>&lt;toKv&gt;</code> kV) without a transformer.           |
+| <span id="psse-p4003"></span>`P4003` | `transformer-tap-out-of-bounds`      | [warning] | Transformer '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has off-nominal tap ratio <code>&lt;ratio&gt;</code> outside typical limits &#91;0.7, 1.3&#93;. |
 
 ## OpenDSS {#opendss}
 

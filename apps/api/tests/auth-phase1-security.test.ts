@@ -57,7 +57,7 @@ test("Phase 1 Security & Hardening Integration Suite", async (t) => {
     const sent = defaultMailer.getSentMails();
     const verificationEmail = sent.find((m) => m.to === "npm.engineer@aerospace.corp");
     assert.ok(verificationEmail, "Verification email must be dispatched for npm-registered user");
-    assert.ok(verificationEmail.subject.includes("Verify your ModelScript account"));
+    assert.ok(verificationEmail.subject.includes("Verify your Ansatz account"));
     assert.ok(verificationEmail.text.includes("/verify-email?token="));
   });
 

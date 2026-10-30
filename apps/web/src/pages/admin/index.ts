@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./components/AdminEmailStudioCard";
 export * from "./components/AdminMenuSidebar";
 export * from "./styles";
 export * from "./tabs/AdminAnalyticsTab";

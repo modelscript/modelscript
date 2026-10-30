@@ -9,18 +9,20 @@ import { registerWorkspaceFeaturesProvider } from "../src/providers/workspaceFea
 import { LanguageRegistry } from "../src/registry/LanguageRegistry.js";
 
 test("LSP Formal Verification: CodeLens & QuickFix Integration", async (t) => {
-  await t.test("should generate CodeLens actions for SysML v2 action, part, and state defs", async () => {
-    let codeLensHandler: any = null;
-    const mockConnection: any = {
-      onRequest: (method: string, handler: any) => {
-        if (method === "textDocument/codeLens") {
-          codeLensHandler = handler;
-        }
-      },
-    };
+  await t.test(
+    "should enforce clean Stable channel defaults and support Dev channel CodeLens actions for SysML v2",
+    async () => {
+      let codeLensHandler: any = null;
+      const mockConnection: any = {
+        onRequest: (method: string, handler: any) => {
+          if (method === "textDocument/codeLens") {
+            codeLensHandler = handler;
+          }
+        },
+      };
 
-    const sysmlUri = "file:///workspace/Autopilot.sysml";
-    const sysmlContent = `
+      const sysmlUri = "file:///workspace/Autopilot.sysml";
+      const sysmlContent = `
 package AutopilotSystem {
   action def SpeedControl {
     in item speed : Real;
@@ -36,111 +38,145 @@ package AutopilotSystem {
   }
 }
 `;
-    const doc = TextDocument.create(sysmlUri, "sysml2", 1, sysmlContent);
-    const mockDocuments: any = {
-      get: (uri: string) => (uri === sysmlUri ? doc : undefined),
-    };
+      const doc = TextDocument.create(sysmlUri, "sysml2", 1, sysmlContent);
+      const mockDocuments: any = {
+        get: (uri: string) => (uri === sysmlUri ? doc : undefined),
+      };
 
-    const mockContext: any = {
-      connection: mockConnection,
-      documents: mockDocuments,
-      workspaceManager: {
-        globalWorkspaceIndex: { getFileIndex: () => undefined },
-        sysml2WorkspaceIndex: { getFileIndex: () => undefined },
-      },
-    };
+      const mockContext: any = {
+        connection: mockConnection,
+        documents: mockDocuments,
+        workspaceManager: {
+          globalWorkspaceIndex: { getFileIndex: () => undefined },
+          sysml2WorkspaceIndex: { getFileIndex: () => undefined },
+        },
+      };
 
-    registerCodeLensProvider(mockContext);
-    assert.ok(codeLensHandler, "CodeLens handler must be registered");
+      registerCodeLensProvider(mockContext);
+      assert.ok(codeLensHandler, "CodeLens handler must be registered");
 
-    const lenses = codeLensHandler({ textDocument: { uri: sysmlUri } });
-    assert.ok(lenses.length >= 3, `Expected at least 3 lenses, got ${lenses.length}`);
+      // 1. Default ('stable' channel): no noisy stacked CodeLenses on SysML part/action/state defs
+      const stableLenses = codeLensHandler({ textDocument: { uri: sysmlUri } });
+      assert.strictEqual(
+        stableLenses.length,
+        0,
+        "Stable channel must not stack verification/scaffolding/trade-study/diagram CodeLenses on SysML v2 definitions",
+      );
 
-    // Check for MC/DC test runner lens
-    const mcdcLens = lenses.find((l: any) => l.command.title.includes("MC/DC Tests"));
-    assert.ok(mcdcLens, "Must have MC/DC test runner lens");
-    assert.strictEqual(mcdcLens.command.command, "modelscript.runMcdcTests");
+      // 2. 'dev' channel: enables formal verification, scaffolding, and trade study showcase CodeLenses
+      mockContext.settings = {
+        features: { channel: "dev" },
+        codeLens: { verification: "all", diagram: true },
+      };
+      const lenses = codeLensHandler({ textDocument: { uri: sysmlUri } });
+      assert.ok(lenses.length >= 3, `Expected at least 3 lenses in dev channel, got ${lenses.length}`);
 
-    // Check for Region Decomposition lens
-    const decompLens = lenses.find((l: any) => l.command.title.includes("Decompose Regions"));
-    assert.ok(decompLens, "Must have region decomposition lens");
-    assert.strictEqual(decompLens.command.command, "modelscript.decomposeRegions");
+      // Check for MC/DC test runner lens
+      const mcdcLens = lenses.find((l: any) => l.command.title.includes("MC/DC Tests"));
+      assert.ok(mcdcLens, "Must have MC/DC test runner lens");
+      assert.strictEqual(mcdcLens.command.command, "modelscript.runMcdcTests");
 
-    // Check for Contract Hierarchy lens
-    const contractLens = lenses.find((l: any) => l.command.title.includes("Verify Contracts"));
-    assert.ok(contractLens, "Must have contract hierarchy lens");
-    assert.strictEqual(contractLens.command.command, "modelscript.openContractExplorer");
+      // Check for Region Decomposition lens
+      const decompLens = lenses.find((l: any) => l.command.title.includes("Decompose Regions"));
+      assert.ok(decompLens, "Must have region decomposition lens");
+      assert.strictEqual(decompLens.command.command, "modelscript.decomposeRegions");
 
-    // Check for Candidate Trade Study & Tier-3 Confirmation lens
-    const tradeStudyLens = lenses.find((l: any) => l.command.title.includes("Tier 1: Validated"));
-    assert.ok(tradeStudyLens, "Must have Candidate Trade Study CodeLens");
-    assert.strictEqual(tradeStudyLens.command.command, "modelscript.openCandidateTradeStudy");
+      // Check for Contract Hierarchy lens
+      const contractLens = lenses.find((l: any) => l.command.title.includes("Verify Contracts"));
+      assert.ok(contractLens, "Must have contract hierarchy lens");
+      assert.strictEqual(contractLens.command.command, "modelscript.openContractExplorer");
 
-    // Check for Trace Replay lens
-    const replayLens = lenses.find((l: any) => l.command.title.includes("Replay Trace"));
-    assert.ok(replayLens, "Must have trace replay lens");
-    assert.strictEqual(replayLens.command.command, "modelscript.openTraceReplay");
-  });
+      // Check for Candidate Trade Study & Tier-3 Confirmation lens
+      const tradeStudyLens = lenses.find((l: any) => l.command.title.includes("Tier 1: Validated"));
+      assert.ok(tradeStudyLens, "Must have Candidate Trade Study CodeLens");
+      assert.strictEqual(tradeStudyLens.command.command, "modelscript.openCandidateTradeStudy");
 
-  await t.test("should generate QuickFix for unhandled decision table gap diagnostic", async () => {
-    let codeActionHandler: any = null;
-    const mockConnection: any = {
-      onReferences: () => {},
-      onDefinition: () => {},
-      onRenameRequest: () => {},
-      onWorkspaceSymbol: () => {},
-      onCodeAction: (handler: any) => {
-        codeActionHandler = handler;
-      },
-    };
+      // Check for Trace Replay lens
+      const replayLens = lenses.find((l: any) => l.command.title.includes("Replay Trace"));
+      assert.ok(replayLens, "Must have trace replay lens");
+      assert.strictEqual(replayLens.command.command, "modelscript.openTraceReplay");
+    },
+  );
 
-    const docUri = "file:///workspace/SpeedDecide.sysml";
-    const docContent = `
+  await t.test(
+    "should generate QuickFix for unhandled decision table gap diagnostic and declaration CodeActions",
+    async () => {
+      let codeActionHandler: any = null;
+      const mockConnection: any = {
+        onReferences: () => {},
+        onDefinition: () => {},
+        onRenameRequest: () => {},
+        onWorkspaceSymbol: () => {},
+        onCodeAction: (handler: any) => {
+          codeActionHandler = handler;
+        },
+      };
+
+      const docUri = "file:///workspace/SpeedDecide.sysml";
+      const docContent = `
 action def DecideController {
   if (speed <= 50) {
     assign mode := 1;
   }
 }
+part def Vehicle {
+}
 `;
-    const doc = TextDocument.create(docUri, "sysml2", 1, docContent);
-    const mockDocuments: any = {
-      get: (uri: string) => (uri === docUri ? doc : undefined),
-    };
+      const doc = TextDocument.create(docUri, "sysml2", 1, docContent);
+      const mockDocuments: any = {
+        get: (uri: string) => (uri === docUri ? doc : undefined),
+      };
 
-    registerWorkspaceFeaturesProvider(
-      mockConnection,
-      mockDocuments,
-      new Map(),
-      async () => {},
-      async () => ({ symbols: new Map() }),
-    );
+      registerWorkspaceFeaturesProvider(
+        mockConnection,
+        mockDocuments,
+        new Map(),
+        async () => {},
+        async () => ({ symbols: new Map() }),
+      );
 
-    assert.ok(codeActionHandler, "onCodeAction handler must be registered");
+      assert.ok(codeActionHandler, "onCodeAction handler must be registered");
 
-    const diagnostic = {
-      source: "modelscript",
-      code: "DECISION_TABLE_GAP",
-      range: {
-        start: { line: 2, character: 2 },
-        end: { line: 4, character: 3 },
-      },
-      message:
-        "Decision table is non-exhaustive. Unhandled input domain scenario: speed >= 50.01 && speed <= 100. QuickFix: else if (speed > 50)",
-      severity: DiagnosticSeverity.Warning,
-    };
+      const diagnostic = {
+        source: "modelscript",
+        code: "DECISION_TABLE_GAP",
+        range: {
+          start: { line: 2, character: 2 },
+          end: { line: 4, character: 3 },
+        },
+        message:
+          "Decision table is non-exhaustive. Unhandled input domain scenario: speed >= 50.01 && speed <= 100. QuickFix: else if (speed > 50)",
+        severity: DiagnosticSeverity.Warning,
+      };
 
-    const actions = codeActionHandler({
-      textDocument: { uri: docUri },
-      range: diagnostic.range,
-      context: { diagnostics: [diagnostic] },
-    });
+      const actions = codeActionHandler({
+        textDocument: { uri: docUri },
+        range: diagnostic.range,
+        context: { diagnostics: [diagnostic] },
+      });
 
-    assert.ok(actions.length > 0, "Should generate at least one code action");
-    const quickFix = actions.find((a: any) => a.kind === CodeActionKind.QuickFix);
-    assert.ok(quickFix, "Must offer a QuickFix action");
-    assert.ok(quickFix.title.includes("missing guard scenario"));
-    assert.ok(quickFix.edit.changes[docUri][0].newText.includes("else if"));
-  });
+      assert.ok(actions.length > 0, "Should generate at least one code action");
+      const quickFix = actions.find((a: any) => a.kind === CodeActionKind.QuickFix);
+      assert.ok(quickFix, "Must offer a QuickFix action");
+      assert.ok(quickFix.title.includes("missing guard scenario"));
+      assert.ok(quickFix.edit.changes[docUri][0].newText.includes("else if"));
+
+      // Verify Lightbulb CodeActions on 'part def Vehicle' (line 6)
+      const partActions = codeActionHandler({
+        textDocument: { uri: docUri },
+        range: { start: { line: 6, character: 0 }, end: { line: 6, character: 16 } },
+        context: { diagnostics: [] },
+      });
+      assert.ok(
+        partActions.some((a: any) => a.command?.command === "modelscript.openContractExplorer"),
+        "Should offer 'Verify Contracts & Hierarchy' as a Lightbulb CodeAction on part def",
+      );
+      assert.ok(
+        partActions.some((a: any) => a.command?.command === "modelscript.scaffoldMultiDomain"),
+        "Should offer 'Scaffold Multi-Domain Models' as a Lightbulb CodeAction on part def",
+      );
+    },
+  );
 
   await t.test("should NOT emit fake Drone digital-thread CodeLenses on unannotated Modelica parameters", async () => {
     let codeLensHandler: any = null;
@@ -180,6 +216,10 @@ end AnnotatedTwin;
         globalWorkspaceIndex: { getFileIndex: () => undefined },
         sysml2WorkspaceIndex: { getFileIndex: () => undefined },
       },
+      settings: {
+        features: { channel: "experimental" },
+        codeLens: { polyglotLinks: true },
+      },
     };
 
     registerCodeLensProvider(mockContext);
@@ -192,6 +232,12 @@ end AnnotatedTwin;
         l.command?.title?.includes("CFD Surrogate"),
     );
     assert.strictEqual(fakeTwinLens, undefined, "Unannotated Modelica parameters must not get fake Drone twin lenses");
+    assert.strictEqual(
+      plainLenses.length,
+      1,
+      "Plain Modelica model must receive exactly 1 CodeLens ('▶ Simulate model') by default",
+    );
+    assert.strictEqual(plainLenses[0].command.title, "▶ Simulate model");
 
     const annotatedLenses = codeLensHandler({ textDocument: { uri: annotatedUri } });
     const realTwinLens = annotatedLenses.find((l: any) => l.command?.title?.includes("chassis.inp#mass"));
@@ -199,6 +245,7 @@ end AnnotatedTwin;
 
     // Verify CodeLens category settings filtering
     mockContext.settings = {
+      features: { channel: "experimental" },
       codeLens: {
         enabled: true,
         polyglotLinks: false,

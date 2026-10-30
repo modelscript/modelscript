@@ -5,17 +5,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { formatPageTitle } from "../src/util/title.js";
+import { formatPageTitle, setActiveBrandName } from "../src/util/title.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe("Title & SEO Infrastructure", () => {
-  it("formats page titles correctly with brand suffix", () => {
-    assert.equal(formatPageTitle("Dashboard"), "Dashboard | ModelScript");
-    assert.equal(formatPageTitle("Explore"), "Explore | ModelScript");
-    assert.equal(formatPageTitle(""), "ModelScript");
-    assert.equal(formatPageTitle(undefined), "ModelScript");
+  it("formats page titles correctly with default Ansatz brand suffix and white-label overrides", () => {
+    setActiveBrandName("Ansatz");
+    assert.equal(formatPageTitle("Dashboard"), "Dashboard | Ansatz");
+    assert.equal(formatPageTitle("Explore"), "Explore | Ansatz");
+    assert.equal(formatPageTitle(""), "Ansatz");
+    assert.equal(formatPageTitle(undefined), "Ansatz");
+
+    setActiveBrandName("ETH Aero Lab");
+    assert.equal(formatPageTitle("Dashboard"), "Dashboard | ETH Aero Lab");
+    assert.equal(formatPageTitle(undefined), "ETH Aero Lab");
+    setActiveBrandName("Ansatz");
   });
 
   it("verifies public/robots.txt contains correct crawl rules and sitemap reference", () => {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { FmuStorage, type CosimMqttClient, type HistorianRecorder } from "@modelscript/exchange/cosim";
-import express from "express";
+import express, { type Request } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -208,6 +208,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     const decayWorkerInterval = setInterval(
       () => {
         try {
+          if (database.getInstanceSettings().maintenanceMode) return;
           database.decayTrendingTopics();
         } catch (err) {
           console.error("Failed to decay trending topics:", err);
@@ -219,6 +220,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
     if (!isStartupAirgap) {
       const runRssWorker = () => {
+        try {
+          if (database.getInstanceSettings().maintenanceMode) return;
+        } catch {
+          // proceed
+        }
         import("./util/rss-worker.js")
           .then(({ processRssFeeds }) => {
             void processRssFeeds(database);
@@ -234,6 +240,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     // Automated GDPR / Security Log Retention Worker (Daily purge of expired logs > 30 days)
     const runLogPurgeWorker = () => {
       try {
+        if (database.getInstanceSettings().maintenanceMode) return;
         const { deletedCount } = database.purgeExpiredLogs(30);
         if (deletedCount > 0) {
           console.log(
@@ -252,6 +259,30 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     runLogPurgeWorker();
     const logPurgeInterval = setInterval(runLogPurgeWorker, 24 * 60 * 60 * 1000);
     app.locals["logPurgeInterval"] = logPurgeInterval;
+
+    // Automated SQLite Hot Backup & Retention Pruning Worker (Checks hourly against autoBackupIntervalHours)
+    const runAutoBackupWorker = () => {
+      try {
+        const settings = database.getInstanceSettings();
+        const intervalHours = settings.autoBackupIntervalHours;
+        if (intervalHours <= 0) return;
+
+        const backups = database.listBackups();
+        const latestBackupAt = backups[0]?.createdAt ? new Date(backups[0].createdAt).getTime() : 0;
+        const elapsedHours = (Date.now() - latestBackupAt) / (1000 * 60 * 60);
+        if (!latestBackupAt || elapsedHours >= intervalHours) {
+          const snapshot = database.createHotBackup("scheduled");
+          const pruned = database.pruneBackups(settings.backupRetentionCount);
+          console.log(
+            `[AutoBackupWorker] Created scheduled SQLite snapshot '${snapshot.fileName}' (${snapshot.sizeBytes} bytes, pruned ${pruned.deletedCount} older backups).`,
+          );
+        }
+      } catch (err) {
+        console.error("[AutoBackupWorker] Error executing scheduled backup:", err);
+      }
+    };
+    const autoBackupInterval = setInterval(runAutoBackupWorker, 60 * 60 * 1000);
+    app.locals["autoBackupInterval"] = autoBackupInterval;
 
     // Automated Social Bot Mention Worker (Polls pending @bot mentions and synthesizes LLM responses)
     import("./services/bot-mention-worker.js")
@@ -275,8 +306,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     }),
   );
 
-  // Cookie parser middleware (HttpOnly session cookies)
+  // Cookie parser middleware (HttpOnly session cookies) & per-app auth DB binding
   app.use((req, _res, next) => {
+    setAuthDatabase(database);
     const cookieHeader = req.headers["cookie"];
     const cookies: Record<string, string> = {};
     if (cookieHeader) {
@@ -366,6 +398,98 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   // Enterprise Edition (ee/) Air-Gap Security Headers
   app.use(createOptionalEnterpriseHeadersMiddleware());
+
+  // Multi-Tiered Maintenance Mode Enforcement Middleware ('read_only' & 'lockdown')
+  app.use((req, res, next) => {
+    if (req.method === "OPTIONS" || req.method === "HEAD") {
+      next();
+      return;
+    }
+    // Always exempt core auth, admin control plane, health probes, legal, and public banner discovery
+    if (
+      req.path === "/health" ||
+      req.path === "/legal" ||
+      req.path.startsWith("/.well-known/") ||
+      req.path.startsWith("/nodeinfo/") ||
+      req.path.startsWith("/api/v1/auth") ||
+      req.path.startsWith("/api/v1/admin") ||
+      req.path.startsWith("/api/v1/setup") ||
+      req.path.startsWith("/api/v1/instance") ||
+      req.path.startsWith("/api/v1/flags") ||
+      req.path.startsWith("/api/v1/compliance") ||
+      req.path.startsWith("/api/v1/analytics/pageview") ||
+      req.path.startsWith("/api/v1/dev/reset")
+    ) {
+      next();
+      return;
+    }
+
+    let isMaintenance = false;
+    let maintenanceLevel: "off" | "scheduled" | "read_only" | "lockdown" = "off";
+    let maintenanceEta = "";
+    let announcementBanner = "";
+    try {
+      const settings = database.getInstanceSettings();
+      isMaintenance = settings.maintenanceMode;
+      maintenanceLevel = settings.maintenanceLevel;
+      maintenanceEta = settings.maintenanceEta;
+      announcementBanner = settings.announcementBanner;
+    } catch {
+      isMaintenance = false;
+    }
+
+    if (!isMaintenance) {
+      next();
+      return;
+    }
+
+    const isReadRequest = req.method === "GET";
+    const isApiOrGitOrNpm =
+      req.path.startsWith("/api/") ||
+      req.path.startsWith("/git/") ||
+      req.path.startsWith("/-/") ||
+      req.path.includes("/-/");
+
+    // In 'read_only' mode, all GET requests pass through; in 'lockdown' mode, API GET requests are also blocked for non-admins
+    if (isReadRequest && (maintenanceLevel !== "lockdown" || !isApiOrGitOrNpm)) {
+      next();
+      return;
+    }
+
+    optionalAuth(req as Request, res, () => {
+      const authUser = (req as Request).user;
+      if (authUser?.accountType === "admin" || authUser?.role === "admin") {
+        res.setHeader("X-ModelScript-Admin-Bypass", "true");
+        next();
+        return;
+      }
+
+      let retryAfterSec = 300;
+      if (maintenanceEta) {
+        const etaMs = Date.parse(maintenanceEta);
+        if (!Number.isNaN(etaMs) && etaMs > Date.now()) {
+          retryAfterSec = Math.max(30, Math.min(86400, Math.ceil((etaMs - Date.now()) / 1000)));
+        }
+      }
+
+      res.setHeader("Retry-After", String(retryAfterSec));
+      res.setHeader("X-ModelScript-Maintenance", maintenanceLevel);
+      if (maintenanceEta) {
+        res.setHeader("X-ModelScript-Maintenance-ETA", maintenanceEta);
+      }
+      res.status(503).json({
+        error:
+          maintenanceLevel === "lockdown"
+            ? "Instance is currently undergoing full-lockdown maintenance. Please try again shortly."
+            : "Instance is currently in read-only maintenance mode. Please try again shortly.",
+        maintenanceMode: true,
+        maintenanceLevel,
+        maintenanceEta: maintenanceEta || null,
+        message: announcementBanner || null,
+        retryAfterSeconds: retryAfterSec,
+      });
+    });
+  });
 
   // Feature flags endpoint (evaluated for requesting user)
   app.get("/api/v1/flags", optionalAuth, (req, res) => {
@@ -524,14 +648,17 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   // ── Legal, Privacy & AGPLv3 § 13 Source Disclosure ──
   const legalHandler = (_req: express.Request, res: express.Response) => {
+    const settings = database.getInstanceSettings();
+    const brandName = settings.instanceName || "Ansatz";
     res.json({
-      name: "ModelScript Cloud",
+      name: brandName,
+      poweredBy: "ModelScript",
       edition: isEnterpriseEditionActive() ? "ee" : "ce",
       license: "AGPL-3.0-or-later",
       enterpriseLicense: "LicenseRef-ModelScript-Enterprise",
-      termsOfService: "https://modelscript.org/terms",
-      privacyPolicy: "https://modelscript.org/privacy",
-      exportPolicy: "https://modelscript.org/export-compliance",
+      termsOfService: "https://ansatz.social/terms",
+      privacyPolicy: "https://ansatz.social/privacy",
+      exportPolicy: "https://ansatz.social/export-compliance",
       securityPolicy: "https://modelscript.org/.well-known/security.txt",
       sourceCode: "https://github.com/modelscript/modelscript",
       agplNotice:
@@ -600,7 +727,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         next();
         return;
       }
-      if (req.path === "/") {
+      if (
+        req.path === "/" &&
+        (process.env["SERVE_DOCS_AT_ROOT"] === "true" || !staticWebDir || !fs.existsSync(staticWebDir))
+      ) {
         const rootDocIndex = path.join(resolvedDocsRoot, "index.html");
         if (fs.existsSync(rootDocIndex)) {
           res.sendFile(rootDocIndex);

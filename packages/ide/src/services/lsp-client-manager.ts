@@ -5,6 +5,7 @@ import { Uri, workspace } from "vscode";
 import { LanguageClient, type LanguageClientOptions } from "vscode-languageclient/browser";
 import {
   buildLspSettingsPayload,
+  getFeatureChannelSetting,
   getLanguageMaturityBadge,
   getStatusBarConfig,
   isLanguageEnabled,
@@ -334,17 +335,27 @@ export class LspClientManager implements vscode.Disposable {
       return;
     }
 
+    const channel = getFeatureChannelSetting();
+    const channelLabel =
+      channel === "stable"
+        ? "🟢 Stable"
+        : channel === "preview"
+          ? "🟡 Preview"
+          : channel === "experimental"
+            ? "🧪 Experimental"
+            : "🔬 Dev";
+
     if (matchedLang) {
       const displayName = matchedLang.aliases?.[0] ?? matchedLang.id;
       const badge = shouldShowMaturityBadges() ? ` (${getLanguageMaturityBadge(matchedLang.id)})` : "";
       this._statusItem.text = `$(symbol-namespace) ${displayName}${badge}`;
-      this._statusItem.tooltip = `ModelScript Language: ${displayName}${badge} — Click to configure languages & maturity tiers`;
-      this._statusItem.command = "modelscript.configureLanguages";
+      this._statusItem.tooltip = `ModelScript Language: ${displayName}${badge} | Channel: ${channelLabel} — Click to configure features & languages`;
+      this._statusItem.command = "modelscript.configureFeatures";
       this._statusItem.show();
     } else if (visibility === "always") {
-      this._statusItem.text = "$(check) ModelScript Ready";
-      this._statusItem.tooltip = "ModelScript Polyglot Compiler & Simulation Engine — Click to configure languages";
-      this._statusItem.command = "modelscript.configureLanguages";
+      this._statusItem.text = `$(check) ModelScript (${channelLabel})`;
+      this._statusItem.tooltip = `ModelScript Polyglot Compiler & Simulation Engine (Channel: ${channelLabel}) — Click to configure features & languages`;
+      this._statusItem.command = "modelscript.configureFeatures";
       this._statusItem.show();
     }
   }

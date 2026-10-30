@@ -590,7 +590,7 @@ export async function runComposerAiDraft(options: {
     const localSummary = classifyArtifactLocally(rawView);
 
     const systemPrompt =
-      "You are ModelScript AI Composer Assistant. Draft a concise, engaging technical engineering post introducing the attached artifact with 2-3 relevant hashtags. Output ONLY the post text.";
+      "You are Ansatz AI Composer Assistant (powered by ModelScript). Draft a concise, engaging technical engineering post introducing the attached artifact with 2-3 relevant hashtags. Output ONLY the post text.";
     const userPrompt = `Draft a ${tone} post for artifact "${localSummary.title}" (${localSummary.domain}). Highlights: ${
       localSummary.highlights.join("; ") || "Interactive model"
     }. Suggested hashtags: ${localSummary.suggestedHashtags.join(" ")}`;
@@ -680,7 +680,7 @@ export async function runComposerAiPolish(options: {
     };
 
     const systemPrompt = [
-      "You are an AI writing assistant integrated into the ModelScript social composer.",
+      "You are an AI writing assistant integrated into the Ansatz social composer (powered by ModelScript).",
       `Instruction: ${modeInstructions[mode]}`,
       "Preserve @mentions, #hashtags, LaTeX math ($...$), code blocks, and ::artifact directives verbatim.",
       "Output ONLY the revised text without quotes or explanation.",

@@ -4,6 +4,7 @@ import { LockIcon } from "@primer/octicons-react";
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../AuthContext";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { EmptyState } from "./EmptyState";
 
 export interface RequireAuthProps {
@@ -18,6 +19,8 @@ export interface RequireAuthProps {
  */
 export const RequireAuth: React.FC<RequireAuthProps> = ({ feature, children }) => {
   const { user, isLoading } = useAuth();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const location = useLocation();
 
   if (isLoading) return null;
@@ -28,7 +31,7 @@ export const RequireAuth: React.FC<RequireAuthProps> = ({ feature, children }) =
     <EmptyState
       icon={<LockIcon size={24} />}
       title="Sign in to continue"
-      body={`You need a ModelScript account to see ${feature}.`}
+      body={`You need an ${brandName} account to see ${feature}.`}
       actions={
         <>
           <Link className="ms-btn ms-btn-primary" to={`/login?next=${next}`}>

@@ -2,19 +2,25 @@
 
 import {
   CheckIcon,
+  ChevronDownIcon,
   ChevronUpIcon,
   DatabaseIcon,
   MoonIcon,
+  PersonIcon,
   PlusIcon,
+  RocketIcon,
   ShieldLockIcon,
+  SignOutIcon,
   SunIcon,
   SyncIcon,
   XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import styled, { css, keyframes } from "styled-components";
 import { getClusterStatus, topUpCredits, type ClusterStatus } from "../api";
+import { resetInstanceSetupWizard } from "../api/admin";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlags } from "../FeatureFlagContext";
 import { useTheme } from "../theme";
@@ -64,6 +70,17 @@ const spinAnim = keyframes`
   }
 `;
 
+const dropdownFadeIn = keyframes`
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+`;
+
 const TopBarRoot = styled.header`
   position: fixed;
   top: 0;
@@ -100,6 +117,14 @@ const TopBarInner = styled.div`
   width: 100%;
   max-width: 1380px;
   gap: 12px;
+  min-width: 0;
+`;
+
+const LeftScrollSection = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
 
@@ -108,7 +133,7 @@ const TopBarInner = styled.div`
   }
 `;
 
-const SectionGroup = styled.div`
+const RightPinnedSection = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
@@ -128,6 +153,7 @@ const BrandBadge = styled.div`
   letter-spacing: 0.08em;
   color: #f3e8ff;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
 `;
 
 const StatusDot = styled.span<{ $color: string; $pulse?: boolean | undefined }>`
@@ -158,6 +184,7 @@ const ControlPill = styled.button<{ $highlight?: "amber" | "emerald" | "none" | 
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 
   ${(p) =>
     p.$highlight === "amber"
@@ -225,6 +252,7 @@ const SegmentedGroup = styled.div`
   border-radius: 7px;
   padding: 2px;
   gap: 2px;
+  flex-shrink: 0;
 `;
 
 const PersonaButton = styled.button<{ $active?: boolean | undefined }>`
@@ -256,14 +284,15 @@ const PersonaButton = styled.button<{ $active?: boolean | undefined }>`
 `;
 
 const PersonaInitial = styled.span<{ $active?: boolean | undefined }>`
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 9.5px;
   font-weight: 800;
+  flex-shrink: 0;
   background: ${(p) => (p.$active ? "#7c3aed" : "rgba(255, 255, 255, 0.22)")};
   color: #ffffff;
 `;
@@ -277,8 +306,160 @@ const RoleMicroBadge = styled.span<{ $active?: boolean | undefined }>`
   letter-spacing: 0.04em;
   padding: 1px 4px;
   border-radius: 3px;
+  flex-shrink: 0;
   background: ${(p) => (p.$active ? "rgba(124, 58, 237, 0.16)" : "rgba(255, 255, 255, 0.16)")};
   color: ${(p) => (p.$active ? "#6d28d9" : "#e9d5ff")};
+`;
+
+const PersonaPickerContainer = styled.div`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+`;
+
+const PersonaDropdownTrigger = styled.button<{ $open?: boolean | undefined }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  background: ${(p) => (p.$open ? "rgba(255, 255, 255, 0.96)" : "rgba(15, 23, 42, 0.38)")};
+  color: ${(p) => (p.$open ? "#3b0764" : "#ffffff")};
+  border: 1px solid ${(p) => (p.$open ? "#ffffff" : "rgba(216, 180, 254, 0.35)")};
+  box-shadow: ${(p) => (p.$open ? "0 2px 8px rgba(0, 0, 0, 0.25)" : "none")};
+
+  &:hover {
+    background: ${(p) => (p.$open ? "#ffffff" : "rgba(15, 23, 42, 0.52)")};
+    border-color: ${(p) => (p.$open ? "#ffffff" : "rgba(216, 180, 254, 0.55)")};
+  }
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: wait;
+  }
+`;
+
+const ChevronWrapper = styled.span<{ $open?: boolean | undefined }>`
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.8;
+  transition: transform 0.15s ease;
+  transform: ${(p) => (p.$open ? "rotate(180deg)" : "rotate(0deg)")};
+`;
+
+const PersonaDropdownMenu = styled.div`
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 268px;
+  background: rgba(15, 23, 42, 0.97);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(192, 132, 252, 0.35);
+  border-radius: 10px;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  padding: 5px;
+  z-index: 1100;
+  animation: ${dropdownFadeIn} 0.12s ease-out;
+`;
+
+const DropdownSectionTitle = styled.div`
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(216, 180, 254, 0.75);
+  padding: 4px 8px 5px;
+`;
+
+const PersonaMenuItem = styled.button<{ $active?: boolean | undefined }>`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: ${(p) => (p.$active ? "rgba(139, 92, 246, 0.22)" : "transparent")};
+  color: #f8fafc;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+
+  &:hover {
+    background: ${(p) => (p.$active ? "rgba(139, 92, 246, 0.3)" : "rgba(255, 255, 255, 0.08)")};
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+`;
+
+const PersonaMenuMeta = styled.div`
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+`;
+
+const PersonaMenuUsername = styled.span`
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const PersonaMenuEmail = styled.span`
+  font-size: 10.5px;
+  color: rgba(226, 232, 240, 0.65);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const DropdownDivider = styled.div`
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 4px 2px;
+`;
+
+const LogoutMenuItem = styled.button`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.16);
+    color: #fecaca;
+  }
 `;
 
 const CounterBadge = styled.span`
@@ -323,6 +504,7 @@ const IconBtn = styled.button`
   color: #ffffff;
   cursor: pointer;
   padding: 0;
+  flex-shrink: 0;
   transition: all 0.15s ease;
 
   &:hover {
@@ -380,16 +562,54 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
   clusterStatus,
   onClusterStatusChange,
 }) => {
+  const navigate = useNavigate();
   const { user, isAdmin, login, logout, creditBalance, refreshWallet } = useAuth();
   const { overrides, resetAllOverrides } = useFeatureFlags();
   const { theme, toggleTheme } = useTheme();
 
   const [switchingEmail, setSwitchingEmail] = useState<string | null>(null);
+  const [isPersonaMenuOpen, setIsPersonaMenuOpen] = useState(false);
   const [isRefreshingCluster, setIsRefreshingCluster] = useState(false);
   const [isBoostingCredits, setIsBoostingCredits] = useState(false);
   const [creditBoostFeedback, setCreditBoostFeedback] = useState(false);
+  const [isReopeningWizard, setIsReopeningWizard] = useState(false);
+
+  const personaMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeOverrideCount = Object.keys(overrides).length;
+
+  useEffect(() => {
+    if (!isPersonaMenuOpen) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (personaMenuRef.current && !personaMenuRef.current.contains(e.target as Node)) {
+        setIsPersonaMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsPersonaMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isPersonaMenuOpen]);
+
+  const handleRerunSetupWizard = useCallback(async () => {
+    if (isReopeningWizard) return;
+    setIsReopeningWizard(true);
+    try {
+      await resetInstanceSetupWizard();
+    } catch {
+      // Navigate to /setup even if API call fails so the page can display status
+    } finally {
+      setIsReopeningWizard(false);
+      navigate("/setup");
+    }
+  }, [isReopeningWizard, navigate]);
 
   const fetchCluster = useCallback(async () => {
     setIsRefreshingCluster(true);
@@ -416,10 +636,15 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
   }, [clusterStatus, fetchCluster]);
 
   const handlePersonaSwitch = async (persona: DevPersona) => {
-    if (user?.email === persona.email || switchingEmail) return;
+    if (user?.email === persona.email) {
+      setIsPersonaMenuOpen(false);
+      return;
+    }
+    if (switchingEmail) return;
     setSwitchingEmail(persona.email);
     try {
       await login(persona.email, "password");
+      setIsPersonaMenuOpen(false);
     } catch {
       // Fallback if seed account isn't created yet
     } finally {
@@ -453,7 +678,8 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
         : "API READY"
       : "API OFFLINE";
 
-  const isPresetUser = Boolean(user && DEV_PERSONAS.some((p) => p.email === user.email));
+  const activePresetPersona = user ? DEV_PERSONAS.find((p) => p.email === user.email) : undefined;
+  const activeRoleLabel = activePresetPersona?.roleLabel ?? (user && isAdmin ? "ADMIN" : undefined);
 
   if (!isExpanded) {
     return (
@@ -489,9 +715,9 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
   return (
     <TopBarRoot role="region" aria-label="Developer Mode Toolbar">
       <TopBarInner>
-        {/* Left: Dev Brand + Live Cluster/API Health + DB Reload */}
-        <SectionGroup>
-          <BrandBadge title="ModelScript Development Mode">
+        {/* Left: Dev Brand + Live Cluster/API Health + DB Reload + Flags + Credits */}
+        <LeftScrollSection>
+          <BrandBadge title="Ansatz Development Mode">
             <StatusDot $color="#c084fc" $pulse />
             <span>DEV MODE</span>
           </BrandBadge>
@@ -519,6 +745,15 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
           <ControlPill onClick={onOpenResetDbDialog} title="Reset and re-seed development database">
             <DatabaseIcon size={12} />
             <span>Reload DB</span>
+          </ControlPill>
+
+          <ControlPill
+            onClick={() => void handleRerunSetupWizard()}
+            disabled={isReopeningWizard}
+            title="Unlock and re-run the 4-step First-Run Install Wizard (/setup)"
+          >
+            <RocketIcon size={12} />
+            <span>{isReopeningWizard ? "Opening..." : "Setup Wizard"}</span>
           </ControlPill>
 
           {/* Feature Flags with inline quick-clear */}
@@ -589,59 +824,124 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
               </PersonaButton>
             </SegmentedGroup>
           )}
-        </SectionGroup>
+        </LeftScrollSection>
 
-        {/* Right: Persona Switcher + Theme + Collapse */}
-        <SectionGroup>
-          <span style={{ fontSize: "11px", opacity: 0.8, fontWeight: 500 }}>{user ? "Persona:" : "Login as:"}</span>
-
-          <SegmentedGroup>
-            {DEV_PERSONAS.map((persona) => {
-              const isActive = user?.email === persona.email;
-              const isSwitching = switchingEmail === persona.email;
-              return (
-                <PersonaButton
-                  key={persona.email}
-                  $active={isActive}
-                  disabled={isSwitching}
-                  onClick={() => void handlePersonaSwitch(persona)}
-                  title={
-                    isActive
-                      ? `Logged in as @${persona.username} (${persona.email})`
-                      : `Switch immediately to @${persona.username} (${persona.email})`
-                  }
-                >
-                  <PersonaInitial $active={isActive}>{persona.initial}</PersonaInitial>
-                  <span>@{persona.username}</span>
-                  {persona.roleLabel && (
-                    <RoleMicroBadge $active={isActive}>
+        {/* Right: Compact Persona Picker Popover + Theme + Pinned Collapse */}
+        <RightPinnedSection>
+          <PersonaPickerContainer ref={personaMenuRef}>
+            <PersonaDropdownTrigger
+              type="button"
+              $open={isPersonaMenuOpen}
+              disabled={Boolean(switchingEmail)}
+              onClick={() => setIsPersonaMenuOpen((prev) => !prev)}
+              aria-haspopup="menu"
+              aria-expanded={isPersonaMenuOpen}
+              title={
+                user
+                  ? `Active persona: @${user.username} (${user.email}) — click to switch`
+                  : "Select a developer persona to sign in"
+              }
+            >
+              {user ? (
+                <>
+                  <PersonaInitial $active={isPersonaMenuOpen}>
+                    {activePresetPersona?.initial ?? (user.username[0] || "U").toUpperCase()}
+                  </PersonaInitial>
+                  <span>@{user.username}</span>
+                  {activeRoleLabel && (
+                    <RoleMicroBadge $active={isPersonaMenuOpen}>
                       <ShieldLockIcon size={9} />
-                      {persona.roleLabel}
+                      {activeRoleLabel}
                     </RoleMicroBadge>
                   )}
-                </PersonaButton>
-              );
-            })}
+                </>
+              ) : (
+                <>
+                  <PersonIcon size={12} />
+                  <span>Login as…</span>
+                </>
+              )}
+              <ChevronWrapper $open={isPersonaMenuOpen}>
+                <ChevronDownIcon size={12} />
+              </ChevronWrapper>
+            </PersonaDropdownTrigger>
 
-            {user && !isPresetUser && (
-              <PersonaButton $active title={`Logged in as ${user.email}`}>
-                <PersonaInitial $active>{(user.username[0] || "U").toUpperCase()}</PersonaInitial>
-                <span>@{user.username}</span>
-                {isAdmin && (
-                  <RoleMicroBadge $active>
-                    <ShieldLockIcon size={9} />
-                    ADMIN
-                  </RoleMicroBadge>
+            {isPersonaMenuOpen && (
+              <PersonaDropdownMenu role="menu" aria-label="Switch Developer Persona">
+                <DropdownSectionTitle>Switch Dev Persona</DropdownSectionTitle>
+
+                {DEV_PERSONAS.map((persona) => {
+                  const isActive = user?.email === persona.email;
+                  const isSwitching = switchingEmail === persona.email;
+                  return (
+                    <PersonaMenuItem
+                      key={persona.email}
+                      type="button"
+                      role="menuitem"
+                      $active={isActive}
+                      disabled={isSwitching}
+                      onClick={() => void handlePersonaSwitch(persona)}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
+                        <PersonaInitial $active={isActive}>{persona.initial}</PersonaInitial>
+                        <PersonaMenuMeta>
+                          <PersonaMenuUsername>@{persona.username}</PersonaMenuUsername>
+                          <PersonaMenuEmail>{persona.email}</PersonaMenuEmail>
+                        </PersonaMenuMeta>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                        {persona.roleLabel && (
+                          <RoleMicroBadge $active={false}>
+                            <ShieldLockIcon size={9} />
+                            {persona.roleLabel}
+                          </RoleMicroBadge>
+                        )}
+                        {isActive && <CheckIcon size={13} fill="#c084fc" />}
+                      </div>
+                    </PersonaMenuItem>
+                  );
+                })}
+
+                {user && !activePresetPersona && (
+                  <PersonaMenuItem type="button" role="menuitem" $active onClick={() => setIsPersonaMenuOpen(false)}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
+                      <PersonaInitial $active>{(user.username[0] || "U").toUpperCase()}</PersonaInitial>
+                      <PersonaMenuMeta>
+                        <PersonaMenuUsername>@{user.username}</PersonaMenuUsername>
+                        <PersonaMenuEmail>{user.email}</PersonaMenuEmail>
+                      </PersonaMenuMeta>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                      {isAdmin && (
+                        <RoleMicroBadge $active={false}>
+                          <ShieldLockIcon size={9} />
+                          ADMIN
+                        </RoleMicroBadge>
+                      )}
+                      <CheckIcon size={13} fill="#c084fc" />
+                    </div>
+                  </PersonaMenuItem>
                 )}
-              </PersonaButton>
-            )}
-          </SegmentedGroup>
 
-          {user && (
-            <ControlPill onClick={() => logout()} title={`Sign out (@${user.username})`}>
-              <span>Logout</span>
-            </ControlPill>
-          )}
+                {user && (
+                  <>
+                    <DropdownDivider />
+                    <LogoutMenuItem
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setIsPersonaMenuOpen(false);
+                        logout();
+                      }}
+                    >
+                      <SignOutIcon size={13} />
+                      <span>Sign out (@{user.username})</span>
+                    </LogoutMenuItem>
+                  </>
+                )}
+              </PersonaDropdownMenu>
+            )}
+          </PersonaPickerContainer>
 
           <Divider />
 
@@ -660,7 +960,7 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
           >
             <ChevronUpIcon size={15} />
           </IconBtn>
-        </SectionGroup>
+        </RightPinnedSection>
       </TopBarInner>
     </TopBarRoot>
   );

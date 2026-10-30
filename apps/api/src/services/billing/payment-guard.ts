@@ -369,7 +369,7 @@ export async function createStripeCheckoutSession(
       "tax_id_collection[enabled]": "true",
       "line_items[0][price_data][currency]": "usd",
       "line_items[0][price_data][unit_amount]": String(amountCents),
-      "line_items[0][price_data][product_data][name]": `ModelScript Cloud Compute Credits (${amountCredits.toFixed(1)} cr)`,
+      "line_items[0][price_data][product_data][name]": `Ansatz Cloud Compute Credits (${amountCredits.toFixed(1)} cr)`,
       "line_items[0][price_data][product_data][tax_code]": "txcd_10103001", // Cloud SaaS / IaaS compute
       "line_items[0][quantity]": "1",
       "metadata[userId]": String(userId),

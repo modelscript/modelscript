@@ -128,7 +128,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 12
+    "ruleCount": 13
   },
   {
     "slug": "owl2",
@@ -337,7 +337,7 @@
       "simulate": false,
       "projections": []
     },
-    "ruleCount": 10
+    "ruleCount": 15
   },
   {
     "slug": "jsbsim",
@@ -766,7 +766,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 15
+    "ruleCount": 13
   },
   {
     "slug": "opendss",

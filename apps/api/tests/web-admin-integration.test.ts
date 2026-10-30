@@ -1069,10 +1069,256 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
         assert.strictEqual(statusAfter.body.needsSetup, false);
         assert.strictEqual(statusAfter.body.hasAdmin, true);
         assert.strictEqual(statusAfter.body.setupCompleted, true);
+        assert.ok(statusAfter.body.preflight);
+        assert.ok(Array.isArray(statusAfter.body.preflight.checks));
+
+        // Verify Dev Bar / Admin Re-run Setup Wizard (/api/v1/setup/reset) re-opens wizard and allows re-completion
+        const resetRes = await request(freshApp).post("/api/v1/setup/reset").send({}).expect(200);
+        assert.strictEqual(resetRes.body.success, true);
+        assert.strictEqual(resetRes.body.needsSetup, true);
+        assert.strictEqual(resetRes.body.reopened, true);
+
+        const rerunCompleteRes = await request(freshApp)
+          .post("/api/v1/setup/complete")
+          .send({
+            profileTier: "tier2_corporate",
+            admin: {
+              username: "founding_admin",
+              email: "founder@federated.test",
+              password: "UpdatedPassword123!",
+              displayName: "Re-configured Admin",
+            },
+            settings: {
+              instanceName: "Reconfigured Corporate Appliance",
+            },
+            initialInvitesCount: 0,
+            createInitialBackup: false,
+          })
+          .expect(201);
+        assert.strictEqual(rerunCompleteRes.body.success, true);
+        assert.strictEqual(rerunCompleteRes.body.settings.instanceName, "Reconfigured Corporate Appliance");
+        assert.strictEqual(freshDb.getSetupStatus().needsSetup, false);
       } finally {
         freshDb.db.close();
         fs.rmSync(freshDir, { recursive: true, force: true });
       }
+
+      // 13. Pillar 1: Preflight Checks, Outbound Mailer Test & .env / Docker Config Export
+      const sysInfoRes = await request(app)
+        .get("/api/v1/admin/system")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(sysInfoRes.body.preflight);
+      assert.ok(sysInfoRes.body.preflight.checks.some((c: { id: string }) => c.id === "sqlite_wal"));
+
+      const testEmailRes = await request(app)
+        .post("/api/v1/admin/system/test-email")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ recipientEmail: "ops-verify@acme.corp" })
+        .expect(200);
+      assert.strictEqual(testEmailRes.body.success, true);
+      assert.strictEqual(testEmailRes.body.recipient, "ops-verify@acme.corp");
+
+      const exportEnvRes = await request(app)
+        .get("/api/v1/admin/settings/export-env")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(exportEnvRes.body.envSnippet.includes("MODELSCRIPT_REGISTRATION_MODE="));
+      assert.ok(exportEnvRes.body.dockerComposeSnippet.includes("services:"));
+
+      // 14. Pillar 2: External .db Snapshot Upload & Integrity Verification
+      await request(app)
+        .post("/api/v1/admin/backups/upload")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ fileBase64: Buffer.from("not a valid sqlite file").toString("base64") })
+        .expect(400);
+
+      const snapshotToUpload = db.createHotBackup("upload-source");
+      const rawSnapshotBytes = fs.readFileSync(snapshotToUpload.backupPath);
+      const uploadBackupRes = await request(app)
+        .post("/api/v1/admin/backups/upload")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          fileBase64: rawSnapshotBytes.toString("base64"),
+          label: "external-upload-test",
+          restoreImmediately: false,
+        })
+        .expect(201);
+      assert.strictEqual(uploadBackupRes.body.success, true);
+      assert.ok(uploadBackupRes.body.backup.fileName.includes("external-upload-test"));
+      assert.strictEqual(uploadBackupRes.body.backup.sha256.length, 64);
+
+      // 15. Pillar 3: Multi-Tiered Maintenance Mode (read_only & lockdown) 503 Enforcement & Admin Sudo Step-Up
+      const futureEta = new Date(Date.now() + 600 * 1000).toISOString();
+      db.updateInstanceSettings({
+        maintenanceMode: true,
+        maintenanceLevel: "read_only",
+        maintenanceEta: futureEta,
+      });
+      const maintRejectRes = await request(app)
+        .post("/api/v1/social/posts")
+        .set("Authorization", `Bearer ${regularToken}`)
+        .send({ content: "Should be blocked during maintenance" })
+        .expect(503);
+      assert.strictEqual(maintRejectRes.body.maintenanceMode, true);
+      assert.strictEqual(maintRejectRes.body.maintenanceLevel, "read_only");
+      assert.strictEqual(maintRejectRes.body.maintenanceEta, futureEta);
+      assert.strictEqual(maintRejectRes.headers["x-modelscript-maintenance"], "read_only");
+      assert.ok(Number(maintRejectRes.headers["retry-after"]) > 300);
+
+      // In read_only mode, GET requests to API still succeed for public users
+      await request(app).get("/api/v1/libraries").expect(200);
+
+      // Escalate to 'lockdown' mode -> blocks non-admin GET requests to API routes while exempting /api/v1/instance/banner & admins
+      db.updateInstanceSettings({ maintenanceLevel: "lockdown" });
+      const lockdownGetRes = await request(app)
+        .get("/api/v1/libraries")
+        .set("Authorization", `Bearer ${regularToken}`)
+        .expect(503);
+      assert.strictEqual(lockdownGetRes.body.maintenanceLevel, "lockdown");
+
+      // Public banner endpoint remains accessible during lockdown and reports subsystem telemetry
+      const lockdownBannerRes = await request(app).get("/api/v1/instance/banner").expect(200);
+      assert.strictEqual(lockdownBannerRes.body.maintenanceLevel, "lockdown");
+      assert.strictEqual(lockdownBannerRes.body.subsystems.coreApi, "maintenance");
+      assert.strictEqual(lockdownBannerRes.body.subsystems.wasmSandbox, "operational");
+
+      // Admins bypass lockdown on both GET and PATCH
+      await request(app).get("/api/v1/libraries").set("Authorization", `Bearer ${adminToken}`).expect(200);
+
+      await request(app)
+        .patch("/api/v1/admin/settings")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ maintenanceMode: false, maintenanceEta: "" })
+        .expect(200);
+      assert.strictEqual(db.getInstanceSettings().maintenanceLevel, "off");
+
+      // Sudo verification (wrong password -> 401, right password -> 200)
+      await request(app)
+        .post("/api/v1/admin/sudo/verify")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ password: "WrongPassword!" })
+        .expect(401);
+
+      const sudoOkRes = await request(app)
+        .post("/api/v1/admin/sudo/verify")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ password: "hash456" })
+        .expect(200);
+      assert.strictEqual(sudoOkRes.body.success, true);
+      assert.ok(sudoOkRes.body.sudoToken);
+
+      // 16. Pillar 4: Automated Keyword/Regex Content Filter, Federation Circuit Breaker & Custom Legal Markdown
+      await request(app)
+        .patch("/api/v1/admin/settings")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          autoFilterKeywords: ["crypto airdrop", "/export-restricted-itar/i"],
+          autoFilterAction: "cw",
+          customTermsMarkdown: "# Custom Corporate Terms",
+          customPrivacyMarkdown: "# Custom Corporate Privacy",
+        })
+        .expect(200);
+
+      const filteredPost = db.createPost(regularUser.id, "Check out this crypto airdrop simulation");
+      assert.strictEqual(filteredPost.is_sensitive, 1);
+      assert.ok(filteredPost.content_warning?.includes("Automated filter match"));
+
+      // Test regex quarantine filter action
+      db.updateInstanceSettings({ autoFilterAction: "quarantine" });
+      const regexPost = db.createPost(regularUser.id, " blueprints for EXPORT-RESTRICTED-ITAR nozzle");
+      assert.strictEqual(db.isResourceQuarantined("post", String(regexPost.id)), true);
+      db.updateInstanceSettings({ autoFilterKeywords: [], autoFilterAction: "cw" });
+
+      // Custom legal markdown exposed in public banner
+      const bannerLegalRes = await request(app).get("/api/v1/instance/banner").expect(200);
+      assert.strictEqual(bannerLegalRes.body.customTermsMarkdown, "# Custom Corporate Terms");
+      assert.strictEqual(bannerLegalRes.body.customPrivacyMarkdown, "# Custom Corporate Privacy");
+
+      // Federation Domain Health & 1-Click Circuit Breaker
+      db.enqueueFederationDelivery(
+        "Create",
+        "https://hub.modelscript.org/activities/999",
+        { type: "Create" },
+        "https://dead-peer.example/inbox",
+        "dead-peer.example",
+      );
+      const fedHealthRes = await request(app)
+        .get("/api/v1/admin/federation/health")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(fedHealthRes.body.domains.some((d: { domain: string }) => d.domain === "dead-peer.example"));
+
+      const circuitBreakRes = await request(app)
+        .post("/api/v1/admin/federation/circuit-break")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ domain: "dead-peer.example", tier: "suspend", reason: "Dead peer circuit breaker test" })
+        .expect(200);
+      assert.strictEqual(circuitBreakRes.body.success, true);
+      assert.strictEqual(circuitBreakRes.body.tier, "suspend");
+      assert.ok(circuitBreakRes.body.purgedDeliveries >= 1);
+
+      // 17. Pillar 5: Prometheus /api/v1/admin/metrics & Redacted Support Bundle
+      const metricsRes = await request(app)
+        .get("/api/v1/admin/metrics")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(metricsRes.text.includes("modelscript_users_total"));
+      assert.ok(metricsRes.text.includes("modelscript_audit_chain_valid 1"));
+
+      const supportBundleRes = await request(app)
+        .get("/api/v1/admin/system/support-bundle")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(supportBundleRes.body.preflight);
+      assert.strictEqual(supportBundleRes.body.auditChain.valid, true);
+      assert.strictEqual(supportBundleRes.body.environment.JWT_SECRET, "[REDACTED]");
+
+      // 18. Pillar 6: White-Label Branding & Ansatz Identity Configuration
+      const brandingPatchRes = await request(app)
+        .patch("/api/v1/admin/settings")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({
+          instanceName: "ETH Aero Lab",
+          instanceBadge: "Lab",
+          instanceTagline: "ETH Zurich Propulsion & Fluid Dynamics Network",
+          brandLogoUrl: "https://aero.ethz.ch/logo.svg",
+          brandLogoDarkUrl: "https://aero.ethz.ch/logo-dark.svg",
+          brandFaviconUrl: "https://aero.ethz.ch/favicon.ico",
+          brandAccentColor: "#10b981",
+          docsBaseUrl: "https://modelscript.org",
+          showPoweredBy: true,
+        })
+        .expect(200);
+
+      assert.strictEqual(brandingPatchRes.body.settings.instanceName, "ETH Aero Lab");
+      assert.strictEqual(brandingPatchRes.body.settings.instanceBadge, "Lab");
+      assert.strictEqual(
+        brandingPatchRes.body.settings.instanceTagline,
+        "ETH Zurich Propulsion & Fluid Dynamics Network",
+      );
+      assert.strictEqual(brandingPatchRes.body.settings.brandLogoUrl, "https://aero.ethz.ch/logo.svg");
+      assert.strictEqual(brandingPatchRes.body.settings.brandLogoDarkUrl, "https://aero.ethz.ch/logo-dark.svg");
+      assert.strictEqual(brandingPatchRes.body.settings.brandFaviconUrl, "https://aero.ethz.ch/favicon.ico");
+      assert.strictEqual(brandingPatchRes.body.settings.brandAccentColor, "#10b981");
+      assert.strictEqual(brandingPatchRes.body.settings.docsBaseUrl, "https://modelscript.org");
+      assert.strictEqual(brandingPatchRes.body.settings.showPoweredBy, true);
+
+      const bannerBrandRes = await request(app).get("/api/v1/instance/banner").expect(200);
+      assert.strictEqual(bannerBrandRes.body.instanceName, "ETH Aero Lab");
+      assert.strictEqual(bannerBrandRes.body.instanceBadge, "Lab");
+      assert.strictEqual(bannerBrandRes.body.instanceTagline, "ETH Zurich Propulsion & Fluid Dynamics Network");
+      assert.strictEqual(bannerBrandRes.body.brandLogoUrl, "https://aero.ethz.ch/logo.svg");
+      assert.strictEqual(bannerBrandRes.body.brandAccentColor, "#10b981");
+      assert.strictEqual(bannerBrandRes.body.showPoweredBy, true);
+
+      const envBrandRes = await request(app)
+        .get("/api/v1/admin/settings/export-env")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
+      assert.ok(envBrandRes.body.envSnippet.includes('MSX_INSTANCE_NAME="ETH Aero Lab"'));
+      assert.ok(envBrandRes.body.envSnippet.includes('MSX_INSTANCE_BADGE="Lab"'));
+      assert.ok(envBrandRes.body.envSnippet.includes('MSX_BRAND_ACCENT_COLOR="#10b981"'));
     },
   );
 });

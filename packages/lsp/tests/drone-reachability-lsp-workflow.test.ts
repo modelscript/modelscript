@@ -140,6 +140,23 @@ END-ISO-10303-21;
     registerCodeLensProvider(mockContext);
     expect(capturedHandler).toBeDefined();
 
+    // Verify that in the default 'stable' channel, DroneSimulation.mo only gets the single clean '▶ Simulate model' CodeLens
+    const stableMoLenses = capturedHandler({ textDocument: { uri: "file:///workspace/modelica/DroneSimulation.mo" } });
+    expect(stableMoLenses.length).toBe(1);
+    expect(stableMoLenses[0].command.title).toBe("▶ Simulate model");
+
+    // Enable the 'dev' showcase channel & CodeLens categories to verify the multi-domain drone workflow lenses
+    mockContext.settings = {
+      features: { channel: "dev" },
+      codeLens: {
+        diagram: true,
+        verification: "all",
+        polyglotLinks: true,
+        cadMetrics: true,
+        fileConversions: true,
+      },
+    };
+
     // 1.1 Modelica CodeLens
     const moLenses = capturedHandler({ textDocument: { uri: "file:///workspace/modelica/DroneSimulation.mo" } });
     expect(moLenses.length).toBeGreaterThan(3);
@@ -370,6 +387,10 @@ cube([10, 10, 10]);
       documents: { get: (u: string) => mockDocManager.documents.get(u) },
       documentManager: mockDocManager,
       workspaceManager: wm,
+      settings: {
+        features: { channel: "dev" },
+        codeLens: { cadMetrics: true },
+      },
     } as any);
 
     const lenses = capturedLensHandler({ textDocument: { uri: customUri } });

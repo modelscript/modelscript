@@ -18,6 +18,7 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { optionalAuth } from "../middleware/auth-middleware.js";
+import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { OMG_SYSML2_CONTEXT, SysML2OmgService } from "../services/sysml2-omg-service.js";
 
 function getParam(val: string | string[] | undefined): string {
@@ -27,6 +28,7 @@ function getParam(val: string | string[] | undefined): string {
 
 export function sysml2OmgRouter(service?: SysML2OmgService): Router {
   const router = createRouter();
+  router.use(defaultApiLimiter);
   router.use(optionalAuth);
   router.use((req: Request, res: Response, next) => {
     if (

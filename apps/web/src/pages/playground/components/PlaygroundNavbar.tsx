@@ -16,6 +16,8 @@ import { ActionList, ActionMenu, Button, IconButton } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
+import { AnsatzMark } from "../../../components/AnsatzLogo";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { getExtensionForDialect } from "../../../util/editor-routing";
 import { HERO_EXAMPLES, PLAYGROUND_LANGUAGES, type HeroExample } from "../constants";
@@ -54,6 +56,9 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
 }) => {
   const { user } = useAuth();
   const { theme } = useTheme();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
+  const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(currentTitle);
 
@@ -85,13 +90,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
     <NavbarContainer>
       <NavLeft>
         <BrandLink to={user ? "/home" : "/explore"}>
-          <img
-            src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
-            alt="ModelScript"
-            width="24"
-            height="24"
-          />
-          <span className="nav-hide-sm">ModelScript</span>
+          <AnsatzMark size={24} logoUrl={customLogoSrc} alt={brandName} accentColor={branding.brandAccentColor} />
+          <span className="nav-hide-sm">{brandName}</span>
         </BrandLink>
         <Badge>
           <PulseIcon size={12} /> Playground

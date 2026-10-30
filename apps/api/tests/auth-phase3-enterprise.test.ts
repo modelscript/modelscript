@@ -69,7 +69,7 @@ test("Phase 3 Enterprise & Compliance Maturity Suite", async (t) => {
     assert.strictEqual(res.status, 200);
     assert.ok(res.body.secret);
     assert.ok(res.body.otpAuthUri);
-    assert.ok(res.body.otpAuthUri.startsWith("otpauth://totp/ModelScript:totp%40modelscript.org?"));
+    assert.ok(res.body.otpAuthUri.startsWith("otpauth://totp/Ansatz:totp%40modelscript.org?"));
     totpSecret = res.body.secret;
   });
 

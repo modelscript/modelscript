@@ -15,6 +15,7 @@ import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import {
   DangerButton,
   DetailSubtitle,
@@ -34,6 +35,8 @@ export interface PrivacyTabProps {
 
 export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView, onNavigate, onBack }) => {
   const { user, logout } = useAuth();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const toast = useToast();
 
   const [deleteConfirmUsername, setDeleteConfirmUsername] = useState("");
@@ -228,7 +231,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView, onNavigate, onB
       </Header>
       <Box px={4} pb={4} style={{ overflowY: "auto" }}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "24px" }}>
-          Manage your personal data, exercise your privacy rights under GDPR and CCPA, and review how ModelScript
+          Manage your personal data, exercise your privacy rights under GDPR and CCPA, and review how {brandName}{" "}
           safeguards your data with zero third-party tracking.
         </DetailSubtitle>
 
@@ -315,7 +318,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView, onNavigate, onB
             </Text>
           </Box>
           <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.6", display: "block", marginBottom: "16px" }}>
-            ModelScript is built around strict data minimization and user sovereignty:
+            {brandName} is built around strict data minimization and user sovereignty:
           </DetailSubtitle>
 
           <Box display="flex" flexDirection="column" gap={3}>

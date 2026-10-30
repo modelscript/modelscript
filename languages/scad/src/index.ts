@@ -58,7 +58,7 @@ export async function getScadParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer | 
   if (cachedParser) return cachedParser;
 
   let wasmInput: Uint8Array | ArrayBuffer | string | undefined = wasmUrlOrBytes;
-  if (!wasmInput) {
+  if (!wasmInput || (typeof wasmInput !== "string" && "byteLength" in wasmInput && wasmInput.byteLength === 0)) {
     if (
       typeof fs?.readFileSync === "function" &&
       typeof import.meta?.url === "string" &&

@@ -172,6 +172,16 @@ describe("End-to-End Verification of All 44 Language Example Workspaces", () => 
       documentSymbolIndices: new Map(),
       documentCstNodes: new Map(),
       workspaceIndex: {},
+      settings: {
+        features: { channel: "dev" },
+        codeLens: {
+          diagram: true,
+          verification: "all",
+          polyglotLinks: true,
+          cadMetrics: true,
+          fileConversions: true,
+        },
+      },
     } as any);
 
     // 3. Wire Diagram Dispatch across all 44 languages

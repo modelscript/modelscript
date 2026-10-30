@@ -11,10 +11,12 @@ import { CommandPalette } from "./components/CommandPalette";
 import EnterpriseUpgradeModal from "./components/EnterpriseUpgradeModal";
 import ErrorBoundary from "./components/ErrorBoundary";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
+import MaintenanceExperienceHost from "./components/MaintenanceExperienceHost";
 import { RealtimeNotificationListener } from "./components/RealtimeNotificationListener";
 import RequireAuth from "./components/RequireAuth";
 import { ToastProvider } from "./components/ToastContext";
 import { FeatureFlagProvider, useFeatureFlag, useFeatureFlags } from "./FeatureFlagContext";
+import { InstanceBrandingProvider } from "./InstanceBrandingContext";
 import { ModelingPreferencesProvider } from "./ModelingPreferencesContext";
 import { ThemeContextProvider, useTheme } from "./theme";
 
@@ -262,7 +264,10 @@ export function InstanceAnnouncementBanner({
   initialBanner,
 }: {
   initialBanner?: {
+    instanceName?: string;
     maintenanceMode: boolean;
+    maintenanceLevel?: "off" | "scheduled" | "read_only" | "lockdown";
+    maintenanceEta?: string;
     announcementBanner: string;
     announcementLevel: "info" | "warning" | "critical";
     needsSetup?: boolean;
@@ -279,8 +284,30 @@ export function InstanceAnnouncementBanner({
         if (mounted) setBanner(res);
       })
       .catch(() => {});
+
+    const handleUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<Record<string, unknown> | undefined>).detail;
+      if (detail && typeof detail === "object") {
+        setBanner((prev) =>
+          prev
+            ? ({ ...prev, ...detail } as NonNullable<typeof initialBanner>)
+            : (detail as unknown as NonNullable<typeof initialBanner>),
+        );
+        if (detail["maintenanceMode"] || detail["maintenanceLevel"] === "scheduled") {
+          setDismissed(false);
+        }
+      } else {
+        getPublicInstanceBanner()
+          .then((res) => {
+            if (mounted) setBanner(res);
+          })
+          .catch(() => {});
+      }
+    };
+    window.addEventListener("modelscript:branding-updated", handleUpdated);
     return () => {
       mounted = false;
+      window.removeEventListener("modelscript:branding-updated", handleUpdated);
     };
   }, [initialBanner]);
 
@@ -306,7 +333,10 @@ export function InstanceAnnouncementBanner({
       >
         <div>
           <strong style={{ marginRight: "8px" }}>[FIRST-BOOT SETUP]</strong>
-          <span>Welcome to your new ModelScript instance! No administrator account has been configured yet.</span>
+          <span>
+            Welcome to your new {banner.instanceName || "Ansatz"} instance! No administrator account has been configured
+            yet.
+          </span>
         </div>
         <a
           href="/setup"
@@ -327,10 +357,11 @@ export function InstanceAnnouncementBanner({
     );
   }
 
-  if (!banner.maintenanceMode && !banner.announcementBanner) return null;
+  const isScheduled = banner.maintenanceLevel === "scheduled";
+  if (!banner.maintenanceMode && !isScheduled && !banner.announcementBanner) return null;
 
   const isCritical = banner.maintenanceMode || banner.announcementLevel === "critical";
-  const isWarning = !isCritical && banner.announcementLevel === "warning";
+  const isWarning = !isCritical && (isScheduled || banner.announcementLevel === "warning");
 
   return (
     <div
@@ -355,9 +386,25 @@ export function InstanceAnnouncementBanner({
         color: isCritical ? "#ef4444" : isWarning ? "#f59e0b" : "#3b82f6",
       }}
     >
-      <div>
-        {banner.maintenanceMode && <strong style={{ marginRight: "8px" }}>[MAINTENANCE MODE]</strong>}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+        {banner.maintenanceMode && (
+          <strong>{banner.maintenanceLevel === "lockdown" ? "[LOCKDOWN MAINTENANCE]" : "[MAINTENANCE MODE]"}</strong>
+        )}
+        {!banner.maintenanceMode && isScheduled && <strong>[UPCOMING MAINTENANCE]</strong>}
         <span>{banner.announcementBanner || "Scheduled instance maintenance is currently in progress."}</span>
+        {banner.maintenanceEta && (
+          <span
+            style={{
+              padding: "1px 7px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontFamily: "monospace",
+              background: "rgba(0, 0, 0, 0.15)",
+            }}
+          >
+            ETA: {banner.maintenanceEta}
+          </span>
+        )}
       </div>
       <button
         type="button"
@@ -378,7 +425,7 @@ export function InstanceAnnouncementBanner({
 }
 
 /**
- * Core ModelScript Hub React router and layout shell.
+ * Core Ansatz React router and layout shell (powered by ModelScript).
  */
 function App() {
   const { theme } = useTheme();
@@ -406,6 +453,7 @@ function App() {
           <BrowserRouter>
             <PageViewTracker />
             <InstanceAnnouncementBanner />
+            <MaintenanceExperienceHost />
             <GlobalModals />
             <RealtimeNotificationListener />
             <ErrorBoundary>
@@ -557,13 +605,15 @@ function App() {
 function AppWithTheme() {
   return (
     <ThemeContextProvider>
-      <AuthProvider>
-        <FeatureFlagProvider>
-          <ModelingPreferencesProvider>
-            <App />
-          </ModelingPreferencesProvider>
-        </FeatureFlagProvider>
-      </AuthProvider>
+      <InstanceBrandingProvider>
+        <AuthProvider>
+          <FeatureFlagProvider>
+            <ModelingPreferencesProvider>
+              <App />
+            </ModelingPreferencesProvider>
+          </FeatureFlagProvider>
+        </AuthProvider>
+      </InstanceBrandingProvider>
     </ThemeContextProvider>
   );
 }

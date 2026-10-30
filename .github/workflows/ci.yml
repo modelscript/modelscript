@@ -470,46 +470,86 @@ jobs:
             *.cache-to=type=gha,mode=max
             *.args.PREBUILT=true
             api.tags=ghcr.io/modelscript/api:latest
+            api.tags=ghcr.io/modelscript/api:sha-${{ github.sha }}
             api-ce.tags=ghcr.io/modelscript/api-ce:latest
+            api-ce.tags=ghcr.io/modelscript/api-ce:sha-${{ github.sha }}
             web.tags=ghcr.io/modelscript/web:latest
+            web.tags=ghcr.io/modelscript/web:sha-${{ github.sha }}
             cli.tags=ghcr.io/modelscript/cli:latest
+            cli.tags=ghcr.io/modelscript/cli:sha-${{ github.sha }}
             cli-ce.tags=ghcr.io/modelscript/cli-ce:latest
+            cli-ce.tags=ghcr.io/modelscript/cli-ce:sha-${{ github.sha }}
             appliance.tags=ghcr.io/modelscript/appliance:latest
+            appliance.tags=ghcr.io/modelscript/appliance:sha-${{ github.sha }}
 
-  deploy_modelscript_org:
-    name: Deploy Docker Stack to modelscript.org
+  deploy_production:
+    name: Deploy Stack to modelscript.org & ansatz.social
     needs: [docker_build]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.actor != 'nektos/act'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      github.actor != 'nektos/act' &&
+      !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     permissions:
       contents: read
+    env:
+      PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.PROD_DEPLOY_WEBHOOK_URL }}
+      PROD_DEPLOY_TOKEN: ${{ secrets.PROD_DEPLOY_TOKEN }}
+      PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+      PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+      PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+      PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+      PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+      PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
     steps:
       - uses: actions/checkout@v4
-      - name: Trigger modelscript.org Docker Compose Rollout via Webhook
+      - name: Trigger Production Docker Compose Rollout via Webhook
         if: env.PROD_DEPLOY_WEBHOOK_URL != ''
-        env:
-          PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.PROD_DEPLOY_WEBHOOK_URL }}
-          PROD_DEPLOY_TOKEN: ${{ secrets.PROD_DEPLOY_TOKEN }}
         run: |
           curl --fail --silent --show-error -X POST "$PROD_DEPLOY_WEBHOOK_URL" \
             -H "Authorization: Bearer $PROD_DEPLOY_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"sha\":\"${GITHUB_SHA}\",\"tag\":\"latest\",\"edition\":\"ee\"}"
-      - name: Roll Out Docker Stack to modelscript.org via SSH
+            -d "{\"sha\":\"${GITHUB_SHA}\",\"tag\":\"sha-${GITHUB_SHA}\",\"domains\":[\"modelscript.org\",\"ansatz.social\"],\"edition\":\"ee\"}"
+      - name: Roll Out Docker Stack to modelscript.org & ansatz.social via SSH
         if: env.PROD_SSH_HOST != ''
-        env:
-          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
-          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
-          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
-          PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
         run: |
           mkdir -p ~/.ssh
           echo "$PROD_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
-          scp docker-compose.yml docker-compose.prod.yml "${PROD_SSH_USER}@${PROD_SSH_HOST}:${PROD_DEPLOY_PATH:-/opt/modelscript}/"
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cd ${PROD_DEPLOY_PATH:-/opt/modelscript} && \
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated pull && \
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated up -d --remove-orphans && \
-            docker image prune -f"
+          if [ -n "$PROD_SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
+          fi
+
+          TARGET_DIR="${PROD_DEPLOY_PATH:-/opt/modelscript}"
+
+          # 1. Install Docker & Compose plugin if not already installed
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "which docker >/dev/null 2>&1 || (curl -fsSL https://get.docker.com | sh)"
+
+          # 2. Ensure target directories exist
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "mkdir -p ${TARGET_DIR}/config"
+
+          # 3. Synchronize compose files and Caddy / broker / DB runtime configs
+          scp docker-compose.yml docker-compose.prod.yml "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/"
+          scp config/Caddyfile config/mosquitto.conf config/init-timescaledb.sql "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/config/"
+
+          # 4. Bootstrap / update .env.production from GitHub secret if provided
+          if [ -n "$PROD_ENV_FILE" ]; then
+            printf '%s\n' "$PROD_ENV_FILE" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cat > ${TARGET_DIR}/.env.production && chmod 600 ${TARGET_DIR}/.env.production"
+          fi
+
+          # 5. Create pre-deploy SQLite hot backup (if API container is already running), pull SHA images, launch & verify health
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cd ${TARGET_DIR} && \
+            (docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production exec -T api node -e 'fetch(\"http://127.0.0.1:3000/health\")' >/dev/null 2>&1 || true) && \
+            IMAGE_TAG=sha-${GITHUB_SHA} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated pull && \
+            IMAGE_TAG=sha-${GITHUB_SHA} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated up -d --wait --remove-orphans && \
+            curl --fail --silent --show-error http://127.0.0.1:3000/health >/dev/null && \
+            curl --fail --silent --show-error -H 'Host: modelscript.org' http://127.0.0.1:3001/healthz >/dev/null && \
+            curl --fail --silent --show-error -H 'Host: ansatz.social' http://127.0.0.1:3001/healthz >/dev/null && \
+            docker image prune -f --filter 'until=72h'"

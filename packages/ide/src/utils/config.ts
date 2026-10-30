@@ -81,6 +81,161 @@ export function isLanguageEnabled(languageId: string): boolean {
   }
 }
 
+export type FeatureChannel = "stable" | "preview" | "experimental" | "dev";
+
+export interface ModelScriptFeatureFlags {
+  codeLensSimulate: boolean;
+  formalVerification: boolean;
+  caeWorkbench: boolean;
+  coSimulation: boolean;
+  digitalThread: boolean;
+  polyglotProjection: boolean;
+  scaffolding: boolean;
+  aiCopilot: boolean;
+  demos: boolean;
+}
+
+export const FEATURE_MIN_CHANNEL: Record<keyof ModelScriptFeatureFlags, FeatureChannel> = {
+  codeLensSimulate: "stable",
+  formalVerification: "preview",
+  caeWorkbench: "preview",
+  coSimulation: "preview",
+  digitalThread: "experimental",
+  polyglotProjection: "experimental",
+  scaffolding: "experimental",
+  aiCopilot: "experimental",
+  demos: "dev",
+};
+
+export const FEATURE_LABELS: Record<
+  keyof ModelScriptFeatureFlags,
+  { label: string; description: string; channel: FeatureChannel }
+> = {
+  codeLensSimulate: {
+    label: "Simulate & Study CodeLens",
+    description: "Inline '▶ Simulate' and '▶ Run Study' CodeLens actions above declarations",
+    channel: "stable",
+  },
+  formalVerification: {
+    label: "Formal Verification & DAE Proofs",
+    description: "Contract checking, DAE structural singularity proofs, MC/DC & reachability",
+    channel: "preview",
+  },
+  caeWorkbench: {
+    label: "CAE Mesh & Study Workbench",
+    description: "CAD -> FEA/CFD mesh discretization (.inp, .su2) and simulation study generation",
+    channel: "preview",
+  },
+  coSimulation: {
+    label: "FMI Co-Simulation & MQTT",
+    description: "Multi-FMU Co-Simulation Orchestrator and live MQTT participants view",
+    channel: "preview",
+  },
+  digitalThread: {
+    label: "Cross-Domain Digital Thread",
+    description: "Live cross-domain parameter twin alignment, hover links, and synchronization",
+    channel: "experimental",
+  },
+  polyglotProjection: {
+    label: "Polyglot Model Projection",
+    description: "Cross-language model projection and 3D Polyglot Visualizer",
+    channel: "experimental",
+  },
+  scaffolding: {
+    label: "Multi-Domain Scaffolding",
+    description: "Generate linked OpenSCAD, Modelica, and FEA models from SysML v2 parts",
+    channel: "experimental",
+  },
+  aiCopilot: {
+    label: "AI Copilot & Closed-Loop Synthesis",
+    description: "ModelScript AI Copilot sidebar view and compiler-in-the-loop synthesis",
+    channel: "experimental",
+  },
+  demos: {
+    label: "Vertical Showcases & Trade Study Demos",
+    description: "Drone reachability demo, trade study Tier 1-3 CodeLenses, and medical/VR showcases",
+    channel: "dev",
+  },
+};
+
+const CHANNEL_RANK: Record<FeatureChannel, number> = {
+  stable: 1,
+  preview: 2,
+  experimental: 3,
+  dev: 4,
+};
+
+export function getFeatureChannelSetting(): FeatureChannel {
+  try {
+    const cfg = vscode.workspace?.getConfiguration?.("modelscript.features");
+    const ch = cfg?.get<string>("channel");
+    if (ch === "stable" || ch === "preview" || ch === "experimental" || ch === "dev") {
+      return ch;
+    }
+  } catch {
+    // Fallback
+  }
+  return "stable";
+}
+
+export function isFeatureEnabled(featureKey: keyof ModelScriptFeatureFlags): boolean {
+  try {
+    const cfg = vscode.workspace?.getConfiguration?.("modelscript.features");
+    const inspect = cfg?.inspect<boolean>(featureKey);
+    const explicit = inspect?.workspaceFolderValue ?? inspect?.workspaceValue ?? inspect?.globalValue;
+    if (typeof explicit === "boolean") {
+      return explicit;
+    }
+    const channel = getFeatureChannelSetting();
+    return CHANNEL_RANK[channel] >= CHANNEL_RANK[FEATURE_MIN_CHANNEL[featureKey]];
+  } catch {
+    return CHANNEL_RANK["stable"] >= CHANNEL_RANK[FEATURE_MIN_CHANNEL[featureKey]];
+  }
+}
+
+export function getResolvedFeatureFlags(): ModelScriptFeatureFlags & { channel: FeatureChannel } {
+  const channel = getFeatureChannelSetting();
+  return {
+    channel,
+    codeLensSimulate: isFeatureEnabled("codeLensSimulate"),
+    formalVerification: isFeatureEnabled("formalVerification"),
+    caeWorkbench: isFeatureEnabled("caeWorkbench"),
+    coSimulation: isFeatureEnabled("coSimulation"),
+    digitalThread: isFeatureEnabled("digitalThread"),
+    polyglotProjection: isFeatureEnabled("polyglotProjection"),
+    scaffolding: isFeatureEnabled("scaffolding"),
+    aiCopilot: isFeatureEnabled("aiCopilot"),
+    demos: isFeatureEnabled("demos"),
+  };
+}
+
+/**
+ * Synchronizes resolved feature flags to VS Code `setContext` keys (`modelscript.feature.<name>`)
+ * so that `package.json` `when` clauses dynamically show/hide views and menu items.
+ */
+export async function syncFeatureContextKeys(): Promise<void> {
+  try {
+    const flags = getResolvedFeatureFlags();
+    await vscode.commands?.executeCommand?.("setContext", "modelscript.feature.channel", flags.channel);
+    const keys: (keyof ModelScriptFeatureFlags)[] = [
+      "codeLensSimulate",
+      "formalVerification",
+      "caeWorkbench",
+      "coSimulation",
+      "digitalThread",
+      "polyglotProjection",
+      "scaffolding",
+      "aiCopilot",
+      "demos",
+    ];
+    for (const key of keys) {
+      await vscode.commands?.executeCommand?.("setContext", `modelscript.feature.${key}`, flags[key]);
+    }
+  } catch {
+    // Ignore outside VS Code extension host
+  }
+}
+
 export function shouldShowMaturityBadges(): boolean {
   try {
     const cfg = vscode.workspace?.getConfiguration?.("modelscript.languages");
@@ -97,9 +252,16 @@ export function getStatusBarConfig(): {
 } {
   try {
     const cfg = vscode.workspace?.getConfiguration?.("modelscript.ui.statusBar");
-    const visibility = cfg?.get<"always" | "whenActive" | "never">("visibility") ?? "whenActive";
+    const rawVisibility = cfg?.get<string>("visibility") ?? "relevantOnly";
+    const visibility: "always" | "whenActive" | "never" =
+      rawVisibility === "always"
+        ? "always"
+        : rawVisibility === "hidden" || rawVisibility === "never"
+          ? "never"
+          : "whenActive";
+    const demosEnabled = isFeatureEnabled("demos");
     const showCloudStatus = cfg?.get<boolean>("showCloudStatus") ?? false;
-    const showSocialFeed = cfg?.get<boolean>("showSocialFeed") ?? false;
+    const showSocialFeed = (cfg?.get<boolean>("showSocialFeed") ?? false) && demosEnabled;
     return { visibility, showCloudStatus, showSocialFeed };
   } catch {
     return { visibility: "whenActive", showCloudStatus: false, showSocialFeed: false };
@@ -284,6 +446,7 @@ export function getDiagramConfig(): {
  * Builds the `modelscript/updateSettings` payload to keep the LSP server in sync with VS Code settings.
  */
 export function buildLspSettingsPayload(languageIds: string[] = Object.keys(LANGUAGE_MATURITY_MAP)): {
+  features: ModelScriptFeatureFlags & { channel: FeatureChannel };
   languages: {
     maturityTier: "all" | "betaAndStable" | "stableOnly";
     enabledOverrides: Record<string, boolean>;
@@ -291,7 +454,8 @@ export function buildLspSettingsPayload(languageIds: string[] = Object.keys(LANG
   codeLens: {
     enabled: boolean;
     simulate: boolean;
-    verification: boolean;
+    diagram: boolean;
+    verification: "all" | "problemsOnly" | "off" | boolean;
     polyglotLinks: boolean;
     cadMetrics: boolean;
     fileConversions: boolean;
@@ -307,10 +471,15 @@ export function buildLspSettingsPayload(languageIds: string[] = Object.keys(LANG
     disabledRules: string[];
   };
 } {
+  const features = getResolvedFeatureFlags();
   const langCfg = vscode.workspace?.getConfiguration?.("modelscript.languages");
-  const rawTier = langCfg?.get<string>("maturityTier") ?? "all";
+  const rawTier = langCfg?.get<string>("maturityTier") ?? "beta";
   const maturityTier: "all" | "betaAndStable" | "stableOnly" =
-    rawTier === "stableOnly" || rawTier === "betaAndStable" ? rawTier : "all";
+    rawTier === "stable" || rawTier === "stableOnly"
+      ? "stableOnly"
+      : rawTier === "beta" || rawTier === "betaAndStable"
+        ? "betaAndStable"
+        : "all";
 
   const enabledOverrides: Record<string, boolean> = {};
   for (const id of languageIds) {
@@ -325,22 +494,32 @@ export function buildLspSettingsPayload(languageIds: string[] = Object.keys(LANG
   const ihCfg = vscode.workspace?.getConfiguration?.("modelscript.inlayHints");
   const diagCfg = vscode.workspace?.getConfiguration?.("modelscript.diagnostics");
 
+  const rawVerif = clCfg?.get<string | boolean>("verification");
+  const verification: "all" | "problemsOnly" | "off" | boolean =
+    rawVerif === "all" || rawVerif === "problemsOnly" || rawVerif === "off" || typeof rawVerif === "boolean"
+      ? rawVerif
+      : features.formalVerification
+        ? "problemsOnly"
+        : "off";
+
   return {
+    features,
     languages: {
       maturityTier,
       enabledOverrides,
     },
     codeLens: {
       enabled: clCfg?.get<boolean>("enabled") ?? true,
-      simulate: clCfg?.get<boolean>("simulate") ?? true,
-      verification: clCfg?.get<boolean>("verification") ?? true,
-      polyglotLinks: clCfg?.get<boolean>("polyglotLinks") ?? true,
+      simulate: (clCfg?.get<boolean>("simulate") ?? true) && features.codeLensSimulate,
+      diagram: clCfg?.get<boolean>("diagram") ?? false,
+      verification,
+      polyglotLinks: (clCfg?.get<boolean>("polyglotLinks") ?? false) && features.digitalThread,
       cadMetrics: clCfg?.get<boolean>("cadMetrics") ?? false,
       fileConversions: clCfg?.get<boolean>("fileConversions") ?? false,
     },
     inlayHints: {
       enabled: ihCfg?.get<boolean>("enabled") ?? true,
-      unitsAndBounds: ihCfg?.get<boolean>("unitsAndBounds") ?? true,
+      unitsAndBounds: ihCfg?.get<boolean>("unitsAndBounds") ?? ihCfg?.get<boolean>("units") ?? true,
       variabilityPrefixes: ihCfg?.get<boolean>("variabilityPrefixes") ?? true,
     },
     diagnostics: {

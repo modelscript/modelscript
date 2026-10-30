@@ -2374,6 +2374,12 @@
         "rule": "SSP_INVALID_EXPERIMENT_BOUNDS",
         "severity": "error",
         "message": "DefaultExperiment stopTime must be strictly greater than startTime."
+      },
+      {
+        "code": "S7013",
+        "rule": "SSP_CONNECTOR_UNIT_MISMATCH",
+        "severity": "warning",
+        "message": "Connector unit mismatch: '<startUnit>' connected to '<endUnit>'."
       }
     ]
   },
@@ -2907,6 +2913,36 @@
         "rule": "obsolete-arithmetic-if",
         "severity": "info",
         "message": "Three-way arithmetic IF is obsolescent; prefer structured IF/THEN/ELSE."
+      },
+      {
+        "code": "M4080",
+        "rule": "identifier-mismatch",
+        "severity": "error",
+        "message": "End <unitKind> identifier '<endName>' does not match '<startName>'."
+      },
+      {
+        "code": "M4081",
+        "rule": "intent-in-mutation",
+        "severity": "error",
+        "message": "Dummy argument '<varName>' declared with 'INTENT(IN)' cannot be modified."
+      },
+      {
+        "code": "M4082",
+        "rule": "invalid-statement-syntax",
+        "severity": "error",
+        "message": "Syntax error in Fortran statement: <detail>."
+      },
+      {
+        "code": "M4083",
+        "rule": "unclosed-block",
+        "severity": "error",
+        "message": "Unclosed or mismatched '<blockName>' block structure."
+      },
+      {
+        "code": "M4084",
+        "rule": "math-domain-violation",
+        "severity": "error",
+        "message": "Intrinsic math function '<fnName>' evaluated outside its real domain with argument '<argVal>'."
       }
     ]
   },
@@ -3797,9 +3833,9 @@
     "rules": [
       {
         "code": "P1001",
-        "rule": "generator-bus-not-found",
+        "rule": "bus-not-found",
         "severity": "error",
-        "message": "Generator '<genId>' references non-existent bus <busId>."
+        "message": "<entityKind> '<id>' references non-existent <busRole>bus <busId>."
       },
       {
         "code": "P1002",
@@ -3809,27 +3845,15 @@
       },
       {
         "code": "P1003",
-        "rule": "duplicate-generator-id",
+        "rule": "duplicate-equipment-id",
         "severity": "error",
         "message": "Duplicate generator ID '<genId>' at bus <busId>."
-      },
-      {
-        "code": "P1004",
-        "rule": "generator-reactive-limits-inverted",
-        "severity": "error",
-        "message": "Generator '<genId>' at bus <busId> has inverted reactive limits (QB = <qMin> > QT = <qMax> Mvar)."
-      },
-      {
-        "code": "P1005",
-        "rule": "generator-power-limits-inverted",
-        "severity": "error",
-        "message": "Generator '<genId>' at bus <busId> has inverted active power limits (PB = <pMin> > PT = <pMax> MW)."
       },
       {
         "code": "P2001",
         "rule": "isolated-bus",
         "severity": "warning",
-        "message": "Bus <busId> ('<busName>') has no connected branches or transformers (isolated bus)."
+        "message": "Bus <busId> ('<busName>') is isolated with 0 in-service connecting branches or transformers."
       },
       {
         "code": "P2002",
@@ -3851,39 +3875,39 @@
       },
       {
         "code": "P3001",
-        "rule": "branch-from-bus-not-found",
+        "rule": "generator-reactive-limits-inverted",
         "severity": "error",
-        "message": "Branch from bus <fromBus> to bus <toBus> references non-existent FROM-bus <fromBus>."
+        "message": "Generator '<genId>' at bus <busId> has inverted reactive limits: Qmin (<qMin> MVAR) > Qmax (<qMax> MVAR)."
       },
       {
         "code": "P3002",
-        "rule": "branch-to-bus-not-found",
+        "rule": "generator-power-limits-inverted",
         "severity": "error",
-        "message": "Branch from bus <fromBus> to bus <toBus> references non-existent TO-bus <toBus>."
+        "message": "Generator '<genId>' at bus <busId> has inverted active power limits: Pmin (<pMin> MW) > Pmax (<pMax> MW)."
       },
       {
         "code": "P3003",
-        "rule": "branch-zero-impedance",
-        "severity": "error",
-        "message": "Branch between bus <fromBus> and bus <toBus> has zero impedance (R = 0, X = 0)."
-      },
-      {
-        "code": "P3004",
-        "rule": "branch-negative-resistance",
+        "rule": "generator-scheduled-voltage-bounds",
         "severity": "warning",
-        "message": "Branch between bus <fromBus> and bus <toBus> defines negative resistance (<r> pu)."
-      },
-      {
-        "code": "P3005",
-        "rule": "transformer-invalid-ratio",
-        "severity": "error",
-        "message": "Transformer between bus <fromBus> and bus <toBus> has non-positive turns ratio (<ratio>)."
+        "message": "Generator '<genId>' scheduled voltage Vs = <vs> p.u. is outside the typical operating band [0.8, 1.2]."
       },
       {
         "code": "P4001",
-        "rule": "load-bus-not-found",
+        "rule": "branch-invalid-reactance",
         "severity": "error",
-        "message": "Load '<loadId>' references non-existent bus <busId>."
+        "message": "Transmission branch '<ckt>' between bus <fromBus> and <toBus> has zero or negative reactance X = <x> p.u."
+      },
+      {
+        "code": "P4002",
+        "rule": "branch-base-kv-mismatch",
+        "severity": "warning",
+        "message": "Branch '<ckt>' connects bus <fromBus> (<fromKv> kV) to bus <toBus> (<toKv> kV) without a transformer."
+      },
+      {
+        "code": "P4003",
+        "rule": "transformer-tap-out-of-bounds",
+        "severity": "warning",
+        "message": "Transformer '<ckt>' between bus <fromBus> and <toBus> has off-nominal tap ratio <ratio> outside typical limits [0.7, 1.3]."
       }
     ]
   },

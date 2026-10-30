@@ -174,7 +174,7 @@ export const MorselMobileTabBar: React.FC<MorselMobileTabBarProps> = ({
             if (navigator.share) {
               navigator
                 .share({
-                  title: "ModelScript Simulation",
+                  title: "Ansatz Simulation (powered by ModelScript)",
                   url: window.location.href,
                 })
                 .catch(() => {});

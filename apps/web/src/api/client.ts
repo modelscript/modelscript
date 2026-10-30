@@ -22,7 +22,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Global response interceptor to handle token expiry / 401 Unauthorized
+// Global response interceptor to handle token expiry / 401 Unauthorized & 503 Maintenance Mode
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -46,6 +46,34 @@ api.interceptors.response.use(
         }
       } catch {
         // Ignore SecurityError in sandboxed iframe
+      }
+    } else if (error.response && error.response.status === 503 && error.response.data?.maintenanceMode) {
+      try {
+        if (typeof window !== "undefined") {
+          const data = error.response.data;
+          window.dispatchEvent(
+            new CustomEvent("modelscript:branding-updated", {
+              detail: {
+                maintenanceMode: true,
+                maintenanceLevel: data.maintenanceLevel || "read_only",
+                maintenanceEta: data.maintenanceEta || "",
+                ...(data.message ? { announcementBanner: data.message } : {}),
+              },
+            }),
+          );
+          window.dispatchEvent(
+            new CustomEvent("modelscript:maintenance-503", {
+              detail: {
+                error: data.error || "Instance is currently undergoing maintenance.",
+                maintenanceLevel: data.maintenanceLevel || "read_only",
+                maintenanceEta: data.maintenanceEta || null,
+                retryAfterSeconds: data.retryAfterSeconds || 300,
+              },
+            }),
+          );
+        }
+      } catch {
+        // Ignore in non-DOM environments
       }
     }
     return Promise.reject(error);

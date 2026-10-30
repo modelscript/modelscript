@@ -5,6 +5,7 @@ import { Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { getConnectedAccounts, initiateOAuthLink, unlinkConnectedAccount, type ConnectedAccount } from "../../../api";
 import Box from "../../../components/Box";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { DangerButton, DetailSubtitle, FormLabel, Header, SaveButton, SecondaryButton } from "../settingsStyles";
 
 export interface ConnectedAccountsTabProps {
@@ -12,6 +13,8 @@ export interface ConnectedAccountsTabProps {
 }
 
 export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBack }) => {
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [confirmingDisconnectId, setConfirmingDisconnectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -67,7 +70,7 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
       </Header>
       <Box p={4}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4", display: "block", marginBottom: "24px" }}>
-          Manage external identities connected to your ModelScript profile for Single Sign-On (SSO) and verified
+          Manage external identities connected to your {brandName} profile for Single Sign-On (SSO) and verified
           developer badges.
         </DetailSubtitle>
 

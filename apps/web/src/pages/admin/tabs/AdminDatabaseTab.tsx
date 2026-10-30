@@ -7,6 +7,7 @@ import {
   DownloadIcon,
   HistoryIcon,
   TrashIcon,
+  UploadIcon,
 } from "@primer/octicons-react";
 import React, { useState } from "react";
 import {
@@ -14,6 +15,7 @@ import {
   broadcastAdminActivityPubMove,
   exportAdminInstanceBundle,
   getAdminBackupDownloadUrl,
+  uploadAdminBackup,
 } from "../../../api";
 import Box from "../../../components/Box";
 import { ActionButton, Badge, Card, Input, StatGrid, Table } from "../styles";
@@ -61,6 +63,8 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
   const [sourceActorUri, setSourceActorUri] = useState("");
   const [targetActorUri, setTargetActorUri] = useState("");
   const [moveResultMsg, setMoveResultMsg] = useState<string | null>(null);
+  const [uploadRestoreImmediately, setUploadRestoreImmediately] = useState(false);
+  const [uploadStatusMsg, setUploadStatusMsg] = useState<string | null>(null);
 
   const appliedList = dbStatus?.applied || dbStatus?.appliedMigrations || [];
   const pendingList = dbStatus?.pending || dbStatus?.pendingMigrations || [];
@@ -76,6 +80,32 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
     if (!onCreateHotBackup) return;
     await onCreateHotBackup(backupLabel.trim() || undefined);
     setBackupLabel("");
+  };
+
+  const handleUploadBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const resultStr = String(reader.result || "");
+        const base64 = resultStr.includes(",") ? resultStr.split(",")[1]! : resultStr;
+        setUploadStatusMsg("Verifying SQLite 3 header & PRAGMA integrity_check...");
+        const res = await uploadAdminBackup({
+          fileBase64: base64,
+          label: file.name.replace(/\.(db|sqlite|sqlite3)$/i, ""),
+          restoreImmediately: uploadRestoreImmediately,
+        });
+        setUploadStatusMsg(
+          res.restored
+            ? `Uploaded & restored ${res.restored.tablesRestored} table(s) from ${res.backup.fileName}.`
+            : `Uploaded verified snapshot ${res.backup.fileName} (SHA-256: ${res.backup.sha256.slice(0, 12)}…).`,
+        );
+      } catch {
+        setUploadStatusMsg("Snapshot upload failed: invalid SQLite file or integrity check error.");
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleExportBundle = async () => {
@@ -191,7 +221,52 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
               <ArchiveIcon size={14} />
               <span>Create Hot Snapshot</span>
             </ActionButton>
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: "1px solid var(--color-border-primary)",
+                background: "var(--color-bg-secondary)",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <UploadIcon size={14} />
+              <span>Upload External .db Snapshot</span>
+              <input
+                type="file"
+                accept=".db,.sqlite,.sqlite3"
+                style={{ display: "none" }}
+                onChange={handleUploadBackupFile}
+              />
+            </label>
+            <label
+              style={{
+                fontSize: "12px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                cursor: "pointer",
+                color: "var(--color-text-muted)",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={uploadRestoreImmediately}
+                onChange={(e) => setUploadRestoreImmediately(e.target.checked)}
+              />
+              Restore immediately after integrity check
+            </label>
           </Box>
+          {uploadStatusMsg && (
+            <Box mt={1} fontSize="12px" color="var(--color-text-muted)">
+              {uploadStatusMsg}
+            </Box>
+          )}
           {backups.length > 0 && (
             <Box mt={2}>
               <Table>

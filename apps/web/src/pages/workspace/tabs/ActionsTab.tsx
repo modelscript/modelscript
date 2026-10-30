@@ -472,7 +472,7 @@ export const ActionsTab: React.FC<ActionsTabProps> = ({ projectId, provider, def
                 onClick={() => {
                   const text =
                     activeLogJob.log_output ||
-                    `[ModelScript CI Runner] Job '${activeLogJob.name}' (${activeLogJob.stage}) completed with status: ${activeLogJob.status}`;
+                    `[Ansatz CI Runner] Job '${activeLogJob.name}' (${activeLogJob.stage}) completed with status: ${activeLogJob.status}`;
                   navigator.clipboard?.writeText(text).catch(() => {});
                   setCopiedLog(true);
                   setTimeout(() => setCopiedLog(false), 1600);
@@ -487,8 +487,8 @@ export const ActionsTab: React.FC<ActionsTabProps> = ({ projectId, provider, def
                 margin: 0,
                 padding: "16px",
                 borderRadius: "8px",
-                backgroundColor: "#0d1117",
-                color: "#e6edf3",
+                backgroundColor: "var(--color-canvas-inset, #0d1117)",
+                color: "var(--color-fg-default, #e6edf3)",
                 fontFamily: "ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,monospace",
                 fontSize: "12.5px",
                 lineHeight: 1.6,
@@ -497,7 +497,7 @@ export const ActionsTab: React.FC<ActionsTabProps> = ({ projectId, provider, def
               }}
             >
               {activeLogJob.log_output ||
-                `[ModelScript CI Runner] Starting job '${activeLogJob.name}' in stage '${activeLogJob.stage}'...\n[ModelScript CI Runner] Repository: ${projectId} (${defaultBranch})\n[ModelScript CI Runner] Status: ${activeLogJob.status.toUpperCase()} ✓`}
+                `[Ansatz CI Runner] Starting job '${activeLogJob.name}' in stage '${activeLogJob.stage}'...\n[Ansatz CI Runner] Repository: ${projectId} (${defaultBranch})\n[Ansatz CI Runner] Status: ${activeLogJob.status.toUpperCase()} ✓`}
             </pre>
 
             <Box display="flex" justifyContent="flex-end">

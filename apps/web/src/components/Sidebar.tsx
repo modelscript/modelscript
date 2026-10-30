@@ -26,8 +26,10 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { useTheme } from "../theme";
 import { safeCssImageUrl } from "../util/url";
+import AnsatzMark from "./AnsatzLogo";
 import Box from "./Box";
 
 const SidebarContainer = styled.header`
@@ -232,68 +234,146 @@ const AdminNavBadge = styled.span`
 const BrandHeader = styled(Link)`
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 10px;
   padding: 8px 10px;
   border-radius: 12px;
   text-decoration: none;
   margin-bottom: 10px;
+  border: 1px solid var(--color-border-default);
+  background-color: var(--surface-card, rgba(255, 255, 255, 0.02));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   color: var(--color-text-heading);
 
   &:hover {
     text-decoration: none;
     background-color: var(--surface-row-hover);
+    border-color: rgba(56, 189, 248, 0.45);
+  }
+
+  .brand-icon-wrap {
+    transition: transform 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &:hover .brand-icon-wrap {
+    transform: scale(1.05);
   }
 
   @media (max-width: 1280px) {
     justify-content: center;
-    padding: 6px 0;
+    padding: 6px;
     margin-bottom: 8px;
-  }
-`;
-
-const BrandIconBox = styled.div`
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  border-radius: 9px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #000000;
-  border: 1px solid var(--color-border-default);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
-
-  img {
-    width: 36px;
-    height: 36px;
-    object-fit: cover;
-  }
-
-  ${BrandHeader}:hover & {
-    transform: scale(1.05);
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+    border-color: transparent;
+    background-color: transparent;
+    box-shadow: none;
   }
 `;
 
 const BrandTitle = styled.div`
   display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
   color: var(--color-text-heading);
   white-space: nowrap;
 
-  .brand-hub {
-    color: var(--color-accent-cyan);
+  .brand-top-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.05;
+  }
+
+  .brand-name {
+    font-size: 17.5px;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    color: var(--color-text-heading);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .brand-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background-color: var(--color-accent-cyan, #22d3ee);
+    box-shadow: 0 0 6px rgba(34, 211, 238, 0.55);
+    flex-shrink: 0;
+  }
+
+  .brand-domain-sub {
+    margin-top: 3px;
+    font-family: var(--ms-font-mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    color: var(--color-text-muted, #64748b);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .brand-badge {
+    font-size: 10px;
     font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 1.5px 5px;
+    border-radius: 5px;
+    background: rgba(6, 182, 212, 0.14);
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    color: var(--color-accent-cyan);
+  }
+
+  @media (max-width: 1280px) {
+    display: none;
+  }
+`;
+
+const BrandKbdButton = styled.button`
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: var(--ms-font-mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-text-muted, #64748b);
+  background: var(--surface-row-hover, rgba(148, 163, 184, 0.12));
+  border: 1px solid var(--color-border-default);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: var(--color-text-heading);
+    border-color: var(--color-accent-cyan);
+  }
+
+  @media (max-width: 1280px) {
+    display: none;
+  }
+`;
+
+const PoweredByFooter = styled.a`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px 2px 14px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  opacity: 0.78;
+  transition: opacity 0.15s ease;
+
+  &:hover {
+    opacity: 1;
+    color: var(--color-accent-cyan);
+    text-decoration: none;
   }
 
   @media (max-width: 1280px) {
@@ -457,6 +537,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
+  const branding = useInstanceBranding();
+  const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
+  const docsBase = (branding.docsBaseUrl || "").trim().replace(/\/+$/, "");
+  const docsHref = docsBase && !docsBase.startsWith("/") ? `${docsBase}/guide/introduction` : "/guide/introduction";
+  const nodeDomainLabel = React.useMemo(() => {
+    if (typeof window !== "undefined" && window.location?.hostname) {
+      const h = window.location.hostname;
+      if (h !== "localhost" && h !== "127.0.0.1") return h;
+    }
+    return "ansatz.social";
+  }, []);
 
   const communityLinks = [];
   if (user) communityLinks.push({ to: "/home", icon: HomeIcon, label: "Home" });
@@ -477,7 +568,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     { to: "/playground", icon: PlayIcon, label: "Playground" },
     { to: "/packages", icon: PackageIcon, label: "Packages" },
     { to: "/repos", icon: RepoIcon, label: "Repositories" },
-    { to: "/guide/introduction", icon: BookIcon, label: "Docs", reloadDocument: true },
+    { to: docsHref, icon: BookIcon, label: "Docs", reloadDocument: true },
   ];
   if (hasIde) {
     studioLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE" });
@@ -551,14 +642,46 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
   return (
     <SidebarContainer>
-      <BrandHeader to={user ? "/home" : "/explore"}>
-        <BrandIconBox>
-          <img src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"} alt="ModelScript" />
-        </BrandIconBox>
-        <BrandTitle className="nav-label">
-          <span>ModelScript</span>
-          <span className="brand-hub">Hub</span>
-        </BrandTitle>
+      <BrandHeader to={user ? "/home" : "/explore"} title={branding.instanceTagline || branding.instanceName}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <div className="brand-icon-wrap">
+            <AnsatzMark
+              size={36}
+              logoUrl={customLogoSrc}
+              alt={branding.instanceName || "Ansatz"}
+              accentColor={branding.brandAccentColor}
+            />
+          </div>
+          <BrandTitle className="nav-label" data-testid="sidebar-brand-title">
+            <div className="brand-top-row">
+              <span className="brand-name">{branding.instanceName || "Ansatz"}</span>
+              <span className="brand-status-dot" aria-hidden="true" />
+              {branding.instanceBadge && (
+                <span className="brand-badge" data-testid="sidebar-brand-badge">
+                  {branding.instanceBadge}
+                </span>
+              )}
+            </div>
+            <div className="brand-domain-sub" data-testid="sidebar-brand-domain">
+              {nodeDomainLabel}
+            </div>
+          </BrandTitle>
+        </div>
+        <BrandKbdButton
+          type="button"
+          className="nav-label"
+          title="Open Command Palette (⌘K / Ctrl+K)"
+          aria-label="Open Command Palette"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"));
+            }
+          }}
+        >
+          ⌘K
+        </BrandKbdButton>
       </BrandHeader>
 
       <Box
@@ -682,6 +805,16 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
             </Link>
           </Box>
         </GuestFooter>
+      )}
+      {branding.showPoweredBy && (
+        <PoweredByFooter
+          href={docsBase || "https://modelscript.org"}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="sidebar-powered-by"
+        >
+          Powered by ModelScript
+        </PoweredByFooter>
       )}
     </SidebarContainer>
   );

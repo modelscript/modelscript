@@ -95,23 +95,23 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
         if (sepIndex === -1) return { user: null };
 
         const username = credentials.slice(0, sepIndex);
-        const password = credentials.slice(sepIndex + 1);
+        const authSecret = credentials.slice(sepIndex + 1);
 
-        const patUser = verifyPatOrBotToken(password);
+        const patUser = verifyPatOrBotToken(authSecret);
         if (patUser) return { user: patUser };
 
         const user = database.getUserByUsername(username) || database.getUserByEmail(username);
         if (!user || isAccountBlocked(user.status)) return { user: null };
 
-        if (Buffer.byteLength(password, "utf8") <= 72) {
+        if (Buffer.byteLength(authSecret, "utf8") <= 72) {
           const passwordHash = database.getPasswordHash(user.id);
-          if (passwordHash && bcrypt.compareSync(password, passwordHash)) {
+          if (passwordHash && bcrypt.compareSync(authSecret, passwordHash)) {
             return { user };
           }
         }
 
         try {
-          const decoded = jwt.verify(password, JWT_SECRET) as
+          const decoded = jwt.verify(authSecret, JWT_SECRET) as
             | {
                 id?: number | undefined;
                 scope?: string | undefined;
@@ -214,7 +214,10 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     // Push discovery requires authentication
     if (service === "git-receive-pack") {
       if (!user) {
-        res.setHeader("WWW-Authenticate", 'Basic realm="ModelScript Git"');
+        res.setHeader(
+          "WWW-Authenticate",
+          `Basic realm="${database.getInstanceSettings().instanceName || "Ansatz"} Git"`,
+        );
         res.status(401).send("Authentication required for push");
         return;
       }
@@ -292,7 +295,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
 
     const { user } = authenticate(req);
     if (!user) {
-      res.setHeader("WWW-Authenticate", 'Basic realm="ModelScript Git"');
+      res.setHeader("WWW-Authenticate", `Basic realm="${database.getInstanceSettings().instanceName || "Ansatz"} Git"`);
       res.status(401).send("Authentication required for push");
       return;
     }

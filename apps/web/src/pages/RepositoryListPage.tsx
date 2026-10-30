@@ -28,6 +28,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
 import { CircleIconButton, PageTab as Tab, PageTabBar as TabBar } from "../components/SharedStyles";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import type { RepositoryDTO } from "../types/api";
 import { usePageTitle } from "../util/title";
 import { getFollowedReposMap, setRepoStarred } from "./workspace/utils";
@@ -284,10 +285,17 @@ export function parseRepositoryInput(
     provider = "github";
   } else if (host === "gitlab.com" || host.endsWith(".gitlab.com")) {
     provider = "gitlab";
-  } else if (host === "modelscript.org" || host === "localhost" || host.endsWith(".local")) {
+  } else if (
+    host === "ansatz.social" ||
+    host.endsWith(".ansatz.social") ||
+    host === "modelscript.org" ||
+    host.endsWith(".modelscript.org") ||
+    host === "localhost" ||
+    host.endsWith(".local")
+  ) {
     provider = "local";
   } else {
-    throw new Error("Supported providers are GitHub, GitLab, or ModelScript Git (owner/repo)");
+    throw new Error("Supported providers are GitHub, GitLab, or Ansatz Git (owner/repo)");
   }
 
   const parts = parsedUrl.pathname
@@ -306,6 +314,8 @@ export function parseRepositoryInput(
 const RepositoryListPage: React.FC = () => {
   usePageTitle("Repositories");
   const { token, user } = useAuth();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const navigate = useNavigate();
   const { openCompose } = useContext(ComposeContext);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -485,12 +495,33 @@ const RepositoryListPage: React.FC = () => {
   }, [activeSourceRepos, providerFilter, domainFilter, query, sortBy]);
 
   const detectedInputProvider = useMemo(() => {
-    const lower = repoInput.trim().toLowerCase();
-    if (!lower) return null;
-    if (lower.includes("github.com")) return "github";
-    if (lower.includes("gitlab.com")) return "gitlab";
-    if (lower.includes("modelscript.org") || lower.startsWith("local:")) return "local";
-    if (/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(lower)) return "github";
+    const trimmed = repoInput.trim();
+    if (!trimmed) return null;
+    const lower = trimmed.toLowerCase();
+    if (lower.startsWith("local:")) return "local";
+    if (/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(trimmed) && !trimmed.includes(".com") && !trimmed.includes(".org")) {
+      return "github";
+    }
+    try {
+      const parsedUrl = new URL(
+        trimmed.startsWith("http://") || trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`,
+      );
+      const host = parsedUrl.hostname.toLowerCase();
+      if (host === "github.com" || host.endsWith(".github.com")) return "github";
+      if (host === "gitlab.com" || host.endsWith(".gitlab.com")) return "gitlab";
+      if (
+        host === "ansatz.social" ||
+        host.endsWith(".ansatz.social") ||
+        host === "modelscript.org" ||
+        host.endsWith(".modelscript.org") ||
+        host === "localhost" ||
+        host.endsWith(".local")
+      ) {
+        return "local";
+      }
+    } catch {
+      // Ignore URL parsing errors for incomplete input
+    }
     return null;
   }, [repoInput]);
 
@@ -649,7 +680,7 @@ const RepositoryListPage: React.FC = () => {
           />
           {detectedInputProvider && (
             <MetaBadge style={{ textTransform: "capitalize" }}>
-              {detectedInputProvider === "local" ? "ModelScript Git" : detectedInputProvider}
+              {detectedInputProvider === "local" ? `${brandName} Git` : detectedInputProvider}
             </MetaBadge>
           )}
           <CircleIconButton type="submit" disabled={isAdding || !repoInput.trim()} title="Quick connect repository">
@@ -777,7 +808,7 @@ const RepositoryListPage: React.FC = () => {
             </FilterPill>
             {(countsByProvider.local > 0 || providerFilter === "local") && (
               <FilterPill $active={providerFilter === "local"} onClick={() => setProviderFilter("local")} type="button">
-                <RepoIcon size={14} /> ModelScript Git ({countsByProvider.local})
+                <RepoIcon size={14} /> {brandName} Git ({countsByProvider.local})
               </FilterPill>
             )}
           </Box>
@@ -848,7 +879,7 @@ const RepositoryListPage: React.FC = () => {
               {query || providerFilter !== "all" || domainFilter !== "All Domains"
                 ? "No repositories match your active filters. Try clearing your search or domain filters."
                 : activeTab === "my"
-                  ? "Connect a GitHub or GitLab repository, create a ModelScript Git repository, or explore the flagship catalog."
+                  ? `Connect a GitHub or GitLab repository, create an ${brandName} Git repository, or explore the flagship catalog.`
                   : activeTab === "starred"
                     ? "Star repositories from the catalog or workspace header to bookmark them here."
                     : "No repositories have been connected yet."}
@@ -883,7 +914,7 @@ const RepositoryListPage: React.FC = () => {
             {filteredRepos.map((r) => {
               const branch = (r as RepositoryDTO & { default_branch?: string }).default_branch || "main";
               const isLocal = r.provider === "local";
-              const externalHost = isLocal ? "modelscript.org" : r.provider === "gitlab" ? "gitlab.com" : "github.com";
+              const externalHost = isLocal ? "ansatz.social" : r.provider === "gitlab" ? "gitlab.com" : "github.com";
               const externalUrl = isLocal
                 ? `${window.location.origin}/git/${r.namespace}/${r.project}.git`
                 : `https://${externalHost}/${r.namespace}/${r.project}`;
@@ -929,7 +960,7 @@ const RepositoryListPage: React.FC = () => {
                           ) : (
                             <MarkGithubIcon size={12} />
                           )}
-                          {r.provider === "gitlab" ? "GitLab" : r.provider === "local" ? "ModelScript Git" : "GitHub"}
+                          {r.provider === "gitlab" ? "GitLab" : r.provider === "local" ? `${brandName} Git` : "GitHub"}
                         </MetaBadge>
 
                         <MetaBadge title={`Default branch: ${branch}`}>
@@ -1035,7 +1066,7 @@ const RepositoryListPage: React.FC = () => {
 
                     <ActionPillButton
                       type="button"
-                      title="Open repository in ModelScript Web IDE"
+                      title={`Open repository in ${brandName} Web IDE`}
                       onClick={() => {
                         navigate(
                           `/repos/${r.provider}/${r.namespace}/${r.project}/ide?ref=${encodeURIComponent(branch)}`,
@@ -1148,7 +1179,7 @@ const RepositoryListPage: React.FC = () => {
                   >
                     <Select.Option value="github">GitHub (github.com)</Select.Option>
                     <Select.Option value="gitlab">GitLab (gitlab.com)</Select.Option>
-                    <Select.Option value="local">ModelScript Git (Hosted Local Repository)</Select.Option>
+                    <Select.Option value="local">{brandName} Git (Hosted Local Repository)</Select.Option>
                   </Select>
                 </FormControl>
               </Box>
@@ -1175,7 +1206,7 @@ const RepositoryListPage: React.FC = () => {
                   />
                   <FormControl.Caption>
                     {modalProvider === "local"
-                      ? "Creates or links a native Git repository hosted on this ModelScript instance."
+                      ? `Creates or links a native Git repository hosted on this ${brandName} instance.`
                       : "Enter a full HTTPS URL or owner/project shorthand."}
                   </FormControl.Caption>
                 </FormControl>

@@ -427,7 +427,10 @@ export class CadViewerPanel extends BaseWebviewPanel {
         let wasmBytes: Uint8Array | undefined;
         try {
           const wasmUri = vscode.Uri.joinPath(this._extensionUri, "dist", "scad.wasm");
-          wasmBytes = await vscode.workspace.fs.readFile(wasmUri);
+          const read = await vscode.workspace.fs.readFile(wasmUri);
+          if (read && read.byteLength > 0) {
+            wasmBytes = read;
+          }
         } catch {
           // Node fallback
         }

@@ -276,6 +276,14 @@ export const disable2FA = async (password?: string, code?: string): Promise<{ su
   return data;
 };
 
+export const regenerateBackupCodes2FA = async (
+  password?: string,
+  code?: string,
+): Promise<{ success: boolean; message: string; backupCodes: string[] }> => {
+  const { data } = await api.post("/auth/2fa/backup-codes/regenerate", { password, code });
+  return data;
+};
+
 export const logoutApi = async (): Promise<{ success: boolean; message: string }> => {
   try {
     const { data } = await api.post("/auth/logout");

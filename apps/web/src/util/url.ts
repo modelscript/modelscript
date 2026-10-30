@@ -50,7 +50,7 @@ export function sanitizeHttpUrl(
 /**
  * Safely extracts the hostname from a URL string without throwing on relative or malformed URLs.
  */
-export function safeHostname(rawUrl: string | null | undefined, fallback = "modelscript.org"): string {
+export function safeHostname(rawUrl: string | null | undefined, fallback = "ansatz.social"): string {
   if (!rawUrl || typeof rawUrl !== "string") return fallback;
   try {
     const parsed = new URL(rawUrl, `https://${fallback}`);

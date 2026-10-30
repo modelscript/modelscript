@@ -59,9 +59,7 @@ test("Phase 2 Security & Hardening Integration Suite", async (t) => {
     const sentMails = defaultMailer.getSentMails();
     assert.ok(sentMails.length > 0);
     assert.ok(
-      sentMails.some(
-        (m) => m.to === "alice.reset@example.com" && m.subject.includes("Reset your ModelScript password"),
-      ),
+      sentMails.some((m) => m.to === "alice.reset@example.com" && m.subject.includes("Reset your Ansatz password")),
     );
 
     // 2. Reject short password

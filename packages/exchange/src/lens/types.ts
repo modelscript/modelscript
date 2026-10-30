@@ -97,12 +97,147 @@ export interface CanonicalWorkspaceManifest {
   behavior?: { id: string; path: string; format?: string | undefined; description?: string | undefined }[] | undefined;
   /** Semantic traceability relationships across domains */
   relations?: { relationType: string; source: string; target: string; description?: string | undefined }[] | undefined;
+  /** Data Package profile (e.g., "engineering-package", "engineering-data-package", "tabular-data-package") */
+  profile?: string | undefined;
+  /** Frictionless / Engineering Data Package resources (datasets, meshes, FMUs, CAS/S3 blobs) */
+  resources?: DataPackageResourceDescriptor[] | undefined;
+  /** Direct package/data dependencies */
+  dependencies?: Record<string, string> | undefined;
+}
+
+/** Field schema in a Frictionless Engineering Data Package Table Schema */
+export interface DataPackageSchemaField {
+  name: string;
+  type: "number" | "integer" | "string" | "boolean" | "datetime" | "object" | "array";
+  title?: string | undefined;
+  description?: string | undefined;
+  /** Physical engineering unit (e.g. "rad/s", "N.m", "K", "Pa", "V") */
+  unit?: string | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
+  mean?: number | undefined;
+  unique?: number | undefined;
+  constraints?:
+    | {
+        required?: boolean | undefined;
+        minimum?: number | undefined;
+        maximum?: number | undefined;
+        enum?: (string | number)[] | undefined;
+      }
+    | undefined;
+}
+
+/** Resource descriptor in an Engineering Data Package (`datapackage.json`) */
+export interface DataPackageResourceDescriptor {
+  /** Logical identifier (slug) for URI resolution: `msx://@scope/pkg@ver#<name>` */
+  name: string;
+  /** Relative path within package archive or remote URI */
+  path: string;
+  /** Optional human-readable title */
+  title?: string | undefined;
+  /** Optional description */
+  description?: string | undefined;
+  /** Frictionless resource profile (e.g., "tabular-data-resource", "engineering-cad-resource", "fmu-resource") */
+  profile?: string | undefined;
+  /** File format ("csv", "tsv", "parquet", "arrow", "hdf5", "mat", "step", "fmu", "json") */
+  format?: string | undefined;
+  /** IANA media type */
+  mediatype?: string | undefined;
+  /** Size in bytes */
+  bytes?: number | undefined;
+  /** Cryptographic content hash (`sha256:<hex>`) */
+  hash?: string | undefined;
+  /** Storage backing mode: inline inside zip, content-addressed storage, or S3 object store */
+  storage?: "inline" | "cas" | "s3" | undefined;
+  /** Optional row count for tabular datasets */
+  rowCount?: number | undefined;
+  /** Table Schema for tabular/time-series engineering datasets */
+  schema?:
+    | {
+        fields: DataPackageSchemaField[];
+        primaryKey?: string | string[] | undefined;
+      }
+    | undefined;
+}
+
+/** Frictionless / W3C Engineering Data Package (`datapackage.json`) projection */
+export interface DataPackageJsonProjection {
+  $schema: string;
+  profile: string;
+  name: string;
+  id?: string | undefined;
+  title?: string | undefined;
+  version: string;
+  description?: string | undefined;
+  homepage?: string | undefined;
+  created?: string | undefined;
+  contributors?:
+    | { title: string; email?: string | undefined; organization?: string | undefined; role?: string | undefined }[]
+    | undefined;
+  licenses?: { name: string; title?: string | undefined; path?: string | undefined }[] | undefined;
+  dependencies?: Record<string, string> | undefined;
+  resources: DataPackageResourceDescriptor[];
+  modelscript?:
+    | {
+        globalAssetId: string;
+        languages?: string[] | undefined;
+        nativeFormat?: string | undefined;
+      }
+    | undefined;
+}
+
+/** Locked package or data-package entry inside `datapackage.lock.json` */
+export interface DataPackageLockEntry {
+  version: string;
+  resolved?: string | undefined;
+  integrity: string;
+  profile?: string | undefined;
+  dependencies?: Record<string, string> | undefined;
+  resources?:
+    | Record<
+        string,
+        {
+          path: string;
+          hash: string;
+          bytes?: number | undefined;
+          format?: string | undefined;
+          storage?: "inline" | "cas" | "s3" | undefined;
+        }
+      >
+    | undefined;
+}
+
+/** Deterministic, content-addressed lockfile (`datapackage.lock.json` / `modelscript.lock.json`) */
+export interface DataPackageLockJson {
+  $schema: string;
+  lockfileVersion: 1;
+  name: string;
+  version: string;
+  generatedAt: string;
+  rootIntegrity: string;
+  lockfileIntegrity: string;
+  compiler: {
+    engine: string;
+    version: string;
+  };
+  experiment?:
+    | {
+        solver?: string | undefined;
+        startTime?: number | undefined;
+        stopTime?: number | undefined;
+        interval?: number | undefined;
+        numberOfIntervals?: number | undefined;
+        tolerance?: number | undefined;
+      }
+    | undefined;
+  packages: Record<string, DataPackageLockEntry>;
 }
 
 /** NPM-compatible package.json projection */
 export interface PackageJsonProjection {
   name: string;
   version: string;
+  profile?: string | undefined;
   description?: string | undefined;
   main?: string | undefined;
   author?: string | { name: string; email?: string | undefined } | undefined;
@@ -112,13 +247,16 @@ export interface PackageJsonProjection {
   dependencies?: Record<string, string> | undefined;
   devDependencies?: Record<string, string> | undefined;
   scripts?: Record<string, string> | undefined;
+  resources?: DataPackageResourceDescriptor[] | undefined;
   modelscript?:
     | {
         globalAssetId: string;
+        profile?: string | undefined;
         variants?: string[] | undefined;
         submodels?: string[] | undefined;
         languages?: string[] | undefined;
         nativeFormat?: string | undefined;
+        resourcesCount?: number | undefined;
       }
     | undefined;
   [key: string]: unknown;

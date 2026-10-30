@@ -1,6 +1,6 @@
 # ==============================================================================
-# Unified multi-stage Dockerfile for all ModelScript services.
-# Each service is a named target: api, web, ide.
+# Unified multi-stage Dockerfile for ModelScript & Ansatz services.
+# Named targets: api (api-ee), api-ce, web, cli (cli-ee), cli-ce, appliance.
 # Usage: docker compose build (targets configured in docker-compose.yml)
 #
 # Optimization: Set PREBUILT=true when the build context already contains

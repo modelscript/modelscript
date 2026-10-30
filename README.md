@@ -7,7 +7,7 @@
 [![npm @modelscript/cli](https://img.shields.io/npm/v/@modelscript/cli?label=cli)](https://www.npmjs.com/package/@modelscript/cli)
 [![Docker API](https://img.shields.io/badge/ghcr.io-api-blue?logo=docker)](https://ghcr.io/modelscript/api)
 [![Docker Web](https://img.shields.io/badge/ghcr.io-web-blue?logo=docker)](https://ghcr.io/modelscript/web)
-[![Docker IDE](https://img.shields.io/badge/ghcr.io-ide-blue?logo=docker)](https://ghcr.io/modelscript/ide)
+[![Docker Appliance](https://img.shields.io/badge/ghcr.io-appliance-blue?logo=docker)](https://ghcr.io/modelscript/appliance)
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript)
 [![Open VSX](https://img.shields.io/open-vsx/v/modelscript/modelscript?label=Open%20VSX&logo=eclipseide)](https://open-vsx.org/extension/modelscript/modelscript)
 
@@ -207,9 +207,9 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 | Package                                   | Responsibility                                                                                                               |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | [`@modelscript/cli`](./apps/cli/)         | `modelscript` (`msx`) unified command-line toolchain — 89 commands across compilation, simulation, verification, and domains |
-| [`@modelscript/api`](./apps/api/)         | Backend REST, GraphQL, SPARQL, Git Smart HTTP, SysML v2 REST, Co-Simulation, Slurm HPC, and MCP SSE gateway server           |
+| [`@modelscript/api`](./apps/api/)         | Ansatz & ModelScript backend — REST, GraphQL, SPARQL, Git Smart HTTP, ActivityPub, SysML v2 REST, Slurm HPC, and MCP SSE     |
 | [`@modelscript/ide`](./apps/ide/)         | Browser-based VS Code Web engineering workbench with GitHub virtual filesystem (`github://`) and static CDN bundling         |
-| [`@modelscript/web`](./apps/web/)         | Web frontend — package registry, social engineering hub, ActivityPub federation, Cloud HPC studio, and `/playground`         |
+| [`@modelscript/web`](./apps/web/)         | Ansatz (`ansatz.social`) web platform — package registry, federated engineering network, Cloud HPC studio, and `/playground` |
 | [`@modelscript/desktop`](./apps/desktop/) | Native cross-platform Desktop Studio (Tauri v2) with direct FFI `NativeFmuRunner` and NERC CIP / FERC CEII air-gap controls  |
 | [`@modelscript/docs`](./apps/docs/)       | Unified `modelscript.org` documentation portal (VitePress) and automated PDF Reference Manual generator                      |
 

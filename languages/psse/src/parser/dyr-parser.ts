@@ -244,7 +244,7 @@ export function isLikelyDyrContent(source: string): boolean {
     const line = rawLine.trim();
     if (!line || line.startsWith("//") || line.startsWith("@!") || line.startsWith("/*")) continue;
     // A .dyr record starts with an integer bus number followed by a quoted model name like 'GENROU' or 'GENCLS'
-    if (/^\d+\s*[,\s]\s*'(?:GEN|EX|TG|HY|IEEE|SEXS|PSS|USR|REG)/i.test(line)) {
+    if (/^\d+(?:,\s*|\s+)'(?:GEN|EX|TG|HY|IEEE|SEXS|PSS|USR|REG)/i.test(line)) {
       return true;
     }
     return false;
@@ -393,7 +393,7 @@ export function parseDyr(source: string): PsseDyrCase {
       // Check if the next non-empty line starts a new record (single-line .dyr without trailing '/')
       currentBuffer += " " + rawLine;
       const nextLine = lines[i + 1]?.trim() ?? "";
-      if (!nextLine || /^\d+\s*[,\s]\s*'/.test(nextLine)) {
+      if (!nextLine || /^\d+(?:,\s*|\s+)'/.test(nextLine)) {
         flushRecord(currentBuffer, recordStartOffset, lineEnd, recordStartLine);
         currentBuffer = "";
       }

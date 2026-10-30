@@ -7,6 +7,7 @@ import { createApiToken, getApiTokens, revokeApiToken, type ApiTokenDto } from "
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import {
   DangerButton,
   DetailSubtitle,
@@ -24,6 +25,8 @@ export interface TokensTabProps {
 
 export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
   const toast = useToast();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const [apiTokens, setApiTokens] = useState<ApiTokenDto[]>([]);
   const [confirmingRevokeTokenId, setConfirmingRevokeTokenId] = useState<number | null>(null);
   const [isLoadingTokens, setIsLoadingTokens] = useState(false);
@@ -53,8 +56,8 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
       </Header>
       <Box px={4} pb={4} style={{ overflowY: "auto" }}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
-          Personal access tokens function like API keys. You can use them to authenticate against the ModelScript
-          Registry, CI/CD automated runners, and the <code>msx</code> CLI.
+          Personal access tokens function like API keys. You can use them to authenticate against the {brandName}{" "}
+          Registry, CI/CD automated runners, and the ModelScript <code>msx</code> CLI.
         </DetailSubtitle>
 
         {/* Newly Created Secret Banner */}

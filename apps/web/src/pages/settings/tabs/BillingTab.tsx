@@ -28,6 +28,7 @@ import {
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useFeatureFlags } from "../../../FeatureFlagContext";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { DetailSubtitle, DetailTitle, Header } from "../settingsStyles";
 
 const PlanHeaderCard = styled.div`
@@ -282,6 +283,8 @@ const DEFAULT_COMMUNITY_VIEW: BillingSummaryView = {
 export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
   const { isEnabled, setFlagOverride } = useFeatureFlags();
   const isStripeFeatureEnabled = isEnabled("billing_stripe_live");
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
 
   const [billingSummary, setBillingSummary] = useState<BillingSummaryView | null>(null);
   const [isLiveActive, setIsLiveActive] = useState<boolean>(false);
@@ -437,7 +440,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
           <Box display="flex" flexDirection="column" gap={1}>
             <Box display="flex" alignItems="center" gap={2}>
               <Text style={{ fontSize: "16px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                {isLiveActive ? "ModelScript Pro Cloud" : "ModelScript Community Edition"}
+                {isLiveActive ? `${brandName} Pro Cloud` : `${brandName} Community Edition`}
               </Text>
               <PlanBadge $variant={isLiveActive ? "pro" : "community"}>
                 <ShieldCheckIcon size={12} />
@@ -447,7 +450,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
             <Text style={{ fontSize: "13px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
               {isLiveActive
                 ? "High-performance Slurm cluster job dispatch, batched SUNDIALS sweeps, and A100 GPU surrogate training active."
-                : "Local WebAssembly ODE/DAE execution, compiler passes, and core engineering formats included under the AGPL-3.0 open-core license."}
+                : "Local WebAssembly ODE/DAE execution (powered by ModelScript), compiler passes, and core engineering formats included under the AGPL-3.0 open-core license."}
             </Text>
           </Box>
 
@@ -482,12 +485,12 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                   Commercial Licensing &amp; Enterprise Utility Appliances
                 </div>
                 <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginTop: "2px" }}>
-                  Need to embed ModelScript without AGPL copyleft obligations, or deploy a hardened, air-gapped NERC CIP
-                  appliance inside your utility firewall?
+                  Need to embed {brandName} / ModelScript without AGPL copyleft obligations, or deploy a hardened,
+                  air-gapped NERC CIP appliance inside your utility firewall?
                 </div>
               </Box>
               <ActionLinkButton
-                href="mailto:licensing@modelscript.org?subject=ModelScript%20Commercial%20License%20%2F%20Enterprise%20Inquiry&body=Hi%20ModelScript%20Team%2C%0A%0AWe%20are%20interested%20in%20evaluating%20the%20ModelScript%20Commercial%20SDK%20%2F%20Enterprise%20Appliance%20for%20our%20engineering%20team.%0A%0ACompany%2FOrganization%3A%20%0ATeam%20Size%3A%20%0APrimary%20Engineering%20Formats%20(e.g.%20Modelica%2C%20SysML%2C%20STEP)%3A%20%0A%0ABest%20regards%2C"
+                href="mailto:licensing@ansatz.social?subject=Ansatz%20Commercial%20License%20%2F%20Enterprise%20Inquiry&body=Hi%20Ansatz%20Team%2C%0A%0AWe%20are%20interested%20in%20evaluating%20the%20Ansatz%20%2F%20ModelScript%20Commercial%20SDK%20%2F%20Enterprise%20Appliance%20for%20our%20engineering%20team.%0A%0ACompany%2FOrganization%3A%20%0ATeam%20Size%3A%20%0APrimary%20Engineering%20Formats%20(e.g.%20Modelica%2C%20SysML%2C%20STEP)%3A%20%0A%0ABest%20regards%2C"
                 target="_blank"
                 rel="noopener noreferrer"
               >

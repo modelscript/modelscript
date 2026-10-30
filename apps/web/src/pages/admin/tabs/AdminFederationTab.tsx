@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DownloadIcon, GlobeIcon, PlusIcon, SyncIcon, TrashIcon, UploadIcon } from "@primer/octicons-react";
+import {
+  DownloadIcon,
+  GlobeIcon,
+  PlusIcon,
+  ShieldXIcon,
+  SyncIcon,
+  TrashIcon,
+  UploadIcon,
+} from "@primer/octicons-react";
 import React, { useState } from "react";
+import { circuitBreakAdminFederationDomain } from "../../../api";
 import Box from "../../../components/Box";
 import {
   ActionButton,
@@ -93,6 +102,23 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
   } | null>(null);
 
   const [expandedDeliveryId, setExpandedDeliveryId] = useState<number | null>(null);
+  const [circuitBreakStatus, setCircuitBreakStatus] = useState<string | null>(null);
+
+  const handleCircuitBreakDomain = async (domain: string) => {
+    if (!domain) return;
+    try {
+      const res = await circuitBreakAdminFederationDomain({
+        domain,
+        tier: "suspend",
+        reason: "Circuit breaker tripped due to dead-letter delivery failures",
+      });
+      setCircuitBreakStatus(
+        `Circuit breaker tripped for ${res.domain} (${res.tier}; purged ${res.purgedDeliveries} queued/failed deliveries).`,
+      );
+    } catch {
+      setCircuitBreakStatus(`Failed to trip circuit breaker for ${domain}.`);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,6 +420,12 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
             )}
           </Box>
 
+          {circuitBreakStatus && (
+            <Box mb={2} style={{ fontSize: "12px", color: "var(--ms-text-2, var(--color-text-muted))" }}>
+              {circuitBreakStatus}
+            </Box>
+          )}
+
           <Table>
             <thead>
               <tr>
@@ -441,17 +473,30 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
                         {item.last_error || "—"}
                       </td>
                       <td>
-                        {item.payload ? (
-                          <ActionButton
-                            $variant="secondary"
-                            type="button"
-                            onClick={() => setExpandedDeliveryId(expandedDeliveryId === item.id ? null : item.id)}
-                          >
-                            {expandedDeliveryId === item.id ? "Hide JSON" : "Inspect"}
-                          </ActionButton>
-                        ) : (
-                          "—"
-                        )}
+                        <Box display="flex" gap={1} flexWrap="wrap">
+                          {item.payload ? (
+                            <ActionButton
+                              $variant="secondary"
+                              type="button"
+                              onClick={() => setExpandedDeliveryId(expandedDeliveryId === item.id ? null : item.id)}
+                            >
+                              {expandedDeliveryId === item.id ? "Hide JSON" : "Inspect"}
+                            </ActionButton>
+                          ) : (
+                            "—"
+                          )}
+                          {item.status === "failed" && item.target_domain && (
+                            <ActionButton
+                              $variant="danger"
+                              type="button"
+                              onClick={() => void handleCircuitBreakDomain(item.target_domain)}
+                              title={`Suspend ${item.target_domain} and purge dead-letter queue`}
+                            >
+                              <ShieldXIcon size={12} />
+                              <span>Circuit-Break Peer</span>
+                            </ActionButton>
+                          )}
+                        </Box>
                       </td>
                       <td style={{ fontSize: "12px", color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>
                         {new Date(item.updated_at).toLocaleString()}

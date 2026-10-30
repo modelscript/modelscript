@@ -8,6 +8,7 @@ import { getArtifactView } from "../api";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
 import { decompressMorselPayload } from "../components/morsel/util/permalink";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import {
   buildEditorUrlForArtifact,
   inferDialectFromArtifact,
@@ -77,6 +78,8 @@ const ScrollHintBadge = styled.div<{ $visible: boolean }>`
 
 export const EmbedPlaygroundPage: React.FC = () => {
   const location = useLocation();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const initialSearchParams = new URLSearchParams(location.search);
   const initialLangParam =
     initialSearchParams.get("lang") || initialSearchParams.get("dialect") || initialSearchParams.get("language");
@@ -456,11 +459,11 @@ export const EmbedPlaygroundPage: React.FC = () => {
         rel="noopener noreferrer"
         title={
           targetInfo.target === "ide"
-            ? "Open full project in ModelScript IDE"
-            : "Open interactive model in ModelScript Playground"
+            ? `Open full project in ${brandName} IDE`
+            : `Open interactive model in ${brandName} Playground`
         }
       >
-        <span>{targetInfo.target === "ide" ? "ModelScript IDE 🛠️" : "ModelScript Playground ⚡"}</span>
+        <span>{targetInfo.target === "ide" ? `${brandName} IDE 🛠️` : `${brandName} Playground ⚡`}</span>
         <LinkExternalIcon size={12} />
       </WatermarkPill>
     </EmbedContainer>

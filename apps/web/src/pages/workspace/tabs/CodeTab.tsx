@@ -48,6 +48,7 @@ import Box from "../../../components/Box";
 import CloudSimulationModal from "../../../components/CloudSimulationModal";
 import { useToast } from "../../../components/ToastContext";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import CommitInfoBar from "../components/CommitInfoBar";
 import RepoAboutSidebar from "../components/RepoAboutSidebar";
@@ -76,6 +77,8 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
 
   const { showToast } = useToast();
   const hasCae = useFeatureFlag("cae_cloud_solver");
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const { theme } = useTheme();
   const navigate = useNavigate();
 
@@ -354,7 +357,7 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
                   leadingVisual={PlusIcon}
                   onClick={() => {
                     setNewFileName("README.md");
-                    setNewFileContent(`# ${repo.name}\n\nEngineering model repository hosted on ModelScript.\n`);
+                    setNewFileContent(`# ${repo.name}\n\nEngineering model repository hosted on ${brandName}.\n`);
                     setIsCreateFileOpen(true);
                   }}
                 >
@@ -646,7 +649,7 @@ git push -u origin ${defaultBranch}`}
                       );
                     }}
                   >
-                    Open in ModelScript IDE (Web VS Code)
+                    Open in {brandName} IDE (Web VS Code)
                   </ActionList.Item>
                   <ActionList.Item
                     onSelect={() => {

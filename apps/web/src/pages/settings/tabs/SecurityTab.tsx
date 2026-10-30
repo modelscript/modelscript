@@ -7,6 +7,7 @@ import { useAuth } from "../../../AuthContext";
 import TwoFactorModal from "../../../components/auth/TwoFactorModal";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { deletePrivateKey, getAllPrivateKeyIds, migrateLegacyKeys, savePrivateKey } from "../../../util/keystore";
 import { DetailSubtitle, FormInput, FormLabel, Header, SaveButton, SecondaryButton } from "../settingsStyles";
 
@@ -16,10 +17,16 @@ export interface SecurityTabProps {
 
 export const SecurityTab: React.FC<SecurityTabProps> = () => {
   const { user, updateToken } = useAuth();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const toast = useToast();
 
   const [is2FAModalOpen, setIs2FAModalOpen] = useState(false);
+  const [twoFactorModalMode, setTwoFactorModalMode] = useState<"manage" | "regenerate">("manage");
   const [is2FAEnabled, setIs2FAEnabled] = useState(Boolean(user?.totp_enabled));
+  const [backupCodesRemaining, setBackupCodesRemaining] = useState<number>(
+    typeof (user as any)?.backup_codes_remaining === "number" ? (user as any).backup_codes_remaining : 10,
+  );
 
   const [sessionRevokeSuccess, setSessionRevokeSuccess] = useState(false);
   const [sessionRevoking, setSessionRevoking] = useState(false);
@@ -35,6 +42,9 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
   useEffect(() => {
     if (user) {
       setIs2FAEnabled(Boolean(user.totp_enabled));
+      if (typeof (user as any).backup_codes_remaining === "number") {
+        setBackupCodesRemaining((user as any).backup_codes_remaining);
+      }
     }
   }, [user]);
 
@@ -133,7 +143,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
         >
           <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={3}>
             <Box>
-              <Box display="flex" alignItems="center" gap={2} mb={1}>
+              <Box display="flex" alignItems="center" gap={2} mb={1} flexWrap="wrap">
                 <ShieldCheckIcon
                   size={20}
                   fill={is2FAEnabled ? "var(--color-success, #3fb950)" : "var(--color-text-muted)"}
@@ -152,24 +162,57 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
                 >
                   {is2FAEnabled ? "Active & Protected" : "Not Configured"}
                 </span>
+                {is2FAEnabled && (
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: "12px",
+                      backgroundColor:
+                        backupCodesRemaining <= 2 ? "rgba(210, 153, 34, 0.15)" : "rgba(6, 182, 212, 0.12)",
+                      color: backupCodesRemaining <= 2 ? "#d29922" : "var(--color-accent-cyan, #06b6d4)",
+                      border: `1px solid ${backupCodesRemaining <= 2 ? "rgba(210, 153, 34, 0.4)" : "rgba(6, 182, 212, 0.35)"}`,
+                    }}
+                  >
+                    {backupCodesRemaining} Recovery {backupCodesRemaining === 1 ? "Code" : "Codes"} Left
+                  </span>
+                )}
               </Box>
               <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.5", display: "block" }}>
-                Protect your ModelScript account with time-based one-time passwords (TOTP). Compatible with Google
+                Protect your {brandName} account with time-based one-time passwords (TOTP). Compatible with Google
                 Authenticator, 1Password, Authy, Apple Keychain, and hardware tokens.
               </DetailSubtitle>
             </Box>
 
-            <SaveButton
-              style={{
-                whiteSpace: "nowrap",
-                backgroundColor: is2FAEnabled
-                  ? "var(--color-danger-emphasis, #cf222e)"
-                  : "var(--color-accent-cyan, #06b6d4)",
-              }}
-              onClick={() => setIs2FAModalOpen(true)}
-            >
-              {is2FAEnabled ? "Disable 2FA" : "Enable 2FA"}
-            </SaveButton>
+            <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+              {is2FAEnabled && (
+                <SecondaryButton
+                  type="button"
+                  style={{ whiteSpace: "nowrap", padding: "8px 14px", fontSize: "13px" }}
+                  onClick={() => {
+                    setTwoFactorModalMode("regenerate");
+                    setIs2FAModalOpen(true);
+                  }}
+                >
+                  Regenerate Backup Codes
+                </SecondaryButton>
+              )}
+              <SaveButton
+                style={{
+                  whiteSpace: "nowrap",
+                  backgroundColor: is2FAEnabled
+                    ? "var(--color-danger-emphasis, #cf222e)"
+                    : "var(--color-accent-cyan, #06b6d4)",
+                }}
+                onClick={() => {
+                  setTwoFactorModalMode("manage");
+                  setIs2FAModalOpen(true);
+                }}
+              >
+                {is2FAEnabled ? "Disable 2FA" : "Enable 2FA"}
+              </SaveButton>
+            </Box>
           </Box>
         </Box>
 
@@ -323,7 +366,9 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
         onClose={() => setIs2FAModalOpen(false)}
         isEnabled={is2FAEnabled}
         onStatusChange={(enabled) => setIs2FAEnabled(enabled)}
+        onBackupCodesRegenerated={(remaining) => setBackupCodesRemaining(remaining)}
         hasPassword={user?.has_password ?? true}
+        mode={twoFactorModalMode}
       />
     </>
   );

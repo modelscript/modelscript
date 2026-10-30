@@ -3,6 +3,7 @@
 import { ArrowLeftIcon, LawIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { usePageTitle } from "../util/title";
 
 const Container = styled.div`
@@ -124,6 +125,8 @@ const HighlightBox = styled.div`
 export default function TermsPage() {
   usePageTitle("Terms of Service");
   const navigate = useNavigate();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
 
   return (
     <Container>
@@ -136,7 +139,7 @@ export default function TermsPage() {
           }
         }}
       >
-        <ArrowLeftIcon size={16} /> Back to ModelScript
+        <ArrowLeftIcon size={16} /> Back to {brandName}
       </BackLink>
 
       <Header>
@@ -157,7 +160,7 @@ export default function TermsPage() {
       <Section>
         <h2>1. Acceptance of Terms</h2>
         <p>
-          By creating an account, accessing, or using the ModelScript platform, web workbench, simulation API, or
+          By creating an account, accessing, or using the {brandName} platform, web workbench, simulation API, or
           package registry (&ldquo;Services&rdquo;), you agree to be bound by these Terms of Service
           (&ldquo;Terms&rdquo;) and our Acceptable Use Policy. If you do not agree to these terms, do not access or use
           the Services.
@@ -167,8 +170,8 @@ export default function TermsPage() {
       <Section>
         <h2>2. Simulation &amp; Cloud Compute Credits</h2>
         <p>
-          ModelScript provides browser-native WebAssembly solvers, differential algebraic equation (DAE) compilation,
-          and optional cloud High-Performance Computing (HPC) simulation runners.
+          {brandName} provides browser-native WebAssembly solvers (powered by ModelScript), differential algebraic
+          equation (DAE) compilation, and optional cloud High-Performance Computing (HPC) simulation runners.
         </p>
         <ul>
           <li>
@@ -186,7 +189,7 @@ export default function TermsPage() {
         <h2>3. Acceptable Use Policy (AUP) &amp; Export Compliance</h2>
         <HighlightBox>
           <p style={{ margin: 0, fontWeight: 600 }}>
-            ModelScript tools compile physical models and numerical simulation systems. You agree not to use the
+            {brandName} tools compile physical models and numerical simulation systems. You agree not to use the
             Services for unlawful or prohibited purposes.
           </p>
         </HighlightBox>
@@ -201,11 +204,11 @@ export default function TermsPage() {
             dual-use aerospace and defense technologies where export authorization is required and lacking.
           </li>
           <li>
-            Engage in cryptocurrency mining, unauthorized denial-of-service testing, or port scanning using ModelScript
+            Engage in cryptocurrency mining, unauthorized denial-of-service testing, or port scanning using {brandName}{" "}
             cloud compute runners.
           </li>
           <li>
-            Publish or transmit malicious code, exploits, or deceptive package artifacts targeting the ModelScript
+            Publish or transmit malicious code, exploits, or deceptive package artifacts targeting the {brandName}{" "}
             registry ecosystem.
           </li>
         </ul>
@@ -215,7 +218,7 @@ export default function TermsPage() {
         <h2>4. Intellectual Property &amp; Package Publishing</h2>
         <p>
           You retain all rights and ownership to the cyber-physical models, SysML diagrams, Modelica code, and CAD
-          artifacts you create. When publishing packages to the public ModelScript Registry, you grant other users a
+          artifacts you create. When publishing packages to the public {brandName} Registry, you grant other users a
           license according to the SPDX license identifier specified in your package manifest (such as MIT,
           BSD-3-Clause, or AGPL-3.0).
         </p>

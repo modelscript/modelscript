@@ -217,13 +217,13 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     const customName =
       settings.instanceName && settings.instanceName !== "ModelScript Engineering Hub"
         ? settings.instanceName
-        : "ModelScript Hub";
+        : "Ansatz";
     const customDesc =
       settings.instanceDescription &&
       settings.instanceDescription !==
         "Federated polyglot engineering simulation, Modelica, SysML v2, and digital twin platform."
         ? settings.instanceDescription
-        : "Collaborative Engineering and Physical Modeling Hub";
+        : settings.instanceTagline || "The Federated Scientific & Engineering Network";
 
     res.type('application/json; profile="http://nodeinfo.diaspora.software/ns/schema/2.1#"').json({
       version: "2.1",
@@ -248,7 +248,11 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       },
       metadata: {
         nodeName: customName,
+        nodeBadge: settings.instanceBadge,
+        nodeTagline: settings.instanceTagline,
         nodeDescription: customDesc,
+        brandLogoUrl: settings.brandLogoUrl,
+        showPoweredBy: settings.showPoweredBy,
         contactEmail: settings.contactEmail,
         federationMode: settings.federationMode,
         registrationMode: settings.registrationMode,
@@ -270,6 +274,8 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
     const instanceKeys = db.getInstanceKeys();
     const instanceEdKeys = db.getInstanceEd25519Keys();
+    const settings = db.getInstanceSettings();
+    const brandName = settings.instanceName || "Ansatz";
     const actorUrl = `${publicUrl}/actor`;
     const edMultibase = ed25519PemToMultibase(instanceEdKeys.publicKey);
 
@@ -282,7 +288,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       id: actorUrl,
       type: "Application",
       preferredUsername: "hub",
-      name: "ModelScript Hub",
+      name: brandName,
       summary: "Instance actor for transport-layer signatures",
       inbox: `${actorUrl}/inbox`,
       outbox: `${actorUrl}/outbox`,
@@ -381,6 +387,8 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       });
     }
 
+    const brandName = db.getInstanceSettings().instanceName || "Ansatz";
+
     res.type("application/activity+json").json({
       "@context": [
         "https://www.w3.org/ns/activitystreams",
@@ -391,7 +399,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       type: "Person",
       preferredUsername: username,
       name: fullUser["display_name"] || username,
-      summary: fullUser["bio"] || "ModelScript developer",
+      summary: fullUser["bio"] || `Engineer on ${brandName}`,
       inbox: fullUser["inbox_url"],
       outbox: fullUser["outbox_url"],
       followers: `${fullUser["actor_url"]}/followers`,

@@ -7,7 +7,7 @@ import { CfgEditorProvider } from "./cfg-editor-provider.js";
 import { ChatViewProvider } from "./chat-panel.js";
 import { registerChatParticipant } from "./chat-participant.js";
 import { CloudStatusBar } from "./cloud-status-bar.js";
-import { registerCollaborationPresence, type IdePeerPresence, type IdeSymbolCollision } from "./collab-presence.js";
+import { type IdePeerPresence, type IdeSymbolCollision, registerCollaborationPresence } from "./collab-presence.js";
 import { registerDynamicActions } from "./controllers/action-router-controller.js";
 import { registerAnalyticalCommands } from "./controllers/analytical-controller.js";
 import { registerCadAndMeshingCommands } from "./controllers/cad-meshing-controller.js";
@@ -39,10 +39,16 @@ import { initWorkspaceAndTree, registerVirtualFileSystems } from "./services/vir
 import { SimulationViewPanel } from "./simulation-view-panel.js";
 import { StepEditorProvider } from "./step-editor-provider.js";
 import {
+  FEATURE_LABELS,
+  type FeatureChannel,
+  getFeatureChannelSetting,
   getLanguageMaturity,
   getLanguageMaturityBadge,
   getStatusBarConfig,
+  isFeatureEnabled,
   isLanguageEnabled,
+  type ModelScriptFeatureFlags,
+  syncFeatureContextKeys,
 } from "./utils/config.js";
 import { VrVisualizationPanel } from "./vr-visualization-panel.js";
 
@@ -590,6 +596,126 @@ export async function activate(context: vscode.ExtensionContext) {
       );
     }),
 
+    safeRegisterCommand("modelscript.configureFeatures", async () => {
+      const currentChannel = getFeatureChannelSetting();
+      const channelBadges: Record<FeatureChannel, string> = {
+        stable: "🟢 Stable",
+        preview: "🟡 Preview",
+        experimental: "🧪 Experimental",
+        dev: "🔬 Dev / Showcase",
+      };
+
+      const modePick = await vscode.window.showQuickPick(
+        [
+          {
+            label: "$(milestone) Switch Feature Release Channel...",
+            description: `Current: ${channelBadges[currentChannel]}`,
+            detail: "Choose between Stable, Preview, Experimental, or Dev/Showcase channels",
+            id: "channel" as const,
+          },
+          {
+            label: "$(checklist) Toggle Individual Features...",
+            description: "Customize CodeLens, Formal Verification, Digital Thread, AI Copilot & Demos",
+            detail: "Override specific feature flags regardless of the active release channel",
+            id: "features" as const,
+          },
+          {
+            label: "$(symbol-namespace) Configure Enabled Languages & Maturity Tiers...",
+            description: "Toggle individual engineering languages",
+            id: "languages" as const,
+          },
+        ],
+        {
+          title: "ModelScript: Configure Features & Release Channel",
+          placeHolder: "Select what you would like to configure",
+        },
+      );
+      if (!modePick) return;
+
+      if (modePick.id === "languages") {
+        await vscode.commands.executeCommand("modelscript.configureLanguages");
+        return;
+      }
+
+      const cfg = vscode.workspace.getConfiguration("modelscript.features");
+      if (modePick.id === "channel") {
+        const channelItems: (vscode.QuickPickItem & { channel: FeatureChannel })[] = [
+          {
+            label: "🟢 Stable (Default)",
+            description: currentChannel === "stable" ? "Active" : "",
+            detail: "Core LSP, 1-click Simulate CodeLens, 2D/3D viewers, Standard Libraries & Experiments views",
+            channel: "stable",
+          },
+          {
+            label: "🟡 Preview",
+            description: currentChannel === "preview" ? "Active" : "",
+            detail: "Adds Formal Verification, DAE structural proofs, CAE mesh/study workbench, and FMI Co-Simulation",
+            channel: "preview",
+          },
+          {
+            label: "🧪 Experimental",
+            description: currentChannel === "experimental" ? "Active" : "",
+            detail:
+              "Adds Cross-Domain Digital Thread, Polyglot Model Projection, Multi-Domain Scaffolding, and AI Copilot",
+            channel: "experimental",
+          },
+          {
+            label: "🔬 Dev / Showcase",
+            description: currentChannel === "dev" ? "Active" : "",
+            detail: "Enables all internal vertical demos, Trade Study Tier 1-3 CodeLenses, and medical/VR showcases",
+            channel: "dev",
+          },
+        ];
+        const chosen = await vscode.window.showQuickPick(channelItems, {
+          title: "ModelScript: Select Feature Release Channel",
+          placeHolder: `Current channel: ${channelBadges[currentChannel]}`,
+        });
+        if (!chosen) return;
+        await cfg.update("channel", chosen.channel, vscode.ConfigurationTarget.Global);
+        await syncFeatureContextKeys();
+        updateShareStatusBarVisibility();
+        lspManager?.updateActiveEditorStatusBar(vscode.window.activeTextEditor?.document.languageId);
+        lspManager?.syncSettingsToServer();
+        vscode.window.showInformationMessage(`ModelScript release channel set to ${chosen.label}.`);
+        return;
+      }
+
+      type FeaturePickItem = vscode.QuickPickItem & { featureKey: keyof ModelScriptFeatureFlags };
+      const featureKeys = Object.keys(FEATURE_LABELS) as (keyof ModelScriptFeatureFlags)[];
+      const featureItems: FeaturePickItem[] = featureKeys.map((key) => {
+        const meta = FEATURE_LABELS[key];
+        return {
+          label: meta.label,
+          description: `[${channelBadges[meta.channel]}]`,
+          detail: meta.description,
+          picked: isFeatureEnabled(key),
+          featureKey: key,
+        };
+      });
+
+      const selectedFeatures = await vscode.window.showQuickPick(featureItems, {
+        canPickMany: true,
+        title: "ModelScript: Toggle Individual Features",
+        placeHolder: "Check or uncheck features to enable/disable them across the IDE",
+      });
+      if (!selectedFeatures) return;
+
+      const selectedSet = new Set(selectedFeatures.map((f) => f.featureKey));
+      for (const key of featureKeys) {
+        const shouldEnable = selectedSet.has(key);
+        if (isFeatureEnabled(key) !== shouldEnable) {
+          await cfg.update(key, shouldEnable, vscode.ConfigurationTarget.Global);
+        }
+      }
+      await syncFeatureContextKeys();
+      updateShareStatusBarVisibility();
+      lspManager?.updateActiveEditorStatusBar(vscode.window.activeTextEditor?.document.languageId);
+      lspManager?.syncSettingsToServer();
+      vscode.window.showInformationMessage(
+        `Updated ModelScript features (${selectedSet.size} of ${featureKeys.length} enabled).`,
+      );
+    }),
+
     safeRegisterCommand("modelscript.configureLanguages", async () => {
       const contributedLanguages =
         (context.extension?.packageJSON?.contributes?.languages as
@@ -653,6 +779,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   // 14. Editor Active State, Configuration Sync, and Viewport Tracking
+  void syncFeatureContextKeys();
   lspManager.updateActiveEditorStatusBar(vscode.window.activeTextEditor?.document.languageId);
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -673,7 +800,14 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("modelscript.ui.statusBar") || e.affectsConfiguration("modelscript.languages")) {
+      if (e.affectsConfiguration("modelscript.features")) {
+        void syncFeatureContextKeys();
+      }
+      if (
+        e.affectsConfiguration("modelscript.ui.statusBar") ||
+        e.affectsConfiguration("modelscript.languages") ||
+        e.affectsConfiguration("modelscript.features")
+      ) {
         updateShareStatusBarVisibility();
         lspManager?.updateActiveEditorStatusBar(vscode.window.activeTextEditor?.document.languageId);
       }

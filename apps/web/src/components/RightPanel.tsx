@@ -13,6 +13,7 @@ import {
 } from "../api";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import CloudSimulationModal from "./CloudSimulationModal";
 import {
   AiSearchHeader,
@@ -34,6 +35,7 @@ export interface RightPanelProps {
 
 export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, onOpenCommandPalette }) => {
   const { token, user, creditBalance } = useAuth();
+  const branding = useInstanceBranding();
   const hasBilling = useFeatureFlag("billing_stripe_live");
   const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -241,7 +243,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
           Cookies
         </button>
         <span>·</span>
-        <span>© 2026 ModelScript</span>
+        <span>© 2026 {branding.instanceName || "Ansatz"}</span>
       </div>
 
       {legalModal && <LegalModal legalModal={legalModal} onClose={() => setLegalModal(null)} />}

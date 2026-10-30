@@ -3,6 +3,7 @@
 import { ArrowLeftIcon, LawIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { usePageTitle } from "../util/title";
 
 const Container = styled.div`
@@ -115,6 +116,8 @@ const Section = styled.section`
 export default function PrivacyPage() {
   usePageTitle("Privacy Policy");
   const navigate = useNavigate();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
 
   return (
     <Container>
@@ -127,7 +130,7 @@ export default function PrivacyPage() {
           }
         }}
       >
-        <ArrowLeftIcon size={16} /> Back to ModelScript
+        <ArrowLeftIcon size={16} /> Back to {brandName}
       </BackLink>
 
       <Header>
@@ -158,7 +161,7 @@ export default function PrivacyPage() {
         <h2>2. How We Use Information</h2>
         <p>Information collected is used strictly to:</p>
         <ul>
-          <li>Authenticate and manage your access to the ModelScript platform.</li>
+          <li>Authenticate and manage your access to the {brandName} platform.</li>
           <li>Provision cloud compute instances and run requested simulation workloads.</li>
           <li>Prevent abuse, Sybil attacks, and ensure compliance with international export regulations.</li>
           <li>Communicate vital platform alerts, security notices, and job completion notifications.</li>
@@ -169,7 +172,7 @@ export default function PrivacyPage() {
         <h2>3. Data Sovereignty &amp; Model Privacy</h2>
         <p>
           Private repositories, private models, and private simulation trajectories remain strictly confidential to your
-          account or authorized organization members. ModelScript does not train public AI surrogate models on private
+          account or authorized organization members. {brandName} does not train public AI surrogate models on private
           user repositories without explicit user consent.
         </p>
       </Section>

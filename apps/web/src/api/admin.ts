@@ -184,18 +184,47 @@ export interface AdminDbStatus {
   appliedMigrations?: { id: number; name: string; applied_at?: string | undefined }[] | undefined;
 }
 
+export interface AdminPreflightCheckItem {
+  id: string;
+  label: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+  remediation?: string | undefined;
+}
+
+export interface AdminPreflightResult {
+  readyForProduction: boolean;
+  checks: AdminPreflightCheckItem[];
+}
+
 export interface AdminInstanceSettings {
   instanceName: string;
+  instanceBadge?: string | undefined;
+  instanceTagline?: string | undefined;
   instanceDescription: string;
   contactEmail: string;
+  brandLogoUrl?: string | undefined;
+  brandLogoDarkUrl?: string | undefined;
+  brandFaviconUrl?: string | undefined;
+  brandAccentColor?: string | undefined;
+  docsBaseUrl?: string | undefined;
+  showPoweredBy?: boolean | undefined;
   registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
   allowedEmailDomains: string[];
   federationMode: "open" | "allowlist" | "disabled";
   maintenanceMode: boolean;
+  maintenanceLevel?: "off" | "scheduled" | "read_only" | "lockdown" | undefined;
+  maintenanceEta?: string | undefined;
+  maintenanceStartedAt?: string | undefined;
   announcementBanner: string;
   announcementLevel: "info" | "warning" | "critical";
   autoQuarantineReportThreshold: number;
   backupRetentionCount: number;
+  autoBackupIntervalHours?: number | undefined;
+  autoFilterKeywords?: string[] | undefined;
+  autoFilterAction?: "cw" | "silence" | "quarantine" | undefined;
+  customTermsMarkdown?: string | undefined;
+  customPrivacyMarkdown?: string | undefined;
   lockedByEnv: string[];
 }
 
@@ -226,11 +255,13 @@ export interface AdminSystemDiagnosticsResponse {
   };
   geoipReady: boolean;
   mailerConfigured: boolean;
+  mailerDriver?: string | undefined;
   airgapMode: boolean;
   auditChainValid: boolean;
   auditVerifiedEntries: number;
   schemaVersion: string | null;
   pendingMigrations: number;
+  preflight?: AdminPreflightResult | undefined;
   diagnostics: {
     dbSizeBytes: number;
     walSizeBytes: number;
@@ -293,8 +324,15 @@ export const getAdminModerationQueue = async (
   total?: number | undefined;
   pendingCount?: number | undefined;
 }> => {
+  const params: Record<string, unknown> = { status, limit, offset };
+  if (targetType !== undefined) {
+    params.targetType = targetType;
+  }
+  if (q !== undefined) {
+    params.q = q;
+  }
   const { data } = await api.get("/admin/moderation/queue", {
-    params: { status, limit, offset, targetType, q },
+    params,
   });
   return data;
 };
@@ -365,6 +403,8 @@ export const moderateAdminUser = async (
     role?: "user" | "moderator" | "auditor" | "admin" | undefined;
     revokeSessions?: boolean | undefined;
     purgePosts?: boolean | undefined;
+    emailVerified?: boolean | undefined;
+    reset2FA?: boolean | undefined;
     reason?: string | undefined;
   },
 ): Promise<{
@@ -372,6 +412,8 @@ export const moderateAdminUser = async (
   userId: number;
   status?: string | undefined;
   role?: string | undefined;
+  emailVerified?: boolean | undefined;
+  reset2FA?: boolean | undefined;
   sessionsRevoked: boolean;
   purgedPostCount: number;
 }> => {
@@ -871,17 +913,40 @@ export const broadcastAdminActivityPubMove = async (payload: {
   return data;
 };
 
-export const getPublicInstanceBanner = async (): Promise<{
+export interface PublicInstanceBannerResponse {
   instanceName: string;
+  instanceBadge?: string;
+  instanceTagline?: string;
   instanceDescription?: string;
+  contactEmail?: string;
+  brandLogoUrl?: string;
+  brandLogoDarkUrl?: string;
+  brandFaviconUrl?: string;
+  brandAccentColor?: string;
+  docsBaseUrl?: string;
+  showPoweredBy?: boolean;
   maintenanceMode: boolean;
+  maintenanceLevel?: "off" | "scheduled" | "read_only" | "lockdown";
+  maintenanceEta?: string;
+  maintenanceStartedAt?: string;
   announcementBanner: string;
   announcementLevel: "info" | "warning" | "critical";
   registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
   federationMode?: "open" | "allowlist" | "disabled";
+  customTermsMarkdown?: string;
+  customPrivacyMarkdown?: string;
   needsSetup?: boolean;
   setupCompleted?: boolean;
-}> => {
+  subsystems?: {
+    coreApi: "operational" | "read_only" | "maintenance";
+    packageRegistry: "operational" | "read_only" | "maintenance";
+    cloudSolvers: "operational" | "paused";
+    federationQueue: "operational" | "paused" | "disabled";
+    wasmSandbox: "operational";
+  };
+}
+
+export const getPublicInstanceBanner = async (): Promise<PublicInstanceBannerResponse> => {
   const { data } = await api.get("/instance/banner");
   return data;
 };
@@ -894,21 +959,35 @@ export interface SetupTierPreset {
   federationMode: "open" | "allowlist" | "disabled";
   autoQuarantineReportThreshold: number;
   backupRetentionCount: number;
+  defaultInstanceName?: string | undefined;
+  defaultInstanceBadge?: string | undefined;
+  defaultDocsBaseUrl?: string | undefined;
+  defaultShowPoweredBy?: boolean | undefined;
 }
 
 export interface InstanceSetupStatus {
   needsSetup: boolean;
   hasAdmin: boolean;
   setupCompleted: boolean;
+  reopened?: boolean | undefined;
   userCount: number;
   edition: "ce" | "ee";
   airgapEnforced: boolean;
   settings: AdminInstanceSettings;
+  preflight?: AdminPreflightResult | undefined;
   presets: Record<"tier1_federated" | "tier2_corporate" | "tier3_flagship", SetupTierPreset>;
 }
 
 export const getInstanceSetupStatus = async (): Promise<InstanceSetupStatus> => {
   const { data } = await api.get("/setup/status");
+  return data;
+};
+
+export const resetInstanceSetupWizard = async (): Promise<InstanceSetupStatus & { success: boolean }> => {
+  const { data } = await api.post("/setup/reset", {});
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new CustomEvent("modelscript:setup-reset", { detail: data }));
+  }
   return data;
 };
 
@@ -957,5 +1036,283 @@ export const completeInstanceSetup = async (payload: {
   } | null;
 }> => {
   const { data } = await api.post("/setup/complete", payload);
+  return data;
+};
+
+export const uploadAdminBackup = async (payload: {
+  fileBase64: string;
+  label?: string | undefined;
+  restoreImmediately?: boolean | undefined;
+}): Promise<{
+  success: boolean;
+  backup: {
+    fileName: string;
+    sizeBytes: number;
+    sha256: string;
+    createdAt: string;
+  };
+  restored?: {
+    restoredFrom: string;
+    preRestoreBackup: string;
+    tablesRestored: number;
+  } | null;
+}> => {
+  const { data } = await api.post("/admin/backups/upload", payload);
+  return data;
+};
+
+export const exportInstanceEnvConfig = async (): Promise<{
+  envSnippet: string;
+  dockerComposeSnippet: string;
+  settings: AdminInstanceSettings;
+}> => {
+  const { data } = await api.get("/admin/settings/export-env");
+  return data;
+};
+
+export const verifyAdminSudo = async (
+  password: string,
+): Promise<{
+  success: boolean;
+  verifiedAt: string;
+  expiresAt: string;
+  sudoToken: string;
+}> => {
+  const { data } = await api.post("/admin/sudo/verify", { password });
+  return data;
+};
+
+export const sendAdminTestEmail = async (
+  recipientEmail?: string,
+  templateId?: string,
+): Promise<{
+  success: boolean;
+  recipient: string;
+  driver: string;
+  templateId?: string | undefined;
+  sentAt: string;
+}> => {
+  const payload: Record<string, string> = {};
+  if (recipientEmail) payload["recipientEmail"] = recipientEmail;
+  if (templateId) payload["templateId"] = templateId;
+  const { data } = await api.post("/admin/system/test-email", payload);
+  return data;
+};
+
+export type AdminEmailTemplateId =
+  | "verification"
+  | "password_reset"
+  | "invite"
+  | "security_alert"
+  | "social_notification"
+  | "digest";
+
+export interface AdminEmailTemplateDefinition {
+  id: AdminEmailTemplateId;
+  name: string;
+  description: string;
+  availableVariables: string[];
+  subject: string;
+  heading: string;
+  body: string;
+  ctaLabel: string;
+  enabled: boolean;
+}
+
+export interface AdminEmailTemplateOverride {
+  subject?: string | undefined;
+  heading?: string | undefined;
+  body?: string | undefined;
+  ctaLabel?: string | undefined;
+  enabled?: boolean | undefined;
+}
+
+export interface AdminEmailThemeConfig {
+  headerBgColor: string;
+  accentColor: string;
+  logoUrl: string;
+  footerText: string;
+}
+
+export interface AdminEmailConfig {
+  driver: "auto" | "console" | "smtp" | "sendgrid" | "resend";
+  activeDriver: "console" | "smtp" | "sendgrid" | "resend";
+  configuredForLiveDelivery: boolean;
+  airgapEnforced: boolean;
+  fromName: string;
+  fromEmail: string;
+  replyTo: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPassConfigured: boolean;
+  smtpPassMasked: string;
+  smtpTlsMode: "starttls" | "implicit" | "none";
+  smtpTlsRejectUnauthorized: boolean;
+  smtpCaCertPath: string;
+  sendgridApiKeyConfigured: boolean;
+  sendgridApiKeyMasked: string;
+  resendApiKeyConfigured: boolean;
+  resendApiKeyMasked: string;
+  theme: AdminEmailThemeConfig;
+  templates: Record<AdminEmailTemplateId, AdminEmailTemplateDefinition>;
+  defaultTemplates: Record<AdminEmailTemplateId, AdminEmailTemplateDefinition>;
+  templateOverrides: Partial<Record<AdminEmailTemplateId, AdminEmailTemplateOverride>>;
+  lockedByEnv: string[];
+}
+
+export interface AdminEmailOutboxItem {
+  id: string;
+  to: string;
+  from?: string | undefined;
+  replyTo?: string | undefined;
+  subject: string;
+  text: string;
+  html?: string | undefined;
+  templateId?: AdminEmailTemplateId | "custom" | "test" | undefined;
+  timestamp: string;
+  status: "sent" | "failed";
+  driver: "console" | "smtp" | "sendgrid" | "resend";
+  latencyMs: number;
+  error?: string | undefined;
+}
+
+export interface AdminEmailConnectionStep {
+  step: "dns" | "tcp" | "ehlo" | "starttls" | "auth" | "provider_api" | "airgap";
+  label: string;
+  status: "ok" | "warning" | "error" | "skipped";
+  latencyMs: number;
+  detail: string;
+}
+
+export interface AdminEmailConnectionDiagnostic {
+  success: boolean;
+  driver: "console" | "smtp" | "sendgrid" | "resend";
+  host?: string | undefined;
+  port?: number | undefined;
+  tlsMode?: "starttls" | "implicit" | "none" | undefined;
+  totalLatencyMs: number;
+  steps: AdminEmailConnectionStep[];
+  testedAt: string;
+}
+
+export const getAdminEmailConfig = async (): Promise<{
+  config: AdminEmailConfig;
+  outbox: AdminEmailOutboxItem[];
+  outboxCount: number;
+}> => {
+  const { data } = await api.get("/admin/email/config");
+  return data;
+};
+
+export const updateAdminEmailConfig = async (
+  patch: Record<string, unknown>,
+  sudoToken?: string,
+): Promise<{
+  success: boolean;
+  config: AdminEmailConfig;
+}> => {
+  const headers = sudoToken ? { "x-admin-sudo-token": sudoToken } : undefined;
+  const { data } = await api.put("/admin/email/config", patch, headers ? { headers } : undefined);
+  return data;
+};
+
+export const testAdminEmailConnection = async (
+  overrideConfig?: Record<string, unknown>,
+): Promise<AdminEmailConnectionDiagnostic> => {
+  const { data } = await api.post("/admin/email/test-connection", overrideConfig || {});
+  return data;
+};
+
+export const previewAdminEmailTemplate = async (payload: {
+  templateId: AdminEmailTemplateId;
+  templateOverride?: AdminEmailTemplateOverride | undefined;
+  themeOverride?: Partial<AdminEmailThemeConfig> | undefined;
+  variables?: Record<string, string> | undefined;
+}): Promise<{
+  templateId: AdminEmailTemplateId;
+  subject: string;
+  text: string;
+  html: string;
+  sampleVariables: Record<string, string>;
+}> => {
+  const { data } = await api.post("/admin/email/preview", payload);
+  return data;
+};
+
+export const getAdminEmailOutbox = async (): Promise<{
+  items: AdminEmailOutboxItem[];
+  count: number;
+}> => {
+  const { data } = await api.get("/admin/email/outbox");
+  return data;
+};
+
+export const retryAdminEmailOutboxItem = async (
+  id: string,
+): Promise<{
+  success: boolean;
+  originalId: string;
+  messageId?: string | undefined;
+  outbox: AdminEmailOutboxItem[];
+}> => {
+  const { data } = await api.post(`/admin/email/outbox/${encodeURIComponent(id)}/retry`, {});
+  return data;
+};
+
+export const dispatchAdminEmailDigests = async (
+  frequency?: "daily" | "weekly",
+): Promise<{
+  success: boolean;
+  dispatchedUsers: number;
+  totalItemsCompiled: number;
+  results: { userId: number; username: string; email: string; frequency: "daily" | "weekly"; itemCount: number }[];
+}> => {
+  const { data } = await api.post("/admin/email/dispatch-digests", frequency ? { frequency } : {});
+  return data;
+};
+
+export const downloadAdminSupportBundle = async (): Promise<Record<string, unknown>> => {
+  const { data } = await api.get("/admin/system/support-bundle");
+  return data;
+};
+
+export const fetchAdminPrometheusMetrics = async (): Promise<string> => {
+  const { data } = await api.get("/admin/metrics", { responseType: "text" as any });
+  return typeof data === "string" ? data : JSON.stringify(data);
+};
+
+export interface AdminFederationDomainHealthEntry {
+  domain: string;
+  tier: "allow" | "silence" | "suspend";
+  reason: string | null;
+  pendingCount: number;
+  processingCount: number;
+  completedCount: number;
+  failedCount: number;
+  lastError: string | null;
+  lastUpdatedAt: string | null;
+}
+
+export const getAdminFederationDomainHealth = async (): Promise<{
+  domains: AdminFederationDomainHealthEntry[];
+  count: number;
+}> => {
+  const { data } = await api.get("/admin/federation/health");
+  return data;
+};
+
+export const circuitBreakAdminFederationDomain = async (payload: {
+  domain: string;
+  tier?: "silence" | "suspend" | undefined;
+  reason?: string | undefined;
+}): Promise<{
+  success: boolean;
+  domain: string;
+  tier: "silence" | "suspend";
+  purgedDeliveries: number;
+}> => {
+  const { data } = await api.post("/admin/federation/circuit-break", payload);
+  notifyAdminOverviewUpdated();
   return data;
 };

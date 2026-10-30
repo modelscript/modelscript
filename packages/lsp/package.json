@@ -2,6 +2,20 @@
   "name": "@modelscript/lsp",
   "version": "0.0.18",
   "description": "Multi-language Language Server Protocol server and services for ModelScript",
+  "keywords": [
+    "modelscript",
+    "lsp",
+    "language-server"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/lsp"
+  },
   "license": "AGPL-3.0-or-later",
   "author": "ModelScript Contributors",
   "type": "module",

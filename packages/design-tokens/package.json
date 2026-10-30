@@ -1,8 +1,23 @@
 {
   "name": "@modelscript/design-tokens",
   "version": "0.0.18",
-  "description": "ModelScript design system — shared CSS tokens and primitive component styles for the docs site, web app, and IDE webviews",
+  "description": "ModelScript & Ansatz design system — shared CSS tokens and primitive component styles for the docs site, web app, and IDE webviews",
+  "keywords": [
+    "modelscript",
+    "ansatz",
+    "design-tokens"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/design-tokens"
+  },
   "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
   "sideEffects": [
     "*.css"
   ],

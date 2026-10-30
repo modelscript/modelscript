@@ -2,7 +2,24 @@
   "name": "@modelscript/dsl",
   "version": "0.0.18",
   "description": "ModelScript DSL syntax combinators, GLR parser generator, and term-rewriting engines",
+  "keywords": [
+    "modelscript",
+    "dsl",
+    "glr",
+    "parser",
+    "tgg"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/dsl"
+  },
   "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
   "type": "module",
   "exports": {
     ".": {

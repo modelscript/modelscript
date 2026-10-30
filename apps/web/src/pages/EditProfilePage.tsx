@@ -538,7 +538,7 @@ const EditProfilePage: React.FC = () => {
                 block
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
-                placeholder="https://modelscript.org"
+                placeholder="https://ansatz.social"
                 aria-label="Website"
               />
             </Box>

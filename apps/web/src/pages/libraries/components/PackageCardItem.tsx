@@ -183,7 +183,7 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib, copiedPkg
                 <ActionList.LeadingVisual>
                   <CodeIcon size={14} />
                 </ActionList.LeadingVisual>
-                Open in ModelScript Web IDE
+                Open in Web IDE
               </ActionList.Item>
               <ActionList.Item onSelect={() => onCopyInstall(lib.name)}>
                 <ActionList.LeadingVisual>

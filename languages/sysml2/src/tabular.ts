@@ -39,7 +39,7 @@ export function extractSysml2PartRows(text: string): TabularRow[] {
       return m?.[1]?.trim() ?? "";
     };
 
-    const docMatch = body.match(/doc\s*\/\*\s*([\s\S]*?)\s*\*\//);
+    const docMatch = body.match(/doc\s*\/\*([\s\S]*?)\*\//);
 
     rows.push({
       id: name,
@@ -87,14 +87,14 @@ export function extractSysml2RequirementRows(text: string): TabularRow[] {
   }
 
   const reqRegex =
-    /\b(requirement\s+def|requirement)\s+(?:<'([^']+)'\s*)?([A-Za-z_][A-Za-z0-9_]*)?(?:\s*:\s*([A-Za-z0-9_:]+))?\s*(\{[\s\S]*?\}|;)/g;
+    /\b(requirement\s+def|requirement)\s+(?:<'([^']+)'(?:\s+([A-Za-z_][A-Za-z0-9_]*))?|([A-Za-z_][A-Za-z0-9_]*))(?:\s*:\s*([A-Za-z0-9_:]+))?\s*(\{[\s\S]*?\}|;)/g;
   let match: RegExpExecArray | null;
   while ((match = reqRegex.exec(text)) !== null) {
     const shortId = match[2] ?? "";
-    const name = match[3] ?? shortId ?? "UnnamedRequirement";
-    if (!shortId && !match[3]) continue;
-    const body = match[5] ?? ";";
-    const docMatch = body.match(/doc\s*\/\*\s*([\s\S]*?)\s*\*\//);
+    const name = match[3] ?? match[4] ?? shortId ?? "UnnamedRequirement";
+    if (!shortId && !match[3] && !match[4]) continue;
+    const body = match[6] ?? ";";
+    const docMatch = body.match(/doc\s*\/\*([\s\S]*?)\*\//);
 
     const satisfiedBy = [...(satisfiedByMap.get(name) ?? []), ...(shortId ? (satisfiedByMap.get(shortId) ?? []) : [])];
     const verifiedBy = [...(verifiedByMap.get(name) ?? []), ...(shortId ? (verifiedByMap.get(shortId) ?? []) : [])];

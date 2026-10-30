@@ -2,6 +2,7 @@
 
 import { Button, Dialog, Heading, Text } from "@primer/react";
 import React from "react";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import Box from "../../Box";
 
 export interface LegalModalProps {
@@ -10,6 +11,9 @@ export interface LegalModalProps {
 }
 
 export const LegalModal: React.FC<LegalModalProps> = ({ legalModal, onClose }) => {
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
+
   if (!legalModal) return null;
 
   return (
@@ -26,8 +30,8 @@ export const LegalModal: React.FC<LegalModalProps> = ({ legalModal, onClose }) =
               1. Acceptance of Terms
             </Heading>
             <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "13px", lineHeight: 1.5 }}>
-              By accessing ModelScript OS services, simulation runtimes, and engineering repositories, you agree to
-              comply with open scientific modeling standards and all applicable regulations.
+              By accessing {brandName} services, ModelScript simulation runtimes, and engineering repositories, you
+              agree to comply with open scientific modeling standards and all applicable regulations.
             </Text>
             <Heading as="h4" style={{ fontSize: "15px", marginTop: "8px" }}>
               2. Cloud & HPC Computing Usage
@@ -44,7 +48,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({ legalModal, onClose }) =
               Privacy & Data Sovereignty
             </Heading>
             <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "13px", lineHeight: 1.5 }}>
-              ModelScript values data integrity. Public models are federated across the scientific network according to
+              {brandName} values data integrity. Public models are federated across the scientific network according to
               your specified repository permissions. Private code and simulation traces remain encrypted.
             </Text>
           </Box>

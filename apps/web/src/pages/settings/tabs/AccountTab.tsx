@@ -16,6 +16,7 @@ import { changeAccountCredentials, revokeAllSessions, updateAccount } from "../.
 import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import {
   DangerButton,
   DetailIcon,
@@ -37,6 +38,8 @@ export interface AccountTabProps {
 
 export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onBack }) => {
   const { user, isAdmin, updateToken, refreshUser } = useAuth();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -423,7 +426,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         </DetailIcon>
         <DetailText>
           <DetailTitle>Connected accounts</DetailTitle>
-          <DetailSubtitle>Manage the external accounts connected to ModelScript.</DetailSubtitle>
+          <DetailSubtitle>Manage the external accounts connected to {brandName}.</DetailSubtitle>
         </DetailText>
         <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
       </DetailItem>

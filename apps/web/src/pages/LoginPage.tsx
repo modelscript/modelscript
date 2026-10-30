@@ -4,6 +4,8 @@ import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { requestPasswordReset } from "../api";
 import { useAuth } from "../AuthContext";
+import AnsatzMark from "../components/AnsatzLogo";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { usePageTitle } from "../util/title";
 import {
   Card,
@@ -11,7 +13,6 @@ import {
   ForgotPasswordForm,
   LoginForm,
   type LoginMode,
-  LogoBadge,
   OAuthProviders,
   PageWrapper,
   Subtitle,
@@ -21,6 +22,7 @@ import {
 
 export default function LoginPage() {
   usePageTitle("Sign In");
+  const branding = useInstanceBranding();
   const [mode, setMode] = useState<LoginMode>("login");
   const [email, setEmail] = useState(import.meta.env.DEV ? "dev@modelscript.org" : "");
   const [password, setPassword] = useState(import.meta.env.DEV ? "password" : "");
@@ -98,22 +100,29 @@ export default function LoginPage() {
     }
   };
 
+  const brandName = branding.instanceName || "Ansatz";
+
   return (
     <PageWrapper>
       <Card>
-        <LogoBadge>
-          <img src="/ms-logo.png" alt="ModelScript" width="34" height="34" />
-        </LogoBadge>
+        <div style={{ marginBottom: "12px" }}>
+          <AnsatzMark
+            size={48}
+            logoUrl={branding.brandLogoUrl}
+            alt={brandName}
+            accentColor={branding.brandAccentColor}
+          />
+        </div>
         <Title>
           {mode === "login"
-            ? "Sign in to ModelScript"
+            ? `Sign in to ${brandName}`
             : mode === "2fa"
               ? "Two-Factor Verification"
               : "Reset your password"}
         </Title>
         <Subtitle>
           {mode === "login"
-            ? "Physical Modeling, Systems & Simulation Hub"
+            ? branding.instanceTagline || "The Federated Scientific & Engineering Network"
             : mode === "2fa"
               ? useBackupCode
                 ? "Enter one of your 8-character single-use recovery backup codes."

@@ -88,11 +88,11 @@ const app = createApp({ mqttClient, dbPool, storage: undefined, historianRecorde
 const server = app.listen(port, () => {
   if (process.env["ENTERPRISE_APPLIANCE"] === "true") {
     console.log(`========================================================================`);
-    console.log(`ModelScript Hardened Enterprise Intranet Appliance running on port ${port}`);
+    console.log(`Ansatz Hardened Enterprise Intranet Appliance (powered by ModelScript) running on port ${port}`);
     console.log(`Air-Gap Security: ENFORCED | FERC CEII 18 CFR § 388.113 Active`);
     console.log(`========================================================================`);
   } else {
-    console.log(`ModelScript API server listening on port ${port}`);
+    console.log(`Ansatz API server (powered by ModelScript) listening on port ${port}`);
   }
 });
 

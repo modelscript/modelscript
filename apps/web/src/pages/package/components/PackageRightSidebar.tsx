@@ -20,7 +20,9 @@ import { Link } from "react-router-dom";
 import styled from "styled-components";
 import {
   getPackageAasxExportUrl,
+  getPackageDataPackageExportUrl,
   getPackageDownloadUrl,
+  getPackageLockfileExportUrl,
   getPackageOkhExportUrl,
   getPackageSalsaIndexUrl,
   type LibraryDetail,
@@ -216,7 +218,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
         }}
       >
         <CodeIcon size={16} />
-        Open in ModelScript IDE
+        Open in Web IDE
       </Link>
 
       {/* Direct Exports & Downloads */}
@@ -271,6 +273,28 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
               <div style={{ minWidth: 0, lineHeight: 1.2 }}>
                 <div style={{ fontSize: 12, fontWeight: 600 }}>Salsa DB</div>
                 <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>.db index</div>
+              </div>
+            </ExportTile>
+            <ExportTile
+              href={getPackageDataPackageExportUrl(name, version)}
+              download
+              title="Export Frictionless Engineering Data Package manifest (datapackage.json) with dataset schemas & units"
+            >
+              <DatabaseIcon size={16} style={{ color: "#10b981", flexShrink: 0 }} />
+              <div style={{ minWidth: 0, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Data Package</div>
+                <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>datapackage.json</div>
+              </div>
+            </ExportTile>
+            <ExportTile
+              href={getPackageLockfileExportUrl(name, version)}
+              download
+              title="Export reproducible environment & dataset lockfile (datapackage.lock.json)"
+            >
+              <ShieldCheckIcon size={16} style={{ color: "#22d3ee", flexShrink: 0 }} />
+              <div style={{ minWidth: 0, lineHeight: 1.2 }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Lockfile</div>
+                <div style={{ fontSize: 10, color: "var(--color-text-muted)" }}>datapackage.lock</div>
               </div>
             </ExportTile>
           </div>

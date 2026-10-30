@@ -17,10 +17,13 @@ import { useNavigate } from "react-router-dom";
 import {
   completeInstanceSetup,
   getInstanceSetupStatus,
+  resetInstanceSetupWizard,
   type AdminInstanceInvite,
   type AdminInstanceSettings,
   type InstanceSetupStatus,
 } from "../api/admin";
+import AnsatzMark from "../components/AnsatzLogo";
+import { notifyInstanceBrandingUpdated } from "../InstanceBrandingContext";
 
 export interface SetupWizardPageProps {
   initialStatus?: InstanceSetupStatus | null;
@@ -40,6 +43,10 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
     federationMode: "open",
     autoQuarantineReportThreshold: 3,
     backupRetentionCount: 7,
+    instanceName: "Ansatz",
+    instanceBadge: "Lab",
+    instanceTagline: "Federated Scientific & Engineering Node",
+    showPoweredBy: true,
   },
   tier2_corporate: {
     id: "tier2_corporate",
@@ -50,6 +57,10 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
     federationMode: "disabled",
     autoQuarantineReportThreshold: 5,
     backupRetentionCount: 14,
+    instanceName: "Engineering Intranet",
+    instanceBadge: "Internal",
+    instanceTagline: "Private R&D Modeling & Simulation Appliance",
+    showPoweredBy: false,
   },
   tier3_flagship: {
     id: "tier3_flagship",
@@ -60,6 +71,10 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
     federationMode: "open",
     autoQuarantineReportThreshold: 5,
     backupRetentionCount: 30,
+    instanceName: "Ansatz",
+    instanceBadge: "",
+    instanceTagline: "The Federated Scientific & Engineering Network",
+    showPoweredBy: true,
   },
 };
 
@@ -81,20 +96,28 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
 
   // Step 2: Founding Administrator Account
   const [adminUsername, setAdminUsername] = useState("admin");
-  const [adminEmail, setAdminEmail] = useState("admin@modelscript.local");
+  const [adminEmail, setAdminEmail] = useState("admin@ansatz.local");
   const [adminDisplayName, setAdminDisplayName] = useState("Instance Administrator");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminPasswordConfirm, setAdminPasswordConfirm] = useState("");
 
-  // Step 3: Instance Identity, Registration & Federation Policy
-  const [instanceName, setInstanceName] = useState(
-    initialStatus?.settings.instanceName || "ModelScript Engineering Hub",
+  // Step 3: Instance Identity, White-Label Branding, Registration & Federation Policy
+  const [instanceName, setInstanceName] = useState(initialStatus?.settings.instanceName || "Ansatz");
+  const [instanceBadge, setInstanceBadge] = useState(initialStatus?.settings.instanceBadge ?? "");
+  const [instanceTagline, setInstanceTagline] = useState(
+    initialStatus?.settings.instanceTagline || "The Federated Scientific & Engineering Network",
   );
   const [instanceDescription, setInstanceDescription] = useState(
     initialStatus?.settings.instanceDescription ||
       "Federated polyglot engineering simulation, Modelica, SysML v2, and digital twin platform.",
   );
-  const [contactEmail, setContactEmail] = useState(initialStatus?.settings.contactEmail || "admin@modelscript.local");
+  const [contactEmail, setContactEmail] = useState(initialStatus?.settings.contactEmail || "admin@ansatz.local");
+  const [brandLogoUrl, setBrandLogoUrl] = useState(initialStatus?.settings.brandLogoUrl || "");
+  const [brandLogoDarkUrl, setBrandLogoDarkUrl] = useState(initialStatus?.settings.brandLogoDarkUrl || "");
+  const [brandFaviconUrl, setBrandFaviconUrl] = useState(initialStatus?.settings.brandFaviconUrl || "");
+  const [brandAccentColor, setBrandAccentColor] = useState(initialStatus?.settings.brandAccentColor || "#06b6d4");
+  const [docsBaseUrl, setDocsBaseUrl] = useState(initialStatus?.settings.docsBaseUrl || "https://modelscript.org");
+  const [showPoweredBy, setShowPoweredBy] = useState<boolean>(initialStatus?.settings.showPoweredBy ?? true);
   const [registrationMode, setRegistrationMode] = useState<"open" | "invite_only" | "domain_allowlist" | "closed">(
     "invite_only",
   );
@@ -118,23 +141,66 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
     adminUsername: string;
   } | null>(null);
 
+  const applyLoadedStatus = (res: InstanceSetupStatus) => {
+    setStatus(res);
+    setInstanceName(res.settings.instanceName || "Ansatz");
+    setInstanceBadge(res.settings.instanceBadge ?? "");
+    setInstanceTagline(res.settings.instanceTagline || "The Federated Scientific & Engineering Network");
+    setInstanceDescription(res.settings.instanceDescription);
+    setContactEmail(res.settings.contactEmail);
+    setBrandLogoUrl(res.settings.brandLogoUrl || "");
+    setBrandLogoDarkUrl(res.settings.brandLogoDarkUrl || "");
+    setBrandFaviconUrl(res.settings.brandFaviconUrl || "");
+    setBrandAccentColor(res.settings.brandAccentColor || "#06b6d4");
+    setDocsBaseUrl(res.settings.docsBaseUrl || "https://modelscript.org");
+    setShowPoweredBy(res.settings.showPoweredBy ?? true);
+    if (res.reopened) {
+      setAdminPassword((prev) => prev || "password123");
+      setAdminPasswordConfirm((prev) => prev || "password123");
+    }
+    if (res.airgapEnforced) {
+      setSelectedTier("tier2_corporate");
+      setRegistrationMode("domain_allowlist");
+      setFederationMode("disabled");
+      setAutoQuarantineThreshold(5);
+      setBackupRetentionCount(14);
+      setInstanceName(res.presets?.tier2_corporate?.defaultInstanceName || "Engineering Intranet");
+      setInstanceBadge(res.presets?.tier2_corporate?.defaultInstanceBadge ?? "Internal");
+      setShowPoweredBy(false);
+    }
+  };
+
+  useEffect(() => {
+    const onSetupReset = (ev: Event) => {
+      const detail = (ev as CustomEvent<InstanceSetupStatus | undefined>).detail;
+      setCompletedResult(null);
+      setError(null);
+      setStep(1);
+      if (detail && detail.settings) {
+        applyLoadedStatus(detail);
+      } else {
+        void getInstanceSetupStatus()
+          .then(applyLoadedStatus)
+          .catch(() => {});
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("modelscript:setup-reset", onSetupReset);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("modelscript:setup-reset", onSetupReset);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (initialStatus) return;
     let mounted = true;
     getInstanceSetupStatus()
       .then((res) => {
         if (!mounted) return;
-        setStatus(res);
-        setInstanceName(res.settings.instanceName);
-        setInstanceDescription(res.settings.instanceDescription);
-        setContactEmail(res.settings.contactEmail);
-        if (res.airgapEnforced) {
-          setSelectedTier("tier2_corporate");
-          setRegistrationMode("domain_allowlist");
-          setFederationMode("disabled");
-          setAutoQuarantineThreshold(5);
-          setBackupRetentionCount(14);
-        }
+        applyLoadedStatus(res);
       })
       .catch((err) => {
         if (!mounted) return;
@@ -148,6 +214,18 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
     };
   }, [initialStatus]);
 
+  const handleRerunWizard = async () => {
+    setError(null);
+    try {
+      const res = await resetInstanceSetupWizard();
+      setCompletedResult(null);
+      setStep(1);
+      applyLoadedStatus(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to re-open setup wizard");
+    }
+  };
+
   const applyTierPreset = (tierId: "tier1_federated" | "tier2_corporate" | "tier3_flagship") => {
     setSelectedTier(tierId);
     const presets = status?.presets || DEFAULT_PRESETS;
@@ -157,6 +235,10 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
       setFederationMode(p.federationMode);
       setAutoQuarantineThreshold(p.autoQuarantineReportThreshold);
       setBackupRetentionCount(p.backupRetentionCount);
+      if (p.instanceName !== undefined) setInstanceName(p.instanceName);
+      if (p.instanceBadge !== undefined) setInstanceBadge(p.instanceBadge);
+      if (p.instanceTagline !== undefined) setInstanceTagline(p.instanceTagline);
+      if (p.showPoweredBy !== undefined) setShowPoweredBy(p.showPoweredBy);
     }
   };
 
@@ -171,8 +253,18 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
         setMigrationFileName(file.name);
         if (parsed.settings && typeof parsed.settings === "object") {
           if (parsed.settings.instanceName) setInstanceName(String(parsed.settings.instanceName));
+          if (parsed.settings.instanceBadge !== undefined) setInstanceBadge(String(parsed.settings.instanceBadge));
+          if (parsed.settings.instanceTagline) setInstanceTagline(String(parsed.settings.instanceTagline));
           if (parsed.settings.instanceDescription) setInstanceDescription(String(parsed.settings.instanceDescription));
           if (parsed.settings.contactEmail) setContactEmail(String(parsed.settings.contactEmail));
+          if (parsed.settings.brandLogoUrl !== undefined) setBrandLogoUrl(String(parsed.settings.brandLogoUrl));
+          if (parsed.settings.brandLogoDarkUrl !== undefined)
+            setBrandLogoDarkUrl(String(parsed.settings.brandLogoDarkUrl));
+          if (parsed.settings.brandFaviconUrl !== undefined)
+            setBrandFaviconUrl(String(parsed.settings.brandFaviconUrl));
+          if (parsed.settings.brandAccentColor) setBrandAccentColor(String(parsed.settings.brandAccentColor));
+          if (parsed.settings.docsBaseUrl) setDocsBaseUrl(String(parsed.settings.docsBaseUrl));
+          if (typeof parsed.settings.showPoweredBy === "boolean") setShowPoweredBy(parsed.settings.showPoweredBy);
           if (parsed.settings.registrationMode) setRegistrationMode(parsed.settings.registrationMode);
           if (parsed.settings.federationMode) setFederationMode(parsed.settings.federationMode);
         }
@@ -203,7 +295,12 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
         setError("Administrator passwords do not match.");
         return;
       }
-      if (contactEmail === "admin@modelscript.local" || contactEmail === "admin@modelscript.org") {
+      if (
+        contactEmail === "admin@ansatz.local" ||
+        contactEmail === "admin@ansatz.social" ||
+        contactEmail === "admin@modelscript.local" ||
+        contactEmail === "admin@modelscript.org"
+      ) {
         setContactEmail(adminEmail.trim());
       }
     }
@@ -232,9 +329,17 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
               },
             }),
         settings: {
-          instanceName: instanceName.trim(),
+          instanceName: instanceName.trim() || "Ansatz",
+          instanceBadge: instanceBadge.trim(),
+          instanceTagline: instanceTagline.trim(),
           instanceDescription: instanceDescription.trim(),
           contactEmail: contactEmail.trim(),
+          brandLogoUrl: brandLogoUrl.trim(),
+          brandLogoDarkUrl: brandLogoDarkUrl.trim(),
+          brandFaviconUrl: brandFaviconUrl.trim(),
+          brandAccentColor: brandAccentColor.trim() || "#06b6d4",
+          docsBaseUrl: docsBaseUrl.trim() || "https://modelscript.org",
+          showPoweredBy,
           registrationMode,
           allowedEmailDomains,
           federationMode,
@@ -248,6 +353,8 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
         createInitialBackup,
         migrationBundle,
       });
+
+      notifyInstanceBrandingUpdated(res.settings);
 
       if (res.token && res.user) {
         try {
@@ -309,10 +416,10 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
         <ShieldCheckIcon size={36} />
         <h2 style={{ margin: "12px 0 8px", fontSize: "20px", fontWeight: 700 }}>Instance Setup Already Completed</h2>
         <p style={{ margin: "0 0 20px", fontSize: "14px", color: "var(--color-fg-muted)" }}>
-          This ModelScript instance (<strong>{status.settings.instanceName}</strong>) has already been initialized and
-          its first-boot setup wizard is permanently locked.
+          This {status.settings.instanceName || "Ansatz"} instance (<strong>{status.settings.instanceName}</strong>) has
+          already been initialized and its first-boot setup wizard is permanently locked.
         </p>
-        <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+        <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
           <button
             type="button"
             onClick={() => navigate("/admin")}
@@ -327,6 +434,24 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
             }}
           >
             Open Instance Admin Console
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRerunWizard()}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "6px",
+              border: "1px solid var(--color-border-default)",
+              backgroundColor: "var(--color-canvas-default)",
+              color: "var(--color-fg-default)",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <RocketIcon size={14} /> Re-run Setup Wizard
           </button>
           <button
             type="button"
@@ -381,7 +506,9 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
             <RocketIcon size={20} />
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: "22px", fontWeight: 700 }}>ModelScript First-Run Install Wizard</h1>
+            <h1 style={{ margin: 0, fontSize: "22px", fontWeight: 700 }}>
+              {instanceName || "Ansatz"} First-Run Install Wizard
+            </h1>
             <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-fg-muted)" }}>
               Bootstrap your founding administrator, security posture, federation policy, and baseline snapshot.
             </p>
@@ -682,7 +809,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
               >
                 <div>
                   <div style={{ fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                    <UploadIcon size={14} /> Migrating from an existing ModelScript instance?
+                    <UploadIcon size={14} /> Migrating from an existing {instanceName || "Ansatz"} instance?
                   </div>
                   <div style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginTop: "2px" }}>
                     {migrationFileName
@@ -845,7 +972,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
             </div>
           )}
 
-          {/* Step 3: Instance Identity, Registration & Federation Policy */}
+          {/* Step 3: Instance Identity, White-Label Branding, Registration & Federation Policy */}
           {step === 3 && (
             <div
               style={{
@@ -856,22 +983,131 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
               }}
             >
               <h2 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 700 }}>
-                Instance Identity, Registration & Federation Policy
+                Instance Identity, White-Label Branding &amp; Federation Policy
               </h2>
               <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--color-fg-muted)" }}>
-                Published via NodeInfo 2.0/2.1 and enforced on user registration and S2S ActivityPub inbox/outbox
-                routes.
+                Customize how your instance is branded in the navigation sidebar, login screen, and NodeInfo 2.0/2.1
+                discovery metadata.
               </p>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+              {/* Live Brand Header Preview */}
+              <div
+                data-testid="setup-brand-preview"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  padding: "10px 14px",
+                  marginBottom: "16px",
+                  borderRadius: "12px",
+                  border: "1px solid var(--color-border-default)",
+                  backgroundColor: "var(--color-canvas-default)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <AnsatzMark
+                    size={36}
+                    logoUrl={brandLogoUrl}
+                    alt={instanceName || "Ansatz"}
+                    accentColor={brandAccentColor}
+                  />
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", lineHeight: 1.05 }}>
+                      <span style={{ fontSize: "17.5px", fontWeight: 800, letterSpacing: "-0.035em" }}>
+                        {instanceName.trim() || "Ansatz"}
+                      </span>
+                      <span
+                        style={{
+                          width: "6px",
+                          height: "6px",
+                          borderRadius: "999px",
+                          backgroundColor: brandAccentColor || "#22d3ee",
+                          display: "inline-block",
+                        }}
+                      />
+                      {instanceBadge.trim() && (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            padding: "1.5px 5px",
+                            borderRadius: "5px",
+                            backgroundColor: "rgba(6, 182, 212, 0.14)",
+                            border: `1px solid ${brandAccentColor || "#06b6d4"}`,
+                            color: brandAccentColor || "#06b6d4",
+                          }}
+                        >
+                          {instanceBadge.trim()}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "11.5px",
+                        fontFamily: "var(--ms-font-mono, monospace)",
+                        color: "var(--color-fg-muted)",
+                        marginTop: "3px",
+                      }}
+                    >
+                      ansatz.social
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  {showPoweredBy && (
+                    <span style={{ fontSize: "11px", color: "var(--color-fg-muted)" }}>Powered by ModelScript</span>
+                  )}
+                  <span
+                    style={{
+                      padding: "2px 6px",
+                      borderRadius: "6px",
+                      fontFamily: "var(--ms-font-mono, monospace)",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      color: "var(--color-fg-muted)",
+                      border: "1px solid var(--color-border-default)",
+                    }}
+                  >
+                    ⌘K
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2fr", gap: "12px", marginBottom: "12px" }}>
                 <div>
                   <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Instance Name
+                    Instance Brand Name
                   </label>
                   <input
                     type="text"
+                    aria-label="Instance Name"
                     value={instanceName}
                     onChange={(e) => setInstanceName(e.target.value)}
+                    placeholder="Ansatz"
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      backgroundColor: "var(--color-canvas-default)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                    Header Badge Pill
+                  </label>
+                  <input
+                    type="text"
+                    aria-label="Header Badge Pill"
+                    value={instanceBadge}
+                    onChange={(e) => setInstanceBadge(e.target.value)}
+                    placeholder="e.g. Lab, Internal"
                     style={{
                       width: "100%",
                       padding: "8px 10px",
@@ -890,6 +1126,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
                   </label>
                   <input
                     type="email"
+                    aria-label="Public Contact Email"
                     value={contactEmail}
                     onChange={(e) => setContactEmail(e.target.value)}
                     style={{
@@ -906,26 +1143,136 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
                 </div>
               </div>
 
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                  Instance Description
-                </label>
-                <input
-                  type="text"
-                  value={instanceDescription}
-                  onChange={(e) => setInstanceDescription(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: "6px",
-                    border: "1px solid var(--color-border-default)",
-                    backgroundColor: "var(--color-canvas-default)",
-                    color: "var(--color-fg-default)",
-                    fontSize: "13px",
-                    boxSizing: "border-box",
-                  }}
-                />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                    Subtitle / Login Tagline
+                  </label>
+                  <input
+                    type="text"
+                    aria-label="Instance Tagline"
+                    value={instanceTagline}
+                    onChange={(e) => setInstanceTagline(e.target.value)}
+                    placeholder="The Federated Scientific & Engineering Network"
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      backgroundColor: "var(--color-canvas-default)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                    Instance Description (NodeInfo)
+                  </label>
+                  <input
+                    type="text"
+                    aria-label="Instance Description"
+                    value={instanceDescription}
+                    onChange={(e) => setInstanceDescription(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      backgroundColor: "var(--color-canvas-default)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
               </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 120px", gap: "12px", marginBottom: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                    Custom Brand Logo URL (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    aria-label="Custom Brand Logo URL"
+                    value={brandLogoUrl}
+                    onChange={(e) => setBrandLogoUrl(e.target.value)}
+                    placeholder="/ansatz-logo.svg or https://..."
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      backgroundColor: "var(--color-canvas-default)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                    Documentation Portal URL
+                  </label>
+                  <input
+                    type="text"
+                    aria-label="Documentation Portal URL"
+                    value={docsBaseUrl}
+                    onChange={(e) => setDocsBaseUrl(e.target.value)}
+                    placeholder="https://modelscript.org"
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      backgroundColor: "var(--color-canvas-default)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                    Accent Color
+                  </label>
+                  <input
+                    type="text"
+                    aria-label="Brand Accent Color"
+                    value={brandAccentColor}
+                    onChange={(e) => setBrandAccentColor(e.target.value)}
+                    placeholder="#06b6d4"
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: "6px",
+                      border: "1px solid var(--color-border-default)",
+                      backgroundColor: "var(--color-canvas-default)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "13px",
+                      fontFamily: "monospace",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  marginBottom: "14px",
+                  cursor: "pointer",
+                }}
+              >
+                <input type="checkbox" checked={showPoweredBy} onChange={(e) => setShowPoweredBy(e.target.checked)} />
+                <span>Display subtle &ldquo;Powered by ModelScript&rdquo; attribution link in sidebar footer</span>
+              </label>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
                 <div>

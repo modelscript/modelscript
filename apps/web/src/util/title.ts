@@ -2,8 +2,21 @@
 
 import { useEffect } from "react";
 
+let activeBrandName = "Ansatz";
+
+export function setActiveBrandName(name: string): void {
+  const clean = name.trim();
+  if (clean) {
+    activeBrandName = clean;
+  }
+}
+
+export function getActiveBrandName(): string {
+  return activeBrandName;
+}
+
 export function formatPageTitle(title?: string): string {
-  return title ? `${title} | ModelScript` : "ModelScript";
+  return title ? `${title} | ${activeBrandName}` : activeBrandName;
 }
 
 export function usePageTitle(title: string) {
@@ -38,7 +51,7 @@ export function useOembedDiscovery(targetUrl?: string, title?: string) {
 
     const oembedHref = `${host}/api/v1/oembed?url=${encodeURIComponent(url)}&format=json`;
     link.href = oembedHref;
-    link.title = title || "ModelScript oEmbed";
+    link.title = title || `${activeBrandName} oEmbed`;
 
     // Synchronize canonical OpenGraph URL
     let ogUrl = document.querySelector('meta[property="og:url"]') as HTMLMetaElement | null;

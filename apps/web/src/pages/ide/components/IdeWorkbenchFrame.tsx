@@ -3,6 +3,7 @@
 import { CodeIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { IframeWrapper, LoadingOverlay } from "../styles";
 
 export interface IdeWorkbenchFrameProps {
@@ -24,6 +25,8 @@ export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
   onRetry,
   onOpenInPlayground,
 }) => {
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const [isSlowLoad, setIsSlowLoad] = useState(false);
 
   useEffect(() => {
@@ -43,7 +46,7 @@ export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
       {isLoading && (
         <LoadingOverlay>
           <Spinner size="large" />
-          <Text>Initializing ModelScript IDE &amp; WebAssembly Solvers...</Text>
+          <Text>Initializing {brandName} IDE &amp; ModelScript WebAssembly Solvers...</Text>
           {isSlowLoad && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px", marginTop: 8 }}>
               <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
@@ -69,7 +72,7 @@ export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
         key={reloadKey}
         ref={iframeRef}
         src={workbenchUrl}
-        title="ModelScript IDE Workbench"
+        title={`${brandName} IDE Workbench`}
         allow="clipboard-read; clipboard-write"
         onLoad={onIframeLoad}
       />

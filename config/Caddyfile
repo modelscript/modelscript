@@ -1,15 +1,24 @@
-# Caddy configuration for ModelScript Federated Node
+# Caddy configuration for ModelScript (modelscript.org) & Ansatz (ansatz.social)
 # Automatically provisions and renews Let's Encrypt / ZeroSSL TLS certificates
 
-{$PUBLIC_DOMAIN:localhost} {
+{$PUBLIC_DOMAIN:localhost}, {$DOCS_DOMAIN:http://docs.localhost} {
     # Encode responses with gzip or zstd
     encode gzip zstd
 
-    # Route ActivityPub & API traffic to backend API
+    # Route ActivityPub, Git Smart HTTP, npm Registry, and API traffic to backend API
     handle /api/* {
         reverse_proxy api:3000
     }
+    handle /git/* {
+        reverse_proxy api:3000
+    }
+    handle /-/* {
+        reverse_proxy api:3000
+    }
     handle /.well-known/* {
+        reverse_proxy api:3000
+    }
+    handle /security.txt {
         reverse_proxy api:3000
     }
     handle /nodeinfo/* {
@@ -27,6 +36,12 @@
     handle /thumbnails/* {
         reverse_proxy api:3000
     }
+    handle /avatars/* {
+        reverse_proxy api:3000
+    }
+    handle /banners/* {
+        reverse_proxy api:3000
+    }
     handle /uploads/* {
         reverse_proxy api:3000
     }
@@ -35,6 +50,11 @@
     }
     handle /health* {
         reverse_proxy api:3000
+    }
+
+    # Route MQTT over WebSockets to Mosquitto broker
+    handle /mqtt* {
+        reverse_proxy mqtt:9001
     }
 
     # Route Web IDE Workbench & Assets to unified API service
@@ -52,4 +72,22 @@
     handle {
         reverse_proxy web:80
     }
+
+    # Graceful Maintenance Fallback when upstream containers are restarting (502/503/504)
+    handle_errors {
+        @upstream_down expression `{err.status_code} in [502, 503, 504]`
+        handle @upstream_down {
+            @api_req path /api/* /git/* /-/*
+            handle @api_req {
+                header Content-Type "application/json"
+                header Retry-After "30"
+                respond `{"error":"Service is temporarily restarting for scheduled maintenance.","maintenanceMode":true,"retryAfterSeconds":30}` 503
+            }
+            handle {
+                rewrite * /maintenance.html
+                reverse_proxy web:80
+            }
+        }
+    }
 }
+

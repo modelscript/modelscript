@@ -6,6 +6,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import styled, { keyframes } from "styled-components";
 import { resendVerificationEmail, verifyEmail } from "../api";
 import { useAuth } from "../AuthContext";
+import { AnsatzMark } from "../components/AnsatzLogo";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { usePageTitle } from "../util/title";
 import {
   Button,
@@ -56,6 +58,8 @@ export default function VerifyEmailPage() {
   const token = searchParams.get("token") || "";
   const navigate = useNavigate();
   const { refreshWallet } = useAuth();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
 
   const [status, setStatus] = useState<"loading" | "success" | "error">(token ? "loading" : "error");
   const [message, setMessage] = useState<string>(token ? "" : "No verification token provided in URL.");
@@ -114,7 +118,12 @@ export default function VerifyEmailPage() {
     <PageWrapper>
       <Card style={{ maxWidth: "480px", textAlign: "center" }}>
         <LogoBadge style={{ width: "56px", height: "56px", marginBottom: "20px" }}>
-          <img src="/ms-logo.png" alt="ModelScript" width="34" height="34" />
+          <AnsatzMark
+            size={38}
+            logoUrl={branding.brandLogoUrl}
+            alt={brandName}
+            accentColor={branding.brandAccentColor}
+          />
         </LogoBadge>
 
         {status === "loading" && (

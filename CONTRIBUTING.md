@@ -188,10 +188,70 @@ Releases are triggered manually via GitHub Actions ([`.github/workflows/release.
 | `VSCE_PAT`                           | [Azure DevOps](https://dev.azure.com/)                    | Publish VS Code extension to Visual Studio Marketplace |
 | `OVSX_PAT`                           | [open-vsx.org](https://open-vsx.org/user-settings/tokens) | Publish VS Code extension to Open VSX                  |
 | `DEPLOY_PAT`                         | GitHub Personal Access Token                              | Push version commits and signed release tags to `main` |
-| `PROD_SSH_HOST` / `PROD_SSH_KEY`     | Production Host SSH Credentials                           | Roll out Docker Compose stack to `modelscript.org`     |
+| `PROD_SSH_HOST` / `PROD_SSH_KEY`     | Production Host SSH Credentials                           | Roll out Docker Compose stack to production            |
+| `PROD_ENV_FILE` _(optional)_         | Production Environment File Contents                      | Automatically provisions `.env.production` on host     |
 | `GPG_PRIVATE_KEY` & `GPG_PASSPHRASE` | Maintainer GPG key                                        | Sign release commits and git tags                      |
 
 ### Triggering a Release
 
 1. Preview locally if desired: `npm run release:dry-run`
 2. Navigate to **Actions → Release → Run workflow** on GitHub and choose the semver bump (`patch`, `minor`, `major`, `prepatch`, `preminor`, `premajor`).
+
+---
+
+## 7. Production Deployment & Cloud Node Bootstrapping
+
+Production deployments (serving `modelscript.org` and the `ansatz.social` flagship network) are fully automated via [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) (on push to `main`) and [`.github/workflows/release.yml`](./.github/workflows/release.yml).
+
+### One-Time Prerequisites
+
+1. **DNS (Namecheap or Domain Registrar):** Point an **A Record** (`@` and `www`) to your DigitalOcean Droplet's public IPv4 address for `ansatz.social` (and `modelscript.org`).
+2. **Droplet Access & Firewall:** Ensure your SSH public key is added to `~/.ssh/authorized_keys` on the Droplet, and ensure ports `22`, `80` (HTTP), and `443` (HTTPS / HTTP/3) are open in the DigitalOcean firewall.
+3. **Repository Secrets:** Configure the following in **GitHub → Settings → Secrets and variables → Actions**:
+   - `PROD_SSH_HOST`: Droplet public IP
+   - `PROD_SSH_USER`: SSH user (`root` or deployment user with Docker privileges)
+   - `PROD_SSH_KEY`: Matching private SSH key
+   - `PROD_DEPLOY_PATH`: Target directory (defaults to `/opt/modelscript`)
+   - `PROD_ENV_FILE`: Complete `.env.production` file content (see template below)
+
+### Production Environment Template (`PROD_ENV_FILE`)
+
+```dotenv
+# Domains & Public Routing (Caddy automatically provisions TLS for all comma-separated domains)
+PUBLIC_DOMAIN=ansatz.social, www.ansatz.social, modelscript.org, www.modelscript.org
+PUBLIC_URL=https://ansatz.social
+
+# Node & Security
+NODE_ENV=production
+JWT_SECRET=replace_with_openssl_rand_hex_32
+
+# Editions & Licensing
+MSX_EDITION=ee
+MSX_LICENSE_ENFORCE=false
+# MSX_LICENSE_KEY=...
+
+# ActivityPub Social Federation
+FEDERATION_MODE=open
+
+# Mailer & Notifications
+EMAIL_FROM=noreply@ansatz.social
+# SENDGRID_API_KEY=...
+
+# AI Model Keys (optional)
+# OPENAI_API_KEY=...
+# GEMINI_API_KEY=...
+```
+
+### Automated CI/CD Execution
+
+When code merges into `main` or a new release workflow is triggered, the GitHub Actions deployment runner automatically:
+
+1. Connects to the host and ensures Docker and Docker Compose are installed (`which docker || curl -fsSL https://get.docker.com | sh`).
+2. Creates the target directory and subdirectories (`mkdir -p ${TARGET_DIR}/config`).
+3. Securely writes `.env.production` from `PROD_ENV_FILE` with `chmod 600`.
+4. Copies `docker-compose.yml`, `docker-compose.prod.yml`, and `config/*` (`Caddyfile`, `mosquitto.conf`, `init-timescaledb.sql`).
+5. Pulls pre-built images from `ghcr.io/modelscript/*` and launches the federated stack:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+     --env-file .env.production --profile federated up -d --remove-orphans
+   ```

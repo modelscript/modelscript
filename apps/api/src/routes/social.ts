@@ -756,12 +756,16 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       return;
     }
 
-    const host = `${req.protocol}://${req.get("host") || "modelscript.org"}`;
+    const settings = database.getInstanceSettings();
+    const brandName = settings.instanceName || "Ansatz";
+    const host = `${req.protocol}://${req.get("host") || "ansatz.social"}`;
     const postUrl = `${host}/p/${postId}`;
     const oembedUrl = `${host}/api/v1/oembed?url=${encodeURIComponent(postUrl)}&format=json`;
-    const title = post.title || post.content?.slice(0, 60) || "ModelScript Engineering Simulation";
-    const description = post.content?.slice(0, 200) || "Interactive physical modeling and simulation in ModelScript";
-    const author = post.display_name || post.username || "ModelScript Engineer";
+    const title = post.title || post.content?.slice(0, 60) || `${brandName} Engineering Simulation`;
+    const description =
+      post.content?.slice(0, 200) ||
+      `Interactive physical modeling and simulation on ${brandName} (powered by ModelScript)`;
+    const author = post.display_name || post.username || `${brandName} Engineer`;
     const thumb = post.thumbnail_url || `${host}/api/v1/artifacts/default-thumb.webp`;
 
     const escapeHtml = (str: string) =>
@@ -778,7 +782,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:image" content="${escapeHtml(thumb)}">
   <meta property="og:url" content="${escapeHtml(postUrl)}">
-  <meta property="og:site_name" content="ModelScript">
+  <meta property="og:site_name" content="${escapeHtml(brandName)}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${escapeHtml(title)}">
   <meta name="twitter:description" content="${escapeHtml(description)}">
@@ -789,7 +793,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
 <body style="font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; padding: 2rem;">
   <h1>${escapeHtml(title)}</h1>
   <p>${escapeHtml(description)}</p>
-  <a href="${escapeHtml(postUrl)}" style="color: #58a6ff;">View interactive model on ModelScript</a>
+  <a href="${escapeHtml(postUrl)}" style="color: #58a6ff;">View interactive model on ${escapeHtml(brandName)}</a>
 </body>
 </html>`;
 

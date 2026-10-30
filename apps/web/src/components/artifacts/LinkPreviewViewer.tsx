@@ -95,7 +95,7 @@ const LinkPreviewViewer: React.FC<LinkPreviewViewerProps> = ({ viewConfig }) => 
         {description && <Description>{description}</Description>}
         <Domain>
           <LinkIcon size={14} />
-          {domain || safeHostname(url, "modelscript.org")}
+          {domain || safeHostname(url, "ansatz.social")}
         </Domain>
       </ContentContainer>
     </LinkCard>

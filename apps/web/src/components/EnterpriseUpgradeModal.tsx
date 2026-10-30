@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React from "react";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 
 export interface EnterpriseUpgradeEventDetail {
   edition?: "ce" | "ee" | string | undefined;
@@ -63,6 +64,8 @@ function installEnterpriseFetchInterceptor(): void {
 
 export default function EnterpriseUpgradeModal(): React.ReactElement | null {
   const [detail, setDetail] = React.useState<EnterpriseUpgradeEventDetail | null>(null);
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
 
   React.useEffect(() => {
     installEnterpriseFetchInterceptor();
@@ -72,7 +75,7 @@ export default function EnterpriseUpgradeModal(): React.ReactElement | null {
       setDetail(
         customEvent.detail ?? {
           code: "EE_LICENSE_REQUIRED",
-          message: "This capability requires a valid ModelScript Enterprise Edition license.",
+          message: `This capability requires a valid ${brandName} Enterprise Edition license (powered by ModelScript).`,
         },
       );
     };
@@ -81,12 +84,12 @@ export default function EnterpriseUpgradeModal(): React.ReactElement | null {
     return () => {
       window.removeEventListener("modelscript:ee-upgrade-required", handleUpgradeEvent);
     };
-  }, []);
+  }, [brandName]);
 
   if (!detail) return null;
 
   const isCeMode = detail.edition === "ce" || detail.code === "EE_EDITION_REQUIRED" || detail.status === 501;
-  const pricingUrl = detail.pricingUrl || "https://modelscript.org/pricing";
+  const pricingUrl = detail.pricingUrl || "https://ansatz.social/pricing";
 
   return (
     <div
@@ -153,13 +156,13 @@ export default function EnterpriseUpgradeModal(): React.ReactElement | null {
         </div>
 
         <h2 id="ee-upgrade-modal-title" style={{ margin: "0 0 8px", fontSize: "20px", fontWeight: 600 }}>
-          ModelScript Enterprise Edition Required
+          {brandName} Enterprise Edition Required
         </h2>
 
         <p style={{ margin: "0 0 16px", fontSize: "14px", lineHeight: 1.55, color: "var(--ms-text-2)" }}>
           {detail.message ||
             detail.error ||
-            "This capability is part of ModelScript Enterprise Edition (ee/) and requires an active Enterprise license key."}
+            `This capability is part of ${brandName} Enterprise Edition (ee/, powered by ModelScript) and requires an active Enterprise license key.`}
         </p>
 
         {detail.requiredFeature && (
@@ -212,7 +215,7 @@ export default function EnterpriseUpgradeModal(): React.ReactElement | null {
             Dismiss
           </button>
           <a
-            href="mailto:enterprise@modelscript.org?subject=ModelScript%20Enterprise%20License%20Inquiry"
+            href="mailto:enterprise@ansatz.social?subject=Ansatz%20Enterprise%20License%20Inquiry"
             style={{
               padding: "8px 14px",
               borderRadius: "6px",

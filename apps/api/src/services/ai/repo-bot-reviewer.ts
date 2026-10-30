@@ -75,7 +75,7 @@ export class RepoBotReviewer {
 
     const systemPrompt =
       bot.bot_system_prompt ||
-      "You are ModelScript Automated Review Bot. You review pull requests, physical models (Modelica, SysML, EMT), verify equation balances, and ensure high code quality.";
+      "You are Ansatz Automated Review Bot (powered by ModelScript). You review pull requests, physical models (Modelica, SysML, EMT), verify equation balances, and ensure high code quality.";
 
     const messages: LLMMessage[] = [
       { role: "system", content: systemPrompt },

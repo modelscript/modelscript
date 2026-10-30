@@ -3,6 +3,72 @@
 import crypto from "node:crypto";
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const ENCRYPTED_TOTP_PREFIX = "enc:v1:";
+
+function deriveTotpEncryptionKey(): Buffer {
+  const rawMaterial =
+    process.env["TOTP_ENCRYPTION_KEY"] || process.env["JWT_SECRET"] || "modelscript-dev-totp-fallback-key";
+  return Buffer.from(
+    crypto.hkdfSync(
+      "sha256",
+      Buffer.from(rawMaterial, "utf8"),
+      Buffer.from("modelscript-totp-salt-v1", "utf8"),
+      Buffer.from("totp-secret-aes256gcm", "utf8"),
+      32,
+    ),
+  );
+}
+
+/**
+ * Encrypts a Base32 TOTP secret at rest using AES-256-GCM (`enc:v1:<iv>:<tag>:<ciphertext>`).
+ * Idempotent if the value is already encrypted.
+ */
+export function encryptTotpSecret(plainSecret: string): string {
+  if (!plainSecret || plainSecret.startsWith(ENCRYPTED_TOTP_PREFIX)) {
+    return plainSecret;
+  }
+  const key = deriveTotpEncryptionKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(plainSecret, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${ENCRYPTED_TOTP_PREFIX}${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted.toString("hex")}`;
+}
+
+/**
+ * Decrypts an `enc:v1:...` TOTP secret back to Base32, or returns legacy plaintext secrets unchanged.
+ */
+export function decryptTotpSecret(storedSecret: string): string {
+  if (!storedSecret || !storedSecret.startsWith(ENCRYPTED_TOTP_PREFIX)) {
+    return storedSecret;
+  }
+  const payload = storedSecret.slice(ENCRYPTED_TOTP_PREFIX.length);
+  const parts = payload.split(":");
+  if (parts.length !== 3) {
+    throw new Error("Malformed encrypted TOTP secret");
+  }
+  const [ivHex, tagHex, cipherHex] = parts as [string, string, string];
+  const key = deriveTotpEncryptionKey();
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+  decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+  const decrypted = Buffer.concat([decipher.update(Buffer.from(cipherHex, "hex")), decipher.final()]);
+  return decrypted.toString("utf8");
+}
+
+export const encryptSecretAtRest = encryptTotpSecret;
+export const decryptSecretAtRest = decryptTotpSecret;
+
+export function maskSecretPreview(secret: string | undefined | null): string {
+  if (!secret) return "";
+  try {
+    const plain = decryptSecretAtRest(secret);
+    if (!plain) return "";
+    if (plain.length <= 6) return "••••••••";
+    return `${plain.slice(0, 3)}••••••${plain.slice(-3)}`;
+  } catch {
+    return "••••••••";
+  }
+}
 
 /**
  * Encodes a Buffer to an RFC 4648 Base32 string (without padding).
@@ -70,9 +136,9 @@ export function generateTotpSecret(numBytes: number = 20): string {
  * Generates an otpauth://totp/... URI suitable for scanning in standard authenticator apps.
  */
 export function generateTotpUri(options: { accountName: string; issuer?: string | undefined; secret: string }): string {
-  const issuer = options.issuer || "ModelScript";
+  const issuer = options.issuer || "Ansatz";
   const account = options.accountName;
-  const secret = options.secret;
+  const secret = decryptTotpSecret(options.secret);
 
   const label = encodeURIComponent(issuer) + ":" + encodeURIComponent(account);
   const params = new URLSearchParams({
@@ -90,7 +156,8 @@ export function generateTotpUri(options: { accountName: string; issuer?: string 
  * Computes the 6-digit TOTP code for a given secret and timestamp (RFC 6238).
  */
 export function generateTotpCode(secret: string, timestampMs: number = Date.now()): string {
-  const key = base32Decode(secret);
+  const plainSecret = decryptTotpSecret(secret);
+  const key = base32Decode(plainSecret);
   const timeStep = Math.floor(timestampMs / 1000 / 30);
 
   // 8-byte big-endian counter
@@ -136,6 +203,12 @@ export function verifyTotpCode(
   options?: { preventReplay?: boolean | undefined },
 ): boolean {
   if (!secret || !inputCode) return false;
+  let plainSecret: string;
+  try {
+    plainSecret = decryptTotpSecret(secret);
+  } catch {
+    return false;
+  }
   const cleanCode = inputCode.replace(/\s+/g, "").trim();
   if (cleanCode.length !== 6 || !/^\d{6}$/.test(cleanCode)) {
     return false;
@@ -156,12 +229,12 @@ export function verifyTotpCode(
 
   for (let step = -windowSteps; step <= windowSteps; step++) {
     const candidateTime = effectiveTimestampMs + step * 30_000;
-    const expected = generateTotpCode(secret, candidateTime);
+    const expected = generateTotpCode(plainSecret, candidateTime);
     const expectedBuf = Buffer.from(expected, "utf8");
 
     if (expectedBuf.length === inputBuf.length && crypto.timingSafeEqual(expectedBuf, inputBuf)) {
       const matchedStep = Math.floor(candidateTime / 1000 / 30);
-      const secretKey = crypto.createHash("sha256").update(secret).digest("hex");
+      const secretKey = crypto.createHash("sha256").update(plainSecret).digest("hex");
       if (preventReplay) {
         const lastStep = consumedTotpSteps.get(secretKey);
         if (lastStep !== undefined && matchedStep <= lastStep) {

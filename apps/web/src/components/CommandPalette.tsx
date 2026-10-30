@@ -22,6 +22,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { getSearchCompletions } from "../api";
 
 interface CommandItem {
@@ -252,6 +253,8 @@ interface CommandPaletteProps {
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onOpenCompose }) => {
   const navigate = useNavigate();
   const { isAdmin, user } = useAuth();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
   const [query, setQuery] = useState("");
@@ -368,7 +371,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             {
               id: "nav-ide",
               category: "Navigation" as const,
-              title: "ModelScript IDE Workbench",
+              title: `${brandName} IDE Workbench`,
               subtitle: "Launch VS Code Web editor with WASM solvers and CAD viewers",
               icon: <CodeIcon size={16} />,
               action: () => {
@@ -408,7 +411,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             },
           ]
         : []),
-      ...(isAdmin
+      ...(isAdmin || user?.account_type === "moderator" || user?.account_type === "auditor"
         ? [
             {
               id: "nav-admin",
@@ -446,8 +449,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             {
               id: "nav-admin-federation",
               category: "Navigation" as const,
-              title: "Admin: Federation Domains",
-              subtitle: "Manage ActivityPub instance tiers (allow / silence / suspend)",
+              title: "Admin: Federation Domains & Circuit Breaker",
+              subtitle: "Manage ActivityPub instance tiers (allow / silence / suspend) and S2S queue",
               icon: <ShieldLockIcon size={16} />,
               action: () => {
                 navigate("/admin/federation");
@@ -458,7 +461,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
               id: "nav-admin-audit",
               category: "Navigation" as const,
               title: "Admin: Security Audit Logs",
-              subtitle: "Inspect immutable audit records",
+              subtitle: "Inspect immutable SHA-256 hash-chained audit records",
               icon: <ShieldLockIcon size={16} />,
               action: () => {
                 navigate("/admin/audit");
@@ -468,11 +471,44 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             {
               id: "nav-admin-database",
               category: "Navigation" as const,
-              title: "Admin: Database Operations",
-              subtitle: "Check schema integrity and execute database migrations",
+              title: "Admin: Database & Hot WAL Backups",
+              subtitle: "Create hot snapshots, upload/restore backups, and export migration bundles",
               icon: <ShieldLockIcon size={16} />,
               action: () => {
                 navigate("/admin/database");
+                onClose();
+              },
+            },
+            {
+              id: "nav-admin-settings",
+              category: "Navigation" as const,
+              title: "Admin: Instance Settings & Registration Invites",
+              subtitle: "Configure registration policy, maintenance mode, auto-filters, and invite links",
+              icon: <ShieldLockIcon size={16} />,
+              action: () => {
+                navigate("/admin/settings");
+                onClose();
+              },
+            },
+            {
+              id: "nav-admin-system",
+              category: "Navigation" as const,
+              title: "Admin: System Health, Preflight & Support Bundle",
+              subtitle: "Run preflight checks, test outbound SMTP mailer, and inspect Prometheus /metrics",
+              icon: <ShieldLockIcon size={16} />,
+              action: () => {
+                navigate("/admin/system");
+                onClose();
+              },
+            },
+            {
+              id: "nav-admin-setup",
+              category: "Navigation" as const,
+              title: "Admin: First-Run Appliance Setup Wizard",
+              subtitle: "Open the guided 4-step deployment & profile wizard (/setup)",
+              icon: <ShieldLockIcon size={16} />,
+              action: () => {
+                navigate("/setup");
                 onClose();
               },
             },
@@ -553,7 +589,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
               id: "action-signup",
               category: "Actions" as const,
               title: "Create account",
-              subtitle: "Join the ModelScript community for free",
+              subtitle: `Join the ${brandName} community for free`,
               icon: <PersonAddIcon size={16} />,
               action: () => {
                 navigate("/signup");
@@ -662,7 +698,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     ];
 
     return [...matchingNav, ...actionItems, ...userItems, ...packageItems, ...repoItems, ...aiItems];
-  }, [query, completions, navigate, onClose, onOpenCompose, isAdmin, user, hasIde, hasCae]);
+  }, [query, completions, navigate, onClose, onOpenCompose, isAdmin, user, hasIde, hasCae, brandName]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -767,7 +803,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         </ResultsList>
 
         <Footer>
-          <span>ModelScript Omnibar</span>
+          <span>
+            {brandName} Omnibar{branding.showPoweredBy ? " · Powered by ModelScript" : ""}
+          </span>
           <div className="keys">
             <span>
               <kbd>↑</kbd> <kbd>↓</kbd> navigate

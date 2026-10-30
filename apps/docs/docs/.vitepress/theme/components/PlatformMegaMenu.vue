@@ -124,6 +124,7 @@ const feature: MegaMenuFeature = {
 };
 
 const footerLinks: MegaMenuFooterLink[] = [
+  { label: "Ansatz Network (ansatz.social)", href: "https://ansatz.social", icon: "globe", target: "_blank" },
   { label: "Compiler Architecture", href: "/architecture/overview", icon: "cpu" },
   { label: "Algorithms Catalog (15 engines)", href: "/algorithms/overview", icon: "activity" },
   { label: "LLM Context (llms.txt)", href: "/llms.txt", icon: "sparkles", target: "_blank" },

@@ -185,7 +185,8 @@ export function extractFortranSignature(
 
   const lines = source.split(/\r?\n/);
   for (const rawLine of lines) {
-    const clean = rawLine.replace(/!.*$/, "").trim();
+    const bangIdx = rawLine.indexOf("!");
+    const clean = (bangIdx !== -1 ? rawLine.slice(0, bangIdx) : rawLine).trim();
     if (!clean || clean.startsWith("#")) continue;
 
     const useMatch = /^use\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(clean);
@@ -195,7 +196,7 @@ export function extractFortranSignature(
     }
 
     const subMatch =
-      /^(?:(?:pure|elemental|recursive|real(?:\s*\([^)]*\))?|integer(?:\s*\([^)]*\))?|double\s+precision|logical)\s+)*(subroutine|function)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?(?:\s*result\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\))?/i.exec(
+      /^(?:(?:pure|elemental|recursive|real(?:\([^)]*\))?|integer(?:\([^)]*\))?|double\s+precision|logical)\s+)*(subroutine|function)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?(?:\s+result\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\))?/i.exec(
         clean,
       );
     if (subMatch && args.length === 0 && name === "main") {
@@ -223,26 +224,30 @@ export function extractFortranSignature(
       continue;
     }
 
-    const paramStmtMatch = /^parameter\s*\(\s*(.+)\s*\)$/i.exec(clean);
+    const paramStmtMatch = /^parameter\s*\((.+)\)$/i.exec(clean);
     if (paramStmtMatch) {
       for (const pair of paramStmtMatch[1]!.split(",")) {
-        const kv = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/.exec(pair.trim());
-        if (kv) {
-          const num = Number(kv[2]!.trim().replace(/[dD]/g, "e"));
-          if (!Number.isNaN(num)) {
-            constants[kv[1]!] = num;
+        const eqIdx = pair.indexOf("=");
+        if (eqIdx !== -1) {
+          const k = pair.slice(0, eqIdx).trim();
+          const v = pair.slice(eqIdx + 1).trim();
+          if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) {
+            const num = Number(v.replace(/[dD]/g, "e"));
+            if (!Number.isNaN(num)) {
+              constants[k] = num;
+            }
           }
         }
       }
       continue;
     }
 
-    const dimStmtMatch = /^dimension\s+(.+)$/i.exec(clean);
-    if (dimStmtMatch) {
+    if (/^dimension\b/i.test(clean)) {
+      const dimContent = clean.slice(9).trim();
       const items: string[] = [];
       let depth = 0;
       let cur = "";
-      for (const ch of dimStmtMatch[1]!) {
+      for (const ch of dimContent) {
         if (ch === "(") depth++;
         else if (ch === ")") depth = Math.max(0, depth - 1);
         if (ch === "," && depth === 0) {
@@ -269,13 +274,26 @@ export function extractFortranSignature(
       continue;
     }
 
-    const declMatch =
-      /^(?:real|integer|double\s+precision|logical|complex|character)\s*(?:\([^)]*\)|\*\d+)?\s*((?:,\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?)*)\s*(?:::)?\s*(.+)$/i.exec(
-        clean,
-      );
-    if (declMatch) {
-      const attrs = declMatch[1] ?? "";
-      const varPart = declMatch[2]!;
+    const typeMatch = /^(?:real|integer|double\s+precision|logical|complex|character)(?:\s*\([^)]*\)|\*\d+|\b)/i.exec(
+      clean,
+    );
+    if (typeMatch) {
+      let afterType = clean.slice(typeMatch[0].length).trim();
+      let attrs = "";
+      let varPart = afterType;
+      if (afterType.startsWith(",")) {
+        const dcolIdx = afterType.indexOf("::");
+        if (dcolIdx !== -1) {
+          attrs = afterType.slice(0, dcolIdx);
+          varPart = afterType.slice(dcolIdx + 2).trim();
+        } else {
+          attrs = afterType;
+          varPart = "";
+        }
+      } else if (afterType.startsWith("::")) {
+        varPart = afterType.slice(2).trim();
+      }
+
       const intentMatch = /\bintent\s*\(\s*(in\s*out|inout|in|out)\s*\)/i.exec(attrs);
       const intent = intentMatch ? intentMatch[1]!.replace(/\s+/g, "").toLowerCase() : null;
       const isAllocatableAttr = /\ballocatable\b/i.test(attrs);
@@ -299,11 +317,13 @@ export function extractFortranSignature(
       if (cur.trim()) items.push(cur.trim());
 
       for (const item of items) {
-        const m = /^([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?(?:\s*=\s*(.+))?$/.exec(item);
+        const eqIdx = item.indexOf("=");
+        const nameAndDim = eqIdx !== -1 ? item.slice(0, eqIdx).trim() : item;
+        const initStr = eqIdx !== -1 ? item.slice(eqIdx + 1).trim() : undefined;
+        const m = /^([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?$/.exec(nameAndDim);
         if (!m) continue;
         const vName = m[1]!;
         const itemDimStr = m[2];
-        const initStr = m[3]?.trim();
         if (intent === "in") {
           inputs.add(vName);
         } else if (intent === "out") {
@@ -1495,7 +1515,8 @@ export function parseFortranModule(source: string): FortranModuleAst {
   let inModuleHeader = false;
 
   for (let idx = 0; idx < lines.length; idx++) {
-    const clean = lines[idx]!.replace(/!.*$/, "").trim();
+    const bangIdx = lines[idx]!.indexOf("!");
+    const clean = (bangIdx !== -1 ? lines[idx]!.slice(0, bangIdx) : lines[idx]!).trim();
     if (!clean || clean.startsWith("#")) continue;
 
     if (/^module\s+([A-Za-z_][A-Za-z0-9_]*)\b/i.test(clean) && !/^module\s+procedure\b/i.test(clean)) {

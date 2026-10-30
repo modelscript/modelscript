@@ -4,6 +4,7 @@ import { GlobeIcon, PaintbrushIcon } from "@primer/octicons-react";
 import React, { useEffect, useState } from "react";
 import { getUserTopics, updateUserTopic } from "../../../api";
 import Box from "../../../components/Box";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { DetailIcon, DetailItem, DetailSubtitle, DetailText, DetailTitle, FormLabel, Header } from "../settingsStyles";
 
@@ -14,6 +15,8 @@ export interface DisplayAndPreferencesTabProps {
 
 export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> = ({ subView }) => {
   const { theme, toggleTheme } = useTheme();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
   const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
 
   useEffect(() => {
@@ -213,7 +216,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
               <Box display="flex" justifyContent="space-between" py={1}>
                 <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>Hub Instance Node</span>
                 <span style={{ fontSize: "13px", fontFamily: "var(--font-mono)", fontWeight: "600" }}>
-                  hub.modelscript.org
+                  ansatz.social
                 </span>
               </Box>
               <Box
@@ -259,7 +262,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
       <Header>Accessibility, display, and languages</Header>
       <Box px={3} pb={3}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4" }}>
-          Manage how ModelScript content is displayed to you and select your preferred language.
+          Manage how {brandName} content is displayed to you and select your preferred language.
         </DetailSubtitle>
       </Box>
       <DetailItem>
@@ -268,7 +271,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
         </DetailIcon>
         <DetailText>
           <DetailTitle>Theme</DetailTitle>
-          <DetailSubtitle>Choose how ModelScript looks on this device.</DetailSubtitle>
+          <DetailSubtitle>Choose how {brandName} looks on this device.</DetailSubtitle>
         </DetailText>
         <Box display="flex" gap={1}>
           {(["light", "dark"] as const).map((mode) => (

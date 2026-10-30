@@ -608,7 +608,7 @@ export const PlaygroundPage: React.FC = () => {
 
   const getMarkdownBadge = () => {
     const url = getShareUrl();
-    return `[![Open in ModelScript Playground](https://img.shields.io/badge/ModelScript-Playground-06b6d4?style=flat&logo=atom)](${url})`;
+    return `[![Open in Ansatz Playground](https://img.shields.io/badge/Ansatz-Playground-06b6d4?style=flat&logo=atom)](${url})`;
   };
 
   const handleCopy = async (text: string, label: string) => {

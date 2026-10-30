@@ -7,12 +7,15 @@ import {
   type KparIndexJson,
   type KparMetaJson,
   KparPackageAdapter,
+  parseDataPackageResources,
 } from "../adapters/native-package-adapters.js";
 import { DdpPackager } from "../ddp/packager.js";
 import type { DdpArtifactDescriptor, DdpManifest, DdpPackageContent } from "../ddp/types.js";
 import type {
   AasJsonProjection,
   CanonicalWorkspaceManifest,
+  DataPackageJsonProjection,
+  DataPackageResourceDescriptor,
   OkhJsonProjection,
   PackageJsonProjection,
 } from "./types.js";
@@ -32,7 +35,7 @@ export const SUBMODEL_SEMANTIC_IDS = {
 
 /**
  * ManifestLensEngine provides bidirectional projection between a canonical
- * cyber-physical asset description and target ecosystem formats (NPM, AAS, OKH).
+ * cyber-physical asset description and target ecosystem formats (NPM, AAS, OKH, DataPackage).
  */
 export class ManifestLensEngine {
   /**
@@ -45,7 +48,7 @@ export class ManifestLensEngine {
     const pkgName = manifest.scope ? `${manifest.scope}/${manifest.idShort}` : manifest.idShort;
 
     // Convert BOM items with packageDependency into npm dependencies
-    const deps: Record<string, string> = { ...options?.dependencies };
+    const deps: Record<string, string> = { ...manifest.dependencies, ...options?.dependencies };
     if (manifest.bom) {
       for (const item of manifest.bom) {
         if (item.packageDependency) {
@@ -79,6 +82,7 @@ export class ManifestLensEngine {
     return {
       name: pkgName,
       version: manifest.version,
+      profile: manifest.profile,
       description: manifest.description ?? manifest.title,
       main: options?.mainFile ?? "system.ssp",
       author: authorString,
@@ -87,10 +91,13 @@ export class ManifestLensEngine {
       repository: manifest.repository,
       dependencies: Object.keys(deps).length > 0 ? deps : undefined,
       scripts: defaultScripts,
+      resources: manifest.resources,
       modelscript: {
         globalAssetId: manifest.globalAssetId,
+        profile: manifest.profile,
         variants: manifest.variants ? Object.keys(manifest.variants) : undefined,
         submodels: manifest.submodels ? manifest.submodels.map((s) => s.idShort) : undefined,
+        resourcesCount: manifest.resources ? manifest.resources.length : undefined,
       },
     };
   }
@@ -507,6 +514,185 @@ export class ManifestLensEngine {
     indexJson?: string | KparIndexJson,
   ): CanonicalWorkspaceManifest {
     return KparPackageAdapter.ingestFromKpar(metaJson, indexJson).manifest;
+  }
+
+  /**
+   * Project canonical workspace into a W3C / Frictionless Engineering Data Package (`datapackage.json`).
+   * Unifies code packages, calibration/simulation datasets, CAD geometry, and FMUs under a single
+   * schema-validated, content-addressed resource manifest.
+   */
+  static projectToDataPackageJson(
+    manifest: CanonicalWorkspaceManifest,
+    options?: {
+      additionalResources?: DataPackageResourceDescriptor[] | undefined;
+      languages?: string[] | undefined;
+      created?: string | undefined;
+    },
+  ): DataPackageJsonProjection {
+    const pkgName = manifest.scope ? `${manifest.scope}/${manifest.idShort}` : manifest.idShort;
+    const resourcesMap = new Map<string, DataPackageResourceDescriptor>();
+
+    if (manifest.resources) {
+      for (const r of manifest.resources) {
+        resourcesMap.set(r.path, r);
+      }
+    }
+
+    if (options?.additionalResources) {
+      for (const r of options.additionalResources) {
+        const existing = resourcesMap.get(r.path);
+        if (existing) {
+          resourcesMap.set(r.path, {
+            ...r,
+            ...existing,
+            schema: existing.schema ?? r.schema,
+            hash: existing.hash ?? r.hash,
+            bytes: existing.bytes ?? r.bytes,
+            rowCount: existing.rowCount ?? r.rowCount,
+          });
+        } else {
+          resourcesMap.set(r.path, r);
+        }
+      }
+    }
+
+    // Also include geometry & behavior descriptors if not already in resources
+    if (manifest.geometry) {
+      for (const g of manifest.geometry) {
+        if (!resourcesMap.has(g.path)) {
+          resourcesMap.set(g.path, {
+            name: g.id.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"),
+            path: g.path,
+            description: g.description,
+            profile: "engineering-cad-resource",
+            format: (g.format ?? "step").toLowerCase(),
+            mediatype: "application/step",
+            storage: "inline",
+          });
+        }
+      }
+    }
+
+    if (manifest.behavior) {
+      for (const b of manifest.behavior) {
+        if (!resourcesMap.has(b.path)) {
+          resourcesMap.set(b.path, {
+            name: b.id.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"),
+            path: b.path,
+            description: b.description,
+            profile: b.path.endsWith(".fmu") ? "fmu-resource" : "simulation-model-resource",
+            format: (b.format ?? (b.path.endsWith(".fmu") ? "fmu" : "modelica")).toLowerCase(),
+            mediatype: b.path.endsWith(".fmu") ? "application/x-fmu" : "text/x-modelica",
+            storage: "inline",
+          });
+        }
+      }
+    }
+
+    const resources = Array.from(resourcesMap.values());
+    const hasTabular = resources.some(
+      (r) =>
+        r.profile === "tabular-data-resource" ||
+        r.format === "csv" ||
+        r.format === "tsv" ||
+        r.format === "parquet" ||
+        Boolean(r.schema?.fields?.length),
+    );
+    const resolvedProfile =
+      manifest.profile ?? (hasTabular || resources.length > 0 ? "engineering-data-package" : "engineering-package");
+
+    return {
+      $schema: "https://modelscript.org/schemas/datapackage-v2.json",
+      profile: resolvedProfile,
+      name: pkgName,
+      id: manifest.globalAssetId,
+      title: manifest.title,
+      version: manifest.version,
+      description: manifest.description,
+      homepage: manifest.homepage,
+      created: options?.created,
+      contributors: manifest.author
+        ? [
+            {
+              title: manifest.author.name,
+              email: manifest.author.email,
+              organization: manifest.author.organization,
+              role: "author",
+            },
+          ]
+        : undefined,
+      licenses: manifest.license ? [{ name: manifest.license }] : undefined,
+      dependencies:
+        manifest.dependencies && Object.keys(manifest.dependencies).length > 0 ? manifest.dependencies : undefined,
+      resources,
+      modelscript: {
+        globalAssetId: manifest.globalAssetId,
+        languages: options?.languages,
+      },
+    };
+  }
+
+  /**
+   * Parse a Frictionless / Engineering Data Package (`datapackage.json`) into a CanonicalWorkspaceManifest.
+   */
+  static parseFromDataPackageJson(dpRaw: string | Record<string, unknown>): CanonicalWorkspaceManifest {
+    const dp = typeof dpRaw === "string" ? (JSON.parse(dpRaw) as Record<string, unknown>) : dpRaw;
+    const rawName = typeof dp["name"] === "string" && dp["name"].trim() ? dp["name"].trim() : "data-package";
+    const scope = rawName.startsWith("@") ? rawName.split("/")[0] : undefined;
+    const idShort = rawName.startsWith("@") ? (rawName.split("/")[1] ?? rawName) : rawName;
+    const version = typeof dp["version"] === "string" && dp["version"].trim() ? dp["version"].trim() : "1.0.0";
+    const title = typeof dp["title"] === "string" ? dp["title"] : idShort;
+    const description = typeof dp["description"] === "string" ? dp["description"] : title;
+    const profile = typeof dp["profile"] === "string" ? dp["profile"] : "engineering-data-package";
+
+    const licenses = Array.isArray(dp["licenses"]) ? dp["licenses"] : undefined;
+    const firstLic =
+      licenses?.[0] && typeof licenses[0] === "object" ? (licenses[0] as Record<string, unknown>) : undefined;
+    const license =
+      typeof firstLic?.["name"] === "string"
+        ? firstLic["name"]
+        : typeof dp["license"] === "string"
+          ? dp["license"]
+          : "UNLICENSED";
+
+    const contribs = Array.isArray(dp["contributors"]) ? dp["contributors"] : undefined;
+    const firstContrib =
+      contribs?.[0] && typeof contribs[0] === "object" ? (contribs[0] as Record<string, unknown>) : undefined;
+    const authorName =
+      typeof firstContrib?.["title"] === "string"
+        ? firstContrib["title"]
+        : typeof firstContrib?.["name"] === "string"
+          ? firstContrib["name"]
+          : typeof dp["author"] === "string"
+            ? dp["author"]
+            : undefined;
+
+    const resources = parseDataPackageResources(dp["resources"]);
+    const dependencies =
+      dp["dependencies"] && typeof dp["dependencies"] === "object"
+        ? (dp["dependencies"] as Record<string, string>)
+        : undefined;
+
+    return {
+      globalAssetId: typeof dp["id"] === "string" ? dp["id"] : `urn:modelscript:${rawName}:${version}`,
+      idShort,
+      title,
+      version,
+      scope,
+      profile,
+      description,
+      author: authorName
+        ? {
+            name: authorName,
+            email: typeof firstContrib?.["email"] === "string" ? firstContrib["email"] : undefined,
+            organization: typeof firstContrib?.["organization"] === "string" ? firstContrib["organization"] : undefined,
+          }
+        : undefined,
+      license,
+      homepage: typeof dp["homepage"] === "string" ? dp["homepage"] : undefined,
+      resources: resources.length > 0 ? resources : undefined,
+      dependencies,
+    };
   }
 
   /**

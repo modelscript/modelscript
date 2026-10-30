@@ -538,6 +538,8 @@ export const AdminPage: React.FC = () => {
       reason?: string | undefined;
       revokeSessions?: boolean | undefined;
       purgePosts?: boolean | undefined;
+      emailVerified?: boolean | undefined;
+      reset2FA?: boolean | undefined;
     },
   ) => {
     setLoading(true);

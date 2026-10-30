@@ -28,6 +28,7 @@ import { LibraryDatabase } from "./database.js";
 import { LibraryStorage } from "./storage.js";
 import { convertStepBufferToJson } from "./util/cad-converter.js";
 import { extractModelicaComponentsFromSource } from "./util/class-source-inspector.js";
+import { indexDataPackageResources } from "./util/datapackage-indexer.js";
 import { exportLspBundle } from "./util/lsp-bundle-exporter.js";
 import {
   indexRemainingPolyglotFiles,
@@ -551,6 +552,13 @@ process.on(
           }
           database.storeArtifact(versionId, type, relPath, JSON.stringify(details));
         }
+      }
+
+      // Merge any declared Data Package resources (datapackage.json / CAS / S3 / explicit Table Schemas)
+      try {
+        await indexDataPackageResources(database, versionId, libraryPath, manifestStr);
+      } catch (dpErr) {
+        console.warn(`[publish] Failed to index Data Package resources for ${name}@${version}:`, dpErr);
       }
       // -----------------------------------
       // -----------------------------------

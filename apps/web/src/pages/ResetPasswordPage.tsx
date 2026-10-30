@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import styled, { keyframes } from "styled-components";
 import { requestPasswordReset, resetPassword } from "../api";
+import { useInstanceBranding } from "../InstanceBrandingContext";
 import { usePageTitle } from "../util/title";
 import {
   Button,
@@ -69,6 +70,8 @@ export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
   const navigate = useNavigate();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -141,7 +144,7 @@ export default function ResetPasswordPage() {
         <Title style={{ fontSize: "22px" }}>Reset Password</Title>
         <Subtitle>
           {token
-            ? "Enter your new password below to secure your ModelScript account."
+            ? `Enter your new password below to secure your ${brandName} account.`
             : "Request a password reset link to regain access."}
         </Subtitle>
 

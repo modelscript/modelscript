@@ -17,6 +17,8 @@ import Box from "../Box";
 export interface DatasetColumn {
   name: string;
   type: "number" | "string" | "boolean" | string;
+  unit?: string | undefined;
+  description?: string | undefined;
   min?: number | undefined;
   max?: number | undefined;
   mean?: number | undefined;
@@ -488,9 +490,12 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
         <StatsDrawer>
           {columnsMeta.map((col) => (
             <StatCard key={col.name}>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
+              <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
                 <strong style={{ color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {col.name}
+                  {col.unit ? (
+                    <span style={{ color: "#22d3ee", fontWeight: 500, marginLeft: 4 }}>[{col.unit}]</span>
+                  ) : null}
                 </strong>
                 <TypePill $type={col.type}>{col.type}</TypePill>
               </Box>
@@ -513,14 +518,25 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
         <StyledTable>
           <thead>
             <tr>
-              {headers.map((h, i) => (
-                <th key={i} onClick={() => handleHeaderClick(i)} title={`Sort by ${h}`}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <span>{h}</span>
-                    {sortCol === i ? sortAsc ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} /> : null}
-                  </Box>
-                </th>
-              ))}
+              {headers.map((h, i) => {
+                const colMeta = columnsMeta[i];
+                const unitBadge = colMeta?.unit && !h.includes(`[${colMeta.unit}]`) ? colMeta.unit : undefined;
+                return (
+                  <th key={i} onClick={() => handleHeaderClick(i)} title={`Sort by ${h}`}>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <span>{h}</span>
+                      {unitBadge && (
+                        <span
+                          style={{ color: "#22d3ee", fontSize: "10.5px", fontFamily: "var(--font-mono, monospace)" }}
+                        >
+                          [{unitBadge}]
+                        </span>
+                      )}
+                      {sortCol === i ? sortAsc ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} /> : null}
+                    </Box>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

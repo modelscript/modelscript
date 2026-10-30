@@ -13,6 +13,7 @@ import { matchesPackagePattern, requireAuth } from "../middleware/auth-middlewar
 import type { FederationWorker } from "../services/federation-worker.js";
 import { ConflictError, type LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
+import { indexDataPackageResources } from "../util/datapackage-indexer.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { scanPackageArchive } from "../util/package-scanner.js";
 import { extractManifestFromZip } from "../util/zip.js";
@@ -268,9 +269,10 @@ export function publishRouter(
           });
         }
 
-        if (!database.getPackageVersion(packageId, version)) {
+        let versionId = database.getPackageVersion(packageId, version)?.id;
+        if (!versionId) {
           const shasum = crypto.createHash("sha1").update(req.file.buffer).digest("hex");
-          database.storePackageVersion(
+          versionId = database.storePackageVersion(
             packageId,
             version,
             filePath,
@@ -285,6 +287,13 @@ export function publishRouter(
 
         // 8. Extract the zip to disk (I/O-bound, fine in main thread)
         const libraryPath = await storage.extractLibrary(name, version);
+
+        // 8.5 Synchronously index any declared Data Package resources (datapackage.json / CSV / Parquet / CAS pointers)
+        try {
+          await indexDataPackageResources(database, versionId, libraryPath, initialManifestStr);
+        } catch (dpErr) {
+          console.warn(`[publish] Non-fatal error indexing Data Package resources for ${name}@${version}:`, dpErr);
+        }
 
         // 9. Enqueue background processing in a child process.
         //    fork() creates a separate Node.js process that inherits tsx's module resolution,

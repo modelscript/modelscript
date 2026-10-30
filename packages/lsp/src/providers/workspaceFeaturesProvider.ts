@@ -284,6 +284,112 @@ export function registerWorkspaceFeaturesProvider(
     const document = documents.get(params.textDocument.uri);
     if (!document) return actions;
 
+    const docUri = params.textDocument.uri;
+    const docText = document.getText();
+    const docLines = docText.split(/\r?\n/);
+    const cursorLine = docLines[params.range.start.line] ?? "";
+
+    // Declaration-level Lightbulb CodeActions (replaces stacked CodeLens clutter)
+    if (/\.(sysml|kerml)$/i.test(docUri)) {
+      const partMatch = /^\s*(?:abstract\s+)?part\s+def\s+([A-Za-z0-9_]+)/.exec(cursorLine);
+      if (partMatch) {
+        const partName = partMatch[1]!;
+        actions.push(
+          {
+            title: `Verify Contracts & Hierarchy for '${partName}'`,
+            kind: CodeActionKind.Source,
+            command: {
+              title: "Verify Contracts & Hierarchy",
+              command: "modelscript.openContractExplorer",
+              arguments: [docUri, partName],
+            },
+          },
+          {
+            title: `Scaffold Multi-Domain Models (SCAD + Modelica + FEA) for '${partName}'`,
+            kind: CodeActionKind.RefactorRewrite,
+            command: {
+              title: "Scaffold Multi-Domain (SCAD + MO + FEA)",
+              command: "modelscript.scaffoldMultiDomain",
+              arguments: [docUri, partName],
+            },
+          },
+          {
+            title: `Project '${partName}' to Target Engineering Domain...`,
+            kind: CodeActionKind.Refactor,
+            command: {
+              title: "Project Model to Target Engineering Domain",
+              command: "modelscript.projectModel",
+              arguments: [docUri, partName],
+            },
+          },
+        );
+      }
+
+      const reqMatch = /^\s*(?:abstract\s+)?requirement\s+def\s+([A-Za-z0-9_]+)/.exec(cursorLine);
+      if (reqMatch) {
+        const reqName = reqMatch[1]!;
+        actions.push({
+          title: `Verify Formal Requirement Contract '${reqName}'`,
+          kind: CodeActionKind.Source,
+          command: {
+            title: `Verify Formal Requirement Contract: ${reqName}`,
+            command: "modelscript.runReachabilityFlowpipe",
+            arguments: [docUri],
+          },
+        });
+      }
+
+      const actionMatch = /^\s*(?:abstract\s+)?(?:action|calc)\s+def\s+([A-Za-z0-9_]+)/.exec(cursorLine);
+      if (actionMatch) {
+        const actName = actionMatch[1]!;
+        actions.push(
+          {
+            title: `Run Formal MC/DC Coverage Tests for '${actName}'`,
+            kind: CodeActionKind.Source,
+            command: {
+              title: "Run Formal MC/DC Tests",
+              command: "modelscript.runMcdcTests",
+              arguments: [docUri, actName],
+            },
+          },
+          {
+            title: `Decompose State/Decision Regions for '${actName}'`,
+            kind: CodeActionKind.Source,
+            command: {
+              title: "Decompose Regions",
+              command: "modelscript.decomposeRegions",
+              arguments: [docUri, actName],
+            },
+          },
+        );
+      }
+    } else if (/\.mo$/i.test(docUri)) {
+      const classMatch = /^\s*(?:model|block|study|process|class)\s+([A-Za-z0-9_]+)/.exec(cursorLine);
+      if (classMatch) {
+        const className = classMatch[1]!;
+        actions.push(
+          {
+            title: `Open Interactive Diagram for '${className}'`,
+            kind: CodeActionKind.Source,
+            command: {
+              title: "Open Interactive Diagram",
+              command: "modelscript.openDiagram",
+              arguments: [docUri],
+            },
+          },
+          {
+            title: `Project '${className}' to Target Engineering Domain...`,
+            kind: CodeActionKind.Refactor,
+            command: {
+              title: "Project Model to Target Engineering Domain",
+              command: "modelscript.projectModel",
+              arguments: [docUri, className],
+            },
+          },
+        );
+      }
+    }
+
     if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
       const pscadFixes = getPscadQuickFixes(document.getText(), params.textDocument.uri);
       for (const fix of pscadFixes) {

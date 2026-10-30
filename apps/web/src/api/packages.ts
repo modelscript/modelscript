@@ -8,6 +8,57 @@ export interface Library {
   versions: string[];
 }
 
+export interface DataPackageSchemaFieldSummary {
+  name: string;
+  type: string;
+  unit?: string | undefined;
+  description?: string | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
+  mean?: number | undefined;
+}
+
+export interface DataPackageResourceSummary {
+  name: string;
+  path?: string | undefined;
+  title?: string | undefined;
+  description?: string | undefined;
+  format?: string | undefined;
+  mediatype?: string | undefined;
+  bytes?: number | undefined;
+  hash?: string | undefined;
+  storage?: "inline" | "cas" | "s3" | "http" | undefined;
+  rowCount?: number | undefined;
+  schema?: { fields: DataPackageSchemaFieldSummary[] } | undefined;
+}
+
+export interface DataPackageLockEntrySummary {
+  name: string;
+  version: string;
+  resolved?: string | undefined;
+  integrity: string;
+  dependencies?: Record<string, string> | undefined;
+  resources?:
+    | {
+        name: string;
+        path: string;
+        hash: string;
+        bytes?: number | undefined;
+        storage?: "inline" | "cas" | "s3" | "http" | undefined;
+      }[]
+    | undefined;
+}
+
+export interface DataPackageLockJsonSummary {
+  lockfileVersion: 1;
+  profile: "engineering-data-package-lock";
+  name: string;
+  version: string;
+  generatedAt: string;
+  engine?: { modelscript: string; compilerTarget?: string | undefined; solver?: string | undefined } | undefined;
+  packages: Record<string, DataPackageLockEntrySummary>;
+}
+
 export interface LibraryVersion {
   name: string;
   version: string;
@@ -16,6 +67,9 @@ export interface LibraryVersion {
   size: number;
   license?: string | null | undefined;
   author?: string | undefined;
+  profile?: string | undefined;
+  resourcesCount?: number | undefined;
+  resources?: DataPackageResourceSummary[] | undefined;
   salsaIndexed?: boolean | undefined;
   contentHash?: string | undefined;
   signature?: string | undefined;
@@ -210,6 +264,23 @@ export const getPackageAasxExportUrl = (name: string, version: string, variant?:
 
 export const getPackageOkhExportUrl = (name: string, version: string, variant?: string) =>
   `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/export/okh${variant && variant !== "default" ? `?variant=${encodeURIComponent(variant)}` : ""}`;
+
+export const getPackageDataPackageExportUrl = (name: string, version: string, variant?: string) =>
+  `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/export/datapackage${variant && variant !== "default" ? `?variant=${encodeURIComponent(variant)}` : ""}`;
+
+export const getPackageLockfileExportUrl = (name: string, version: string) =>
+  `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/export/lockfile`;
+
+export const getPackageLockfile = async (name: string, version: string): Promise<DataPackageLockJsonSummary | null> => {
+  try {
+    const { data } = await api.get<DataPackageLockJsonSummary>(
+      `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/lockfile`,
+    );
+    return data;
+  } catch {
+    return null;
+  }
+};
 
 export const getPackageSalsaIndexUrl = (name: string, version: string) =>
   `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/salsa-index.db`;

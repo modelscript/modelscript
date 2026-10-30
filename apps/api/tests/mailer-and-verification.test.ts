@@ -54,7 +54,7 @@ test("Phase 1 & Pre-Deployment Readiness: Mailer, Token Decoupling & Guardrails"
     const sentMails = defaultMailer.getSentMails();
     assert.strictEqual(sentMails.length, 1);
     assert.strictEqual(sentMails[0].to, "dev.eng1@tum.de");
-    assert.ok(sentMails[0].subject.includes("Verify your ModelScript account"));
+    assert.ok(sentMails[0].subject.includes("Verify your Ansatz account"));
     assert.ok(sentMails[0].text.includes("/verify-email?token="));
   });
 

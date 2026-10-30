@@ -1421,7 +1421,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
             <PillButton
               $isDark={isDark}
               onClick={handleOpenInPlayground}
-              title="Open in ModelScript Polyglot Playground"
+              title="Open in Ansatz Polyglot Playground (powered by ModelScript)"
             >
               Playground
             </PillButton>

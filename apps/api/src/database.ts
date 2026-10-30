@@ -28,6 +28,24 @@ import type {
 import { SqliteMigrationRunner, allMigrations } from "./migrations/index.js";
 import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
 import type { ComputeProfile } from "./services/hpc/hpc-types.js";
+import {
+  defaultMailer,
+  type DigestNotificationItem,
+  type EmailTemplateDefinition,
+  type EmailTemplateId,
+  type EmailTemplateOverride,
+  type EmailThemeConfig,
+  type MailerDriver,
+  type MailerDriverPreference,
+  type SmtpTlsMode,
+} from "./services/mailer.js";
+import {
+  decryptSecretAtRest,
+  decryptTotpSecret,
+  encryptSecretAtRest,
+  encryptTotpSecret,
+  maskSecretPreview,
+} from "./util/totp.js";
 
 export type {
   AdminUserSummaryRow,
@@ -2361,9 +2379,10 @@ export class LibraryDatabase {
   }
 
   setPendingTotpSecret(userId: number, secret: string, expiresAt: number): void {
+    const encrypted = encryptTotpSecret(secret);
     this.#db
       .prepare(`INSERT OR REPLACE INTO pending_totp_secrets (user_id, secret, expires_at) VALUES (?, ?, ?)`)
-      .run(userId, secret, expiresAt);
+      .run(userId, encrypted, expiresAt);
   }
 
   getPendingTotpSecret(userId: number): string | undefined {
@@ -2375,7 +2394,11 @@ export class LibraryDatabase {
       this.deletePendingTotpSecret(userId);
       return undefined;
     }
-    return row.secret;
+    try {
+      return decryptTotpSecret(row.secret);
+    } catch {
+      return row.secret;
+    }
   }
 
   deletePendingTotpSecret(userId: number): void {
@@ -2383,9 +2406,10 @@ export class LibraryDatabase {
   }
 
   enableUser2FA(userId: number, secret: string, hashedBackupCodes: string[]): void {
+    const encrypted = encryptTotpSecret(secret);
     this.#db
       .prepare(`UPDATE users SET totp_secret = ?, totp_enabled = 1, backup_codes = ? WHERE id = ?`)
-      .run(secret, JSON.stringify(hashedBackupCodes), userId);
+      .run(encrypted, JSON.stringify(hashedBackupCodes), userId);
     this.deletePendingTotpSecret(userId);
   }
 
@@ -2394,6 +2418,15 @@ export class LibraryDatabase {
       .prepare(`UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = '[]' WHERE id = ?`)
       .run(userId);
     this.deletePendingTotpSecret(userId);
+  }
+
+  setUserBackupCodes(userId: number, hashedBackupCodes: string[]): void {
+    this.#db.prepare(`UPDATE users SET backup_codes = ? WHERE id = ?`).run(JSON.stringify(hashedBackupCodes), userId);
+  }
+
+  getRemainingBackupCodeCount(userId: number): number {
+    const state = this.getUser2FAState(userId);
+    return state?.backup_codes?.length ?? 0;
   }
 
   getUser2FAState(userId: number):
@@ -2421,9 +2454,17 @@ export class LibraryDatabase {
     } catch {
       backupCodes = [];
     }
+    let plainSecret: string | null = row.totp_secret ?? null;
+    if (plainSecret) {
+      try {
+        plainSecret = decryptTotpSecret(plainSecret);
+      } catch {
+        // Fallback to raw value if decryption fails
+      }
+    }
     return {
       totp_enabled: row.totp_enabled ?? 0,
-      totp_secret: row.totp_secret ?? null,
+      totp_secret: plainSecret,
       backup_codes: Array.isArray(backupCodes) ? backupCodes : [],
     };
   }
@@ -2592,7 +2633,13 @@ export class LibraryDatabase {
     metadata?: PostMetadata | string | null,
     replyVisibility?: string,
     isSilenced?: boolean | number,
-  ): { id: number } {
+  ): {
+    id: number;
+    autoFiltered?: boolean;
+    autoFilterAction?: string;
+    is_sensitive?: number;
+    content_warning?: string | null;
+  } {
     const res = this.#db
       .prepare(
         `
@@ -2615,7 +2662,70 @@ export class LibraryDatabase {
         createdAt ?? null,
         updatedAt ?? null,
       );
-    return { id: Number(res.lastInsertRowid) };
+    const postId = Number(res.lastInsertRowid);
+
+    if (content && content.trim().length > 0) {
+      try {
+        const settings = this.getInstanceSettings();
+        if (settings.autoFilterKeywords.length > 0) {
+          const lowerContent = content.toLowerCase();
+          let matchedTerm: string | null = null;
+          for (const rawPattern of settings.autoFilterKeywords) {
+            const term = rawPattern.trim();
+            if (!term) continue;
+            const regexMatch = term.match(/^\/(.+)\/([gimsuy]*)$/);
+            if (regexMatch) {
+              try {
+                const re = new RegExp(regexMatch[1]!, regexMatch[2] || "i");
+                if (re.test(content)) {
+                  matchedTerm = term;
+                  break;
+                }
+              } catch {
+                // fallback to literal match
+              }
+            }
+            if (lowerContent.includes(term.toLowerCase())) {
+              matchedTerm = term;
+              break;
+            }
+          }
+
+          if (matchedTerm) {
+            const action = settings.autoFilterAction;
+            let cwText: string | null = null;
+            let isSensitive = 0;
+            if (action === "silence") {
+              this.silencePost(postId, true);
+            } else if (action === "quarantine") {
+              this.quarantineResource({
+                resourceType: "post",
+                resourceId: String(postId),
+                reason: `Automated filter match: '${matchedTerm}'`,
+              });
+              cwText = `Automated filter match: '${matchedTerm}'`;
+              isSensitive = 1;
+              this.markPostSensitive(postId, true, cwText);
+            } else {
+              cwText = `Automated filter match: '${matchedTerm}'`;
+              isSensitive = 1;
+              this.markPostSensitive(postId, true, cwText);
+            }
+            return {
+              id: postId,
+              autoFiltered: true,
+              autoFilterAction: action,
+              is_sensitive: isSensitive,
+              content_warning: cwText,
+            };
+          }
+        }
+      } catch {
+        // Non-fatal if settings table not initialized in isolated unit test
+      }
+    }
+
+    return { id: postId };
   }
 
   updatePostArtifactViewId(postId: number, artifactViewId: number) {
@@ -3607,42 +3717,355 @@ export class LibraryDatabase {
         ) {
           return;
         }
-        const rawSettings = this.getNotificationSettings(userId);
-        if (rawSettings) {
-          const parsed = JSON.parse(rawSettings);
-          if (parsed && typeof parsed === "object") {
-            if (parsed[type] === false || parsed[`${type}s`] === false) {
-              return;
-            }
-          }
-        }
       } catch {}
     }
 
-    let metadataStr: string | null = null;
-    if (metadata) {
-      metadataStr = typeof metadata === "string" ? metadata : JSON.stringify(metadata);
+    let parsedSettings: Record<string, unknown> | null = null;
+    try {
+      const rawSettings = this.getNotificationSettings(userId);
+      if (rawSettings) {
+        const parsed: unknown = JSON.parse(rawSettings);
+        if (parsed && typeof parsed === "object") {
+          parsedSettings = parsed as Record<string, unknown>;
+        }
+      }
+    } catch {}
+
+    // security_alert notifications are non-mutable and always delivered
+    if (type !== "security_alert" && parsedSettings) {
+      if (parsedSettings[type] === false || parsedSettings[`${type}s`] === false) {
+        return;
+      }
+      type NotificationEventsConfig = {
+        social?: {
+          mentions?: boolean;
+          replies?: boolean;
+          follows?: boolean;
+          reposts?: boolean;
+        };
+        engineering?: {
+          packageUpdates?: boolean;
+        };
+        computeHpc?: {
+          jobCompleted?: boolean;
+          jobFailed?: boolean;
+          quotaThresholdAlert?: boolean;
+        };
+      };
+      const ev = parsedSettings["events"] as NotificationEventsConfig | undefined;
+      if (ev && typeof ev === "object") {
+        if (type === "mention" && ev.social?.mentions === false) return;
+        if (type === "reply" && ev.social?.replies === false) return;
+        if (type === "follow" && ev.social?.follows === false) return;
+        if (type === "repost" && ev.social?.reposts === false) return;
+        if (
+          (type === "package" || type === "package_published" || type === "package_yanked") &&
+          ev.engineering?.packageUpdates === false
+        ) {
+          return;
+        }
+        if ((type === "simulation" || type === "simulation_completed") && ev.computeHpc?.jobCompleted === false) {
+          return;
+        }
+        if (type === "simulation_failed" && ev.computeHpc?.jobFailed === false) return;
+        if (type === "credit_warning" && ev.computeHpc?.quotaThresholdAlert === false) return;
+      }
     }
 
-    try {
-      this.#db
-        .prepare(
-          `
-        INSERT INTO notifications (user_id, actor_id, type, post_id, metadata)
-        VALUES (?, ?, ?, ?, ?)
-      `,
-        )
-        .run(userId, actorId, type, postId ?? null, metadataStr);
-    } catch {
-      this.#db
-        .prepare(
-          `
-        INSERT INTO notifications (user_id, actor_id, type, post_id)
-        VALUES (?, ?, ?, ?)
-      `,
-        )
-        .run(userId, actorId, type, postId ?? null);
+    let metadataObj: Record<string, unknown> | null = null;
+    let metadataStr: string | null = null;
+    if (metadata) {
+      if (typeof metadata === "string") {
+        metadataStr = metadata;
+        try {
+          metadataObj = JSON.parse(metadata) as Record<string, unknown>;
+        } catch {}
+      } else {
+        metadataObj = metadata;
+        metadataStr = JSON.stringify(metadata);
+      }
     }
+
+    const deliveryChannels = parsedSettings?.["deliveryChannels"] as
+      | { inApp?: boolean; emailNotifications?: boolean }
+      | undefined;
+    const inAppEnabled = type === "security_alert" || deliveryChannels?.inApp !== false;
+    if (inAppEnabled) {
+      try {
+        this.#db
+          .prepare(
+            `
+          INSERT INTO notifications (user_id, actor_id, type, post_id, metadata)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+          )
+          .run(userId, actorId, type, postId ?? null, metadataStr);
+      } catch {
+        this.#db
+          .prepare(
+            `
+          INSERT INTO notifications (user_id, actor_id, type, post_id)
+          VALUES (?, ?, ?, ?)
+        `,
+          )
+          .run(userId, actorId, type, postId ?? null);
+      }
+    }
+
+    // Dispatch instant email notification when opted in (or for security_alert unless skipEmail is set)
+    try {
+      const emailNotificationsOptIn =
+        deliveryChannels?.emailNotifications === true &&
+        (parsedSettings?.["emailDigestFrequency"] ?? "instant") === "instant";
+      const shouldEmail =
+        (type === "security_alert" && metadataObj?.["skipEmail"] !== true && emailNotificationsOptIn) ||
+        (type !== "security_alert" && emailNotificationsOptIn);
+      if (shouldEmail) {
+        const recipient = this.getUserById(userId);
+        if (recipient?.email && (recipient.email_verified === 1 || type === "security_alert")) {
+          const rawInstanceName = this.getInstanceSettings().instanceName?.trim();
+          const instanceName = rawInstanceName || "Ansatz";
+          const richCopy = this.formatSocialNotificationCopy(type, actorId, postId ?? null, metadataObj, instanceName);
+          void defaultMailer
+            .sendNotificationEmail(recipient.email, {
+              username: recipient.username,
+              type,
+              title: richCopy.title,
+              body: richCopy.body,
+              link: richCopy.link,
+              instanceName,
+              actorHandle: richCopy.actorHandle,
+              actorDisplayName: richCopy.actorDisplayName,
+              postSnippet: richCopy.postSnippet,
+              ctaLabel: richCopy.ctaLabel,
+            })
+            .catch(() => {});
+        }
+      }
+    } catch {}
+  }
+
+  private formatSocialNotificationCopy(
+    type: string,
+    actorId: number,
+    postId: number | null,
+    metadataObj: Record<string, unknown> | null,
+    instanceName: string,
+  ): {
+    title: string;
+    body: string;
+    link: string;
+    actorHandle?: string | undefined;
+    actorDisplayName?: string | undefined;
+    postSnippet?: string | undefined;
+    ctaLabel?: string | undefined;
+  } {
+    const actor = actorId > 0 ? this.getUserById(actorId) : undefined;
+    const actorHandle = actor?.username ? `@${actor.username}` : "Someone";
+    const actorDisplayName = actor?.display_name?.trim() || actorHandle;
+    const actorLabel =
+      actor?.display_name?.trim() && actor.display_name.trim() !== actor.username
+        ? `${actorHandle} (${actor.display_name.trim()})`
+        : actorHandle;
+
+    let postSnippet: string | undefined;
+    if (postId) {
+      try {
+        const postRow = this.#db.prepare(`SELECT content FROM posts WHERE id = ?`).get(postId) as
+          | { content: string | null }
+          | undefined;
+        if (postRow?.content) {
+          const cleaned = postRow.content
+            .replace(/::artifact(?:\[[^\]]*\])?\{[^}]*\}/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (cleaned) {
+            postSnippet = cleaned.length > 180 ? `${cleaned.slice(0, 177)}...` : cleaned;
+          }
+        }
+      } catch {}
+    } else if (type === "follow" && actor?.bio) {
+      const cleanedBio = actor.bio.replace(/\s+/g, " ").trim();
+      if (cleanedBio) {
+        postSnippet = cleanedBio.length > 160 ? `${cleanedBio.slice(0, 157)}...` : cleanedBio;
+      }
+    }
+
+    const explicitTitle =
+      (typeof metadataObj?.["title"] === "string" && metadataObj["title"].trim()) ||
+      (typeof metadataObj?.["message"] === "string" && metadataObj["message"].trim()) ||
+      "";
+    const explicitDesc =
+      typeof metadataObj?.["description"] === "string" && metadataObj["description"].trim()
+        ? metadataObj["description"].trim()
+        : "";
+    const explicitLink =
+      typeof metadataObj?.["link"] === "string" && metadataObj["link"].trim() ? metadataObj["link"].trim() : "";
+
+    let defaultTitle = `New ${type.replace(/_/g, " ")} notification`;
+    let defaultBody = `You have a new ${type.replace(/_/g, " ")} notification on ${instanceName}.`;
+    let defaultLink = postId ? `/post/${postId}` : "/notifications";
+    let ctaLabel = `View in ${instanceName}`;
+
+    if (type === "follow") {
+      defaultTitle = `${actorHandle} started following you on ${instanceName}`;
+      defaultBody = `${actorLabel} is now following your engineering updates and publications on ${instanceName}.`;
+      defaultLink = actor?.username ? `/u/${actor.username}` : "/notifications";
+      ctaLabel = actor?.username ? `View ${actorHandle}'s Profile` : `View Profile`;
+    } else if (type === "like") {
+      defaultTitle = `${actorHandle} liked your post`;
+      defaultBody = `${actorLabel} liked your post on ${instanceName}.`;
+      ctaLabel = "View Post";
+    } else if (type === "repost") {
+      defaultTitle = `${actorHandle} reposted your post`;
+      defaultBody = `${actorLabel} shared your post with their followers on ${instanceName}.`;
+      ctaLabel = "View Post";
+    } else if (type === "reply") {
+      defaultTitle = `${actorHandle} replied to your post`;
+      defaultBody = `${actorLabel} replied to your discussion thread on ${instanceName}.`;
+      ctaLabel = "View Conversation";
+    } else if (type === "mention") {
+      defaultTitle = `${actorHandle} mentioned you in a post`;
+      defaultBody = `${actorLabel} mentioned you in a post on ${instanceName}.`;
+      ctaLabel = "View Post";
+    } else if (type === "package" || type === "package_published") {
+      const pkgName = typeof metadataObj?.["packageName"] === "string" ? metadataObj["packageName"] : "";
+      defaultTitle = pkgName
+        ? `Package ${pkgName} published on ${instanceName}`
+        : `New package release on ${instanceName}`;
+      defaultBody = pkgName
+        ? `A new release of '${pkgName}' is now available in the ${instanceName} registry.`
+        : `A package you follow has published a new release on ${instanceName}.`;
+      ctaLabel = "View Package";
+    } else if (type === "simulation" || type === "simulation_completed") {
+      defaultTitle = `Simulation job completed on ${instanceName}`;
+      defaultBody = `Your simulation run finished executing and results are ready for inspection.`;
+      ctaLabel = "View Simulation Results";
+    } else if (type === "simulation_failed") {
+      defaultTitle = `Simulation job failed on ${instanceName}`;
+      defaultBody = `Your simulation run encountered an error during solver execution.`;
+      ctaLabel = "Inspect Solver Diagnostics";
+    } else if (type === "credit_warning") {
+      defaultTitle = `Compute credit balance alert on ${instanceName}`;
+      defaultBody = `Your compute credit balance has crossed your configured alert threshold.`;
+      defaultLink = "/settings";
+      ctaLabel = "Manage Compute Credits";
+    }
+
+    return {
+      title: explicitTitle || defaultTitle,
+      body: explicitDesc || defaultBody,
+      link: explicitLink || defaultLink,
+      actorHandle,
+      actorDisplayName,
+      postSnippet,
+      ctaLabel,
+    };
+  }
+
+  public async dispatchEmailDigests(frequencyFilter?: "daily" | "weekly"): Promise<{
+    dispatchedUsers: number;
+    totalItemsCompiled: number;
+    results: { userId: number; username: string; email: string; frequency: "daily" | "weekly"; itemCount: number }[];
+  }> {
+    const rawInstanceName = this.getInstanceSettings().instanceName?.trim() || "Ansatz";
+    const rows = this.#db
+      .prepare(
+        `SELECT id, username, email, email_verified, notification_settings
+         FROM users
+         WHERE email IS NOT NULL AND email != '' AND email_verified = 1 AND status = 'active'`,
+      )
+      .all() as {
+      id: number;
+      username: string;
+      email: string;
+      email_verified: number;
+      notification_settings: string | null;
+    }[];
+
+    const results: {
+      userId: number;
+      username: string;
+      email: string;
+      frequency: "daily" | "weekly";
+      itemCount: number;
+    }[] = [];
+    let totalItemsCompiled = 0;
+
+    for (const row of rows) {
+      if (!row.notification_settings) continue;
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(row.notification_settings) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const deliveryChannels = parsed?.["deliveryChannels"] as { emailNotifications?: boolean } | undefined;
+      if (deliveryChannels?.emailNotifications !== true) continue;
+      const freq = parsed?.["emailDigestFrequency"];
+      if (freq !== "daily" && freq !== "weekly") continue;
+      if (frequencyFilter && freq !== frequencyFilter) continue;
+
+      const unreadRows = this.#db
+        .prepare(
+          `SELECT id, actor_id, type, post_id, metadata, created_at
+           FROM notifications
+           WHERE user_id = ? AND read = 0
+           ORDER BY created_at DESC
+           LIMIT 15`,
+        )
+        .all(row.id) as {
+        id: number;
+        actor_id: number;
+        type: string;
+        post_id: number | null;
+        metadata: string | null;
+        created_at: string;
+      }[];
+
+      if (unreadRows.length === 0) continue;
+
+      const items: DigestNotificationItem[] = unreadRows.map((n) => {
+        let metaObj: Record<string, unknown> | null = null;
+        if (n.metadata) {
+          try {
+            metaObj = JSON.parse(n.metadata) as Record<string, unknown>;
+          } catch {}
+        }
+        const rich = this.formatSocialNotificationCopy(n.type, n.actor_id, n.post_id, metaObj, rawInstanceName);
+        return {
+          type: n.type,
+          title: rich.title,
+          snippet: rich.postSnippet,
+          link: rich.link,
+          createdAt: n.created_at,
+        };
+      });
+
+      const sendRes = await defaultMailer.sendDigestEmail(row.email, {
+        username: row.username,
+        frequency: freq,
+        items,
+        instanceName: rawInstanceName,
+      });
+
+      if (sendRes.success) {
+        totalItemsCompiled += items.length;
+        results.push({
+          userId: row.id,
+          username: row.username,
+          email: row.email,
+          frequency: freq,
+          itemCount: items.length,
+        });
+      }
+    }
+
+    return {
+      dispatchedUsers: results.length,
+      totalItemsCompiled,
+      results,
+    };
   }
 
   getNotifications(userId: number, limit: number = 20, category?: string): NotificationRow[] {
@@ -4023,6 +4446,88 @@ export class LibraryDatabase {
     const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     const res = this.#db.prepare(`DELETE FROM federation_delivery_queue ${whereSql}`).run(...params);
     return { deletedCount: Number(res.changes) };
+  }
+
+  getFederationDomainHealth(): {
+    domain: string;
+    tier: "allow" | "silence" | "suspend";
+    pending: number;
+    processing: number;
+    completed: number;
+    failed: number;
+    total: number;
+    maxAttempts: number;
+    lastError: string | null;
+    lastUpdatedAt: string | null;
+  }[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT LOWER(q.target_domain) as domain,
+                COALESCE(d.tier, 'allow') as tier,
+                SUM(CASE WHEN q.status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN q.status = 'processing' THEN 1 ELSE 0 END) as processing,
+                SUM(CASE WHEN q.status = 'completed' THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN q.status = 'failed' THEN 1 ELSE 0 END) as failed,
+                COUNT(*) as total,
+                MAX(q.attempts) as max_attempts,
+                MAX(q.last_error) as last_error,
+                MAX(q.updated_at) as last_updated_at
+         FROM federation_delivery_queue q
+         LEFT JOIN federation_domains d ON LOWER(d.domain) = LOWER(q.target_domain)
+         GROUP BY LOWER(q.target_domain)
+         ORDER BY failed DESC, pending DESC, total DESC`,
+      )
+      .all() as {
+      domain: string;
+      tier: string;
+      pending: number;
+      processing: number;
+      completed: number;
+      failed: number;
+      total: number;
+      max_attempts: number;
+      last_error: string | null;
+      last_updated_at: string | null;
+    }[];
+
+    return rows.map((r) => ({
+      domain: r.domain,
+      tier: r.tier === "suspend" || r.tier === "silence" ? r.tier : "allow",
+      pending: Number(r.pending || 0),
+      processing: Number(r.processing || 0),
+      completed: Number(r.completed || 0),
+      failed: Number(r.failed || 0),
+      total: Number(r.total || 0),
+      maxAttempts: Number(r.max_attempts || 0),
+      lastError: r.last_error ?? null,
+      lastUpdatedAt: r.last_updated_at ?? null,
+    }));
+  }
+
+  circuitBreakFederationDomain(
+    domain: string,
+    tier: "silence" | "suspend" = "suspend",
+    reason?: string,
+  ): {
+    domain: string;
+    tier: "silence" | "suspend";
+    purgedDeliveries: number;
+  } {
+    const cleanDomain = domain.trim().toLowerCase();
+    if (!cleanDomain) {
+      throw new Error("A valid target domain is required");
+    }
+    this.setDomainTier(
+      cleanDomain,
+      tier,
+      reason || `Circuit-breaker tripped for unresponsive/dead peer '${cleanDomain}'`,
+    );
+    const { deletedCount } = this.purgeFederationDeliveries(undefined, cleanDomain);
+    return {
+      domain: cleanDomain,
+      tier,
+      purgedDeliveries: deletedCount,
+    };
   }
 
   getFollowState(followerId: number, followingId: number): "pending" | "accepted" | "rejected" | null {
@@ -4987,16 +5492,18 @@ export class LibraryDatabase {
         .get() as { entry_hash: string } | undefined;
       const prevHash = prevRow?.entry_hash || "GENESIS";
       const ipToken = LibraryDatabase.#hashAuditIpToken(data.ipAddress);
+      const actorIdStr = typeof data.actorId === "number" && Number.isFinite(data.actorId) ? String(data.actorId) : "";
+      const resourceIdStr = data.resourceId ? String(data.resourceId) : "";
       const canonicalPayload = [
         prevHash,
-        String(data.actorId ?? ""),
+        actorIdStr,
         data.action,
         data.resourceType,
-        String(data.resourceId ?? ""),
+        resourceIdStr,
         ipToken,
         detailsStr ?? "",
       ].join("|");
-      const entryHash = crypto.createHash("sha256").update(canonicalPayload).digest("hex");
+      const entryHash = crypto.createHmac("sha256", "msx-audit-chain-v1").update(canonicalPayload).digest("hex");
 
       this.#db
         .prepare(
@@ -5061,6 +5568,10 @@ export class LibraryDatabase {
         ipToken,
         row.details ?? "",
       ].join("|");
+      const recomputedHmac: string = crypto
+        .createHmac("sha256", "msx-audit-chain-v1")
+        .update(tokenPayload)
+        .digest("hex");
       const recomputedTokenHash: string = crypto.createHash("sha256").update(tokenPayload).digest("hex");
 
       const legacyPayload: string = [
@@ -5074,7 +5585,11 @@ export class LibraryDatabase {
       ].join("|");
       const recomputedLegacyHash: string = crypto.createHash("sha256").update(legacyPayload).digest("hex");
 
-      if (recomputedTokenHash !== row.entry_hash && recomputedLegacyHash !== row.entry_hash) {
+      if (
+        recomputedHmac !== row.entry_hash &&
+        recomputedTokenHash !== row.entry_hash &&
+        recomputedLegacyHash !== row.entry_hash
+      ) {
         return {
           valid: false,
           totalEntries: rows.length,
@@ -5174,16 +5689,33 @@ export class LibraryDatabase {
 
   getInstanceSettings(): {
     instanceName: string;
+    instanceBadge: string;
+    instanceTagline: string;
     instanceDescription: string;
     contactEmail: string;
+    brandLogoUrl: string;
+    brandLogoDarkUrl: string;
+    brandFaviconUrl: string;
+    brandAccentColor: string;
+    docsBaseUrl: string;
+    showPoweredBy: boolean;
     registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
     allowedEmailDomains: string[];
     federationMode: "open" | "allowlist" | "disabled";
     maintenanceMode: boolean;
+    maintenanceLevel: "off" | "scheduled" | "read_only" | "lockdown";
+    maintenanceEta: string;
+    maintenanceStartedAt: string;
     announcementBanner: string;
     announcementLevel: "info" | "warning" | "critical";
     autoQuarantineReportThreshold: number;
     backupRetentionCount: number;
+    autoBackupIntervalHours: number;
+    autoFilterKeywords: string[];
+    autoFilterAction: "cw" | "silence" | "quarantine";
+    customTermsMarkdown: string;
+    customPrivacyMarkdown: string;
+    requireAdmin2FA: boolean;
     lockedByEnv: string[];
   } {
     const rows = this.#db.prepare(`SELECT key, value FROM instance_settings`).all() as { key: string; value: string }[];
@@ -5191,8 +5723,19 @@ export class LibraryDatabase {
 
     const lockedByEnv: string[] = [];
     if (process.env["MSX_INSTANCE_NAME"]) lockedByEnv.push("instanceName");
+    if (process.env["MSX_INSTANCE_BADGE"] !== undefined) lockedByEnv.push("instanceBadge");
+    if (process.env["MSX_INSTANCE_TAGLINE"]) lockedByEnv.push("instanceTagline");
+    if (process.env["MSX_BRAND_LOGO_URL"]) lockedByEnv.push("brandLogoUrl");
+    if (process.env["MSX_BRAND_LOGO_DARK_URL"]) lockedByEnv.push("brandLogoDarkUrl");
+    if (process.env["MSX_BRAND_FAVICON_URL"]) lockedByEnv.push("brandFaviconUrl");
+    if (process.env["MSX_BRAND_ACCENT_COLOR"]) lockedByEnv.push("brandAccentColor");
+    if (process.env["MSX_DOCS_BASE_URL"]) lockedByEnv.push("docsBaseUrl");
+    if (process.env["MSX_SHOW_POWERED_BY"] !== undefined) lockedByEnv.push("showPoweredBy");
     if (process.env["MSX_REGISTRATION_MODE"]) lockedByEnv.push("registrationMode");
     if (process.env["MSX_FEDERATION_MODE"]) lockedByEnv.push("federationMode");
+    if (process.env["MSX_MAINTENANCE_MODE"] !== undefined) {
+      lockedByEnv.push("maintenanceMode", "maintenanceLevel");
+    }
 
     const rawRegMode = process.env["MSX_REGISTRATION_MODE"] || map.get("registrationMode") || "open";
     const registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed" =
@@ -5206,28 +5749,110 @@ export class LibraryDatabase {
 
     let allowedEmailDomains: string[] = [];
     try {
-      const parsed = JSON.parse(map.get("allowedEmailDomains") || "[]");
-      if (Array.isArray(parsed)) {
-        allowedEmailDomains = parsed.map((d) => String(d).trim().toLowerCase()).filter(Boolean);
+      const rawDomains = map.get("allowedEmailDomains") || "[]";
+      if (rawDomains.trim().startsWith("[")) {
+        const parsed = JSON.parse(rawDomains);
+        if (Array.isArray(parsed)) {
+          allowedEmailDomains = parsed.map((d) => String(d).trim().toLowerCase()).filter(Boolean);
+        }
+      } else {
+        allowedEmailDomains = rawDomains
+          .split(/[,\s]+/)
+          .map((d) => d.trim().toLowerCase().replace(/^@/, ""))
+          .filter(Boolean);
       }
     } catch {
       allowedEmailDomains = [];
     }
 
+    let autoFilterKeywords: string[] = [];
+    try {
+      const rawKeywords = map.get("autoFilterKeywords") || "[]";
+      if (rawKeywords.trim().startsWith("[")) {
+        const parsed = JSON.parse(rawKeywords);
+        if (Array.isArray(parsed)) {
+          autoFilterKeywords = parsed.map((k) => String(k).trim()).filter(Boolean);
+        }
+      } else {
+        autoFilterKeywords = rawKeywords
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean);
+      }
+    } catch {
+      autoFilterKeywords = [];
+    }
+
+    const rawFilterAction = map.get("autoFilterAction") || "cw";
+    const autoFilterAction: "cw" | "silence" | "quarantine" =
+      rawFilterAction === "silence" || rawFilterAction === "quarantine" ? rawFilterAction : "cw";
+
     const rawLevel = map.get("announcementLevel") || "info";
     const announcementLevel: "info" | "warning" | "critical" =
       rawLevel === "warning" || rawLevel === "critical" ? rawLevel : "info";
 
+    const rawAutoBackup = map.get("autoBackupIntervalHours");
+    const parsedAutoBackup = rawAutoBackup !== undefined ? Number.parseInt(rawAutoBackup, 10) : 24;
+
+    const airgapDefaultDocs =
+      process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true"
+        ? "/docs"
+        : "https://modelscript.org";
+
+    const showPoweredBy =
+      process.env["MSX_SHOW_POWERED_BY"] !== undefined
+        ? process.env["MSX_SHOW_POWERED_BY"] !== "false"
+        : map.has("showPoweredBy")
+          ? map.get("showPoweredBy") !== "false"
+          : true;
+
+    const envMaint = process.env["MSX_MAINTENANCE_MODE"]?.trim().toLowerCase();
+    const dbMaintBool = map.get("maintenanceMode") === "true";
+    const dbMaintLevel = map.get("maintenanceLevel") || (dbMaintBool ? "read_only" : "off");
+
+    let maintenanceLevel: "off" | "scheduled" | "read_only" | "lockdown" = "off";
+    if (envMaint !== undefined && envMaint !== "") {
+      if (envMaint === "lockdown" || envMaint === "hard") {
+        maintenanceLevel = "lockdown";
+      } else if (envMaint === "scheduled") {
+        maintenanceLevel = "scheduled";
+      } else if (envMaint === "true" || envMaint === "1" || envMaint === "read_only" || envMaint === "readonly") {
+        maintenanceLevel = "read_only";
+      } else {
+        maintenanceLevel = "off";
+      }
+    } else if (dbMaintLevel === "scheduled" || dbMaintLevel === "read_only" || dbMaintLevel === "lockdown") {
+      maintenanceLevel = dbMaintLevel;
+    } else if (dbMaintBool) {
+      maintenanceLevel = "read_only";
+    }
+
+    const maintenanceMode = maintenanceLevel === "read_only" || maintenanceLevel === "lockdown";
+
     return {
-      instanceName: process.env["MSX_INSTANCE_NAME"] || map.get("instanceName") || "ModelScript Engineering Hub",
+      instanceName: process.env["MSX_INSTANCE_NAME"] || map.get("instanceName") || "Ansatz",
+      instanceBadge: process.env["MSX_INSTANCE_BADGE"] ?? map.get("instanceBadge") ?? "",
+      instanceTagline:
+        process.env["MSX_INSTANCE_TAGLINE"] ||
+        map.get("instanceTagline") ||
+        "The Federated Scientific & Engineering Network",
       instanceDescription:
         map.get("instanceDescription") ||
         "Federated polyglot engineering simulation, Modelica, SysML v2, and digital twin platform.",
-      contactEmail: process.env["MSX_CONTACT_EMAIL"] || map.get("contactEmail") || "admin@modelscript.org",
+      contactEmail: process.env["MSX_CONTACT_EMAIL"] || map.get("contactEmail") || "admin@ansatz.social",
+      brandLogoUrl: process.env["MSX_BRAND_LOGO_URL"] || map.get("brandLogoUrl") || "",
+      brandLogoDarkUrl: process.env["MSX_BRAND_LOGO_DARK_URL"] || map.get("brandLogoDarkUrl") || "",
+      brandFaviconUrl: process.env["MSX_BRAND_FAVICON_URL"] || map.get("brandFaviconUrl") || "",
+      brandAccentColor: process.env["MSX_BRAND_ACCENT_COLOR"] || map.get("brandAccentColor") || "",
+      docsBaseUrl: process.env["MSX_DOCS_BASE_URL"] || map.get("docsBaseUrl") || airgapDefaultDocs,
+      showPoweredBy,
       registrationMode,
       allowedEmailDomains,
       federationMode,
-      maintenanceMode: map.get("maintenanceMode") === "true",
+      maintenanceMode,
+      maintenanceLevel,
+      maintenanceEta: process.env["MSX_MAINTENANCE_ETA"] || map.get("maintenanceEta") || "",
+      maintenanceStartedAt: map.get("maintenanceStartedAt") || "",
       announcementBanner: map.get("announcementBanner") || "",
       announcementLevel,
       autoQuarantineReportThreshold: Math.max(
@@ -5235,6 +5860,12 @@ export class LibraryDatabase {
         Number.parseInt(map.get("autoQuarantineReportThreshold") || "5", 10) || 5,
       ),
       backupRetentionCount: Math.max(1, Number.parseInt(map.get("backupRetentionCount") || "7", 10) || 7),
+      autoBackupIntervalHours: Number.isNaN(parsedAutoBackup) ? 24 : Math.max(0, parsedAutoBackup),
+      autoFilterKeywords,
+      autoFilterAction,
+      customTermsMarkdown: map.get("customTermsMarkdown") || "",
+      customPrivacyMarkdown: map.get("customPrivacyMarkdown") || "",
+      requireAdmin2FA: map.get("requireAdmin2FA") === "true",
       lockedByEnv,
     };
   }
@@ -5243,18 +5874,70 @@ export class LibraryDatabase {
     patch: Record<string, unknown>,
     actorId: number | null = null,
   ): ReturnType<LibraryDatabase["getInstanceSettings"]> {
+    const normalizedPatch: Record<string, unknown> = { ...patch };
+
+    // Synchronize maintenanceMode boolean and maintenanceLevel enum seamlessly
+    if (normalizedPatch["maintenanceLevel"] !== undefined) {
+      const lvl = String(normalizedPatch["maintenanceLevel"]);
+      if (lvl === "read_only" || lvl === "lockdown") {
+        normalizedPatch["maintenanceMode"] = true;
+        if (!normalizedPatch["maintenanceStartedAt"]) {
+          const prev = this.getInstanceSettings();
+          if (!prev.maintenanceMode) {
+            normalizedPatch["maintenanceStartedAt"] = new Date().toISOString();
+          }
+        }
+      } else {
+        normalizedPatch["maintenanceMode"] = false;
+        if (lvl === "off") {
+          normalizedPatch["maintenanceStartedAt"] = "";
+        }
+      }
+    } else if (normalizedPatch["maintenanceMode"] !== undefined) {
+      const enabled = Boolean(normalizedPatch["maintenanceMode"]);
+      const prev = this.getInstanceSettings();
+      if (enabled) {
+        if (prev.maintenanceLevel !== "lockdown") {
+          normalizedPatch["maintenanceLevel"] = "read_only";
+        }
+        if (!prev.maintenanceMode && !normalizedPatch["maintenanceStartedAt"]) {
+          normalizedPatch["maintenanceStartedAt"] = new Date().toISOString();
+        }
+      } else {
+        normalizedPatch["maintenanceLevel"] = "off";
+        normalizedPatch["maintenanceStartedAt"] = "";
+      }
+    }
+
     const allowedKeys = [
       "instanceName",
+      "instanceBadge",
+      "instanceTagline",
       "instanceDescription",
       "contactEmail",
+      "brandLogoUrl",
+      "brandLogoDarkUrl",
+      "brandFaviconUrl",
+      "brandAccentColor",
+      "docsBaseUrl",
+      "showPoweredBy",
       "registrationMode",
       "allowedEmailDomains",
       "federationMode",
       "maintenanceMode",
+      "maintenanceLevel",
+      "maintenanceEta",
+      "maintenanceStartedAt",
       "announcementBanner",
       "announcementLevel",
       "autoQuarantineReportThreshold",
       "backupRetentionCount",
+      "autoBackupIntervalHours",
+      "autoFilterKeywords",
+      "autoFilterAction",
+      "customTermsMarkdown",
+      "customPrivacyMarkdown",
+      "requireAdmin2FA",
     ];
     const upsertStmt = this.#db.prepare(
       `INSERT INTO instance_settings (key, value, updated_by, updated_at)
@@ -5267,14 +5950,520 @@ export class LibraryDatabase {
 
     const tx = this.#db.transaction(() => {
       for (const key of allowedKeys) {
-        if (patch[key] === undefined) continue;
-        const val = patch[key];
+        if (normalizedPatch[key] === undefined) continue;
+        const val = normalizedPatch[key];
         const serialized = typeof val === "object" && val !== null ? JSON.stringify(val) : String(val);
         upsertStmt.run(key, serialized, actorId);
       }
     });
     tx();
+    this.syncMailerFromDatabase();
     return this.getInstanceSettings();
+  }
+
+  public syncMailerFromDatabase(): void {
+    try {
+      const rows = this.#db.prepare(`SELECT key, value FROM instance_settings`).all() as {
+        key: string;
+        value: string;
+      }[];
+      const map = new Map<string, string>(rows.map((r) => [r.key, r.value]));
+      const instanceSettings = this.getInstanceSettings();
+
+      const rawDriver = (map.get("emailDriver") || "auto").trim().toLowerCase();
+      const driver: MailerDriverPreference =
+        rawDriver === "console" || rawDriver === "smtp" || rawDriver === "sendgrid" || rawDriver === "resend"
+          ? rawDriver
+          : "auto";
+
+      const rawTls = (map.get("smtpTlsMode") || "starttls").trim().toLowerCase();
+      const smtpTlsMode: SmtpTlsMode = rawTls === "implicit" || rawTls === "none" ? rawTls : "starttls";
+
+      let smtpPass: string | undefined;
+      const encSmtpPass = map.get("smtpPassEncrypted");
+      if (encSmtpPass) {
+        try {
+          smtpPass = decryptSecretAtRest(encSmtpPass);
+        } catch {}
+      }
+
+      let sendgridApiKey: string | undefined;
+      const encSendgrid = map.get("sendgridApiKeyEncrypted");
+      if (encSendgrid) {
+        try {
+          sendgridApiKey = decryptSecretAtRest(encSendgrid);
+        } catch {}
+      }
+
+      let resendApiKey: string | undefined;
+      const encResend = map.get("resendApiKeyEncrypted");
+      if (encResend) {
+        try {
+          resendApiKey = decryptSecretAtRest(encResend);
+        } catch {}
+      }
+
+      let templates: Partial<Record<EmailTemplateId, EmailTemplateOverride>> = {};
+      const rawTemplates = map.get("emailTemplatesJson");
+      if (rawTemplates) {
+        try {
+          const parsed = JSON.parse(rawTemplates);
+          if (parsed && typeof parsed === "object") {
+            templates = parsed as Partial<Record<EmailTemplateId, EmailTemplateOverride>>;
+          }
+        } catch {}
+      }
+
+      defaultMailer.configure({
+        driver,
+        fromName: map.get("emailFromName") || `${instanceSettings.instanceName} Security`,
+        fromEmail: map.get("emailFromEmail") || "noreply@ansatz.social",
+        replyTo: map.get("emailReplyTo") || instanceSettings.contactEmail || undefined,
+        smtpHost: map.get("smtpHost") || undefined,
+        smtpPort: map.get("smtpPort") ? Number.parseInt(map.get("smtpPort")!, 10) || 587 : 587,
+        smtpUser: map.get("smtpUser") || undefined,
+        smtpPass,
+        smtpTlsMode,
+        smtpTlsRejectUnauthorized: map.get("smtpTlsRejectUnauthorized") !== "false",
+        smtpCaCertPath: map.get("smtpCaCertPath") || undefined,
+        sendgridApiKey,
+        resendApiKey,
+        instanceName: instanceSettings.instanceName,
+        theme: {
+          headerBgColor: map.get("emailHeaderBgColor") || "#0f172a",
+          accentColor: map.get("emailAccentColor") || instanceSettings.brandAccentColor || "#2563eb",
+          logoUrl: map.get("emailLogoUrl") || instanceSettings.brandLogoUrl || "",
+          footerText: map.get("emailFooterText") || "",
+        },
+        templates,
+      });
+    } catch {
+      // Non-fatal if instance_settings is not yet initialized
+    }
+  }
+
+  public getEmailConfig(): {
+    driver: MailerDriverPreference;
+    activeDriver: MailerDriver;
+    configuredForLiveDelivery: boolean;
+    airgapEnforced: boolean;
+    fromName: string;
+    fromEmail: string;
+    replyTo: string;
+    smtpHost: string;
+    smtpPort: number;
+    smtpUser: string;
+    smtpPassConfigured: boolean;
+    smtpPassMasked: string;
+    smtpTlsMode: SmtpTlsMode;
+    smtpTlsRejectUnauthorized: boolean;
+    smtpCaCertPath: string;
+    sendgridApiKeyConfigured: boolean;
+    sendgridApiKeyMasked: string;
+    resendApiKeyConfigured: boolean;
+    resendApiKeyMasked: string;
+    theme: Required<EmailThemeConfig>;
+    templates: Record<EmailTemplateId, EmailTemplateDefinition>;
+    defaultTemplates: Record<EmailTemplateId, EmailTemplateDefinition>;
+    templateOverrides: Partial<Record<EmailTemplateId, EmailTemplateOverride>>;
+    lockedByEnv: string[];
+  } {
+    this.syncMailerFromDatabase();
+    const rows = this.#db.prepare(`SELECT key, value FROM instance_settings`).all() as {
+      key: string;
+      value: string;
+    }[];
+    const map = new Map<string, string>(rows.map((r) => [r.key, r.value]));
+    const instanceSettings = this.getInstanceSettings();
+
+    const lockedByEnv: string[] = [];
+    if (process.env["EMAIL_FROM"]) lockedByEnv.push("fromEmail", "fromName");
+    if (process.env["EMAIL_REPLY_TO"]) lockedByEnv.push("replyTo");
+    if (process.env["SMTP_HOST"]) lockedByEnv.push("smtpHost");
+    if (process.env["SMTP_PORT"]) lockedByEnv.push("smtpPort");
+    if (process.env["SMTP_USER"]) lockedByEnv.push("smtpUser");
+    if (process.env["SMTP_PASS"]) lockedByEnv.push("smtpPass");
+    if (process.env["SMTP_SECURE"] || process.env["SMTP_IGNORE_STARTTLS"]) lockedByEnv.push("smtpTlsMode");
+    if (process.env["SMTP_TLS_REJECT_UNAUTHORIZED"] !== undefined) lockedByEnv.push("smtpTlsRejectUnauthorized");
+    if (process.env["SMTP_CA_CERT_PATH"]) lockedByEnv.push("smtpCaCertPath");
+    if (process.env["SENDGRID_API_KEY"]) lockedByEnv.push("sendgridApiKey");
+    if (process.env["RESEND_API_KEY"]) lockedByEnv.push("resendApiKey");
+
+    const rawDriver = (map.get("emailDriver") || "auto").trim().toLowerCase();
+    const driver: MailerDriverPreference =
+      rawDriver === "console" || rawDriver === "smtp" || rawDriver === "sendgrid" || rawDriver === "resend"
+        ? rawDriver
+        : "auto";
+
+    const smtpPort = Number.parseInt(process.env["SMTP_PORT"] || map.get("smtpPort") || "587", 10) || 587;
+    const rawTls = (map.get("smtpTlsMode") || (smtpPort === 465 ? "implicit" : "starttls")).trim().toLowerCase();
+    const smtpTlsMode: SmtpTlsMode =
+      process.env["SMTP_SECURE"] === "true"
+        ? "implicit"
+        : process.env["SMTP_IGNORE_STARTTLS"] === "true"
+          ? "none"
+          : rawTls === "implicit" || rawTls === "none"
+            ? rawTls
+            : "starttls";
+
+    const rawSmtpPass = process.env["SMTP_PASS"] || map.get("smtpPassEncrypted") || "";
+    const rawSendgridKey = process.env["SENDGRID_API_KEY"] || map.get("sendgridApiKeyEncrypted") || "";
+    const rawResendKey = process.env["RESEND_API_KEY"] || map.get("resendApiKeyEncrypted") || "";
+
+    let templateOverrides: Partial<Record<EmailTemplateId, EmailTemplateOverride>> = {};
+    const rawTemplates = map.get("emailTemplatesJson");
+    if (rawTemplates) {
+      try {
+        const parsed = JSON.parse(rawTemplates);
+        if (parsed && typeof parsed === "object") {
+          templateOverrides = parsed as Partial<Record<EmailTemplateId, EmailTemplateOverride>>;
+        }
+      } catch {}
+    }
+
+    return {
+      driver,
+      activeDriver: defaultMailer.getDriver(),
+      configuredForLiveDelivery: defaultMailer.isConfiguredForLiveDelivery(),
+      airgapEnforced: process.env["AIRGAP_ENFORCED"] === "true",
+      fromName: map.get("emailFromName") || `${instanceSettings.instanceName} Security`,
+      fromEmail: process.env["EMAIL_FROM"] || map.get("emailFromEmail") || "noreply@ansatz.social",
+      replyTo: process.env["EMAIL_REPLY_TO"] || map.get("emailReplyTo") || instanceSettings.contactEmail || "",
+      smtpHost: process.env["SMTP_HOST"] || map.get("smtpHost") || "",
+      smtpPort,
+      smtpUser: process.env["SMTP_USER"] || map.get("smtpUser") || "",
+      smtpPassConfigured: Boolean(rawSmtpPass),
+      smtpPassMasked: maskSecretPreview(rawSmtpPass),
+      smtpTlsMode,
+      smtpTlsRejectUnauthorized:
+        process.env["SMTP_TLS_REJECT_UNAUTHORIZED"] !== undefined
+          ? process.env["SMTP_TLS_REJECT_UNAUTHORIZED"] !== "false"
+          : map.get("smtpTlsRejectUnauthorized") !== "false",
+      smtpCaCertPath: process.env["SMTP_CA_CERT_PATH"] || map.get("smtpCaCertPath") || "",
+      sendgridApiKeyConfigured: Boolean(rawSendgridKey),
+      sendgridApiKeyMasked: maskSecretPreview(rawSendgridKey),
+      resendApiKeyConfigured: Boolean(rawResendKey),
+      resendApiKeyMasked: maskSecretPreview(rawResendKey),
+      theme: {
+        headerBgColor: map.get("emailHeaderBgColor") || "#0f172a",
+        accentColor: map.get("emailAccentColor") || instanceSettings.brandAccentColor || "#2563eb",
+        logoUrl: map.get("emailLogoUrl") || instanceSettings.brandLogoUrl || "",
+        footerText: map.get("emailFooterText") || "",
+      },
+      templates: defaultMailer.getEffectiveTemplates(),
+      defaultTemplates: defaultMailer.getDefaultTemplates(),
+      templateOverrides,
+      lockedByEnv,
+    };
+  }
+
+  public updateEmailConfig(
+    patch: Record<string, unknown>,
+    actorId: number | null = null,
+  ): ReturnType<LibraryDatabase["getEmailConfig"]> {
+    const upsertStmt = this.#db.prepare(
+      `INSERT INTO instance_settings (key, value, updated_by, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET
+         value = excluded.value,
+         updated_by = excluded.updated_by,
+         updated_at = datetime('now')`,
+    );
+    const deleteStmt = this.#db.prepare(`DELETE FROM instance_settings WHERE key = ?`);
+
+    const current = this.getEmailConfig();
+    let nextOverrides: Partial<Record<EmailTemplateId, EmailTemplateOverride>> = {
+      ...current.templateOverrides,
+    };
+
+    const tx = this.#db.transaction(() => {
+      if (typeof patch["driver"] === "string") {
+        upsertStmt.run("emailDriver", patch["driver"].trim().toLowerCase(), actorId);
+      }
+      if (typeof patch["fromName"] === "string") {
+        upsertStmt.run("emailFromName", patch["fromName"].trim(), actorId);
+      }
+      if (typeof patch["fromEmail"] === "string") {
+        upsertStmt.run("emailFromEmail", patch["fromEmail"].trim(), actorId);
+      }
+      if (typeof patch["replyTo"] === "string") {
+        upsertStmt.run("emailReplyTo", patch["replyTo"].trim(), actorId);
+      }
+      if (typeof patch["smtpHost"] === "string") {
+        upsertStmt.run("smtpHost", patch["smtpHost"].trim(), actorId);
+      }
+      if (patch["smtpPort"] !== undefined) {
+        const port = Math.max(1, Math.min(65535, Number.parseInt(String(patch["smtpPort"]), 10) || 587));
+        upsertStmt.run("smtpPort", String(port), actorId);
+      }
+      if (typeof patch["smtpUser"] === "string") {
+        upsertStmt.run("smtpUser", patch["smtpUser"].trim(), actorId);
+      }
+      if (typeof patch["smtpTlsMode"] === "string") {
+        upsertStmt.run("smtpTlsMode", patch["smtpTlsMode"].trim().toLowerCase(), actorId);
+      }
+      if (patch["smtpTlsRejectUnauthorized"] !== undefined) {
+        upsertStmt.run("smtpTlsRejectUnauthorized", String(Boolean(patch["smtpTlsRejectUnauthorized"])), actorId);
+      }
+      if (typeof patch["smtpCaCertPath"] === "string") {
+        upsertStmt.run("smtpCaCertPath", patch["smtpCaCertPath"].trim(), actorId);
+      }
+
+      // Encrypted secrets at rest
+      if (patch["clearSmtpPass"] === true) {
+        deleteStmt.run("smtpPassEncrypted");
+      } else if (typeof patch["smtpPass"] === "string" && patch["smtpPass"].trim()) {
+        upsertStmt.run("smtpPassEncrypted", encryptSecretAtRest(patch["smtpPass"].trim()), actorId);
+      }
+
+      if (patch["clearSendgridApiKey"] === true) {
+        deleteStmt.run("sendgridApiKeyEncrypted");
+      } else if (typeof patch["sendgridApiKey"] === "string" && patch["sendgridApiKey"].trim()) {
+        upsertStmt.run("sendgridApiKeyEncrypted", encryptSecretAtRest(patch["sendgridApiKey"].trim()), actorId);
+      }
+
+      if (patch["clearResendApiKey"] === true) {
+        deleteStmt.run("resendApiKeyEncrypted");
+      } else if (typeof patch["resendApiKey"] === "string" && patch["resendApiKey"].trim()) {
+        upsertStmt.run("resendApiKeyEncrypted", encryptSecretAtRest(patch["resendApiKey"].trim()), actorId);
+      }
+
+      // Theme settings
+      if (patch["theme"] && typeof patch["theme"] === "object") {
+        const theme = patch["theme"] as Record<string, unknown>;
+        if (typeof theme["headerBgColor"] === "string") {
+          upsertStmt.run("emailHeaderBgColor", theme["headerBgColor"].trim(), actorId);
+        }
+        if (typeof theme["accentColor"] === "string") {
+          upsertStmt.run("emailAccentColor", theme["accentColor"].trim(), actorId);
+        }
+        if (typeof theme["logoUrl"] === "string") {
+          upsertStmt.run("emailLogoUrl", theme["logoUrl"].trim(), actorId);
+        }
+        if (typeof theme["footerText"] === "string") {
+          upsertStmt.run("emailFooterText", theme["footerText"].trim(), actorId);
+        }
+      }
+
+      // Template overrides & reset support
+      if (typeof patch["resetTemplateId"] === "string") {
+        const resetId = patch["resetTemplateId"] as EmailTemplateId;
+        const { [resetId]: _removed, ...rest } = nextOverrides;
+        nextOverrides = rest;
+        upsertStmt.run("emailTemplatesJson", JSON.stringify(nextOverrides), actorId);
+      }
+      if (patch["resetAllTemplates"] === true) {
+        nextOverrides = {};
+        upsertStmt.run("emailTemplatesJson", JSON.stringify(nextOverrides), actorId);
+      }
+      if (patch["templates"] && typeof patch["templates"] === "object") {
+        const incoming = patch["templates"] as Record<string, EmailTemplateOverride>;
+        for (const [tplId, ov] of Object.entries(incoming)) {
+          if (!ov || typeof ov !== "object") continue;
+          const validIds: EmailTemplateId[] = [
+            "verification",
+            "password_reset",
+            "invite",
+            "security_alert",
+            "social_notification",
+            "digest",
+          ];
+          if (!validIds.includes(tplId as EmailTemplateId)) continue;
+          nextOverrides[tplId as EmailTemplateId] = {
+            ...(nextOverrides[tplId as EmailTemplateId] || {}),
+            ...(ov.subject !== undefined ? { subject: String(ov.subject) } : {}),
+            ...(ov.heading !== undefined ? { heading: String(ov.heading) } : {}),
+            ...(ov.body !== undefined ? { body: String(ov.body) } : {}),
+            ...(ov.ctaLabel !== undefined ? { ctaLabel: String(ov.ctaLabel) } : {}),
+            ...(ov.enabled !== undefined ? { enabled: Boolean(ov.enabled) } : {}),
+          };
+        }
+        upsertStmt.run("emailTemplatesJson", JSON.stringify(nextOverrides), actorId);
+      }
+    });
+
+    tx();
+    return this.getEmailConfig();
+  }
+
+  getPreflightChecks(): {
+    allPassed: boolean;
+    warningCount: number;
+    checks: {
+      id: string;
+      label: string;
+      status: "ok" | "warning" | "error";
+      detail: string;
+    }[];
+  } {
+    const checks: {
+      id: string;
+      label: string;
+      status: "ok" | "warning" | "error";
+      detail: string;
+    }[] = [];
+
+    // 1. Data directory writable
+    let dataDirWritable = false;
+    try {
+      fs.accessSync(this.dbDir, fs.constants.W_OK);
+      dataDirWritable = true;
+    } catch {
+      dataDirWritable = false;
+    }
+    checks.push({
+      id: "data_dir_writable",
+      label: "Data Volume Writable",
+      status: dataDirWritable ? "ok" : "error",
+      detail: dataDirWritable
+        ? `SQLite directory '${this.dbDir}' is writable.`
+        : `Directory '${this.dbDir}' is not writable.`,
+    });
+
+    // 2. SQLite WAL mode
+    let walEnabled = false;
+    try {
+      const mode = String(this.#db.pragma("journal_mode", { simple: true }) || "").toLowerCase();
+      walEnabled = mode === "wal" || mode === "memory";
+    } catch {
+      walEnabled = false;
+    }
+    checks.push({
+      id: "sqlite_wal",
+      label: "SQLite WAL Journal Mode",
+      status: walEnabled ? "ok" : "warning",
+      detail: walEnabled
+        ? "Write-Ahead Logging (WAL) is active for concurrent reads and hot backups."
+        : "SQLite is not running in WAL mode.",
+    });
+
+    // 3. PUBLIC_URL configured
+    const publicUrl = process.env["PUBLIC_URL"] || "";
+    const isHttpsPublicUrl = publicUrl.startsWith("https://") && !publicUrl.includes("localhost");
+    checks.push({
+      id: "public_url",
+      label: "Public Origin URL (PUBLIC_URL)",
+      status: isHttpsPublicUrl ? "ok" : "warning",
+      detail: isHttpsPublicUrl
+        ? `Configured as '${publicUrl}'.`
+        : publicUrl
+          ? `Set to '${publicUrl}' (HTTPS domain recommended for ActivityPub federation).`
+          : "PUBLIC_URL env var not set; defaulting to https://ansatz.social.",
+    });
+
+    // 4. JWT_SECRET hardened
+    const jwtSecret = process.env["JWT_SECRET"] || "";
+    const jwtHardened = jwtSecret.length >= 24 && !jwtSecret.includes("dev-secret");
+    checks.push({
+      id: "jwt_secret",
+      label: "JWT Session Signing Secret",
+      status: jwtHardened ? "ok" : "warning",
+      detail: jwtHardened
+        ? "Custom high-entropy JWT_SECRET is configured."
+        : "Using default development JWT secret; set JWT_SECRET (>= 32 chars) in production.",
+    });
+
+    // 5. Outbound Mailer configured
+    const mailerConfigured = Boolean(
+      process.env["SMTP_HOST"] || process.env["SENDGRID_API_KEY"] || process.env["RESEND_API_KEY"],
+    );
+    checks.push({
+      id: "outbound_mailer",
+      label: "Outbound Transactional Mailer",
+      status: mailerConfigured ? "ok" : "warning",
+      detail: mailerConfigured
+        ? `Live mail driver configured (${process.env["SENDGRID_API_KEY"] ? "SendGrid" : process.env["RESEND_API_KEY"] ? "Resend" : "SMTP"}).`
+        : "Using console mail driver; set SMTP_HOST, SENDGRID_API_KEY, or RESEND_API_KEY for live email delivery.",
+    });
+
+    // 6. Instance Ed25519 signing keys
+    let keysReady = false;
+    try {
+      const keys = this.getInstanceKeys();
+      keysReady = Boolean(keys?.publicKey && keys?.privateKey);
+    } catch {
+      keysReady = false;
+    }
+    checks.push({
+      id: "instance_keys",
+      label: "Instance Cryptographic Keys",
+      status: keysReady ? "ok" : "error",
+      detail: keysReady
+        ? "Ed25519 package provenance & federation signing keys provisioned."
+        : "Instance cryptographic keys could not be initialized.",
+    });
+
+    const hasError = checks.some((c) => c.status === "error");
+    const warningCount = checks.filter((c) => c.status === "warning").length;
+    return {
+      allPassed: !hasError,
+      warningCount,
+      checks,
+    };
+  }
+
+  exportEnvConfigSnippet(): {
+    envText: string;
+    envSnippet: string;
+    dockerComposeSnippet: string;
+    generatedAt: string;
+  } {
+    const s = this.getInstanceSettings();
+    const publicUrl = process.env["PUBLIC_URL"] || "https://ansatz.social";
+    const generatedAt = new Date().toISOString();
+    const envLines = [
+      `# ${s.instanceName} — Declarative Instance & White-Label Configuration`,
+      `# Generated at ${generatedAt}`,
+      `NODE_ENV=production`,
+      `PUBLIC_URL=${publicUrl}`,
+      `MSX_INSTANCE_NAME="${s.instanceName.replace(/"/g, '\\"')}"`,
+      `MSX_INSTANCE_BADGE="${s.instanceBadge.replace(/"/g, '\\"')}"`,
+      `MSX_INSTANCE_TAGLINE="${s.instanceTagline.replace(/"/g, '\\"')}"`,
+      `MSX_CONTACT_EMAIL="${s.contactEmail.replace(/"/g, '\\"')}"`,
+      `MSX_BRAND_LOGO_URL="${s.brandLogoUrl.replace(/"/g, '\\"')}"`,
+      `MSX_BRAND_LOGO_DARK_URL="${s.brandLogoDarkUrl.replace(/"/g, '\\"')}"`,
+      `MSX_BRAND_FAVICON_URL="${s.brandFaviconUrl.replace(/"/g, '\\"')}"`,
+      `MSX_BRAND_ACCENT_COLOR="${s.brandAccentColor.replace(/"/g, '\\"')}"`,
+      `MSX_DOCS_BASE_URL="${s.docsBaseUrl.replace(/"/g, '\\"')}"`,
+      `MSX_SHOW_POWERED_BY=${s.showPoweredBy ? "true" : "false"}`,
+      `MSX_REGISTRATION_MODE=${s.registrationMode}`,
+      `MODELSCRIPT_REGISTRATION_MODE=${s.registrationMode}`,
+      `MSX_FEDERATION_MODE=${s.federationMode}`,
+      `JWT_SECRET=${process.env["JWT_SECRET"] ? "<REDACTED_CUSTOM_JWT_SECRET>" : crypto.randomBytes(32).toString("hex")}`,
+      `SMTP_HOST=${process.env["SMTP_HOST"] || "smtp.example.org"}`,
+      `SMTP_PORT=${process.env["SMTP_PORT"] || "587"}`,
+      `EMAIL_FROM="${s.instanceName.replace(/"/g, '\\"')} <${s.contactEmail}>"`,
+    ];
+
+    const dockerComposeLines = [
+      `services:`,
+      `  ansatz-node:`,
+      `    image: ghcr.io/modelscript/api-ce:latest`,
+      `    restart: unless-stopped`,
+      `    ports:`,
+      `      - "3000:3000"`,
+      `    volumes:`,
+      `      - ./data:/app/apps/api/data`,
+      `    environment:`,
+      `      NODE_ENV: "production"`,
+      `      PUBLIC_URL: "${publicUrl}"`,
+      `      MSX_INSTANCE_NAME: "${s.instanceName.replace(/"/g, '\\"')}"`,
+      `      MSX_INSTANCE_BADGE: "${s.instanceBadge.replace(/"/g, '\\"')}"`,
+      `      MSX_INSTANCE_TAGLINE: "${s.instanceTagline.replace(/"/g, '\\"')}"`,
+      `      MSX_CONTACT_EMAIL: "${s.contactEmail.replace(/"/g, '\\"')}"`,
+      `      MSX_DOCS_BASE_URL: "${s.docsBaseUrl.replace(/"/g, '\\"')}"`,
+      `      MSX_SHOW_POWERED_BY: "${s.showPoweredBy ? "true" : "false"}"`,
+      `      MSX_REGISTRATION_MODE: "${s.registrationMode}"`,
+      `      MSX_FEDERATION_MODE: "${s.federationMode}"`,
+    ];
+
+    const envStr = envLines.join("\n");
+    return {
+      envText: envStr,
+      envSnippet: envStr,
+      dockerComposeSnippet: dockerComposeLines.join("\n"),
+      generatedAt,
+    };
   }
 
   isSetupCompleted(): boolean {
@@ -5282,6 +6471,26 @@ export class LibraryDatabase {
       | { value: string }
       | undefined;
     return row?.value === "true";
+  }
+
+  isSetupForceReopened(): boolean {
+    const row = this.#db.prepare(`SELECT value FROM instance_settings WHERE key = 'setupCompleted'`).get() as
+      | { value: string }
+      | undefined;
+    return row?.value === "reopen";
+  }
+
+  resetSetupWizard(actorId: number | null = null): void {
+    this.#db
+      .prepare(
+        `INSERT INTO instance_settings (key, value, updated_by, updated_at)
+         VALUES ('setupCompleted', 'reopen', ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET
+           value = 'reopen',
+           updated_by = excluded.updated_by,
+           updated_at = datetime('now')`,
+      )
+      .run(actorId);
   }
 
   markSetupCompleted(actorId: number | null = null): void {
@@ -5301,18 +6510,23 @@ export class LibraryDatabase {
     needsSetup: boolean;
     hasAdmin: boolean;
     setupCompleted: boolean;
+    reopened: boolean;
     userCount: number;
     settings: ReturnType<LibraryDatabase["getInstanceSettings"]>;
+    preflight: ReturnType<LibraryDatabase["getPreflightChecks"]>;
   } {
     const hasAdmin = this.hasAdminUser();
     const explicitSetupCompleted = this.isSetupCompleted();
-    const needsSetup = !hasAdmin && !explicitSetupCompleted;
+    const reopened = this.isSetupForceReopened();
+    const needsSetup = reopened || (!hasAdmin && !explicitSetupCompleted);
     return {
       needsSetup,
-      hasAdmin,
-      setupCompleted: explicitSetupCompleted || hasAdmin,
+      hasAdmin: reopened ? false : hasAdmin,
+      setupCompleted: reopened ? false : explicitSetupCompleted || hasAdmin,
+      reopened,
       userCount: this.getTotalUsersCount(),
       settings: this.getInstanceSettings(),
+      preflight: this.getPreflightChecks(),
     };
   }
 
@@ -5859,7 +7073,11 @@ export class LibraryDatabase {
     alsoKnownAs: string[];
     queuedDeliveries: number;
   } {
-    const activityId = `${data.sourceActorUri.replace(/\/+$/, "")}#move-${Date.now()}`;
+    let cleanSourceUri = data.sourceActorUri;
+    while (cleanSourceUri.endsWith("/")) {
+      cleanSourceUri = cleanSourceUri.slice(0, -1);
+    }
+    const activityId = `${cleanSourceUri}#move-${Date.now()}`;
     const activityPayload = {
       "@context": "https://www.w3.org/ns/activitystreams",
       id: activityId,
@@ -9219,6 +10437,81 @@ export class LibraryDatabase {
       restoredFrom: target.fileName,
       preRestoreBackup: preRestore.fileName,
       tablesRestored,
+    };
+  }
+
+  saveUploadedBackup(
+    fileBuffer: Buffer,
+    customLabel?: string,
+    restoreImmediately?: boolean,
+  ): {
+    backup: {
+      fileName: string;
+      backupPath: string;
+      sizeBytes: number;
+      createdAt: string;
+      sha256: string;
+    };
+    restoreResult?: ReturnType<LibraryDatabase["restoreFromBackup"]> | undefined;
+  } {
+    if (!Buffer.isBuffer(fileBuffer) || fileBuffer.length < 100) {
+      throw new Error("Uploaded file is empty or too small to be a valid SQLite database.");
+    }
+    const headerStr = fileBuffer.subarray(0, 16).toString("utf8");
+    if (headerStr !== "SQLite format 3\0") {
+      throw new Error("Uploaded file does not have a valid SQLite 3 binary header ('SQLite format 3').");
+    }
+
+    const backupDir = path.resolve(this.dbDir, "backups");
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
+    const cleanLabel = customLabel ? `-${customLabel.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 28)}` : "-uploaded";
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileName = `modelscript-backup-${timestamp}${cleanLabel}.db`;
+    const backupPath = path.resolve(backupDir, fileName);
+    const rel = path.relative(backupDir, backupPath);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error("Invalid backup destination path.");
+    }
+
+    fs.writeFileSync(backupPath, fileBuffer);
+
+    try {
+      const verifyDb = new Database(backupPath, { readonly: true });
+      try {
+        const check = verifyDb.pragma("integrity_check") as { integrity_check: string }[];
+        const isOk = check.length === 1 && check[0]?.integrity_check === "ok";
+        if (!isOk) {
+          throw new Error("Uploaded SQLite file failed PRAGMA integrity_check.");
+        }
+      } finally {
+        verifyDb.close();
+      }
+    } catch (err) {
+      try {
+        if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
+      } catch {
+        // ignore unlink error
+      }
+      throw err instanceof Error ? err : new Error("Uploaded SQLite snapshot failed integrity verification.");
+    }
+
+    const stats = fs.statSync(backupPath);
+    const sha256 = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+    const backup = {
+      fileName,
+      backupPath,
+      sizeBytes: stats.size,
+      createdAt: stats.mtime.toISOString(),
+      sha256,
+    };
+
+    const restoreResult = restoreImmediately ? this.restoreFromBackup(fileName) : undefined;
+    return {
+      backup,
+      restoreResult,
     };
   }
 

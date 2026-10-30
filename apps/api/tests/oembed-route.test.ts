@@ -51,7 +51,7 @@ test("Universal oEmbed Provider Route (/api/v1/oembed)", async (t) => {
 
     assert.strictEqual(res.body.type, "rich");
     assert.strictEqual(res.body.version, "1.0");
-    assert.strictEqual(res.body.provider_name, "ModelScript");
+    assert.strictEqual(res.body.provider_name, "Ansatz");
     assert.strictEqual(res.body.title, "RLC Transient Circuit (R1)");
     assert.strictEqual(res.body.width, 640);
     assert.strictEqual(res.body.height, 400);

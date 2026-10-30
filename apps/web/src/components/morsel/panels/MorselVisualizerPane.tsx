@@ -873,8 +873,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                         icon={ServerIcon}
                         size="small"
                         variant="invisible"
-                        aria-label="Run on ModelScript Cloud HPC"
-                        title="Run on ModelScript Cloud HPC"
+                        aria-label="Run on Ansatz Cloud HPC"
+                        title="Run on Ansatz Cloud HPC"
                         onClick={onOpenCloudModal}
                       />
                     )}

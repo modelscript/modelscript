@@ -342,7 +342,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
                 {notebookData.companionRepo
                   ? `Full source available in ${notebookData.companionRepo} — or launch directly in the WebAssembly Playground / IDE.`
-                  : "All code snippets and equations in this tutorial can be compiled and simulated directly in the ModelScript Playground."}
+                  : "All code snippets and equations in this tutorial can be compiled and simulated directly in the Playground (powered by ModelScript)."}
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>

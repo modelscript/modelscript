@@ -3,7 +3,7 @@
 
 # @modelscript/web
 
-ModelScript Web Platform (`@modelscript/web`) — unified React 19 & Vite frontend for the ModelScript package registry, federated engineering social network (Morsels & ActivityPub), interactive polyglot playground (`/playground`), embeddable viewer (`/embed`), Cloud HPC & multi-physics simulation studio, Digital Thread Explorer, and enterprise organization governance.
+**Ansatz (`ansatz.social`) Web Platform** powered by **ModelScript** (`@modelscript/web`) — unified React 19 & Vite frontend for the Ansatz federated scientific & engineering network (Morsels & ActivityPub), polyglot package registry, interactive playground (`/playground`), embeddable viewer (`/embed`), Cloud HPC & multi-physics simulation studio, Digital Thread Explorer, and white-label enterprise instance governance.
 
 ---
 
