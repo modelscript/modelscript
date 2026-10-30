@@ -83,7 +83,8 @@ describe("Workspace Language Discovery & Extension Generator", () => {
     // 4. Categorized configuration with per-language maturity labels and toggles
     const configSections = pkg.contributes.configuration as any[];
     assert.ok(Array.isArray(configSections) && configSections.length >= 7);
-    const langProps = configSections[0].properties;
+    const langSection = configSections.find((s: any) => s.title?.includes("Languages")) ?? configSections[0];
+    const langProps = langSection.properties;
     assert.ok(langProps["modelscript.languages.maturityTier"]);
     assert.ok(langProps["modelscript.languages.modelica.enabled"]);
     assert.ok(

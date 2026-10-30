@@ -26,15 +26,24 @@ test("TOTP Utility - Secret and URI generation", () => {
   assert.strictEqual(secret.length, 32); // 20 bytes = 160 bits / 5 = 32 chars
   assert.match(secret, /^[A-Z2-7]+$/);
 
-  const uri = generateTotpUri({
+  const defaultUri = generateTotpUri({
     accountName: "alice@modelscript.org",
     secret,
   });
 
-  assert.ok(uri.startsWith("otpauth://totp/ModelScript:alice%40modelscript.org?"));
-  assert.ok(uri.includes(`secret=${secret}`));
-  assert.ok(uri.includes("digits=6"));
-  assert.ok(uri.includes("period=30"));
+  assert.ok(defaultUri.startsWith("otpauth://totp/Ansatz:alice%40modelscript.org?"));
+  assert.ok(defaultUri.includes(`secret=${secret}`));
+  assert.ok(defaultUri.includes("issuer=Ansatz"));
+  assert.ok(defaultUri.includes("digits=6"));
+  assert.ok(defaultUri.includes("period=30"));
+
+  const customUri = generateTotpUri({
+    accountName: "alice@modelscript.org",
+    issuer: "ModelScript",
+    secret,
+  });
+  assert.ok(customUri.startsWith("otpauth://totp/ModelScript:alice%40modelscript.org?"));
+  assert.ok(customUri.includes("issuer=ModelScript"));
 });
 
 test("TOTP Utility - Code generation and verification with drift window", () => {

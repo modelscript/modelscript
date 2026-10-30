@@ -426,11 +426,13 @@ const projA: PscadProjectLike = {
   // - WaitType==2 ("Wait Until" & "5.0") are rendered, WaitType<2 is skipped
   const seqCell = diagE.cells.find((c) => c.id === "seq1");
   assert.ok(seqCell, "seq1 cell must exist");
+  const svgBodyMarkup = seqCell.markup?.filter((m) => m.selector !== "label");
   assert.strictEqual(
-    seqCell.markup?.length,
+    svgBodyMarkup?.length,
     4,
-    "seq1 must only contain 4 elements (shadow, white face, Wait Until, 5.0)",
+    "seq1 must only contain 4 SVG body elements (shadow, white face, Wait Until, 5.0)",
   );
+  assert.strictEqual(seqCell.markup?.length, 5, "seq1 markup must contain 4 SVG body elements plus component label");
   const texts = Object.values(seqCell.attrs || {})
     .map((a: any) => a.text)
     .filter(Boolean);
@@ -602,7 +604,9 @@ const projA: PscadProjectLike = {
   const diagG = buildPscadDiagram(projG);
   const gfxCell = diagG.cells.find((c) => c.id === "vsc_gfx");
   assert.ok(gfxCell, "vsc_gfx cell must exist");
-  assert.strictEqual(gfxCell.markup?.length, 3, "vsc_gfx must render rect, line, and text from <Gfx> elements");
+  const gfxBodyMarkup = gfxCell.markup?.filter((m) => m.selector !== "label");
+  assert.strictEqual(gfxBodyMarkup?.length, 3, "vsc_gfx must render rect, line, and text from <Gfx> elements");
+  assert.strictEqual(gfxCell.markup?.length, 4, "vsc_gfx markup must contain 3 Gfx body elements plus component label");
   const portItems = gfxCell.ports?.items ?? [];
   assert.strictEqual(portItems.length, 2, "vsc_gfx must have 2 ports");
   assert.strictEqual(portItems[0]?.group, "exact", "Port with non-zero local offset must use 'exact' absolute group");
