@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap.js";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 
 export interface EnterpriseUpgradeEventDetail {
@@ -64,8 +65,13 @@ function installEnterpriseFetchInterceptor(): void {
 
 export default function EnterpriseUpgradeModal(): React.ReactElement | null {
   const [detail, setDetail] = React.useState<EnterpriseUpgradeEventDetail | null>(null);
+  const modalRef = React.useRef<HTMLDivElement>(null);
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
+
+  useFocusTrap(modalRef, !!detail, {
+    onEscape: () => setDetail(null),
+  });
 
   React.useEffect(() => {
     installEnterpriseFetchInterceptor();
@@ -110,6 +116,7 @@ export default function EnterpriseUpgradeModal(): React.ReactElement | null {
       }}
     >
       <div
+        ref={modalRef}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--ms-surface-1)",

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckCircleFillIcon, KeyIcon, XIcon } from "@primer/octicons-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { applyToWaitlist } from "../../api/admin";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 interface WaitlistModalProps {
   isOpen: boolean;
@@ -237,17 +238,12 @@ export default function WaitlistModal({
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, isOpen, { onEscape: onClose });
+
   useEffect(() => {
     if (defaultEmail) setEmail(defaultEmail);
   }, [defaultEmail]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -285,7 +281,7 @@ export default function WaitlistModal({
 
   return (
     <Overlay onClick={onClose} role="dialog" aria-modal="true" aria-labelledby="waitlist-title">
-      <ModalCard onClick={(e) => e.stopPropagation()}>
+      <ModalCard ref={modalRef} onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
           <ModalTitle id="waitlist-title">
             <KeyIcon size={20} />

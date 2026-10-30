@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckIcon, SearchIcon, SyncIcon, XIcon } from "@primer/octicons-react";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { DEFAULT_FRONTEND_FLAGS, useFeatureFlags } from "../FeatureFlagContext";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 interface DevFlagsModalProps {
   isOpen: boolean;
@@ -108,6 +109,9 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
 
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, isOpen, { onEscape: onClose });
+
   const allKeys = useMemo(() => {
     const set = new Set<string>([
       ...Object.keys(DEFAULT_FRONTEND_FLAGS),
@@ -159,8 +163,12 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
         padding: "20px",
       }}
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="dev-flags-title"
     >
       <div
+        ref={modalRef}
         style={{
           width: "100%",
           maxWidth: "760px",
@@ -192,7 +200,7 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
             <span style={{ fontSize: "20px" }}>🚩</span>
             <div>
               <div style={{ fontSize: "16px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-                <span>Developer Feature Flags</span>
+                <span id="dev-flags-title">Developer Feature Flags</span>
                 {activeOverridesCount > 0 && (
                   <span
                     style={{

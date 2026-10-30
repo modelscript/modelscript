@@ -2,9 +2,10 @@
 
 import { CheckIcon, CopyIcon, DownloadIcon, ShieldCheckIcon, ShieldLockIcon, XIcon } from "@primer/octicons-react";
 import QRCode from "qrcode";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { disable2FA, regenerateBackupCodes2FA, setup2FA, verify2FA } from "../../api";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 interface TwoFactorModalProps {
   isOpen: boolean;
@@ -226,6 +227,18 @@ export default function TwoFactorModal({
   const [disablePassword, setDisablePassword] = useState("");
   const [disableCode, setDisableCode] = useState("");
 
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  const handleRequestClose = () => {
+    if (step === "backup" && !acknowledgedBackup) {
+      setError("Please confirm that you have saved your recovery backup codes before closing.");
+      return;
+    }
+    onClose();
+  };
+
+  useFocusTrap(modalRef, isOpen, { onEscape: handleRequestClose });
+
   useEffect(() => {
     if (!isOpen) {
       setStep("setup");
@@ -333,19 +346,11 @@ export default function TwoFactorModal({
     URL.revokeObjectURL(url);
   };
 
-  const handleRequestClose = () => {
-    if (step === "backup" && !acknowledgedBackup) {
-      setError("Please confirm that you have saved your recovery backup codes before closing.");
-      return;
-    }
-    onClose();
-  };
-
   return (
-    <Overlay onClick={handleRequestClose}>
-      <ModalCard onClick={(e) => e.stopPropagation()}>
+    <Overlay onClick={handleRequestClose} role="dialog" aria-modal="true" aria-labelledby="two-factor-title">
+      <ModalCard ref={modalRef} onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
-          <ModalTitle>
+          <ModalTitle id="two-factor-title">
             {step === "backup" ? (
               <>
                 <ShieldCheckIcon size={20} />

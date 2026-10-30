@@ -24,6 +24,7 @@ import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { getSearchCompletions } from "../api";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 interface CommandItem {
   id: string;
@@ -264,14 +265,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     repositories: RepoCompletion[];
   }>({ users: [], packages: [], repositories: [] });
   const [activeIndex, setActiveIndex] = useState(0);
+  const cardRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsListRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(cardRef, isOpen, { onEscape: onClose, initialFocusRef: inputRef });
 
   useEffect(() => {
     if (isOpen) {
       setQuery("");
       setActiveIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isOpen]);
 
@@ -748,7 +751,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
 
   return (
     <Overlay onClick={onClose}>
-      <PaletteCard role="dialog" aria-modal="true" aria-label="Command Palette" onClick={(e) => e.stopPropagation()}>
+      <PaletteCard
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command Palette"
+        onClick={(e) => e.stopPropagation()}
+      >
         <InputHeader>
           <SearchIcon size={18} fill="var(--color-fg-muted)" />
           <input

@@ -819,9 +819,10 @@ const GraphViewport = styled.div<{ $isDark: boolean }>`
   align-items: center;
   justify-content: center;
   position: relative;
-  background-color: ${(p) => (p.$isDark ? "#0d1117" : "#f8fafc")};
+  background-color: ${(p) =>
+    p.$isDark ? "var(--color-canvas-default, #0d1117)" : "var(--color-canvas-subtle, #f8fafc)"};
   background-image: radial-gradient(
-    ${(p) => (p.$isDark ? "rgba(148, 163, 184, 0.16)" : "rgba(100, 116, 139, 0.18)")} 1px,
+    ${(p) => (p.$isDark ? "var(--color-border-muted, rgba(148, 163, 184, 0.16))" : "rgba(100, 116, 139, 0.18)")} 1px,
     transparent 1px
   );
   background-size: 18px 18px;
@@ -1200,7 +1201,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                   >
                     <polygon
                       points="1,1 11,6 1,11"
-                      fill={isDark ? "#0d1117" : "#ffffff"}
+                      fill={isDark ? "var(--color-canvas-default, #0d1117)" : "#ffffff"}
                       stroke="#3b82f6"
                       strokeWidth="1.8"
                     />
@@ -1333,7 +1334,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                         width={pillW}
                         height={17}
                         rx={4}
-                        fill={isDark ? "#161b22" : "#ffffff"}
+                        fill={isDark ? "var(--color-canvas-subtle, #161b22)" : "#ffffff"}
                         stroke={stroke}
                         strokeWidth={0.9}
                         strokeOpacity={0.6}

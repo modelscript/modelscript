@@ -106,6 +106,8 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect }
         <Box display="flex" alignItems="center" gap={3}>
           {/* Status Badge */}
           <span
+            role="status"
+            aria-live="polite"
             style={{
               fontSize: "11px",
               fontWeight: 700,

@@ -107,8 +107,12 @@ export const AdminAuditLogsTab: React.FC<AdminAuditLogsTabProps> = ({
         <Card
           style={{
             marginBottom: "16px",
-            border: chainVerification.valid ? "1px solid #2ea043" : "1px solid #f85149",
-            background: chainVerification.valid ? "rgba(46, 160, 67, 0.08)" : "rgba(248, 81, 73, 0.08)",
+            border: chainVerification.valid
+              ? "1px solid var(--color-status-verified, #2ea043)"
+              : "1px solid var(--color-danger, #f85149)",
+            background: chainVerification.valid
+              ? "var(--color-status-verified-subtle, rgba(46, 160, 67, 0.08))"
+              : "var(--color-danger-subtle, rgba(248, 81, 73, 0.08))",
           }}
         >
           <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>

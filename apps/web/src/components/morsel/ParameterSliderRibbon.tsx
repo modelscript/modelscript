@@ -218,6 +218,8 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
           {onSimulate && (
             <button
               type="button"
+              aria-live="polite"
+              aria-busy={isSimulating}
               onClick={(e) => {
                 e.stopPropagation();
                 onSimulate();

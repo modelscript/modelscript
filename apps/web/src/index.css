@@ -472,3 +472,24 @@ body {
   border-color: var(--color-glass-border-hover);
   box-shadow: var(--glow-card);
 }
+
+/* ─── Global Focus-Visible & Accessibility Standard (WCAG 2.1 AA) ─── */
+:focus-visible {
+  outline: 2px solid var(--ms-brand, var(--color-accent-cyan, #06b6d4));
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--ms-brand, var(--color-accent-cyan, #06b6d4));
+  outline-offset: 2px;
+}
+
+/* Remove default focus outline on mouse click when focus-visible is supported */
+:focus:not(:focus-visible) {
+  outline: none;
+}

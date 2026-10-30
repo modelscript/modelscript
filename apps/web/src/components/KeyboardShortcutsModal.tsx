@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { XIcon } from "@primer/octicons-react";
-import React, { useEffect } from "react";
+import React, { useRef } from "react";
 import styled from "styled-components";
+import { useFocusTrap } from "../hooks/useFocusTrap.js";
 import Box from "./Box";
 import { CircleIconButton } from "./SharedStyles";
 
@@ -105,24 +106,20 @@ interface KeyboardShortcutsModalProps {
 }
 
 const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ isOpen, onClose }) => {
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, isOpen, { onEscape: onClose });
 
   if (!isOpen) return null;
 
   return (
     <Overlay onClick={onClose}>
-      <ModalContent onClick={(e) => e.stopPropagation()}>
+      <ModalContent
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Keyboard Shortcuts"
+        onClick={(e) => e.stopPropagation()}
+      >
         <Box
           p={3}
           px={4}
