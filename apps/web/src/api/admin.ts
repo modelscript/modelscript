@@ -1074,7 +1074,7 @@ export interface InstanceSetupStatus {
   airgapEnforced: boolean;
   settings: AdminInstanceSettings;
   preflight?: AdminPreflightResult | undefined;
-  presets: Record<"tier1_federated" | "tier2_corporate" | "tier3_flagship", SetupTierPreset>;
+  presets: Record<"tier0_local_dev" | "tier1_federated" | "tier2_corporate" | "tier3_flagship", SetupTierPreset>;
 }
 
 export const getInstanceSetupStatus = async (): Promise<InstanceSetupStatus> => {
@@ -1091,7 +1091,7 @@ export const resetInstanceSetupWizard = async (): Promise<InstanceSetupStatus & 
 };
 
 export const completeInstanceSetup = async (payload: {
-  profileTier?: "tier1_federated" | "tier2_corporate" | "tier3_flagship";
+  profileTier?: "tier0_local_dev" | "tier1_federated" | "tier2_corporate" | "tier3_flagship";
   admin?: {
     username: string;
     email: string;

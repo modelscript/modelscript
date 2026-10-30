@@ -34,6 +34,24 @@ export interface SetupWizardPageProps {
 }
 
 const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
+  tier0_local_dev: {
+    id: "tier0_local_dev",
+    label: "Tier 0: Ansatz Local (Offline Developer Sandbox)",
+    description:
+      "Open local registration with zero federation or internet dependencies. Ideal for standalone workstation modeling and offline debugging.",
+    registrationMode: "open",
+    federationMode: "disabled",
+    autoQuarantineReportThreshold: 10,
+    backupRetentionCount: 3,
+    defaultInstanceName: "Ansatz Local",
+    defaultInstanceBadge: "Local",
+    defaultDocsBaseUrl: "/docs",
+    defaultShowPoweredBy: false,
+    waitlistEnabled: false,
+    userInvitesEnabled: false,
+    onboardingWizardEnabled: false,
+    academicFastTrackEnabled: false,
+  },
   tier1_federated: {
     id: "tier1_federated",
     label: "Tier 1: Ansatz Lab (Independent Federated Node)",
@@ -100,9 +118,9 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
   const [error, setError] = useState<string | null>(null);
 
   // Step 1: Tier Preset & Optional Migration Bundle
-  const [selectedTier, setSelectedTier] = useState<"tier1_federated" | "tier2_corporate" | "tier3_flagship">(
-    "tier1_federated",
-  );
+  const [selectedTier, setSelectedTier] = useState<
+    "tier0_local_dev" | "tier1_federated" | "tier2_corporate" | "tier3_flagship"
+  >("tier1_federated");
   const [migrationBundle, setMigrationBundle] = useState<Record<string, unknown> | null>(null);
   const [migrationFileName, setMigrationFileName] = useState<string | null>(null);
 
@@ -238,7 +256,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
     }
   };
 
-  const applyTierPreset = (tierId: "tier1_federated" | "tier2_corporate" | "tier3_flagship") => {
+  const applyTierPreset = (tierId: "tier0_local_dev" | "tier1_federated" | "tier2_corporate" | "tier3_flagship") => {
     setSelectedTier(tierId);
     const presets = status?.presets || DEFAULT_PRESETS;
     const p = presets[tierId];
@@ -254,7 +272,9 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
       if ((p as { instanceTagline?: string }).instanceTagline !== undefined) {
         setInstanceTagline((p as { instanceTagline?: string }).instanceTagline!);
       }
-      const docs = p.defaultDocsBaseUrl ?? (tierId === "tier2_corporate" ? "/docs" : "https://modelscript.org");
+      const docs =
+        p.defaultDocsBaseUrl ??
+        (tierId === "tier2_corporate" || tierId === "tier0_local_dev" ? "/docs" : "https://modelscript.org");
       if (docs !== undefined) setDocsBaseUrl(docs);
       const powered = p.defaultShowPoweredBy ?? (p as { showPoweredBy?: boolean }).showPoweredBy;
       if (powered !== undefined) setShowPoweredBy(powered);
@@ -781,35 +801,37 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
               </p>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
-                {(["tier1_federated", "tier2_corporate", "tier3_flagship"] as const).map((tierKey) => {
-                  const p = presets[tierKey];
-                  const isSelected = selectedTier === tierKey;
-                  return (
-                    <div
-                      key={tierKey}
-                      onClick={() => applyTierPreset(tierKey)}
-                      style={{
-                        padding: "14px 16px",
-                        borderRadius: "8px",
-                        border: isSelected
-                          ? "2px solid var(--color-accent-emphasis)"
-                          : "1px solid var(--color-border-default)",
-                        backgroundColor: isSelected ? "var(--color-accent-subtle)" : "var(--color-canvas-default)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: "14px", fontWeight: 700 }}>{p.label}</span>
-                        <span style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--color-fg-muted)" }}>
-                          signup={p.registrationMode} · fed={p.federationMode} · backups={p.backupRetentionCount}
-                        </span>
+                {(["tier0_local_dev", "tier1_federated", "tier2_corporate", "tier3_flagship"] as const).map(
+                  (tierKey) => {
+                    const p = presets[tierKey];
+                    const isSelected = selectedTier === tierKey;
+                    return (
+                      <div
+                        key={tierKey}
+                        onClick={() => applyTierPreset(tierKey)}
+                        style={{
+                          padding: "14px 16px",
+                          borderRadius: "8px",
+                          border: isSelected
+                            ? "2px solid var(--color-accent-emphasis)"
+                            : "1px solid var(--color-border-default)",
+                          backgroundColor: isSelected ? "var(--color-accent-subtle)" : "var(--color-canvas-default)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "14px", fontWeight: 700 }}>{p.label}</span>
+                          <span style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--color-fg-muted)" }}>
+                            signup={p.registrationMode} · fed={p.federationMode} · backups={p.backupRetentionCount}
+                          </span>
+                        </div>
+                        <p style={{ margin: "6px 0 0", fontSize: "12px", color: "var(--color-fg-muted)" }}>
+                          {p.description}
+                        </p>
                       </div>
-                      <p style={{ margin: "6px 0 0", fontSize: "12px", color: "var(--color-fg-muted)" }}>
-                        {p.description}
-                      </p>
-                    </div>
-                  );
-                })}
+                    );
+                  },
+                )}
               </div>
 
               {/* Optional Migration Bundle Restore */}

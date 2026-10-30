@@ -502,6 +502,19 @@ describe("Admin Console & Moderation UI Components Suite", () => {
       lockedByEnv: [],
     };
     const presets = {
+      tier0_local_dev: {
+        id: "tier0_local_dev" as const,
+        label: "Tier 0: Ansatz Local (Offline Developer Sandbox)",
+        description: "Open local registration with zero federation or internet dependencies.",
+        registrationMode: "open" as const,
+        federationMode: "disabled" as const,
+        autoQuarantineReportThreshold: 10,
+        backupRetentionCount: 3,
+        instanceName: "Ansatz Local",
+        instanceBadge: "Local",
+        instanceTagline: "Offline Workstation Modeling",
+        showPoweredBy: false,
+      },
       tier1_federated: {
         id: "tier1_federated" as const,
         label: "Tier 1: Independent Federated Node",
