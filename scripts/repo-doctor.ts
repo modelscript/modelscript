@@ -151,20 +151,29 @@ export function runRepoDoctor(options: RepoDoctorOptions = {}): {
     });
   }
 
-  // 2. Nx project graph cycles
+  // 2. Nx project graph cycles & architectural boundaries
   if (!options.skipCycles) {
     const start = performance.now();
     try {
-      const { nodeCount, cycles } = checkNxCycles();
+      const {
+        nodeCount,
+        cycles,
+        boundaryViolations = [],
+      } = checkNxCycles() as {
+        nodeCount: number;
+        cycles: string[][];
+        boundaryViolations?: string[];
+      };
+      const allErrors = [...cycles.map((c: string[]) => `Cycle: ${c.join(" -> ")}`), ...boundaryViolations];
       results.push({
         name: "cycles",
-        passed: cycles.length === 0,
+        passed: allErrors.length === 0,
         durationMs: Math.round(performance.now() - start),
         summary:
-          cycles.length === 0
-            ? `${nodeCount} workspace nodes verified acyclic (0 cycles)`
-            : `${cycles.length} cycle(s) detected`,
-        errors: cycles.map((c) => `Cycle: ${c.join(" -> ")}`),
+          allErrors.length === 0
+            ? `${nodeCount} workspace nodes verified acyclic and bounded (0 cycles, 0 boundary violations)`
+            : `${cycles.length} cycle(s), ${boundaryViolations.length} boundary violation(s)`,
+        errors: allErrors,
       });
     } catch (err) {
       results.push({

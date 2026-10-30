@@ -46,6 +46,57 @@ export function detectCyclesInAdjacencyMap(adj) {
   return cycles;
 }
 
+/**
+ * Validates architectural module boundaries across the Nx project dependency graph:
+ *   1. Core engine (packages/*) and languages (languages/*) must NEVER depend on apps/* or ee.
+ *   2. Open-core libraries must NEVER depend on the enterprise edition (@modelscript/ee).
+ * @param {any} graph
+ * @returns {string[]}
+ */
+export function detectBoundaryViolations(graph) {
+  const violations = [];
+  const nodes = graph.nodes || {};
+  const deps = graph.dependencies || {};
+
+  for (const [sourceName, depList] of Object.entries(deps)) {
+    const sourceNode = nodes[sourceName];
+    if (!sourceNode?.data?.root) continue;
+    const sourceRoot = sourceNode.data.root.replace(/\\/g, "/");
+
+    for (const dep of depList) {
+      const targetName = dep.target;
+      const targetNode = nodes[targetName];
+      if (!targetNode?.data?.root) continue;
+      const targetRoot = targetNode.data.root.replace(/\\/g, "/");
+
+      // 1. Core engine (packages/*) and languages (languages/*) must NEVER depend on apps/* or ee
+      const isSourceEngineOrLang = sourceRoot.startsWith("packages/") || sourceRoot.startsWith("languages/");
+      const isTargetAppOrEe = targetRoot.startsWith("apps/") || targetRoot === "ee" || targetRoot.startsWith("ee/");
+
+      if (isSourceEngineOrLang && isTargetAppOrEe) {
+        if (!sourceRoot.startsWith("packages/examples/")) {
+          violations.push(
+            `Boundary violation: ${sourceName} (${sourceRoot}) must not depend on ${targetName} (${targetRoot})`,
+          );
+        }
+      }
+
+      // 2. Open-core (anything outside ee) must NEVER depend on ee
+      const isSourceOpenCore = sourceRoot !== "ee" && !sourceRoot.startsWith("ee/");
+      const isTargetEe = targetRoot === "ee" || targetRoot.startsWith("ee/");
+      if (isSourceOpenCore && isTargetEe) {
+        if (!sourceRoot.startsWith("apps/api")) {
+          violations.push(
+            `Enterprise boundary violation: open-core ${sourceName} (${sourceRoot}) must not depend on ${targetName} (${targetRoot})`,
+          );
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
 function parseGraphAndDetectCycles(graphPath, keepFile, generated) {
   const graph = JSON.parse(fs.readFileSync(graphPath, "utf8")).graph;
   const nodes = Object.keys(graph.nodes);
@@ -58,6 +109,7 @@ function parseGraphAndDetectCycles(graphPath, keepFile, generated) {
   }
 
   const cycles = detectCyclesInAdjacencyMap(adj);
+  const boundaryViolations = detectBoundaryViolations(graph);
 
   if (!keepFile || generated) {
     try {
@@ -65,13 +117,13 @@ function parseGraphAndDetectCycles(graphPath, keepFile, generated) {
     } catch {}
   }
 
-  return { nodeCount: nodes.length, cycles };
+  return { nodeCount: nodes.length, cycles, boundaryViolations };
 }
 
 /**
  * Checks for project dependency cycles using Nx graph.json (generating it if needed).
  * @param {{ graphFile?: string; keepFile?: boolean }} [options]
- * @returns {{ nodeCount: number; cycles: string[][] }}
+ * @returns {{ nodeCount: number; cycles: string[][]; boundaryViolations?: string[] }}
  */
 export function checkNxCycles(options = {}) {
   const graphPath = path.resolve(repoRoot, options.graphFile || "graph.json");

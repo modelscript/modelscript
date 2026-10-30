@@ -329,6 +329,7 @@ export default defineConfig({
           text: "Compiler Architecture",
           items: [
             { text: "Overview & Pipeline", link: "/architecture/overview" },
+            { text: "Monorepo & Taxonomy", link: "/architecture/monorepo" },
             { text: "WASM GLR Parser", link: "/architecture/glr-parser" },
             { text: "Salsa Query Engine", link: "/architecture/salsa-queries" },
             { text: "Linear DAE Arena", link: "/architecture/dae-arena" },
