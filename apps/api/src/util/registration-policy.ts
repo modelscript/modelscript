@@ -9,6 +9,7 @@ export interface RedeemedInviteInfo {
   code: string;
   initialCredits: number;
   assignedRole: string;
+  createdBy?: number | null | undefined;
 }
 
 export interface RegistrationPolicyResult {
@@ -18,6 +19,7 @@ export interface RegistrationPolicyResult {
   errorCode?: string | undefined;
   redeemedInvite?: RedeemedInviteInfo | undefined;
   autoVerifiedByAirgap: boolean;
+  fastTracked?: boolean | undefined;
 }
 
 export function isEmailDomainAllowed(email: string, allowedEmailDomains: string[]): boolean {
@@ -26,6 +28,24 @@ export function isEmailDomainAllowed(email: string, allowedEmailDomains: string[
   return allowedEmailDomains.some((d) => {
     const clean = d.trim().toLowerCase();
     return clean.length > 0 && (emailDomain === clean || emailDomain.endsWith(`.${clean}`));
+  });
+}
+
+export function isAcademicEmail(email: string, patterns: string[] = ["edu", "ac.uk"]): boolean {
+  const domain = String(email || "")
+    .split("@")[1]
+    ?.trim()
+    .toLowerCase();
+  if (!domain) return false;
+  return patterns.some((p) => {
+    const clean = p.trim().toLowerCase();
+    if (!clean) return false;
+    if (clean.includes("*")) {
+      const escaped = clean.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+      const regex = new RegExp(`(^|\\.)${escaped}$`, "i");
+      return regex.test(domain);
+    }
+    return domain === clean || domain.endsWith(`.${clean}`);
   });
 }
 
@@ -89,32 +109,49 @@ export function evaluateRegistrationPolicy(
   }
 
   let redeemedInvite: RedeemedInviteInfo | undefined;
+  let fastTracked = false;
+
   if (instanceSettings.registrationMode === "invite_only" || inviteCode) {
     if (!inviteCode) {
-      return {
-        allowed: false,
-        status: 403,
-        errorCode: "InviteRequired",
-        error: "An invitation code is required to register on this instance.",
-        autoVerifiedByAirgap,
+      if (
+        instanceSettings.academicFastTrackEnabled &&
+        isAcademicEmail(email, instanceSettings.academicDomainPatterns)
+      ) {
+        fastTracked = true;
+      } else {
+        return {
+          allowed: false,
+          status: 403,
+          errorCode: "InviteRequired",
+          error: "An invitation code is required to register on this instance.",
+          autoVerifiedByAirgap,
+        };
+      }
+    } else {
+      const validation = database.validateAndConsumeInstanceInvite(inviteCode);
+      if (!validation.valid || !validation.invite) {
+        return {
+          allowed: false,
+          status: 403,
+          errorCode: "InvalidInviteCode",
+          error: validation.reason || "Invalid invitation code",
+          autoVerifiedByAirgap,
+        };
+      }
+      redeemedInvite = {
+        id: validation.invite.id,
+        code: validation.invite.code,
+        initialCredits: validation.invite.initialCredits,
+        assignedRole: validation.invite.assignedRole,
+        createdBy: validation.invite.createdBy,
       };
     }
-    const validation = database.validateAndConsumeInstanceInvite(inviteCode);
-    if (!validation.valid || !validation.invite) {
-      return {
-        allowed: false,
-        status: 403,
-        errorCode: "InvalidInviteCode",
-        error: validation.reason || "Invalid invitation code",
-        autoVerifiedByAirgap,
-      };
-    }
-    redeemedInvite = validation.invite;
   }
 
   return {
     allowed: true,
     redeemedInvite,
     autoVerifiedByAirgap,
+    fastTracked: fastTracked || undefined,
   };
 }

@@ -54,6 +54,94 @@ export function usersRouter(
   });
 
   /**
+   * GET /api/v1/users/me/onboarding
+   * Returns current user's onboarding completion status and chosen discipline persona
+   */
+  const handleGetOnboarding = (req: Request, res: Response) => {
+    try {
+      const status = database.getUserOnboardingStatus(req.user!.id);
+      res.json(status);
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch onboarding status" });
+    }
+  };
+  router.get("/me/onboarding", requireAuth, handleGetOnboarding);
+  router.get("/onboarding", requireAuth, handleGetOnboarding);
+
+  /**
+   * POST /api/v1/users/me/onboarding/complete
+   * Records completed onboarding and selected engineering persona
+   */
+  const handleCompleteOnboarding = (req: Request, res: Response) => {
+    try {
+      const persona = typeof req.body?.persona === "string" ? req.body.persona.trim() : null;
+      database.completeUserOnboarding(req.user!.id, persona);
+      const updated = database.getUserOnboardingStatus(req.user!.id);
+      res.json({ success: true, status: updated });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to complete onboarding" });
+    }
+  };
+  router.post("/me/onboarding/complete", requireAuth, handleCompleteOnboarding);
+  router.post("/onboarding/complete", requireAuth, handleCompleteOnboarding);
+
+  /**
+   * GET /api/v1/users/me/invites
+   * Returns current user's golden tickets, quota remaining, and referral bonuses
+   */
+  const handleGetInvites = (req: Request, res: Response) => {
+    try {
+      const settings = database.getInstanceSettings();
+      const status = database.getUserOnboardingStatus(req.user!.id);
+      const invites = database.getUserInvites(req.user!.id);
+      const referrals = database.getUserReferrals(req.user!.id);
+      res.json({
+        invitesEnabled: settings.userInvitesEnabled,
+        invitesRemaining: status.invitesRemaining,
+        invites,
+        referrals,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch user invites" });
+    }
+  };
+  router.get("/me/invites", requireAuth, handleGetInvites);
+  router.get("/invites", requireAuth, handleGetInvites);
+
+  /**
+   * POST /api/v1/users/me/invites/generate
+   * Generates a new Golden Ticket / single-use invite code decremented from user quota
+   */
+  const handleGenerateInvite = (req: Request, res: Response) => {
+    try {
+      const settings = database.getInstanceSettings();
+      if (!settings.userInvitesEnabled) {
+        res.status(403).json({ error: "User invitation generation is disabled on this instance" });
+        return;
+      }
+
+      const note = typeof req.body?.note === "string" ? req.body.note.trim() : undefined;
+      const initialCredits =
+        typeof req.body?.initialCredits === "number" && req.body.initialCredits > 0
+          ? Math.min(500, req.body.initialCredits)
+          : 100;
+
+      const invite = database.generateUserGoldenTicket(req.user!.id, note, initialCredits);
+      const status = database.getUserOnboardingStatus(req.user!.id);
+
+      res.status(201).json({
+        success: true,
+        invite,
+        invitesRemaining: status.invitesRemaining,
+      });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to generate invite" });
+    }
+  };
+  router.post("/me/invites/generate", requireAuth, handleGenerateInvite);
+  router.post("/invites/generate", requireAuth, handleGenerateInvite);
+
+  /**
    * GET /api/v1/users/:username
    */
   router.get("/:username", optionalAuth, async (req: Request, res: Response) => {

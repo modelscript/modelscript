@@ -219,6 +219,11 @@ export function authRouter(database: LibraryDatabase): Router {
           registrationIp: clientIp,
         });
 
+        // Record referral lineage if this user registered via a member's golden ticket / invite
+        if (redeemedInvite && typeof redeemedInvite.createdBy === "number") {
+          database.recordUserReferral(redeemedInvite.createdBy, user.id, redeemedInvite.id);
+        }
+
         if (
           redeemedInvite &&
           redeemedInvite.assignedRole &&
@@ -255,7 +260,14 @@ export function authRouter(database: LibraryDatabase): Router {
           details: {
             username: user.username,
             email: user.email,
-            ...(redeemedInvite ? { inviteCode: redeemedInvite.code, assignedRole: redeemedInvite.assignedRole } : {}),
+            ...(redeemedInvite
+              ? {
+                  inviteCode: redeemedInvite.code,
+                  assignedRole: redeemedInvite.assignedRole,
+                  ...(redeemedInvite.createdBy ? { referrerId: redeemedInvite.createdBy } : {}),
+                }
+              : {}),
+            ...(policy.fastTracked ? { fastTracked: true, academicFastTrack: true } : {}),
             ...(policy.autoVerifiedByAirgap ? { autoVerifiedByAirgap: true } : {}),
           },
         });

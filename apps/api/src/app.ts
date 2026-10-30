@@ -57,6 +57,7 @@ import { sysml2OmgRouter } from "./routes/sysml2-omg.js";
 import { threadRouter } from "./routes/thread.js";
 import { twinsRouter } from "./routes/twins.js";
 import { usersRouter } from "./routes/users.js";
+import { waitlistRouter } from "./routes/waitlist.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { seedScriptsAndTemplates } from "./seed-scripts.js";
 import { seedPolyglotSocialData, seedPolyglotUsers } from "./seed/index.js";
@@ -501,7 +502,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   // Auth & Community routes
   app.use("/api/v1/auth", authRouter(database));
-  app.use("/api/v1/users", usersRouter(database, federationWorker));
+  app.use("/api/v1/waitlist", waitlistRouter(database));
+  const mountedUsersRouter = usersRouter(database, federationWorker);
+  app.use("/api/v1/users", mountedUsersRouter);
+  app.use("/api/v1/user", mountedUsersRouter);
   app.use("/api/v1/solutions", solutionsRouter(database));
   app.use("/api/v1/social", socialRouter(database, federationWorker));
 

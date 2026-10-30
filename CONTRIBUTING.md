@@ -26,10 +26,15 @@ npm run build
 
 | Command                  | Description                                                                 |
 | :----------------------- | :-------------------------------------------------------------------------- |
-| `npm run dev`            | Start all development services concurrently (API, Web, IDE, Docs)           |
+| `npm run doctor:dev`     | Inspect local toolchains, memory, and database readiness across all tracks  |
+| `npm run dev:ansatz`     | Start Ansatz full-stack platform (API backend + Web frontend)               |
+| `npm run dev:compiler`   | Watch and recompile core compiler & language packages                       |
+| `npm run dev:cli`        | Start interactive ModelScript CLI (`msx`) development sandbox               |
+| `npm run dev:docs`       | Start VitePress documentation portal on `localhost:5173`                    |
 | `npm run build`          | Build all workspace packages in topological dependency order via Nx         |
 | `npm run build:affected` | Build only packages affected by current branch changes                      |
 | `npm test`               | Run tests for affected packages via the RAM/CPU-aware `test-coordinator.js` |
+| `npm run test:fast`      | Fast unit-test runner across affected packages                              |
 | `npm run test:all`       | Run all unit and integration test suites across the monorepo                |
 | `npm run lint`           | Run ESLint and repository policy linters on affected packages               |
 | `npm run lint:all`       | Run ESLint, manifest, header, cycle, and type-safety ratchet checks         |
@@ -38,6 +43,22 @@ npm run build
 | `npm run verify:pack`    | Verify `npm pack` tarball completeness and isolated ESM consumer imports    |
 | `npm run clean:scratch`  | Remove untracked `scratch*` directories and ephemeral debug logs            |
 | `npm run format`         | Format code, JSON, and Markdown files with Prettier                         |
+
+### Choose Your Development Track
+
+The repository unifies compiler engineering with cloud and web platforms. Choose the track matching your focus:
+
+- **Track A: Compiler & Domain Languages** (`languages/*`, `packages/dsl`, `packages/runtime`, `packages/simulate`)
+  - Run `npm run dev:compiler` for incremental TypeScript watching.
+  - Test individual models: `npm run test:single -- OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo`.
+  - Conformance verification: `npm run test:modelica` or `npm run test:msl`.
+- **Track B: Ansatz Platform & Web Applications** (`apps/web`, `apps/api`, `packages/embed`, `packages/react`)
+  - Run `npm run dev:ansatz` (or `npm run dev`) to boot the API (port 3000) and Web App (port 3001).
+  - Local database is automatically provisioned under `data/`.
+  - Test platform services: `npm run test:platform`.
+- **Track C: Documentation & Engineering Models** (`apps/docs`, `packages/examples/*`)
+  - Run `npm run dev:docs` to preview the VitePress portal and interactive reference manual.
+  - Validate documentation links: `npm run check --workspace=@modelscript/docs`.
 
 ---
 
@@ -66,19 +87,29 @@ Source (.mo / domain file)
 3. **Native WASM GLR Parsers:** All 44 domain languages use native WebAssembly GLR parsers (`parser.wasm`) compiled by `@modelscript/dsl` (`buildParser`). Never introduce external C/C++ parser bindings such as `tree-sitter`.
 4. **Linter and Flattener Synchronization:** Keep frontend semantic diagnostics in the linter (`languages/*/src/lints/` or `queries.ts`) rather than moving checks into the flattener as a workaround.
 
-### Key Monorepo Workspaces
+### 4-Layer Architectural Taxonomy
 
-| Directory            | Purpose                                                                                                                                                                                         |
-| :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/dsl/`      | Grammar DSL combinators, WASM GLR parser compiler (`buildParser`), Triple Graph Grammars (TGG), Critical Pair Analysis (CPA), E-graph rewriting                                                 |
-| `packages/runtime/`  | Linear-memory WebAssembly DAE arena (`DAEBuilder`), Salsa `QueryEngine`, `WorkspaceIndex`, BLT solver, Nelson-Oppen `TheoryCoordinator`                                                         |
-| `packages/simulate/` | Numerical integrators (SUNDIALS CVODE/IDA, BDF, DOPRI5), WebGPU batched solver, 3D FEA/CFD, surrogate ROMs, Monte Carlo                                                                         |
-| `packages/lsp/`      | Polyglot Language Server Protocol engine across all 44 languages and background worker pool                                                                                                     |
-| `packages/exchange/` | FMI 2.0/3.0 FMU export/import, SSP 1.0 container toolkit, `CoSimMaster`, AASX/DDP/OKH packaging                                                                                                 |
-| `packages/diagram/`  | Polyglot schematic layout (Sugiyama/TSM), Manhattan port routing, dark-mode SVG rendering                                                                                                       |
-| `packages/cad/`      | Constructive Solid Geometry (CSG), OpenCascade/Manifold B-Rep, STEP AP242 I/O, Gerber ECAD DRC                                                                                                  |
-| `languages/*`        | 44 engineering domain languages (Modelica, SysML v2, STEP, PSCAD, GENSYS, OLGA, SPICE, etc.)                                                                                                    |
-| `apps/*`             | CLI (`@modelscript/cli`), API server (`@modelscript/api`), Web IDE (`@modelscript/ide`), Web platform (`@modelscript/web`), Desktop Studio (`@modelscript/desktop`), Docs (`@modelscript/docs`) |
+The monorepo is organized into four distinct architectural layers to ensure clean separation of concerns:
+
+| Layer                                | Workspaces & Directories                                                                                                               | Primary Responsibility                                                                                   |
+| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------- |
+| **Layer 4: Enterprise**              | [`ee/`](./ee/)                                                                                                                         | Commercial enterprise edition, offline Ed25519 licensing, ITAR/NERC CIP air-gap, FDA 21 CFR Part 11      |
+| **Layer 3: Ansatz Platform**         | [`apps/web/`](./apps/web/), [`apps/api/`](./apps/api/), [`packages/embed/`](./packages/embed/), [`packages/react/`](./packages/react/) | Flagship web platform (`ansatz.social`), ActivityPub federation, package registry, Slurm HPC, billing    |
+| **Layer 2: Developer Tooling**       | [`apps/cli/`](./apps/cli/), [`apps/ide/`](./apps/ide/), [`apps/desktop/`](./apps/desktop/), [`apps/docs/`](./apps/docs/)               | Unified CLI (`msx`), VS Code Web extension, Tauri desktop app, VitePress documentation portal            |
+| **Layer 1: Core Engine & Languages** | [`languages/*`](./languages/), [`packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`](./packages/)                           | 44 domain languages, WASM GLR parsers, linear DAE arena, numerical solvers, TGG graph rewriting, FMI/SSP |
+
+### Core Engine Workspaces
+
+| Directory            | Purpose                                                                                                                                         |
+| :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/dsl/`      | Grammar DSL combinators, WASM GLR parser compiler (`buildParser`), Triple Graph Grammars (TGG), Critical Pair Analysis (CPA), E-graph rewriting |
+| `packages/runtime/`  | Linear-memory WebAssembly DAE arena (`DAEBuilder`), Salsa `QueryEngine`, `WorkspaceIndex`, BLT solver, Nelson-Oppen `TheoryCoordinator`         |
+| `packages/simulate/` | Numerical integrators (SUNDIALS CVODE/IDA, BDF, DOPRI5), WebGPU batched solver, 3D FEA/CFD, surrogate ROMs, Monte Carlo                         |
+| `packages/lsp/`      | Polyglot Language Server Protocol engine across all 44 languages and background worker pool                                                     |
+| `packages/exchange/` | FMI 2.0/3.0 FMU export/import, SSP 1.0 container toolkit, `CoSimMaster`, AASX/DDP/OKH packaging                                                 |
+| `packages/diagram/`  | Polyglot schematic layout (Sugiyama/TSM), Manhattan port routing, dark-mode SVG rendering                                                       |
+| `packages/cad/`      | Constructive Solid Geometry (CSG), OpenCascade/Manifold B-Rep, STEP AP242 I/O, Gerber ECAD DRC                                                  |
+| `languages/*`        | 44 engineering domain languages (Modelica, SysML v2, STEP, PSCAD, GENSYS, OLGA, SPICE, etc.)                                                    |
 
 ---
 

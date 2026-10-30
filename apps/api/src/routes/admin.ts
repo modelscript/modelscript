@@ -85,16 +85,38 @@ const auditorAuth = createStaffGuard("admin", "auditor");
 const staffAuth = createStaffGuard("admin", "moderator", "auditor");
 
 const SETUP_TIER_PRESETS = {
+  tier0_local_dev: {
+    id: "tier0_local_dev",
+    label: "Tier 0: Ansatz Local (Offline Developer Sandbox)",
+    description:
+      "Open local registration with zero federation or internet dependencies. Ideal for standalone workstation modeling and offline debugging.",
+    registrationMode: "open" as const,
+    federationMode: "disabled" as const,
+    waitlistEnabled: false,
+    userInvitesEnabled: false,
+    onboardingWizardEnabled: false,
+    academicFastTrackEnabled: false,
+    autoQuarantineReportThreshold: 10,
+    backupRetentionCount: 3,
+    defaultInstanceName: "Ansatz Local",
+    defaultInstanceBadge: "Local",
+    defaultDocsBaseUrl: "/docs",
+    defaultShowPoweredBy: false,
+  },
   tier1_federated: {
     id: "tier1_federated",
-    label: "Tier 1: Independent Federated Node",
+    label: "Tier 1: Ansatz Lab (Independent Federated Node)",
     description:
       "Invite-only registration with open ActivityPub S2S federation. Ideal for research labs, universities, and self-hosted federated operators.",
     registrationMode: "invite_only" as const,
     federationMode: "open" as const,
+    waitlistEnabled: false,
+    userInvitesEnabled: true,
+    onboardingWizardEnabled: true,
+    academicFastTrackEnabled: true,
     autoQuarantineReportThreshold: 3,
     backupRetentionCount: 7,
-    defaultInstanceName: "Ansatz",
+    defaultInstanceName: "Ansatz Lab",
     defaultInstanceBadge: "Lab",
     defaultDocsBaseUrl: "https://modelscript.org",
     defaultShowPoweredBy: true,
@@ -106,6 +128,10 @@ const SETUP_TIER_PRESETS = {
       "Email domain allowlist registration with outbound ActivityPub federation disabled. Ideal for internal R&D intranets and classified SCIF/air-gapped appliances.",
     registrationMode: "domain_allowlist" as const,
     federationMode: "disabled" as const,
+    waitlistEnabled: false,
+    userInvitesEnabled: false,
+    onboardingWizardEnabled: false,
+    academicFastTrackEnabled: false,
     autoQuarantineReportThreshold: 5,
     backupRetentionCount: 14,
     defaultInstanceName: "Ansatz Enterprise",
@@ -115,11 +141,15 @@ const SETUP_TIER_PRESETS = {
   },
   tier3_flagship: {
     id: "tier3_flagship",
-    label: "Tier 3: Public Flagship Node (ansatz.social)",
+    label: "Tier 3: Ansatz Social (Public Flagship Node at ansatz.social)",
     description:
-      "Open registration with anti-Sybil verification, open ActivityPub federation, and automated report threshold quarantine. Ideal for large public scientific nodes.",
+      "Open or gated registration with anti-Sybil verification, open ActivityPub federation, and automated report threshold quarantine. Flagship node at ansatz.social.",
     registrationMode: "open" as const,
     federationMode: "open" as const,
+    waitlistEnabled: true,
+    userInvitesEnabled: true,
+    onboardingWizardEnabled: true,
+    academicFastTrackEnabled: true,
     autoQuarantineReportThreshold: 5,
     backupRetentionCount: 30,
     defaultInstanceName: "Ansatz",
@@ -169,6 +199,11 @@ export function adminRouter(
         announcementLevel: settings.announcementLevel,
         registrationMode: settings.registrationMode,
         federationMode: settings.federationMode,
+        waitlistEnabled: settings.waitlistEnabled ?? false,
+        userInvitesEnabled: settings.userInvitesEnabled ?? false,
+        academicFastTrackEnabled: settings.academicFastTrackEnabled ?? false,
+        academicDomainPatterns: settings.academicFastTrackEnabled ? settings.academicDomainPatterns : [],
+        onboardingWizardEnabled: settings.onboardingWizardEnabled ?? false,
         customTermsMarkdown: settings.customTermsMarkdown,
         customPrivacyMarkdown: settings.customPrivacyMarkdown,
         needsSetup: setupStatus.needsSetup,
@@ -376,7 +411,7 @@ export function adminRouter(
 
       // Apply tier preset + explicit settings overrides
       const preset =
-        profileTier === "tier1_federated" || profileTier === "tier2_corporate" || profileTier === "tier3_flagship"
+        profileTier && profileTier in SETUP_TIER_PRESETS
           ? SETUP_TIER_PRESETS[profileTier as keyof typeof SETUP_TIER_PRESETS]
           : undefined;
 
@@ -390,6 +425,12 @@ export function adminRouter(
         mergedSettingsPatch["instanceBadge"] = preset.defaultInstanceBadge;
         mergedSettingsPatch["docsBaseUrl"] = preset.defaultDocsBaseUrl;
         mergedSettingsPatch["showPoweredBy"] = preset.defaultShowPoweredBy;
+        if ("waitlistEnabled" in preset) mergedSettingsPatch["waitlistEnabled"] = preset.waitlistEnabled;
+        if ("userInvitesEnabled" in preset) mergedSettingsPatch["userInvitesEnabled"] = preset.userInvitesEnabled;
+        if ("onboardingWizardEnabled" in preset)
+          mergedSettingsPatch["onboardingWizardEnabled"] = preset.onboardingWizardEnabled;
+        if ("academicFastTrackEnabled" in preset)
+          mergedSettingsPatch["academicFastTrackEnabled"] = preset.academicFastTrackEnabled;
       }
       if (rawSettings && typeof rawSettings === "object") {
         for (const [k, v] of Object.entries(rawSettings)) {
@@ -2442,6 +2483,103 @@ export function adminRouter(
       res.json({ success: true, id });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to revoke invite" });
+    }
+  });
+
+  // ── Waitlist Management ──
+
+  /**
+   * GET /api/v1/admin/waitlist
+   * Returns paginated waitlist applications filtered by status
+   */
+  router.get("/admin/waitlist", staffAuth, (req: Request, res: Response) => {
+    try {
+      const status = typeof req.query["status"] === "string" ? req.query["status"] : undefined;
+      const limit = Math.min(100, Math.max(1, Number(req.query["limit"]) || 50));
+      const offset = Math.max(0, Number(req.query["offset"]) || 0);
+
+      const submissions = database.getWaitlistSubmissions({
+        ...(status && (status === "pending" || status === "approved" || status === "rejected") ? { status } : {}),
+        limit,
+        offset,
+      });
+
+      res.json({ submissions, count: submissions.length });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch waitlist" });
+    }
+  });
+
+  /**
+   * POST /api/v1/admin/waitlist/:id/approve
+   * Approves a waitlist candidate, generating an invite code and optionally dispatching notification
+   */
+  router.post("/admin/waitlist/:id/approve", moderatorAuth, async (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params["id"]);
+      const result = database.approveWaitlistSubmission(id, req.user?.id || null);
+      if (!result.success || !result.submission) {
+        res.status(404).json({ error: "Waitlist submission not found" });
+        return;
+      }
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "waitlist_submission_approved",
+        resourceType: "waitlist",
+        resourceId: String(id),
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        details: {
+          email: result.submission.email,
+          inviteCode: result.inviteCode,
+        },
+      });
+
+      // Attempt to send invite email if mailer is configured
+      if (defaultMailer.isConfiguredForLiveDelivery() && result.submission.email && result.inviteCode) {
+        try {
+          await defaultMailer.sendInviteEmail(result.submission.email, result.inviteCode, {
+            instanceName: resolveBrandInstanceName(database),
+          });
+        } catch {
+          // Non-blocking mailer warning
+        }
+      }
+
+      res.json({
+        success: true,
+        submission: result.submission,
+        inviteCode: result.inviteCode,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to approve waitlist submission" });
+    }
+  });
+
+  /**
+   * POST /api/v1/admin/waitlist/:id/reject
+   * Rejects a waitlist candidate
+   */
+  router.post("/admin/waitlist/:id/reject", moderatorAuth, (req: Request, res: Response) => {
+    try {
+      const id = Number(req.params["id"]);
+      const rejected = database.rejectWaitlistSubmission(id, req.user?.id || null);
+      if (!rejected) {
+        res.status(404).json({ error: "Waitlist submission not found" });
+        return;
+      }
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "waitlist_submission_rejected",
+        resourceType: "waitlist",
+        resourceId: String(id),
+        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+      });
+
+      res.json({ success: true, id });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to reject waitlist submission" });
     }
   });
 
