@@ -9,6 +9,8 @@ import Box from "../components/Box";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { usePageTitle } from "../util/title";
 
+import { useInstanceBranding } from "../InstanceBrandingContext";
+
 // Extracted Tab Subcomponents
 import { AccountTab } from "./settings/tabs/AccountTab";
 import { BillingTab } from "./settings/tabs/BillingTab";
@@ -16,6 +18,7 @@ import { BotsTab } from "./settings/tabs/BotsTab";
 import { ConnectedAccountsTab } from "./settings/tabs/ConnectedAccountsTab";
 import { DataArchiveTab } from "./settings/tabs/DataArchiveTab";
 import { DisplayAndPreferencesTab } from "./settings/tabs/DisplayAndPreferencesTab";
+import { InvitesTab } from "./settings/tabs/InvitesTab";
 import { ModelingPreferencesTab } from "./settings/tabs/ModelingPreferencesTab";
 import { NotificationFiltersTab } from "./settings/tabs/NotificationFiltersTab";
 import { OrganizationTab } from "./settings/tabs/OrganizationTab";
@@ -148,6 +151,7 @@ export type TabType =
   | "notificationFilters"
   | "modelingPreferences"
   | "organizations"
+  | "invites"
   | "tokens";
 
 const SettingsPage: React.FC = () => {
@@ -159,6 +163,7 @@ const SettingsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
 
   const { isAdmin } = useAuth();
+  const branding = useInstanceBranding();
   const navigate = useNavigate();
   usePageTitle("Settings");
 
@@ -248,6 +253,17 @@ const SettingsPage: React.FC = () => {
               keywords: "team organization organizations company seats members invite roles collaborate license",
               isActive: activeTab === "organizations",
             },
+            ...(branding.userInvitesEnabled !== false
+              ? [
+                  {
+                    id: "invites",
+                    label: "Member Invites & Golden Tickets",
+                    tab: "invites" as TabType,
+                    keywords: "invites invite golden tickets referral share access team friend pass code",
+                    isActive: activeTab === "invites",
+                  },
+                ]
+              : []),
             ...(hasBots
               ? [
                   {
@@ -378,6 +394,7 @@ const SettingsPage: React.FC = () => {
             onNavigateTab={(tab) => handleTabChange(tab as TabType)}
           />
         )}
+        {activeTab === "invites" && <InvitesTab onBack={handleMobileOrAccountBack} />}
         {activeTab === "bots" && <BotsTab onBack={handleMobileOrAccountBack} />}
         {activeTab === "tokens" && <TokensTab onBack={handleMobileOrAccountBack} />}
         {activeTab === "modelingPreferences" && <ModelingPreferencesTab />}

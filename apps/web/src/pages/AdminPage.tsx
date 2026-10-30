@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   adjustAdminUserCredits,
+  approveWaitlistSubmission,
   bulkResolveAdminModerationReports,
   createAdminHotBackup,
   createAdminInstanceInvite,
@@ -28,6 +29,7 @@ import {
   getAdminQuarantinedResources,
   getAdminSystemHealth,
   getAdminUsers,
+  getAdminWaitlist,
   importAdminFederationDomains,
   moderateAdminUser,
   patchAdminFeatureFlag,
@@ -36,6 +38,7 @@ import {
   pruneAdminBackups,
   purgeAdminFederationQueue,
   redactExpiredAdminAuditLogs,
+  rejectWaitlistSubmission,
   resolveAdminDmcaNotice,
   resolveAdminModerationReport,
   restoreAdminBackup,
@@ -66,6 +69,7 @@ import {
   type AdminSystemHealth,
   type AdminUserStatusBreakdown,
   type AdminUserSummary,
+  type AdminWaitlistEntry,
 } from "../api";
 import Box from "../components/Box";
 import { usePageTitle } from "../util/title";
@@ -83,6 +87,7 @@ import {
   AdminSettingsTab,
   AdminSystemTab,
   AdminUsersTab,
+  AdminWaitlistTab,
   DetailColumn,
   Header,
   ModalBox,
@@ -111,6 +116,7 @@ export const AdminPage: React.FC = () => {
     const raw = (subRoute || "").split("/")[0]?.toLowerCase();
     if (
       raw === "users" ||
+      raw === "waitlist" ||
       raw === "federation" ||
       raw === "dmca" ||
       raw === "audit" ||
@@ -152,6 +158,9 @@ export const AdminPage: React.FC = () => {
   const [userStatusFilter, setUserStatusFilter] = useState<string>("all");
   const [userRoleFilter, setUserRoleFilter] = useState<string>("all");
   const [userPageOffset, setUserPageOffset] = useState<number>(0);
+
+  // Waitlist state
+  const [waitlistEntries, setWaitlistEntries] = useState<AdminWaitlistEntry[]>([]);
 
   // Analytics state
   const [analyticsSummary, setAnalyticsSummary] = useState<AdminAnalyticsSummary | null>(null);
@@ -288,6 +297,19 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const loadWaitlist = async () => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await getAdminWaitlist();
+      setWaitlistEntries(res.waitlist || []);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to load waitlist applications"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadFederationDomains = async () => {
     setLoading(true);
     clearMessages();
@@ -406,6 +428,7 @@ export const AdminPage: React.FC = () => {
   useEffect(() => {
     if (activeTab === "moderation") void loadModerationQueue();
     else if (activeTab === "users") void loadUsers();
+    else if (activeTab === "waitlist") void loadWaitlist();
     else if (activeTab === "analytics") void loadAnalytics();
     else if (activeTab === "federation") void loadFederationDomains();
     else if (activeTab === "dmca") void loadDmcaNotices();
@@ -569,6 +592,15 @@ export const AdminPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleApproveWaitlist = async (id: number) => {
+    const res = await approveWaitlistSubmission(id);
+    return { inviteCode: res.inviteCode };
+  };
+
+  const handleRejectWaitlist = async (id: number, reason?: string) => {
+    await rejectWaitlistSubmission(id, reason);
   };
 
   const [confirmModal, setConfirmModal] = useState<{
@@ -1034,6 +1066,16 @@ export const AdminPage: React.FC = () => {
               onModerateUser={handleModerateUser}
               onAdjustUserCredits={handleAdjustUserCredits}
               loading={loading}
+            />
+          )}
+
+          {activeTab === "waitlist" && (
+            <AdminWaitlistTab
+              entries={waitlistEntries}
+              loading={loading}
+              onRefresh={loadWaitlist}
+              onApprove={handleApproveWaitlist}
+              onReject={handleRejectWaitlist}
             />
           )}
 

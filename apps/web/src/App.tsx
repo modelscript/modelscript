@@ -57,6 +57,7 @@ const TermsPage = React.lazy(() => import("./pages/TermsPage"));
 const VerifyEmailPage = React.lazy(() => import("./pages/VerifyEmailPage"));
 const TemplateDetailPage = React.lazy(() => import("./pages/TemplateDetailPage"));
 const WorkspacePage = React.lazy(() => import("./pages/WorkspacePage"));
+const OnboardingWizardPage = React.lazy(() => import("./pages/onboarding/OnboardingWizardPage"));
 
 /**
  * Disambiguates two-segment package routes `/packages/:first/:second`:
@@ -430,6 +431,7 @@ export function InstanceAnnouncementBanner({
 function App() {
   const { theme } = useTheme();
   const { user, isLoading, login } = useAuth();
+  const branding = useInstanceBranding();
   const { isLoading: isFlagsLoading } = useFeatureFlags();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
@@ -459,10 +461,32 @@ function App() {
             <ErrorBoundary>
               <Suspense fallback={<PageLoadingFallback />}>
                 <Routes>
-                  <Route path="/" element={<Navigate to={user ? "/home" : "/explore"} replace />} />
+                  <Route
+                    path="/"
+                    element={
+                      <Navigate
+                        to={
+                          user
+                            ? branding.onboardingWizardEnabled && !user.onboarding_completed
+                              ? "/onboarding"
+                              : "/home"
+                            : "/explore"
+                        }
+                        replace
+                      />
+                    }
+                  />
                   <Route path="/setup" element={<SetupWizardPage onLoginSuccess={login} />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/signup" element={<SignupPage />} />
+                  <Route
+                    path="/onboarding"
+                    element={
+                      <RequireAuth feature="guided onboarding">
+                        <OnboardingWizardPage />
+                      </RequireAuth>
+                    }
+                  />
                   <Route path="/terms" element={<TermsPage />} />
                   <Route path="/privacy" element={<PrivacyPage />} />
                   <Route path="/oauth/callback" element={<OAuthCallbackPage />} />

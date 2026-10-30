@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  ClockIcon,
   DatabaseIcon,
   GearIcon,
   GlobeIcon,
@@ -57,6 +58,10 @@ export const AdminMenuSidebar: React.FC<AdminMenuSidebarProps> = ({ activeTab, o
           {overviewCounts && overviewCounts.restrictedUsers > 0 && (
             <Badge $variant="danger">{overviewCounts.restrictedUsers}</Badge>
           )}
+        </TabButton>
+        <TabButton $active={activeTab === "waitlist"} onClick={() => onSelectTab("waitlist")}>
+          <ClockIcon size={16} />
+          <span style={{ flex: 1 }}>Waitlist Applications</span>
         </TabButton>
         <TabButton $active={activeTab === "analytics"} onClick={() => onSelectTab("analytics")}>
           <GraphIcon size={16} />

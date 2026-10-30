@@ -285,4 +285,71 @@ test("Ansatz Onboarding, Waitlist & Referral HTTP Routes Suite", async (t) => {
       .expect(200);
     assert.strictEqual(resAliceInvitesAfter.body.referrals[0].reward_granted, true);
   });
+
+  await t.test("Tier 2 Enterprise / Air-Gapped decoupling verification", async () => {
+    // 1. Switch instance settings to Tier 2 Ansatz Enterprise configuration
+    db.updateInstanceSettings(
+      {
+        instanceName: "Ansatz Enterprise",
+        instanceBadge: "Enterprise",
+        registrationMode: "domain_allowlist",
+        allowedEmailDomains: ["corp.internal", "aerospace.com"],
+        federationMode: "disabled",
+        waitlistEnabled: false,
+        userInvitesEnabled: false,
+        academicFastTrackEnabled: false,
+      },
+      adminUser.id,
+    );
+
+    // 2. GET /instance/banner should reflect enterprise settings and disabled waitlist
+    const bannerRes = await request(app).get("/api/v1/instance/banner").expect(200);
+    assert.strictEqual(bannerRes.body.instanceName, "Ansatz Enterprise");
+    assert.strictEqual(bannerRes.body.instanceBadge, "Enterprise");
+    assert.strictEqual(bannerRes.body.registrationMode, "domain_allowlist");
+    assert.strictEqual(bannerRes.body.waitlistEnabled, false);
+    assert.strictEqual(bannerRes.body.userInvitesEnabled, false);
+    assert.strictEqual(bannerRes.body.academicFastTrackEnabled, false);
+
+    // 3. POST /waitlist/apply should be rejected with 400
+    const waitlistRes = await request(app)
+      .post("/api/v1/waitlist/apply")
+      .send({ email: "outsider@external.com" })
+      .expect(400);
+    assert.match(waitlistRes.body.error, /Waitlist applications are currently disabled/i);
+
+    // 4. Generating member invites / golden tickets should be rejected with 403
+    const genRes = await request(app)
+      .post("/api/v1/users/me/invites/generate")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({})
+      .expect(403);
+    assert.match(genRes.body.error, /disabled on this instance/i);
+
+    // 5. Registration with unauthorized domain should be rejected
+    const unauthReg = await request(app)
+      .post("/api/v1/auth/register")
+      .send({
+        username: "unauth_user",
+        email: "intruder@gmail.com",
+        password: "Password123!",
+        acceptTerms: true,
+        captchaToken: "mock-valid",
+      })
+      .expect(403);
+    assert.match(unauthReg.body.error, /approved email domains/i);
+
+    // 6. Registration with authorized domain succeeds without requiring invite code
+    const authReg = await request(app)
+      .post("/api/v1/auth/register")
+      .send({
+        username: "corp_engineer",
+        email: "alice@corp.internal",
+        password: "Password123!",
+        acceptTerms: true,
+        captchaToken: "mock-valid",
+      })
+      .expect(201);
+    assert.strictEqual(authReg.body.user.username, "corp_engineer");
+  });
 });

@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { EyeClosedIcon, EyeIcon, MarkGithubIcon } from "@primer/octicons-react";
+import { EyeClosedIcon, EyeIcon, MarkGithubIcon, MortarBoardIcon } from "@primer/octicons-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import api from "../api/client";
 import { useAuth } from "../AuthContext";
 import AnsatzMark from "../components/AnsatzLogo";
+import WaitlistModal from "../components/auth/WaitlistModal";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { usePageTitle } from "../util/title";
 import { GitLabIcon } from "./login/icons";
@@ -225,6 +226,16 @@ export default function SignupPage() {
 
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+
+  const isAcademicEmail = Boolean(
+    email &&
+    branding.academicFastTrackEnabled &&
+    (email.toLowerCase().endsWith(".edu") ||
+      email.toLowerCase().endsWith(".ac.uk") ||
+      (branding.academicDomainPatterns &&
+        branding.academicDomainPatterns.some((p) => email.toLowerCase().includes(p.toLowerCase())))),
+  );
 
   return (
     <PageWrapper>
@@ -424,21 +435,82 @@ export default function SignupPage() {
                 </PasswordInputWrapper>
               </FieldGroup>
               <FieldGroup>
-                <FieldLabel htmlFor="signup-invite-code">
-                  {authConfig?.registrationMode === "invite_only"
-                    ? "Invite Code (required)"
-                    : "Invite Code (if required by instance)"}
-                </FieldLabel>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <FieldLabel htmlFor="signup-invite-code" style={{ marginBottom: 0 }}>
+                    {authConfig?.registrationMode === "invite_only" && !isAcademicEmail
+                      ? "Invite Code (required)"
+                      : "Invite Code (optional)"}
+                  </FieldLabel>
+                  {branding.waitlistEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => setWaitlistOpen(true)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--color-accent-cyan, #06b6d4)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      Request an Access Key
+                    </button>
+                  )}
+                </div>
+
+                {isAcademicEmail && (
+                  <div
+                    style={{
+                      background: "rgba(16, 185, 129, 0.1)",
+                      border: "1px solid rgba(16, 185, 129, 0.3)",
+                      borderRadius: "6px",
+                      padding: "6px 10px",
+                      fontSize: "12px",
+                      color: "#10b981",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      margin: "4px 0",
+                    }}
+                  >
+                    <MortarBoardIcon size={14} />
+                    <span>Academic institution detected — Instant Access unlocked!</span>
+                  </div>
+                )}
+
                 <Input
                   id="signup-invite-code"
                   name="inviteCode"
                   type="text"
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
-                  placeholder="msx-inv-..."
+                  placeholder={isAcademicEmail ? "Not required for verified academic domains" : "msx-inv-..."}
                   aria-label="Invite Code"
-                  required={authConfig?.registrationMode === "invite_only"}
+                  required={authConfig?.registrationMode === "invite_only" && !isAcademicEmail}
                 />
+
+                {branding.waitlistEnabled && !isAcademicEmail && (
+                  <div style={{ fontSize: "12px", color: "var(--color-text-secondary, #94a3b8)", marginTop: "4px" }}>
+                    Don't have an invite code?{" "}
+                    <button
+                      type="button"
+                      onClick={() => setWaitlistOpen(true)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--color-accent-cyan, #06b6d4)",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        padding: 0,
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Request an Access Key
+                    </button>
+                  </div>
+                )}
               </FieldGroup>
 
               <CheckboxWrapper>
@@ -480,6 +552,12 @@ export default function SignupPage() {
           </>
         )}
       </Card>
+      <WaitlistModal
+        isOpen={waitlistOpen}
+        onClose={() => setWaitlistOpen(false)}
+        defaultEmail={email}
+        brandName={brandName}
+      />
     </PageWrapper>
   );
 }

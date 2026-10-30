@@ -17,6 +17,8 @@ export interface User {
   has_password?: boolean | undefined;
   token_version?: number | undefined;
   totp_enabled?: boolean | undefined;
+  onboarding_completed?: boolean | number | undefined;
+  engineering_persona?: string | null | undefined;
 }
 
 interface AuthContextType {

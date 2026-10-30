@@ -13,4 +13,5 @@ export * from "./tabs/AdminModerationTab";
 export * from "./tabs/AdminSettingsTab";
 export * from "./tabs/AdminSystemTab";
 export * from "./tabs/AdminUsersTab";
+export * from "./tabs/AdminWaitlistTab";
 export type * from "./types";

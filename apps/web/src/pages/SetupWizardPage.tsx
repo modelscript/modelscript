@@ -36,17 +36,21 @@ export interface SetupWizardPageProps {
 const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
   tier1_federated: {
     id: "tier1_federated",
-    label: "Tier 1: Independent Federated Node",
+    label: "Tier 1: Ansatz Lab (Independent Federated Node)",
     description:
-      "Invite-only registration with open ActivityPub S2S federation. Ideal for research labs, small teams, and self-hosted federated operators.",
+      "Invite-only registration with open ActivityPub S2S federation. Ideal for research labs, universities, and self-hosted federated operators.",
     registrationMode: "invite_only",
     federationMode: "open",
     autoQuarantineReportThreshold: 3,
     backupRetentionCount: 7,
-    instanceName: "Ansatz",
-    instanceBadge: "Lab",
-    instanceTagline: "Federated Scientific & Engineering Node",
-    showPoweredBy: true,
+    defaultInstanceName: "Ansatz Lab",
+    defaultInstanceBadge: "Lab",
+    defaultDocsBaseUrl: "https://modelscript.org",
+    defaultShowPoweredBy: true,
+    waitlistEnabled: false,
+    userInvitesEnabled: true,
+    onboardingWizardEnabled: true,
+    academicFastTrackEnabled: true,
   },
   tier2_corporate: {
     id: "tier2_corporate",
@@ -57,24 +61,32 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
     federationMode: "disabled",
     autoQuarantineReportThreshold: 5,
     backupRetentionCount: 14,
-    instanceName: "Ansatz Enterprise",
-    instanceBadge: "Enterprise",
-    instanceTagline: "Private Multiphysics Modeling & Simulation Appliance",
-    showPoweredBy: true,
+    defaultInstanceName: "Ansatz Enterprise",
+    defaultInstanceBadge: "Enterprise",
+    defaultDocsBaseUrl: "/docs",
+    defaultShowPoweredBy: true,
+    waitlistEnabled: false,
+    userInvitesEnabled: false,
+    onboardingWizardEnabled: false,
+    academicFastTrackEnabled: false,
   },
   tier3_flagship: {
     id: "tier3_flagship",
-    label: "Tier 3: Public Flagship Hub",
+    label: "Tier 3: Ansatz Social (Public Flagship Node at ansatz.social)",
     description:
-      "Open registration with anti-Sybil verification, open ActivityPub federation, and automated report threshold quarantine. Ideal for large public hubs.",
+      "Open or gated registration with anti-Sybil verification, open ActivityPub federation, and automated report threshold quarantine. Flagship node at ansatz.social.",
     registrationMode: "open",
     federationMode: "open",
     autoQuarantineReportThreshold: 5,
     backupRetentionCount: 30,
-    instanceName: "Ansatz",
-    instanceBadge: "",
-    instanceTagline: "The Federated Scientific & Engineering Network",
-    showPoweredBy: true,
+    defaultInstanceName: "Ansatz",
+    defaultInstanceBadge: "",
+    defaultDocsBaseUrl: "https://modelscript.org",
+    defaultShowPoweredBy: true,
+    waitlistEnabled: true,
+    userInvitesEnabled: true,
+    onboardingWizardEnabled: true,
+    academicFastTrackEnabled: true,
   },
 };
 
@@ -235,10 +247,17 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
       setFederationMode(p.federationMode);
       setAutoQuarantineThreshold(p.autoQuarantineReportThreshold);
       setBackupRetentionCount(p.backupRetentionCount);
-      if (p.instanceName !== undefined) setInstanceName(p.instanceName);
-      if (p.instanceBadge !== undefined) setInstanceBadge(p.instanceBadge);
-      if (p.instanceTagline !== undefined) setInstanceTagline(p.instanceTagline);
-      if (p.showPoweredBy !== undefined) setShowPoweredBy(p.showPoweredBy);
+      const name = p.defaultInstanceName ?? (p as { instanceName?: string }).instanceName;
+      if (name !== undefined) setInstanceName(name);
+      const badge = p.defaultInstanceBadge ?? (p as { instanceBadge?: string }).instanceBadge;
+      if (badge !== undefined) setInstanceBadge(badge);
+      if ((p as { instanceTagline?: string }).instanceTagline !== undefined) {
+        setInstanceTagline((p as { instanceTagline?: string }).instanceTagline!);
+      }
+      const docs = p.defaultDocsBaseUrl ?? (tierId === "tier2_corporate" ? "/docs" : "https://modelscript.org");
+      if (docs !== undefined) setDocsBaseUrl(docs);
+      const powered = p.defaultShowPoweredBy ?? (p as { showPoweredBy?: boolean }).showPoweredBy;
+      if (powered !== undefined) setShowPoweredBy(powered);
     }
   };
 

@@ -18,6 +18,11 @@ export interface InstanceBrandingState {
   showPoweredBy: boolean;
   registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
   federationMode: "open" | "allowlist" | "disabled";
+  waitlistEnabled: boolean;
+  userInvitesEnabled: boolean;
+  academicFastTrackEnabled: boolean;
+  academicDomainPatterns: string[];
+  onboardingWizardEnabled: boolean;
   maintenanceMode: boolean;
   maintenanceLevel: "off" | "scheduled" | "read_only" | "lockdown";
   maintenanceEta: string;
@@ -57,6 +62,11 @@ const DEFAULT_BRANDING: Omit<
   showPoweredBy: true,
   registrationMode: "open",
   federationMode: "open",
+  waitlistEnabled: false,
+  userInvitesEnabled: false,
+  academicFastTrackEnabled: false,
+  academicDomainPatterns: ["edu", "ac.uk"],
+  onboardingWizardEnabled: false,
   maintenanceMode: false,
   maintenanceLevel: "off",
   maintenanceEta: "",
@@ -131,6 +141,18 @@ export const InstanceBrandingProvider: React.FC<{
         showPoweredBy: res.showPoweredBy !== undefined ? Boolean(res.showPoweredBy) : prev.showPoweredBy,
         registrationMode: res.registrationMode ?? prev.registrationMode,
         federationMode: res.federationMode ?? prev.federationMode,
+        waitlistEnabled: res.waitlistEnabled !== undefined ? Boolean(res.waitlistEnabled) : prev.waitlistEnabled,
+        userInvitesEnabled:
+          res.userInvitesEnabled !== undefined ? Boolean(res.userInvitesEnabled) : prev.userInvitesEnabled,
+        academicFastTrackEnabled:
+          res.academicFastTrackEnabled !== undefined
+            ? Boolean(res.academicFastTrackEnabled)
+            : prev.academicFastTrackEnabled,
+        academicDomainPatterns: res.academicDomainPatterns ?? prev.academicDomainPatterns,
+        onboardingWizardEnabled:
+          res.onboardingWizardEnabled !== undefined
+            ? Boolean(res.onboardingWizardEnabled)
+            : prev.onboardingWizardEnabled,
         maintenanceMode: nextMaintMode,
         maintenanceLevel: nextMaintLevel,
         maintenanceEta: res.maintenanceEta !== undefined ? res.maintenanceEta : prev.maintenanceEta,

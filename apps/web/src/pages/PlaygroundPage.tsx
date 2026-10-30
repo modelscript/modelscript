@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { XIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Spinner } from "@primer/react";
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { getArtifactView } from "../api";
+import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
@@ -50,12 +52,14 @@ const TEMPLATE_ALIASES: Record<string, string> = {
 };
 
 export const PlaygroundPage: React.FC = () => {
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const { openCompose } = useContext(ComposeContext);
   const toast = useToast();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
+  const [ctaDismissed, setCtaDismissed] = useState(false);
 
   const modelParam = searchParams.get("model");
   const templateParam = searchParams.get("template");
@@ -810,6 +814,75 @@ export const PlaygroundPage: React.FC = () => {
                 Discard & Load
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {!user && !ctaDismissed && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            maxWidth: "380px",
+            padding: "16px 20px",
+            background: "rgba(15, 23, 42, 0.95)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            border: "1px solid rgba(168, 85, 247, 0.4)",
+            borderRadius: "14px",
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(168, 85, 247, 0.15)",
+            zIndex: 1000,
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontWeight: 700,
+                fontSize: "14px",
+                color: "#fff",
+              }}
+            >
+              <ZapIcon size={16} fill="var(--color-accent-purple, #c084fc)" />
+              Save Model to Workspace
+            </div>
+            <button
+              onClick={() => setCtaDismissed(true)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#64748b",
+                cursor: "pointer",
+                padding: "2px",
+                display: "flex",
+                alignItems: "center",
+              }}
+              aria-label="Dismiss banner"
+            >
+              <XIcon size={14} />
+            </button>
+          </div>
+          <div style={{ fontSize: "12px", color: "#94a3b8", lineHeight: "1.4" }}>
+            Create a free account or sign in with your Access Key to run cloud simulations, fork models to your
+            engineering repo, and collaborate.
+          </div>
+          <div style={{ display: "flex", gap: "8px", marginTop: "2px" }}>
+            <Link to="/signup" style={{ flex: 1, textDecoration: "none" }}>
+              <Button size="small" variant="primary" style={{ width: "100%", justifyContent: "center" }}>
+                Claim Access Key
+              </Button>
+            </Link>
+            <Link to="/login" style={{ textDecoration: "none" }}>
+              <Button size="small" variant="default">
+                Sign In
+              </Button>
+            </Link>
           </div>
         </div>
       )}

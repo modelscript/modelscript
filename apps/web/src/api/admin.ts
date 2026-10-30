@@ -933,6 +933,11 @@ export interface PublicInstanceBannerResponse {
   announcementLevel: "info" | "warning" | "critical";
   registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
   federationMode?: "open" | "allowlist" | "disabled";
+  waitlistEnabled?: boolean;
+  userInvitesEnabled?: boolean;
+  academicFastTrackEnabled?: boolean;
+  academicDomainPatterns?: string[];
+  onboardingWizardEnabled?: boolean;
   customTermsMarkdown?: string;
   customPrivacyMarkdown?: string;
   needsSetup?: boolean;
@@ -952,7 +957,7 @@ export const getPublicInstanceBanner = async (): Promise<PublicInstanceBannerRes
 };
 
 export interface SetupTierPreset {
-  id: "tier1_federated" | "tier2_corporate" | "tier3_flagship";
+  id: "tier0_local_dev" | "tier1_federated" | "tier2_corporate" | "tier3_flagship";
   label: string;
   description: string;
   registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
@@ -963,7 +968,101 @@ export interface SetupTierPreset {
   defaultInstanceBadge?: string | undefined;
   defaultDocsBaseUrl?: string | undefined;
   defaultShowPoweredBy?: boolean | undefined;
+  waitlistEnabled?: boolean | undefined;
+  userInvitesEnabled?: boolean | undefined;
+  onboardingWizardEnabled?: boolean | undefined;
+  academicFastTrackEnabled?: boolean | undefined;
 }
+
+export interface WaitlistApplyPayload {
+  email: string;
+  fullName?: string;
+  organization?: string;
+  discipline?: string;
+  portfolioUrl?: string;
+  statement?: string;
+}
+
+export const applyToWaitlist = async (payload: WaitlistApplyPayload) => {
+  const { data } = await api.post("/waitlist/apply", payload);
+  return data as { success: boolean; message: string; submission: { id: number; email: string; status: string } };
+};
+
+export interface WaitlistSubmissionItem {
+  id: number;
+  email: string;
+  full_name: string | null;
+  organization: string | null;
+  discipline: string | null;
+  portfolio_url: string | null;
+  statement: string | null;
+  status: "pending" | "approved" | "rejected";
+  invite_code?: string | null;
+  approved_by?: number | null;
+  created_at: string;
+  reviewed_at?: string | null;
+}
+
+export const getAdminWaitlist = async (params?: { status?: string; limit?: number; offset?: number }) => {
+  const { data } = await api.get("/admin/waitlist", { params });
+  return data as { submissions: WaitlistSubmissionItem[]; count: number };
+};
+
+export const approveWaitlistSubmission = async (id: number) => {
+  const { data } = await api.post(`/admin/waitlist/${id}/approve`);
+  return data as { success: boolean; submission: WaitlistSubmissionItem; inviteCode: string };
+};
+
+export const rejectWaitlistSubmission = async (id: number) => {
+  const { data } = await api.post(`/admin/waitlist/${id}/reject`);
+  return data as { success: boolean; id: number };
+};
+
+export interface UserOnboardingStatus {
+  completed: boolean;
+  persona: string | null;
+  invitesRemaining: number;
+  completedAt?: string | null;
+}
+
+export const getUserOnboardingStatus = async () => {
+  const { data } = await api.get("/users/me/onboarding");
+  return data as UserOnboardingStatus;
+};
+
+export const completeUserOnboarding = async (persona: string) => {
+  const { data } = await api.post("/users/me/onboarding/complete", { persona });
+  return data as { success: boolean; status: UserOnboardingStatus };
+};
+
+export const getUserInvites = async () => {
+  const { data } = await api.get("/users/me/invites");
+  return data as {
+    invitesEnabled: boolean;
+    invitesRemaining: number;
+    invites: Array<{
+      id: number;
+      code: string;
+      created_at: string;
+      max_uses: number;
+      uses_count: number;
+      initial_credits: number;
+      note: string | null;
+    }>;
+    referrals: Array<{
+      id: number;
+      referee_username: string;
+      reward_granted: boolean;
+      reward_amount: number;
+      created_at: string;
+    }>;
+  };
+};
+
+export const generateUserInvite = async (note?: string, initialCredits?: number) => {
+  const { data } = await api.post("/users/me/invites/generate", { note, initialCredits });
+  return data as { success: boolean; invite: { id: number; code: string }; invitesRemaining: number };
+};
 
 export interface InstanceSetupStatus {
   needsSetup: boolean;

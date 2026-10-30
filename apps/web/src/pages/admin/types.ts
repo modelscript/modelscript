@@ -15,10 +15,10 @@ import type {
   AdminModerationAction,
   AdminModerationReport,
   AdminOverviewCounts,
-  AdminQuarantinedResource,
   AdminSystemDiagnosticsResponse,
   AdminUsersStatusBreakdown,
   AdminUserSummary,
+  AdminWaitlistEntry,
 } from "../../api";
 
 export type {
@@ -40,11 +40,13 @@ export type {
   AdminSystemDiagnosticsResponse,
   AdminUsersStatusBreakdown,
   AdminUserSummary,
+  AdminWaitlistEntry,
 };
 
 export type AdminTab =
   | "moderation"
   | "users"
+  | "waitlist"
   | "federation"
   | "dmca"
   | "audit"
