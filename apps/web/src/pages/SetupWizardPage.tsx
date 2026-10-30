@@ -50,17 +50,17 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
   },
   tier2_corporate: {
     id: "tier2_corporate",
-    label: "Tier 2: Corporate Intranet / Air-Gapped Appliance",
+    label: "Tier 2: Ansatz Enterprise (Corporate Intranet / Air-Gapped Appliance)",
     description:
       "Email domain allowlist registration with outbound ActivityPub federation disabled. Ideal for internal R&D intranets and classified SCIF/air-gapped appliances.",
     registrationMode: "domain_allowlist",
     federationMode: "disabled",
     autoQuarantineReportThreshold: 5,
     backupRetentionCount: 14,
-    instanceName: "Engineering Intranet",
-    instanceBadge: "Internal",
-    instanceTagline: "Private R&D Modeling & Simulation Appliance",
-    showPoweredBy: false,
+    instanceName: "Ansatz Enterprise",
+    instanceBadge: "Enterprise",
+    instanceTagline: "Private Multiphysics Modeling & Simulation Appliance",
+    showPoweredBy: true,
   },
   tier3_flagship: {
     id: "tier3_flagship",
@@ -164,9 +164,9 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
       setFederationMode("disabled");
       setAutoQuarantineThreshold(5);
       setBackupRetentionCount(14);
-      setInstanceName(res.presets?.tier2_corporate?.defaultInstanceName || "Engineering Intranet");
-      setInstanceBadge(res.presets?.tier2_corporate?.defaultInstanceBadge ?? "Internal");
-      setShowPoweredBy(false);
+      setInstanceName(res.presets?.tier2_corporate?.defaultInstanceName || "Ansatz Enterprise");
+      setInstanceBadge(res.presets?.tier2_corporate?.defaultInstanceBadge ?? "Enterprise");
+      setShowPoweredBy(true);
     }
   };
 

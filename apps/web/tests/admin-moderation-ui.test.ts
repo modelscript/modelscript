@@ -517,16 +517,16 @@ describe("Admin Console & Moderation UI Components Suite", () => {
       },
       tier2_corporate: {
         id: "tier2_corporate" as const,
-        label: "Tier 2: Corporate Intranet / Air-Gapped Appliance",
+        label: "Tier 2: Ansatz Enterprise (Corporate Intranet / Air-Gapped Appliance)",
         description: "Email domain allowlist registration with outbound ActivityPub federation disabled.",
         registrationMode: "domain_allowlist" as const,
         federationMode: "disabled" as const,
         autoQuarantineReportThreshold: 5,
         backupRetentionCount: 14,
-        instanceName: "Engineering Intranet",
-        instanceBadge: "Internal",
-        instanceTagline: "Private R&D Modeling & Simulation Appliance",
-        showPoweredBy: false,
+        instanceName: "Ansatz Enterprise",
+        instanceBadge: "Enterprise",
+        instanceTagline: "Private Multiphysics Modeling & Simulation Appliance",
+        showPoweredBy: true,
       },
       tier3_flagship: {
         id: "tier3_flagship" as const,
@@ -564,7 +564,7 @@ describe("Admin Console & Moderation UI Components Suite", () => {
 
     assert.ok(wizardHtml.includes("Ansatz First-Run Install Wizard"));
     assert.ok(wizardHtml.includes("Tier 1: Independent Federated Node"));
-    assert.ok(wizardHtml.includes("Tier 2: Corporate Intranet / Air-Gapped Appliance"));
+    assert.ok(wizardHtml.includes("Tier 2: Ansatz Enterprise (Corporate Intranet / Air-Gapped Appliance)"));
     assert.ok(wizardHtml.includes("Tier 3: Public Flagship Hub"));
     assert.ok(wizardHtml.includes("Upload Bundle (.json)"));
 

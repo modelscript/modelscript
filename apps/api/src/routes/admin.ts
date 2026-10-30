@@ -101,17 +101,17 @@ const SETUP_TIER_PRESETS = {
   },
   tier2_corporate: {
     id: "tier2_corporate",
-    label: "Tier 2: Corporate Intranet / Air-Gapped Appliance",
+    label: "Tier 2: Ansatz Enterprise (Corporate Intranet / Air-Gapped Appliance)",
     description:
       "Email domain allowlist registration with outbound ActivityPub federation disabled. Ideal for internal R&D intranets and classified SCIF/air-gapped appliances.",
     registrationMode: "domain_allowlist" as const,
     federationMode: "disabled" as const,
     autoQuarantineReportThreshold: 5,
     backupRetentionCount: 14,
-    defaultInstanceName: "Engineering Intranet",
-    defaultInstanceBadge: "Internal",
+    defaultInstanceName: "Ansatz Enterprise",
+    defaultInstanceBadge: "Enterprise",
     defaultDocsBaseUrl: "/docs",
-    defaultShowPoweredBy: false,
+    defaultShowPoweredBy: true,
   },
   tier3_flagship: {
     id: "tier3_flagship",
