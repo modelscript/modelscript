@@ -431,11 +431,33 @@ jobs:
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
+      - name: Calculate Affected Bounds
+        id: set-shas
+        uses: nrwl/nx-set-shas@v4
+      - name: Check If Docker Services Affected
+        id: check-affected
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            AFFECTED=$(npx nx show projects --affected --projects=@modelscript/api,@modelscript/web,@modelscript/cli,@modelscript/docs,ee || true)
+            DOCKER_CHANGED=$(git diff --name-only ${{ steps.set-shas.outputs.base || 'HEAD~1' }} HEAD | grep -E '(^Dockerfile|^docker-compose|\.dockerignore)' || true)
+            if [ -n "$AFFECTED" ] || [ -n "$DOCKER_CHANGED" ]; then
+              echo "Docker targets affected: $AFFECTED $DOCKER_CHANGED"
+              echo "run_docker=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "No Docker service packages affected on PR. Skipping image build."
+              echo "run_docker=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "Push to main: running full Docker image bake."
+            echo "run_docker=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Install Dependencies
+        if: steps.check-affected.outputs.run_docker == 'true'
         run: npm ci
         env:
           CXXFLAGS: "-std=c++20"
       - name: Cache Nx
+        if: steps.check-affected.outputs.run_docker == 'true'
         uses: actions/cache@v4
         with:
           path: .nx/cache
@@ -445,20 +467,25 @@ jobs:
             ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
       - name: Fast Rebuild from Cache
+        if: steps.check-affected.outputs.run_docker == 'true'
         run: npx nx run-many -t build --parallel=3
       - name: Build PDF Reference Manual for Web & Appliance Images
+        if: steps.check-affected.outputs.run_docker == 'true'
         run: npm run build:pdf --workspace=@modelscript/docs
       - name: Rebuild Unified Site & Docs with PDF Manual
+        if: steps.check-affected.outputs.run_docker == 'true'
         run: npx nx build @modelscript/docs --skip-nx-cache
       - uses: docker/setup-buildx-action@v3
+        if: steps.check-affected.outputs.run_docker == 'true'
       - name: Log in to GHCR
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: steps.check-affected.outputs.run_docker == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push EE & CE Docker images
+        if: steps.check-affected.outputs.run_docker == 'true'
         uses: docker/bake-action@v6
         with:
           source: .

@@ -322,6 +322,37 @@ export default defineConfig({
             { text: "MCP Server & IDE Workbench", link: "/reference/mcp-and-ide" },
           ],
         },
+        {
+          text: "Ansatz Platform",
+          items: [
+            { text: "Overview & Architecture", link: "/ansatz/overview" },
+            { text: "ActivityPub Federation", link: "/ansatz/federation" },
+            { text: "Package Registry", link: "/ansatz/package-registry" },
+            { text: "Cloud HPC Simulation", link: "/ansatz/cloud-hpc" },
+            { text: "Self-Hosting Guide", link: "/ansatz/self-hosting" },
+          ],
+        },
+      ];
+
+      const ansatzSidebar: DefaultTheme.SidebarItem[] = [
+        {
+          text: "Ansatz Platform",
+          items: [
+            { text: "Overview & Architecture", link: "/ansatz/overview" },
+            { text: "ActivityPub Federation", link: "/ansatz/federation" },
+            { text: "Package Registry", link: "/ansatz/package-registry" },
+            { text: "Cloud HPC Simulation", link: "/ansatz/cloud-hpc" },
+            { text: "Self-Hosting Guide", link: "/ansatz/self-hosting" },
+          ],
+        },
+        {
+          text: "Guides & Operations",
+          items: [
+            { text: "Enterprise Administration", link: "/guide/administration" },
+            { text: "Embedding Artifacts", link: "/guide/embedding" },
+            { text: "CI/CD & GitHub Actions", link: "/guide/ci-cd" },
+          ],
+        },
       ];
 
       const engineSidebar: DefaultTheme.SidebarItem[] = [
@@ -364,6 +395,7 @@ export default defineConfig({
 
       return {
         "/guide/": docsSidebar,
+        "/ansatz/": ansatzSidebar,
         "/cli/": docsSidebar,
         "/reference/": docsSidebar,
         "/architecture/": engineSidebar,

@@ -88,11 +88,16 @@ const app = createApp({ mqttClient, dbPool, storage: undefined, historianRecorde
 const server = app.listen(port, () => {
   if (process.env["ENTERPRISE_APPLIANCE"] === "true") {
     console.log(`========================================================================`);
-    console.log(`Ansatz Hardened Enterprise Intranet Appliance (powered by ModelScript) running on port ${port}`);
-    console.log(`Air-Gap Security: ENFORCED | FERC CEII 18 CFR § 388.113 Active`);
+    console.log(`▲ Ansatz Enterprise Intranet Appliance (powered by ModelScript)`);
+    console.log(`├── Port:       ${port} | Air-Gap Security: ENFORCED | FERC CEII Active`);
+    console.log(`└── Engine:     44 Polyglot Languages & WebAssembly Linear DAE Arena`);
     console.log(`========================================================================`);
   } else {
-    console.log(`Ansatz API server (powered by ModelScript) listening on port ${port}`);
+    console.log(`▲ Ansatz API Server (powered by ModelScript)`);
+    console.log(`├── Local:      http://localhost:${port}`);
+    console.log(`├── Federation: ActivityPub & NodeInfo 2.1 Enabled`);
+    console.log(`├── Endpoints:  REST (/api/v1), GraphQL (/graphql), SPARQL (/sparql)`);
+    console.log(`└── Engine:     44 Polyglot Languages & WebAssembly Linear DAE Arena`);
   }
 });
 
