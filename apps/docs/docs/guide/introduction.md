@@ -35,7 +35,7 @@ flowchart LR
 | :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
 | **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
 | **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
-| **Static Analysis**          | Checked manually during design reviews                      | **790 static lint rules** across **43 languages** evaluated on every keystroke and CI push     |
+| **Static Analysis**          | Checked manually during design reviews                      | **794 static lint rules** across **44 languages** evaluated on every keystroke and CI push     |
 | **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
 | **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
 | **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |

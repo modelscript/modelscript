@@ -89,6 +89,7 @@ export const MaintenanceExperienceHost: React.FC = () => {
   const [checkingNow, setCheckingNow] = useState(false);
   const [endingMaint, setEndingMaint] = useState(false);
   const [noticeBanner, setNoticeBanner] = useState<string | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
 
   const isAdmin = user?.account_type === "admin" || user?.role === "admin";
   const isMaintenanceActive =
@@ -145,13 +146,20 @@ export const MaintenanceExperienceHost: React.FC = () => {
   const handleQuickEndMaintenance = async () => {
     setEndingMaint(true);
     try {
-      const updated = await patchAdminInstanceSettings({
+      const res = await patchAdminInstanceSettings({
         maintenanceMode: false,
         maintenanceLevel: "off",
         maintenanceEta: "",
       });
+      const updated =
+        res.settings ??
+        (res as unknown as {
+          maintenanceMode?: boolean;
+          maintenanceLevel?: "off" | "scheduled" | "read_only" | "lockdown";
+          maintenanceEta?: string;
+        });
       notifyInstanceBrandingUpdated({
-        maintenanceMode: updated.maintenanceMode,
+        maintenanceMode: Boolean(updated.maintenanceMode),
         maintenanceLevel: updated.maintenanceLevel ?? "off",
         maintenanceEta: updated.maintenanceEta ?? "",
       });
@@ -184,6 +192,84 @@ export const MaintenanceExperienceHost: React.FC = () => {
 
   return (
     <>
+      {/* ── LIVE CLIENT VERSION-MISMATCH UPGRADE BANNER ── */}
+      {branding.updateAvailable && !updateDismissed && (
+        <div
+          role="status"
+          data-testid="version-mismatch-upgrade-banner"
+          style={{
+            position: "fixed",
+            bottom: isAdmin && (isMaintenanceActive || branding.maintenanceLevel === "scheduled") ? "76px" : "20px",
+            right: "20px",
+            zIndex: 9998,
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "10px 14px",
+            borderRadius: "999px",
+            background: "rgba(15, 23, 42, 0.94)",
+            backdropFilter: "blur(12px)",
+            border: "1px solid rgba(6, 182, 212, 0.55)",
+            boxShadow: "0 12px 32px rgba(0, 0, 0, 0.45)",
+            color: "#f8fafc",
+            fontSize: "12.5px",
+            fontFamily: "var(--ms-font-sans, system-ui, sans-serif)",
+          }}
+        >
+          <span
+            style={{
+              width: "8px",
+              height: "8px",
+              borderRadius: "999px",
+              backgroundColor: "#06b6d4",
+              boxShadow: "0 0 10px #06b6d4",
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontWeight: 600 }}>A new version of Ansatz is available</span>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.location.reload();
+              }
+            }}
+            style={{
+              padding: "4px 12px",
+              borderRadius: "999px",
+              border: "1px solid rgba(6, 182, 212, 0.6)",
+              background: "linear-gradient(135deg, #0891b2, #06b6d4)",
+              color: "#ffffff",
+              fontSize: "11.5px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Reload
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss update notification"
+            onClick={() => {
+              setUpdateDismissed(true);
+              branding.dismissUpdateAvailable();
+            }}
+            style={{
+              padding: "2px 6px",
+              borderRadius: "999px",
+              border: "none",
+              background: "transparent",
+              color: "#94a3b8",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {noticeBanner && (
         <div
           role="alert"

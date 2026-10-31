@@ -24,7 +24,7 @@ flowchart LR
 
 | Stage                      | Command                                        | Output Format                             | Purpose                                                                                                 |
 | :------------------------- | :--------------------------------------------- | :---------------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 790 static syntax, type, unit, and structural rules across 43 languages.                       |
+| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 794 static syntax, type, unit, and structural rules across 44 languages.                       |
 | **Cross-Domain Alignment** | `msx polyglot verify .`                        | Terminal / Exit Code                      | Verifies `@satisfies` / `@verifies` bindings and cross-language port compatibility.                     |
 | **Visual PR Review**       | `msx pr-diff --base origin/main`               | `pr-comment`, `visual-svg`, `visual-html` | Generates color-coded schematic diffs (added = green, modified = amber, deleted = red).                 |
 | **Formal Verification**    | `msx verify <Class> <file> --format sarif`     | `sarif`, `junit`, `ctrf`, `html`, `dhf`   | Runs $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and flowpipe proofs; integrates with GitHub Security tab. |

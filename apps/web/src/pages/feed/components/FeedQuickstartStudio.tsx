@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckIcon, PlusIcon, RocketIcon } from "@primer/octicons-react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getUserSuggestions } from "../../../api";
+import { useAuth } from "../../../AuthContext";
 import { getAvatarUrl } from "../../../util/avatar";
 import { DISCIPLINES } from "../constants";
 import {
@@ -22,10 +23,67 @@ export interface FeedQuickstartStudioProps {
   onToggleFollow: (handle: string) => void;
 }
 
+const PERSONA_TO_DISCIPLINE: Record<string, string> = {
+  physical_systems: "electrical",
+  systems_engineering: "aerospace",
+  computational_cad: "robotics",
+  scientific_research: "automotive",
+};
+
+const QUICKSTART_HERO_CARDS = [
+  {
+    id: "bouncing-ball",
+    title: "Bouncing Ball",
+    subtitle: "Hybrid physics & impact events",
+    emoji: "⚽",
+    personas: ["physical_systems", "scientific_research"],
+  },
+  {
+    id: "rlc-circuit",
+    title: "RLC Circuit",
+    subtitle: "Resonant analog electronics",
+    emoji: "⚡",
+    personas: ["physical_systems", "systems_engineering"],
+  },
+  {
+    id: "lorenz-attractor",
+    title: "Lorenz Attractor",
+    subtitle: "Nonlinear chaotic attractor",
+    emoji: "🌀",
+    personas: ["scientific_research", "physical_systems"],
+  },
+  {
+    id: "sysml-satellite",
+    title: "CubeSat Power Architecture",
+    subtitle: "SysML v2 multi-domain architecture",
+    emoji: "🔋",
+    personas: ["systems_engineering", "computational_cad"],
+  },
+];
+
 export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ followedHandles, onToggleFollow }) => {
   const navigate = useNavigate();
-  const [selectedDiscipline, setSelectedDiscipline] = useState<string>("aerospace");
+  const { user } = useAuth();
+  const initialDiscipline =
+    (user?.engineering_persona && PERSONA_TO_DISCIPLINE[user.engineering_persona]) || "aerospace";
+  const [selectedDiscipline, setSelectedDiscipline] = useState<string>(initialDiscipline);
   const [suggestedUsers, setSuggestedUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (user?.engineering_persona && PERSONA_TO_DISCIPLINE[user.engineering_persona]) {
+      setSelectedDiscipline(PERSONA_TO_DISCIPLINE[user.engineering_persona]!);
+    }
+  }, [user?.engineering_persona]);
+
+  const orderedHeroCards = useMemo(() => {
+    const persona = user?.engineering_persona;
+    if (!persona) return QUICKSTART_HERO_CARDS;
+    return [...QUICKSTART_HERO_CARDS].sort((a, b) => {
+      const aMatch = a.personas.includes(persona) ? 0 : 1;
+      const bMatch = b.personas.includes(persona) ? 0 : 1;
+      return aMatch - bMatch;
+    });
+  }, [user?.engineering_persona]);
 
   useEffect(() => {
     getUserSuggestions(6)
@@ -51,82 +109,26 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
         </div>
       </div>
       <HeroGrid>
-        <HeroCard onClick={() => navigate("/playground?model=bouncing-ball")}>
-          <div style={{ fontSize: "24px" }}>⚽</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>Bouncing Ball</div>
-            <div
-              style={{
-                fontSize: "11px",
-                color: "var(--color-text-muted)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Hybrid physics &amp; impact events
+        {orderedHeroCards.map((card) => (
+          <HeroCard key={card.id} onClick={() => navigate(`/playground?model=${card.id}`)}>
+            <div style={{ fontSize: "24px" }}>{card.emoji}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>{card.title}</div>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "var(--color-text-muted)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {card.subtitle}
+              </div>
             </div>
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>Run ↗</div>
-        </HeroCard>
-        <HeroCard onClick={() => navigate("/playground?model=rlc-circuit")}>
-          <div style={{ fontSize: "24px" }}>⚡</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>RLC Circuit</div>
-            <div
-              style={{
-                fontSize: "11px",
-                color: "var(--color-text-muted)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Resonant analog electronics
-            </div>
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>Run ↗</div>
-        </HeroCard>
-        <HeroCard onClick={() => navigate("/playground?model=lorenz-attractor")}>
-          <div style={{ fontSize: "24px" }}>🌀</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>
-              Lorenz Attractor
-            </div>
-            <div
-              style={{
-                fontSize: "11px",
-                color: "var(--color-text-muted)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Nonlinear chaotic attractor
-            </div>
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>Run ↗</div>
-        </HeroCard>
-        <HeroCard onClick={() => navigate("/playground?model=sysml-satellite")}>
-          <div style={{ fontSize: "24px" }}>🔋</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-heading)" }}>
-              CubeSat Power Architecture
-            </div>
-            <div
-              style={{
-                fontSize: "11px",
-                color: "var(--color-text-muted)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              SysML v2 multi-domain architecture
-            </div>
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>Run ↗</div>
-        </HeroCard>
+            <div style={{ fontSize: "12px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>Run ↗</div>
+          </HeroCard>
+        ))}
       </HeroGrid>
 
       <DisciplineFollowsSection>

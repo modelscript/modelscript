@@ -333,6 +333,11 @@ getErrorString();
                 ...usage,
               });
               database.createNotification(userId, userId, "simulation_completed");
+              try {
+                database.grantReferralReward(userId);
+              } catch {
+                // Ignore referral reward errors
+              }
             }
           }
         } catch (err) {

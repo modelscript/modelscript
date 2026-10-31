@@ -110,6 +110,13 @@ const columns: MegaMenuColumn[] = [
         icon: "gauge",
         accent: "#fb7185",
       },
+      {
+        name: "Ansatz Platform & Hub",
+        tagline: "Federated engineering network, registry & cloud HPC",
+        href: "/ansatz/overview",
+        icon: "globe",
+        accent: "#38bdf8",
+      },
     ],
   },
 ];
@@ -125,8 +132,12 @@ const feature: MegaMenuFeature = {
 
 const footerLinks: MegaMenuFooterLink[] = [
   { label: "Ansatz Network (ansatz.social)", href: "https://ansatz.social", icon: "globe", target: "_blank" },
+  { label: "Self-Hosting Guide", href: "/ansatz/self-hosting", icon: "database" },
+  { label: "ActivityPub Federation", href: "/ansatz/federation", icon: "link" },
+  { label: "Package Registry", href: "/ansatz/package-registry", icon: "box" },
+  { label: "Cloud HPC Simulation", href: "/ansatz/cloud-hpc", icon: "zap" },
   { label: "Compiler Architecture", href: "/architecture/overview", icon: "cpu" },
-  { label: "Algorithms Catalog (15 engines)", href: "/algorithms/overview", icon: "activity" },
+  { label: "Algorithms Catalog (16 engines)", href: "/algorithms/overview", icon: "activity" },
   { label: "LLM Context (llms.txt)", href: "/llms.txt", icon: "sparkles", target: "_blank" },
 ];
 </script>
@@ -143,3 +154,4 @@ const footerLinks: MegaMenuFooterLink[] = [
     :screen-menu="props.screenMenu"
   />
 </template>
+

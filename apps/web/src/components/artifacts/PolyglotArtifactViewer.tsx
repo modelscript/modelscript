@@ -20,19 +20,35 @@ export interface PolyglotArtifactViewerProps {
   isFullScreen?: boolean | undefined;
 }
 
+export interface SanitizeSvgOptions {
+  isFullScreen?: boolean | undefined;
+  maxHeight?: string | undefined;
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
-export function sanitizeSvgMarkup(rawSvg: string): string {
+export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions): string {
   if (!rawSvg) return "";
   const sanitized = DOMPurify.sanitize(rawSvg, {
     USE_PROFILES: { svg: true, svgFilters: true },
     ADD_TAGS: ["use", "foreignObject"],
-    ADD_ATTR: ["target", "xlink:href", "viewBox", "preserveAspectRatio", "marker-end", "marker-start", "style"],
+    ADD_ATTR: [
+      "target",
+      "xlink:href",
+      "viewBox",
+      "preserveAspectRatio",
+      "marker-end",
+      "marker-start",
+      "style",
+      "data-fmu",
+      "data-node",
+      "data-id",
+    ],
   });
-  return sanitized.replace(
-    /<svg\b([^>]*)>/i,
-    (_match, attrs: string) =>
-      `<svg${attrs} style="width:100%;max-width:100%;height:auto;max-height:340px;display:block;margin:0 auto;">`,
-  );
+  const maxH = options?.maxHeight ?? (options?.isFullScreen ? "none" : "360px");
+  return sanitized.replace(/<svg\b([^>]*)>/i, (_match, attrs: string) => {
+    const cleanedAttrs = attrs.replace(/\sstyle=["'][^"']*["']/i, "");
+    return `<svg${cleanedAttrs} style="width:100%;max-width:100%;height:auto;max-height:${maxH};display:block;margin:0 auto;">`;
+  });
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -41,6 +57,7 @@ export function renderSourceToDiagramSvg(
   dslLang: string,
   _fallbackTitle = "Artifact",
   isDark = true,
+  isFullScreen = false,
 ): { svg: string; nodeCount: number; edgeCount: number } {
   if (!content || !content.trim()) {
     return { svg: "", nodeCount: 0, edgeCount: 0 };
@@ -351,11 +368,195 @@ export function renderSourceToDiagramSvg(
       } as any,
       { theme: isDark ? "dark" : "light" },
     );
-    return { svg: sanitizeSvgMarkup(rawSvg), nodeCount: nodes.length, edgeCount: edges.length };
+    return { svg: sanitizeSvgMarkup(rawSvg, { isFullScreen }), nodeCount: nodes.length, edgeCount: edges.length };
   } catch {
     return { svg: "", nodeCount: nodes.length, edgeCount: edges.length };
   }
 }
+
+export interface InteractiveSvgStageProps {
+  svgMarkup: string;
+  isFullScreen?: boolean | undefined;
+  minHeight?: string | undefined;
+  background?: string | undefined;
+  onClick?: ((e: React.MouseEvent<HTMLDivElement>) => void) | undefined;
+  children?: React.ReactNode;
+}
+
+export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
+  svgMarkup,
+  isFullScreen = false,
+  minHeight,
+  background,
+  onClick,
+  children,
+}) => {
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = React.useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    moved: boolean;
+  }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    origX: 0,
+    origY: 0,
+    moved: false,
+  });
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement | null)?.closest("button")) return;
+    dragRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: pan.x,
+      origY: pan.y,
+      moved: false,
+    };
+    setIsDragging(true);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      dragRef.current.moved = true;
+    }
+    setPan({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy });
+  };
+
+  const handleMouseUp = () => {
+    dragRef.current.active = false;
+    setIsDragging(false);
+  };
+
+  const handleStageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (dragRef.current.moved) {
+      dragRef.current.moved = false;
+      return;
+    }
+    onClick?.(e);
+  };
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onClick={handleStageClick}
+      style={{
+        position: "relative",
+        width: "100%",
+        height: isFullScreen ? "100%" : "auto",
+        minHeight: minHeight ?? (isFullScreen ? "100%" : "340px"),
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        cursor: isDragging ? "grabbing" : "grab",
+        background:
+          background ??
+          "radial-gradient(circle at center, var(--color-canvas-default) 0%, var(--color-canvas-subtle) 100%)",
+        padding: "16px",
+        userSelect: "none",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: "center center",
+          transition: isDragging ? "none" : "transform 0.12s ease-out",
+        }}
+        dangerouslySetInnerHTML={{ __html: svgMarkup }}
+      />
+      {children}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "absolute",
+          bottom: 10,
+          right: 10,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 2,
+          padding: "2px 4px",
+          borderRadius: 6,
+          background: "rgba(13, 17, 23, 0.82)",
+          border: "1px solid var(--color-border-muted)",
+          backdropFilter: "blur(6px)",
+          zIndex: 5,
+        }}
+      >
+        <button
+          type="button"
+          title="Zoom out"
+          onClick={() => setZoom((z) => Math.max(0.5, Number((z - 0.15).toFixed(2))))}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--color-fg-muted)",
+            cursor: "pointer",
+            padding: "2px 6px",
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          title="Reset zoom & pan"
+          onClick={() => {
+            setZoom(1);
+            setPan({ x: 0, y: 0 });
+          }}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--color-fg-default)",
+            cursor: "pointer",
+            padding: "2px 6px",
+            fontSize: 10,
+            fontFamily: "var(--font-mono, monospace)",
+            fontWeight: 600,
+          }}
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          type="button"
+          title="Zoom in"
+          onClick={() => setZoom((z) => Math.min(2.5, Number((z + 0.15).toFixed(2))))}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--color-fg-muted)",
+            cursor: "pointer",
+            padding: "2px 6px",
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const Container = styled(Box)<{ $isFullScreen?: boolean | undefined }>`
   display: flex;
@@ -680,19 +881,20 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
     }
 
     if (viewConfig?.svg && typeof viewConfig.svg === "string") {
-      return { svgMarkup: sanitizeSvgMarkup(viewConfig.svg), parsedStats: stats };
+      return { svgMarkup: sanitizeSvgMarkup(viewConfig.svg, { isFullScreen }), parsedStats: stats };
     }
 
     if (!rawCode.trim()) {
       return { svgMarkup: "", parsedStats: stats };
     }
 
-    const built = renderSourceToDiagramSvg(rawCode, dialect, title, isDark);
+    const built = renderSourceToDiagramSvg(rawCode, dialect, title, isDark, isFullScreen);
     return { svgMarkup: built.svg, parsedStats: stats };
-  }, [viewConfig, rawCode, dialect, title, isDark, isCodeOnlyDialect]);
+  }, [viewConfig, rawCode, dialect, title, isDark, isCodeOnlyDialect, isFullScreen]);
 
+  const [showSidebar, setShowSidebar] = useState(false);
   const codeLines = useMemo(() => (rawCode ? rawCode.split(/\r?\n/) : []), [rawCode]);
-  const hasSidebar = !isFullScreen && !isCodeOnlyDialect && parsedStats.length > 0;
+  const hasSidebar = !isFullScreen && !isCodeOnlyDialect && parsedStats.length > 0 && showSidebar;
   const effectiveViewMode = isCodeOnlyDialect || !svgMarkup ? "code" : viewMode;
 
   if (dialect === "fortran" || dialect === "f90" || dialect === "f95" || dialect === "f08" || dialect === "f18") {
@@ -790,6 +992,11 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
               </ToggleBtn>
             </ToggleGroup>
           )}
+          {!isFullScreen && !isCodeOnlyDialect && parsedStats.length > 0 && (
+            <Button size="small" onClick={() => setShowSidebar((s) => !s)}>
+              {showSidebar ? "Hide Telemetry" : `Telemetry (${parsedStats.length})`}
+            </Button>
+          )}
           {rawCode && (
             <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
               {copied ? "Copied" : "Copy"}
@@ -815,12 +1022,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
             <Text style={{ fontSize: 12, color: "var(--color-fg-muted)", marginTop: 8 }}>Loading artifact…</Text>
           </DiagramPane>
         ) : effectiveViewMode === "diagram" && svgMarkup ? (
-          <DiagramPane $isFullScreen={isFullScreen}>
-            <div
-              style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center" }}
-              dangerouslySetInnerHTML={{ __html: svgMarkup }}
-            />
-          </DiagramPane>
+          <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} />
         ) : (
           <CodePane $isFullScreen={isFullScreen}>
             {codeLines.length > 0 ? (

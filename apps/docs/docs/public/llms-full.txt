@@ -49,7 +49,7 @@ flowchart LR
 | :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
 | **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
 | **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
-| **Static Analysis**          | Checked manually during design reviews                      | **790 static lint rules** across **43 languages** evaluated on every keystroke and CI push     |
+| **Static Analysis**          | Checked manually during design reviews                      | **794 static lint rules** across **44 languages** evaluated on every keystroke and CI push     |
 | **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
 | **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
 | **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
@@ -156,13 +156,13 @@ msx lint ./models --daemon
 The official extension turns VS Code or Cursor into a complete multi-domain modeling studio:
 
 1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
-2. Search for **`ModelScript`** (`modelscript.modelscript-vscode`) and click **Install**.
+2. Search for **`ModelScript`** (`modelscript.modelscript`) and click **Install**.
 
 The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 44 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer, and the DAP time-travel simulation debugger.
 
 ### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
 
-Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **31 deterministic engineering tools** over the Model Context Protocol:
+Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **52 deterministic engineering tools** over the Model Context Protocol:
 
 ```bash
 # Register @modelscript/mcp in Claude Code with a single command
@@ -419,6 +419,424 @@ Suppose experimental drop-test telemetry shows a lower rebound height than `e = 
 - **[Triple Graph Grammar (TGG) Engine](../architecture/tgg.md)** — Learn how bidirectional synchronization keeps SysML v2 and Modelica aligned.
 
 ================================================================================
+DOCUMENT: AI Agents & MCP Workflows
+CANONICAL URL: https://modelscript.org/guide/ai-agents
+================================================================================
+
+# AI Agents & MCP Workflows
+
+Large language models excel at generating structure and exploring design spaces, but when asked to write differential equations, power-grid topologies, or safety-critical requirements in free text, they frequently hallucinate mismatched units, structurally singular DAEs, or violated physical conservation laws.
+
+ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic **Model Context Protocol (MCP)** server exposing **52 polyglot compilation, simulation, CAD, TGG, and formal verification tools** (plus **70+ domain-specific tool extensions**). Instead of guessing physics, an AI agent iteratively compiles, simulates, verifies, and calibrates models against mathematical solvers until every requirement proof passes.
+
+---
+
+## 1. Connecting Your AI Agent
+
+`@modelscript/mcp` supports three transport topologies: local `stdio`, remote HTTP Server-Sent Events (`SSE`), and in-browser WebAssembly (`PolyglotMcpHost`).
+
+### Claude Code (`stdio`)
+
+Register the MCP server directly in your project or user scope:
+
+```bash
+claude mcp add modelscript -- npx -y @modelscript/mcp
+```
+
+### Cursor, Windsurf, Claude Desktop & VS Code (`stdio`)
+
+Add `@modelscript/mcp` to `.cursor/mcp.json`, `.vscode/mcp.json`, or `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "modelscript": {
+      "command": "npx",
+      "args": ["-y", "@modelscript/mcp"],
+      "env": {
+        "MODELSCRIPT_API_URL": "http://localhost:3000"
+      }
+    }
+  }
+}
+```
+
+### Hosted Enterprise Hub (`SSE`)
+
+For cloud agents, CI review bots, and multi-tenant teams, connect to the ModelScript Hub's authenticated SSE gateway (`/api/v1/mcp/sse`) using a user JWT or scoped `ms_bot_*` service token:
+
+```json
+{
+  "mcpServers": {
+    "modelscript-cloud": {
+      "url": "https://hub.example.com/api/v1/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ms_bot_live_9f8e7d6c5b4a..."
+      }
+    }
+  }
+}
+```
+
+### Grounding Context Windows with `/llms.txt`
+
+When prompting an LLM outside of MCP (or seeding system prompts for custom agents), point the model at **`https://modelscript.org/llms.txt`**. It is generated directly from the compiler's CLI definitions, language registry, and linter catalogs during every documentation build.
+
+---
+
+## 2. Core Agentic Engineering Workflows
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent (Claude / Cursor)
+    participant MCP as @modelscript/mcp (52 Tools)
+    participant Core as WASM GLR + Salsa + DAE Arena
+    participant Verify as 13 Theory Oracles & Solvers
+
+    Agent->>MCP: 1. modelica_lint / sysml2_check_constraints
+    MCP->>Core: Parse CST & evaluate 794 static lint rules
+    Core-->>Agent: Structured diagnostics (line, col, rule, fix)
+    Agent->>MCP: 2. modelscript_closed_loop_synthesize
+    MCP->>Verify: Flatten DAE -> Integrate -> Check STL robustness
+    Verify-->>MCP: Counterexample trace (overshoot = 8.4% at t = 0.42s)
+    MCP-->>Agent: Actionable gradient & counterexample feedback
+    Agent->>MCP: 3. modelica_diff_calibrate (L-BFGS / Adam)
+    MCP->>Verify: Optimize parameters & re-verify contracts
+    Verify-->>Agent: Certified SAFE + SHA-256 Proof Manifest
+```
+
+### Workflow A: Autonomous Closed-Loop Physical Synthesis
+
+Rather than writing a Modelica controller in one shot and hoping it stabilizes the plant, instruct the agent to call **`modelscript_closed_loop_synthesize`**. This single tool orchestrates a five-stage compiler/solver loop:
+
+1. **GLR Parse & Semantic Lint** (`modelica_lint` across 307 Modelica rules)
+2. **Arena DAE Flattening & Pantelides Index Reduction** (`modelica_flatten`)
+3. **Time-Domain Integration** (`modelica_simulate` via SUNDIALS CVODE/IDA or Radau IIA)
+4. **Signal Temporal Logic (STL) Verification** (`sysml2_falsify_requirements`)
+5. **Counterexample & Sensitivity Tuning**: Evaluates STL robustness $\rho$ and tunes designated control gains (`tunableParameters`) via IMC-PID and sensitivity refinement until all five verification gates pass.
+
+**Example MCP Tool Call:**
+
+```json
+{
+  "name": "modelscript_closed_loop_synthesize",
+  "arguments": {
+    "modelName": "ActiveSuspension",
+    "modelicaSource": "model ActiveSuspension\n  parameter Real k_s = 18000;\n  parameter Real c_d = 1450;\n  ...\nend ActiveSuspension;",
+    "sysmlSource": "requirement def <'REQ-RIDE-01'> PeakAccelerationBound {\n  require constraint { maxVerticalAccel <= 1.8 }\n}",
+    "tunableParameters": ["Kp", "Ki", "Kd"],
+    "stopTime": 5.0,
+    "maxRepairIterations": 5
+  }
+}
+```
+
+---
+
+### Workflow B: Differentiable Parameter Calibration Against Test Data
+
+When you have experimental bench data or field telemetry in CSV format, the agent can call **`modelica_diff_calibrate`** to fit unknown physical parameters (such as friction coefficients, thermal resistances, or battery internal impedances) using forward-mode Automatic Differentiation (`DualNumber`) paired with **L-BFGS** or **Adam**:
+
+```json
+{
+  "name": "modelica_diff_calibrate",
+  "arguments": {
+    "modelName": "LithiumIonCell",
+    "sourceCode": "model LithiumIonCell ... end LithiumIonCell;",
+    "targetCsv": "time,v_terminal\n0.0,4.18\n10.0,4.09\n20.0,4.02\n...",
+    "parameters": [
+      { "name": "R_internal", "initial": 0.05, "min": 0.005, "max": 0.25 },
+      { "name": "C_dl", "initial": 1200.0, "min": 100.0, "max": 5000.0 }
+    ],
+    "optimizer": "lbfgs",
+    "maxIterations": 60,
+    "tolerance": 1e-5
+  }
+}
+```
+
+After calibration converges, ask the agent to invoke **`modelica_sensitivity`** to inspect local identifiability and confidence intervals around the calibrated operating point.
+
+---
+
+### Workflow C: Bidirectional SysML v2 $\leftrightarrow$ Modelica TGG Synchronization
+
+When a systems engineer adds a port or updates a mass budget in `.sysml` while a controls engineer edits equations in `.mo`, the digital thread can diverge. AI agents resolve cross-domain drift deterministically using three TGG & Theory Coordinator tools:
+
+1. **`validate_system_consistency`**: Cross-checks `.sysml` and `.mo` models (or runs the 13 Nelson-Oppen Domain Theory Oracles) to detect port topology mismatches, unit conflicts, and divergent shared parameter slots.
+2. **`tgg_diagnose_conflict`**: Runs static Critical Pair Analysis (CPA) and inspects concurrent edits on Triple Graph Grammar correspondence nodes.
+3. **`tgg_reconcile_slot`**: Applies a formal resolution policy (`source-wins`, `target-wins`, `physics-simplex`, or `interval_intersection`) and rewrites both ASTs losslessly.
+
+```json
+{
+  "name": "tgg_reconcile_slot",
+  "arguments": {
+    "correspondenceId": "corr_ThermalCoolantLoop_maxPressure",
+    "strategy": "interval_intersection",
+    "sysmlPath": "architecture/ThermalSystem.sysml",
+    "modelicaPath": "models/ThermalCoolantLoop.mo"
+  }
+}
+```
+
+---
+
+### Workflow D: Requirements Traceability Matrix (RTM) & Suspect Link Auditing
+
+Before cutting a release or generating an FDA / ISO 26262 Design History File (`msx dhf export`), an AI agent can audit the workspace's Requirements Traceability Matrix:
+
+1. **`rtm_query_matrix`**: Queries all requirements, satisfying architecture/physics elements, verification test cases, coverage percentages, and suspect links (where a downstream `.mo` equation or `.step` CAD solid changed after the requirement was last verified).
+2. **`rtm_diagnose_suspect`**: Computes the structural CST/DAE delta across the suspect link and recommends whether to re-run verification (`sysml2_verify`) or update the requirement bound.
+3. **`rtm_export_reqif`**: Exports the synchronized traceability matrix to OMG ReqIF 1.2 (`.reqif`) for enterprise ALM import.
+
+---
+
+### Workflow E: Cross-Domain CAD/FEA Sizing, Legacy B2B Certification & Formal Safety
+
+Beyond 1D system dynamics, `@modelscript/mcp` provides five cross-domain certification tools:
+
+- **`cad_fea_closed_loop_size`**: Couples parametric 3D OpenSCAD/STEP geometry with tetrahedral FEA von Mises stress analysis and 3D BVH collision clearance checks, iteratively sizing ribs, walls, and fillets until structural safety factors hold.
+- **`polyglot_migrate_and_verify_b2b`**: Transpiles legacy Simulink (`.slx`), SPICE (`.cir`), or Adams (`.adm`) models into balanced Modelica and SysML v2, then executes an ISO 26262 Part 6 Back-to-Back (B2B) trajectory equivalence proof with C99 SHA-256 codegen parity.
+- **`ssp_diagnose_cosim_stability`**: Detects direct-feedthrough algebraic loops across multi-FMU SSP topologies, computes the Zero-Order Hold (ZOH) spectral radius $\rho(J_{\mathrm{ZOH}})$, and synthesizes FMI directional-derivative Newton relaxation schedules.
+- **`formal_verify_safety_and_mcdc`**: Proves unbounded safety invariants via IC3/PDR and Sum-of-Squares (SOS) barrier certificates, and synthesizes DO-178C / ISO 26262 MC/DC independence-pair test vectors.
+- **`twin_discover_sindy_and_rom`**: Runs Sparse Identification of Nonlinear Dynamics (SINDy STLSQ) over hardware telemetry residuals to discover unmodeled physics terms and calibrate a real-time Reduced-Order Model (ROM).
+
+---
+
+## 3. Recommended Prompt Patterns for Engineers
+
+Use these prompt templates with Claude Code or Cursor when working in a ModelScript workspace:
+
+> ** Synthesis & Verification Prompt:**
+> _"Create a Modelica model `DC_BuckConverter.mo` and a companion `BuckConverterReq.sysml` specifying a $12\text{ V} \to 5\text{ V}$ step-down converter with output voltage ripple $\le 50\text{ mV}$ and settling time $\le 4\text{ ms}$. Run `modelica_lint`, simulate with `modelica_simulate`, and iterate using `modelscript_closed_loop_synthesize` until `sysml2_verify` proves both requirements SAFE."_
+
+> ** Legacy Migration Prompt:**
+> _"Import `legacy/PitchActuator.slx` into `models/PitchActuator.mo` using `polyglot_migrate_and_verify_b2b`, run `modelica_lint` to resolve any diagnostic warnings, and verify that the step response matches the Simulink reference trajectory within $10^{-4}$ relative error."_
+
+> ** Grid Compliance Prompt:**
+> _"Run `pscad_lint` and `pscad_verify_ieee2800` on `grid/WindFarm_300MW.pscx`. If Low-Voltage Ride-Through (LVRT) reactive current response time $T_{\text{resp}}$ exceeds $30\text{ ms}$, adjust the inverter inner current loop gains and re-run `pscad_verify_ieee2800` until all IEEE Std 2800-2022 clauses pass."\_
+
+---
+
+## Next Steps
+
+- **[MCP Server & IDE Workbench Reference](../reference/mcp-and-ide.md)** — Full schema reference for all 52 core MCP tools, IDE copilot tiers, and autonomous social bots.
+- **[CI/CD & GitHub Actions](./ci-cd.md)** — Automate headless linting, SARIF verification, visual PR diffs, and DHF compliance dossiers on every commit.
+
+================================================================================
+DOCUMENT: CI/CD & GitHub Actions
+CANONICAL URL: https://modelscript.org/guide/ci-cd
+================================================================================
+
+# CI/CD & GitHub Actions
+
+Because every ModelScript artifact — from Modelica equations and SysML v2 requirements to PSCAD schematics and STEP geometry — is stored as text in Git, your entire cyber-physical digital thread can be linted, simulated, formally verified, and packaged inside standard CI/CD pipelines.
+
+All `msx` CLI commands return strict POSIX exit codes (`0` = pass/proven safe, `1` = lint error/counterexample falsified, `2` = usage error) and respect `NO_COLOR=1` in non-interactive runners.
+
+---
+
+## 1. Continuous Verification Pipeline Overview
+
+```mermaid
+flowchart LR
+    PR["Git Push / Pull Request"] --> Lint["1. Polyglot Static Lint<br/>(msx lint --format json)"]
+    Lint --> Diff["2. Visual & Semantic PR Diff<br/>(msx pr-diff --format pr-comment)"]
+    Diff --> Verify["3. Formal Contract & STL Proofs<br/>(msx verify --format sarif)"]
+    Verify --> SARIF["GitHub Code Scanning<br/>(Upload results.sarif)"]
+    Verify --> Artifacts["4. Release Artifacts<br/>(msx fmu / msx dhf export)"]
+```
+
+| Stage                      | Command                                        | Output Format                             | Purpose                                                                                                 |
+| :------------------------- | :--------------------------------------------- | :---------------------------------------- | :------------------------------------------------------------------------------------------------------ |
+| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 794 static syntax, type, unit, and structural rules across 44 languages.                       |
+| **Cross-Domain Alignment** | `msx polyglot verify .`                        | Terminal / Exit Code                      | Verifies `@satisfies` / `@verifies` bindings and cross-language port compatibility.                     |
+| **Visual PR Review**       | `msx pr-diff --base origin/main`               | `pr-comment`, `visual-svg`, `visual-html` | Generates color-coded schematic diffs (added = green, modified = amber, deleted = red).                 |
+| **Formal Verification**    | `msx verify <Class> <file> --format sarif`     | `sarif`, `junit`, `ctrf`, `html`, `dhf`   | Runs $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and flowpipe proofs; integrates with GitHub Security tab. |
+| **STL Falsification**      | `msx falsify --modelica <file> --sysml <file>` | Counterexample trace JSON                 | Searches parameter and disturbance spaces via CMA-ES / Differential Evolution for safety violations.    |
+| **Deliverables & DHF**     | `msx fmu` & `msx dhf export`                   | `.fmu`, `.md`, `.html`, `.json`           | Packages FMI 3.0 Co-Simulation FMUs and signed FDA 21 CFR Part 820 / ISO 26262 DHF dossiers.            |
+
+---
+
+## 2. Complete GitHub Actions Workflow (`.github/workflows/modelscript-ci.yml`)
+
+Copy the workflow below into `.github/workflows/modelscript-ci.yml` to run polyglot linting, upload **SARIF 2.1.0** formal verification proofs to **GitHub Code Scanning**, post automated **Visual PR Diff** summaries on pull requests, and archive **FMI 3.0 FMUs** and **Regulatory DHF Dossiers**:
+
+```yaml
+name: ModelScript Digital Thread CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+env:
+  NO_COLOR: "1"
+
+jobs:
+  verify-digital-thread:
+    name: Lint, Verify & Package Digital Thread
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository with full history for PR diffs
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install @modelscript/cli and start warm compiler daemon
+        run: |
+          npm install -g @modelscript/cli
+          msx daemon start
+
+      - name: 1. Polyglot Static Linting
+        run: |
+          msx lint ./models ./architecture --daemon
+
+      - name: 2. Verify Cross-Language Digital Thread Links
+        run: |
+          msx polyglot verify . --daemon
+
+      - name: 3. Formal Contract Verification (SARIF + JUnit)
+        run: |
+          msx verify BrakingController models/BrakingController.mo \
+            --format sarif \
+            --report results.sarif \
+            --daemon
+
+      - name: Upload SARIF Proof Report to GitHub Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: modelscript-formal-verification
+
+      - name: 4. Generate Visual & Semantic Pull Request Diff
+        if: github.event_name == 'pull_request'
+        run: |
+          msx pr-diff \
+            --base origin/${{ github.base_ref }} \
+            --format pr-comment \
+            -o pr-diff-comment.md
+          msx pr-diff \
+            --base origin/${{ github.base_ref }} \
+            --format visual-svg \
+            -o visual-diff.svg
+
+      - name: 5. Build FMI 3.0 Co-Simulation FMU & Regulatory DHF Dossier
+        run: |
+          mkdir -p dist
+          msx fmu BrakingController models/BrakingController.mo \
+            --fmi-version 3 \
+            --type cs \
+            --wasm \
+            --output dist/BrakingController.fmu
+          msx dhf export ./models ./architecture \
+            --format html \
+            -o dist/design-history-file.html
+          msx dhf audit ./models ./architecture
+
+      - name: Upload FMU, Visual Diff & DHF Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: modelscript-release-bundle
+          path: |
+            dist/BrakingController.fmu
+            dist/design-history-file.html
+            results.sarif
+            visual-diff.svg
+```
+
+---
+
+## 3. Visual & Semantic Pull Request Diffs (`msx pr-diff`)
+
+Traditional text diffs struggle to convey the engineering impact of rewired acausal connectors or altered SysML v2 internal block diagrams. `msx pr-diff` parses both the base revision (`--base`) and head revision (`--head`) into CSTs and flattened DAEs, computing:
+
+- **Structural & Equation Delta**: Added, removed, or re-typed components, modified parameter bindings, and changed differential equations (ignoring whitespace or comment reformatting).
+- **Breaking Interface Detection (`--breaking-only`)**: Flags removed public connectors, narrowed requirement constraint intervals, or altered causal input/output signatures with exit code `1`.
+- **Color-Coded Visual Schematics (`--format visual-svg` / `visual-html`)**: Renders an overlay schematic highlighting added blocks in green, modified parameters in amber, and deleted connections in red.
+
+```bash
+# Generate a Markdown summary table for GitHub / GitLab PR comments
+msx pr-diff --base origin/main --format pr-comment -o pr-summary.md
+
+# Render a standalone interactive HTML schematic comparison
+msx pr-diff models/Powertrain.mo --base HEAD~1 --format visual-html -o diff.html
+
+# Fail CI if a pull request introduces breaking port or contract changes
+msx pr-diff --base origin/main --breaking-only
+```
+
+---
+
+## 4. Domain-Specific Compliance Gates
+
+In addition to general Modelica and SysML v2 verification, you can gate pull requests on industry-specific homologation standards:
+
+### Power Grid Interconnection (IEEE Std 2800-2022)
+
+```bash
+# Lint PSCAD EMT schematics and verify LVRT/HVRT ride-through compliance
+msx pscad lint grid/SolarPlant_250MW.pscx
+msx pscad verify-ieee2800 grid/SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2800.json
+```
+
+### Railway Vehicle Running Safety (EN 14363 / UIC 518)
+
+```bash
+# Lint GENSYS railway vehicle model and emit a SARIF homologation report
+msx gensys lint rail/HighSpeedBogie.calc
+msx gensys report rail/HighSpeedBogie.calc --format sarif --out en14363.sarif
+```
+
+### Subsea Flow Assurance (OLGA Severe Slugging & Hydrate Margins)
+
+```bash
+# Lint and verify MAOP, hydrate subcooling margin, and erosional velocity limits
+msx olga lint subsea/Tieback.opi
+msx olga verify subsea/Tieback.opi
+```
+
+---
+
+## 5. Offloading Heavy Campaigns to Cloud HPC (`msx cloud`)
+
+When a CI pipeline needs to run a 10,000-shot Monte Carlo uncertainty study or a multi-hour 3D CFD/FEA co-simulation, dispatch the job to a remote Slurm HPC cluster using `MODELSCRIPT_API_URL` and `MODELSCRIPT_TOKEN`:
+
+```bash
+# Dispatch a high-CPU simulation job to the ModelScript Cloud Slurm cluster
+msx simulate ThermalGrid models/ThermalGrid.mo \
+  --cloud \
+  --profile high-cpu \
+  --stop-time 3600 \
+  --output-dir ./artifacts/thermal
+
+# Or inspect and download artifacts from an asynchronous cloud job
+msx cloud status job_01j8x9k2m
+msx cloud download job_01j8x9k2m ./artifacts
+```
+
+---
+
+## Next Steps
+
+- **[CLI Overview](../cli/overview.md)** — Global flags (`--daemon`), environment variables, and exit code conventions.
+- **[CLI Commands Reference](../cli/commands.md)** — Exhaustive flag tables for all 41 `msx` commands.
+- **[Standards & Export Formats](../reference/export-formats.md)** — Details on SARIF 2.1.0, FMI 2.0/3.0, SSP, ReqIF, OSLC 3.0, and FDA/ISO DHF bundles.
+
+================================================================================
 DOCUMENT: Embedding ModelScript
 CANONICAL URL: https://modelscript.org/guide/embedding
 ================================================================================
@@ -667,7 +1085,7 @@ When a new ModelScript instance is deployed without an existing administrator ac
 3. **Instance Identity, Registration & Federation Policy**: Configures NodeInfo 2.0/2.1 metadata, email domain allowlists, and moderation auto-quarantine thresholds.
 4. **Starter Invites & Baseline Snapshot**: Generates initial invitation codes, records a `first-boot-baseline` SQLite hot backup (`VACUUM INTO` + SHA-256), signs the founding admin in, and **permanently locks** `POST /api/v1/setup/complete` (`403 Forbidden` on any subsequent calls).
 
-For automated GitOps / Helm / Ansible deployments, setting `ADMIN_INIT_USERNAME` and `ADMIN_INIT_PASSWORD` (or `AUTO_SEED_ADMIN=true`) bootstraps the founding administrator headlessly on boot.
+For automated GitOps / Helm / Ansible / Docker Compose deployments, setting `ADMIN_INIT_USERNAME` and `ADMIN_INIT_PASSWORD` (or `AUTO_SEED_ADMIN=true`) alongside `DEPLOYMENT_PRESET` (`tier3_flagship`, `tier2_corporate`, or `tier1_federated`) bootstraps the founding administrator headlessly on boot, applies the tier branding and federation policies, provisions cryptographic keys, and permanently locks the setup wizard without requiring any manual interaction.
 
 ### Role-Based Access Control (RBAC)
 
@@ -687,15 +1105,27 @@ Access to the Platform Administration Console (`/admin`) and `/api/v1/admin/*` e
 5. **DMCA & Universal Resource Quarantine**: Public statutory takedown intake (`POST /api/v1/admin/dmca/notices`), universal resource quarantine across `post`, `package`, `repository`, and `artifact` targets, 17 U.S.C. § 512(g) counter-notice filing (14-day statutory window), and one-click restoration.
 6. **Security & Audit Logs**: Cryptographic SHA-256 hash-chained audit ledger (`GET /api/v1/admin/audit-logs/verify`) with hash-preserving GDPR IP redaction (`POST /api/v1/admin/audit-logs/redact-expired`, replacing expired raw IPs with `REDACTED:<ipToken>` without breaking chain verification).
 7. **Database, Backups & Migration**: Live schema migration dry-run/upgrade, `PRAGMA` relational & physical integrity checks, online SQLite WAL `VACUUM INTO` snapshots with SHA-256 checksums, `.db` snapshot download, point-in-time online restore (with automatic `pre-restore` safety snapshot), retention pruning, and portable instance migration bundles (`/api/v1/admin/bundle/export` & `/import`).
-8. **Instance Settings & Registration Invites**: Dynamic NodeInfo 2.0/2.1 branding (`instanceName`, `instanceDescription`, `contactEmail`), registration policy (`open`, `invite_only`, `domain_allowlist`, `closed`), multi-use registration invite codes with initial compute credit and role grants, and a live global announcement / maintenance mode banner (`/api/v1/instance/banner`).
+8. **Instance Settings & Registration Invites**: Dynamic NodeInfo 2.0/2.1 branding (`instanceName`, `instanceDescription`, `contactEmail`), registration policy (`open`, `invite_only`, `domain_allowlist`, `closed`), multi-use registration invite codes with initial compute credit and role grants, and a live global announcement / multi-tiered maintenance mode banner (`/api/v1/instance/banner`).
 9. **System Health & Enterprise Posture**: Live storage & SQLite WAL telemetry, HPC job queue counters, GeoIP/Mailer readiness, and (in Enterprise Edition) Air-Gap / FERC CEII / ITAR compliance posture.
 
-### Headless CLI Database & Backup Management (`msx db`)
+### Multi-Tiered Maintenance Mode, Step-Up Sudo & Prometheus Metrics
+
+- **Multi-Tiered Maintenance Mode (`off` | `scheduled` | `read_only` | `lockdown`)**:
+  - Configurable dynamically via `PATCH /api/v1/admin/settings` (`maintenanceMode` and `maintenanceEta`) or via environment variables (`MSX_MAINTENANCE_MODE`, `MSX_MAINTENANCE_ETA`).
+  - `scheduled` surfaces a countdown banner on `/api/v1/instance/banner`; `read_only` blocks non-admin `POST`/`PUT`/`PATCH`/`DELETE` requests with `503 Service Unavailable` and `Retry-After` headers while keeping read/download routes online; `lockdown` restricts all non-admin traffic during major maintenance windows.
+- **Step-Up Sudo Mode (`POST /api/v1/admin/sudo` & `REQUIRE_ADMIN_SUDO=true`)**:
+  - Re-verifies the administrator's password or TOTP code and mints a 15-minute `admin_sudo` JWT token (`X-Admin-Sudo-Token`) required when `REQUIRE_ADMIN_SUDO=true` for high-impact mutations (role changes, database restores, bundle imports, and DMCA restorations).
+- **Prometheus & OpenMetrics Telemetry (`GET /api/v1/admin/metrics`)**:
+  - Exposes real-time instance metrics in standard Prometheus `text/plain; version=0.0.4` format (`modelscript_process_memory_bytes`, `modelscript_db_size_bytes`, `modelscript_users_total`, `modelscript_packages_total`, `modelscript_federation_activities_total`, `modelscript_hpc_jobs_total`, `modelscript_moderation_open_reports`).
+
+### Headless CLI Database, Diagnostics & Backup Management (`msx db`)
 
 ```bash
 msx db status                                  # View current schema version and pending migrations
 msx db upgrade [--dry-run]                     # Apply pending migrations with automatic pre-flight snapshot
 msx db verify                                  # Run PRAGMA foreign_key_check & integrity_check
+msx db doctor                                  # Deep health check (SQLite, audit hash-chain, disk headroom)
+msx db support-bundle --file support.json      # Export redacted diagnostic support bundle (zero secrets)
 msx db backup [--label pre-release]            # Create online SQLite WAL snapshot with SHA-256 digest
 msx db backups                                 # List available snapshots, sizes, and SHA-256 digests
 msx db restore --file modelscript-backup-..db  # Verify integrity & perform online point-in-time restore
@@ -926,13 +1356,13 @@ docker compose --env-file .env.enterprise --profile federated up -d
 
 #### B.3 Kubernetes StatefulSet Deployment
 
-Apply the hardened Kubernetes manifest at [`ee/deploy/kubernetes-appliance.yaml`](https://github.com/modelscript/modelscript/blob/main/ee/deploy/kubernetes-appliance.yaml) (pre-configured with `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `seccompProfile: RuntimeDefault`, and a strict zero-egress `NetworkPolicy`):
+Apply the hardened Kubernetes manifest at [`ee/deploy/kubernetes-appliance.yaml`](https://github.com/modelscript/modelscript/blob/main/ee/deploy/kubernetes-appliance.yaml) (pre-configured as a single-writer `StatefulSet` (`replicas: 1`) with `runAsNonRoot: true`, `seccompProfile: RuntimeDefault`, RFC 1918 `TRUSTED_PROXY_IPS`, and a strict zero-egress `NetworkPolicy`):
 
 ```bash
 kubectl create namespace modelscript-system
-kubectl -n modelscript-system create secret generic modelscript-ee-license \
-  --from-literal=MSX_LICENSE_KEY="msx_lic_<PAYLOAD>.<SIGNATURE>" \
-  --from-literal=JWT_SECRET="$(openssl rand -hex 32)"
+kubectl -n modelscript-system create secret generic modelscript-enterprise-secrets \
+  --from-literal=license-key="msx_lic_<PAYLOAD>.<SIGNATURE>" \
+  --from-literal=jwt-secret="$(openssl rand -hex 32)"
 kubectl apply -f ee/deploy/kubernetes-appliance.yaml
 ```
 
@@ -950,7 +1380,7 @@ curl -s http://localhost:8080/api/v1/compliance/airgap | jq .
 
 ### Scenario C: Official `modelscript.org` & `ansatz.social` Cloud Production Deployment
 
-`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/playground`) on `ansatz.social`, alongside the WebGPU IDE (`/ide`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
+`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/playground`) on `ansatz.social`, alongside the WebGPU IDE (`/ide`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
 
 #### C.1 Initial Server Provisioning (`/opt/modelscript`)
 
@@ -971,20 +1401,21 @@ chmod 600 .env.production
 #   MSX_LICENSE_ENFORCE=true
 #   MSX_LICENSE_KEY=<pre-minted modelscript-cloud-prod Ed25519 token>
 #   JWT_SECRET=<production-64-char-hex-secret>
+#   TOTP_ENCRYPTION_KEY=<production-64-char-hex-key>
 #   STRIPE_SECRET_KEY=sk_live_...
 #   STRIPE_WEBHOOK_SECRET=whsec_...
 
 # Pull prebuilt GHCR images and launch the production stack
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  --env-file .env.production --profile federated pull
+  --env-file .env.production --profile flagship pull
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  --env-file .env.production --profile federated up -d --wait --remove-orphans
+  --env-file .env.production --profile flagship up -d --wait --remove-orphans
 ```
 
 #### C.2 Automated CI/CD Rollouts (`.github/workflows/ci.yml` & `.github/workflows/release.yml`)
 
-Every push to `main` and every tagged release in GitHub Actions builds and pushes all 6 Docker images (`api`, `api-ce`, `web`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` (tagged with both `:sha-<commit>` / `:<version>` and `:latest`) and triggers the `deploy_production` rollout job under a shared `production-deploy` concurrency lock. Configure either SSH or Webhook secrets in GitHub repository settings:
+Every push to `main` and every tagged release in GitHub Actions builds and pushes all 6 Docker images (`api`, `api-ce`, `web`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` (tagged with both `:sha-<commit>` / `:<version>` and `:latest`) and triggers the `deploy_production` rollout job under a shared `production-deploy` concurrency lock. Before rolling out new containers, the deployment job executes an online SQLite `VACUUM INTO` snapshot inside the running `api` container (`/app/apps/api/data/backups/pre-deploy-<timestamp>.db`). Configure either SSH or Webhook secrets in GitHub repository settings:
 
 | GitHub Secret                          | Description                                                                                  |
 | :------------------------------------- | :------------------------------------------------------------------------------------------- |
@@ -1017,6 +1448,495 @@ npm run ee:sign-license -- \
 # 3. Verify any license token offline against the embedded production public key
 npm run ee:verify-license -- msx_lic_<PAYLOAD>.<SIGNATURE>
 ```
+
+---
+
+### 7. Upgrading & Rollback Runbook
+
+Follow this standard operating procedure whenever upgrading a self-hosted Ansatz hub or Enterprise appliance:
+
+```bash
+# 1. Place the hub in read_only maintenance mode so in-flight jobs finish cleanly
+curl -X PATCH https://hub.corp.internal/api/v1/admin/settings \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-Admin-Sudo-Token: $SUDO_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"maintenanceMode": "read_only"}'
+
+# 2. Take an atomic pre-upgrade snapshot and verify health
+msx db backup --label pre-upgrade
+msx db doctor
+
+# 3. Pull the target release images and preview pending schema migrations
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  --env-file .env.production --profile flagship pull
+msx db upgrade --dry-run
+
+# 4. Recreate containers and verify post-upgrade integrity
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  --env-file .env.production --profile flagship up -d --wait --remove-orphans
+msx db verify
+
+# 5. Exit maintenance mode once /health and /api/v1/ready report healthy
+curl -X PATCH https://hub.corp.internal/api/v1/admin/settings \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-Admin-Sudo-Token: $SUDO_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"maintenanceMode": "off"}'
+```
+
+If a release verification check fails and an immediate rollback is required:
+
+```bash
+# 1. Restore the pre-upgrade SQLite snapshot atomically
+msx db restore --file modelscript-backup-pre-upgrade.db
+
+# 2. Pin the previous image tag in .env.production (or docker-compose.prod.yml) and restart
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  --env-file .env.production --profile flagship up -d --wait
+```
+
+================================================================================
+DOCUMENT: Ansatz Platform Overview
+CANONICAL URL: https://modelscript.org/ansatz/overview
+================================================================================
+
+# Ansatz Platform Overview
+
+**Ansatz** (`ansatz.social`) is a federated engineering network and cloud computational platform powered by **ModelScript**. It extends the local ModelScript compiler and numerical solvers into a collaborative, web-native environment for systems engineers, dynamicists, and CAE practitioners.
+
+---
+
+## What is Ansatz?
+
+While **ModelScript** provides the core command-line toolchain (`msx`), WebAssembly GLR parsers, and linear-memory DAE simulation engine, **Ansatz** serves as the collaborative platform layer. It provides:
+
+1. **A Polyglot Package Registry:** A centralized and federated index for publishing and versioning Modelica, SysML v2, STEP, and ModelScript libraries with SPDX license auditing.
+2. **Federated Engineering Feeds ("Morsels"):** W3C ActivityPub-powered social collaboration where engineers share executable simulation runs, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
+3. **Cloud HPC Simulation Dispatcher:** An orchestration gateway bridging browser-based design with remote Slurm HPC clusters and continuum CAE solvers.
+4. **Interactive Browser Runtime:** Monaco-powered code editing, WebAssembly client-side simulation, SVG schematic layout, and Three.js 3D CAD visualization.
+5. **Digital Thread Explorer:** Cross-domain hypergraph navigation connecting requirements (`@satisfies`), tests (`@verifies`), and multi-physics artifacts.
+
+---
+
+## Architectural Separation: ModelScript vs. Ansatz
+
+The monorepo maintains a clear boundary between the engine and the platform:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Ansatz Platform (apps/)                         │
+│   • apps/web: React 19 SPA (ansatz.social, /playground, /embed)       │
+│   • apps/api: Express, GraphQL, SPARQL, Git Smart HTTP, ActivityPub   │
+├────────────────────────────────────────────────────────────────────────┤
+│                       ModelScript Engine (packages/)                    │
+│   • packages/runtime: SoA DAE arena, BLT, Salsa query engine           │
+│   • packages/simulate: SUNDIALS CVODE/IDA, WebGPU solver               │
+│   • packages/dsl: WASM GLR parser compiler, TGG graph rewriting        │
+│   • languages/*: 44 engineering domain language parsers                │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+The ModelScript engine is designed to be completely headless and can run inside the CLI (`msx`), inside local Node.js environments, or embedded directly inside the browser using WebAssembly. Ansatz is the cloud platform that hosts, shares, and coordinates these computations.
+
+---
+
+## Platform Surfaces
+
+| Surface              | Route               | Description                                                                               |
+| :------------------- | :------------------ | :---------------------------------------------------------------------------------------- |
+| **Home & Feeds**     | `/home`, `/explore` | ActivityPub engineering posts, simulation morsels, and discussion threads.                |
+| **Playground**       | `/playground`       | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.    |
+| **Package Registry** | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.       |
+| **Digital Thread**   | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences. |
+| **Administration**   | `/admin`            | Instance governance, moderation queues, S2S federation policies, and database backups.    |
+| **Setup Wizard**     | `/setup`            | First-boot guided configuration for initializing standalone or enterprise nodes.          |
+
+================================================================================
+DOCUMENT: ActivityPub Federation
+CANONICAL URL: https://modelscript.org/ansatz/federation
+================================================================================
+
+# ActivityPub Federation & Engineering Morsels
+
+Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-to-Server) to enable decentralized collaboration among engineers. Rather than confining simulations and discussions to a single walled garden, independent Ansatz nodes can federate, exchange posts, and follow engineers across the network.
+
+---
+
+## What is an Engineering Morsel?
+
+In conventional social networks, posts consist of plain text, images, or static video. In Ansatz, posts can carry **Morsels**—rich, structured payloads representing verifiable engineering artifacts:
+
+1. **Simulation Runs:** Encapsulated DAE/ODE trajectory datasets with time-series plots, parameter configurations, and solver settings.
+2. **Interactive 3D CAD/FEA/CFD Views:** Compressed STEP geometries or VTK Unstructured Grid (`.vtu`) stress fields viewable directly in the feed using Three.js and WebXR.
+3. **Schematic & Architecture Diffs:** Visual diffs (`PolyglotVersionDiffView`) showing added, modified, or removed components across Modelica and SysML diagrams.
+4. **Executable Scripts:** Self-contained ModelScript scripts that other engineers can open in `/playground` with a single click.
+
+---
+
+## Federation Protocol Details
+
+### Actor Identification & WebFinger
+
+Every engineer on an Ansatz node has a federated handle formatted as `@username@domain.com`. Remote instances resolve actor profiles via RFC 7033 WebFinger:
+
+```text
+GET /.well-known/webfinger?resource=acct:alice@ansatz.social
+```
+
+The server returns a JSON Resource Descriptor pointing to the actor's ActivityPub actor object at `/api/v1/users/alice`.
+
+### Cryptographic Signatures (HTTP Signatures)
+
+Outbound server-to-server HTTP requests are cryptographically signed using **HTTP Signatures** (draft-cavage) with an RSA-2048 keypair generated during account creation:
+
+- The public key is published in the actor document (`publicKey.publicKeyPem`).
+- Incoming activities are verified against the sender's public key before being accepted into the instance inbox (`/api/v1/inbox`).
+
+### Activity Types
+
+Ansatz supports standard ActivityStreams 2.0 activities:
+
+- `Create(Note)`: Publishing a new engineering post or morsel.
+- `Follow(Actor)`: Following an engineer on a remote node.
+- `Accept(Follow)`: Confirming a follow request.
+- `Announce(Note)`: Boosting or sharing a post to local followers.
+- `Like(Note)`: Favoriting an engineering post.
+- `Delete(Tombstone)`: Permanently retracting a post.
+
+---
+
+## Domain Moderation & Federation Policies
+
+Administrators control outbound and inbound federation via the **Federation** tab in `/admin`:
+
+| Policy Tier          | Behavior                                                                                 |
+| :------------------- | :--------------------------------------------------------------------------------------- |
+| **Open Federation**  | Connects to any valid ActivityPub node with verified HTTP signatures.                    |
+| **Domain Allowlist** | Only allows federation with explicitly approved partner instances.                       |
+| **Silenced Domain**  | Remote posts are hidden from public and explore feeds, visible only to direct followers. |
+| **Suspended Domain** | All incoming and outgoing federation traffic with the domain is blocked.                 |
+
+================================================================================
+DOCUMENT: Package Registry
+CANONICAL URL: https://modelscript.org/ansatz/package-registry
+================================================================================
+
+# Polyglot Package Registry
+
+The **Ansatz Package Registry** (`/packages`) provides versioned dependency management and artifact distribution for multi-domain engineering libraries. It supports native ModelScript packages alongside standard Modelica libraries, SysML v2 models, and STEP CAD repositories.
+
+---
+
+## Supported Package Formats
+
+| Format             | Scope & Manifest                     | Primary Usage                                                 |
+| :----------------- | :----------------------------------- | :------------------------------------------------------------ |
+| **ModelScript**    | `package.json` (`modelscript` field) | Native multi-domain models, equations, and simulation scripts |
+| **Modelica**       | `package.mo` / `package.order`       | Complete Modelica 3.x packages and component libraries        |
+| **SysML v2**       | `sysml.library`                      | OMG Systems Modeling Language v2 and KerML domain models      |
+| **STEP CAD**       | `step.json` manifest                 | ISO 10303 AP214/AP242 geometric parts and assemblies          |
+| **SSP Containers** | `SystemStructure.ssd`                | System Structure and Parameterization multi-FMU packages      |
+
+---
+
+## Package Lifecycle
+
+### 1. Authoring & Manifest Configuration
+
+Packages include metadata declaring dependencies, license, and maturity:
+
+```json
+{
+  "name": "@engineering/microgrid",
+  "version": "1.2.0",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@modelscript/modelica": "^4.1.0",
+    "@modelscript/pscad": "^0.0.18"
+  }
+}
+```
+
+### 2. Publishing Packages
+
+Engineers can publish packages through the web interface using the **Publish Package Modal** in `/packages`, or via the CLI:
+
+```bash
+msx publish ./my-package
+```
+
+### 3. Dependency Resolution & Integrity
+
+- **Content-Addressable Storage:** Published tarballs are stored and indexed by SHA-256 digest.
+- **SPDX License Auditing:** Manifests are analyzed during upload to verify valid SPDX identifiers and flag incompatible license pairings.
+- **Dependency Trees:** The registry computes transitive dependency graphs and displays required dependencies in the web UI.
+
+---
+
+## Industry Standards & Export Gateways
+
+Packages in the Ansatz registry can be exported into standardized industrial container formats with a single click:
+
+- **Asset Administration Shell (AASX):** Generates an Industry 4.0 Asset Administration Shell package compatible with AASX Package Explorer.
+- **Open Know-How (OKH):** Produces a DIN SPEC 3105 Open Know-How manifest (`okh.json`) for open-hardware traceability.
+- **ISO/PAS 81346 Digital Data Package (DDP):** Packages system hierarchies according to international reference designation standards.
+
+================================================================================
+DOCUMENT: Cloud HPC Simulation
+CANONICAL URL: https://modelscript.org/ansatz/cloud-hpc
+================================================================================
+
+# Cloud HPC & Distributed Simulation
+
+While client-side simulations execute directly in the browser via WebAssembly, large-scale multi-physics sweeps, high-dimensional Monte Carlo evaluations, and continuum finite-element/CFD meshes require dedicated high-performance computing resources. Ansatz provides a unified **Cloud HPC Launcher** connecting the web workbench with remote computing clusters.
+
+---
+
+## Architecture: Browser-to-Cluster Pipeline
+
+```mermaid
+flowchart LR
+    A["Browser (React 19 / Monaco)"] -->|POST /api/v1/cloud/jobs| B["Ansatz API Gateway"]
+    B -->|Slurm sbatch / REST| C["HPC Compute Node / Cluster"]
+    C -->|Worker Log Stream| B
+    B -->|WebSocket Logs| A
+    C -->|Results / VTK Output| D["Object Storage"]
+    D -->|Signed URL| A
+```
+
+### 1. Job Configuration
+
+Engineers configure compute parameters using the **Cloud Simulation Modal** in `/playground`:
+
+- **Solvers:** SUNDIALS CVODE, IDA stiff DAE, CalculiX FEA, or SU2 CFD.
+- **Resources:** Number of CPU cores, GPU acceleration (CUDA/OpenCL), and RAM limits.
+- **Parameter Sweeps:** Range definitions for Monte Carlo parameter uncertainty distributions.
+
+### 2. Job Dispatch & Slurm Orchestration
+
+The Ansatz API converts the workspace into a standalone execution package, validates user compute credits, and dispatches the task to the cluster via Slurm (`sbatch`) or containerized worker queues.
+
+### 3. Live Streaming Telemetry
+
+During execution, worker stdout and stderr logs stream back to the web client via WebSocket, displayed in the integrated **Terminal Log Viewer**.
+
+### 4. Interactive Field Visualization
+
+When continuum simulations finish, results are ingested and rendered directly in the browser:
+
+- **3D Stress & Deflection Fields:** Visualized from VTK Unstructured Grid (`.vtu`) files with interactive color scales and slice planes.
+- **Trajectory Overlays:** Simulation time-series comparisons plotted with interactive hover inspections.
+
+================================================================================
+DOCUMENT: Self-Hosting Guide
+CANONICAL URL: https://modelscript.org/ansatz/self-hosting
+================================================================================
+
+# Self-Hosting Ansatz & ModelScript
+
+Ansatz can be deployed as an independent federated instance, a public flagship cluster, or a private corporate intranet appliance using **Docker Compose**, **Cloudflare Tunnels (Zero Open Ports)**, or **Caddy** for automated TLS certificate provisioning.
+
+---
+
+## Deployment Architecture Profiles
+
+Ansatz offers targeted deployment profiles to match your infrastructure sizing and operational goals:
+
+| Profile | Active Containers | Target Use Case | Database Engine | Min. RAM |
+| :--- | :--- | :--- | :--- | :--- |
+| **`flagship`** | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` public cluster with dual-domain routing | SQLite WAL + TimescaleDB | 4–8 GB |
+| **`federated`** | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel` | Research lab with live IoT simulation telemetry streaming | SQLite WAL + TimescaleDB | 4 GB |
+| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel` | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS | **SQLite WAL only** | **1–2 GB** |
+| **`corporate`** | `caddy`, `web`, `api` (EE), `timescaledb` (optional) | Enterprise intranet, air-gapped SCIF, SSO domain allowlist, internal `/docs` | SQLite WAL (+ optional TimescaleDB) | 2–4 GB |
+| **`quick-tunnel`** | `caddy`, `web`, `api`, `quick-tunnel` | Zero-config demo with ephemeral `trycloudflare.com` URL | SQLite WAL only | 1.5 GB |
+
+---
+
+## Zero-Open-Port Ingress via Cloudflare Tunnel
+
+If you are hosting behind residential CGNAT, corporate firewalls, or on a developer workstation where opening ports `80` and `443` is impossible or undesirable:
+
+1. Create a free tunnel in the [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/) (**Networks → Tunnels → Create Tunnel**).
+2. Route your public hostname (e.g., `hub.mydomain.org`) to `http://caddy:80`.
+3. Add the tunnel token to your `.env`:
+   ```dotenv
+   CLOUDFLARE_TUNNEL_TOKEN="eyJh..."
+   ```
+4. Start the stack:
+   ```bash
+   docker compose --profile federated-lite up -d
+   ```
+5. You can now close all inbound firewall ports (`sudo ufw default deny incoming`). The tunnel connects outbound to Cloudflare Edge over encrypted QUIC/HTTP2.
+
+---
+
+## Quick Start Deployment
+
+### 1. Scaffold or Download Configuration Files
+
+You can scaffold the deployment directory with the `msx hub init` CLI command:
+
+```bash
+msx hub init --profile federated --dir ansatz --domain hub.mycompany.org
+cd ansatz
+```
+
+Or download the compose files and runtime configs (`config/Caddyfile`, `config/mosquitto.conf`, and `config/init-timescaledb.sql`) directly with `curl`:
+
+```bash
+mkdir -p ansatz/config && cd ansatz
+curl -fsSLO https://raw.githubusercontent.com/modelscript/modelscript/main/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/modelscript/modelscript/main/docker-compose.prod.yml
+curl -fsSLO https://raw.githubusercontent.com/modelscript/modelscript/main/.env.production.example
+curl -fsSL https://raw.githubusercontent.com/modelscript/modelscript/main/config/Caddyfile -o config/Caddyfile
+curl -fsSL https://raw.githubusercontent.com/modelscript/modelscript/main/config/mosquitto.conf -o config/mosquitto.conf
+curl -fsSL https://raw.githubusercontent.com/modelscript/modelscript/main/config/init-timescaledb.sql -o config/init-timescaledb.sql
+cp .env.production.example .env
+```
+
+### 2. Configure Environment (`.env`)
+
+```dotenv
+PUBLIC_DOMAIN=hub.mycompany.org
+PUBLIC_URL=https://hub.mycompany.org
+NODE_ENV=production
+JWT_SECRET=generate-with-openssl-rand-hex-32
+TOTP_ENCRYPTION_KEY=generate-with-openssl-rand-hex-32
+
+# Cloudflare Tunnel (optional for zero-port ingress; leave blank for direct Caddy ACME)
+CLOUDFLARE_TUNNEL_TOKEN=
+
+# Headless Preinstallation (Optional: skip setup wizard automatically on first boot)
+AUTO_SEED_ADMIN=true
+ADMIN_INIT_USERNAME=admin
+ADMIN_INIT_EMAIL=admin@mycompany.org
+ADMIN_INIT_PASSWORD=StrongSecurePassword123!
+DEPLOYMENT_PRESET=tier1_federated
+```
+
+### 3. Launch Services
+
+#### Option A: Lightweight Homelab / VPS (Embedded SQLite only, ~1-2 GB RAM)
+```bash
+docker compose --profile federated-lite up -d
+```
+
+#### Option B: Full Federated Node (with TimescaleDB Telemetry Historian)
+```bash
+docker compose --profile federated up -d
+```
+
+#### Option C: Flagship Cluster (`modelscript.org` + `ansatz.social`)
+Both `--profile flagship` and `--profile federated` activate the full production stack (`caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`):
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  --env-file .env --profile flagship up -d
+```
+
+#### Option D: 1-Click Ephemeral Demo (No Account or Domain Needed)
+```bash
+docker compose --profile quick-tunnel up
+```
+
+---
+
+## First-Run Setup Wizard (`/setup`) vs. Headless Preinstall
+
+### Interactive Setup Wizard
+When launching a fresh federated node without pre-seeded admin variables:
+1. Open `https://hub.mycompany.org/setup` in your browser.
+2. Select your **Deployment Profile**:
+   - **Tier 1: Independent Federated Node:** Open ActivityPub S2S federation with peer nodes.
+   - **Tier 2: Corporate Intranet Appliance:** Outbound federation disabled, restricted to corporate email domains.
+   - **Tier 3: Public Flagship Hub:** Open registration with anti-Sybil verification.
+3. Create the founding **Administrator Account** and initial cryptographic keys.
+4. Complete configuration and download your initial baseline snapshot. The wizard locks permanently upon completion.
+
+### Headless Preinstallation
+For automated CI/CD, Terraform, or Ansible deployments, setting `ADMIN_INIT_USERNAME`, `ADMIN_INIT_PASSWORD`, and `DEPLOYMENT_PRESET` automatically provisions the administrator, applies tier settings, generates cryptographic keys, and permanently locks the setup wizard on first boot.
+
+---
+
+## Database Operations, Diagnostics & Hot Backups
+
+- **Primary Application Database (Always Embedded SQLite WAL):** Users, social graph, ActivityPub outbox/inbox, packages, permissions, and audit logs run on high-performance `better-sqlite3` on the persistent `api-data` volume.
+- **Telemetry Historian (Optional PostgreSQL / TimescaleDB):** Handled via TimescaleDB when the `federated` or `flagship` profile is active.
+
+### Hot SQLite Backups & Diagnostics (`msx db`)
+
+To create an online hot backup, run deep health checks, or export a redacted diagnostic bundle without stopping the service:
+
+```bash
+# Create an online SQLite WAL snapshot with SHA-256 verification
+msx db backup --label nightly
+
+# Or invoke inside the running production API container
+docker compose exec api node apps/cli/dist/main.js db backup --label nightly
+
+# Run deep operational health checks (SQLite integrity, audit hash-chain, disk headroom)
+msx db doctor
+
+# Generate a redacted diagnostic support bundle (zero secrets or password hashes)
+msx db support-bundle --file support-diagnostic.json
+
+# Export or import a portable instance migration bundle (settings, federation rules, flags)
+msx db export-bundle --file migration-bundle.json
+msx db import-bundle --file migration-bundle.json
+```
+
+Backups are recorded in `apps/api/data/backups/` and verified with SHA-256 checksums and SQLite `PRAGMA integrity_check`.
+
+---
+
+## Maintenance Mode, Step-Up Sudo & Prometheus Metrics
+
+### Multi-Tiered Maintenance Mode
+Operators can transition a node between four operational states via the **Admin Console → Settings** tab (`PATCH /api/v1/admin/settings`) or environment variables (`MSX_MAINTENANCE_MODE`, `MSX_MAINTENANCE_ETA`):
+- **`off`**: Normal read/write operation.
+- **`scheduled`**: Displays an upcoming maintenance window banner and `maintenanceEta` countdown across Web and Docs without blocking traffic.
+- **`read_only`**: Allows `GET`/`HEAD`/`OPTIONS` browsing and package downloads while returning `503 Service Unavailable` (with `Retry-After`) on user mutations.
+- **`lockdown`**: Blocks all non-admin requests while allowing staff administrators to perform upgrades or forensic recovery.
+
+### Step-Up Sudo Mode (`REQUIRE_ADMIN_SUDO=true`)
+Destructive administrative mutations (role promotions, database restores, migration bundle imports, and DMCA counter-notice restorations) support **Step-Up Sudo** verification (`POST /api/v1/admin/sudo`), issuing a short-lived 15-minute `admin_sudo` elevation token after re-verifying the administrator's password or TOTP code.
+
+### Prometheus & OpenMetrics Endpoint
+Scrape `GET /api/v1/admin/metrics` (authenticated with an admin Bearer token or `ms_bot_*` monitoring token) to collect OpenMetrics gauges and counters for Node.js heap/RSS memory, SQLite WAL & backup footprint, user/package/post totals, ActivityPub S2S delivery states, and HPC job queue depth.
+
+---
+
+## Upgrading & Rollback Runbook
+
+### Standard Zero-Data-Loss Upgrade
+1. **Enable Read-Only Drain (Optional):** Set Maintenance Mode to `read_only` in `/admin` or run a pre-upgrade snapshot:
+   ```bash
+   docker compose exec api node apps/cli/dist/main.js db backup --label pre-upgrade
+   ```
+2. **Preview & Apply Schema Migrations:**
+   ```bash
+   docker compose exec api node apps/cli/dist/main.js db upgrade --dry-run
+   ```
+3. **Pull New Images & Recreate Containers:**
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env --profile flagship pull
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env --profile flagship up -d --wait --remove-orphans
+   ```
+4. **Verify Post-Upgrade Health:**
+   ```bash
+   docker compose exec api node apps/cli/dist/main.js db doctor
+   ```
+
+### Point-in-Time Rollback Procedure
+If a deployment needs to be rolled back to a previous release:
+1. **Restore the Pre-Upgrade SQLite Snapshot** (automatically creates a `pre-restore` safety backup before swapping the database file):
+   ```bash
+   docker compose exec api node apps/cli/dist/main.js db restore --file modelscript-backup-pre-upgrade.db
+   ```
+2. **Pin the Previous Container Image Tag** (`IMAGE_TAG=sha-<previous>` or `IMAGE_TAG=<previous-version>`) and restart:
+   ```bash
+   IMAGE_TAG=0.0.17 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env --profile flagship up -d --wait
+   ```
 
 ================================================================================
 DOCUMENT: Compiler Architecture Overview
@@ -1117,12 +2037,95 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/diagram`    | `packages/diagram`  | Polyglot schematic layout engine, orthogonal Manhattan connection router, SVG/Canvas renderer, dark-mode color inversion              |
 | `@modelscript/exchange`   | `packages/exchange` | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, WebSerial/AudioWorklet HIL           |
 | `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server, semantic tokens, hover, go-to-definition, code actions, background worker pool                             |
-| `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 31 core and polyglot compilation, simulation, CAD, and verification tools to AI agents |
+| `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 52 core and 70+ domain-specific ModelScript compilation, simulation, verification, and knowledge graph tools |
 | `@modelscript/ide-client` | `packages/ide`      | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports                   |
 | `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)             |
 | `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (`flatten`, `simulate`, `verify`, `align`, `polyglot`, `fmu`, `csg`, `surrogate`, `mc`, `hil`)         |
 | `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, and WebSocket simulation backend server                                                                        |
 | `@modelscript/web`        | `apps/web`          | Browser-native WebAssembly Polyglot Playground and visual modeling environment                                                        |
+
+================================================================================
+DOCUMENT: Monorepo & Taxonomy
+CANONICAL URL: https://modelscript.org/architecture/monorepo
+================================================================================
+
+# Monorepo Architecture: ModelScript & Ansatz
+
+ModelScript and Ansatz are developed together within a single unified monorepo. This document details the architectural rationale, the four-layer taxonomy, and the boundary enforcement mechanisms that keep the computational engine decoupled from web and cloud platforms.
+
+---
+
+## The 4-Layer Architectural Taxonomy
+
+To maintain modularity and avoid circular dependencies, the codebase is structured into four explicit layers:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ Layer 4: Enterprise Edition (ee/)                                     │
+│   • Air-gapped Ed25519 licensing, ITAR / NERC CIP, FDA 21 CFR Part 11  │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 3: The Ansatz Platform (apps/web, apps/api, packages/embed)      │
+│   • ansatz.social, package registry, ActivityPub, Cloud HPC, billing   │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 2: Developer Tooling & Surfaces (apps/cli, desktop, ide, docs)   │
+│   • msx CLI, VS Code Web extension, Tauri studio, VitePress portal     │
+├────────────────────────────────────────────────────────────────────────┤
+│ Layer 1: Core Engine & Languages (languages/*, packages/{dsl,runtime…})│
+│   • WASM GLR parsers, CST arena, DAEBuilder, solvers, TGG, CAD, FMI    │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Layer 1: Core Engine & Languages
+
+- **Directories:** `languages/*` (44 domain languages) and `packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`.
+- **Rule:** Pure computation, formal theory, parsers, and solvers. Zero UI dependencies, zero database dependencies, and zero Express/HTTP servers.
+- **Independence:** Can be compiled and embedded in any JavaScript, Node.js, WebAssembly, or desktop runtime.
+
+### Layer 2: Developer Tooling & Surfaces
+
+- **Directories:** `apps/cli`, `apps/ide`, `apps/desktop`, `apps/docs`.
+- **Rule:** User-facing toolchains and documentation. Imports from Layer 1 to expose commands (`msx`), IDE extensions, and the reference manual.
+
+### Layer 3: The Ansatz Platform
+
+- **Directories:** `apps/web`, `apps/api`, `packages/embed`, `packages/react`, `packages/design-tokens`.
+- **Rule:** The flagship web platform (`ansatz.social`), polyglot package registry, ActivityPub federation, Slurm HPC cluster execution, and enterprise team governance.
+- **Relationship:** Consumes Layer 1 and Layer 2 packages via workspace dependencies, providing the visual modeling and collaborative cloud surface for the compiler.
+
+### Layer 4: Enterprise Edition
+
+- **Directories:** `ee/`.
+- **Rule:** Commercial features subject to the Enterprise License. Open-core libraries in Layer 1 and Layer 2 never import from `ee/`.
+
+---
+
+## Architectural Rationale: Why a Unified Monorepo?
+
+### 1. Atomic Co-Evolution
+
+Ansatz is a scientific and engineering platform, not a simple CRUD service. When changes occur in the WebAssembly DAE arena, the CST parser nodes, or the solver output formats, the API dispatch layer and the browser-native WebAssembly UI are updated in the same commit.
+
+### 2. Elimination of Publishing Bottlenecks
+
+`@modelscript/api` and `@modelscript/web` consume over 20 internal workspace packages. Developing across separate repositories would require continuous version bumps, registry publishing, and downstream synchronization, introducing operational delay.
+
+### 3. End-to-End Type Safety
+
+TypeScript interfaces, AST node structures, and simulation results share exact definitions across the compiler, backend services, and web client. Breaking API changes are caught at compile time across all packages.
+
+---
+
+## Boundary Enforcement Mechanisms
+
+Architectural separation is enforced automatically in CI:
+
+1. **Nx Project Graph Verification (`npm run lint:repo`):**
+   - The dependency graph is inspected by `scripts/check-nx-cycles.js`.
+   - Core engine packages (`packages/*`) and languages (`languages/*`) are verified to have zero imports from `apps/*` or `ee/`.
+2. **One-Way Open-Core Boundary:**
+   - ESLint and `scripts/lint-package-manifests.ts` verify that open-core packages never declare dependencies on `@modelscript/ee`.
+3. **Hardware-Aware Testing:**
+   - Dynamic resource management in `scripts/test-coordinator.js` partitions tests based on CPU and memory availability.
 
 ================================================================================
 DOCUMENT: DAE Arena in Linear Memory
@@ -3913,11 +4916,11 @@ The CLI parser (`apps/cli/src/main.ts`) intercepts global execution flags prior 
 
 ### Environment Variables
 
-| Variable              | Default                 | Description                                                                                                                                                                    |
-| :-------------------- | :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NO_COLOR`            | Unset                   | When set to any non-empty value, disables ANSI color sequences in terminal diagnostics, tables, and diff output.                                                               |
-| `MODELSCRIPT_API_URL` | `http://localhost:3000` | Base URL for the ModelScript Hub, Package Registry, and Cloud HPC dispatch API (`~/.modelscriptrc` fallback).                                                                  |
-| `MODELSCRIPT_TOKEN`   | Unset                   | Bearer token (`JWT` or `ms_bot_*` service token) used for non-interactive authentication against the Registry, Cloud HPC, and Hub APIs (also accepts `MODELSCRIPT_API_TOKEN`). |
+| Variable                                     | Default                 | Description                                                                                                                                                                                  |
+| :------------------------------------------- | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NO_COLOR`                                   | Unset                   | When set to any non-empty value, disables ANSI color sequences in terminal diagnostics, tables, and diff output.                                                                             |
+| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000` | Base URL for the Ansatz Platform, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                |
+| `ANSATZ_API_TOKEN` / `MODELSCRIPT_API_TOKEN` | Unset                   | Bearer token (`JWT` or `ms_bot_*` service token) used for non-interactive authentication against the Registry, Cloud HPC, and Hub APIs (also accepts `ANSATZ_TOKEN` or `MODELSCRIPT_TOKEN`). |
 
 ## Persistent Compiler Daemon (`--daemon`)
 
@@ -4006,20 +5009,20 @@ The `msx` CLI registers **41 commands** (plus ergonomic aliases) organized into 
 
 ### 6. Package Registry, Cloud HPC & Hub Administration
 
-| Command                                             | Aliases    | Summary                                                                                                     |
-| :-------------------------------------------------- | :--------- | :---------------------------------------------------------------------------------------------------------- |
-| [`init`](./commands.md#init)                        | —          | Initialize a new `modelscript.json` package manifest in the current directory.                              |
-| [`login`](./commands.md#login-logout-whoami)        | —          | Authenticate with a ModelScript Registry / Hub server and store credentials in `~/.modelscriptrc`.          |
-| [`logout`](./commands.md#login-logout-whoami)       | —          | Remove stored authentication tokens from `~/.modelscriptrc`.                                                |
-| [`whoami`](./commands.md#login-logout-whoami)       | —          | Display the currently authenticated user, organization roles, and active registry endpoint.                 |
-| [`install`](./commands.md#install)                  | `i`, `add` | Resolve, verify, and install versioned dependencies from the ModelScript Registry into `modelica_modules/`. |
-| [`pack`](./commands.md#pack-publish-unpublish)      | —          | Create a deterministic, SHA-256 content-addressed `.tgz` package tarball from the workspace.                |
-| [`publish`](./commands.md#pack-publish-unpublish)   | —          | Sign (Ed25519) and publish a package tarball to the ModelScript Registry.                                   |
-| [`unpublish`](./commands.md#pack-publish-unpublish) | —          | Retract or deprecate a published package version from the registry.                                         |
-| [`cloud`](./commands.md#cloud)                      | —          | Dispatch containerized simulation and CAE jobs to remote Slurm HPC clusters and manage compute credits.     |
-| [`hub`](./commands.md#hub-db-archive)               | —          | Initialize or check the health status of a self-hosted ModelScript Hub instance.                            |
-| [`db`](./commands.md#hub-db-archive)                | —          | Inspect, migrate, and cryptographically verify the Hub PostgreSQL database schema and audit chains.         |
-| [`archive`](./commands.md#hub-db-archive)           | —          | Request, monitor, and download cold-storage compliance archives from the Hub.                               |
+| Command                                             | Aliases          | Summary                                                                                                        |
+| :-------------------------------------------------- | :--------------- | :------------------------------------------------------------------------------------------------------------- |
+| [`init`](./commands.md#init)                        | —                | Initialize a new `modelscript.json` package manifest in the current directory.                                 |
+| [`login`](./commands.md#login-logout-whoami)        | —                | Authenticate with the Ansatz Package Registry / Platform and store credentials in `~/.ansatzrc`.               |
+| [`logout`](./commands.md#login-logout-whoami)       | —                | Remove stored authentication tokens from `~/.ansatzrc` / `~/.modelscriptrc`.                                   |
+| [`whoami`](./commands.md#login-logout-whoami)       | —                | Display the currently authenticated user, organization roles, and active registry endpoint.                    |
+| [`install`](./commands.md#install)                  | `i`, `add`       | Resolve, verify, and install versioned dependencies from the Ansatz Package Registry into `modelica_modules/`. |
+| [`pack`](./commands.md#pack-publish-unpublish)      | —                | Create a deterministic, SHA-256 content-addressed `.zip` package archive from the workspace.                   |
+| [`publish`](./commands.md#pack-publish-unpublish)   | —                | Sign (Ed25519) and publish a package archive to the Ansatz Package Registry.                                   |
+| [`unpublish`](./commands.md#pack-publish-unpublish) | —                | Retract or deprecate a published package version from the Ansatz Package Registry.                             |
+| [`cloud`](./commands.md#cloud)                      | —                | Dispatch containerized simulation and CAE jobs to remote Slurm HPC clusters and manage compute credits.        |
+| [`hub`](./commands.md#hub-db-archive)               | `ansatz`, `node` | Initialize or check the health status of a self-hosted Ansatz / ModelScript node.                              |
+| [`db`](./commands.md#hub-db-archive)                | —                | Inspect, migrate, and cryptographically verify the Hub SQLite/PostgreSQL database schema and audit chains.     |
+| [`archive`](./commands.md#hub-db-archive)           | —                | Request, monitor, and download cold-storage compliance archives from the Hub.                                  |
 
 ## Return Codes & CI/CD Integration
 
@@ -4048,7 +5051,18 @@ This reference documents every command, subcommand, and flag registered in `@mod
 
 Compiles and flattens a hierarchical Modelica class into a canonical Differential-Algebraic Equation (DAE) representation in linear WebAssembly memory (`DAEBuilder`). `flatten` is an exact alias for `compile`.
 
-<CliCommand name="compile" />
+### CLI Command: `compile <name> [paths..]`
+Flatten or lower a Modelica, SysML v2, or domain engineering model to DAE, Modelica, SysML v2, SSP, or FMU
+
+Options:
+  - `--output, -o, --out <string>`: output file path for compiled representation
+  - `--to, -t <string>`: target output representation (dae, modelica, sysml2, ssp, fmu) (default: "dae")
+  - `--model, -m <string>`: explicit class/system name when first positional argument is a file
+  - `--language, -l, --lang <string>`: explicit language ID override
+  - `--modelica-path, -L <string>`: directories to search for Modelica libraries (colon-separated)
+  - `--flattener, -F <string>`: Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison) (default: "hybrid")
+  - `--timing <boolean>`: report timing information for each stage as JSON to stderr (default: false)
+  - `--memory-profile <boolean>`: profile memory usage across phases and report as JSON to stderr (default: false)
 
 ```bash
 # Flatten a model using the hybrid WASM kernel with timing breakdowns
@@ -4061,7 +5075,8 @@ msx flatten Modelica.Electrical.Analog.Examples.ChuaCircuit -L ./libraries --tim
 
 Instantiates a Modelica class via the Salsa `QueryEngine` and prints the resolved component hierarchy, inherited modifications, and bindings prior to DAE index reduction.
 
-<CliCommand name="instantiate" />
+### CLI Command: `instantiate <name> <paths...>`
+Instantiate and query AST structure of a Modelica model
 
 ---
 
@@ -4069,7 +5084,40 @@ Instantiates a Modelica class via the Salsa `QueryEngine` and prints the resolve
 
 Compiles a model, performs Block Lower Triangular (BLT) Pantelides index reduction and tearing, and executes a numerical time-domain or steady-state simulation locally or on a remote Slurm HPC cluster.
 
-<CliCommand name="simulate" />
+### CLI Command: `simulate <name> [paths..]`
+Simulate a Modelica model, SysML v2 system, FMU archive, or domain engineering deck
+
+Options:
+  - `--output, -o, --out <string>`: output file path for simulation results
+  - `--model, -m <string>`: explicit class/system name when first positional argument is a file
+  - `--language, -l, --lang <string>`: explicit language ID override
+  - `--start-time <number>`: override experiment start time
+  - `--stop-time <number>`: override experiment stop time
+  - `--tolerance <number>`: override experiment tolerance
+  - `--interval, --step-size, --output-interval <number>`: override experiment output interval / step size
+  - `--format, -f <string>`: output format (default: "csv")
+  - `--solver <string>`: ODE solver to use (default: "dopri5")
+  - `--interface-type <string>`: FMI interface type when simulating an FMU: 'cs', 'me', or 'auto'
+  - `--start-value <string>`: override FMU variable start value as name=value (repeatable)
+  - `--input-file <string>`: CSV file providing time-varying input trajectories (time,u1,u2,...)
+  - `--output-variable <string>`: variable name(s) to record in FMU simulation output (repeatable)
+  - `--initial-fmu-state-file <string>`: restore serialized FMU state from file before stepping
+  - `--final-fmu-state-file <string>`: save serialized FMU state to file after simulation finishes
+  - `--log-fmi-calls <boolean>`: log all FMI C API calls and logger callbacks to stderr (default: false)
+  - `--realtime <number>`: run simulation in real-time mode with given scale factor (e.g., 1.0 for 1x)
+  - `--engine <string>`: simulation backend: js (pure JavaScript), arena (arena-native DoD), wasm (WebAssembly via emcc), c (native compiled), jit (in-memory JIT) (default: "js")
+  - `--jit <boolean>`: enable in-memory JIT compilation engine (sub-15ms execution) (default: false)
+  - `--timing <boolean>`: report timing information for each stage as JSON to stderr (default: false)
+  - `--memory-profile <boolean>`: profile memory usage across phases and report as JSON to stderr (default: false)
+  - `--jacobian`: Jacobian calculation method (default: "sparse")
+  - `--flattener, -F <string>`: Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison) (default: "hybrid")
+  - `--steady-state <boolean>`: Solve steady-state initial equilibrium only without time integration (default: false)
+  - `--cloud <boolean>`: dispatch simulation to ModelScript Cloud HPC cluster (default: false)
+  - `--profile <string>`: cloud compute profile (standard, high-memory, gpu-a100, hpc-mpi-64) (default: "standard")
+  - `--async <boolean>`: submit cloud job asynchronously and return immediately with Job ID (default: false)
+  - `--poll-interval <number>`: polling interval in milliseconds for cloud simulation status (default: 1500)
+  - `--output-dir <string>`: directory to write downloaded simulation result file (default: "./results")
+  - `--api-url <string>`: override ModelScript API base URL
 
 ```bash
 # Run a stiff DAE simulation using the 4th-order Rosenbrock solver and sparse symbolic Jacobians
@@ -4085,7 +5133,19 @@ msx simulate ThermalGrid plant.mo --cloud --profile high-cpu --stop-time 3600 --
 
 Formulates and solves a nonlinear Dynamic Optimization / Optimal Control Problem (OCP) over a flattened DAE using direct collocation and sequential quadratic programming (SQP).
 
-<CliCommand name="optimize" />
+### CLI Command: `optimize <name> <paths..>`
+Solve an optimal control problem for a Modelica model
+
+Options:
+  - `--objective <string>`: cost integrand expression (e.g. "u^2")
+  - `--controls <string>`: control variable names (comma-separated)
+  - `--control-bounds <string>`: control bounds as var:min:max (comma-separated)
+  - `--start-time <number>`: override start time
+  - `--stop-time <number>`: override stop time
+  - `--num-intervals <number>`: number of collocation intervals (default: 50)
+  - `--tolerance <number>`: NLP convergence tolerance (default: 0.000001)
+  - `--max-iterations <number>`: maximum SQP iterations (default: 200)
+  - `--format`: output format (default: "csv")
 
 ```bash
 msx optimize EV_BatteryPack vehicle.mo \
@@ -4103,7 +5163,16 @@ msx optimize EV_BatteryPack vehicle.mo \
 
 Computes forward, adjoint, or central finite-difference parameter sensitivities ($\nabla_{\mathbf{p}} J$) of scalar objective metrics with respect to model parameters.
 
-<CliCommand name="grad" />
+### CLI Command: `grad <name> <paths..>`
+Compute exact parameter sensitivities through simulation using continuous adjoints
+
+Options:
+  - `--params <string>`: comma-separated list of parameter names to differentiate
+  - `--target <string>`: target state variable name to compute terminal sensitivity for (default: first state)
+  - `--start-time <number>`: override experiment start time
+  - `--stop-time <number>`: override experiment stop time
+  - `--step <number>`: communication step size
+  - `--json <boolean>`: output results as JSON (default: false)
 
 ---
 
@@ -4111,7 +5180,27 @@ Computes forward, adjoint, or central finite-difference parameter sensitivities 
 
 Executes a Design of Experiments (DoE) campaign over a physics model, trains a Reduced-Order Model (ROM) surrogate, attaches convex-hull/bounding-box extrapolation guardrails, and exports standalone C, ONNX, or Modelica `.mo` blocks.
 
-<CliCommand name="surrogate" />
+### CLI Command: `surrogate <name> [paths..]`
+Train or import an AI surrogate model (ROM) and generate C, ONNX, or Modelica code
+
+Options:
+  - `--inputs <string>`: input parameter names (comma-separated)
+  - `--input-bounds <string>`: input bounds as var:min:max (comma-separated)
+  - `--outputs <string>`: output variable names (comma-separated)
+  - `--strategy`: Design of Experiments (DoE) sampling strategy (default: "latin-hypercube")
+  - `--num-samples <number>`: number of samples to generate (default: 50)
+  - `--architecture`: Reduced Order Model (ROM) architecture (default: "mlp")
+  - `--start-time <number>`: override start time
+  - `--stop-time <number>`: override stop time
+  - `--format`: target export format: C/WASM ('c'), ONNX graph ('onnx'), Modelica block ('mo'), or all ('all') (default: "c")
+  - `--from-onnx <string>`: path to external ONNX JSON model file to import instead of training from Modelica source
+  - `--extrapolation-guardrails <boolean>`: embed Modelica assertion guardrails for input bounds (default: true)
+  - `--extrapolation-level`: severity level of Modelica extrapolation assertions (default: "warning")
+  - `--extrapolation-flag <boolean>`: emit Boolean isExtrapolating output variable in Modelica (default: true)
+  - `--out-file <string>`: output file name (defaults to <model>_surrogate.<ext>)
+  - `--replace-component <string>`: name of component declaration in Modelica model to replace with surrogate
+  - `--replace-out <string>`: output path for modified Modelica model with replaced component
+  - `--report <string>`: output report JSON file (default: "report.json")
 
 ```bash
 msx surrogate HeatExchanger thermal.mo \
@@ -4131,7 +5220,18 @@ msx surrogate HeatExchanger thermal.mo \
 
 Runs high-throughput Monte Carlo uncertainty propagation across stochastic parameter distributions using worker threads and the linear-memory WASM evaluator.
 
-<CliCommand name="mc" />
+### CLI Command: `mc <name> <paths..>`
+Run Monte Carlo simulation
+
+Options:
+  - `--runs <number>`: Number of Monte Carlo runs (default: 1000)
+  - `--threads <number>`: Number of parallel threads (default: 1)
+  - `--params <string>`: Random variables in format name:dist:arg1:arg2 (comma-separated)
+  - `--seed <number>`: PRNG seed
+  - `--lhs <boolean>`: Use Latin Hypercube Sampling (default: false)
+  - `--format`: Output format (default: "json")
+  - `--output <string>`: Output file path (defaults to stdout if not provided)
+  - `--engine <string>`: simulation backend: wasm or js (default: "wasm")
 
 ```bash
 msx mc RLC_Filter filter.mo \
@@ -4149,7 +5249,8 @@ msx mc RLC_Filter filter.mo \
 
 Extracts Constructive Solid Geometry (CSG) primitives and kinematic frame transformations from a Modelica class, writes `build/csg/execution_graph.json`, and invokes the OpenCASCADE (`@modelscript/cad`) worker to generate 3D CAD meshes.
 
-<CliCommand name="csg" />
+### CLI Command: `csg <name> <paths...>`
+Compile and extract CSG topologies to 3D meshes
 
 ---
 
@@ -4159,7 +5260,14 @@ Extracts Constructive Solid Geometry (CSG) primitives and kinematic frame transf
 
 Executes the static analysis pipeline (WASM GLR parse validation, CST lint rules, Salsa semantic queries, unit checking, and control-flow analysis) across one or more files or directories.
 
-<CliCommand name="lint" />
+### CLI Command: `lint <path> [paths...]`
+Lint polyglot libraries using QueryEngine and DSL parsers
+
+Options:
+  - `--language, -l, --lang <string>`: Filter to specific language (e.g. modelica, sysml2, owl2, scad, ssp, cfd, fea, pscad, fortran, easy5, rocets, lps, sima, gtsuite)
+  - `--format, -f <string>`: Output format: terminal or json (default: "terminal")
+  - `--profile <string>`: OWL 2 ontology profile to validate against (DL or EL) (default: "DL")
+  - `--strict <boolean>`: Treat warnings as errors (default: false)
 
 ```bash
 # Lint an entire polyglot workspace and emit JSON for CI processing
@@ -4172,7 +5280,12 @@ msx lint ./models ./requirements --format json
 
 Parses a file using its registered native WebAssembly GLR parser (`parser.wasm`) and prints the concrete syntax tree (CST), node byte offsets, or parse errors.
 
-<CliCommand name="parse" />
+### CLI Command: `parse <file>`
+Parse a file using its language DSL parser (supports any registered language)
+
+Options:
+  - `--language, -l <string>`: Explicit language override (e.g. modelica, sysml2, scad, step, owl2, csv)
+  - `--encoding <string>`: Input encoding to use (default: "utf8")
 
 ---
 
@@ -4180,7 +5293,15 @@ Parses a file using its registered native WebAssembly GLR parser (`parser.wasm`)
 
 Formats source files canonically using the grammar's CST-preserving pretty-printer while preserving comments and annotations.
 
-<CliCommand name="format" />
+### CLI Command: `format <files..>`
+Format source files using their language DSL formatter or unparser
+
+Options:
+  - `--write, -w <boolean>`: Edit files in place (default: false)
+  - `--check, -c <boolean>`: Check if files are formatted without writing (exits with code 1 if unformatted) (default: false)
+  - `--language, -l <string>`: Explicit language override (e.g. modelica, sysml2, scad, step)
+  - `--indent-size <number>`: Number of spaces per indentation level (default: 2)
+  - `--preserve-formatting <boolean>`: Preserve original token layout where grammar permits (default: false)
 
 ---
 
@@ -4188,7 +5309,13 @@ Formats source files canonically using the grammar's CST-preserving pretty-print
 
 Parses a source file into linear CST memory and unparses it back into text to verify lossless round-trip grammar rules.
 
-<CliCommand name="unparse" />
+### CLI Command: `unparse <file>`
+Unparse and re-synthesize clean source code from the language AST
+
+Options:
+  - `--output, -o <string>`: Output file path (default prints to stdout)
+  - `--language, -l <string>`: Explicit language override
+  - `--indent-size <number>`: Number of spaces per indentation level (default: 2)
 
 ---
 
@@ -4196,7 +5323,15 @@ Parses a source file into linear CST memory and unparses it back into text to ve
 
 Computes a structural CST/AST and semantic DAE comparison between two files (`oldFile` and `newFile`), identifying added/removed components, modified parameter bindings, and altered equations regardless of whitespace formatting.
 
-<CliCommand name="diff" />
+### CLI Command: `diff <file1> <file2>`
+Compute an AST-aware semantic diff between two model files (supports any registered DSL)
+
+Options:
+  - `--language, -l <string>`: Explicit language override (e.g. modelica, sysml2, scad)
+  - `--order-agnostic <boolean>`: Ignore child order changes in declarative sections (e.g. equation sets) (default: true)
+  - `--breaking-only <boolean>`: Only report breaking changes (API modifications, deleted connectors, type switches) (default: false)
+  - `--format`: Output format (default: "terminal")
+  - `--output, -o <string>`: Output file path for visual formats
 
 ---
 
@@ -4204,7 +5339,17 @@ Computes a structural CST/AST and semantic DAE comparison between two files (`ol
 
 Generates visual schematic/architectural diffs (highlighting added components in green, modified in amber, and deleted in red) and PR review summaries between two Git revisions.
 
-<CliCommand name="pr-diff" />
+### CLI Command: `pr-diff [file]`
+Compute visual and semantic pull request diff across Git revisions (SysML v2, Modelica)
+
+Options:
+  - `--base, -b <string>`: Base Git reference (branch, tag, or commit hash) (default: "HEAD~1")
+  - `--head <string>`: Head Git reference (branch, commit hash, or omit for working tree)
+  - `--format, -f`: Output format for the visual diff (default: "visual-html")
+  - `--output, -o <string>`: Output file path (defaults to stdout or visual-diff.html / visual-diff.svg)
+  - `--view, -v <string>`: SysML v2 viewpoint projection filter (e.g. All, BDD, IBD, StateMachine) (default: "All")
+  - `--breaking-only <boolean>`: Only report breaking changes (default: false)
+  - `--open <boolean>`: Automatically open generated visual HTML in default web browser (default: false)
 
 ---
 
@@ -4212,7 +5357,11 @@ Generates visual schematic/architectural diffs (highlighting added components in
 
 Extracts translatable descriptions, documentation strings, and identifier aliases from models (`extract`), compiles translation catalogs (`compile`), or translates a model into a target locale (`translate`).
 
-<CliCommand name="i18n" />
+### CLI Command: `i18n <paths..>`
+Extract internationalization (.pot) translation templates from Modelica models
+
+Options:
+  - `--output, -o <string>`: path to the output .pot file
 
 ---
 
@@ -4222,7 +5371,37 @@ Extracts translatable descriptions, documentation strings, and identifier aliase
 
 Unified formal verification and simulation validation for SysML v2 and Modelica: decision tables, assume-guarantee contracts, state machines, and optional flowpipe reachability. Results can be emitted as terminal output or as JSON, CTRF, JUnit, SARIF, HTML, or DHF reports for CI/CD and compliance workflows.
 
-<CliCommand name="verify" />
+### CLI Command: `verify [target] [paths..]`
+Unified formal verification and simulation validation for SysML v2 and Modelica
+
+Options:
+  - `--all <boolean>`: execute all applicable formal verification stages (default: false)
+  - `--decisions <boolean>`: verify decision table exhaustiveness and determinism (default: true)
+  - `--contracts <boolean>`: verify assume-guarantee contract compatibility and refinement (default: true)
+  - `--state-machines <boolean>`: verify state machine and activity workflow soundness/deadlock-freedom (default: true)
+  - `--flowpipe <boolean>`: enable validated continuous/hybrid reachability flowpipes (default: false)
+  - `--order <number>`: Taylor model flowpipe expansion order (default: 4)
+  - `--dt <number>`: time step size in seconds for flowpipe reachability
+  - `--horizon <number>`: time horizon (stop time) in seconds for flowpipe reachability
+  - `--initial-set <string>`: initial state set bounds (e.g. 'x=[0.9,1.1],y=[-0.1,0.1]')
+  - `--barriers <boolean>`: enable sum-of-squares barrier certificate synthesis (default: false)
+  - `--falsify <boolean>`: enable adversarial requirement falsification (default: false)
+  - `--simulation <boolean>`: verify dynamic simulation trajectory requirements (default: true)
+  - `--clearance <boolean>`: enable 3D CAD clearance and physical collision verification (default: false)
+  - `--mcdc <boolean>`: synthesize 100% MC/DC independent condition test pairs (default: false)
+  - `--b2b <boolean>`: verify Back-to-Back MiL-vs-SiL equivalence against standalone C99 (default: false)
+  - `--b2b-tol <number>`: maximum allowable numerical tolerance between MiL and SiL (default: 0.0001)
+  - `--b2b-compiler <string>`: host/target C compiler for SiL compilation (default: "gcc")
+  - `--b2b-dt <number>`: fixed integration step size in seconds for SiL RK4
+  - `--algorithms <boolean>`: execute sound algorithmic abstract interpretation for zero RTEs (default: true)
+  - `--format <string>`: output report format: terminal, json, ctrf, junit, sarif, html, or dhf (default: "terminal")
+  - `--report <string>`: write test report to specified file path
+  - `--export <string>`: comma-separated list of formal spec export formats: smt2, nuxmv, ocra, mos
+  - `--export-dir <string>`: target directory for exported formal specifications (default: ".")
+  - `--flattener, -F <string>`: Flattener backend: 'ts', 'wasm', 'hybrid', or 'diff' (default: "hybrid")
+  - `--engine <string>`: simulation backend: wasm or js (default: "wasm")
+  - `--timing <boolean>`: output timing JSON to stderr (default: false)
+  - `--update-hypergraph <boolean>`: synchronize verification verdicts directly into digital thread hypergraph (default: false)
 
 ```bash
 # Verify a controller and emit a GitHub Code Scanning SARIF report
@@ -4235,7 +5414,21 @@ msx verify BrakingController brake.mo --format sarif --report results.sarif
 
 Performs optimization-guided falsification of Signal Temporal Logic (STL) safety properties ($\square_{[a,b]} \phi$, $\lozenge_{[a,b]} \phi$, $\phi_1 \mathcal{U}_{[a,b]} \phi_2$) by searching disturbance and parameter spaces to minimize quantitative robustness $\rho(\phi, \mathbf{x}, t) < 0$.
 
-<CliCommand name="falsify" />
+### CLI Command: `falsify`
+Run adversarial multi-domain requirement falsification across SysML, Modelica, and CAD
+
+Options:
+  - `--property <string>`: Name of the target SysML requirement or property
+  - `--sysml <string>`: Path to SysML v2 model file (.sysml)
+  - `--modelica <string>`: Path to Modelica DAE model file (.mo)
+  - `--cad <string>`: Path to CAD procedural file (.scad or .ts)
+  - `--params <string>`: JSON array or file path containing parameter bounds
+  - `--formula <string>`: STL formula JSON or predicate shorthand (e.g. 'stress <= 200')
+  - `--algorithm`: Falsification global optimization algorithm (default: "de")
+  - `--generations <number>`: Maximum optimization generations (default: 10)
+  - `--population <number>`: Population size per generation (default: 12)
+  - `--outTrace <string>`: Path to output CanonicalTraceRecord JSON
+  - `--outCad <string>`: Path to output counterexample CAD model file
 
 ---
 
@@ -4243,7 +5436,19 @@ Performs optimization-guided falsification of Signal Temporal Logic (STL) safety
 
 Translates SysML v2 models into external formal verification formats: SMT-LIB2, nuXmv, and OCRA contract specifications.
 
-<CliCommand name="export-formal" />
+### CLI Command: `export-formal <paths..>`
+Export SysML v2 models to standard formal verification formats (SMT-LIB2, nuXmv, OCRA)
+
+Options:
+  - `--format, -f <string>`: Target formal representation: 'smt2' (SMT-LIB v2.6), 'nuxmv' (nuXmv .smv), or 'ocra' (OCRA .oss) (default: "smt2")
+  - `--output, -o <string>`: Output file path (prints to stdout if omitted)
+  - `--logic <string>`: SMT-LIB logic directive (default: auto-detected QF_LRA or QF_NRA)
+  - `--module, -m <string>`: Module name for nuXmv or top-level component name for OCRA (default: "System")
+  - `--scope, -s <string>`: Scope filter for extracted constraints or state machines
+  - `--invariants <string>`: Additional safety invariants (INVARSPEC) to emit for nuXmv
+  - `--ltl <string>`: Temporal logic specifications (LTLSPEC) to emit for nuXmv
+  - `--minimize <string>`: Parametric optimization objectives to minimize in SMT-LIB2
+  - `--maximize <string>`: Parametric optimization objectives to maximize in SMT-LIB2
 
 ```bash
 # Export a SysML v2 controller to a nuXmv model
@@ -4256,7 +5461,11 @@ msx export-formal acc.sysml --format nuxmv -o acc.smv
 
 Evaluates Architectural Decision Records (ADRs) and SysML v2 trade-study constraints against flattened simulation parameters and formal bounds.
 
-<CliCommand name="verify-decisions" />
+### CLI Command: `verify-decisions <paths..>`
+Formally verify SysML v2 decision tables, decide nodes, and state guards for exhaustiveness and disjointness
+
+Options:
+  - `--json <boolean>`: Output verification results in structured JSON format (default: false)
 
 ---
 
@@ -4264,7 +5473,13 @@ Evaluates Architectural Decision Records (ADRs) and SysML v2 trade-study constra
 
 Performs structural subsystem partitioning and Assume-Guarantee ($A/G$) contract decomposition across large system models, checking whether top-level system guarantees follow compositionally from subsystem contracts ($\bigwedge_i (A_i \Rightarrow G_i) \vdash G_{\text{sys}}$).
 
-<CliCommand name="decompose" />
+### CLI Command: `decompose <paths..>`
+Perform symbolic state-space region decomposition over SysML v2 decision conditions
+
+Options:
+  - `--max-regions, -r <number>`: Maximum number of regions to partition (default: 64) (default: 64)
+  - `--max-depth, -d <number>`: Maximum branch condition exploration depth (default: 8) (default: 8)
+  - `--json <boolean>`: Output regions in JSON format (default: false)
 
 ---
 
@@ -4272,7 +5487,14 @@ Performs structural subsystem partitioning and Assume-Guarantee ($A/G$) contract
 
 Synthesizes deterministic test vectors and stimulus harnesses from model guard conditions and assertions to achieve Modified Condition/Decision Coverage (MC/DC) and boundary-value coverage.
 
-<CliCommand name="generate-tests" />
+### CLI Command: `generate-tests <paths..>`
+Synthesize formal boundary-condition and 100% MC/DC test suites from SysML v2 models
+
+Options:
+  - `--format, -f <string>`: Output report format (terminal, json, ctrf, junit, modelica) (default: "terminal")
+  - `--mcdc <boolean>`: Enforce 100% MC/DC condition-outcome test pair synthesis (default: true)
+  - `--output, -o <string>`: Write generated test suite to file instead of stdout
+  - `--model, -m <string>`: Target model name when generating Modelica .mos simulation scripts (default: "Model")
 
 ---
 
@@ -4282,7 +5504,14 @@ Synthesizes deterministic test vectors and stimulus harnesses from model guard c
 
 Renders headless, publication-grade SVG diagrams for Modelica component icons/schematics, SysML v2 architectural views, and PSCAD Single-Line Diagrams (SLDs) using `@modelscript/diagram`.
 
-<CliCommand name="render" />
+### CLI Command: `render <name> [paths..]`
+Render Modelica class diagram or icon to SVG
+
+Options:
+  - `--icon, -i <boolean>`: render icon (Modelica) (default: false)
+  - `--view, -v <string>`: diagram view/projection (e.g. All, BDD, IBD, StateMachine, Activity, SLD, Taxonomy, Properties)
+  - `--theme, -t`: color theme for polyglot SVG export (dark, light, blueprint) (default: "light")
+  - `--output, -o <string>`: output SVG file path (defaults to stdout)
 
 ```bash
 # Render a SysML v2 Internal Block Diagram in blueprint theme
@@ -4295,7 +5524,35 @@ msx render SpacecraftPower spacecraft.sysml --view IBD --theme blueprint -o docs
 
 Exports a Modelica class as a Functional Mock-up Unit (`.fmu` ZIP archive) compliant with **FMI 2.0** and/or **FMI 3.0** for Model Exchange (`me`) and Co-Simulation (`cs`), or imports/inspects an existing `.fmu` via `msx fmu import <file.fmu>`. `export-fmu` is an alias for `fmu`.
 
-<CliCommand name="fmu" />
+### CLI Command: `fmu <name> [paths..]`
+Export, validate, inspect, build, or simulate an FMU archive
+
+Options:
+  - `--output, -o <string>`: output file path (default: <name>.fmu or <name>.fmu.xml)
+  - `--description <string>`: model description string
+  - `--start-time <number>`: default experiment start time
+  - `--stop-time <number>`: default experiment stop time
+  - `--step-size, --output-interval <number>`: default experiment step size / output interval
+  - `--tolerance <number>`: solver relative tolerance
+  - `--xml-only <boolean>`: output only the modelDescription.xml (no archive) (default: false)
+  - `--type <string>`: FMU type: 'me' (Model Exchange), 'cs' (Co-Simulation), 'both' (default) (default: "both")
+  - `--interface-type <string>`: FMI interface type when simulating an FMU: 'cs', 'me', or 'auto'
+  - `--solver <string>`: ODE solver when simulating an FMU in Model Exchange mode ('euler', 'rk4', 'cvode') (default: "rk4")
+  - `--start-value <string>`: override FMU variable start value as name=value (repeatable)
+  - `--input-file <string>`: CSV file providing time-varying input trajectories (time,u1,u2,...)
+  - `--output-variable <string>`: variable name(s) to record in simulation output (repeatable)
+  - `--initial-fmu-state-file <string>`: restore serialized FMU state from file before stepping
+  - `--final-fmu-state-file <string>`: save serialized FMU state to file after simulation finishes
+  - `--log-fmi-calls <boolean>`: log all FMI C API calls and logger callbacks to stderr (default: false)
+  - `--format <string>`: simulation output format ('csv', 'json', 'none') (default: "csv")
+  - `--target <string>`: export target: 'wasm' (WebAssembly), 'c' (C sources), 'js' (JavaScript), or 'all' (multi-target) (default: "all")
+  - `--source <boolean>`: include C source files in the FMU archive (default: true)
+  - `--compile <boolean>`: compile C sources into a shared library using the system C compiler (default: false)
+  - `--fmi-version <string>`: FMI version to include: '2', '3', or 'both' (default: "both")
+  - `--wasm <boolean>`: compile model to WebAssembly and include in the FMU archive (default: false)
+  - `--flattener, -F <string>`: Flattener backend: 'ts' (reference TS), 'wasm' (zero-GC kernel), 'hybrid' (WASM with TS fallback), or 'diff' (parity comparison) (default: "hybrid")
+  - `--golden <string>`: path to golden CSV trajectory for 'verify' subcommand
+  - `--timing <boolean>`: report timing information for each stage as JSON to stderr (default: false)
 
 ```bash
 # Export an FMI 3.0 Co-Simulation FMU with embedded C sources and WebAssembly binary
@@ -4308,7 +5565,13 @@ msx fmu DC_Motor motor.mo --fmi-version 3 --type cs --wasm --output build/DC_Mot
 
 Unpacks an external FMI 2.0 or FMI 3.0 `.fmu` archive, parses its `modelDescription.xml`, and generates a strongly typed Modelica wrapper `block` (and optional SSP system binding) so the FMU can be connected and simulated inside ModelScript. `fmu-import` is an alias for `import-fmu`.
 
-<CliCommand name="import-fmu" />
+### CLI Command: `import-fmu <fmu>`
+Import an FMU archive and generate an acausal or causal Modelica wrapper
+
+Options:
+  - `--output, -o <string>`: Output path for the generated .mo file
+  - `--package, -p <string>`: Enclosing package name (e.g. ImportedFMUs)
+  - `--verbose, -v <boolean>`: Verbose output (default: false)
 
 ---
 
@@ -4316,7 +5579,11 @@ Unpacks an external FMI 2.0 or FMI 3.0 `.fmu` archive, parses its `modelDescript
 
 Manages distributed FMI/SSP Co-Simulation master orchestration sessions, participant FMUs, recorded trajectory histories, and adaptive communication step-size optimization against the ModelScript Hub / Co-Simulation service.
 
-<CliCommand name="cosim" :show-actions="false" />
+### CLI Command: `cosim`
+Co-simulation management (sessions, participants, FMUs, replay)
+
+Options:
+  - `--api-url <string>`: ModelScript API base URL (default: "http://localhost:3000")
 
 | Subcommand     | Arguments     | Description                                                                                                         |
 | :------------- | :------------ | :------------------------------------------------------------------------------------------------------------------ |
@@ -4335,7 +5602,14 @@ Manages distributed FMI/SSP Co-Simulation master orchestration sessions, partici
 
 Provides full lifecycle tooling for Manitoba Hydro **PSCAD** electromagnetic transient (EMT) workspaces (`.pscx` cases and `.pswx` workspaces), including domain-specific electrical linting, Single-Line Diagram (SLD) generation, EMT simulation, **IEEE Std 2800-2022** grid interconnection verification, and conversion to Modelica/SSP.
 
-<CliCommand name="pscad" :show-actions="false" />
+### CLI Command: `pscad <action> [files..]`
+Inspect, lint, diff, and simulate PSCAD projects (.pscx, .pslx)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (for diagram SVG, Modelica, SSD, CSV, or COMTRADE export)
+  - `--tstop, --stop-time, --duration <number>`: Simulation duration in seconds (default: 1)
+  - `--step, --step-size, --dt <string>`: Simulation fixed time step (e.g. '20us' or 20e-6) (default: "20us")
+  - `--format, -f <string>`: Result format for 'sim' with --out (base path): pscad (.out/.inf), psout (.psout), comtrade, comtrade-bin, cff (default: "pscad")
 
 | Action            | Description                                                                                                                                                                                                      |
 | :---------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -4356,9 +5630,10 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 12 supported languages.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 44 supported languages.
 
-<CliCommand name="polyglot" :show-actions="false" />
+### CLI Command: `polyglot <action>`
+Multi-domain TGG projection, formal verification, and digital thread tracking
 
 | Subcommand          | Description                                                                                                                                                                                 |
 | :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -4375,7 +5650,15 @@ Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain trace
 
 Executes the Triple Graph Grammar (TGG) and Critical Pair Analysis (CPA) bidirectional synchronization engine across paired architectural, physical, and geometric models.
 
-<CliCommand name="align" />
+### CLI Command: `align <source> <target>`
+Fuzzy align and correlate brownfield engineering assets (STEP CAD, Modelica, SysML v2, ReqIF)
+
+Options:
+  - `--min-confidence <number>`: Minimum confidence score to display candidates (0.0 - 1.0) (default: 0.6)
+  - `--threshold <number>`: Confidence threshold to auto-seed into Digital Thread Hypergraph (default: 0.85)
+  - `--apply <boolean>`: Auto-seed matching pairs into Digital Thread Hypergraph (default: false)
+  - `--hypergraph <string>`: Path to existing hypergraph state JSON to update
+  - `--json <boolean>`: Output raw JSON candidates (default: false)
 
 ---
 
@@ -4383,7 +5666,8 @@ Executes the Triple Graph Grammar (TGG) and Critical Pair Analysis (CPA) bidirec
 
 Provides dedicated interoperability workflows between **OMG SysML v2** (`.sysml`) and **Modelica** (`.mo`) models.
 
-<CliCommand name="sysml" :show-actions="false" />
+### CLI Command: `sysml <action>`
+OMG SysML v2 engineering toolkit: standard interchange (.sysmlx), validation, and container export
 
 | Subcommand                    | Description                                                                                                                      |
 | :---------------------------- | :------------------------------------------------------------------------------------------------------------------------------- |
@@ -4399,7 +5683,8 @@ Provides dedicated interoperability workflows between **OMG SysML v2** (`.sysml`
 
 Exposes workspace models and requirements as **OASIS OSLC 3.0** Linked Data resources (Requirements Management `oslc_rm` and Architecture Management `oslc_am`) with **TRS 3.0** (Tracked Resource Set) changelog feeds for IBM DOORS Next, Polarion, and Jira integration.
 
-<CliCommand name="oslc" :show-actions="false" />
+### CLI Command: `oslc <action>`
+OSLC Core 3.0 enterprise coexistence gateway for Teamcenter, Windchill, and DOORS
 
 | Subcommand      | Description                                                                                                    |
 | :-------------- | :------------------------------------------------------------------------------------------------------------- |
@@ -4412,7 +5697,8 @@ Exposes workspace models and requirements as **OASIS OSLC 3.0** Linked Data reso
 
 Imports and exports **OMG ReqIF 1.2** (Requirements Interchange Format `.reqif` XML and `.reqifz` archives), translating specification hierarchies and attributes directly to and from SysML v2 `requirement def` blocks.
 
-<CliCommand name="reqif" />
+### CLI Command: `reqif <action>`
+Lossless OMG ReqIF 1.2 requirements interchange with DOORS, Polarion, and Teamcenter
 
 ---
 
@@ -4420,7 +5706,8 @@ Imports and exports **OMG ReqIF 1.2** (Requirements Interchange Format `.reqif` 
 
 Inspects, packs, and converts **ISO/PAS 81346** Digital Data Packages (`.ddp`) and **IDTA Asset Administration Shell (AAS v3.0)** packages (`.aasx`) for industrial digital twin handover.
 
-<CliCommand name="ddp" :show-actions="false" />
+### CLI Command: `ddp <action>`
+Digital Data Package (prostep ivip PSI 21 / OMG CASCaRA) packaging, inspection, and AASX bridging
 
 | Subcommand           | Description                                                                                                                                          |
 | :------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -4434,7 +5721,15 @@ Inspects, packs, and converts **ISO/PAS 81346** Digital Data Packages (`.ddp`) a
 
 Generates, inspects, and cryptographically audits **Design History File (DHF)** compliance dossiers structured for **FDA 21 CFR Part 820.30**, **ISO 13485**, **ISO 26262**, and **DO-178C** regulatory submissions.
 
-<CliCommand name="dhf" :show-actions="false" />
+### CLI Command: `dhf <action> [paths..]`
+Design History File (FDA 21 CFR 820.30 / ISO 14971 / IEC 62304) regulatory compliance exporter
+
+Options:
+  - `--format, -f`: Output format (default: "markdown")
+  - `--output, -o <string>`: File path to save the generated DHF dossier
+  - `--title, -t <string>`: Dossier Title (default: "Design History File (DHF) — IEC 62304 / ISO 14971 Compliance Dossier")
+  - `--device, -d <string>`: Target medical device or safety-critical system name (default: "Safety-Critical Cyber-Physical System (Class C)")
+  - `--author, -a <string>`: Author name (default: "ModelScript Verification Engineering Team")
 
 | Subcommand      | Description                                                                                                                                         |
 | :-------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -4448,7 +5743,13 @@ Generates, inspects, and cryptographically audits **Design History File (DHF)** 
 
 Inspects, lints, compiles into linear DAEs, and projects MATLAB Simulink control block diagrams (`.slx` zip packages and `.mdl` structured text).
 
-<CliCommand name="simulink" :show-actions="false" />
+### CLI Command: `simulink <action> [files..]`
+Inspect, lint, lower to DAE, and project MATLAB Simulink control models (.slx, .mdl)
+
+Options:
+  - `--from-modelica <string>`: Path to modified Modelica file for bidirectional synchronization
+  - `--strategy <string>`: Conflict reconciliation strategy (default: "target-wins")
+  - `--out, -o, --output <string>`: Output file path for generated code or export
 
 | Action        | Description                                                                                                        |
 | :------------ | :----------------------------------------------------------------------------------------------------------------- |
@@ -4469,7 +5770,13 @@ msx simulink to-modelica Suspension.slx --out=Suspension.mo
 
 Inspects, lints, projects, and simulates AUTOSAR Classic and Adaptive (`.arxml`) software component architectures and Virtual Run-Time Environment (RTE) runnables.
 
-<CliCommand name="autosar" :show-actions="false" />
+### CLI Command: `autosar <action> [files..]`
+Inspect, lint, simulate Virtual RTE, lower to DAE, and project AUTOSAR Classic and Adaptive architectures (.arxml)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path for generated code or export
+  - `--duration <number>`: Simulation duration for Virtual RTE [s] (default: 0.1)
+  - `--step <number>`: Simulation timestep for Virtual RTE [s] (default: 0.01)
 
 | Action         | Description                                                                                                                           |
 | :------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
@@ -4493,7 +5800,48 @@ msx autosar simulate-rte PowertrainSystem.arxml --duration=0.5 --step=0.01 --out
 
 Provides complete command-line tooling for Schlumberger **OLGA** transient multiphase flow models (`.opi`, `.key`, `.genkey`, `.tab`, `.tpl`, `.ppl`), including drift-flux hydrodynamic simulation, severe slugging analysis, PVT flash, autonomous history matching, and flow assurance verification.
 
-<CliCommand name="olga" :show-actions="false" />
+### CLI Command: `olga <action> [files..]`
+Simulate, lint, verify, and visualize OLGA multiphase flow models (.opi, .key, .genkey)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for trajectory CSV, SVG diagram, or .fmu archive)
+  - `--duration, -d, --stop-time, --tstop <number>`: Simulation duration in seconds [s]
+  - `--dt, --step, --step-size <number>`: Simulation time step in seconds [s]
+  - `--diameter <number>`: Pipeline internal diameter in meters [m] for bathymetry survey
+  - `--cell-length <number>`: Maximum control volume cell length in meters [m] for bathymetry survey
+  - `--restart <string>`: Path to checkpoint (.rst or .json) file to warm restart simulation from
+  - `--checkpoint-out <string>`: Path to write simulation state checkpoint (.rst) at completion or periodically
+  - `--checkpoint-interval <number>`: Periodic checkpoint snapshot interval in seconds [s]
+  - `--tune <string>`: Comma-separated list of parameters to calibrate in 'tune' action (e.g. 'roughness,choke_cd,u_ambient')
+  - `--max-evals <number>`: Maximum number of objective evaluations during history matching optimization (default: 150)
+  - `--report <string>`: Path to write tuning Markdown report
+  - `--view <string>`: Diagram view type: 'profile', 'schematic', 'pvt', 'wellbore', 'slug', 'bathy' (default: "profile")
+  - `--to <string>`: Target format for conversion ('genkey', 'opi', 'sysml2') (default: "genkey")
+  - `--maop <number>`: Maximum Allowable Operating Pressure limit in bar [bar] (default: 250)
+  - `--margin <number>`: Required hydrate avoidance subcooling margin in Kelvin [K] (default: 3)
+  - `--capacity <number>`: Topside slug catcher maximum liquid surge capacity in m³ [m³] (default: 150)
+  - `--min-vel <number>`: Minimum gas turndown velocity in m/s [m/s] (default: 0.5)
+  - `--max-surge <number>`: Maximum allowable topside slug catcher surge volume in m³ [m³] (default: 85)
+  - `--min-hydrate-margin <number>`: Minimum required hydrate avoidance subcooling margin in Kelvin [K] (default: 3)
+  - `--max-wax <string>`: Maximum allowable wax deposition layer thickness in mm [mm] (default: "2mm")
+  - `--max-corrosion <string>`: Maximum allowable internal sweet CO2 corrosion rate in mm/year [mm/yr] (default: "0.1mm/yr")
+  - `--out-report <string>`: Path to write Flow Assurance Gate Markdown summary report
+  - `--fmi-version <string>`: FMI specification version for FMU export: '2.0', '3.0', or 'both' (default: "2.0")
+  - `--macro-step <number>`: Co-simulation communication step size in seconds [s] (default: 1.0) (default: 1)
+  - `--algorithm <string>`: Co-simulation coupling algorithm ('gauss-seidel' | 'jacobi') (default: "gauss-seidel")
+  - `--comp <string>`: Feed composition string for EOS flash (e.g. 'C1:0.75,C2:0.10,C3:0.08,nC4:0.04,C7:0.03')
+  - `--p <number>`: Operating pressure in bar [bar] for flash (default: 50.0) (default: 50)
+  - `--t <number>`: Operating temperature in Kelvin or Celsius for flash (default: 300.15 K) (default: 300.15)
+  - `--model <string>`: Cubic equation of state model ('pr' | 'srk') (default: "pr")
+  - `--envelope <boolean>`: Trace two-phase saturation envelope (cricondenbar & cricondentherm) (default: false)
+  - `--anti-slug <boolean>`: Enable active subsea topside closed-loop anti-slug controller during simulation (default: false)
+  - `--slug-setpoint <number>`: Anti-slug riser base pressure setpoint in bar [bar] (default: 50.0) (default: 50)
+  - `--slug-kp <number>`: Anti-slug PI proportional gain [1/Pa] (default: 1.5e-6) (default: 0.0000015)
+  - `--slug-ti <number>`: Anti-slug PI integral time constant in seconds [s] (default: 30.0) (default: 30)
+  - `--slug-washout <number>`: Anti-slug high-pass washout filter time constant in seconds [s] (default: 20.0) (default: 20)
+  - `--slug-choke <number>`: Anti-slug baseline nominal choke opening [0..1] (default: 0.50) (default: 0.5)
+  - `--trip <string>`: Dynamic well trip event specification (e.g. 'WELL_1:20' for shut-in at t=20s)
+  - `--junction-vol <number>`: Gathering manifold junction accumulator volume in m³ [m³] (default: 5.0) (default: 5)
 
 | Action        | Description                                                                                                                               |
 | :------------ | :---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -4522,7 +5870,14 @@ msx olga flash --comp="C1:0.75,C2:0.10,C3:0.08,nC4:0.04,C7:0.03" --p=50 --t=295.
 
 Tooling for Dassault Systèmes **SIMPACK** multibody dynamics (`.spck` XML and `.sim` ASCII decks), including Grübler mobility analysis, 3D kinematic joint evaluation, Berg elastomeric bushings, and Craig-Bampton flexible body lowering.
 
-<CliCommand name="simpack" :show-actions="false" />
+### CLI Command: `simpack <action> [files..]`
+Inspect, analyze, and lower SIMPACK multibody models (.spck, .sim, .mbs)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path
+  - `--format, -f <string>`: Report format: html | sarif | junit | ctrf (default: "html")
+  - `--stop-time, --tstop, --duration <number>`: Simulation stop time [s] (default: 5)
+  - `--step, --step-size, --dt <number>`: Simulation time step [s] (default: 0.005)
 
 | Action        | Description                                                                                      |
 | :------------ | :----------------------------------------------------------------------------------------------- |
@@ -4545,7 +5900,21 @@ msx simpack to-modelica Mechanism.sim --out=Mechanism.mo
 
 Tooling for **GENSYS** railway vehicle dynamics (`.calc`, `.geom`, `.track`), including FASTSIM wheel-rail contact mechanics, Polach non-linear creep, ERRI B176 track irregularities, Sperling ride comfort, and **EN 14363 / UIC 518** running safety homologation.
 
-<CliCommand name="gensys" :show-actions="false" />
+### CLI Command: `gensys <action> [files..]`
+Inspect, lint, and verify GENSYS railway vehicle models (.calc, .run, .sub)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path
+  - `--format, -f <string>`: Report format: html | sarif | junit | ctrf (default: "html")
+  - `--stop-time, --tstop, --duration <number>`: Simulation stop time [s] (default: 5)
+  - `--step, --step-size, --dt <number>`: Simulation time step [s] (default: 0.005)
+  - `--y-force <number>`: Lateral wheel force Y [kN] for EN 14363 verification (default: 25)
+  - `--q-force <number>`: Vertical wheel force Q [kN] for EN 14363 verification (default: 80)
+  - `--axle-load <number>`: Nominal axle load 2*Q0 [kN] for Prud'homme limit (default: 160)
+  - `--wz-vert <number>`: Sperling vertical ride comfort index Wz
+  - `--wz-horiz <number>`: Sperling horizontal ride comfort index Wz
+  - `--unloading <number>`: EN 14067-6 crosswind wheel unloading ratio Delta Q / Q0
+  - `--conicity <number>`: Wheel-rail equivalent conicity lambda_eq
 
 | Action        | Description                                                                                                                       |
 | :------------ | :-------------------------------------------------------------------------------------------------------------------------------- |
@@ -4568,7 +5937,8 @@ msx gensys report ManchesterBenchmark.calc --format html --out homologation.html
 
 Analog circuit simulation and netlist analysis for **SPICE** (`.cir`, `.sp`, `.net`, `.lib`), including DC operating point, transient, and AC analyses (AC sweep parameters come from the netlist `.AC` directive), and ECAD graph generation.
 
-<CliCommand name="spice" />
+### CLI Command: `spice <action>`
+SPICE netlist (.cir, .sp, .net) analog & mixed-signal simulation and translation
 
 ```bash
 msx spice simulate LowPassFilter.cir --analysis op
@@ -4582,7 +5952,14 @@ msx spice simulate AudioAmplifier.sp --analysis ac --format csv --out bode.csv
 
 Tooling for **MSC Adams** mechanism datasets (`.adm`) and command files (`.cmd`), including 3D Euler/Cardan kinematics, Grübler spatial mobility analysis, and cross-domain SIMPACK / Modelica projections.
 
-<CliCommand name="adams" :show-actions="false" />
+### CLI Command: `adams <action> [files..]`
+Inspect, analyze, solve, and project MSC Adams multibody models (.adm, .cmd, .acf)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path
+  - `--stop-time, --tstop, --duration <number>`: Simulation stop time [s] (default: 5)
+  - `--step, --step-size, --dt <number>`: Simulation time step [s] (default: 0.005)
+  - `--stabilization <string>`: Constraint stabilization method (default: "baumgarte")
 
 | Action        | Description                                                                                           |
 | :------------ | :---------------------------------------------------------------------------------------------------- |
@@ -4604,7 +5981,12 @@ msx adams to-simpack RobotArm.adm --out=RobotArm.spck
 
 Robotics compiler tooling for **ROS URDF** (`.urdf`) and **Xacro** (`.xacro`) descriptions, featuring Featherstone recursive dynamics (ABA forward dynamics, RNEA inverse dynamics), joint limit verification, and 3D CAD projections.
 
-<CliCommand name="urdf" :show-actions="false" />
+### CLI Command: `urdf <action> [files..]`
+Inspect, validate, solve kinematics, and project ROS URDF & SDFormat robot models (.urdf, .sdf, .xacro)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path
+  - `--gravity <number>`: Gravitational acceleration [m/s^2] (default: 9.80665)
 
 | Action        | Description                                                                                          |
 | :------------ | :--------------------------------------------------------------------------------------------------- |
@@ -4627,7 +6009,20 @@ msx urdf to-modelica PandaArm.urdf --out=PandaArm.mo
 
 Tooling for Boeing / MSC **EASY5** dynamic models (`.ez5`, `.ezm`, `.ezd`), including linear state-space analysis, User General (UG) Fortran routines, tabular map interpolation, and Modelica/SSP projections.
 
-<CliCommand name="easy5" :show-actions="false" />
+### CLI Command: `easy5 <action> [files..]`
+Inspect, lint, linearize, and project EASY5 continuous simulation models (.ez5, .ezm, .ezd, .eas)
+
+Options:
+  - `--from-modelica <string>`: Path to modified Modelica file for bidirectional synchronization
+  - `--strategy <string>`: Conflict reconciliation strategy (default: "target-wins")
+  - `--out, -o, --output <string>`: Output file path (for code generation or SVG diagram)
+  - `--min-freq <number>`: Minimum frequency for Bode response (rad/s) (default: 0.01)
+  - `--max-freq <number>`: Maximum frequency for Bode response (rad/s) (default: 1000)
+  - `--num-points <number>`: Number of frequency logarithmic evaluation points (default: 60)
+  - `--max-iter <number>`: Maximum Newton-Raphson iterations for trim equilibrium (default: 50)
+  - `--tol <number>`: Convergence tolerance for trim equilibrium (default: 0.000001)
+  - `--format, -f <string>`: Output format: 'terminal' or 'json' (default: "terminal")
+  - `--json <boolean>`: Emit JSON output (default: false)
 
 | Action        | Description                                                           |
 | :------------ | :-------------------------------------------------------------------- |
@@ -4643,7 +6038,19 @@ Tooling for Boeing / MSC **EASY5** dynamic models (`.ez5`, `.ezm`, `.ezd`), incl
 
 Tooling for Gamma Technologies **GT-SUITE** powertrain and engine models (`.gtm`, `.gtd`), including crank-slider kinematics, Wiebe combustion, Woschni heat transfer, Zeldovich NOx emissions, and DAE lowering.
 
-<CliCommand name="gtsuite" :show-actions="false" />
+### CLI Command: `gtsuite <action> [files..]`
+Inspect, lint, simulate, diagram, and project GT-SUITE / GT-POWER engine models (.gtm, .gtd, .gtx)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (for code generation, trajectories, or SVG diagrams)
+  - `--speed <number>`: Engine speed override in RPM
+  - `--duration <number>`: Simulation duration in seconds (default: 0.5)
+  - `--view <string>`: Diagram view: 'schematic' or 'pv' (default: "schematic")
+  - `--max-bsfc <number>`: Verification ceiling for BSFC in g/kWh (default: 240)
+  - `--max-boost <number>`: Verification ceiling for boost pressure in bar (default: 2.8)
+  - `--max-nox <number>`: Verification ceiling for NOx concentration in ppm (default: 60)
+  - `--min-knock <number>`: Verification floor for knock safety margin (default: 0.05)
+  - `--format, -f <string>`: Output format: 'terminal' or 'json' (default: "terminal")
 
 | Action        | Description                                                                                      |
 | :------------ | :----------------------------------------------------------------------------------------------- |
@@ -4659,7 +6066,12 @@ Tooling for Gamma Technologies **GT-SUITE** powertrain and engine models (`.gtm`
 
 Tooling for DNV / SINTEF **SIMA** marine systems (`.inp`, `.sima`, `.sys`, `.hyd`), including Cummins equation 6-DOF floater dynamics, catenary mooring solvers, and DNV-OS-E301 station-keeping verification.
 
-<CliCommand name="sima" :show-actions="false" />
+### CLI Command: `sima <action> [files..]`
+Inspect, lint, verify, and project SINTEF Ocean SIMO / RIFLEX offshore models (.inp, .sima, .hyd)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (for code generation or exported manifests)
+  - `--consequence-class <number>`: DNV consequence class (1 or 2, default: 2) (default: 2)
 
 | Action        | Description                                                                                  |
 | :------------ | :------------------------------------------------------------------------------------------- |
@@ -4679,7 +6091,16 @@ Tooling for DNV / SINTEF **SIMA** marine systems (`.inp`, `.sima`, `.sys`, `.hyd
 
 Tooling for NASA **ROCETS** liquid rocket engine transient decks (`.roc`, `.deck`, `.map`), including turbopump flow balance, CEA equilibrium combustion, supersonic nozzle expansion, and Bartz throat heat transfer.
 
-<CliCommand name="rocets" :show-actions="false" />
+### CLI Command: `rocets <action> [files..]`
+Inspect, lint, balance, simulate, and project NASA ROCETS liquid propulsion models (.roc, .deck)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (for code generation or SVG diagram)
+  - `--target-pc <number>`: Target chamber pressure in Pascals for balance solve
+  - `--mr <number>`: Target oxidizer-to-fuel mixture ratio for balance solve
+  - `--t-end <number>`: End time for transient trajectory simulation (seconds) (default: 2)
+  - `--format, -f <string>`: Output format: 'terminal' or 'json' (default: "terminal")
+  - `--json <boolean>`: Emit JSON output (default: false)
 
 | Action        | Description                                                                                          |
 | :------------ | :--------------------------------------------------------------------------------------------------- |
@@ -4695,7 +6116,14 @@ Tooling for NASA **ROCETS** liquid rocket engine transient decks (`.roc`, `.deck
 
 Tooling for Siemens **PSS/E** power transmission cases (`.raw`, `.dyr`, `.sav`), including bus/branch netlist extraction, Full-Newton AC power flow solving, and Modelica / PSCAD EMT projections.
 
-<CliCommand name="psse" :show-actions="false" />
+### CLI Command: `psse <action> [files..]`
+Inspect, lint, and visualize PSS/E RAW power flow cases (.raw)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for SVG diagram)
+  - `--algorithm, --alg <string>`: Power flow algorithm: 'nr' (Newton-Raphson) or 'fdpf' (Fast Decoupled) (default: "nr")
+  - `--tol <number>`: Convergence tolerance in p.u. (default: 0.0001)
+  - `--max-iter <number>`: Maximum allowable power flow iterations (default: 25)
 
 | Action        | Description                                                                                |
 | :------------ | :----------------------------------------------------------------------------------------- |
@@ -4714,7 +6142,20 @@ Tooling for Siemens **PSS/E** power transmission cases (`.raw`, `.dyr`, `.sav`),
 
 Tooling for Energy Solutions **PipelineStudio** gas and liquid pipeline networks (`.lps`, `.tgx`, `.tlx`, `.psg`), including AGA-8 / GERG-2008 natural gas compressibility, hydrogen blending ($H_2 \le 20\%$), open-channel slack line flow, water hammer liquid surge, and transient line pack accounting.
 
-<CliCommand name="lps" :show-actions="false" />
+### CLI Command: `lps <action> [files..]`
+Inspect, lint, simulate, and verify PipelineStudio gas & liquid networks (.lps, .tgx, .tlx, .tgn, .tln)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for SysML or Modelica export)
+  - `--format, -f <string>`: Output format: terminal or json (default: "terminal")
+  - `--json <boolean>`: Output results in JSON format (default: false)
+  - `--duration, --stop-time, --tstop <number>`: Simulation duration in seconds for transient run (default: 3600)
+  - `--step, --step-size, --dt <number>`: Transient simulation timestep in seconds (default: 10)
+  - `--restart <string>`: Path to .sav checkpoint file to resume simulation from
+  - `--save-checkpoint <string>`: Path to write output .sav state snapshot
+  - `--eos <string>`: Equation of state to use (AGA8, GERG2008, PENG_ROBINSON, IDEAL)
+  - `--soil <boolean>`: Run 1D radial cylindrical soil thermal conduction simulation (default: false)
+  - `--slack <boolean>`: Evaluate open-channel slack line gravity flow on downhill pipes (default: false)
 
 | Action        | Description                                                                                        |
 | :------------ | :------------------------------------------------------------------------------------------------- |
@@ -4736,7 +6177,8 @@ Tooling for Energy Solutions **PipelineStudio** gas and liquid pipeline networks
 
 Controls the lifecycle of the persistent background ModelScript compiler daemon (`~/.modelscript/daemon.sock`).
 
-<CliCommand name="daemon" :show-actions="false" />
+### CLI Command: `daemon <action>`
+Manage the background compiler daemon for instant compilation
 
 | Subcommand | Description                                                                        |
 | :--------- | :--------------------------------------------------------------------------------- |
@@ -4751,7 +6193,12 @@ Controls the lifecycle of the persistent background ModelScript compiler daemon 
 
 Compiles a `@modelscript/dsl` grammar definition into a zero-dependency native WebAssembly GLR parser (`parser.wasm`) along with strongly typed TypeScript CST node definitions.
 
-<CliCommand name="build" />
+### CLI Command: `build [entry]`
+Compile the generated parser AssemblyScript into WASM and native platform binaries
+
+Options:
+  - `--target <string>`: Compilation target (wasm or native) (default: "native")
+  - `--register <boolean>`: Register the compiled language into the user catalog (~/.modelscript/languages/) (default: false)
 
 ---
 
@@ -4759,7 +6206,13 @@ Compiles a `@modelscript/dsl` grammar definition into a zero-dependency native W
 
 Scaffolds a new WebAssembly GLR parser (`parser`) or a complete standalone VS Code language extension (`extension` including TextMate grammars, LSP wiring, and `package.json` contributions) from a `@modelscript/dsl` language definition.
 
-<CliCommand name="generate" />
+### CLI Command: `generate [target] [entries..]`
+Generate parser tables or a full VS Code extension from DSL language specs
+
+Options:
+  - `--entry <string>`: Path to primary language spec file (default: "src/language.ts")
+  - `--outdir, -o <string>`: Output directory (default: "build/src-gen")
+  - `--vsix <boolean>`: Package into a .vsix extension bundle (default: false)
 
 ---
 
@@ -4767,7 +6220,8 @@ Scaffolds a new WebAssembly GLR parser (`parser`) or a complete standalone VS Co
 
 Manages the dynamic polyglot language registry (`lang` is an alias for `language`).
 
-<CliCommand name="language" :show-actions="false" />
+### CLI Command: `language <action> [target]`
+Manage registered language DSLs (list, register, unregister)
 
 | Subcommand        | Description                                                                                                                                                               |
 | :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -4781,7 +6235,12 @@ Manages the dynamic polyglot language registry (`lang` is an alias for `language
 
 Starts the multi-language ModelScript Language Server Protocol (`@modelscript/lsp`) server.
 
-<CliCommand name="lsp" />
+### CLI Command: `lsp`
+Start the ModelScript polyglot Language Server (over stdio for editor integration)
+
+Options:
+  - `--stdio <boolean>`: Run language server over standard I/O (default for VS Code, Neovim, Emacs) (default: true)
+  - `--port <number>`: Run language server over a TCP port
 
 ---
 
@@ -4789,7 +6248,8 @@ Starts the multi-language ModelScript Language Server Protocol (`@modelscript/ls
 
 Launches a local interactive web playground server for live grammar authoring, GLR parse tree visualization, Salsa query inspection, and DAE simulation.
 
-<CliCommand name="playground" />
+### CLI Command: `playground`
+Launch the dual-editor DSL workbench
 
 ---
 
@@ -4797,7 +6257,12 @@ Launches a local interactive web playground server for live grammar authoring, G
 
 Executes untrusted `.msx` scripts or `.mo` simulations inside a memory-capped, capability-isolated WebAssembly sandbox with no host filesystem or network access.
 
-<CliCommand name="sandbox" />
+### CLI Command: `sandbox [entries..]`
+Start a VS Code Web sandbox with on-the-fly compiled multi-language extension
+
+Options:
+  - `--outdir, -o <string>`: output directory for extension build artifacts (default: "build/src-gen")
+  - `--open <boolean>`: Open the browser automatically (default: true)
 
 ---
 
@@ -4807,47 +6272,101 @@ Executes untrusted `.msx` scripts or `.mo` simulations inside a memory-capped, c
 
 Initializes a new `modelscript.json` package manifest in the current directory.
 
-<CliCommand name="init" />
+### CLI Command: `init [path]`
+Initialize a ModelScript package.json for a Modelica/SysML project
+
+Options:
+  - `--yes, -y <boolean>`: Accept all defaults without prompts (default: false)
 
 ---
 
 ### `login`, `logout`, `whoami`
 
-Manages authentication sessions against a ModelScript Registry or self-hosted Enterprise Hub. Credentials and Ed25519 signing keys are stored in `~/.modelscriptrc`.
+Manages authentication sessions against the Ansatz Package Registry or self-hosted Ansatz / ModelScript hub node. Credentials and signing keys are stored in `~/.ansatzrc` (or `~/.modelscriptrc`).
 
-<CliCommand name="login" />
+### CLI Command: `login`
+Log in to the Ansatz Package Registry & Platform
 
-<CliCommand name="logout" />
+Options:
+  - `--email, -e <string>`: Email address or username
+  - `--password, -p <string>`: Password (recommended only in non-interactive/automated environments)
+  - `--token, -t <string>`: Authenticate directly with a personal access token or API token
+  - `--otp <string>`: Two-factor authentication code (TOTP or backup recovery code)
+  - `--registry, -r <string>`: Registry API URL
 
-<CliCommand name="whoami" />
+### CLI Command: `logout`
+Log out from the Ansatz Package Registry & Platform
+
+Options:
+  - `--registry, -r <string>`: Registry API URL to log out from
+  - `--all <boolean>`: Clear all saved registry preferences and credentials (default: false)
+
+### CLI Command: `whoami`
+Display information about the currently authenticated user
+
+Options:
+  - `--registry, -r <string>`: Registry API URL to query against
+  - `--json <boolean>`: Output in JSON format (default: false)
 
 ---
 
 ### `install`
 
-Resolves semantic version constraints, verifies SHA-256 content-addressable digests and Ed25519 publisher signatures, and installs Modelica/SysML/ModelScript packages into `modelica_modules/` while updating `modelscript.lock`.
+Resolves semantic version constraints, verifies SHA-256 content-addressable digests and Ed25519 publisher signatures, and installs Modelica/SysML/ModelScript packages into `modelica_modules/` while updating `msx.lock`.
 
-<CliCommand name="install" />
+### CLI Command: `install [package]`
+Install a package from the Ansatz Package Registry into the local workspace
+
+Options:
+  - `--save, -s <boolean>`: Save installed package to package.json dependencies (default: true)
+  - `--frozen-lockfile, --frozen, --ci <boolean>`: Enforce zero-trust installation against msx.lock (fails if lockfile is missing, out of sync, or tampered) (default: false)
+  - `--dry-run <boolean>`: Simulate transitive dependency resolution without writing packages or lockfile to disk (default: false)
 
 ---
 
 ### `pack`, `publish`, `unpublish`
 
-Packages, cryptographically signs, and publishes libraries to the ModelScript Registry.
+Packages, cryptographically signs, and publishes libraries to the Ansatz Package Registry.
 
-<CliCommand name="pack" />
+### CLI Command: `pack [path]`
+Create an offline distribution zip archive from a package
 
-<CliCommand name="publish" />
+Options:
+  - `--out, -o <string>`: Output directory for the generated archive
+  - `--dry-run, -d <boolean>`: Inspect files and archive details without creating the file (default: false)
+  - `--json <boolean>`: Output archive metadata as JSON (default: false)
 
-<CliCommand name="unpublish" />
+### CLI Command: `publish <path>`
+Publish a library directory or single Modelica file to the Ansatz Package Registry
+
+Options:
+  - `--signature <string>`: Cryptographic detached signature for supply chain verification
+  - `--dry-run, -d <boolean>`: Report files and archive metadata without publishing to the registry (default: false)
+  - `--tag, -t <string>`: Registers the published package with the given dist-tag (default: "latest")
+  - `--no-verify <boolean>`: Skip pre-flight syntax and manifest verification (default: false)
+
+### CLI Command: `unpublish [path]`
+Remove a published library version from the Ansatz Package Registry
+
+Options:
+  - `--name, -n <string>`: Library name (used with --version instead of a path)
+  - `--version, -v <string>`: Library version (used with --name instead of a path)
 
 ---
 
 ### `cloud`
 
-Manages remote high-performance computing (HPC) simulation sweeps, Slurm batch jobs, and organization compute credit wallets on ModelScript Cloud.
+Manages remote high-performance computing (HPC) simulation sweeps, Slurm batch jobs, and organization compute credit wallets on Ansatz Cloud HPC.
 
-<CliCommand name="cloud" :show-actions="false" />
+### CLI Command: `cloud <action> [target]`
+Manage cloud HPC jobs, compute profiles, credit wallet, and live telemetry
+
+Options:
+  - `--profile, -p <string>`: Compute profile ID (standard, high-memory, gpu-a100, hpc-mpi-64)
+  - `--domain, -d <string>`: Simulation domain (modelica, cfd, fea, monte-carlo)
+  - `--follow, -f <boolean>`: Follow log stream in real time
+  - `--output, -o <string>`: Output path for downloaded artifacts
+  - `--api-url <string>`: ModelScript API server URL
 
 | Subcommand           | Arguments           | Description                                                                                                                 |
 | :------------------- | :------------------ | :-------------------------------------------------------------------------------------------------------------------------- |
@@ -4866,18 +6385,38 @@ Manages remote high-performance computing (HPC) simulation sweeps, Slurm batch j
 
 Administrative CLI commands for operators managing a self-hosted **ModelScript Enterprise Hub** instance (see [Platform Administration Guide](../guide/administration.md)).
 
-<CliCommand name="hub" />
+### CLI Command: `hub <command>`
+Manage, configure, and inspect Ansatz & ModelScript hub nodes
 
-<CliCommand name="db" />
+### CLI Command: `db <action>`
+Database schema migration, health verification, and pre-flight snapshot management
 
-<CliCommand name="archive" />
+Options:
+  - `--db <string>`: Path to local SQLite database file for offline air-gapped maintenance
+  - `--dry-run <boolean>`: Preview pending migrations without applying changes (default: false)
+  - `--skip-backup <boolean>`: Skip automated pre-flight hot snapshot (not recommended for production) (default: false)
+  - `--label <string>`: Optional snapshot label when creating a hot backup (`msx db backup --label pre-release`)
+  - `--file <string>`: Backup snapshot or bundle file path (`msx db restore --file ...` / `msx db import-bundle --file ...`)
+  - `--keep <number>`: Number of most recent snapshots to keep when pruning (`msx db prune --keep 7`) (default: 7)
+  - `--api-url <string>`: ModelScript API server URL
+
+### CLI Command: `archive [action] [users..]`
+GDPR Art. 20 / CCPA data archive export with async worker queue and concurrency limits
+
+Options:
+  - `--format <string>`: Archive payload format: zip (default) or json (default: "zip")
+  - `--concurrency, -c <number>`: Maximum concurrent worker jobs (default: 2 or ARCHIVE_CONCURRENCY env)
+  - `--output, -o <string>`: Destination path or file for single-user archive
+  - `--output-dir <string>`: Destination directory for batch archives (default: ./data/archives)
+  - `--wait <boolean>`: Wait and stream download after queueing completes (default: true)
+  - `--api-url <string>`: ModelScript Hub API endpoint URL
 
 ```bash
 # Initialize Hub configuration or query cluster service health
 msx hub <init|status> [--api-url <url>]
 
-# Inspect PostgreSQL migration state, apply schema upgrades, or verify the SHA-256 audit ledger chain
-msx db <status|upgrade|verify> [--connection-string <postgres://...>]
+# Inspect database migration state, plan schema upgrades, or verify relational and physical integrity (online or offline air-gapped)
+msx db <status|upgrade|rollback|plan|verify> [--db <file.sqlite>] [--dry-run] [--skip-backup]
 
 # Request, poll, or download long-term regulatory cold-storage archives
 msx archive <request|status|download> <targetId> [-o <path>]
@@ -4906,50 +6445,50 @@ Filter by platform group, industry, or search across all 44 engineering language
 ModelScript supports 44 modeling, simulation, and engineering formats across 5 pipeline capabilities:
 | Language | Extension | Role | Parse | Lint | DAE Arena | Simulate | Projections |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| ModelScript | `.msx` | Native systems modeling & query language | ✓ | ✓ | — | — | ✓ |
-| Modelica | `.mo` | Acausal multi-domain physics | ✓ | ✓ | — | ✓ | ✓ |
+| ModelScript | `.msx` | Native systems modeling & query language | ✓ | ✓ | ✓ | — | — |
+| Modelica | `.mo` | Acausal multi-domain physics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | SysML v2 / KerML | `.sysml` | Systems architecture & requirements | ✓ | ✓ | — | ✓ | ✓ |
 | ReqIF | `.reqif` | Requirements interchange & contract entailment | ✓ | ✓ | — | — | ✓ |
-| SSP | `.ssp` | FMU system structure & parameterization | ✓ | ✓ | — | — | ✓ |
+| SSP | `.ssp` | FMU system structure & parameterization | ✓ | ✓ | ✓ | — | ✓ |
 | OWL2 | `.owl` | Ontologies & description-logic reasoning | ✓ | ✓ | — | — | ✓ |
 | STEP (ISO 10303) | `.step` | B-Rep CAD assemblies & AP242 PMI | ✓ | ✓ | — | — | ✓ |
 | OpenSCAD | `.scad` | Parametric constructive solid geometry | ✓ | ✓ | — | — | ✓ |
-| CFD (SU2 / OpenFOAM) | `.su2` | Computational fluid dynamics meshes | ✓ | ✓ | — | ✓ | ✓ |
-| FEA (CalculiX / Abaqus / NASTRAN) | `.inp` | Finite-element structural analysis | ✓ | ✓ | — | ✓ | ✓ |
+| CFD (SU2 / OpenFOAM) | `.su2` | Computational fluid dynamics meshes | ✓ | ✓ | ✓ | ✓ | ✓ |
+| FEA (CalculiX / Abaqus / NASTRAN) | `.inp` | Finite-element structural analysis | ✓ | ✓ | ✓ | ✓ | ✓ |
 | CSV | `.csv` | Time-series & sensor logs | ✓ | ✓ | — | — | ✓ |
-| C | `.c` | Numerical & embedded C integration | ✓ | ✓ | — | — | ✓ |
-| Fortran | `.f90` | Legacy scientific subroutines | ✓ | ✓ | — | — | ✓ |
-| JSBSim | `.xml` | 6-DOF flight dynamics | ✓ | ✓ | — | ✓ | ✓ |
-| NASA ROCETS | `.roc` | Liquid rocket engine transients | ✓ | ✓ | — | ✓ | ✓ |
-| CCSDS | `.xtce` | Astrodynamics & spacecraft telemetry | ✓ | ✓ | — | ✓ | ✓ |
-| EASY5 | `.ez5` | Dynamic simulation & linear control | ✓ | ✓ | — | — | ✓ |
-| AUTOSAR | `.arxml` | Classic & Adaptive software architecture | ✓ | ✓ | — | ✓ | ✓ |
-| MATLAB Simulink | `.slx` | Block diagrams & control systems | ✓ | ✓ | — | — | ✓ |
-| GT-SUITE | `.gtm` | Engine, powertrain & thermal flow | ✓ | ✓ | — | ✓ | ✓ |
-| ASAM OpenDRIVE | `.xodr` | Road network geometry | ✓ | ✓ | — | — | ✓ |
-| ASAM OpenSCENARIO | `.xosc` | Driving scenarios & RSS safety margins | ✓ | ✓ | — | ✓ | ✓ |
-| GENSYS | `.calc` | Railway vehicle dynamics & track | ✓ | ✓ | — | ✓ | ✓ |
-| SIMPACK | `.spck` | Spatial multibody dynamics | ✓ | ✓ | — | ✓ | ✓ |
+| C | `.c` | Numerical & embedded C integration | ✓ | ✓ | ✓ | — | ✓ |
+| Fortran | `.f90` | Legacy scientific subroutines | ✓ | ✓ | ✓ | — | — |
+| JSBSim | `.xml` | 6-DOF flight dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
+| NASA ROCETS | `.roc` | Liquid rocket engine transients | ✓ | ✓ | ✓ | ✓ | ✓ |
+| CCSDS | `.xtce` | Astrodynamics & spacecraft telemetry | ✓ | ✓ | ✓ | ✓ | ✓ |
+| EASY5 | `.ez5` | Dynamic simulation & linear control | ✓ | ✓ | ✓ | — | ✓ |
+| AUTOSAR | `.arxml` | Classic & Adaptive software architecture | ✓ | ✓ | ✓ | ✓ | ✓ |
+| MATLAB Simulink | `.slx` | Block diagrams & control systems | ✓ | ✓ | ✓ | — | ✓ |
+| GT-SUITE | `.gtm` | Engine, powertrain & thermal flow | ✓ | ✓ | ✓ | ✓ | ✓ |
+| ASAM OpenDRIVE | `.xodr` | Road network geometry | ✓ | ✓ | ✓ | — | ✓ |
+| ASAM OpenSCENARIO | `.xosc` | Driving scenarios & RSS safety margins | ✓ | ✓ | ✓ | ✓ | ✓ |
+| GENSYS | `.calc` | Railway vehicle dynamics & track | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SIMPACK | `.spck` | Spatial multibody dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | PSCAD / EMTDC | `.pscx` | Electromagnetic transients (EMT) | ✓ | ✓ | — | ✓ | ✓ |
-| PSS/E | `.raw` | Transmission power flow | ✓ | ✓ | — | ✓ | ✓ |
-| OpenDSS | `.dss` | Unbalanced distribution & DER hosting | ✓ | ✓ | — | ✓ | ✓ |
-| OLGA | `.genkey` | Transient multiphase flow assurance | ✓ | ✓ | — | ✓ | ✓ |
-| PipelineStudio | `.lps` | Gas & liquid pipeline hydraulics | ✓ | ✓ | — | ✓ | ✓ |
-| ECLIPSE | `.data` | Reservoir engineering | ✓ | ✓ | — | ✓ | ✓ |
-| RELAP5-3D | `.inp` | Reactor thermal-hydraulics & kinetics | ✓ | ✓ | — | ✓ | ✓ |
-| SIMA / SIMO / RIFLEX | `.sima` | Marine operations & riser dynamics | ✓ | ✓ | — | — | ✓ |
-| SPICE | `.cir` | Analog circuit simulation | ✓ | ✓ | — | ✓ | ✓ |
-| Verilog-A / AMS | `.va` | Analog compact device models | ✓ | ✓ | — | — | ✓ |
-| IBIS | `.ibs` | I/O buffer behavioral models | ✓ | ✓ | — | — | ✓ |
-| Touchstone | `.sNp` | RF & signal-integrity S-parameters | ✓ | ✓ | — | — | ✓ |
-| URDF / Xacro | `.urdf` | Robot kinematics & dynamics | ✓ | ✓ | — | — | ✓ |
-| PLCopen / IEC 61131-3 | `.st` | PLC control software | ✓ | ✓ | — | ✓ | ✓ |
-| MSC Adams | `.adm` | Mechanical system dynamics | ✓ | ✓ | — | ✓ | ✓ |
-| EnergyPlus | `.idf` | Building energy & HVAC | ✓ | ✓ | — | — | ✓ |
-| EPANET | `.inp` | Pressurized water distribution | ✓ | ✓ | — | ✓ | ✓ |
-| EPA SWMM | `.inp` | Stormwater & urban drainage | ✓ | ✓ | — | ✓ | ✓ |
-| Aspen Plus / HYSYS | `.bkp` | Chemical process flowsheets | ✓ | ✓ | — | ✓ | ✓ |
-| SBML | `.sbml` | Biochemical reaction networks | ✓ | ✓ | — | ✓ | ✓ |
+| PSS/E | `.raw` | Transmission power flow | ✓ | ✓ | ✓ | ✓ | ✓ |
+| OpenDSS | `.dss` | Unbalanced distribution & DER hosting | ✓ | ✓ | ✓ | ✓ | ✓ |
+| OLGA | `.genkey` | Transient multiphase flow assurance | ✓ | ✓ | ✓ | ✓ | ✓ |
+| PipelineStudio | `.lps` | Gas & liquid pipeline hydraulics | ✓ | ✓ | ✓ | ✓ | ✓ |
+| ECLIPSE | `.data` | Reservoir engineering | ✓ | ✓ | ✓ | ✓ | ✓ |
+| RELAP5-3D | `.inp` | Reactor thermal-hydraulics & kinetics | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SIMA / SIMO / RIFLEX | `.sima` | Marine operations & riser dynamics | ✓ | ✓ | ✓ | — | ✓ |
+| SPICE | `.cir` | Analog circuit simulation | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Verilog-A / AMS | `.va` | Analog compact device models | ✓ | ✓ | ✓ | — | ✓ |
+| IBIS | `.ibs` | I/O buffer behavioral models | ✓ | ✓ | ✓ | — | ✓ |
+| Touchstone | `.sNp` | RF & signal-integrity S-parameters | ✓ | ✓ | ✓ | — | ✓ |
+| URDF / Xacro | `.urdf` | Robot kinematics & dynamics | ✓ | ✓ | ✓ | — | ✓ |
+| PLCopen / IEC 61131-3 | `.st` | PLC control software | ✓ | ✓ | ✓ | ✓ | ✓ |
+| MSC Adams | `.adm` | Mechanical system dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
+| EnergyPlus | `.idf` | Building energy & HVAC | ✓ | ✓ | ✓ | — | ✓ |
+| EPANET | `.inp` | Pressurized water distribution | ✓ | ✓ | ✓ | ✓ | ✓ |
+| EPA SWMM | `.inp` | Stormwater & urban drainage | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Aspen Plus / HYSYS | `.bkp` | Chemical process flowsheets | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SBML | `.sbml` | Biochemical reaction networks | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ---
 

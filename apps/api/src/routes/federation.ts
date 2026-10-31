@@ -1,13 +1,85 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 import { Router, json } from "express";
-import { LibraryDatabase } from "../database.js";
-import { createActivityPubVerifier, defaultInboxLimiter } from "../middleware/activitypub.js";
+import crypto from "node:crypto";
+import { LibraryDatabase, type PostVisibility } from "../database.js";
+import {
+  createActivityPubVerifier,
+  createAuthorizedFetchVerifier,
+  defaultInboxLimiter,
+  invalidateCachedPublicKey,
+} from "../middleware/activitypub.js";
+import { optionalAuth } from "../middleware/auth-middleware.js";
 import type { FederationWorker } from "../services/federation-worker.js";
-import { sendSignedRequest } from "../util/activitypub-crypto.js";
+import { computeFollowersSyncDigest, sendSignedGetRequest, sendSignedRequest } from "../util/activitypub-crypto.js";
 import { ed25519PemToMultibase } from "../util/multikey.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
+import { isCorporateOrAirgapTier, isFederationDisabled } from "../util/tier-presets.js";
+
+export function isNodeFederationDisabled(db?: LibraryDatabase): boolean {
+  const settings = db?.getInstanceSettings();
+  return isFederationDisabled(settings);
+}
+
+export function inferVisibilityFromAddressing(
+  obj: Record<string, unknown>,
+  parentActivity?: Record<string, unknown>,
+): PostVisibility {
+  const toRaw = obj["to"] ?? parentActivity?.["to"];
+  const ccRaw = obj["cc"] ?? parentActivity?.["cc"];
+  const toArr = Array.isArray(toRaw) ? toRaw.map(String) : typeof toRaw === "string" ? [toRaw] : [];
+  const ccArr = Array.isArray(ccRaw) ? ccRaw.map(String) : typeof ccRaw === "string" ? [ccRaw] : [];
+
+  const isPublicUri = (u: string) =>
+    u === "https://www.w3.org/ns/activitystreams#Public" || u === "as:Public" || u === "Public";
+
+  if (toArr.some(isPublicUri)) {
+    return "public";
+  }
+  if (ccArr.some(isPublicUri)) {
+    return "unlisted";
+  }
+  if ([...toArr, ...ccArr].some((u) => u.endsWith("/followers"))) {
+    return "followers";
+  }
+  if (toArr.length > 0 || ccArr.length > 0) {
+    return "direct";
+  }
+  return "public";
+}
+
+export function buildAddressingForVisibility(
+  visibility: PostVisibility,
+  actorUrl: string,
+  mentionedActorUrls: string[] = [],
+): { to: string[]; cc: string[] } {
+  const publicUri = "https://www.w3.org/ns/activitystreams#Public";
+  const followersUri = `${actorUrl}/followers`;
+  switch (visibility) {
+    case "unlisted":
+      return {
+        to: [followersUri],
+        cc: [publicUri, ...mentionedActorUrls],
+      };
+    case "followers":
+      return {
+        to: [followersUri],
+        cc: [...mentionedActorUrls],
+      };
+    case "direct":
+      return {
+        to: [...mentionedActorUrls],
+        cc: [],
+      };
+    case "public":
+    default:
+      return {
+        to: [publicUri],
+        cc: [followersUri, ...mentionedActorUrls],
+      };
+  }
+}
 
 export interface ArtifactAttachmentInput {
   id: number | string;
@@ -81,6 +153,10 @@ export async function resolveActorHandle(
   actor: Record<string, unknown>;
   actorUrl: string;
 }> {
+  if (isNodeFederationDisabled(db)) {
+    throw new Error("Federation is disabled on this node.");
+  }
+
   let actorUrl = handleOrUrl.trim();
   if (!actorUrl.startsWith("http://") && !actorUrl.startsWith("https://")) {
     const cleanHandle = actorUrl.startsWith("acct:")
@@ -115,10 +191,10 @@ export async function resolveActorHandle(
     actorUrl = selfLink.href;
   }
 
-  // Fetch actor profile via SSRF-safe fetch
-  const actorRes = await safePublicFetch(actorUrl, {
-    headers: { Accept: "application/activity+json, application/ld+json" },
-  });
+  // Fetch actor profile using signed GET (compatible with remote AUTHORIZED_FETCH)
+  const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
+  const instanceKeys = db.getInstanceKeys();
+  const actorRes = await sendSignedGetRequest(actorUrl, `${publicUrl}/actor#main-key`, instanceKeys.privateKey, db);
 
   if (!actorRes.ok) {
     throw new Error("Failed to fetch remote actor profile");
@@ -137,14 +213,21 @@ export async function resolveActorHandle(
 export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker): Router {
   const router = Router();
   const verifier = createActivityPubVerifier(db);
+  const authorizedFetchVerifier = createAuthorizedFetchVerifier(db);
   const inboxLimiter = defaultInboxLimiter.middleware();
   const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
 
+  const requireFederationEnabled = (_req: Request, res: Response, next: NextFunction) => {
+    if (isNodeFederationDisabled(db)) {
+      res.status(403).json({ error: "Federation is disabled on this node." });
+      return;
+    }
+    next();
+  };
+
   // Check FEDERATION_MODE (env override or dynamic instance_settings)
   router.use((req: Request, res: Response, next) => {
-    const settings = db.getInstanceSettings();
-    const mode = process.env["FEDERATION_MODE"] || settings.federationMode;
-    if (mode === "disabled") {
+    if (isNodeFederationDisabled(db)) {
       if (req.path.includes("/inbox")) {
         res.status(403).json({ error: "Federation is disabled on this node." });
         return;
@@ -155,7 +238,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
   // ── WebFinger (RFC 7033 / ActivityPub Discovery) ──────────────────
 
-  router.get("/.well-known/webfinger", (req: Request, res: Response) => {
+  router.get("/.well-known/webfinger", requireFederationEnabled, (req: Request, res: Response) => {
     const resource = req.query["resource"] as string;
 
     if (!resource || !resource.startsWith("acct:")) {
@@ -183,6 +266,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
     res.json({
       subject: resource,
+      aliases: [fullUser.actor_url],
       links: [
         {
           rel: "self",
@@ -211,9 +295,11 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
   });
 
   const handleNodeInfo = (_req: Request, res: Response) => {
-    const totalUsers = db.getTotalUsersCount();
-    const totalPosts = db.getTotalPostsCount();
     const settings = db.getInstanceSettings();
+    const fedDisabled = isNodeFederationDisabled(db);
+    const corporateRestricted = isCorporateOrAirgapTier(settings) || fedDisabled;
+    const totalUsers = corporateRestricted ? 0 : db.getTotalUsersCount();
+    const totalPosts = corporateRestricted ? 0 : db.getTotalPostsCount();
     const customName =
       settings.instanceName && settings.instanceName !== "ModelScript Engineering Hub"
         ? settings.instanceName
@@ -230,14 +316,14 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       software: {
         name: "modelscript-hub",
         version: "0.1.0",
-        repository: "https://github.com/modelscript/modelscript",
+        repository: corporateRestricted ? "" : "https://github.com/modelscript/modelscript",
       },
-      protocols: ["activitypub"],
+      protocols: fedDisabled ? [] : ["activitypub"],
       services: {
         inbound: [],
         outbound: [],
       },
-      openRegistrations: false,
+      openRegistrations: !corporateRestricted && settings.registrationMode === "open",
       usage: {
         users: {
           total: totalUsers,
@@ -253,9 +339,10 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         nodeDescription: customDesc,
         brandLogoUrl: settings.brandLogoUrl,
         showPoweredBy: settings.showPoweredBy,
-        contactEmail: settings.contactEmail,
-        federationMode: settings.federationMode,
+        contactEmail: corporateRestricted ? "" : settings.contactEmail,
+        federationMode: fedDisabled ? "disabled" : settings.federationMode,
         registrationMode: settings.registrationMode,
+        authorizedFetch: settings.authorizedFetchEnabled,
       },
     });
   };
@@ -265,7 +352,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
   // ── Instance Actor Profile & Outbox ───────────────────────────────
 
-  router.get("/actor", (req: Request, res: Response) => {
+  router.get("/actor", requireFederationEnabled, (req: Request, res: Response) => {
     const acceptsActivity = req.accepts("application/activity+json", "application/ld+json", "application/json");
     if (!acceptsActivity) {
       res.status(404).json({ error: "Not found or invalid content type" });
@@ -312,7 +399,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     });
   });
 
-  router.get("/actor/outbox", (_req: Request, res: Response) => {
+  router.get("/actor/outbox", requireFederationEnabled, (_req: Request, res: Response) => {
     const actorUrl = `${publicUrl}/actor`;
     res.type("application/activity+json").json({
       "@context": "https://www.w3.org/ns/activitystreams",
@@ -325,7 +412,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
   // ── User Actor Profile ────────────────────────────────────────────
 
-  router.get("/users/:username", (req: Request, res: Response) => {
+  router.get("/users/:username", requireFederationEnabled, authorizedFetchVerifier, (req: Request, res: Response) => {
     const acceptsActivity = req.accepts("application/activity+json", "application/ld+json", "application/json");
     if (!acceptsActivity) {
       res.status(404).json({ error: "Not found or invalid content type" });
@@ -346,7 +433,13 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
     const fullUser = db.db
       .prepare(
-        `SELECT id, display_name, bio, avatar_url, rsa_public_key, ed25519_public_key, actor_url, inbox_url, outbox_url FROM users WHERE id = ?`,
+        `SELECT id, display_name, bio, avatar_url, rsa_public_key, ed25519_public_key,
+                  actor_url, inbox_url, outbox_url,
+                  COALESCE(discoverable, 1) as discoverable,
+                  COALESCE(indexable, 1) as indexable,
+                  COALESCE(locked, 0) as locked,
+                  also_known_as, moved_to_actor_url, profile_fields
+           FROM users WHERE id = ?`,
       )
       .get(user.id) as Record<string, unknown> | undefined;
 
@@ -357,7 +450,6 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
     const keys = db.getPublicKeysForUser(fullUser["id"] as number);
 
-    // Fallback to legacy key if no new keys exist, or map all active keys
     let publicKeys: { id: string; owner: string; publicKeyPem: string }[] = keys.map((k) => ({
       id: `${fullUser["actor_url"]}#${k.key_id_string}`,
       owner: fullUser["actor_url"] as string,
@@ -387,6 +479,33 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       });
     }
 
+    let alsoKnownAs: string[] = [];
+    if (typeof fullUser["also_known_as"] === "string" && fullUser["also_known_as"].trim()) {
+      try {
+        const parsed = JSON.parse(fullUser["also_known_as"] as string);
+        if (Array.isArray(parsed)) {
+          alsoKnownAs = parsed.map(String).filter(Boolean);
+        }
+      } catch {}
+    }
+
+    let propertyAttachments: Record<string, unknown>[] = [];
+    if (typeof fullUser["profile_fields"] === "string" && fullUser["profile_fields"].trim()) {
+      try {
+        const parsed = JSON.parse(fullUser["profile_fields"] as string);
+        if (Array.isArray(parsed)) {
+          propertyAttachments = parsed
+            .filter((f) => f && typeof f.name === "string" && typeof f.value === "string")
+            .map((f) => ({
+              type: "PropertyValue",
+              name: f.name,
+              value: f.value,
+              verified_at: f.verified_at ?? null,
+            }));
+        }
+      } catch {}
+    }
+
     const brandName = db.getInstanceSettings().instanceName || "Ansatz";
 
     res.type("application/activity+json").json({
@@ -394,6 +513,16 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         "https://www.w3.org/ns/activitystreams",
         "https://w3id.org/security/v1",
         "https://w3id.org/security/data-integrity/v1",
+        {
+          manuallyApprovesFollowers: "as:manuallyApprovesFollowers",
+          discoverable: "toot:discoverable",
+          indexable: "toot:indexable",
+          alsoKnownAs: { "@id": "as:alsoKnownAs", "@type": "@id" },
+          movedTo: { "@id": "as:movedTo", "@type": "@id" },
+          schema: "http://schema.org#",
+          PropertyValue: "schema:PropertyValue",
+          value: "schema:value",
+        },
       ],
       id: fullUser["actor_url"],
       type: "Person",
@@ -404,6 +533,12 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       outbox: fullUser["outbox_url"],
       followers: `${fullUser["actor_url"]}/followers`,
       following: `${fullUser["actor_url"]}/following`,
+      manuallyApprovesFollowers: Boolean(fullUser["locked"]),
+      discoverable: Boolean(fullUser["discoverable"]),
+      indexable: Boolean(fullUser["indexable"]),
+      alsoKnownAs: alsoKnownAs.length > 0 ? alsoKnownAs : undefined,
+      movedTo: (fullUser["moved_to_actor_url"] as string) || undefined,
+      attachment: propertyAttachments.length > 0 ? propertyAttachments : undefined,
       endpoints: {
         sharedInbox: `${publicUrl}/actor/inbox`,
       },
@@ -419,185 +554,353 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
   // ── User Outbox (W3C ActivityPub §5.3) ─────────────────────────────
 
-  router.get("/users/:username/outbox", (req: Request, res: Response) => {
-    const username = req.params["username"];
-    const user = db.getUserByUsername(username as string);
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
-
-    const fullUser = db.getUserFederationInfo(user.id);
-
-    if (!fullUser || !fullUser.actor_url) {
-      res.status(404).json({ error: "User not federated" });
-      return;
-    }
-
-    const outboxUrl = (fullUser.outbox_url as string) || `${fullUser.actor_url}/outbox`;
-    const totalCount = db.getUserOutboxCount(user.id);
-    const isPage = req.query["page"] === "true" || req.query["page"] === "1";
-
-    if (!isPage) {
-      res.type("application/activity+json").json({
-        "@context": "https://www.w3.org/ns/activitystreams",
-        id: outboxUrl,
-        type: "OrderedCollection",
-        totalItems: totalCount,
-        first: `${outboxUrl}?page=true`,
-        last: `${outboxUrl}?page=true`,
-      });
-      return;
-    }
-
-    const limit = Math.min(Number(req.query["limit"]) || 20, 100);
-    const offset = Math.max(Number(req.query["offset"]) || 0, 0);
-    const posts = db.getUserOutboxPosts(user.id, limit, offset);
-
-    const orderedItems = posts.map((post) => {
-      const apPostId = post.ap_id || `${fullUser.actor_url}/posts/${post.id}`;
-      const noteObject: Record<string, unknown> = {
-        id: apPostId,
-        type: "Note",
-        attributedTo: fullUser.actor_url,
-        content: post.content || "",
-        url: post.url || apPostId,
-        published: post.created_at,
-        to: ["https://www.w3.org/ns/activitystreams#Public"],
-        cc: [`${fullUser.actor_url}/followers`],
-      };
-
-      if (post.metadata?.contentWarning) {
-        noteObject["summary"] = post.metadata.contentWarning;
+  router.get(
+    "/users/:username/outbox",
+    requireFederationEnabled,
+    authorizedFetchVerifier,
+    (req: Request, res: Response) => {
+      const username = req.params["username"];
+      const user = db.getUserByUsername(username as string);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
       }
 
-      if (post.artifact_view_id) {
-        const artifact = db.getArtifactView(post.artifact_view_id);
-        const attachment = serializeArtifactAttachment(artifact, publicUrl);
-        if (attachment) {
-          noteObject["attachment"] = [attachment];
+      const fullUser = db.getUserFederationInfo(user.id);
+
+      if (!fullUser || !fullUser.actor_url) {
+        res.status(404).json({ error: "User not federated" });
+        return;
+      }
+
+      const outboxUrl = (fullUser.outbox_url as string) || `${fullUser.actor_url}/outbox`;
+      const totalCount = db.getUserOutboxCount(user.id);
+      const isPage = req.query["page"] === "true" || req.query["page"] === "1";
+
+      if (!isPage) {
+        res.type("application/activity+json").json({
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: outboxUrl,
+          type: "OrderedCollection",
+          totalItems: totalCount,
+          first: `${outboxUrl}?page=true`,
+          last: `${outboxUrl}?page=true`,
+        });
+        return;
+      }
+
+      const limit = Math.min(Number(req.query["limit"]) || 20, 100);
+      const offset = Math.max(Number(req.query["offset"]) || 0, 0);
+      const posts = db.getUserOutboxPosts(user.id, limit, offset);
+
+      const orderedItems = posts.map((post) => {
+        const apPostId = post.ap_id || `${fullUser.actor_url}/posts/${post.id}`;
+        const visibility = (post.visibility as PostVisibility) || "public";
+        const addressing = buildAddressingForVisibility(visibility, fullUser.actor_url as string);
+        const poll = db.getPostPoll(post.id);
+
+        const noteObject: Record<string, unknown> = {
+          id: apPostId,
+          type: poll ? "Question" : "Note",
+          attributedTo: fullUser.actor_url,
+          content: post.content || "",
+          url: post.url || apPostId,
+          published: post.created_at,
+          to: addressing.to,
+          cc: addressing.cc,
+        };
+
+        if (poll) {
+          const pollField = poll.multiple ? "anyOf" : "oneOf";
+          noteObject[pollField] = poll.options.map((opt) => ({
+            type: "Note",
+            name: opt.title,
+            replies: {
+              type: "Collection",
+              totalItems: opt.votes_count,
+            },
+          }));
+          if (poll.expires_at) {
+            noteObject["endTime"] = poll.expires_at;
+          }
         }
+
+        if (post.metadata?.contentWarning) {
+          noteObject["summary"] = post.metadata.contentWarning;
+        }
+
+        if (post.artifact_view_id) {
+          const artifact = db.getArtifactView(post.artifact_view_id);
+          const attachment = serializeArtifactAttachment(artifact, publicUrl);
+          if (attachment) {
+            noteObject["attachment"] = [attachment];
+          }
+        }
+
+        return {
+          "@context": [
+            "https://www.w3.org/ns/activitystreams",
+            {
+              modelscript: "https://hub.modelscript.org/ns#",
+              viewType: "modelscript:viewType",
+              viewConfig: "modelscript:viewConfig",
+              sourceType: "modelscript:sourceType",
+            },
+          ],
+          id: `${apPostId}/activity`,
+          type: "Create",
+          actor: fullUser.actor_url,
+          published: post.created_at,
+          to: addressing.to,
+          cc: addressing.cc,
+          object: noteObject,
+        };
+      });
+
+      res.type("application/activity+json").json({
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: `${outboxUrl}?page=true`,
+        type: "OrderedCollectionPage",
+        partOf: outboxUrl,
+        totalItems: totalCount,
+        orderedItems,
+      });
+    },
+  );
+
+  // ── Followers & Following Collections (W3C §5.4 + FEP-8fcf) ────────
+
+  router.get(
+    "/users/:username/followers",
+    requireFederationEnabled,
+    authorizedFetchVerifier,
+    (req: Request, res: Response) => {
+      const username = req.params["username"];
+      const user = db.getUserByUsername(username as string);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
       }
 
-      return {
-        "@context": [
-          "https://www.w3.org/ns/activitystreams",
-          {
-            modelscript: "https://hub.modelscript.org/ns#",
-            viewType: "modelscript:viewType",
-            viewConfig: "modelscript:viewConfig",
-            sourceType: "modelscript:sourceType",
-          },
-        ],
-        id: `${apPostId}/activity`,
-        type: "Create",
-        actor: fullUser.actor_url,
-        published: post.created_at,
-        to: ["https://www.w3.org/ns/activitystreams#Public"],
-        cc: [`${fullUser.actor_url}/followers`],
-        object: noteObject,
-      };
-    });
+      const fullUser = db.getUserFederationInfo(user.id);
 
-    res.type("application/activity+json").json({
-      "@context": "https://www.w3.org/ns/activitystreams",
-      id: `${outboxUrl}?page=true`,
-      type: "OrderedCollectionPage",
-      partOf: outboxUrl,
-      totalItems: totalCount,
-      orderedItems,
-    });
-  });
+      if (!fullUser || !fullUser.actor_url) {
+        res.status(404).json({ error: "User not federated" });
+        return;
+      }
 
-  // ── Followers & Following Collections (W3C §5.4) ──────────────────
+      const followersUrl = `${fullUser.actor_url}/followers`;
+      const totalCount = db.getUserFollowerActorsCount(user.id);
+      const isPage = req.query["page"] === "true" || req.query["page"] === "1";
 
-  router.get("/users/:username/followers", (req: Request, res: Response) => {
-    const username = req.params["username"];
-    const user = db.getUserByUsername(username as string);
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
+      if (!isPage) {
+        res.type("application/activity+json").json({
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: followersUrl,
+          type: "OrderedCollection",
+          totalItems: totalCount,
+          first: `${followersUrl}?page=true`,
+        });
+        return;
+      }
 
-    const fullUser = db.getUserFederationInfo(user.id);
+      const limit = Math.min(Number(req.query["limit"]) || 50, 100);
+      const offset = Math.max(Number(req.query["offset"]) || 0, 0);
+      const followerActors = db.getUserFollowerActors(user.id, limit, offset);
 
-    if (!fullUser || !fullUser.actor_url) {
-      res.status(404).json({ error: "User not federated" });
-      return;
-    }
-
-    const followersUrl = `${fullUser.actor_url}/followers`;
-    const totalCount = db.getUserFollowerActorsCount(user.id);
-    const isPage = req.query["page"] === "true" || req.query["page"] === "1";
-
-    if (!isPage) {
       res.type("application/activity+json").json({
         "@context": "https://www.w3.org/ns/activitystreams",
-        id: followersUrl,
-        type: "OrderedCollection",
+        id: `${followersUrl}?page=true`,
+        type: "OrderedCollectionPage",
+        partOf: followersUrl,
         totalItems: totalCount,
-        first: `${followersUrl}?page=true`,
+        orderedItems: followerActors,
+      });
+    },
+  );
+
+  router.get(
+    "/users/:username/followers/synchronization",
+    requireFederationEnabled,
+    authorizedFetchVerifier,
+    (req: Request, res: Response) => {
+      const username = req.params["username"];
+      const user = db.getUserByUsername(username as string);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      const fullUser = db.getUserFederationInfo(user.id);
+      if (!fullUser || !fullUser.actor_url) {
+        res.status(404).json({ error: "User not federated" });
+        return;
+      }
+
+      const domainParam = (req.query["domain"] as string | undefined)?.trim().toLowerCase();
+      let remoteDomain = domainParam || "";
+      const signedActor = (req as Request & { actorId?: string | undefined }).actorId;
+      if (!remoteDomain && signedActor) {
+        try {
+          remoteDomain = new URL(signedActor).hostname.toLowerCase();
+        } catch {}
+      }
+
+      const followerActors = remoteDomain
+        ? (
+            db.db
+              .prepare(
+                `SELECT u.actor_url FROM follows f JOIN users u ON f.follower_id = u.id
+                 WHERE f.following_id = ? AND LOWER(u.remote_domain) = ? AND (f.state = 'accepted' OR f.state IS NULL)`,
+              )
+              .all(user.id, remoteDomain) as { actor_url: string | null }[]
+          )
+            .map((r) => r.actor_url)
+            .filter((u): u is string => Boolean(u))
+        : db.getUserFollowerActors(user.id, 500, 0);
+
+      res.type("application/activity+json").json({
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: `${fullUser.actor_url}/followers/synchronization`,
+        type: "OrderedCollectionPage",
+        partOf: `${fullUser.actor_url}/followers`,
+        orderedItems: followerActors,
+        digest: computeFollowersSyncDigest(followerActors),
+      });
+    },
+  );
+
+  router.get(
+    "/users/:username/following",
+    requireFederationEnabled,
+    authorizedFetchVerifier,
+    (req: Request, res: Response) => {
+      const username = req.params["username"];
+      const user = db.getUserByUsername(username as string);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      const fullUser = db.getUserFederationInfo(user.id);
+
+      if (!fullUser || !fullUser.actor_url) {
+        res.status(404).json({ error: "User not federated" });
+        return;
+      }
+
+      const followingUrl = `${fullUser.actor_url}/following`;
+      const totalCount = db.getUserFollowingActorsCount(user.id);
+      const isPage = req.query["page"] === "true" || req.query["page"] === "1";
+
+      if (!isPage) {
+        res.type("application/activity+json").json({
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: followingUrl,
+          type: "OrderedCollection",
+          totalItems: totalCount,
+          first: `${followingUrl}?page=true`,
+        });
+        return;
+      }
+
+      const limit = Math.min(Number(req.query["limit"]) || 50, 100);
+      const offset = Math.max(Number(req.query["offset"]) || 0, 0);
+      const followingActors = db.getUserFollowingActors(user.id, limit, offset);
+
+      res.type("application/activity+json").json({
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: `${followingUrl}?page=true`,
+        type: "OrderedCollectionPage",
+        partOf: followingUrl,
+        totalItems: totalCount,
+        orderedItems: followingActors,
+      });
+    },
+  );
+
+  // ── Remote Media / Artifact Cache Proxy (with CSP Sandbox) ────────
+
+  const handleMediaProxy = async (req: Request, res: Response) => {
+    const rawUrl = (req.query["url"] as string | undefined)?.trim();
+    if (!rawUrl) {
+      res.status(400).json({ error: "Missing url query parameter" });
+      return;
+    }
+
+    let safeUrl: URL;
+    try {
+      safeUrl = assertSafePublicUrl(rawUrl);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid or unsafe URL" });
+      return;
+    }
+
+    const remoteDomain = safeUrl.hostname.toLowerCase();
+    const domainPolicy = db.getDomainTier(remoteDomain);
+    if (domainPolicy.tier === "suspend" || domainPolicy.rejectMedia) {
+      res.status(403).json({
+        error: `Media from remote domain '${remoteDomain}' is blocked by instance moderation policy.`,
       });
       return;
     }
 
-    const limit = Math.min(Number(req.query["limit"]) || 50, 100);
-    const offset = Math.max(Number(req.query["offset"]) || 0, 0);
-    const followerActors = db.getUserFollowerActors(user.id, limit, offset);
-
-    res.type("application/activity+json").json({
-      "@context": "https://www.w3.org/ns/activitystreams",
-      id: `${followersUrl}?page=true`,
-      type: "OrderedCollectionPage",
-      partOf: followersUrl,
-      totalItems: totalCount,
-      orderedItems: followerActors,
-    });
-  });
-
-  router.get("/users/:username/following", (req: Request, res: Response) => {
-    const username = req.params["username"];
-    const user = db.getUserByUsername(username as string);
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
+    const cached = db.getCachedRemoteArtifact(safeUrl.href);
+    if (cached && cached.data_blob) {
+      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.setHeader("X-Cache", "HIT");
+      if (cached.sha256) {
+        res.setHeader("ETag", `"${cached.sha256}"`);
+      }
+      res.type(cached.media_type || "application/octet-stream").send(cached.data_blob);
       return;
     }
 
-    const fullUser = db.getUserFederationInfo(user.id);
-
-    if (!fullUser || !fullUser.actor_url) {
-      res.status(404).json({ error: "User not federated" });
-      return;
-    }
-
-    const followingUrl = `${fullUser.actor_url}/following`;
-    const totalCount = db.getUserFollowingActorsCount(user.id);
-    const isPage = req.query["page"] === "true" || req.query["page"] === "1";
-
-    if (!isPage) {
-      res.type("application/activity+json").json({
-        "@context": "https://www.w3.org/ns/activitystreams",
-        id: followingUrl,
-        type: "OrderedCollection",
-        totalItems: totalCount,
-        first: `${followingUrl}?page=true`,
+    try {
+      const upstream = await safePublicFetch(safeUrl.href, {
+        headers: { "User-Agent": "Ansatz-MediaProxy/1.0" },
       });
-      return;
+      if (!upstream.ok) {
+        res.status(502).json({ error: `Upstream media fetch failed (${upstream.status})` });
+        return;
+      }
+
+      const arrayBuf = await upstream.arrayBuffer();
+      const buffer = Buffer.from(arrayBuf);
+      const maxCacheBytes = 15 * 1024 * 1024; // 15 MB
+      if (buffer.byteLength > maxCacheBytes) {
+        res.status(413).json({ error: "Remote media exceeds maximum proxy size limit (15 MB)" });
+        return;
+      }
+
+      const mediaType = (upstream.headers.get("content-type") || "application/octet-stream").split(";")[0]!.trim();
+      const sha256 = crypto.createHash("sha256").update(buffer).digest("hex");
+
+      db.putCachedRemoteArtifact({
+        sourceUrl: safeUrl.href,
+        remoteDomain,
+        mediaType,
+        byteSize: buffer.byteLength,
+        sha256,
+        data: buffer,
+      });
+
+      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.setHeader("X-Cache", "MISS");
+      res.setHeader("ETag", `"${sha256}"`);
+      res.type(mediaType).send(buffer);
+    } catch (err) {
+      res.status(502).json({
+        error: err instanceof Error ? err.message : "Failed to fetch remote media",
+      });
     }
+  };
 
-    const limit = Math.min(Number(req.query["limit"]) || 50, 100);
-    const offset = Math.max(Number(req.query["offset"]) || 0, 0);
-    const followingActors = db.getUserFollowingActors(user.id, limit, offset);
-
-    res.type("application/activity+json").json({
-      "@context": "https://www.w3.org/ns/activitystreams",
-      id: `${followingUrl}?page=true`,
-      type: "OrderedCollectionPage",
-      partOf: followingUrl,
-      totalItems: totalCount,
-      orderedItems: followingActors,
-    });
-  });
+  router.get("/federation/media-proxy", requireFederationEnabled, handleMediaProxy);
+  router.get("/api/v1/federation/media-proxy", requireFederationEnabled, handleMediaProxy);
 
   // ── Remote Actor WebFinger Resolution Endpoint ────────────────────
 
@@ -627,8 +930,204 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     }
   };
 
-  router.post("/federation/resolve", resolveRemoteActor);
-  router.post("/api/v1/federation/resolve", resolveRemoteActor);
+  router.post("/federation/resolve", requireFederationEnabled, optionalAuth, resolveRemoteActor);
+  router.post("/api/v1/federation/resolve", requireFederationEnabled, optionalAuth, resolveRemoteActor);
+
+  // ── Helper to ingest a remote Note/Question object ────────────────
+
+  const ingestRemoteNoteOrQuestion = (
+    note: Record<string, unknown>,
+    authorUserId: number,
+    remoteDomain: string,
+    isSilencedFlag: boolean,
+    parentActivity?: Record<string, unknown>,
+  ): { id: number } | null => {
+    const noteId = typeof note["id"] === "string" ? note["id"] : "";
+    if (!noteId) return null;
+
+    const existing = db.getPostByApId(noteId);
+    if (existing) return { id: existing.id };
+
+    const content = typeof note["content"] === "string" ? note["content"] : "";
+    const domainPolicy = db.getDomainTier(remoteDomain);
+    const isSilenced = isSilencedFlag || domainPolicy.tier === "silence" ? 1 : 0;
+
+    let artifactViewId: number | undefined;
+    if (!domainPolicy.rejectMedia) {
+      const rawAttachments = Array.isArray(note["attachment"])
+        ? note["attachment"]
+        : note["attachment"]
+          ? [note["attachment"]]
+          : [];
+
+      for (const att of rawAttachments) {
+        if (att && typeof att === "object") {
+          const attObj = att as Record<string, unknown>;
+          const mediaType = String(attObj["mediaType"] || attObj["mimeType"] || "").toLowerCase();
+          const rawAttUrl = attObj["url"];
+          const attUrl =
+            typeof rawAttUrl === "string"
+              ? rawAttUrl
+              : typeof (rawAttUrl as { href?: string } | undefined)?.href === "string"
+                ? (rawAttUrl as { href: string }).href
+                : "";
+          const lowerUrl = attUrl.toLowerCase();
+
+          let viewType: string | null = typeof attObj["viewType"] === "string" ? attObj["viewType"] : null;
+          let sourceType: string = typeof attObj["sourceType"] === "string" ? attObj["sourceType"] : "federated";
+
+          if (!viewType) {
+            if (
+              mediaType === "model/step" ||
+              mediaType === "application/step" ||
+              lowerUrl.endsWith(".step") ||
+              lowerUrl.endsWith(".stp")
+            ) {
+              viewType = "cad-step";
+              sourceType = "step";
+            } else if (
+              mediaType.includes("gltf") ||
+              lowerUrl.endsWith(".glb") ||
+              lowerUrl.endsWith(".gltf") ||
+              lowerUrl.endsWith(".usdz")
+            ) {
+              viewType = "3d-model";
+              sourceType = "gltf";
+            } else if (mediaType.includes("vegalite") || mediaType.includes("chart")) {
+              viewType = "simulation-plot";
+              sourceType = "vegalite";
+            } else if (mediaType === "text/x-modelica" || lowerUrl.endsWith(".mo")) {
+              viewType = "modelica-code";
+              sourceType = "modelica";
+            } else if (mediaType.includes("fmu") || lowerUrl.endsWith(".fmu")) {
+              viewType = "fmu";
+              sourceType = "fmu";
+            } else if (mediaType === "application/pdf") {
+              viewType = "pdf";
+              sourceType = "document";
+            } else if (mediaType.startsWith("image/")) {
+              viewType = "picture";
+              sourceType = "image";
+            }
+          }
+
+          if (viewType && attUrl) {
+            try {
+              const safeUrl = assertSafePublicUrl(attUrl);
+              const config =
+                typeof attObj["viewConfig"] === "object" && attObj["viewConfig"] !== null
+                  ? { ...(attObj["viewConfig"] as Record<string, unknown>) }
+                  : {};
+              config["url"] = safeUrl.href;
+              config["proxiedUrl"] =
+                `${publicUrl}/api/v1/federation/media-proxy?url=${encodeURIComponent(safeUrl.href)}`;
+              const iconObj = attObj["icon"] as { url?: string } | undefined;
+              if (iconObj?.url) {
+                config["thumbnailUrl"] = iconObj.url;
+              }
+
+              artifactViewId = db.createArtifactView(
+                authorUserId,
+                viewType,
+                sourceType,
+                JSON.stringify(config),
+                typeof attObj["name"] === "string" ? attObj["name"] : "Federated Engineering Artifact",
+                iconObj?.url || null,
+                safeUrl.href,
+              );
+              break;
+            } catch {
+              // Discard unsafe attachment URLs
+            }
+          }
+        }
+      }
+    }
+
+    let replyToId: number | undefined;
+    if (typeof note["inReplyTo"] === "string") {
+      const parentPost = db.getPostByApId(note["inReplyTo"]);
+      if (parentPost) {
+        replyToId = parentPost.id;
+      }
+    }
+
+    // If this is a poll vote reply (Note with name matching an option on a parent Question)
+    if (replyToId && typeof note["name"] === "string" && note["name"].trim()) {
+      const parentPoll = db.getPostPoll(replyToId);
+      if (parentPoll) {
+        const optionIdx = parentPoll.options.findIndex(
+          (o) => o.title.toLowerCase() === String(note["name"]).trim().toLowerCase(),
+        );
+        if (optionIdx !== -1) {
+          try {
+            const voterActor = typeof note["attributedTo"] === "string" ? note["attributedTo"] : undefined;
+            db.votePostPoll(replyToId, [optionIdx], null, voterActor);
+          } catch {}
+        }
+      }
+    }
+
+    const contentWarning = typeof note["summary"] === "string" ? note["summary"].trim() : undefined;
+    const postMetadata = contentWarning ? { contentWarning } : undefined;
+    const visibility = inferVisibilityFromAddressing(note, parentActivity);
+
+    const newPost = db.createPost(
+      authorUserId,
+      content,
+      artifactViewId,
+      replyToId,
+      undefined,
+      undefined,
+      noteId,
+      typeof note["url"] === "string" ? note["url"] : noteId,
+      undefined,
+      undefined,
+      postMetadata,
+      undefined,
+      isSilenced,
+      contentWarning ? 1 : 0,
+      contentWarning,
+      visibility,
+    );
+
+    // If Question (federated poll), persist options
+    const oneOf = Array.isArray(note["oneOf"]) ? note["oneOf"] : null;
+    const anyOf = Array.isArray(note["anyOf"]) ? note["anyOf"] : null;
+    const rawPollOptions = oneOf || anyOf;
+    if (rawPollOptions && rawPollOptions.length >= 2) {
+      const parsedOptions = rawPollOptions
+        .map((opt) => {
+          if (!opt || typeof opt !== "object") return null;
+          const o = opt as Record<string, unknown>;
+          const title = typeof o["name"] === "string" ? o["name"].trim() : "";
+          const replies = o["replies"] as { totalItems?: number } | undefined;
+          const votesCount = Number(replies?.totalItems || 0);
+          return title ? { title, votes_count: votesCount } : null;
+        })
+        .filter((o): o is { title: string; votes_count: number } => o !== null);
+      if (parsedOptions.length >= 2) {
+        const expiresAt =
+          typeof note["endTime"] === "string"
+            ? note["endTime"]
+            : typeof note["closed"] === "string"
+              ? note["closed"]
+              : null;
+        try {
+          db.createPostPoll(newPost.id, parsedOptions, expiresAt, Boolean(anyOf));
+        } catch {}
+      }
+    }
+
+    if (replyToId) {
+      const parent = db.getPost(replyToId);
+      if (parent && parent.author_id) {
+        db.createNotification(parent.author_id, authorUserId, "reply", newPost.id);
+      }
+    }
+
+    return { id: newPost.id };
+  };
 
   // ── Shared Inbox & User Inbox Handler ─────────────────────────────
 
@@ -677,43 +1176,70 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       return;
     }
 
+    let remoteDomain = "unknown";
+    try {
+      remoteDomain = new URL(remoteActorUrl).hostname.toLowerCase();
+    } catch {}
+
     // Upsert the remote user in our database
     const remoteUser = db.getOrCreateRemoteUser(remoteActorUrl as string, remoteActorProfile);
 
     try {
       if (activity.type === "Follow" && fullLocalUser) {
-        // Record the follow
-        db.followUser(remoteUser.id, fullLocalUser.id as number, "accepted");
+        const isLocked = Boolean(fullLocalUser.locked);
+        if (isLocked) {
+          // Hold follow in pending state and notify user
+          db.followUser(remoteUser.id, fullLocalUser.id as number, "pending");
+          db.createNotification(fullLocalUser.id as number, remoteUser.id, "follow_request");
+        } else {
+          // Record the follow as accepted and auto-reply with Accept
+          db.followUser(remoteUser.id, fullLocalUser.id as number, "accepted");
 
-        // Send an Accept activity back
-        const acceptActivity = {
-          "@context": "https://www.w3.org/ns/activitystreams",
-          id: `${fullLocalUser.actor_url}#accept-${Date.now()}`,
-          type: "Accept",
-          actor: fullLocalUser.actor_url,
-          object: activity,
-        };
+          const acceptActivity = {
+            "@context": "https://www.w3.org/ns/activitystreams",
+            id: `${fullLocalUser.actor_url}#accept-${Date.now()}`,
+            type: "Accept",
+            actor: fullLocalUser.actor_url,
+            object: activity,
+          };
 
-        const targetInbox =
-          (remoteActorProfile?.["endpoints"] as { sharedInbox?: string | undefined } | undefined)?.sharedInbox ||
-          (remoteActorProfile?.["sharedInbox"] as string) ||
-          (remoteActorProfile?.["inbox"] as string) ||
-          `${remoteActorUrl}/inbox`;
+          const targetInbox =
+            (remoteActorProfile?.["endpoints"] as { sharedInbox?: string | undefined } | undefined)?.sharedInbox ||
+            (remoteActorProfile?.["sharedInbox"] as string) ||
+            (remoteActorProfile?.["inbox"] as string) ||
+            `${remoteActorUrl}/inbox`;
 
-        const instanceKeys = db.getInstanceKeys();
-        const transportKey = instanceKeys.privateKey;
-        const transportKeyId = `${publicUrl}/actor#main-key`;
+          const instanceKeys = db.getInstanceKeys();
+          const transportKey = instanceKeys.privateKey;
+          const transportKeyId = `${publicUrl}/actor#main-key`;
 
-        // Asynchronously send the Accept back (don't block the response)
-        sendSignedRequest(targetInbox, acceptActivity, transportKeyId, transportKey, db).catch((err) =>
-          console.error("Failed to send Accept activity:", err),
-        );
-      } else if (activity.type === "Accept" && fullLocalUser) {
-        if (activity.object && (activity.object.type === "Follow" || typeof activity.object === "string")) {
+          sendSignedRequest(targetInbox, acceptActivity, transportKeyId, transportKey, db).catch((err) =>
+            console.error("Failed to send Accept activity:", err),
+          );
+        }
+      } else if (activity.type === "Accept") {
+        // Check if this Accept is from a federated Relay actor
+        const matchedRelay = db.getFederationRelayByActor(remoteActorUrl);
+        if (matchedRelay) {
+          db.updateFederationRelayState(matchedRelay.id, "accepted", null);
+        }
+        if (
+          fullLocalUser &&
+          activity.object &&
+          (activity.object.type === "Follow" || typeof activity.object === "string")
+        ) {
           db.updateFollowState(fullLocalUser.id as number, remoteUser.id, "accepted");
         }
-      } else if (activity.type === "Reject" && fullLocalUser) {
-        if (activity.object && (activity.object.type === "Follow" || typeof activity.object === "string")) {
+      } else if (activity.type === "Reject") {
+        const matchedRelay = db.getFederationRelayByActor(remoteActorUrl);
+        if (matchedRelay) {
+          db.updateFederationRelayState(matchedRelay.id, "rejected", "Relay rejected Follow subscription");
+        }
+        if (
+          fullLocalUser &&
+          activity.object &&
+          (activity.object.type === "Follow" || typeof activity.object === "string")
+        ) {
           db.updateFollowState(fullLocalUser.id as number, remoteUser.id, "rejected");
         }
       } else if (activity.type === "Undo") {
@@ -728,6 +1254,80 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
               db.unlikePost(remoteUser.id, post.id);
             }
           }
+        } else if (activity.object && activity.object.type === "Announce") {
+          const announceApId = typeof activity.object.id === "string" ? activity.object.id : undefined;
+          if (announceApId) {
+            db.deletePostByApId(announceApId, remoteUser.id);
+          }
+          const targetApId =
+            typeof activity.object.object === "string" ? activity.object.object : activity.object.object?.id;
+          if (targetApId) {
+            const post = db.getPostByApId(targetApId);
+            if (post) {
+              const repostRow = db.db
+                .prepare(`SELECT id FROM posts WHERE author_id = ? AND repost_of_id = ?`)
+                .get(remoteUser.id, post.id) as { id: number } | undefined;
+              if (repostRow) {
+                db.deletePost(repostRow.id);
+              }
+            }
+          }
+        } else if (activity.object && activity.object.type === "Block" && fullLocalUser) {
+          db.unblockUser(remoteUser.id, fullLocalUser.id as number);
+        }
+      } else if (activity.type === "Block") {
+        const targetUri = typeof activity.object === "string" ? activity.object : activity.object?.id;
+        const targetUser = fullLocalUser || (targetUri ? db.getUserByActorUrl(targetUri) : undefined);
+        if (targetUser) {
+          db.blockUser(remoteUser.id, targetUser.id as number);
+        }
+      } else if (activity.type === "Move") {
+        const rawTarget = activity.target || activity.object;
+        const targetActorUrl = typeof rawTarget === "string" ? rawTarget : rawTarget?.id;
+        if (typeof targetActorUrl === "string" && targetActorUrl.trim()) {
+          let targetAlsoKnownAs: string[] = [];
+          let targetProfile:
+            | {
+                username?: string | undefined;
+                displayName?: string | undefined;
+                inboxUrl?: string | undefined;
+                sharedInboxUrl?: string | undefined;
+                publicKey?: string | undefined;
+              }
+            | undefined;
+
+          if (typeof rawTarget === "object" && rawTarget !== null && Array.isArray(rawTarget.alsoKnownAs)) {
+            targetAlsoKnownAs = rawTarget.alsoKnownAs.map(String);
+            targetProfile = {
+              username: rawTarget.preferredUsername,
+              displayName: rawTarget.name,
+              inboxUrl: rawTarget.inbox,
+              sharedInboxUrl: rawTarget.endpoints?.sharedInbox || rawTarget.sharedInbox,
+              publicKey: rawTarget.publicKey?.publicKeyPem,
+            };
+          } else {
+            // Check if target is a local user or already known in DB
+            const localTarget = db.getUserByActorUrl(targetActorUrl);
+            if (localTarget) {
+              const info = db.getUserFederationInfo(localTarget.id);
+              if (info?.also_known_as) {
+                try {
+                  const parsed = JSON.parse(info.also_known_as);
+                  if (Array.isArray(parsed)) targetAlsoKnownAs = parsed.map(String);
+                } catch {}
+              }
+            } else {
+              try {
+                const resolved = await resolveActorHandle(targetActorUrl, db);
+                const rawAliases = resolved.actor["alsoKnownAs"];
+                if (Array.isArray(rawAliases)) {
+                  targetAlsoKnownAs = rawAliases.map(String);
+                }
+              } catch {}
+            }
+          }
+
+          db.executeInboundActorMove(remoteActorUrl, targetActorUrl, targetAlsoKnownAs, targetProfile);
         }
       } else if (activity.type === "Like") {
         const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
@@ -738,21 +1338,43 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
           }
         }
       } else if (activity.type === "Announce") {
-        const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
-        if (targetApId) {
-          const post = db.getPostByApId(targetApId);
-          if (post) {
-            db.createPost(
-              remoteUser.id,
-              null,
-              undefined,
-              undefined,
-              undefined,
-              post.id,
-              activity.id,
-              activity.url || activity.id,
-            );
-            db.createNotification(post.author_id, remoteUser.id, "repost", post.id);
+        const matchedRelay = db.getFederationRelayByActor(remoteActorUrl);
+        if (matchedRelay && matchedRelay.state === "accepted") {
+          db.incrementRelayStats(matchedRelay.id, "received");
+          if (
+            activity.object &&
+            typeof activity.object === "object" &&
+            (activity.object.type === "Note" || activity.object.type === "Question")
+          ) {
+            const noteObj = activity.object as Record<string, unknown>;
+            const attributedTo = typeof noteObj["attributedTo"] === "string" ? noteObj["attributedTo"] : remoteActorUrl;
+            let originDomain = remoteDomain;
+            try {
+              originDomain = new URL(attributedTo).hostname.toLowerCase();
+            } catch {}
+            if (!db.isDomainSuspended(originDomain)) {
+              const noteAuthor = db.getOrCreateRemoteUser(attributedTo);
+              const isSilenced = Boolean((req as Request & { isDomainSilenced?: boolean }).isDomainSilenced);
+              ingestRemoteNoteOrQuestion(noteObj, noteAuthor.id, originDomain, isSilenced, activity);
+            }
+          }
+        } else {
+          const targetApId = typeof activity.object === "string" ? activity.object : activity.object?.id;
+          if (targetApId) {
+            const post = db.getPostByApId(targetApId);
+            if (post) {
+              db.createPost(
+                remoteUser.id,
+                null,
+                undefined,
+                undefined,
+                undefined,
+                post.id,
+                activity.id,
+                activity.url || activity.id,
+              );
+              db.createNotification(post.author_id, remoteUser.id, "repost", post.id);
+            }
           }
         }
       } else if (activity.type === "Delete") {
@@ -778,12 +1400,57 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
             // ignore invalid URI
           }
         }
-      } else if (activity.type === "Update" && activity.object && activity.object.type === "Note") {
+      } else if (
+        activity.type === "Update" &&
+        activity.object &&
+        (activity.object.type === "Person" ||
+          activity.object.type === "Application" ||
+          activity.object.type === "Service" ||
+          activity.object.type === "Organization" ||
+          activity.object.type === "Group")
+      ) {
+        const actorObj = activity.object as Record<string, unknown>;
+        if (!actorObj["id"] || actorObj["id"] === remoteActorUrl) {
+          invalidateCachedPublicKey(remoteActorUrl);
+          db.updateRemoteActorProfile(remoteActorUrl, actorObj);
+        }
+      } else if (
+        activity.type === "Update" &&
+        activity.object &&
+        (activity.object.type === "Note" || activity.object.type === "Question")
+      ) {
         const note = activity.object;
-        if (note.id && note.content) {
+        if (note.id && typeof note.content === "string") {
           db.updatePostContentByApId(note.id, note.content, remoteUser.id);
         }
+        if (note.id && (Array.isArray(note.oneOf) || Array.isArray(note.anyOf))) {
+          const existingPost = db.getPostByApId(note.id);
+          if (existingPost && existingPost.author_id === remoteUser.id) {
+            const rawOpts = (note.oneOf || note.anyOf) as Record<string, unknown>[];
+            const parsedOpts = rawOpts
+              .map((o) => ({
+                title: typeof o["name"] === "string" ? o["name"].trim() : "",
+                votes_count: Number((o["replies"] as { totalItems?: number } | undefined)?.totalItems || 0),
+              }))
+              .filter((o) => o.title.length > 0);
+            if (parsedOpts.length >= 2) {
+              db.createPostPoll(
+                existingPost.id,
+                parsedOpts,
+                note.endTime || note.closed || null,
+                Array.isArray(note.anyOf),
+              );
+            }
+          }
+        }
       } else if (activity.type === "Flag") {
+        // Respect domain-level reject_reports policy
+        const domainPolicy = db.getDomainTier(remoteDomain);
+        if (domainPolicy.rejectReports) {
+          res.status(202).send();
+          return;
+        }
+
         const rawObjects = Array.isArray(activity.object) ? activity.object : [activity.object];
         const flagReason =
           typeof activity.content === "string" && activity.content.trim()
@@ -809,6 +1476,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
           targetUserId: reportedUserId ?? (fullLocalUser?.id as number | undefined),
           reason: flagReason,
           details: `Federated Flag from ${remoteActorUrl}`,
+          category: "federated_flag",
         });
 
         db.logAudit({
@@ -860,11 +1528,22 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
             metadata: JSON.stringify(pkgObj),
           });
         }
-      } else if (activity.type === "Create" && activity.object && activity.object.type === "Note") {
-        const note = activity.object;
-        if (typeof note.id === "string" && note.id.startsWith("http") && remoteActorUrl.startsWith("http")) {
+      } else if (
+        activity.type === "Create" &&
+        activity.object &&
+        (activity.object.type === "Note" || activity.object.type === "Question")
+      ) {
+        const note = activity.object as Record<string, unknown>;
+        const matchedRelay = db.getFederationRelayByActor(remoteActorUrl);
+        if (matchedRelay && matchedRelay.state === "accepted") {
+          db.incrementRelayStats(matchedRelay.id, "received");
+        } else if (
+          typeof note["id"] === "string" &&
+          note["id"].startsWith("http") &&
+          remoteActorUrl.startsWith("http")
+        ) {
           try {
-            if (new URL(note.id).origin !== new URL(remoteActorUrl).origin) {
+            if (new URL(note["id"]).origin !== new URL(remoteActorUrl).origin) {
               res.status(403).json({ error: "Note origin does not match actor origin" });
               return;
             }
@@ -874,125 +1553,8 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
           }
         }
 
-        // Check if post already exists
-        const existing = db.getPostByApId(note.id);
-        if (!existing) {
-          const content = note.content || "";
-          const isSilenced = (req as Request & { isDomainSilenced?: boolean | undefined }).isDomainSilenced ? 1 : 0;
-
-          // Ingest engineering media attachments into artifact_views
-          let artifactViewId: number | undefined;
-          const rawAttachments = Array.isArray(note.attachment)
-            ? note.attachment
-            : note.attachment
-              ? [note.attachment]
-              : [];
-
-          for (const att of rawAttachments) {
-            if (att && typeof att === "object") {
-              const mediaType = (att.mediaType || att.mimeType || "").toLowerCase();
-              const attUrl = typeof att.url === "string" ? att.url : att.url?.href || "";
-              const lowerUrl = attUrl.toLowerCase();
-
-              let viewType: string | null = att.viewType || null;
-              let sourceType: string = att.sourceType || "federated";
-
-              if (!viewType) {
-                if (
-                  mediaType === "model/step" ||
-                  mediaType === "application/step" ||
-                  lowerUrl.endsWith(".step") ||
-                  lowerUrl.endsWith(".stp")
-                ) {
-                  viewType = "cad-step";
-                  sourceType = "step";
-                } else if (
-                  mediaType.includes("gltf") ||
-                  lowerUrl.endsWith(".glb") ||
-                  lowerUrl.endsWith(".gltf") ||
-                  lowerUrl.endsWith(".usdz")
-                ) {
-                  viewType = "3d-model";
-                  sourceType = "gltf";
-                } else if (mediaType.includes("vegalite") || mediaType.includes("chart")) {
-                  viewType = "simulation-plot";
-                  sourceType = "vegalite";
-                } else if (mediaType === "text/x-modelica" || lowerUrl.endsWith(".mo")) {
-                  viewType = "modelica-code";
-                  sourceType = "modelica";
-                } else if (mediaType.includes("fmu") || lowerUrl.endsWith(".fmu")) {
-                  viewType = "fmu";
-                  sourceType = "fmu";
-                } else if (mediaType === "application/pdf") {
-                  viewType = "pdf";
-                  sourceType = "document";
-                } else if (mediaType.startsWith("image/")) {
-                  viewType = "picture";
-                  sourceType = "image";
-                }
-              }
-
-              if (viewType && attUrl) {
-                try {
-                  const safeUrl = assertSafePublicUrl(attUrl);
-                  const config = typeof att.viewConfig === "object" ? { ...att.viewConfig } : {};
-                  config.url = safeUrl.href;
-                  if (att.icon?.url) {
-                    config.thumbnailUrl = att.icon.url;
-                  }
-
-                  artifactViewId = db.createArtifactView(
-                    remoteUser.id,
-                    viewType,
-                    sourceType,
-                    JSON.stringify(config),
-                    att.name || "Federated Engineering Artifact",
-                    att.icon?.url || null,
-                    safeUrl.href,
-                  );
-                  break;
-                } catch {
-                  // Discard unsafe attachment URLs
-                }
-              }
-            }
-          }
-
-          // Threading: resolve inReplyTo if pointing to a local or previously federated post
-          let replyToId: number | undefined;
-          if (note.inReplyTo) {
-            const parentPost = db.getPostByApId(note.inReplyTo);
-            if (parentPost) {
-              replyToId = parentPost.id;
-            }
-          }
-
-          const contentWarning = typeof note.summary === "string" ? note.summary.trim() : undefined;
-          const postMetadata = contentWarning ? { contentWarning } : undefined;
-
-          const newPost = db.createPost(
-            remoteUser.id,
-            content,
-            artifactViewId,
-            replyToId,
-            undefined,
-            undefined,
-            note.id,
-            note.url || note.id,
-            undefined,
-            undefined,
-            postMetadata,
-            undefined,
-            isSilenced,
-          );
-
-          if (replyToId) {
-            const parent = db.getPost(replyToId);
-            if (parent && parent.author_id) {
-              db.createNotification(parent.author_id, remoteUser.id, "reply", newPost.id);
-            }
-          }
-        }
+        const isSilenced = Boolean((req as Request & { isDomainSilenced?: boolean | undefined }).isDomainSilenced);
+        ingestRemoteNoteOrQuestion(note, remoteUser.id, remoteDomain, isSilenced, activity);
       }
 
       // Always return 202 Accepted for ActivityPub inboxes unless malformed
@@ -1002,6 +1564,14 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       res.status(500).json({ error: "Internal server error" });
     }
   };
+
+  router.post(
+    "/inbox",
+    inboxLimiter,
+    json({ type: ["application/activity+json", "application/json", "application/ld+json"] }),
+    verifier,
+    handleInboxActivity,
+  );
 
   router.post(
     "/actor/inbox",

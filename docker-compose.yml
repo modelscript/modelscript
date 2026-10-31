@@ -1,10 +1,10 @@
 services:
   caddy:
     image: caddy:2-alpine
-    profiles: ["standalone", "federated"]
+    profiles: ["standalone", "internal", "federated", "flagship", "federated-lite", "corporate", "quick-tunnel"]
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     environment:
       - PUBLIC_DOMAIN=${PUBLIC_DOMAIN:-localhost}
       - DOCS_DOMAIN=${DOCS_DOMAIN:-http://docs.localhost}
@@ -21,7 +21,7 @@ services:
 
   mqtt:
     image: eclipse-mosquitto:2
-    profiles: ["internal", "federated"]
+    profiles: ["internal", "federated", "flagship", "corporate-historian"]
     ports:
       - "127.0.0.1:1883:1883"
       - "127.0.0.1:9001:9001"
@@ -37,7 +37,7 @@ services:
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
-    profiles: ["internal", "federated"]
+    profiles: ["internal", "federated", "flagship", "corporate-historian"]
     ports:
       - "127.0.0.1:5432:5432"
     environment:
@@ -56,7 +56,7 @@ services:
 
   api:
     image: ghcr.io/modelscript/api:latest
-    profiles: ["standalone", "internal", "federated"]
+    profiles: ["standalone", "internal", "federated", "flagship", "federated-lite", "corporate", "quick-tunnel"]
     build:
       context: .
       target: api
@@ -64,6 +64,7 @@ services:
       - "127.0.0.1:3000:3000"
     volumes:
       - api-data:/app/apps/api/data
+      - api-backups:/app/apps/api/data/backups
       - api-uploads:/app/apps/api/uploads
       - api-thumbnails:/app/apps/api/public/thumbnails
       - api-packages:/app/apps/api/storage
@@ -77,19 +78,49 @@ services:
       - PUBLIC_URL=${PUBLIC_URL:-http://localhost:3000}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
       - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
+      - DEPLOYMENT_PRESET=${DEPLOYMENT_PRESET:-}
+      - AUTO_SEED_ADMIN=${AUTO_SEED_ADMIN:-false}
       - JWT_SECRET=${JWT_SECRET}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - EMAIL_DRIVER=${EMAIL_DRIVER:-}
       - EMAIL_FROM=${EMAIL_FROM:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_SECURE=${SMTP_SECURE:-}
       - ADMIN_INIT_USERNAME=${ADMIN_INIT_USERNAME:-}
       - ADMIN_INIT_EMAIL=${ADMIN_INIT_EMAIL:-}
       - ADMIN_INIT_PASSWORD=${ADMIN_INIT_PASSWORD:-}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-${BOT_SECRET_ENCRYPTION_KEY:-}}
+      - REQUIRE_ADMIN_SUDO=${REQUIRE_ADMIN_SUDO:-}
+      - OIDC_ISSUER_URL=${OIDC_ISSUER_URL:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_REDIRECT_URI=${OIDC_REDIRECT_URI:-}
+      - OIDC_ADMIN_GROUP=${OIDC_ADMIN_GROUP:-}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - S3_REGION=${S3_REGION:-}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_PREFIX=${S3_PREFIX:-}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
+      - S3_FORCE_PATH_STYLE=${S3_FORCE_PATH_STYLE:-}
+      - HPC_BACKEND=${HPC_BACKEND:-${HPC_DRIVER:-local}}
+      - SLURM_REST_URL=${SLURM_REST_URL:-}
+      - SLURM_USER=${SLURM_USER:-}
+      - SLURM_JWT_TOKEN=${SLURM_JWT_TOKEN:-}
       - MQTT_BROKER_URL=${MQTT_BROKER_URL:-}
       - TIMESCALE_URL=${TIMESCALE_URL:-}
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
+      - GEOLOCATION_DB_PATH=${GEOLOCATION_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=1024}
+      - ANALYTICS_FLUSH_INTERVAL_MS=${ANALYTICS_FLUSH_INTERVAL_MS:-5000}
+      - ANALYTICS_MAX_BUFFER_SIZE=${ANALYTICS_MAX_BUFFER_SIZE:-2000}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - AI_BASE_URL=${AI_BASE_URL:-}
@@ -108,7 +139,7 @@ services:
 
   web:
     image: ghcr.io/modelscript/web:latest
-    profiles: ["standalone", "internal", "federated"]
+    profiles: ["standalone", "internal", "federated", "flagship", "federated-lite", "corporate", "quick-tunnel"]
     build:
       context: .
       target: web
@@ -135,6 +166,7 @@ services:
       - "127.0.0.1:3000:3000"
     volumes:
       - api-data:/app/apps/api/data
+      - api-backups:/app/apps/api/data/backups
       - api-uploads:/app/apps/api/uploads
       - api-thumbnails:/app/apps/api/public/thumbnails
       - api-packages:/app/apps/api/storage
@@ -193,7 +225,9 @@ services:
       - "8080:8080"
     volumes:
       - api-data:/app/apps/api/data
+      - api-backups:/app/apps/api/data/backups
       - api-uploads:/app/apps/api/uploads
+      - api-thumbnails:/app/apps/api/public/thumbnails
     environment:
       - NODE_ENV=production
       - PORT=8080
@@ -217,8 +251,37 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel", "federated-tunnel", "flagship", "federated", "federated-lite"]
+    restart: unless-stopped
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ -n "$$TUNNEL_TOKEN" ]; then
+          echo "[Cloudflare Tunnel] Starting tunnel daemon..."
+          exec cloudflared tunnel --no-autoupdate run
+        else
+          echo "[Cloudflare Tunnel] No CLOUDFLARE_TUNNEL_TOKEN provided. Idling in standby mode."
+          exec tail -f /dev/null
+        fi
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+      - TUNNEL_METRICS=0.0.0.0:2000
+    depends_on:
+      - caddy
+
+  quick-tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["quick-tunnel"]
+    command: tunnel --url http://caddy:80
+    depends_on:
+      - caddy
+
 volumes:
   api-data:
+  api-backups:
   api-uploads:
   api-thumbnails:
   api-packages:

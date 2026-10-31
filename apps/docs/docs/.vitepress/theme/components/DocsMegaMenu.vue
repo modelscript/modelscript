@@ -72,11 +72,18 @@ const columns: MegaMenuColumn[] = [
         icon: "shield",
         accent: "#818cf8",
       },
+      {
+        name: "Self-Hosting Guide",
+        tagline: "Docker Compose profiles, Cloudflare Tunnels & backups",
+        href: "/ansatz/self-hosting",
+        icon: "database",
+        accent: "#38bdf8",
+      },
     ],
   },
   {
     id: "toolchain-reference",
-    label: "Toolchain Reference",
+    label: "Toolchain & Ansatz",
     items: [
       {
         name: "CLI Command Reference",
@@ -87,7 +94,7 @@ const columns: MegaMenuColumn[] = [
       },
       {
         name: "Compiler Linter Rules",
-        tagline: "Searchable catalog of 790 static diagnostics across 43 formats",
+        tagline: "Searchable catalog of 794 static diagnostics across 41 formats",
         href: "/reference/linter-rules",
         icon: "check",
         accent: "#22d3ee",
@@ -106,6 +113,13 @@ const columns: MegaMenuColumn[] = [
         icon: "layers",
         accent: "#a78bfa",
       },
+      {
+        name: "Ansatz Platform Overview",
+        tagline: "Federated social graph, CAS registry & cloud HPC architecture",
+        href: "/ansatz/overview",
+        icon: "globe",
+        accent: "#22d3ee",
+      },
     ],
   },
 ];
@@ -121,6 +135,9 @@ const feature: MegaMenuFeature = {
 
 const footerLinks: MegaMenuFooterLink[] = [
   { label: "Documentation Home", href: "/guide/introduction", icon: "globe" },
+  { label: "ActivityPub Federation", href: "/ansatz/federation", icon: "link" },
+  { label: "Package Registry", href: "/ansatz/package-registry", icon: "box" },
+  { label: "Cloud HPC Simulation", href: "/ansatz/cloud-hpc", icon: "zap" },
   {
     label: "PDF Reference Manual",
     href: "/modelscript-reference-manual.pdf",
@@ -135,7 +152,7 @@ const footerLinks: MegaMenuFooterLink[] = [
   <NavMegaMenu
     menu-id="docs"
     label="Docs"
-    :active-prefixes="['/guide/', '/cli/', '/reference/']"
+    :active-prefixes="['/guide/', '/ansatz/', '/cli/', '/reference/']"
     :columns="columns"
     :feature="feature"
     :footer-links="footerLinks"
@@ -143,3 +160,4 @@ const footerLinks: MegaMenuFooterLink[] = [
     :screen-menu="props.screenMenu"
   />
 </template>
+

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  BellIcon,
+  BookmarkIcon,
   CodeIcon,
   CpuIcon,
   GearIcon,
   GlobeIcon,
   HomeIcon,
+  MoonIcon,
   PackageIcon,
   PersonAddIcon,
   PersonIcon,
@@ -15,6 +18,7 @@ import {
   SearchIcon,
   ShieldLockIcon,
   SignInIcon,
+  SunIcon,
   ZapIcon,
 } from "@primer/octicons-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -25,6 +29,7 @@ import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { getSearchCompletions } from "../api";
 import { useFocusTrap } from "../hooks/useFocusTrap";
+import { useTheme } from "../theme";
 
 interface CommandItem {
   id: string;
@@ -38,7 +43,7 @@ interface CommandItem {
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--color-overlay-backdrop, rgba(0, 0, 0, 0.65));
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 9999;
@@ -65,9 +70,7 @@ const PaletteCard = styled.div`
   backdrop-filter: blur(16px);
   border: 1px solid var(--color-border-glass);
   border-radius: 16px;
-  box-shadow:
-    0 20px 50px rgba(0, 0, 0, 0.6),
-    0 0 30px rgba(139, 92, 246, 0.2);
+  box-shadow: var(--ms-shadow-pop);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -105,7 +108,7 @@ const InputHeader = styled.div`
   }
 
   kbd {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--ms-surface-hover);
     border: 1px solid var(--color-border);
     border-radius: 4px;
     padding: 2px 6px;
@@ -140,12 +143,12 @@ const ResultItem = styled.div<{ $active: boolean }>`
   padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
-  background: ${(props) => (props.$active ? "rgba(139, 92, 246, 0.15)" : "transparent")};
+  background: ${(props) => (props.$active ? "var(--surface-selected, rgba(139, 92, 246, 0.15))" : "transparent")};
   color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-primary)")};
   transition: all 0.1s ease;
 
   &:hover {
-    background: rgba(139, 92, 246, 0.15);
+    background: var(--surface-selected, rgba(139, 92, 246, 0.15));
     color: var(--color-text-heading);
   }
 
@@ -200,7 +203,7 @@ const Footer = styled.div`
   justify-content: space-between;
   padding: 8px 16px;
   border-top: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-canvas-subtle);
   font-size: 12px;
   color: var(--color-text-muted);
 
@@ -215,7 +218,7 @@ const Footer = styled.div`
       gap: 4px;
 
       kbd {
-        background: rgba(255, 255, 255, 0.05);
+        background: var(--ms-surface-hover);
         border: 1px solid var(--color-border);
         border-radius: 4px;
         padding: 1px 5px;
@@ -248,12 +251,13 @@ interface RepoCompletion {
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenCompose?: (() => void) | undefined;
+  onOpenCompose?: ((detail?: unknown) => void) | undefined;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onOpenCompose }) => {
   const navigate = useNavigate();
   const { isAdmin, user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const hasIde = useFeatureFlag("heavy_vscode_ide");
@@ -320,6 +324,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
               icon: <HomeIcon size={16} />,
               action: () => {
                 navigate("/home");
+                onClose();
+              },
+            },
+            {
+              id: "nav-notifications",
+              category: "Navigation" as const,
+              title: "Notifications",
+              subtitle: "Mentions, replies, and simulation alerts",
+              icon: <BellIcon size={16} />,
+              action: () => {
+                navigate("/notifications");
+                onClose();
+              },
+            },
+            {
+              id: "nav-bookmarks",
+              category: "Navigation" as const,
+              title: "Bookmarks",
+              subtitle: "Saved models and engineering posts",
+              icon: <BookmarkIcon size={16} />,
+              action: () => {
+                navigate("/bookmarks");
                 onClose();
               },
             },
@@ -600,6 +626,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
               },
             },
           ]),
+      {
+        id: "action-toggle-theme",
+        category: "Actions" as const,
+        title: theme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme",
+        subtitle: "Toggle appearance between dark and light color modes",
+        icon: theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />,
+        action: () => {
+          toggleTheme();
+          onClose();
+        },
+      },
       ...devActionItems,
     ];
 
@@ -667,7 +704,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         action: () => {
           onClose();
           if (onOpenCompose) {
-            (onOpenCompose as (initial?: { content?: string | undefined }) => void)({
+            onOpenCompose({
               content: `@dynamics_bot ${query}`,
             });
           } else {
@@ -686,7 +723,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         action: () => {
           onClose();
           if (onOpenCompose) {
-            (onOpenCompose as (initial?: { content?: string | undefined }) => void)({
+            onOpenCompose({
               content: `@dynamics_bot /synthesize ${query}`,
             });
           } else {
@@ -701,7 +738,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     ];
 
     return [...matchingNav, ...actionItems, ...userItems, ...packageItems, ...repoItems, ...aiItems];
-  }, [query, completions, navigate, onClose, onOpenCompose, isAdmin, user, hasIde, hasCae, brandName]);
+  }, [
+    query,
+    completions,
+    navigate,
+    onClose,
+    onOpenCompose,
+    isAdmin,
+    user,
+    hasIde,
+    hasCae,
+    brandName,
+    theme,
+    toggleTheme,
+  ]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -749,6 +799,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
 
   if (!isOpen) return null;
 
+  const activeItem = allItems[activeIndex];
+
   return (
     <Overlay onClick={onClose}>
       <PaletteCard
@@ -762,6 +814,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
           <SearchIcon size={18} fill="var(--color-fg-muted)" />
           <input
             ref={inputRef}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="command-palette-results"
+            aria-activedescendant={activeItem ? `cmd-item-${activeItem.id}` : undefined}
             placeholder="Type a command or search models, packages, people..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -769,7 +825,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
           <kbd>ESC</kbd>
         </InputHeader>
 
-        <ResultsList ref={resultsListRef}>
+        <ResultsList ref={resultsListRef} id="command-palette-results" role="listbox" aria-label="Commands">
           {allItems.length === 0 ? (
             <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--color-fg-muted)" }}>
               No matching commands or entities found for &quot;{query}&quot;
@@ -781,6 +837,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                 <React.Fragment key={item.id}>
                   {isFirstInCategory && <CategoryHeader>{item.category}</CategoryHeader>}
                   <ResultItem
+                    id={`cmd-item-${item.id}`}
+                    role="option"
+                    aria-selected={index === activeIndex}
                     data-result-index={index}
                     $active={index === activeIndex}
                     onClick={item.action}

@@ -14,6 +14,7 @@ import {
   isNotebookPost,
   parseNotebookFromContent,
 } from "../util/notebook";
+import { setupPostDwellObservation } from "../util/post-dwell";
 import type { SpatialPin } from "./artifacts/spatial-pin";
 import Box from "./Box";
 import ErrorBoundary from "./ErrorBoundary";
@@ -33,33 +34,6 @@ export { PostMarkdownContent as RenderContent } from "./post/PostMarkdownContent
 export type { PostProps } from "./post/styles";
 
 const ComposeModal = React.lazy(() => import("./ComposeModal"));
-
-const VIEWED_POSTS_SESSION_KEY = "modelscript:viewed_post_ids";
-
-const viewedPostIds: Set<number> = (() => {
-  try {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const raw = window.sessionStorage.getItem(VIEWED_POSTS_SESSION_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          return new Set<number>(parsed.filter((id): id is number => typeof id === "number"));
-        }
-      }
-    }
-  } catch {}
-  return new Set<number>();
-})();
-
-function markPostViewedInSession(postId: number): void {
-  viewedPostIds.add(postId);
-  try {
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      const arr = Array.from(viewedPostIds).slice(-500);
-      window.sessionStorage.setItem(VIEWED_POSTS_SESSION_KEY, JSON.stringify(arr));
-    }
-  } catch {}
-}
 
 const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const navigate = useNavigate();
@@ -161,40 +135,22 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
 
   const postContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Record view once per post per session when entering viewport (or immediately on detail view)
+  // Record view once per post per session when dwelling in viewport (or immediately on detail view)
   useEffect(() => {
     const postId = displayPost?.id;
-    if (!postId || viewedPostIds.has(postId)) return;
+    if (!postId) return;
 
-    const triggerView = () => {
-      markPostViewedInSession(postId);
-      void recordPostView(postId).then((res) => {
-        if (res?.counted) {
-          setImpressions((prev) => prev + 1);
-        }
-      });
-    };
-
-    if (isDetail || typeof IntersectionObserver === "undefined" || !postContainerRef.current) {
-      triggerView();
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting && !viewedPostIds.has(postId)) {
-            triggerView();
-            observer.disconnect();
-            break;
+    return setupPostDwellObservation(postContainerRef.current, {
+      postId,
+      isDetail,
+      onView: () => {
+        void recordPostView(postId).then((res) => {
+          if (res?.counted) {
+            setImpressions((prev) => prev + 1);
           }
-        }
+        });
       },
-      { threshold: 0.4 },
-    );
-
-    observer.observe(postContainerRef.current);
-    return () => observer.disconnect();
+    });
   }, [displayPost?.id, isDetail, token]);
 
   const isNotebook = isNotebookPost(displayPost);

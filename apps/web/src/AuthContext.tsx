@@ -39,8 +39,13 @@ interface AuthContextType {
     acceptTerms?: boolean,
     captchaToken?: string,
     inviteCode?: string,
-  ) => Promise<{ verificationRequired?: boolean | undefined; message?: string | undefined }>;
+  ) => Promise<{
+    verificationRequired?: boolean | undefined;
+    verificationToken?: string | undefined;
+    message?: string | undefined;
+  }>;
   updateToken: (newToken: string | null) => void;
+  setSession: (newToken: string, newUser?: User | null) => void;
   logout: () => void;
   unreadCount: number;
   setUnreadCount: (c: number) => void;
@@ -52,9 +57,50 @@ interface AuthContextType {
   refreshUser: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
-
 const TOKEN_KEY = "modelscript-auth-token";
+
+function getFallbackAuthContext(): AuthContextType {
+  let cachedUser: User | null = null;
+  let cachedToken: string | null = null;
+  if (typeof localStorage !== "undefined") {
+    cachedToken = localStorage.getItem(TOKEN_KEY) || localStorage.getItem("token");
+    try {
+      const rawUser = localStorage.getItem("user");
+      if (rawUser) cachedUser = JSON.parse(rawUser);
+    } catch {
+      // ignore JSON parse error
+    }
+  }
+  return {
+    user: cachedUser,
+    token: cachedToken,
+    isAuthenticated: Boolean(cachedToken || cachedUser),
+    isAdmin: Boolean(cachedUser && (cachedUser.account_type === "admin" || cachedUser.role === "admin")),
+    isLoading: false,
+    login: async () => {},
+    complete2FALogin: async () => {},
+    register: async () => ({}),
+    updateToken: () => {},
+    setSession: () => {},
+    logout: () => {},
+    unreadCount: 0,
+    setUnreadCount: () => {},
+    refreshUnreadCount: () => {},
+    adminPendingCount: 0,
+    refreshAdminCount: () => {},
+    creditBalance: cachedUser?.credit_balance ?? 0,
+    refreshWallet: async () => {},
+    refreshUser: async () => {},
+  };
+}
+
+// Preserve AuthContext across Vite HMR and dynamically imported routes
+const AuthContext: React.Context<AuthContextType | null> =
+  (globalThis as unknown as { __MODEL_SCRIPT_AUTH_CONTEXT__?: React.Context<AuthContextType | null> })
+    .__MODEL_SCRIPT_AUTH_CONTEXT__ ||
+  ((
+    globalThis as unknown as { __MODEL_SCRIPT_AUTH_CONTEXT__?: React.Context<AuthContextType | null> }
+  ).__MODEL_SCRIPT_AUTH_CONTEXT__ = createContext<AuthContextType | null>(null));
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -307,9 +353,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const setSession = useCallback((newToken: string, newUser?: User | null) => {
+    if (newToken) {
+      localStorage.setItem(TOKEN_KEY, newToken);
+      localStorage.setItem("token", newToken);
+      api.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
+    }
+    setToken(newToken);
+    if (newUser) {
+      setUser(newUser);
+      const bal = (newUser as User & { credit_balance?: number }).credit_balance;
+      if (typeof bal === "number") {
+        setCreditBalance(bal);
+      }
+    }
+  }, []);
+
   const logout = useCallback(() => {
     api.post("/auth/logout").catch(() => {});
     void clearOfflineCache();
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+    } catch {
+      // ignore storage errors
+    }
     setToken(null);
     setUser(null);
     setAdminPendingCount(0);
@@ -327,6 +396,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         complete2FALogin,
         register,
         updateToken,
+        setSession,
         logout,
         unreadCount,
         setUnreadCount,
@@ -345,6 +415,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth(): AuthContextType {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) {
+    if (typeof process !== "undefined" && process.env?.NODE_ENV !== "production") {
+      console.warn("[AuthContext] useAuth called outside active AuthProvider; returning fallback context.");
+    }
+    return getFallbackAuthContext();
+  }
   return ctx;
 }

@@ -350,6 +350,8 @@ jobs:
           key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
           restore-keys: |
             ${{ runner.os }}-wasm-
+      - name: Build VS Code Extension
+        run: npm run build:extension
       - name: Run Build
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -363,8 +365,6 @@ jobs:
         run: npm run verify:pack
       - name: Check Docs Generated Data & Links
         run: npm run check --workspace=@modelscript/docs
-      - name: Build VS Code Extension
-        run: npm run build:extension
       - name: Package VS Code Extension
         run: npx --yes @vscode/vsce package --no-dependencies --allow-star-activation
         working-directory: dist/extension
@@ -469,6 +469,9 @@ jobs:
       - name: Fast Rebuild from Cache
         if: steps.check-affected.outputs.run_docker == 'true'
         run: npx nx run-many -t build --parallel=3
+      - name: Build VS Code Extension Grammars
+        if: steps.check-affected.outputs.run_docker == 'true'
+        run: npm run build:extension
       - name: Build PDF Reference Manual for Web & Appliance Images
         if: steps.check-affected.outputs.run_docker == 'true'
         run: npm run build:pdf --workspace=@modelscript/docs
@@ -573,7 +576,7 @@ jobs:
 
           # 5. Create pre-deploy SQLite hot backup (if API container is already running), pull SHA images, launch & verify health
           ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cd ${TARGET_DIR} && \
-            (docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production exec -T api node -e 'fetch(\"http://127.0.0.1:3000/health\")' >/dev/null 2>&1 || true) && \
+            (docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production exec -T api node -e 'const fs=require(\"node:fs\"),D=require(\"better-sqlite3\");fs.mkdirSync(\"/app/apps/api/data/backups\",{recursive:true});const db=new D(\"/app/apps/api/data/modelscript.db\");db.exec(\"VACUUM INTO \\\"/app/apps/api/data/backups/pre-deploy-\"+Date.now()+\".db\\\"\");db.close();' >/dev/null 2>&1 || true) && \
             IMAGE_TAG=sha-${GITHUB_SHA} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated pull && \
             IMAGE_TAG=sha-${GITHUB_SHA} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated up -d --wait --remove-orphans && \
             curl --fail --silent --show-error http://127.0.0.1:3000/health >/dev/null && \

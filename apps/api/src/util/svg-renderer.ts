@@ -2,6 +2,7 @@
 
 import { Context } from "@modelscript/modelica/context";
 import { registerWindow } from "@svgdotjs/svg.js";
+import v8 from "node:v8";
 import { createSVGWindow } from "svgdom";
 import xmlFormat from "xml-formatter";
 
@@ -576,8 +577,9 @@ export async function processLibrary(
     await onReady(context);
   }
 
-  // We use 5 GB as a conservative limit to ensure we hit the safety check before V8 crashes at 8 GB
-  const HEAP_LIMIT = 5 * 1024 * 1024 * 1024;
+  // Dynamic safety limit: 75% of the configured V8 heap size limit, capped at 5 GB
+  const v8Limit = v8.getHeapStatistics().heap_size_limit;
+  const HEAP_LIMIT = Math.min(5 * 1024 * 1024 * 1024, Math.floor(v8Limit * 0.75));
   let classesProcessed = 0;
 
   function isMemoryTight(): boolean {

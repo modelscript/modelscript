@@ -177,6 +177,7 @@ function inlineStaticCopy(targets: StaticCopyTarget[]): Plugin {
 const DOCS_ROUTE_PREFIXES = [
   "/docs",
   "/guide",
+  "/ansatz",
   "/architecture",
   "/algorithms",
   "/cli",

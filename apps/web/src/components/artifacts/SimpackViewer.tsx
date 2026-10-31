@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { renderKinematicDiagramSvg, type KinematicBodyLike, type KinematicJointLike } from "@modelscript/diagram";
 import { CheckCircleIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Spinner, Text } from "@primer/react";
-import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import MultibodyViewport3D, { type MultibodyLink3D, type MultibodyNode3D } from "./MultibodyViewport3D";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface SimpackViewerProps {
   viewConfig: {
@@ -49,14 +49,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 40px;
+  min-height: 40px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default, #30363d);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -65,7 +65,7 @@ const Toolbar = styled.div`
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 `;
 
@@ -108,61 +108,95 @@ const ContentArea = styled.div`
   flex: 1;
   position: relative;
   overflow: auto;
-  padding: 16px;
+  padding: 14px;
   background: var(--color-canvas-subtle, #161b22);
 `;
 
 const MetricGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
 `;
 
 const MetricCard = styled.div`
   background: var(--color-canvas-default, #0d1117);
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 6px;
-  padding: 12px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 `;
 
 const MetricLabel = styled.span`
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--color-fg-muted, #8b949e);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 `;
 
 const MetricValue = styled.span`
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--color-fg-default, #e6edf3);
 `;
 
-const SvgContainer = styled.div`
-  width: 100%;
-  min-height: 220px;
-  background: var(--color-canvas-default, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 12px;
+function parseSimpackClient(deck: string) {
+  const bodies: { name: string; mass: number; position?: [number, number, number] }[] = [];
+  const joints: { name: string; type: string; from: string; to: string }[] = [];
+  const forces: { name: string; type: string; from: string; to: string }[] = [];
 
-  svg {
-    max-width: 100%;
-    height: auto;
+  for (const bm of deck.matchAll(/<body\b[^>]*name=["']([^"']+)["'][^>]*>/gi)) {
+    const tag = bm[0] || "";
+    const name = bm[1]!;
+    const mMatch = tag.match(/\bmass=["']([0-9.eE+-]+)["']/i);
+    bodies.push({ name, mass: mMatch?.[1] ? Number.parseFloat(mMatch[1]) : 100 });
   }
-`;
+  for (const bm of deck.matchAll(/^\s*(?:\$body|body)\s+([A-Za-z0-9_.-]+)(?:\s+mass\s*=\s*([0-9.eE+-]+))?/gim)) {
+    const name = bm[1]!;
+    if (!bodies.some((b) => b.name === name)) {
+      bodies.push({ name, mass: bm[2] ? Number.parseFloat(bm[2]) : 100 });
+    }
+  }
+
+  for (const jm of deck.matchAll(/<joint\b[^>]*name=["']([^"']+)["'][^>]*>/gi)) {
+    const tag = jm[0] || "";
+    const name = jm[1]!;
+    const type = tag.match(/\btype=["']([^"']+)["']/i)?.[1] || "revolute";
+    const from = tag.match(/\b(?:from|body1)=["']([^"']+)["']/i)?.[1] || "Ground";
+    const to = tag.match(/\b(?:to|body2)=["']([^"']+)["']/i)?.[1] || bodies[0]?.name || "Body_1";
+    joints.push({ name, type, from, to });
+  }
+  for (const jm of deck.matchAll(
+    /^\s*(?:\$joint|joint)\s+([A-Za-z0-9_.-]+)(?:\s+([A-Za-z0-9_.-]+))?\s+([A-Za-z0-9_.-]+)\s*(?:->|,|\s+)\s*([A-Za-z0-9_.-]+)/gim,
+  )) {
+    const name = jm[1]!;
+    if (!joints.some((j) => j.name === name)) {
+      joints.push({
+        name,
+        type: jm[2] || "revolute",
+        from: jm[3] || "Ground",
+        to: jm[4] || bodies[0]?.name || "Body_1",
+      });
+    }
+  }
+
+  for (const fm of deck.matchAll(/<force\b[^>]*name=["']([^"']+)["'][^>]*>/gi)) {
+    const tag = fm[0] || "";
+    const name = fm[1]!;
+    const type = tag.match(/\btype=["']([^"']+)["']/i)?.[1] || "spring_damper";
+    const from = tag.match(/\b(?:from|body1)=["']([^"']+)["']/i)?.[1] || bodies[0]?.name || "Ground";
+    const to = tag.match(/\b(?:to|body2)=["']([^"']+)["']/i)?.[1] || bodies[1]?.name || "Body_1";
+    forces.push({ name, type, from, to });
+  }
+
+  return { bodies, joints, forces };
+}
 
 const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
-  const [tabIndex, setTabIndex] = useState<number>(() => (viewConfig.svg ? 0 : 2));
+  const [tabIndex, setTabIndex] = useState<number>(0);
   const [fetchedCode, setFetchedCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -184,77 +218,124 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
   const rawDeck = viewConfig.code || fetchedCode || "";
   const modelName = viewConfig.modelName || viewConfig.title || "SIMPACK Multibody Assembly";
 
+  const parsed = useMemo(() => parseSimpackClient(rawDeck), [rawDeck]);
+  const resolvedBodies = viewConfig.bodies?.length ? viewConfig.bodies : parsed.bodies;
+  const resolvedJoints = viewConfig.joints?.length ? viewConfig.joints : parsed.joints;
+  const resolvedForces = viewConfig.forces?.length ? viewConfig.forces : parsed.forces;
+
   const bodyCount = useMemo(() => {
     if (typeof viewConfig.bodyCount === "number") return viewConfig.bodyCount;
-    if (Array.isArray(viewConfig.bodies)) return viewConfig.bodies.length;
-    const xmlMatches = (rawDeck.match(/<body\b/gi) || []).length;
-    const simMatches = (rawDeck.match(/^\s*(?:\$body|body)\s+/gim) || []).length;
-    return Math.max(xmlMatches, simMatches);
-  }, [viewConfig.bodyCount, viewConfig.bodies, rawDeck]);
+    return resolvedBodies.length;
+  }, [viewConfig.bodyCount, resolvedBodies.length]);
 
   const jointCount = useMemo(() => {
     if (typeof viewConfig.jointCount === "number") return viewConfig.jointCount;
-    if (Array.isArray(viewConfig.joints)) return viewConfig.joints.length;
-    const xmlMatches = (rawDeck.match(/<joint\b/gi) || []).length;
-    const simMatches = (rawDeck.match(/^\s*(?:\$joint|joint)\s+/gim) || []).length;
-    return Math.max(xmlMatches, simMatches);
-  }, [viewConfig.jointCount, viewConfig.joints, rawDeck]);
+    return resolvedJoints.length;
+  }, [viewConfig.jointCount, resolvedJoints.length]);
 
   const forceCount = useMemo(() => {
     if (typeof viewConfig.forceCount === "number") return viewConfig.forceCount;
-    if (Array.isArray(viewConfig.forces)) return viewConfig.forces.length;
-    const xmlMatches = (rawDeck.match(/<force\b/gi) || []).length;
-    const simMatches = (rawDeck.match(/^\s*(?:\$force|force)\s+/gim) || []).length;
-    return Math.max(xmlMatches, simMatches);
-  }, [viewConfig.forceCount, viewConfig.forces, rawDeck]);
+    return resolvedForces.length;
+  }, [viewConfig.forceCount, resolvedForces.length]);
 
   const mobilityDof = viewConfig.calculatedMobility;
   const isOverconstrained = viewConfig.isOverconstrained ?? (mobilityDof !== undefined ? mobilityDof < 0 : false);
 
   const svgMarkup = useMemo(() => {
-    if (viewConfig.svg) {
-      return DOMPurify.sanitize(viewConfig.svg);
+    if (viewConfig.svg && viewConfig.svg.trim()) {
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+    }
+    if (resolvedBodies.length > 0) {
+      try {
+        const kinBodies: KinematicBodyLike[] = [
+          { id: "Ground", name: "Inertial Ground", isGround: true },
+          ...resolvedBodies.map((b) => ({
+            id: b.name,
+            name: b.name,
+            mass: b.mass ?? 100,
+          })),
+        ];
+        const kinJoints: KinematicJointLike[] = [
+          ...resolvedJoints.map((j, i) => ({
+            id: j.name || `J_${i + 1}`,
+            name: j.name || `Joint ${i + 1}`,
+            type: (j.type as any) || "revolute",
+            body1: j.from || "Ground",
+            body2: j.to || resolvedBodies[i % resolvedBodies.length]!.name,
+          })),
+          ...resolvedForces.map((f, i) => ({
+            id: f.name || `F_${i + 1}`,
+            name: f.name || `Force ${i + 1}`,
+            type: "spring_damper" as const,
+            body1: f.from || "Ground",
+            body2: f.to || resolvedBodies[i % resolvedBodies.length]!.name,
+          })),
+        ];
+        if (kinJoints.length === 0 && resolvedBodies.length > 0) {
+          resolvedBodies.forEach((b, idx) => {
+            kinJoints.push({
+              id: `J_${idx + 1}`,
+              name: `J_${idx + 1}`,
+              type: "revolute",
+              body1: idx === 0 ? "Ground" : resolvedBodies[idx - 1]!.name,
+              body2: b.name,
+            });
+          });
+        }
+        const built = renderKinematicDiagramSvg(
+          {
+            name: modelName,
+            dialect: "SIMPACK",
+            bodies: kinBodies,
+            joints: kinJoints,
+          },
+          { isDark: true },
+        );
+        return sanitizeSvgMarkup(built, { isFullScreen });
+      } catch {
+        return "";
+      }
     }
     return "";
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, resolvedBodies, resolvedJoints, resolvedForces, modelName, isFullScreen]);
 
   const { nodes3D, links3D } = useMemo(() => {
     const nodes: MultibodyNode3D[] = [];
     const links: MultibodyLink3D[] = [];
     const posMap = new Map<string, [number, number, number]>();
 
-    if (Array.isArray(viewConfig.bodies)) {
-      viewConfig.bodies.forEach((b) => {
-        const coords = b.position || b.cg;
-        if (!Array.isArray(coords) || coords.length !== 3) return;
-        posMap.set(b.name, coords);
-        nodes.push({
-          id: b.name,
-          name: b.name,
-          type: "body",
-          position: coords,
-        });
+    resolvedBodies.forEach((b, idx) => {
+      const rawCoords = (b as any).position || (b as any).cg;
+      const coords: [number, number, number] =
+        Array.isArray(rawCoords) && rawCoords.length === 3
+          ? rawCoords
+          : [idx * 1.6 - (resolvedBodies.length - 1) * 0.8, (idx % 2) * 0.6, 0.8 + (idx % 3) * 0.4];
+      posMap.set(b.name, coords);
+      nodes.push({
+        id: b.name,
+        name: b.name,
+        type: "body",
+        position: coords,
       });
-    }
+    });
 
-    if (Array.isArray(viewConfig.joints)) {
-      viewConfig.joints.forEach((j, idx) => {
-        const p1 = posMap.get(j.from || "");
-        const p2 = posMap.get(j.to || "");
-        if (p1 && p2) {
-          links.push({
-            id: j.name || `joint_${idx + 1}`,
-            name: j.name || `Joint ${idx + 1}`,
-            type: "joint",
-            from: p1,
-            to: p2,
-          });
-        }
-      });
-    }
+    resolvedJoints.forEach((j, idx) => {
+      const p1 = posMap.get(j.from || "") || (idx > 0 ? posMap.get(resolvedBodies[idx - 1]?.name || "") : [0, 0, 0]);
+      const p2 =
+        posMap.get(j.to || "") || posMap.get(resolvedBodies[idx % Math.max(1, resolvedBodies.length)]?.name || "");
+      if (p1 && p2) {
+        links.push({
+          id: j.name || `joint_${idx + 1}`,
+          name: j.name || `Joint ${idx + 1}`,
+          type: "joint",
+          from: p1,
+          to: p2,
+        });
+      }
+    });
 
     return { nodes3D: nodes, links3D: links };
-  }, [viewConfig.bodies, viewConfig.joints]);
+  }, [resolvedBodies, resolvedJoints]);
 
   const handleOpenPlayground = () => {
     const hash = compressMorselPayload({
@@ -273,7 +354,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <Title>{modelName}</Title>
+          {!isFullScreen && <Title title={modelName}>{modelName}</Title>}
           <Badge $variant="info">SIMPACK MBS</Badge>
           {mobilityDof !== undefined && !isOverconstrained && (
             <Badge $variant="success">
@@ -297,7 +378,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
               Model Source
             </SegmentedControl.Button>
           </SegmentedControl>
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"
@@ -338,13 +419,19 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
             </MetricGrid>
 
             {svgMarkup ? (
-              <SvgContainer dangerouslySetInnerHTML={{ __html: svgMarkup }} />
+              <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} minHeight="240px" />
             ) : (
-              <SvgContainer>
+              <Box
+                p={4}
+                bg="var(--color-canvas-default, #0d1117)"
+                border="1px solid var(--color-border-default, #30363d)"
+                borderRadius="6px"
+                textAlign="center"
+              >
                 <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
                   No SIMPACK kinematic diagram elements found. Switch to Model Source to inspect the file.
                 </Text>
-              </SvgContainer>
+              </Box>
             )}
           </div>
         ) : tabIndex === 1 ? (

@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  renderOlgaSchematicSvg,
+  type OlgaBranchLike,
+  type OlgaEquipmentLike,
+  type OlgaNodeLike,
+} from "@modelscript/diagram";
+import {
   AlertIcon,
   CheckCircleIcon,
   CheckIcon,
@@ -11,13 +17,12 @@ import {
   PulseIcon,
 } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
-import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface OlgaFlowViewerProps {
   viewConfig: {
@@ -51,14 +56,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 40px;
+  min-height: 40px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -67,12 +72,12 @@ const Toolbar = styled.div`
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 `;
 
 const ModelTitle = styled.div`
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
@@ -150,22 +155,6 @@ const ContentArea = styled.div`
   position: relative;
 `;
 
-const SvgCanvas = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 16px;
-  background: var(--color-canvas-inset, var(--color-canvas-default));
-
-  svg {
-    max-width: 100%;
-    max-height: 100%;
-    height: auto;
-  }
-`;
-
 const CodePre = styled.pre`
   flex: 1;
   margin: 0;
@@ -196,7 +185,7 @@ const LineNo = styled.span`
 `;
 
 const InspectorSidebar = styled.div`
-  width: 250px;
+  width: 240px;
   border-left: 1px solid var(--color-border-default);
   background: var(--color-canvas-subtle);
   display: flex;
@@ -204,6 +193,10 @@ const InspectorSidebar = styled.div`
   overflow-y: auto;
   padding: 14px;
   gap: 12px;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const StatItem = styled.div`
@@ -228,15 +221,90 @@ function parseOlgaClient(code: string) {
   }
   const diaMatch = code.match(/DIAMETER\s*=\s*([0-9.eE+-]+)(?:\s*([A-Za-z]+))?/i);
   let diameterInches: number | undefined;
+  let diameterMeters = 0.3048;
   if (diaMatch?.[1]) {
     const d = Number.parseFloat(diaMatch[1]);
     const u = (diaMatch[2] || "m").toLowerCase();
     if (!Number.isNaN(d)) {
       diameterInches = u.startsWith("in") ? d : Number((d * 39.3701).toFixed(1));
+      diameterMeters = u.startsWith("in") ? d * 0.0254 : d;
     }
   }
+
+  const nodes: OlgaNodeLike[] = [];
+  const branches: OlgaBranchLike[] = [];
+  const equipment: OlgaEquipmentLike[] = [];
+
+  for (const nm of code.matchAll(/\bNODE\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?([^\n]*)/gi)) {
+    const label = nm[1] || `N_${nodes.length + 1}`;
+    const rest = nm[2] || "";
+    const typeMatch = rest.match(/\bTYPE\s*=\s*([A-Za-z]+)/i);
+    const pMatch = rest.match(/\bPRESSURE\s*=\s*([0-9.eE+-]+)/i);
+    const tMatch = rest.match(/\bTEMPERATURE\s*=\s*([0-9.eE+-]+)/i);
+    nodes.push({
+      label,
+      type: typeMatch?.[1] || (nodes.length === 0 ? "CLOSED" : "PRESSURE"),
+      ...(pMatch?.[1] ? { pressureBar: Number.parseFloat(pMatch[1]) } : {}),
+      ...(tMatch?.[1] ? { temperatureC: Number.parseFloat(tMatch[1]) } : {}),
+    });
+  }
+
+  for (const bm of code.matchAll(/\bBRANCH\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?([^\n]*)/gi)) {
+    const label = bm[1] || `BR_${branches.length + 1}`;
+    const rest = bm[2] || "";
+    const fromMatch = rest.match(/\bFROM\s*=\s*["']?([A-Za-z0-9_-]+)["']?/i);
+    const toMatch = rest.match(/\bTO\s*=\s*["']?([A-Za-z0-9_-]+)["']?/i);
+    const from = fromMatch?.[1] || nodes[0]?.label || "WELLHEAD";
+    const to = toMatch?.[1] || nodes[nodes.length - 1]?.label || "SEPARATOR";
+    branches.push({
+      label,
+      from,
+      to,
+      pipes: [
+        {
+          label: `PIPE_${branches.length + 1}`,
+          length: totalLengthM > 0 ? totalLengthM : 5000,
+          elevation: 0,
+          diameter: diameterMeters,
+        },
+      ],
+    });
+  }
+
+  for (const em of code.matchAll(
+    /\b(VALVE|CHOKE|PUMP|COMPRESSOR|SEPARATOR|HEATER)\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?/gi,
+  )) {
+    equipment.push({
+      type: (em[1] || "VALVE").toUpperCase(),
+      label: em[2] || `EQ_${equipment.length + 1}`,
+    });
+  }
+
+  if (branches.length === 0 && (totalLengthM > 0 || code.trim().length > 0)) {
+    if (nodes.length < 2) {
+      nodes.push({ label: "INLET", type: "MASS", pressureBar: 120, temperatureC: 65 });
+      nodes.push({ label: "OUTLET", type: "PRESSURE", pressureBar: 45, temperatureC: 25 });
+    }
+    branches.push({
+      label: "FLOWLINE",
+      from: nodes[0]!.label,
+      to: nodes[nodes.length - 1]!.label,
+      pipes: [
+        {
+          label: "P1",
+          length: totalLengthM > 0 ? totalLengthM : 4500,
+          elevation: 150,
+          diameter: diameterMeters,
+        },
+      ],
+    });
+  }
+
   const pipeCount = Array.from(code.matchAll(/\bPIPE\b|\bBRANCH\b/gi)).length;
   return {
+    nodes,
+    branches,
+    equipment,
     lengthKm: totalLengthM > 0 ? Number((totalLengthM / 1000).toFixed(2)) : undefined,
     diameterInches,
     pipeCount: pipeCount > 0 ? pipeCount : undefined,
@@ -248,7 +316,8 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">(() => (viewConfig.svg ? "diagram" : "code"));
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [showInspector, setShowInspector] = useState(false);
   const title = viewConfig.title || viewConfig.pipelineName || "OLGA Flow Assurance (.opi)";
 
   useEffect(() => {
@@ -276,10 +345,23 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return DOMPurify.sanitize(viewConfig.svg);
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+    }
+    if (parsedClient && parsedClient.branches.length > 0) {
+      try {
+        const built = renderOlgaSchematicSvg({
+          title,
+          nodes: parsedClient.nodes,
+          branches: parsedClient.branches,
+          equipment: parsedClient.equipment,
+        });
+        return sanitizeSvgMarkup(built, { isFullScreen });
+      } catch {
+        return "";
+      }
     }
     return "";
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, parsedClient, title, isFullScreen]);
 
   const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
@@ -323,7 +405,7 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
       <Toolbar>
         <HeaderLeft>
           <PulseIcon size={16} fill="var(--color-done-fg, currentColor)" />
-          <ModelTitle>{title}</ModelTitle>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge>OLGA Multiphase</PillBadge>
           {slugRisk && (
             <PillBadge $variant={slugRisk === "low" ? "slug-low" : "slug-warn"}>
@@ -348,6 +430,11 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
               </SegmentBtn>
             </SegmentedControl>
           )}
+          {!isFullScreen && (
+            <Button size="small" onClick={() => setShowInspector((s) => !s)}>
+              {showInspector ? "Hide Telemetry" : "Telemetry"}
+            </Button>
+          )}
           {sanitizedSvg && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
               SVG
@@ -356,7 +443,7 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
           <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
             {copied ? "Copied" : "Copy"}
           </Button>
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
               Open in Playground
             </Button>
@@ -385,38 +472,40 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
             )}
           </CodePre>
         ) : (
-          <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+          <InteractiveSvgStage svgMarkup={sanitizedSvg} isFullScreen={isFullScreen} />
         )}
 
-        <InspectorSidebar>
-          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-            Flow Assurance Telemetry
-          </Text>
-          <StatItem>
-            <span>Total Length</span>
-            <strong>{lengthKm !== undefined ? `${lengthKm} km` : "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Nominal Diameter</span>
-            <strong>{diameterInches !== undefined ? `${diameterInches}"` : "—"}</strong>
-          </StatItem>
-          {parsedClient?.pipeCount !== undefined && (
+        {!isFullScreen && showInspector && (
+          <InspectorSidebar>
+            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
+              Flow Assurance Telemetry
+            </Text>
             <StatItem>
-              <span>Pipes / Branches</span>
-              <strong>{parsedClient.pipeCount}</strong>
+              <span>Total Length</span>
+              <strong>{lengthKm !== undefined ? `${lengthKm} km` : "—"}</strong>
             </StatItem>
-          )}
-          <StatItem>
-            <span>Pressure Drop (ΔP)</span>
-            <strong>{viewConfig.pressureDropBar !== undefined ? `${viewConfig.pressureDropBar} bar` : "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Avg Liquid Holdup</span>
-            <strong>
-              {viewConfig.liquidHoldupAvg !== undefined ? `${(viewConfig.liquidHoldupAvg * 100).toFixed(1)}%` : "—"}
-            </strong>
-          </StatItem>
-        </InspectorSidebar>
+            <StatItem>
+              <span>Nominal Diameter</span>
+              <strong>{diameterInches !== undefined ? `${diameterInches}"` : "—"}</strong>
+            </StatItem>
+            {parsedClient?.pipeCount !== undefined && (
+              <StatItem>
+                <span>Pipes / Branches</span>
+                <strong>{parsedClient.pipeCount}</strong>
+              </StatItem>
+            )}
+            <StatItem>
+              <span>Pressure Drop (ΔP)</span>
+              <strong>{viewConfig.pressureDropBar !== undefined ? `${viewConfig.pressureDropBar} bar` : "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>Avg Liquid Holdup</span>
+              <strong>
+                {viewConfig.liquidHoldupAvg !== undefined ? `${(viewConfig.liquidHoldupAvg * 100).toFixed(1)}%` : "—"}
+              </strong>
+            </StatItem>
+          </InspectorSidebar>
+        )}
       </ContentArea>
     </CardWrapper>
   );

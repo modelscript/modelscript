@@ -13,6 +13,7 @@ import { defaultRegistrationLimiter } from "../middleware/registration-limiter.j
 import { defaultMailer } from "../services/mailer.js";
 import { defaultOidcService } from "../services/oidc.js";
 import { verifyCaptchaToken } from "../util/captcha.js";
+import { getClientIp } from "../util/client-ip.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 import { isDisposableEmail } from "../util/email-filter.js";
 import { signEmailVerificationToken, verifyEmailVerificationToken } from "../util/email-verification.js";
@@ -36,13 +37,6 @@ import {
 
 const DUMMY_BCRYPT_HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 const isProd = process.env["NODE_ENV"] === "production";
-
-function getClientIp(req: Request): string {
-  const trustForwarded = process.env["TRUST_PROXY"] === "true" || process.env["NODE_ENV"] === "test";
-  const xff = trustForwarded ? (req.headers["x-forwarded-for"] as string | undefined) : undefined;
-  const forwardedIp = xff ? xff.split(",")[0]?.trim() : undefined;
-  return forwardedIp || req.ip || req.socket.remoteAddress || "127.0.0.1";
-}
 
 function setSessionCookie(res: Response, token: string): void {
   res.cookie("modelscript_token", token, {
@@ -127,7 +121,7 @@ export function authRouter(database: LibraryDatabase): Router {
       }
 
       // 2. IP Velocity Limiting
-      const clientIp = (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
+      const clientIp = getClientIp(req);
       const rateCheck = defaultRegistrationLimiter.check(clientIp);
       if (!rateCheck.allowed) {
         res.status(429).json({
@@ -163,10 +157,26 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      // 3. Anti-Sybil: Reject disposable / temporary burner emails
+      // 3. Anti-Sybil: Reject disposable / temporary burner emails & canonical email blocks
       if (isDisposableEmail(email)) {
         res.status(403).json({
           error: "Disposable and temporary email addresses are not permitted. Please use a permanent email address.",
+        });
+        return;
+      }
+
+      const ipBlock = database.checkIpBlock(clientIp);
+      if (ipBlock && (ipBlock.severity === "no_access" || ipBlock.severity === "no_sign_up")) {
+        res.status(403).json({
+          error: ipBlock.comment || "Registration from your network address is restricted by instance policy.",
+        });
+        return;
+      }
+
+      const emailBlock = database.isCanonicalEmailBlocked(email);
+      if (emailBlock.blocked) {
+        res.status(403).json({
+          error: emailBlock.reason || "This email address is blocked from registration on this instance.",
         });
         return;
       }
@@ -427,7 +437,14 @@ export function authRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    const clientIp = (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
+    const clientIp = getClientIp(req);
+    const loginIpBlock = database.checkIpBlock(clientIp);
+    if (loginIpBlock && loginIpBlock.severity === "no_access") {
+      res.status(403).json({
+        error: loginIpBlock.comment || "Access from your network address is blocked by instance policy.",
+      });
+      return;
+    }
     const cleanEmail = typeof email === "string" ? email.toLowerCase().trim() : "";
     const bypassRateLimit = process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true";
 

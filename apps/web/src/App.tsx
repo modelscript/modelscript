@@ -2,7 +2,7 @@
 
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import React, { Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { getPublicInstanceBanner, recordPageViewBeacon } from "./api/admin";
 import { AuthProvider, useAuth } from "./AuthContext";
 import { CapabilitiesProvider } from "./CapabilitiesContext";
@@ -13,52 +13,100 @@ import EnterpriseUpgradeModal from "./components/EnterpriseUpgradeModal";
 import ErrorBoundary from "./components/ErrorBoundary";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import MaintenanceExperienceHost from "./components/MaintenanceExperienceHost";
+import { OfflineBanner } from "./components/OfflineBanner";
 import { RealtimeNotificationListener } from "./components/RealtimeNotificationListener";
 import RequireAuth from "./components/RequireAuth";
 import { ToastProvider } from "./components/ToastContext";
 import { FeatureFlagProvider, useFeatureFlag, useFeatureFlags } from "./FeatureFlagContext";
-import { InstanceBrandingProvider } from "./InstanceBrandingContext";
+import { InstanceBrandingProvider, useInstanceBranding } from "./InstanceBrandingContext";
 import { ModelingPreferencesProvider } from "./ModelingPreferencesContext";
 import { ThemeContextProvider, useTheme } from "./theme";
 
+const CHUNK_RELOAD_KEY = "modelscript:chunk-reload-attempted";
+
+if (typeof window !== "undefined") {
+  window.addEventListener("vite:preloadError", (event) => {
+    try {
+      if (!sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+        event.preventDefault();
+        window.location.reload();
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  });
+}
+
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  importer: () => Promise<{ default: T }>,
+): React.LazyExoticComponent<T> {
+  return React.lazy(async () => {
+    try {
+      const mod = await importer();
+      try {
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+        }
+      } catch {
+        // Ignore storage errors
+      }
+      return mod;
+    } catch (err) {
+      try {
+        if (typeof window !== "undefined" && typeof sessionStorage !== "undefined") {
+          if (!sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+            sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
+            window.location.reload();
+            return new Promise<{ default: T }>(() => {});
+          }
+        }
+      } catch {
+        // Ignore storage errors
+      }
+      throw err;
+    }
+  });
+}
+
 // Lazy-loaded pages for optimal initial bundle transfer
-const AdminPage = React.lazy(() => import("./pages/AdminPage"));
-const BookmarksPage = React.lazy(() => import("./pages/BookmarksPage"));
-const ClassDetailPage = React.lazy(() => import("./pages/ClassDetailPage"));
-const EditProfilePage = React.lazy(() => import("./pages/EditProfilePage"));
-const EmbedPlaygroundPage = React.lazy(() => import("./pages/EmbedPlaygroundPage"));
-const ExplorePage = React.lazy(() => import("./pages/ExplorePage"));
-const FeedsPage = React.lazy(() => import("./pages/FeedsPage"));
-const FollowersPage = React.lazy(() => import("./pages/FollowersPage"));
-const FollowingPage = React.lazy(() => import("./pages/FollowingPage"));
-const HomeFeedPage = React.lazy(() => import("./pages/HomeFeedPage"));
-const IdeWorkspacePage = React.lazy(() => import("./pages/IdeWorkspacePage"));
-const LibraryListPage = React.lazy(() => import("./pages/LibraryListPage"));
-const LibraryVersionPage = React.lazy(() => import("./pages/LibraryVersionPage"));
-const LoginPage = React.lazy(() => import("./pages/LoginPage"));
-const NotFoundPage = React.lazy(() => import("./pages/NotFoundPage"));
-const NotificationsPage = React.lazy(() => import("./pages/NotificationsPage"));
-const OAuthCallbackPage = React.lazy(() => import("./pages/OAuthCallbackPage"));
-const PackageDetailPage = React.lazy(() => import("./pages/PackageDetailPage"));
-const PlaygroundPage = React.lazy(() => import("./pages/PlaygroundPage"));
-const PostActivityPage = React.lazy(() => import("./pages/PostActivityPage"));
-const PostDetailPage = React.lazy(() => import("./pages/PostDetailPage"));
-const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
-const RenderArtifactPage = React.lazy(() => import("./pages/RenderArtifactPage"));
-const RepositoryListPage = React.lazy(() => import("./pages/RepositoryListPage"));
-const ScriptDetailPage = React.lazy(() => import("./pages/ScriptDetailPage"));
-const ScriptsListPage = React.lazy(() => import("./pages/ScriptsListPage"));
-const SolutionPage = React.lazy(() => import("./pages/SolutionPage"));
-const PrivacyPage = React.lazy(() => import("./pages/PrivacyPage"));
-const ResetPasswordPage = React.lazy(() => import("./pages/ResetPasswordPage"));
-const SettingsPage = React.lazy(() => import("./pages/SettingsPage"));
-const SetupWizardPage = React.lazy(() => import("./pages/SetupWizardPage"));
-const SignupPage = React.lazy(() => import("./pages/SignupPage"));
-const TermsPage = React.lazy(() => import("./pages/TermsPage"));
-const VerifyEmailPage = React.lazy(() => import("./pages/VerifyEmailPage"));
-const TemplateDetailPage = React.lazy(() => import("./pages/TemplateDetailPage"));
-const WorkspacePage = React.lazy(() => import("./pages/WorkspacePage"));
-const OnboardingWizardPage = React.lazy(() => import("./pages/onboarding/OnboardingWizardPage"));
+const AdminPage = lazyWithRetry(() => import("./pages/AdminPage"));
+const BookmarksPage = lazyWithRetry(() => import("./pages/BookmarksPage"));
+const ClassDetailPage = lazyWithRetry(() => import("./pages/ClassDetailPage"));
+const EditProfilePage = lazyWithRetry(() => import("./pages/EditProfilePage"));
+const EmbedPlaygroundPage = lazyWithRetry(() => import("./pages/EmbedPlaygroundPage"));
+const ExplorePage = lazyWithRetry(() => import("./pages/ExplorePage"));
+const FeedsPage = lazyWithRetry(() => import("./pages/FeedsPage"));
+const FollowersPage = lazyWithRetry(() => import("./pages/FollowersPage"));
+const FollowingPage = lazyWithRetry(() => import("./pages/FollowingPage"));
+const HomeFeedPage = lazyWithRetry(() => import("./pages/HomeFeedPage"));
+const IdeWorkspacePage = lazyWithRetry(() => import("./pages/IdeWorkspacePage"));
+const LibraryListPage = lazyWithRetry(() => import("./pages/LibraryListPage"));
+const LibraryVersionPage = lazyWithRetry(() => import("./pages/LibraryVersionPage"));
+const LoginPage = lazyWithRetry(() => import("./pages/LoginPage"));
+const NotFoundPage = lazyWithRetry(() => import("./pages/NotFoundPage"));
+const NotificationsPage = lazyWithRetry(() => import("./pages/NotificationsPage"));
+const OAuthCallbackPage = lazyWithRetry(() => import("./pages/OAuthCallbackPage"));
+const PackageDetailPage = lazyWithRetry(() => import("./pages/PackageDetailPage"));
+const PlaygroundPage = lazyWithRetry(() => import("./pages/PlaygroundPage"));
+const PostActivityPage = lazyWithRetry(() => import("./pages/PostActivityPage"));
+const PostDetailPage = lazyWithRetry(() => import("./pages/PostDetailPage"));
+const ProfilePage = lazyWithRetry(() => import("./pages/ProfilePage"));
+const RenderArtifactPage = lazyWithRetry(() => import("./pages/RenderArtifactPage"));
+const RepositoryListPage = lazyWithRetry(() => import("./pages/RepositoryListPage"));
+const ScriptDetailPage = lazyWithRetry(() => import("./pages/ScriptDetailPage"));
+const ScriptsListPage = lazyWithRetry(() => import("./pages/ScriptsListPage"));
+const SolutionPage = lazyWithRetry(() => import("./pages/SolutionPage"));
+const PrivacyPage = lazyWithRetry(() => import("./pages/PrivacyPage"));
+const ResetPasswordPage = lazyWithRetry(() => import("./pages/ResetPasswordPage"));
+const SettingsPage = lazyWithRetry(() => import("./pages/SettingsPage"));
+const SetupWizardPage = lazyWithRetry(() => import("./pages/SetupWizardPage"));
+const SignupPage = lazyWithRetry(() => import("./pages/SignupPage"));
+const TermsPage = lazyWithRetry(() => import("./pages/TermsPage"));
+const VerifyEmailPage = lazyWithRetry(() => import("./pages/VerifyEmailPage"));
+const TemplateDetailPage = lazyWithRetry(() => import("./pages/TemplateDetailPage"));
+const WorkspacePage = lazyWithRetry(() => import("./pages/WorkspacePage"));
+const OnboardingWizardPage = lazyWithRetry(() => import("./pages/onboarding/OnboardingWizardPage"));
 
 /**
  * Disambiguates two-segment package routes `/packages/:first/:second`:
@@ -166,6 +214,12 @@ function GlobalModals() {
         } else if (k === "n") {
           e.preventDefault();
           navigate("/notifications");
+        } else if (k === "b") {
+          e.preventDefault();
+          navigate("/bookmarks");
+        } else if (k === "f") {
+          e.preventDefault();
+          navigate("/feeds");
         } else if (k === "p") {
           e.preventDefault();
           navigate("/playground");
@@ -178,6 +232,9 @@ function GlobalModals() {
         } else if (k === "i") {
           e.preventDefault();
           navigate("/ide");
+        } else if (k === "j") {
+          e.preventDefault();
+          navigate("/jobs");
         } else if (k === "s") {
           e.preventDefault();
           navigate("/settings");
@@ -275,6 +332,7 @@ export function InstanceAnnouncementBanner({
     needsSetup?: boolean;
   };
 }) {
+  const location = useLocation();
   const [banner, setBanner] = React.useState(initialBanner ?? null);
   const [dismissed, setDismissed] = React.useState(false);
 
@@ -316,6 +374,9 @@ export function InstanceAnnouncementBanner({
   if (!banner || dismissed) return null;
 
   if (banner.needsSetup) {
+    if (location.pathname.startsWith("/setup")) {
+      return null;
+    }
     return (
       <div
         role="status"
@@ -340,8 +401,8 @@ export function InstanceAnnouncementBanner({
             yet.
           </span>
         </div>
-        <a
-          href="/setup"
+        <Link
+          to="/setup"
           style={{
             padding: "5px 12px",
             borderRadius: "6px",
@@ -354,7 +415,7 @@ export function InstanceAnnouncementBanner({
           }}
         >
           Launch Install Wizard →
-        </a>
+        </Link>
       </div>
     );
   }
@@ -431,14 +492,18 @@ export function InstanceAnnouncementBanner({
  */
 function App() {
   const { theme } = useTheme();
-  const { user, isLoading, login } = useAuth();
+  const { user, isLoading, setSession } = useAuth();
   const branding = useInstanceBranding();
   const { isLoading: isFlagsLoading } = useFeatureFlags();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
 
-  if (isLoading || isFlagsLoading) {
-    return <div style={{ minHeight: "100vh", backgroundColor: "transparent" }} />;
+  if (isLoading || isFlagsLoading || (user && !user.onboarding_completed && !branding.loaded)) {
+    return (
+      <div style={{ minHeight: "100vh", backgroundColor: "transparent" }}>
+        <PageLoadingFallback />
+      </div>
+    );
   }
 
   return (
@@ -455,6 +520,7 @@ function App() {
         <ToastProvider>
           <BrowserRouter>
             <PageViewTracker />
+            <OfflineBanner />
             <InstanceAnnouncementBanner />
             <MaintenanceExperienceHost />
             <GlobalModals />
@@ -477,7 +543,7 @@ function App() {
                       />
                     }
                   />
-                  <Route path="/setup" element={<SetupWizardPage onLoginSuccess={login} />} />
+                  <Route path="/setup" element={<SetupWizardPage onLoginSuccess={setSession} />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/signup" element={<SignupPage />} />
                   <Route

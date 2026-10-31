@@ -78,7 +78,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
   onThreadNodeSelected,
 }) => {
   const viewConfig = React.useMemo(
-    () => (rawViewConfig ? { ...rawViewConfig, standalone: false } : { standalone: false }),
+    () => (rawViewConfig ? { ...rawViewConfig, standalone: rawViewConfig.standalone ?? false } : { standalone: false }),
     [rawViewConfig],
   );
   const renderViewer = () => {

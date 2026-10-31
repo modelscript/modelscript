@@ -18,7 +18,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface SysmlPart {
   name: string;
@@ -699,26 +699,38 @@ function buildIbdDiagramSvg(
   connections: SysmlConnection[],
   states: SysmlStateMachine[],
   requirements: SysmlRequirement[],
+  isFullScreen = false,
 ): string {
   const width = 940;
   const hasStateMachine = states.length > 0;
   const hasReqs = requirements.length > 0;
-  const height = 250 + (hasStateMachine ? 88 : 0) + (hasReqs ? 114 : 0);
 
-  const partBoxes = parts.slice(0, 4);
+  const partBoxes = parts.slice(0, 12);
   const nParts = Math.max(1, partBoxes.length);
+  const maxCols = 4;
+  const nCols = Math.min(maxCols, nParts);
+  const nRows = Math.ceil(nParts / maxCols);
   const totalInnerW = width - 72;
-  const boxW = Math.min(252, Math.floor((totalInnerW - (nParts - 1) * 56) / nParts));
+  const boxW = Math.min(252, Math.floor((totalInnerW - (nCols - 1) * 56) / nCols));
   const boxH = 126;
-  const startX = Math.floor((width - (nParts * boxW + (nParts - 1) * 56)) / 2);
-  const partY = 72;
+  const rowGap = 34;
+  const partY = 64;
+
+  const reqList = requirements.slice(0, 6);
+  const reqRows = hasReqs ? Math.ceil(reqList.length / 3) : 0;
+  const height =
+    partY + nRows * boxH + (nRows - 1) * rowGap + 36 + (hasStateMachine ? 88 : 0) + (hasReqs ? reqRows * 104 + 10 : 0);
 
   const partPos = new Map<string, { x: number; y: number; w: number; h: number }>();
   const nodesSvg: string[] = [];
 
   partBoxes.forEach((p, idx) => {
-    const x = startX + idx * (boxW + 56);
-    const y = partY;
+    const row = Math.floor(idx / maxCols);
+    const col = idx % maxCols;
+    const colsInRow = Math.min(maxCols, partBoxes.length - row * maxCols);
+    const rowStartX = Math.floor((width - (colsInRow * boxW + (colsInRow - 1) * 56)) / 2);
+    const x = rowStartX + col * (boxW + 56);
+    const y = partY + row * (boxH + rowGap);
     partPos.set(p.name, { x, y, w: boxW, h: boxH });
     const multNum = parseInt(p.multiplicity || "1", 10) || 1;
 
@@ -762,31 +774,41 @@ function buildIbdDiagramSvg(
   });
 
   const edgesSvg: string[] = [];
-  connections.forEach((c) => {
+  const srcPortCounts = new Map<string, number>();
+  const tgtPortCounts = new Map<string, number>();
+
+  connections.forEach((c, connIdx) => {
     const srcPart = c.source.split(".")[0]!;
     const tgtPart = c.target.split(".")[0]!;
     const b1 = partPos.get(srcPart);
     const b2 = partPos.get(tgtPart);
     if (!b1 || !b2) return;
-    const x1 = b1.x + b1.w + 5;
-    const y1 = b1.y + 48;
-    const x2 = b2.x - 5;
-    const y2 = b2.y + 48;
-    const midX = (x1 + x2) / 2;
+    const srcCount = srcPortCounts.get(srcPart) || 0;
+    const tgtCount = tgtPortCounts.get(tgtPart) || 0;
+    srcPortCounts.set(srcPart, srcCount + 1);
+    tgtPortCounts.set(tgtPart, tgtCount + 1);
+
+    const goingRight = b2.x >= b1.x;
+    const x1 = goingRight ? b1.x + b1.w + 5 : b1.x - 5;
+    const y1 = b1.y + 40 + (srcCount % 4) * 20;
+    const x2 = goingRight ? b2.x - 5 : b2.x + b2.w + 5;
+    const y2 = b2.y + 40 + (tgtCount % 4) * 20;
+    const midX = Math.round((x1 + x2) / 2) + ((connIdx % 3) - 1) * 6;
     const flowLabel = c.flowType || `${c.source.split(".")[1] || "out"} → ${c.target.split(".")[1] || "in"}`;
     const badgeW = Math.max(84, flowLabel.length * 5.6 + 14);
+    const badgeY = Math.round((y1 + y2) / 2) - 22 + (connIdx % 2) * 14;
     edgesSvg.push(`<g>
       <path d="M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}" fill="none" stroke="#34d399" stroke-width="1.8" marker-end="url(#sysml-arrow)"/>
-      <rect x="${midX - badgeW / 2}" y="${(y1 + y2) / 2 - 22}" width="${badgeW}" height="16" rx="4" fill="#0d1526" stroke="#10b981" stroke-width="1"/>
-      <text x="${midX}" y="${(y1 + y2) / 2 - 11}" text-anchor="middle" fill="#6ee7b7" font-family="ui-monospace, SFMono-Regular, monospace" font-size="8.5" font-weight="600">${escapeXml(flowLabel)}</text>
+      <rect x="${midX - badgeW / 2}" y="${badgeY}" width="${badgeW}" height="16" rx="4" fill="#0d1526" stroke="#10b981" stroke-width="1"/>
+      <text x="${midX}" y="${badgeY + 11}" text-anchor="middle" fill="#6ee7b7" font-family="ui-monospace, SFMono-Regular, monospace" font-size="8.5" font-weight="600">${escapeXml(flowLabel)}</text>
     </g>`);
   });
 
-  let curBottomY = partY + boxH + 18;
+  let curBottomY = partY + nRows * boxH + (nRows - 1) * rowGap + 18;
   const smSvg: string[] = [];
   if (hasStateMachine) {
     const sm = states[0]!;
-    const stList = sm.states.slice(0, 4);
+    const stList = sm.states.slice(0, 5);
     const bandX = 32;
     const bandW = width - 64;
     const bandH = 72;
@@ -794,9 +816,9 @@ function buildIbdDiagramSvg(
       `<rect x="${bandX}" y="${curBottomY}" width="${bandW}" height="${bandH}" rx="6" fill="rgba(168, 85, 247, 0.06)" stroke="rgba(168, 85, 247, 0.35)" stroke-width="1.2" stroke-dasharray="4 3"/>`,
       `<text x="${bandX + 14}" y="${curBottomY + 16}" fill="#c084fc" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9.5" font-weight="700">«state def» ${escapeXml(sm.name)} (Modal GNC Trajectory Schedule)</text>`,
     );
-    const pillW = 168;
+    const pillW = Math.min(168, Math.floor((bandW - 48 - (stList.length - 1) * 36) / Math.max(1, stList.length)));
     const pillH = 28;
-    const gap = 42;
+    const gap = 36;
     const stStartX = bandX + 24;
     const stY = curBottomY + 28;
     stList.forEach((stName, idx) => {
@@ -826,14 +848,15 @@ function buildIbdDiagramSvg(
 
   const reqSvg: string[] = [];
   if (hasReqs) {
-    const reqList = requirements.slice(0, 3);
-    const rCount = reqList.length;
+    const rCols = Math.min(3, reqList.length);
     const rGap = 14;
-    const rBoxW = Math.floor((width - 64 - (rCount - 1) * rGap) / rCount);
+    const rBoxW = Math.floor((width - 64 - (rCols - 1) * rGap) / rCols);
     const rBoxH = 92;
     reqList.forEach((r, idx) => {
-      const rx = 32 + idx * (rBoxW + rGap);
-      const ry = curBottomY;
+      const rRow = Math.floor(idx / 3);
+      const rCol = idx % 3;
+      const rx = 32 + rCol * (rBoxW + rGap);
+      const ry = curBottomY + rRow * (rBoxH + 12);
       const isVerified = r.status === "verified";
       const isSatisfied = r.status === "satisfied" || isVerified;
       const strokeCol = isVerified ? "#10b981" : isSatisfied ? "#3b82f6" : "#f59e0b";
@@ -866,7 +889,8 @@ function buildIbdDiagramSvg(
   const headerTitle = `ibd [part def] ${rootPartDef || systemName} [${systemName}]`;
   const tabW = Math.min(440, headerTitle.length * 7.2 + 28);
 
-  return sanitizeSvgMarkup(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
+  return sanitizeSvgMarkup(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
     <defs>
       <marker id="sysml-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
         <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399"/>
@@ -883,7 +907,9 @@ function buildIbdDiagramSvg(
     ${nodesSvg.join("\n    ")}
     ${smSvg.join("\n    ")}
     ${reqSvg.join("\n    ")}
-  </svg>`);
+  </svg>`,
+    { isFullScreen },
+  );
 }
 
 function buildBddDiagramSvg(
@@ -891,60 +917,73 @@ function buildBddDiagramSvg(
   rootPartDef: string,
   parts: SysmlPart[],
   portDefs: SysmlPortDef[],
+  isFullScreen = false,
 ): string {
   const width = 940;
-  const height = 410;
   const rootName = rootPartDef || systemName;
   const rootX = Math.floor(width / 2 - 140);
   const rootY = 52;
   const rootW = 280;
   const rootH = 66;
 
-  const childParts = parts.slice(0, 4);
-  const nCols = Math.max(1, childParts.length);
-  const childW = 250;
+  const childParts = parts.slice(0, 12);
+  const maxCols = 4;
+  const nRows = Math.max(1, Math.ceil(childParts.length / maxCols));
+  const nColsFirst = Math.min(maxCols, Math.max(1, childParts.length));
+  const childW = Math.min(250, Math.floor((width - 72 - (nColsFirst - 1) * 28) / nColsFirst));
   const childH = 120;
-  const gap = 36;
-  const startX = Math.floor((width - (nCols * childW + (nCols - 1) * gap)) / 2);
-  const childY = 166;
+  const gap = 28;
+  const rowGap = 32;
+  const childY = 162;
+
+  const pDefs = portDefs.slice(0, 4);
+  const pDefRows = Math.ceil(pDefs.length / 2);
+  const portStartY = childY + nRows * childH + (nRows - 1) * rowGap + 24;
+  const height = portStartY + (pDefRows > 0 ? pDefRows * 90 + 16 : 16);
 
   const compLines: string[] = [];
   const childBlocks: string[] = [];
 
   childParts.forEach((p, idx) => {
-    const cx = startX + idx * (childW + gap);
+    const row = Math.floor(idx / maxCols);
+    const col = idx % maxCols;
+    const colsInRow = Math.min(maxCols, childParts.length - row * maxCols);
+    const startX = Math.floor((width - (colsInRow * childW + (colsInRow - 1) * gap)) / 2);
+    const cx = startX + col * (childW + gap);
+    const cy = childY + row * (childH + rowGap);
     const midChildX = cx + childW / 2;
     const rootBottomY = rootY + rootH;
-    const busY = rootBottomY + 24;
+    const busY = rootBottomY + 22;
 
     compLines.push(
       `<polygon points="${rootX + rootW / 2},${rootBottomY} ${rootX + rootW / 2 - 5},${rootBottomY + 7} ${rootX + rootW / 2},${rootBottomY + 14} ${rootX + rootW / 2 + 5},${rootBottomY + 7}" fill="#60a5fa"/>`,
-      `<path d="M ${rootX + rootW / 2} ${rootBottomY + 14} L ${rootX + rootW / 2} ${busY} L ${midChildX} ${busY} L ${midChildX} ${childY}" fill="none" stroke="#60a5fa" stroke-width="1.5"/>`,
-      `<text x="${midChildX + 8}" y="${childY - 6}" fill="#93c5fd" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" font-weight="700">${escapeXml(p.multiplicity || "1")}</text>`,
+      `<path d="M ${rootX + rootW / 2} ${rootBottomY + 14} L ${rootX + rootW / 2} ${busY} L ${midChildX} ${busY} L ${midChildX} ${cy}" fill="none" stroke="#60a5fa" stroke-width="1.5" opacity="${row === 0 ? "1" : "0.65"}"/>`,
+      `<text x="${midChildX + 8}" y="${cy - 6}" fill="#93c5fd" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" font-weight="700">${escapeXml(p.multiplicity || "1")}</text>`,
     );
 
     const attrs = (p.attributes || []).slice(0, 2);
     const ports = (p.ports || []).slice(0, 2);
 
     childBlocks.push(`<g>
-      <rect x="${cx}" y="${childY}" width="${childW}" height="${childH}" rx="6" fill="#161f33" stroke="#3b82f6" stroke-width="1.5"/>
-      <rect x="${cx}" y="${childY}" width="${childW}" height="38" rx="6" fill="rgba(59, 130, 246, 0.14)"/>
-      <line x1="${cx}" y1="${childY + 38}" x2="${cx + childW}" y2="${childY + 38}" stroke="#3b82f6" stroke-width="1"/>
-      <text x="${cx + childW / 2}" y="${childY + 14}" text-anchor="middle" fill="#60a5fa" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" font-weight="600">«part def»</text>
-      <text x="${cx + childW / 2}" y="${childY + 30}" text-anchor="middle" fill="#f8fafc" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" font-weight="700">${escapeXml(p.type)}</text>
-      ${attrs.map((a, i) => `<text x="${cx + 10}" y="${childY + 54 + i * 14}" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9">${escapeXml(a.length > 36 ? `${a.slice(0, 35)}…` : a)}</text>`).join("\n      ")}
-      <line x1="${cx}" y1="${childY + 82}" x2="${cx + childW}" y2="${childY + 82}" stroke="#1e293b" stroke-width="1"/>
-      ${ports.map((pt, i) => `<text x="${cx + 10}" y="${childY + 96 + i * 13}" fill="#6ee7b7" font-family="ui-monospace, SFMono-Regular, monospace" font-size="8.5">${escapeXml(pt.length > 38 ? `${pt.slice(0, 37)}…` : pt)}</text>`).join("\n      ")}
+      <rect x="${cx}" y="${cy}" width="${childW}" height="${childH}" rx="6" fill="#161f33" stroke="#3b82f6" stroke-width="1.5"/>
+      <rect x="${cx}" y="${cy}" width="${childW}" height="38" rx="6" fill="rgba(59, 130, 246, 0.14)"/>
+      <line x1="${cx}" y1="${cy + 38}" x2="${cx + childW}" y2="${cy + 38}" stroke="#3b82f6" stroke-width="1"/>
+      <text x="${cx + childW / 2}" y="${cy + 14}" text-anchor="middle" fill="#60a5fa" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" font-weight="600">«part def»</text>
+      <text x="${cx + childW / 2}" y="${cy + 30}" text-anchor="middle" fill="#f8fafc" font-family="ui-monospace, SFMono-Regular, monospace" font-size="11" font-weight="700">${escapeXml(p.type)}</text>
+      ${attrs.map((a, i) => `<text x="${cx + 10}" y="${cy + 54 + i * 14}" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9">${escapeXml(a.length > 32 ? `${a.slice(0, 31)}…` : a)}</text>`).join("\n      ")}
+      <line x1="${cx}" y1="${cy + 82}" x2="${cx + childW}" y2="${cy + 82}" stroke="#1e293b" stroke-width="1"/>
+      ${ports.map((pt, i) => `<text x="${cx + 10}" y="${cy + 96 + i * 13}" fill="#6ee7b7" font-family="ui-monospace, SFMono-Regular, monospace" font-size="8.5">${escapeXml(pt.length > 34 ? `${pt.slice(0, 33)}…` : pt)}</text>`).join("\n      ")}
     </g>`);
   });
 
   const portCards: string[] = [];
-  const pDefs = portDefs.slice(0, 2);
   pDefs.forEach((pd, idx) => {
-    const pw = 360;
+    const pw = 390;
     const ph = 78;
-    const px = 80 + idx * 410;
-    const py = 310;
+    const pCol = idx % 2;
+    const pRow = Math.floor(idx / 2);
+    const px = 64 + pCol * 420;
+    const py = portStartY + pRow * 90;
     portCards.push(`<g>
       <rect x="${px}" y="${py}" width="${pw}" height="${ph}" rx="6" fill="#0f1b29" stroke="#10b981" stroke-width="1.3"/>
       <line x1="${px}" y1="${py + 28}" x2="${px + pw}" y2="${py + 28}" stroke="#10b981" stroke-width="0.9"/>
@@ -962,7 +1001,8 @@ function buildBddDiagramSvg(
   const headerTitle = `bdd [package] ${systemName} (Structural Type Taxonomy)`;
   const tabW = Math.min(460, headerTitle.length * 7.2 + 28);
 
-  return sanitizeSvgMarkup(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
+  return sanitizeSvgMarkup(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%">
     <rect width="${width}" height="${height}" rx="8" fill="#0b111e"/>
     <rect x="12" y="12" width="${width - 24}" height="${height - 24}" rx="6" fill="none" stroke="#1e293b" stroke-width="1.5"/>
     <polygon points="12,12 ${12 + tabW},12 ${12 + tabW},30 ${12 + tabW - 12},40 12,40" fill="#161f33" stroke="#334155" stroke-width="1.2"/>
@@ -975,7 +1015,9 @@ function buildBddDiagramSvg(
     ${compLines.join("\n    ")}
     ${childBlocks.join("\n    ")}
     ${portCards.join("\n    ")}
-  </svg>`);
+  </svg>`,
+    { isFullScreen },
+  );
 }
 
 const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = false }) => {
@@ -1078,12 +1120,12 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
   const svgMarkup = useMemo(() => {
     if (parts.length > 0) {
       if (diagramMode === "bdd") {
-        return buildBddDiagramSvg(systemName, rootPartDef, parts, parsedModel.portDefs);
+        return buildBddDiagramSvg(systemName, rootPartDef, parts, parsedModel.portDefs, isFullScreen);
       }
-      return buildIbdDiagramSvg(systemName, rootPartDef, parts, connections, states, requirements);
+      return buildIbdDiagramSvg(systemName, rootPartDef, parts, connections, states, requirements, isFullScreen);
     }
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg);
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
     }
     return "";
   }, [
@@ -1096,6 +1138,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
     requirements,
     parsedModel.portDefs,
     viewConfig.svg,
+    isFullScreen,
   ]);
 
   const effectiveTab =
@@ -1214,16 +1257,38 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
           </TabButton>
         </TabGroup>
 
-        {effectiveTab === "diagram" && parts.length > 0 && (
-          <SubViewSwitch>
-            <SubViewButton $active={diagramMode === "ibd"} onClick={() => setDiagramMode("ibd")}>
-              IBD (Internal Flow)
-            </SubViewButton>
-            <SubViewButton $active={diagramMode === "bdd"} onClick={() => setDiagramMode("bdd")}>
-              BDD (Hierarchy)
-            </SubViewButton>
-          </SubViewSwitch>
-        )}
+        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
+          {effectiveTab === "diagram" && parts.length > 0 && (
+            <SubViewSwitch>
+              <SubViewButton $active={diagramMode === "ibd"} onClick={() => setDiagramMode("ibd")}>
+                IBD (Internal Flow)
+              </SubViewButton>
+              <SubViewButton $active={diagramMode === "bdd"} onClick={() => setDiagramMode("bdd")}>
+                BDD (Hierarchy)
+              </SubViewButton>
+            </SubViewSwitch>
+          )}
+          {isFullScreen && requirements.length > 0 && (
+            <Badge
+              $variant={
+                verifiedWithConstraintsCount === requirements.length && verifiedWithConstraintsCount > 0
+                  ? "req-pass"
+                  : "req-warn"
+              }
+            >
+              <ShieldCheckIcon size={12} />{" "}
+              {verifiedWithConstraintsCount > 0
+                ? `${verifiedWithConstraintsCount}/${requirements.length} Constraints Verified`
+                : `${requirements.length} Reqs (Doc Only)`}
+            </Badge>
+          )}
+          {isFullScreen && sourceCode && (
+            <Button size="small" onClick={handleCopyCode} title="Copy SysML v2 source">
+              {copiedCode ? <CheckIcon size={13} fill="var(--color-accent-cyan)" /> : <CopyIcon size={13} />}
+              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedCode ? "Copied" : "Copy"}</Text>
+            </Button>
+          )}
+        </Box>
       </TabNav>
 
       <ContentBody $noPadding={effectiveTab === "diagram"}>
@@ -1241,17 +1306,11 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                   : ""}
               </Text>
             </DiagramHudBar>
-            <div
-              style={{
-                flex: 1,
-                width: "100%",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                padding: "6px 10px",
-                overflow: "auto",
-              }}
-              dangerouslySetInnerHTML={{ __html: svgMarkup }}
+            <InteractiveSvgStage
+              svgMarkup={svgMarkup}
+              isFullScreen={isFullScreen}
+              minHeight={isFullScreen ? "calc(100% - 32px)" : "300px"}
+              background="transparent"
             />
           </DiagramStage>
         )}

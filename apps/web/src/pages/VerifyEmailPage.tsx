@@ -149,7 +149,7 @@ export default function VerifyEmailPage() {
               {message} Your account is fully active. You can now publish packages, submit HPC simulation jobs, and
               access cloud engineering workflows.
             </Subtitle>
-            <Button onClick={() => navigate("/home")}>Go to Dashboard</Button>
+            <Button onClick={() => navigate("/")}>Continue to Workspace</Button>
           </>
         )}
 

@@ -437,7 +437,7 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
           <Button
             variant="primary"
             type="submit"
-            disabled={!sourceName.trim() || !targetName.trim() || parity.status === "incompatible"}
+            disabled={!sourceName.trim() || !targetName.trim()}
             leadingVisual={PlusIcon}
           >
             Create Semantic Link

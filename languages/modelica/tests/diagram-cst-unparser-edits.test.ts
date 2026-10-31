@@ -604,5 +604,120 @@ end RLC;`;
       assert.strictEqual(removeEdits[0]!.range.end.line, 3);
       assert.strictEqual(removeEdits[0]!.range.end.character, 0);
     });
+
+    it("computeEdgePointEdits and computeConnectRemove expand connect_equation range even when cstNode.parent is missing", () => {
+      const code = `model TestNoParent
+equation
+  connect(R1.n, C1.p)
+    annotation(Line(points={{0, 0}, {10, 0}}, color={191, 0, 0}, thickness=0.5, smooth=Smooth.Bezier));
+end TestNoParent;`;
+      const lines = code.split("\n");
+      // Simulate QueryEngine.instantiate where cstNode is connect_equation without .parent (lines 2..2, cols 2..21)
+      const orphanConnectCstNode = {
+        type: "connect_equation",
+        text: "connect(R1.n, C1.p)",
+        startPosition: { row: 2, column: 2 },
+        endPosition: { row: 2, column: 21 },
+        parent: null,
+        children: [],
+      };
+      const classInstance = {
+        name: "TestNoParent",
+        components: [],
+        connectEquations: [
+          {
+            lhs: "R1.n",
+            rhs: "C1.p",
+            cstNode: orphanConnectCstNode,
+          },
+        ],
+      };
+
+      // 1. Updating edge points must replace existing multi-line annotation (never duplicate it!)
+      // and must preserve custom color, thickness, and smooth attributes
+      const moveEdits = computeEdgePointEdits(lines, classInstance as any, [
+        {
+          source: "R1.n",
+          target: "C1.p",
+          points: [
+            { x: 0, y: 0 },
+            { x: 25, y: 0 },
+            { x: 25, y: -15 },
+          ],
+        },
+      ]);
+      assert.strictEqual(moveEdits.length, 1);
+      assert.strictEqual(moveEdits[0]!.range.start.line, 2);
+      assert.strictEqual(moveEdits[0]!.range.end.line, 3);
+      assert.ok(moveEdits[0]!.newText.includes("points={{0,0}, {25,0}, {25,-15}}"));
+      assert.ok(moveEdits[0]!.newText.includes("color={191, 0, 0}"));
+      assert.ok(moveEdits[0]!.newText.includes("thickness=0.5"));
+      assert.ok(moveEdits[0]!.newText.includes("smooth=Smooth.Bezier"));
+      const annotationCount = (moveEdits[0]!.newText.match(/annotation\s*\(/g) ?? []).length;
+      assert.strictEqual(annotationCount, 1, "Must never emit duplicate annotation(...) blocks");
+
+      // 2. Removing the connection must remove both line 2 and line 3 (never leave orphaned annotation line!)
+      const removeEdits = computeConnectRemove(code, classInstance as any, "R1.n", "C1.p");
+      assert.strictEqual(removeEdits.length, 1);
+      assert.strictEqual(removeEdits[0]!.range.start.line, 2);
+      assert.strictEqual(removeEdits[0]!.range.end.line, 4);
+    });
+
+    it("computeConnectInsert safely handles empty equation sections, multi-line equations, and class-level annotations", () => {
+      // Case 1: Empty equation section where cstNode ends at 'equation'
+      const emptyEqCode = `model EmptyEq
+  Resistor R1;
+  Capacitor C1;
+equation
+end EmptyEq;`;
+      const emptyEqClass = {
+        name: "EmptyEq",
+        components: [],
+        connectEquations: [],
+        equationSections: [
+          {
+            equations: [],
+            cstNode: {
+              startPosition: { row: 3, column: 0 },
+              endPosition: { row: 3, column: 8 },
+            },
+          },
+        ],
+      };
+      const emptyEqEdits = computeConnectInsert(emptyEqCode, emptyEqClass as any, "R1.n", "C1.p");
+      assert.strictEqual(emptyEqEdits.length, 1);
+      assert.strictEqual(
+        emptyEqEdits[0]!.range.start.line,
+        4,
+        "Must insert AFTER 'equation' line (line 4), never before 'equation'",
+      );
+
+      // Case 2: Class with no equation section but a multi-line class annotation before end
+      const classAnnotCode = `model WithClassAnnot
+  Resistor R1;
+  Capacitor C1;
+  annotation(
+    Icon(coordinateSystem(extent={{-100,-100},{100,100}})),
+    Diagram(coordinateSystem(extent={{-100,-100},{100,100}}))
+  );
+end WithClassAnnot;`;
+      const classAnnotInstance = {
+        name: "WithClassAnnot",
+        components: [],
+        connectEquations: [],
+        equationSections: [],
+        cstNode: {
+          startPosition: { row: 0, column: 0 },
+          endPosition: { row: 7, column: 18 },
+        },
+      };
+      const classAnnotEdits = computeConnectInsert(classAnnotCode, classAnnotInstance as any, "R1.n", "C1.p");
+      assert.strictEqual(classAnnotEdits.length, 1);
+      assert.strictEqual(
+        classAnnotEdits[0]!.range.start.line,
+        3,
+        "Must insert new equation section BEFORE class-level annotation (line 3)",
+      );
+    });
   });
 });

@@ -280,6 +280,56 @@ const DEFAULT_COMMUNITY_VIEW: BillingSummaryView = {
   recent_transactions: [],
 };
 
+function normalizeBillingSummary(raw: unknown): BillingSummaryView {
+  if (!raw || typeof raw !== "object") {
+    return DEFAULT_COMMUNITY_VIEW;
+  }
+  const rawObj = raw as Record<string, unknown>;
+  const wallet = rawObj["wallet"] as Record<string, unknown> | undefined;
+  const balance = Number(wallet?.["balance"] ?? rawObj["creditBalance"] ?? rawObj["credit_balance"] ?? 0);
+  const totalSpent = Number(wallet?.["total_spent"] ?? rawObj["totalSpent"] ?? rawObj["total_spent"] ?? 0);
+  const totalJobs = Number(wallet?.["total_jobs_dispatched"] ?? rawObj["totalJobs"] ?? rawObj["total_jobs"] ?? 0);
+  const totalCpuSeconds = Number(rawObj["totalCpuSeconds"] ?? rawObj["total_cpu_seconds"] ?? 0);
+  const totalGpuSeconds = Number(rawObj["totalGpuSeconds"] ?? rawObj["total_gpu_seconds"] ?? 0);
+  const totalCpuCoreHours = Number(wallet?.["total_cpu_core_hours"] ?? (totalCpuSeconds ? totalCpuSeconds / 3600 : 0));
+  const totalGpuHours = Number(wallet?.["total_gpu_hours"] ?? (totalGpuSeconds ? totalGpuSeconds / 3600 : 0));
+
+  const rawTxs: Record<string, unknown>[] = Array.isArray(rawObj["recent_transactions"])
+    ? (rawObj["recent_transactions"] as Record<string, unknown>[])
+    : Array.isArray(rawObj["recentTransactions"])
+      ? (rawObj["recentTransactions"] as Record<string, unknown>[])
+      : [];
+
+  const normalizedTxs = rawTxs.map((tx: Record<string, unknown>, idx: number) => ({
+    id: (tx["id"] as number | string | undefined) ?? idx,
+    created_at: String(tx["created_at"] ?? tx["createdAt"] ?? new Date().toISOString()),
+    transaction_type: String(tx["transaction_type"] ?? tx["type"] ?? "job_charge"),
+    description: String(tx["description"] ?? ""),
+    job_id: tx["job_id"] !== undefined ? String(tx["job_id"] ?? "") || null : tx["jobId"] ? String(tx["jobId"]) : null,
+    amount: Number(tx["amount"] ?? 0),
+    balance_after: Number(tx["balance_after"] ?? tx["balanceAfter"] ?? balance),
+  }));
+
+  return {
+    userId: Number(raw.userId ?? raw.user_id ?? 0),
+    creditBalance: balance,
+    totalSpent,
+    totalJobs,
+    totalCpuSeconds,
+    totalGpuSeconds,
+    profileUsage: raw.profileUsage ?? {},
+    recentTransactions: raw.recentTransactions ?? [],
+    wallet: {
+      balance,
+      total_spent: totalSpent,
+      total_jobs_dispatched: totalJobs,
+      total_cpu_core_hours: totalCpuCoreHours,
+      total_gpu_hours: totalGpuHours,
+    },
+    recent_transactions: normalizedTxs,
+  };
+}
+
 export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
   const { isEnabled, setFlagOverride } = useFeatureFlags();
   const isStripeFeatureEnabled = isEnabled("billing_stripe_live");
@@ -293,21 +343,15 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchSummary = useCallback(async () => {
-    if (!isStripeFeatureEnabled) {
-      setBillingSummary(DEFAULT_COMMUNITY_VIEW);
-      setIsLiveActive(false);
-      setError(null);
-      return;
-    }
     try {
       const data = await getUserBillingSummary();
-      setBillingSummary(data as BillingSummaryView);
+      setBillingSummary(normalizeBillingSummary(data));
       setIsLiveActive(true);
       setError(null);
     } catch {
       // If billing service is unconfigured or gated, gracefully fall back to Community mode
       setBillingSummary(DEFAULT_COMMUNITY_VIEW);
-      setIsLiveActive(false);
+      setIsLiveActive(Boolean(isStripeFeatureEnabled));
     }
   }, [isStripeFeatureEnabled]);
 
@@ -320,7 +364,6 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
     setFlagOverride("billing_stripe_live", nextState);
     if (!nextState) {
       setIsLiveActive(false);
-      setBillingSummary(DEFAULT_COMMUNITY_VIEW);
       setTopUpSuccess(null);
       setError(null);
     }
@@ -341,22 +384,20 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
         }
       }
       const updatedWallet = await topUpCredits(amount, isLiveActive ? "credit_card" : "sandbox_card", paymentIntentId);
-      setBillingSummary((prev) =>
-        prev
-          ? {
-              ...prev,
-              wallet: {
-                ...prev.wallet,
-                balance: (() => {
-                  const uw = updatedWallet as { newBalance?: number; balance?: number } | null | undefined;
-                  return typeof uw?.newBalance === "number"
-                    ? uw.newBalance
-                    : (uw?.balance ?? prev.wallet.balance + amount);
-                })(),
-              },
-            }
-          : null,
-      );
+      setBillingSummary((prev) => {
+        if (!prev) return null;
+        const uw = updatedWallet as { newBalance?: number; balance?: number } | null | undefined;
+        const nextBalance =
+          typeof uw?.newBalance === "number" ? uw.newBalance : (uw?.balance ?? prev.wallet.balance + amount);
+        return {
+          ...prev,
+          creditBalance: nextBalance,
+          wallet: {
+            ...prev.wallet,
+            balance: nextBalance,
+          },
+        };
+      });
       fetchSummary();
       window.dispatchEvent(new CustomEvent("modelscript:wallet-update"));
       setTopUpSuccess(

@@ -1,6 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { assertSafePublicUrl } from "../../util/ssrf.js";
+import { assertSafePublicUrl, isAllowedIntranetHost, isAllowedIntranetIp } from "../../util/ssrf.js";
+import { isStrictAirgapEnv } from "../../util/tier-presets.js";
+
+function isLocalOrIntranetLLMUrl(rawUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  const host = (
+    parsed.hostname.startsWith("[") && parsed.hostname.endsWith("]") ? parsed.hostname.slice(1, -1) : parsed.hostname
+  ).toLowerCase();
+  return (
+    host === "127.0.0.1" ||
+    host === "localhost" ||
+    host === "::1" ||
+    host === "host.docker.internal" ||
+    host === "ollama" ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".lan") ||
+    host.endsWith(".corp") ||
+    host.endsWith(".intranet") ||
+    host.endsWith(".svc.cluster.local") ||
+    isAllowedIntranetHost(host) ||
+    isAllowedIntranetIp(host)
+  );
+}
 
 export interface LLMMessage {
   role: "system" | "user" | "assistant";
@@ -84,7 +112,13 @@ export class OpenAICompatibleProvider implements LLMProvider {
     }
 
     const targetUrl = `${this.#baseUrl}/chat/completions`;
-    if (process.env["NODE_ENV"] === "production" && !this.#allowInternalHost) {
+    if (isStrictAirgapEnv()) {
+      if (!isLocalOrIntranetLLMUrl(targetUrl)) {
+        throw new Error(
+          `Air-Gap Egress Blocked: Cloud LLM endpoint '${this.#baseUrl}' is forbidden in corporate air-gapped mode. Configure a local/intranet Ollama or vLLM endpoint via AI_BASE_URL or OLLAMA_BASE_URL.`,
+        );
+      }
+    } else if (process.env["NODE_ENV"] === "production" && !this.#allowInternalHost) {
       assertSafePublicUrl(targetUrl);
     }
 
@@ -228,6 +262,13 @@ export async function discoverOllamaProvider(options?: {
 export function createDefaultLLMProvider(): LLMProvider {
   const apiKey = process.env["OPENAI_API_KEY"] || process.env["GEMINI_API_KEY"];
   const baseUrl = process.env["AI_BASE_URL"];
+
+  if (isStrictAirgapEnv()) {
+    if (baseUrl && isLocalOrIntranetLLMUrl(baseUrl)) {
+      return new OpenAICompatibleProvider(apiKey || "airgap-local", baseUrl, true);
+    }
+    return new DeterministicEngineeringProvider();
+  }
 
   if (apiKey) {
     return new OpenAICompatibleProvider(

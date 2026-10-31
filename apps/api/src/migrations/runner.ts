@@ -137,14 +137,29 @@ export class SqliteMigrationRunner {
   }
 
   getStatus(allMigrations: Migration[]): MigrationStatus {
-    const applied = this.getApplied();
+    const rawApplied = this.getApplied();
+    const migrationMap = new Map(allMigrations.map((m) => [m.name, m]));
+    let checksumMatch = true;
+    const applied = rawApplied.map((record) => {
+      const def = migrationMap.get(record.name);
+      if (!def) {
+        checksumMatch = false;
+        return { ...record, checksumMatch: false };
+      }
+      const expectedChecksum = crypto.createHash("sha256").update(`${def.name}:${def.up.toString()}`).digest("hex");
+      const matches = record.checksum === expectedChecksum;
+      if (!matches) {
+        checksumMatch = false;
+      }
+      return { ...record, checksumMatch: matches };
+    });
     const appliedNames = new Set(applied.map((m) => m.name));
     const pending = allMigrations.filter((m) => !appliedNames.has(m.name));
     const currentVersion = applied.length > 0 ? applied[applied.length - 1]!.name : null;
     const targetVersion = allMigrations.length > 0 ? allMigrations[allMigrations.length - 1]!.name : null;
     const pendingCount = pending.length;
 
-    return { applied, pending, currentVersion, targetVersion, pendingCount };
+    return { applied, pending, currentVersion, targetVersion, pendingCount, checksumMatch };
   }
 
   async createBackup(): Promise<string | null> {
@@ -168,16 +183,36 @@ export class SqliteMigrationRunner {
 
   runPendingSync(
     allMigrations: Migration[],
-    options?: { dryRun?: boolean | undefined; silent?: boolean | undefined },
-  ): { appliedCount: number } {
+    options?: { dryRun?: boolean | undefined; skipBackup?: boolean | undefined; silent?: boolean | undefined },
+  ): { appliedCount: number; backupPath?: string | null | undefined } {
     const { pending } = this.getStatus(allMigrations);
 
     if (pending.length === 0) {
-      return { appliedCount: 0 };
+      return { appliedCount: 0, backupPath: null };
     }
 
     if (options?.dryRun) {
-      return { appliedCount: pending.length };
+      return { appliedCount: pending.length, backupPath: null };
+    }
+
+    let backupPath: string | null = null;
+    if (
+      !options?.skipBackup &&
+      this.#dbPath &&
+      this.#dbPath !== ":memory:" &&
+      fs.existsSync(this.#dbPath) &&
+      fs.statSync(this.#dbPath).size > 0
+    ) {
+      const timestamp = Date.now();
+      const backupDir = path.dirname(this.#dbPath);
+      const backupName = `${path.basename(this.#dbPath)}.bak-${timestamp}`;
+      backupPath = path.join(backupDir, backupName);
+      try {
+        fs.copyFileSync(this.#dbPath, backupPath);
+      } catch (err) {
+        console.warn("[MigrationRunner] Pre-flight sync backup warning:", err);
+        backupPath = null;
+      }
     }
 
     const context = this.#createContext();
@@ -208,7 +243,7 @@ export class SqliteMigrationRunner {
         recordStmt.run(migration.name, checksum, duration);
         applied = true;
       });
-      tx();
+      tx.immediate();
       if (applied) {
         actuallyAppliedCount++;
         if (!options?.silent) {
@@ -218,7 +253,7 @@ export class SqliteMigrationRunner {
     }
 
     this.verifyIntegrity();
-    return { appliedCount: actuallyAppliedCount };
+    return { appliedCount: actuallyAppliedCount, backupPath };
   }
 
   rollbackLastSync(
@@ -248,7 +283,7 @@ export class SqliteMigrationRunner {
       migration.down!(context);
       deleteStmt.run(lastApplied.name);
     });
-    tx();
+    tx.immediate();
 
     if (!options?.silent) {
       console.log(`[MigrationRunner] Rolled back migration: ${lastApplied.name}`);
@@ -315,7 +350,7 @@ export class SqliteMigrationRunner {
     }
 
     try {
-      const result = this.runPendingSync(allMigrations, options);
+      const result = this.runPendingSync(allMigrations, { ...options, skipBackup: true });
       return { appliedCount: result.appliedCount, backupPath };
     } catch (err) {
       if (!options?.silent) {

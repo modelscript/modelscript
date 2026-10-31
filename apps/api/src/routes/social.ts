@@ -6,7 +6,7 @@ import fs from "fs";
 import { fileURLToPath } from "node:url";
 import path from "path";
 import Parser from "rss-parser";
-import type { LibraryDatabase } from "../database.js";
+import type { LibraryDatabase, PostVisibility } from "../database.js";
 import { optionalAuth, requireAuth, requireTokenScope } from "../middleware/auth-middleware.js";
 import { ComposerAIService, type ComposerDraftTone, type ComposerPolishMode } from "../services/ai/composer-ai.js";
 import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
@@ -14,6 +14,7 @@ import type { FederationWorker } from "../services/federation-worker.js";
 import { locationService } from "../services/location.js";
 import { extractTopics } from "../util/extract-topics.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
+import { isCorporateOrAirgapTier, isFederationDisabled } from "../util/tier-presets.js";
 import { generateThumbnail } from "../workers/thumbnailWorker.js";
 import { verifySignedEmbedToken } from "./oembed.js";
 
@@ -241,6 +242,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       key_id_string,
       metadata: rawMetadata,
       reply_visibility,
+      visibility,
+      poll: rawPoll,
       content_warning,
       notebook: topLevelNotebook,
       cells: topLevelCells,
@@ -269,8 +272,21 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       ...(key_id_string ? { keyIdString: key_id_string, key_id_string } : {}),
     };
 
-    if (!content && !repost_of_id && !artifact_view_id && !notebookMeta?.cells?.length) {
-      res.status(400).json({ error: "Content, artifact, or repost target is required" });
+    const pollInput =
+      rawPoll && typeof rawPoll === "object"
+        ? (rawPoll as {
+            options?: unknown;
+            expiresInSeconds?: number;
+            expires_in?: number;
+            multiple?: boolean;
+          })
+        : null;
+    const pollOptions = Array.isArray(pollInput?.options)
+      ? pollInput.options.map((o) => String(o).trim()).filter(Boolean)
+      : [];
+
+    if (!content && !repost_of_id && !artifact_view_id && !notebookMeta?.cells?.length && pollOptions.length < 2) {
+      res.status(400).json({ error: "Content, artifact, poll, or repost target is required" });
       return;
     }
 
@@ -344,7 +360,17 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         undefined,
         metadata ? JSON.stringify(metadata) : undefined,
         reply_visibility,
+        undefined,
+        undefined,
+        undefined,
+        typeof visibility === "string" ? visibility : undefined,
       );
+      if (pollOptions.length >= 2) {
+        const expiresSec = Number(pollInput?.expiresInSeconds ?? pollInput?.expires_in ?? 86400);
+        const expiresAt =
+          Number.isFinite(expiresSec) && expiresSec > 0 ? new Date(Date.now() + expiresSec * 1000).toISOString() : null;
+        database.createPostPoll(id, pollOptions, expiresAt, Boolean(pollInput?.multiple));
+      }
       const post = database.getPost(id, authorId);
 
       // Process tasks asynchronously so they don't block the request
@@ -375,7 +401,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
             try {
               const fullAuthor = database.getUserFederationInfo(authorId);
 
-              if (fullAuthor && content) {
+              if (fullAuthor && fullAuthor.actor_url && (content || post?.poll)) {
                 // Find remote followers
                 const remoteFollowers = database.getRemoteFollowersInboxes(authorId);
                 const mentionTags: { type: "Mention"; href: string; name: string }[] = [];
@@ -430,19 +456,45 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                   }
                 }
 
-                if (remoteFollowers.length > 0 || additionalInboxes.length > 0) {
+                const { buildAddressingForVisibility, serializeArtifactAttachment } = await import("./federation.js");
+                const addressing = buildAddressingForVisibility(
+                  (post?.visibility as PostVisibility) || "public",
+                  fullAuthor.actor_url,
+                  mentionTags.map((m) => m.href),
+                );
+                const activeRelays = database.listFederationRelays().filter((r) => r.state === "accepted");
+
+                if (
+                  remoteFollowers.length > 0 ||
+                  additionalInboxes.length > 0 ||
+                  (activeRelays.length > 0 && (post?.visibility || "public") === "public")
+                ) {
                   const apPostId = `${fullAuthor.actor_url}/posts/${id}`;
-                  const ccList = [`${fullAuthor.actor_url}/followers`, ...mentionTags.map((m) => m.href)];
 
                   const noteObject: Record<string, unknown> = {
                     id: apPostId,
-                    type: "Note",
+                    type: post?.poll ? "Question" : "Note",
                     published: new Date().toISOString(),
                     attributedTo: fullAuthor.actor_url,
-                    content: content,
-                    to: ["https://www.w3.org/ns/activitystreams#Public"],
-                    cc: ccList,
+                    content: content || "",
+                    to: addressing.to,
+                    cc: addressing.cc,
                   };
+
+                  if (post?.poll) {
+                    const optionItems = post.poll.options.map((opt) => ({
+                      type: "Note",
+                      name: opt.title,
+                      replies: {
+                        type: "Collection",
+                        totalItems: opt.votes_count,
+                      },
+                    }));
+                    noteObject[post.poll.multiple ? "anyOf" : "oneOf"] = optionItems;
+                    if (post.poll.expires_at) {
+                      noteObject["endTime"] = post.poll.expires_at;
+                    }
+                  }
 
                   const metaCw =
                     typeof metadata["contentWarning"] === "string" ? metadata["contentWarning"] : undefined;
@@ -471,7 +523,6 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                     ),
                   );
                   if (allArtifactIds.length > 0) {
-                    const { serializeArtifactAttachment } = await import("./federation.js");
                     const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
                     const attachments = allArtifactIds
                       .map((aid) => {
@@ -498,8 +549,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
                     type: "Create",
                     actor: fullAuthor.actor_url,
                     published: new Date().toISOString(),
-                    to: ["https://www.w3.org/ns/activitystreams#Public"],
-                    cc: ccList,
+                    to: addressing.to,
+                    cc: addressing.cc,
                     object: noteObject,
                   };
 
@@ -749,6 +800,15 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    * Renders dynamic OpenGraph and Twitter Card preview HTML with oEmbed discovery links.
    */
   router.get("/posts/:id/card", optionalAuth, (req: Request, res: Response): void => {
+    const settings = database.getInstanceSettings();
+    const isCorporateGated =
+      (settings.federationMode === "disabled" && settings.registrationMode !== "open") ||
+      (process.env["NODE_ENV"] === "production" && isCorporateOrAirgapTier(settings));
+    if (isCorporateGated && !req.user) {
+      res.status(401).json({ error: "Authentication required to view post cards on corporate air-gapped instances." });
+      return;
+    }
+
     const postId = Number(req.params["id"]);
     const post = database.getPost(postId);
     if (!post) {
@@ -756,7 +816,6 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       return;
     }
 
-    const settings = database.getInstanceSettings();
     const brandName = settings.instanceName || "Ansatz";
     const host = `${req.protocol}://${req.get("host") || "ansatz.social"}`;
     const postUrl = `${host}/p/${postId}`;
@@ -798,7 +857,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
 </html>`;
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Cache-Control", isCorporateOrAirgapTier(settings) ? "private, no-store" : "public, max-age=3600");
     res.send(html);
   });
 
@@ -822,7 +881,29 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         res.status(404).json({ error: "Post not found" });
         return;
       }
-      res.json({ post });
+
+      if (post.visibility === "followers") {
+        const isAllowed =
+          currentUserId === post.author_id ||
+          req.user?.role === "admin" ||
+          Boolean(currentUserId && database.isFollowing(currentUserId, post.author_id));
+        if (!isAllowed) {
+          res.status(403).json({ error: "This post is only visible to followers" });
+          return;
+        }
+      } else if (post.visibility === "direct") {
+        const isMentioned = Boolean(
+          req.user?.username && new RegExp(`@${req.user.username}\\b`, "i").test(post.content || ""),
+        );
+        const isAllowed = currentUserId === post.author_id || req.user?.role === "admin" || isMentioned;
+        if (!isAllowed) {
+          res.status(403).json({ error: "This direct post is only visible to mentioned recipients" });
+          return;
+        }
+      }
+
+      const filtered = database.applyContentFiltersToPosts([post], "thread", currentUserId);
+      res.json({ post: filtered[0] ?? post });
     } catch {
       res.status(500).json({ error: "Failed to fetch post" });
     }
@@ -963,6 +1044,10 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.get("/timeline/federated", optionalAuth, (req: Request, res: Response) => {
     const currentUserId = req.user?.id;
+    if (!database.getInstanceSettings().federatedTimelinePublic && !currentUserId) {
+      res.status(401).json({ error: "Authentication required to view federated timeline on this instance" });
+      return;
+    }
     const limit = Number(req.query["limit"]) || 20;
     const offset = Number(req.query["offset"]) || 0;
     const artifactType = (req.query["artifactType"] as string) || undefined;
@@ -1058,7 +1143,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   router.post("/posts/:id/report", requireAuth, (req: Request, res: Response) => {
     const reporterId = req.user!.id;
     const postId = Number(req.params["id"]);
-    const { reason, details, forwardFederatedFlag } = req.body;
+    const { reason, details, forwardFederatedFlag, ruleIds, rule_ids, category } = req.body;
 
     if (!reason || typeof reason !== "string") {
       res.status(400).json({ error: "Report reason is required" });
@@ -1072,6 +1157,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         return;
       }
 
+      const rawRuleIds = Array.isArray(ruleIds) ? ruleIds : Array.isArray(rule_ids) ? rule_ids : undefined;
+
       const report = database.createContentReport(reporterId, {
         postId,
         targetUserId: post.author_id,
@@ -1079,10 +1166,12 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         targetResourceId: String(postId),
         reason,
         details,
+        ruleIds: rawRuleIds ? rawRuleIds.map(Number).filter(Number.isFinite) : undefined,
+        category: typeof category === "string" ? category : undefined,
       });
 
       let federatedFlagQueued = false;
-      if (forwardFederatedFlag) {
+      if (forwardFederatedFlag && !isFederationDisabled(database.getInstanceSettings())) {
         const fedInfo = database.getUserFederationInfo(post.author_id);
         const remoteDomain =
           fedInfo?.remote_domain ||
@@ -1135,7 +1224,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.post("/reports", requireAuth, (req: Request, res: Response) => {
     const reporterId = req.user!.id;
-    const { targetType, targetResourceId, postId, targetUserId, reason, details } = req.body || {};
+    const { targetType, targetResourceId, postId, targetUserId, reason, details, ruleIds, rule_ids, category } =
+      req.body || {};
 
     if (!reason || typeof reason !== "string") {
       res.status(400).json({ error: "Report reason is required" });
@@ -1147,6 +1237,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       typeof targetType === "string" && allowedTargetTypes.has(targetType) ? targetType : "package";
 
     try {
+      const rawRuleIds = Array.isArray(ruleIds) ? ruleIds : Array.isArray(rule_ids) ? rule_ids : undefined;
+
       const report = database.createContentReport(reporterId, {
         postId: typeof postId === "number" ? postId : undefined,
         targetUserId: typeof targetUserId === "number" ? targetUserId : undefined,
@@ -1154,6 +1246,8 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
         targetResourceId: targetResourceId != null ? String(targetResourceId) : undefined,
         reason,
         details: typeof details === "string" ? details : undefined,
+        ruleIds: rawRuleIds ? rawRuleIds.map(Number).filter(Number.isFinite) : undefined,
+        category: typeof category === "string" ? category : undefined,
       });
 
       database.logAudit({
@@ -1622,7 +1716,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       if (handleMatch) {
         const handle = handleMatch[1];
         try {
-          const ytRes = await fetch(`https://www.youtube.com/${encodeURIComponent(handle)}`);
+          const ytRes = await safePublicFetch(`https://www.youtube.com/${encodeURIComponent(handle)}`);
           const ytHtml = await ytRes.text();
           const idMatch = ytHtml.match(/channel_id=([^"&']+)/);
           if (idMatch && idMatch[1]) {
@@ -1875,6 +1969,173 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
       res.json(result);
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to polish post content" });
+    }
+  });
+
+  /**
+   * POST /api/v1/social/posts/:id/poll/vote
+   * Casts a vote on a post poll (local or federated Question)
+   */
+  router.post("/posts/:id/poll/vote", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const postId = Number(req.params["id"]);
+    const rawChoices = req.body?.choices ?? (req.body?.choice !== undefined ? [req.body.choice] : []);
+    const choices = Array.isArray(rawChoices) ? rawChoices.map(Number).filter(Number.isFinite) : [];
+
+    if (choices.length === 0) {
+      res.status(400).json({ error: "At least one choice index is required" });
+      return;
+    }
+
+    try {
+      const poll = database.votePostPoll(postId, choices, userId);
+
+      // If this poll belongs to a remote actor, federate the vote as a Create(Note) reply with `name`
+      const post = database.getPost(postId, userId);
+      const voterFed = database.getUserFederationInfo(userId);
+      const authorFed = post ? database.getUserFederationInfo(post.author_id) : undefined;
+      if (
+        post?.ap_id &&
+        voterFed?.actor_url &&
+        authorFed?.remote_domain &&
+        authorFed?.inbox_url &&
+        !isFederationDisabled(database.getInstanceSettings())
+      ) {
+        for (const choiceIdx of choices) {
+          const opt = poll.options[choiceIdx];
+          if (!opt) continue;
+          const voteApId = `${voterFed.actor_url}/votes/${postId}-${choiceIdx}-${Date.now()}`;
+          const voteActivity = {
+            "@context": "https://www.w3.org/ns/activitystreams",
+            id: `${voteApId}/activity`,
+            type: "Create",
+            actor: voterFed.actor_url,
+            to: [authorFed.actor_url],
+            object: {
+              id: voteApId,
+              type: "Note",
+              attributedTo: voterFed.actor_url,
+              inReplyTo: post.ap_id,
+              name: opt.title,
+              to: [authorFed.actor_url],
+            },
+          };
+          database.enqueueFederationDelivery(
+            "Create",
+            `${voteApId}/activity`,
+            voteActivity,
+            authorFed.inbox_url,
+            authorFed.remote_domain,
+          );
+        }
+      }
+
+      res.json({ poll });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to vote on poll" });
+    }
+  });
+
+  /**
+   * GET /api/v1/social/filters
+   * Lists Mastodon v2-style keyword/phrase content filters for the authenticated user
+   */
+  router.get("/filters", requireAuth, (req: Request, res: Response) => {
+    try {
+      const filters = database.listContentFilters(req.user!.id);
+      res.json({ filters });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list content filters" });
+    }
+  });
+
+  /**
+   * POST /api/v1/social/filters
+   * Creates a new personal content filter
+   */
+  router.post("/filters", requireAuth, (req: Request, res: Response) => {
+    const { title, context, filter_action, filterAction, keywords, keywords_attributes, expires_at, expiresAt } =
+      req.body || {};
+    if (!title || typeof title !== "string") {
+      res.status(400).json({ error: "Filter title is required" });
+      return;
+    }
+    try {
+      const rawKeywords = Array.isArray(keywords)
+        ? keywords
+        : Array.isArray(keywords_attributes)
+          ? keywords_attributes
+          : [];
+      const filter = database.createContentFilter({
+        userId: req.user!.id,
+        title: title.trim(),
+        context: Array.isArray(context)
+          ? context.map(String)
+          : ["home", "public", "notifications", "thread", "account"],
+        filterAction: filter_action || filterAction || "warn",
+        keywords: rawKeywords.map((k: { keyword?: string; whole_word?: boolean } | string) =>
+          typeof k === "string"
+            ? { keyword: k, whole_word: true }
+            : { keyword: String(k.keyword || ""), whole_word: k.whole_word !== false },
+        ),
+        expiresAt: expires_at ?? expiresAt ?? null,
+      });
+      res.status(201).json({ filter });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to create content filter" });
+    }
+  });
+
+  /**
+   * PUT /api/v1/social/filters/:id
+   */
+  router.put("/filters/:id", requireAuth, (req: Request, res: Response) => {
+    const filterId = Number(req.params["id"]);
+    const { title, context, filter_action, filterAction, keywords, keywords_attributes, expires_at, expiresAt } =
+      req.body || {};
+    try {
+      const rawKeywords = Array.isArray(keywords)
+        ? keywords
+        : Array.isArray(keywords_attributes)
+          ? keywords_attributes
+          : undefined;
+      const filter = database.updateContentFilter(filterId, req.user!.id, {
+        title: typeof title === "string" ? title.trim() : undefined,
+        context: Array.isArray(context) ? context.map(String) : undefined,
+        filterAction: filter_action || filterAction,
+        keywords: rawKeywords
+          ? rawKeywords.map((k: { keyword?: string; whole_word?: boolean } | string) =>
+              typeof k === "string"
+                ? { keyword: k, whole_word: true }
+                : { keyword: String(k.keyword || ""), whole_word: k.whole_word !== false },
+            )
+          : undefined,
+        expiresAt: expires_at !== undefined ? expires_at : expiresAt,
+      });
+      if (!filter) {
+        res.status(404).json({ error: "Content filter not found" });
+        return;
+      }
+      res.json({ filter });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to update content filter" });
+    }
+  });
+
+  /**
+   * DELETE /api/v1/social/filters/:id
+   */
+  router.delete("/filters/:id", requireAuth, (req: Request, res: Response) => {
+    const filterId = Number(req.params["id"]);
+    try {
+      const deleted = database.deleteContentFilter(filterId, req.user!.id);
+      if (!deleted) {
+        res.status(404).json({ error: "Content filter not found" });
+        return;
+      }
+      res.json({ success: true });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete content filter" });
     }
   });
 

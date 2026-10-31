@@ -62,9 +62,10 @@ interface LangData {
   capabilities: {
     parse: boolean;
     lint: boolean;
-    arena: boolean;
+    dae?: boolean;
+    arena?: boolean;
     simulate: boolean;
-    projections: boolean;
+    projections: string[] | boolean;
   };
 }
 
@@ -129,13 +130,13 @@ function cleanMarkdown(raw: string): string {
   // 1. Strip YAML frontmatter
   let text = raw.replace(/^---[\r\n]+[\s\S]*?[\r\n]+---[\r\n]+/, "");
 
-  // 2. Expand <CliCommand command="..." ... />
-  text = text.replace(/<CliCommand\s+command="([^"]+)"(?:\s+sub="([^"]+)")?[^>]*\/>/g, (_, cmd, sub) =>
+  // 2. Expand <CliCommand command="..." ... /> or <CliCommand name="..." ... />
+  text = text.replace(/<CliCommand\s+(?:command|name)="([^"]+)"(?:\s+sub="([^"]+)")?[^>]*\/>/g, (_, cmd, sub) =>
     formatCliBlock(cmd, sub),
   );
 
-  // 3. Expand <LintRules lang="..." ... />
-  text = text.replace(/<LintRules\s+lang="([^"]+)"[^>]*\/>/g, (_, lang) => formatLintBlock(lang));
+  // 3. Expand <LintRules lang="..." ... /> or <LintRules language="..." ... />
+  text = text.replace(/<LintRules\s+(?:lang|language)="([^"]+)"[^>]*\/>/g, (_, lang) => formatLintBlock(lang));
 
   // 4. Expand <CapabilityMatrix />
   text = text.replace(/<CapabilityMatrix[^>]*\/>/g, () => {
@@ -147,10 +148,12 @@ function cleanMarkdown(raw: string): string {
     ];
     for (const l of langManifest) {
       const c = l.capabilities;
+      const hasDae = Boolean(c.dae ?? c.arena);
+      const hasProjections = Array.isArray(c.projections) ? c.projections.length > 0 : Boolean(c.projections);
       lines.push(
         `| ${l.name} | \`${l.ext}\` | ${l.role} | ${c.parse ? "✓" : "—"} | ${c.lint ? "✓" : "—"} | ${
-          c.arena ? "✓" : "—"
-        } | ${c.simulate ? "✓" : "—"} | ${c.projections ? "✓" : "—"} |`,
+          hasDae ? "✓" : "—"
+        } | ${c.simulate ? "✓" : "—"} | ${hasProjections ? "✓" : "—"} |`,
       );
     }
     return lines.join("\n");
@@ -204,11 +207,21 @@ function buildLlmsTxt(): string {
     "- [Introduction](https://modelscript.org/guide/introduction): Architectural vision, computable digital thread, and key differentiators.",
     "- [Installation](https://modelscript.org/guide/installation): CLI installation, VS Code extension, and local setup.",
     "- [Getting Started](https://modelscript.org/guide/getting-started): First steps, project scaffolding, and simulation execution.",
+    "- [AI Agents & MCP Workflows](https://modelscript.org/guide/ai-agents): Closed-loop AI engineering workflows and Model Context Protocol setup.",
+    "- [CI/CD & GitHub Actions](https://modelscript.org/guide/ci-cd): Automated linting, formal verification, and SARIF code scanning.",
     "- [Embedding ModelScript](https://modelscript.org/guide/embedding): Headless programmatic usage in Node.js, browsers, and WebAssembly.",
     "- [Administration](https://modelscript.org/guide/administration): Enterprise deployment, licensing, and security disclosures.",
     "",
+    "## Ansatz Platform (`ansatz.social`)",
+    "- [Ansatz Platform Overview](https://modelscript.org/ansatz/overview): Federated social network, CAS package registry, and cloud HPC hub.",
+    "- [ActivityPub Federation](https://modelscript.org/ansatz/federation): W3C ActivityPub S2S federation, WebFinger, and peer verification.",
+    "- [Package Registry](https://modelscript.org/ansatz/package-registry): Content-addressable package registry with Ed25519 signatures and multi-lens manifests.",
+    "- [Cloud HPC Simulation](https://modelscript.org/ansatz/cloud-hpc): Slurm HPC offload, WebGPU batched sweeps, and compute credit billing.",
+    "- [Self-Hosting Guide](https://modelscript.org/ansatz/self-hosting): Docker Compose deployment profiles, Cloudflare Zero Trust tunnels, and hot SQLite backups.",
+    "",
     "## Compiler Architecture & WebAssembly Runtime",
     "- [Architecture Overview](https://modelscript.org/architecture/overview): Salsa memoization, WASM linear memory DAE arena, and lowering pipeline.",
+    "- [Monorepo & Taxonomy](https://modelscript.org/architecture/monorepo): Workspace organization, package boundaries, and dependency taxonomy.",
     "- [DAE Arena](https://modelscript.org/architecture/dae-arena): Struct-of-arrays linear memory DAE container for zero-overhead symbolic transformations.",
     "- [GLR Parser](https://modelscript.org/architecture/glr-parser): High-performance native WebAssembly generalized LR parser generator.",
     "- [Salsa Query Engine](https://modelscript.org/architecture/salsa-queries): Incremental memoization, dependency tracking, and Salsa cache backdating.",
@@ -216,6 +229,9 @@ function buildLlmsTxt(): string {
     "- [Triple Graph Grammars](https://modelscript.org/architecture/tgg): Bidirectional schema synchronization and multi-language transformation.",
     "- [Theory Coordinator](https://modelscript.org/architecture/theory-coordinator): Cross-domain physical theory unification and ontology coordination.",
     "- [HIL & WASM Runtime](https://modelscript.org/architecture/hil-wasm-runtime): Hardware-in-the-loop and headless WebAssembly execution.",
+  ];
+
+  lines.push(
     "",
     "## Algorithms & Solvers Catalog",
     "- [Algorithms Catalog Overview](https://modelscript.org/algorithms/overview): Catalog of 16 symbolic and numerical algorithms.",
@@ -241,7 +257,7 @@ function buildLlmsTxt(): string {
     "",
     "## Polyglot Languages (44 Formats)",
     "- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 44 formats.",
-  ];
+  );
 
   for (const l of LANGUAGES) {
     lines.push(`- [${l.name} (${l.ext})](https://modelscript.org/languages/${l.slug}): ${l.role}.`);
@@ -271,19 +287,27 @@ function buildLlmsTxt(): string {
 function buildLlmsFullTxt(): string {
   const sections: { title: string; route: string; file?: string; body?: string }[] = [];
 
-  // 1. Guides
+  // 1. Guides & Ansatz Platform
   const guides = [
     { title: "Introduction", route: "guide/introduction", file: "guide/introduction.md" },
     { title: "Installation", route: "guide/installation", file: "guide/installation.md" },
     { title: "Getting Started", route: "guide/getting-started", file: "guide/getting-started.md" },
+    { title: "AI Agents & MCP Workflows", route: "guide/ai-agents", file: "guide/ai-agents.md" },
+    { title: "CI/CD & GitHub Actions", route: "guide/ci-cd", file: "guide/ci-cd.md" },
     { title: "Embedding ModelScript", route: "guide/embedding", file: "guide/embedding.md" },
     { title: "Administration", route: "guide/administration", file: "guide/administration.md" },
+    { title: "Ansatz Platform Overview", route: "ansatz/overview", file: "ansatz/overview.md" },
+    { title: "ActivityPub Federation", route: "ansatz/federation", file: "ansatz/federation.md" },
+    { title: "Package Registry", route: "ansatz/package-registry", file: "ansatz/package-registry.md" },
+    { title: "Cloud HPC Simulation", route: "ansatz/cloud-hpc", file: "ansatz/cloud-hpc.md" },
+    { title: "Self-Hosting Guide", route: "ansatz/self-hosting", file: "ansatz/self-hosting.md" },
   ];
   for (const g of guides) sections.push(g);
 
   // 2. Architecture
   const archs = [
     { title: "Compiler Architecture Overview", route: "architecture/overview", file: "architecture/overview.md" },
+    { title: "Monorepo & Taxonomy", route: "architecture/monorepo", file: "architecture/monorepo.md" },
     { title: "DAE Arena in Linear Memory", route: "architecture/dae-arena", file: "architecture/dae-arena.md" },
     { title: "WASM GLR Parser", route: "architecture/glr-parser", file: "architecture/glr-parser.md" },
     { title: "Salsa Query Engine", route: "architecture/salsa-queries", file: "architecture/salsa-queries.md" },

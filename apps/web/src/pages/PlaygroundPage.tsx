@@ -33,16 +33,23 @@ import {
 
 const TEMPLATE_ALIASES: Record<string, string> = {
   rlc: "rlc-circuit",
+  rlccircuit: "rlc-circuit",
   "rlc-circuit": "rlc-circuit",
   "rlc-filter": "rlc-circuit",
+  bouncingball: "bouncing-ball",
   "bouncing-ball": "bouncing-ball",
+  chuacircuit: "lorenz-attractor",
   "chua-circuit": "lorenz-attractor",
   "lorenz-attractor": "lorenz-attractor",
   sysml2: "sysml-satellite",
+  satellitepower: "sysml-satellite",
+  "sysml-satellite": "sysml-satellite",
   "sysml2-powertrain": "sysml-satellite",
+  roboticjoint: "scad-flanged-hub",
   "drone-chassis": "scad-flanged-hub",
   cad: "scad-flanged-hub",
   scad: "scad-flanged-hub",
+  "scad-flanged-hub": "scad-flanged-hub",
   step: "step-aerospace-bracket",
   simpack: "simpack-pendulum",
   gensys: "gensys-bogie",
@@ -534,6 +541,14 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const handleSelectLang = (nextLang: string) => {
+    if (nextLang === currentLang) return;
+    if (
+      isDirty &&
+      typeof window !== "undefined" &&
+      !window.confirm("You have unsaved changes. Switch language and discard changes?")
+    ) {
+      return;
+    }
     setCurrentLang(nextLang);
     const nextStarter = HERO_EXAMPLES.find((ex) => ex.lang === nextLang);
     const langInfo = getLanguageInfo(nextLang);
@@ -593,7 +608,7 @@ export const PlaygroundPage: React.FC = () => {
     return `${window.location.origin}/playground#m=${hash}`;
   };
 
-  const getEmbedCode = (format: "iframe" | "custom-tag" = "iframe") => {
+  const getEmbedCode = (format: "iframe" | "custom-tag" | "morsel-tag" = "iframe") => {
     const hash = compressMorselPayload({
       v: 1,
       lang: currentLang,
@@ -603,11 +618,15 @@ export const PlaygroundPage: React.FC = () => {
       anchor: payload?.anchor,
       ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
     });
+    const embedSrc = `${window.location.origin}/embed/playground#m=${hash}`;
+    if (format === "morsel-tag") {
+      return `<script type="module" src="https://cdn.modelscript.org/embed/v1/modelscript-embed.js"></script>\n<modelscript-morsel src="${embedSrc}" height="500px" theme="dark"></modelscript-morsel>`;
+    }
     if (format === "custom-tag") {
       const anchorAttr = payload?.anchor?.elementId ? ` anchor="${payload.anchor.elementId}"` : "";
       return `<script type="module" src="${window.location.origin}/static/embed.js"></script>\n<modelscript-viewer dialect="${currentLang}" view="${payload?.view || "diagram"}"${anchorAttr}>\n${currentCode}\n</modelscript-viewer>`;
     }
-    return `<iframe src="${window.location.origin}/embed/playground#m=${hash}" width="100%" height="600" frameborder="0" allow="clipboard-write"></iframe>`;
+    return `<iframe src="${embedSrc}" width="100%" height="600" frameborder="0" allow="clipboard-write"></iframe>`;
   };
 
   const getMarkdownBadge = () => {

@@ -151,35 +151,39 @@ export const ThreadGovernanceModal: React.FC<ThreadGovernanceModalProps> = ({
                     </Box>
                   )}
 
-                  {prop.status === "open" && (
+                  {(prop.status === "open" || prop.status === "approved") && (
                     <Box display="flex" gap={2} mt={1}>
+                      {prop.status === "open" && (
+                        <Button
+                          size="small"
+                          variant="primary"
+                          leadingVisual={CheckIcon}
+                          onClick={() => onOpenReview(prop, "approved", "Approved after functional safety review.")}
+                        >
+                          Approve
+                        </Button>
+                      )}
                       <Button
                         size="small"
-                        variant="primary"
-                        leadingVisual={CheckIcon}
-                        onClick={() => onOpenReview(prop, "approved", "Approved after functional safety review.")}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="default"
+                        variant={prop.status === "approved" ? "primary" : "default"}
                         onClick={() =>
                           onOpenReview(prop, "applied", "Applied resolution into digital thread baseline.")
                         }
                       >
                         Apply to Baseline
                       </Button>
-                      <Button
-                        size="small"
-                        variant="danger"
-                        leadingVisual={XIcon}
-                        onClick={() =>
-                          onOpenReview(prop, "rejected", "Rejected due to parameter constraint violation.")
-                        }
-                      >
-                        Reject
-                      </Button>
+                      {prop.status === "open" && (
+                        <Button
+                          size="small"
+                          variant="danger"
+                          leadingVisual={XIcon}
+                          onClick={() =>
+                            onOpenReview(prop, "rejected", "Rejected due to parameter constraint violation.")
+                          }
+                        >
+                          Reject
+                        </Button>
+                      )}
                     </Box>
                   )}
                 </Box>

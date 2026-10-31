@@ -12,6 +12,8 @@ import {
   computeStemLines,
   findInternalChannelRoute,
   getPortOutwardNormal,
+  healOrthogonalVertices,
+  portOrthogonalRouter,
   regularizeOrthogonalPolyline,
   segmentIntersectsRect,
   simplifyCollinearPoints,
@@ -640,5 +642,94 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
     // Last vertex must enter C.p (-70, -10) from the TOP (y < -10)
     const lastV = lToCVerts[lToCVerts.length - 1]!;
     assert.ok(lastV.y < -10, `Expected last vertex y < -10 (entering top of C.p), got ${lastV.y}`);
+  });
+
+  it("simplifyCollinearPoints should preserve 90-degree corners on short jogs (<= tolerance)", () => {
+    // A 1px vertical step between two horizontal segments: (0,0) -> (50,0) -> (50,1) -> (100,1)
+    // Deleting (50,0) or (50,1) would create a diagonal segment!
+    const shortJog: PointLike[] = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 50, y: 1 },
+      { x: 100, y: 1 },
+    ];
+    const simplified = simplifyCollinearPoints(shortJog, 1.5);
+    assert.strictEqual(simplified.length, 4, "Must preserve both 90-degree corners on short jog");
+    for (let i = 0; i < simplified.length - 1; i++) {
+      const a = simplified[i]!;
+      const b = simplified[i + 1]!;
+      assert.ok(
+        Math.abs(a.x - b.x) < 1e-6 || Math.abs(a.y - b.y) < 1e-6,
+        `Segment ${i} must remain strictly axis-aligned`,
+      );
+    }
+  });
+
+  it("regularizeOrthogonalPolyline should never mutate pinned source/target endpoints", () => {
+    const source: PointLike = { x: 10, y: 40 };
+    const target: PointLike = { x: 100, y: 80.7 };
+    const poly: PointLike[] = [source, { x: 50, y: 40 }, { x: 50, y: 80 }, target];
+    const reg = regularizeOrthogonalPolyline(poly);
+
+    // Pinned endpoints must be exact
+    assert.deepStrictEqual(reg[0], source);
+    assert.deepStrictEqual(reg[reg.length - 1], target);
+
+    // Every segment in regularized polyline must be strictly orthogonal
+    for (let i = 0; i < reg.length - 1; i++) {
+      const a = reg[i]!;
+      const b = reg[i + 1]!;
+      assert.ok(
+        Math.abs(a.x - b.x) < 1e-6 || Math.abs(a.y - b.y) < 1e-6,
+        `Segment ${i} (${a.x},${a.y})->(${b.x},${b.y}) must be strictly orthogonal`,
+      );
+    }
+  });
+
+  it("healOrthogonalVertices should eliminate terminal micro-diagonals and diagonal interior segments", () => {
+    // Case 1: Port at y=40.6 while saved annotation vertex is at y=40
+    const src1: PointLike = { x: 10, y: 40.6 };
+    const tgt1: PointLike = { x: 90, y: 10.2 };
+    const rawVerts1: PointLike[] = [
+      { x: 50, y: 40 },
+      { x: 50, y: 10 },
+    ];
+    const healed1 = healOrthogonalVertices(src1, tgt1, rawVerts1);
+    const full1 = [src1, ...healed1, tgt1];
+    for (let i = 0; i < full1.length - 1; i++) {
+      const a = full1[i]!;
+      const b = full1[i + 1]!;
+      assert.ok(
+        Math.abs(a.x - b.x) < 1e-6 || Math.abs(a.y - b.y) < 1e-6,
+        `Case 1 segment ${i} (${a.x},${a.y})->(${b.x},${b.y}) must be strictly orthogonal`,
+      );
+    }
+
+    // Case 2: 0 intermediate vertices with 0.8px vertical port offset
+    const src2: PointLike = { x: 20, y: 50 };
+    const tgt2: PointLike = { x: 120, y: 50.8 };
+    const healed2 = healOrthogonalVertices(src2, tgt2, []);
+    assert.strictEqual(healed2.length, 2, "Must insert 2 orthogonal Z-bend vertices for off-axis 0-vertex wire");
+    const full2 = [src2, ...healed2, tgt2];
+    for (let i = 0; i < full2.length - 1; i++) {
+      const a = full2[i]!;
+      const b = full2[i + 1]!;
+      assert.ok(
+        Math.abs(a.x - b.x) < 1e-6 || Math.abs(a.y - b.y) < 1e-6,
+        `Case 2 segment ${i} (${a.x},${a.y})->(${b.x},${b.y}) must be strictly orthogonal`,
+      );
+    }
+
+    // Case 3: portOrthogonalRouter heals explicit vertices using edgeView endpoints
+    const routerVerts = portOrthogonalRouter(rawVerts1, {}, { sourcePoint: src1, targetPoint: tgt1 });
+    const full3 = [src1, ...routerVerts, tgt1];
+    for (let i = 0; i < full3.length - 1; i++) {
+      const a = full3[i]!;
+      const b = full3[i + 1]!;
+      assert.ok(
+        Math.abs(a.x - b.x) < 1e-6 || Math.abs(a.y - b.y) < 1e-6,
+        `Case 3 segment ${i} (${a.x},${a.y})->(${b.x},${b.y}) must be strictly orthogonal`,
+      );
+    }
   });
 });

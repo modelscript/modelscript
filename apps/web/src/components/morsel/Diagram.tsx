@@ -80,7 +80,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   }).current;
 
   const attachGraphListeners = () => {
-    const g = getGraph();
+    const g = getGraph(containerRef.current);
     if (g && typeof g.on === "function") {
       g.off?.("node:dblclick", handleNodeDblClick);
       g.on("node:dblclick", handleNodeDblClick);
@@ -146,7 +146,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   useImperativeHandle(ref, () => ({
     fitContent: () => {
       syncDiagramOptions();
-      const g = getGraph() ?? (containerRef.current ? initGraph(props.theme === "vs-dark") : null);
+      const g =
+        getGraph(containerRef.current) ??
+        (containerRef.current ? initGraph(props.theme === "vs-dark", containerRef.current) : null);
       if (g) {
         try {
           g.zoomToFit({ maxScale: 1, padding: 20 });
@@ -164,11 +166,14 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   useEffect(() => {
     syncDiagramOptions();
-
-    return () => {
-      disposeDiagram();
-    };
   }, [props.theme]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    return () => {
+      disposeDiagram(container);
+    };
+  }, []);
 
   useEffect(() => {
     if (props.diagramData && containerRef.current) {
@@ -181,7 +186,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   useEffect(() => {
     if (props.selectedName !== undefined) {
-      const g = getGraph();
+      const g = getGraph(containerRef.current);
       if (!g) return;
       if (!props.selectedName || isEphemeralDiagramNode(props.selectedName)) {
         g.cleanSelection();
@@ -216,7 +221,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = "copy";
-          const g = getGraph();
+          const g = getGraph(containerRef.current);
           if (g && containerRef.current) {
             const p = g.clientToLocal(e.clientX, e.clientY);
             movePlacementGhost(p.x, p.y);
@@ -243,7 +248,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
           if (className && containerRef.current) {
             syncDiagramOptions();
-            const g = getGraph() ?? initGraph(props.theme === "vs-dark");
+            const g = getGraph(containerRef.current) ?? initGraph(props.theme === "vs-dark", containerRef.current);
             if (!g) return;
             const p = g.clientToLocal(e.clientX, e.clientY);
 

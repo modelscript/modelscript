@@ -10,20 +10,36 @@ export interface PackageCompareTabProps {
   version: string;
   versionList: string[];
   baseVersion?: string | undefined;
+  initialBaseVersion?: string | undefined;
 }
 
-export const PackageCompareTab: React.FC<PackageCompareTabProps> = ({ name, version, versionList, baseVersion }) => {
+export const PackageCompareTab: React.FC<PackageCompareTabProps> = ({
+  name,
+  version,
+  versionList,
+  baseVersion,
+  initialBaseVersion,
+}) => {
+  const effectiveInitialBase = initialBaseVersion ?? baseVersion;
+  const [baseVer, setBaseVer] = React.useState<string | undefined>(effectiveInitialBase);
+
+  React.useEffect(() => {
+    if (effectiveInitialBase) {
+      setBaseVer(effectiveInitialBase);
+    }
+  }, [effectiveInitialBase]);
+
   const orderedVersions = React.useMemo(() => {
-    if (!baseVersion || baseVersion === version || !versionList.includes(baseVersion)) {
+    if (!baseVer || baseVer === version || !versionList.includes(baseVer)) {
       return versionList;
     }
-    const withoutBase = versionList.filter((v) => v !== baseVersion);
+    const withoutBase = versionList.filter((v) => v !== baseVer);
     const currentIdx = withoutBase.indexOf(version);
     if (currentIdx === -1) return versionList;
     const next = [...withoutBase];
-    next.splice(currentIdx + 1, 0, baseVersion);
+    next.splice(currentIdx, 0, baseVer);
     return next;
-  }, [versionList, version, baseVersion]);
+  }, [versionList, version, baseVer]);
 
   return (
     <>
@@ -32,7 +48,7 @@ export const PackageCompareTab: React.FC<PackageCompareTabProps> = ({ name, vers
         Inspect multi-domain architectural, equation, CAD geometry, and parameter shifts between package releases.
       </Text>
       <PolyglotVersionDiffView
-        key={`${baseVersion || "default"}-${version}`}
+        key={`${baseVer || "default"}-${version}`}
         packageName={name}
         currentVersion={version}
         allVersions={orderedVersions}

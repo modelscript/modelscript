@@ -3,6 +3,7 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
+import { getClientIp } from "../util/client-ip.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 
 interface CachedPublicKey {
@@ -121,10 +122,7 @@ export class ActivityPubInboxRateLimiter {
         return;
       }
 
-      const trustForwarded = process.env["TRUST_PROXY"] === "true" || process.env["NODE_ENV"] === "test";
-      const xff = trustForwarded ? (req.headers["x-forwarded-for"] as string | undefined) : undefined;
-      const forwardedIp = xff ? xff.split(",")[0]?.trim() : undefined;
-      const clientIp = forwardedIp || req.ip || req.socket.remoteAddress || "127.0.0.1";
+      const clientIp = getClientIp(req);
       const ipKey = `ip:${clientIp}`;
 
       // Check IP limit
@@ -163,6 +161,19 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
       (typeof req.app?.get === "function" ? (req.app.get("database") as LibraryDatabase | undefined) : undefined);
 
     try {
+      const fedMode =
+        process.env["MSX_FEDERATION_MODE"] ||
+        process.env["FEDERATION_MODE"] ||
+        db?.getInstanceSettings()?.federationMode;
+      if (
+        fedMode === "disabled" ||
+        process.env["AIRGAP_ENFORCED"] === "true" ||
+        process.env["ENTERPRISE_APPLIANCE"] === "true"
+      ) {
+        res.status(403).json({ error: "Federation is disabled on this node." });
+        return;
+      }
+
       if (process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-sig"] === "true") {
         const actor = req.body?.actor || "https://test.example.com/users/test";
         (req as Request & { actorId?: string | undefined; activityPubVerifiedKeyId?: string | undefined }).actorId =
@@ -400,6 +411,20 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           return;
         }
 
+        if (
+          actorDomain &&
+          typeof (databaseInstance as { recordDomainDeliverySuccess?: (d: string) => void })
+            .recordDomainDeliverySuccess === "function"
+        ) {
+          try {
+            (
+              databaseInstance as unknown as { recordDomainDeliverySuccess: (d: string) => void }
+            ).recordDomainDeliverySuccess(actorDomain);
+          } catch {
+            // ignore
+          }
+        }
+
         (req as Request & { actorId?: string | undefined; activityPubVerifiedKeyId?: string | undefined }).actorId = (
           keyId as string
         ).split("#")[0];
@@ -592,11 +617,97 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
       ).activityPubVerifiedKeyId = parts["keyId"] as string;
       (req as Request & { actorProfile?: Record<string, unknown> | undefined }).actorProfile = actor;
 
+      const dbWithDelivery = db as unknown as { recordDomainDeliverySuccess?: (d: string) => void } | undefined;
+      if (dbWithDelivery && typeof dbWithDelivery.recordDomainDeliverySuccess === "function") {
+        try {
+          dbWithDelivery.recordDomainDeliverySuccess(actorDomain);
+        } catch {}
+      }
+
       next();
     } catch (err) {
       console.error("Signature verification failed:", err);
       res.status(500).json({ error: "Internal server error during signature verification" });
     }
+  };
+}
+
+export function invalidateCachedPublicKey(actorUrl: string): void {
+  const base = actorUrl.split("#")[0] || actorUrl;
+  publicKeyCache.delete(actorUrl);
+  publicKeyCache.delete(base);
+  for (const key of publicKeyCache.keys()) {
+    if (key.startsWith(`${base}#`)) {
+      publicKeyCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Mastodon AUTHORIZED_FETCH (Secure Mode) middleware for ActivityPub GET endpoints.
+ * - Always rejects requests signed by a suspended domain with 403 Forbidden.
+ * - When authorizedFetchEnabled is active on the instance (or MSX_AUTHORIZED_FETCH=true),
+ *   requires a valid HTTP Signature (or local authenticated user) on all ActivityPub GET requests.
+ */
+export function createAuthorizedFetchVerifier(databaseInstance?: LibraryDatabase) {
+  const sigVerifier = createActivityPubVerifier(databaseInstance);
+
+  return async function verifyAuthorizedFetch(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const db: LibraryDatabase | undefined =
+      databaseInstance ||
+      req.database ||
+      (req.app?.locals?.["database"] as LibraryDatabase | undefined) ||
+      (typeof req.app?.get === "function" ? (req.app.get("database") as LibraryDatabase | undefined) : undefined);
+
+    const hasSigHeader = Boolean(req.headers["signature"] || req.headers["signature-input"]);
+
+    // Even if AUTHORIZED_FETCH is off, if a GET request carries a Signature from a suspended domain, reject it!
+    if (hasSigHeader && db) {
+      const rawSig = (req.headers["signature-input"] || req.headers["signature"] || "") as string;
+      const keyIdMatch = rawSig.match(/key[iI]d="([^"]+)"/);
+      if (keyIdMatch?.[1]) {
+        try {
+          const parsedUrl = new URL(keyIdMatch[1]);
+          const callerDomain = parsedUrl.hostname.toLowerCase();
+          if (db.isDomainSuspended(callerDomain)) {
+            res.status(403).json({
+              error: `Domain '${callerDomain}' is suspended by instance administration.`,
+            });
+            return;
+          }
+        } catch {
+          // Handled by full verifier if required
+        }
+      }
+    }
+
+    const settings = db?.getInstanceSettings() as Record<string, unknown> | undefined;
+    const authorizedFetchEnabled =
+      process.env["MSX_AUTHORIZED_FETCH"] === "true" ||
+      process.env["AUTHORIZED_FETCH"] === "true" ||
+      Boolean(settings?.["authorizedFetchEnabled"]);
+
+    if (!authorizedFetchEnabled) {
+      next();
+      return;
+    }
+
+    // Allow authenticated local users (Bearer token)
+    if (req.user?.id) {
+      next();
+      return;
+    }
+
+    if (!hasSigHeader) {
+      res.status(401).json({
+        error:
+          "Authorized Fetch (Secure Mode) is enabled on this instance. Request must be signed with HTTP Signatures.",
+        code: "AUTHORIZED_FETCH_REQUIRED",
+      });
+      return;
+    }
+
+    await sigVerifier(req, res, next);
   };
 }
 

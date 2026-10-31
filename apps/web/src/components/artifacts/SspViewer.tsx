@@ -14,7 +14,7 @@ import {
 } from "@primer/octicons-react";
 import { Button, Spinner } from "@primer/react";
 import DOMPurify from "dompurify";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
@@ -95,15 +95,15 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 46px;
-  min-height: 46px;
+  height: 40px;
+  min-height: 40px;
   background: var(--surface-hud, rgba(13, 19, 33, 0.92));
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
-  gap: 10px;
+  padding: 0 12px;
+  gap: 8px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -191,7 +191,7 @@ const ContentArea = styled.div`
   background: #0b111e;
 `;
 
-const DiagramStage = styled.div`
+const DiagramStage = styled.div<{ $selectedFmu?: string | null; $dragging?: boolean }>`
   flex: 1;
   position: relative;
   display: flex;
@@ -200,6 +200,7 @@ const DiagramStage = styled.div`
   overflow: hidden;
   background: radial-gradient(circle at 50% 45%, #111c33 0%, #0b111e 75%);
   user-select: none;
+  cursor: ${(p) => (p.$dragging ? "grabbing" : "grab")};
 
   svg {
     width: 100%;
@@ -217,6 +218,20 @@ const DiagramStage = styled.div`
     stroke: #34d399;
     stroke-width: 2.5px;
   }
+
+  ${(p) =>
+    p.$selectedFmu
+      ? `
+    .ssp-fmu-node:not([data-fmu="${p.$selectedFmu.replace(/"/g, '\\"')}"]) {
+      opacity: 0.45;
+    }
+    .ssp-fmu-node[data-fmu="${p.$selectedFmu.replace(/"/g, '\\"')}"] rect:first-of-type {
+      stroke: #34d399;
+      stroke-width: 3px;
+      filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.45));
+    }
+  `
+      : ""}
 `;
 
 const StageOverlayBottomLeft = styled.div`
@@ -400,7 +415,7 @@ function parseSsdClientModel(xml: string, viewConfig: SspViewerProps["viewConfig
     (sysMatch && getXmlAttr(sysMatch[1]!, "name")) ||
     (ssdMatch && getXmlAttr(ssdMatch[1]!, "name")) ||
     viewConfig.title ||
-    "EV_800V_Thermal_Harness";
+    "SystemStructure.ssd";
 
   const sspVersion = viewConfig.sspVersion || (ssdMatch && getXmlAttr(ssdMatch[1]!, "version")) || "1.0";
   const fmiVersion = viewConfig.fmiVersion || "3.0 Co-Simulation";
@@ -857,7 +872,11 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
   const [rawText, setRawText] = useState(viewConfig.code || "");
   const [activeTab, setActiveTab] = useState<SspTabMode>("topology");
   const [selectedFmuName, setSelectedFmuName] = useState<string | null>(null);
+  const [showInspector, setShowInspector] = useState(true);
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number; moved: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const title = viewConfig.title || viewConfig.systemName || "System Structure Package (.ssp)";
@@ -919,12 +938,14 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
   const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
   const handleStageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (dragRef.current?.moved) return;
     const target = e.target as HTMLElement | null;
     const fmuGroup = target?.closest?.("[data-fmu]") as HTMLElement | null;
     if (fmuGroup) {
       const fmuName = fmuGroup.getAttribute("data-fmu");
       if (fmuName) {
         setSelectedFmuName((prev) => (prev === fmuName ? null : fmuName));
+        setShowInspector(true);
       }
     }
   };
@@ -934,7 +955,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
       <Toolbar>
         <HeaderLeft>
           <PackageIcon size={16} fill="#10b981" />
-          <ModelTitle title={title}>{title}</ModelTitle>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge $tone="emerald">SSP {ssdModel.sspVersion}</PillBadge>
           <PillBadge $tone="cyan">FMI 3.0 CS</PillBadge>
         </HeaderLeft>
@@ -956,9 +977,17 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
             <TabButton type="button" $active={activeTab === "xml"} onClick={() => setActiveTab("xml")}>
               <CodeIcon size={12} /> SSD XML
             </TabButton>
+            <TabButton
+              type="button"
+              $active={showInspector}
+              onClick={() => setShowInspector((v) => !v)}
+              title="Toggle SSP Co-Simulation Inspector"
+            >
+              Inspector
+            </TabButton>
           </TabGroup>
 
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"
@@ -986,7 +1015,37 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
             <Spinner size="medium" />
           </Box>
         ) : activeTab === "topology" && sanitizedSvg ? (
-          <DiagramStage onClick={handleStageClick}>
+          <DiagramStage
+            $selectedFmu={selectedFmuName}
+            $dragging={dragging}
+            onClick={handleStageClick}
+            onPointerDown={(e) => {
+              if ((e.target as HTMLElement).closest("button")) return;
+              dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, moved: false };
+              setDragging(true);
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch {
+                /* ignore */
+              }
+            }}
+            onPointerMove={(e) => {
+              if (!dragRef.current || !dragging) return;
+              const dx = e.clientX - dragRef.current.startX;
+              const dy = e.clientY - dragRef.current.startY;
+              if (Math.hypot(dx, dy) > 4) dragRef.current.moved = true;
+              setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+            }}
+            onPointerUp={(e) => {
+              if (!dragging) return;
+              setDragging(false);
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              } catch {
+                /* ignore */
+              }
+            }}
+          >
             <div
               style={{
                 width: "100%",
@@ -995,14 +1054,14 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                transform: `scale(${zoom})`,
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                 transformOrigin: "center center",
-                transition: "transform 0.15s ease",
+                transition: dragging ? "none" : "transform 0.15s ease",
               }}
               dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
             />
 
-            <StageOverlayBottomLeft>
+            <StageOverlayBottomLeft onClick={(e) => e.stopPropagation()}>
               <FmuChip type="button" $selected={selectedFmuName === null} onClick={() => setSelectedFmuName(null)}>
                 All System ({ssdModel.fmus.length} FMUs)
               </FmuChip>
@@ -1011,21 +1070,30 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                   key={fmu.name}
                   type="button"
                   $selected={selectedFmuName === fmu.name}
-                  onClick={() => setSelectedFmuName((prev) => (prev === fmu.name ? null : fmu.name))}
+                  onClick={() => {
+                    setSelectedFmuName((prev) => (prev === fmu.name ? null : fmu.name));
+                    setShowInspector(true);
+                  }}
                 >
                   {fmu.name}
                 </FmuChip>
               ))}
             </StageOverlayBottomLeft>
 
-            <ZoomControls>
-              <ZoomBtn type="button" onClick={() => setZoom((z) => Math.max(0.75, Number((z - 0.15).toFixed(2))))}>
+            <ZoomControls onClick={(e) => e.stopPropagation()}>
+              <ZoomBtn type="button" onClick={() => setZoom((z) => Math.max(0.65, Number((z - 0.15).toFixed(2))))}>
                 −
               </ZoomBtn>
-              <ZoomBtn type="button" onClick={() => setZoom(1)}>
+              <ZoomBtn
+                type="button"
+                onClick={() => {
+                  setZoom(1);
+                  setPan({ x: 0, y: 0 });
+                }}
+              >
                 {Math.round(zoom * 100)}%
               </ZoomBtn>
-              <ZoomBtn type="button" onClick={() => setZoom((z) => Math.min(1.75, Number((z + 0.15).toFixed(2))))}>
+              <ZoomBtn type="button" onClick={() => setZoom((z) => Math.min(2.25, Number((z + 0.15).toFixed(2))))}>
                 +
               </ZoomBtn>
             </ZoomControls>
@@ -1221,140 +1289,142 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
           </Box>
         )}
 
-        <InspectorSidebar>
-          {selectedFmu ? (
-            <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <SectionHeader>FMU Inspector</SectionHeader>
-                <button
-                  type="button"
-                  onClick={() => setSelectedFmuName(null)}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "#38bdf8",
-                    fontSize: "11px",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                >
-                  ← System
-                </button>
-              </div>
-              <div style={{ fontSize: "13px", fontWeight: 700, color: "#f8fafc" }}>{selectedFmu.name}</div>
-              <StatItem>
-                <span>Archive</span>
-                <strong>{selectedFmu.source.split("/").pop()}</strong>
-              </StatItem>
-              <StatItem>
-                <span>Interface</span>
-                <strong>{selectedFmu.fmiType || "FMI 3.0 CS"}</strong>
-              </StatItem>
-
-              <SectionHeader>Ports ({(selectedFmu.ports ?? []).length})</SectionHeader>
-              {(selectedFmu.ports ?? []).map((pt) => (
-                <StatItem key={pt.name}>
-                  <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11px" }}>
-                    <span style={{ color: pt.kind === "input" ? "#38bdf8" : "#f59e0b" }}>
-                      {pt.kind === "input" ? "IN " : "OUT "}
-                    </span>
-                    {pt.name}
-                  </span>
-                  <strong>{pt.unit ? `${pt.type} [${pt.unit}]` : pt.type}</strong>
-                </StatItem>
-              ))}
-
-              {(selectedFmu.parameters?.length ?? 0) > 0 && (
-                <>
-                  <SectionHeader>SSV Parameters</SectionHeader>
-                  {selectedFmu.parameters!.map((pr) => (
-                    <StatItem key={pr.name}>
-                      <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11px" }}>{pr.name}</span>
-                      <strong>
-                        {pr.value}
-                        {pr.unit ? ` ${pr.unit}` : ""}
-                      </strong>
-                    </StatItem>
-                  ))}
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <SectionHeader>Co-Simulation Harness</SectionHeader>
-              <StatItem>
-                <span>System</span>
-                <strong>{ssdModel.systemName}</strong>
-              </StatItem>
-              <StatItem>
-                <span>Standard</span>
-                <strong>SSP {ssdModel.sspVersion} · FMI 3.0</strong>
-              </StatItem>
-              <StatItem>
-                <span>Master Solver</span>
-                <strong>Gauss-Seidel</strong>
-              </StatItem>
-              <StatItem>
-                <span>Comm Step (Δt)</span>
-                <strong>{ssdModel.communicationStepMs.toFixed(1)} ms (500 Hz)</strong>
-              </StatItem>
-              <StatItem>
-                <span>Experiment</span>
-                <strong>
-                  {ssdModel.startTime.toFixed(0)}s → {ssdModel.stopTime.toFixed(0)}s
-                </strong>
-              </StatItem>
-              <StatItem>
-                <span>FMU Instances</span>
-                <strong>{ssdModel.fmus.length}</strong>
-              </StatItem>
-              <StatItem>
-                <span>Causal Signals</span>
-                <strong>{ssdModel.connections.length}</strong>
-              </StatItem>
-
-              <SectionHeader>SSP Archive Contents</SectionHeader>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 5,
-                  background: "rgba(2, 6, 23, 0.55)",
-                  border: "1px solid rgba(148, 163, 184, 0.14)",
-                  borderRadius: 6,
-                  padding: "8px 10px",
-                  fontFamily: "var(--font-mono, monospace)",
-                  fontSize: "10.5px",
-                }}
-              >
-                <div style={{ color: "#6ee7b7", display: "flex", alignItems: "center", gap: 6 }}>
-                  <FileZipIcon size={12} /> SystemStructure.ssd
-                </div>
-                {ssdModel.fmus.map((f) => (
-                  <div
-                    key={f.name}
-                    onClick={() => setSelectedFmuName(f.name)}
+        {showInspector && (
+          <InspectorSidebar>
+            {selectedFmu ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <SectionHeader>FMU Inspector</SectionHeader>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFmuName(null)}
                     style={{
-                      color: "#cbd5e1",
-                      paddingLeft: 10,
+                      background: "transparent",
+                      border: "none",
+                      color: "#38bdf8",
+                      fontSize: "11px",
                       cursor: "pointer",
-                      display: "flex",
-                      justifyContent: "space-between",
+                      fontWeight: 600,
                     }}
                   >
-                    <span>├─ {f.source}</span>
-                    <span style={{ color: "#38bdf8" }}>{(f.ports ?? []).length}p</span>
-                  </div>
+                    ← System
+                  </button>
+                </div>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: "#f8fafc" }}>{selectedFmu.name}</div>
+                <StatItem>
+                  <span>Archive</span>
+                  <strong>{selectedFmu.source.split("/").pop()}</strong>
+                </StatItem>
+                <StatItem>
+                  <span>Interface</span>
+                  <strong>{selectedFmu.fmiType || "FMI 3.0 CS"}</strong>
+                </StatItem>
+
+                <SectionHeader>Ports ({(selectedFmu.ports ?? []).length})</SectionHeader>
+                {(selectedFmu.ports ?? []).map((pt) => (
+                  <StatItem key={pt.name}>
+                    <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11px" }}>
+                      <span style={{ color: pt.kind === "input" ? "#38bdf8" : "#f59e0b" }}>
+                        {pt.kind === "input" ? "IN " : "OUT "}
+                      </span>
+                      {pt.name}
+                    </span>
+                    <strong>{pt.unit ? `${pt.type} [${pt.unit}]` : pt.type}</strong>
+                  </StatItem>
                 ))}
-                {ssdModel.parameterSetNames.length > 0 && (
-                  <div style={{ color: "#fde68a", paddingLeft: 10 }}>
-                    └─ resources/{ssdModel.parameterSetNames.length}×.ssv
-                  </div>
+
+                {(selectedFmu.parameters?.length ?? 0) > 0 && (
+                  <>
+                    <SectionHeader>SSV Parameters</SectionHeader>
+                    {selectedFmu.parameters!.map((pr) => (
+                      <StatItem key={pr.name}>
+                        <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11px" }}>{pr.name}</span>
+                        <strong>
+                          {pr.value}
+                          {pr.unit ? ` ${pr.unit}` : ""}
+                        </strong>
+                      </StatItem>
+                    ))}
+                  </>
                 )}
-              </div>
-            </>
-          )}
-        </InspectorSidebar>
+              </>
+            ) : (
+              <>
+                <SectionHeader>Co-Simulation Harness</SectionHeader>
+                <StatItem>
+                  <span>System</span>
+                  <strong>{ssdModel.systemName}</strong>
+                </StatItem>
+                <StatItem>
+                  <span>Standard</span>
+                  <strong>SSP {ssdModel.sspVersion} · FMI 3.0</strong>
+                </StatItem>
+                <StatItem>
+                  <span>Master Solver</span>
+                  <strong>Gauss-Seidel</strong>
+                </StatItem>
+                <StatItem>
+                  <span>Comm Step (Δt)</span>
+                  <strong>{ssdModel.communicationStepMs.toFixed(1)} ms (500 Hz)</strong>
+                </StatItem>
+                <StatItem>
+                  <span>Experiment</span>
+                  <strong>
+                    {ssdModel.startTime.toFixed(0)}s → {ssdModel.stopTime.toFixed(0)}s
+                  </strong>
+                </StatItem>
+                <StatItem>
+                  <span>FMU Instances</span>
+                  <strong>{ssdModel.fmus.length}</strong>
+                </StatItem>
+                <StatItem>
+                  <span>Causal Signals</span>
+                  <strong>{ssdModel.connections.length}</strong>
+                </StatItem>
+
+                <SectionHeader>SSP Archive Contents</SectionHeader>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 5,
+                    background: "rgba(2, 6, 23, 0.55)",
+                    border: "1px solid rgba(148, 163, 184, 0.14)",
+                    borderRadius: 6,
+                    padding: "8px 10px",
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: "10.5px",
+                  }}
+                >
+                  <div style={{ color: "#6ee7b7", display: "flex", alignItems: "center", gap: 6 }}>
+                    <FileZipIcon size={12} /> SystemStructure.ssd
+                  </div>
+                  {ssdModel.fmus.map((f) => (
+                    <div
+                      key={f.name}
+                      onClick={() => setSelectedFmuName(f.name)}
+                      style={{
+                        color: "#cbd5e1",
+                        paddingLeft: 10,
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <span>├─ {f.source}</span>
+                      <span style={{ color: "#38bdf8" }}>{(f.ports ?? []).length}p</span>
+                    </div>
+                  ))}
+                  {ssdModel.parameterSetNames.length > 0 && (
+                    <div style={{ color: "#fde68a", paddingLeft: 10 }}>
+                      └─ resources/{ssdModel.parameterSetNames.length}×.ssv
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </InspectorSidebar>
+        )}
       </ContentArea>
     </CardWrapper>
   );

@@ -11,22 +11,37 @@ import {
   UserRepository,
 } from "./database/repositories/index.js";
 import type {
+  AccountWarningRow,
   AdminUserSummaryRow,
   ArtifactViewRow,
   AuditLogRow,
+  CanonicalEmailBlockRow,
+  ContentFilterKeyword,
+  ContentFilterMatch,
+  ContentFilterRow,
   ContentReportRow,
   DmcaNoticeRow,
+  FederationRelayRow,
+  InstanceRuleRow,
+  IpBlockRow,
   LibraryReleaseRow,
   LinkedRepoRow,
   NotificationRow,
   PackageTransferRow,
   PostMetadata,
+  PostPollOption,
+  PostPollView,
   PostRow,
+  PostVisibility,
+  ProfileField,
+  PushSubscriptionRow,
   RemoteActorProfile,
+  RemoteArtifactCacheRow,
   RemotePackageRow,
   RssFeedRow,
   SolutionReleaseRow,
   SolutionRow,
+  StaffNoteRow,
   UserArchiveData,
   UserFederationInfo,
   UserReferralRow,
@@ -34,6 +49,7 @@ import type {
   WaitlistSubmissionRow,
 } from "./database/types.js";
 import { SqliteMigrationRunner, allMigrations } from "./migrations/index.js";
+import { AnalyticsBuffer, type BatchAnalyticsPayload } from "./services/analytics-buffer.js";
 import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
 import type { ComputeProfile } from "./services/hpc/hpc-types.js";
 import {
@@ -47,6 +63,8 @@ import {
   type MailerDriverPreference,
   type SmtpTlsMode,
 } from "./services/mailer.js";
+import { S3StorageDriver } from "./storage/s3-driver.js";
+import { canonicalizeEmail, hashCanonicalEmail, ipMatchesCidr, redactEmailHint } from "./util/email-filter.js";
 import {
   decryptSecretAtRest,
   decryptTotpSecret,
@@ -340,6 +358,33 @@ export interface WebhookDeliveryRecord {
   delivered_at: string;
 }
 
+export interface RawAccountWarningRow {
+  id: number;
+  target_user_id: number;
+  actor_id: number | null;
+  action: AccountWarningRow["action"];
+  text: string;
+  report_id: number | null;
+  rule_ids: string | number[];
+  post_ids: string | number[];
+  acknowledged_at: string | null;
+  created_at: string;
+  actor_username?: string | null;
+  target_username?: string | null;
+}
+
+export interface RawContentFilterRow {
+  id: number;
+  user_id: number | null;
+  title: string;
+  context: string | ContentFilterRow["context"];
+  filter_action: ContentFilterRow["filter_action"];
+  keywords_json: string;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /**
  * SQLite-backed storage for Modelica class metadata.
  */
@@ -347,10 +392,20 @@ export class LibraryDatabase {
   readonly #db: Database.Database;
   readonly #dbPath: string;
   readonly #runner: SqliteMigrationRunner;
+  #auditChainCache: {
+    valid: boolean;
+    totalEntries: number;
+    verifiedEntries: number;
+    headHash: string | null;
+    brokenAtId?: number | undefined;
+    secretUsed?: string | undefined;
+  } | null = null;
+  #pendingBackupReplications = new Set<Promise<void>>();
   readonly referrals: ReferralRepository;
   readonly users: UserRepository;
   readonly packages: PackageRepository;
   readonly billing: BillingRepository;
+  readonly analyticsBuffer: AnalyticsBuffer;
 
   constructor(dbDir?: string) {
     const dir = dbDir ?? resolveDefaultDbDir();
@@ -365,8 +420,16 @@ export class LibraryDatabase {
 
     this.#db = new Database(dbPath);
     this.#db.pragma("journal_mode = WAL");
+    this.#db.pragma("synchronous = NORMAL");
+    this.#db.pragma("temp_store = MEMORY");
+    this.#db.pragma("mmap_size = 268435456"); // 256 MB memory-mapped I/O
+    this.#db.pragma("cache_size = -64000"); // 64 MB RAM cache
     this.#db.pragma("foreign_keys = ON");
     this.#db.pragma("busy_timeout = 5000");
+    this.#db.function("_msx_invalidate_audit_cache", () => {
+      this.#auditChainCache = null;
+      return 0;
+    });
     this.#runner = new SqliteMigrationRunner(this.#db, dbPath);
     this.#runner.runPendingSync(allMigrations);
     this.#initialize();
@@ -375,6 +438,7 @@ export class LibraryDatabase {
     this.users = new UserRepository(this.#db, this);
     this.packages = new PackageRepository(this.#db, this);
     this.billing = new BillingRepository(this.#db, this);
+    this.analyticsBuffer = new AnalyticsBuffer(this);
   }
 
   get db(): Database.Database {
@@ -394,6 +458,8 @@ export class LibraryDatabase {
   }
 
   resetDevData() {
+    this.analyticsBuffer?.clear();
+    this.#auditChainCache = null;
     this.#db.exec("PRAGMA foreign_keys = OFF;");
     const rows = this.#db
       .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
@@ -1354,56 +1420,43 @@ export class LibraryDatabase {
       })();
     } catch {}
 
-    // Sanitize any previously indexed class/component descriptions that leaked raw Modelica annotation(...) clauses
-    // or annotation-internal modifier rows (Placement, Dialog, Icon, Documentation, etc.).
-    try {
-      const stripAnno = (raw: string): string | null => {
-        const cleaned = raw
-          .replace(/\s*\bannotation\s*\([\s\S]*$/i, "")
-          .trim()
-          .replace(/^"|"$/g, "")
-          .trim();
-        return cleaned.length > 0 ? cleaned : null;
-      };
-      const dirtyClasses = this.#db
-        .prepare(
-          `SELECT id, description FROM classes WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
-        )
-        .all() as { id: number; description: string }[];
-      const dirtyComps = this.#db
-        .prepare(
-          `SELECT id, description FROM components WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
-        )
-        .all() as { id: number; description: string }[];
-      if (dirtyClasses.length > 0 || dirtyComps.length > 0) {
-        const updClass = this.#db.prepare(`UPDATE classes SET description = ? WHERE id = ?`);
-        const updComp = this.#db.prepare(`UPDATE components SET description = ? WHERE id = ?`);
-        this.#db.transaction(() => {
-          for (const row of dirtyClasses) {
-            updClass.run(stripAnno(row.description), row.id);
-          }
-          for (const row of dirtyComps) {
-            updComp.run(stripAnno(row.description), row.id);
-          }
-        })();
-      }
-      this.#db.exec(`
-        DELETE FROM modifiers
-        WHERE modifier_name IN (
-          'Placement', 'Dialog', 'Icon', 'Diagram', 'Documentation',
-          'Evaluate', 'HideResult', 'choices', 'DynamicSelect',
-          'Line', 'Text', 'Rectangle', 'Ellipse', 'Polygon', 'Bitmap',
-          'coordinateSystem', 'graphics', 'smoothOrder', 'version'
-        );
-        UPDATE components SET causality = NULL WHERE type_name = 'import' AND causality = 'connector';
-      `);
-    } catch {}
-
     try {
       this.#db.exec(`ALTER TABLE organizations ADD COLUMN credit_balance REAL NOT NULL DEFAULT 0.0`);
     } catch {}
     try {
       this.#db.exec(`ALTER TABLE organizations ADD COLUMN total_spent REAL NOT NULL DEFAULT 0.0`);
+    } catch {}
+    try {
+      this.#db.exec(`ALTER TABLE waitlist_submissions ADD COLUMN rejection_reason TEXT`);
+    } catch {}
+    try {
+      this.#db.exec(`ALTER TABLE instance_invites ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0`);
+    } catch {}
+    try {
+      this.#db.exec(`ALTER TABLE instance_invites ADD COLUMN uses_count INTEGER NOT NULL DEFAULT 0`);
+    } catch {}
+    try {
+      this.#db.exec(`ALTER TABLE instance_invites ADD COLUMN revoked_at TEXT`);
+    } catch {}
+    try {
+      this.#db.exec(`
+        UPDATE instance_invites SET used_count = uses_count WHERE used_count = 0 AND uses_count > 0;
+        UPDATE instance_invites SET uses_count = used_count WHERE uses_count = 0 AND used_count > 0;
+      `);
+    } catch {}
+    try {
+      this.#db.exec(`
+        CREATE TEMP TRIGGER IF NOT EXISTS _msx_audit_update_trg
+        AFTER UPDATE ON audit_logs
+        BEGIN
+          SELECT _msx_invalidate_audit_cache();
+        END;
+        CREATE TEMP TRIGGER IF NOT EXISTS _msx_audit_delete_trg
+        AFTER DELETE ON audit_logs
+        BEGIN
+          SELECT _msx_invalidate_audit_cache();
+        END;
+      `);
     } catch {}
   }
 
@@ -1447,7 +1500,12 @@ export class LibraryDatabase {
     const existing = this.#db.prepare(`SELECT id FROM users WHERE actor_url = ?`).get(actorUrl) as
       | { id: number }
       | undefined;
-    if (existing) return existing;
+    if (existing) {
+      if (profileData) {
+        this.updateRemoteActorProfile(actorUrl, profileData);
+      }
+      return existing;
+    }
 
     // Use preferredUsername or fallback
     const username = profileData?.preferredUsername || actorUrl.split("/").pop();
@@ -1460,9 +1518,24 @@ export class LibraryDatabase {
     const sharedInbox =
       profileData?.endpoints?.sharedInbox || profileData?.sharedInbox || profileData?.endpoints?.shared_inbox || null;
 
+    const discoverable = profileData?.["discoverable"] === false ? 0 : 1;
+    const indexable = profileData?.["indexable"] === false ? 0 : 1;
+    const locked = profileData?.["manuallyApprovesFollowers"] === true ? 1 : 0;
+    const alsoKnownAs = Array.isArray(profileData?.["alsoKnownAs"]) ? JSON.stringify(profileData["alsoKnownAs"]) : "[]";
+    const movedTo = typeof profileData?.["movedTo"] === "string" ? profileData["movedTo"] : null;
+    const rawAttachments = Array.isArray(profileData?.["attachment"]) ? profileData["attachment"] : [];
+    const profileFields: ProfileField[] = rawAttachments
+      .filter((a): a is Record<string, unknown> => Boolean(a && typeof a === "object" && a["type"] === "PropertyValue"))
+      .map((a) => ({
+        name: String(a["name"] || ""),
+        value: String(a["value"] || ""),
+        verified_at: typeof a["verified_at"] === "string" ? a["verified_at"] : null,
+      }))
+      .slice(0, 8);
+
     const result = this.#db
       .prepare(
-        `INSERT INTO users (username, email, account_type, display_name, bio, avatar_url, rsa_private_key, rsa_public_key, ed25519_private_key, ed25519_public_key, actor_url, inbox_url, outbox_url, remote_domain, shared_inbox_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (username, email, account_type, display_name, bio, avatar_url, rsa_private_key, rsa_public_key, ed25519_private_key, ed25519_public_key, actor_url, inbox_url, outbox_url, remote_domain, shared_inbox_url, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         remoteUsername,
@@ -1480,8 +1553,96 @@ export class LibraryDatabase {
         profileData?.outbox || `${actorUrl}/outbox`,
         domain,
         sharedInbox,
+        discoverable,
+        indexable,
+        locked,
+        alsoKnownAs,
+        movedTo,
+        JSON.stringify(profileFields),
       );
     return { id: Number(result.lastInsertRowid) };
+  }
+
+  updateRemoteActorProfile(actorUrl: string, profileData: RemoteActorProfile): boolean {
+    const existing = this.#db.prepare(`SELECT id FROM users WHERE actor_url = ?`).get(actorUrl) as
+      | { id: number }
+      | undefined;
+    if (!existing) return false;
+
+    const updates: string[] = [];
+    const params: unknown[] = [];
+
+    if (typeof profileData.name === "string") {
+      updates.push("display_name = ?");
+      params.push(profileData.name);
+    }
+    if (typeof profileData.summary === "string") {
+      updates.push("bio = ?");
+      params.push(profileData.summary);
+    }
+    if (profileData.icon?.url) {
+      updates.push("avatar_url = ?");
+      params.push(profileData.icon.url);
+    }
+    const imageObj = profileData["image"] as { url?: string } | undefined;
+    if (imageObj?.url) {
+      updates.push("banner_url = ?");
+      params.push(imageObj.url);
+    }
+    if (typeof profileData.inbox === "string") {
+      updates.push("inbox_url = ?");
+      params.push(profileData.inbox);
+    }
+    const sharedInbox =
+      profileData.endpoints?.sharedInbox || profileData.sharedInbox || profileData.endpoints?.shared_inbox;
+    if (typeof sharedInbox === "string") {
+      updates.push("shared_inbox_url = ?");
+      params.push(sharedInbox);
+    }
+    if (typeof profileData["discoverable"] === "boolean") {
+      updates.push("discoverable = ?");
+      params.push(profileData["discoverable"] ? 1 : 0);
+    }
+    if (typeof profileData["indexable"] === "boolean") {
+      updates.push("indexable = ?");
+      params.push(profileData["indexable"] ? 1 : 0);
+    }
+    if (typeof profileData["manuallyApprovesFollowers"] === "boolean") {
+      updates.push("locked = ?");
+      params.push(profileData["manuallyApprovesFollowers"] ? 1 : 0);
+    }
+    if (Array.isArray(profileData["alsoKnownAs"])) {
+      updates.push("also_known_as = ?");
+      params.push(JSON.stringify(profileData["alsoKnownAs"].map(String)));
+    }
+    if (typeof profileData["movedTo"] === "string") {
+      updates.push("moved_to_actor_url = ?");
+      params.push(profileData["movedTo"]);
+    }
+    if (Array.isArray(profileData["attachment"])) {
+      const profileFields: ProfileField[] = profileData["attachment"]
+        .filter((a): a is Record<string, unknown> =>
+          Boolean(a && typeof a === "object" && a["type"] === "PropertyValue"),
+        )
+        .map((a) => ({
+          name: String(a["name"] || ""),
+          value: String(a["value"] || ""),
+          verified_at: typeof a["verified_at"] === "string" ? a["verified_at"] : null,
+        }))
+        .slice(0, 8);
+      updates.push("profile_fields = ?");
+      params.push(JSON.stringify(profileFields));
+    }
+    const pubKeyObj = profileData["publicKey"] as { publicKeyPem?: string } | undefined;
+    if (typeof pubKeyObj?.publicKeyPem === "string") {
+      updates.push("rsa_public_key = ?");
+      params.push(pubKeyObj.publicKeyPem);
+    }
+
+    if (updates.length === 0) return false;
+    params.push(existing.id);
+    const res = this.#db.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+    return res.changes > 0;
   }
 
   #generateRSAKeys() {
@@ -2258,7 +2419,7 @@ export class LibraryDatabase {
   getUserByEmail(email: string): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE email = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE email = ?`,
       )
       .get(email) as UserRow | undefined;
   }
@@ -2266,7 +2427,7 @@ export class LibraryDatabase {
   getUserByUsername(username: string): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE username = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE username = ?`,
       )
       .get(username) as UserRow | undefined;
   }
@@ -2274,9 +2435,17 @@ export class LibraryDatabase {
   getUserById(id: number): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes FROM users WHERE id = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE id = ?`,
       )
       .get(id) as UserRow | undefined;
+  }
+
+  getUserByActorUrl(actorUrl: string): UserRow | undefined {
+    return this.#db
+      .prepare(
+        `SELECT id, username, email, account_type, avatar_url, banner_url, display_name, bio, status, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, ed25519_public_key, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE actor_url = ?`,
+      )
+      .get(actorUrl) as UserRow | undefined;
   }
 
   setUserAccountType(userId: number, accountType: string): void {
@@ -2311,7 +2480,7 @@ export class LibraryDatabase {
   getUserFederationInfo(userId: number): UserFederationInfo | undefined {
     const row = this.#db
       .prepare(
-        `SELECT id, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, rsa_private_key FROM users WHERE id = ?`,
+        `SELECT id, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, rsa_private_key, ed25519_public_key, ed25519_private_key, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE id = ?`,
       )
       .get(userId) as UserFederationInfo | undefined;
     if (!row) return undefined;
@@ -2323,12 +2492,20 @@ export class LibraryDatabase {
     return row;
   }
 
-  getRemoteFollowersInboxes(authorId: number): { inbox_url: string }[] {
+  getRemoteFollowersInboxes(authorId: number): {
+    inbox_url: string;
+    shared_inbox_url?: string | null | undefined;
+    remote_domain?: string | null | undefined;
+  }[] {
     return this.#db
       .prepare(
-        `SELECT u.inbox_url FROM follows f JOIN users u ON f.follower_id = u.id WHERE f.following_id = ? AND u.remote_domain IS NOT NULL`,
+        `SELECT u.inbox_url, u.shared_inbox_url, u.remote_domain FROM follows f JOIN users u ON f.follower_id = u.id WHERE f.following_id = ? AND u.remote_domain IS NOT NULL AND (f.state = 'accepted' OR f.state IS NULL)`,
       )
-      .all(authorId) as { inbox_url: string }[];
+      .all(authorId) as {
+      inbox_url: string;
+      shared_inbox_url?: string | null | undefined;
+      remote_domain?: string | null | undefined;
+    }[];
   }
 
   getTotalUsersCount(): number {
@@ -2374,9 +2551,17 @@ export class LibraryDatabase {
       .prepare(
         `
       SELECT u.id, u.username, u.display_name, u.bio, u.avatar_url, u.banner_url, u.location, u.website, u.created_at, u.account_type, u.owner_id,
+        u.actor_url, u.remote_domain,
+        COALESCE(u.discoverable, 1) as discoverable,
+        COALESCE(u.indexable, 1) as indexable,
+        COALESCE(u.locked, 0) as locked,
+        COALESCE(u.also_known_as, '[]') as also_known_as,
+        u.moved_to_actor_url,
+        COALESCE(u.profile_fields, '[]') as profile_fields,
+        COALESCE(u.default_post_visibility, 'public') as default_post_visibility,
         (SELECT username FROM users WHERE id = u.owner_id) as owner_username,
-        (SELECT COUNT(*) FROM follows WHERE following_id = u.id) as follower_count,
-        (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) as following_count,
+        (SELECT COUNT(*) FROM follows WHERE following_id = u.id AND (state = 'accepted' OR state IS NULL)) as follower_count,
+        (SELECT COUNT(*) FROM follows WHERE follower_id = u.id AND (state = 'accepted' OR state IS NULL)) as following_count,
         (SELECT COUNT(*) FROM posts WHERE author_id = u.id) as post_count
       FROM users u WHERE u.username = ?
     `,
@@ -2393,13 +2578,42 @@ export class LibraryDatabase {
       website?: string | undefined;
       avatar_url?: string | undefined;
       banner_url?: string | undefined;
+      discoverable?: boolean | number | undefined;
+      indexable?: boolean | number | undefined;
+      locked?: boolean | number | undefined;
+      also_known_as?: string | string[] | undefined;
+      moved_to_actor_url?: string | null | undefined;
+      profile_fields?: string | ProfileField[] | undefined;
+      default_post_visibility?: PostVisibility | string | undefined;
     },
   ) {
-    const ALLOWED_PROFILE_COLUMNS = new Set(["display_name", "bio", "location", "website", "avatar_url", "banner_url"]);
+    const ALLOWED_PROFILE_COLUMNS = new Set([
+      "display_name",
+      "bio",
+      "location",
+      "website",
+      "avatar_url",
+      "banner_url",
+      "discoverable",
+      "indexable",
+      "locked",
+      "also_known_as",
+      "moved_to_actor_url",
+      "profile_fields",
+      "default_post_visibility",
+    ]);
     const fields = Object.entries(profile).filter(([k, v]) => ALLOWED_PROFILE_COLUMNS.has(k) && v !== undefined);
     if (fields.length === 0) return;
     const setClause = fields.map(([k]) => `${k} = ?`).join(", ");
-    const values = fields.map(([, v]) => v);
+    const values = fields.map(([k, v]) => {
+      if (k === "discoverable" || k === "indexable" || k === "locked") {
+        return v ? 1 : 0;
+      }
+      if ((k === "also_known_as" || k === "profile_fields") && typeof v !== "string") {
+        return JSON.stringify(v);
+      }
+      return v;
+    });
     this.#db.prepare(`UPDATE users SET ${setClause} WHERE id = ?`).run(...values, userId);
   }
 
@@ -2543,7 +2757,10 @@ export class LibraryDatabase {
   followUser(followerId: number, followingId: number, state: "pending" | "accepted" = "accepted") {
     try {
       this.#db
-        .prepare(`INSERT INTO follows (follower_id, following_id, state) VALUES (?, ?, ?)`)
+        .prepare(
+          `INSERT INTO follows (follower_id, following_id, state) VALUES (?, ?, ?)
+           ON CONFLICT(follower_id, following_id) DO UPDATE SET state = excluded.state`,
+        )
         .run(followerId, followingId, state);
     } catch {
       // ignore unique constraint
@@ -2556,7 +2773,16 @@ export class LibraryDatabase {
 
   isFollowing(followerId: number, followingId: number): boolean {
     const res = this.#db
-      .prepare(`SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?`)
+      .prepare(
+        `SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ? AND (state = 'accepted' OR state IS NULL)`,
+      )
+      .get(followerId, followingId);
+    return !!res;
+  }
+
+  hasPendingFollowRequest(followerId: number, followingId: number): boolean {
+    const res = this.#db
+      .prepare(`SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ? AND state = 'pending'`)
       .get(followerId, followingId);
     return !!res;
   }
@@ -2565,10 +2791,10 @@ export class LibraryDatabase {
     const query = currentUserId
       ? `
         SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type, u.actor_url, u.remote_domain, u.inbox_url,
-          EXISTS(SELECT 1 FROM follows WHERE follower_id = ? AND following_id = u.id) as is_following
+          EXISTS(SELECT 1 FROM follows WHERE follower_id = ? AND following_id = u.id AND (state = 'accepted' OR state IS NULL)) as is_following
         FROM follows f
         JOIN users u ON f.follower_id = u.id
-        WHERE f.following_id = ?
+        WHERE f.following_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
         ORDER BY f.created_at DESC
       `
       : `
@@ -2576,7 +2802,7 @@ export class LibraryDatabase {
           0 as is_following
         FROM follows f
         JOIN users u ON f.follower_id = u.id
-        WHERE f.following_id = ?
+        WHERE f.following_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
         ORDER BY f.created_at DESC
       `;
     return currentUserId
@@ -2587,19 +2813,19 @@ export class LibraryDatabase {
   getUserFollowing(userId: number, currentUserId?: number): UserRow[] {
     const query = currentUserId
       ? `
-        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type,
-          EXISTS(SELECT 1 FROM follows WHERE follower_id = ? AND following_id = u.id) as is_following
+        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type, u.actor_url, u.remote_domain,
+          EXISTS(SELECT 1 FROM follows WHERE follower_id = ? AND following_id = u.id AND (state = 'accepted' OR state IS NULL)) as is_following
         FROM follows f
         JOIN users u ON f.following_id = u.id
-        WHERE f.follower_id = ?
+        WHERE f.follower_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
         ORDER BY f.created_at DESC
       `
       : `
-        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type,
+        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio, u.account_type, u.actor_url, u.remote_domain,
           0 as is_following
         FROM follows f
         JOIN users u ON f.following_id = u.id
-        WHERE f.follower_id = ?
+        WHERE f.follower_id = ? AND (f.state = 'accepted' OR f.state IS NULL)
         ORDER BY f.created_at DESC
       `;
     return currentUserId
@@ -2614,7 +2840,10 @@ export class LibraryDatabase {
           `
         SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio
         FROM users u
-        WHERE u.id != ? AND u.id NOT IN (SELECT following_id FROM follows WHERE follower_id = ?)
+        WHERE u.id != ?
+          AND COALESCE(u.discoverable, 1) = 1
+          AND COALESCE(u.status, 'active') = 'active'
+          AND u.id NOT IN (SELECT following_id FROM follows WHERE follower_id = ?)
         ORDER BY RANDOM() LIMIT ?
       `,
         )
@@ -2625,6 +2854,8 @@ export class LibraryDatabase {
           `
         SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio
         FROM users u
+        WHERE COALESCE(u.discoverable, 1) = 1
+          AND COALESCE(u.status, 'active') = 'active'
         ORDER BY RANDOM() LIMIT ?
       `,
         )
@@ -2683,18 +2914,54 @@ export class LibraryDatabase {
     metadata?: PostMetadata | string | null,
     replyVisibility?: string,
     isSilenced?: boolean | number,
+    isSensitiveOrVisibility?: boolean | number | PostVisibility | string,
+    contentWarning?: string | null,
+    visibility?: PostVisibility | string,
   ): {
     id: number;
+    visibility: PostVisibility;
     autoFiltered?: boolean;
     autoFilterAction?: string;
     is_sensitive?: number;
     content_warning?: string | null;
   } {
+    const resolvedVisibilityArg =
+      visibility ?? (typeof isSensitiveOrVisibility === "string" ? isSensitiveOrVisibility : undefined);
+    const resolvedIsSensitive =
+      typeof isSensitiveOrVisibility === "boolean" || typeof isSensitiveOrVisibility === "number"
+        ? isSensitiveOrVisibility
+          ? 1
+          : 0
+        : contentWarning
+          ? 1
+          : 0;
+    let effectiveVisibility: PostVisibility = "public";
+    if (
+      resolvedVisibilityArg === "public" ||
+      resolvedVisibilityArg === "unlisted" ||
+      resolvedVisibilityArg === "followers" ||
+      resolvedVisibilityArg === "direct"
+    ) {
+      effectiveVisibility = resolvedVisibilityArg;
+    } else {
+      try {
+        const userVis = this.#db.prepare(`SELECT default_post_visibility FROM users WHERE id = ?`).get(authorId) as
+          | { default_post_visibility?: string | null }
+          | undefined;
+        const dv = userVis?.default_post_visibility;
+        if (dv === "public" || dv === "unlisted" || dv === "followers" || dv === "direct") {
+          effectiveVisibility = dv;
+        }
+      } catch {
+        effectiveVisibility = "public";
+      }
+    }
+
     const res = this.#db
       .prepare(
         `
-      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, ap_id, url, metadata, reply_visibility, is_silenced, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'everyone'), ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
+      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, ap_id, url, metadata, visibility, reply_visibility, is_silenced, is_sensitive, content_warning, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'everyone'), ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
     `,
       )
       .run(
@@ -2707,8 +2974,11 @@ export class LibraryDatabase {
         apId ?? null,
         url ?? null,
         metadata ? (typeof metadata === "string" ? metadata : JSON.stringify(metadata)) : null,
+        effectiveVisibility,
         replyVisibility ?? "everyone",
         isSilenced ? 1 : 0,
+        resolvedIsSensitive,
+        contentWarning ?? null,
         createdAt ?? null,
         updatedAt ?? null,
       );
@@ -2767,6 +3037,7 @@ export class LibraryDatabase {
               autoFilterAction: action,
               is_sensitive: isSensitive,
               content_warning: cwText,
+              visibility: effectiveVisibility,
             };
           }
         }
@@ -2775,7 +3046,7 @@ export class LibraryDatabase {
       }
     }
 
-    return { id: postId };
+    return { id: postId, visibility: effectiveVisibility };
   }
 
   updatePostArtifactViewId(postId: number, artifactViewId: number) {
@@ -2824,7 +3095,88 @@ export class LibraryDatabase {
       .run(nextContent ?? null, nextArtifactViewId ?? null, nextMetadata ?? null, nextReplyVisibility, postId);
   }
 
+  flushAnalyticsBatch(batch: BatchAnalyticsPayload): void {
+    if (
+      batch.postViews.length === 0 &&
+      batch.postLocationViews.length === 0 &&
+      batch.pageViews.length === 0 &&
+      batch.pageLocationViews.length === 0 &&
+      batch.packageDownloads.length === 0
+    ) {
+      return;
+    }
+
+    const tx = this.#db.transaction(() => {
+      const postExistsStmt = this.#db.prepare(`SELECT 1 FROM posts WHERE id = ?`);
+
+      if (batch.postViews.length > 0) {
+        const stmt = this.#db.prepare(`UPDATE posts SET view_count = view_count + ? WHERE id = ?`);
+        for (const [postId, delta] of batch.postViews) {
+          if (!postExistsStmt.get(postId)) continue;
+          stmt.run(delta, postId);
+        }
+      }
+
+      if (batch.postLocationViews.length > 0) {
+        const stmt = this.#db.prepare(`
+          INSERT INTO post_location_stats (post_id, country_code, region_code, view_count)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(post_id, country_code, COALESCE(region_code, ''))
+          DO UPDATE SET view_count = post_location_stats.view_count + excluded.view_count
+        `);
+        for (const item of batch.postLocationViews) {
+          if (!postExistsStmt.get(item.postId)) continue;
+          stmt.run(item.postId, item.countryCode, item.regionCode, item.count);
+        }
+      }
+
+      if (batch.pageViews.length > 0) {
+        const stmt = this.#db.prepare(`
+          INSERT INTO page_views_daily (view_date, surface, path, views_count, unique_visitors)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(view_date, surface, path) DO UPDATE SET
+            views_count = page_views_daily.views_count + excluded.views_count,
+            unique_visitors = page_views_daily.unique_visitors + excluded.unique_visitors
+        `);
+        for (const item of batch.pageViews) {
+          stmt.run(item.viewDate, item.surface, item.path, item.views, item.uniques);
+        }
+      }
+
+      if (batch.pageLocationViews.length > 0) {
+        const stmt = this.#db.prepare(`
+          INSERT INTO page_location_stats_daily (view_date, surface, country_code, region_code, views_count)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(view_date, surface, country_code, region_code) DO UPDATE SET
+            views_count = page_location_stats_daily.views_count + excluded.views_count
+        `);
+        for (const item of batch.pageLocationViews) {
+          stmt.run(item.viewDate, item.surface, item.countryCode, item.regionCode, item.count);
+        }
+      }
+
+      if (batch.packageDownloads.length > 0) {
+        const stmt = this.#db.prepare(`
+          INSERT INTO package_downloads_daily (library_name, library_version, download_date, downloads_count)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(library_name, library_version, download_date)
+          DO UPDATE SET downloads_count = package_downloads_daily.downloads_count + excluded.downloads_count
+        `);
+        for (const item of batch.packageDownloads) {
+          stmt.run(item.libraryName, item.libraryVersion, item.downloadDate, item.count);
+        }
+      }
+    });
+
+    tx();
+  }
+
   incrementPostView(postId: number, countryCode?: string, regionCode?: string) {
+    if (this.analyticsBuffer) {
+      this.analyticsBuffer.incrementPostView(postId, countryCode, regionCode);
+      return;
+    }
+
     this.#db.prepare(`UPDATE posts SET view_count = view_count + 1 WHERE id = ?`).run(postId);
 
     const normCountry = countryCode ? countryCode.trim().toUpperCase() : "";
@@ -2844,6 +3196,9 @@ export class LibraryDatabase {
   }
 
   getPostLocationStats(postId: number): { country: string; views: number }[] {
+    if (this.analyticsBuffer?.hasPostPending(postId)) {
+      this.analyticsBuffer.flushSync();
+    }
     return this.#db
       .prepare(
         `
@@ -2858,6 +3213,9 @@ export class LibraryDatabase {
   }
 
   getPostRegionStats(postId: number): { country: string; region: string; views: number }[] {
+    if (this.analyticsBuffer?.hasPostPending(postId)) {
+      this.analyticsBuffer.flushSync();
+    }
     return this.#db
       .prepare(
         `
@@ -2879,6 +3237,11 @@ export class LibraryDatabase {
     regionCode?: string | undefined;
     date?: string | undefined;
   }): void {
+    if (this.analyticsBuffer) {
+      this.analyticsBuffer.recordPageView(params);
+      return;
+    }
+
     const viewDate =
       params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : new Date().toISOString().slice(0, 10);
     const surface: "web" | "docs" = params.surface === "docs" ? "docs" : "web";
@@ -2945,6 +3308,7 @@ export class LibraryDatabase {
     locationStats: { country: string; views: number }[];
     regionStats: { country: string; region: string; views: number }[];
   } {
+    this.analyticsBuffer?.flushSync();
     const safeDays = Math.min(365, Math.max(1, Math.floor(days)));
     const cutoff = new Date(Date.now() - (safeDays - 1) * 86_400_000).toISOString().slice(0, 10);
     const hasSurface = surface === "web" || surface === "docs";
@@ -3146,6 +3510,11 @@ export class LibraryDatabase {
       }
       p.artifact_views = viewsMap;
     }
+    p.visibility = ((p as { visibility?: string }).visibility as PostVisibility) || "public";
+    const poll = this.getPostPoll(p.id, currentUserId);
+    if (poll) {
+      p.poll = poll;
+    }
     if (depth < 2) {
       if (p.repost_of_id && p.repost_of_id !== p.id) {
         p.repost_post = this.getPost(p.repost_of_id, currentUserId, depth + 1);
@@ -3158,6 +3527,9 @@ export class LibraryDatabase {
   }
 
   getPost(id: number, currentUserId?: number, depth: number = 0): PostRow | null {
+    if (this.analyticsBuffer?.hasPostPending(id)) {
+      this.analyticsBuffer.flushSync();
+    }
     const uid = currentUserId || -1;
     const p = this.#db
       .prepare(
@@ -3182,6 +3554,7 @@ export class LibraryDatabase {
   getReplies(postId: number, currentUserId?: number, limit: number = 50): PostRow[] {
     const uid = currentUserId || -1;
     const modFilter = this.buildMuteBlockFilter(currentUserId);
+    const visFilter = this.buildVisibilityFilter(currentUserId, "thread");
     const posts = this.#db
       .prepare(
         `
@@ -3194,15 +3567,17 @@ export class LibraryDatabase {
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE p.reply_to_id = ?
+        ${visFilter.sql}
         ${modFilter.sql}
       ORDER BY p.created_at ASC
       LIMIT ?
     `,
       )
-      .all(uid, uid, uid, postId, ...modFilter.params, limit) as (Omit<PostRow, "metadata"> & {
+      .all(uid, uid, uid, postId, ...visFilter.params, ...modFilter.params, limit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    return posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    return this.applyContentFiltersToPosts(hydrated, "thread", currentUserId);
   }
 
   getQuotes(postId: number, currentUserId?: number, limit: number = 50): PostRow[] {
@@ -3359,6 +3734,41 @@ export class LibraryDatabase {
     };
   }
 
+  private buildVisibilityFilter(
+    currentUserId?: number,
+    scope: "home" | "following" | "public" | "outbox" | "profile" | "thread" = "public",
+  ): { sql: string; params: (string | number)[] } {
+    if (scope === "public") {
+      return {
+        sql: " AND COALESCE(p.visibility, 'public') = 'public'",
+        params: [],
+      };
+    }
+    if (scope === "outbox") {
+      return {
+        sql: " AND COALESCE(p.visibility, 'public') IN ('public', 'unlisted')",
+        params: [],
+      };
+    }
+    if (!currentUserId || currentUserId <= 0) {
+      return {
+        sql: " AND COALESCE(p.visibility, 'public') IN ('public', 'unlisted')",
+        params: [],
+      };
+    }
+    return {
+      sql: ` AND (
+        COALESCE(p.visibility, 'public') IN ('public', 'unlisted')
+        OR p.author_id = ?
+        OR (COALESCE(p.visibility, 'public') = 'followers' AND p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?))
+        OR (COALESCE(p.visibility, 'public') = 'direct' AND EXISTS (
+          SELECT 1 FROM users uv WHERE uv.id = ? AND LOWER(COALESCE(p.content, '')) LIKE '%@' || LOWER(uv.username) || '%'
+        ))
+      )`,
+      params: [currentUserId, currentUserId, currentUserId],
+    };
+  }
+
   getHomeTimeline(
     userId: number,
     limit: number = 20,
@@ -3378,8 +3788,17 @@ export class LibraryDatabase {
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
     const modFilter = this.buildMuteBlockFilter(userId);
+    const visFilter = this.buildVisibilityFilter(userId, "home");
     const baseParams = [userId, userId, userId, userId, userId, userId, userId, userId, userId, userId];
-    const allParams = [...baseParams, ...artFilter.params, ...tagFilter.params, ...modFilter.params, limit, offset];
+    const allParams = [
+      ...baseParams,
+      ...artFilter.params,
+      ...tagFilter.params,
+      ...visFilter.params,
+      ...modFilter.params,
+      limit,
+      offset,
+    ];
 
     const posts = this.#db
       .prepare(
@@ -3412,15 +3831,19 @@ export class LibraryDatabase {
           p.author_id = ? OR 
           p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR
           p.author_id IN (SELECT f.user_id FROM user_rss_subscriptions s JOIN rss_feeds f ON s.rss_feed_id = f.id WHERE s.user_id = ?) OR
-          EXISTS (
-            SELECT 1 FROM post_topics pt
-            JOIN trending_topics t ON pt.topic_id = t.id
-            JOIN user_topics ut ON ut.concept = t.concept AND ut.user_id = ? AND ut.is_active = 1
-            WHERE pt.post_id = p.id
+          (
+            COALESCE(p.visibility, 'public') = 'public' AND
+            EXISTS (
+              SELECT 1 FROM post_topics pt
+              JOIN trending_topics t ON pt.topic_id = t.id
+              JOIN user_topics ut ON ut.concept = t.concept AND ut.user_id = ? AND ut.is_active = 1
+              WHERE pt.post_id = p.id
+            )
           )
         )
         ${artFilter.sql}
         ${tagFilter.sql}
+        ${visFilter.sql}
         ${modFilter.sql}
       ORDER BY total_score DESC, p.created_at DESC
       LIMIT ? OFFSET ?
@@ -3429,7 +3852,8 @@ export class LibraryDatabase {
       .all(...allParams) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    return posts.map((p) => this.hydratePost(p, userId)!);
+    const hydrated = posts.map((p) => this.hydratePost(p, userId)!);
+    return this.applyContentFiltersToPosts(hydrated, "home", userId);
   }
 
   getFollowingTimeline(
@@ -3444,8 +3868,17 @@ export class LibraryDatabase {
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
     const modFilter = this.buildMuteBlockFilter(userId);
+    const visFilter = this.buildVisibilityFilter(userId, "following");
     const baseParams = [userId, userId, userId, userId, userId, userId];
-    const allParams = [...baseParams, ...artFilter.params, ...tagFilter.params, ...modFilter.params, limit, offset];
+    const allParams = [
+      ...baseParams,
+      ...artFilter.params,
+      ...tagFilter.params,
+      ...visFilter.params,
+      ...modFilter.params,
+      limit,
+      offset,
+    ];
 
     const posts = this.#db
       .prepare(
@@ -3476,6 +3909,7 @@ export class LibraryDatabase {
       )
         ${artFilter.sql}
         ${tagFilter.sql}
+        ${visFilter.sql}
         ${modFilter.sql}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
@@ -3484,7 +3918,8 @@ export class LibraryDatabase {
       .all(...allParams) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    return posts.map((p) => this.hydratePost(p, userId)!);
+    const hydrated = posts.map((p) => this.hydratePost(p, userId)!);
+    return this.applyContentFiltersToPosts(hydrated, "home", userId);
   }
 
   getExploreTimeline(
@@ -3498,7 +3933,18 @@ export class LibraryDatabase {
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
     const modFilter = this.buildMuteBlockFilter(currentUserId);
-    const allParams = [uid, uid, uid, ...artFilter.params, ...tagFilter.params, ...modFilter.params, limit, offset];
+    const visFilter = this.buildVisibilityFilter(currentUserId, "public");
+    const allParams = [
+      uid,
+      uid,
+      uid,
+      ...artFilter.params,
+      ...tagFilter.params,
+      ...visFilter.params,
+      ...modFilter.params,
+      limit,
+      offset,
+    ];
 
     const posts = this.#db
       .prepare(
@@ -3522,6 +3968,7 @@ export class LibraryDatabase {
       WHERE p.reply_to_id IS NULL AND (p.is_silenced IS NULL OR p.is_silenced = 0)
         ${artFilter.sql}
         ${tagFilter.sql}
+        ${visFilter.sql}
         ${modFilter.sql}
       ORDER BY (engagement_score / (CAST((julianday('now') - julianday(p.created_at)) * 24 as REAL) + 2)) DESC, p.created_at DESC
       LIMIT ? OFFSET ?
@@ -3531,7 +3978,8 @@ export class LibraryDatabase {
       metadata?: PostMetadata | string | null | undefined;
     })[];
 
-    return posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    return this.applyContentFiltersToPosts(hydrated, "public", currentUserId);
   }
 
   getFederatedTimeline(
@@ -3545,7 +3993,18 @@ export class LibraryDatabase {
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
     const modFilter = this.buildMuteBlockFilter(currentUserId);
-    const allParams = [uid, uid, uid, ...artFilter.params, ...tagFilter.params, ...modFilter.params, limit, offset];
+    const visFilter = this.buildVisibilityFilter(currentUserId, "public");
+    const allParams = [
+      uid,
+      uid,
+      uid,
+      ...artFilter.params,
+      ...tagFilter.params,
+      ...visFilter.params,
+      ...modFilter.params,
+      limit,
+      offset,
+    ];
 
     const posts = this.#db
       .prepare(
@@ -3564,6 +4023,7 @@ export class LibraryDatabase {
         AND p.reply_to_id IS NULL AND (p.is_silenced IS NULL OR p.is_silenced = 0)
         ${artFilter.sql}
         ${tagFilter.sql}
+        ${visFilter.sql}
         ${modFilter.sql}
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
@@ -3573,7 +4033,8 @@ export class LibraryDatabase {
       metadata?: PostMetadata | string | null | undefined;
     })[];
 
-    return posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    return this.applyContentFiltersToPosts(hydrated, "public", currentUserId);
   }
 
   getUserTimeline(username: string, currentUserId?: number, limit: number = 20, type?: string): PostRow[] {
@@ -3587,6 +4048,7 @@ export class LibraryDatabase {
     }
 
     const uid = currentUserId || -1;
+    const visFilter = this.buildVisibilityFilter(currentUserId, "profile");
     const posts = this.#db
       .prepare(
         `
@@ -3599,14 +4061,16 @@ export class LibraryDatabase {
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
       FROM posts p JOIN users u ON p.author_id = u.id
       WHERE u.username = ? ${typeFilter}
+        ${visFilter.sql}
       ORDER BY p.created_at DESC
       LIMIT ?
     `,
       )
-      .all(uid, uid, uid, username, limit) as (Omit<PostRow, "metadata"> & {
+      .all(uid, uid, uid, username, ...visFilter.params, limit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    return posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    return this.applyContentFiltersToPosts(hydrated, "account", currentUserId);
   }
 
   blockUser(blockerId: number, blockedId: number): void {
@@ -4190,29 +4654,102 @@ export class LibraryDatabase {
     domain: string;
     tier: "allow" | "silence" | "suspend";
     reason?: string | undefined;
+    rejectMedia: boolean;
+    rejectReports: boolean;
+    obfuscate: boolean;
+    publicComment?: string | null | undefined;
+    privateComment?: string | null | undefined;
+    unavailableSince?: string | null | undefined;
+    consecutiveFailures: number;
+    lastSeenAt?: string | null | undefined;
   } {
     const cleanDomain = domain.toLowerCase().trim();
     const row = this.#db
-      .prepare(`SELECT domain, tier, reason FROM federation_domains WHERE domain = ?`)
-      .get(cleanDomain) as { domain: string; tier: "allow" | "silence" | "suspend"; reason: string | null } | undefined;
+      .prepare(
+        `SELECT domain, tier, reason, reject_media, reject_reports, obfuscate, public_comment, private_comment,
+                unavailable_since, consecutive_failures, last_seen_at
+         FROM federation_domains WHERE domain = ?`,
+      )
+      .get(cleanDomain) as
+      | {
+          domain: string;
+          tier: "allow" | "silence" | "suspend";
+          reason: string | null;
+          reject_media?: number | null;
+          reject_reports?: number | null;
+          obfuscate?: number | null;
+          public_comment?: string | null;
+          private_comment?: string | null;
+          unavailable_since?: string | null;
+          consecutive_failures?: number | null;
+          last_seen_at?: string | null;
+        }
+      | undefined;
     if (!row) {
-      return { domain: cleanDomain, tier: "allow" };
+      return {
+        domain: cleanDomain,
+        tier: "allow",
+        rejectMedia: false,
+        rejectReports: false,
+        obfuscate: false,
+        consecutiveFailures: 0,
+      };
     }
-    return { domain: row.domain, tier: row.tier, reason: row.reason || undefined };
+    return {
+      domain: row.domain,
+      tier: row.tier,
+      reason: row.reason || undefined,
+      rejectMedia: Boolean(row.reject_media),
+      rejectReports: Boolean(row.reject_reports),
+      obfuscate: Boolean(row.obfuscate),
+      publicComment: row.public_comment ?? row.reason ?? null,
+      privateComment: row.private_comment ?? null,
+      unavailableSince: row.unavailable_since ?? null,
+      consecutiveFailures: Number(row.consecutive_failures ?? 0),
+      lastSeenAt: row.last_seen_at ?? null,
+    };
   }
 
-  setDomainTier(domain: string, tier: "allow" | "silence" | "suspend", reason?: string): void {
+  setDomainTier(
+    domain: string,
+    tier: "allow" | "silence" | "suspend",
+    reason?: string,
+    options?: {
+      rejectMedia?: boolean | undefined;
+      rejectReports?: boolean | undefined;
+      obfuscate?: boolean | undefined;
+      publicComment?: string | null | undefined;
+      privateComment?: string | null | undefined;
+    },
+  ): void {
     const cleanDomain = domain.toLowerCase().trim();
+    const existing = this.getDomainTier(cleanDomain);
+    const rejectMedia =
+      options?.rejectMedia !== undefined ? (options.rejectMedia ? 1 : 0) : existing.rejectMedia ? 1 : 0;
+    const rejectReports =
+      options?.rejectReports !== undefined ? (options.rejectReports ? 1 : 0) : existing.rejectReports ? 1 : 0;
+    const obfuscate = options?.obfuscate !== undefined ? (options.obfuscate ? 1 : 0) : existing.obfuscate ? 1 : 0;
+    const publicComment =
+      options?.publicComment !== undefined ? options.publicComment : (reason ?? existing.publicComment ?? null);
+    const privateComment =
+      options?.privateComment !== undefined ? options.privateComment : (existing.privateComment ?? null);
+    const effectiveReason = reason ?? publicComment ?? existing.reason ?? null;
+
     this.#db
       .prepare(
-        `INSERT INTO federation_domains (domain, tier, reason, updated_at)
-         VALUES (?, ?, ?, datetime('now'))
+        `INSERT INTO federation_domains (domain, tier, reason, reject_media, reject_reports, obfuscate, public_comment, private_comment, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
          ON CONFLICT(domain) DO UPDATE SET
            tier = excluded.tier,
            reason = excluded.reason,
+           reject_media = excluded.reject_media,
+           reject_reports = excluded.reject_reports,
+           obfuscate = excluded.obfuscate,
+           public_comment = excluded.public_comment,
+           private_comment = excluded.private_comment,
            updated_at = datetime('now')`,
       )
-      .run(cleanDomain, tier, reason ?? null);
+      .run(cleanDomain, tier, effectiveReason, rejectMedia, rejectReports, obfuscate, publicComment, privateComment);
   }
 
   deleteDomainTier(domain: string): void {
@@ -4224,15 +4761,43 @@ export class LibraryDatabase {
     domain: string;
     tier: string;
     reason?: string | undefined;
+    reject_media: number;
+    reject_reports: number;
+    obfuscate: number;
+    public_comment: string | null;
+    private_comment: string | null;
+    unavailable_since: string | null;
+    consecutive_failures: number;
+    last_seen_at: string | null;
     created_at: string;
     updated_at: string;
   }[] {
     return this.#db
-      .prepare(`SELECT domain, tier, reason, created_at, updated_at FROM federation_domains ORDER BY created_at DESC`)
+      .prepare(
+        `SELECT domain, tier, reason,
+                COALESCE(reject_media, 0) as reject_media,
+                COALESCE(reject_reports, 0) as reject_reports,
+                COALESCE(obfuscate, 0) as obfuscate,
+                public_comment, private_comment,
+                unavailable_since,
+                COALESCE(consecutive_failures, 0) as consecutive_failures,
+                last_seen_at,
+                created_at, updated_at
+         FROM federation_domains
+         ORDER BY created_at DESC`,
+      )
       .all() as {
       domain: string;
       tier: string;
       reason?: string | undefined;
+      reject_media: number;
+      reject_reports: number;
+      obfuscate: number;
+      public_comment: string | null;
+      private_comment: string | null;
+      unavailable_since: string | null;
+      consecutive_failures: number;
+      last_seen_at: string | null;
       created_at: string;
       updated_at: string;
     }[];
@@ -4265,11 +4830,11 @@ export class LibraryDatabase {
   exportFederationDomains(format: "json" | "csv" = "json"): string {
     const domains = this.listFederationDomains();
     if (format === "csv") {
-      const header = "#domain,#severity,#public_comment";
+      const header = "#domain,#severity,#reject_media,#reject_reports,#public_comment,#obfuscate";
       const rows = domains.map((d) => {
         const severity = d.tier === "suspend" ? "suspend" : d.tier === "silence" ? "silence" : "allow";
-        const comment = (d.reason ?? "").replace(/"/g, '""');
-        return `${d.domain},${severity},"${comment}"`;
+        const comment = (d.public_comment ?? d.reason ?? "").replace(/"/g, '""');
+        return `${d.domain},${severity},${Boolean(d.reject_media)},${Boolean(d.reject_reports)},"${comment}",${Boolean(d.obfuscate)}`;
       });
       return [header, ...rows].join("\n");
     }
@@ -4277,7 +4842,12 @@ export class LibraryDatabase {
       domains.map((d) => ({
         domain: d.domain,
         tier: d.tier,
-        reason: d.reason ?? "",
+        reason: d.reason ?? d.public_comment ?? "",
+        rejectMedia: Boolean(d.reject_media),
+        rejectReports: Boolean(d.reject_reports),
+        obfuscate: Boolean(d.obfuscate),
+        publicComment: d.public_comment ?? d.reason ?? "",
+        privateComment: d.private_comment ?? "",
         updatedAt: d.updated_at,
       })),
       null,
@@ -4286,7 +4856,16 @@ export class LibraryDatabase {
   }
 
   importFederationDomains(
-    entries: { domain: string; tier?: "allow" | "silence" | "suspend"; reason?: string | null | undefined }[],
+    entries: {
+      domain: string;
+      tier?: "allow" | "silence" | "suspend";
+      reason?: string | null | undefined;
+      rejectMedia?: boolean | undefined;
+      rejectReports?: boolean | undefined;
+      obfuscate?: boolean | undefined;
+      publicComment?: string | null | undefined;
+      privateComment?: string | null | undefined;
+    }[],
     mode: "merge" | "replace" = "merge",
   ): { importedCount: number } {
     let importedCount = 0;
@@ -4299,7 +4878,13 @@ export class LibraryDatabase {
         if (!cleanDomain || cleanDomain.startsWith("#")) continue;
         const normalizedTier =
           entry.tier === "suspend" || entry.tier === "silence" || entry.tier === "allow" ? entry.tier : "suspend";
-        this.setDomainTier(cleanDomain, normalizedTier, entry.reason ?? undefined);
+        this.setDomainTier(cleanDomain, normalizedTier, entry.reason ?? undefined, {
+          rejectMedia: entry.rejectMedia,
+          rejectReports: entry.rejectReports,
+          obfuscate: entry.obfuscate,
+          publicComment: entry.publicComment ?? entry.reason,
+          privateComment: entry.privateComment,
+        });
         importedCount++;
       }
     });
@@ -4315,13 +4900,17 @@ export class LibraryDatabase {
     payload: Record<string, unknown>,
     targetInboxUrl: string,
     targetDomain: string,
-  ): { id: number } {
+  ): { id: number; skipped?: boolean } {
+    const cleanDomain = targetDomain.toLowerCase().trim();
+    if (this.isDomainSuspended(cleanDomain) || this.isDomainUnavailable(cleanDomain)) {
+      return { id: 0, skipped: true };
+    }
     const res = this.#db
       .prepare(
         `INSERT INTO federation_delivery_queue (activity_type, activity_id, payload, target_inbox_url, target_domain, status, next_retry_at, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'), datetime('now'))`,
       )
-      .run(activityType, activityId, JSON.stringify(payload), targetInboxUrl, targetDomain.toLowerCase());
+      .run(activityType, activityId, JSON.stringify(payload), targetInboxUrl, cleanDomain);
     return { id: Number(res.lastInsertRowid) };
   }
 
@@ -4463,13 +5052,19 @@ export class LibraryDatabase {
 
   retryFailedFederationDeliveries(domain?: string): { retriedCount: number } {
     if (domain && domain.trim()) {
+      const cleanDomain = domain.trim().toLowerCase();
+      this.#db
+        .prepare(
+          `UPDATE federation_domains SET unavailable_since = NULL, consecutive_failures = 0 WHERE LOWER(domain) = ?`,
+        )
+        .run(cleanDomain);
       const res = this.#db
         .prepare(
           `UPDATE federation_delivery_queue
            SET status = 'pending', attempts = 0, next_retry_at = datetime('now'), updated_at = datetime('now')
            WHERE status = 'failed' AND LOWER(target_domain) = ?`,
         )
-        .run(domain.trim().toLowerCase());
+        .run(cleanDomain);
       return { retriedCount: Number(res.changes) };
     }
     const res = this.#db
@@ -4509,6 +5104,9 @@ export class LibraryDatabase {
     maxAttempts: number;
     lastError: string | null;
     lastUpdatedAt: string | null;
+    unavailableSince: string | null;
+    consecutiveFailures: number;
+    lastSeenAt: string | null;
   }[] {
     const rows = this.#db
       .prepare(
@@ -4521,7 +5119,10 @@ export class LibraryDatabase {
                 COUNT(*) as total,
                 MAX(q.attempts) as max_attempts,
                 MAX(q.last_error) as last_error,
-                MAX(q.updated_at) as last_updated_at
+                MAX(q.updated_at) as last_updated_at,
+                MAX(d.unavailable_since) as unavailable_since,
+                COALESCE(MAX(d.consecutive_failures), 0) as consecutive_failures,
+                MAX(d.last_seen_at) as last_seen_at
          FROM federation_delivery_queue q
          LEFT JOIN federation_domains d ON LOWER(d.domain) = LOWER(q.target_domain)
          GROUP BY LOWER(q.target_domain)
@@ -4538,6 +5139,9 @@ export class LibraryDatabase {
       max_attempts: number;
       last_error: string | null;
       last_updated_at: string | null;
+      unavailable_since: string | null;
+      consecutive_failures: number;
+      last_seen_at: string | null;
     }[];
 
     return rows.map((r) => ({
@@ -4551,6 +5155,9 @@ export class LibraryDatabase {
       maxAttempts: Number(r.max_attempts || 0),
       lastError: r.last_error ?? null,
       lastUpdatedAt: r.last_updated_at ?? null,
+      unavailableSince: r.unavailable_since ?? null,
+      consecutiveFailures: Number(r.consecutive_failures || 0),
+      lastSeenAt: r.last_seen_at ?? null,
     }));
   }
 
@@ -4595,7 +5202,11 @@ export class LibraryDatabase {
 
   getUserOutboxCount(userId: number): number {
     const row = this.#db
-      .prepare(`SELECT COUNT(*) as count FROM posts WHERE author_id = ? AND repost_of_id IS NULL AND is_silenced = 0`)
+      .prepare(
+        `SELECT COUNT(*) as count FROM posts
+         WHERE author_id = ? AND repost_of_id IS NULL AND is_silenced = 0
+           AND COALESCE(visibility, 'public') IN ('public', 'unlisted')`,
+      )
       .get(userId) as { count: number } | undefined;
     return row?.count ?? 0;
   }
@@ -4603,9 +5214,10 @@ export class LibraryDatabase {
   getUserOutboxPosts(userId: number, limit: number = 20, offset: number = 0): PostRow[] {
     const posts = this.#db
       .prepare(
-        `SELECT id, author_id, content, artifact_view_id, ap_id, url, metadata, created_at, updated_at
+        `SELECT id, author_id, content, artifact_view_id, ap_id, url, metadata, visibility, created_at, updated_at
          FROM posts 
          WHERE author_id = ? AND repost_of_id IS NULL AND is_silenced = 0
+           AND COALESCE(visibility, 'public') IN ('public', 'unlisted')
          ORDER BY id DESC LIMIT ? OFFSET ?`,
       )
       .all(userId, limit, offset) as (Omit<PostRow, "metadata"> & {
@@ -4657,7 +5269,16 @@ export class LibraryDatabase {
   }
 
   getPostByApId(apId: string): PostRow | undefined {
-    return this.#db.prepare(`SELECT * FROM posts WHERE ap_id = ?`).get(apId) as PostRow | undefined;
+    const direct = this.#db.prepare(`SELECT * FROM posts WHERE ap_id = ?`).get(apId) as PostRow | undefined;
+    if (direct) return direct;
+    const localMatch = apId.match(/\/users\/[^/]+\/posts\/(\d+)\/?$/) || apId.match(/\/posts\/(\d+)\/?$/);
+    if (localMatch && localMatch[1]) {
+      const localId = Number(localMatch[1]);
+      if (Number.isFinite(localId)) {
+        return this.#db.prepare(`SELECT * FROM posts WHERE id = ?`).get(localId) as PostRow | undefined;
+      }
+    }
+    return undefined;
   }
 
   deletePostByApId(apId: string, expectedAuthorId?: number): boolean {
@@ -4706,6 +5327,18 @@ export class LibraryDatabase {
       }
     }
 
+    let parsedRuleIds: number[] = [];
+    if (Array.isArray(raw.rule_ids)) {
+      parsedRuleIds = raw.rule_ids.map((n) => Number(n)).filter((n) => Number.isFinite(n));
+    } else if (typeof raw.rule_ids === "string" && raw.rule_ids.trim()) {
+      try {
+        const arr = JSON.parse(raw.rule_ids);
+        if (Array.isArray(arr)) {
+          parsedRuleIds = arr.map((n) => Number(n)).filter((n) => Number.isFinite(n));
+        }
+      } catch {}
+    }
+
     const postContent = raw.post_content ?? snapshot?.postContent ?? null;
     const postAuthorId = raw.post_author_id ?? snapshot?.authorId ?? raw.target_user_id ?? null;
     const authorUsername = raw.author_username || raw.target_username || snapshot?.authorUsername || null;
@@ -4726,6 +5359,8 @@ export class LibraryDatabase {
       author_domain: authorDomain,
       target_type: targetType,
       target_resource_id: targetResourceId,
+      rule_ids: parsedRuleIds,
+      category: raw.category || "other",
     };
   }
 
@@ -4738,6 +5373,8 @@ export class LibraryDatabase {
       targetResourceId?: string | undefined;
       reason: string;
       details?: string | undefined;
+      ruleIds?: number[] | undefined;
+      category?: string | undefined;
     },
   ): { id: number; status: string; autoQuarantined?: boolean } {
     let effectiveTargetUserId = data.targetUserId ?? null;
@@ -4821,10 +5458,15 @@ export class LibraryDatabase {
       }
     }
 
+    const ruleIdsJson = Array.isArray(data.ruleIds)
+      ? JSON.stringify(data.ruleIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)))
+      : "[]";
+    const category = data.category || (Array.isArray(data.ruleIds) && data.ruleIds.length > 0 ? "violation" : "other");
+
     const result = this.#db
       .prepare(
-        `INSERT INTO content_reports (reporter_id, post_id, target_user_id, target_type, target_resource_id, reason, details, content_snapshot)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO content_reports (reporter_id, post_id, target_user_id, target_type, target_resource_id, reason, details, content_snapshot, rule_ids, category)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         reporterId,
@@ -4835,6 +5477,8 @@ export class LibraryDatabase {
         data.reason,
         data.details ?? null,
         JSON.stringify(snapshotObj),
+        ruleIdsJson,
+        category,
       );
 
     let autoQuarantined = false;
@@ -5537,40 +6181,63 @@ export class LibraryDatabase {
   }): void {
     const detailsStr = typeof data.details === "object" ? JSON.stringify(data.details) : (data.details ?? null);
     try {
-      const prevRow = this.#db
-        .prepare(`SELECT entry_hash FROM audit_logs WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1`)
-        .get() as { entry_hash: string } | undefined;
-      const prevHash = prevRow?.entry_hash || "GENESIS";
-      const ipToken = LibraryDatabase.#hashAuditIpToken(data.ipAddress);
-      const actorIdStr = typeof data.actorId === "number" && Number.isFinite(data.actorId) ? String(data.actorId) : "";
-      const resourceIdStr = data.resourceId ? String(data.resourceId) : "";
-      const canonicalPayload = [
-        prevHash,
-        actorIdStr,
-        data.action,
-        data.resourceType,
-        resourceIdStr,
-        ipToken,
-        detailsStr ?? "",
-      ].join("|");
-      const entryHash = crypto.createHmac("sha256", "msx-audit-chain-v1").update(canonicalPayload).digest("hex");
-
-      this.#db
-        .prepare(
-          `INSERT INTO audit_logs (actor_id, action, resource_type, resource_id, ip_address, details, prev_hash, entry_hash)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          data.actorId ?? null,
+      const insertAuditTx = this.#db.transaction(() => {
+        const prevRow = this.#db
+          .prepare(`SELECT entry_hash FROM audit_logs WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1`)
+          .get() as { entry_hash: string } | undefined;
+        const prevHash = prevRow?.entry_hash || "GENESIS";
+        const ipToken = LibraryDatabase.#hashAuditIpToken(data.ipAddress);
+        const actorIdStr =
+          typeof data.actorId === "number" && Number.isFinite(data.actorId) ? String(data.actorId) : "";
+        const resourceIdStr = data.resourceId ? String(data.resourceId) : "";
+        const canonicalPayload = [
+          prevHash,
+          actorIdStr,
           data.action,
           data.resourceType,
-          data.resourceId ?? null,
-          data.ipAddress ?? null,
-          detailsStr,
-          prevHash,
-          entryHash,
-        );
+          resourceIdStr,
+          ipToken,
+          detailsStr ?? "",
+        ].join("|");
+        const auditSecret = process.env["AUDIT_HMAC_SECRET"]?.trim() || "msx-audit-chain-v1";
+        const entryHash = crypto.createHmac("sha256", auditSecret).update(canonicalPayload).digest("hex");
+
+        this.#db
+          .prepare(
+            `INSERT INTO audit_logs (actor_id, action, resource_type, resource_id, ip_address, details, prev_hash, entry_hash)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            data.actorId ?? null,
+            data.action,
+            data.resourceType,
+            data.resourceId ?? null,
+            data.ipAddress ?? null,
+            detailsStr,
+            prevHash,
+            entryHash,
+          );
+
+        if (
+          this.#auditChainCache &&
+          this.#auditChainCache.valid &&
+          this.#auditChainCache.secretUsed === auditSecret &&
+          (this.#auditChainCache.headHash ?? "GENESIS") === prevHash
+        ) {
+          this.#auditChainCache = {
+            valid: true,
+            totalEntries: this.#auditChainCache.totalEntries + 1,
+            verifiedEntries: this.#auditChainCache.verifiedEntries + 1,
+            headHash: entryHash,
+            secretUsed: auditSecret,
+          };
+        } else {
+          this.#auditChainCache = null;
+        }
+      });
+      insertAuditTx.immediate();
     } catch (e) {
+      this.#auditChainCache = null;
       console.error("[AuditLog] Failed to insert audit log entry:", e);
     }
   }
@@ -5582,6 +6249,12 @@ export class LibraryDatabase {
     headHash: string | null;
     brokenAtId?: number | undefined;
   } {
+    const auditSecret = process.env["AUDIT_HMAC_SECRET"]?.trim() || "msx-audit-chain-v1";
+    if (this.#auditChainCache && this.#auditChainCache.secretUsed === auditSecret) {
+      const { secretUsed: _s, ...cached } = this.#auditChainCache;
+      return { ...cached };
+    }
+
     const rows = this.#db
       .prepare(
         `SELECT id, actor_id, action, resource_type, resource_id, ip_address, details, prev_hash, entry_hash
@@ -5600,13 +6273,15 @@ export class LibraryDatabase {
       }
       const prevHash: string = expectedPrevHash ?? row.prev_hash ?? "GENESIS";
       if (expectedPrevHash !== null && row.prev_hash !== expectedPrevHash) {
-        return {
+        const brokenResult = {
           valid: false,
           totalEntries: rows.length,
           verifiedEntries,
           headHash,
           brokenAtId: row.id,
         };
+        this.#auditChainCache = { ...brokenResult, secretUsed: auditSecret };
+        return { ...brokenResult };
       }
       const ipToken = LibraryDatabase.#hashAuditIpToken(row.ip_address);
       const tokenPayload: string = [
@@ -5618,10 +6293,11 @@ export class LibraryDatabase {
         ipToken,
         row.details ?? "",
       ].join("|");
-      const recomputedHmac: string = crypto
-        .createHmac("sha256", "msx-audit-chain-v1")
-        .update(tokenPayload)
-        .digest("hex");
+      const recomputedHmac: string = crypto.createHmac("sha256", auditSecret).update(tokenPayload).digest("hex");
+      const recomputedDefaultHmac: string =
+        auditSecret !== "msx-audit-chain-v1"
+          ? crypto.createHmac("sha256", "msx-audit-chain-v1").update(tokenPayload).digest("hex")
+          : recomputedHmac;
       const recomputedTokenHash: string = crypto.createHash("sha256").update(tokenPayload).digest("hex");
 
       const legacyPayload: string = [
@@ -5637,28 +6313,33 @@ export class LibraryDatabase {
 
       if (
         recomputedHmac !== row.entry_hash &&
+        recomputedDefaultHmac !== row.entry_hash &&
         recomputedTokenHash !== row.entry_hash &&
         recomputedLegacyHash !== row.entry_hash
       ) {
-        return {
+        const brokenResult = {
           valid: false,
           totalEntries: rows.length,
           verifiedEntries,
           headHash,
           brokenAtId: row.id,
         };
+        this.#auditChainCache = { ...brokenResult, secretUsed: auditSecret };
+        return { ...brokenResult };
       }
       verifiedEntries++;
       expectedPrevHash = row.entry_hash;
       headHash = row.entry_hash;
     }
 
-    return {
+    const validResult = {
       valid: true,
       totalEntries: rows.length,
       verifiedEntries,
       headHash,
     };
+    this.#auditChainCache = { ...validResult, secretUsed: auditSecret };
+    return { ...validResult };
   }
 
   getAuditLogs(limit: number = 50, offset: number = 0, action?: string, resourceType?: string): AuditLogRow[] {
@@ -5712,6 +6393,7 @@ export class LibraryDatabase {
       }
     });
     tx();
+    this.#auditChainCache = null;
     return { deletedCount: redactedCount, redactedCount };
   }
 
@@ -5751,7 +6433,7 @@ export class LibraryDatabase {
     showPoweredBy: boolean;
     registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed";
     allowedEmailDomains: string[];
-    federationMode: "open" | "allowlist" | "disabled";
+    federationMode: "open" | "allowlist" | "disabled" | "mesh" | "consortium";
     maintenanceMode: boolean;
     maintenanceLevel: "off" | "scheduled" | "read_only" | "lockdown";
     maintenanceEta: string;
@@ -5772,6 +6454,16 @@ export class LibraryDatabase {
     academicFastTrackEnabled: boolean;
     academicDomainPatterns: string[];
     onboardingWizardEnabled: boolean;
+    ingressMode: "direct" | "cloudflare";
+    cloudflareTunnelConfigured: boolean;
+    authorizedFetchEnabled: boolean;
+    federatedTimelinePublic: boolean;
+    domainBlocksPublic: boolean;
+    trendingRequiresApproval: boolean;
+    remoteContentRetentionDays: number;
+    remoteMediaCacheRetentionDays: number;
+    autoCircuitBreakThreshold: number;
+    artifactCdnHost: string;
     lockedByEnv: string[];
   } {
     const rows = this.#db.prepare(`SELECT key, value FROM instance_settings`).all() as { key: string; value: string }[];
@@ -5788,15 +6480,43 @@ export class LibraryDatabase {
     if (process.env["MSX_DOCS_BASE_URL"]) lockedByEnv.push("docsBaseUrl");
     if (process.env["MSX_SHOW_POWERED_BY"] !== undefined) lockedByEnv.push("showPoweredBy");
     if (process.env["MSX_REGISTRATION_MODE"]) lockedByEnv.push("registrationMode");
-    if (process.env["MSX_FEDERATION_MODE"]) lockedByEnv.push("federationMode");
+    if (process.env["MSX_ALLOWED_EMAIL_DOMAINS"] || process.env["ALLOWED_EMAIL_DOMAINS"]) {
+      lockedByEnv.push("allowedEmailDomains");
+    }
+    if (
+      process.env["MSX_FEDERATION_MODE"] ||
+      process.env["FEDERATION_MODE"] ||
+      process.env["AIRGAP_ENFORCED"] === "true" ||
+      process.env["ENTERPRISE_APPLIANCE"] === "true"
+    ) {
+      lockedByEnv.push("federationMode");
+    }
+    if (process.env["MSX_REQUIRE_ADMIN_2FA"] !== undefined) lockedByEnv.push("requireAdmin2FA");
     if (process.env["MSX_WAITLIST_ENABLED"] !== undefined) lockedByEnv.push("waitlistEnabled");
     if (process.env["MSX_USER_INVITES_ENABLED"] !== undefined) lockedByEnv.push("userInvitesEnabled");
     if (process.env["MSX_USER_DEFAULT_INVITES"] !== undefined) lockedByEnv.push("userDefaultInviteCount");
     if (process.env["MSX_ACADEMIC_FAST_TRACK"] !== undefined) lockedByEnv.push("academicFastTrackEnabled");
     if (process.env["MSX_ONBOARDING_WIZARD_ENABLED"] !== undefined) lockedByEnv.push("onboardingWizardEnabled");
+    if (process.env["MSX_INGRESS_MODE"]) lockedByEnv.push("ingressMode");
     if (process.env["MSX_MAINTENANCE_MODE"] !== undefined) {
       lockedByEnv.push("maintenanceMode", "maintenanceLevel");
     }
+    if (process.env["MSX_AUTHORIZED_FETCH"] !== undefined || process.env["AUTHORIZED_FETCH"] !== undefined) {
+      lockedByEnv.push("authorizedFetchEnabled");
+    }
+
+    const storedTunnelToken = (map.get("cloudflare_tunnel_token") || map.get("tunnelToken") || "").trim();
+    const envTunnelToken = (process.env["CLOUDFLARE_TUNNEL_TOKEN"] || "").trim();
+    const cloudflareTunnelConfigured = Boolean(envTunnelToken || storedTunnelToken);
+    const rawIngressMode = (
+      process.env["MSX_INGRESS_MODE"] ||
+      map.get("ingress_mode") ||
+      map.get("ingressMode") ||
+      (cloudflareTunnelConfigured ? "cloudflare" : "direct")
+    )
+      .trim()
+      .toLowerCase();
+    const ingressMode: "direct" | "cloudflare" = rawIngressMode === "cloudflare" ? "cloudflare" : "direct";
 
     const rawRegMode = process.env["MSX_REGISTRATION_MODE"] || map.get("registrationMode") || "open";
     const registrationMode: "open" | "invite_only" | "domain_allowlist" | "closed" =
@@ -5804,17 +6524,28 @@ export class LibraryDatabase {
         ? rawRegMode
         : "open";
 
-    const rawFedMode = process.env["MSX_FEDERATION_MODE"] || map.get("federationMode") || "open";
-    const federationMode: "open" | "allowlist" | "disabled" =
-      rawFedMode === "allowlist" || rawFedMode === "disabled" ? rawFedMode : "open";
+    const isAirgapDefault = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
+    const rawFedMode =
+      process.env["MSX_FEDERATION_MODE"] ||
+      process.env["FEDERATION_MODE"] ||
+      map.get("federationMode") ||
+      (isAirgapDefault ? "disabled" : "open");
+    const federationMode: "open" | "allowlist" | "disabled" | "mesh" | "consortium" =
+      rawFedMode === "allowlist" || rawFedMode === "disabled" || rawFedMode === "mesh" || rawFedMode === "consortium"
+        ? rawFedMode
+        : "open";
 
     let allowedEmailDomains: string[] = [];
     try {
-      const rawDomains = map.get("allowedEmailDomains") || "[]";
+      const rawDomains =
+        process.env["MSX_ALLOWED_EMAIL_DOMAINS"] ||
+        process.env["ALLOWED_EMAIL_DOMAINS"] ||
+        map.get("allowedEmailDomains") ||
+        "[]";
       if (rawDomains.trim().startsWith("[")) {
         const parsed = JSON.parse(rawDomains);
         if (Array.isArray(parsed)) {
-          allowedEmailDomains = parsed.map((d) => String(d).trim().toLowerCase()).filter(Boolean);
+          allowedEmailDomains = parsed.map((d) => String(d).trim().toLowerCase().replace(/^@/, "")).filter(Boolean);
         }
       } else {
         allowedEmailDomains = rawDomains
@@ -5935,6 +6666,33 @@ export class LibraryDatabase {
         ? process.env["MSX_ONBOARDING_WIZARD_ENABLED"] === "true"
         : map.get("onboardingWizardEnabled") === "true";
 
+    const rawAuthFetch =
+      process.env["MSX_AUTHORIZED_FETCH"] ?? process.env["AUTHORIZED_FETCH"] ?? map.get("authorizedFetchEnabled");
+    const authorizedFetchEnabled = rawAuthFetch === "true" || rawAuthFetch === "1";
+
+    const rawFedTimelinePublic = process.env["MSX_FEDERATED_TIMELINE_PUBLIC"] ?? map.get("federatedTimelinePublic");
+    const federatedTimelinePublic = rawFedTimelinePublic !== undefined ? rawFedTimelinePublic !== "false" : true;
+
+    const rawDomainBlocksPublic = process.env["MSX_DOMAIN_BLOCKS_PUBLIC"] ?? map.get("domainBlocksPublic");
+    const domainBlocksPublic = rawDomainBlocksPublic !== undefined ? rawDomainBlocksPublic !== "false" : true;
+
+    const rawTrendingApproval = process.env["MSX_TRENDING_REQUIRES_APPROVAL"] ?? map.get("trendingRequiresApproval");
+    const trendingRequiresApproval = rawTrendingApproval === "true" || rawTrendingApproval === "1";
+
+    const remoteContentRetentionDays = Math.max(
+      0,
+      Number.parseInt(map.get("remoteContentRetentionDays") || "90", 10) || 90,
+    );
+    const remoteMediaCacheRetentionDays = Math.max(
+      0,
+      Number.parseInt(map.get("remoteMediaCacheRetentionDays") || "14", 10) || 14,
+    );
+    const autoCircuitBreakThreshold = Math.max(
+      0,
+      Number.parseInt(map.get("autoCircuitBreakThreshold") || "5", 10) || 5,
+    );
+    const artifactCdnHost = (process.env["MSX_ARTIFACT_CDN_HOST"] || map.get("artifactCdnHost") || "").trim();
+
     return {
       instanceName:
         process.env["ANSATZ_INSTANCE_NAME"] || process.env["MSX_INSTANCE_NAME"] || map.get("instanceName") || "Ansatz",
@@ -5991,14 +6749,44 @@ export class LibraryDatabase {
       autoFilterAction,
       customTermsMarkdown: map.get("customTermsMarkdown") || "",
       customPrivacyMarkdown: map.get("customPrivacyMarkdown") || "",
-      requireAdmin2FA: map.get("requireAdmin2FA") === "true",
+      requireAdmin2FA:
+        process.env["MSX_REQUIRE_ADMIN_2FA"] !== undefined
+          ? process.env["MSX_REQUIRE_ADMIN_2FA"] === "true"
+          : map.get("requireAdmin2FA") === "true",
       waitlistEnabled,
       userInvitesEnabled,
       userDefaultInviteCount,
       academicFastTrackEnabled,
       academicDomainPatterns,
       onboardingWizardEnabled,
+      ingressMode,
+      cloudflareTunnelConfigured,
+      authorizedFetchEnabled,
+      federatedTimelinePublic,
+      domainBlocksPublic,
+      trendingRequiresApproval,
+      remoteContentRetentionDays,
+      remoteMediaCacheRetentionDays,
+      autoCircuitBreakThreshold,
+      artifactCdnHost,
       lockedByEnv,
+    };
+  }
+
+  getMaintenanceState(): {
+    mode: "off" | "scheduled" | "read_only" | "lockdown";
+    active: boolean;
+    eta: string;
+    startedAt: string;
+    banner: string;
+  } {
+    const settings = this.getInstanceSettings();
+    return {
+      mode: settings.maintenanceLevel,
+      active: settings.maintenanceMode,
+      eta: settings.maintenanceEta,
+      startedAt: settings.maintenanceStartedAt,
+      banner: settings.announcementBanner,
     };
   }
 
@@ -6007,6 +6795,20 @@ export class LibraryDatabase {
     actorId: number | null = null,
   ): ReturnType<LibraryDatabase["getInstanceSettings"]> {
     const normalizedPatch: Record<string, unknown> = { ...patch };
+
+    const rawIngressPatch = normalizedPatch["ingressMode"] ?? normalizedPatch["ingress_mode"];
+    if (rawIngressPatch !== undefined) {
+      const modeVal = String(rawIngressPatch).trim().toLowerCase() === "cloudflare" ? "cloudflare" : "direct";
+      normalizedPatch["ingressMode"] = modeVal;
+      normalizedPatch["ingress_mode"] = modeVal;
+    }
+
+    const rawTunnelTokenPatch = normalizedPatch["tunnelToken"] ?? normalizedPatch["cloudflare_tunnel_token"];
+    if (rawTunnelTokenPatch !== undefined) {
+      const tokenVal = String(rawTunnelTokenPatch).trim();
+      normalizedPatch["cloudflare_tunnel_token"] = tokenVal;
+      delete normalizedPatch["tunnelToken"];
+    }
 
     // Synchronize maintenanceMode boolean and maintenanceLevel enum seamlessly
     if (normalizedPatch["maintenanceLevel"] !== undefined) {
@@ -6076,6 +6878,17 @@ export class LibraryDatabase {
       "academicFastTrackEnabled",
       "academicDomainPatterns",
       "onboardingWizardEnabled",
+      "ingressMode",
+      "ingress_mode",
+      "cloudflare_tunnel_token",
+      "authorizedFetchEnabled",
+      "federatedTimelinePublic",
+      "domainBlocksPublic",
+      "trendingRequiresApproval",
+      "remoteContentRetentionDays",
+      "remoteMediaCacheRetentionDays",
+      "autoCircuitBreakThreshold",
+      "artifactCdnHost",
     ];
     const upsertStmt = this.#db.prepare(
       `INSERT INTO instance_settings (key, value, updated_by, updated_at)
@@ -6547,6 +7360,14 @@ export class LibraryDatabase {
     generatedAt: string;
   } {
     const s = this.getInstanceSettings();
+    const rawRows = this.#db
+      .prepare(`SELECT key, value FROM instance_settings WHERE key IN ('cloudflare_tunnel_token', 'tunnelToken')`)
+      .all() as { key: string; value: string }[];
+    const storedToken =
+      rawRows.find((r) => r.key === "cloudflare_tunnel_token")?.value ||
+      rawRows.find((r) => r.key === "tunnelToken")?.value ||
+      "";
+    const tunnelTokenVal = process.env["CLOUDFLARE_TUNNEL_TOKEN"]?.trim() || storedToken.trim();
     const publicUrl = process.env["PUBLIC_URL"] || "https://ansatz.social";
     const generatedAt = new Date().toISOString();
     const envLines = [
@@ -6567,6 +7388,8 @@ export class LibraryDatabase {
       `MSX_REGISTRATION_MODE=${s.registrationMode}`,
       `MODELSCRIPT_REGISTRATION_MODE=${s.registrationMode}`,
       `MSX_FEDERATION_MODE=${s.federationMode}`,
+      `MSX_INGRESS_MODE=${s.ingressMode}`,
+      `CLOUDFLARE_TUNNEL_TOKEN=${tunnelTokenVal}`,
       `JWT_SECRET=${process.env["JWT_SECRET"] ? "<REDACTED_CUSTOM_JWT_SECRET>" : crypto.randomBytes(32).toString("hex")}`,
       `SMTP_HOST=${process.env["SMTP_HOST"] || "smtp.example.org"}`,
       `SMTP_PORT=${process.env["SMTP_PORT"] || "587"}`,
@@ -6593,7 +7416,11 @@ export class LibraryDatabase {
       `      MSX_SHOW_POWERED_BY: "${s.showPoweredBy ? "true" : "false"}"`,
       `      MSX_REGISTRATION_MODE: "${s.registrationMode}"`,
       `      MSX_FEDERATION_MODE: "${s.federationMode}"`,
+      `      MSX_INGRESS_MODE: "${s.ingressMode}"`,
     ];
+    if (tunnelTokenVal) {
+      dockerComposeLines.push(`      CLOUDFLARE_TUNNEL_TOKEN: "${tunnelTokenVal.replace(/"/g, '\\"')}"`);
+    }
 
     const envStr = envLines.join("\n");
     return {
@@ -6642,6 +7469,11 @@ export class LibraryDatabase {
            updated_at = datetime('now')`,
       )
       .run(actorId);
+  }
+
+  isInstanceInitialized(): boolean {
+    if (this.isSetupForceReopened()) return false;
+    return this.hasAdminUser() || this.isSetupCompleted();
   }
 
   getSetupStatus(): {
@@ -6867,8 +7699,8 @@ export class LibraryDatabase {
     return this.referrals.approveWaitlistSubmission(id, approvedBy);
   }
 
-  rejectWaitlistSubmission(id: number, approvedBy: number | null = null): boolean {
-    return this.referrals.rejectWaitlistSubmission(id, approvedBy);
+  rejectWaitlistSubmission(id: number, approvedBy: number | null = null, reason: string | null = null): boolean {
+    return this.referrals.rejectWaitlistSubmission(id, approvedBy, reason);
   }
 
   getSystemDiagnostics(): {
@@ -6899,7 +7731,7 @@ export class LibraryDatabase {
     let dbSizeBytes = 0;
     let walSizeBytes = 0;
     try {
-      const dbPath = path.join(this.dbDir, "library.db");
+      const dbPath = this.#dbPath;
       if (fs.existsSync(dbPath)) dbSizeBytes = fs.statSync(dbPath).size;
       const walPath = `${dbPath}-wal`;
       if (fs.existsSync(walPath)) walSizeBytes = fs.statSync(walPath).size;
@@ -7056,6 +7888,9 @@ export class LibraryDatabase {
       target_type: string | null;
       created_at: string;
     }[];
+    warnings: AccountWarningRow[];
+    accountWarnings: AccountWarningRow[];
+    staffNotes: StaffNoteRow[];
   } | null {
     const user = this.#db
       .prepare(
@@ -7089,7 +7924,7 @@ export class LibraryDatabase {
     const recentPosts = this.#db
       .prepare(
         `SELECT id, content, content_warning,
-                COALESCE(reply_visibility, 'everyone') as visibility,
+                COALESCE(visibility, reply_visibility, 'public') as visibility,
                 created_at
          FROM posts WHERE author_id = ? ORDER BY id DESC LIMIT 10`,
       )
@@ -7162,6 +7997,7 @@ export class LibraryDatabase {
       created_at: string;
     }[];
 
+    const warnings = this.listAccountWarnings(userId);
     return {
       user,
       recentPosts,
@@ -7169,6 +8005,9 @@ export class LibraryDatabase {
       recentTransactions,
       recentAuditLogs,
       reportsAgainstUser,
+      warnings,
+      accountWarnings: warnings,
+      staffNotes: this.listStaffNotes("user", String(userId)),
     };
   }
 
@@ -7506,9 +8345,9 @@ export class LibraryDatabase {
     type: string,
     source_type: string,
     viewConfig: string,
-    title?: string,
-    thumbnailUrl?: string,
-    remoteOriginUrl?: string,
+    title?: string | null | undefined,
+    thumbnailUrl?: string | null | undefined,
+    remoteOriginUrl?: string | null | undefined,
   ): number {
     const res = this.#db
       .prepare(
@@ -7737,13 +8576,19 @@ export class LibraryDatabase {
       .get(concept, location) as { id: number; current_score: number; last_updated_at: string } | undefined;
 
     if (!existing) {
+      let initialReviewStatus = "approved";
+      try {
+        if (this.getInstanceSettings().trendingRequiresApproval) {
+          initialReviewStatus = "pending";
+        }
+      } catch {}
       const res = this.#db
         .prepare(
           `
-        INSERT INTO trending_topics (concept, display_name, current_score, location) VALUES (?, ?, ?, ?)
+        INSERT INTO trending_topics (concept, display_name, current_score, location, review_status) VALUES (?, ?, ?, ?, ?)
       `,
         )
-        .run(concept, displayName, weight, location);
+        .run(concept, displayName, weight, location, initialReviewStatus);
       return Number(res.lastInsertRowid);
     } else {
       const lastUpdatedMs = new Date(existing.last_updated_at.replace(" ", "T") + "Z").getTime();
@@ -7819,9 +8664,16 @@ export class LibraryDatabase {
     halfLifeHours: number = 24,
     location: string | null = null,
   ): (TrendingTopicRow & { real_score: number; post_count: number })[] {
+    let requiresApproval = false;
+    try {
+      requiresApproval = this.getInstanceSettings().trendingRequiresApproval;
+    } catch {}
+    const reviewClause = requiresApproval
+      ? `AND COALESCE(t.review_status, 'approved') = 'approved'`
+      : `AND COALESCE(t.review_status, 'approved') != 'rejected'`;
     const query = location
-      ? `SELECT t.*, (SELECT COUNT(*) FROM post_topics pt WHERE pt.topic_id = t.id) as post_count FROM trending_topics t WHERE t.current_score > 0.001 AND t.location = ? ORDER BY t.current_score DESC LIMIT ?`
-      : `SELECT t.*, (SELECT COUNT(*) FROM post_topics pt WHERE pt.topic_id = t.id) as post_count FROM trending_topics t WHERE t.current_score > 0.001 ORDER BY t.current_score DESC LIMIT ?`;
+      ? `SELECT t.*, (SELECT COUNT(*) FROM post_topics pt WHERE pt.topic_id = t.id) as post_count FROM trending_topics t WHERE t.current_score > 0.001 ${reviewClause} AND t.location = ? ORDER BY t.current_score DESC LIMIT ?`
+      : `SELECT t.*, (SELECT COUNT(*) FROM post_topics pt WHERE pt.topic_id = t.id) as post_count FROM trending_topics t WHERE t.current_score > 0.001 ${reviewClause} ORDER BY t.current_score DESC LIMIT ?`;
     const params = location ? [location, limit * 5] : [limit * 5];
 
     const topics = this.#db.prepare(query).all(...params) as (TrendingTopicRow & { post_count?: number | undefined })[];
@@ -7890,25 +8742,27 @@ export class LibraryDatabase {
       }
     }
 
-    for (const [i, cur] of CURATED_ENGINEERING_TOPICS.entries()) {
-      const key = cur.concept.toLowerCase();
-      const match = existingConcepts.get(key);
-      if (match) {
-        match.real_score += cur.score;
-        match.current_score += cur.score;
-      } else {
-        const hashtagPostCount = curatedPostCounts.get(key) || 0;
-        const newTopic = {
-          id: -(i + 1),
-          concept: cur.concept,
-          display_name: cur.display_name,
-          current_score: cur.score,
-          real_score: cur.score,
-          post_count: hashtagPostCount,
-          last_updated_at: new Date().toISOString(),
-        };
-        scoredTopics.push(newTopic);
-        existingConcepts.set(key, newTopic);
+    if (!requiresApproval) {
+      for (const [i, cur] of CURATED_ENGINEERING_TOPICS.entries()) {
+        const key = cur.concept.toLowerCase();
+        const match = existingConcepts.get(key);
+        if (match) {
+          match.real_score += cur.score;
+          match.current_score += cur.score;
+        } else {
+          const hashtagPostCount = curatedPostCounts.get(key) || 0;
+          const newTopic = {
+            id: -(i + 1),
+            concept: cur.concept,
+            display_name: cur.display_name,
+            current_score: cur.score,
+            real_score: cur.score,
+            post_count: hashtagPostCount,
+            last_updated_at: new Date().toISOString(),
+          };
+          scoredTopics.push(newTopic);
+          existingConcepts.set(key, newTopic);
+        }
       }
     }
 
@@ -7919,6 +8773,7 @@ export class LibraryDatabase {
   getTopicPosts(concept: string, currentUserId?: number, limit = 20, offset = 0, artifactType?: string): PostRow[] {
     const cleanConcept = concept.replace(/^#/, "").trim().toLowerCase();
     const artifactFilter = this.buildArtifactFilter(artifactType);
+    const visFilter = this.buildVisibilityFilter(currentUserId, "public");
     const uid = currentUserId || -1;
 
     const query = `
@@ -7935,6 +8790,7 @@ export class LibraryDatabase {
       LEFT JOIN post_topics pt ON pt.post_id = p.id
       LEFT JOIN trending_topics t ON t.id = pt.topic_id
       WHERE (lower(t.concept) = ? OR lower(t.display_name) = ? OR lower(p.content) LIKE ?)
+        ${visFilter.sql}
         ${artifactFilter.sql}
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
@@ -7947,6 +8803,7 @@ export class LibraryDatabase {
       cleanConcept,
       cleanConcept,
       `%#${cleanConcept}%`,
+      ...visFilter.params,
       ...artifactFilter.params,
       limit,
       offset,
@@ -7955,7 +8812,8 @@ export class LibraryDatabase {
     const posts = this.#db.prepare(query).all(...params) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    return posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    return this.applyContentFiltersToPosts(hydrated, "public", currentUserId);
   }
 
   // ── Linked Repositories ─────────────────────────────────────────
@@ -8403,7 +9261,8 @@ export class LibraryDatabase {
         `
       SELECT id, username, display_name, avatar_url, bio 
       FROM users 
-      WHERE username LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE
+      WHERE (username LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE)
+        AND COALESCE(indexable, 1) = 1
       ORDER BY id DESC LIMIT ?
     `,
       )
@@ -9022,6 +9881,10 @@ export class LibraryDatabase {
    * Record a package download event for daily aggregation.
    */
   recordPackageDownload(libraryName: string, libraryVersion: string, dateStr?: string): void {
+    if (this.analyticsBuffer) {
+      this.analyticsBuffer.recordPackageDownload(libraryName, libraryVersion, dateStr);
+      return;
+    }
     const date = dateStr ?? new Date().toISOString().slice(0, 10);
     this.#db
       .prepare(
@@ -9044,6 +9907,7 @@ export class LibraryDatabase {
     daily: { date: string; downloads: number }[];
     versionBreakdown: Record<string, number>;
   } {
+    this.analyticsBuffer?.flushSync();
     const startDate = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10);
 
     const totalRow = this.#db
@@ -10459,6 +11323,58 @@ export class LibraryDatabase {
     };
   }
 
+  #readOrComputeBackupSha256(backupPath: string): string {
+    const sidecarPath = `${backupPath}.sha256`;
+    try {
+      if (fs.existsSync(sidecarPath)) {
+        const cached = fs.readFileSync(sidecarPath, "utf8").trim().split(/\s+/)[0] || "";
+        if (/^[a-f0-9]{64}$/i.test(cached)) {
+          return cached.toLowerCase();
+        }
+      }
+      const computed = crypto.createHash("sha256").update(fs.readFileSync(backupPath)).digest("hex");
+      try {
+        fs.writeFileSync(sidecarPath, computed, "utf8");
+      } catch {
+        // Ignore if directory is read-only
+      }
+      return computed;
+    } catch {
+      return "";
+    }
+  }
+
+  async waitForPendingBackupReplications(): Promise<void> {
+    await Promise.allSettled([...this.#pendingBackupReplications]);
+  }
+
+  async #replicateBackupToS3(backupPath: string, shaPath: string): Promise<void> {
+    const bucket = process.env["S3_BUCKET"]?.trim();
+    if (!bucket) return;
+    try {
+      const driver = new S3StorageDriver({
+        bucket,
+        region: process.env["S3_REGION"] || process.env["AWS_REGION"] || "us-east-1",
+        endpoint: process.env["S3_ENDPOINT"] || undefined,
+        accessKeyId: process.env["S3_ACCESS_KEY_ID"] || process.env["AWS_ACCESS_KEY_ID"] || undefined,
+        secretAccessKey: process.env["S3_SECRET_ACCESS_KEY"] || process.env["AWS_SECRET_ACCESS_KEY"] || undefined,
+        forcePathStyle: process.env["S3_FORCE_PATH_STYLE"] !== "false",
+      });
+      const fileName = path.basename(backupPath);
+      const dbBuffer = await fs.promises.readFile(backupPath);
+      await driver.write(`backups/${fileName}`, dbBuffer, { contentType: "application/x-sqlite3" });
+      if (fs.existsSync(shaPath)) {
+        const shaBuffer = await fs.promises.readFile(shaPath);
+        await driver.write(`backups/${path.basename(shaPath)}`, shaBuffer, { contentType: "text/plain" });
+      }
+    } catch (err) {
+      console.warn(
+        `[HotBackup] S3 backup replication failed for ${path.basename(backupPath)}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
   createHotBackup(customLabel?: string): {
     fileName: string;
     backupPath: string;
@@ -10484,6 +11400,20 @@ export class LibraryDatabase {
 
     const stats = fs.statSync(backupPath);
     const sha256 = crypto.createHash("sha256").update(fs.readFileSync(backupPath)).digest("hex");
+    const shaPath = `${backupPath}.sha256`;
+    try {
+      fs.writeFileSync(shaPath, sha256, "utf8");
+    } catch {
+      // Ignore sidecar write error
+    }
+
+    if (process.env["STORAGE_BACKEND"] === "s3" && process.env["S3_BUCKET"]?.trim()) {
+      const p = this.#replicateBackupToS3(backupPath, shaPath).finally(() => {
+        this.#pendingBackupReplications.delete(p);
+      });
+      this.#pendingBackupReplications.add(p);
+    }
+
     return {
       fileName,
       backupPath,
@@ -10510,12 +11440,7 @@ export class LibraryDatabase {
       .map((fileName) => {
         const backupPath = path.join(backupDir, fileName);
         const stats = fs.statSync(backupPath);
-        let sha256 = "";
-        try {
-          sha256 = crypto.createHash("sha256").update(fs.readFileSync(backupPath)).digest("hex");
-        } catch {
-          sha256 = "";
-        }
+        const sha256 = this.#readOrComputeBackupSha256(backupPath);
         return {
           fileName,
           backupPath,
@@ -10545,7 +11470,7 @@ export class LibraryDatabase {
       return null;
     }
     const stats = fs.statSync(backupPath);
-    const sha256 = crypto.createHash("sha256").update(fs.readFileSync(backupPath)).digest("hex");
+    const sha256 = this.#readOrComputeBackupSha256(backupPath);
     return {
       fileName: cleanName,
       backupPath,
@@ -10560,6 +11485,14 @@ export class LibraryDatabase {
     if (!backup) return false;
     try {
       fs.unlinkSync(backup.backupPath);
+      const sidecarPath = `${backup.backupPath}.sha256`;
+      if (fs.existsSync(sidecarPath)) {
+        try {
+          fs.unlinkSync(sidecarPath);
+        } catch {
+          // Ignore sidecar unlink error
+        }
+      }
       return true;
     } catch {
       return false;
@@ -10608,6 +11541,10 @@ export class LibraryDatabase {
     // 2. Create an automatic pre-restore safety snapshot
     const preRestore = this.createHotBackup("pre-restore");
 
+    // Clear in-memory analytics buffer and cached audit log state before replacing tables
+    this.analyticsBuffer?.clear();
+    this.#auditChainCache = null;
+
     // 3. Perform online atomic table restoration from the attached backup snapshot
     this.#db.pragma("foreign_keys = OFF");
     this.#db.prepare(`ATTACH DATABASE ? AS restore_src`).run(target.backupPath);
@@ -10629,7 +11566,11 @@ export class LibraryDatabase {
 
       const restoreTx = this.#db.transaction(() => {
         for (const table of mainTables) {
-          if (!srcTables.has(table) || !/^[a-zA-Z0-9_]+$/.test(table)) continue;
+          if (!/^[a-zA-Z0-9_]+$/.test(table)) continue;
+          // Always clear main table even if it didn't exist in the older backup snapshot
+          this.#db.prepare(`DELETE FROM main."${table}"`).run();
+          if (!srcTables.has(table)) continue;
+
           const mainCols = (this.#db.prepare(`PRAGMA main.table_info("${table}")`).all() as { name: string }[]).map(
             (c) => c.name,
           );
@@ -10642,14 +11583,13 @@ export class LibraryDatabase {
           if (sharedCols.length === 0) continue;
 
           const colList = sharedCols.map((c) => `"${c}"`).join(", ");
-          this.#db.prepare(`DELETE FROM main."${table}"`).run();
           this.#db
             .prepare(`INSERT INTO main."${table}" (${colList}) SELECT ${colList} FROM restore_src."${table}"`)
             .run();
           tablesRestored++;
         }
       });
-      restoreTx();
+      restoreTx.immediate();
     } finally {
       try {
         this.#db.prepare(`DETACH DATABASE restore_src`).run();
@@ -10658,6 +11598,10 @@ export class LibraryDatabase {
       }
       this.#db.pragma("foreign_keys = ON");
     }
+
+    // Re-run any migrations that were not yet applied in the restored snapshot
+    this.#runner.runPendingSync(allMigrations, { silent: true, skipBackup: true });
+    this.#auditChainCache = null;
 
     return {
       success: true,
@@ -10727,6 +11671,11 @@ export class LibraryDatabase {
 
     const stats = fs.statSync(backupPath);
     const sha256 = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+    try {
+      fs.writeFileSync(`${backupPath}.sha256`, sha256, "utf8");
+    } catch {
+      // Ignore sidecar write error
+    }
     const backup = {
       fileName,
       backupPath,
@@ -12371,7 +13320,1546 @@ export class LibraryDatabase {
     }
   }
 
+  // ── Domain Availability, Auto-Circuit-Breaking & Transparency ────
+
+  recordDomainDeliverySuccess(domain: string): void {
+    const cleanDomain = domain.toLowerCase().trim();
+    if (!cleanDomain) return;
+    try {
+      this.#db
+        .prepare(
+          `INSERT INTO federation_domains (domain, tier, unavailable_since, consecutive_failures, last_seen_at, updated_at)
+           VALUES (?, 'allow', NULL, 0, datetime('now'), datetime('now'))
+           ON CONFLICT(domain) DO UPDATE SET
+             unavailable_since = NULL,
+             consecutive_failures = 0,
+             last_seen_at = datetime('now'),
+             updated_at = datetime('now')`,
+        )
+        .run(cleanDomain);
+    } catch {
+      // Ignore if table not yet migrated in isolated unit test
+    }
+  }
+
+  recordDomainDeliveryFailure(
+    domain: string,
+    errorMessage?: string,
+  ): { consecutiveFailures: number; unavailableSince: string | null } {
+    const cleanDomain = domain.toLowerCase().trim();
+    if (!cleanDomain) return { consecutiveFailures: 0, unavailableSince: null };
+
+    let threshold = 5;
+    try {
+      threshold = Math.max(1, this.getInstanceSettings().autoCircuitBreakThreshold || 5);
+    } catch {}
+
+    const existing = this.getDomainTier(cleanDomain);
+    const nextFailures = (existing.consecutiveFailures || 0) + 1;
+    const shouldMarkUnavailable = nextFailures >= threshold;
+    const nowIso = new Date().toISOString();
+    const unavailableSince = shouldMarkUnavailable ? existing.unavailableSince || nowIso : null;
+
+    this.#db
+      .prepare(
+        `INSERT INTO federation_domains (domain, tier, reason, unavailable_since, consecutive_failures, updated_at)
+         VALUES (?, 'allow', ?, ?, ?, datetime('now'))
+         ON CONFLICT(domain) DO UPDATE SET
+           unavailable_since = COALESCE(federation_domains.unavailable_since, excluded.unavailable_since),
+           consecutive_failures = excluded.consecutive_failures,
+           private_comment = COALESCE(federation_domains.private_comment, excluded.reason),
+           updated_at = datetime('now')`,
+      )
+      .run(
+        cleanDomain,
+        errorMessage ? `Delivery failure: ${errorMessage.slice(0, 200)}` : null,
+        unavailableSince,
+        nextFailures,
+      );
+
+    const updated = this.getDomainTier(cleanDomain);
+    return {
+      consecutiveFailures: updated.consecutiveFailures,
+      unavailableSince: updated.unavailableSince ?? null,
+    };
+  }
+
+  isDomainUnavailable(domain: string): boolean {
+    const cleanDomain = domain.toLowerCase().trim();
+    if (!cleanDomain) return false;
+    const tierInfo = this.getDomainTier(cleanDomain);
+    if (!tierInfo.unavailableSince) return false;
+    // Allow automatic cooldown probe after 6 hours
+    const unavailableMs = new Date(tierInfo.unavailableSince).getTime();
+    if (Number.isFinite(unavailableMs) && Date.now() - unavailableMs > 6 * 3600 * 1000) {
+      return false;
+    }
+    return true;
+  }
+
+  static obfuscateDomainName(domain: string): string {
+    const parts = domain.split(".");
+    return parts
+      .map((part, idx) => {
+        if (idx === parts.length - 1 || part.length <= 2) return part;
+        return `${part[0]}${"*".repeat(Math.min(5, part.length - 2))}${part[part.length - 1]}`;
+      })
+      .join(".");
+  }
+
+  listPublicDomainBlocks(): {
+    domain: string;
+    digest: string;
+    severity: "silence" | "suspend";
+    comment: string;
+  }[] {
+    const rows = this.listFederationDomains().filter((d) => d.tier === "silence" || d.tier === "suspend");
+    return rows.map((d) => {
+      const digest = crypto.createHash("sha256").update(d.domain.toLowerCase()).digest("hex");
+      const displayDomain = d.obfuscate ? LibraryDatabase.obfuscateDomainName(d.domain) : d.domain;
+      return {
+        domain: displayDomain,
+        digest,
+        severity: d.tier === "suspend" ? "suspend" : "silence",
+        comment: d.public_comment ?? d.reason ?? "",
+      };
+    });
+  }
+
+  listKnownPeers(): string[] {
+    const peerSet = new Set<string>();
+    const domainRows = this.#db.prepare(`SELECT domain FROM federation_domains WHERE tier != 'suspend'`).all() as {
+      domain: string;
+    }[];
+    for (const r of domainRows) {
+      if (r.domain) peerSet.add(r.domain.toLowerCase());
+    }
+    const userDomains = this.#db
+      .prepare(`SELECT DISTINCT remote_domain FROM users WHERE remote_domain IS NOT NULL AND remote_domain != ''`)
+      .all() as { remote_domain: string }[];
+    for (const u of userDomains) {
+      const dom = u.remote_domain.toLowerCase();
+      if (!this.isDomainSuspended(dom)) {
+        peerSet.add(dom);
+      }
+    }
+    return Array.from(peerSet).sort();
+  }
+
+  // ── ActivityPub Relays (FEP-ae97) ────────────────────────────────
+
+  listFederationRelays(): FederationRelayRow[] {
+    return this.#db.prepare(`SELECT * FROM federation_relays ORDER BY id DESC`).all() as FederationRelayRow[];
+  }
+
+  getFederationRelayById(id: number): FederationRelayRow | undefined {
+    return this.#db.prepare(`SELECT * FROM federation_relays WHERE id = ?`).get(id) as FederationRelayRow | undefined;
+  }
+
+  getFederationRelayByActor(actorUrl: string): FederationRelayRow | undefined {
+    return this.#db
+      .prepare(`SELECT * FROM federation_relays WHERE actor_url = ? OR inbox_url = ?`)
+      .get(actorUrl.trim(), actorUrl.trim()) as FederationRelayRow | undefined;
+  }
+
+  addFederationRelay(
+    inboxUrl: string,
+    actorUrl?: string,
+    followActivityId?: string,
+    state: "pending" | "accepted" | "rejected" | "paused" = "pending",
+  ): FederationRelayRow {
+    const cleanInbox = inboxUrl.trim();
+    const cleanActor = (actorUrl || cleanInbox.replace(/\/inbox\/?$/, "/actor")).trim();
+    let domain = "unknown";
+    try {
+      domain = new URL(cleanInbox).hostname.toLowerCase();
+    } catch {}
+
+    this.#db
+      .prepare(
+        `INSERT INTO federation_relays (inbox_url, actor_url, domain, state, follow_activity_id, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(inbox_url) DO UPDATE SET
+           actor_url = excluded.actor_url,
+           state = excluded.state,
+           follow_activity_id = COALESCE(excluded.follow_activity_id, federation_relays.follow_activity_id),
+           updated_at = datetime('now')`,
+      )
+      .run(cleanInbox, cleanActor, domain, state, followActivityId ?? null);
+
+    return this.#db
+      .prepare(`SELECT * FROM federation_relays WHERE inbox_url = ?`)
+      .get(cleanInbox) as FederationRelayRow;
+  }
+
+  updateFederationRelayState(
+    idOrActorUrl: number | string,
+    state: "pending" | "accepted" | "rejected" | "paused",
+    lastError?: string | null,
+  ): FederationRelayRow | undefined {
+    if (typeof idOrActorUrl === "number") {
+      this.#db
+        .prepare(
+          `UPDATE federation_relays
+           SET state = ?, last_error = COALESCE(?, last_error), updated_at = datetime('now')
+           WHERE id = ?`,
+        )
+        .run(state, lastError === undefined ? null : lastError, idOrActorUrl);
+      return this.getFederationRelayById(idOrActorUrl);
+    }
+    const clean = idOrActorUrl.trim();
+    this.#db
+      .prepare(
+        `UPDATE federation_relays
+         SET state = ?, last_error = COALESCE(?, last_error), updated_at = datetime('now')
+         WHERE actor_url = ? OR inbox_url = ?`,
+      )
+      .run(state, lastError === undefined ? null : lastError, clean, clean);
+    return this.getFederationRelayByActor(clean);
+  }
+
+  deleteFederationRelay(id: number): FederationRelayRow | undefined {
+    const existing = this.getFederationRelayById(id);
+    if (!existing) return undefined;
+    this.#db.prepare(`DELETE FROM federation_relays WHERE id = ?`).run(id);
+    return existing;
+  }
+
+  incrementRelayStats(idOrActorUrl: number | string, direction: "forwarded" | "received"): void {
+    const col = direction === "forwarded" ? "forwarded_count" : "received_count";
+    if (typeof idOrActorUrl === "number") {
+      this.#db
+        .prepare(`UPDATE federation_relays SET ${col} = ${col} + 1, updated_at = datetime('now') WHERE id = ?`)
+        .run(idOrActorUrl);
+    } else {
+      this.#db
+        .prepare(
+          `UPDATE federation_relays SET ${col} = ${col} + 1, updated_at = datetime('now') WHERE actor_url = ? OR inbox_url = ?`,
+        )
+        .run(idOrActorUrl, idOrActorUrl);
+    }
+  }
+
+  // ── Structured Instance Rules ────────────────────────────────────
+
+  listInstanceRules(): InstanceRuleRow[] {
+    return this.#db.prepare(`SELECT * FROM instance_rules ORDER BY priority ASC, id ASC`).all() as InstanceRuleRow[];
+  }
+
+  createInstanceRule(text: string, hint?: string | null, priority?: number): InstanceRuleRow {
+    const cleanText = text.trim();
+    if (!cleanText) {
+      throw new Error("Rule text is required");
+    }
+    const effectivePriority =
+      typeof priority === "number" && Number.isFinite(priority) ? priority : this.listInstanceRules().length + 1;
+    const res = this.#db
+      .prepare(
+        `INSERT INTO instance_rules (text, hint, priority, created_at, updated_at)
+         VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
+      )
+      .run(cleanText, hint?.trim() || null, effectivePriority);
+    return this.#db
+      .prepare(`SELECT * FROM instance_rules WHERE id = ?`)
+      .get(Number(res.lastInsertRowid)) as InstanceRuleRow;
+  }
+
+  updateInstanceRule(
+    id: number,
+    updates: { text?: string | undefined; hint?: string | null | undefined; priority?: number | undefined },
+  ): InstanceRuleRow | undefined {
+    const existing = this.#db.prepare(`SELECT * FROM instance_rules WHERE id = ?`).get(id) as
+      | InstanceRuleRow
+      | undefined;
+    if (!existing) return undefined;
+
+    const nextText = updates.text !== undefined ? updates.text.trim() : existing.text;
+    const nextHint = updates.hint !== undefined ? (updates.hint ? updates.hint.trim() : null) : existing.hint;
+    const nextPriority = updates.priority !== undefined ? Number(updates.priority) : existing.priority;
+
+    this.#db
+      .prepare(
+        `UPDATE instance_rules
+         SET text = ?, hint = ?, priority = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(nextText, nextHint, nextPriority, id);
+
+    return this.#db.prepare(`SELECT * FROM instance_rules WHERE id = ?`).get(id) as InstanceRuleRow | undefined;
+  }
+
+  deleteInstanceRule(id: number): boolean {
+    const res = this.#db.prepare(`DELETE FROM instance_rules WHERE id = ?`).run(id);
+    return res.changes > 0;
+  }
+
+  // ── Account Warnings & Strikes ───────────────────────────────────
+
+  #hydrateAccountWarning(row: RawAccountWarningRow): AccountWarningRow {
+    let ruleIds: number[] = [];
+    if (Array.isArray(row.rule_ids)) {
+      ruleIds = row.rule_ids;
+    } else if (typeof row.rule_ids === "string") {
+      try {
+        const parsed = JSON.parse(row.rule_ids);
+        if (Array.isArray(parsed)) ruleIds = parsed.map(Number).filter(Number.isFinite);
+      } catch {}
+    }
+    let postIds: number[] = [];
+    if (Array.isArray(row.post_ids)) {
+      postIds = row.post_ids;
+    } else if (typeof row.post_ids === "string") {
+      try {
+        const parsed = JSON.parse(row.post_ids);
+        if (Array.isArray(parsed)) postIds = parsed.map(Number).filter(Number.isFinite);
+      } catch {}
+    }
+    return {
+      id: row.id,
+      target_user_id: row.target_user_id,
+      actor_id: row.actor_id,
+      action: row.action,
+      text: row.text,
+      report_id: row.report_id,
+      rule_ids: ruleIds,
+      post_ids: postIds,
+      acknowledged_at: row.acknowledged_at,
+      created_at: row.created_at,
+      actor_username: row.actor_username ?? null,
+      target_username: row.target_username ?? null,
+    };
+  }
+
+  createAccountWarning(params: {
+    targetUserId: number;
+    actorId?: number | null | undefined;
+    moderatorId?: number | null | undefined;
+    action?: AccountWarningRow["action"] | string | undefined;
+    text: string;
+    reportId?: number | null | undefined;
+    ruleIds?: number[] | undefined;
+    postIds?: number[] | undefined;
+  }): AccountWarningRow {
+    const validActions = [
+      "none",
+      "disable",
+      "mark_statuses_sensitive",
+      "delete_statuses",
+      "silence",
+      "suspend",
+      "warn",
+    ] as const;
+    const action: AccountWarningRow["action"] =
+      params.action && (validActions as readonly string[]).includes(params.action)
+        ? (params.action as AccountWarningRow["action"])
+        : "warn";
+    const ruleIdsJson = JSON.stringify((params.ruleIds || []).map(Number).filter(Number.isFinite));
+    const postIdsJson = JSON.stringify((params.postIds || []).map(Number).filter(Number.isFinite));
+    const effectiveActorId = params.actorId ?? params.moderatorId ?? null;
+
+    const res = this.#db
+      .prepare(
+        `INSERT INTO account_warnings (target_user_id, actor_id, action, text, report_id, rule_ids, post_ids, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      )
+      .run(
+        params.targetUserId,
+        effectiveActorId,
+        action,
+        params.text.trim(),
+        params.reportId ?? null,
+        ruleIdsJson,
+        postIdsJson,
+      );
+
+    const warningId = Number(res.lastInsertRowid);
+    this.createNotification(
+      params.targetUserId,
+      effectiveActorId || params.targetUserId,
+      "moderation_warning",
+      undefined,
+      {
+        warningId,
+        action,
+        text: params.text.trim(),
+        ruleIds: params.ruleIds || [],
+      },
+    );
+
+    const row = this.#db
+      .prepare(
+        `SELECT w.*, u.username as target_username, a.username as actor_username
+         FROM account_warnings w
+         LEFT JOIN users u ON w.target_user_id = u.id
+         LEFT JOIN users a ON w.actor_id = a.id
+         WHERE w.id = ?`,
+      )
+      .get(warningId) as RawAccountWarningRow;
+    return this.#hydrateAccountWarning(row);
+  }
+
+  listAccountWarnings(targetUserId?: number): AccountWarningRow[] {
+    if (typeof targetUserId === "number") {
+      const rows = this.#db
+        .prepare(
+          `SELECT w.*, u.username as target_username, a.username as actor_username
+           FROM account_warnings w
+           LEFT JOIN users u ON w.target_user_id = u.id
+           LEFT JOIN users a ON w.actor_id = a.id
+           WHERE w.target_user_id = ?
+           ORDER BY w.id DESC`,
+        )
+        .all(targetUserId) as RawAccountWarningRow[];
+      return rows.map((r) => this.#hydrateAccountWarning(r));
+    }
+    const rows = this.#db
+      .prepare(
+        `SELECT w.*, u.username as target_username, a.username as actor_username
+         FROM account_warnings w
+         LEFT JOIN users u ON w.target_user_id = u.id
+         LEFT JOIN users a ON w.actor_id = a.id
+         ORDER BY w.id DESC LIMIT 100`,
+      )
+      .all() as RawAccountWarningRow[];
+    return rows.map((r) => this.#hydrateAccountWarning(r));
+  }
+
+  acknowledgeAccountWarning(warningId: number, userId: number): boolean {
+    const res = this.#db
+      .prepare(
+        `UPDATE account_warnings
+         SET acknowledged_at = datetime('now')
+         WHERE id = ? AND target_user_id = ? AND acknowledged_at IS NULL`,
+      )
+      .run(warningId, userId);
+    return res.changes > 0;
+  }
+
+  // ── Internal Staff Notes ─────────────────────────────────────────
+
+  createStaffNote(
+    targetType: "user" | "domain" | "report",
+    targetId: string,
+    authorId: number,
+    content: string,
+  ): StaffNoteRow {
+    const cleanContent = content.trim();
+    if (!cleanContent) {
+      throw new Error("Staff note content is required");
+    }
+    const res = this.#db
+      .prepare(
+        `INSERT INTO staff_notes (target_type, target_id, author_id, content, created_at)
+         VALUES (?, ?, ?, ?, datetime('now'))`,
+      )
+      .run(targetType, String(targetId).trim(), authorId, cleanContent);
+    const noteId = Number(res.lastInsertRowid);
+    return this.#db
+      .prepare(
+        `SELECT n.*, u.username as author_username
+         FROM staff_notes n
+         LEFT JOIN users u ON n.author_id = u.id
+         WHERE n.id = ?`,
+      )
+      .get(noteId) as StaffNoteRow;
+  }
+
+  listStaffNotes(targetType: "user" | "domain" | "report", targetId?: string): StaffNoteRow[] {
+    if (targetId !== undefined && targetId.trim() !== "") {
+      return this.#db
+        .prepare(
+          `SELECT n.*, u.username as author_username
+           FROM staff_notes n
+           LEFT JOIN users u ON n.author_id = u.id
+           WHERE n.target_type = ? AND n.target_id = ?
+           ORDER BY n.id DESC`,
+        )
+        .all(targetType, String(targetId).trim()) as StaffNoteRow[];
+    }
+    return this.#db
+      .prepare(
+        `SELECT n.*, u.username as author_username
+         FROM staff_notes n
+         LEFT JOIN users u ON n.author_id = u.id
+         WHERE n.target_type = ?
+         ORDER BY n.id DESC LIMIT 100`,
+      )
+      .all(targetType) as StaffNoteRow[];
+  }
+
+  deleteStaffNote(noteId: number): boolean {
+    const res = this.#db.prepare(`DELETE FROM staff_notes WHERE id = ?`).run(noteId);
+    return res.changes > 0;
+  }
+
+  // ── IP Blocks & Canonical Email Blocks ───────────────────────────
+
+  listIpBlocks(): IpBlockRow[] {
+    return this.#db
+      .prepare(
+        `SELECT * FROM ip_blocks
+         WHERE expires_at IS NULL OR datetime(expires_at) > datetime('now')
+         ORDER BY id DESC`,
+      )
+      .all() as IpBlockRow[];
+  }
+
+  createIpBlock(
+    paramsOrCidr:
+      | string
+      | {
+          cidr: string;
+          severity?: IpBlockRow["severity"] | undefined;
+          comment?: string | null | undefined;
+          createdBy?: number | null | undefined;
+          expiresAt?: string | null | undefined;
+        },
+    severityArg?: IpBlockRow["severity"],
+    commentArg?: string | null,
+    expiresAtArg?: string | null,
+    createdByArg?: number | null,
+  ): IpBlockRow {
+    const params =
+      typeof paramsOrCidr === "string"
+        ? {
+            cidr: paramsOrCidr,
+            severity: severityArg,
+            comment: commentArg,
+            expiresAt: expiresAtArg,
+            createdBy: createdByArg,
+          }
+        : paramsOrCidr;
+    const cleanCidr = params.cidr.trim();
+    if (!cleanCidr) {
+      throw new Error("CIDR or IP address is required");
+    }
+    const severity = params.severity || "no_sign_up";
+    this.#db
+      .prepare(
+        `INSERT INTO ip_blocks (cidr, severity, comment, created_by, expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(cidr) DO UPDATE SET
+           severity = excluded.severity,
+           comment = excluded.comment,
+           expires_at = excluded.expires_at,
+           updated_at = datetime('now')`,
+      )
+      .run(cleanCidr, severity, params.comment?.trim() || null, params.createdBy ?? null, params.expiresAt ?? null);
+
+    return this.#db.prepare(`SELECT * FROM ip_blocks WHERE cidr = ?`).get(cleanCidr) as IpBlockRow;
+  }
+
+  deleteIpBlock(id: number): boolean {
+    const res = this.#db.prepare(`DELETE FROM ip_blocks WHERE id = ?`).run(id);
+    return res.changes > 0;
+  }
+
+  checkIpBlock(clientIp?: string | null): IpBlockRow | null {
+    if (!clientIp || !clientIp.trim()) return null;
+    const blocks = this.listIpBlocks();
+    for (const block of blocks) {
+      if (ipMatchesCidr(clientIp, block.cidr)) {
+        return block;
+      }
+    }
+    return null;
+  }
+
+  listCanonicalEmailBlocks(): CanonicalEmailBlockRow[] {
+    return this.#db.prepare(`SELECT * FROM canonical_email_blocks ORDER BY id DESC`).all() as CanonicalEmailBlockRow[];
+  }
+
+  createCanonicalEmailBlock(
+    emailOrHash: string,
+    reason?: string | null,
+    createdBy?: number | null,
+  ): CanonicalEmailBlockRow {
+    const raw = emailOrHash.trim();
+    const isDirectHash = /^[a-f0-9]{64}$/i.test(raw);
+    const emailHash = isDirectHash ? raw.toLowerCase() : hashCanonicalEmail(raw);
+    const emailHint = isDirectHash ? `${raw.slice(0, 8)}…` : redactEmailHint(canonicalizeEmail(raw));
+
+    this.#db
+      .prepare(
+        `INSERT INTO canonical_email_blocks (canonical_email_hash, canonical_email_hint, reason, created_by, created_at)
+         VALUES (?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(canonical_email_hash) DO UPDATE SET
+           reason = COALESCE(excluded.reason, canonical_email_blocks.reason)`,
+      )
+      .run(emailHash, emailHint, reason?.trim() || null, createdBy ?? null);
+
+    return this.#db
+      .prepare(`SELECT * FROM canonical_email_blocks WHERE canonical_email_hash = ?`)
+      .get(emailHash) as CanonicalEmailBlockRow;
+  }
+
+  deleteCanonicalEmailBlock(id: number): boolean {
+    const res = this.#db.prepare(`DELETE FROM canonical_email_blocks WHERE id = ?`).run(id);
+    return res.changes > 0;
+  }
+
+  isCanonicalEmailBlocked(email: string): {
+    blocked: boolean;
+    reason?: string | undefined;
+    block?: CanonicalEmailBlockRow | undefined;
+  } {
+    const hash = hashCanonicalEmail(email);
+    const row = this.#db.prepare(`SELECT * FROM canonical_email_blocks WHERE canonical_email_hash = ?`).get(hash) as
+      | CanonicalEmailBlockRow
+      | undefined;
+    if (!row) return { blocked: false };
+    return {
+      blocked: true,
+      reason: row.reason || "This email address has been blocked by instance administration",
+      block: row,
+    };
+  }
+
+  // ── Mastodon v2 Content Filters ──────────────────────────────────
+
+  #hydrateContentFilter(row: RawContentFilterRow): ContentFilterRow {
+    let context: ContentFilterRow["context"] = ["home", "public", "notifications", "thread", "account"];
+    if (Array.isArray(row.context)) {
+      context = row.context;
+    } else if (typeof row.context === "string") {
+      try {
+        const parsed = JSON.parse(row.context);
+        if (Array.isArray(parsed)) context = parsed;
+      } catch {}
+    }
+
+    let keywords: ContentFilterKeyword[] = [];
+    if (typeof row.keywords_json === "string") {
+      try {
+        const parsed = JSON.parse(row.keywords_json);
+        if (Array.isArray(parsed)) {
+          keywords = parsed
+            .filter((k) => k && typeof k.keyword === "string" && k.keyword.trim())
+            .map((k) => ({
+              keyword: String(k.keyword).trim(),
+              whole_word: k.whole_word !== false,
+            }));
+        }
+      } catch {}
+    }
+
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      title: row.title,
+      context,
+      contexts: context,
+      filter_action: row.filter_action,
+      keywords,
+      expires_at: row.expires_at,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }
+
+  listContentFilters(userId?: number | null): ContentFilterRow[] {
+    if (typeof userId === "number" && userId > 0) {
+      const rows = this.#db
+        .prepare(
+          `SELECT * FROM content_filters
+           WHERE (user_id = ? OR user_id IS NULL)
+             AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
+           ORDER BY id DESC`,
+        )
+        .all(userId) as RawContentFilterRow[];
+      return rows.map((r) => this.#hydrateContentFilter(r));
+    }
+    const rows = this.#db
+      .prepare(
+        `SELECT * FROM content_filters
+         WHERE user_id IS NULL
+           AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
+         ORDER BY id DESC`,
+      )
+      .all() as RawContentFilterRow[];
+    return rows.map((r) => this.#hydrateContentFilter(r));
+  }
+
+  getContentFilter(id: number): ContentFilterRow | undefined {
+    const row = this.#db.prepare(`SELECT * FROM content_filters WHERE id = ?`).get(id) as
+      | RawContentFilterRow
+      | undefined;
+    return row ? this.#hydrateContentFilter(row) : undefined;
+  }
+
+  createContentFilter(params: {
+    userId?: number | null | undefined;
+    title: string;
+    context?: ("home" | "public" | "notifications" | "thread" | "account")[] | string[] | undefined;
+    filterAction?: "warn" | "hide" | "drop" | undefined;
+    keywords: { keyword: string; whole_word?: boolean | undefined }[];
+    expiresAt?: string | null | undefined;
+  }): ContentFilterRow {
+    const cleanTitle = params.title.trim();
+    if (!cleanTitle) {
+      throw new Error("Filter title is required");
+    }
+    const context =
+      Array.isArray(params.context) && params.context.length > 0
+        ? params.context
+        : (["home", "public", "notifications", "thread", "account"] as const);
+    const filterAction = params.filterAction || "warn";
+    const normalizedKeywords: ContentFilterKeyword[] = (params.keywords || [])
+      .filter((k) => k && typeof k.keyword === "string" && k.keyword.trim())
+      .map((k) => ({
+        keyword: k.keyword.trim(),
+        whole_word: k.whole_word !== false,
+      }));
+
+    const res = this.#db
+      .prepare(
+        `INSERT INTO content_filters (user_id, title, context, filter_action, keywords_json, expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      )
+      .run(
+        params.userId ?? null,
+        cleanTitle,
+        JSON.stringify(context),
+        filterAction,
+        JSON.stringify(normalizedKeywords),
+        params.expiresAt ?? null,
+      );
+
+    return this.getContentFilter(Number(res.lastInsertRowid))!;
+  }
+
+  updateContentFilter(
+    id: number,
+    userId: number | null,
+    updates: {
+      title?: string | undefined;
+      context?: ("home" | "public" | "notifications" | "thread" | "account")[] | string[] | undefined;
+      filterAction?: "warn" | "hide" | "drop" | undefined;
+      keywords?: { keyword: string; whole_word?: boolean | undefined }[] | undefined;
+      expiresAt?: string | null | undefined;
+    },
+  ): ContentFilterRow | undefined {
+    const existing = this.getContentFilter(id);
+    if (!existing) return undefined;
+    if (userId !== null && existing.user_id !== userId) {
+      return undefined;
+    }
+
+    const nextTitle = updates.title !== undefined ? updates.title.trim() : existing.title;
+    const nextContext = updates.context !== undefined ? updates.context : existing.context;
+    const nextAction = updates.filterAction !== undefined ? updates.filterAction : existing.filter_action;
+    const nextKeywords =
+      updates.keywords !== undefined
+        ? updates.keywords
+            .filter((k) => k && typeof k.keyword === "string" && k.keyword.trim())
+            .map((k) => ({ keyword: k.keyword.trim(), whole_word: k.whole_word !== false }))
+        : existing.keywords;
+    const nextExpiresAt = updates.expiresAt !== undefined ? updates.expiresAt : existing.expires_at;
+
+    this.#db
+      .prepare(
+        `UPDATE content_filters
+         SET title = ?, context = ?, filter_action = ?, keywords_json = ?, expires_at = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(nextTitle, JSON.stringify(nextContext), nextAction, JSON.stringify(nextKeywords), nextExpiresAt, id);
+
+    return this.getContentFilter(id);
+  }
+
+  deleteContentFilter(id: number, userId?: number | null): boolean {
+    if (typeof userId === "number") {
+      const res = this.#db.prepare(`DELETE FROM content_filters WHERE id = ? AND user_id = ?`).run(id, userId);
+      return res.changes > 0;
+    }
+    const res = this.#db.prepare(`DELETE FROM content_filters WHERE id = ?`).run(id);
+    return res.changes > 0;
+  }
+
+  applyContentFiltersToPosts(
+    posts: PostRow[],
+    context: "home" | "public" | "notifications" | "thread" | "account",
+    currentUserId?: number,
+  ): PostRow[] {
+    if (posts.length === 0) return posts;
+    let filters: ContentFilterRow[] = [];
+    try {
+      filters = this.listContentFilters(currentUserId).filter((f) => f.context.includes(context));
+    } catch {
+      return posts;
+    }
+    if (filters.length === 0) return posts;
+
+    const result: PostRow[] = [];
+    for (const post of posts) {
+      const haystack = `${post.content || ""} ${post.content_warning || ""}`.toLowerCase();
+      const matched: ContentFilterMatch[] = [];
+      let shouldDrop = false;
+
+      for (const filter of filters) {
+        const keywordMatches: string[] = [];
+        for (const kw of filter.keywords) {
+          const term = kw.keyword.toLowerCase();
+          if (!term) continue;
+          if (kw.whole_word) {
+            const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const re = new RegExp(`(?:^|[^a-z0-9_])${escaped}(?:$|[^a-z0-9_])`, "i");
+            if (re.test(haystack)) {
+              keywordMatches.push(kw.keyword);
+            }
+          } else if (haystack.includes(term)) {
+            keywordMatches.push(kw.keyword);
+          }
+        }
+        if (keywordMatches.length > 0) {
+          if (filter.filter_action === "drop" || filter.filter_action === "hide") {
+            shouldDrop = true;
+          }
+          matched.push({
+            filter_id: filter.id,
+            title: filter.title,
+            filter_action: filter.filter_action,
+            keyword_matches: keywordMatches,
+            filter: {
+              id: filter.id,
+              title: filter.title,
+              context: filter.context,
+              filter_action: filter.filter_action,
+            },
+          });
+        }
+      }
+
+      if (shouldDrop) {
+        continue;
+      }
+      if (matched.length > 0) {
+        post.filtered = matched;
+        if (!post.content_warning) {
+          post.content_warning = `Filtered: ${matched.map((m) => m.title).join(", ")}`;
+          post.is_sensitive = 1;
+        }
+      }
+      result.push(post);
+    }
+    return result;
+  }
+
+  // ── Federated Polls (`Question`) ─────────────────────────────────
+
+  createPostPoll(
+    postId: number,
+    options: (string | { title: string; votes_count?: number })[],
+    expiresAt?: string | null,
+    multiple: boolean = false,
+  ): PostPollView {
+    const normalizedOptions: PostPollOption[] = options
+      .map((opt) =>
+        typeof opt === "string"
+          ? { title: opt.trim(), votes_count: 0 }
+          : { title: String(opt.title || "").trim(), votes_count: Number(opt.votes_count || 0) },
+      )
+      .filter((o) => o.title.length > 0);
+
+    if (normalizedOptions.length < 2) {
+      throw new Error("A poll must include at least 2 options");
+    }
+
+    const totalVotes = normalizedOptions.reduce((sum, o) => sum + o.votes_count, 0);
+    this.#db
+      .prepare(
+        `INSERT INTO post_polls (post_id, options_json, expires_at, multiple, votes_count, voters_count, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(post_id) DO UPDATE SET
+           options_json = excluded.options_json,
+           expires_at = excluded.expires_at,
+           multiple = excluded.multiple,
+           votes_count = excluded.votes_count`,
+      )
+      .run(postId, JSON.stringify(normalizedOptions), expiresAt ?? null, multiple ? 1 : 0, totalVotes, totalVotes);
+
+    return this.getPostPoll(postId)!;
+  }
+
+  getPostPoll(postId: number, currentUserId?: number): PostPollView | null {
+    try {
+      const row = this.#db.prepare(`SELECT * FROM post_polls WHERE post_id = ?`).get(postId) as
+        | {
+            id: number;
+            post_id: number;
+            options_json: string;
+            expires_at: string | null;
+            multiple: number;
+            votes_count: number;
+            voters_count: number;
+          }
+        | undefined;
+      if (!row) return null;
+
+      let options: PostPollOption[] = [];
+      try {
+        const parsed = JSON.parse(row.options_json);
+        if (Array.isArray(parsed)) {
+          options = parsed.map((o) => ({
+            title: String(o.title || ""),
+            votes_count: Number(o.votes_count || 0),
+          }));
+        }
+      } catch {}
+
+      const ownVotes: number[] = [];
+      if (currentUserId && currentUserId > 0) {
+        const voteRows = this.#db
+          .prepare(`SELECT option_index FROM post_poll_votes WHERE poll_id = ? AND voter_user_id = ?`)
+          .all(row.id, currentUserId) as { option_index: number }[];
+        for (const v of voteRows) {
+          ownVotes.push(Number(v.option_index));
+        }
+      }
+
+      const expired = Boolean(row.expires_at && new Date(row.expires_at).getTime() <= Date.now());
+      return {
+        id: row.id,
+        post_id: row.post_id,
+        expires_at: row.expires_at,
+        expired,
+        multiple: Boolean(row.multiple),
+        votes_count: Number(row.votes_count || 0),
+        voters_count: Number(row.voters_count || 0),
+        voted: ownVotes.length > 0,
+        own_votes: ownVotes,
+        options,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  votePostPoll(
+    postId: number,
+    choices: number[],
+    voterUserId?: number | null,
+    voterActorUrl?: string | null,
+  ): PostPollView {
+    const poll = this.getPostPoll(postId, voterUserId ?? undefined);
+    if (!poll) {
+      throw new Error("Poll not found for this post");
+    }
+    if (poll.expired) {
+      throw new Error("This poll has already expired");
+    }
+    const uniqueChoices = Array.from(new Set(choices.map((c) => Number(c)))).filter(
+      (idx) => Number.isInteger(idx) && idx >= 0 && idx < poll.options.length,
+    );
+    if (uniqueChoices.length === 0) {
+      throw new Error("At least one valid poll option index is required");
+    }
+    if (!poll.multiple && uniqueChoices.length > 1) {
+      throw new Error("This poll does not allow multiple choices");
+    }
+
+    const tx = this.#db.transaction(() => {
+      if (voterUserId) {
+        const existingVote = this.#db
+          .prepare(`SELECT 1 FROM post_poll_votes WHERE poll_id = ? AND voter_user_id = ? LIMIT 1`)
+          .get(poll.id, voterUserId);
+        if (existingVote) {
+          throw new Error("You have already voted in this poll");
+        }
+      } else if (voterActorUrl) {
+        const existingRemote = this.#db
+          .prepare(`SELECT 1 FROM post_poll_votes WHERE poll_id = ? AND voter_actor_url = ? LIMIT 1`)
+          .get(poll.id, voterActorUrl);
+        if (existingRemote) {
+          return;
+        }
+      }
+
+      const insertVote = this.#db.prepare(
+        `INSERT INTO post_poll_votes (poll_id, post_id, voter_user_id, voter_actor_url, option_index, created_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      );
+      const updatedOptions = poll.options.map((o) => ({ ...o }));
+      for (const choiceIdx of uniqueChoices) {
+        insertVote.run(poll.id, postId, voterUserId ?? null, voterActorUrl ?? null, choiceIdx);
+        const opt = updatedOptions[choiceIdx];
+        if (opt) {
+          opt.votes_count += 1;
+        }
+      }
+
+      const nextVotesCount = updatedOptions.reduce((sum, o) => sum + o.votes_count, 0);
+      this.#db
+        .prepare(
+          `UPDATE post_polls
+           SET options_json = ?, votes_count = ?, voters_count = voters_count + 1
+           WHERE id = ?`,
+        )
+        .run(JSON.stringify(updatedOptions), nextVotesCount, poll.id);
+    });
+    tx();
+
+    return this.getPostPoll(postId, voterUserId ?? undefined)!;
+  }
+
+  // ── Follow Requests (Locked Accounts) ────────────────────────────
+
+  getPendingFollowRequests(userId: number): {
+    id: number;
+    follower_id: number;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    bio: string | null;
+    actor_url: string | null;
+    inbox_url: string | null;
+    created_at: string;
+  }[] {
+    return this.#db
+      .prepare(
+        `SELECT f.id, f.follower_id, u.username, u.display_name, u.avatar_url, u.bio, u.actor_url, u.inbox_url, f.created_at
+         FROM follows f
+         JOIN users u ON f.follower_id = u.id
+         WHERE f.following_id = ? AND f.state = 'pending'
+         ORDER BY f.id DESC`,
+      )
+      .all(userId) as {
+      id: number;
+      follower_id: number;
+      username: string;
+      display_name: string | null;
+      avatar_url: string | null;
+      bio: string | null;
+      actor_url: string | null;
+      inbox_url: string | null;
+      created_at: string;
+    }[];
+  }
+
+  acceptFollowRequest(followingId: number, followerId: number): boolean {
+    const res = this.#db
+      .prepare(`UPDATE follows SET state = 'accepted' WHERE following_id = ? AND follower_id = ?`)
+      .run(followingId, followerId);
+    if (res.changes > 0) {
+      this.createNotification(followerId, followingId, "follow_accepted");
+      return true;
+    }
+    return false;
+  }
+
+  rejectFollowRequest(followingId: number, followerId: number): boolean {
+    const res = this.#db
+      .prepare(`DELETE FROM follows WHERE following_id = ? AND follower_id = ? AND state = 'pending'`)
+      .run(followingId, followerId);
+    return res.changes > 0;
+  }
+
+  // ── Account Migration, Key Rotation & Social Graph Portability ───
+
+  rotateUserKeys(userId: number): { publicKey: string } {
+    const { publicKey, privateKey } = this.#generateRSAKeys();
+    this.#db
+      .prepare(`UPDATE users SET public_key = ?, private_key = ? WHERE id = ?`)
+      .run(publicKey, privateKey, userId);
+    return { publicKey };
+  }
+
+  setUserAliases(userId: number, alsoKnownAs: string[]): string[] {
+    const normalized = Array.from(new Set(alsoKnownAs.map((u) => String(u || "").trim()).filter((u) => u.length > 0)));
+    this.#db.prepare(`UPDATE users SET also_known_as = ? WHERE id = ?`).run(JSON.stringify(normalized), userId);
+    return normalized;
+  }
+
+  initiateLocalUserMove(
+    userId: number,
+    targetActorUrl: string,
+  ): { movedToActorUrl: string; migratedLocalFollowers: number } {
+    const cleanTarget = targetActorUrl.trim();
+    if (!cleanTarget) {
+      throw new Error("Target actor URL is required");
+    }
+    this.#db.prepare(`UPDATE users SET moved_to_actor_url = ? WHERE id = ?`).run(cleanTarget, userId);
+
+    // If the target actor already exists locally, migrate local followers immediately
+    let migratedLocalFollowers = 0;
+    const targetUser = this.getUserByActorUrl(cleanTarget);
+    if (targetUser && targetUser.id !== userId) {
+      const followers = this.#db
+        .prepare(`SELECT follower_id, state FROM follows WHERE following_id = ?`)
+        .all(userId) as { follower_id: number; state: string | null }[];
+      const insertFollow = this.#db.prepare(
+        `INSERT OR IGNORE INTO follows (follower_id, following_id, state) VALUES (?, ?, ?)`,
+      );
+      const deleteOld = this.#db.prepare(`DELETE FROM follows WHERE follower_id = ? AND following_id = ?`);
+      const tx = this.#db.transaction(() => {
+        for (const f of followers) {
+          if (f.follower_id === targetUser.id) continue;
+          insertFollow.run(f.follower_id, targetUser.id, f.state || "accepted");
+          deleteOld.run(f.follower_id, userId);
+          migratedLocalFollowers++;
+        }
+      });
+      tx();
+    }
+
+    return { movedToActorUrl: cleanTarget, migratedLocalFollowers };
+  }
+
+  executeInboundActorMove(
+    sourceActorUrl: string,
+    targetActorUrl: string,
+    targetAlsoKnownAs: string[],
+    targetProfile?: {
+      username?: string | undefined;
+      displayName?: string | undefined;
+      inboxUrl?: string | undefined;
+      sharedInboxUrl?: string | undefined;
+      publicKey?: string | undefined;
+    },
+  ): { success: boolean; reason?: string | undefined; migratedFollowers: number } {
+    const cleanSource = sourceActorUrl.trim();
+    const cleanTarget = targetActorUrl.trim();
+    if (!cleanSource || !cleanTarget || cleanSource === cleanTarget) {
+      return { success: false, reason: "Invalid source or target actor URL", migratedFollowers: 0 };
+    }
+
+    // Verify bidirectional alsoKnownAs claim per ActivityPub Move specification
+    const normalizedAliases = targetAlsoKnownAs.map((a) => a.trim().replace(/\/$/, ""));
+    if (!normalizedAliases.includes(cleanSource.replace(/\/$/, ""))) {
+      return {
+        success: false,
+        reason: `Target actor '${cleanTarget}' does not list source '${cleanSource}' in alsoKnownAs`,
+        migratedFollowers: 0,
+      };
+    }
+
+    const sourceUser = this.getUserByActorUrl(cleanSource);
+    if (!sourceUser) {
+      return { success: false, reason: "Source actor not found", migratedFollowers: 0 };
+    }
+
+    let targetUser = this.getUserByActorUrl(cleanTarget);
+    if (!targetUser) {
+      let username = targetProfile?.username || "migrated_actor";
+      try {
+        const parsed = new URL(cleanTarget);
+        const pathParts = parsed.pathname.split("/").filter(Boolean);
+        username = targetProfile?.username || pathParts[pathParts.length - 1] || "migrated_actor";
+      } catch {}
+      const created = this.getOrCreateRemoteUser(cleanTarget, {
+        preferredUsername: username,
+        name: targetProfile?.displayName,
+        inbox: targetProfile?.inboxUrl || `${cleanTarget.replace(/\/$/, "")}/inbox`,
+        sharedInbox: targetProfile?.sharedInboxUrl,
+        publicKey: targetProfile?.publicKey || "",
+        alsoKnownAs: targetAlsoKnownAs,
+      });
+      const fetched = this.getUserById(created.id);
+      if (!fetched) {
+        return { success: false, reason: "Failed to initialize target remote user", migratedFollowers: 0 };
+      }
+      targetUser = fetched;
+    }
+
+    let migratedFollowers = 0;
+    const tx = this.#db.transaction(() => {
+      this.#db.prepare(`UPDATE users SET moved_to_actor_url = ? WHERE id = ?`).run(cleanTarget, sourceUser.id);
+      const followers = this.#db
+        .prepare(`SELECT follower_id, state FROM follows WHERE following_id = ?`)
+        .all(sourceUser.id) as { follower_id: number; state: string | null }[];
+      const insertFollow = this.#db.prepare(
+        `INSERT OR IGNORE INTO follows (follower_id, following_id, state) VALUES (?, ?, ?)`,
+      );
+      const deleteOld = this.#db.prepare(`DELETE FROM follows WHERE follower_id = ? AND following_id = ?`);
+      for (const f of followers) {
+        if (f.follower_id === targetUser!.id) continue;
+        insertFollow.run(f.follower_id, targetUser!.id, f.state || "accepted");
+        deleteOld.run(f.follower_id, sourceUser.id);
+        migratedFollowers++;
+      }
+    });
+    tx();
+
+    return { success: true, migratedFollowers };
+  }
+
+  exportUserSocialGraph(userId: number): {
+    following: string[];
+    followers: string[];
+    blocks: string[];
+    mutes: string[];
+    bookmarks: number[];
+    followingCsv: string;
+    blocksCsv: string;
+    mutesCsv: string;
+  } {
+    const followingRows = this.#db
+      .prepare(
+        `SELECT u.username, u.remote_domain
+         FROM follows f JOIN users u ON f.following_id = u.id
+         WHERE f.follower_id = ? AND (f.state = 'accepted' OR f.state IS NULL)`,
+      )
+      .all(userId) as { username: string; remote_domain: string | null }[];
+    const following = followingRows.map((r) =>
+      r.username.includes("@") || !r.remote_domain ? r.username : `${r.username}@${r.remote_domain}`,
+    );
+
+    const followerRows = this.#db
+      .prepare(
+        `SELECT u.username, u.remote_domain
+         FROM follows f JOIN users u ON f.follower_id = u.id
+         WHERE f.following_id = ? AND (f.state = 'accepted' OR f.state IS NULL)`,
+      )
+      .all(userId) as { username: string; remote_domain: string | null }[];
+    const followers = followerRows.map((r) =>
+      r.username.includes("@") || !r.remote_domain ? r.username : `${r.username}@${r.remote_domain}`,
+    );
+
+    const blockRows = this.#db
+      .prepare(`SELECT u.username FROM user_blocks b JOIN users u ON b.blocked_id = u.id WHERE b.blocker_id = ?`)
+      .all(userId) as { username: string }[];
+    const blocks = blockRows.map((r) => r.username);
+
+    const muteRows = this.#db
+      .prepare(`SELECT u.username FROM user_mutes m JOIN users u ON m.muted_id = u.id WHERE m.muter_id = ?`)
+      .all(userId) as { username: string }[];
+    const mutes = muteRows.map((r) => r.username);
+
+    const bookmarkRows = this.#db
+      .prepare(`SELECT post_id FROM bookmarks WHERE user_id = ? ORDER BY id DESC`)
+      .all(userId) as { post_id: number }[];
+    const bookmarks = bookmarkRows.map((r) => Number(r.post_id));
+
+    const followingCsv = [
+      "Account address,Show boosts,Notify on new posts,Languages",
+      ...following.map((acct) => `${acct},true,false,`),
+    ].join("\n");
+    const blocksCsv = ["Account address", ...blocks].join("\n");
+    const mutesCsv = ["Account address,Hide notifications", ...mutes.map((acct) => `${acct},true`)].join("\n");
+
+    return {
+      following,
+      followers,
+      blocks,
+      mutes,
+      bookmarks,
+      followingCsv,
+      blocksCsv,
+      mutesCsv,
+    };
+  }
+
+  importUserSocialGraph(
+    userId: number,
+    data: {
+      following?: string[] | undefined;
+      blocks?: string[] | undefined;
+      mutes?: string[] | undefined;
+      mode?: "merge" | "replace" | "overwrite" | undefined;
+    },
+    modeArg: "merge" | "replace" | "overwrite" = "merge",
+  ): {
+    importedFollowing: number;
+    importedBlocks: number;
+    importedMutes: number;
+  } {
+    const effectiveMode =
+      data.mode === "overwrite" || data.mode === "replace" || modeArg === "overwrite" || modeArg === "replace"
+        ? "replace"
+        : "merge";
+    let importedFollowing = 0;
+    let importedBlocks = 0;
+    let importedMutes = 0;
+
+    const resolveOrCreateTarget = (rawHandle: string): number | null => {
+      const clean = rawHandle.trim().replace(/^@/, "").split(",")[0]?.trim() || "";
+      if (!clean || clean === "Account address") return null;
+      const existing = this.getUserByUsername(clean) || this.getUserByActorUrl(clean);
+      if (existing) return existing.id;
+      if (clean.includes("@")) {
+        const [uname, dom] = clean.split("@");
+        if (uname && dom) {
+          const byLocal = this.getUserByUsername(uname);
+          if (byLocal) return byLocal.id;
+          const actorUrl = `https://${dom.toLowerCase()}/users/${uname}`;
+          const remote = this.getOrCreateRemoteUser(actorUrl, {
+            preferredUsername: uname,
+            inbox: `https://${dom.toLowerCase()}/users/${uname}/inbox`,
+            publicKey: "",
+          });
+          return remote.id;
+        }
+      }
+      return null;
+    };
+
+    const tx = this.#db.transaction(() => {
+      if (Array.isArray(data.following)) {
+        if (effectiveMode === "replace") {
+          this.#db.prepare(`DELETE FROM follows WHERE follower_id = ?`).run(userId);
+        }
+        for (const handle of data.following) {
+          const targetId = resolveOrCreateTarget(handle);
+          if (targetId && targetId !== userId) {
+            this.followUser(userId, targetId, "accepted");
+            importedFollowing++;
+          }
+        }
+      }
+
+      if (Array.isArray(data.blocks)) {
+        if (effectiveMode === "replace") {
+          this.#db.prepare(`DELETE FROM user_blocks WHERE blocker_id = ?`).run(userId);
+        }
+        for (const handle of data.blocks) {
+          const targetId = resolveOrCreateTarget(handle);
+          if (targetId && targetId !== userId) {
+            this.blockUser(userId, targetId);
+            importedBlocks++;
+          }
+        }
+      }
+
+      if (Array.isArray(data.mutes)) {
+        if (effectiveMode === "replace") {
+          this.#db.prepare(`DELETE FROM user_mutes WHERE muter_id = ?`).run(userId);
+        }
+        for (const handle of data.mutes) {
+          const targetId = resolveOrCreateTarget(handle);
+          if (targetId && targetId !== userId) {
+            this.muteUser(userId, targetId);
+            importedMutes++;
+          }
+        }
+      }
+    });
+    tx();
+
+    return { importedFollowing, importedBlocks, importedMutes };
+  }
+
+  // ── Remote Media Cache Proxy & Retention Pruning ─────────────────
+
+  getCachedRemoteArtifact(sourceUrl: string): RemoteArtifactCacheRow | undefined {
+    const clean = sourceUrl.trim();
+    const row = this.#db
+      .prepare(
+        `SELECT * FROM remote_artifact_cache
+         WHERE source_url = ? AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))`,
+      )
+      .get(clean) as RemoteArtifactCacheRow | undefined;
+    if (row) {
+      this.#db.prepare(`UPDATE remote_artifact_cache SET last_accessed_at = datetime('now') WHERE id = ?`).run(row.id);
+    }
+    return row;
+  }
+
+  putCachedRemoteArtifact(entry: {
+    sourceUrl: string;
+    remoteDomain: string;
+    mediaType: string;
+    byteSize: number;
+    sha256: string;
+    data: Buffer;
+    ttlDays?: number | undefined;
+  }): RemoteArtifactCacheRow {
+    const ttlDays = entry.ttlDays ?? (this.getInstanceSettings().remoteMediaCacheRetentionDays || 14);
+    const expiresAt = new Date(Date.now() + Math.max(1, ttlDays) * 86_400_000)
+      .toISOString()
+      .replace("T", " ")
+      .slice(0, 19);
+
+    this.#db
+      .prepare(
+        `INSERT INTO remote_artifact_cache (source_url, remote_domain, media_type, byte_size, sha256, data_blob, last_accessed_at, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)
+         ON CONFLICT(source_url) DO UPDATE SET
+           media_type = excluded.media_type,
+           byte_size = excluded.byte_size,
+           sha256 = excluded.sha256,
+           data_blob = excluded.data_blob,
+           last_accessed_at = datetime('now'),
+           expires_at = excluded.expires_at`,
+      )
+      .run(
+        entry.sourceUrl.trim(),
+        entry.remoteDomain.toLowerCase().trim(),
+        entry.mediaType,
+        entry.byteSize,
+        entry.sha256,
+        entry.data,
+        expiresAt,
+      );
+
+    return this.#db
+      .prepare(`SELECT * FROM remote_artifact_cache WHERE source_url = ?`)
+      .get(entry.sourceUrl.trim()) as RemoteArtifactCacheRow;
+  }
+
+  pruneRemoteMediaCache(olderThanDays?: number): { deletedFiles: number; freedBytes: number } {
+    const days = olderThanDays ?? this.getInstanceSettings().remoteMediaCacheRetentionDays ?? 14;
+    const cutoff =
+      days <= 0
+        ? "9999-12-31 23:59:59"
+        : new Date(Date.now() - days * 86_400_000).toISOString().replace("T", " ").slice(0, 19);
+
+    const statsRow = this.#db
+      .prepare(
+        `SELECT COUNT(*) as c, COALESCE(SUM(byte_size), 0) as totalBytes
+         FROM remote_artifact_cache
+         WHERE last_accessed_at <= ? OR (expires_at IS NOT NULL AND datetime(expires_at) <= datetime('now'))`,
+      )
+      .get(cutoff) as { c: number; totalBytes: number } | undefined;
+
+    const res = this.#db
+      .prepare(
+        `DELETE FROM remote_artifact_cache
+         WHERE last_accessed_at <= ? OR (expires_at IS NOT NULL AND datetime(expires_at) <= datetime('now'))`,
+      )
+      .run(cutoff);
+
+    return {
+      deletedFiles: Number(res.changes || statsRow?.c || 0),
+      freedBytes: Number(statsRow?.totalBytes || 0),
+    };
+  }
+
+  pruneRemoteContent(olderThanDays?: number): { deletedPosts: number } {
+    const days = olderThanDays ?? this.getInstanceSettings().remoteContentRetentionDays ?? 90;
+    const cutoff =
+      days <= 0
+        ? "9999-12-31 23:59:59"
+        : new Date(Date.now() - days * 86_400_000).toISOString().replace("T", " ").slice(0, 19);
+
+    const res = this.#db
+      .prepare(
+        `DELETE FROM posts
+         WHERE created_at <= ?
+           AND (ap_id IS NOT NULL OR author_id IN (SELECT id FROM users WHERE account_type = 'remote' OR remote_domain IS NOT NULL))
+           AND id NOT IN (SELECT DISTINCT post_id FROM likes WHERE post_id IS NOT NULL)
+           AND id NOT IN (SELECT DISTINCT post_id FROM bookmarks WHERE post_id IS NOT NULL)
+           AND id NOT IN (SELECT DISTINCT reply_to_id FROM posts WHERE reply_to_id IS NOT NULL)
+           AND id NOT IN (SELECT DISTINCT repost_of_id FROM posts WHERE repost_of_id IS NOT NULL)`,
+      )
+      .run(cutoff);
+
+    return { deletedPosts: Number(res.changes) };
+  }
+
+  pruneRemoteAccounts(olderThanDays: number = 90): { deletedAccounts: number } {
+    const cutoff =
+      olderThanDays <= 0
+        ? "9999-12-31 23:59:59"
+        : new Date(Date.now() - olderThanDays * 86_400_000).toISOString().replace("T", " ").slice(0, 19);
+
+    const res = this.#db
+      .prepare(
+        `DELETE FROM users
+         WHERE (account_type = 'remote' OR remote_domain IS NOT NULL)
+           AND created_at <= ?
+           AND id NOT IN (SELECT following_id FROM follows)
+           AND id NOT IN (SELECT follower_id FROM follows)
+           AND id NOT IN (SELECT author_id FROM posts)`,
+      )
+      .run(cutoff);
+
+    return { deletedAccounts: Number(res.changes) };
+  }
+
+  // ── Trending Topic Moderation ────────────────────────────────────
+
+  listTrendingTopicsForAdmin(reviewStatus?: string, limit: number = 50): TrendingTopicRow[] {
+    if (reviewStatus && reviewStatus !== "all") {
+      return this.#db
+        .prepare(
+          `SELECT * FROM trending_topics
+           WHERE COALESCE(review_status, 'approved') = ?
+           ORDER BY current_score DESC LIMIT ?`,
+        )
+        .all(reviewStatus, limit) as TrendingTopicRow[];
+    }
+    return this.#db
+      .prepare(`SELECT * FROM trending_topics ORDER BY current_score DESC LIMIT ?`)
+      .all(limit) as TrendingTopicRow[];
+  }
+
+  reviewTrendingTopic(
+    topicId: number,
+    status: "pending" | "approved" | "rejected",
+    reviewerId?: number | null,
+  ): TrendingTopicRow | undefined {
+    this.#db
+      .prepare(
+        `UPDATE trending_topics
+         SET review_status = ?, reviewed_by = ?, reviewed_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(status, reviewerId ?? null, topicId);
+    return this.#db.prepare(`SELECT * FROM trending_topics WHERE id = ?`).get(topicId) as TrendingTopicRow | undefined;
+  }
+
+  // ── Web Push Subscriptions (RFC 8030) ────────────────────────────
+
+  listPushSubscriptions(userId: number): PushSubscriptionRow[] {
+    return this.#db
+      .prepare(`SELECT * FROM push_subscriptions WHERE user_id = ? ORDER BY id DESC`)
+      .all(userId) as PushSubscriptionRow[];
+  }
+
+  upsertPushSubscription(
+    userId: number,
+    endpoint: string,
+    p256dh: string,
+    auth: string,
+    alerts: Record<string, boolean> = {
+      mention: true,
+      follow: true,
+      reblog: true,
+      favourite: true,
+      poll: true,
+    },
+    policy: string = "all",
+  ): PushSubscriptionRow {
+    const cleanEndpoint = endpoint.trim();
+    if (!cleanEndpoint) {
+      throw new Error("Push subscription endpoint URL is required");
+    }
+    this.#db
+      .prepare(
+        `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, alerts_json, policy, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(user_id, endpoint) DO UPDATE SET
+           p256dh = excluded.p256dh,
+           auth = excluded.auth,
+           alerts_json = excluded.alerts_json,
+           policy = excluded.policy,
+           updated_at = datetime('now')`,
+      )
+      .run(userId, cleanEndpoint, p256dh, auth, JSON.stringify(alerts), policy);
+
+    return this.#db
+      .prepare(`SELECT * FROM push_subscriptions WHERE user_id = ? AND endpoint = ?`)
+      .get(userId, cleanEndpoint) as PushSubscriptionRow;
+  }
+
+  deletePushSubscription(userId: number, idOrEndpoint: number | string): boolean {
+    if (typeof idOrEndpoint === "number") {
+      const res = this.#db
+        .prepare(`DELETE FROM push_subscriptions WHERE id = ? AND user_id = ?`)
+        .run(idOrEndpoint, userId);
+      return res.changes > 0;
+    }
+    const res = this.#db
+      .prepare(`DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?`)
+      .run(idOrEndpoint.trim(), userId);
+    return res.changes > 0;
+  }
+
   close(): void {
+    if (this.analyticsBuffer) {
+      this.analyticsBuffer.stop();
+      this.analyticsBuffer.flushSync();
+    }
     this.#db.close();
   }
 }
@@ -12433,5 +14921,23 @@ export interface ThreadAuditLogEntry {
   created_at: string;
 }
 
-export type { UserReferralRow, WaitlistSubmissionRow } from "./database/types.js";
+export type {
+  AccountWarningRow,
+  CanonicalEmailBlockRow,
+  ContentFilterKeyword,
+  ContentFilterMatch,
+  ContentFilterRow,
+  FederationRelayRow,
+  InstanceRuleRow,
+  IpBlockRow,
+  PostPollOption,
+  PostPollView,
+  PostVisibility,
+  ProfileField,
+  PushSubscriptionRow,
+  RemoteArtifactCacheRow,
+  StaffNoteRow,
+  UserReferralRow,
+  WaitlistSubmissionRow,
+} from "./database/types.js";
 export type Database = LibraryDatabase;

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import styled from "styled-components";
+import styledImport from "styled-components";
+
+const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
 
 export const TabBar = styled.div<{ $scrolled?: boolean | undefined }>`
   display: flex;

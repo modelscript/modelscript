@@ -10,7 +10,11 @@ import {
   UploadIcon,
 } from "@primer/octicons-react";
 import React, { useState } from "react";
-import { circuitBreakAdminFederationDomain } from "../../../api";
+import {
+  circuitBreakAdminFederationDomain,
+  verifyAdminFederationIngress,
+  type IngressVerificationResult,
+} from "../../../api";
 import Box from "../../../components/Box";
 import {
   ActionButton,
@@ -25,13 +29,19 @@ import {
   Table,
   Textarea,
 } from "../styles";
-import type { AdminFederationDeliveryItem, AdminFederationDomain, AdminFederationQueueStats } from "../types";
+import type {
+  AdminFederationDeliveryItem,
+  AdminFederationDomain,
+  AdminFederationQueueStats,
+  AdminInstanceSettings,
+} from "../types";
 
 export interface AdminFederationTabProps {
   domains: AdminFederationDomain[];
+  settings?: AdminInstanceSettings | null | undefined;
   onSaveDomainTier: (domain: string, tier: "allow" | "silence" | "suspend", reason?: string) => Promise<void>;
   onDeleteDomainRule: (domain: string) => Promise<void>;
-  onExportDomains?: ((format: "csv" | "json") => Promise<string>) | undefined;
+  onExportDomains?: ((format: "csv" | "json") => Promise<string | undefined>) | undefined;
   onImportDomains?:
     | ((payload: { content: string; format: "csv" | "json"; mode: "merge" | "replace" }) => Promise<void>)
     | undefined;
@@ -62,6 +72,7 @@ export interface AdminFederationTabProps {
 
 export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
   domains,
+  settings,
   onSaveDomainTier,
   onDeleteDomainRule,
   onExportDomains,
@@ -104,6 +115,23 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
   const [expandedDeliveryId, setExpandedDeliveryId] = useState<number | null>(null);
   const [circuitBreakStatus, setCircuitBreakStatus] = useState<string | null>(null);
 
+  const [ingressChecking, setIngressChecking] = useState(false);
+  const [ingressResult, setIngressResult] = useState<IngressVerificationResult | null>(null);
+  const [ingressError, setIngressError] = useState<string | null>(null);
+
+  const handleVerifyIngress = async () => {
+    setIngressChecking(true);
+    setIngressError(null);
+    try {
+      const res = await verifyAdminFederationIngress();
+      setIngressResult(res);
+    } catch (err: unknown) {
+      setIngressError(err instanceof Error ? err.message : "Failed to verify ingress reachability");
+    } finally {
+      setIngressChecking(false);
+    }
+  };
+
   const handleCircuitBreakDomain = async (domain: string) => {
     if (!domain) return;
     try {
@@ -131,7 +159,7 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
   const handleExport = async (format: "csv" | "json") => {
     if (!onExportDomains) return;
     const content = await onExportDomains(format);
-    if (typeof window !== "undefined") {
+    if (typeof content === "string" && typeof window !== "undefined") {
       const blob = new Blob([content], {
         type: format === "csv" ? "text/csv;charset=utf-8" : "application/json;charset=utf-8",
       });
@@ -315,6 +343,75 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
           )}
         </Card>
       )}
+
+      <Card>
+        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+          <div>
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+              <span style={{ fontWeight: 700, fontSize: "14px" }}>
+                Public Ingress &amp; Cloudflare Tunnel Diagnostics
+              </span>
+              {(settings?.ingressMode === "cloudflare" || settings?.cloudflareTunnelConfigured) && (
+                <Badge $variant="approved" data-testid="cloudflare-tunnel-badge">
+                  {settings?.cloudflareTunnelConfigured ? "Cloudflare Tunnel Configured" : "Cloudflare Tunnel Mode"}
+                </Badge>
+              )}
+            </Box>
+            <p style={{ margin: "4px 0 0 0", fontSize: "12px", opacity: 0.75 }}>
+              Verify whether this instance's ActivityPub endpoints (WebFinger and federation inbox) are reachable from
+              the public internet.
+            </p>
+          </div>
+          <ActionButton $variant="secondary" onClick={handleVerifyIngress} disabled={ingressChecking || loading}>
+            <SyncIcon size={13} className={ingressChecking ? "spin" : ""} />
+            <span>{ingressChecking ? "Probing Ingress..." : "Verify Public Ingress"}</span>
+          </ActionButton>
+        </Box>
+
+        {ingressError && (
+          <Box mt={2}>
+            <Badge $variant="danger">INGRESS PROBE ERROR</Badge>
+            <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--color-danger, #ef4444)" }}>
+              {ingressError}
+            </span>
+          </Box>
+        )}
+
+        {ingressResult && (
+          <Box mt={2} display="flex" flexDirection="column" gap={1} fontSize="12px">
+            <Box display="flex" flexWrap="wrap" gap={2} alignItems="center">
+              <Badge $variant={ingressResult.reachable ? "success" : "danger"}>
+                {ingressResult.reachable ? "INGRESS REACHABLE" : "INGRESS UNREACHABLE"}
+              </Badge>
+              <Badge $variant={ingressResult.tunnelDetected ? "approved" : "neutral"}>
+                {ingressResult.tunnelDetected ? "CLOUDFLARE TUNNEL DETECTED" : "DIRECT INGRESS"}
+              </Badge>
+              <span>
+                <strong>Latency:</strong> {ingressResult.latencyMs}ms
+              </span>
+              <span>
+                <strong>Domain:</strong> {ingressResult.domain}
+              </span>
+              {ingressResult.cfRay && (
+                <span>
+                  <strong>CF-Ray:</strong> {ingressResult.cfRay}
+                </span>
+              )}
+            </Box>
+            <div style={{ marginTop: "4px", opacity: 0.85 }}>
+              <span>{ingressResult.details}</span> &middot;{" "}
+              <a
+                href={ingressResult.webfingerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "inherit", textDecoration: "underline" }}
+              >
+                WebFinger Endpoint
+              </a>
+            </div>
+          </Box>
+        )}
+      </Card>
 
       <Box display="flex" alignItems="center" gap={2} mb={3}>
         <Input

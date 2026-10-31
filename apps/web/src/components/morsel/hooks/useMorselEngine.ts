@@ -3,6 +3,7 @@
 import { patchModelicaCadAnnotation, type DynamicBindingConfig } from "@modelscript/cad";
 import type { editor } from "monaco-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useModelingPreferences } from "../../../ModelingPreferencesContext";
 import { extractParametersFromCode } from "../../../util/modelica-params";
 import { type CadComponent } from "../cad-viewer";
 import { AnimationController } from "../cad-viewer/animation-controller";
@@ -610,6 +611,56 @@ export function tessellateScadSource(scadCode: string): {
   return { vtkBuffer, components };
 }
 
+/** Extract experiment(StartTime=..., StopTime=..., Tolerance=..., Interval=...) annotation from source. */
+export function extractExperimentFromCode(code: string): {
+  StartTime?: number;
+  StopTime?: number;
+  Tolerance?: number;
+  Interval?: number;
+  startTime?: number;
+  stopTime?: number;
+  tolerance?: number;
+  interval?: number;
+  numberOfIntervals?: number;
+  solver?: string;
+} | null {
+  const match = /experiment\s*\(([^)]*)\)/i.exec(code);
+  if (!match?.[1]) return null;
+  const body = match[1];
+  const numAttr = (name: string): number | undefined => {
+    const m = new RegExp(`\\b${name}\\s*=\\s*([+-]?\\d*\\.?\\d+(?:[eE][+-]?\\d+)?)`, "i").exec(body);
+    return m?.[1] !== undefined ? parseFloat(m[1]) : undefined;
+  };
+  const strAttr = (name: string): string | undefined => {
+    const m = new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`, "i").exec(body);
+    return m?.[1];
+  };
+  const startTime = numAttr("StartTime");
+  const stopTime = numAttr("StopTime");
+  const tolerance = numAttr("Tolerance");
+  const interval = numAttr("Interval");
+  const numberOfIntervals = numAttr("NumberOfIntervals");
+  const solver = strAttr("Algorithm") ?? strAttr("__Dymola_Algorithm") ?? strAttr("Solver");
+  if (
+    startTime === undefined &&
+    stopTime === undefined &&
+    tolerance === undefined &&
+    interval === undefined &&
+    numberOfIntervals === undefined &&
+    solver === undefined
+  ) {
+    return null;
+  }
+  return {
+    ...(startTime !== undefined ? { startTime, StartTime: startTime } : {}),
+    ...(stopTime !== undefined ? { stopTime, StopTime: stopTime } : {}),
+    ...(tolerance !== undefined ? { tolerance, Tolerance: tolerance } : {}),
+    ...(interval !== undefined ? { interval, Interval: interval } : {}),
+    ...(numberOfIntervals !== undefined ? { numberOfIntervals } : {}),
+    ...(solver !== undefined ? { solver } : {}),
+  };
+}
+
 export function useMorselEngine({
   dialect = "modelica",
   documentUri,
@@ -625,6 +676,12 @@ export function useMorselEngine({
   setView,
   viewDiagramEnum,
 }: UseMorselEngineProps) {
+  const { preferences: modelingPrefs } = useModelingPreferences();
+  const prefStopTime = modelingPrefs.defaultStopTime ?? 10;
+  const prefIntervals = modelingPrefs.defaultNumberOfIntervals ?? 500;
+  const prefTolerance = modelingPrefs.solverTolerance ?? modelingPrefs.defaultRelativeTolerance ?? 1e-4;
+  const prefSolver = modelingPrefs.defaultSolver ?? "cvode";
+
   // ── Live Editor Value Tracking ──
   const [editorValue, setEditorValue] = useState<string>(content);
   useEffect(() => {
@@ -640,6 +697,38 @@ export function useMorselEngine({
     return () => disposable.dispose();
   }, [editor]);
 
+  const buildExperimentMeta = useCallback(
+    (rawExp?: Record<string, any> | null) => {
+      const parsedFromSource = extractExperimentFromCode(editorValue);
+      const startTime = Number(rawExp?.startTime ?? rawExp?.StartTime ?? parsedFromSource?.startTime ?? 0);
+      const stopTime = Number(rawExp?.stopTime ?? rawExp?.StopTime ?? parsedFromSource?.stopTime ?? prefStopTime);
+      const numberOfIntervals = Number(
+        rawExp?.numberOfIntervals ?? rawExp?.NumberOfIntervals ?? parsedFromSource?.numberOfIntervals ?? prefIntervals,
+      );
+      const interval = Number(
+        rawExp?.interval ??
+          rawExp?.Interval ??
+          parsedFromSource?.interval ??
+          (stopTime - startTime) / Math.max(1, numberOfIntervals),
+      );
+      const tolerance = Number(rawExp?.tolerance ?? rawExp?.Tolerance ?? parsedFromSource?.tolerance ?? prefTolerance);
+      const solver = String(rawExp?.solver ?? rawExp?.Solver ?? parsedFromSource?.solver ?? prefSolver);
+      return {
+        StartTime: startTime,
+        StopTime: stopTime,
+        Tolerance: tolerance,
+        Interval: interval,
+        startTime,
+        stopTime,
+        tolerance,
+        interval,
+        numberOfIntervals,
+        solver,
+      };
+    },
+    [editorValue, prefStopTime, prefIntervals, prefTolerance, prefSolver],
+  );
+
   // ── Simulation State ──
   const [simulationVariables, setSimulationVariables] = useState<string[]>([]);
   const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
@@ -647,14 +736,30 @@ export function useMorselEngine({
   const [parameterOverrides, setParameterOverrides] = useState<Map<string, number>>(new Map());
   const [sweepState, setSweepState] = useState<SweepState | null>(null);
   const [sweepResults, setSweepResults] = useState<{ value: number; y: number[][] }[] | null>(null);
-  const [experimentOverrides, setExperimentOverrides] = useState<ExperimentOverrides>({
-    solver: "dassl",
-    tolerance: 1e-4,
+  const [simExperiment, setSimExperiment] = useState(() => buildExperimentMeta(null));
+  const [experimentOverrides, setExperimentOverrides] = useState<ExperimentOverrides>(() => ({
     equidistant: true,
+  }));
+  const [cachedSimulator, setCachedSimulator] = useState<any>(() => {
+    const initialExp = buildExperimentMeta(null);
+    return { experiment: initialExp, dae: { experiment: initialExp } };
   });
-  const [cachedSimulator, setCachedSimulator] = useState<any>(null);
   const [simulationStatus, setSimulationStatus] = useState<any>(null);
   const [localSimulationData, setLocalSimulationData] = useState<Record<string, number | string>[] | null>(null);
+
+  // Keep simExperiment & cachedSimulator synced with source @experiment(...) annotations and user preferences
+  useEffect(() => {
+    const nextExp = buildExperimentMeta(null);
+    setSimExperiment(nextExp);
+    setCachedSimulator((prev: any) => ({
+      ...(prev ?? {}),
+      experiment: nextExp,
+      dae: {
+        ...(prev?.dae ?? {}),
+        experiment: nextExp,
+      },
+    }));
+  }, [buildExperimentMeta]);
 
   // ── CAD & 3D Animation State ──
   const [cadComponents, setCadComponents] = useState<CadComponent[]>([]);
@@ -717,16 +822,33 @@ export function useMorselEngine({
     });
   };
 
-  const handleToggleSimulationVariable = (variable: string) => {
+  const handleToggleSimulationVariable = useCallback((variable: string) => {
     setSelectedSimulationVariables((prev) =>
       prev.includes(variable) ? prev.filter((v) => v !== variable) : [...prev, variable],
     );
-  };
+  }, []);
 
-  const handleVariablesLoaded = (variables: string[]) => {
+  const handleVariablesLoaded = useCallback((variables: string[]) => {
     setSimulationVariables(variables);
     setSelectedSimulationVariables((prev) => (prev.length > 0 ? prev : variables.slice(0, 3)));
-  };
+  }, []);
+
+  // Listen for variable selection events from CosimPanel in MorselVisualizerPane
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onCosimVariableToggle = (e: Event) => {
+      const detail = (e as CustomEvent<{ participantId?: string; variable?: string }>).detail;
+      const variable = detail?.variable;
+      if (!variable) return;
+      setSimulationVariables((prev) => (prev.includes(variable) ? prev : [...prev, variable]));
+      setSelectedSimulationVariables((prev) =>
+        prev.includes(variable) ? prev.filter((v) => v !== variable) : [...prev, variable],
+      );
+      setShowResultsView(true);
+    };
+    window.addEventListener("morsel:toggle-simulation-variable", onCosimVariableToggle);
+    return () => window.removeEventListener("morsel:toggle-simulation-variable", onCosimVariableToggle);
+  }, [setShowResultsView]);
 
   // ── Live MQTT sync ──
   useEffect(() => {
@@ -933,18 +1055,31 @@ export function useMorselEngine({
           className: selectedTreeClassName,
           parameterOverrides: overrideObj,
           sweepConfig: sweepState ?? undefined,
-          startTime: experimentOverrides.startTime,
-          stopTime: experimentOverrides.stopTime,
-          interval: experimentOverrides.interval,
-          solver: experimentOverrides.solver,
-          numberOfIntervals: experimentOverrides.numberOfIntervals,
-          rtol: experimentOverrides.tolerance,
+          startTime: experimentOverrides.startTime ?? simExperiment.startTime,
+          stopTime: experimentOverrides.stopTime ?? simExperiment.stopTime,
+          interval: experimentOverrides.interval ?? simExperiment.interval,
+          solver: experimentOverrides.solver ?? simExperiment.solver ?? prefSolver,
+          numberOfIntervals: experimentOverrides.numberOfIntervals ?? simExperiment.numberOfIntervals ?? prefIntervals,
+          rtol: experimentOverrides.tolerance ?? simExperiment.tolerance ?? prefTolerance,
           atol: experimentOverrides.atol,
           equidistant: experimentOverrides.equidistant,
           steadyStateOnly: experimentOverrides.steadyStateOnly,
         });
 
         if (result.error) throw new Error(result.error);
+
+        if (result.experiment) {
+          const updatedExp = buildExperimentMeta(result.experiment as Record<string, any>);
+          setSimExperiment(updatedExp);
+          setCachedSimulator((prev: any) => ({
+            ...(prev ?? {}),
+            experiment: updatedExp,
+            dae: {
+              ...(prev?.dae ?? {}),
+              experiment: updatedExp,
+            },
+          }));
+        }
 
         const states = result.states ?? [];
         if (result.sweepResults) {
@@ -981,7 +1116,19 @@ export function useMorselEngine({
     return () => {
       clearTimeout(timer);
     };
-  }, [parameterOverrides, sweepState, showResultsView, experimentOverrides, selectedTreeClassName, documentUri]);
+  }, [
+    parameterOverrides,
+    sweepState,
+    showResultsView,
+    experimentOverrides,
+    simExperiment,
+    prefSolver,
+    prefIntervals,
+    prefTolerance,
+    buildExperimentMeta,
+    selectedTreeClassName,
+    documentUri,
+  ]);
 
   // ── Full Simulation Execution ──
   const handleSimulate = async () => {
@@ -995,12 +1142,12 @@ export function useMorselEngine({
         className: selectedTreeClassName ?? undefined,
         parameterOverrides: overrideObj,
         sweepConfig: sweepState ?? undefined,
-        startTime: experimentOverrides.startTime,
-        stopTime: experimentOverrides.stopTime,
-        interval: experimentOverrides.interval,
-        solver: experimentOverrides.solver,
-        numberOfIntervals: experimentOverrides.numberOfIntervals,
-        rtol: experimentOverrides.tolerance,
+        startTime: experimentOverrides.startTime ?? simExperiment.startTime,
+        stopTime: experimentOverrides.stopTime ?? simExperiment.stopTime,
+        interval: experimentOverrides.interval ?? simExperiment.interval,
+        solver: experimentOverrides.solver ?? simExperiment.solver ?? prefSolver,
+        numberOfIntervals: experimentOverrides.numberOfIntervals ?? simExperiment.numberOfIntervals ?? prefIntervals,
+        rtol: experimentOverrides.tolerance ?? simExperiment.tolerance ?? prefTolerance,
         atol: experimentOverrides.atol,
         equidistant: experimentOverrides.equidistant,
         steadyStateOnly: experimentOverrides.steadyStateOnly,
@@ -1008,6 +1155,19 @@ export function useMorselEngine({
 
       if (result.error) {
         throw new Error(result.error);
+      }
+
+      if (result.experiment) {
+        const updatedExp = buildExperimentMeta(result.experiment as Record<string, any>);
+        setSimExperiment(updatedExp);
+        setCachedSimulator((prev: any) => ({
+          ...(prev ?? {}),
+          experiment: updatedExp,
+          dae: {
+            ...(prev?.dae ?? {}),
+            experiment: updatedExp,
+          },
+        }));
       }
 
       setSimulationParameters((result.parameters as any) ?? []);
@@ -1115,6 +1275,8 @@ export function useMorselEngine({
     setSweepState,
     sweepResults,
     setSweepResults,
+    simExperiment,
+    setSimExperiment,
     experimentOverrides,
     setExperimentOverrides,
     handleExperimentOverrideChange,

@@ -74,7 +74,7 @@ sequenceDiagram
     participant Verify as 13 Theory Oracles & Solvers
 
     Agent->>MCP: 1. modelica_lint / sysml2_check_constraints
-    MCP->>Core: Parse CST & evaluate 790 static lint rules
+    MCP->>Core: Parse CST & evaluate 794 static lint rules
     Core-->>Agent: Structured diagnostics (line, col, rule, fix)
     Agent->>MCP: 2. modelscript_closed_loop_synthesize
     MCP->>Verify: Flatten DAE -> Integrate -> Check STL robustness

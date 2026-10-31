@@ -81,13 +81,35 @@ export const isExportRestricted = isOfacSanctioned;
 export function extractRequestCountry(req: Request, locationAdapter?: GeoLocationLookupAdapter): string | undefined {
   const isProd = process.env["NODE_ENV"] === "production";
   const trustGeoHeaders = !isProd || process.env["TRUST_GEO_HEADERS"] === "true";
-  const trustCloudflare = !isProd || process.env["TRUST_CLOUDFLARE_HEADERS"] === "true" || trustGeoHeaders;
+  const trustCloudflare =
+    !isProd ||
+    process.env["TRUST_CLOUDFLARE_HEADERS"] === "true" ||
+    process.env["MSX_INGRESS_MODE"] === "cloudflare" ||
+    Boolean(process.env["CLOUDFLARE_TUNNEL_TOKEN"]) ||
+    Boolean(req.headers["cf-ray"]) ||
+    trustGeoHeaders;
 
   const user = (req as Request & { user?: { id?: number | undefined; country?: string | undefined } | undefined }).user;
   const userCountry = user?.country ? String(user.country).toUpperCase().trim() : undefined;
 
+  const rawCfCountry = req.headers["cf-ipcountry"] as string | undefined;
+  const cfCountry =
+    trustCloudflare &&
+    rawCfCountry &&
+    rawCfCountry.trim().toUpperCase() !== "XX" &&
+    rawCfCountry.trim().toUpperCase() !== "T1"
+      ? rawCfCountry.trim().toUpperCase()
+      : undefined;
+
+  const hasExplicitClientIp = Boolean(req.headers["cf-connecting-ip"] || req.headers["true-client-ip"]);
+  const skipProxyHopIpLookup =
+    !hasExplicitClientIp &&
+    (Boolean(req.headers["cf-ray"]) ||
+      Boolean(cfCountry) ||
+      (process.env["MSX_INGRESS_MODE"] === "cloudflare" && !req.headers["x-forwarded-for"]));
+
   let geoIpCountry: string | undefined;
-  if (locationAdapter) {
+  if (locationAdapter && !skipProxyHopIpLookup) {
     try {
       const ip = locationAdapter.extractIp(req);
       const loc = locationAdapter.lookupIp(ip);
@@ -106,11 +128,8 @@ export function extractRequestCountry(req: Request, locationAdapter?: GeoLocatio
     return geoIpCountry;
   }
 
-  if (trustCloudflare) {
-    const cfCountry = req.headers["cf-ipcountry"] as string | undefined;
-    if (cfCountry && cfCountry !== "XX" && cfCountry !== "T1") {
-      return cfCountry.toUpperCase().trim();
-    }
+  if (cfCountry) {
+    return cfCountry;
   }
 
   if (trustGeoHeaders) {
@@ -132,9 +151,40 @@ export function extractRequestCountry(req: Request, locationAdapter?: GeoLocatio
 export function extractRequestRegion(req: Request, locationAdapter?: GeoLocationLookupAdapter): string | undefined {
   const isProd = process.env["NODE_ENV"] === "production";
   const trustGeoHeaders = !isProd || process.env["TRUST_GEO_HEADERS"] === "true";
+  const trustCloudflare =
+    !isProd ||
+    process.env["TRUST_CLOUDFLARE_HEADERS"] === "true" ||
+    process.env["MSX_INGRESS_MODE"] === "cloudflare" ||
+    Boolean(process.env["CLOUDFLARE_TUNNEL_TOKEN"]) ||
+    Boolean(req.headers["cf-ray"]) ||
+    trustGeoHeaders;
+
+  const rawCfCountry = req.headers["cf-ipcountry"] as string | undefined;
+  const cfCountry =
+    trustCloudflare &&
+    rawCfCountry &&
+    rawCfCountry.trim().toUpperCase() !== "XX" &&
+    rawCfCountry.trim().toUpperCase() !== "T1"
+      ? rawCfCountry.trim().toUpperCase()
+      : undefined;
+  const rawCfRegion = trustCloudflare
+    ? ((req.headers["cf-region-code"] || req.headers["cf-region"]) as string | undefined)?.trim().toUpperCase()
+    : undefined;
+  const cfRegion = rawCfRegion
+    ? cfCountry && !rawCfRegion.startsWith(`${cfCountry}-`)
+      ? `${cfCountry}-${rawCfRegion}`
+      : rawCfRegion
+    : undefined;
+
+  const hasExplicitClientIp = Boolean(req.headers["cf-connecting-ip"] || req.headers["true-client-ip"]);
+  const skipProxyHopIpLookup =
+    !hasExplicitClientIp &&
+    (Boolean(req.headers["cf-ray"]) ||
+      Boolean(cfCountry) ||
+      (process.env["MSX_INGRESS_MODE"] === "cloudflare" && !req.headers["x-forwarded-for"]));
 
   let geoIpRegion: string | undefined;
-  if (locationAdapter) {
+  if (locationAdapter && !skipProxyHopIpLookup) {
     try {
       const ip = locationAdapter.extractIp(req);
       const loc = locationAdapter.lookupIp(ip);
@@ -148,6 +198,10 @@ export function extractRequestRegion(req: Request, locationAdapter?: GeoLocation
 
   if (geoIpRegion && isOfacSanctioned(undefined, geoIpRegion)) {
     return geoIpRegion;
+  }
+
+  if (cfRegion) {
+    return cfRegion;
   }
 
   if (trustGeoHeaders) {

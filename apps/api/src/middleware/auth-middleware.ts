@@ -325,9 +325,18 @@ export function tryEnterpriseProxyAuth(req: Request): boolean {
       account_type: created.account_type || (isAdmin ? "admin" : "user"),
       status: "active",
     };
-  } else if (isAdmin && user.account_type !== "admin") {
-    sharedAuthDatabase.setUserAccountType(user.id, "admin");
-    user.account_type = "admin";
+  } else {
+    // Prevent account pre-hijacking: if an existing account had a local password (or was unverified),
+    // revoke local password and rotate token_version before trusting SAML/proxy identity or elevating to admin.
+    const hasLocalPassword = Boolean(user.password_hash && !user.password_hash.startsWith("!"));
+    if (hasLocalPassword && (user.email_verified === 0 || (isAdmin && user.account_type !== "admin"))) {
+      sharedAuthDatabase.updatePassword(user.id, "!enterprise_header_sso_no_local_password");
+      sharedAuthDatabase.incrementTokenVersion(user.id);
+    }
+    if (isAdmin && user.account_type !== "admin") {
+      sharedAuthDatabase.setUserAccountType(user.id, "admin");
+      user.account_type = "admin";
+    }
   }
 
   if (isAccountBlocked(user.status)) {

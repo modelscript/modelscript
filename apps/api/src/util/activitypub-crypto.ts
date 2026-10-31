@@ -9,6 +9,7 @@ export async function sendSignedRequest(
   keyId: string,
   privateKeyPem: string,
   database?: { isDomainSuspended: (domain: string) => boolean },
+  extraHeaders?: Record<string, string>,
 ) {
   const url = assertSafePublicUrl(targetInboxUrl);
   if (database && database.isDomainSuspended(url.hostname)) {
@@ -26,6 +27,7 @@ export async function sendSignedRequest(
     Digest: digest,
     "Content-Type": "application/activity+json",
     Accept: "application/activity+json",
+    ...(extraHeaders || {}),
   };
 
   const signedString = [
@@ -54,6 +56,57 @@ export async function sendSignedRequest(
   }
 
   return response;
+}
+
+/**
+ * Performs an HTTP-Signature-authenticated GET request (Mastodon AUTHORIZED_FETCH compatibility).
+ */
+export async function sendSignedGetRequest(
+  targetUrl: string,
+  keyId: string,
+  privateKeyPem: string,
+  database?: { isDomainSuspended: (domain: string) => boolean },
+) {
+  const url = assertSafePublicUrl(targetUrl);
+  if (database && database.isDomainSuspended(url.hostname)) {
+    throw new Error(
+      `Outbound federation blocked: Target domain '${url.hostname}' is suspended by instance administration.`,
+    );
+  }
+  const date = new Date().toUTCString();
+  const requestTarget = `${url.pathname}${url.search || ""}`;
+
+  const signedString = [`(request-target): get ${requestTarget}`, `host: ${url.host}`, `date: ${date}`].join("\n");
+
+  const signer = crypto.createSign("RSA-SHA256");
+  signer.update(signedString);
+  const signature = signer.sign(privateKeyPem, "base64");
+
+  const signatureHeader = `keyId="${keyId}",algorithm="rsa-sha256",headers="(request-target) host date",signature="${signature}"`;
+
+  return safePublicFetch(url.href, {
+    method: "GET",
+    headers: {
+      Host: url.host,
+      Date: date,
+      Accept: "application/activity+json, application/ld+json, application/json",
+      Signature: signatureHeader,
+    },
+  });
+}
+
+/**
+ * Computes FEP-8fcf Collection-Synchronization XOR SHA-256 digest over a list of follower actor URLs.
+ */
+export function computeFollowersSyncDigest(actorUrls: string[]): string {
+  const xorBuf = Buffer.alloc(32, 0);
+  for (const url of actorUrls) {
+    const hash = crypto.createHash("sha256").update(url.trim()).digest();
+    for (let i = 0; i < 32; i++) {
+      xorBuf[i] = (xorBuf[i]! ^ hash[i]!) & 0xff;
+    }
+  }
+  return xorBuf.toString("hex");
 }
 
 export async function sendRfc9421SignedRequest(

@@ -132,6 +132,25 @@
   --color-attention-emphasis: var(--ms-warning);
   --color-attention-subtle: color-mix(in srgb, var(--ms-warning) 12%, transparent);
   --color-attention-muted: color-mix(in srgb, var(--ms-warning) 30%, transparent);
+  --color-done-fg: var(--hue-indigo);
+  --color-done-emphasis: var(--hue-indigo);
+  --color-done-subtle: color-mix(in srgb, var(--hue-indigo) 12%, transparent);
+  --color-done-muted: color-mix(in srgb, var(--hue-indigo) 30%, transparent);
+  --color-fg-on-emphasis: var(--ms-brand-contrast);
+  --color-neutral-subtle: var(--ms-surface-hover);
+  --color-border-primary: var(--ms-border);
+  --color-border-hover: var(--ms-border-strong);
+  --color-bg-hover: var(--ms-surface-hover);
+  --color-accent-primary: var(--ms-brand);
+  --color-danger-border: color-mix(in srgb, var(--ms-danger) 35%, transparent);
+  --color-icon-directory: var(--ms-brand);
+  --color-shadow-medium: var(--ms-shadow-card);
+
+  /* Extended --ms-* surface and accent aliases */
+  --ms-surface-1: var(--ms-bg-elv);
+  --ms-surface-2: var(--ms-bg-soft);
+  --ms-accent: var(--ms-brand);
+  --ms-accent-subtle: var(--ms-brand-soft);
 }
 
 /* ─── Theme-specific values with no direct --ms-* equivalent ─── */

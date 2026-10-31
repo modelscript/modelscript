@@ -155,7 +155,9 @@ ENV NODE_ENV=production \
     MSX_EDITION=ce \
     DATA_DIR=/app/apps/api/data \
     DB_PATH=/app/apps/api/data/modelscript.db \
-    STORAGE_DIR=/app/apps/api/data/libraries
+    STORAGE_DIR=/app/apps/api/data/libraries \
+    GIT_CACHE_DIR=/app/apps/api/data/git-cache \
+    STATIC_IDE_DIR=/app/apps/ide/dist
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1
 CMD ["node", "apps/api/dist/main.js"]
@@ -183,7 +185,9 @@ ENV NODE_ENV=production \
     MSX_LICENSE_ENFORCE=true \
     DATA_DIR=/app/apps/api/data \
     DB_PATH=/app/apps/api/data/modelscript.db \
-    STORAGE_DIR=/app/apps/api/data/libraries
+    STORAGE_DIR=/app/apps/api/data/libraries \
+    GIT_CACHE_DIR=/app/apps/api/data/git-cache \
+    STATIC_IDE_DIR=/app/apps/ide/dist
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1
 CMD ["node", "apps/api/dist/main.js"]
@@ -305,6 +309,7 @@ ENV NODE_ENV=production \
     DATA_DIR=/app/apps/api/data \
     DB_PATH=/app/apps/api/data/modelscript.db \
     STORAGE_DIR=/app/apps/api/data/libraries \
+    GIT_CACHE_DIR=/app/apps/api/data/git-cache \
     STATIC_WEB_DIR=/app/apps/web/dist \
     STATIC_DOCS_DIR=/app/apps/docs/docs/.vitepress/dist \
     STATIC_IDE_DIR=/app/apps/ide/dist \

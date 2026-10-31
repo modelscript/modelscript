@@ -97,7 +97,10 @@ const REPO_ROOT = path.resolve(CURRENT_DIR, "../../..");
 let loadedEeModule: LoadedEnterpriseModule | null = null;
 
 async function tryLoadEnterpriseModule(): Promise<LoadedEnterpriseModule | null> {
-  const candidates = [path.join(REPO_ROOT, "ee", "dist", "index.js"), path.join(REPO_ROOT, "ee", "src", "index.ts")];
+  const isSourceRun = CURRENT_DIR.endsWith("src");
+  const candidates = isSourceRun
+    ? [path.join(REPO_ROOT, "ee", "src", "index.ts"), path.join(REPO_ROOT, "ee", "dist", "index.js")]
+    : [path.join(REPO_ROOT, "ee", "dist", "index.js"), path.join(REPO_ROOT, "ee", "src", "index.ts")];
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {

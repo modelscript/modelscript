@@ -103,6 +103,14 @@ const server = app.listen(port, () => {
 
 // ── WebSocket streaming ──
 
+const database = app.locals["database"] as import("./database.js").LibraryDatabase | undefined;
+server.on("upgrade", (_req, socket) => {
+  if (database && database.isOpen() && database.getMaintenanceState().mode === "lockdown") {
+    socket.write("HTTP/1.1 503 Service Unavailable\r\nRetry-After: 120\r\nConnection: close\r\n\r\n");
+    socket.destroy();
+  }
+});
+
 attachCosimWebSocket(server, mqttClient);
 attachCollabWebSocket(server);
 console.log("WebSocket co-simulation stream available at /api/v1/cosim/stream");
@@ -129,6 +137,10 @@ async function shutdown(signal: string): Promise<void> {
     clearInterval(app.locals["logPurgeInterval"]);
   }
 
+  if (app.locals["autoBackupInterval"]) {
+    clearInterval(app.locals["autoBackupInterval"]);
+  }
+
   if (app.locals["federationWorker"]) {
     app.locals["federationWorker"].stop();
   }
@@ -138,10 +150,28 @@ async function shutdown(signal: string): Promise<void> {
   }
 
   if (app.locals["jobQueue"]) {
-    app.locals["jobQueue"].clear();
+    const jobQueue = app.locals["jobQueue"] as import("./jobs.js").JobQueue;
+    const drainDeadline = Date.now() + 2000;
+    while (jobQueue.activeCount > 0 && Date.now() < drainDeadline) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    jobQueue.clear();
   }
 
-  server.close();
+  // Stop accepting new HTTP connections and wait for in-flight requests to drain before closing DB
+  await new Promise<void>((resolve) => {
+    const drainTimeout = setTimeout(() => resolve(), 5000);
+    drainTimeout.unref();
+    server.close(() => {
+      clearTimeout(drainTimeout);
+      resolve();
+    });
+  });
+
+  if (app.locals["analyticsBuffer"]) {
+    console.log("[AnalyticsBuffer] Flushing pending in-memory telemetry to SQLite...");
+    app.locals["analyticsBuffer"].stop();
+  }
 
   if (recorder) {
     try {

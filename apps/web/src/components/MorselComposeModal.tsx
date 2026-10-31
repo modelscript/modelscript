@@ -138,6 +138,7 @@ end MySystem;`,
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [dialect, setDialect] = useState<string>(initialDialect);
+  const [attachError, setAttachError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -152,6 +153,7 @@ end MySystem;`,
       MORSEL_LANGUAGES.some((lang) => lang.defaultCode.trim() === trimmedCode);
 
     setDialect(nextDialect);
+    setAttachError(null);
     if (isDefaultTemplate && nextLangInfo.defaultCode) {
       setCode(nextLangInfo.defaultCode);
     }
@@ -166,6 +168,7 @@ end MySystem;`,
     );
     const title = match ? match[1]! : defaultTitle;
     setAttaching(true);
+    setAttachError(null);
     try {
       const created = await createArtifactView({
         artifact_type: dialect === "modelica" ? "modelica-diagram" : dialect,
@@ -173,22 +176,25 @@ end MySystem;`,
         title: title || defaultTitle,
         view_config: JSON.stringify({ code, title, dialect }),
       });
+      if (!created?.id) {
+        throw new Error("Failed to create Morsel artifact view: missing artifact ID.");
+      }
       onAttach({
-        id: created?.id,
+        id: created.id,
         code,
         title,
         dialect,
       });
-    } catch (err) {
+      onClose();
+    } catch (err: any) {
       console.error("Failed to create Morsel artifact view:", err);
-      onAttach({
-        code,
-        title,
-        dialect,
-      });
+      const errMsg =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to save Morsel artifact. Please check your connection and try again.";
+      setAttachError(errMsg);
     } finally {
       setAttaching(false);
-      onClose();
     }
   };
 
@@ -239,9 +245,15 @@ end MySystem;`,
         </ModalBody>
 
         <ModalFooter>
-          <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
-            Live WASM compiling • Synchronized diagram & equations
-          </Text>
+          {attachError ? (
+            <Text role="alert" style={{ fontSize: "12px", color: "var(--color-danger-fg, #f85149)", fontWeight: 600 }}>
+              {attachError}
+            </Text>
+          ) : (
+            <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
+              Live WASM compiling • Synchronized diagram & equations
+            </Text>
+          )}
 
           <div style={{ display: "flex", gap: "8px" }}>
             <Button size="small" variant="default" onClick={onClose} disabled={attaching}>

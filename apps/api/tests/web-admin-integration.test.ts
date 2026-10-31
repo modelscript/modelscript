@@ -275,17 +275,29 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
       .expect(200);
     assert.strictEqual(viewResDup.body.counted, false);
 
-    // View from a second visitor with valid ISO header records country/region
+    // View from a second visitor with valid ISO header records country/region even when X-Forwarded-For has a Cloudflare proxy IP (104.28.12.1 -> GB)
     const viewRes2 = await request(app)
       .post(`/api/v1/social/posts/${post.id}/view`)
       .set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/125.0")
+      .set("X-Forwarded-For", "104.28.12.1")
+      .set("CF-Ray", "89abcdef01234567-NRT")
       .set("CF-IPCountry", "JP")
-      .set("X-Region-Code", "13")
+      .set("CF-Region-Code", "13")
       .expect(200);
     assert.strictEqual(viewRes2.body.counted, true);
 
+    // View through Cloudflare where CF-IPCountry is unknown (XX) and no CF-Connecting-IP is present must NOT fall back to the Cloudflare edge IP (1.1.1.1 -> US)
+    const viewRes3 = await request(app)
+      .post(`/api/v1/social/posts/${post.id}/view`)
+      .set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) Safari/605.1.15")
+      .set("X-Forwarded-For", "1.1.1.1")
+      .set("CF-Ray", "89abcdef01234568-SJC")
+      .set("CF-IPCountry", "XX")
+      .expect(200);
+    assert.strictEqual(viewRes3.body.counted, true);
+
     const postAnalyticsRes = await request(app).get(`/api/v1/social/posts/${post.id}/analytics`).expect(200);
-    assert.strictEqual(postAnalyticsRes.body.view_count, 2);
+    assert.strictEqual(postAnalyticsRes.body.view_count, 3);
     assert.strictEqual(postAnalyticsRes.body.location_stats.length, 1);
     assert.strictEqual(postAnalyticsRes.body.location_stats[0].country, "JP");
     assert.strictEqual(postAnalyticsRes.body.location_stats[0].views, 1);

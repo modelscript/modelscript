@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckIcon, ClockIcon, GlobeIcon, MortarBoardIcon, SearchIcon, XIcon } from "@primer/octicons-react";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { AdminWaitlistEntry } from "../../../api";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
+import { useFocusTrap } from "../../../hooks/useFocusTrap";
 import { ActionButton, Badge, Card, FilterPill, ModalBox, ModalOverlay, Table, Textarea } from "../styles";
 
 export interface AdminWaitlistTabProps {
@@ -30,16 +31,37 @@ export const AdminWaitlistTab: React.FC<AdminWaitlistTabProps> = ({
   // Reject modal state
   const [rejectModalEntry, setRejectModalEntry] = useState<AdminWaitlistEntry | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const rejectModalRef = useRef<HTMLDivElement | null>(null);
 
   // Approval modal state (to show generated invite code)
   const [approvedResult, setApprovedResult] = useState<{ email: string; inviteCode: string } | null>(null);
+  const approvedModalRef = useRef<HTMLDivElement | null>(null);
+
+  useFocusTrap(rejectModalRef, Boolean(rejectModalEntry), {
+    onEscape: () => setRejectModalEntry(null),
+  });
+  useFocusTrap(approvedModalRef, Boolean(approvedResult), {
+    onEscape: () => setApprovedResult(null),
+  });
+
+  useEffect(() => {
+    if (!rejectModalEntry && !approvedResult) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setRejectModalEntry(null);
+        setApprovedResult(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [rejectModalEntry, approvedResult]);
 
   const filteredEntries = entries.filter((e) => {
     if (statusFilter !== "all" && e.status !== statusFilter) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
-      const matchEmail = e.email.toLowerCase().includes(q);
-      const matchName = e.name.toLowerCase().includes(q);
+      const matchEmail = (e.email || "").toLowerCase().includes(q);
+      const matchName = (e.name || "").toLowerCase().includes(q);
       const matchOrg = (e.organization || "").toLowerCase().includes(q);
       const matchDiscipline = (e.engineeringDiscipline || "").toLowerCase().includes(q);
       return matchEmail || matchName || matchOrg || matchDiscipline;
@@ -96,7 +118,7 @@ export const AdminWaitlistTab: React.FC<AdminWaitlistTabProps> = ({
           </FilterPill>
         </Box>
 
-        <Box display="flex" alignItems="center" position="relative" width={{ xs: "100%", sm: "280px" }}>
+        <Box display="flex" alignItems="center" position="relative" width="280px" style={{ maxWidth: "100%" }}>
           <SearchIcon
             size={14}
             style={{
@@ -271,7 +293,14 @@ export const AdminWaitlistTab: React.FC<AdminWaitlistTabProps> = ({
       {/* Reject Confirmation Modal */}
       {rejectModalEntry && (
         <ModalOverlay onClick={() => setRejectModalEntry(null)}>
-          <ModalBox onClick={(e) => e.stopPropagation()} style={{ maxWidth: "450px" }}>
+          <ModalBox
+            ref={rejectModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Reject Waitlist Application"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "450px" }}
+          >
             <h3 style={{ margin: "0 0 12px 0", color: "#fff" }}>Reject Waitlist Application</h3>
             <p style={{ color: "var(--color-text-secondary, #94a3b8)", fontSize: "14px", lineHeight: "1.4" }}>
               Are you sure you want to reject the application for <strong>{rejectModalEntry.name}</strong> (
@@ -314,7 +343,14 @@ export const AdminWaitlistTab: React.FC<AdminWaitlistTabProps> = ({
       {/* Approved Success Details Modal */}
       {approvedResult && (
         <ModalOverlay onClick={() => setApprovedResult(null)}>
-          <ModalBox onClick={(e) => e.stopPropagation()} style={{ maxWidth: "480px" }}>
+          <ModalBox
+            ref={approvedModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Waitlist Approved"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "480px" }}
+          >
             <Box display="flex" alignItems="center" gap={2} mb={2}>
               <CheckIcon size={24} fill="#22c55e" />
               <h3 style={{ margin: 0, color: "#fff" }}>Waitlist Approved!</h3>

@@ -3,16 +3,7 @@
 import { Flash, Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  blockUser,
-  followUser,
-  getUserProfile,
-  muteUser,
-  reportUser,
-  unblockUser,
-  unfollowUser,
-  unmuteUser,
-} from "../api";
+import { blockUser, getUserProfile, muteUser, reportUser, unblockUser, unmuteUser } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ProfilePosts from "../components/ProfilePosts";
@@ -102,6 +93,13 @@ const ProfilePage: React.FC = () => {
   const isOwnProfile = user?.username === username;
 
   useEffect(() => {
+    setActiveTab("Posts");
+    setShowBlockMenu(false);
+    setShowUnblockModal(false);
+    setShowReportModal(false);
+  }, [username]);
+
+  useEffect(() => {
     async function fetchProfile() {
       if (!username) return;
       setLoading(true);
@@ -123,26 +121,16 @@ const ProfilePage: React.FC = () => {
     fetchProfile();
   }, [username, token]);
 
-  const handleFollowToggle = async (following: boolean) => {
-    if (!token || !username) return;
-    try {
-      if (!following) {
-        await unfollowUser(username);
-      } else {
-        await followUser(username);
-      }
-      setIsFollowing(following);
-      setProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              follower_count: prev.follower_count + (following ? 1 : -1),
-            }
-          : prev,
-      );
-    } catch (err) {
-      console.error(err);
-    }
+  const handleFollowToggle = (following: boolean) => {
+    setIsFollowing(following);
+    setProfile((prev) =>
+      prev
+        ? {
+            ...prev,
+            follower_count: Math.max(0, prev.follower_count + (following ? 1 : -1)),
+          }
+        : prev,
+    );
   };
 
   if (loading) {

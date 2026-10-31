@@ -11,9 +11,12 @@
 import type { FmiScalarVariable, StoredFmu } from "@modelscript/exchange/cosim";
 import { FmuStorage } from "@modelscript/exchange/cosim";
 import express from "express";
+import path from "node:path";
 import { optionalAuth } from "../middleware/auth-middleware.js";
 
-export const defaultFmuStorage = new FmuStorage();
+export const defaultFmuStorage = new FmuStorage(
+  process.env["FMU_STORAGE_DIR"] || path.resolve(process.cwd(), "data", "fmus"),
+);
 
 /**
  * Create FMU management router.

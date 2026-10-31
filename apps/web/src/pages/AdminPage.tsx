@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { AlertIcon, CheckCircleIcon, SyncIcon } from "@primer/octicons-react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   adjustAdminUserCredits,
@@ -50,6 +50,7 @@ import {
   testAdminFederationDomain,
   verifyAdminAuditLogsChain,
   verifyAdminDbIntegrity,
+  verifyAdminSudo,
   type AdminAnalyticsSummary,
   type AdminAuditChainVerification,
   type AdminAuditLog,
@@ -71,7 +72,9 @@ import {
   type AdminUserSummary,
   type AdminWaitlistEntry,
 } from "../api";
+import { setAdminSudoToken, type SudoRequiredEventDetail } from "../api/client";
 import Box from "../components/Box";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import { usePageTitle } from "../util/title";
 import {
   ActionButton,
@@ -90,6 +93,7 @@ import {
   AdminWaitlistTab,
   DetailColumn,
   Header,
+  Input,
   ModalBox,
   ModalOverlay,
   type AdminTab,
@@ -141,6 +145,65 @@ export const AdminPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [overviewCounts, setOverviewCounts] = useState<AdminOverviewCounts | null>(null);
+
+  // Step-Up Sudo modal state
+  const [sudoPrompt, setSudoPrompt] = useState<{
+    message: string;
+    resolvers: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }>;
+  } | null>(null);
+  const [sudoPassword, setSudoPassword] = useState("");
+  const [sudoError, setSudoError] = useState<string | null>(null);
+  const [sudoSubmitting, setSudoSubmitting] = useState(false);
+
+  useEffect(() => {
+    const handleSudoRequired = (e: Event) => {
+      const customEvent = e as CustomEvent<SudoRequiredEventDetail>;
+      const detail = customEvent.detail;
+      if (!detail) return;
+      detail.handled = true;
+      setSudoError(null);
+      setSudoPrompt((prev) => ({
+        message: detail.message || "Please confirm your administrator password to authorize this privileged action.",
+        resolvers: [...(prev?.resolvers || []), { resolve: detail.resolve, reject: detail.reject }],
+      }));
+    };
+    window.addEventListener("modelscript:sudo-required", handleSudoRequired);
+    return () => {
+      window.removeEventListener("modelscript:sudo-required", handleSudoRequired);
+    };
+  }, []);
+
+  const handleConfirmSudo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sudoPrompt || !sudoPassword) return;
+    setSudoSubmitting(true);
+    setSudoError(null);
+    try {
+      const res = await verifyAdminSudo(sudoPassword);
+      setAdminSudoToken(res.sudoToken);
+      const resolvers = sudoPrompt.resolvers;
+      setSudoPrompt(null);
+      setSudoPassword("");
+      for (const r of resolvers) {
+        r.resolve(res.sudoToken);
+      }
+    } catch (err: unknown) {
+      setSudoError(getErrorMessage(err, "Invalid administrator password."));
+    } finally {
+      setSudoSubmitting(false);
+    }
+  };
+
+  const handleCancelSudo = () => {
+    if (sudoPrompt) {
+      for (const r of sudoPrompt.resolvers) {
+        r.reject(new Error("Administrator step-up authentication cancelled."));
+      }
+    }
+    setSudoPrompt(null);
+    setSudoPassword("");
+    setSudoError(null);
+  };
 
   // Feature flags state
   const [featureFlags, setFeatureFlags] = useState<AdminFeatureFlag[]>([]);
@@ -302,7 +365,57 @@ export const AdminPage: React.FC = () => {
     clearMessages();
     try {
       const res = await getAdminWaitlist();
-      setWaitlistEntries(res.waitlist || []);
+      const rawList = res.submissions || res.waitlist || [];
+      const normalized: AdminWaitlistEntry[] = rawList.map((raw) => {
+        const item = raw as unknown as Record<string, unknown>;
+        return {
+          id: Number(item.id),
+          email: String(item.email || ""),
+          name: String(item.name ?? item.full_name ?? ""),
+          affiliation: item.affiliation != null ? String(item.affiliation) : null,
+          engineeringDiscipline:
+            item.engineeringDiscipline != null
+              ? String(item.engineeringDiscipline)
+              : item.discipline != null
+                ? String(item.discipline)
+                : null,
+          intendedUse:
+            item.intendedUse != null
+              ? String(item.intendedUse)
+              : item.statement != null
+                ? String(item.statement)
+                : null,
+          portfolioUrl:
+            item.portfolioUrl != null
+              ? String(item.portfolioUrl)
+              : item.portfolio_url != null
+                ? String(item.portfolio_url)
+                : null,
+          status: (item.status as "pending" | "approved" | "rejected") || "pending",
+          isAcademic: Boolean(item.isAcademic ?? item.academic_fast_track),
+          appliedAt: String(item.appliedAt ?? item.created_at ?? new Date().toISOString()),
+          reviewedAt:
+            item.reviewedAt != null
+              ? String(item.reviewedAt)
+              : item.reviewed_at != null
+                ? String(item.reviewed_at)
+                : null,
+          inviteCode:
+            item.inviteCode != null
+              ? String(item.inviteCode)
+              : item.invite_code != null
+                ? String(item.invite_code)
+                : null,
+          rejectionReason:
+            item.rejectionReason != null
+              ? String(item.rejectionReason)
+              : item.rejection_reason != null
+                ? String(item.rejection_reason)
+                : null,
+        };
+      });
+      setWaitlistEntries(normalized);
+      void refreshOverviewCounts();
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to load waitlist applications"));
     } finally {
@@ -310,17 +423,50 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const loadSystemHealth = async () => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await getAdminSystemHealth();
+      setSystemHealth(res);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to load system diagnostics"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [autoRefreshSystem, setAutoRefreshSystem] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== "system" || !autoRefreshSystem) return;
+    const timer = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      void loadSystemHealth();
+    }, 10000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, autoRefreshSystem]);
+
   const loadFederationDomains = async () => {
     setLoading(true);
     clearMessages();
     try {
       const res = await getAdminFederationDomains();
       setDomains(res.domains || []);
+      if (!instanceSettings) {
+        try {
+          const sRes = await getAdminInstanceSettings();
+          setInstanceSettings(sRes.settings || null);
+        } catch {
+          // Ignore if settings endpoint is not mocked in unit tests
+        }
+      }
       try {
         const qRes = await getAdminFederationQueue(
           deliveryStatusFilter === "all" ? undefined : deliveryStatusFilter,
-          50,
           deliveryDomainFilter.trim() || undefined,
+          50,
         );
         setFederationQueueStats(qRes.stats || null);
         setFederationDeliveries(qRes.deliveries || []);
@@ -343,7 +489,7 @@ export const AdminPage: React.FC = () => {
       setDmcaNotices(res.notices || []);
       try {
         const qRes = await getAdminQuarantinedResources();
-        setQuarantinedResources(qRes.resources || []);
+        setQuarantinedResources(qRes.resources || qRes.items || []);
       } catch {
         // Ignore if quarantine endpoint is not mocked in unit tests
       }
@@ -366,7 +512,7 @@ export const AdminPage: React.FC = () => {
         auditResourceFilter === "all" ? undefined : auditResourceFilter,
       );
       setAuditLogs(res.logs || []);
-      setAuditTotalCount(res.totalCount);
+      setAuditTotalCount(res.total ?? res.totalCount ?? 0);
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to load audit logs"));
     } finally {
@@ -407,19 +553,6 @@ export const AdminPage: React.FC = () => {
       }
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to load instance settings"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadSystemHealth = async () => {
-    setLoading(true);
-    clearMessages();
-    try {
-      const res = await getAdminSystemHealth();
-      setSystemHealth(res);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to load system diagnostics"));
     } finally {
       setLoading(false);
     }
@@ -609,17 +742,28 @@ export const AdminPage: React.FC = () => {
     confirmLabel: string;
     onConfirm: () => Promise<void>;
   } | null>(null);
+  const confirmModalRef = useRef<HTMLDivElement | null>(null);
+  const sudoModalRef = useRef<HTMLDivElement | null>(null);
+
+  useFocusTrap(confirmModalRef, Boolean(confirmModal), {
+    onEscape: () => setConfirmModal(null),
+  });
+  useFocusTrap(sudoModalRef, Boolean(sudoPrompt), {
+    onEscape: handleCancelSudo,
+  });
 
   useEffect(() => {
-    if (!confirmModal) return;
+    if (!confirmModal && !sudoPrompt) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setConfirmModal(null);
+        if (confirmModal) setConfirmModal(null);
+        if (sudoPrompt) handleCancelSudo();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [confirmModal]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmModal, sudoPrompt]);
 
   const handleDeletePostDirectly = async (postId: number) => {
     setConfirmModal({
@@ -683,8 +827,11 @@ export const AdminPage: React.FC = () => {
     setLoading(true);
     clearMessages();
     try {
-      const content = await exportAdminFederationDomains(format);
-      const blob = new Blob([content], { type: format === "csv" ? "text/csv" : "application/json" });
+      const res = await exportAdminFederationDomains(format);
+      const content = typeof res === "string" ? res : res.content;
+      const blob = new Blob([content], {
+        type: format === "csv" ? "text/csv;charset=utf-8" : "application/json;charset=utf-8",
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -701,6 +848,8 @@ export const AdminPage: React.FC = () => {
 
   const handleImportDomains = async (payload: {
     mode: "merge" | "replace";
+    content?: string | undefined;
+    format?: "csv" | "json" | undefined;
     csv?: string | undefined;
     domains?:
       | Array<{ domain: string; tier: "allow" | "silence" | "suspend"; reason?: string | null | undefined }>
@@ -710,7 +859,9 @@ export const AdminPage: React.FC = () => {
     clearMessages();
     try {
       const res = await importAdminFederationDomains(payload);
-      setSuccess(`Imported ${res.imported} federation domain rule(s) (${res.skipped} skipped).`);
+      const importedCount = res.importedCount ?? res.imported ?? 0;
+      const skippedCount = res.skipped ?? 0;
+      setSuccess(`Imported ${importedCount} federation domain rule(s) (${skippedCount} skipped).`);
       void loadFederationDomains();
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to import federation domains"));
@@ -775,9 +926,10 @@ export const AdminPage: React.FC = () => {
     clearMessages();
     try {
       const res = await fileAdminDmcaCounterNotice(noticeId, counterNoticeText);
+      const restoreDate = res.restoreAfter || res.restoreEligibleAt || new Date().toISOString();
       setSuccess(
         `DMCA § 512(g) counter-notice recorded for #${noticeId} (restore eligible after ${new Date(
-          res.restoreEligibleAt,
+          restoreDate,
         ).toLocaleDateString()}).`,
       );
       void loadDmcaNotices();
@@ -861,9 +1013,9 @@ export const AdminPage: React.FC = () => {
         clearMessages();
         try {
           const res = await restoreAdminBackup(fileName);
-          setSuccess(
-            `Restored ${res.restoredTables} tables from ${fileName} (safety snapshot: ${res.preRestoreSnapshot.fileName}).`,
-          );
+          const tablesCount = res.tablesRestored ?? res.restoredTables ?? 0;
+          const safetySnap = res.preRestoreBackup || res.preRestoreSnapshot?.fileName || "pre-restore snapshot";
+          setSuccess(`Restored ${tablesCount} tables from ${fileName} (safety snapshot: ${safetySnap}).`);
           void loadDbStatus();
         } catch (err: unknown) {
           setError(getErrorMessage(err, "Failed to restore backup"));
@@ -888,12 +1040,13 @@ export const AdminPage: React.FC = () => {
     }
   };
 
-  const handlePruneBackups = async (keepLatest: number) => {
+  const handlePruneBackups = async (keepLatest = 7) => {
     setLoading(true);
     clearMessages();
     try {
       const res = await pruneAdminBackups(keepLatest);
-      setSuccess(`Pruned ${res.deletedCount} old backup snapshot(s); retained latest ${res.keptCount}.`);
+      const retained = res.keepCount ?? res.keptCount ?? keepLatest;
+      setSuccess(`Pruned ${res.deletedCount} old backup snapshot(s); retained latest ${retained}.`);
       void loadDbStatus();
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to prune backups"));
@@ -920,6 +1073,8 @@ export const AdminPage: React.FC = () => {
     note?: string | undefined;
     maxUses?: number | undefined;
     expiresInDays?: number | undefined;
+    assignedRole?: string | undefined;
+    initialCredits?: number | undefined;
   }) => {
     setLoading(true);
     clearMessages();
@@ -951,6 +1106,7 @@ export const AdminPage: React.FC = () => {
   const handleRefreshCurrentTab = () => {
     if (activeTab === "moderation") void loadModerationQueue();
     else if (activeTab === "users") void loadUsers();
+    else if (activeTab === "waitlist") void loadWaitlist();
     else if (activeTab === "analytics") void loadAnalytics();
     else if (activeTab === "federation") void loadFederationDomains();
     else if (activeTab === "dmca") void loadDmcaNotices();
@@ -970,6 +1126,7 @@ export const AdminPage: React.FC = () => {
           <span>
             {activeTab === "moderation" && "Moderation Queue"}
             {activeTab === "users" && "Users & Account Governance"}
+            {activeTab === "waitlist" && "Waitlist & Academic Fast-Track"}
             {activeTab === "analytics" && "Unified Analytics & Traffic"}
             {activeTab === "federation" && "Federation Domain Management"}
             {activeTab === "dmca" && "DMCA Takedown Notices"}
@@ -980,6 +1137,26 @@ export const AdminPage: React.FC = () => {
             {activeTab === "flags" && "Feature Flags Switchboard"}
           </span>
           <Box ml="auto" display="flex" alignItems="center" gap={2}>
+            {activeTab === "system" && (
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: "var(--color-text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={autoRefreshSystem}
+                  onChange={(e) => setAutoRefreshSystem(e.target.checked)}
+                />
+                <span>Auto-refresh (10s)</span>
+              </label>
+            )}
             {loading && <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Loading…</span>}
             <ActionButton $variant="secondary" onClick={handleRefreshCurrentTab} disabled={loading}>
               <SyncIcon size={14} style={loading ? { animation: "spin 1s linear infinite" } : undefined} />
@@ -1094,6 +1271,7 @@ export const AdminPage: React.FC = () => {
           {activeTab === "federation" && (
             <AdminFederationTab
               domains={domains}
+              settings={instanceSettings}
               onSaveDomainTier={handleSaveDomainTier}
               onDeleteDomainRule={handleDeleteDomainRule}
               onExportDomains={handleExportDomains}
@@ -1163,8 +1341,9 @@ export const AdminPage: React.FC = () => {
                 clearMessages();
                 try {
                   const res = await redactExpiredAdminAuditLogs();
+                  const count = res.redactedCount ?? res.redactedAuditIps ?? 0;
                   setSuccess(
-                    `Redacted ${res.redactedAuditIps} expired audit log IP(s) while preserving SHA-256 hash chain integrity.`,
+                    `Redacted ${count} expired audit log IP(s) while preserving SHA-256 hash chain integrity.`,
                   );
                   void loadAuditLogs();
                 } catch (err: unknown) {
@@ -1191,6 +1370,7 @@ export const AdminPage: React.FC = () => {
               onRestoreBackup={handleRestoreBackup}
               onDeleteBackup={handleDeleteBackup}
               onPruneBackups={handlePruneBackups}
+              onRefresh={loadDbStatus}
               loading={loading}
             />
           )}
@@ -1222,6 +1402,7 @@ export const AdminPage: React.FC = () => {
       {confirmModal && (
         <ModalOverlay onClick={() => setConfirmModal(null)}>
           <ModalBox
+            ref={confirmModalRef}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -1241,6 +1422,49 @@ export const AdminPage: React.FC = () => {
                 {confirmModal.confirmLabel}
               </ActionButton>
             </Box>
+          </ModalBox>
+        </ModalOverlay>
+      )}
+
+      {sudoPrompt && (
+        <ModalOverlay onClick={handleCancelSudo}>
+          <ModalBox
+            ref={sudoModalRef}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Administrator Step-Up Authentication"
+          >
+            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
+              Administrator Step-Up Authentication (Sudo Mode)
+            </span>
+            <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
+              {sudoPrompt.message}
+            </Box>
+            <form onSubmit={handleConfirmSudo} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <Input
+                type="password"
+                aria-label="Administrator Password"
+                placeholder="Enter your administrator password…"
+                value={sudoPassword}
+                onChange={(e) => setSudoPassword(e.target.value)}
+                autoFocus
+                required
+              />
+              {sudoError && (
+                <Box fontSize="12px" color="var(--ms-danger)">
+                  {sudoError}
+                </Box>
+              )}
+              <Box display="flex" justifyContent="flex-end" gap={2}>
+                <ActionButton type="button" $variant="secondary" onClick={handleCancelSudo} disabled={sudoSubmitting}>
+                  Cancel
+                </ActionButton>
+                <ActionButton type="submit" $variant="primary" disabled={sudoSubmitting || !sudoPassword}>
+                  {sudoSubmitting ? "Verifying…" : "Verify & Continue"}
+                </ActionButton>
+              </Box>
+            </form>
           </ModalBox>
         </ModalOverlay>
       )}

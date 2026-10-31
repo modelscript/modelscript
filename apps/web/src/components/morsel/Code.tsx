@@ -11,6 +11,7 @@ import * as monaco from "monaco-editor";
 import { editor, type IDisposable } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import React, { useEffect, useRef } from "react";
+import { useModelingPreferences } from "../../ModelingPreferencesContext";
 import { didChange, didChangeVisibleRanges, didOpen } from "./util/lsp-bridge";
 import { getLsp, startLsp } from "./util/lsp-worker";
 import { registerAllModelscriptLanguages, setupMonacoLspAdapter } from "./util/monaco-lsp-adapter";
@@ -66,6 +67,14 @@ export interface CodeEditorHandle {
 // ────────────────────────────────────────────────────────────────────
 
 export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((props, ref) => {
+  const { preferences: modelingPrefs } = useModelingPreferences();
+  const editorFontSize = modelingPrefs.editorFontSize ?? modelingPrefs.fontSize ?? 14;
+  const editorTabSize = modelingPrefs.editorTabSize ?? modelingPrefs.tabSize ?? 2;
+  const editorWordWrap = modelingPrefs.editorWordWrap ?? modelingPrefs.wordWrap ?? "on";
+  const editorLineNumbers = modelingPrefs.editorLineNumbers ?? modelingPrefs.lineNumbers ?? "on";
+  const editorMinimap = modelingPrefs.editorMinimap ?? modelingPrefs.minimapEnabled ?? true;
+  const bracketPairColorization = modelingPrefs.bracketPairColorization ?? true;
+
   const editorRef = useRef<editor.ICodeEditor>(null);
   const adapterDisposableRef = useRef<IDisposable | null>(null);
   const didOpenSentRef = useRef(false);
@@ -74,6 +83,27 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const languageIdRef = useRef(props.languageId ?? "modelica");
   uriRef.current = props.uri;
   languageIdRef.current = props.languageId ?? "modelica";
+
+  // ── Sync Monaco editor options when user preferences change ──
+  useEffect(() => {
+    if (!editorRef.current || props.embed) return;
+    editorRef.current.updateOptions({
+      fontSize: editorFontSize,
+      tabSize: editorTabSize,
+      wordWrap: editorWordWrap,
+      lineNumbers: editorLineNumbers,
+      minimap: { enabled: editorMinimap },
+      bracketPairColorization: { enabled: bracketPairColorization },
+    });
+  }, [
+    props.embed,
+    editorFontSize,
+    editorTabSize,
+    editorWordWrap,
+    editorLineNumbers,
+    editorMinimap,
+    bracketPairColorization,
+  ]);
 
   // ── LSP adapter setup (runs once on mount) ──
   useEffect(() => {
@@ -230,7 +260,12 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
           ? {
               automaticLayout: true,
               autoIndent: "full",
-              tabSize: 2,
+              fontSize: editorFontSize,
+              tabSize: editorTabSize,
+              wordWrap: editorWordWrap,
+              lineNumbers: editorLineNumbers,
+              minimap: { enabled: editorMinimap },
+              bracketPairColorization: { enabled: bracketPairColorization },
               insertSpaces: true,
               guides: {
                 indentation: true,

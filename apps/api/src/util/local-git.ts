@@ -2,7 +2,6 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
 import type {
@@ -16,7 +15,8 @@ import type {
 } from "../interfaces/git-provider.js";
 import { assertSafePublicUrlAsync } from "./ssrf.js";
 
-const CACHE_DIR = process.env["GIT_CACHE_DIR"] || path.join(os.tmpdir(), "modelscript-git-cache");
+export const DEFAULT_GIT_CACHE_DIR = process.env["GIT_CACHE_DIR"] || path.resolve(process.cwd(), "data", "git-cache");
+const CACHE_DIR = DEFAULT_GIT_CACHE_DIR;
 
 function hasControlChar(str: string): boolean {
   for (let i = 0; i < str.length; i++) {

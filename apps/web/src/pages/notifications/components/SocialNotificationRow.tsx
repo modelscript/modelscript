@@ -53,7 +53,11 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
       {notif.type === "mention" || notif.type === "reply" ? (
         <>
           <Box width={36} display="flex" justifyContent="flex-end" pt={1}>
-            <Avatar $url={primaryActor.avatar_url} style={{ width: 36, height: 36 }} />
+            <Avatar
+              $url={primaryActor.avatar_url}
+              $letter={((primaryActor?.display_name || primaryActor?.username || "?")[0] || "?").toUpperCase()}
+              style={{ width: 36, height: 36 }}
+            />
           </Box>
           <Box flex={1} display="flex" flexDirection="row">
             <Box flex={1}>
@@ -108,7 +112,11 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
           <Box flex={1}>
             <AvatarsRow>
               {notif.actors?.slice(0, 10).map((a) => (
-                <Avatar key={a.username} $url={a.avatar_url} />
+                <Avatar
+                  key={a.username}
+                  $url={a.avatar_url}
+                  $letter={((a?.display_name || a?.username || "?")[0] || "?").toUpperCase()}
+                />
               ))}
             </AvatarsRow>
             <Box mt={1} style={{ fontSize: "15px", lineHeight: "20px" }}>

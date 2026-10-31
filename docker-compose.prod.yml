@@ -1,11 +1,11 @@
 # ==============================================================================
 # Production Docker Compose Overlay for modelscript.org & ansatz.social (Cloud EE)
 #
-# Usage on the production host:
+# Usage on the production host (Flagship cluster with Cloudflare Tunnel):
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-#     --env-file .env.production --profile federated pull
+#     --env-file .env.production --profile flagship pull
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-#     --env-file .env.production --profile federated up -d --wait --remove-orphans
+#     --env-file .env.production --profile flagship up -d --wait --remove-orphans
 # ==============================================================================
 
 services:
@@ -33,16 +33,50 @@ services:
       - TRUST_PROXY=true
       - PUBLIC_URL=${PUBLIC_URL:-https://ansatz.social}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://ansatz.social,https://modelscript.org,https://ide.ansatz.social,https://ide.modelscript.org}
-      - FEDERATION_MODE=${FEDERATION_MODE:-federated}
+      - FEDERATION_MODE=${FEDERATION_MODE:-open}
+      - DEPLOYMENT_PRESET=${DEPLOYMENT_PRESET:-tier3_flagship}
+      - AUTO_SEED_ADMIN=${AUTO_SEED_ADMIN:-true}
+      - ADMIN_INIT_USERNAME=${ADMIN_INIT_USERNAME:-admin}
+      - ADMIN_INIT_EMAIL=${ADMIN_INIT_EMAIL:-admin@ansatz.social}
+      - ADMIN_INIT_PASSWORD=${ADMIN_INIT_PASSWORD:-}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required in production}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-${BOT_SECRET_ENCRYPTION_KEY:-}}
+      - REQUIRE_ADMIN_SUDO=${REQUIRE_ADMIN_SUDO:-}
+      - OIDC_ISSUER_URL=${OIDC_ISSUER_URL:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_REDIRECT_URI=${OIDC_REDIRECT_URI:-}
+      - OIDC_ADMIN_GROUP=${OIDC_ADMIN_GROUP:-}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - EMAIL_DRIVER=${EMAIL_DRIVER:-}
       - EMAIL_FROM=${EMAIL_FROM:-noreply@ansatz.social}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_SECURE=${SMTP_SECURE:-}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - S3_REGION=${S3_REGION:-}
+      - S3_BUCKET=${S3_BUCKET:-}
+      - S3_PREFIX=${S3_PREFIX:-}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-}
+      - S3_FORCE_PATH_STYLE=${S3_FORCE_PATH_STYLE:-}
+      - HPC_BACKEND=${HPC_BACKEND:-${HPC_DRIVER:-local}}
+      - SLURM_REST_URL=${SLURM_REST_URL:-}
+      - SLURM_USER=${SLURM_USER:-}
+      - SLURM_JWT_TOKEN=${SLURM_JWT_TOKEN:-}
       - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://mqtt:1883}
       - TIMESCALE_URL=${TIMESCALE_URL:-postgres://modelscript:${TIMESCALE_PASSWORD:-modelscript}@timescaledb:5432/modelscript_historian}
+      - GEOIP_DB_PATH=${GEOIP_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
+      - GEOLOCATION_DB_PATH=${GEOLOCATION_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=2048}
+      - ANALYTICS_FLUSH_INTERVAL_MS=${ANALYTICS_FLUSH_INTERVAL_MS:-5000}
+      - ANALYTICS_MAX_BUFFER_SIZE=${ANALYTICS_MAX_BUFFER_SIZE:-2000}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - AI_BASE_URL=${AI_BASE_URL:-}
@@ -57,3 +91,8 @@ services:
     image: ghcr.io/modelscript/web:${IMAGE_TAG:-latest}
     pull_policy: always
     restart: always
+
+  tunnel:
+    restart: always
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}

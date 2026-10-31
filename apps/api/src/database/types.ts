@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export type PostVisibility = "public" | "unlisted" | "followers" | "direct";
+
+export interface ProfileField {
+  name: string;
+  value: string;
+  verified_at?: string | null | undefined;
+}
+
 export interface UserFederationInfo {
   id: number;
   actor_url?: string | null | undefined;
@@ -8,6 +16,15 @@ export interface UserFederationInfo {
   remote_domain?: string | null | undefined;
   rsa_public_key?: string | null | undefined;
   rsa_private_key?: string | null | undefined;
+  ed25519_public_key?: string | null | undefined;
+  ed25519_private_key?: string | null | undefined;
+  discoverable?: number | boolean | undefined;
+  indexable?: number | boolean | undefined;
+  locked?: number | boolean | undefined;
+  also_known_as?: string | null | undefined;
+  moved_to_actor_url?: string | null | undefined;
+  profile_fields?: string | null | undefined;
+  default_post_visibility?: string | undefined;
 }
 
 export interface UserRow {
@@ -43,12 +60,20 @@ export interface UserRow {
   following_count?: number | undefined;
   post_count?: number | undefined;
   is_following?: number | boolean | undefined;
+  follow_request_pending?: number | boolean | undefined;
   created_at?: string | undefined;
   github_token?: string | null | undefined;
   gitlab_token?: string | null | undefined;
   onboarding_completed?: number | boolean | undefined;
   engineering_persona?: string | null | undefined;
   invites_remaining?: number | undefined;
+  discoverable?: number | boolean | undefined;
+  indexable?: number | boolean | undefined;
+  locked?: number | boolean | undefined;
+  also_known_as?: string | null | undefined;
+  moved_to_actor_url?: string | null | undefined;
+  profile_fields?: string | null | undefined;
+  default_post_visibility?: string | undefined;
 }
 
 export interface UserReferralRow {
@@ -75,6 +100,7 @@ export interface WaitlistSubmissionRow {
   approved_by?: number | null | undefined;
   invite_code_id?: number | null | undefined;
   ip_address?: string | null | undefined;
+  rejection_reason?: string | null | undefined;
   created_at?: string | undefined;
   reviewed_at?: string | null | undefined;
 }
@@ -127,6 +153,37 @@ export interface PostMetadata {
   [key: string]: unknown;
 }
 
+export interface PostPollOption {
+  title: string;
+  votes_count: number;
+}
+
+export interface PostPollView {
+  id: number;
+  post_id: number;
+  options: PostPollOption[];
+  expires_at?: string | null | undefined;
+  multiple: boolean;
+  voters_count: number;
+  votes_count: number;
+  expired: boolean;
+  voted?: boolean | undefined;
+  own_votes?: number[] | undefined;
+}
+
+export interface ContentFilterMatch {
+  filter_id: number;
+  title: string;
+  filter_action: "warn" | "hide" | "drop";
+  keyword_matches: string[];
+  filter?: {
+    id: number;
+    title: string;
+    context: ("home" | "public" | "notifications" | "thread" | "account")[];
+    filter_action: "warn" | "hide" | "drop";
+  };
+}
+
 export interface PostRow {
   id: number;
   author_id: number;
@@ -139,6 +196,7 @@ export interface PostRow {
   ap_id?: string | null | undefined;
   url?: string | null | undefined;
   metadata?: PostMetadata | null | undefined;
+  visibility?: PostVisibility | string | undefined;
   reply_visibility?: string | undefined;
   is_silenced?: number | undefined;
   is_sensitive?: number | boolean | undefined;
@@ -166,6 +224,8 @@ export interface PostRow {
   quote_post?: PostRow | null | undefined;
   title?: string | null | undefined;
   thumbnail_url?: string | null | undefined;
+  poll?: PostPollView | null | undefined;
+  filtered?: ContentFilterMatch[] | undefined;
 }
 
 export interface RemoteActorProfile {
@@ -215,6 +275,8 @@ export interface ContentReportRow {
   resolution_notes: string | null;
   action_taken?: string | null | undefined;
   content_snapshot?: string | null | undefined;
+  rule_ids?: number[] | string | undefined;
+  category?: string | undefined;
   created_at: string;
   resolved_at: string | null;
   reporter_username?: string | null | undefined;
@@ -444,4 +506,128 @@ export interface IDatabase {
   getUserArchiveData(userId: number): UserArchiveData | null;
   getAllArtifactViews(): ArtifactViewRow[];
   updateArtifactViewConfig(id: number, viewConfig: string): void;
+}
+
+export interface FederationRelayRow {
+  id: number;
+  inbox_url: string;
+  actor_url: string;
+  domain?: string | undefined;
+  state: "pending" | "accepted" | "rejected" | "paused";
+  follow_activity_id?: string | null | undefined;
+  last_received_at?: string | null | undefined;
+  last_error?: string | null | undefined;
+  forwarded_count: number;
+  received_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InstanceRuleRow {
+  id: number;
+  text: string;
+  hint: string | null;
+  category: string;
+  sort_order: number;
+  priority?: number | undefined;
+  enabled?: number | boolean | undefined;
+  is_active?: number | boolean | undefined;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccountWarningRow {
+  id: number;
+  target_user_id: number;
+  actor_id?: number | null | undefined;
+  moderator_id?: number | null | undefined;
+  action: "none" | "disable" | "mark_statuses_sensitive" | "delete_statuses" | "silence" | "suspend" | "warn";
+  text: string;
+  rule_ids: number[];
+  post_ids?: number[] | undefined;
+  report_id?: number | null | undefined;
+  acknowledged_at?: string | null | undefined;
+  created_at: string;
+  actor_username?: string | null | undefined;
+  moderator_username?: string | null | undefined;
+  target_username?: string | null | undefined;
+}
+
+export interface StaffNoteRow {
+  id: number;
+  target_type: "user" | "domain" | "report";
+  target_id: string;
+  author_id: number;
+  content: string;
+  created_at: string;
+  author_username?: string | null | undefined;
+}
+
+export interface IpBlockRow {
+  id: number;
+  cidr: string;
+  ip_cidr?: string | undefined;
+  severity: "sign_up_requires_approval" | "sign_up_block" | "no_access" | "no_sign_up";
+  comment: string | null;
+  created_by?: number | null | undefined;
+  expires_at?: string | null | undefined;
+  created_at: string;
+  updated_at?: string | undefined;
+}
+
+export interface CanonicalEmailBlockRow {
+  id: number;
+  canonical_email_hash: string;
+  email_hint: string;
+  reason: string;
+  created_by?: number | null | undefined;
+  created_at: string;
+}
+
+export interface ContentFilterKeyword {
+  keyword: string;
+  whole_word?: boolean | undefined;
+}
+
+export interface ContentFilterRow {
+  id: number;
+  user_id?: number | null | undefined;
+  title: string;
+  context: ("home" | "notifications" | "public" | "thread" | "account")[];
+  contexts?: ("home" | "notifications" | "public" | "thread" | "account")[];
+  filter_action: "warn" | "hide" | "drop";
+  keywords: ContentFilterKeyword[];
+  expires_at?: string | null | undefined;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RemoteArtifactCacheRow {
+  id: number;
+  source_url?: string | undefined;
+  remote_url?: string | undefined;
+  remote_domain: string;
+  media_type?: string | undefined;
+  content_type?: string | undefined;
+  byte_size?: number | undefined;
+  size_bytes?: number | undefined;
+  sha256: string;
+  data_blob?: Buffer | null | undefined;
+  local_data?: Buffer | null | undefined;
+  local_path?: string | null | undefined;
+  last_accessed_at: string;
+  expires_at?: string | null | undefined;
+  created_at: string;
+}
+
+export interface PushSubscriptionRow {
+  id: number;
+  user_id: number;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  alerts: Record<string, boolean>;
+  policy: "all" | "followed" | "follower" | "none";
+  created_at: string;
+  updated_at: string;
 }

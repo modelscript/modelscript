@@ -4,6 +4,7 @@ import type { WebGPUSimulationRunner } from "@modelscript/simulate";
 import { Label, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Box from "../Box";
+import { getLsp } from "../morsel/util/lsp-worker";
 
 export interface ZeroCopyWebGPUViewerProps {
   // If runner is provided, run in main thread (for VS Code Webview fallback)
@@ -194,7 +195,7 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
         render();
       };
       void initMainThread();
-    } else if (uri) {
+    } else if (uri && getLsp()) {
       // OFFSCREEN CANVAS (LSP Web Worker via side-channel)
       if (hasTransferredRef.current) {
         setStatus("Running via OffscreenCanvas (LSP Worker)");
@@ -291,6 +292,8 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
         }
       };
       void initStaticTensorPreview();
+    } else if (uri) {
+      setStatus("LSP Worker is not running — OffscreenCanvas transfer skipped.");
     } else {
       setStatus(NO_RUNNER_STATUS);
     }
@@ -325,7 +328,8 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
     return () => observer.disconnect();
   }, []);
 
-  const isZeroCopyActive = Boolean(runner || uri);
+  const isLspRunning = Boolean(getLsp());
+  const isZeroCopyActive = Boolean(runner || (uri && isLspRunning));
   const hasVisualData = Boolean(runner || uri || staticTensor);
 
   return (

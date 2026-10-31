@@ -44,13 +44,13 @@ msx lint ./models --daemon
 The official extension turns VS Code or Cursor into a complete multi-domain modeling studio:
 
 1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
-2. Search for **`ModelScript`** (`modelscript.modelscript-vscode`) and click **Install**.
+2. Search for **`ModelScript`** (`modelscript.modelscript`) and click **Install**.
 
 The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 44 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer, and the DAP time-travel simulation debugger.
 
 ### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
 
-Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **31 deterministic engineering tools** over the Model Context Protocol:
+Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **52 deterministic engineering tools** over the Model Context Protocol:
 
 ```bash
 # Register @modelscript/mcp in Claude Code with a single command

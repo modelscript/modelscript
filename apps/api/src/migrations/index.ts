@@ -20,6 +20,9 @@ import { migration0017 } from "./0017_commercial_hardening.js";
 import { migration0018 } from "./0018_unified_page_analytics.js";
 import { migration0019 } from "./0019_instance_admin_lifecycle.js";
 import { migration0020 } from "./0020_ansatz_onboarding_and_referrals.js";
+import { migration0021 } from "./0021_schema_consolidation.js";
+import { migration0022 } from "./0022_instance_invites_columns.js";
+import { migration0023 } from "./0023_mastodon_platform_parity.js";
 import type { Migration } from "./types.js";
 
 export * from "./runner.js";
@@ -46,4 +49,7 @@ export const allMigrations: Migration[] = [
   migration0018,
   migration0019,
   migration0020,
+  migration0021,
+  migration0022,
+  migration0023,
 ];

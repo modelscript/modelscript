@@ -965,10 +965,12 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform: status | upgrade | verify | doctor | support-bundle | backup | backups | restore | prune | export-bundle | import-bundle",
+        "description": "Action to perform: status | upgrade | rollback | plan | verify | doctor | support-bundle | backup | backups | restore | prune | export-bundle | import-bundle",
         "choices": [
           "status",
           "upgrade",
+          "rollback",
+          "plan",
           "verify",
           "doctor",
           "support-bundle",
@@ -982,6 +984,12 @@
       }
     ],
     "options": [
+      {
+        "name": "db",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to local SQLite database file for offline air-gapped maintenance"
+      },
       {
         "name": "dry-run",
         "aliases": [],
@@ -2654,8 +2662,11 @@
     "specs": [
       "hub <command>"
     ],
-    "aliases": [],
-    "describe": "Manage, configure, and inspect ModelScript hub nodes",
+    "aliases": [
+      "ansatz",
+      "node"
+    ],
+    "describe": "Manage, configure, and inspect Ansatz & ModelScript hub nodes",
     "positionals": [],
     "options": [],
     "subcommands": [
@@ -2674,11 +2685,14 @@
               "p"
             ],
             "type": "string",
-            "description": "Deployment profile: 'standalone' | 'internal' | 'federated'",
+            "description": "Deployment profile: 'standalone' | 'internal' | 'corporate' | 'federated' | 'federated-lite' | 'flagship'",
             "choices": [
               "standalone",
               "internal",
-              "federated"
+              "corporate",
+              "federated",
+              "federated-lite",
+              "flagship"
             ]
           },
           {
@@ -2724,6 +2738,12 @@
             "description": "Initial administrator password"
           },
           {
+            "name": "tunnel-token",
+            "aliases": [],
+            "type": "string",
+            "description": "Cloudflare Tunnel token for zero-open-ports ingress"
+          },
+          {
             "name": "yes",
             "aliases": [
               "y"
@@ -2752,6 +2772,60 @@
           }
         ],
         "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "upgrade",
+        "specs": [
+          "upgrade [url]"
+        ],
+        "aliases": [],
+        "describe": "Orchestrate a safe zero-downtime rolling upgrade with pre-upgrade backup and automatic rollback",
+        "positionals": [
+          {
+            "name": "url",
+            "aliases": [],
+            "type": "string",
+            "description": "Base URL of the Ansatz/ModelScript hub node",
+            "default": "http://localhost:3000"
+          }
+        ],
+        "options": [
+          {
+            "name": "tag",
+            "aliases": [],
+            "type": "string",
+            "description": "Target Docker IMAGE_TAG to deploy",
+            "default": "latest"
+          },
+          {
+            "name": "profile",
+            "aliases": [],
+            "type": "string",
+            "description": "Docker Compose profile to run",
+            "default": "federated-lite"
+          },
+          {
+            "name": "compose-dir",
+            "aliases": [],
+            "type": "string",
+            "description": "Directory containing docker-compose.yml and docker-compose.prod.yml",
+            "default": "."
+          },
+          {
+            "name": "dry-run",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Print upgrade steps and compose commands without mutating state",
+            "default": false
+          },
+          {
+            "name": "token",
+            "aliases": [],
+            "type": "string",
+            "description": "Admin Bearer JWT token for maintenance lock and hot backup (or set MSX_TOKEN)"
+          }
+        ],
         "subcommands": []
       }
     ]
@@ -2976,7 +3050,7 @@
       "i",
       "add"
     ],
-    "describe": "Install a package from the ModelScript Registry into the local workspace",
+    "describe": "Install a package from the Ansatz Package Registry into the local workspace",
     "positionals": [
       {
         "name": "package",
@@ -3216,7 +3290,7 @@
       "login"
     ],
     "aliases": [],
-    "describe": "Log in to the ModelScript Registry",
+    "describe": "Log in to the Ansatz Package Registry & Platform",
     "positionals": [],
     "options": [
       {
@@ -3266,7 +3340,7 @@
       "logout"
     ],
     "aliases": [],
-    "describe": "Log out from the ModelScript Registry",
+    "describe": "Log out from the Ansatz Package Registry & Platform",
     "positionals": [],
     "options": [
       {
@@ -4916,7 +4990,7 @@
       "publish <path>"
     ],
     "aliases": [],
-    "describe": "Publish a library directory or single Modelica file to the ModelScript Registry",
+    "describe": "Publish a library directory or single Modelica file to the Ansatz Package Registry",
     "positionals": [
       {
         "name": "path",
@@ -7076,7 +7150,7 @@
       "unpublish [path]"
     ],
     "aliases": [],
-    "describe": "Remove a published library version from the ModelScript Registry",
+    "describe": "Remove a published library version from the Ansatz Package Registry",
     "positionals": [
       {
         "name": "path",

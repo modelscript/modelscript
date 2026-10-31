@@ -11,6 +11,7 @@ import { AdminMenuSidebar } from "../src/pages/admin/components/AdminMenuSidebar
 import { AdminAuditLogsTab } from "../src/pages/admin/tabs/AdminAuditLogsTab";
 import { AdminDatabaseTab } from "../src/pages/admin/tabs/AdminDatabaseTab";
 import { AdminDmcaTab } from "../src/pages/admin/tabs/AdminDmcaTab";
+import { AdminFeatureFlagsTab } from "../src/pages/admin/tabs/AdminFeatureFlagsTab";
 import { AdminFederationTab } from "../src/pages/admin/tabs/AdminFederationTab";
 import { AdminModerationTab } from "../src/pages/admin/tabs/AdminModerationTab";
 import { AdminSettingsTab } from "../src/pages/admin/tabs/AdminSettingsTab";
@@ -694,5 +695,102 @@ describe("Admin Console & Moderation UI Components Suite", () => {
     const staticMaintHtml = fs.readFileSync(new URL("../public/maintenance.html", import.meta.url), "utf-8");
     assert.ok(staticMaintHtml.includes("Launch Offline WASM Playground"));
     assert.ok(staticMaintHtml.includes("/api/v1/instance/banner"));
+  });
+
+  it("renders interactive Feature Flag role pills, Cloudflare Tunnel badge, modal accessibility hooks, and Live Version-Mismatch Upgrade Banner", async () => {
+    const { MaintenanceExperienceHost } = await import("../src/components/MaintenanceExperienceHost");
+    const { InstanceBrandingProvider } = await import("../src/InstanceBrandingContext");
+    const { AuthProvider } = await import("../src/AuthContext");
+
+    const flagsHtml = renderToStaticMarkup(
+      React.createElement(AdminFeatureFlagsTab, {
+        featureFlags: [
+          {
+            key: "cloud_solver",
+            name: "Cloud Solver",
+            description: "Remote DAE simulation workers",
+            defaultValue: true,
+            category: "compute",
+            maturity: "production",
+            allowedRoles: ["user", "admin"],
+            dbAllowedRoles: ["user", "admin"],
+            currentEnabled: true,
+            rolloutPercentage: 50,
+          },
+        ],
+        togglingFlagKey: null,
+        onToggleFlag: async () => {},
+        onUpdateFlagConfig: async () => {},
+      }),
+    );
+    assert.ok(flagsHtml.includes("Toggle role user for Cloud Solver"));
+    assert.ok(flagsHtml.includes("Toggle role admin for Cloud Solver"));
+    assert.ok(flagsHtml.includes("Toggle role guest for Cloud Solver"));
+
+    const fedHtml = renderToStaticMarkup(
+      React.createElement(
+        MemoryRouter,
+        null,
+        React.createElement(AdminFederationTab, {
+          domains: [],
+          settings: {
+            instanceName: "Ansatz Lab",
+            instanceDescription: "Lab Node",
+            contactEmail: "admin@lab.org",
+            registrationMode: "invite_only",
+            allowedEmailDomains: [],
+            federationMode: "open",
+            ingressMode: "cloudflare",
+            cloudflareTunnelConfigured: true,
+            maintenanceMode: false,
+            announcementBanner: "",
+            announcementLevel: "info",
+            autoQuarantineReportThreshold: 3,
+            backupRetentionCount: 7,
+            lockedByEnv: [],
+          },
+          onSaveDomainTier: async () => {},
+          onDeleteDomainRule: async () => {},
+          loading: false,
+        }),
+      ),
+    );
+    assert.ok(fedHtml.includes("Cloudflare Tunnel Configured"));
+
+    const upgradeBannerHtml = renderToStaticMarkup(
+      React.createElement(
+        MemoryRouter,
+        null,
+        React.createElement(
+          AuthProvider,
+          null,
+          React.createElement(
+            InstanceBrandingProvider,
+            {
+              initialBranding: {
+                buildVersion: "2.1.0",
+                updateAvailable: true,
+              },
+            },
+            React.createElement(MaintenanceExperienceHost),
+          ),
+        ),
+      ),
+    );
+    assert.ok(upgradeBannerHtml.includes("A new version of Ansatz is available"));
+    assert.ok(upgradeBannerHtml.includes("Reload"));
+    assert.ok(upgradeBannerHtml.includes("Dismiss"));
+
+    const adminPageSrc = fs.readFileSync(new URL("../src/pages/AdminPage.tsx", import.meta.url), "utf-8");
+    assert.ok(adminPageSrc.includes('document.visibilityState === "hidden"'));
+    assert.ok(adminPageSrc.includes("useFocusTrap"));
+
+    const waitlistTabSrc = fs.readFileSync(
+      new URL("../src/pages/admin/tabs/AdminWaitlistTab.tsx", import.meta.url),
+      "utf-8",
+    );
+    assert.ok(waitlistTabSrc.includes("useFocusTrap"));
+    assert.ok(waitlistTabSrc.includes('role="dialog"'));
+    assert.ok(waitlistTabSrc.includes('aria-modal="true"'));
   });
 });

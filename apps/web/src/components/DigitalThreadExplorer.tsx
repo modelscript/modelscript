@@ -220,6 +220,37 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
     void loadGovernanceData();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    api
+      .get("/threads/links", { params: { packageName, packageVersion: resolvedVersion } })
+      .then((res) => {
+        if (!active) return;
+        const rawLinks = Array.isArray(res.data?.links) ? res.data.links : Array.isArray(res.data) ? res.data : [];
+        if (rawLinks.length > 0) {
+          setCustomTwins((prev) => {
+            const existingIds = new Set(prev.map((t) => t.id));
+            const merged = [...prev];
+            for (const item of rawLinks) {
+              const twin: DigitalThreadTwin | undefined =
+                item?.link && item.link.source ? item.link : item?.source ? item : undefined;
+              if (twin && !existingIds.has(twin.id)) {
+                existingIds.add(twin.id);
+                merged.push(twin);
+              }
+            }
+            return merged;
+          });
+        }
+      })
+      .catch(() => {
+        // Graceful fallback if empty or offline
+      });
+    return () => {
+      active = false;
+    };
+  }, [packageName, resolvedVersion]);
+
   const handleCreateProposal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!proposalTargetTwin || !propTitle.trim()) return;

@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { inBrowser } from "vitepress";
+import { inBrowser, useRoute } from "vitepress";
 import DefaultTheme from "vitepress/theme";
-import { defineAsyncComponent } from "vue";
+import { computed, defineAsyncComponent } from "vue";
 import DocBreadcrumbs from "./components/DocBreadcrumbs.vue";
 import LanguageHeader from "./components/LanguageHeader.vue";
 
@@ -11,6 +11,10 @@ const NotFound = defineAsyncComponent(() => import("./components/NotFound.vue"))
 const LanguageExample = defineAsyncComponent(() => import("./components/LanguageExample.vue"));
 
 const { Layout } = DefaultTheme;
+const route = useRoute();
+const isLanguageDetailPage = computed(
+  () => route.path.startsWith("/languages/") && !route.path.startsWith("/languages/overview"),
+);
 </script>
 
 <template>
@@ -25,11 +29,12 @@ const { Layout } = DefaultTheme;
     </template>
     <template #doc-before>
       <DocBreadcrumbs />
-      <LanguageHeader />
-      <LanguageExample />
+      <LanguageHeader v-if="isLanguageDetailPage" />
+      <LanguageExample v-if="isLanguageDetailPage" />
     </template>
     <template #not-found>
       <NotFound />
     </template>
   </Layout>
 </template>
+

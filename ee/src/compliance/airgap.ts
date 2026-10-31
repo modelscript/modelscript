@@ -43,6 +43,11 @@ export function createAirgapSecurityHeadersMiddleware() {
     );
     res.header("X-Airgap-Enforced", "true");
     res.header("X-CEII-Compliance", "FERC-18-CFR-388.113");
+    res.header("X-Permitted-Cross-Domain-Policies", "none");
+    res.header("Cross-Origin-Opener-Policy", "same-origin");
+    if (!isEmbedRoute) {
+      res.header("Cross-Origin-Resource-Policy", "same-origin");
+    }
     next();
   };
 }

@@ -11,11 +11,21 @@
 - [Introduction](https://modelscript.org/guide/introduction): Architectural vision, computable digital thread, and key differentiators.
 - [Installation](https://modelscript.org/guide/installation): CLI installation, VS Code extension, and local setup.
 - [Getting Started](https://modelscript.org/guide/getting-started): First steps, project scaffolding, and simulation execution.
+- [AI Agents & MCP Workflows](https://modelscript.org/guide/ai-agents): Closed-loop AI engineering workflows and Model Context Protocol setup.
+- [CI/CD & GitHub Actions](https://modelscript.org/guide/ci-cd): Automated linting, formal verification, and SARIF code scanning.
 - [Embedding ModelScript](https://modelscript.org/guide/embedding): Headless programmatic usage in Node.js, browsers, and WebAssembly.
 - [Administration](https://modelscript.org/guide/administration): Enterprise deployment, licensing, and security disclosures.
 
+## Ansatz Platform (`ansatz.social`)
+- [Ansatz Platform Overview](https://modelscript.org/ansatz/overview): Federated social network, CAS package registry, and cloud HPC hub.
+- [ActivityPub Federation](https://modelscript.org/ansatz/federation): W3C ActivityPub S2S federation, WebFinger, and peer verification.
+- [Package Registry](https://modelscript.org/ansatz/package-registry): Content-addressable package registry with Ed25519 signatures and multi-lens manifests.
+- [Cloud HPC Simulation](https://modelscript.org/ansatz/cloud-hpc): Slurm HPC offload, WebGPU batched sweeps, and compute credit billing.
+- [Self-Hosting Guide](https://modelscript.org/ansatz/self-hosting): Docker Compose deployment profiles, Cloudflare Zero Trust tunnels, and hot SQLite backups.
+
 ## Compiler Architecture & WebAssembly Runtime
 - [Architecture Overview](https://modelscript.org/architecture/overview): Salsa memoization, WASM linear memory DAE arena, and lowering pipeline.
+- [Monorepo & Taxonomy](https://modelscript.org/architecture/monorepo): Workspace organization, package boundaries, and dependency taxonomy.
 - [DAE Arena](https://modelscript.org/architecture/dae-arena): Struct-of-arrays linear memory DAE container for zero-overhead symbolic transformations.
 - [GLR Parser](https://modelscript.org/architecture/glr-parser): High-performance native WebAssembly generalized LR parser generator.
 - [Salsa Query Engine](https://modelscript.org/architecture/salsa-queries): Incremental memoization, dependency tracking, and Salsa cache backdating.

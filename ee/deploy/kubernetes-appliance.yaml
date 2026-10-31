@@ -23,10 +23,17 @@ data:
   MSX_LICENSE_ENFORCE: "true"
   ENTERPRISE_APPLIANCE: "true"
   AIRGAP_ENFORCED: "true"
+  DEPLOYMENT_PRESET: "tier2_corporate"
+  ANSATZ_TIER: "tier2_corporate"
+  FEDERATION_MODE: "disabled"
+  MSX_FEDERATION_MODE: "disabled"
+  MSX_REGISTRATION_MODE: "domain_allowlist"
+  MSX_REQUIRE_ADMIN_2FA: "true"
+  EMBED_FRAME_ANCESTORS: "'self'"
   TRUST_PROXY: "true"
   PUBLIC_URL: "https://modelscript.internal.utility.com"
   ENTERPRISE_HEADER_AUTH: "true"
-  TRUSTED_PROXY_IPS: "*"
+  TRUSTED_PROXY_IPS: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/32"
   ENTERPRISE_ADMIN_GROUPS: "AD-Transmission-Planning-Admins,Engineering-Admins,Admins"
   NODE_OPTIONS: "--max-old-space-size=4096"
   OLLAMA_BASE_URL: "http://ollama.modelscript-system.svc.cluster.local:11434"
@@ -45,7 +52,7 @@ spec:
       storage: 50Gi
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: modelscript-appliance
   namespace: modelscript-system
@@ -53,15 +60,13 @@ metadata:
     app.kubernetes.io/name: modelscript-appliance
     app.kubernetes.io/part-of: modelscript-enterprise
 spec:
-  replicas: 2
+  serviceName: "modelscript-appliance"
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: modelscript-appliance
-  strategy:
+  updateStrategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
   template:
     metadata:
       labels:
@@ -93,7 +98,6 @@ spec:
                 secretKeyRef:
                   name: modelscript-enterprise-secrets
                   key: jwt-secret
-                  optional: true
             - name: MSX_LICENSE_KEY
               valueFrom:
                 secretKeyRef:
@@ -115,8 +119,16 @@ spec:
           volumeMounts:
             - name: ceii-vault
               mountPath: /app/apps/api/data
-            - name: ceii-uploads
+              subPath: data
+            - name: ceii-vault
+              mountPath: /app/apps/api/data/backups
+              subPath: backups
+            - name: ceii-vault
               mountPath: /app/apps/api/uploads
+              subPath: uploads
+            - name: ceii-vault
+              mountPath: /app/apps/api/public/thumbnails
+              subPath: thumbnails
           livenessProbe:
             httpGet:
               path: /health
@@ -138,8 +150,6 @@ spec:
         - name: ceii-vault
           persistentVolumeClaim:
             claimName: modelscript-ceii-vault-pvc
-        - name: ceii-uploads
-          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -157,3 +167,24 @@ spec:
       protocol: TCP
   selector:
     app.kubernetes.io/name: modelscript-appliance
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: modelscript-appliance-zero-egress
+  namespace: modelscript-system
+  labels:
+    app.kubernetes.io/name: modelscript-appliance
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: modelscript-appliance
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080
+  egress: []
+

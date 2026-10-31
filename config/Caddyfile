@@ -5,7 +5,7 @@
     # Encode responses with gzip or zstd
     encode gzip zstd
 
-    # Route ActivityPub, Git Smart HTTP, npm Registry, and API traffic to backend API
+    # Route ActivityPub, Git Smart HTTP, npm Registry, SysML v2 REST API, and API traffic to backend API
     handle /api/* {
         reverse_proxy api:3000
     }
@@ -13,6 +13,12 @@
         reverse_proxy api:3000
     }
     handle /-/* {
+        reverse_proxy api:3000
+    }
+    handle /projects {
+        reverse_proxy api:3000
+    }
+    handle /projects/* {
         reverse_proxy api:3000
     }
     handle /.well-known/* {
@@ -67,6 +73,9 @@
     handle /static/* {
         reverse_proxy api:3000
     }
+    handle /embed/solution/* {
+        reverse_proxy api:3000
+    }
 
     # Route Unified Web SPA, IDE Shell & Documentation Portal (all other requests)
     handle {
@@ -77,7 +86,7 @@
     handle_errors {
         @upstream_down expression `{err.status_code} in [502, 503, 504]`
         handle @upstream_down {
-            @api_req path /api/* /git/* /-/*
+            @api_req path /api/* /git/* /-/* /projects /projects/*
             handle @api_req {
                 header Content-Type "application/json"
                 header Retry-After "30"

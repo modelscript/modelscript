@@ -276,7 +276,7 @@ export const PackageManageModals: React.FC<PackageManageModalsProps> = ({
                       variant="danger"
                       leadingVisual={TrashIcon}
                       disabled={actionLoading}
-                      onClick={() => onRemoveCollaborator(collab.username)}
+                      onClick={() => onRemoveCollaborator(String(collab.user_id || collab.username))}
                     >
                       Remove
                     </Button>

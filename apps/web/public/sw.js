@@ -44,23 +44,27 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 1a. Content-hashed build assets (CacheFirst)
+  // 1a. Content-hashed build assets (CacheFirst, guarding against SPA HTML fallbacks)
   if (url.pathname.startsWith("/assets/")) {
     event.respondWith(
-      caches.match(request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        return fetch(request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseToCache);
-            });
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(request).then((cachedResponse) => {
+          const cachedType = (cachedResponse && cachedResponse.headers.get("content-type")) || "";
+          if (cachedResponse && !cachedType.includes("text/html")) {
+            return cachedResponse;
           }
-          return networkResponse;
-        });
-      }),
+          if (cachedResponse && cachedType.includes("text/html")) {
+            cache.delete(request);
+          }
+          return fetch(request).then((networkResponse) => {
+            const contentType = (networkResponse && networkResponse.headers.get("content-type")) || "";
+            if (networkResponse && networkResponse.status === 200 && !contentType.includes("text/html")) {
+              cache.put(request, networkResponse.clone());
+            }
+            return networkResponse;
+          });
+        }),
+      ),
     );
     return;
   }
@@ -130,9 +134,19 @@ self.addEventListener("fetch", (event) => {
   // 3. Navigation requests (NetworkFirst with offline fallback)
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() => {
-        return caches.match("/").then((cached) => cached || Response.error());
-      }),
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.ok) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put("/", responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match("/").then((cached) => cached || Response.error());
+        }),
     );
     return;
   }

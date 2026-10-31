@@ -1132,13 +1132,23 @@ export const AdminEmailStudioCard: React.FC<AdminEmailStudioCardProps> = ({ onSt
                   style={{
                     background: "#f1f5f9",
                     borderRadius: "6px",
-                    padding: "12px",
-                    maxHeight: "420px",
-                    overflowY: "auto",
+                    overflow: "hidden",
                     border: "1px solid #cbd5e1",
                   }}
-                  dangerouslySetInnerHTML={{ __html: previewData?.html || "" }}
-                />
+                >
+                  <iframe
+                    title="Email Preview"
+                    sandbox=""
+                    srcDoc={previewData?.html || ""}
+                    style={{
+                      width: "100%",
+                      height: "360px",
+                      border: "none",
+                      display: "block",
+                      background: "#fff",
+                    }}
+                  />
+                </div>
               ) : (
                 <pre
                   style={{

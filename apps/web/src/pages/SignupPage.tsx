@@ -76,6 +76,12 @@ export default function SignupPage() {
     }
     return "";
   });
+  const [showInviteField, setShowInviteField] = useState(() => {
+    if (typeof window !== "undefined") {
+      return Boolean(new URLSearchParams(window.location.search).get("invite"));
+    }
+    return false;
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -83,12 +89,15 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
+  const [devVerificationToken, setDevVerificationToken] = useState<string | null>(null);
   const [authConfig, setAuthConfig] = useState<{
     airgapEnforced?: boolean;
     turnstileEnabled?: boolean;
     oauthProviders?: string[];
     oidcEnabled?: boolean;
     registrationMode?: string;
+    allowedEmailDomains?: string;
+    mailerConfigured?: boolean;
   } | null>(null);
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const { register } = useAuth();
@@ -207,6 +216,9 @@ export default function SignupPage() {
         effectiveCaptchaToken,
         inviteCode.trim() || undefined,
       );
+      if (res?.verificationToken) {
+        setDevVerificationToken(res.verificationToken);
+      }
       if (res?.verificationRequired) {
         setVerificationSent(true);
       } else {
@@ -262,15 +274,47 @@ export default function SignupPage() {
                 fontSize: "14px",
                 color: "var(--color-text-muted)",
                 lineHeight: "1.5",
-                margin: "0 0 24px 0",
+                margin: "0 0 20px 0",
               }}
             >
-              We sent a verification link to <strong>{email}</strong>. Please check your inbox and verify your address
-              to activate full features and unlock your <strong>50 free compute credits</strong>!
+              {authConfig?.mailerConfigured === false ? (
+                <>
+                  Account created for <strong>{email}</strong>. Outbound email delivery is not configured on this
+                  instance — you can continue directly into your workspace or verify below to unlock{" "}
+                  <strong>50 free compute credits</strong>.
+                </>
+              ) : (
+                <>
+                  We sent a verification link to <strong>{email}</strong>. Verify your address to activate full features
+                  and unlock your <strong>50 free compute credits</strong>, or continue directly to your workspace now.
+                </>
+              )}
             </p>
-            <Button type="button" onClick={() => navigate("/home")}>
-              Continue to {brandName}
-            </Button>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {devVerificationToken && (
+                <Button
+                  type="button"
+                  onClick={() => navigate(`/verify-email?token=${encodeURIComponent(devVerificationToken)}`)}
+                >
+                  Verify Instantly &amp; Claim 50 Credits
+                </Button>
+              )}
+              <Button
+                type="button"
+                onClick={() => navigate("/")}
+                style={
+                  devVerificationToken
+                    ? {
+                        background: "transparent",
+                        border: "1px solid var(--ms-border, rgba(148, 163, 184, 0.3))",
+                        color: "var(--color-text-heading)",
+                      }
+                    : undefined
+                }
+              >
+                Continue to {brandName}
+              </Button>
+            </div>
           </div>
         ) : authConfig?.registrationMode === "closed" ? (
           <div style={{ textAlign: "center", padding: "16px 0", width: "100%" }}>
@@ -435,31 +479,6 @@ export default function SignupPage() {
                 </PasswordInputWrapper>
               </FieldGroup>
               <FieldGroup>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <FieldLabel htmlFor="signup-invite-code" style={{ marginBottom: 0 }}>
-                    {authConfig?.registrationMode === "invite_only" && !isAcademicEmail
-                      ? "Invite Code (required)"
-                      : "Invite Code (optional)"}
-                  </FieldLabel>
-                  {branding.waitlistEnabled && (
-                    <button
-                      type="button"
-                      onClick={() => setWaitlistOpen(true)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: "var(--color-accent-cyan, #06b6d4)",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                    >
-                      Request an Access Key
-                    </button>
-                  )}
-                </div>
-
                 {isAcademicEmail && (
                   <div
                     style={{
@@ -472,7 +491,7 @@ export default function SignupPage() {
                       display: "flex",
                       alignItems: "center",
                       gap: "6px",
-                      margin: "4px 0",
+                      margin: "2px 0 4px 0",
                     }}
                   >
                     <MortarBoardIcon size={14} />
@@ -480,35 +499,84 @@ export default function SignupPage() {
                   </div>
                 )}
 
-                <Input
-                  id="signup-invite-code"
-                  name="inviteCode"
-                  type="text"
-                  value={inviteCode}
-                  onChange={(e) => setInviteCode(e.target.value)}
-                  placeholder={isAcademicEmail ? "Not required for verified academic domains" : "msx-inv-..."}
-                  aria-label="Invite Code"
-                  required={authConfig?.registrationMode === "invite_only" && !isAcademicEmail}
-                />
+                {authConfig?.registrationMode === "invite_only" || showInviteField || Boolean(inviteCode) ? (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <FieldLabel htmlFor="signup-invite-code" style={{ marginBottom: 0 }}>
+                        {authConfig?.registrationMode === "invite_only" && !isAcademicEmail
+                          ? "Invite Code (required)"
+                          : "Invite or Referral Code (optional)"}
+                      </FieldLabel>
+                      {branding.waitlistEnabled && !isAcademicEmail && (
+                        <button
+                          type="button"
+                          onClick={() => setWaitlistOpen(true)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--color-accent-cyan, #06b6d4)",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            padding: 0,
+                          }}
+                        >
+                          Request an Access Key
+                        </button>
+                      )}
+                    </div>
 
-                {branding.waitlistEnabled && !isAcademicEmail && (
-                  <div style={{ fontSize: "12px", color: "var(--color-text-secondary, #94a3b8)", marginTop: "4px" }}>
-                    Don't have an invite code?{" "}
+                    <Input
+                      id="signup-invite-code"
+                      name="inviteCode"
+                      type="text"
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value)}
+                      placeholder={isAcademicEmail ? "Not required for verified academic domains" : "msx-inv-..."}
+                      aria-label="Invite Code"
+                      required={authConfig?.registrationMode === "invite_only" && !isAcademicEmail}
+                    />
+                  </>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontSize: "12px",
+                    }}
+                  >
                     <button
                       type="button"
-                      onClick={() => setWaitlistOpen(true)}
+                      onClick={() => setShowInviteField(true)}
                       style={{
                         background: "none",
                         border: "none",
-                        color: "var(--color-accent-cyan, #06b6d4)",
-                        fontWeight: 600,
+                        color: "var(--color-text-secondary, #94a3b8)",
+                        fontWeight: 500,
                         cursor: "pointer",
                         padding: 0,
                         textDecoration: "underline",
                       }}
                     >
-                      Request an Access Key
+                      Have an invite or referral code?
                     </button>
+                    {branding.waitlistEnabled && !isAcademicEmail && (
+                      <button
+                        type="button"
+                        onClick={() => setWaitlistOpen(true)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "var(--color-accent-cyan, #06b6d4)",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        Request an Access Key
+                      </button>
+                    )}
                   </div>
                 )}
               </FieldGroup>

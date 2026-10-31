@@ -42,6 +42,7 @@ export interface MigrationRecord {
   checksum: string;
   applied_at: string;
   execution_ms: number;
+  checksumMatch?: boolean | undefined;
 }
 
 export interface MigrationStatus {
@@ -50,4 +51,5 @@ export interface MigrationStatus {
   currentVersion: string | null;
   targetVersion: string | null;
   pendingCount: number;
+  checksumMatch: boolean;
 }

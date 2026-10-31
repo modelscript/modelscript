@@ -245,9 +245,33 @@ const HighlightedCodeView: React.FC<{ code: string }> = ({ code }) => {
 export interface ClassEquationsTabProps {
   equations: string[];
   className?: string | undefined;
+  components?:
+    | {
+        component_name: string;
+        type_name: string;
+        variability?: string | null | undefined;
+        causality?: string | null | undefined;
+        modifiers?: { modifier_name: string; modifier_value: string | null }[] | undefined;
+      }[]
+    | undefined;
+  cls?:
+    | {
+        sourceCode?: string | null | undefined;
+        components?:
+          | {
+              component_name: string;
+              type_name: string;
+              variability?: string | null | undefined;
+              causality?: string | null | undefined;
+              modifiers?: { modifier_name: string; modifier_value: string | null }[] | undefined;
+            }[]
+          | undefined;
+      }
+    | null
+    | undefined;
 }
 
-export const ClassEquationsTab: React.FC<ClassEquationsTabProps> = ({ equations, className }) => {
+export const ClassEquationsTab: React.FC<ClassEquationsTabProps> = ({ equations, className, components, cls }) => {
   const [copiedEquations, setCopiedEquations] = useState(false);
   const equationsText = useMemo(() => equations.join("\n"), [equations]);
 
@@ -259,10 +283,75 @@ export const ClassEquationsTab: React.FC<ClassEquationsTabProps> = ({ equations,
   };
 
   const playgroundSnippet = useMemo(() => {
+    if (cls?.sourceCode && cls.sourceCode.trim().length > 0) {
+      return cls.sourceCode;
+    }
     const shortName = className ? className.split(".").pop() || "Model" : "Model";
+    const resolvedComponents = components ?? cls?.components ?? [];
+    let declLines: string[] = [];
+
+    if (resolvedComponents.length > 0) {
+      declLines = resolvedComponents.map((comp) => {
+        const prefix = [comp.variability, comp.causality, comp.type_name, comp.component_name]
+          .filter(Boolean)
+          .join(" ");
+        return `  ${prefix};`;
+      });
+    } else {
+      const stateVars = new Set<string>();
+      const loopVars = new Set<string>();
+      const inferredVars = new Set<string>();
+
+      for (const rawEq of equations) {
+        const cleaned = rawEq
+          .replace(/\/\/.*$/gm, "")
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .replace(/"(?:\\.|[^"\\])*"/g, "");
+
+        const derRegex = /\bder\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g;
+        let derMatch: RegExpExecArray | null;
+        while ((derMatch = derRegex.exec(cleaned)) !== null) {
+          if (derMatch[1]) stateVars.add(derMatch[1]);
+        }
+
+        const forRegex = /\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b/g;
+        let forMatch: RegExpExecArray | null;
+        while ((forMatch = forRegex.exec(cleaned)) !== null) {
+          if (forMatch[1]) loopVars.add(forMatch[1]);
+        }
+
+        const idRegex = /(^|[^.\w])([A-Za-z_][A-Za-z0-9_]*)(\s*[.(])?/g;
+        let idMatch: RegExpExecArray | null;
+        while ((idMatch = idRegex.exec(cleaned)) !== null) {
+          const ident = idMatch[2];
+          const suffix = idMatch[3]?.trim();
+          if (!ident || suffix === "(" || suffix === ".") continue;
+          if (
+            MODELICA_KEYWORDS.has(ident) ||
+            MODELICA_TYPES.has(ident) ||
+            MODELICA_BUILTINS.has(ident) ||
+            MODELICA_BUILTINS.has(` ${ident}`) ||
+            loopVars.has(ident)
+          ) {
+            continue;
+          }
+          inferredVars.add(ident);
+        }
+      }
+
+      if (inferredVars.size > 0) {
+        declLines = Array.from(inferredVars).map((v) =>
+          stateVars.has(v) ? `  Real ${v}(start = 0.0);` : `  Real ${v};`,
+        );
+      } else {
+        declLines = ["  // Variable & component declarations"];
+      }
+    }
+
+    const declBlock = declLines.join("\n");
     const body = equations.map((eq) => `  ${eq.endsWith(";") ? eq : `${eq};`}`).join("\n");
-    return `model ${shortName}\nequation\n${body}\nend ${shortName};\n`;
-  }, [equations, className]);
+    return `model ${shortName}\n${declBlock}\nequation\n${body}\nend ${shortName};\n`;
+  }, [equations, className, components, cls]);
 
   return (
     <JavadocSection>

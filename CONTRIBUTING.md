@@ -286,3 +286,62 @@ When code merges into `main` or a new release workflow is triggered, the GitHub 
    docker compose -f docker-compose.yml -f docker-compose.prod.yml \
      --env-file .env.production --profile federated up -d --remove-orphans
    ```
+
+---
+
+---
+
+## 8. Self-Hosting a Node via Cloudflare Tunnels (Zero Open Ports)
+
+If you are hosting a federated node from a home lab, university workstation, cloud VPS, or behind corporate firewalls/CGNAT where opening inbound ports `80` and `443` is not possible or desirable:
+
+### 1. Deployment Profile Sizing Matrix
+
+Choose the profile that matches your resource constraints and use case:
+
+| Profile              | Active Services                                             | Target Environment                                                  | Database Engine                     | RAM Footprint |
+| :------------------- | :---------------------------------------------------------- | :------------------------------------------------------------------ | :---------------------------------- | :------------ |
+| **`flagship`**       | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` cloud cluster                   | SQLite WAL + TimescaleDB            | ~4–8 GB       |
+| **`federated`**      | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live simulation telemetry streaming               | SQLite WAL + TimescaleDB            | ~4 GB         |
+| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel`                             | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS | **SQLite WAL only**                 | **~1–2 GB**   |
+| **`corporate`**      | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped SCIF, SSO allowlist                 | SQLite WAL (+ optional TimescaleDB) | ~2–4 GB       |
+| **`quick-tunnel`**   | `caddy`, `web`, `api`, `quick-tunnel`                       | Instant zero-config demo with ephemeral `trycloudflare.com` URL     | SQLite WAL only                     | ~1.5 GB       |
+
+### 2. Production Token-Driven Tunnel (Zero Open Inbound Ports)
+
+1. Create a free tunnel in the [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/) (**Networks → Tunnels → Create Tunnel**).
+2. Route your domain (e.g., `node.yourdomain.com`) to `http://caddy:80`.
+3. Add your tunnel token to `.env` (or `.env.production`):
+   ```bash
+   CLOUDFLARE_TUNNEL_TOKEN="eyJh..."
+   ```
+4. Boot the node with your chosen profile:
+
+   ```bash
+   # Lightweight homelab node (1-2 GB RAM, embedded SQLite only):
+   docker compose --profile federated-lite up -d
+
+   # Full research lab node with co-simulation telemetry historian:
+   docker compose --profile federated up -d
+
+   # Flagship production cluster (modelscript.org + ansatz.social):
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+     --env-file .env.production --profile flagship up -d
+   ```
+
+   _Note:_ The `tunnel` service runs a smart entrypoint. If `CLOUDFLARE_TUNNEL_TOKEN` is present, it connects immediately; if unset, it idles in standby without crash-looping.
+
+### 3. Ephemeral Quick Tunnels (Local Dev & 1-Click ActivityPub Testing)
+
+For local development or testing ActivityPub federation between machines without a custom domain or Cloudflare account:
+
+```bash
+docker compose --profile quick-tunnel up
+```
+
+`cloudflared` will automatically provision a public `https://<random>.trycloudflare.com` URL that forwards external ActivityPub inbox requests directly to your local Caddy router.
+
+### 4. Headless Preinstallation vs. First-Run Install Wizard
+
+- **Federated Nodes (`tier1_federated`):** If no database exists, opening your domain in a browser automatically launches the guided **First-Run Install Wizard (`/setup`)**. Follow the 4-step wizard to create the founding admin and configure federation policies.
+- **Flagship & Headless Corporate (`tier3_flagship` / `tier2_corporate`):** Provide `ADMIN_INIT_USERNAME`, `ADMIN_INIT_PASSWORD`, and `DEPLOYMENT_PRESET=tier3_flagship` (or `tier2_corporate`) in your `.env`. The instance bootstraps and locks the setup wizard on first boot with zero human interaction required.

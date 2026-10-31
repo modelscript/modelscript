@@ -2,7 +2,9 @@
 
 import { GlobeIcon, PaintbrushIcon } from "@primer/octicons-react";
 import React, { useEffect, useState } from "react";
-import { getUserTopics, updateUserTopic } from "../../../api";
+import { useNavigate } from "react-router-dom";
+import { completeUserOnboarding, getUserTopics, updateUserTopic } from "../../../api";
+import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
@@ -13,11 +15,21 @@ export interface DisplayAndPreferencesTabProps {
   onNavigate?: (tab: string) => void;
 }
 
+const ENGINEERING_PERSONAS = [
+  { id: "physical_systems", label: "⚡ Physical Systems (Modelica / DAE)" },
+  { id: "systems_engineering", label: "🛰️ Systems Architecture (SysML v2)" },
+  { id: "computational_cad", label: "⚙️ Computational CAD & CAE (STEP / OpenSCAD)" },
+  { id: "scientific_research", label: "🔬 Scientific Research & HPC" },
+];
+
 export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> = ({ subView }) => {
   const { theme, toggleTheme } = useTheme();
+  const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
+  const [savingPersona, setSavingPersona] = useState(false);
 
   useEffect(() => {
     if (subView === "contentPreferences") {
@@ -28,10 +40,84 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
   }, [subView]);
 
   if (subView === "contentPreferences") {
+    const activePersona = user?.engineering_persona || "physical_systems";
     return (
       <>
         <Header>Content preferences</Header>
-        <Box px={3} pb={3}>
+        <Box px={4} pb={3}>
+          <Box
+            p={3}
+            mb={4}
+            style={{
+              background: "var(--ms-surface-2, rgba(30, 41, 59, 0.45))",
+              border: "1px solid var(--ms-border, rgba(148, 163, 184, 0.2))",
+              borderRadius: "12px",
+            }}
+          >
+            <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+              <Box>
+                <FormLabel style={{ display: "block", marginBottom: "2px" }}>Primary Engineering Discipline</FormLabel>
+                <DetailSubtitle style={{ display: "block" }}>
+                  Tailors your default Quickstart Studio templates and discipline library tabs.
+                </DetailSubtitle>
+              </Box>
+              <button
+                type="button"
+                onClick={() => navigate("/onboarding")}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--ms-border, rgba(148, 163, 184, 0.3))",
+                  borderRadius: "8px",
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "var(--ms-text-1)",
+                  cursor: "pointer",
+                }}
+              >
+                Open Welcome Quickstart ↗
+              </button>
+            </Box>
+            <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(220px, 1fr))" gap={2} mt={2}>
+              {ENGINEERING_PERSONAS.map((p) => {
+                const selected = activePersona === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    disabled={savingPersona}
+                    onClick={async () => {
+                      setSavingPersona(true);
+                      try {
+                        await completeUserOnboarding(p.id);
+                        await refreshUser();
+                      } catch {
+                        // Ignore update errors
+                      } finally {
+                        setSavingPersona(false);
+                      }
+                    }}
+                    style={{
+                      textAlign: "left",
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      fontWeight: selected ? 700 : 500,
+                      border: selected
+                        ? "1.5px solid var(--color-accent-cyan, #06b6d4)"
+                        : "1px solid var(--ms-border, rgba(148, 163, 184, 0.2))",
+                      background: selected ? "rgba(6, 182, 212, 0.1)" : "transparent",
+                      color: "var(--ms-text-1)",
+                      cursor: savingPersona ? "wait" : "pointer",
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </Box>
+          </Box>
+
           <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4" }}>
             We dynamically discover topics you might be interested in. Uncheck the ones you no longer want to see. This
             helps us personalize your feed.

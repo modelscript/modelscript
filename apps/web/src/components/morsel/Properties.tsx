@@ -22,6 +22,7 @@ interface PropertiesWidgetProps {
   onNameChange?: ((name: string) => void) | undefined;
   onDescriptionChange?: ((description: string) => void) | undefined;
   onParameterChange?: ((name: string, value: string) => void) | undefined;
+  onClose?: (() => void) | undefined;
   translations: Translations;
 }
 
@@ -431,21 +432,47 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
 
   return (
     <div
-      className="height-full overflow-auto"
+      className="height-full overflow-auto border-left"
       style={{ width: props.width || 300, paddingBottom: 80 }}
       onClick={(e) => e.stopPropagation()}
     >
       <details open={expandedSections.info} className="mb-2 border-bottom">
         <summary
-          className="p-2 cursor-pointer f6 text-bold color-fg-muted"
+          className="p-2 cursor-pointer f6 text-bold color-fg-muted d-flex flex-items-center flex-justify-between"
           style={{ listStyle: "none" }}
           onClick={(e) => {
             e.preventDefault();
             toggleSection("info");
           }}
         >
-          {expandedSections.info ? <ChevronDownIcon className="mr-1" /> : <ChevronRightIcon className="mr-1" />}
-          {translations.information}
+          <span className="d-flex flex-items-center">
+            {expandedSections.info ? <ChevronDownIcon className="mr-1" /> : <ChevronRightIcon className="mr-1" />}
+            {translations.information}
+          </span>
+          {props.onClose && (
+            <button
+              type="button"
+              aria-label="Close properties panel"
+              title="Close properties panel"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                props.onClose?.();
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--fgColor-muted, #8b949e)",
+                cursor: "pointer",
+                fontSize: "14px",
+                lineHeight: 1,
+                padding: "2px 6px",
+                borderRadius: "4px",
+              }}
+            >
+              ✕
+            </button>
+          )}
         </summary>
         <div style={{ display: "flex", flexDirection: "column", padding: "8px 16px", gap: "12px" }}>
           <div style={{ display: "flex", flexDirection: "row", gap: "24px", alignItems: "stretch" }}>

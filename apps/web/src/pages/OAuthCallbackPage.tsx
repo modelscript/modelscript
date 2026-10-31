@@ -39,7 +39,7 @@ const OAuthCallbackPage: React.FC = () => {
       // Immediately scrub token from address bar and history to prevent leakage
       window.history.replaceState({}, document.title, window.location.pathname);
       localStorage.setItem("modelscript-auth-token", token);
-      window.location.href = "/home"; // Hard reload to re-init auth context
+      window.location.href = "/"; // Hard reload to re-init auth context and respect onboarding route
       return undefined;
     } else if (!requires2FA) {
       const errorParam =
@@ -67,7 +67,7 @@ const OAuthCallbackPage: React.FC = () => {
       });
       if (res.data?.token) {
         localStorage.setItem("modelscript-auth-token", res.data.token);
-        window.location.href = "/home";
+        window.location.href = "/";
       } else {
         setTwoFactorError("Invalid response from server.");
       }

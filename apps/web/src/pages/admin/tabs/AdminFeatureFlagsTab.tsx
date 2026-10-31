@@ -90,9 +90,16 @@ export const AdminFeatureFlagsTab: React.FC<AdminFeatureFlagsTabProps> = ({
               </td>
               <td>
                 {(() => {
-                  const rolesStr = Array.isArray(flag.allowedRoles)
-                    ? flag.allowedRoles.join(",")
-                    : flag.allowedRoles || "user,admin,guest";
+                  const rawRoles =
+                    flag.allowedRoles ??
+                    (Array.isArray(flag.dbAllowedRoles) && flag.dbAllowedRoles.length > 0
+                      ? flag.dbAllowedRoles
+                      : undefined);
+                  const rolesStr = Array.isArray(rawRoles) ? rawRoles.join(",") : rawRoles || "user,admin,guest";
+                  const currentRoles = rolesStr
+                    .split(",")
+                    .map((r) => r.trim())
+                    .filter(Boolean);
                   return onUpdateFlagConfig ? (
                     <Box display="flex" flexDirection="column" gap={1}>
                       <Select
@@ -107,7 +114,42 @@ export const AdminFeatureFlagsTab: React.FC<AdminFeatureFlagsTabProps> = ({
                         <option value="50">50% Rollout</option>
                         <option value="100">100% GA</option>
                       </Select>
-                      <span style={{ fontSize: "11px", color: "var(--color-fg-muted)" }}>Roles: {rolesStr}</span>
+                      <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                        <span style={{ fontSize: "11px", color: "var(--color-fg-muted)" }}>Roles:</span>
+                        {(["user", "admin", "guest"] as const).map((role) => {
+                          const isRoleActive = currentRoles.includes(role);
+                          return (
+                            <button
+                              key={role}
+                              type="button"
+                              aria-pressed={isRoleActive}
+                              aria-label={`Toggle role ${role} for ${flag.name}`}
+                              disabled={togglingFlagKey === flag.key}
+                              onClick={() => {
+                                const toggled = isRoleActive
+                                  ? currentRoles.filter((r) => r !== role)
+                                  : [...currentRoles, role];
+                                const nextRoles = toggled.length > 0 ? toggled : ["admin"];
+                                void onUpdateFlagConfig(flag, nextRoles.join(","), flag.rolloutPercentage ?? 100);
+                              }}
+                              style={{
+                                fontSize: "10.5px",
+                                fontWeight: 600,
+                                padding: "2px 7px",
+                                borderRadius: "999px",
+                                cursor: togglingFlagKey === flag.key ? "not-allowed" : "pointer",
+                                border: isRoleActive
+                                  ? "1px solid var(--color-accent-cyan, #06b6d4)"
+                                  : "1px solid var(--color-border-default)",
+                                background: isRoleActive ? "rgba(6, 182, 212, 0.16)" : "transparent",
+                                color: isRoleActive ? "var(--color-accent-cyan, #22d3ee)" : "var(--color-fg-muted)",
+                              }}
+                            >
+                              {role}
+                            </button>
+                          );
+                        })}
+                      </Box>
                     </Box>
                   ) : (
                     <span style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>

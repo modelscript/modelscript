@@ -15,6 +15,7 @@ import {
   broadcastAdminActivityPubMove,
   exportAdminInstanceBundle,
   getAdminBackupDownloadUrl,
+  importAdminInstanceBundle,
   uploadAdminBackup,
 } from "../../../api";
 import Box from "../../../components/Box";
@@ -39,6 +40,7 @@ export interface AdminDatabaseTabProps {
   onRestoreBackup?: ((fileName: string) => Promise<void>) | undefined;
   onDeleteBackup?: ((fileName: string) => Promise<void>) | undefined;
   onPruneBackups?: ((keepCount?: number) => Promise<void>) | undefined;
+  onRefresh?: (() => Promise<void> | void) | undefined;
   loading: boolean;
 }
 
@@ -55,11 +57,13 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
   onRestoreBackup,
   onDeleteBackup,
   onPruneBackups,
+  onRefresh,
   loading,
 }) => {
   const [backupLabel, setBackupLabel] = useState("");
   const [keepCount, setKeepCount] = useState(7);
   const [exportedBundle, setExportedBundle] = useState<AdminInstanceBundle | null>(null);
+  const [bundleStatusMsg, setBundleStatusMsg] = useState<string | null>(null);
   const [sourceActorUri, setSourceActorUri] = useState("");
   const [targetActorUri, setTargetActorUri] = useState("");
   const [moveResultMsg, setMoveResultMsg] = useState<string | null>(null);
@@ -82,6 +86,32 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
     setBackupLabel("");
   };
 
+  const handleDownloadBackup = async (fileName: string) => {
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("modelscript-auth-token") || localStorage.getItem("token")
+          : null;
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      const resp = await fetch(getAdminBackupDownloadUrl(fileName), { headers });
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setUploadStatusMsg(`Failed to download backup ${fileName}.`);
+    }
+  };
+
   const handleUploadBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -96,11 +126,13 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
           label: file.name.replace(/\.(db|sqlite|sqlite3)$/i, ""),
           restoreImmediately: uploadRestoreImmediately,
         });
+        const restoredInfo = res.restoreResult ?? res.restored;
         setUploadStatusMsg(
-          res.restored
-            ? `Uploaded & restored ${res.restored.tablesRestored} table(s) from ${res.backup.fileName}.`
+          restoredInfo
+            ? `Uploaded & restored ${restoredInfo.tablesRestored} table(s) from ${res.backup.fileName}.`
             : `Uploaded verified snapshot ${res.backup.fileName} (SHA-256: ${res.backup.sha256.slice(0, 12)}…).`,
         );
+        await onRefresh?.();
       } catch {
         setUploadStatusMsg("Snapshot upload failed: invalid SQLite file or integrity check error.");
       }
@@ -110,11 +142,43 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
 
   const handleExportBundle = async () => {
     try {
+      setBundleStatusMsg(null);
       const bundle = await exportAdminInstanceBundle();
       setExportedBundle(bundle);
+      if (typeof window !== "undefined") {
+        const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+          type: "application/json;charset=utf-8",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `modelscript-instance-bundle-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
     } catch {
-      // Handled by caller
+      setBundleStatusMsg("Failed to export migration bundle.");
     }
+  };
+
+  const handleImportBundleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        setBundleStatusMsg("Importing & verifying instance migration bundle...");
+        const parsed = JSON.parse(String(reader.result || "{}")) as Record<string, unknown>;
+        const res = await importAdminInstanceBundle(parsed);
+        setBundleStatusMsg(
+          `Migration bundle imported (settings updated: ${res.settingsUpdated ? "yes" : "no"}, domains: ${res.importedDomains}, flags: ${res.importedFlags}).`,
+        );
+        await onRefresh?.();
+      } catch {
+        setBundleStatusMsg("Failed to import JSON migration bundle.");
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleBroadcastMove = async (e: React.FormEvent) => {
@@ -295,16 +359,14 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <Box display="flex" justifyContent="flex-end" gap={1} flexWrap="wrap">
-                          <a
-                            href={getAdminBackupDownloadUrl(b.fileName)}
-                            download={b.fileName}
-                            style={{ textDecoration: "none" }}
+                          <ActionButton
+                            type="button"
+                            $variant="secondary"
+                            onClick={() => void handleDownloadBackup(b.fileName)}
                           >
-                            <ActionButton type="button" $variant="secondary">
-                              <DownloadIcon size={13} />
-                              <span>Download</span>
-                            </ActionButton>
-                          </a>
+                            <DownloadIcon size={13} />
+                            <span>Download</span>
+                          </ActionButton>
                           {onRestoreBackup && (
                             <ActionButton
                               $variant="secondary"
@@ -348,11 +410,47 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
               <code>Move</code> (<code>alsoKnownAs</code>) activity to federated peers.
             </span>
           </Box>
-          <ActionButton $variant="secondary" type="button" onClick={() => void handleExportBundle()} disabled={loading}>
-            <DownloadIcon size={14} />
-            <span>Export Migration Bundle</span>
-          </ActionButton>
+          <Box display="flex" gap={1} flexWrap="wrap">
+            <ActionButton
+              $variant="secondary"
+              type="button"
+              onClick={() => void handleExportBundle()}
+              disabled={loading}
+            >
+              <DownloadIcon size={14} />
+              <span>Export Migration Bundle</span>
+            </ActionButton>
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "7px 14px",
+                borderRadius: "6px",
+                border: "1px solid var(--color-border-primary)",
+                background: "var(--color-bg-secondary)",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <UploadIcon size={14} />
+              <span>Import JSON Bundle</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                style={{ display: "none" }}
+                onChange={handleImportBundleFile}
+              />
+            </label>
+          </Box>
         </Box>
+
+        {bundleStatusMsg && (
+          <Box mt={1} fontSize="12px" color="var(--color-text-muted)">
+            {bundleStatusMsg}
+          </Box>
+        )}
 
         {exportedBundle && (
           <Box mt={2} fontSize="12px">

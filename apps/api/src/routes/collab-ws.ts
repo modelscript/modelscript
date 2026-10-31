@@ -8,9 +8,12 @@
  * symbol-granularity concurrent edit collision notifications.
  */
 
+import jwt from "jsonwebtoken";
 import type { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
 import { checkCollabSessionEntitlement } from "../ee-loader.js";
+import { JWT_SECRET, isIpTrustedProxy } from "../middleware/auth-middleware.js";
+import { isStrictAirgapEnv } from "../util/tier-presets.js";
 
 export interface CollabPeerState {
   peerId: string;
@@ -420,7 +423,99 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
   });
 
   server.on("upgrade", (req, socket, head) => {
+    if (socket.destroyed || !socket.writable) {
+      return;
+    }
     if (req.url?.startsWith(path)) {
+      const originHeader = req.headers.origin;
+      if (originHeader && (isStrictAirgapEnv() || process.env["NODE_ENV"] === "production")) {
+        const allowedOrigins = new Set(
+          [process.env["PUBLIC_URL"], ...(process.env["CORS_ALLOWED_ORIGINS"] || "").split(",")]
+            .map((o) => o?.trim())
+            .filter((o): o is string => Boolean(o)),
+        );
+        let originAllowed = allowedOrigins.has(originHeader);
+        if (!originAllowed && req.headers.host) {
+          try {
+            originAllowed = new URL(originHeader).host === req.headers.host;
+          } catch {
+            originAllowed = false;
+          }
+        }
+        if (!originAllowed) {
+          socket.write(
+            "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nCross-Origin WebSocket upgrade forbidden\r\n",
+          );
+          socket.destroy();
+          return;
+        }
+      }
+
+      if (
+        (isStrictAirgapEnv() && process.env["NODE_ENV"] === "production") ||
+        process.env["COLLAB_REQUIRE_AUTH"] === "true"
+      ) {
+        let authenticated = false;
+
+        // 1. Check trusted enterprise reverse-proxy header
+        if (process.env["ENTERPRISE_HEADER_AUTH"] === "true") {
+          const remoteAddr = req.socket?.remoteAddress || "";
+          const forwardedFor = String(req.headers["x-forwarded-for"] || "")
+            .split(",")[0]
+            ?.trim();
+          const checkIp = process.env["TRUST_PROXY"] === "true" && forwardedFor ? forwardedFor : remoteAddr;
+          const proxyUser = req.headers["x-forwarded-user"] || req.headers["x-remote-user"];
+          if (proxyUser && isIpTrustedProxy(checkIp)) {
+            authenticated = true;
+          }
+        }
+
+        // 2. Check Bearer token, query token, or session cookie
+        if (!authenticated) {
+          let token = "";
+          const authHeader = req.headers.authorization;
+          if (authHeader?.startsWith("Bearer ")) {
+            token = authHeader.slice(7).trim();
+          }
+          if (!token && req.url) {
+            try {
+              const parsedReqUrl = new URL(req.url, "http://localhost");
+              token = parsedReqUrl.searchParams.get("token") || "";
+            } catch {
+              // ignore
+            }
+          }
+          if (!token && req.headers.cookie) {
+            for (const pair of req.headers.cookie.split(";")) {
+              const [k, v] = pair.split("=");
+              if (k?.trim() === "modelscript_token" && v) {
+                token = decodeURIComponent(v.trim());
+                break;
+              }
+            }
+          }
+          if (token) {
+            try {
+              const secret = process.env["JWT_SECRET"] || JWT_SECRET;
+              const decoded = jwt.verify(token, secret) as { scope?: string; purpose?: string };
+              if (decoded && decoded.scope !== "2fa_challenge" && decoded.purpose !== "2fa_challenge") {
+                authenticated = true;
+              }
+            } catch {
+              authenticated = false;
+            }
+          }
+        }
+
+        if (!authenticated) {
+          socket.write(
+            "HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nAuthentication required for collaborative editing\r\n",
+          );
+          socket.destroy();
+          return;
+        }
+      }
+
       const entitlement = checkCollabSessionEntitlement();
       if (!entitlement.allowed) {
         const statusLine =
@@ -442,6 +537,18 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
   });
 
   activeWss = wss;
+}
+
+export function attachWebSocketMaintenanceGate(
+  server: Server,
+  database?: { isOpen(): boolean; getMaintenanceState(): { mode: string } } | null,
+): void {
+  server.on("upgrade", (_req, socket) => {
+    if (database && database.isOpen() && database.getMaintenanceState().mode === "lockdown") {
+      socket.write("HTTP/1.1 503 Service Unavailable\r\nRetry-After: 120\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+    }
+  });
 }
 
 let activeWss: WebSocketServer | null = null;

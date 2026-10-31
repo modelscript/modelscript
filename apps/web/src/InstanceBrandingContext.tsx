@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getPublicInstanceBanner, type PublicInstanceBannerResponse } from "./api/admin";
 import { setActiveBrandName } from "./util/title";
 
@@ -31,6 +31,9 @@ export interface InstanceBrandingState {
   announcementLevel: "info" | "warning" | "critical";
   needsSetup: boolean;
   setupCompleted: boolean;
+  buildVersion: string;
+  updateAvailable: boolean;
+  dismissUpdateAvailable: () => void;
   subsystems: {
     coreApi: "operational" | "read_only" | "maintenance";
     packageRegistry: "operational" | "read_only" | "maintenance";
@@ -47,7 +50,7 @@ export interface InstanceBrandingState {
 
 const DEFAULT_BRANDING: Omit<
   InstanceBrandingState,
-  "refreshBranding" | "applyOptimisticBranding" | "setPreviewPublicMaintenance"
+  "refreshBranding" | "applyOptimisticBranding" | "setPreviewPublicMaintenance" | "dismissUpdateAvailable"
 > = {
   instanceName: "Ansatz",
   instanceBadge: "",
@@ -75,6 +78,8 @@ const DEFAULT_BRANDING: Omit<
   announcementLevel: "info",
   needsSetup: false,
   setupCompleted: true,
+  buildVersion: "",
+  updateAvailable: false,
   subsystems: {
     coreApi: "operational",
     packageRegistry: "operational",
@@ -88,6 +93,7 @@ const DEFAULT_BRANDING: Omit<
 
 const InstanceBrandingContext = createContext<InstanceBrandingState>({
   ...DEFAULT_BRANDING,
+  dismissUpdateAvailable: () => {},
   setPreviewPublicMaintenance: () => {},
   refreshBranding: async () => {},
   applyOptimisticBranding: () => {},
@@ -109,8 +115,22 @@ export const InstanceBrandingProvider: React.FC<{
     ...DEFAULT_BRANDING,
     ...initialBranding,
   }));
+  const initialBuildVersionRef = useRef<string | null>(
+    initialBranding?.buildVersion?.trim() ? initialBranding.buildVersion.trim() : null,
+  );
 
   const applyBannerPayload = useCallback((res: Partial<PublicInstanceBannerResponse>, markLoaded = true) => {
+    const incomingBuildVersion =
+      typeof res.buildVersion === "string" && res.buildVersion.trim() ? res.buildVersion.trim() : null;
+    let versionMismatch = false;
+    if (incomingBuildVersion) {
+      if (!initialBuildVersionRef.current) {
+        initialBuildVersionRef.current = incomingBuildVersion;
+      } else if (initialBuildVersionRef.current !== incomingBuildVersion) {
+        versionMismatch = true;
+      }
+    }
+
     setState((prev) => {
       const nextName = res.instanceName?.trim() || prev.instanceName || "Ansatz";
       setActiveBrandName(nextName);
@@ -162,6 +182,8 @@ export const InstanceBrandingProvider: React.FC<{
         announcementLevel: res.announcementLevel ?? prev.announcementLevel,
         needsSetup: res.needsSetup !== undefined ? Boolean(res.needsSetup) : prev.needsSetup,
         setupCompleted: res.setupCompleted !== undefined ? Boolean(res.setupCompleted) : prev.setupCompleted,
+        buildVersion: incomingBuildVersion ?? prev.buildVersion,
+        updateAvailable: versionMismatch ? true : prev.updateAvailable,
         subsystems: res.subsystems ?? prev.subsystems,
         previewPublicMaintenance: nextMaintMode ? prev.previewPublicMaintenance : false,
         loaded: markLoaded ? true : prev.loaded,
@@ -200,9 +222,14 @@ export const InstanceBrandingProvider: React.FC<{
     if (typeof document === "undefined") return;
     const root = document.documentElement;
     if (state.brandAccentColor && /^#[0-9a-fA-F]{3,8}$/.test(state.brandAccentColor.trim())) {
-      root.style.setProperty("--color-accent-cyan", state.brandAccentColor.trim());
+      const accent = state.brandAccentColor.trim();
+      root.style.setProperty("--color-accent-cyan", accent);
+      root.style.setProperty("--ms-brand", accent);
+      root.style.setProperty("--ms-brand-hover", `color-mix(in srgb, ${accent} 85%, white)`);
     } else {
       root.style.removeProperty("--color-accent-cyan");
+      root.style.removeProperty("--ms-brand");
+      root.style.removeProperty("--ms-brand-hover");
     }
 
     if (state.brandFaviconUrl?.trim()) {
@@ -217,14 +244,19 @@ export const InstanceBrandingProvider: React.FC<{
     setState((prev) => ({ ...prev, previewPublicMaintenance: preview }));
   }, []);
 
+  const dismissUpdateAvailable = useCallback(() => {
+    setState((prev) => ({ ...prev, updateAvailable: false }));
+  }, []);
+
   const contextValue = useMemo<InstanceBrandingState>(
     () => ({
       ...state,
+      dismissUpdateAvailable,
       setPreviewPublicMaintenance,
       refreshBranding,
       applyOptimisticBranding: (patch) => applyBannerPayload(patch, true),
     }),
-    [state, setPreviewPublicMaintenance, refreshBranding, applyBannerPayload],
+    [state, dismissUpdateAvailable, setPreviewPublicMaintenance, refreshBranding, applyBannerPayload],
   );
 
   return <InstanceBrandingContext.Provider value={contextValue}>{children}</InstanceBrandingContext.Provider>;

@@ -263,10 +263,11 @@ export class ReferralRepository extends BaseRepository {
     };
   }
 
-  rejectWaitlistSubmission(id: number, approvedBy: number | null = null): boolean {
+  rejectWaitlistSubmission(id: number, approvedBy: number | null = null, reason: string | null = null): boolean {
     const res = this.run(
-      `UPDATE waitlist_submissions SET status = 'rejected', approved_by = ?, reviewed_at = datetime('now') WHERE id = ?`,
+      `UPDATE waitlist_submissions SET status = 'rejected', approved_by = ?, rejection_reason = COALESCE(?, rejection_reason), reviewed_at = datetime('now') WHERE id = ?`,
       approvedBy,
+      reason,
       id,
     );
     return res.changes > 0;

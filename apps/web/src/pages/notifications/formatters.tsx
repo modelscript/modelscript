@@ -7,6 +7,7 @@ import {
   MentionIcon,
   PackageIcon,
   PersonIcon,
+  QuoteIcon,
   ReplyIcon,
   RocketIcon,
   ShieldIcon,
@@ -78,6 +79,8 @@ export const getIconForType = (type: string) => {
       return <ReplyIcon color="var(--color-fg-muted)" size={22} />;
     case "repost":
       return <SyncIcon color="#00ba7c" size={22} />;
+    case "quote":
+      return <QuoteIcon color="var(--color-accent-fg)" size={22} />;
     case "mention":
       return <MentionIcon color="var(--color-done-fg)" size={22} />;
     case "simulation":
@@ -135,6 +138,8 @@ export const getMessageForType = (type: string, actors: NotificationActor[] = []
       return <>{actorText} replied to your post</>;
     case "repost":
       return <>{actorText} reposted your post</>;
+    case "quote":
+      return <>{actorText} quoted your post</>;
     case "mention":
       return <>{actorText} mentioned you</>;
     case "simulation":

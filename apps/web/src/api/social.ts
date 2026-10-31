@@ -236,8 +236,22 @@ export const getNotifications = async (
   return data;
 };
 
-export const markNotificationsRead = async (category?: string): Promise<void> => {
-  const body = category && category !== "all" ? { category } : undefined;
+const NOTIFICATION_CATEGORIES = new Set(["all", "engineering", "packages", "mentions", "system"]);
+
+export const markNotificationsRead = async (id?: string | number): Promise<void> => {
+  let body: Record<string, any> | undefined;
+  if (id !== undefined && id !== null && id !== "") {
+    if (typeof id === "string" && NOTIFICATION_CATEGORIES.has(id)) {
+      body = id !== "all" ? { category: id } : undefined;
+    } else {
+      body = {
+        id,
+        notification_id: id,
+        notification_ids: [id],
+        ids: [id],
+      };
+    }
+  }
   await api.post("/social/notifications/read", body);
 };
 

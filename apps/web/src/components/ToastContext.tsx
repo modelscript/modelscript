@@ -35,6 +35,7 @@ interface ToastTimerEntry {
 
 interface ToastContextValue {
   toast: (options: string | ToastOptions) => string;
+  show: (message: string, options?: { type?: ToastType | undefined; title?: string | undefined }) => string;
   showToast: (message: string, type?: ToastType, title?: string) => string;
   success: (message: string, title?: string) => string;
   error: (message: string, title?: string) => string;
@@ -323,9 +324,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [toast],
   );
 
+  const show = useCallback(
+    (message: string, options?: { type?: ToastType | undefined; title?: string | undefined }) =>
+      toast({ type: options?.type || "info", message, title: options?.title }),
+    [toast],
+  );
+
   const value = useMemo(
-    () => ({ toast, showToast, success, error, info, warning, dismiss }),
-    [toast, showToast, success, error, info, warning, dismiss],
+    () => ({ toast, show, showToast, success, error, info, warning, dismiss }),
+    [toast, show, showToast, success, error, info, warning, dismiss],
   );
 
   const visibleToasts = toasts.slice(-MAX_VISIBLE_TOASTS);

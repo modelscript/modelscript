@@ -2,10 +2,11 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { IconName } from "../data/icons";
-import lintRules from "../data/lint-rules.generated.json";
+import languagesData from "../data/languages.generated.json";
 import MsIcon from "./MsIcon.vue";
 
-const totalLintRules = lintRules.reduce((sum, lang) => sum + lang.rules.length, 0);
+const totalLintRules = languagesData.reduce((sum, lang) => sum + lang.ruleCount, 0);
+const lintedLanguageCount = languagesData.filter((lang) => lang.ruleCount > 0).length;
 
 interface ThreadStep {
   id: string;
@@ -35,7 +36,7 @@ const steps: ThreadStep[] = [
     id: "analyze",
     icon: "search",
     title: "Analyze",
-    body: `${totalLintRules} lint rules across ${lintRules.length} languages catch unresolved references, type and unit mismatches, and unbalanced equations as you type.`,
+    body: `${totalLintRules} lint rules across ${lintedLanguageCount} languages catch unresolved references, type and unit mismatches, and unbalanced equations as you type.`,
     lines: [
       { kind: "comment", text: "# Lint an entire polyglot workspace for CI" },
       { kind: "cmd", text: "msx lint ./models ./requirements --format json" },

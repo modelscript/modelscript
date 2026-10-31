@@ -76,6 +76,129 @@ function getConnectEquationStatementNode(connectEq: any): any {
   return rawNode;
 }
 
+/**
+ * Expands a connect equation node range so that if the CST node only covers `connect(a, b)`
+ * (for example when `.parent` is not populated on a `connect_equation` node), the range is
+ * extended through any trailing description string and `annotation(...)` clause up to the
+ * statement-terminating `;`.
+ */
+function expandConnectStatementRange(
+  lines: string[],
+  eqRange: { startLine: number; startCol: number; endLine: number; endCol: number },
+): { startLine: number; startCol: number; endLine: number; endCol: number } {
+  const rawText = getTextInRange(lines, eqRange.startLine, eqRange.startCol, eqRange.endLine, eqRange.endCol);
+  if (rawText.trimEnd().endsWith(";")) {
+    return eqRange;
+  }
+
+  let parenDepth = 0;
+  let inString = false;
+  let escaped = false;
+  const maxLine = Math.min(lines.length - 1, eqRange.endLine + 30);
+
+  for (let l = eqRange.endLine; l <= maxLine; l++) {
+    const lineText = lines[l] ?? "";
+    if (l > eqRange.endLine && parenDepth === 0 && !inString) {
+      const trimmed = lineText.trim();
+      if (
+        trimmed.length > 0 &&
+        !trimmed.startsWith("annotation") &&
+        !trimmed.startsWith('"') &&
+        !trimmed.startsWith(";") &&
+        !trimmed.startsWith("//") &&
+        !trimmed.startsWith("/*")
+      ) {
+        return eqRange;
+      }
+    }
+
+    const startC = l === eqRange.endLine ? eqRange.endCol : 0;
+    for (let c = startC; c < lineText.length; c++) {
+      const ch = lineText[c]!;
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (inString) {
+        if (ch === "\\") {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === "/" && lineText[c + 1] === "/") {
+        break;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === "(" || ch === "{" || ch === "[") {
+        parenDepth++;
+      } else if (ch === ")" || ch === "}" || ch === "]") {
+        if (parenDepth > 0) parenDepth--;
+      } else if (ch === ";" && parenDepth === 0) {
+        return {
+          startLine: eqRange.startLine,
+          startCol: eqRange.startCol,
+          endLine: l,
+          endCol: c,
+        };
+      }
+    }
+  }
+
+  return eqRange;
+}
+
+/**
+ * Updates or inserts `points={...}` inside an existing `Line(...)` modification while preserving
+ * all other existing `Line` attributes (such as `color`, `thickness`, `pattern`, `smooth`, `arrow`).
+ */
+function updateLineAnnotationText(
+  existingLineText: string | null | undefined,
+  newPointsCore: string,
+  fallbackColorCore: string,
+): string {
+  if (!existingLineText) {
+    return `Line(${newPointsCore}, ${fallbackColorCore})`;
+  }
+  const trimmed = existingLineText.trim();
+  const lineMatch = trimmed.match(/^Line\s*\(/);
+  if (!lineMatch || !trimmed.endsWith(")")) {
+    return `Line(${newPointsCore}, ${fallbackColorCore})`;
+  }
+
+  const pointsMatch = trimmed.match(/\bpoints\s*=\s*\{/);
+  if (pointsMatch && pointsMatch.index !== undefined) {
+    const pStart = pointsMatch.index;
+    const openBraceIdx = pStart + pointsMatch[0].length - 1;
+    let depth = 0;
+    let pEnd = -1;
+    for (let i = openBraceIdx; i < trimmed.length; i++) {
+      if (trimmed[i] === "{") depth++;
+      else if (trimmed[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          pEnd = i;
+          break;
+        }
+      }
+    }
+    if (pEnd !== -1) {
+      return trimmed.slice(0, pStart) + newPointsCore + trimmed.slice(pEnd + 1);
+    }
+  }
+
+  const innerStart = lineMatch[0].length;
+  const innerContent = trimmed.slice(innerStart, -1).trim();
+  if (innerContent.length === 0) {
+    return `Line(${newPointsCore}, ${fallbackColorCore})`;
+  }
+  return `Line(${newPointsCore}, ${innerContent})`;
+}
+
 function getAnnotationClauseNode(node: any): any {
   if (!node) return null;
   if (node.annotationClause) return node.annotationClause;
@@ -417,6 +540,53 @@ function getPlacementEditIfMissing(
 
 // ── Add connect equation ──
 
+function computeEquationSectionInsertEdit(
+  lines: string[],
+  eqRange: { startLine: number; startCol: number; endLine: number; endCol: number },
+  connectEq: string,
+): TextEdit {
+  if (eqRange.endCol === 0 && eqRange.endLine > eqRange.startLine) {
+    return TextEdit.insert({ line: eqRange.endLine, character: 0 }, connectEq);
+  }
+
+  const expanded =
+    eqRange.endLine === eqRange.startLine && (lines[eqRange.startLine] ?? "").trim().startsWith("equation")
+      ? eqRange
+      : expandConnectStatementRange(lines, eqRange);
+
+  const lastLine = expanded.endLine;
+  const lineText = lines[lastLine] ?? "";
+  const afterEnd = lineText.substring(expanded.endCol);
+  const semiMatch = afterEnd.match(/^\s*;/);
+  const effectiveEndCol = semiMatch ? expanded.endCol + semiMatch[0].length : expanded.endCol;
+  const remaining = lineText.substring(effectiveEndCol).trim();
+
+  if (remaining === "" || remaining.startsWith("//")) {
+    return TextEdit.insert({ line: lastLine + 1, character: 0 }, connectEq);
+  }
+  return TextEdit.insert({ line: lastLine, character: effectiveEndCol }, `\n${connectEq.trimEnd()}`);
+}
+
+function findInsertLineBeforeClassAnnotation(lines: string[], endRow: number, modelStartLine: number): number {
+  let insertLine = endRow;
+  let parenBalance = 0;
+  for (let j = endRow - 1; j >= modelStartLine; j--) {
+    const trimmed = (lines[j] ?? "").trim();
+    if (trimmed === "") continue;
+    for (let k = trimmed.length - 1; k >= 0; k--) {
+      if (trimmed[k] === ")") parenBalance++;
+      else if (trimmed[k] === "(") parenBalance--;
+    }
+    if (trimmed.startsWith("annotation") && parenBalance <= 0) {
+      insertLine = j;
+      parenBalance = 0;
+    } else if (parenBalance <= 0) {
+      break;
+    }
+  }
+  return insertLine;
+}
+
 export function computeConnectInsert(
   docText: string,
   classInstance: ModelicaClassInstance,
@@ -458,7 +628,7 @@ export function computeConnectInsert(
     if (eqSection) {
       const eqRange = getNodeRange(eqSection);
       if (eqRange) {
-        return [TextEdit.insert({ line: eqRange.endLine, character: 0 }, connectEq)];
+        return [computeEquationSectionInsertEdit(lines, eqRange, connectEq)];
       }
     }
 
@@ -487,14 +657,14 @@ export function computeConnectInsert(
     const targetSection = lastEquationSection || baseEquationSection;
     const targetRange = getNodeRange(targetSection);
     if (targetRange) {
-      return [TextEdit.insert({ line: targetRange.endLine, character: 0 }, connectEq)];
+      return [computeEquationSectionInsertEdit(lines, targetRange, connectEq)];
     }
 
-    // No equation section exists. Insert just before the class specifies 'end'.
+    // No equation section exists. Insert before class-level annotation or 'end'.
     const classEndPos = classSpecifier?.endPosition ?? astNode.endPosition;
     if (classEndPos) {
-      // Insert before 'end' line
-      return [TextEdit.insert({ line: classEndPos.row, character: 0 }, `equation\n${connectEq}`)];
+      const insertLine = findInsertLineBeforeClassAnnotation(lines, classEndPos.row, modelStartLine);
+      return [TextEdit.insert({ line: insertLine, character: 0 }, `equation\n${connectEq}`)];
     }
   }
 
@@ -510,11 +680,21 @@ export function computeConnectInsert(
   if (equationLine !== -1) {
     const keywords = ["public", "protected", "initial equation", "algorithm", "annotation", "end"];
     let insertLine = -1;
+    let parenBalance = 0;
     for (let i = equationLine + 1; i <= modelEndLine; i++) {
       const line = lines[i]!.trim();
-      if (keywords.some((kw) => line.startsWith(kw))) {
+      if (
+        parenBalance === 0 &&
+        keywords.some((kw) => line === kw || line.startsWith(`${kw} `) || line.startsWith(`${kw}(`))
+      ) {
         insertLine = i;
         break;
+      }
+      for (let k = 0; k < line.length; k++) {
+        if (line[k] === "(" || line[k] === "{") parenBalance++;
+        else if (line[k] === ")" || line[k] === "}") {
+          if (parenBalance > 0) parenBalance--;
+        }
       }
     }
     if (insertLine !== -1) {
@@ -524,15 +704,7 @@ export function computeConnectInsert(
 
   for (let i = modelEndLine; i >= modelStartLine; i--) {
     if (lines[i]!.trim().startsWith("end")) {
-      let insertLine = i;
-      for (let j = i - 1; j >= modelStartLine; j--) {
-        const line = lines[j]!.trim();
-        if (line.startsWith("annotation")) {
-          insertLine = j;
-        } else if (line !== "") {
-          break;
-        }
-      }
+      const insertLine = findInsertLineBeforeClassAnnotation(lines, i, modelStartLine);
       const insertText = equationLine === -1 ? `equation\n${connectEq}` : connectEq;
       return [TextEdit.insert({ line: insertLine, character: 0 }, insertText)];
     }
@@ -579,8 +751,9 @@ export function computeConnectRemove(
   });
 
   const eqNode = getConnectEquationStatementNode(connectEq);
-  const eqRange = getNodeRange(eqNode);
-  if (!eqRange) return [];
+  const rawRange = getNodeRange(eqNode);
+  if (!rawRange) return [];
+  const eqRange = expandConnectStatementRange(lines, rawRange);
 
   return [makeDeleteRange(lines, eqRange.startLine, eqRange.startCol, eqRange.endLine, eqRange.endCol)];
 }
@@ -604,8 +777,9 @@ export function computeComponentsDelete(
       (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
     );
     const eqNode = getConnectEquationStatementNode(ce);
-    const eqRange = getNodeRange(eqNode);
-    if (involvesComponent && eqRange) {
+    const rawRange = getNodeRange(eqNode);
+    if (involvesComponent && rawRange) {
+      const eqRange = expandConnectStatementRange(lines, rawRange);
       edits.push(makeDeleteRange(lines, eqRange.startLine, eqRange.startCol, eqRange.endLine, eqRange.endCol));
     }
   });
@@ -643,8 +817,9 @@ export function computeEdgePointEdits(
     });
 
     const eqNode = getConnectEquationStatementNode(connectEq);
-    const eqRange = getNodeRange(eqNode);
-    if (!eqRange) continue;
+    const rawRange = getNodeRange(eqNode);
+    if (!rawRange) continue;
+    const eqRange = expandConnectStatementRange(lines, rawRange);
 
     const { startLine, startCol, endLine, endCol } = eqRange;
 
@@ -660,8 +835,9 @@ export function computeEdgePointEdits(
 
     const pointsStr = `{${edge.points.map((p) => `{${p.x},${p.y}}`).join(", ")}}`;
     const newPointsCore = `points=${pointsStr}`;
-    const colorCore = "color={0, 0, 255}";
-    const newLineAnnotation = `Line(${newPointsCore}, ${colorCore})`;
+    const inferredColor = inferModelicaDomainColor(edge.source, edge.target, classInstance);
+    const colorCore = `color={${inferredColor[0]}, ${inferredColor[1]}, ${inferredColor[2]}}`;
+    const defaultLineAnnotation = `Line(${newPointsCore}, ${colorCore})`;
 
     let newText = text;
 
@@ -672,9 +848,22 @@ export function computeEdgePointEdits(
       if (annotationClause) {
         const lineNode = findDescendantModification(annotationClause, "Line");
         if (lineNode && lineNode.startPosition) {
+          const lineNodeRange = getNodeRange(lineNode);
+          const existingLineText =
+            lineNode.text ||
+            (lineNodeRange
+              ? getTextInRange(
+                  lines,
+                  lineNodeRange.startLine,
+                  lineNodeRange.startCol,
+                  lineNodeRange.endLine,
+                  lineNodeRange.endCol,
+                )
+              : null);
+          const updatedLineAnnotation = updateLineAnnotationText(existingLineText, newPointsCore, colorCore);
           const patchRes = CstUnparser.patchAndUnparse({
             target: lineNode,
-            replaceText: newLineAnnotation,
+            replaceText: updatedLineAnnotation,
           });
           edits.push(
             TextEdit.replace(
@@ -696,7 +885,7 @@ export function computeEdgePointEdits(
             target: classModNode,
             insertChildren: [
               {
-                content: newLineAnnotation,
+                content: defaultLineAnnotation,
                 position: "end",
                 separator: ", ",
               },
@@ -738,6 +927,7 @@ export function computeEdgePointEdits(
         const annEndIndex = findMatchingParen(annText, annContentStart);
         if (annEndIndex !== -1) {
           let annotationContent = annText.substring(annContentStart, annEndIndex);
+          let updatedLine = defaultLineAnnotation;
 
           const lineMatch = annotationContent.match(/Line\s*\(/);
           if (lineMatch) {
@@ -745,6 +935,8 @@ export function computeEdgePointEdits(
             const lineInner = lineStart + lineMatch[0].length;
             const lineEnd = findMatchingParen(annotationContent, lineInner);
             if (lineEnd !== -1) {
+              const existingLine = annotationContent.substring(lineStart, lineEnd + 1);
+              updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
               const before = annotationContent.substring(0, lineStart);
               const after = annotationContent.substring(lineEnd + 1);
               if (before.trimEnd().endsWith(",")) {
@@ -760,21 +952,55 @@ export function computeEdgePointEdits(
           const trimmed = annotationContent.trim();
           const separator = trimmed.length > 0 ? ", " : "";
           newText =
-            annText.substring(0, annContentStart) +
-            trimmed +
-            separator +
-            newLineAnnotation +
-            annText.substring(annEndIndex);
+            annText.substring(0, annContentStart) + trimmed + separator + updatedLine + annText.substring(annEndIndex);
           if (newText !== annText) {
             edits.push(TextEdit.replace(annRange, newText));
             continue;
           }
         }
       }
+    } else if (/annotation\s*\(/.test(text)) {
+      // The CST node was `connect_equation` without `.parent`, so `annotationClause` was not a child,
+      // but `expandConnectStatementRange` captured the sibling `annotation(...)` in `text`.
+      const annotationMatch = text.match(/annotation\s*\(/);
+      if (annotationMatch) {
+        const annStartIndex = annotationMatch.index ?? 0;
+        const annContentStart = annStartIndex + annotationMatch[0].length;
+        const annEndIndex = findMatchingParen(text, annContentStart);
+        if (annEndIndex !== -1) {
+          let annotationContent = text.substring(annContentStart, annEndIndex);
+          let updatedLine = defaultLineAnnotation;
+
+          const lineMatch = annotationContent.match(/Line\s*\(/);
+          if (lineMatch) {
+            const lineStart = lineMatch.index ?? 0;
+            const lineInner = lineStart + lineMatch[0].length;
+            const lineEnd = findMatchingParen(annotationContent, lineInner);
+            if (lineEnd !== -1) {
+              const existingLine = annotationContent.substring(lineStart, lineEnd + 1);
+              updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
+              const before = annotationContent.substring(0, lineStart);
+              const after = annotationContent.substring(lineEnd + 1);
+              if (before.trimEnd().endsWith(",")) {
+                annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
+              } else if (after.trimStart().startsWith(",")) {
+                annotationContent = before + after.trimStart().slice(1).trimStart();
+              } else {
+                annotationContent = before + after;
+              }
+            }
+          }
+
+          const trimmed = annotationContent.trim();
+          const separator = trimmed.length > 0 ? ", " : "";
+          newText =
+            text.substring(0, annContentStart) + trimmed + separator + updatedLine + text.substring(annEndIndex);
+        }
+      }
     } else {
       // No annotation: insert before semicolon (or append if semicolon is outside the CST node)
       const semiIndex = text.lastIndexOf(";");
-      const insert = ` annotation(${newLineAnnotation})`;
+      const insert = ` annotation(${defaultLineAnnotation})`;
       if (semiIndex !== -1) {
         newText = text.slice(0, semiIndex) + insert + text.slice(semiIndex);
       } else {
@@ -856,14 +1082,14 @@ export function applyEditsToText(text: string, edits: TextEdit[]): string {
     const el = edit.range.end.line;
     const ec = edit.range.end.character;
 
-    const before = lines[sl]!.substring(0, sc);
-    const after = lines[el]!.substring(ec);
+    const before = (lines[sl] ?? "").substring(0, sc);
+    const after = (lines[el] ?? "").substring(ec);
 
     const newLines = edit.newText.split("\n");
     newLines[0] = before + newLines[0];
     newLines[newLines.length - 1] += after;
 
-    lines.splice(sl, el - sl + 1, ...newLines);
+    lines.splice(sl, Math.max(0, el - sl + 1), ...newLines);
   }
   return lines.join("\n");
 }
@@ -872,21 +1098,50 @@ export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
   // Sort by position (ascending)
   edits.sort((a, b) => {
     if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
-    return a.range.start.character - b.range.start.character;
+    if (a.range.start.character !== b.range.start.character) return a.range.start.character - b.range.start.character;
+    if (a.range.end.line !== b.range.end.line) return a.range.end.line - b.range.end.line;
+    return a.range.end.character - b.range.end.character;
   });
 
-  // Remove overlapping edits
-  return edits.filter((edit, i) => {
-    if (i === 0) return true;
-    const prev = edits[i - 1]!;
+  // Remove overlapping edits (comparing against last accepted edit)
+  const accepted: TextEdit[] = [];
+  for (const edit of edits) {
+    if (accepted.length === 0) {
+      accepted.push(edit);
+      continue;
+    }
+    const prev = accepted[accepted.length - 1]!;
+    const isPrevInsert =
+      prev.range.start.line === prev.range.end.line && prev.range.start.character === prev.range.end.character;
+    const isCurrInsert =
+      edit.range.start.line === edit.range.end.line && edit.range.start.character === edit.range.end.character;
+
     if (
       edit.range.start.line < prev.range.end.line ||
       (edit.range.start.line === prev.range.end.line && edit.range.start.character < prev.range.end.character)
     ) {
-      return false;
+      continue;
     }
-    return true;
-  });
+    if (
+      !isPrevInsert &&
+      !isCurrInsert &&
+      edit.range.start.line === prev.range.start.line &&
+      edit.range.start.character === prev.range.start.character
+    ) {
+      continue;
+    }
+    if (
+      isPrevInsert &&
+      isCurrInsert &&
+      edit.range.start.line === prev.range.start.line &&
+      edit.range.start.character === prev.range.start.character &&
+      edit.newText === prev.newText
+    ) {
+      continue;
+    }
+    accepted.push(edit);
+  }
+  return accepted;
 }
 
 // ── Component Property edits (Name, Description, Parameters) ──

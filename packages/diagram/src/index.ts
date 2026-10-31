@@ -23,6 +23,7 @@ import {
   computeSmoothBezierPath,
   getNodeBBox,
   getPortOutwardNormal,
+  healOrthogonalVertices,
   portOrthogonalRouter,
   regularizeOrthogonalPolyline,
   resolveNodePortWorldPoint,
@@ -340,45 +341,68 @@ export interface DiagramRendererOptions {
 /** Active diagram renderer configuration options. */
 let currentOptions: DiagramRendererOptions | null = null;
 
+interface ContainerDiagramInstance {
+  graph: Graph;
+  options: DiagramRendererOptions;
+  selectedNodeId: string | null;
+  cleanupListeners?: (() => void) | undefined;
+}
+
+const containerInstances = new Map<HTMLElement, ContainerDiagramInstance>();
+
+function getOptionsForGraph(g?: Graph | null): DiagramRendererOptions | null {
+  if (g?.container && containerInstances.has(g.container)) {
+    return containerInstances.get(g.container)!.options;
+  }
+  return currentOptions;
+}
+
 /**
  * Sets or updates the active configuration options and callbacks for the diagram renderer.
  */
 export function setDiagramOptions(options: DiagramRendererOptions) {
   currentOptions = options;
+  if (options.container && containerInstances.has(options.container)) {
+    const inst = containerInstances.get(options.container)!;
+    inst.options = options;
+    graph = inst.graph;
+  }
 }
 
 /**
  * Dispatches a structural or spatial diagram edit action to the registered `onAction` callback.
  */
-function enqueueDiagramAction(action: Record<string, unknown> | InteractiveWriteAction) {
-  if (currentOptions?.onAction) currentOptions.onAction(action);
+function enqueueDiagramAction(action: Record<string, unknown> | InteractiveWriteAction, g?: Graph | null) {
+  const opts = getOptionsForGraph(g);
+  if (opts?.onAction) opts.onAction(action);
 }
 
 /**
  * Forwards host-bound messages (`undo`, `redo`, `getProperties`, `revealSource`, `navigateTo`)
  * to the appropriate callback in `currentOptions`.
  */
-function postMessageToHost(msg: DiagramHostMessage) {
-  if (msg.type === "undo" && currentOptions?.onUndo) {
-    currentOptions.onUndo();
+function postMessageToHost(msg: DiagramHostMessage, g?: Graph | null) {
+  const opts = getOptionsForGraph(g);
+  if (msg.type === "undo" && opts?.onUndo) {
+    opts.onUndo();
     return;
   }
-  if (msg.type === "redo" && currentOptions?.onRedo) {
-    currentOptions.onRedo();
+  if (msg.type === "redo" && opts?.onRedo) {
+    opts.onRedo();
     return;
   }
   if (msg.type === "getProperties") {
-    if (currentOptions?.onMessage) {
-      currentOptions.onMessage(msg);
+    if (opts?.onMessage) {
+      opts.onMessage(msg);
       return;
     }
-    if (currentOptions?.onShowProperties && msg.componentName) {
-      currentOptions.onShowProperties(msg.componentName, undefined, true);
+    if (opts?.onShowProperties && msg.componentName) {
+      opts.onShowProperties(msg.componentName, undefined, true);
       return;
     }
   }
   // Forward all other messages (revealSource, navigateTo, changeDiagramType, etc.)
-  if (currentOptions?.onMessage) currentOptions.onMessage(msg);
+  if (opts?.onMessage) opts.onMessage(msg);
 }
 
 /** Singleton AntV X6 graph instance for the active diagram canvas. */
@@ -442,16 +466,19 @@ export function rerouteEdgeOrthogonal(edge: Edge | null | undefined, g: Graph): 
   const srcStr = source?.port ? `${source.cell}.${source.port}` : String(source?.cell ?? "");
   const tgtStr = target?.port ? `${target.cell}.${target.port}` : String(target?.cell ?? "");
 
-  enqueueDiagramAction({
-    type: "moveEdge",
-    edges: [
-      {
-        source: srcStr,
-        target: tgtStr,
-        points,
-      },
-    ],
-  });
+  enqueueDiagramAction(
+    {
+      type: "moveEdge",
+      edges: [
+        {
+          source: srcStr,
+          target: tgtStr,
+          points,
+        },
+      ],
+    },
+    g,
+  );
 }
 
 /** Get connected edge metadata for a node (for move/resize updates) */
@@ -497,9 +524,9 @@ function getConnectedEdges(
  * Initializes (or reconfigures) the AntV X6 graph canvas, plugins, interaction handlers,
  * orthogonal edge routers, and keyboard shortcuts.
  */
-export function initGraph(isDark: boolean): Graph | null {
+export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph | null {
   ensureDiagramStyles();
-  let container = currentOptions?.container;
+  let container = targetContainer ?? currentOptions?.container;
   if (!container && typeof document !== "undefined") {
     const el = document.getElementById("container");
     if (el) {
@@ -521,25 +548,33 @@ export function initGraph(isDark: boolean): Graph | null {
   const bgColor = isDark ? "#1e1e1e" : "#ffffff";
   const gridColor = isDark ? "#2f2f2f" : "#ccc";
 
-  if (graph) {
-    if (graph.container === container) {
-      graph.drawBackground({ color: bgColor });
-      graph.drawGrid({
-        type: "doubleMesh",
-        args: [
-          { color: "transparent", thickness: 0 },
-          { color: gridColor, thickness: 1, factor: 10 },
-        ],
-      });
-      return graph;
-    } else {
-      try {
-        graph.dispose();
-      } catch {
-        // ignore dispose errors
-      }
-      graph = null;
+  const existingInst = containerInstances.get(container);
+  if (existingInst && !existingInst.graph.disposed) {
+    if (currentOptions && currentOptions.container === container) {
+      existingInst.options = currentOptions;
     }
+    graph = existingInst.graph;
+    graph.drawBackground({ color: bgColor });
+    graph.drawGrid({
+      type: "doubleMesh",
+      args: [
+        { color: "transparent", thickness: 0 },
+        { color: gridColor, thickness: 1, factor: 10 },
+      ],
+    });
+    return graph;
+  }
+
+  if (graph && graph.container === container) {
+    graph.drawBackground({ color: bgColor });
+    graph.drawGrid({
+      type: "doubleMesh",
+      args: [
+        { color: "transparent", thickness: 0 },
+        { color: gridColor, thickness: 1, factor: 10 },
+      ],
+    });
+    return graph;
   }
 
   const containerW = container.clientWidth > 0 ? container.clientWidth : 800;
@@ -573,12 +608,12 @@ export function initGraph(isDark: boolean): Graph | null {
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
     },
     connecting: {
-      snap: { radius: 25 },
+      snap: { radius: 32 },
       allowBlank: false,
       allowMulti: () => true,
       allowLoop: false,
       allowNode: currentOptions?.allowNodeConnection ?? true,
-      allowEdge: true,
+      allowEdge: false,
       allowPort: true,
       highlight: true,
       highlighting: {
@@ -620,6 +655,7 @@ export function initGraph(isDark: boolean): Graph | null {
         return g.createEdge({
           zIndex: 1000,
           router: { name: "port-orthogonal-astar" },
+          connector: { name: "rounded", args: { radius: 8 } },
           attrs: {
             line: {
               stroke: isDark ? "#569cd6" : "#005fb8",
@@ -815,7 +851,7 @@ export function initGraph(isDark: boolean): Graph | null {
       const { width, height } = getTypicalNodeSize(g);
       // Trigger the bounce animation placeholder while the action is processed
       dropComponentGhost(g, snappedX, snappedY, dataToPlace.className, dataToPlace.iconSvg, isDark, width, height);
-      enqueueDiagramAction({ type: "addComponent", className: dataToPlace.className, x: snappedX, y: snappedY });
+      enqueueDiagramAction({ type: "addComponent", className: dataToPlace.className, x: snappedX, y: snappedY }, g);
     }
   };
 
@@ -879,7 +915,7 @@ export function initGraph(isDark: boolean): Graph | null {
   g.on("blank:click", ({ x, y }: { x: number; y: number }) => handlePlacementClick(x, y));
   g.on("cell:click", ({ x, y }: { x: number; y: number }) => handlePlacementClick(x, y));
 
-  window.addEventListener("keydown", (e) => {
+  const onWindowEscape = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
       clearPlacement();
       clearActiveDropPlaceholder();
@@ -888,7 +924,10 @@ export function initGraph(isDark: boolean): Graph | null {
         g.removeCell?.(existingPlaceholder);
       }
     }
-  });
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("keydown", onWindowEscape);
+  }
 
   // Expose for webview to invoke
   if (win) {
@@ -1008,7 +1047,7 @@ export function initGraph(isDark: boolean): Graph | null {
       });
 
       if (items.length > 0) {
-        enqueueDiagramAction({ type: "move", items });
+        enqueueDiagramAction({ type: "move", items }, g);
       }
       changedNodes.clear();
       moveTimeout = null;
@@ -1024,10 +1063,13 @@ export function initGraph(isDark: boolean): Graph | null {
     const s = node.getSize();
     const r = node.getAngle();
     const edges = getConnectedEdges(g, node);
-    enqueueDiagramAction({
-      type: "move",
-      items: [{ name: node.id, x: p.x, y: p.y, width: s.width, height: s.height, rotation: r, edges }],
-    });
+    enqueueDiagramAction(
+      {
+        type: "move",
+        items: [{ name: node.id, x: p.x, y: p.y, width: s.width, height: s.height, rotation: r, edges }],
+      },
+      g,
+    );
   });
 
   // We don't shrink/fit parents during drag to preserve Dagre layout spacings.
@@ -1050,18 +1092,21 @@ export function initGraph(isDark: boolean): Graph | null {
     const s = node.getSize();
     const r = node.getAngle();
     const edges = getConnectedEdges(g, node);
-    enqueueDiagramAction({
-      type: "resize",
-      item: {
-        name: node.id,
-        x: p.x,
-        y: p.y,
-        width: s.width,
-        height: s.height,
-        rotation: r,
-        edges,
+    enqueueDiagramAction(
+      {
+        type: "resize",
+        item: {
+          name: node.id,
+          x: p.x,
+          y: p.y,
+          width: s.width,
+          height: s.height,
+          rotation: r,
+          edges,
+        },
       },
-    });
+      g,
+    );
   });
 
   // Cache prior endpoints on edge mousedown, selection, or hover
@@ -1075,16 +1120,55 @@ export function initGraph(isDark: boolean): Graph | null {
 
   // Edge connected (handles both new edge creation and terminal dragging reconnection)
 
+  const resolveNearestNodePortId = (
+    node: Cell | null | undefined,
+    referencePt: PointLike | null | undefined,
+  ): string | undefined => {
+    if (!node || !node.isNode()) return undefined;
+    const ports = typeof node.getPorts === "function" ? node.getPorts() : [];
+    if (!ports || ports.length === 0) return undefined;
+    if (!referencePt) return ports[0]?.id;
+    let bestPortId: string | undefined;
+    let bestDist = Infinity;
+    for (const p of ports) {
+      if (!p.id) continue;
+      const wp = resolveNodePortWorldPoint(node, p.id);
+      if (!wp) continue;
+      const dist = Math.hypot(wp.x - referencePt.x, wp.y - referencePt.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPortId = p.id;
+      }
+    }
+    return bestPortId ?? ports[0]?.id;
+  };
+
   g.on("edge:connected", ({ isNew, edge }: { isNew?: boolean | undefined; edge: Edge }) => {
     if (isRenderingDiagram) return;
 
     const source = edge.getSource();
-
     const target = edge.getTarget();
     if (!source?.cell || !target?.cell) return;
 
     const sourceCell = g.getCellById(source.cell);
     const targetCell = g.getCellById(target.cell);
+
+    let sourcePortId = source.port;
+    let targetPortId = target.port;
+
+    // If a connection landed on a port-bearing node without a port ID, snap to its nearest port
+    if (sourcePortId === undefined && sourceCell?.isNode()) {
+      const snappedSrcPort = resolveNearestNodePortId(sourceCell, edge.getSourcePoint());
+      if (snappedSrcPort !== undefined) {
+        sourcePortId = snappedSrcPort;
+      }
+    }
+    if (targetPortId === undefined && targetCell?.isNode()) {
+      const snappedTgtPort = resolveNearestNodePortId(targetCell, edge.getTargetPoint());
+      if (snappedTgtPort !== undefined) {
+        targetPortId = snappedTgtPort;
+      }
+    }
 
     // Resolve source identifier (port or tapped edge net)
     let srcStr = "";
@@ -1096,8 +1180,8 @@ export function initGraph(isDark: boolean): Graph | null {
         : edgeTgt?.port
           ? `${edgeTgt.cell}.${edgeTgt.port}`
           : String(edgeSrc?.cell ?? "");
-    } else if (source.port !== undefined) {
-      srcStr = `${source.cell}.${source.port}`;
+    } else if (sourcePortId !== undefined) {
+      srcStr = `${source.cell}.${sourcePortId}`;
     } else {
       srcStr = String(source.cell);
     }
@@ -1112,8 +1196,8 @@ export function initGraph(isDark: boolean): Graph | null {
         : edgeTgt?.port
           ? `${edgeTgt.cell}.${edgeTgt.port}`
           : String(edgeSrc?.cell ?? "");
-    } else if (target.port !== undefined) {
-      tgtStr = `${target.cell}.${target.port}`;
+    } else if (targetPortId !== undefined) {
+      tgtStr = `${target.cell}.${targetPortId}`;
     } else {
       tgtStr = String(target.cell);
     }
@@ -1121,14 +1205,25 @@ export function initGraph(isDark: boolean): Graph | null {
     if (!srcStr || !tgtStr) return;
 
     const vertices = edge.getVertices() || [];
-    const sourcePoint = edge.getSourcePoint();
-    const targetPoint = edge.getTargetPoint();
+    const sourcePoint =
+      (sourceCell?.isNode() ? resolveNodePortWorldPoint(sourceCell, sourcePortId) : null) ?? edge.getSourcePoint();
+    const targetPoint =
+      (targetCell?.isNode() ? resolveNodePortWorldPoint(targetCell, targetPortId) : null) ?? edge.getTargetPoint();
+
+    const sourceSide = sourceCell?.isNode()
+      ? getPortOutwardNormal(sourceCell, sourcePortId, sourcePoint)?.side
+      : undefined;
+    const targetSide = targetCell?.isNode()
+      ? getPortOutwardNormal(targetCell, targetPortId, targetPoint)?.side
+      : undefined;
+    const sourceBox = sourceCell?.isNode() ? (getNodeBBox(sourceCell) ?? undefined) : undefined;
+    const targetBox = targetCell?.isNode() ? (getNodeBBox(targetCell) ?? undefined) : undefined;
 
     let intermediateVertices = vertices;
     if (vertices.length === 0 && sourcePoint && targetPoint) {
       const edgeView = g.findViewByCell(edge);
       if (edgeView?.routePoints && edgeView.routePoints.length > 0) {
-        intermediateVertices = edgeView.routePoints;
+        intermediateVertices = healOrthogonalVertices(sourcePoint, targetPoint, edgeView.routePoints);
       } else {
         const obstacles: RectLike[] = [];
         for (const node of g.getNodes()) {
@@ -1144,23 +1239,48 @@ export function initGraph(isDark: boolean): Graph | null {
             });
           }
         }
-        intermediateVertices = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles);
+        intermediateVertices = computeOrthogonalRoute(sourcePoint, targetPoint, obstacles, {
+          sourceSide,
+          targetSide,
+          sourceBox,
+          targetBox,
+        });
       }
+    } else if (vertices.length > 0 && sourcePoint && targetPoint) {
+      intermediateVertices = healOrthogonalVertices(sourcePoint, targetPoint, vertices);
     }
 
-    const simplifiedVertices = simplifyCollinearPoints(intermediateVertices);
-    const points = [sourcePoint, ...simplifiedVertices, targetPoint].map((p: { x: number; y: number }) => ({
-      x: Math.round(p.x),
-      y: Math.round(-p.y),
-    }));
+    const simplifiedVertices =
+      sourcePoint && targetPoint
+        ? healOrthogonalVertices(sourcePoint, targetPoint, simplifyCollinearPoints(intermediateVertices, 0.05))
+        : simplifyCollinearPoints(intermediateVertices, 0.05);
+
+    if (typeof edge.setVertices === "function") {
+      edge.setVertices(simplifiedVertices, { ignoreSnap: true });
+    }
+
+    const roundedSrc = { x: Math.round(sourcePoint.x), y: Math.round(-sourcePoint.y) };
+    const roundedTgt = { x: Math.round(targetPoint.x), y: Math.round(-targetPoint.y) };
+    const roundedIntermediate = healOrthogonalVertices(
+      roundedSrc,
+      roundedTgt,
+      simplifiedVertices.map((p: { x: number; y: number }) => ({
+        x: Math.round(p.x),
+        y: Math.round(-p.y),
+      })),
+    );
+    const points = [roundedSrc, ...roundedIntermediate, roundedTgt];
 
     if (isNew) {
-      enqueueDiagramAction({
-        type: "connect",
-        source: srcStr,
-        target: tgtStr,
-        points,
-      });
+      enqueueDiagramAction(
+        {
+          type: "connect",
+          source: srcStr,
+          target: tgtStr,
+          points,
+        },
+        g,
+      );
     } else {
       const prev = edgePriorEndpoints.get(edge.id);
       const oldSrcStr = prev?.source?.port
@@ -1170,18 +1290,22 @@ export function initGraph(isDark: boolean): Graph | null {
         ? `${prev.target.cell}.${prev.target.port}`
         : String(prev?.target?.cell ?? tgtStr);
 
-      enqueueDiagramAction({
-        type: "reconnect",
-        edgeId: edge.id,
-        oldSource: oldSrcStr,
-        oldTarget: oldTgtStr,
-        newSource: srcStr,
-        newTarget: tgtStr,
-        oldSourcePort: prev?.source?.port,
-        oldTargetPort: prev?.target?.port,
-        newSourcePort: source.port,
-        newTargetPort: target.port,
-      });
+      enqueueDiagramAction(
+        {
+          type: "reconnect",
+          edgeId: edge.id,
+          oldSource: oldSrcStr,
+          oldTarget: oldTgtStr,
+          newSource: srcStr,
+          newTarget: tgtStr,
+          oldSourcePort: prev?.source?.port,
+          oldTargetPort: prev?.target?.port,
+          newSourcePort: sourcePortId,
+          newTargetPort: targetPortId,
+          points,
+        },
+        g,
+      );
     }
   });
 
@@ -1198,7 +1322,7 @@ export function initGraph(isDark: boolean): Graph | null {
       if (vertices.length > 0 && sourcePoint && targetPoint) {
         const fullPolyline = [sourcePoint, ...vertices, targetPoint];
         const regularized = regularizeOrthogonalPolyline(fullPolyline, 6, 1.5);
-        const newVertices = regularized.slice(1, -1);
+        const newVertices = healOrthogonalVertices(sourcePoint, targetPoint, regularized.slice(1, -1));
 
         const changed =
           newVertices.length !== vertices.length ||
@@ -1222,10 +1346,17 @@ export function initGraph(isDark: boolean): Graph | null {
           const curVertices = edge.getVertices() || [];
           const srcPt = edge.getSourcePoint();
           const tgtPt = edge.getTargetPoint();
-          const points = [srcPt, ...curVertices, tgtPt].map((p: PointLike) => ({
-            x: Math.round(p.x),
-            y: Math.round(-p.y),
-          }));
+          const roundedSrc = { x: Math.round(srcPt.x), y: Math.round(-srcPt.y) };
+          const roundedTgt = { x: Math.round(tgtPt.x), y: Math.round(-tgtPt.y) };
+          const roundedVerts = healOrthogonalVertices(
+            roundedSrc,
+            roundedTgt,
+            curVertices.map((p: PointLike) => ({
+              x: Math.round(p.x),
+              y: Math.round(-p.y),
+            })),
+          );
+          const points = [roundedSrc, ...roundedVerts, roundedTgt];
           const srcStr = source?.cell
             ? source.port
               ? `${source.cell}.${source.port}`
@@ -1236,16 +1367,19 @@ export function initGraph(isDark: boolean): Graph | null {
               ? `${target.cell}.${target.port}`
               : String(target.cell)
             : String(wireId || edge.id);
-          enqueueDiagramAction({
-            type: "moveEdge",
-            edges: [
-              {
-                source: srcStr,
-                target: tgtStr,
-                points,
-              },
-            ],
-          });
+          enqueueDiagramAction(
+            {
+              type: "moveEdge",
+              edges: [
+                {
+                  source: srcStr,
+                  target: tgtStr,
+                  points,
+                },
+              ],
+            },
+            g,
+          );
         }
         edgeUpdateTimeout = null;
       }, 500);
@@ -1398,17 +1532,16 @@ export function initGraph(isDark: boolean): Graph | null {
     }
   });
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Alt" || e.altKey) isAltPressed = true;
-    });
-    document.addEventListener("keyup", (e) => {
-      if (e.key === "Alt" || !e.altKey) isAltPressed = false;
-    });
-  }
+  const onAltKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Alt" || e.altKey) isAltPressed = true;
+  };
+  const onAltKeyUp = (e: KeyboardEvent) => {
+    if (e.key === "Alt" || !e.altKey) isAltPressed = false;
+  };
 
   // Delete key: delete selected edges/components
-  document.addEventListener("keydown", (e) => {
+  const onDocKeyDown = (e: KeyboardEvent) => {
+    if (g.disposed) return;
     if (e.key === "Delete" || e.key === "Backspace") {
       // Do not trigger deletion if the user is typing in an input or textarea
       const activeTag = document.activeElement?.tagName;
@@ -1448,15 +1581,15 @@ export function initGraph(isDark: boolean): Graph | null {
 
       if (edgesToDelete.length > 0) {
         for (const edge of edgesToDelete) {
-          enqueueDiagramAction({ type: "disconnect", ...edge });
+          enqueueDiagramAction({ type: "disconnect", ...edge }, g);
         }
       }
       if (componentNames.length > 0) {
-        enqueueDiagramAction({ type: "deleteComponents", names: componentNames });
+        enqueueDiagramAction({ type: "deleteComponents", names: componentNames }, g);
       }
       g.removeCells(cells);
       scheduleUpdateSolderDots(g);
-    } else {
+    } else if (graph === g) {
       const nav = navigator as unknown as {
         platform?: string | undefined;
         userAgent?: string | undefined;
@@ -1470,17 +1603,23 @@ export function initGraph(isDark: boolean): Graph | null {
         e.preventDefault();
         Spinner.show();
         if (e.shiftKey) {
-          postMessageToHost({ type: "redo" });
+          postMessageToHost({ type: "redo" }, g);
         } else {
-          postMessageToHost({ type: "undo" });
+          postMessageToHost({ type: "undo" }, g);
         }
       } else if (mod && e.key.toLowerCase() === "y") {
         e.preventDefault();
         Spinner.show();
-        postMessageToHost({ type: "redo" });
+        postMessageToHost({ type: "redo" }, g);
       }
     }
-  });
+  };
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("keydown", onAltKeyDown);
+    document.addEventListener("keyup", onAltKeyUp);
+    document.addEventListener("keydown", onDocKeyDown);
+  }
 
   g.on("node:mousedown", ({ node }: { node: Node }) => {
     if (isEphemeralDiagramNode(node.id)) return;
@@ -1489,7 +1628,7 @@ export function initGraph(isDark: boolean): Graph | null {
       for (const binding of interactiveBindings) {
         if (binding.action === "momentary") {
           const action = defaultInteractiveStateManager.handleInteraction(node, binding, "mousedown");
-          if (action) enqueueDiagramAction(action);
+          if (action) enqueueDiagramAction(action, g);
         }
       }
     }
@@ -1502,29 +1641,37 @@ export function initGraph(isDark: boolean): Graph | null {
       for (const binding of interactiveBindings) {
         if (binding.action === "momentary") {
           const action = defaultInteractiveStateManager.handleInteraction(node, binding, "mouseup");
-          if (action) enqueueDiagramAction(action);
+          if (action) enqueueDiagramAction(action, g);
         }
       }
     }
   });
 
   g.on("node:click", ({ node }: { node: Node }) => {
-    if (!graph) return;
+    if (g.disposed) return;
+    const opts = getOptionsForGraph(g);
     if (isEphemeralDiagramNode(node.id)) {
       selectedNodeId = null;
-      if (currentOptions?.onSelect) currentOptions.onSelect(null);
+      const inst = containerInstances.get(container);
+      if (inst) inst.selectedNodeId = null;
+      if (opts?.onSelect) opts.onSelect(null);
       return;
     }
     selectedNodeId = node.id;
+    const inst = containerInstances.get(container);
+    if (inst) inst.selectedNodeId = node.id;
     const data = node.getData();
 
     // Module link button single-click navigation (e.g. 'More on Passive Elements' in PSCAD library)
     if (data?.kind === "module-link" && data.targetModule) {
-      postMessageToHost({
-        type: "navigateTo",
-        className: data.targetModule,
-        diagramType: "All",
-      });
+      postMessageToHost(
+        {
+          type: "navigateTo",
+          className: data.targetModule,
+          diagramType: "All",
+        },
+        g,
+      );
       return;
     }
 
@@ -1534,7 +1681,7 @@ export function initGraph(isDark: boolean): Graph | null {
       for (const binding of interactiveBindings) {
         if (binding.action === "toggle" || binding.action === "faceplate") {
           const action = defaultInteractiveStateManager.handleInteraction(node, binding, "click");
-          if (action) enqueueDiagramAction(action);
+          if (action) enqueueDiagramAction(action, g);
         } else if (binding.action === "numeric" || binding.action === "slider") {
           if (win && typeof win.prompt === "function") {
             const current = defaultInteractiveStateManager.getValue(node.id, binding.variableName, binding.min ?? 0);
@@ -1547,7 +1694,7 @@ export function initGraph(isDark: boolean): Graph | null {
             );
             if (input !== null) {
               const action = defaultInteractiveStateManager.handleInteraction(node, binding, "input", input);
-              if (action) enqueueDiagramAction(action);
+              if (action) enqueueDiagramAction(action, g);
             }
           }
         }
@@ -1557,22 +1704,25 @@ export function initGraph(isDark: boolean): Graph | null {
     // Show properties panel immediately with lightweight data, then request full properties
     const cachedProps = propertyCache.get(node.id);
     if (cachedProps) {
-      showProperties({ id: node.id, properties: cachedProps });
+      showProperties({ id: node.id, properties: cachedProps }, g);
     } else {
       // Show panel with lightweight data (className, name, description) + loading indicator
-      showProperties({ id: node.id, properties: data?.properties, isLoading: true });
+      showProperties({ id: node.id, properties: data?.properties, isLoading: true }, g);
       // Request full properties from host on-demand
-      postMessageToHost({ type: "getProperties", componentName: node.id });
+      postMessageToHost({ type: "getProperties", componentName: node.id }, g);
     }
 
     // Reveal the source location of the clicked element in the text editor
     const props = data?.properties;
     if (props?.sourceRange) {
-      postMessageToHost({
-        type: "revealSource",
-        startOffset: props.sourceRange.startOffset,
-        endOffset: props.sourceRange.endOffset,
-      });
+      postMessageToHost(
+        {
+          type: "revealSource",
+          startOffset: props.sourceRange.startOffset,
+          endOffset: props.sourceRange.endOffset,
+        },
+        g,
+      );
     }
 
     // Smoothly pan to center the node horizontally in the visible portion
@@ -1612,11 +1762,14 @@ export function initGraph(isDark: boolean): Graph | null {
     if (isEphemeralDiagramNode(node.id)) return;
     const data = node.getData();
     if (data?.kind === "module-link" && data.targetModule) {
-      postMessageToHost({
-        type: "navigateTo",
-        className: data.targetModule,
-        diagramType: "All",
-      });
+      postMessageToHost(
+        {
+          type: "navigateTo",
+          className: data.targetModule,
+          diagramType: "All",
+        },
+        g,
+      );
       return;
     }
     const props = data?.properties;
@@ -1641,20 +1794,41 @@ export function initGraph(isDark: boolean): Graph | null {
 
     const targetDiagramType = navigationMap[props.ruleName];
     if (targetDiagramType) {
-      postMessageToHost({
-        type: "navigateTo",
-        className: props.description, // the element name
-        diagramType: targetDiagramType,
-      });
+      postMessageToHost(
+        {
+          type: "navigateTo",
+          className: props.description, // the element name
+          diagramType: targetDiagramType,
+        },
+        g,
+      );
     }
   });
 
   g.on("blank:click", () => {
     selectedNodeId = null;
-    if (currentOptions?.onSelect) currentOptions.onSelect(null);
+    const inst = containerInstances.get(container);
+    if (inst) inst.selectedNodeId = null;
+    const opts = getOptionsForGraph(g);
+    if (opts?.onSelect) opts.onSelect(null);
   });
 
-  // Placement logic removed from core renderer
+  // Register container-scoped instance with listener cleanup
+  containerInstances.set(container, {
+    graph: g,
+    options: currentOptions && currentOptions.container === container ? currentOptions : { container, isDark },
+    selectedNodeId: null,
+    cleanupListeners: () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("keydown", onWindowEscape);
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("keydown", onAltKeyDown);
+        document.removeEventListener("keyup", onAltKeyUp);
+        document.removeEventListener("keydown", onDocKeyDown);
+      }
+    },
+  });
 
   graph = g;
   return g;
@@ -2139,7 +2313,7 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
       target: resolvedTarget,
       vertices: edge.vertices,
       connector: edge.connector ?? { name: "rounded", args: { radius: 8 } },
-      router: edge.router ?? { name: "normal" },
+      router: edge.router ?? (edge.connector === "smooth" ? { name: "normal" } : { name: "port-orthogonal-astar" }),
     };
     // Polyglot edges pass attrs as a full selector-keyed object;
     // Modelica edges have attrs.line specifically
@@ -3148,9 +3322,13 @@ function updateBreadcrumbs(breadcrumbs?: { id: string; label: string }[]) {
  * Invokes the registered `onShowProperties` callback to display or update the component inspector.
  */
 
-function showProperties(nodeData: { id: string; properties?: unknown; isLoading?: boolean | undefined }) {
-  if (currentOptions?.onShowProperties) {
-    currentOptions.onShowProperties(nodeData.id, nodeData.properties, nodeData.isLoading);
+function showProperties(
+  nodeData: { id: string; properties?: unknown; isLoading?: boolean | undefined },
+  g?: Graph | null,
+) {
+  const opts = getOptionsForGraph(g);
+  if (opts?.onShowProperties) {
+    opts.onShowProperties(nodeData.id, nodeData.properties, nodeData.isLoading);
   }
 }
 
@@ -3294,14 +3472,47 @@ export function updateSolderDots(g: Graph) {
 }
 
 /**
- * Disposes the active AntV X6 graph instance and resets renderer options.
+ * Disposes the AntV X6 graph instance for `targetContainer` (or the active graph if omitted)
+ * and restores the remaining active container instance, if any.
  */
-export function disposeDiagram() {
-  if (graph) {
-    graph.dispose();
-    graph = null;
+export function disposeDiagram(targetContainer?: HTMLElement | null) {
+  if (targetContainer) {
+    const inst = containerInstances.get(targetContainer);
+    if (inst) {
+      inst.cleanupListeners?.();
+      try {
+        inst.graph.dispose();
+      } catch {
+        // ignore dispose errors
+      }
+      containerInstances.delete(targetContainer);
+      if (graph === inst.graph) {
+        const remaining = Array.from(containerInstances.values()).pop();
+        graph = remaining?.graph ?? null;
+        currentOptions = remaining?.options ?? null;
+        selectedNodeId = remaining?.selectedNodeId ?? null;
+      }
+    }
+    return;
   }
-  currentOptions = null;
+
+  if (graph) {
+    const container = graph.container;
+    const inst = container ? containerInstances.get(container) : undefined;
+    inst?.cleanupListeners?.();
+    if (container) containerInstances.delete(container);
+    try {
+      graph.dispose();
+    } catch {
+      // ignore dispose errors
+    }
+    const remaining = Array.from(containerInstances.values()).pop();
+    graph = remaining?.graph ?? null;
+    currentOptions = remaining?.options ?? null;
+    selectedNodeId = remaining?.selectedNodeId ?? null;
+  } else {
+    currentOptions = null;
+  }
 }
 
 /**
@@ -3343,9 +3554,13 @@ export function updateParameterText(nodeId: string, paramName: string, oldValue:
 }
 
 /**
- * Returns the active AntV X6 graph instance, or `null` if none is initialized.
+ * Returns the AntV X6 graph instance for `targetContainer` (or the active graph if omitted),
+ * or `null` if none is initialized.
  */
-export function getGraph(): Graph | null {
+export function getGraph(targetContainer?: HTMLElement | null): Graph | null {
+  if (targetContainer && containerInstances.has(targetContainer)) {
+    return containerInstances.get(targetContainer)!.graph;
+  }
   return graph;
 }
 

@@ -211,7 +211,7 @@ const filteredLanguages = computed(() => {
             <!-- Parse -->
             <td class="td-cap text-center">
               <span class="cap-status active" title="Ahead-of-Time WebAssembly parser">
-                <MsIcon name="check" :size="15" stroke="2.5" />
+                <MsIcon name="check" :size="15" :stroke="2.5" />
               </span>
             </td>
 
@@ -226,7 +226,7 @@ const filteredLanguages = computed(() => {
                 {{ lang.ruleCount }} rules
               </a>
               <span v-else-if="lang.capabilities.lint" class="cap-status active" title="Syntax and structural linter">
-                <MsIcon name="check" :size="15" stroke="2.5" />
+                <MsIcon name="check" :size="15" :stroke="2.5" />
               </span>
               <span v-else class="text-muted">—</span>
             </td>
@@ -238,7 +238,7 @@ const filteredLanguages = computed(() => {
                 class="cap-status active"
                 title="Direct lowering to @modelscript/runtime linear memory DAE arena"
               >
-                <MsIcon name="check" :size="15" stroke="2.5" />
+                <MsIcon name="check" :size="15" :stroke="2.5" />
               </span>
               <span v-else class="text-muted">—</span>
             </td>
@@ -250,7 +250,7 @@ const filteredLanguages = computed(() => {
                 class="cap-status active"
                 title="Domain solver or direct simulation engine"
               >
-                <MsIcon name="check" :size="15" stroke="2.5" />
+                <MsIcon name="check" :size="15" :stroke="2.5" />
               </span>
               <span v-else class="text-muted">—</span>
             </td>

@@ -251,7 +251,9 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
     }
   }, [inlineCode, viewConfig.url]);
 
-  const code = inlineCode || fetchedCode || "model Example\n\nend Example;";
+  const baseCode = inlineCode || fetchedCode || "model Example\n\nend Example;";
+  const [editedCode, setEditedCode] = useState<string | null>(null);
+  const code = editedCode ?? baseCode;
   const dialect = (viewConfig.dialect as string) || "modelica";
   const title = (viewConfig.title as string) || "Interactive System";
 
@@ -276,13 +278,13 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
 
   const validInlineSvg = useMemo(() => {
     if (rawSvg && !isLegacyBogusModelicaSvg(rawSvg, previewMode)) {
-      return sanitizeSvgMarkup(rawSvg);
+      return sanitizeSvgMarkup(rawSvg, { isFullScreen });
     }
     if (!rawThumbUrl && previewMode === "code") {
-      return sanitizeSvgMarkup(buildClientCodeFallbackSvg(code, title));
+      return sanitizeSvgMarkup(buildClientCodeFallbackSvg(code, title), { isFullScreen });
     }
     return "";
-  }, [rawSvg, rawThumbUrl, previewMode, code, title]);
+  }, [rawSvg, rawThumbUrl, previewMode, code, title, isFullScreen]);
 
   const hasPreviewThumbnail = Boolean(
     validInlineSvg || (rawThumbUrl && !isLegacyBogusModelicaSvg(rawSvg, previewMode)),
@@ -544,13 +546,14 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
             >
               <MorselEditorLazy
                 dataUrl={null}
-                initialCode={code}
+                initialCode={baseCode}
                 initialDialect={dialect}
                 initialView={activeMorselView}
                 hideCenterFloatingToolbar={!isFullScreen}
-                defaultRibbonExpanded={viewMode === "simulation"}
+                defaultRibbonExpanded={Boolean(isFullScreen && viewMode === "simulation")}
                 simulateTriggerCount={simTriggerCount > 0 ? simTriggerCount : undefined}
                 onActiveViewChange={handleActiveViewChange}
+                onCodeChange={setEditedCode}
                 embed={true}
               />
             </Suspense>
@@ -592,8 +595,8 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
             <div
               style={{
                 position: "absolute",
-                bottom: "52px",
-                right: "18px",
+                bottom: "12px",
+                right: "12px",
                 background: "rgba(13, 17, 23, 0.88)",
                 padding: "5px 12px",
                 borderRadius: "9999px",

@@ -17,7 +17,7 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface Owl2ViewerProps {
   viewConfig: {
@@ -721,14 +721,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 38px;
+  min-height: 38px;
   background: var(--surface-hud, var(--color-canvas-subtle));
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   gap: 8px;
 `;
@@ -765,9 +765,9 @@ const PillBadge = styled.span<{ $variant?: "owl" | "verified" }>`
 `;
 
 const SubToolbar = styled.div`
-  height: 36px;
-  min-height: 36px;
-  padding: 0 14px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
   background: var(--color-canvas-subtle);
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
@@ -879,15 +879,15 @@ const EntityChip = styled.button<{ $color: string }>`
 `;
 
 const FooterBar = styled.div`
-  height: 28px;
-  min-height: 28px;
-  padding: 0 14px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 12px;
   background: var(--color-canvas-subtle);
   border-top: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--color-fg-muted);
   font-family: var(--font-mono, monospace);
   gap: 12px;
@@ -1005,10 +1005,10 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
 
   const fallbackSvg = useMemo(() => {
     if (graphLayout.nodes.length === 0 && typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg);
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
     }
     return "";
-  }, [graphLayout.nodes.length, viewConfig.svg]);
+  }, [graphLayout.nodes.length, viewConfig.svg, isFullScreen]);
 
   const hasGraph = graphLayout.nodes.length > 0 || Boolean(fallbackSvg);
   const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && hasGraph ? "diagram" : "code";
@@ -1038,7 +1038,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
       <Toolbar>
         <HeaderLeft>
           <OrganizationIcon size={16} fill="var(--color-done-fg, #8b5cf6)" />
-          <ModelTitle title={rawTitle}>{shortTitle}</ModelTitle>
+          {!isFullScreen && <ModelTitle title={rawTitle}>{shortTitle}</ModelTitle>}
           <PillBadge $variant="owl">OWL 2 DL</PillBadge>
           <PillBadge $variant="verified" title="Tableau Reasoner verified DL consistency (0 unsatisfiable classes)">
             <CheckCircleFillIcon size={11} /> DL Consistent
@@ -1101,7 +1101,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
             </Button>
           )}
 
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"
@@ -1608,7 +1608,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
             )}
           </>
         ) : effectiveViewMode === "diagram" && fallbackSvg ? (
-          <GraphViewport $isDark={isDark} dangerouslySetInnerHTML={{ __html: fallbackSvg }} />
+          <InteractiveSvgStage svgHtml={fallbackSvg} />
         ) : (
           <Box
             flex={1}

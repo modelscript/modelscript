@@ -51,4 +51,43 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
     assert.equal(hasFlagshipCap("billing"), true);
     assert.equal(hasFlagshipCap("botAccounts"), true);
   });
+
+  await t.test(
+    "renders streamlined single-screen OnboardingWizardPage and FeedQuickstartStudio with valid starter templates",
+    async () => {
+      const React = await import("react");
+      const { renderToStaticMarkup } = await import("react-dom/server");
+      const { MemoryRouter } = await import("react-router-dom");
+      const { OnboardingWizardPage } = await import("../src/pages/onboarding/OnboardingWizardPage.js");
+      const { FeedQuickstartStudio } = await import("../src/pages/feed/components/FeedQuickstartStudio.js");
+
+      const onboardingHtml = renderToStaticMarkup(
+        React.createElement(MemoryRouter, null, React.createElement(OnboardingWizardPage)),
+      );
+
+      assert.ok(onboardingHtml.includes("1. Select Your Primary Discipline"));
+      assert.ok(onboardingHtml.includes("Skip →"));
+      assert.ok(onboardingHtml.includes("Enter Your Workspace"));
+      assert.ok(onboardingHtml.includes("RLC Resonant Circuit"));
+      assert.ok(onboardingHtml.includes("Hybrid Bouncing Ball"));
+      assert.ok(onboardingHtml.includes("Lorenz Chaotic Attractor"));
+      assert.ok(!onboardingHtml.includes("modelica-msl"));
+
+      const quickstartHtml = renderToStaticMarkup(
+        React.createElement(
+          MemoryRouter,
+          null,
+          React.createElement(FeedQuickstartStudio, {
+            followedHandles: {},
+            onToggleFollow: () => {},
+          }),
+        ),
+      );
+      assert.ok(quickstartHtml.includes("Quickstart Cyber-Physical Studio"));
+      assert.ok(quickstartHtml.includes("Bouncing Ball"));
+      assert.ok(quickstartHtml.includes("RLC Circuit"));
+      assert.ok(quickstartHtml.includes("Lorenz Attractor"));
+      assert.ok(quickstartHtml.includes("CubeSat Power Architecture"));
+    },
+  );
 });

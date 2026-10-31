@@ -451,13 +451,16 @@ export function segmentIntersectsRect(p1: PointLike, p2: PointLike, rect: RectLi
 export function simplifyCollinearPoints(points: PointLike[], tolerance = 1.5): PointLike[] {
   if (points.length <= 2) return points;
 
-  // Deduplicate nearly identical adjacent points
+  // Deduplicate nearly identical adjacent points while preserving the exact terminal endpoint
+  const dedupThreshold = Math.min(0.05, tolerance);
   const deduped: PointLike[] = [points[0]!];
   for (let i = 1; i < points.length; i++) {
     const prev = deduped[deduped.length - 1]!;
     const curr = points[i]!;
-    if (Math.abs(curr.x - prev.x) > 0.5 || Math.abs(curr.y - prev.y) > 0.5) {
+    if (Math.abs(curr.x - prev.x) > dedupThreshold || Math.abs(curr.y - prev.y) > dedupThreshold) {
       deduped.push(curr);
+    } else if (i === points.length - 1) {
+      deduped[deduped.length - 1] = curr;
     }
   }
 
@@ -469,8 +472,19 @@ export function simplifyCollinearPoints(points: PointLike[], tolerance = 1.5): P
     const curr = deduped[i]!;
     const next = deduped[i + 1]!;
 
-    const isCollinearH = Math.abs(prev.y - curr.y) <= tolerance && Math.abs(curr.y - next.y) <= tolerance;
-    const isCollinearV = Math.abs(prev.x - curr.x) <= tolerance && Math.abs(curr.x - next.x) <= tolerance;
+    const dx1 = Math.abs(curr.x - prev.x);
+    const dy1 = Math.abs(curr.y - prev.y);
+    const dx2 = Math.abs(next.x - curr.x);
+    const dy2 = Math.abs(next.y - curr.y);
+
+    // Only treat as horizontally collinear if both segments move predominantly horizontally
+    // (never delete a 90-degree corner transitioning onto a short vertical jog <= tolerance).
+    const isCollinearH =
+      dx1 >= dy1 && dx2 >= dy2 && dy1 <= tolerance && dy2 <= tolerance && Math.abs(prev.y - next.y) <= tolerance;
+
+    // Symmetrically, only treat as vertically collinear if both segments move predominantly vertically.
+    const isCollinearV =
+      dy1 >= dx1 && dy2 >= dx2 && dx1 <= tolerance && dx2 <= tolerance && Math.abs(prev.x - next.x) <= tolerance;
 
     if (!isCollinearH && !isCollinearV) {
       simplified.push(curr);
@@ -482,7 +496,8 @@ export function simplifyCollinearPoints(points: PointLike[], tolerance = 1.5): P
 
 /**
  * Snaps a polyline to strict orthogonal (Manhattan) steps where segments are nearly axis-aligned,
- * and simplifies collinear vertices.
+ * preserving pinned start and end points (`points[0]` and `points[points.length - 1]`) and simplifying
+ * collinear vertices.
  */
 export function regularizeOrthogonalPolyline(
   points: PointLike[],
@@ -492,9 +507,9 @@ export function regularizeOrthogonalPolyline(
   if (points.length <= 2) return points;
 
   const result: PointLike[] = [{ ...points[0]! }];
-  for (let i = 1; i < points.length; i++) {
+  for (let i = 1; i < points.length - 1; i++) {
     const prev = result[result.length - 1]!;
-    let curr = { ...points[i]! };
+    const curr = { ...points[i]! };
 
     // Check if segment is nearly horizontal or vertical
     if (Math.abs(curr.y - prev.y) <= axisTolerance) {
@@ -505,7 +520,179 @@ export function regularizeOrthogonalPolyline(
     result.push(curr);
   }
 
+  // Keep the terminal endpoint pinned at its exact coordinates and snap the last intermediate vertex
+  // (`result[result.length - 1]`) so the final segment into `target` is also orthogonal.
+  const target = { ...points[points.length - 1]! };
+  const lastBend = result[result.length - 1]!;
+  const prevBeforeLast = result.length >= 2 ? result[result.length - 2]! : null;
+  if (Math.abs(target.y - lastBend.y) <= axisTolerance && Math.abs(target.y - lastBend.y) > 0) {
+    if (!prevBeforeLast || Math.abs(lastBend.x - prevBeforeLast.x) <= 0.05) {
+      lastBend.y = target.y;
+    }
+  } else if (Math.abs(target.x - lastBend.x) <= axisTolerance && Math.abs(target.x - lastBend.x) > 0) {
+    if (!prevBeforeLast || Math.abs(lastBend.y - prevBeforeLast.y) <= 0.05) {
+      lastBend.x = target.x;
+    }
+  }
+  result.push(target);
+
   return simplifyCollinearPoints(result, collinearTolerance);
+}
+
+/**
+ * Guarantees that the intermediate `vertices` between `source` and `target` form a 100% orthogonal
+ * (0° / 90° Manhattan) polyline `[source, ...healedVertices, target]`.
+ *
+ * Heals terminal stub micro-slants caused by integer rounding in saved annotations vs. floating-point
+ * port coordinates, snaps near-axis interior segments, and inserts orthogonal 90° corners for any
+ * remaining diagonal segments.
+ */
+export function healOrthogonalVertices(
+  source: PointLike,
+  target: PointLike,
+  vertices: PointLike[],
+  options: { snapTolerance?: number } = {},
+): PointLike[] {
+  const snapTolerance = options.snapTolerance ?? 8;
+
+  if (!vertices || vertices.length === 0) {
+    if (Math.abs(source.x - target.x) <= 0.05 || Math.abs(source.y - target.y) <= 0.05) {
+      return [];
+    }
+    const midX = (source.x + target.x) / 2;
+    const midY = (source.y + target.y) / 2;
+    if (Math.abs(source.x - target.x) >= Math.abs(source.y - target.y)) {
+      return [
+        { x: midX, y: source.y },
+        { x: midX, y: target.y },
+      ];
+    }
+    return [
+      { x: source.x, y: midY },
+      { x: target.x, y: midY },
+    ];
+  }
+
+  if (vertices.length === 1) {
+    const v = { x: vertices[0]!.x, y: vertices[0]!.y };
+    const errHV = Math.abs(v.x - target.x) + Math.abs(v.y - source.y);
+    const errVH = Math.abs(v.x - source.x) + Math.abs(v.y - target.y);
+    if (errHV <= errVH && Math.abs(v.x - target.x) <= snapTolerance && Math.abs(v.y - source.y) <= snapTolerance) {
+      return [{ x: target.x, y: source.y }];
+    }
+    if (errVH < errHV && Math.abs(v.x - source.x) <= snapTolerance && Math.abs(v.y - target.y) <= snapTolerance) {
+      return [{ x: source.x, y: target.y }];
+    }
+    if (Math.abs(v.y - source.y) <= snapTolerance) {
+      return simplifyCollinearPoints([source, { x: v.x, y: source.y }, { x: v.x, y: target.y }, target], 0.05).slice(
+        1,
+        -1,
+      );
+    }
+    if (Math.abs(v.x - source.x) <= snapTolerance) {
+      return simplifyCollinearPoints([source, { x: source.x, y: v.y }, { x: target.x, y: v.y }, target], 0.05).slice(
+        1,
+        -1,
+      );
+    }
+    if (Math.abs(v.y - target.y) <= snapTolerance) {
+      return simplifyCollinearPoints([source, { x: v.x, y: source.y }, { x: v.x, y: target.y }, target], 0.05).slice(
+        1,
+        -1,
+      );
+    }
+    if (Math.abs(v.x - target.x) <= snapTolerance) {
+      return simplifyCollinearPoints([source, { x: source.x, y: v.y }, { x: target.x, y: v.y }, target], 0.05).slice(
+        1,
+        -1,
+      );
+    }
+  }
+
+  const pts: PointLike[] = vertices.map((p) => ({ x: p.x, y: p.y }));
+
+  if (pts.length >= 2) {
+    // 1. Align first bend `pts[0]` with `source` along the departure stub axis
+    const dx01 = Math.abs(pts[1]!.x - pts[0]!.x);
+    const dy01 = Math.abs(pts[1]!.y - pts[0]!.y);
+    if (dy01 >= dx01) {
+      // pts[0] -> pts[1] is vertical, so source -> pts[0] is horizontal
+      if (Math.abs(pts[0]!.y - source.y) <= snapTolerance) {
+        pts[0]!.y = source.y;
+      } else if (Math.abs(pts[0]!.x - source.x) <= snapTolerance) {
+        pts[0]!.x = source.x;
+      }
+    } else {
+      // pts[0] -> pts[1] is horizontal, so source -> pts[0] is vertical
+      if (Math.abs(pts[0]!.x - source.x) <= snapTolerance) {
+        pts[0]!.x = source.x;
+      } else if (Math.abs(pts[0]!.y - source.y) <= snapTolerance) {
+        pts[0]!.y = source.y;
+      }
+    }
+
+    // 2. Align last bend `pts[last]` with `target` along the arrival stub axis
+    const last = pts.length - 1;
+    const prev = pts[last - 1]!;
+    const dxLast = Math.abs(pts[last]!.x - prev.x);
+    const dyLast = Math.abs(pts[last]!.y - prev.y);
+    if (dyLast >= dxLast) {
+      // prev -> pts[last] is vertical, so pts[last] -> target is horizontal
+      if (Math.abs(pts[last]!.y - target.y) <= snapTolerance) {
+        pts[last]!.y = target.y;
+      } else if (Math.abs(pts[last]!.x - target.x) <= snapTolerance) {
+        pts[last]!.x = target.x;
+      }
+    } else {
+      // prev -> pts[last] is horizontal, so pts[last] -> target is vertical
+      if (Math.abs(pts[last]!.x - target.x) <= snapTolerance) {
+        pts[last]!.x = target.x;
+      } else if (Math.abs(pts[last]!.y - target.y) <= snapTolerance) {
+        pts[last]!.y = target.y;
+      }
+    }
+
+    // 3. Snap near-orthogonal interior segments
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]!;
+      const b = pts[i]!;
+      const dx = Math.abs(b.x - a.x);
+      const dy = Math.abs(b.y - a.y);
+      if (dx > 0.01 && dy > 0.01) {
+        if (dy <= snapTolerance && dy < dx) {
+          if (i < pts.length - 1 || Math.abs(target.x - b.x) <= 0.05) {
+            b.y = a.y;
+          } else if (Math.abs(b.y - target.y) <= 0.05) {
+            a.y = b.y;
+          }
+        } else if (dx <= snapTolerance && dx < dy) {
+          if (i < pts.length - 1 || Math.abs(target.y - b.y) <= 0.05) {
+            b.x = a.x;
+          } else if (Math.abs(b.x - target.x) <= 0.05) {
+            a.x = b.x;
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Guarantee every consecutive segment in `[source, ...pts, target]` is strictly 0° or 90°
+  const full: PointLike[] = [{ x: source.x, y: source.y }];
+  const allTargets = [...pts, { x: target.x, y: target.y }];
+  for (const nextPt of allTargets) {
+    const currPt = full[full.length - 1] ?? source;
+    if (Math.abs(nextPt.x - currPt.x) > 0.05 && Math.abs(nextPt.y - currPt.y) > 0.05) {
+      const prevPt = full.length >= 2 ? full[full.length - 2] : undefined;
+      const prevWasH = prevPt
+        ? Math.abs(currPt.x - prevPt.x) >= Math.abs(currPt.y - prevPt.y)
+        : Math.abs(nextPt.x - currPt.x) >= Math.abs(nextPt.y - currPt.y);
+      const corner = prevWasH ? { x: currPt.x, y: nextPt.y } : { x: nextPt.x, y: currPt.y };
+      full.push(corner);
+    }
+    full.push({ x: nextPt.x, y: nextPt.y });
+  }
+
+  return simplifyCollinearPoints(full, 0.05).slice(1, -1);
 }
 
 /**
@@ -1388,8 +1575,8 @@ function computeOrthogonalRouteCore(
   const parallelOffset = (options.parallelIndex ?? 0) * (options.channelSpacing ?? 8);
 
   // If direct horizontal or vertical line with no obstacle collision and no parallel offset
-  const isDirectH = Math.abs(source.y - target.y) < 1;
-  const isDirectV = Math.abs(source.x - target.x) < 1;
+  const isDirectH = Math.abs(source.y - target.y) < 0.05;
+  const isDirectV = Math.abs(source.x - target.x) < 0.05;
 
   if (parallelOffset === 0) {
     if (isDirectH && !obstacles.some((r) => segmentIntersectsRect(source, target, r, padding))) {
@@ -1556,7 +1743,7 @@ export function computeOrthogonalRoute(
     options.sourceSide || options.targetSide || options.sourceBox || options.targetBox,
   );
   if (!hasPortConstraints) {
-    return computeOrthogonalRouteCore(source, target, obstacles, options);
+    return healOrthogonalVertices(source, target, computeOrthogonalRouteCore(source, target, obstacles, options));
   }
 
   const padding = options.padding ?? 12;
@@ -1608,13 +1795,13 @@ export function computeOrthogonalRoute(
 
   if (parallelOffset === 0) {
     // 1. Direct straight line (0 bends)
-    if ((Math.abs(source.x - target.x) < 1 || Math.abs(source.y - target.y) < 1) && isCandidateValid([])) {
+    if ((Math.abs(source.x - target.x) < 0.05 || Math.abs(source.y - target.y) < 0.05) && isCandidateValid([])) {
       return [];
     }
 
     // 2. Single 90-degree L-bend (1 vertex) if compatible with both port normals
     const lCandidates: PointLike[][] = [];
-    if (Math.abs(source.x - target.x) >= 1 && Math.abs(source.y - target.y) >= 1) {
+    if (Math.abs(source.x - target.x) >= 0.05 && Math.abs(source.y - target.y) >= 0.05) {
       const hv: PointLike[] = [{ x: target.x, y: source.y }];
       const vh: PointLike[] = [{ x: source.x, y: target.y }];
       if (isCandidateValid(hv)) lCandidates.push(hv);
@@ -1635,14 +1822,14 @@ export function computeOrthogonalRoute(
     : target;
 
   const buildStubCandidate = (inner: PointLike[]): PointLike[] => {
-    const full = simplifyCollinearPoints([source, sStub, ...inner, tStub, target], 0.5);
-    return full.slice(1, -1);
+    const full = simplifyCollinearPoints([source, sStub, ...inner, tStub, target], 0.05);
+    return healOrthogonalVertices(source, target, full.slice(1, -1));
   };
 
   const stubCandidates: PointLike[][] = [];
 
   // 3a. Direct connection between sStub and tStub
-  if (Math.abs(sStub.x - tStub.x) < 1 || Math.abs(sStub.y - tStub.y) < 1) {
+  if (Math.abs(sStub.x - tStub.x) < 0.05 || Math.abs(sStub.y - tStub.y) < 0.05) {
     const directStub = buildStubCandidate([]);
     if (isCandidateValid(directStub)) stubCandidates.push(directStub);
   }
@@ -1696,8 +1883,11 @@ export function portOrthogonalRouter(
   args: RouterOptions & Record<string, unknown> = {},
   edgeView?: RouterEdgeViewLike,
 ): PointLike[] {
-  // If manual vertices are explicitly specified, preserve them
+  // If manual vertices are explicitly specified, preserve them while healing any terminal/interior orthogonality drift
   if (vertices && vertices.length > 0) {
+    if (edgeView?.sourcePoint && edgeView?.targetPoint) {
+      return healOrthogonalVertices(edgeView.sourcePoint, edgeView.targetPoint, vertices);
+    }
     return vertices;
   }
 

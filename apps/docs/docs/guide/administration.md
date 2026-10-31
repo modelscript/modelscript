@@ -23,7 +23,7 @@ When a new ModelScript instance is deployed without an existing administrator ac
 3. **Instance Identity, Registration & Federation Policy**: Configures NodeInfo 2.0/2.1 metadata, email domain allowlists, and moderation auto-quarantine thresholds.
 4. **Starter Invites & Baseline Snapshot**: Generates initial invitation codes, records a `first-boot-baseline` SQLite hot backup (`VACUUM INTO` + SHA-256), signs the founding admin in, and **permanently locks** `POST /api/v1/setup/complete` (`403 Forbidden` on any subsequent calls).
 
-For automated GitOps / Helm / Ansible deployments, setting `ADMIN_INIT_USERNAME` and `ADMIN_INIT_PASSWORD` (or `AUTO_SEED_ADMIN=true`) bootstraps the founding administrator headlessly on boot.
+For automated GitOps / Helm / Ansible / Docker Compose deployments, setting `ADMIN_INIT_USERNAME` and `ADMIN_INIT_PASSWORD` (or `AUTO_SEED_ADMIN=true`) alongside `DEPLOYMENT_PRESET` (`tier3_flagship`, `tier2_corporate`, or `tier1_federated`) bootstraps the founding administrator headlessly on boot, applies the tier branding and federation policies, provisions cryptographic keys, and permanently locks the setup wizard without requiring any manual interaction.
 
 ### Role-Based Access Control (RBAC)
 
@@ -43,15 +43,27 @@ Access to the Platform Administration Console (`/admin`) and `/api/v1/admin/*` e
 5. **DMCA & Universal Resource Quarantine**: Public statutory takedown intake (`POST /api/v1/admin/dmca/notices`), universal resource quarantine across `post`, `package`, `repository`, and `artifact` targets, 17 U.S.C. § 512(g) counter-notice filing (14-day statutory window), and one-click restoration.
 6. **Security & Audit Logs**: Cryptographic SHA-256 hash-chained audit ledger (`GET /api/v1/admin/audit-logs/verify`) with hash-preserving GDPR IP redaction (`POST /api/v1/admin/audit-logs/redact-expired`, replacing expired raw IPs with `REDACTED:<ipToken>` without breaking chain verification).
 7. **Database, Backups & Migration**: Live schema migration dry-run/upgrade, `PRAGMA` relational & physical integrity checks, online SQLite WAL `VACUUM INTO` snapshots with SHA-256 checksums, `.db` snapshot download, point-in-time online restore (with automatic `pre-restore` safety snapshot), retention pruning, and portable instance migration bundles (`/api/v1/admin/bundle/export` & `/import`).
-8. **Instance Settings & Registration Invites**: Dynamic NodeInfo 2.0/2.1 branding (`instanceName`, `instanceDescription`, `contactEmail`), registration policy (`open`, `invite_only`, `domain_allowlist`, `closed`), multi-use registration invite codes with initial compute credit and role grants, and a live global announcement / maintenance mode banner (`/api/v1/instance/banner`).
+8. **Instance Settings & Registration Invites**: Dynamic NodeInfo 2.0/2.1 branding (`instanceName`, `instanceDescription`, `contactEmail`), registration policy (`open`, `invite_only`, `domain_allowlist`, `closed`), multi-use registration invite codes with initial compute credit and role grants, and a live global announcement / multi-tiered maintenance mode banner (`/api/v1/instance/banner`).
 9. **System Health & Enterprise Posture**: Live storage & SQLite WAL telemetry, HPC job queue counters, GeoIP/Mailer readiness, and (in Enterprise Edition) Air-Gap / FERC CEII / ITAR compliance posture.
 
-### Headless CLI Database & Backup Management (`msx db`)
+### Multi-Tiered Maintenance Mode, Step-Up Sudo & Prometheus Metrics
+
+- **Multi-Tiered Maintenance Mode (`off` | `scheduled` | `read_only` | `lockdown`)**:
+  - Configurable dynamically via `PATCH /api/v1/admin/settings` (`maintenanceMode` and `maintenanceEta`) or via environment variables (`MSX_MAINTENANCE_MODE`, `MSX_MAINTENANCE_ETA`).
+  - `scheduled` surfaces a countdown banner on `/api/v1/instance/banner`; `read_only` blocks non-admin `POST`/`PUT`/`PATCH`/`DELETE` requests with `503 Service Unavailable` and `Retry-After` headers while keeping read/download routes online; `lockdown` restricts all non-admin traffic during major maintenance windows.
+- **Step-Up Sudo Mode (`POST /api/v1/admin/sudo` & `REQUIRE_ADMIN_SUDO=true`)**:
+  - Re-verifies the administrator's password or TOTP code and mints a 15-minute `admin_sudo` JWT token (`X-Admin-Sudo-Token`) required when `REQUIRE_ADMIN_SUDO=true` for high-impact mutations (role changes, database restores, bundle imports, and DMCA restorations).
+- **Prometheus & OpenMetrics Telemetry (`GET /api/v1/admin/metrics`)**:
+  - Exposes real-time instance metrics in standard Prometheus `text/plain; version=0.0.4` format (`modelscript_process_memory_bytes`, `modelscript_db_size_bytes`, `modelscript_users_total`, `modelscript_packages_total`, `modelscript_federation_activities_total`, `modelscript_hpc_jobs_total`, `modelscript_moderation_open_reports`).
+
+### Headless CLI Database, Diagnostics & Backup Management (`msx db`)
 
 ```bash
 msx db status                                  # View current schema version and pending migrations
 msx db upgrade [--dry-run]                     # Apply pending migrations with automatic pre-flight snapshot
 msx db verify                                  # Run PRAGMA foreign_key_check & integrity_check
+msx db doctor                                  # Deep health check (SQLite, audit hash-chain, disk headroom)
+msx db support-bundle --file support.json      # Export redacted diagnostic support bundle (zero secrets)
 msx db backup [--label pre-release]            # Create online SQLite WAL snapshot with SHA-256 digest
 msx db backups                                 # List available snapshots, sizes, and SHA-256 digests
 msx db restore --file modelscript-backup-..db  # Verify integrity & perform online point-in-time restore
@@ -282,13 +294,13 @@ docker compose --env-file .env.enterprise --profile federated up -d
 
 #### B.3 Kubernetes StatefulSet Deployment
 
-Apply the hardened Kubernetes manifest at [`ee/deploy/kubernetes-appliance.yaml`](https://github.com/modelscript/modelscript/blob/main/ee/deploy/kubernetes-appliance.yaml) (pre-configured with `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `seccompProfile: RuntimeDefault`, and a strict zero-egress `NetworkPolicy`):
+Apply the hardened Kubernetes manifest at [`ee/deploy/kubernetes-appliance.yaml`](https://github.com/modelscript/modelscript/blob/main/ee/deploy/kubernetes-appliance.yaml) (pre-configured as a single-writer `StatefulSet` (`replicas: 1`) with `runAsNonRoot: true`, `seccompProfile: RuntimeDefault`, RFC 1918 `TRUSTED_PROXY_IPS`, and a strict zero-egress `NetworkPolicy`):
 
 ```bash
 kubectl create namespace modelscript-system
-kubectl -n modelscript-system create secret generic modelscript-ee-license \
-  --from-literal=MSX_LICENSE_KEY="msx_lic_<PAYLOAD>.<SIGNATURE>" \
-  --from-literal=JWT_SECRET="$(openssl rand -hex 32)"
+kubectl -n modelscript-system create secret generic modelscript-enterprise-secrets \
+  --from-literal=license-key="msx_lic_<PAYLOAD>.<SIGNATURE>" \
+  --from-literal=jwt-secret="$(openssl rand -hex 32)"
 kubectl apply -f ee/deploy/kubernetes-appliance.yaml
 ```
 
@@ -306,7 +318,7 @@ curl -s http://localhost:8080/api/v1/compliance/airgap | jq .
 
 ### Scenario C: Official `modelscript.org` & `ansatz.social` Cloud Production Deployment
 
-`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/playground`) on `ansatz.social`, alongside the WebGPU IDE (`/ide`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
+`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/playground`) on `ansatz.social`, alongside the WebGPU IDE (`/ide`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
 
 #### C.1 Initial Server Provisioning (`/opt/modelscript`)
 
@@ -327,20 +339,21 @@ chmod 600 .env.production
 #   MSX_LICENSE_ENFORCE=true
 #   MSX_LICENSE_KEY=<pre-minted modelscript-cloud-prod Ed25519 token>
 #   JWT_SECRET=<production-64-char-hex-secret>
+#   TOTP_ENCRYPTION_KEY=<production-64-char-hex-key>
 #   STRIPE_SECRET_KEY=sk_live_...
 #   STRIPE_WEBHOOK_SECRET=whsec_...
 
 # Pull prebuilt GHCR images and launch the production stack
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  --env-file .env.production --profile federated pull
+  --env-file .env.production --profile flagship pull
 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  --env-file .env.production --profile federated up -d --wait --remove-orphans
+  --env-file .env.production --profile flagship up -d --wait --remove-orphans
 ```
 
 #### C.2 Automated CI/CD Rollouts (`.github/workflows/ci.yml` & `.github/workflows/release.yml`)
 
-Every push to `main` and every tagged release in GitHub Actions builds and pushes all 6 Docker images (`api`, `api-ce`, `web`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` (tagged with both `:sha-<commit>` / `:<version>` and `:latest`) and triggers the `deploy_production` rollout job under a shared `production-deploy` concurrency lock. Configure either SSH or Webhook secrets in GitHub repository settings:
+Every push to `main` and every tagged release in GitHub Actions builds and pushes all 6 Docker images (`api`, `api-ce`, `web`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` (tagged with both `:sha-<commit>` / `:<version>` and `:latest`) and triggers the `deploy_production` rollout job under a shared `production-deploy` concurrency lock. Before rolling out new containers, the deployment job executes an online SQLite `VACUUM INTO` snapshot inside the running `api` container (`/app/apps/api/data/backups/pre-deploy-<timestamp>.db`). Configure either SSH or Webhook secrets in GitHub repository settings:
 
 | GitHub Secret                          | Description                                                                                  |
 | :------------------------------------- | :------------------------------------------------------------------------------------------- |
@@ -372,4 +385,51 @@ npm run ee:sign-license -- \
 
 # 3. Verify any license token offline against the embedded production public key
 npm run ee:verify-license -- msx_lic_<PAYLOAD>.<SIGNATURE>
+```
+
+---
+
+### 7. Upgrading & Rollback Runbook
+
+Follow this standard operating procedure whenever upgrading a self-hosted Ansatz hub or Enterprise appliance:
+
+```bash
+# 1. Place the hub in read_only maintenance mode so in-flight jobs finish cleanly
+curl -X PATCH https://hub.corp.internal/api/v1/admin/settings \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-Admin-Sudo-Token: $SUDO_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"maintenanceMode": "read_only"}'
+
+# 2. Take an atomic pre-upgrade snapshot and verify health
+msx db backup --label pre-upgrade
+msx db doctor
+
+# 3. Pull the target release images and preview pending schema migrations
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  --env-file .env.production --profile flagship pull
+msx db upgrade --dry-run
+
+# 4. Recreate containers and verify post-upgrade integrity
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  --env-file .env.production --profile flagship up -d --wait --remove-orphans
+msx db verify
+
+# 5. Exit maintenance mode once /health and /api/v1/ready report healthy
+curl -X PATCH https://hub.corp.internal/api/v1/admin/settings \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "X-Admin-Sudo-Token: $SUDO_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"maintenanceMode": "off"}'
+```
+
+If a release verification check fails and an immediate rollback is required:
+
+```bash
+# 1. Restore the pre-upgrade SQLite snapshot atomically
+msx db restore --file modelscript-backup-pre-upgrade.db
+
+# 2. Pin the previous image tag in .env.production (or docker-compose.prod.yml) and restart
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  --env-file .env.production --profile flagship up -d --wait
 ```

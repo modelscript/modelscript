@@ -67,6 +67,43 @@ export function isPrivateIp(ip: string): boolean {
 }
 
 /**
+ * Returns true if the IP address is loopback (127.0.0.0/8, ::1, 0.0.0.0/8, ::)
+ * or link-local / cloud instance metadata (169.254.0.0/16, fe80::/10).
+ * These addresses must NEVER be reachable via hostname allowlists (e.g., ALLOWED_INTRANET_HOSTS=.corp).
+ */
+export function isLoopbackOrMetadataIp(ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    const parts = ip.split(".").map(Number);
+    const b0 = parts[0]!;
+    const b1 = parts[1];
+    return b0 === 0 || b0 === 127 || (b0 === 169 && b1 === 254);
+  }
+  if (net.isIPv6(ip)) {
+    const lower = ip.toLowerCase();
+    if (lower === "::1" || lower === "::" || /^fe[89ab][0-9a-f]:/i.test(lower)) {
+      return true;
+    }
+    if (lower.startsWith("::ffff:") || (lower.startsWith("::") && lower.slice(2).includes("."))) {
+      const rest = lower.startsWith("::ffff:") ? lower.slice(7) : lower.slice(2);
+      if (rest.includes(".")) {
+        const parts = rest.split(".").map(Number);
+        const b0 = parts[0]!;
+        const b1 = parts[1];
+        return b0 === 0 || b0 === 127 || (b0 === 169 && b1 === 254);
+      }
+      const words = rest.split(":");
+      if (words.length === 2) {
+        const high = parseInt(words[0]!, 16);
+        const b0 = (high >> 8) & 0xff;
+        const b1 = high & 0xff;
+        return b0 === 0 || b0 === 127 || (b0 === 169 && b1 === 254);
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Checks whether a hostname is explicitly allowlisted for airgapped intranet deployments
  * via `ALLOWED_INTRANET_HOSTS` (comma-separated exact hostnames or domain suffixes like `.corp,.internal`).
  */
@@ -76,14 +113,27 @@ export function isAllowedIntranetHost(hostname: string): boolean {
   const clean = (hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname)
     .trim()
     .toLowerCase();
+  if (
+    !clean ||
+    clean === "localhost" ||
+    clean === "0.0.0.0" ||
+    clean === "127.0.0.1" ||
+    clean === "::1" ||
+    clean === "::" ||
+    clean === "169.254.169.254" ||
+    (net.isIP(clean) && isLoopbackOrMetadataIp(clean))
+  ) {
+    return false;
+  }
   const entries = raw
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   for (const entry of entries) {
+    if (entry === "*") continue; // Never allow wildcard all-hosts bypass
     if (entry === clean) return true;
-    if (entry.startsWith("*.") && clean.endsWith(entry.slice(1))) return true;
-    if (entry.startsWith(".") && clean.endsWith(entry)) return true;
+    if (entry.startsWith("*.") && clean.endsWith(entry.slice(1)) && clean.length > entry.length - 1) return true;
+    if (entry.startsWith(".") && clean.endsWith(entry) && clean.length > entry.length) return true;
   }
   return false;
 }
@@ -99,6 +149,10 @@ export function isAllowedIntranetIp(ip: string): boolean {
     .replace(/^::ffff:/i, "")
     .trim()
     .toLowerCase();
+  // Never allow cloud metadata IP 169.254.169.254 even if a broad CIDR is misconfigured
+  if (normalizedIp === "169.254.169.254" || isLoopbackOrMetadataIp(normalizedIp)) {
+    return false;
+  }
   const family = net.isIPv6(normalizedIp) ? "ipv6" : net.isIPv4(normalizedIp) ? "ipv4" : null;
   if (!family) return false;
 
@@ -138,7 +192,8 @@ export function isAllowedIntranetIp(ip: string): boolean {
 /**
  * Resolves a hostname via DNS and asserts that none of the resolved IP addresses
  * point to loopback, private, carrier-grade NAT, or cloud metadata ranges
- * (unless explicitly allowlisted via ALLOWED_INTRANET_HOSTS or ALLOWED_INTRANET_CIDRS).
+ * (unless explicitly allowlisted via ALLOWED_INTRANET_HOSTS or ALLOWED_INTRANET_CIDRS,
+ * which still never permits loopback or link-local metadata IPs).
  * Protects against DNS rebinding (TOCTOU) attacks.
  */
 export async function resolveAndValidatePublicHost(
@@ -147,13 +202,28 @@ export async function resolveAndValidatePublicHost(
 ): Promise<string[]> {
   const cleanHost = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
   const hostAllowlisted = isAllowedIntranetHost(cleanHost);
+  const airgapEnforced = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
 
   // If already a literal IP address, validate directly without network lookup
   if (net.isIP(cleanHost)) {
+    if (isLoopbackOrMetadataIp(cleanHost)) {
+      throw new Error(`SSRF Blocked: ${hostname} is a private IP address (${cleanHost})`);
+    }
     if (isPrivateIp(cleanHost) && !hostAllowlisted && !isAllowedIntranetIp(cleanHost)) {
       throw new Error(`SSRF Blocked: ${hostname} is a private IP address (${cleanHost})`);
     }
+    if (airgapEnforced && !isAllowedIntranetIp(cleanHost)) {
+      throw new Error(
+        `Air-Gap Egress Blocked: Outbound connection to IP '${cleanHost}' is forbidden in air-gapped mode`,
+      );
+    }
     return [cleanHost];
+  }
+
+  if (airgapEnforced && !hostAllowlisted) {
+    throw new Error(
+      `Air-Gap Egress Blocked: Outbound connection to external host '${hostname}' is forbidden in air-gapped mode`,
+    );
   }
 
   let addresses: { address: string; family: number }[];
@@ -172,6 +242,9 @@ export async function resolveAndValidatePublicHost(
   }
 
   for (const entry of addresses) {
+    if (isLoopbackOrMetadataIp(entry.address)) {
+      throw new Error(`SSRF Blocked: ${hostname} resolves to private IP ${entry.address}`);
+    }
     if (isPrivateIp(entry.address) && !hostAllowlisted && !isAllowedIntranetIp(entry.address)) {
       throw new Error(`SSRF Blocked: ${hostname} resolves to private IP ${entry.address}`);
     }
@@ -202,9 +275,12 @@ export function assertSafePublicUrl(rawUrl: string): URL {
   // Strip IPv6 brackets if present for IP checking
   const hostname = rawHostname.startsWith("[") && rawHostname.endsWith("]") ? rawHostname.slice(1, -1) : rawHostname;
 
-  if (isAllowedIntranetHost(hostname) || (net.isIP(hostname) && isAllowedIntranetIp(hostname))) {
+  const intranetAllowed = isAllowedIntranetHost(hostname) || (net.isIP(hostname) && isAllowedIntranetIp(hostname));
+  if (intranetAllowed) {
     return parsed;
   }
+
+  const airgapEnforced = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
 
   // Reject local and internal hostnames
   if (
@@ -241,6 +317,12 @@ export function assertSafePublicUrl(rawUrl: string): URL {
         throw new Error(`Forbidden private IPv6: ${rawHostname}`);
       }
     }
+  }
+
+  if (airgapEnforced) {
+    throw new Error(
+      `Air-Gap Egress Blocked: Outbound connection to external host '${rawHostname}' is forbidden in air-gapped mode`,
+    );
   }
 
   return parsed;

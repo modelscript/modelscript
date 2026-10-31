@@ -65,8 +65,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Web Application and Upstream Packages
-        run: npx nx build @modelscript/web
+      - name: Build Upstream Libraries for Web Application
+        run: npx nx run-many -t build --exclude=@modelscript/web,@modelscript/docs,@modelscript/api,@modelscript/cli,@modelscript/ide
 
       - name: Build Tauri Desktop Application
         run: npx @tauri-apps/cli build ${{ matrix.args }}

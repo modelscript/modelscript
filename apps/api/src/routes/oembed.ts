@@ -15,14 +15,20 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
-import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { JWT_SECRET, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { isCorporateOrAirgapTier } from "../util/tier-presets.js";
 
 function getEmbedSigningSecret(): string {
-  return (
-    process.env["EMBED_TOKEN_SECRET"] ||
-    process.env["JWT_SECRET"] ||
-    "modelscript-embed-intranet-signing-secret-default"
-  );
+  return process.env["EMBED_TOKEN_SECRET"] || process.env["JWT_SECRET"] || JWT_SECRET;
+}
+
+function requiresCorporateEmbedAuth(database: LibraryDatabase): boolean {
+  const settings = database.isOpen() ? database.getInstanceSettings() : undefined;
+  if (!settings) return false;
+  if (settings.federationMode === "disabled" && settings.registrationMode !== "open") {
+    return true;
+  }
+  return process.env["NODE_ENV"] === "production" && isCorporateOrAirgapTier(settings);
 }
 
 export interface SignedEmbedTokenPayload {
@@ -257,6 +263,11 @@ export function oembedRouter(database: LibraryDatabase): Router {
 
   // ── Short-Link Morsel Snippet Storage (Solves URL length limits for large models) ──
   router.post("/morsels", optionalAuth, (req: Request, res: Response): void => {
+    if (requiresCorporateEmbedAuth(database) && !req.user) {
+      res.status(401).json({ error: "Authentication required to create morsels on corporate air-gapped instances." });
+      return;
+    }
+
     const { code, dialect, lang, title, view, payload } = req.body ?? {};
     if (typeof code !== "string" || code.trim().length === 0) {
       res.status(400).json({ error: "Field 'code' is required and must be a non-empty string." });
@@ -294,7 +305,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
     });
   });
 
-  router.get("/morsels/:id", (req: Request, res: Response): void => {
+  router.get("/morsels/:id", optionalAuth, (req: Request, res: Response): void => {
     const rawId = req.params["id"];
     const id = Array.isArray(rawId) ? rawId[0] : rawId;
     if (!id) {
@@ -314,7 +325,8 @@ export function oembedRouter(database: LibraryDatabase): Router {
         parsedPayload = {};
       }
     }
-    res.setHeader("Cache-Control", "public, max-age=86400");
+    const isCorporate = isCorporateOrAirgapTier(database.isOpen() ? database.getInstanceSettings() : undefined);
+    res.setHeader("Cache-Control", isCorporate ? "private, no-store" : "public, max-age=86400");
     res.json({
       id: snippet.id,
       dialect: snippet.dialect,
@@ -356,7 +368,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
     });
   });
 
-  router.get("/oembed", (req: Request, res: Response): void => {
+  router.get("/oembed", optionalAuth, (req: Request, res: Response): void => {
     const rawUrl = req.query["url"] as string;
     const format = (req.query["format"] as string) || "json";
     const maxWidth = parseInt(req.query["maxwidth"] as string, 10) || 800;
@@ -386,6 +398,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
     }
 
     const settings = database.getInstanceSettings();
+    const isCorporate = isCorporateOrAirgapTier(settings);
     const brandName = settings.instanceName || "Ansatz";
     const host = parsedUrl.origin;
     let title = `${brandName} Interactive Engineering Model`;
@@ -428,6 +441,20 @@ export function oembedRouter(database: LibraryDatabase): Router {
     // 3. Check if URL is a social post permalink (/p/:id or /posts/:id)
     const postMatch = parsedUrl.pathname.match(/\/(?:p|posts)\/(\d+)/);
     if (postMatch && postMatch[1]) {
+      const embedTokenParam =
+        (typeof req.query["embed_token"] === "string" ? req.query["embed_token"] : undefined) ||
+        parsedUrl.searchParams.get("embed_token") ||
+        undefined;
+      const hasValidEmbedToken = embedTokenParam
+        ? verifySignedEmbedToken(embedTokenParam, undefined, req.headers.origin).valid
+        : false;
+      if (requiresCorporateEmbedAuth(database) && !req.user && !hasValidEmbedToken) {
+        res
+          .status(401)
+          .json({ error: "Authentication required to unfurl internal posts on corporate air-gapped instances." });
+        return;
+      }
+
       const postId = parseInt(postMatch[1], 10);
       try {
         const post = database.getPost(postId);
@@ -483,7 +510,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
     const iframeHtml = `<iframe src="${safeEmbedSrc}" width="100%" height="${height}" frameborder="0" allow="camera; microphone; display-capture; fullscreen" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads" style="border: 1px solid rgba(6,182,212,0.3); border-radius: 8px;"></iframe>`;
 
     res.setHeader("Content-Type", "application/json");
-    res.setHeader("Cache-Control", "public, max-age=86400"); // 24h cache
+    res.setHeader("Cache-Control", isCorporate ? "private, no-store" : "public, max-age=86400"); // 24h cache on public tiers
 
     res.json({
       type: "rich",

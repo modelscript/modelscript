@@ -13,6 +13,8 @@ import { getTranslations, uiLanguages } from "./util/i18n";
 import {
   applyDiagramEdits,
   applyLspEdits,
+  applyLspTextEditsToString,
+  didChange,
   didClose,
   didOpen,
   getComponentProperties,
@@ -35,6 +37,8 @@ import {
 import ParameterSliderRibbon from "./ParameterSliderRibbon";
 
 const CodeEditor = React.lazy(() => import("./Code"));
+
+let nextEmbedMorselId = 1;
 
 export interface MorselEditorProps {
   dataUrl?: DataUrl | null | undefined;
@@ -74,9 +78,24 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [dialect, setDialectState] = useState<string>(initialLangInfo.id);
   const [diagramType, setDiagramType] = useState<string>(initialLangInfo.diagramTypes?.[0]?.id ?? "diagram");
   const [sidecarContent, setSidecarContent] = useState<string | undefined>(undefined);
-  const documentUri = useMemo(() => `file:///document.${getLanguageExtension(dialect)}`, [dialect]);
+  const instanceDocPrefix = useMemo(
+    () => (props.embed ? `file:///embed_${nextEmbedMorselId++}_document` : "file:///document"),
+    [props.embed],
+  );
+  const documentUri = useMemo(
+    () => `${instanceDocPrefix}.${getLanguageExtension(dialect)}`,
+    [instanceDocPrefix, dialect],
+  );
   const documentUriRef = useRef(documentUri);
   documentUriRef.current = documentUri;
+
+  useEffect(() => {
+    if (!props.embed) return;
+    const uriOnMount = documentUriRef.current;
+    return () => {
+      didClose(uriOnMount);
+    };
+  }, [props.embed]);
 
   const [isShareDialogOpen, setShareDialogOpen] = useState(false);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
@@ -322,7 +341,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
   const [treeWidth, setTreeWidth] = useState(300);
-  const [propertiesWidth, setPropertiesWidth] = useState(300);
+  const [propertiesWidth, setPropertiesWidth] = useState(props.embed ? 240 : 300);
   const { theme, toggleTheme } = useSiteTheme();
   const isDark = theme === "dark";
   const colorMode = isDark ? "dark" : "light";
@@ -341,47 +360,76 @@ export default function MorselEditor(props: MorselEditorProps) {
   const pendingDiagramActionsRef = useRef<any[]>([]);
   const diagramActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diagramEditQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const onCodeChangeRef = useRef(props.onCodeChange);
+  onCodeChangeRef.current = props.onCodeChange;
 
-  const enqueueDiagramAction = useCallback((action: any) => {
-    if (!editorRef.current) return;
-    pendingDiagramActionsRef.current.push(action);
-    if (diagramActionTimerRef.current) clearTimeout(diagramActionTimerRef.current);
+  const enqueueDiagramAction = useCallback(
+    (action: any) => {
+      pendingDiagramActionsRef.current.push(action);
+      if (diagramActionTimerRef.current) clearTimeout(diagramActionTimerRef.current);
 
-    const isSpatial = ["move", "resize", "rotate", "moveEdge"].includes(action.type);
-    if (!isSpatial) setIsDiagramLoading(true);
-    const delay = isSpatial ? 10 : 0; // reduced delay since diagram-core batches correctly now
+      const isSpatial = ["move", "resize", "rotate", "moveEdge"].includes(action.type);
+      if (!isSpatial) setIsDiagramLoading(true);
+      const delay = isSpatial ? 10 : 0; // reduced delay since diagram-core batches correctly now
 
-    diagramActionTimerRef.current = setTimeout(() => {
-      const actions = pendingDiagramActionsRef.current;
-      pendingDiagramActionsRef.current = [];
-      diagramActionTimerRef.current = null;
-      if (actions.length > 0) {
-        diagramEditQueueRef.current = diagramEditQueueRef.current
-          .then(async () => {
-            const response = await applyDiagramEdits(documentUriRef.current, actions, 1);
-            if (response?.sidecarContent !== undefined) {
-              setSidecarContent(response.sidecarContent);
-            }
-            if (response && response.edits && response.edits.length > 0 && editorRef.current) {
-              if (response.renderHint === "none") {
-                isSpatialEditPending.current = true;
-              } else {
-                isSpatialEditPending.current = false;
+      diagramActionTimerRef.current = setTimeout(() => {
+        const actions = pendingDiagramActionsRef.current;
+        pendingDiagramActionsRef.current = [];
+        diagramActionTimerRef.current = null;
+        if (actions.length > 0) {
+          diagramEditQueueRef.current = diagramEditQueueRef.current
+            .then(async () => {
+              const response = await applyDiagramEdits(documentUriRef.current, actions, 1);
+              if (response?.sidecarContent !== undefined) {
+                setSidecarContent(response.sidecarContent);
               }
-              applyLspEdits(editorRef.current, response.edits, actions[0].type);
-              // Yield to event loop to ensure didChange is sent to LSP before next edit is computed
-              await new Promise((resolve) => setTimeout(resolve, 50));
-            } else if (response?.sidecarContent !== undefined) {
+              if (response && response.edits && response.edits.length > 0) {
+                if (response.renderHint === "none") {
+                  isSpatialEditPending.current = true;
+                } else {
+                  isSpatialEditPending.current = false;
+                }
+                if (editorRef.current) {
+                  applyLspEdits(editorRef.current, response.edits, actions[0].type);
+                  const updatedCode = editorRef.current.getValue();
+                  setLastLoadedContent(updatedCode);
+                  if (codeEditorRef.current) {
+                    await codeEditorRef.current.sync();
+                  } else {
+                    didChange(documentUriRef.current, updatedCode);
+                  }
+                  onCodeChangeRef.current?.(updatedCode);
+                } else {
+                  const baseText = lastLoadedContentRef.current || content;
+                  const updatedCode = applyLspTextEditsToString(baseText, response.edits);
+                  setLastLoadedContent(updatedCode);
+                  didChange(documentUriRef.current, updatedCode);
+                  onCodeChangeRef.current?.(updatedCode);
+                  if (response.renderHint === "none") {
+                    isSpatialEditPending.current = false;
+                    setIsDiagramLoading(false);
+                  } else {
+                    setContextVersion((v) => v + 1);
+                  }
+                }
+                // Yield to event loop to ensure didChange is processed by LSP before next edit is computed
+                await new Promise((resolve) => setTimeout(resolve, 20));
+              } else if (response?.sidecarContent !== undefined) {
+                setIsDiagramLoading(false);
+                setContextVersion((v) => v + 1);
+              } else {
+                setIsDiagramLoading(false);
+              }
+            })
+            .catch((err) => {
+              console.error("Failed to apply diagram edit batch:", err);
               setIsDiagramLoading(false);
-              setContextVersion((v) => v + 1);
-            }
-          })
-          .catch((err) => {
-            console.error("Failed to apply diagram edit batch:", err);
-          });
-      }
-    }, delay);
-  }, []);
+            });
+        }
+      }, delay);
+    },
+    [content],
+  );
 
   const handleRevealLine = useCallback((line: number, identifier?: string) => {
     const ed = editorRef.current;
@@ -708,8 +756,8 @@ export default function MorselEditor(props: MorselEditorProps) {
       const prevInfo = getLanguageInfo(dialect);
       if (nextInfo.id === dialect) return;
 
-      const prevUri = `file:///document.${getLanguageExtension(dialect)}`;
-      const nextUri = `file:///document.${getLanguageExtension(nextInfo.id)}`;
+      const prevUri = `${instanceDocPrefix}.${getLanguageExtension(dialect)}`;
+      const nextUri = `${instanceDocPrefix}.${getLanguageExtension(nextInfo.id)}`;
 
       didClose(prevUri);
       setDialectState(nextInfo.id);
@@ -739,7 +787,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       setContextVersion((v) => v + 1);
       props.onDialectChange?.(nextInfo.id);
     },
-    [dialect, props.onDialectChange],
+    [dialect, instanceDocPrefix, props.onDialectChange],
   );
 
   useEffect(() => {
@@ -774,7 +822,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         }
         editorRef.current.setValue(fetchedContent);
         setLastLoadedContent(fetchedContent);
-        didOpen("file:///document.mo", fetchedContent, "modelica");
+        didOpen(`${instanceDocPrefix}.mo`, fetchedContent, "modelica");
         codeEditorRef.current?.sync();
         setContextVersion((v) => v + 1);
       } else if (error) {

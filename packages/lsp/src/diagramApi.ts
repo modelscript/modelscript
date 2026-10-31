@@ -44,20 +44,49 @@ function getModelicaDiagramOps(): any {
 export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
   edits.sort((a, b) => {
     if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
-    return a.range.start.character - b.range.start.character;
+    if (a.range.start.character !== b.range.start.character) return a.range.start.character - b.range.start.character;
+    if (a.range.end.line !== b.range.end.line) return a.range.end.line - b.range.end.line;
+    return a.range.end.character - b.range.end.character;
   });
 
-  return edits.filter((edit, i) => {
-    if (i === 0) return true;
-    const prev = edits[i - 1]!;
+  const accepted: TextEdit[] = [];
+  for (const edit of edits) {
+    if (accepted.length === 0) {
+      accepted.push(edit);
+      continue;
+    }
+    const prev = accepted[accepted.length - 1]!;
+    const isPrevInsert =
+      prev.range.start.line === prev.range.end.line && prev.range.start.character === prev.range.end.character;
+    const isCurrInsert =
+      edit.range.start.line === edit.range.end.line && edit.range.start.character === edit.range.end.character;
+
     if (
       edit.range.start.line < prev.range.end.line ||
       (edit.range.start.line === prev.range.end.line && edit.range.start.character < prev.range.end.character)
     ) {
-      return false;
+      continue;
     }
-    return true;
-  });
+    if (
+      !isPrevInsert &&
+      !isCurrInsert &&
+      edit.range.start.line === prev.range.start.line &&
+      edit.range.start.character === prev.range.start.character
+    ) {
+      continue;
+    }
+    if (
+      isPrevInsert &&
+      isCurrInsert &&
+      edit.range.start.line === prev.range.start.line &&
+      edit.range.start.character === prev.range.start.character &&
+      edit.newText === prev.newText
+    ) {
+      continue;
+    }
+    accepted.push(edit);
+  }
+  return accepted;
 }
 
 // ── Backend Interface ──
@@ -2582,10 +2611,27 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           if (docText !== undefined) {
             for (let i = 0; i < lines.length; i++) {
               if (maskedLines[i]!.includes(action.source) && maskedLines[i]!.includes(action.target)) {
+                let endLine = i;
+                if (maskedLines[i]!.includes("(") && !maskedLines[i]!.trimEnd().endsWith(";")) {
+                  let parenDepth = 0;
+                  for (let l = i; l < Math.min(lines.length, i + 20); l++) {
+                    const ml = maskedLines[l]!;
+                    for (let c = 0; c < ml.length; c++) {
+                      if (ml[c] === "(" || ml[c] === "{") parenDepth++;
+                      else if (ml[c] === ")" || ml[c] === "}") {
+                        if (parenDepth > 0) parenDepth--;
+                      } else if (ml[c] === ";" && parenDepth === 0) {
+                        endLine = l;
+                        l = lines.length;
+                        break;
+                      }
+                    }
+                  }
+                }
                 allEdits.push({
                   range: {
                     start: { line: i, character: 0 },
-                    end: { line: i + 1, character: 0 },
+                    end: { line: endLine + 1, character: 0 },
                   },
                   newText: "",
                 });
@@ -2601,6 +2647,24 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             for (let i = 0; i < lines.length; i++) {
               const line = lines[i]!;
               if (maskedLines[i]!.includes(action.oldSource) && maskedLines[i]!.includes(action.oldTarget)) {
+                let endLine = i;
+                if (maskedLines[i]!.includes("(") && !maskedLines[i]!.trimEnd().endsWith(";")) {
+                  let parenDepth = 0;
+                  for (let l = i; l < Math.min(lines.length, i + 20); l++) {
+                    const ml = maskedLines[l]!;
+                    for (let c = 0; c < ml.length; c++) {
+                      if (ml[c] === "(" || ml[c] === "{") parenDepth++;
+                      else if (ml[c] === ")" || ml[c] === "}") {
+                        if (parenDepth > 0) parenDepth--;
+                      } else if (ml[c] === ";" && parenDepth === 0) {
+                        endLine = l;
+                        l = lines.length;
+                        break;
+                      }
+                    }
+                  }
+                }
+
                 let newEdgeText = "";
                 const edgeTemplates = mutations?.edgeTemplates;
                 const edgeTemplate =
@@ -2631,7 +2695,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                 allEdits.push({
                   range: {
                     start: { line: i, character: 0 },
-                    end: { line: i, character: line.length },
+                    end: { line: endLine, character: lines[endLine]!.length },
                   },
                   newText: indent + newEdgeText.trim(),
                 });
@@ -5164,6 +5228,7 @@ export function processDiagramEditBatch(
   const ops = getModelicaDiagramOps();
   const allEdits: TextEdit[] = [];
   let needsRender: "none" | "immediate" | "debounced" = "none";
+  const createdComponentNames = new Set<string>();
 
   for (const action of request.actions) {
     switch (action.type) {
@@ -5223,14 +5288,18 @@ export function processDiagramEditBatch(
         break;
       case "addComponent": {
         const baseName = action.className.split(".").pop() || "comp";
-        let uniqueName = baseName + "1";
+        let uniqueName = action.name || baseName + "1";
         let counter = 1;
 
         const existingNames = new Set(Array.from(classInstance.components || []).map((c: any) => c.name));
-        while (existingNames.has(uniqueName)) {
-          counter++;
-          uniqueName = baseName + counter;
+        for (const n of createdComponentNames) existingNames.add(n);
+        if (!action.name) {
+          while (existingNames.has(uniqueName)) {
+            counter++;
+            uniqueName = baseName + counter;
+          }
         }
+        createdComponentNames.add(uniqueName);
         if (ops.computeComponentInsert) {
           allEdits.push(
             ...ops.computeComponentInsert(classInstance, action.className, uniqueName, action.x, action.y, docText),
@@ -5266,7 +5335,7 @@ export function processDiagramEditBatch(
     }
   }
 
-  const sortFn = ops.deduplicateAndSort ?? ((edits: TextEdit[]) => edits);
+  const sortFn = ops.deduplicateAndSort ?? deduplicateAndSort;
   return {
     seq: request.seq,
     edits: sortFn(allEdits),

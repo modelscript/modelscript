@@ -36,7 +36,6 @@ import Sidebar from "./Sidebar";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { ComposeContext, type ComposeInitialState } from "./ComposeContext";
-import { OfflineBanner } from "./OfflineBanner";
 
 const ComposeModal = React.lazy(() => import("./ComposeModal"));
 const DevFlagsModal = React.lazy(() => import("./DevFlagsModal").then((m) => ({ default: m.DevFlagsModal })));
@@ -514,7 +513,6 @@ const AppShell: React.FC = () => {
 
   return (
     <ComposeContext.Provider value={{ openCompose: handleOpenComposeContext }}>
-      <OfflineBanner />
       <div
         style={
           {
@@ -588,16 +586,25 @@ const AppShell: React.FC = () => {
               </Banner>
             )}
 
-            <BottomBarContainer>
+            <BottomBarContainer role="navigation" aria-label="Primary mobile navigation">
               {user && (
-                <BottomBarButton $active={location.pathname === "/home"} onClick={() => navigate("/home")}>
+                <BottomBarButton
+                  $active={location.pathname === "/home"}
+                  onClick={() => navigate("/home")}
+                  aria-label="Home"
+                >
                   <HomeIcon size={24} />
                 </BottomBarButton>
               )}
-              <BottomBarButton $active={location.pathname === "/explore"} onClick={() => navigate("/explore")}>
+              <BottomBarButton
+                $active={location.pathname === "/explore"}
+                onClick={() => navigate("/explore")}
+                aria-label="Explore"
+              >
                 <SearchIcon size={24} />
               </BottomBarButton>
               <CenterPostButton
+                aria-label="Create new post"
                 onClick={() => {
                   if (user) {
                     setIsComposeOpen(true);
@@ -612,6 +619,7 @@ const AppShell: React.FC = () => {
                 $active={location.pathname === "/notifications"}
                 onClick={() => navigate(user ? "/notifications" : "/login")}
                 style={{ position: "relative" }}
+                aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
               >
                 <BellIcon size={24} />
                 {unreadCount > 0 && (
@@ -641,6 +649,7 @@ const AppShell: React.FC = () => {
               <BottomBarButton
                 $active={Boolean(user && location.pathname === `/${user.username}`)}
                 onClick={() => navigate(user ? `/${user.username}` : "/login")}
+                aria-label="Profile"
               >
                 <PersonIcon size={24} />
               </BottomBarButton>
@@ -677,7 +686,14 @@ const AppShell: React.FC = () => {
                   <Link to="/repos">
                     <RepoIcon size={20} /> Repositories
                   </Link>
-                  <Link to="/guide/introduction" reloadDocument>
+                  <Link
+                    to={
+                      branding.docsBaseUrl && !branding.docsBaseUrl.trim().startsWith("/")
+                        ? `${branding.docsBaseUrl.trim().replace(/\/+$/, "")}/guide/introduction`
+                        : "/guide/introduction"
+                    }
+                    reloadDocument
+                  >
                     <BookIcon size={20} /> Docs
                   </Link>
                   {hasIde && (
@@ -924,7 +940,7 @@ const AppShell: React.FC = () => {
                 <button
                   onClick={() => {
                     setIsTopUpModalOpen(false);
-                    navigate("/settings");
+                    navigate("/settings/billing");
                   }}
                   style={{
                     background: "none",

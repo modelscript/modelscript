@@ -27,6 +27,7 @@ import {
   type MailerRuntimeConfig,
   type SmtpTlsMode,
 } from "../services/mailer.js";
+import { getClientIp } from "../util/client-ip.js";
 import { resolveBrandInstanceName } from "../util/registration-policy.js";
 import { verifyAndConsumeBackupCode, verifyTotpCode } from "../util/totp.js";
 
@@ -84,80 +85,14 @@ const moderatorAuth = createStaffGuard("admin", "moderator");
 const auditorAuth = createStaffGuard("admin", "auditor");
 const staffAuth = createStaffGuard("admin", "moderator", "auditor");
 
-const SETUP_TIER_PRESETS = {
-  tier0_local_dev: {
-    id: "tier0_local_dev",
-    label: "Tier 0: Ansatz Local (Offline Developer Sandbox)",
-    description:
-      "Open local registration with zero federation or internet dependencies. Ideal for standalone workstation modeling and offline debugging.",
-    registrationMode: "open" as const,
-    federationMode: "disabled" as const,
-    waitlistEnabled: false,
-    userInvitesEnabled: false,
-    onboardingWizardEnabled: false,
-    academicFastTrackEnabled: false,
-    autoQuarantineReportThreshold: 10,
-    backupRetentionCount: 3,
-    defaultInstanceName: "Ansatz Local",
-    defaultInstanceBadge: "Local",
-    defaultDocsBaseUrl: "/docs",
-    defaultShowPoweredBy: false,
-  },
-  tier1_federated: {
-    id: "tier1_federated",
-    label: "Tier 1: Ansatz Lab (Independent Federated Node)",
-    description:
-      "Invite-only registration with open ActivityPub S2S federation. Ideal for research labs, universities, and self-hosted federated operators.",
-    registrationMode: "invite_only" as const,
-    federationMode: "open" as const,
-    waitlistEnabled: false,
-    userInvitesEnabled: true,
-    onboardingWizardEnabled: true,
-    academicFastTrackEnabled: true,
-    autoQuarantineReportThreshold: 3,
-    backupRetentionCount: 7,
-    defaultInstanceName: "Ansatz Lab",
-    defaultInstanceBadge: "Lab",
-    defaultDocsBaseUrl: "https://modelscript.org",
-    defaultShowPoweredBy: true,
-  },
-  tier2_corporate: {
-    id: "tier2_corporate",
-    label: "Tier 2: Ansatz Enterprise (Corporate Intranet / Air-Gapped Appliance)",
-    description:
-      "Email domain allowlist registration with outbound ActivityPub federation disabled. Ideal for internal R&D intranets and classified SCIF/air-gapped appliances.",
-    registrationMode: "domain_allowlist" as const,
-    federationMode: "disabled" as const,
-    waitlistEnabled: false,
-    userInvitesEnabled: false,
-    onboardingWizardEnabled: false,
-    academicFastTrackEnabled: false,
-    autoQuarantineReportThreshold: 5,
-    backupRetentionCount: 14,
-    defaultInstanceName: "Ansatz Enterprise",
-    defaultInstanceBadge: "Enterprise",
-    defaultDocsBaseUrl: "/docs",
-    defaultShowPoweredBy: true,
-  },
-  tier3_flagship: {
-    id: "tier3_flagship",
-    label: "Tier 3: Ansatz Social (Public Flagship Node at ansatz.social)",
-    description:
-      "Open or gated registration with anti-Sybil verification, open ActivityPub federation, and automated report threshold quarantine. Flagship node at ansatz.social.",
-    registrationMode: "open" as const,
-    federationMode: "open" as const,
-    waitlistEnabled: true,
-    userInvitesEnabled: true,
-    onboardingWizardEnabled: true,
-    academicFastTrackEnabled: true,
-    autoQuarantineReportThreshold: 5,
-    backupRetentionCount: 30,
-    defaultInstanceName: "Ansatz",
-    defaultInstanceBadge: "",
-    defaultDocsBaseUrl: "https://modelscript.org",
-    defaultShowPoweredBy: true,
-  },
-};
+import { safePublicFetch } from "../util/ssrf.js";
+import {
+  SETUP_TIER_PRESETS,
+  isFederationDisabled,
+  resolveTierPreset,
+  type SetupTierPreset,
+} from "../util/tier-presets.js";
+export { SETUP_TIER_PRESETS, resolveTierPreset, type SetupTierPreset };
 
 export function adminRouter(
   database: LibraryDatabase,
@@ -170,15 +105,17 @@ export function adminRouter(
   // ── Public Instance Banner & First-Run Setup Wizard ──
 
   /**
-   * GET /api/v1/instance/banner
+   * GET /api/v1/instance/banner & GET /api/v1/instance/branding
    * Public endpoint returning non-sensitive instance identity, white-label branding, announcement banner, registration/federation modes, and first-run setup state
    */
-  router.get("/instance/banner", (_req: Request, res: Response) => {
+  router.get(["/instance/banner", "/instance/branding"], (_req: Request, res: Response) => {
     try {
       const setupStatus = database.getSetupStatus();
       const { settings } = setupStatus;
       const isDown = settings.maintenanceLevel === "lockdown";
       const isReadOnly = settings.maintenanceLevel === "read_only";
+      const buildVersion =
+        process.env["MSX_BUILD_SHA"] || process.env["IMAGE_TAG"] || process.env["npm_package_version"] || "0.0.18";
       res.json({
         instanceName: settings.instanceName,
         instanceBadge: settings.instanceBadge,
@@ -191,6 +128,9 @@ export function adminRouter(
         brandAccentColor: settings.brandAccentColor,
         docsBaseUrl: settings.docsBaseUrl,
         showPoweredBy: settings.showPoweredBy,
+        buildVersion,
+        ingressMode: settings.ingressMode,
+        cloudflareTunnelConfigured: settings.cloudflareTunnelConfigured,
         maintenanceMode: settings.maintenanceMode,
         maintenanceLevel: settings.maintenanceLevel,
         maintenanceEta: settings.maintenanceEta,
@@ -206,6 +146,10 @@ export function adminRouter(
         onboardingWizardEnabled: settings.onboardingWizardEnabled ?? false,
         customTermsMarkdown: settings.customTermsMarkdown,
         customPrivacyMarkdown: settings.customPrivacyMarkdown,
+        authorizedFetchEnabled: settings.authorizedFetchEnabled ?? false,
+        federatedTimelinePublic: settings.federatedTimelinePublic ?? true,
+        domainBlocksPublic: settings.domainBlocksPublic ?? true,
+        rules: database.listInstanceRules(),
         needsSetup: setupStatus.needsSetup,
         setupCompleted: setupStatus.setupCompleted,
         subsystems: {
@@ -219,6 +163,48 @@ export function adminRouter(
       });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch instance banner" });
+    }
+  });
+
+  /**
+   * GET /api/v1/instance/rules
+   * Public endpoint listing structured instance moderation rules
+   */
+  router.get("/instance/rules", (_req: Request, res: Response) => {
+    try {
+      res.json({ rules: database.listInstanceRules() });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list instance rules" });
+    }
+  });
+
+  /**
+   * GET /api/v1/instance/domain-blocks
+   * Public transparency endpoint listing moderated federation domains (with optional obfuscation)
+   */
+  router.get("/instance/domain-blocks", optionalAuth, (req: Request, res: Response) => {
+    try {
+      const settings = database.getInstanceSettings();
+      const isStaff = req.user?.role === "admin" || req.user?.role === "moderator" || req.user?.accountType === "admin";
+      if (!settings.domainBlocksPublic && !isStaff) {
+        res.status(403).json({ error: "Domain block list is not publicly shared on this instance" });
+        return;
+      }
+      res.json({ domainBlocks: database.listPublicDomainBlocks() });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch public domain blocks" });
+    }
+  });
+
+  /**
+   * GET /api/v1/instance/peers
+   * Public endpoint listing known federated peer domains
+   */
+  router.get("/instance/peers", (_req: Request, res: Response) => {
+    try {
+      res.json({ peers: database.listKnownPeers() });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list federated peers" });
     }
   });
 
@@ -360,6 +346,8 @@ export function adminRouter(
         profileTier,
         admin,
         settings: rawSettings,
+        ingressMode: topLevelIngressMode,
+        tunnelToken: topLevelTunnelToken,
         initialInvitesCount,
         initialInviteMaxUses,
         initialInviteCredits,
@@ -460,10 +448,7 @@ export function adminRouter(
       }
 
       // Apply tier preset + explicit settings overrides
-      const preset =
-        profileTier && profileTier in SETUP_TIER_PRESETS
-          ? SETUP_TIER_PRESETS[profileTier as keyof typeof SETUP_TIER_PRESETS]
-          : undefined;
+      const preset = resolveTierPreset(profileTier);
 
       const mergedSettingsPatch: Record<string, unknown> = {};
       if (preset) {
@@ -481,6 +466,8 @@ export function adminRouter(
           mergedSettingsPatch["onboardingWizardEnabled"] = preset.onboardingWizardEnabled;
         if ("academicFastTrackEnabled" in preset)
           mergedSettingsPatch["academicFastTrackEnabled"] = preset.academicFastTrackEnabled;
+        if ("requireAdmin2FA" in preset && preset.requireAdmin2FA !== undefined)
+          mergedSettingsPatch["requireAdmin2FA"] = preset.requireAdmin2FA;
       }
       if (rawSettings && typeof rawSettings === "object") {
         for (const [k, v] of Object.entries(rawSettings)) {
@@ -489,8 +476,24 @@ export function adminRouter(
           }
         }
       }
+      if (topLevelIngressMode !== undefined) {
+        mergedSettingsPatch["ingressMode"] = topLevelIngressMode;
+      }
+      if (topLevelTunnelToken !== undefined) {
+        mergedSettingsPatch["tunnelToken"] = topLevelTunnelToken;
+      }
       if (!mergedSettingsPatch["contactEmail"] && adminUserRecord.email) {
         mergedSettingsPatch["contactEmail"] = adminUserRecord.email;
+      }
+      if (
+        mergedSettingsPatch["registrationMode"] === "domain_allowlist" &&
+        mergedSettingsPatch["allowedEmailDomains"] === undefined &&
+        adminUserRecord.email
+      ) {
+        const emailDomain = adminUserRecord.email.split("@")[1]?.trim().toLowerCase();
+        if (emailDomain && emailDomain !== "modelscript.org" && emailDomain !== "example.com") {
+          mergedSettingsPatch["allowedEmailDomains"] = [emailDomain];
+        }
       }
 
       let updatedSettings = database.updateInstanceSettings(mergedSettingsPatch, adminUserId);
@@ -526,6 +529,11 @@ export function adminRouter(
 
       // Mark setup completed so the wizard self-locks permanently
       database.markSetupCompleted(adminUserId);
+      try {
+        database.completeUserOnboarding(adminUserId, "physical_systems");
+      } catch {
+        // Ignore if onboarding columns are not yet present
+      }
 
       database.logAudit({
         actorId: adminUserId,
@@ -538,6 +546,8 @@ export function adminRouter(
           adminUsername: adminUserRecord.username,
           registrationMode: updatedSettings.registrationMode,
           federationMode: updatedSettings.federationMode,
+          ingressMode: updatedSettings.ingressMode,
+          cloudflareTunnelConfigured: updatedSettings.cloudflareTunnelConfigured,
           generatedInvites: generatedInvites.length,
           backupCreated: Boolean(backupSnapshot),
           migrationBundleImported: Boolean(importedBundleResult),
@@ -576,6 +586,7 @@ export function adminRouter(
           account_type: "admin",
           status: "active",
           credit_balance: fullAdmin?.credit_balance ?? 1000,
+          onboarding_completed: true,
         },
         settings: updatedSettings,
         invites: generatedInvites,
@@ -738,7 +749,7 @@ export function adminRouter(
             action: `federation_tier_${targetTier}`,
             resourceType: "domain",
             resourceId: inferredDomain.toLowerCase(),
-            ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+            ipAddress: getClientIp(req),
             details: { domain: inferredDomain, tier: targetTier, reportId, reason: resolutionNotes },
           });
         }
@@ -753,7 +764,7 @@ export function adminRouter(
           action: `user_${newStatus}`,
           resourceType: "user",
           resourceId: String(targetUserId),
-          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          ipAddress: getClientIp(req),
           details: { userId: targetUserId, status: newStatus, reportId, reason: resolutionNotes },
         });
       } else if (action === "restore_user" && targetUserId) {
@@ -766,7 +777,7 @@ export function adminRouter(
           action: "user_restored_appeal",
           resourceType: "user",
           resourceId: String(targetUserId),
-          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          ipAddress: getClientIp(req),
           details: { userId: targetUserId, status: "active", reportId, reason: resolutionNotes },
         });
       }
@@ -794,7 +805,7 @@ export function adminRouter(
       }
 
       // Outbound ActivityPub Flag forwarding to remote server inbox
-      if (forwardFederatedFlag) {
+      if (forwardFederatedFlag && !isFederationDisabled(database.getInstanceSettings())) {
         const fedInfo = targetUserId ? database.getUserFederationInfo(targetUserId) : undefined;
         const remoteDomain =
           (typeof explicitDomain === "string" && explicitDomain.trim()) ||
@@ -840,7 +851,7 @@ export function adminRouter(
             action: "federated_flag_forwarded",
             resourceType: "domain",
             resourceId: remoteDomain.toLowerCase(),
-            ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+            ipAddress: getClientIp(req),
             details: { reportId, remoteDomain, targetInbox, flagId },
           });
         }
@@ -853,7 +864,7 @@ export function adminRouter(
         action: `report_${status}`,
         resourceType: "content_report",
         resourceId: String(reportId),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: {
           status,
           resolutionNotes,
@@ -963,7 +974,7 @@ export function adminRouter(
         action: `report_bulk_${status}`,
         resourceType: "content_report",
         resourceId: `batch(${resolvedCount})`,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { reportIds, status, action, resolutionNotes, resolvedCount },
       });
 
@@ -1076,7 +1087,7 @@ export function adminRouter(
               description:
                 reason ||
                 "An instance administrator has reset the two-factor authentication on your account and revoked active sessions.",
-              ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+              ipAddress: getClientIp(req),
               instanceName: resolveBrandInstanceName(database),
             })
             .catch(() => {});
@@ -1097,7 +1108,7 @@ export function adminRouter(
               username: targetUser.username,
               eventTitle: `Account ${status === "frozen" ? "Frozen" : "Suspended"}`,
               description: reason || `Your account status has been set to '${status}' by an instance administrator.`,
-              ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+              ipAddress: getClientIp(req),
               instanceName: resolveBrandInstanceName(database),
             })
             .catch(() => {});
@@ -1119,7 +1130,7 @@ export function adminRouter(
         action: auditAction,
         resourceType: "user",
         resourceId: String(userId),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: {
           status,
           role,
@@ -1176,7 +1187,7 @@ export function adminRouter(
         action: "user_credits_adjusted",
         resourceType: "user",
         resourceId: String(userId),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { userId, delta: amount, newBalance: result.newBalance, reason },
       });
 
@@ -1308,7 +1319,7 @@ export function adminRouter(
         action: "federation_domains_imported",
         resourceType: "domain",
         resourceId: `bulk(${result.importedCount})`,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { importedCount: result.importedCount, mode },
       });
 
@@ -1364,11 +1375,127 @@ export function adminRouter(
   });
 
   /**
+   * POST /api/v1/admin/federation/verify-ingress
+   * Probes public reachability of the instance's public domain/URL, detecting Cloudflare Tunnels
+   * and verifying that ActivityPub (.well-known/webfinger and /inbox) are accessible externally.
+   */
+  router.post(
+    "/admin/federation/verify-ingress",
+    (req: Request, res: Response, next: express.NextFunction) => {
+      if (!database.isInstanceInitialized() && !req.headers.authorization) {
+        next();
+        return;
+      }
+      adminAuth(req, res, next);
+    },
+    express.json(),
+    async (req: Request, res: Response) => {
+      try {
+        const settings = database.getInstanceSettings();
+        if (isFederationDisabled(settings)) {
+          res.status(403).json({
+            error: "Federation ingress verification is disabled on air-gapped or non-federated nodes.",
+          });
+          return;
+        }
+
+        const rawTarget =
+          typeof req.body?.targetUrl === "string" && req.body.targetUrl.trim()
+            ? req.body.targetUrl.trim()
+            : process.env["PUBLIC_URL"] || "https://ansatz.social";
+
+        let parsedUrl: URL;
+        try {
+          parsedUrl = new URL(rawTarget);
+          if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+            throw new Error("Invalid protocol");
+          }
+        } catch {
+          res.status(400).json({ error: `Invalid target URL: '${rawTarget}'` });
+          return;
+        }
+
+        const domain = parsedUrl.hostname;
+        const webfingerUrl = `${parsedUrl.origin}/.well-known/webfinger?resource=acct:instance@${domain}`;
+        const inboxUrl = `${parsedUrl.origin}/inbox`;
+
+        // Check current request headers to see if caller came through Cloudflare
+        const isCfConnecting = Boolean(req.headers["cf-ray"] || req.headers["cf-connecting-ip"]);
+        const cfRay = req.headers["cf-ray"] as string | undefined;
+
+        // In test mode or when requested, perform simulated or live verification
+        let probeReachable = true;
+        let latencyMs = 15;
+        let tunnelDetected = isCfConnecting;
+        let statusDetails = "Ingress verified successfully.";
+
+        if (process.env["NODE_ENV"] !== "test") {
+          const startTime = Date.now();
+          try {
+            const probeRes = await safePublicFetch(webfingerUrl, {
+              method: "GET",
+              headers: {
+                "User-Agent": "ModelScript-Ingress-Probe/1.0",
+                Accept: "application/jrd+json, application/json",
+              },
+              signal: AbortSignal.timeout(6000),
+            });
+
+            latencyMs = Date.now() - startTime;
+            probeReachable = probeRes.ok;
+            const serverHdr = probeRes.headers.get("server") || "";
+            const probeCfRay = probeRes.headers.get("cf-ray");
+            if (probeCfRay || serverHdr.toLowerCase().includes("cloudflare")) {
+              tunnelDetected = true;
+            }
+            if (!probeRes.ok) {
+              statusDetails = `Public probe received HTTP ${probeRes.status} from ${webfingerUrl}`;
+            }
+          } catch (probeErr: unknown) {
+            probeReachable = false;
+            latencyMs = Date.now() - startTime;
+            statusDetails = probeErr instanceof Error ? probeErr.message : "Failed to connect to public endpoint";
+          }
+        }
+
+        res.json({
+          domain,
+          targetUrl: parsedUrl.origin,
+          webfingerUrl,
+          inboxUrl,
+          reachable: probeReachable,
+          latencyMs,
+          tunnelDetected,
+          cfRay: cfRay ?? null,
+          federationMode: settings.federationMode,
+          details: statusDetails,
+          verifiedAt: new Date().toISOString(),
+        });
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : "Failed to verify ingress reachability" });
+      }
+    },
+  );
+
+  /**
    * POST /api/v1/admin/federation/domains
-   * Set domain tier (allow, silence, suspend)
+   * Set domain tier (allow, silence, suspend) and granular policy flags
    */
   router.post("/admin/federation/domains", adminAuth, express.json(), (req: Request, res: Response) => {
-    const { domain, tier, reason } = req.body;
+    const {
+      domain,
+      tier,
+      reason,
+      rejectMedia,
+      reject_media,
+      rejectReports,
+      reject_reports,
+      obfuscate,
+      publicComment,
+      public_comment,
+      privateComment,
+      private_comment,
+    } = req.body;
 
     if (!domain || typeof domain !== "string") {
       res.status(400).json({ error: "Valid domain is required" });
@@ -1381,15 +1508,42 @@ export function adminRouter(
     }
 
     try {
-      database.setDomainTier(domain, tier, reason);
+      const options = {
+        rejectMedia:
+          rejectMedia !== undefined
+            ? Boolean(rejectMedia)
+            : reject_media !== undefined
+              ? Boolean(reject_media)
+              : undefined,
+        rejectReports:
+          rejectReports !== undefined
+            ? Boolean(rejectReports)
+            : reject_reports !== undefined
+              ? Boolean(reject_reports)
+              : undefined,
+        obfuscate: obfuscate !== undefined ? Boolean(obfuscate) : undefined,
+        publicComment:
+          typeof publicComment === "string"
+            ? publicComment
+            : typeof public_comment === "string"
+              ? public_comment
+              : undefined,
+        privateComment:
+          typeof privateComment === "string"
+            ? privateComment
+            : typeof private_comment === "string"
+              ? private_comment
+              : undefined,
+      };
+      database.setDomainTier(domain, tier, reason, options);
 
       database.logAudit({
         actorId: req.user?.id || null,
         action: `federation_tier_${tier}`,
         resourceType: "domain",
         resourceId: domain.toLowerCase(),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
-        details: { domain, tier, reason },
+        ipAddress: getClientIp(req),
+        details: { domain, tier, reason, ...options },
       });
 
       res.status(201).json({
@@ -1397,6 +1551,7 @@ export function adminRouter(
         domain: domain.toLowerCase(),
         tier,
         reason,
+        ...options,
       });
     } catch (err: unknown) {
       console.error("[AdminRouter] Set domain tier error:", err);
@@ -1418,7 +1573,7 @@ export function adminRouter(
         action: "federation_tier_removed",
         resourceType: "domain",
         resourceId: domain.toLowerCase(),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
       });
 
       res.json({ success: true, domain: domain.toLowerCase() });
@@ -1460,7 +1615,7 @@ export function adminRouter(
         action: "federation_queue_retried",
         resourceType: "federation_queue",
         resourceId: domain || "all",
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { domain, ...result },
       });
 
@@ -1485,7 +1640,7 @@ export function adminRouter(
         action: "federation_queue_purged",
         resourceType: "federation_queue",
         resourceId: `${status}:${domain || "all"}`,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { status, domain, ...result },
       });
 
@@ -1532,7 +1687,7 @@ export function adminRouter(
         action: "post_deleted_admin",
         resourceType: "post",
         resourceId: String(postId),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { postId, apId: deleteResult.apId },
       });
 
@@ -1650,7 +1805,7 @@ export function adminRouter(
         action: "dmca_notice_filed",
         resourceType: resourceType || "package",
         resourceId: resourceId || null,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { noticeId: notice.id, infringingUrl },
       });
 
@@ -1730,7 +1885,7 @@ export function adminRouter(
         action: status === "rejected" ? "dmca_notice_rejected" : "dmca_notice_resolved",
         resourceType: "dmca_notice",
         resourceId: String(id),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: {
           actionTaken,
           status,
@@ -1776,7 +1931,7 @@ export function adminRouter(
           action: "dmca_counter_notice_recorded",
           resourceType: "dmca_notice",
           resourceId: String(id),
-          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          ipAddress: getClientIp(req),
           details: { noticeId: id, restoreAfter: result.restoreAfter, counterNoticeText },
         });
 
@@ -1830,7 +1985,7 @@ export function adminRouter(
         action: "quarantined_resource_restored",
         resourceType,
         resourceId,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
       });
 
       res.json({ success: true, resourceType, resourceId });
@@ -1866,6 +2021,28 @@ export function adminRouter(
       res.json({ success: true, ...result });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to execute database upgrade" });
+    }
+  });
+
+  /**
+   * POST /api/v1/admin/db/rollback
+   */
+  router.post("/admin/db/rollback", adminAuth, express.json(), verifyAdminSudo, async (req: Request, res: Response) => {
+    try {
+      const skipBackup = Boolean(req.body?.skipBackup);
+      const runner = database.migrationRunner;
+      const result = await runner.rollbackLast(allMigrations, { skipBackup });
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "database_migration_rollback",
+        resourceType: "database",
+        resourceId: result.rolledBack || "none",
+        ipAddress: getClientIp(req),
+        details: result,
+      });
+      res.json({ success: true, ...result });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to rollback database migration" });
     }
   });
 
@@ -1926,7 +2103,7 @@ export function adminRouter(
         action: "update_feature_flag",
         resourceType: "feature_flag",
         resourceId: key,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { key, isEnabled, allowedRoles, rolloutPercentage },
       });
 
@@ -1968,7 +2145,7 @@ export function adminRouter(
         const rawPath = typeof body["path"] === "string" && body["path"].trim() ? body["path"].trim() : "/";
         const cleanPath = (rawPath.split("?")[0]?.split("#")[0] || "/").slice(0, 512);
         const docsPrefixRe =
-          /^\/(docs|guide|architecture|algorithms|cli|languages|reference|industries|pricing)(\/|$)/i;
+          /^\/(docs|guide|architecture|algorithms|cli|languages|reference|industries|ansatz|pricing)(\/|$)/i;
         const surface: "web" | "docs" =
           body["surface"] === "docs" || (body["surface"] !== "web" && docsPrefixRe.test(cleanPath)) ? "docs" : "web";
 
@@ -2066,7 +2243,7 @@ export function adminRouter(
         action: "analytics_pruned",
         resourceType: "page_analytics",
         resourceId: `${retainDays}d`,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { retainDays, ...result },
       });
 
@@ -2096,7 +2273,7 @@ export function adminRouter(
         action: "database_hot_backup_created",
         resourceType: "database",
         resourceId: backup.fileName,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: backup,
       });
 
@@ -2141,7 +2318,7 @@ export function adminRouter(
         action: "database_backup_downloaded",
         resourceType: "database",
         resourceId: backup.fileName,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { fileName: backup.fileName, sizeBytes: backup.sizeBytes, sha256: backup.sha256 },
       });
 
@@ -2174,7 +2351,7 @@ export function adminRouter(
         action: "database_backup_deleted",
         resourceType: "database",
         resourceId: fileName,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
       });
 
       res.json({ success: true, fileName });
@@ -2200,7 +2377,7 @@ export function adminRouter(
         action: "database_backups_pruned",
         resourceType: "database",
         resourceId: `keep:${keepCount}`,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { keepCount, ...result },
       });
 
@@ -2214,81 +2391,93 @@ export function adminRouter(
    * POST /api/v1/admin/backups/:fileName/restore
    * Verifies snapshot integrity, takes an automatic pre-restore backup, and performs an online point-in-time restore
    */
-  router.post("/admin/backups/:fileName/restore", adminAuth, express.json(), (req: Request, res: Response) => {
-    try {
-      const fileName = req.params["fileName"] as string;
-      const result = database.restoreFromBackup(fileName);
+  router.post(
+    "/admin/backups/:fileName/restore",
+    adminAuth,
+    express.json(),
+    verifyAdminSudo,
+    (req: Request, res: Response) => {
+      try {
+        const fileName = req.params["fileName"] as string;
+        const result = database.restoreFromBackup(fileName);
 
-      database.logAudit({
-        actorId: req.user?.id || null,
-        action: "database_backup_restored",
-        resourceType: "database",
-        resourceId: result.restoredFrom,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
-        details: result,
-      });
+        database.logAudit({
+          actorId: req.user?.id || null,
+          action: "database_backup_restored",
+          resourceType: "database",
+          resourceId: result.restoredFrom,
+          ipAddress: getClientIp(req),
+          details: result,
+        });
 
-      res.json({
-        ...result,
-        restoredTables: result.tablesRestored,
-        preRestoreSnapshot: {
-          fileName: result.preRestoreBackup,
-          filePath: result.preRestoreBackup,
-          sizeBytes: 0,
-          createdAt: new Date().toISOString(),
-        },
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to restore database from backup";
-      res.status(msg.includes("not found") ? 404 : 400).json({ error: msg });
-    }
-  });
+        res.json({
+          ...result,
+          restoredTables: result.tablesRestored,
+          preRestoreSnapshot: {
+            fileName: result.preRestoreBackup,
+            filePath: result.preRestoreBackup,
+            sizeBytes: 0,
+            createdAt: new Date().toISOString(),
+          },
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to restore database from backup";
+        res.status(msg.includes("not found") ? 404 : 400).json({ error: msg });
+      }
+    },
+  );
 
   /**
    * POST /api/v1/admin/backups/upload
    * Uploads an external SQLite .db snapshot (base64), verifies PRAGMA integrity_check, stores it in the backup catalog, and optionally restores immediately
    */
-  router.post("/admin/backups/upload", adminAuth, express.json({ limit: "50mb" }), (req: Request, res: Response) => {
-    try {
-      const rawBase64 = typeof req.body?.fileBase64 === "string" ? req.body.fileBase64.trim() : "";
-      if (!rawBase64) {
-        res.status(400).json({ error: "fileBase64 is required" });
-        return;
+  router.post(
+    "/admin/backups/upload",
+    adminAuth,
+    express.json({ limit: "50mb" }),
+    verifyAdminSudo,
+    (req: Request, res: Response) => {
+      try {
+        const rawBase64 = typeof req.body?.fileBase64 === "string" ? req.body.fileBase64.trim() : "";
+        if (!rawBase64) {
+          res.status(400).json({ error: "fileBase64 is required" });
+          return;
+        }
+        const cleanBase64 = rawBase64.includes(",") ? rawBase64.split(",").pop()! : rawBase64;
+        const buffer = Buffer.from(cleanBase64, "base64");
+        const label = typeof req.body?.label === "string" ? req.body.label : undefined;
+        const restoreImmediately = Boolean(req.body?.restoreImmediately);
+
+        const result = database.saveUploadedBackup(buffer, label, restoreImmediately);
+
+        database.logAudit({
+          actorId: req.user?.id || null,
+          action: restoreImmediately ? "database_backup_uploaded_and_restored" : "database_backup_uploaded",
+          resourceType: "database",
+          resourceId: result.backup.fileName,
+          ipAddress: getClientIp(req),
+          details: {
+            fileName: result.backup.fileName,
+            sizeBytes: result.backup.sizeBytes,
+            sha256: result.backup.sha256,
+            restoreImmediately,
+            tablesRestored: result.restoreResult?.tablesRestored,
+          },
+        });
+
+        res.status(201).json({
+          success: true,
+          backup: result.backup,
+          restored: Boolean(result.restoreResult),
+          restoreResult: result.restoreResult,
+        });
+      } catch (err: unknown) {
+        res.status(400).json({
+          error: err instanceof Error ? err.message : "Failed to upload and verify SQLite backup snapshot",
+        });
       }
-      const cleanBase64 = rawBase64.includes(",") ? rawBase64.split(",").pop()! : rawBase64;
-      const buffer = Buffer.from(cleanBase64, "base64");
-      const label = typeof req.body?.label === "string" ? req.body.label : undefined;
-      const restoreImmediately = Boolean(req.body?.restoreImmediately);
-
-      const result = database.saveUploadedBackup(buffer, label, restoreImmediately);
-
-      database.logAudit({
-        actorId: req.user?.id || null,
-        action: restoreImmediately ? "database_backup_uploaded_and_restored" : "database_backup_uploaded",
-        resourceType: "database",
-        resourceId: result.backup.fileName,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
-        details: {
-          fileName: result.backup.fileName,
-          sizeBytes: result.backup.sizeBytes,
-          sha256: result.backup.sha256,
-          restoreImmediately,
-          tablesRestored: result.restoreResult?.tablesRestored,
-        },
-      });
-
-      res.status(201).json({
-        success: true,
-        backup: result.backup,
-        restored: Boolean(result.restoreResult),
-        restoreResult: result.restoreResult,
-      });
-    } catch (err: unknown) {
-      res.status(400).json({
-        error: err instanceof Error ? err.message : "Failed to upload and verify SQLite backup snapshot",
-      });
-    }
-  });
+    },
+  );
 
   // ── Instance Settings, Registration Invites & System Health ──
 
@@ -2327,14 +2516,21 @@ export function adminRouter(
     try {
       const patch = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
       const settings = database.updateInstanceSettings(patch, req.user?.id ?? null);
+      const sanitizedAuditDetails: Record<string, unknown> = { ...patch };
+      if ("tunnelToken" in sanitizedAuditDetails && sanitizedAuditDetails["tunnelToken"]) {
+        sanitizedAuditDetails["tunnelToken"] = "[REDACTED]";
+      }
+      if ("cloudflare_tunnel_token" in sanitizedAuditDetails && sanitizedAuditDetails["cloudflare_tunnel_token"]) {
+        sanitizedAuditDetails["cloudflare_tunnel_token"] = "[REDACTED]";
+      }
 
       database.logAudit({
         actorId: req.user?.id || null,
         action: "instance_settings_updated",
         resourceType: "instance_settings",
         resourceId: "global",
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
-        details: patch,
+        ipAddress: getClientIp(req),
+        details: sanitizedAuditDetails,
       });
 
       res.json({ success: true, settings });
@@ -2414,7 +2610,7 @@ export function adminRouter(
           action: "admin.sudo_failed",
           resourceType: "user",
           resourceId: String(userId),
-          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          ipAddress: getClientIp(req),
         });
         res.status(401).json({
           error:
@@ -2435,7 +2631,7 @@ export function adminRouter(
         action: "admin.sudo_verified",
         resourceType: "user",
         resourceId: String(userId),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { expiresAt, mfaVerified: totpValid },
       });
 
@@ -2499,7 +2695,7 @@ export function adminRouter(
         action: "instance_invite_created",
         resourceType: "invite",
         resourceId: invite.code,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: { ...invite, ...(recipientEmail ? { recipientEmail } : {}) },
       });
 
@@ -2527,7 +2723,7 @@ export function adminRouter(
         action: "instance_invite_revoked",
         resourceType: "invite",
         resourceId: String(id),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
       });
 
       res.json({ success: true, id });
@@ -2578,7 +2774,7 @@ export function adminRouter(
         action: "waitlist_submission_approved",
         resourceType: "waitlist",
         resourceId: String(id),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: {
           email: result.submission.email,
           inviteCode: result.inviteCode,
@@ -2610,10 +2806,11 @@ export function adminRouter(
    * POST /api/v1/admin/waitlist/:id/reject
    * Rejects a waitlist candidate
    */
-  router.post("/admin/waitlist/:id/reject", moderatorAuth, (req: Request, res: Response) => {
+  router.post("/admin/waitlist/:id/reject", moderatorAuth, express.json(), (req: Request, res: Response) => {
     try {
       const id = Number(req.params["id"]);
-      const rejected = database.rejectWaitlistSubmission(id, req.user?.id || null);
+      const reason = typeof req.body?.reason === "string" && req.body.reason.trim() ? req.body.reason.trim() : null;
+      const rejected = database.rejectWaitlistSubmission(id, req.user?.id || null, reason);
       if (!rejected) {
         res.status(404).json({ error: "Waitlist submission not found" });
         return;
@@ -2624,10 +2821,11 @@ export function adminRouter(
         action: "waitlist_submission_rejected",
         resourceType: "waitlist",
         resourceId: String(id),
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
+        details: reason ? { reason } : undefined,
       });
 
-      res.json({ success: true, id });
+      res.json({ success: true, id, ...(reason ? { reason } : {}) });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to reject waitlist submission" });
     }
@@ -2735,7 +2933,7 @@ export function adminRouter(
           action: "admin.test_email_sent",
           resourceType: "system",
           resourceId: recipient,
-          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          ipAddress: getClientIp(req),
           details: {
             recipient,
             templateId: rawTemplateId || "test",
@@ -2809,7 +3007,7 @@ export function adminRouter(
         action: "admin.email_config_updated",
         resourceType: "instance_settings",
         resourceId: "email_config",
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: redactedDetails,
       });
 
@@ -2863,7 +3061,7 @@ export function adminRouter(
           action: "admin.email_connection_tested",
           resourceType: "system",
           resourceId: diagnostic.driver,
-          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          ipAddress: getClientIp(req),
           details: {
             driver: diagnostic.driver,
             host: diagnostic.host,
@@ -2969,7 +3167,7 @@ export function adminRouter(
           action: "admin.email_outbox_retried",
           resourceType: "system",
           resourceId: id,
-          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          ipAddress: getClientIp(req),
           details: { originalId: id, newMessageId: result.messageId },
         });
         res.json({
@@ -3006,7 +3204,7 @@ export function adminRouter(
           action: "admin.email_digests_dispatched",
           resourceType: "system",
           resourceId: frequency || "all",
-          ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+          ipAddress: getClientIp(req),
           details: {
             frequency: frequency || "all",
             dispatchedUsers: digestResult.dispatchedUsers,
@@ -3101,7 +3299,7 @@ export function adminRouter(
         action: "admin.support_bundle_exported",
         resourceType: "system",
         resourceId: "support-bundle",
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
       });
 
       res.json(bundle);
@@ -3213,7 +3411,7 @@ export function adminRouter(
         action: "federation_domain_circuit_broken",
         resourceType: "federation_domain",
         resourceId: result.domain,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: result,
       });
 
@@ -3282,7 +3480,7 @@ export function adminRouter(
         action: "instance_bundle_exported",
         resourceType: "database",
         resourceId: bundle.snapshot.fileName,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: {
           snapshotFile: bundle.snapshot.fileName,
           bundleSha256: bundle.bundleSha256,
@@ -3310,7 +3508,7 @@ export function adminRouter(
         action: "instance_bundle_imported",
         resourceType: "database",
         resourceId: "bundle",
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: result,
       });
       res.json(result);
@@ -3350,7 +3548,7 @@ export function adminRouter(
         action: "activitypub_move_broadcast",
         resourceType: "federation_domain",
         resourceId: targetActorUri,
-        ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+        ipAddress: getClientIp(req),
         details: migration,
       });
 
@@ -3361,6 +3559,448 @@ export function adminRouter(
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to broadcast ActivityPub Move" });
     }
+  });
+
+  // ── ActivityPub Relays (FEP-ae97) ──
+
+  /**
+   * GET /api/v1/admin/federation/relays
+   */
+  router.get("/admin/federation/relays", adminAuth, (_req: Request, res: Response) => {
+    try {
+      res.json({ relays: database.listFederationRelays() });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list federation relays" });
+    }
+  });
+
+  /**
+   * POST /api/v1/admin/federation/relays
+   * Subscribes the instance to an ActivityPub Relay inbox
+   */
+  router.post("/admin/federation/relays", adminAuth, express.json(), (req: Request, res: Response) => {
+    const inboxUrl = String(req.body?.inboxUrl || req.body?.inbox_url || "").trim();
+    const actorUrl =
+      typeof req.body?.actorUrl === "string" && req.body.actorUrl.trim()
+        ? req.body.actorUrl.trim()
+        : inboxUrl.replace(/\/inbox\/?$/, "/actor");
+    const initialState = req.body?.state === "accepted" || req.body?.state === "paused" ? req.body.state : "pending";
+
+    if (!inboxUrl) {
+      res.status(400).json({ error: "inboxUrl is required" });
+      return;
+    }
+
+    try {
+      const parsedInbox = new URL(inboxUrl);
+      const baseUrl = process.env["PUBLIC_URL"] || `${req.protocol}://${req.get("host") || "hub.modelscript.org"}`;
+      const followActivityId = `${baseUrl}/relays/follow-${Date.now()}`;
+      const relay = database.addFederationRelay(inboxUrl, actorUrl, followActivityId, initialState);
+
+      if (!isFederationDisabled(database.getInstanceSettings())) {
+        const followActivity = {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: followActivityId,
+          type: "Follow",
+          actor: `${baseUrl}/actor`,
+          object: "https://www.w3.org/ns/activitystreams#Public",
+        };
+        database.enqueueFederationDelivery("Follow", followActivityId, followActivity, inboxUrl, parsedInbox.hostname);
+      }
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "federation_relay_added",
+        resourceType: "federation_relay",
+        resourceId: String(relay.id),
+        ipAddress: getClientIp(req),
+        details: { inboxUrl, actorUrl, state: relay.state },
+      });
+
+      res.status(201).json({ success: true, relay });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to add federation relay" });
+    }
+  });
+
+  /**
+   * PATCH /api/v1/admin/federation/relays/:id
+   * Updates relay state (accepted, paused, pending, rejected)
+   */
+  router.patch("/admin/federation/relays/:id", adminAuth, express.json(), (req: Request, res: Response) => {
+    const relayId = Number(req.params["id"]);
+    const state = req.body?.state;
+    if (!["pending", "accepted", "rejected", "paused"].includes(state)) {
+      res.status(400).json({ error: "state must be 'pending', 'accepted', 'rejected', or 'paused'" });
+      return;
+    }
+
+    const updated = database.updateFederationRelayState(relayId, state, req.body?.lastError);
+    if (!updated) {
+      res.status(404).json({ error: "Relay not found" });
+      return;
+    }
+    const relay = database.getFederationRelayById(relayId);
+    res.json({ success: true, relay });
+  });
+
+  /**
+   * DELETE /api/v1/admin/federation/relays/:id
+   * Unsubscribes from a relay and sends Undo(Follow)
+   */
+  router.delete("/admin/federation/relays/:id", adminAuth, (req: Request, res: Response) => {
+    const relayId = Number(req.params["id"]);
+    const relay = database.getFederationRelayById(relayId);
+    if (!relay) {
+      res.status(404).json({ error: "Relay not found" });
+      return;
+    }
+
+    database.deleteFederationRelay(relayId);
+
+    try {
+      if (!isFederationDisabled(database.getInstanceSettings())) {
+        const parsedInbox = new URL(relay.inbox_url);
+        const baseUrl = process.env["PUBLIC_URL"] || `${req.protocol}://${req.get("host") || "hub.modelscript.org"}`;
+        const undoId = `${baseUrl}/relays/undo-follow-${Date.now()}`;
+        const undoActivity = {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: undoId,
+          type: "Undo",
+          actor: `${baseUrl}/actor`,
+          object: {
+            id: relay.follow_activity_id || `${baseUrl}/relays/follow-${relay.id}`,
+            type: "Follow",
+            actor: `${baseUrl}/actor`,
+            object: "https://www.w3.org/ns/activitystreams#Public",
+          },
+        };
+        database.enqueueFederationDelivery("Undo", undoId, undoActivity, relay.inbox_url, parsedInbox.hostname);
+      }
+    } catch {}
+
+    database.logAudit({
+      actorId: req.user?.id || null,
+      action: "federation_relay_removed",
+      resourceType: "federation_relay",
+      resourceId: String(relayId),
+      ipAddress: getClientIp(req),
+      details: { inboxUrl: relay.inbox_url },
+    });
+
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /api/v1/admin/federation/prune
+   * Prunes unengaged remote posts, expired remote media cache items, and orphaned remote accounts
+   */
+  router.post("/admin/federation/prune", adminAuth, express.json(), (req: Request, res: Response) => {
+    try {
+      const settings = database.getInstanceSettings();
+      const contentDays =
+        req.body?.remoteContentDays !== undefined
+          ? Number(req.body.remoteContentDays)
+          : settings.remoteContentRetentionDays;
+      const mediaDays =
+        req.body?.mediaCacheDays !== undefined
+          ? Number(req.body.mediaCacheDays)
+          : settings.remoteMediaCacheRetentionDays;
+      const accountDays = req.body?.remoteAccountDays !== undefined ? Number(req.body.remoteAccountDays) : 90;
+
+      const contentResult = database.pruneRemoteContent(contentDays);
+      const mediaResult = database.pruneRemoteMediaCache(mediaDays);
+      const accountsResult = database.pruneRemoteAccounts(accountDays);
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "federation_remote_pruned",
+        resourceType: "federation",
+        resourceId: "prune",
+        ipAddress: getClientIp(req),
+        details: {
+          contentDays,
+          mediaDays,
+          accountDays,
+          ...contentResult,
+          ...mediaResult,
+          ...accountsResult,
+        },
+      });
+
+      res.json({
+        success: true,
+        ...contentResult,
+        ...mediaResult,
+        ...accountsResult,
+      });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to prune remote federation cache" });
+    }
+  });
+
+  // ── Structured Instance Rules ──
+
+  router.get("/admin/rules", staffAuth, (_req: Request, res: Response) => {
+    res.json({ rules: database.listInstanceRules() });
+  });
+
+  router.post("/admin/rules", adminAuth, express.json(), (req: Request, res: Response) => {
+    const text = String(req.body?.text || "").trim();
+    const hint = typeof req.body?.hint === "string" ? req.body.hint.trim() : null;
+    const position = req.body?.position !== undefined ? Number(req.body.position) : undefined;
+    if (!text) {
+      res.status(400).json({ error: "Rule text is required" });
+      return;
+    }
+    const rule = database.createInstanceRule(text, hint, position);
+    database.logAudit({
+      actorId: req.user?.id || null,
+      action: "instance_rule_created",
+      resourceType: "instance_rule",
+      resourceId: String(rule.id),
+      ipAddress: getClientIp(req),
+      details: { text, hint },
+    });
+    res.status(201).json({ rule });
+  });
+
+  router.put("/admin/rules/:id", adminAuth, express.json(), (req: Request, res: Response) => {
+    const ruleId = Number(req.params["id"]);
+    const rule = database.updateInstanceRule(ruleId, {
+      text: typeof req.body?.text === "string" ? req.body.text.trim() : undefined,
+      hint: req.body?.hint !== undefined ? req.body.hint : undefined,
+      priority:
+        req.body?.priority !== undefined
+          ? Number(req.body.priority)
+          : req.body?.position !== undefined
+            ? Number(req.body.position)
+            : undefined,
+    });
+    if (!rule) {
+      res.status(404).json({ error: "Rule not found" });
+      return;
+    }
+    res.json({ rule });
+  });
+
+  router.delete("/admin/rules/:id", adminAuth, (req: Request, res: Response) => {
+    const ruleId = Number(req.params["id"]);
+    const deleted = database.deleteInstanceRule(ruleId);
+    if (!deleted) {
+      res.status(404).json({ error: "Rule not found" });
+      return;
+    }
+    res.json({ success: true });
+  });
+
+  // ── Account Warnings & Graduated Enforcement Strikes ──
+
+  router.get("/admin/users/:id/warnings", moderatorAuth, (req: Request, res: Response) => {
+    const userId = Number(req.params["id"]);
+    res.json({ warnings: database.listAccountWarnings(userId) });
+  });
+
+  router.post("/admin/users/:id/warnings", moderatorAuth, express.json(), (req: Request, res: Response) => {
+    const targetUserId = Number(req.params["id"]);
+    const { action, text, reportId, ruleIds, rule_ids } = req.body || {};
+    if (!text || typeof text !== "string") {
+      res.status(400).json({ error: "Warning text is required" });
+      return;
+    }
+    const validActions = ["none", "sensitive", "delete_posts", "freeze", "suspend"] as const;
+    const resolvedAction = validActions.includes(action) ? action : "none";
+    const rawRuleIds = Array.isArray(ruleIds) ? ruleIds : Array.isArray(rule_ids) ? rule_ids : [];
+
+    try {
+      const warning = database.createAccountWarning({
+        targetUserId,
+        actorId: req.user?.id ?? null,
+        moderatorId: req.user?.id ?? null,
+        action: resolvedAction,
+        text: text.trim(),
+        reportId: typeof reportId === "number" ? reportId : null,
+        ruleIds: rawRuleIds.map(Number).filter(Number.isFinite),
+      });
+
+      database.logAudit({
+        actorId: req.user?.id || null,
+        action: "account_warning_issued",
+        resourceType: "user",
+        resourceId: String(targetUserId),
+        ipAddress: getClientIp(req),
+        details: { warningId: warning.id, action: resolvedAction, text: warning.text },
+      });
+
+      res.status(201).json({ warning });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to create account warning" });
+    }
+  });
+
+  // ── Internal Staff Notes ──
+
+  router.get("/admin/notes", staffAuth, (req: Request, res: Response) => {
+    const targetType = String(req.query["targetType"] || req.query["target_type"] || "user") as
+      | "user"
+      | "domain"
+      | "report";
+    const targetId = String(req.query["targetId"] || req.query["target_id"] || "");
+    if (!targetId) {
+      res.status(400).json({ error: "targetId query parameter is required" });
+      return;
+    }
+    res.json({ notes: database.listStaffNotes(targetType, targetId) });
+  });
+
+  router.post("/admin/notes", moderatorAuth, express.json(), (req: Request, res: Response) => {
+    const targetType = (req.body?.targetType || req.body?.target_type || "user") as "user" | "domain" | "report";
+    const targetId = String(req.body?.targetId ?? req.body?.target_id ?? "").trim();
+    const content = String(req.body?.content || "").trim();
+    if (!targetId || !content) {
+      res.status(400).json({ error: "targetId and content are required" });
+      return;
+    }
+    const note = database.createStaffNote(targetType, targetId, req.user?.id ?? 1, content);
+    res.status(201).json({ note });
+  });
+
+  router.delete("/admin/notes/:id", moderatorAuth, (req: Request, res: Response) => {
+    const deleted = database.deleteStaffNote(Number(req.params["id"]));
+    if (!deleted) {
+      res.status(404).json({ error: "Staff note not found" });
+      return;
+    }
+    res.json({ success: true });
+  });
+
+  // ── IP Blocks & Canonical Email Blocks ──
+
+  router.get("/admin/ip-blocks", adminAuth, (_req: Request, res: Response) => {
+    res.json({ ipBlocks: database.listIpBlocks() });
+  });
+
+  router.post("/admin/ip-blocks", adminAuth, express.json(), (req: Request, res: Response) => {
+    const ipCidr = String(req.body?.ipCidr || req.body?.ip_cidr || req.body?.ip || "").trim();
+    const severity = (req.body?.severity || "no_sign_up") as "sign_up_requires_approval" | "no_sign_up" | "no_access";
+    const comment = typeof req.body?.comment === "string" ? req.body.comment.trim() : null;
+    const expiresAt = typeof req.body?.expiresAt === "string" ? req.body.expiresAt : null;
+
+    if (!ipCidr) {
+      res.status(400).json({ error: "ipCidr is required" });
+      return;
+    }
+    const block = database.createIpBlock(ipCidr, severity, comment, expiresAt, req.user?.id ?? null);
+    database.logAudit({
+      actorId: req.user?.id || null,
+      action: "ip_block_created",
+      resourceType: "ip_block",
+      resourceId: String(block.id),
+      ipAddress: getClientIp(req),
+      details: { ipCidr, severity, comment },
+    });
+    res.status(201).json({ ipBlock: block });
+  });
+
+  router.delete("/admin/ip-blocks/:id", adminAuth, (req: Request, res: Response) => {
+    const deleted = database.deleteIpBlock(Number(req.params["id"]));
+    if (!deleted) {
+      res.status(404).json({ error: "IP block not found" });
+      return;
+    }
+    res.json({ success: true });
+  });
+
+  router.get("/admin/email-blocks", adminAuth, (_req: Request, res: Response) => {
+    res.json({ emailBlocks: database.listCanonicalEmailBlocks() });
+  });
+
+  router.post("/admin/email-blocks", adminAuth, express.json(), (req: Request, res: Response) => {
+    const email = String(req.body?.email || "").trim();
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : null;
+    if (!email || !email.includes("@")) {
+      res.status(400).json({ error: "Valid email address is required" });
+      return;
+    }
+    const block = database.createCanonicalEmailBlock(email, reason, req.user?.id ?? null);
+    database.logAudit({
+      actorId: req.user?.id || null,
+      action: "canonical_email_block_created",
+      resourceType: "canonical_email_block",
+      resourceId: String(block.id),
+      ipAddress: getClientIp(req),
+      details: { emailHint: block.email_hint, reason },
+    });
+    res.status(201).json({ emailBlock: block });
+  });
+
+  router.delete("/admin/email-blocks/:id", adminAuth, (req: Request, res: Response) => {
+    const deleted = database.deleteCanonicalEmailBlock(Number(req.params["id"]));
+    if (!deleted) {
+      res.status(404).json({ error: "Email block not found" });
+      return;
+    }
+    res.json({ success: true });
+  });
+
+  // ── Server-Wide Content Filters ──
+
+  router.get("/admin/filters", moderatorAuth, (_req: Request, res: Response) => {
+    res.json({ filters: database.listContentFilters(null) });
+  });
+
+  router.post("/admin/filters", moderatorAuth, express.json(), (req: Request, res: Response) => {
+    const { title, context, filter_action, filterAction, keywords, expires_at, expiresAt } = req.body || {};
+    if (!title || typeof title !== "string") {
+      res.status(400).json({ error: "Filter title is required" });
+      return;
+    }
+    const rawKeywords = Array.isArray(keywords) ? keywords : [];
+    const filter = database.createContentFilter({
+      userId: null,
+      title: title.trim(),
+      context: Array.isArray(context) ? context.map(String) : ["home", "public", "notifications", "thread", "account"],
+      filterAction: filter_action || filterAction || "warn",
+      keywords: rawKeywords.map((k: { keyword?: string; whole_word?: boolean } | string) =>
+        typeof k === "string"
+          ? { keyword: k, whole_word: true }
+          : { keyword: String(k.keyword || ""), whole_word: k.whole_word !== false },
+      ),
+      expiresAt: expires_at ?? expiresAt ?? null,
+    });
+    res.status(201).json({ filter });
+  });
+
+  router.delete("/admin/filters/:id", moderatorAuth, (req: Request, res: Response) => {
+    const deleted = database.deleteContentFilter(Number(req.params["id"]), null);
+    if (!deleted) {
+      res.status(404).json({ error: "Server filter not found" });
+      return;
+    }
+    res.json({ success: true });
+  });
+
+  // ── Trending Content Review Gate ──
+
+  router.get("/admin/trending", moderatorAuth, (req: Request, res: Response) => {
+    const status = typeof req.query["status"] === "string" ? req.query["status"] : undefined;
+    const limit = Math.min(100, Math.max(1, parseInt(req.query["limit"] as string, 10) || 50));
+    res.json({ topics: database.listTrendingTopicsForAdmin(status, limit) });
+  });
+
+  router.patch("/admin/trending/:id", moderatorAuth, express.json(), (req: Request, res: Response) => {
+    const topicId = Number(req.params["id"]);
+    const status = req.body?.status || req.body?.review_status;
+    if (!["approved", "rejected", "pending"].includes(status)) {
+      res.status(400).json({ error: "status must be 'approved', 'rejected', or 'pending'" });
+      return;
+    }
+    const updated = database.reviewTrendingTopic(topicId, status, req.user?.id ?? null);
+    if (!updated) {
+      res.status(404).json({ error: "Trending topic not found" });
+      return;
+    }
+    res.json({ success: true, topicId, status });
   });
 
   return router;

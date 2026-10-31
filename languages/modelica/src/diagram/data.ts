@@ -52,6 +52,7 @@ export type {
   X6Markup,
 } from "@modelscript/diagram/protocol";
 
+import { healOrthogonalVertices } from "@modelscript/diagram/port-router";
 import type {
   ComponentPropertyData,
   DiagramData,
@@ -609,8 +610,9 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
                   y: -portHeight / 2,
                   width: portWidth,
                   height: portHeight,
-                  fill: "none",
+                  fill: "transparent",
                   stroke: "none",
+                  cursor: "crosshair",
                 },
               },
               {
@@ -845,12 +847,22 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         ? resolveWorldPortPoint(tgtNode, tgtPort.args.x, tgtPort.args.y)
         : null;
 
+    const explicitPts = (edge as any).data?.points as { x: number; y: number }[] | undefined;
+    const p0 = explicitPts && explicitPts.length >= 2 ? explicitPts[0]! : null;
+    const pN = explicitPts && explicitPts.length >= 2 ? explicitPts[explicitPts.length - 1]! : null;
+    const healSrc = srcPt && (!p0 || Math.hypot(srcPt.x - p0.x, srcPt.y - p0.y) <= 4) ? srcPt : (p0 ?? srcPt);
+    const healTgt = tgtPt && (!pN || Math.hypot(tgtPt.x - pN.x, tgtPt.y - pN.y) <= 4) ? tgtPt : (pN ?? tgtPt);
+
+    if (healSrc && healTgt && edge.vertices && edge.vertices.length > 0 && edge.connector !== "smooth") {
+      edge.vertices = healOrthogonalVertices(healSrc, healTgt, edge.vertices);
+    }
+
     const intermediate = edge.vertices ?? [];
     let pathPoints: { x: number; y: number }[] | null = null;
-    if (srcPt && tgtPt) {
-      pathPoints = [srcPt, ...intermediate, tgtPt];
-    } else if ((edge as any).data?.points) {
-      pathPoints = (edge as any).data.points;
+    if (healSrc && healTgt) {
+      pathPoints = [healSrc, ...intermediate, healTgt];
+    } else if (explicitPts) {
+      pathPoints = explicitPts;
     }
 
     if (pathPoints && pathPoints.length >= 2) {

@@ -3,6 +3,7 @@
 import { SyncIcon, VersionsIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu, IconButton, TextInput, ToggleSwitch } from "@primer/react";
 import { useCallback, useRef, useState } from "react";
+import { useModelingPreferences } from "../../ModelingPreferencesContext";
 
 export interface ParameterInfo {
   name: string;
@@ -390,6 +391,10 @@ export function SimulationExperimentSettings({
         tolerance?: number | undefined;
         solver?: string | undefined;
         numberOfIntervals?: number | undefined;
+        StartTime?: number | undefined;
+        StopTime?: number | undefined;
+        Interval?: number | undefined;
+        Tolerance?: number | undefined;
       }
     | undefined;
   overrides: ExperimentOverrides;
@@ -397,15 +402,29 @@ export function SimulationExperimentSettings({
   onReset: (name: keyof ExperimentOverrides) => void;
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const { preferences: modelingPrefs } = useModelingPreferences();
+
+  const prefStopTime = modelingPrefs.defaultStopTime ?? 10;
+  const prefIntervals = modelingPrefs.defaultNumberOfIntervals ?? 500;
+  const prefTolerance = modelingPrefs.solverTolerance ?? modelingPrefs.defaultRelativeTolerance ?? 1e-4;
+  const prefSolver = modelingPrefs.defaultSolver ?? "cvode";
+
+  const expStartTime = experiment?.startTime ?? experiment?.StartTime ?? 0;
+  const expStopTime = experiment?.stopTime ?? experiment?.StopTime ?? prefStopTime;
+  const expIntervals = experiment?.numberOfIntervals ?? prefIntervals;
+  const expInterval =
+    experiment?.interval ?? experiment?.Interval ?? (expStopTime - expStartTime) / Math.max(1, expIntervals);
+  const expTolerance = experiment?.tolerance ?? experiment?.Tolerance ?? prefTolerance;
+  const expSolver = experiment?.solver ?? prefSolver;
 
   const defaults = {
-    startTime: experiment?.startTime ?? 0,
-    stopTime: experiment?.stopTime ?? 10,
-    interval: experiment?.interval ?? ((experiment?.stopTime ?? 10) - (experiment?.startTime ?? 0)) / 500,
-    tolerance: experiment?.tolerance ?? 1e-6,
-    solver: experiment?.solver ?? "dassl",
-    numberOfIntervals: experiment?.numberOfIntervals ?? 500,
-    atol: 1e-6,
+    startTime: expStartTime,
+    stopTime: expStopTime,
+    interval: expInterval,
+    tolerance: expTolerance,
+    solver: expSolver,
+    numberOfIntervals: expIntervals,
+    atol: expTolerance,
     equidistant: true,
     steadyStateOnly: false,
   };
@@ -463,6 +482,7 @@ export function SimulationExperimentSettings({
           <option value="dassl">DASSL (DAE Variable-Order)</option>
           <option value="dopri5">DOPRI5 (Adaptive 5(4))</option>
           <option value="cvode">CVODE (SUNDIALS BDF)</option>
+          <option value="ida">IDA (SUNDIALS DAE)</option>
           <option value="tsit5">TSIT5 (Adaptive 5(4))</option>
           <option value="bdf">BDF (Stiff Multi-Step)</option>
           <option value="rk4">RK4 (Fixed Step 4th)</option>

@@ -21,6 +21,7 @@ import { JobQueue } from "./jobs.js";
 import { optionalAuth, setAuthDatabase } from "./middleware/auth-middleware.js";
 import { requireFeatureFlag } from "./middleware/feature-flag-middleware.js";
 import { defaultApiLimiter } from "./middleware/rate-limiter.js";
+import { allMigrations } from "./migrations/index.js";
 import { adminRouter } from "./routes/admin.js";
 import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
@@ -71,6 +72,7 @@ import { LibraryStorage } from "./storage.js";
 import { SANCTIONED_COUNTRIES, SANCTIONED_REGIONS } from "./util/compliance.js";
 import { seedInitialAdmin } from "./util/seed-admin.js";
 import { seedExamplePackages, seedPrepackagedLibraries } from "./util/seed-examples.js";
+import { isFederationDisabled, isStrictAirgapEnv } from "./util/tier-presets.js";
 
 /** Options for creating the Express application. */
 export interface AppOptions {
@@ -114,13 +116,18 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const featureFlagService = new FeatureFlagService(database);
   app.locals["featureFlagService"] = featureFlagService;
 
-  const isStartupAirgap = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
+  const isStartupAirgap = isStrictAirgapEnv();
 
   const federationWorker = new FederationWorker(database);
-  if (!isStartupAirgap && featureFlagService.isEnabled("activitypub_federation")) {
+  if (
+    !isStartupAirgap &&
+    !isFederationDisabled(database.isOpen() ? database.getInstanceSettings() : undefined) &&
+    featureFlagService.isEnabled("activitypub_federation")
+  ) {
     federationWorker.start();
   }
   app.locals["federationWorker"] = federationWorker;
+  app.locals["analyticsBuffer"] = database.analyticsBuffer;
 
   setAuthDatabase(database);
 
@@ -142,7 +149,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     void seedInitialAdmin(database)
       .then((res) => {
         if (res.created) {
-          console.log(`[AdminSeed] Bootstrapped initial admin account '${res.username}'.`);
+          console.log(
+            `[AdminSeed] Bootstrapped initial admin account '${res.username}'${
+              res.presetApplied ? ` with preset '${res.presetApplied}'` : ""
+            }.`,
+          );
           if (res.generatedPassword) {
             console.warn(
               `[AdminSeed] NOTICE: Initial admin password was auto-generated because ADMIN_INIT_PASSWORD was not set: ${res.generatedPassword}`,
@@ -286,15 +297,17 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     app.locals["autoBackupInterval"] = autoBackupInterval;
 
     // Automated Social Bot Mention Worker (Polls pending @bot mentions and synthesizes LLM responses)
-    import("./services/bot-mention-worker.js")
-      .then(({ BotMentionWorker }) => {
-        const botWorker = new BotMentionWorker(database);
-        botWorker.start(2000);
-        app.locals["botMentionWorker"] = botWorker;
-      })
-      .catch((err) => {
-        console.error("Failed to start BotMentionWorker:", err);
-      });
+    if (!isStartupAirgap || process.env["ALLOW_AIRGAP_BOTS"] === "true") {
+      import("./services/bot-mention-worker.js")
+        .then(({ BotMentionWorker }) => {
+          const botWorker = new BotMentionWorker(database);
+          botWorker.start(2000);
+          app.locals["botMentionWorker"] = botWorker;
+        })
+        .catch((err) => {
+          console.error("Failed to start BotMentionWorker:", err);
+        });
+    }
   }
 
   // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
@@ -354,12 +367,14 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       req.path.startsWith("/static/solutions/") ||
       req.path === "/static/embed.js" ||
       req.path === "/api/v1/embed.js";
+    const federationDisabled = isFederationDisabled(database.isOpen() ? database.getInstanceSettings() : undefined);
     const isPublicFederationPath =
       isEmbedRoute ||
-      req.path.startsWith("/.well-known/") ||
-      req.path.startsWith("/nodeinfo/") ||
-      req.path.startsWith("/actor") ||
-      req.path.startsWith("/users/");
+      (!federationDisabled &&
+        (req.path.startsWith("/.well-known/") ||
+          req.path.startsWith("/nodeinfo/") ||
+          req.path.startsWith("/actor") ||
+          req.path.startsWith("/users/")));
 
     if (process.env["NODE_ENV"] === "production" && allowedOrigins.size > 0 && !isPublicFederationPath) {
       if (requestOrigin && allowedOrigins.has(requestOrigin)) {
@@ -409,6 +424,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     // Always exempt core auth, admin control plane, health probes, legal, and public banner discovery
     if (
       req.path === "/health" ||
+      req.path === "/health/ready" ||
       req.path === "/legal" ||
       req.path.startsWith("/.well-known/") ||
       req.path.startsWith("/nodeinfo/") ||
@@ -418,7 +434,6 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       req.path.startsWith("/api/v1/instance") ||
       req.path.startsWith("/api/v1/flags") ||
       req.path.startsWith("/api/v1/compliance") ||
-      req.path.startsWith("/api/v1/analytics/pageview") ||
       req.path.startsWith("/api/v1/dev/reset")
     ) {
       next();
@@ -437,6 +452,15 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       announcementBanner = settings.announcementBanner;
     } catch {
       isMaintenance = false;
+    }
+
+    if (req.path.startsWith("/api/v1/analytics/pageview")) {
+      if (!isMaintenance || maintenanceLevel === "scheduled") {
+        next();
+        return;
+      }
+      res.status(202).json({ success: true, counted: false, ignored: "maintenance" });
+      return;
     }
 
     if (!isMaintenance) {
@@ -510,7 +534,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/social", socialRouter(database, federationWorker));
 
   // FMU storage & open-standard FMU registry routes
-  const fmuStorage = new FmuStorage();
+  const fmuStorageDir = path.resolve(database.dbDir, "fmus");
+  const fmuStorage = new FmuStorage(fmuStorageDir);
+  app.locals["fmuStorage"] = fmuStorage;
+  app.locals["fmuStorageDir"] = fmuStorageDir;
 
   // ── Enterprise Edition (ee/) Subsystems (Batches A–I) ──
   const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
@@ -682,6 +709,43 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     });
   });
 
+  // Unauthenticated readiness probe (available in both CE and EE)
+  app.get("/health/ready", (_req, res) => {
+    try {
+      const dbOpen = database.isOpen();
+      const migStatus = dbOpen
+        ? database.migrationRunner.getStatus(allMigrations)
+        : { currentVersion: null, pendingCount: 0, checksumMatch: false };
+      const settings = dbOpen ? database.getInstanceSettings() : null;
+      const isReady = dbOpen && migStatus.pendingCount === 0;
+      res.status(dbOpen ? 200 : 503).json({
+        status: isReady ? "ready" : dbOpen ? "degraded" : "unavailable",
+        ready: isReady,
+        edition: isEnterpriseEditionActive() ? "ee" : "ce",
+        instanceName: settings?.instanceName || "Ansatz",
+        federationMode: settings?.federationMode || "open",
+        maintenanceLevel: settings?.maintenanceLevel || "off",
+        database: {
+          open: dbOpen,
+          schemaVersion: migStatus.currentVersion,
+          pendingMigrations: migStatus.pendingCount,
+          checksumMatch: migStatus.checksumMatch,
+        },
+        mqtt: mqttClient ? "connected" : "unavailable",
+        historian: dbPool ? "connected" : "unavailable",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: unknown) {
+      res.status(503).json({
+        status: "unavailable",
+        ready: false,
+        edition: isEnterpriseEditionActive() ? "ee" : "ce",
+        error: err instanceof Error ? err.message : "Readiness check failed",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
   // ── npm-compatible registry (mounted at /api/v1/npm) ──
   app.use("/api/v1/npm", npmAuthRouter(database));
   app.use("/api/v1/npm", npmRegistryRouter(database, libraryStorage));
@@ -718,6 +782,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       "/languages",
       "/reference",
       "/industries",
+      "/ansatz",
       "/pricing",
       "/llms.txt",
       "/llms-full.txt",
@@ -767,6 +832,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
           return;
         }
       }
+      if (isDocAsset && (!staticWebDir || !fs.existsSync(staticWebDir))) {
+        res.status(404).end();
+        return;
+      }
       next();
     });
   }
@@ -778,6 +847,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     app.use((req, res, next) => {
       if (req.method !== "GET" && req.method !== "HEAD") {
         next();
+        return;
+      }
+      if (req.path.startsWith("/assets/") || req.path.startsWith("/vp-icons/")) {
+        res.status(404).end();
         return;
       }
       if (

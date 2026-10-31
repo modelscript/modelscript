@@ -13,12 +13,22 @@ import {
 } from "../../util/notebook";
 import type { SpatialPin } from "../artifacts/spatial-pin";
 
+export interface AttachedMorselDraft {
+  id?: number | undefined;
+  code: string;
+  title: string;
+  dialect?: string | undefined;
+  language?: string | undefined;
+}
+
 export interface UseComposeSubmitParams {
   token: string | null;
   content: string;
   setContent: (val: string) => void;
   artifactId: number | null;
   setArtifactId: (val: number | null) => void;
+  attachedMorsel?: AttachedMorselDraft | null | undefined;
+  setAttachedMorsel?: ((val: AttachedMorselDraft | null) => void) | undefined;
   isNotebookMode: boolean;
   setIsNotebookMode: (val: boolean) => void;
   notebookTitle: string;
@@ -54,6 +64,8 @@ export function useComposeSubmit({
   setContent,
   artifactId,
   setArtifactId,
+  attachedMorsel,
+  setAttachedMorsel,
   isNotebookMode,
   setIsNotebookMode,
   notebookTitle,
@@ -145,18 +157,44 @@ export function useComposeSubmit({
     (notebookTitle.trim().length > 0 ||
       notebookCells.some((c) => (c.type === "markdown" ? c.content.trim().length > 0 : Boolean(c.artifactId))));
 
+  const hasAttachedMorsel = Boolean(attachedMorsel && (attachedMorsel.id || attachedMorsel.code?.trim()));
+
   const handleSubmit = async () => {
-    if ((!content.trim() && !artifactId && !hasNotebookContent) || !token) return;
+    if ((!content.trim() && !artifactId && !hasNotebookContent && !hasAttachedMorsel) || !token) return;
     setSubmitting(true);
     try {
+      let resolvedArtifactId = artifactId;
+      if (!resolvedArtifactId && attachedMorsel) {
+        if (attachedMorsel.id) {
+          resolvedArtifactId = attachedMorsel.id;
+        } else if (attachedMorsel.code) {
+          const morselDialect = attachedMorsel.dialect || attachedMorsel.language || "modelica";
+          const morselTitle = attachedMorsel.title || "Model";
+          const created = await createArtifactView({
+            artifact_type: morselDialect === "modelica" ? "modelica-diagram" : morselDialect,
+            dialect: morselDialect,
+            title: morselTitle,
+            view_config: JSON.stringify({
+              code: attachedMorsel.code,
+              title: morselTitle,
+              dialect: morselDialect,
+            }),
+          });
+          if (created?.id) {
+            resolvedArtifactId = created.id;
+            setArtifactId(created.id);
+          }
+        }
+      }
+
       const effectiveCells = isNotebookMode
         ? notebookCells.filter((c) => (c.type === "markdown" ? c.content.trim().length > 0 : Boolean(c.artifactId)))
         : hasArtifactDirectives(content)
-          ? parseNotebookFromContent(content, artifactId).cells
+          ? parseNotebookFromContent(content, resolvedArtifactId).cells
           : null;
 
       const effectiveArtIds = effectiveCells ? extractArtifactIdsFromCells(effectiveCells) : [];
-      const primaryArtifactId = effectiveArtIds[0] ?? artifactId ?? undefined;
+      const primaryArtifactId = effectiveArtIds[0] ?? resolvedArtifactId ?? undefined;
       const text = isNotebookMode
         ? serializeCellsToMarkdown(effectiveCells || [], notebookTitle).trim()
         : content.trim();
@@ -209,6 +247,7 @@ export function useComposeSubmit({
       setContentWarning("");
       setShowContentWarning(false);
       setArtifactId(null);
+      setAttachedMorsel?.(null);
       setNotebookTitle("");
       setNotebookSummary("");
       setNotebookSeries("");

@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { renderKinematicDiagramSvg, type KinematicBodyLike, type KinematicJointLike } from "@modelscript/diagram";
 import { CheckCircleIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Spinner, Text } from "@primer/react";
-import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import MultibodyViewport3D, { type MultibodyLink3D, type MultibodyNode3D } from "./MultibodyViewport3D";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface GensysViewerProps {
   viewConfig: {
@@ -48,14 +48,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 40px;
+  min-height: 40px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default, #30363d);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -64,7 +64,7 @@ const Toolbar = styled.div`
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 `;
 
@@ -107,56 +107,38 @@ const ContentArea = styled.div`
   flex: 1;
   position: relative;
   overflow: auto;
-  padding: 16px;
+  padding: 14px;
   background: var(--color-canvas-subtle, #161b22);
 `;
 
 const MetricGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
 `;
 
 const MetricCard = styled.div`
   background: var(--color-canvas-default, #0d1117);
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 6px;
-  padding: 12px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 `;
 
 const MetricLabel = styled.span`
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--color-fg-muted, #8b949e);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 `;
 
 const MetricValue = styled.span`
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--color-fg-default, #e6edf3);
-`;
-
-const SvgContainer = styled.div`
-  width: 100%;
-  min-height: 240px;
-  background: var(--color-canvas-default, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 12px;
-
-  svg {
-    max-width: 100%;
-    height: auto;
-  }
 `;
 
 function parseGensysDeckClient(deck: string) {
@@ -208,7 +190,7 @@ function parseGensysDeckClient(deck: string) {
 
 const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
-  const [tabIndex, setTabIndex] = useState<number>(() => (viewConfig.svg ? 0 : 2));
+  const [tabIndex, setTabIndex] = useState<number>(0);
   const [fetchedCode, setFetchedCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -241,21 +223,70 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
   }, [viewConfig.carbodyMassKg, bodies]);
 
   const svgMarkup = useMemo(() => {
-    if (viewConfig.svg) {
-      return DOMPurify.sanitize(viewConfig.svg);
+    if (viewConfig.svg && viewConfig.svg.trim()) {
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+    }
+    if (bodies.length > 0) {
+      try {
+        const kinBodies: KinematicBodyLike[] = [
+          { id: "Track", name: "Track / Rail", isGround: true },
+          ...bodies.map((b) => ({
+            id: b.name,
+            name: b.name,
+            mass: b.mass ?? 1500,
+          })),
+        ];
+        const kinJoints: KinematicJointLike[] = couplings.map((c, idx) => ({
+          id: c.name || `C_${idx + 1}`,
+          name: c.name || `Coupl ${idx + 1}`,
+          type: /damp|c_/i.test(c.type || "") ? "spring_damper" : "spring_damper",
+          body1: c.from || "Track",
+          body2: c.to || bodies[idx % bodies.length]!.name,
+        }));
+        if (kinJoints.length === 0) {
+          bodies.forEach((b, idx) => {
+            kinJoints.push({
+              id: `K_${idx + 1}`,
+              name: `Susp_${idx + 1}`,
+              type: "spring_damper",
+              body1: idx === 0 ? "Track" : bodies[idx - 1]!.name,
+              body2: b.name,
+            });
+          });
+        }
+        const built = renderKinematicDiagramSvg(
+          {
+            name: modelName,
+            dialect: "GENSYS",
+            bodies: kinBodies,
+            joints: kinJoints,
+          },
+          { isDark: true },
+        );
+        return sanitizeSvgMarkup(built, { isFullScreen });
+      } catch {
+        return "";
+      }
     }
     return "";
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, bodies, couplings, modelName, isFullScreen]);
 
   const { nodes3D, links3D } = useMemo(() => {
     const nodes: MultibodyNode3D[] = [];
     const links: MultibodyLink3D[] = [];
     const posMap = new Map<string, [number, number, number]>();
 
-    bodies.forEach((b) => {
-      if (!Array.isArray(b.cg) || b.cg.length !== 3) return;
+    bodies.forEach((b, idx) => {
       const isWheel = /axl|wheel|ws/i.test(b.name);
-      const pos: [number, number, number] = b.cg;
+      const isBogie = /bog/i.test(b.name);
+      const pos: [number, number, number] =
+        Array.isArray(b.cg) && b.cg.length === 3
+          ? b.cg
+          : isWheel
+            ? [(idx - bodies.length / 2) * 2.5, 0, 0.45]
+            : isBogie
+              ? [idx % 2 === 0 ? -4.5 : 4.5, 0, 0.9]
+              : [0, 0, 1.8];
       posMap.set(b.name, pos);
       nodes.push({
         id: b.name,
@@ -266,13 +297,13 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
       });
     });
 
-    couplings.forEach((c) => {
-      const p1 = posMap.get(c.from || "");
-      const p2 = posMap.get(c.to || "");
+    couplings.forEach((c, idx) => {
+      const p1 = posMap.get(c.from || "") || (idx > 0 ? posMap.get(bodies[idx - 1]?.name || "") : undefined);
+      const p2 = posMap.get(c.to || "") || posMap.get(bodies[idx % Math.max(1, bodies.length)]?.name || "");
       if (p1 && p2) {
         links.push({
-          id: c.name,
-          name: c.name,
+          id: c.name || `coupl_${idx + 1}`,
+          name: c.name || `Coupl ${idx + 1}`,
           type: "spring_damper",
           from: p1,
           to: p2,
@@ -300,7 +331,7 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <Title>{modelName}</Title>
+          {!isFullScreen && <Title title={modelName}>{modelName}</Title>}
           <Badge $variant="info">GENSYS RAILWAY</Badge>
           {viewConfig.en14363Compliant !== undefined && (
             <Badge $variant={viewConfig.en14363Compliant ? "success" : "warning"}>
@@ -325,7 +356,7 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
               Deck Source
             </SegmentedControl.Button>
           </SegmentedControl>
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"
@@ -374,13 +405,19 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
             </MetricGrid>
 
             {svgMarkup ? (
-              <SvgContainer dangerouslySetInnerHTML={{ __html: svgMarkup }} />
+              <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} minHeight="240px" />
             ) : (
-              <SvgContainer>
+              <Box
+                p={4}
+                bg="var(--color-canvas-default, #0d1117)"
+                border="1px solid var(--color-border-default, #30363d)"
+                borderRadius="6px"
+                textAlign="center"
+              >
                 <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
                   No GENSYS topology diagram elements found. Switch to Deck Source to inspect the file.
                 </Text>
-              </SvgContainer>
+              </Box>
             )}
           </div>
         ) : tabIndex === 1 ? (

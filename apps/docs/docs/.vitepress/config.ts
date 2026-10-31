@@ -145,13 +145,23 @@ export default defineConfig({
     const cleanRoute = rawPath ? rawPath.replace(/^\/+/, "") : "";
     const url = cleanRoute ? `https://modelscript.org/${cleanRoute}` : "https://modelscript.org/";
     const desc = description || SITE_DESCRIPTION;
+    const slug = cleanRoute ? cleanRoute.replace(/\//g, "-") : "index";
+    const publicDir = path.resolve(__dirname, "../public");
+    const ogRelPath = fs.existsSync(path.join(publicDir, `og/${slug}.png`))
+      ? `og/${slug}.png`
+      : fs.existsSync(path.join(publicDir, `og/${slug}.svg`))
+        ? `og/${slug}.svg`
+        : "og/index.svg";
+    const ogImageUrl = `https://modelscript.org/${ogRelPath}`;
     const tags: ([string, Record<string, string>] | [string, Record<string, string>, string])[] = [
       ["link", { rel: "canonical", href: url }],
       ["meta", { property: "og:url", content: url }],
       ["meta", { property: "og:title", content: title }],
       ["meta", { property: "og:description", content: desc }],
+      ["meta", { property: "og:image", content: ogImageUrl }],
       ["meta", { name: "twitter:title", content: title }],
       ["meta", { name: "twitter:description", content: desc }],
+      ["meta", { name: "twitter:image", content: ogImageUrl }],
     ];
 
     if (cleanRoute) {
@@ -159,6 +169,7 @@ export default defineConfig({
       const section = parts[0];
       const sectionLabels: Record<string, { name: string; link: string }> = {
         guide: { name: "Guide", link: "https://modelscript.org/guide/introduction" },
+        ansatz: { name: "Ansatz Platform", link: "https://modelscript.org/ansatz/overview" },
         architecture: { name: "Architecture", link: "https://modelscript.org/architecture/overview" },
         algorithms: { name: "Algorithms", link: "https://modelscript.org/algorithms/overview" },
         cli: { name: "CLI Reference", link: "https://modelscript.org/cli/overview" },
@@ -238,9 +249,9 @@ export default defineConfig({
     ["meta", { name: "author", content: "Mohamad Omar Nachawati" }],
     ["meta", { property: "og:site_name", content: "ModelScript" }],
     ["meta", { property: "og:type", content: "website" }],
-    ["meta", { property: "og:image", content: "https://modelscript.org/ms-logo.png" }],
+    ["meta", { property: "og:image", content: "https://modelscript.org/og/index.svg" }],
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
-    ["meta", { name: "twitter:image", content: "https://modelscript.org/ms-logo.png" }],
+    ["meta", { name: "twitter:image", content: "https://modelscript.org/og/index.svg" }],
     ["meta", { name: "robots", content: "index, follow" }],
     [
       "script",

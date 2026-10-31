@@ -116,6 +116,11 @@ export function scriptsRouter(db: LibraryDatabase) {
             db.updateJobStatus(jobId, "SUCCESS");
             db.settleUserEscrow(userId, jobId, 0.05, `Template Run: ${template.name}`);
             db.createNotification(userId, userId, "simulation_completed");
+            try {
+              db.grantReferralReward(userId);
+            } catch {
+              // Ignore referral reward errors
+            }
             fs.appendFileSync(logPath, "Job finished successfully.\n");
 
             const cleanupTimer = setTimeout(

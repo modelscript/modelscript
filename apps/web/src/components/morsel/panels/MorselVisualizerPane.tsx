@@ -121,7 +121,26 @@ function getStencilsForDialect(dialect: string): StencilItem[] {
         { label: "Voltage Source", snippet: "V_new in 0 DC 5.0\n" },
       ];
     case "pscad":
+      return [
+        {
+          label: "Component",
+          snippet:
+            '        <User id="9001" name="master:resistor" x="180" y="180" w="44" h="28">\n          <paramlist><param name="R" value="10.0"/></paramlist>\n        </User>\n',
+        },
+        {
+          label: "Wire",
+          snippet: '        <Wire id="9002" x="180" y="180"><vertex x="0" y="0"/><vertex x="72" y="0"/></Wire>\n',
+        },
+      ];
     case "psse":
+      return [
+        { label: "Bus Record", snippet: "   99, 'BUS_NEW     ', 138.0000,1,   1,   1,   1,1.00000,   0.0000\n" },
+        {
+          label: "Load Record",
+          snippet:
+            "   99,'1 ',1,   1,   1,    50.000,    15.000,     0.000,     0.000,     0.000,     0.000,   1,1,0\n",
+        },
+      ];
     case "opendss":
       return [
         { label: "Bus", snippet: "New Circuit.Bus_New basekv=13.8 pu=1.0\n" },
@@ -147,10 +166,36 @@ function getStencilsForDialect(dialect: string): StencilItem[] {
         { label: "TON Timer", snippet: "TON_Delay(IN := Start_Cmd, PT := T#500ms, Q => Delay_Done);\n" },
         { label: "CTU Counter", snippet: "CTU_Parts(CU := Part_Sensor, R := Reset_Cmd, PV := 25, Q => Batch_Full);\n" },
       ];
-    case "urdf":
     case "simpack":
+      return [
+        {
+          label: "Body ($B)",
+          snippet:
+            "body.id            = '$B_NewBody'\nbody.mass          = 1200.0\nbody.inertia       = [450.0, 1800.0, 1850.0]\n",
+        },
+        {
+          label: "Force Element ($F)",
+          snippet:
+            "force.id           = '$F_PrimarySpring'\nforce.type         = 43\nforce.stiffness    = 1.2e6\nforce.damping      = 1.5e4\n",
+        },
+      ];
     case "gensys":
+      return [
+        {
+          label: "Mass (mass)",
+          snippet: "mass m_body_new  0.0 0.0 -1.2   m=15000  Jx=22000 Jy=450000 Jz=450000\n",
+        },
+        {
+          label: "Spring/Damper (coupl)",
+          snippet: "coupl k_susp_new  body_1 body_2  0.0 1.0 -0.5  0.0 1.0 -0.8  k=350e3 c=18e3\n",
+        },
+      ];
     case "adams":
+      return [
+        { label: "Part", snippet: "PART/99, MASS = 12.5, CM = 9901, IP = 1.2, 1.2, 0.8\n" },
+        { label: "Joint", snippet: "JOINT/99, REVOLUTE, I = 101, J = 201\n" },
+      ];
+    case "urdf":
       return [
         {
           label: "Rigid Body / Link",
@@ -232,6 +277,7 @@ export interface MorselVisualizerPaneProps {
   handleSaveCadBindings: (componentName: string, bindings: DynamicBindingConfig[]) => void;
   simulationVariables: string[];
   selectedSimulationVariables: string[];
+  onToggleSimulationVariable?: ((variable: string) => void) | undefined;
   cosimDataSource: "local" | "mqtt-live" | "historian-replay";
   setCosimDataSource: (ds: "local" | "mqtt-live" | "historian-replay") => void;
   handleReplaySession: (session: HistorianSession, speed: number) => void;
@@ -302,6 +348,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   handleSaveCadBindings,
   simulationVariables,
   selectedSimulationVariables,
+  onToggleSimulationVariable,
   cosimDataSource,
   setCosimDataSource,
   handleReplaySession,
@@ -1107,26 +1154,21 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 onShowProperties={handleSelectComponent}
                 onNodeDoubleClick={onNodeDoubleClick}
                 onDrop={async (className, x, y) => {
-                  if (!editor) return;
                   enqueueDiagramAction({ type: "addComponent", className, x, y });
                 }}
                 onConnect={async (source, target, points) => {
-                  if (!editor) return;
                   enqueueDiagramAction({ type: "connect", source, target, points });
                 }}
                 onMove={async (items) => {
-                  if (!editor) return;
                   enqueueDiagramAction({ type: "move", items });
                 }}
                 onResize={async (name, x, y, width, height, rotation, edges) => {
-                  if (!editor) return;
                   enqueueDiagramAction({
                     type: "resize",
                     item: { name, x, y, width, height, rotation, edges },
                   });
                 }}
                 onEdgeMove={async (edges) => {
-                  if (!editor) return;
                   enqueueDiagramAction({ type: "moveEdge", edges });
                 }}
                 onEdgeDelete={async (source, target) => {
@@ -1208,15 +1250,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 isLoading={isPropertiesLoading}
                 width={propertiesWidth}
                 translations={translations}
+                onClose={() => handleSelectComponent(null)}
                 onNameChange={async (newName) => {
-                  if (!selectedComponent || !editor) return;
+                  if (!selectedComponent) return;
                   const oldName = selectedComponent;
                   if (expectedComponentNameRef) expectedComponentNameRef.current = newName;
                   setSelectedComponent(newName);
                   enqueueDiagramAction({ type: "updateName", oldName, newName });
                 }}
                 onDescriptionChange={async (newDescription) => {
-                  if (!selectedComponent || !editor) return;
+                  if (!selectedComponent) return;
                   enqueueDiagramAction({
                     type: "updateDescription",
                     name: selectedComponent,
@@ -1224,10 +1267,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   });
                 }}
                 onParameterChange={async (name, value) => {
-                  if (!selectedComponent || !editor) return;
+                  if (!selectedComponent) return;
                   let effectiveValue = value;
-                  const declaredType = (selectedComponent as any)?.declaredType;
-                  if (declaredType) {
+                  const declaredType = (selectedComponentProperties as any)?.declaredType;
+                  if (declaredType && Array.isArray(declaredType.elements)) {
                     for (const el of declaredType.elements) {
                       if (el && (el as any).name === name) {
                         const defaultExpr = (el.modification?.expression as any)?.toJSON?.toString();
@@ -1302,6 +1345,27 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               colorMode={colorMode}
               onReplaySession={handleReplaySession}
               onPauseReplay={() => animationControllerRef.current?.pause()}
+              onVariableSelected={(participantId, variable) => {
+                const candidate = simulationVariables.includes(variable)
+                  ? variable
+                  : simulationVariables.includes(`${participantId}.${variable}`)
+                    ? `${participantId}.${variable}`
+                    : variable;
+                if (!simulationVariables.includes(candidate)) {
+                  handleVariablesLoaded([...simulationVariables, candidate]);
+                }
+                onToggleSimulationVariable?.(candidate);
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(
+                    new CustomEvent("morsel:toggle-simulation-variable", {
+                      detail: { participantId, variable: candidate },
+                    }),
+                  );
+                }
+                setShowResultsView(true);
+                setShowCadView(false);
+                setShowAnalysisView(false);
+              }}
               sessions={recordedSessions}
               sessionId={selectedTreeClassName ? `live-${dialect}-${selectedTreeClassName}` : `live-${dialect}-default`}
             />

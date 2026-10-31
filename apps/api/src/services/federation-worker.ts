@@ -2,8 +2,9 @@
 
 import dns from "node:dns/promises";
 import type { LibraryDatabase } from "../database.js";
-import { sendSignedRequest } from "../util/activitypub-crypto.js";
+import { computeFollowersSyncDigest, sendSignedRequest } from "../util/activitypub-crypto.js";
 import { isOfacSanctioned } from "../util/compliance.js";
+import { isFederationDisabled } from "../util/tier-presets.js";
 import { locationService } from "./location.js";
 
 const SANCTIONED_TLDS: Record<string, string> = {
@@ -52,9 +53,10 @@ export class FederationWorker {
     let processedCount = 0;
     try {
       if (!this.db.db.open) return 0;
-      if (process.env["FEDERATION_MODE"] === "disabled") return 0;
+      if (isFederationDisabled()) return 0;
       try {
-        if (this.db.getInstanceSettings().maintenanceMode) return 0;
+        const settings = this.db.getInstanceSettings();
+        if (settings.maintenanceMode || isFederationDisabled(settings)) return 0;
       } catch {
         // Proceed if instance_settings table is not yet initialized
       }
@@ -140,6 +142,7 @@ export class FederationWorker {
 
         let signingKeyId = transportKeyId;
         let signingKey = transportKey;
+        const extraHeaders: Record<string, string> = {};
         if (typeof payload["actor"] === "string") {
           const userMatch = payload["actor"].match(/\/users\/([^/#?]+)$/);
           if (userMatch?.[1]) {
@@ -150,15 +153,37 @@ export class FederationWorker {
                 signingKeyId = `${payload["actor"]}#main-key`;
                 signingKey = userKeys.privateKey;
               }
+              try {
+                const domainFollowerActors = this.db.db
+                  .prepare(
+                    `SELECT u.actor_url
+                     FROM follows f
+                     JOIN users u ON f.follower_id = u.id
+                     WHERE f.following_id = ? AND LOWER(u.remote_domain) = ? AND (f.state = 'accepted' OR f.state IS NULL)`,
+                  )
+                  .all(localUser.id, lowerDomain) as { actor_url: string | null }[];
+                const actorUrls = domainFollowerActors.map((r) => r.actor_url).filter((u): u is string => Boolean(u));
+                if (actorUrls.length > 0) {
+                  const digestHex = computeFollowersSyncDigest(actorUrls);
+                  const actorUri = String(payload["actor"]);
+                  extraHeaders["Collection-Synchronization"] =
+                    `collectionId="${actorUri}/followers", url="${actorUri}/followers/synchronization", digest="${digestHex}"`;
+                }
+              } catch {}
             }
           }
         }
 
         try {
-          await sendSignedRequest(item.target_inbox_url, payload, signingKeyId, signingKey, this.db);
+          await sendSignedRequest(item.target_inbox_url, payload, signingKeyId, signingKey, this.db, extraHeaders);
           this.db.updateFederationDeliveryStatus(item.id, "completed");
+          this.db.recordDomainDeliverySuccess(item.target_domain);
+          try {
+            this.db.incrementRelayStats(item.target_inbox_url, "forwarded");
+          } catch {}
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
+          this.db.recordDomainDeliveryFailure(item.target_domain, errMsg);
           const nextAttempt = item.attempts + 1;
           if (nextAttempt >= item.max_attempts) {
             this.db.updateFederationDeliveryStatus(
@@ -189,16 +214,63 @@ export class FederationWorker {
     authorId: number,
     additionalInboxes: { inbox_url: string; shared_inbox_url?: string | undefined; remote_domain: string }[] = [],
   ): number {
-    const remoteFollowers = this.db.db
-      .prepare(
-        `SELECT u.inbox_url, u.shared_inbox_url, u.remote_domain 
-         FROM follows f
-         JOIN users u ON f.follower_id = u.id
-         WHERE f.following_id = ? AND u.remote_domain IS NOT NULL AND (f.state = 'accepted' OR f.state IS NULL)`,
-      )
-      .all(authorId) as { inbox_url: string; shared_inbox_url?: string | undefined; remote_domain: string }[];
+    try {
+      if (isFederationDisabled(this.db.getInstanceSettings())) return 0;
+    } catch {
+      if (isFederationDisabled()) return 0;
+    }
 
-    const allRecipients = [...remoteFollowers, ...additionalInboxes];
+    const toArr = Array.isArray(activity["to"])
+      ? activity["to"].map(String)
+      : typeof activity["to"] === "string"
+        ? [activity["to"]]
+        : [];
+    const ccArr = Array.isArray(activity["cc"])
+      ? activity["cc"].map(String)
+      : typeof activity["cc"] === "string"
+        ? [activity["cc"]]
+        : [];
+    const allAddressing = [...toArr, ...ccArr];
+    const isDirectOnly =
+      allAddressing.length > 0 &&
+      !allAddressing.some(
+        (u) =>
+          u === "https://www.w3.org/ns/activitystreams#Public" ||
+          u === "as:Public" ||
+          u === "Public" ||
+          u.endsWith("/followers"),
+      );
+    const isPublic = toArr.some(
+      (u) => u === "https://www.w3.org/ns/activitystreams#Public" || u === "as:Public" || u === "Public",
+    );
+
+    const remoteFollowers = isDirectOnly
+      ? []
+      : (this.db.db
+          .prepare(
+            `SELECT u.inbox_url, u.shared_inbox_url, u.remote_domain 
+             FROM follows f
+             JOIN users u ON f.follower_id = u.id
+             WHERE f.following_id = ? AND u.remote_domain IS NOT NULL AND (f.state = 'accepted' OR f.state IS NULL)`,
+          )
+          .all(authorId) as { inbox_url: string; shared_inbox_url?: string | undefined; remote_domain: string }[]);
+
+    const relayRecipients: { inbox_url: string; shared_inbox_url?: string | undefined; remote_domain: string }[] = [];
+    const actType = (activity["type"] as string) || "Activity";
+    if (isPublic && (actType === "Create" || actType === "Announce" || actType === "Update" || actType === "Delete")) {
+      try {
+        const relays = this.db.listFederationRelays().filter((r) => r.state === "accepted");
+        for (const relay of relays) {
+          relayRecipients.push({
+            inbox_url: relay.inbox_url,
+            shared_inbox_url: relay.inbox_url,
+            remote_domain: relay.domain || new URL(relay.inbox_url).hostname,
+          });
+        }
+      } catch {}
+    }
+
+    const allRecipients = [...remoteFollowers, ...additionalInboxes, ...relayRecipients];
     if (allRecipients.length === 0) return 0;
 
     // Group recipients by remote domain for sharedInbox deduplication
@@ -220,19 +292,18 @@ export class FederationWorker {
     }
 
     let enqueued = 0;
-    const actType = (activity["type"] as string) || "Activity";
     const actId = (activity["id"] as string) || `${Date.now()}`;
 
     for (const [domain, group] of domainGroups.entries()) {
       if (group.sharedInbox) {
         // One shared delivery for the entire domain
-        this.db.enqueueFederationDelivery(actType, actId, activity, group.sharedInbox, domain);
-        enqueued++;
+        const res = this.db.enqueueFederationDelivery(actType, actId, activity, group.sharedInbox, domain);
+        if (!res.skipped) enqueued++;
       } else {
         // Individual deliveries
         for (const inbox of group.personalInboxes) {
-          this.db.enqueueFederationDelivery(actType, actId, activity, inbox, domain);
-          enqueued++;
+          const res = this.db.enqueueFederationDelivery(actType, actId, activity, inbox, domain);
+          if (!res.skipped) enqueued++;
         }
       }
     }

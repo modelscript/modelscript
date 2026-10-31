@@ -129,6 +129,9 @@ export interface CloudSimulationRequest {
   startTime?: number | undefined;
   stopTime?: number | undefined;
   numberOfIntervals?: number | undefined;
+  tolerance?: number | undefined;
+  solver?: string | undefined;
+  parameterOverrides?: Record<string, number> | undefined;
 }
 
 export interface CloudSimulationStatus {
@@ -150,6 +153,8 @@ export const submitCloudSimulation = async (req: CloudSimulationRequest): Promis
   const { data } = await api.post<{ jobId: string }>("/simulate", req);
   return data;
 };
+
+export const submitSimulationJob = submitCloudSimulation;
 
 export const getCloudSimulationStatus = async (jobId: string): Promise<CloudSimulationStatus> => {
   const { data } = await api.get<CloudSimulationStatus>(`/simulate/${jobId}`);

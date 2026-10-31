@@ -178,7 +178,8 @@ const PackageDetailPage: React.FC = () => {
   const navigate = useNavigate();
   usePageTitle(name && version ? `${name}@${version}` : "Package Details");
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get("tab") as TabId) || "readme";
+  const rawTab = searchParams.get("tab") as TabId | null;
+  const activeTab: TabId = rawTab && TABS.some((t) => t.id === rawTab) ? rawTab : "readme";
   const { openCompose } = useContext(ComposeContext);
   const { user } = useAuth();
 
@@ -188,7 +189,7 @@ const PackageDetailPage: React.FC = () => {
   const [selectedDomain, setSelectedDomain] = useState<PolyglotDomain>("all");
   const [artifactTabDomainFilter, setArtifactTabDomainFilter] = useState<PolyglotDomain>("all");
   const [publishModalOpen, setPublishModalOpen] = useState(false);
-  const [compareBaseVersion, setCompareBaseVersion] = useState<string | undefined>(undefined);
+  const [compareTargetVersion, setCompareTargetVersion] = useState<string | undefined>(undefined);
 
   const setTab = (tab: TabId) => {
     setSearchParams({ tab });
@@ -382,7 +383,7 @@ const PackageDetailPage: React.FC = () => {
                 versionList={pkg.versionList}
                 packument={pkg.packument}
                 onCompare={(v) => {
-                  setCompareBaseVersion(v);
+                  setCompareTargetVersion(v);
                   setTab("compare");
                 }}
               />
@@ -393,7 +394,8 @@ const PackageDetailPage: React.FC = () => {
                 name={name}
                 version={version}
                 versionList={pkg.versionList}
-                baseVersion={compareBaseVersion}
+                initialBaseVersion={compareTargetVersion}
+                baseVersion={compareTargetVersion}
               />
             )}
 
@@ -482,7 +484,12 @@ const PackageDetailPage: React.FC = () => {
         collaboratorPermissionInput={mgmt.collaboratorPermissionInput}
         setCollaboratorPermissionInput={mgmt.setCollaboratorPermissionInput}
         onAddCollaborator={mgmt.handleAddCollaborator}
-        onRemoveCollaborator={mgmt.handleRemoveCollaborator}
+        onRemoveCollaborator={(userIdOrUsername) => {
+          const matched = pkg.collaborators.find(
+            (c) => String(c.user_id) === String(userIdOrUsername) || c.username === userIdOrUsername,
+          );
+          void mgmt.handleRemoveCollaborator(String(matched?.user_id || userIdOrUsername));
+        }}
         collaborators={pkg.collaborators}
         packageOwner={pkg.packageOwner}
         onUnpublish={mgmt.handleUnpublish}

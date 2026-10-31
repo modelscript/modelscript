@@ -10,7 +10,7 @@ import { JWT_SECRET, extractTokenFromRequest, optionalAuth, requireAuth } from "
 import { ArchiveQueue, defaultArchiveQueue } from "../services/archive-queue.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-archive.js";
-import { assertSafePublicUrl } from "../util/ssrf.js";
+import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { normalizeSolutionBundleUrl } from "./solutions.js";
 
 export function usersRouter(
@@ -214,7 +214,22 @@ export function usersRouter(
    */
   router.put("/me", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const { display_name, bio, location, website, avatar_url, banner_url } = req.body;
+    const {
+      display_name,
+      bio,
+      location,
+      website,
+      avatar_url,
+      banner_url,
+      discoverable,
+      indexable,
+      locked,
+      default_post_visibility,
+      also_known_as,
+      alsoKnownAs,
+      profile_fields,
+      profileFields,
+    } = req.body;
 
     const isSafeProfileUrl = (u: unknown): boolean => {
       if (u === undefined || u === null || u === "") return true;
@@ -234,6 +249,9 @@ export function usersRouter(
       return;
     }
 
+    const rawFields = profile_fields !== undefined ? profile_fields : profileFields;
+    const rawAliases = also_known_as !== undefined ? also_known_as : alsoKnownAs;
+
     database.updateProfile(userId, {
       display_name: typeof display_name === "string" ? display_name.slice(0, 100) : display_name,
       bio: typeof bio === "string" ? bio.slice(0, 1000) : bio,
@@ -241,7 +259,437 @@ export function usersRouter(
       website,
       avatar_url,
       banner_url,
+      discoverable: typeof discoverable === "boolean" ? discoverable : undefined,
+      indexable: typeof indexable === "boolean" ? indexable : undefined,
+      locked: typeof locked === "boolean" ? locked : undefined,
+      default_post_visibility: typeof default_post_visibility === "string" ? default_post_visibility : undefined,
+      also_known_as: Array.isArray(rawAliases) ? rawAliases.map(String) : undefined,
+      profile_fields: Array.isArray(rawFields) ? rawFields : undefined,
     });
+
+    // Broadcast Update(Person) to remote followers if federated
+    const fedInfo = database.getUserFederationInfo(userId);
+    const updatedUser = database.getUserById(userId);
+    if (fedInfo?.actor_url && updatedUser) {
+      let parsedFields: Array<{ name: string; value: string; verified_at?: string | null }> = [];
+      try {
+        if (fedInfo.profile_fields) {
+          parsedFields = JSON.parse(fedInfo.profile_fields);
+        }
+      } catch {}
+      let parsedAliases: string[] = [];
+      try {
+        if (fedInfo.also_known_as) {
+          parsedAliases = JSON.parse(fedInfo.also_known_as);
+        }
+      } catch {}
+      const updatePersonActivity = {
+        "@context": [
+          "https://www.w3.org/ns/activitystreams",
+          "https://w3id.org/security/v1",
+          {
+            manuallyApprovesFollowers: "as:manuallyApprovesFollowers",
+            discoverable: "toot:discoverable",
+            indexable: "toot:indexable",
+            alsoKnownAs: { "@id": "as:alsoKnownAs", "@type": "@id" },
+            schema: "http://schema.org#",
+            PropertyValue: "schema:PropertyValue",
+            value: "schema:value",
+          },
+        ],
+        id: `${fedInfo.actor_url}#update-${Date.now()}`,
+        type: "Update",
+        actor: fedInfo.actor_url,
+        to: ["https://www.w3.org/ns/activitystreams#Public"],
+        cc: [`${fedInfo.actor_url}/followers`],
+        object: {
+          id: fedInfo.actor_url,
+          type: updatedUser.account_type === "bot" ? "Service" : "Person",
+          preferredUsername: updatedUser.username,
+          name: updatedUser.display_name || updatedUser.username,
+          summary: updatedUser.bio || "",
+          manuallyApprovesFollowers: Boolean(fedInfo.locked),
+          discoverable: fedInfo.discoverable === undefined ? true : Boolean(fedInfo.discoverable),
+          indexable: fedInfo.indexable === undefined ? true : Boolean(fedInfo.indexable),
+          ...(parsedAliases.length > 0 ? { alsoKnownAs: parsedAliases } : {}),
+          ...(parsedFields.length > 0
+            ? {
+                attachment: parsedFields.map((f) => ({
+                  type: "PropertyValue",
+                  name: f.name,
+                  value: f.value,
+                  ...(f.verified_at ? { verified_at: f.verified_at } : {}),
+                })),
+              }
+            : {}),
+        },
+      };
+      if (worker) {
+        worker.enqueueActivityBroadcast(updatePersonActivity, userId);
+      }
+    }
+
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /api/v1/users/me/verify-fields
+   * Verifies profile metadata fields via rel="me" link backlink check or ORCID identifier validation.
+   */
+  router.post("/me/verify-fields", requireAuth, async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const user = database.getUserById(userId);
+    const fedInfo = database.getUserFederationInfo(userId);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    let fields: Array<{ name: string; value: string; verified_at?: string | null }> = [];
+    try {
+      if (Array.isArray(req.body?.profile_fields)) {
+        fields = req.body.profile_fields;
+      } else if (fedInfo?.profile_fields) {
+        fields = JSON.parse(fedInfo.profile_fields);
+      }
+    } catch {
+      fields = [];
+    }
+
+    const baseUrl = process.env["PUBLIC_URL"] || `${req.protocol}://${req.get("host") || "hub.modelscript.org"}`;
+    const actorUrl = fedInfo?.actor_url || `${baseUrl}/users/${user.username}`;
+    const profilePageUrl = `${baseUrl}/@${user.username}`;
+    const orcidRegex = /^(?:https?:\/\/orcid\.org\/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])$/i;
+
+    const verifiedFields: Array<{ name: string; value: string; verified_at?: string | null }> = [];
+    for (const field of fields.slice(0, 8)) {
+      const name = String(field.name || "")
+        .trim()
+        .slice(0, 64);
+      const value = String(field.value || "")
+        .trim()
+        .slice(0, 512);
+      if (!name || !value) continue;
+
+      let verifiedAt: string | null = field.verified_at ?? null;
+
+      // 1. Check ORCID format
+      if (orcidRegex.test(value)) {
+        verifiedAt = new Date().toISOString();
+      } else if (/^https?:\/\//i.test(value)) {
+        // 2. Check rel="me" backlink on remote HTML page
+        try {
+          const resp = await safePublicFetch(value, {
+            headers: { Accept: "text/html,application/xhtml+xml" },
+          });
+          if (resp.ok) {
+            const html = await resp.text();
+            const hasRelMe =
+              (html.includes(actorUrl) || html.includes(profilePageUrl) || html.includes(`/@${user.username}`)) &&
+              /rel=["'][^"']*\bme\b[^"']*["']/i.test(html);
+            if (hasRelMe) {
+              verifiedAt = new Date().toISOString();
+            }
+          }
+        } catch {
+          // Network or SSRF rejection leaves verifiedAt unchanged
+        }
+      }
+
+      verifiedFields.push({ name, value, verified_at: verifiedAt });
+    }
+
+    database.updateProfile(userId, { profile_fields: verifiedFields });
+    res.json({ success: true, profile_fields: verifiedFields });
+  });
+
+  /**
+   * GET /api/v1/users/me/follow-requests
+   * Lists pending follow requests for a locked account.
+   */
+  router.get("/me/follow-requests", requireAuth, (req: Request, res: Response) => {
+    const requests = database.getPendingFollowRequests(req.user!.id);
+    res.json({ requests });
+  });
+
+  /**
+   * POST /api/v1/users/me/follow-requests/:followerId/accept
+   */
+  router.post("/me/follow-requests/:followerId/accept", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const followerId = Number(req.params["followerId"]);
+    const accepted = database.acceptFollowRequest(userId, followerId);
+    if (!accepted) {
+      res.status(404).json({ error: "Follow request not found" });
+      return;
+    }
+
+    database.createNotification(followerId, userId, "follow");
+
+    // If follower is remote, enqueue ActivityPub Accept(Follow)
+    const targetFed = database.getUserFederationInfo(userId);
+    const followerFed = database.getUserFederationInfo(followerId);
+    if (targetFed?.actor_url && followerFed?.remote_domain && followerFed?.inbox_url && followerFed?.actor_url) {
+      const acceptActivity = {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: `${targetFed.actor_url}#accept-follow-${followerId}-${Date.now()}`,
+        type: "Accept",
+        actor: targetFed.actor_url,
+        object: {
+          type: "Follow",
+          actor: followerFed.actor_url,
+          object: targetFed.actor_url,
+        },
+      };
+      database.enqueueFederationDelivery(
+        "Accept",
+        acceptActivity.id,
+        acceptActivity,
+        followerFed.inbox_url,
+        followerFed.remote_domain,
+      );
+    }
+
+    res.json({ success: true, state: "accepted" });
+  });
+
+  /**
+   * POST /api/v1/users/me/follow-requests/:followerId/reject
+   */
+  router.post("/me/follow-requests/:followerId/reject", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const followerId = Number(req.params["followerId"]);
+    const rejected = database.rejectFollowRequest(userId, followerId);
+    if (!rejected) {
+      res.status(404).json({ error: "Follow request not found" });
+      return;
+    }
+
+    const targetFed = database.getUserFederationInfo(userId);
+    const followerFed = database.getUserFederationInfo(followerId);
+    if (targetFed?.actor_url && followerFed?.remote_domain && followerFed?.inbox_url && followerFed?.actor_url) {
+      const rejectActivity = {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: `${targetFed.actor_url}#reject-follow-${followerId}-${Date.now()}`,
+        type: "Reject",
+        actor: targetFed.actor_url,
+        object: {
+          type: "Follow",
+          actor: followerFed.actor_url,
+          object: targetFed.actor_url,
+        },
+      };
+      database.enqueueFederationDelivery(
+        "Reject",
+        rejectActivity.id,
+        rejectActivity,
+        followerFed.inbox_url,
+        followerFed.remote_domain,
+      );
+    }
+
+    res.json({ success: true, state: "rejected" });
+  });
+
+  /**
+   * POST /api/v1/users/me/aliases
+   * Configures ActivityPub `alsoKnownAs` identity aliases required before incoming account migration (`Move`).
+   */
+  router.post("/me/aliases", requireAuth, (req: Request, res: Response) => {
+    const rawAliases = req.body?.alsoKnownAs ?? req.body?.also_known_as ?? req.body?.aliases ?? [];
+    if (!Array.isArray(rawAliases)) {
+      res.status(400).json({ error: "alsoKnownAs must be an array of actor URIs" });
+      return;
+    }
+    const updated = database.setUserAliases(req.user!.id, rawAliases.map(String));
+    res.json({ success: true, alsoKnownAs: updated });
+  });
+
+  /**
+   * POST /api/v1/users/me/move
+   * Initiates an outbound ActivityPub `Move` migration to a target account URI.
+   */
+  router.post("/me/move", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const targetActorUrl = String(req.body?.targetActorUrl || req.body?.target_actor_url || "").trim();
+    if (!targetActorUrl) {
+      res.status(400).json({ error: "targetActorUrl is required" });
+      return;
+    }
+
+    try {
+      const fedInfo = database.getUserFederationInfo(userId);
+      const result = database.initiateLocalUserMove(userId, targetActorUrl);
+
+      if (fedInfo?.actor_url) {
+        const moveActivity = {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          id: `${fedInfo.actor_url}#move-${Date.now()}`,
+          type: "Move",
+          actor: fedInfo.actor_url,
+          object: fedInfo.actor_url,
+          target: targetActorUrl,
+          to: ["https://www.w3.org/ns/activitystreams#Public"],
+          cc: [`${fedInfo.actor_url}/followers`],
+        };
+        if (worker) {
+          worker.enqueueActivityBroadcast(moveActivity, userId);
+        } else {
+          const remoteFollowers = database.getRemoteFollowersInboxes(userId);
+          for (const f of remoteFollowers) {
+            database.enqueueFederationDelivery(
+              "Move",
+              moveActivity.id,
+              moveActivity,
+              f.shared_inbox_url || f.inbox_url,
+              f.remote_domain || (f.inbox_url ? new URL(f.inbox_url).hostname : "remote"),
+            );
+          }
+        }
+      }
+
+      database.logAudit({
+        actorId: userId,
+        action: "user_account_moved",
+        resourceType: "user",
+        resourceId: String(userId),
+        details: { targetActorUrl, migratedLocalFollowers: result.migratedLocalFollowers },
+      });
+
+      res.json({
+        success: true,
+        movedToActorUrl: result.movedToActorUrl,
+        migratedLocalFollowers: result.migratedLocalFollowers,
+      });
+    } catch (err: unknown) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to initiate account move" });
+    }
+  });
+
+  /**
+   * GET /api/v1/users/me/social-graph/export
+   * Exports following, blocks, and mutes in JSON or Mastodon-compatible CSV format.
+   */
+  router.get("/me/social-graph/export", requireAuth, (req: Request, res: Response) => {
+    const graph = database.exportUserSocialGraph(req.user!.id);
+    const format = String(req.query["format"] || "json").toLowerCase();
+    const listType = String(req.query["type"] || "following").toLowerCase();
+
+    if (format === "csv") {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      if (listType === "blocks") {
+        res.setHeader("Content-Disposition", 'attachment; filename="blocked_accounts.csv"');
+        res.send(["Account address", ...graph.blocks].join("\n"));
+        return;
+      }
+      if (listType === "mutes") {
+        res.setHeader("Content-Disposition", 'attachment; filename="muted_accounts.csv"');
+        res.send(["Account address", ...graph.mutes].join("\n"));
+        return;
+      }
+      res.setHeader("Content-Disposition", 'attachment; filename="following_accounts.csv"');
+      const lines = [
+        "Account address,Show boosts,Notify on new posts,Languages",
+        ...graph.following.map((addr) => `${addr},true,false,`),
+      ];
+      res.send(lines.join("\n"));
+      return;
+    }
+
+    res.json(graph);
+  });
+
+  /**
+   * POST /api/v1/users/me/social-graph/import
+   * Imports following, blocks, or mutes from JSON arrays or Mastodon CSV text.
+   */
+  router.post("/me/social-graph/import", requireAuth, (req: Request, res: Response) => {
+    const { following, blocks, mutes, csv, type, mode } = req.body || {};
+    let parsedFollowing: string[] | undefined = Array.isArray(following) ? following.map(String) : undefined;
+    let parsedBlocks: string[] | undefined = Array.isArray(blocks) ? blocks.map(String) : undefined;
+    let parsedMutes: string[] | undefined = Array.isArray(mutes) ? mutes.map(String) : undefined;
+
+    if (typeof csv === "string" && csv.trim()) {
+      const addresses = csv
+        .split(/\r?\n/)
+        .map((line) => line.split(",")[0]?.trim() || "")
+        .filter((val) => val && val.toLowerCase() !== "account address");
+      const targetList = String(type || "following").toLowerCase();
+      if (targetList === "blocks") parsedBlocks = addresses;
+      else if (targetList === "mutes") parsedMutes = addresses;
+      else parsedFollowing = addresses;
+    }
+
+    const result = database.importUserSocialGraph(req.user!.id, {
+      following: parsedFollowing,
+      blocks: parsedBlocks,
+      mutes: parsedMutes,
+      mode: mode === "overwrite" ? "overwrite" : "merge",
+    });
+
+    res.json({ success: true, ...result });
+  });
+
+  /**
+   * GET /api/v1/users/me/warnings
+   * Lists moderation warnings / strikes issued to the current user.
+   */
+  router.get("/me/warnings", requireAuth, (req: Request, res: Response) => {
+    const warnings = database.listAccountWarnings(req.user!.id);
+    res.json({ warnings });
+  });
+
+  /**
+   * POST /api/v1/users/me/warnings/:id/acknowledge
+   */
+  router.post("/me/warnings/:id/acknowledge", requireAuth, (req: Request, res: Response) => {
+    const warningId = Number(req.params["id"]);
+    const acknowledged = database.acknowledgeAccountWarning(warningId, req.user!.id);
+    if (!acknowledged) {
+      res.status(404).json({ error: "Warning not found" });
+      return;
+    }
+    res.json({ success: true });
+  });
+
+  /**
+   * GET /api/v1/users/me/push-subscriptions
+   */
+  router.get("/me/push-subscriptions", requireAuth, (req: Request, res: Response) => {
+    const subscriptions = database.listPushSubscriptions(req.user!.id);
+    res.json({ subscriptions });
+  });
+
+  /**
+   * POST /api/v1/users/me/push-subscriptions
+   */
+  router.post("/me/push-subscriptions", requireAuth, (req: Request, res: Response) => {
+    const { endpoint, keys, p256dh, auth, alerts } = req.body || {};
+    const resolvedP256dh = keys?.p256dh || p256dh;
+    const resolvedAuth = keys?.auth || auth;
+    if (!endpoint || !resolvedP256dh || !resolvedAuth) {
+      res.status(400).json({ error: "endpoint, keys.p256dh, and keys.auth are required" });
+      return;
+    }
+    const subscription = database.upsertPushSubscription(
+      req.user!.id,
+      String(endpoint),
+      String(resolvedP256dh),
+      String(resolvedAuth),
+      typeof alerts === "object" && alerts !== null ? alerts : undefined,
+    );
+    res.status(201).json({ subscription });
+  });
+
+  /**
+   * DELETE /api/v1/users/me/push-subscriptions/:id
+   */
+  router.delete("/me/push-subscriptions/:id", requireAuth, (req: Request, res: Response) => {
+    const deleted = database.deletePushSubscription(Number(req.params["id"]), req.user!.id);
+    if (!deleted) {
+      res.status(404).json({ error: "Push subscription not found" });
+      return;
+    }
     res.json({ success: true });
   });
 
@@ -515,9 +963,11 @@ export function usersRouter(
 
     const fullTarget = database.getUserFederationInfo(targetUser.id);
     const isRemote = Boolean(fullTarget?.remote_domain);
+    const isLockedLocal = !isRemote && Boolean(fullTarget?.locked);
+    const followState = isRemote || isLockedLocal ? "pending" : "accepted";
 
-    database.followUser(followerId, targetUser.id, isRemote ? "pending" : "accepted");
-    database.createNotification(targetUser.id, followerId, "follow");
+    database.followUser(followerId, targetUser.id, followState);
+    database.createNotification(targetUser.id, followerId, isLockedLocal ? "follow_request" : "follow");
 
     if (isRemote && fullTarget?.actor_url) {
       const fullFollower = database.getUserFederationInfo(followerId);
@@ -544,7 +994,7 @@ export function usersRouter(
       }
     }
 
-    res.json({ success: true, state: isRemote ? "pending" : "accepted" });
+    res.json({ success: true, state: followState });
   });
 
   /**
@@ -613,6 +1063,27 @@ export function usersRouter(
       return;
     }
     database.blockUser(blockerId, targetUser.id);
+
+    const fullTarget = database.getUserFederationInfo(targetUser.id);
+    const fullBlocker = database.getUserFederationInfo(blockerId);
+    if (fullTarget?.remote_domain && fullTarget?.actor_url && fullBlocker?.actor_url) {
+      const blockActivity = {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: `${fullBlocker.actor_url}#block-${targetUser.id}-${Date.now()}`,
+        type: "Block",
+        actor: fullBlocker.actor_url,
+        object: fullTarget.actor_url,
+      };
+      const targetInbox = fullTarget.inbox_url || `${fullTarget.actor_url}/inbox`;
+      database.enqueueFederationDelivery(
+        "Block",
+        blockActivity.id,
+        blockActivity,
+        targetInbox,
+        fullTarget.remote_domain,
+      );
+    }
+
     res.json({ success: true, blocked: true });
   });
 
@@ -627,6 +1098,32 @@ export function usersRouter(
       return;
     }
     database.unblockUser(blockerId, targetUser.id);
+
+    const fullTarget = database.getUserFederationInfo(targetUser.id);
+    const fullBlocker = database.getUserFederationInfo(blockerId);
+    if (fullTarget?.remote_domain && fullTarget?.actor_url && fullBlocker?.actor_url) {
+      const undoBlockActivity = {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        id: `${fullBlocker.actor_url}#undo-block-${targetUser.id}-${Date.now()}`,
+        type: "Undo",
+        actor: fullBlocker.actor_url,
+        object: {
+          id: `${fullBlocker.actor_url}#block-${targetUser.id}`,
+          type: "Block",
+          actor: fullBlocker.actor_url,
+          object: fullTarget.actor_url,
+        },
+      };
+      const targetInbox = fullTarget.inbox_url || `${fullTarget.actor_url}/inbox`;
+      database.enqueueFederationDelivery(
+        "Undo",
+        undoBlockActivity.id,
+        undoBlockActivity,
+        targetInbox,
+        fullTarget.remote_domain,
+      );
+    }
+
     res.json({ success: true, blocked: false });
   });
 

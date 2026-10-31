@@ -24,6 +24,7 @@ export interface ExploreLandingViewProps {
 export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
   loading,
   posts,
+  trending,
   scrollTemplates,
   templatesScrollRef,
   localQuery = "",
@@ -363,6 +364,73 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
               ))}
             </Box>
           </Box>
+
+          {/* Trending Topics Strip when available */}
+          {trending && trending.length > 0 && (
+            <Box
+              px={3}
+              py="8px"
+              borderBottom="1px solid var(--color-border)"
+              display="flex"
+              alignItems="center"
+              gap="8px"
+              style={{ overflow: "hidden" }}
+            >
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  color: "var(--color-text-muted)",
+                  flexShrink: 0,
+                }}
+              >
+                Trending:
+              </span>
+              <Box
+                display="flex"
+                alignItems="center"
+                gap="6px"
+                sx={{
+                  overflowX: "auto",
+                  "&::-webkit-scrollbar": { display: "none" },
+                  scrollbarWidth: "none",
+                }}
+              >
+                {trending.map((topicItem, idx) => {
+                  const rawTag = String(topicItem.tag || topicItem.concept || topicItem.name || "").replace(/^#/, "");
+                  if (!rawTag) return null;
+                  const count =
+                    topicItem.postsCount ??
+                    (topicItem.post_count as number | undefined) ??
+                    (topicItem.count as number | undefined);
+                  return (
+                    <Link
+                      key={topicItem.id || `${rawTag}-${idx}`}
+                      to={`/explore?topic=${encodeURIComponent(rawTag)}`}
+                      style={{
+                        fontSize: "11px",
+                        fontFamily: "var(--font-mono)",
+                        padding: "3px 8px",
+                        borderRadius: "9999px",
+                        backgroundColor: "rgba(6, 182, 212, 0.1)",
+                        color: "var(--color-accent-cyan)",
+                        border: "1px solid rgba(6, 182, 212, 0.25)",
+                        fontWeight: 600,
+                        textDecoration: "none",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      #{rawTag}
+                      {typeof count === "number" && count > 0 ? ` (${count})` : ""}
+                    </Link>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
 
           {/* Feed Header with Inline Quick-Topic Pills */}
           <Box

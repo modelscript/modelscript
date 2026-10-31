@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  renderPsseSldSvg,
+  type PsseBranchLike,
+  type PsseBusLike,
+  type PsseGeneratorLike,
+  type PsseLoadLike,
+  type PsseTransformerLike,
+} from "@modelscript/diagram";
 import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, PlayIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
-import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface PsseSldViewerProps {
   viewConfig: {
@@ -48,14 +55,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 40px;
+  min-height: 40px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -64,12 +71,12 @@ const Toolbar = styled.div`
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 `;
 
 const ModelTitle = styled.div`
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
@@ -127,22 +134,6 @@ const ContentArea = styled.div`
   position: relative;
 `;
 
-const SvgCanvas = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 16px;
-  background: var(--color-canvas-inset, var(--color-canvas-default));
-
-  svg {
-    max-width: 100%;
-    max-height: 100%;
-    height: auto;
-  }
-`;
-
 const CodePre = styled.pre`
   flex: 1;
   margin: 0;
@@ -173,7 +164,7 @@ const LineNo = styled.span`
 `;
 
 const InspectorSidebar = styled.div`
-  width: 250px;
+  width: 240px;
   border-left: 1px solid var(--color-border-default);
   background: var(--color-canvas-subtle);
   display: flex;
@@ -181,6 +172,10 @@ const InspectorSidebar = styled.div`
   overflow-y: auto;
   padding: 14px;
   gap: 12px;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const StatItem = styled.div`
@@ -197,10 +192,13 @@ const StatItem = styled.div`
 function parsePsseRawClient(code: string) {
   const lines = code.split(/\r?\n/);
   let section = 0; // 0 = header/bus, 1 = load, 2 = fixed shunt, 3 = generator, 4 = branch, 5 = transformer
-  let busCount = 0;
+  const buses: PsseBusLike[] = [];
+  const loads: PsseLoadLike[] = [];
+  const generators: PsseGeneratorLike[] = [];
+  const branches: PsseBranchLike[] = [];
+  const transformers: PsseTransformerLike[] = [];
   let loadMw = 0;
   let genMw = 0;
-  let branchCount = 0;
   let minVm = Number.POSITIVE_INFINITY;
   let maxVm = Number.NEGATIVE_INFINITY;
 
@@ -213,27 +211,61 @@ function parsePsseRawClient(code: string) {
     }
     const parts = line.split(",").map((p) => p.trim());
     if (section === 0 && parts.length >= 8) {
-      busCount++;
-      const vm = Number.parseFloat(parts[7] || "");
+      const id = Number.parseInt(parts[0] || "0", 10);
+      const name = (parts[1] || `BUS ${id}`).replace(/^'|'$/g, "").trim();
+      const baseKv = Number.parseFloat(parts[2] || "138") || 138;
+      const type = Number.parseInt(parts[3] || "1", 10) || 1;
+      const vm = Number.parseFloat(parts[7] || "1.0");
+      const va = Number.parseFloat(parts[8] || "0.0") || 0;
+      if (id > 0) {
+        buses.push({ id, name, baseKv, type, vm: Number.isNaN(vm) ? 1.0 : vm, va });
+      }
       if (!Number.isNaN(vm) && vm > 0) {
         if (vm < minVm) minVm = vm;
         if (vm > maxVm) maxVm = vm;
       }
     } else if (section === 1 && parts.length >= 6) {
-      const pl = Number.parseFloat(parts[5] || "");
-      if (!Number.isNaN(pl)) loadMw += pl;
+      const bus = Number.parseInt(parts[0] || "0", 10);
+      const pl = Number.parseFloat(parts[5] || "0");
+      const ql = Number.parseFloat(parts[6] || "0") || 0;
+      if (!Number.isNaN(pl)) {
+        loadMw += pl;
+        if (bus > 0) loads.push({ bus, pl, ql, status: 1 });
+      }
     } else if (section === 3 && parts.length >= 3) {
-      const pg = Number.parseFloat(parts[2] || "");
-      if (!Number.isNaN(pg)) genMw += pg;
-    } else if (section === 4 && parts.length >= 3) {
-      branchCount++;
+      const bus = Number.parseInt(parts[0] || "0", 10);
+      const pg = Number.parseFloat(parts[2] || "0");
+      const qg = Number.parseFloat(parts[3] || "0") || 0;
+      if (!Number.isNaN(pg)) {
+        genMw += pg;
+        if (bus > 0) generators.push({ bus, pg, qg, status: 1 });
+      }
+    } else if (section === 4 && parts.length >= 4) {
+      const fromBus = Number.parseInt(parts[0] || "0", 10);
+      const toBus = Math.abs(Number.parseInt(parts[1] || "0", 10));
+      const r = Number.parseFloat(parts[3] || "0.01") || 0.01;
+      const x = Number.parseFloat(parts[4] || "0.05") || 0.05;
+      if (fromBus > 0 && toBus > 0) {
+        branches.push({ fromBus, toBus, r, x, status: 1 });
+      }
+    } else if (section === 5 && parts.length >= 2) {
+      const bus1 = Number.parseInt(parts[0] || "0", 10);
+      const bus2 = Number.parseInt(parts[1] || "0", 10);
+      if (bus1 > 0 && bus2 > 0) {
+        transformers.push({ bus1, bus2, status: 1 });
+      }
     }
   }
   return {
-    busCount: busCount > 0 ? busCount : undefined,
+    buses,
+    loads,
+    generators,
+    branches,
+    transformers,
+    busCount: buses.length > 0 ? buses.length : undefined,
     totalLoadMw: loadMw > 0 ? Number(loadMw.toFixed(1)) : undefined,
     totalGenMw: genMw > 0 ? Number(genMw.toFixed(1)) : undefined,
-    branchCount: branchCount > 0 ? branchCount : undefined,
+    branchCount: branches.length > 0 ? branches.length : undefined,
     minVm: Number.isFinite(minVm) ? minVm : undefined,
     maxVm: Number.isFinite(maxVm) ? maxVm : undefined,
   };
@@ -244,7 +276,8 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">(() => (viewConfig.svg ? "diagram" : "code"));
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [showInspector, setShowInspector] = useState(false);
   const title = viewConfig.title || "PSS/E Power Flow Case (.raw)";
 
   useEffect(() => {
@@ -272,10 +305,36 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return DOMPurify.sanitize(viewConfig.svg);
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+    }
+    const clientBuses: PsseBusLike[] =
+      parsedClient?.buses && parsedClient.buses.length > 0
+        ? parsedClient.buses
+        : (viewConfig.buses || []).map((b) => ({
+            id: b.id,
+            name: b.name,
+            baseKv: b.baseKv,
+            type: 1,
+            vm: b.vm,
+            va: b.va,
+          }));
+    if (clientBuses.length > 0) {
+      try {
+        const built = renderPsseSldSvg({
+          title1: title,
+          buses: clientBuses,
+          loads: parsedClient?.loads || [],
+          generators: parsedClient?.generators || [],
+          branches: parsedClient?.branches || [],
+          transformers: parsedClient?.transformers || [],
+        });
+        return sanitizeSvgMarkup(built, { isFullScreen });
+      } catch {
+        return "";
+      }
     }
     return "";
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, viewConfig.buses, parsedClient, title, isFullScreen]);
 
   const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
@@ -325,7 +384,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
       <Toolbar>
         <HeaderLeft>
           <ZapIcon size={16} fill="var(--color-success-fg, currentColor)" />
-          <ModelTitle>{title}</ModelTitle>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge>PSS/E RAW SLD</PillBadge>
         </HeaderLeft>
 
@@ -344,6 +403,11 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
               </SegmentBtn>
             </SegmentedControl>
           )}
+          {!isFullScreen && (
+            <Button size="small" onClick={() => setShowInspector((s) => !s)}>
+              {showInspector ? "Hide Telemetry" : "Telemetry"}
+            </Button>
+          )}
           {sanitizedSvg && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
               SVG
@@ -352,7 +416,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
             {copied ? "Copied" : "Copy"}
           </Button>
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
               Open in Playground
             </Button>
@@ -381,38 +445,40 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
             )}
           </CodePre>
         ) : (
-          <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+          <InteractiveSvgStage svgMarkup={sanitizedSvg} isFullScreen={isFullScreen} />
         )}
 
-        <InspectorSidebar>
-          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-            Power Flow Case Overview
-          </Text>
-          <StatItem>
-            <span>Total Buses</span>
-            <strong>{busCount ?? "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Total Generation</span>
-            <strong>{totalGenMw !== undefined ? `${totalGenMw} MW` : "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Total Load</span>
-            <strong>{totalLoadMw !== undefined ? `${totalLoadMw} MW` : "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Losses (I²R)</span>
-            <strong>{lossesMw !== undefined ? `${lossesMw} MW` : "—"}</strong>
-          </StatItem>
-          {parsedClient?.minVm !== undefined && parsedClient?.maxVm !== undefined && (
+        {!isFullScreen && showInspector && (
+          <InspectorSidebar>
+            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
+              Power Flow Case Overview
+            </Text>
             <StatItem>
-              <span>Voltage Profile</span>
-              <strong style={{ color: "#34d399" }}>
-                {parsedClient.minVm.toFixed(3)} – {parsedClient.maxVm.toFixed(3)} pu
-              </strong>
+              <span>Total Buses</span>
+              <strong>{busCount ?? "—"}</strong>
             </StatItem>
-          )}
-        </InspectorSidebar>
+            <StatItem>
+              <span>Total Generation</span>
+              <strong>{totalGenMw !== undefined ? `${totalGenMw} MW` : "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>Total Load</span>
+              <strong>{totalLoadMw !== undefined ? `${totalLoadMw} MW` : "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>Losses (I²R)</span>
+              <strong>{lossesMw !== undefined ? `${lossesMw} MW` : "—"}</strong>
+            </StatItem>
+            {parsedClient?.minVm !== undefined && parsedClient?.maxVm !== undefined && (
+              <StatItem>
+                <span>Voltage Profile</span>
+                <strong style={{ color: "#34d399" }}>
+                  {parsedClient.minVm.toFixed(3)} – {parsedClient.maxVm.toFixed(3)} pu
+                </strong>
+              </StatItem>
+            )}
+          </InspectorSidebar>
+        )}
       </ContentArea>
     </CardWrapper>
   );

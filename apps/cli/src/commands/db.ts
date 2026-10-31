@@ -590,6 +590,61 @@ export const Db: CommandModule<Record<string, unknown>, DbArgs> = {
         console.error(c.red(`Doctor request failed: ${err instanceof Error ? err.message : String(err)}`));
         process.exit(1);
       }
+    } else if (action === "plan") {
+      try {
+        const res = await fetch(`${apiUrl}/api/v1/admin/db/status`, { headers });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string | undefined };
+          console.error(c.red(`Failed to fetch migration plan: ${body.error || res.statusText}`));
+          process.exit(1);
+        }
+        const status = (await res.json()) as {
+          currentVersion: string | null;
+          targetVersion: string | null;
+          pendingCount: number;
+          pending: { id: string; name: string }[];
+        };
+        if (status.pendingCount === 0) {
+          console.log(c.green(`✔ Schema is up to date (${status.currentVersion ?? "Empty"}). Nothing to plan.`));
+          return;
+        }
+        console.log(c.bold(`\nExecution Plan (${status.pendingCount} pending migrations):`));
+        for (const [idx, m] of status.pending.entries()) {
+          console.log(`  ${idx + 1}. ${c.blue(m.name)} (id: ${m.id})`);
+        }
+        console.log("");
+      } catch (err: unknown) {
+        console.error(c.red(`Plan request failed: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      }
+    } else if (action === "rollback") {
+      try {
+        const res = await fetch(`${apiUrl}/api/v1/admin/db/rollback`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ skipBackup: args.skipBackup }),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string | undefined };
+          console.error(c.red(`Rollback failed: ${body.error || res.statusText}`));
+          process.exit(1);
+        }
+        const result = (await res.json()) as {
+          rolledBack: string | null;
+          backupPath: string | null;
+        };
+        if (result.backupPath) {
+          console.log(c.dim(`Created pre-flight snapshot: ${result.backupPath}`));
+        }
+        if (result.rolledBack) {
+          console.log(c.green(`✔ Successfully rolled back migration: ${result.rolledBack}`));
+        } else {
+          console.log(c.yellow("No applied migrations to roll back."));
+        }
+      } catch (err: unknown) {
+        console.error(c.red(`Rollback request failed: ${err instanceof Error ? err.message : String(err)}`));
+        process.exit(1);
+      }
     }
   },
 };

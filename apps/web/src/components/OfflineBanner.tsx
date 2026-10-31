@@ -26,14 +26,14 @@ const BannerContainer = styled.div`
   gap: 8px;
   padding: 6px 14px;
   border-radius: 999px;
-  background: rgba(22, 27, 34, 0.95);
-  border: 1px solid rgba(210, 153, 34, 0.4);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  background: var(--surface-overlay, rgba(22, 27, 34, 0.95));
+  border: 1px solid rgba(210, 153, 34, 0.45);
+  box-shadow: var(--ms-shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.4));
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   font-size: 12px;
   font-weight: 500;
-  color: var(--ms-text-1);
+  color: var(--color-text-primary, var(--ms-text-1));
   animation: ${slideDown} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
 `;

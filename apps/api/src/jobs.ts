@@ -136,13 +136,16 @@ export class JobQueue extends EventEmitter {
 
   async #runChildProcess(key: string, scriptPath: string, data: Record<string, unknown>): Promise<void> {
     return new Promise<void>((resolve, reject) => {
+      const envMaxSpace = process.env["JOB_MAX_OLD_SPACE_SIZE"];
+      const parentNodeOptions = process.env["NODE_OPTIONS"] || "";
+      const matchParent = parentNodeOptions.match(/--max-old-space-size=(\d+)/);
       const isDev = process.env["NODE_ENV"] !== "production";
-      const maxSpace = isDev ? "8192" : "16384";
+      const maxSpace = envMaxSpace ?? (matchParent ? matchParent[1] : isDev ? "4096" : "8192");
 
       const child: ChildProcess = fork(scriptPath, {
         stdio: ["pipe", "pipe", "pipe", "ipc"],
         execArgv: [...process.execArgv, `--max-old-space-size=${maxSpace}`, "--expose-gc"],
-        // Clear NODE_OPTIONS so the parent's --max-old-space-size=8192 doesn't override ours
+        // Clear NODE_OPTIONS so the child's explicit execArgv takes precedence cleanly
         env: { ...process.env, NODE_OPTIONS: "" },
       });
 

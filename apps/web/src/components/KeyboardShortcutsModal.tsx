@@ -45,10 +45,10 @@ const Kbd = styled.kbd`
   font-size: 11px;
   line-height: 1;
   color: var(--color-text-primary, #ffffff);
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background-color: var(--ms-surface-hover, rgba(148, 163, 184, 0.12));
+  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.28));
   border-radius: 4px;
-  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.15);
   min-width: 18px;
   text-align: center;
 `;
@@ -74,10 +74,13 @@ const SHORTCUTS: ShortcutCategory[] = [
       { keys: ["g", "h"], description: "Go to Home Feed" },
       { keys: ["g", "e"], description: "Go to Explore & Trending" },
       { keys: ["g", "n"], description: "Go to Notifications" },
+      { keys: ["g", "b"], description: "Go to Bookmarks" },
+      { keys: ["g", "f"], description: "Go to RSS Feeds" },
       { keys: ["g", "p"], description: "Go to Playground" },
       { keys: ["g", "k"], description: "Go to Packages" },
       { keys: ["g", "r"], description: "Go to Repositories" },
       { keys: ["g", "i"], description: "Go to Web IDE" },
+      { keys: ["g", "j"], description: "Go to Cloud Jobs & HPC Queue" },
       { keys: ["g", "s"], description: "Go to Settings" },
     ],
   },
@@ -156,28 +159,33 @@ const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ isOpen,
                 {category.title}
               </span>
               <Box display="flex" flexDirection="column" gap={2}>
-                {category.items.map((item, idx) => (
-                  <Box
-                    key={idx}
-                    display="flex"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    py={1}
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                  >
-                    <span style={{ fontSize: "13px", color: "var(--color-text-primary)" }}>{item.description}</span>
-                    <Box display="flex" alignItems="center" gap={1}>
-                      {item.keys.map((k, kIdx) => (
-                        <React.Fragment key={kIdx}>
-                          <Kbd>{k}</Kbd>
-                          {kIdx < item.keys.length - 1 && item.keys.length > 2 && (
-                            <span style={{ fontSize: "11px", opacity: 0.6 }}>+</span>
-                          )}
-                        </React.Fragment>
-                      ))}
+                {category.items.map((item, idx) => {
+                  const isSequentialChord = item.keys.length === 2 && item.keys[0] === "g";
+                  return (
+                    <Box
+                      key={idx}
+                      display="flex"
+                      justifyContent="space-between"
+                      alignItems="center"
+                      py={1}
+                      style={{ borderBottom: "1px solid var(--color-border-subtle, rgba(148, 163, 184, 0.12))" }}
+                    >
+                      <span style={{ fontSize: "13px", color: "var(--color-text-primary)" }}>{item.description}</span>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        {item.keys.map((k, kIdx) => (
+                          <React.Fragment key={kIdx}>
+                            <Kbd>{k}</Kbd>
+                            {kIdx < item.keys.length - 1 && (
+                              <span style={{ fontSize: "11px", color: "var(--color-text-muted)", padding: "0 2px" }}>
+                                {isSequentialChord ? "then" : "+"}
+                              </span>
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </Box>
                     </Box>
-                  </Box>
-                ))}
+                  );
+                })}
               </Box>
             </Box>
           ))}

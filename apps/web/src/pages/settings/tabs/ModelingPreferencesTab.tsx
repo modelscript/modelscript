@@ -196,6 +196,46 @@ export const ModelingPreferencesTab: React.FC = () => {
               </Box>
             ))}
           </Box>
+          <Box
+            p={4}
+            mt={3}
+            style={{
+              border: "1px solid var(--color-border-default)",
+              borderRadius: "10px",
+              background: "var(--color-canvas-subtle, rgba(255,255,255,0.02))",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+          >
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Box>
+                <FormLabel style={{ margin: 0, display: "block" }}>Lint on Type</FormLabel>
+                <DetailSubtitle>Run real-time semantic and equation balance checks while editing</DetailSubtitle>
+              </Box>
+              <input
+                type="checkbox"
+                checked={modelingPrefs.lintOnType}
+                onChange={(e) => updateModelingPrefs({ lintOnType: e.target.checked })}
+                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+              />
+            </Box>
+
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Box>
+                <FormLabel style={{ margin: 0, display: "block" }}>Experimental Compiler Features</FormLabel>
+                <DetailSubtitle>
+                  Enable preview language extensions, e-graph rewriting, and WebGPU kernels
+                </DetailSubtitle>
+              </Box>
+              <input
+                type="checkbox"
+                checked={modelingPrefs.enableExperimentalFeatures}
+                onChange={(e) => updateModelingPrefs({ enableExperimentalFeatures: e.target.checked })}
+                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+              />
+            </Box>
+          </Box>
         </Box>
 
         {/* Simulation & Numerical Solver Defaults */}
@@ -216,35 +256,76 @@ export const ModelingPreferencesTab: React.FC = () => {
           >
             <Box display="flex" justifyContent="space-between" alignItems="center">
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Relative Tolerance (reltol)</FormLabel>
-                <DetailSubtitle>Error tolerance for CVODE / IDA / RK45 integrators</DetailSubtitle>
+                <FormLabel style={{ margin: 0, display: "block" }}>Default Solver</FormLabel>
+                <DetailSubtitle>Primary numerical integration algorithm for simulations</DetailSubtitle>
               </Box>
               <Box display="flex" gap={2}>
-                {[1e-3, 1e-4, 1e-6].map((tol) => (
+                {(
+                  [
+                    { id: "cvode", label: "CVODE" },
+                    { id: "ida", label: "IDA" },
+                    { id: "dopri5", label: "DOPRI5" },
+                    { id: "rk4", label: "RK4" },
+                  ] as const
+                ).map((solver) => (
                   <button
-                    key={tol}
+                    key={solver.id}
                     type="button"
-                    onClick={() => updateModelingPrefs({ solverTolerance: tol })}
+                    onClick={() => updateModelingPrefs({ defaultSolver: solver.id })}
                     style={{
                       padding: "6px 12px",
                       borderRadius: "6px",
                       border:
-                        modelingPrefs.solverTolerance === tol
+                        modelingPrefs.defaultSolver === solver.id
                           ? "2px solid var(--color-accent-purple, #a855f7)"
                           : "1px solid var(--color-border-default)",
                       background:
-                        modelingPrefs.solverTolerance === tol
+                        modelingPrefs.defaultSolver === solver.id
                           ? "rgba(139, 92, 246, 0.15)"
                           : "var(--color-canvas-default)",
                       color: "var(--color-text-primary)",
-                      fontWeight: modelingPrefs.solverTolerance === tol ? "700" : "500",
+                      fontWeight: modelingPrefs.defaultSolver === solver.id ? "700" : "500",
                       cursor: "pointer",
                       fontSize: "13px",
                     }}
                   >
-                    1e-{Math.round(-Math.log10(tol))}
+                    {solver.label}
                   </button>
                 ))}
+              </Box>
+            </Box>
+
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Box>
+                <FormLabel style={{ margin: 0, display: "block" }}>Relative Tolerance (reltol)</FormLabel>
+                <DetailSubtitle>Error tolerance for CVODE / IDA / RK45 integrators</DetailSubtitle>
+              </Box>
+              <Box display="flex" gap={2}>
+                {[1e-3, 1e-4, 1e-6].map((tol) => {
+                  const activeTol = modelingPrefs.solverTolerance ?? modelingPrefs.defaultRelativeTolerance;
+                  return (
+                    <button
+                      key={tol}
+                      type="button"
+                      onClick={() => updateModelingPrefs({ solverTolerance: tol, defaultRelativeTolerance: tol })}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        border:
+                          activeTol === tol
+                            ? "2px solid var(--color-accent-purple, #a855f7)"
+                            : "1px solid var(--color-border-default)",
+                        background: activeTol === tol ? "rgba(139, 92, 246, 0.15)" : "var(--color-canvas-default)",
+                        color: "var(--color-text-primary)",
+                        fontWeight: activeTol === tol ? "700" : "500",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                      }}
+                    >
+                      1e-{Math.round(-Math.log10(tol))}
+                    </button>
+                  );
+                })}
               </Box>
             </Box>
 

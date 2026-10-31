@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { requestPasswordReset } from "../api";
+import api, { requestPasswordReset } from "../api";
 import { useAuth } from "../AuthContext";
 import AnsatzMark from "../components/AnsatzLogo";
 import { useInstanceBranding } from "../InstanceBrandingContext";
@@ -35,12 +35,34 @@ export default function LoginPage() {
   const [tempToken, setTempToken] = useState("");
   const [twoFactorCode, setTwoFactorCode] = useState("");
   const [useBackupCode, setUseBackupCode] = useState(false);
+  const [authConfig, setAuthConfig] = useState<{
+    oidcEnabled?: boolean | undefined;
+    airgapEnforced?: boolean | undefined;
+    oauthProviders?: string[] | undefined;
+  } | null>(null);
   const { login, complete2FALogin } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // Only same-origin relative paths ("/x", not "//evil.com") to avoid open redirects.
   const nextParam = searchParams.get("next");
   const redirectTo = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get("/auth/config")
+      .then((res) => {
+        if (active && res.data && typeof res.data === "object") {
+          setAuthConfig(res.data);
+        }
+      })
+      .catch(() => {
+        // Fallback if /auth/config is unavailable
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,8 +154,12 @@ export default function LoginPage() {
 
         {mode === "login" ? (
           <>
-            <OAuthProviders />
-            <Divider>or</Divider>
+            <OAuthProviders
+              oidcEnabled={authConfig?.oidcEnabled}
+              airgapEnforced={authConfig?.airgapEnforced}
+              oauthProviders={authConfig?.oauthProviders}
+            />
+            {(!authConfig?.airgapEnforced || authConfig?.oidcEnabled) && <Divider>or</Divider>}
             <LoginForm
               email={email}
               setEmail={setEmail}

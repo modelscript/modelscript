@@ -178,8 +178,14 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                         t.id.toLowerCase().includes(qLower),
                     )
                   : STARTER_TEMPLATES;
-                const templatesToShow = filteredTemplates.length > 0 ? filteredTemplates : STARTER_TEMPLATES;
-                return templatesToShow.map((tpl) => (
+                if (filteredTemplates.length === 0) {
+                  return (
+                    <Box p={6} textAlign="center" color="var(--color-text-muted)">
+                      No templates matching "{query}" found.
+                    </Box>
+                  );
+                }
+                return filteredTemplates.map((tpl) => (
                   <Box
                     key={tpl.id}
                     p={4}

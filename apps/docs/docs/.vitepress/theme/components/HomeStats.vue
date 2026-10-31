@@ -4,7 +4,7 @@ import { computed } from "vue";
 import { INDUSTRIES } from "../data/industries";
 import type { IconName } from "../data/icons";
 import { LANGUAGE_COUNT } from "../data/languages";
-import lintRules from "../data/lint-rules.generated.json";
+import languagesData from "../data/languages.generated.json";
 import MsIcon from "./MsIcon.vue";
 
 interface StatItem {
@@ -15,7 +15,7 @@ interface StatItem {
   link: string;
 }
 
-const totalLintRules = (lintRules as { rules: any[] }[]).reduce((sum, cat) => sum + cat.rules.length, 0);
+const totalLintRules = languagesData.reduce((sum, lang) => sum + lang.ruleCount, 0);
 
 // Counts are derived from the shared data catalog so they never drift from the docs.
 const stats = computed<StatItem[]>(() => [

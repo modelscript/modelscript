@@ -209,7 +209,7 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
           Invite colleagues and fellow researchers to {brandName}. When an engineer registers with your Golden Ticket
           and completes their first simulation run, both of your accounts receive{" "}
-          <strong>75 free compute credits</strong>.
+          <strong>50 free compute credits</strong>.
         </DetailSubtitle>
 
         {/* STAT QUOTA CARD */}

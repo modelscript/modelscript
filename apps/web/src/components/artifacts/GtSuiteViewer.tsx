@@ -1,15 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { renderSimulinkSvg, type SimulinkBlockLike, type SimulinkLineLike } from "@modelscript/diagram";
 import { FlameIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Spinner, Text } from "@primer/react";
-import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import {
+  highlightPolyglotLine,
+  InteractiveSvgStage,
+  renderSourceToDiagramSvg,
+  sanitizeSvgMarkup,
+} from "./PolyglotArtifactViewer";
 
 export interface GtSuiteViewerProps {
   viewConfig: {
@@ -45,14 +50,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 40px;
+  min-height: 40px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -61,12 +66,12 @@ const Toolbar = styled.div`
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 `;
 
 const ModelTitle = styled.div`
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
@@ -96,22 +101,6 @@ const ContentArea = styled.div`
   position: relative;
 `;
 
-const SvgCanvas = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 16px;
-  background: var(--color-canvas-inset, var(--color-canvas-default));
-
-  svg {
-    max-width: 100%;
-    max-height: 100%;
-    height: auto;
-  }
-`;
-
 const ChartCanvas = styled.div`
   flex: 1;
   padding: 16px;
@@ -119,7 +108,7 @@ const ChartCanvas = styled.div`
 `;
 
 const InspectorSidebar = styled.div`
-  width: 250px;
+  width: 240px;
   border-left: 1px solid var(--color-border-default);
   background: var(--color-canvas-subtle);
   display: flex;
@@ -127,6 +116,10 @@ const InspectorSidebar = styled.div`
   overflow-y: auto;
   padding: 14px;
   gap: 12px;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const StatItem = styled.div`
@@ -143,11 +136,10 @@ const StatItem = styled.div`
 export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [showInspector, setShowInspector] = useState(false);
   const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
   const [rawText, setRawText] = useState(initialSource);
-  const [viewMode, setViewMode] = useState<"schematic" | "pv" | "code">(() =>
-    viewConfig.svg ? "schematic" : Array.isArray(viewConfig.pvData) && viewConfig.pvData.length > 0 ? "pv" : "code",
-  );
+  const [viewMode, setViewMode] = useState<"schematic" | "pv" | "code">("schematic");
   const title = viewConfig.title || viewConfig.engineModel || "GT-SUITE Powertrain (.gtm)";
 
   useEffect(() => {
@@ -175,10 +167,32 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
     const compMatches = rawText
       ? Array.from(
           rawText.matchAll(
-            /\b(EngCylinder|Cylinder|PipeRound|OrificeConn|FlowSplit|EnvAmbient|Turbine|Compressor)\b/gi,
+            /\b(EngCylinder|Cylinder|PipeRound|OrificeConn|FlowSplit|EnvAmbient|Turbine|Compressor)\b(?:\s+([A-Za-z0-9_.-]+))?/gi,
           ),
         )
       : [];
+    const blocks: SimulinkBlockLike[] = compMatches.slice(0, 16).map((m, idx) => {
+      const bType = m[1]!;
+      const bName = m[2] && !/^(bore|stroke|length|diameter)$/i.test(m[2]) ? m[2] : `${bType}_${idx + 1}`;
+      const col = idx % 4;
+      const row = Math.floor(idx / 4);
+      const x = 60 + col * 190;
+      const y = 60 + row * 100;
+      return {
+        name: bName,
+        blockType: bType,
+        position: [x, y, x + 130, y + 54],
+      };
+    });
+    const lines: SimulinkLineLike[] = [];
+    for (let i = 0; i < blocks.length - 1; i++) {
+      lines.push({
+        srcBlock: blocks[i]!.name,
+        srcPort: 1,
+        dstBlock: blocks[i + 1]!.name,
+        dstPort: 1,
+      });
+    }
     const boreMatch = rawText.match(/\bbore\s*[=:]\s*([0-9.]+)/i);
     const strokeMatch = rawText.match(/\bstroke\s*[=:]\s*([0-9.]+)/i);
     const cylCount = viewConfig.cylinderCount ?? cylMatches.length;
@@ -191,6 +205,8 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
       dispL = +((Math.max(1, cylCount) * Math.PI * Math.pow(bMm / 20, 2) * (sMm / 10)) / 1000).toFixed(2);
     }
     return {
+      blocks,
+      lines,
       cylinderCount: cylCount,
       componentCount: viewConfig.componentCount ?? compMatches.length,
       displacementLiters: dispL,
@@ -201,10 +217,26 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return DOMPurify.sanitize(viewConfig.svg);
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+    }
+    if (parsedEngine.blocks.length > 0) {
+      try {
+        const built = renderSimulinkSvg({
+          name: title,
+          blocks: parsedEngine.blocks,
+          lines: parsedEngine.lines,
+        });
+        return sanitizeSvgMarkup(built, { isFullScreen });
+      } catch {
+        // fall through
+      }
+    }
+    if (rawText.trim()) {
+      const fallback = renderSourceToDiagramSvg(rawText, "gtsuite", title, true, isFullScreen);
+      if (fallback.svg) return fallback.svg;
     }
     return "";
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, parsedEngine, rawText, title, isFullScreen]);
 
   const pvData = useMemo(() => {
     if (Array.isArray(viewConfig.pvData) && viewConfig.pvData.length > 0) {
@@ -214,7 +246,15 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
   }, [viewConfig.pvData]);
 
   const effectiveViewMode: "schematic" | "pv" | "code" =
-    viewMode === "schematic" && sanitizedSvg ? "schematic" : viewMode === "pv" && pvData.length > 0 ? "pv" : "code";
+    viewMode === "schematic" && sanitizedSvg
+      ? "schematic"
+      : viewMode === "pv" && pvData.length > 0
+        ? "pv"
+        : sanitizedSvg && viewMode !== "code"
+          ? "schematic"
+          : pvData.length > 0 && viewMode !== "code"
+            ? "pv"
+            : "code";
 
   const codeLines = rawText ? rawText.split(/\r?\n/) : [];
 
@@ -223,7 +263,7 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
       <Toolbar>
         <HeaderLeft>
           <FlameIcon size={16} fill="var(--color-attention-fg, currentColor)" />
-          <ModelTitle>{title}</ModelTitle>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge>GT-SUITE Powertrain</PillBadge>
         </HeaderLeft>
 
@@ -249,7 +289,13 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
             </SegmentedControl>
           )}
 
-          {Boolean(viewConfig?.standalone) && (
+          {!isFullScreen && (
+            <Button size="small" onClick={() => setShowInspector((s) => !s)}>
+              {showInspector ? "Hide Telemetry" : "Telemetry"}
+            </Button>
+          )}
+
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"
@@ -277,7 +323,7 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
             <Spinner size="medium" />
           </Box>
         ) : effectiveViewMode === "schematic" && sanitizedSvg ? (
-          <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+          <InteractiveSvgStage svgMarkup={sanitizedSvg} isFullScreen={isFullScreen} />
         ) : effectiveViewMode === "pv" && pvData.length > 0 ? (
           <ChartCanvas style={{ display: "flex", flexDirection: "column" }}>
             <Box flex={1} style={{ minHeight: 0 }}>
@@ -350,43 +396,45 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
           </Box>
         )}
 
-        <InspectorSidebar>
-          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-            Engine Calibration Telemetry
-          </Text>
-          <StatItem>
-            <span>Components</span>
-            <strong>{parsedEngine.componentCount}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Cylinder Count</span>
-            <strong>{parsedEngine.cylinderCount}</strong>
-          </StatItem>
-          {parsedEngine.displacementLiters !== undefined && (
+        {!isFullScreen && showInspector && (
+          <InspectorSidebar>
+            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
+              Engine Calibration Telemetry
+            </Text>
             <StatItem>
-              <span>Displacement</span>
-              <strong>{parsedEngine.displacementLiters} L</strong>
+              <span>Components</span>
+              <strong>{parsedEngine.componentCount}</strong>
             </StatItem>
-          )}
-          {viewConfig.peakPressureBar !== undefined && (
             <StatItem>
-              <span>Peak Pressure (P_max)</span>
-              <strong style={{ color: "#f87171" }}>{viewConfig.peakPressureBar} bar</strong>
+              <span>Cylinder Count</span>
+              <strong>{parsedEngine.cylinderCount}</strong>
             </StatItem>
-          )}
-          {viewConfig.imepBar !== undefined && (
-            <StatItem>
-              <span>IMEP</span>
-              <strong>{viewConfig.imepBar} bar</strong>
-            </StatItem>
-          )}
-          {viewConfig.thermalEfficiencyPct !== undefined && (
-            <StatItem>
-              <span>Brake Thermal Eff</span>
-              <strong style={{ color: "#34d399" }}>{viewConfig.thermalEfficiencyPct}%</strong>
-            </StatItem>
-          )}
-        </InspectorSidebar>
+            {parsedEngine.displacementLiters !== undefined && (
+              <StatItem>
+                <span>Displacement</span>
+                <strong>{parsedEngine.displacementLiters} L</strong>
+              </StatItem>
+            )}
+            {viewConfig.peakPressureBar !== undefined && (
+              <StatItem>
+                <span>Peak Pressure (P_max)</span>
+                <strong style={{ color: "#f87171" }}>{viewConfig.peakPressureBar} bar</strong>
+              </StatItem>
+            )}
+            {viewConfig.imepBar !== undefined && (
+              <StatItem>
+                <span>IMEP</span>
+                <strong>{viewConfig.imepBar} bar</strong>
+              </StatItem>
+            )}
+            {viewConfig.thermalEfficiencyPct !== undefined && (
+              <StatItem>
+                <span>Brake Thermal Eff</span>
+                <strong style={{ color: "#34d399" }}>{viewConfig.thermalEfficiencyPct}%</strong>
+              </StatItem>
+            )}
+          </InspectorSidebar>
+        )}
       </ContentArea>
     </CardWrapper>
   );

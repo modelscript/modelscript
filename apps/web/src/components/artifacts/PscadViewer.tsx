@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { renderPscadSvg, type PscadComponentLike, type PscadWireLike } from "@modelscript/diagram";
 import {
   CheckIcon,
   CodeIcon,
@@ -10,13 +11,12 @@ import {
   ZapIcon,
 } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
-import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface PscadViewerProps {
   viewConfig: {
@@ -57,14 +57,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 40px;
+  min-height: 40px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -73,12 +73,12 @@ const Toolbar = styled.div`
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 `;
 
 const ModelTitle = styled.div`
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
@@ -156,23 +156,6 @@ const ContentArea = styled.div`
   position: relative;
 `;
 
-const SvgCanvas = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 16px;
-  background: var(--color-canvas-inset, var(--color-canvas-default));
-
-  svg {
-    max-width: 100%;
-    max-height: 100%;
-    height: auto;
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
-  }
-`;
-
 const CodePre = styled.pre`
   flex: 1;
   margin: 0;
@@ -203,7 +186,7 @@ const LineNo = styled.span`
 `;
 
 const InspectorSidebar = styled.div`
-  width: 260px;
+  width: 240px;
   border-left: 1px solid var(--color-border-default);
   background: var(--color-canvas-subtle);
   display: flex;
@@ -211,6 +194,10 @@ const InspectorSidebar = styled.div`
   overflow-y: auto;
   padding: 14px;
   gap: 12px;
+
+  @media (max-width: 768px) {
+    display: none;
+  }
 `;
 
 const StatItem = styled.div`
@@ -225,14 +212,68 @@ const StatItem = styled.div`
 `;
 
 function parsePscadClient(code: string) {
-  const compMatches = Array.from(code.matchAll(/<User\b[^>]*name="([^"]+)"/gi));
+  const userTagRe = /<User\b([^>]*)>([\s\S]*?)<\/User>|<User\b([^>]*)\/>/gi;
+  const components: PscadComponentLike[] = [];
+  let m: RegExpExecArray | null;
+  let idx = 0;
+  while ((m = userTagRe.exec(code)) !== null) {
+    const attrs = m[1] || m[3] || "";
+    const body = m[2] || "";
+    const nameMatch = attrs.match(/\bname="([^"]+)"/i);
+    if (!nameMatch?.[1]) continue;
+    const defName = nameMatch[1];
+    const idMatch = attrs.match(/\bid="([^"]+)"/i);
+    const xMatch = attrs.match(/\bx="(-?\d+)"/i);
+    const yMatch = attrs.match(/\by="(-?\d+)"/i);
+    const params: Record<string, string> = {};
+    const paramRe = /<param\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi;
+    let pm: RegExpExecArray | null;
+    while ((pm = paramRe.exec(body)) !== null) {
+      if (pm[1]) params[pm[1]] = pm[2] || "";
+    }
+    const col = idx % 4;
+    const row = Math.floor(idx / 4);
+    components.push({
+      id: idMatch?.[1] || `c_${idx + 1}`,
+      definition: defName,
+      x: xMatch?.[1] ? Number.parseInt(xMatch[1], 10) : 140 + col * 180,
+      y: yMatch?.[1] ? Number.parseInt(yMatch[1], 10) : 140 + row * 120,
+      parameters: params,
+    });
+    idx++;
+  }
+
+  const wires: PscadWireLike[] = [];
+  const wireTagRe = /<Wire\b([^>]*)>([\s\S]*?)<\/Wire>|<Wire\b([^>]*)\/>/gi;
+  let wm: RegExpExecArray | null;
+  let wIdx = 0;
+  while ((wm = wireTagRe.exec(code)) !== null) {
+    const attrs = wm[1] || wm[3] || "";
+    const body = wm[2] || "";
+    const idMatch = attrs.match(/\bid="([^"]+)"/i);
+    const vertices: { x: number; y: number }[] = [];
+    const vertRe = /<Vertex\b[^>]*x="(-?\d+)"[^>]*y="(-?\d+)"/gi;
+    let vm: RegExpExecArray | null;
+    while ((vm = vertRe.exec(body)) !== null) {
+      vertices.push({
+        x: Number.parseInt(vm[1] || "0", 10),
+        y: Number.parseInt(vm[2] || "0", 10),
+      });
+    }
+    if (vertices.length >= 2) {
+      wires.push({ id: idMatch?.[1] || `w_${++wIdx}`, vertices });
+    }
+  }
+
   const busMatches = Array.from(code.matchAll(/<Bus\b|<Wire\b/gi));
-  const xfrmrCount = compMatches.filter((m) => /xfmr|trans|tp3/i.test(m[1] || "")).length;
-  const ibrCount = compMatches.filter((m) => /ibr|inv|vsc|pv|bess|wind/i.test(m[1] || "")).length;
+  const xfrmrCount = components.filter((c) => /xfmr|trans|tp3/i.test(c.definition)).length;
+  const ibrCount = components.filter((c) => /ibr|inv|vsc|pv|bess|wind/i.test(c.definition)).length;
   const dtMatch = code.match(/time_step\s*=\s*"?([0-9.eE+-]+)"?/i);
   const timeStepUs = dtMatch?.[1] ? Number.parseFloat(dtMatch[1]) : undefined;
   return {
-    componentCount: compMatches.length,
+    components,
+    wires,
+    componentCount: components.length,
     busCount: busMatches.length,
     transformerCount: xfrmrCount,
     ibrCount,
@@ -245,7 +286,8 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">(() => (viewConfig.svg ? "diagram" : "code"));
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [showInspector, setShowInspector] = useState(false);
 
   const title = viewConfig.title || viewConfig.projectTitle || viewConfig.definitionName || "PSCAD Case";
 
@@ -274,10 +316,36 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return DOMPurify.sanitize(viewConfig.svg);
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+    }
+    const clientComps: PscadComponentLike[] =
+      parsedClient?.components && parsedClient.components.length > 0
+        ? parsedClient.components
+        : (viewConfig.netlist?.components || []).map((c, idx) => ({
+            id: c.id,
+            definition: c.definition,
+            x: 140 + (idx % 4) * 180,
+            y: 140 + Math.floor(idx / 4) * 120,
+            parameters: c.name ? { Name: c.name } : {},
+          }));
+    if (clientComps.length > 0) {
+      try {
+        const built = renderPscadSvg(
+          {
+            name: title,
+            timeStepUs: viewConfig.timeStepUs ?? parsedClient?.timeStepUs ?? 50,
+            components: clientComps,
+            wires: parsedClient?.wires || [],
+          },
+          { isDark: true },
+        );
+        return sanitizeSvgMarkup(built, { isFullScreen });
+      } catch {
+        return "";
+      }
     }
     return "";
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, viewConfig.netlist, viewConfig.timeStepUs, parsedClient, title, isFullScreen]);
 
   const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
@@ -325,7 +393,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
       <Toolbar>
         <HeaderLeft>
           <ZapIcon size={16} fill="var(--color-accent-fg, currentColor)" />
-          <ModelTitle>{title}</ModelTitle>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge $variant="pscad">PSCAD / EMT</PillBadge>
           {viewConfig.ieee2800Compliant === true && (
             <PillBadge $variant="ieee">
@@ -348,6 +416,11 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
               </SegmentBtn>
             </SegmentedControl>
           )}
+          {!isFullScreen && (
+            <Button size="small" onClick={() => setShowInspector((s) => !s)}>
+              {showInspector ? "Hide Telemetry" : "Telemetry"}
+            </Button>
+          )}
           {sanitizedSvg && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
               SVG
@@ -356,7 +429,7 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
           <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
             {copied ? "Copied" : "Copy"}
           </Button>
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
               Open in Playground
             </Button>
@@ -385,36 +458,38 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
             )}
           </CodePre>
         ) : (
-          <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+          <InteractiveSvgStage svgMarkup={sanitizedSvg} isFullScreen={isFullScreen} />
         )}
 
-        <InspectorSidebar>
-          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-            Circuit Telemetry
-          </Text>
-          {timeStepUs !== undefined && !Number.isNaN(timeStepUs) && (
+        {!isFullScreen && showInspector && (
+          <InspectorSidebar>
+            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
+              Circuit Telemetry
+            </Text>
+            {timeStepUs !== undefined && !Number.isNaN(timeStepUs) && (
+              <StatItem>
+                <span>Time-Step (Δt)</span>
+                <strong>{timeStepUs} µs</strong>
+              </StatItem>
+            )}
             <StatItem>
-              <span>Time-Step (Δt)</span>
-              <strong>{timeStepUs} µs</strong>
+              <span>Components</span>
+              <strong>{componentCount ?? "—"}</strong>
             </StatItem>
-          )}
-          <StatItem>
-            <span>Components</span>
-            <strong>{componentCount ?? "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Buses / Wires</span>
-            <strong>{busCount ?? "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>IBR / Converters</span>
-            <strong>{ibrCount ?? "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Transformers</span>
-            <strong>{transformerCount ?? "—"}</strong>
-          </StatItem>
-        </InspectorSidebar>
+            <StatItem>
+              <span>Buses / Wires</span>
+              <strong>{busCount ?? "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>IBR / Converters</span>
+              <strong>{ibrCount ?? "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>Transformers</span>
+              <strong>{transformerCount ?? "—"}</strong>
+            </StatItem>
+          </InspectorSidebar>
+        )}
       </ContentArea>
     </CardWrapper>
   );

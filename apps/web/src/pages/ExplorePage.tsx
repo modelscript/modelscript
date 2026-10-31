@@ -268,7 +268,7 @@ const ExplorePage: React.FC = () => {
     .filter(matchesQuery)
     .sort((a, b) => new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime());
 
-  const artifactPosts = posts.filter((p) => p.artifact_view_id !== null && matchesQuery(p));
+  const artifactPosts = posts.filter((p) => Boolean(p.artifact_view_id) && matchesQuery(p));
 
   if (topic) {
     return (

@@ -57,6 +57,8 @@ export interface OidcDatabaseAdapter {
   getUserByEmail<T extends OidcUserRecord = OidcUserRecord>(email: string): T | undefined;
   getUserByUsername<T extends OidcUserRecord = OidcUserRecord>(username: string): T | undefined;
   setUserAccountType(userId: number, accountType: "user" | "moderator" | "admin"): void;
+  incrementTokenVersion?(userId: number): number;
+  updatePassword?(userId: number, passwordHash: string): void;
   createUser(
     username: string,
     email: string,
@@ -412,12 +414,25 @@ export class OidcService {
         err.status = 403;
         throw err;
       }
+      if (!existingLink) {
+        // Prevent account pre-hijacking: invalidate any pre-existing sessions and local password
+        // before linking the account to OIDC or elevating privileges.
+        if (typeof database.incrementTokenVersion === "function") {
+          user.token_version = database.incrementTokenVersion(user.id);
+        }
+        if (
+          user.password_hash &&
+          user.password_hash !== "!oidc_sso_only" &&
+          typeof database.updatePassword === "function"
+        ) {
+          database.updatePassword(user.id, "!oidc_sso_only");
+          user.password_hash = "!oidc_sso_only";
+        }
+        database.linkOAuthAccount(user.id, "oidc", claims.sub, "linked_oidc", undefined, undefined);
+      }
       if (isAdmin && user.account_type !== "admin") {
         database.setUserAccountType(user.id, "admin");
         user.account_type = "admin";
-      }
-      if (!existingLink) {
-        database.linkOAuthAccount(user.id, "oidc", claims.sub, "linked_oidc", undefined, undefined);
       }
       database.updateOAuthTokens(user.id, "oidc", "linked_oidc", undefined, undefined);
       if (user.totp_enabled === 1) {

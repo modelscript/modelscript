@@ -7,8 +7,16 @@ export interface ModelingPreferences {
   fontSize: number;
   tabSize: number;
   wordWrap: "on" | "off";
+  lineNumbers: "on" | "off" | "relative";
   minimapEnabled: boolean;
   bracketPairColorization: boolean;
+
+  // Editor preference aliases
+  editorFontSize: number;
+  editorTabSize: number;
+  editorWordWrap: "on" | "off";
+  editorLineNumbers: "on" | "off" | "relative";
+  editorMinimap: boolean;
 
   // ModelScript Compiler
   flattenerBackend: "hybrid" | "wasm" | "ts";
@@ -17,6 +25,7 @@ export interface ModelingPreferences {
 
   // Numerical Simulation
   defaultSolver: "cvode" | "ida" | "dopri5" | "rk4";
+  defaultStopTime: number;
   defaultRelativeTolerance: number;
   solverTolerance: number;
   defaultNumberOfIntervals: number;
@@ -27,19 +36,92 @@ export const DEFAULT_MODELING_PREFERENCES: ModelingPreferences = {
   fontSize: 14,
   tabSize: 2,
   wordWrap: "on",
+  lineNumbers: "on",
   minimapEnabled: true,
   bracketPairColorization: true,
+
+  editorFontSize: 14,
+  editorTabSize: 2,
+  editorWordWrap: "on",
+  editorLineNumbers: "on",
+  editorMinimap: true,
 
   flattenerBackend: "hybrid",
   lintOnType: true,
   enableExperimentalFeatures: false,
 
   defaultSolver: "cvode",
+  defaultStopTime: 10,
   defaultRelativeTolerance: 1e-4,
   solverTolerance: 1e-4,
   defaultNumberOfIntervals: 500,
   diagramAutoLayout: true,
 };
+
+function syncModelingPreferences(
+  base: ModelingPreferences,
+  updates?: Partial<ModelingPreferences>,
+): ModelingPreferences {
+  const merged = updates ? { ...base, ...updates } : { ...base };
+
+  const tolerance =
+    updates?.solverTolerance !== undefined
+      ? updates.solverTolerance
+      : updates?.defaultRelativeTolerance !== undefined
+        ? updates.defaultRelativeTolerance
+        : (merged.solverTolerance ?? merged.defaultRelativeTolerance ?? DEFAULT_MODELING_PREFERENCES.solverTolerance);
+
+  const fontSize =
+    updates?.editorFontSize !== undefined
+      ? updates.editorFontSize
+      : updates?.fontSize !== undefined
+        ? updates.fontSize
+        : (merged.fontSize ?? merged.editorFontSize ?? DEFAULT_MODELING_PREFERENCES.fontSize);
+
+  const tabSize =
+    updates?.editorTabSize !== undefined
+      ? updates.editorTabSize
+      : updates?.tabSize !== undefined
+        ? updates.tabSize
+        : (merged.tabSize ?? merged.editorTabSize ?? DEFAULT_MODELING_PREFERENCES.tabSize);
+
+  const wordWrap =
+    updates?.editorWordWrap !== undefined
+      ? updates.editorWordWrap
+      : updates?.wordWrap !== undefined
+        ? updates.wordWrap
+        : (merged.wordWrap ?? merged.editorWordWrap ?? DEFAULT_MODELING_PREFERENCES.wordWrap);
+
+  const lineNumbers =
+    updates?.editorLineNumbers !== undefined
+      ? updates.editorLineNumbers
+      : updates?.lineNumbers !== undefined
+        ? updates.lineNumbers
+        : (merged.lineNumbers ?? merged.editorLineNumbers ?? DEFAULT_MODELING_PREFERENCES.lineNumbers);
+
+  const minimapEnabled =
+    updates?.editorMinimap !== undefined
+      ? updates.editorMinimap
+      : updates?.minimapEnabled !== undefined
+        ? updates.minimapEnabled
+        : (merged.minimapEnabled ?? merged.editorMinimap ?? DEFAULT_MODELING_PREFERENCES.minimapEnabled);
+
+  return {
+    ...merged,
+    fontSize,
+    editorFontSize: fontSize,
+    tabSize,
+    editorTabSize: tabSize,
+    wordWrap,
+    editorWordWrap: wordWrap,
+    lineNumbers,
+    editorLineNumbers: lineNumbers,
+    minimapEnabled,
+    editorMinimap: minimapEnabled,
+    defaultRelativeTolerance: tolerance,
+    solverTolerance: tolerance,
+  };
+}
 
 const STORAGE_KEY = "modelscript_modeling_preferences";
 
@@ -56,7 +138,8 @@ export const ModelingPreferencesProvider: React.FC<{ children: React.ReactNode }
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        return { ...DEFAULT_MODELING_PREFERENCES, ...JSON.parse(stored) };
+        const parsed = JSON.parse(stored) as Partial<ModelingPreferences>;
+        return syncModelingPreferences(DEFAULT_MODELING_PREFERENCES, parsed);
       }
     } catch {
       // Fallback on defaults
@@ -73,7 +156,7 @@ export const ModelingPreferencesProvider: React.FC<{ children: React.ReactNode }
   }, [preferences]);
 
   const updatePreferences = (updates: Partial<ModelingPreferences>) => {
-    setPreferences((prev) => ({ ...prev, ...updates }));
+    setPreferences((prev) => syncModelingPreferences(prev, updates));
   };
 
   const resetPreferences = () => {

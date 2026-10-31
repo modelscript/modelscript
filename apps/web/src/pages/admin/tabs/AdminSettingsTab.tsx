@@ -78,6 +78,29 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
   const [autoFilterAction, setAutoFilterAction] = useState<"cw" | "silence" | "quarantine">(
     settings?.autoFilterAction || "cw",
   );
+  const [waitlistEnabled, setWaitlistEnabled] = useState<boolean>(Boolean(settings?.waitlistEnabled));
+  const [userInvitesEnabled, setUserInvitesEnabled] = useState<boolean>(settings?.userInvitesEnabled ?? true);
+  const [onboardingWizardEnabled, setOnboardingWizardEnabled] = useState<boolean>(
+    settings?.onboardingWizardEnabled ?? true,
+  );
+  const [academicFastTrackEnabled, setAcademicFastTrackEnabled] = useState<boolean>(
+    settings?.academicFastTrackEnabled ?? true,
+  );
+  const [academicDomainPatternsRaw, setAcademicDomainPatternsRaw] = useState(
+    (
+      settings?.academicDomainPatterns || [
+        "*.edu",
+        "*.ac.uk",
+        "*.edu.au",
+        "*.eth.ch",
+        "*.mpg.de",
+        "*.cnrs.fr",
+        "*.mit.edu",
+        "*.stanford.edu",
+      ]
+    ).join(", "),
+  );
+  const [requireAdmin2FA, setRequireAdmin2FA] = useState<boolean>(Boolean(settings?.requireAdmin2FA));
   const [customTermsMarkdown, setCustomTermsMarkdown] = useState(settings?.customTermsMarkdown || "");
   const [customPrivacyMarkdown, setCustomPrivacyMarkdown] = useState(settings?.customPrivacyMarkdown || "");
 
@@ -118,6 +141,14 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
     setAutoBackupIntervalHours(String(settings.autoBackupIntervalHours ?? 0));
     setAutoFilterKeywordsRaw((settings.autoFilterKeywords || []).join(", "));
     setAutoFilterAction(settings.autoFilterAction || "cw");
+    setWaitlistEnabled(Boolean(settings.waitlistEnabled));
+    setUserInvitesEnabled(settings.userInvitesEnabled ?? true);
+    setOnboardingWizardEnabled(settings.onboardingWizardEnabled ?? true);
+    setAcademicFastTrackEnabled(settings.academicFastTrackEnabled ?? true);
+    if (settings.academicDomainPatterns) {
+      setAcademicDomainPatternsRaw(settings.academicDomainPatterns.join(", "));
+    }
+    setRequireAdmin2FA(Boolean(settings.requireAdmin2FA));
     setCustomTermsMarkdown(settings.customTermsMarkdown || "");
     setCustomPrivacyMarkdown(settings.customPrivacyMarkdown || "");
   }, [settings]);
@@ -130,6 +161,10 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
     const autoFilterKeywords = autoFilterKeywordsRaw
       .split(",")
       .map((k) => k.trim())
+      .filter(Boolean);
+    const academicDomainPatterns = academicDomainPatternsRaw
+      .split(",")
+      .map((p) => p.trim().toLowerCase())
       .filter(Boolean);
     const patch: Partial<AdminInstanceSettings> = {
       instanceName: instanceName.trim() || "Ansatz",
@@ -156,6 +191,12 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
       autoBackupIntervalHours: Math.max(0, parseInt(autoBackupIntervalHours, 10) || 0),
       autoFilterKeywords,
       autoFilterAction,
+      waitlistEnabled,
+      userInvitesEnabled,
+      onboardingWizardEnabled,
+      academicFastTrackEnabled,
+      academicDomainPatterns,
+      requireAdmin2FA,
       customTermsMarkdown: customTermsMarkdown.trim(),
       customPrivacyMarkdown: customPrivacyMarkdown.trim(),
     };
@@ -326,7 +367,7 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
                   marginTop: "3px",
                 }}
               >
-                ansatz.social
+                {typeof window !== "undefined" ? window.location.host : "ansatz.social"}
               </span>
             </Box>
           </Box>
@@ -586,6 +627,112 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
               <option value="quarantine">Auto-Quarantine &amp; Flag</option>
             </Select>
           </Box>
+        </Box>
+
+        {/* Growth, Onboarding & Access Control (Setup Wizard Parity) */}
+        <Box mt={3} pt={2} style={{ borderTop: "1px solid var(--color-border-primary)" }}>
+          <span style={{ fontWeight: 700, fontSize: "13px" }}>Growth, Onboarding &amp; Access Control</span>
+          <Box
+            display="grid"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "10px" }}
+            mt={2}
+          >
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <input type="checkbox" checked={waitlistEnabled} onChange={(e) => setWaitlistEnabled(e.target.checked)} />
+              Enable Public Waitlist Queue (When Invite-Only)
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={academicFastTrackEnabled}
+                onChange={(e) => setAcademicFastTrackEnabled(e.target.checked)}
+              />
+              Enable Academic Fast-Track Auto-Verification
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={userInvitesEnabled}
+                onChange={(e) => setUserInvitesEnabled(e.target.checked)}
+              />
+              Allow Peer-to-Peer Member Invite Codes
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={onboardingWizardEnabled}
+                onChange={(e) => setOnboardingWizardEnabled(e.target.checked)}
+              />
+              Show Guided Post-Signup Onboarding Wizard
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <input type="checkbox" checked={requireAdmin2FA} onChange={(e) => setRequireAdmin2FA(e.target.checked)} />
+              Enforce Mandatory 2FA / TOTP for Admin Roles
+            </label>
+          </Box>
+
+          {academicFastTrackEnabled && (
+            <Box display="flex" flexDirection="column" gap={1} mt={2}>
+              <label style={{ fontSize: "12px", fontWeight: 600 }}>
+                Academic &amp; Research Institution Domain Patterns (comma-separated wildcards)
+              </label>
+              <Input
+                aria-label="Academic Domain Patterns"
+                placeholder="*.edu, *.ac.uk, *.edu.au, *.eth.ch, *.mpg.de"
+                value={academicDomainPatternsRaw}
+                onChange={(e) => setAcademicDomainPatternsRaw(e.target.value)}
+              />
+            </Box>
+          )}
         </Box>
       </Card>
 

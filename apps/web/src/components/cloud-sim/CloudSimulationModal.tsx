@@ -564,15 +564,24 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
 
     try {
       const targetName = (modelName || extractedMeta.modelName || "Model").trim();
+      const solverMethod = String(
+        experimentConfig?.solver ||
+          templateFieldValues["solver"] ||
+          templateFieldValues["integrator"] ||
+          tpl.solver ||
+          "cvode",
+      );
       const res = await submitCloudSimulation({
         modelName: targetName,
         modelSource: effectiveSourceCode || undefined,
         libraryName,
         libraryVersion,
         profile: selectedProfile,
-        startTime,
+        startTime: parseFloat(String(startTime)) || 0,
         stopTime,
         numberOfIntervals,
+        tolerance: parseFloat(tolerance) || 1e-6,
+        solver: solverMethod,
       });
 
       setJobId(res.jobId);

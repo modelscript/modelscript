@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  computeFilletedOrthogonalPath,
   computeJumpoverPath,
   computeOrthogonalRoute,
   computeSmoothBezierPath,
+  healOrthogonalVertices,
   type JumpoverSegment,
   type PointLike,
 } from "./port-router.js";
@@ -333,19 +335,40 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       pTgt = { x: tgtEndpoint.x, y: tgtEndpoint.y };
     }
 
+    const isSmoothEdge =
+      edge.connector === "smooth" ||
+      edge.connector === "bezier" ||
+      edge.style?.connector === "smooth" ||
+      edge.style?.connector === "bezier" ||
+      edge.router === "bezier" ||
+      edge.style?.router === "bezier";
+
     const points: PointLike[] = [pSrc];
     if (edge.vertices && edge.vertices.length > 0) {
-      for (const v of edge.vertices) {
+      const healed = isSmoothEdge ? edge.vertices : healOrthogonalVertices(pSrc, pTgt, edge.vertices);
+      for (const v of healed) {
         points.push({ x: v.x, y: v.y });
       }
       points.push(pTgt);
     } else {
       const routerName = typeof edge.router === "string" ? edge.router : edge.router?.name;
-      if (routerName === "port-orthogonal-astar" || routerName === "manhattan" || routerName === "orthogonal") {
+      if (
+        !isSmoothEdge &&
+        (routerName === "port-orthogonal-astar" ||
+          routerName === "manhattan" ||
+          routerName === "orthogonal" ||
+          routerName === undefined)
+      ) {
         const obstacles = diagram.nodes
           .filter((n) => n.id !== srcId && n.id !== tgtId)
           .map((n) => ({ x: n.x ?? 0, y: n.y ?? 0, width: n.width ?? 120, height: n.height ?? 60 }));
-        const waypoints = computeOrthogonalRoute(pSrc, pTgt, obstacles);
+        const sourceBox = srcNode
+          ? { x: srcNode.x ?? 0, y: srcNode.y ?? 0, width: srcNode.width ?? 120, height: srcNode.height ?? 60 }
+          : undefined;
+        const targetBox = tgtNode
+          ? { x: tgtNode.x ?? 0, y: tgtNode.y ?? 0, width: tgtNode.width ?? 120, height: tgtNode.height ?? 60 }
+          : undefined;
+        const waypoints = computeOrthogonalRoute(pSrc, pTgt, obstacles, { sourceBox, targetBox });
         points.push(...waypoints);
       }
       points.push(pTgt);
@@ -380,17 +403,24 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     edgePaths.push({ edge, points, stroke, strokeWidth, dash, markerEnd, markerStart });
   }
 
-  // 5. Render Edges (with jumpover crossing and smooth Bezier support)
+  // 5. Render Edges (with jumpover crossing, rounded orthogonal fillets, and smooth Bezier support)
   bodyParts.push(`<g id="edges">`);
   for (const ep of edgePaths) {
-    const isJumpover = ep.edge.connector === "jumpover" || ep.edge.style?.connector === "jumpover";
+    const connectorObj =
+      typeof ep.edge.connector === "object" && ep.edge.connector !== null
+        ? (ep.edge.connector as { name?: string; args?: { radius?: number } })
+        : undefined;
+    const connectorName =
+      typeof ep.edge.connector === "string"
+        ? ep.edge.connector
+        : (connectorObj?.name ?? (ep.edge.style?.connector as string | undefined));
+    const isJumpover = connectorName === "jumpover";
     const isSmooth =
-      ep.edge.connector === "smooth" ||
-      ep.edge.connector === "bezier" ||
-      ep.edge.style?.connector === "smooth" ||
-      ep.edge.style?.connector === "bezier" ||
+      connectorName === "smooth" ||
+      connectorName === "bezier" ||
       ep.edge.router === "bezier" ||
       ep.edge.style?.router === "bezier";
+    const isRounded = connectorName === "rounded" || connectorName === "fillet";
 
     let d = "";
     if (isJumpover) {
@@ -399,6 +429,9 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       d = computeJumpoverPath(ep.points, obstacles, { radius: 5 });
     } else if (isSmooth) {
       d = computeSmoothBezierPath(ep.points);
+    } else if (isRounded && ep.points.length >= 3) {
+      const radius = connectorObj?.args?.radius ?? 8;
+      d = computeFilletedOrthogonalPath(ep.points, radius);
     } else {
       d = `M ${ep.points[0]!.x} ${ep.points[0]!.y}`;
       for (let i = 1; i < ep.points.length; i++) {

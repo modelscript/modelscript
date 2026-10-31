@@ -5,7 +5,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { generateEnvConfig, Hub, HubInit, HubStatus } from "../src/commands/hub.js";
+import {
+  generateEnvConfig,
+  Hub,
+  HubInit,
+  HubStatus,
+  runHubAccounts,
+  runHubDomains,
+  runHubPruneRemote,
+  runHubRelay,
+  runHubUpgrade,
+} from "../src/commands/hub.js";
 
 describe("CLI Hub Initialization & Profiles", () => {
   let origLog: typeof console.log;
@@ -202,6 +212,97 @@ describe("CLI Hub Initialization & Profiles", () => {
       })) as any;
 
       await (HubStatus.handler as any)({ url: "http://localhost:3000/" });
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("runHubUpgrade with dryRun orchestrates readiness check and compose command generation", async () => {
+    const origFetch = globalThis.fetch;
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-hub-upgrade-test-"));
+    try {
+      globalThis.fetch = (async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: "ready",
+          ready: true,
+          edition: "ce",
+          instanceName: "Ansatz Test Hub",
+          database: { pendingMigrations: 0 },
+        }),
+      })) as any;
+
+      const result = await runHubUpgrade({
+        url: "http://127.0.0.1:3000",
+        tag: "v1.2.0",
+        profile: "federated-lite",
+        composeDir: tempDir,
+        dryRun: true,
+        token: "mock-admin-token",
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.rolledBack, false);
+      assert.strictEqual(result.targetTag, "v1.2.0");
+      assert.match(
+        result.composeCommand,
+        /docker compose -f docker-compose\.yml -f docker-compose\.prod\.yml --profile federated-lite pull/,
+      );
+    } finally {
+      globalThis.fetch = origFetch;
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runHubDomains, runHubRelay, runHubPruneRemote, and runHubAccounts dispatch to API", async () => {
+    const origFetch = globalThis.fetch;
+    const calls: { url: string; method?: string; body?: unknown }[] = [];
+    try {
+      globalThis.fetch = (async (url: string, init?: { method?: string; body?: string }) => {
+        calls.push({
+          url,
+          method: init?.method,
+          body: init?.body ? JSON.parse(init.body) : undefined,
+        });
+        if (url.includes("/domains")) return { ok: true, json: async () => ({ success: true }) } as any;
+        if (url.includes("/relays")) return { ok: true, json: async () => ({ relays: [] }) } as any;
+        if (url.includes("/prune")) return { ok: true, json: async () => ({ success: true }) } as any;
+        if (url.includes("/users")) return { ok: true, json: async () => ({ users: [] }) } as any;
+        return { ok: true, json: async () => ({}) } as any;
+      }) as any;
+
+      const dom = await runHubDomains({
+        action: "silence",
+        domain: "test.org",
+        url: "http://127.0.0.1:3000",
+        token: "tok",
+      });
+      assert.strictEqual(dom["success"], true);
+
+      const rel = await runHubRelay({
+        action: "list",
+        url: "http://127.0.0.1:3000",
+        token: "tok",
+      });
+      assert.deepStrictEqual(rel["relays"], []);
+
+      const prune = await runHubPruneRemote({
+        days: 30,
+        mediaDays: 7,
+        accountDays: 60,
+        url: "http://127.0.0.1:3000",
+        token: "tok",
+      });
+      assert.strictEqual(prune["success"], true);
+
+      const acct = await runHubAccounts({
+        action: "list",
+        username: "alice",
+        url: "http://127.0.0.1:3000",
+        token: "tok",
+      });
+      assert.deepStrictEqual(acct["users"], []);
     } finally {
       globalThis.fetch = origFetch;
     }

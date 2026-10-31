@@ -56,14 +56,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 38px;
+  min-height: 38px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default, #30363d);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -145,8 +145,8 @@ const TabNav = styled.div`
 const TabButton = styled.button<{ $active: boolean }>`
   background: none;
   border: none;
-  padding: 8px 12px;
-  font-size: 12.5px;
+  padding: 6px 12px;
+  font-size: 12px;
   font-weight: ${(props) => (props.$active ? "700" : "500")};
   color: ${(props) => (props.$active ? "var(--color-text-primary, #ffffff)" : "var(--color-text-muted, #8b949e)")};
   cursor: pointer;
@@ -471,7 +471,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
       <Toolbar>
         <HeaderLeft>
           <PlayIcon size={16} fill="var(--color-accent-purple, #a78bfa)" />
-          <ModelTitle title={modelName}>{modelName}</ModelTitle>
+          {!isFullScreen && <ModelTitle title={modelName}>{modelName}</ModelTitle>}
           <PillBadge $variant="fmi">FMI {fmiVer}</PillBadge>
           {hasWasm ? (
             <PillBadge $variant="wasm">
@@ -489,7 +489,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedGuid ? "Copied" : "GUID"}</Text>
             </Button>
           )}
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"

@@ -54,7 +54,7 @@ const NotificationsPage: React.FC = () => {
   const markSingleRead = useCallback(
     (id: string | number) => {
       if (token) {
-        markNotificationsRead().catch(() => {});
+        markNotificationsRead(id).catch(() => {});
       }
       setNotifications((prev) => {
         let decremented = false;
@@ -92,7 +92,10 @@ const NotificationsPage: React.FC = () => {
             if (activeTab === "packages" && ["package", "package_published", "package_yanked"].includes(n.type)) {
               return { ...n, read: 1 };
             }
-            if (activeTab === "mentions" && ["mention", "reply", "repost", "like", "follow"].includes(n.type)) {
+            if (
+              activeTab === "mentions" &&
+              ["mention", "reply", "quote", "repost", "like", "follow"].includes(n.type)
+            ) {
               return { ...n, read: 1 };
             }
             if (activeTab === "system" && ["security_alert", "credit_warning"].includes(n.type)) {
@@ -124,7 +127,7 @@ const NotificationsPage: React.FC = () => {
           counts.engineering++;
         } else if (["package", "package_published", "package_yanked"].includes(n.type)) {
           counts.packages++;
-        } else if (["mention", "reply", "repost", "like", "follow"].includes(n.type)) {
+        } else if (["mention", "reply", "quote", "repost", "like", "follow"].includes(n.type)) {
           counts.mentions++;
         } else if (["security_alert", "credit_warning"].includes(n.type)) {
           counts.system++;
@@ -144,7 +147,7 @@ const NotificationsPage: React.FC = () => {
         return ["package", "package_published", "package_yanked"].includes(notif.type);
       }
       if (activeTab === "mentions") {
-        return ["mention", "reply", "repost", "like", "follow"].includes(notif.type);
+        return ["mention", "reply", "quote", "repost", "like", "follow"].includes(notif.type);
       }
       if (activeTab === "system") {
         return ["security_alert", "credit_warning"].includes(notif.type);

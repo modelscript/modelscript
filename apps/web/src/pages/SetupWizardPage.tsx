@@ -2,13 +2,10 @@
 
 import {
   CheckCircleIcon,
-  DatabaseIcon,
-  GlobeIcon,
-  KeyIcon,
+  EyeClosedIcon,
+  EyeIcon,
   LockIcon,
-  PersonAddIcon,
   RocketIcon,
-  ServerIcon,
   ShieldCheckIcon,
   UploadIcon,
 } from "@primer/octicons-react";
@@ -37,8 +34,7 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
   tier0_local_dev: {
     id: "tier0_local_dev",
     label: "Tier 0: Ansatz Local (Offline Developer Sandbox)",
-    description:
-      "Open local registration with zero federation or internet dependencies. Ideal for standalone workstation modeling and offline debugging.",
+    description: "Standalone workstation modeling with open local signup and zero internet dependencies.",
     registrationMode: "open",
     federationMode: "disabled",
     autoQuarantineReportThreshold: 10,
@@ -55,8 +51,7 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
   tier1_federated: {
     id: "tier1_federated",
     label: "Tier 1: Ansatz Lab (Independent Federated Node)",
-    description:
-      "Invite-only registration with open ActivityPub S2S federation. Ideal for research labs, universities, and self-hosted federated operators.",
+    description: "Invite-only registration with open ActivityPub federation for research labs and teams.",
     registrationMode: "invite_only",
     federationMode: "open",
     autoQuarantineReportThreshold: 3,
@@ -73,8 +68,7 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
   tier2_corporate: {
     id: "tier2_corporate",
     label: "Tier 2: Ansatz Enterprise (Corporate Intranet / Air-Gapped Appliance)",
-    description:
-      "Email domain allowlist registration with outbound ActivityPub federation disabled. Ideal for internal R&D intranets and classified SCIF/air-gapped appliances.",
+    description: "Email domain allowlist with outbound federation disabled for internal R&D intranets.",
     registrationMode: "domain_allowlist",
     federationMode: "disabled",
     autoQuarantineReportThreshold: 5,
@@ -90,9 +84,8 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
   },
   tier3_flagship: {
     id: "tier3_flagship",
-    label: "Tier 3: Ansatz Social (Public Flagship Node at ansatz.social)",
-    description:
-      "Open or gated registration with anti-Sybil verification, open ActivityPub federation, and automated report threshold quarantine. Flagship node at ansatz.social.",
+    label: "Tier 3: Ansatz Social (Public Community Hub)",
+    description: "Open public registration with ActivityPub federation, waitlist, and peer invites.",
     registrationMode: "open",
     federationMode: "open",
     autoQuarantineReportThreshold: 5,
@@ -108,60 +101,69 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
   },
 };
 
+const TIER_SUMMARY_BADGE: Record<string, string> = {
+  tier0_local_dev: "Offline · Local Only",
+  tier1_federated: "Invite-Only · Federated",
+  tier2_corporate: "Domain Allowlist · Private",
+  tier3_flagship: "Open Signup · Federated",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "9px 12px",
+  borderRadius: "8px",
+  border: "1px solid var(--color-border-default)",
+  backgroundColor: "var(--color-canvas-default)",
+  color: "var(--color-fg-default)",
+  fontSize: "13.5px",
+  boxSizing: "border-box",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: "12px",
+  fontWeight: 600,
+  marginBottom: "5px",
+  color: "var(--color-fg-default)",
+};
+
 export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus = null, onLoginSuccess }) => {
   const navigate = useNavigate();
 
   const [status, setStatus] = useState<InstanceSetupStatus | null>(initialStatus);
   const [loading, setLoading] = useState<boolean>(!initialStatus);
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Step 1: Tier Preset & Optional Migration Bundle
+  // Deployment Tier & Optional Migration Bundle
   const [selectedTier, setSelectedTier] = useState<
     "tier0_local_dev" | "tier1_federated" | "tier2_corporate" | "tier3_flagship"
   >("tier1_federated");
   const [migrationBundle, setMigrationBundle] = useState<Record<string, unknown> | null>(null);
   const [migrationFileName, setMigrationFileName] = useState<string | null>(null);
 
-  // Step 2: Founding Administrator Account
+  // Founding Administrator Account (essential fields only)
   const [adminUsername, setAdminUsername] = useState("admin");
-  const [adminEmail, setAdminEmail] = useState("admin@ansatz.local");
-  const [adminDisplayName, setAdminDisplayName] = useState("Instance Administrator");
+  const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
-  const [adminPasswordConfirm, setAdminPasswordConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Step 3: Instance Identity, White-Label Branding, Registration & Federation Policy
+  // Instance Identity & Core Policies
   const [instanceName, setInstanceName] = useState(initialStatus?.settings.instanceName || "Ansatz");
+  const [instanceNameTouched, setInstanceNameTouched] = useState(false);
   const [instanceBadge, setInstanceBadge] = useState(initialStatus?.settings.instanceBadge ?? "");
-  const [instanceTagline, setInstanceTagline] = useState(
-    initialStatus?.settings.instanceTagline || "The Federated Scientific & Engineering Network",
-  );
-  const [instanceDescription, setInstanceDescription] = useState(
-    initialStatus?.settings.instanceDescription ||
-      "Federated polyglot engineering simulation, Modelica, SysML v2, and digital twin platform.",
-  );
-  const [contactEmail, setContactEmail] = useState(initialStatus?.settings.contactEmail || "admin@ansatz.local");
-  const [brandLogoUrl, setBrandLogoUrl] = useState(initialStatus?.settings.brandLogoUrl || "");
-  const [brandLogoDarkUrl, setBrandLogoDarkUrl] = useState(initialStatus?.settings.brandLogoDarkUrl || "");
-  const [brandFaviconUrl, setBrandFaviconUrl] = useState(initialStatus?.settings.brandFaviconUrl || "");
-  const [brandAccentColor, setBrandAccentColor] = useState(initialStatus?.settings.brandAccentColor || "#06b6d4");
-  const [docsBaseUrl, setDocsBaseUrl] = useState(initialStatus?.settings.docsBaseUrl || "https://modelscript.org");
-  const [showPoweredBy, setShowPoweredBy] = useState<boolean>(initialStatus?.settings.showPoweredBy ?? true);
   const [registrationMode, setRegistrationMode] = useState<"open" | "invite_only" | "domain_allowlist" | "closed">(
-    "invite_only",
+    initialStatus?.settings.registrationMode || "invite_only",
   );
-  const [allowedDomainsInput, setAllowedDomainsInput] = useState("");
-  const [federationMode, setFederationMode] = useState<"open" | "allowlist" | "disabled">("open");
-  const [autoQuarantineThreshold, setAutoQuarantineThreshold] = useState<number>(3);
-  const [backupRetentionCount, setBackupRetentionCount] = useState<number>(7);
-
-  // Step 4: Starter Invites & Baseline Backup
-  const [initialInvitesCount, setInitialInvitesCount] = useState<number>(3);
-  const [initialInviteMaxUses, setInitialInviteMaxUses] = useState<number>(5);
-  const [initialInviteCredits, setInitialInviteCredits] = useState<number>(100);
-  const [initialInviteRole, setInitialInviteRole] = useState<"user" | "moderator" | "auditor">("user");
-  const [createInitialBackup, setCreateInitialBackup] = useState<boolean>(true);
+  const [allowedDomainsInput, setAllowedDomainsInput] = useState(
+    initialStatus?.settings.allowedEmailDomains?.join(", ") || "",
+  );
+  const [federationMode, setFederationMode] = useState<"open" | "allowlist" | "disabled">(
+    (initialStatus?.settings.federationMode as "open" | "allowlist" | "disabled") || "open",
+  );
+  const [ingressMode, setIngressMode] = useState<"direct" | "cloudflare">("direct");
+  const [tunnelToken, setTunnelToken] = useState("");
 
   // Completion Summary State
   const [completedResult, setCompletedResult] = useState<{
@@ -175,28 +177,29 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
     setStatus(res);
     setInstanceName(res.settings.instanceName || "Ansatz");
     setInstanceBadge(res.settings.instanceBadge ?? "");
-    setInstanceTagline(res.settings.instanceTagline || "The Federated Scientific & Engineering Network");
-    setInstanceDescription(res.settings.instanceDescription);
-    setContactEmail(res.settings.contactEmail);
-    setBrandLogoUrl(res.settings.brandLogoUrl || "");
-    setBrandLogoDarkUrl(res.settings.brandLogoDarkUrl || "");
-    setBrandFaviconUrl(res.settings.brandFaviconUrl || "");
-    setBrandAccentColor(res.settings.brandAccentColor || "#06b6d4");
-    setDocsBaseUrl(res.settings.docsBaseUrl || "https://modelscript.org");
-    setShowPoweredBy(res.settings.showPoweredBy ?? true);
+    if (res.settings.registrationMode) {
+      setRegistrationMode(res.settings.registrationMode);
+    }
+    if (
+      res.settings.federationMode === "open" ||
+      res.settings.federationMode === "allowlist" ||
+      res.settings.federationMode === "disabled"
+    ) {
+      setFederationMode(res.settings.federationMode);
+    }
+    if (res.settings.ingressMode === "cloudflare" || res.settings.ingressMode === "direct") {
+      setIngressMode(res.settings.ingressMode);
+    }
     if (res.reopened) {
+      setAdminEmail((prev) => prev || res.settings.contactEmail || "admin@ansatz.local");
       setAdminPassword((prev) => prev || "password123");
-      setAdminPasswordConfirm((prev) => prev || "password123");
     }
     if (res.airgapEnforced) {
       setSelectedTier("tier2_corporate");
       setRegistrationMode("domain_allowlist");
       setFederationMode("disabled");
-      setAutoQuarantineThreshold(5);
-      setBackupRetentionCount(14);
       setInstanceName(res.presets?.tier2_corporate?.defaultInstanceName || "Ansatz Enterprise");
       setInstanceBadge(res.presets?.tier2_corporate?.defaultInstanceBadge ?? "Enterprise");
-      setShowPoweredBy(true);
     }
   };
 
@@ -205,7 +208,6 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
       const detail = (ev as CustomEvent<InstanceSetupStatus | undefined>).detail;
       setCompletedResult(null);
       setError(null);
-      setStep(1);
       if (detail && detail.settings) {
         applyLoadedStatus(detail);
       } else {
@@ -249,7 +251,6 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
     try {
       const res = await resetInstanceSetupWizard();
       setCompletedResult(null);
-      setStep(1);
       applyLoadedStatus(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to re-open setup wizard");
@@ -263,21 +264,12 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
     if (p) {
       setRegistrationMode(p.registrationMode);
       setFederationMode(p.federationMode);
-      setAutoQuarantineThreshold(p.autoQuarantineReportThreshold);
-      setBackupRetentionCount(p.backupRetentionCount);
-      const name = p.defaultInstanceName ?? (p as { instanceName?: string }).instanceName;
-      if (name !== undefined) setInstanceName(name);
+      if (!instanceNameTouched) {
+        const name = p.defaultInstanceName ?? (p as { instanceName?: string }).instanceName;
+        if (name !== undefined) setInstanceName(name);
+      }
       const badge = p.defaultInstanceBadge ?? (p as { instanceBadge?: string }).instanceBadge;
       if (badge !== undefined) setInstanceBadge(badge);
-      if ((p as { instanceTagline?: string }).instanceTagline !== undefined) {
-        setInstanceTagline((p as { instanceTagline?: string }).instanceTagline!);
-      }
-      const docs =
-        p.defaultDocsBaseUrl ??
-        (tierId === "tier2_corporate" || tierId === "tier0_local_dev" ? "/docs" : "https://modelscript.org");
-      if (docs !== undefined) setDocsBaseUrl(docs);
-      const powered = p.defaultShowPoweredBy ?? (p as { showPoweredBy?: boolean }).showPoweredBy;
-      if (powered !== undefined) setShowPoweredBy(powered);
     }
   };
 
@@ -291,19 +283,11 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
         setMigrationBundle(parsed);
         setMigrationFileName(file.name);
         if (parsed.settings && typeof parsed.settings === "object") {
-          if (parsed.settings.instanceName) setInstanceName(String(parsed.settings.instanceName));
+          if (parsed.settings.instanceName) {
+            setInstanceName(String(parsed.settings.instanceName));
+            setInstanceNameTouched(true);
+          }
           if (parsed.settings.instanceBadge !== undefined) setInstanceBadge(String(parsed.settings.instanceBadge));
-          if (parsed.settings.instanceTagline) setInstanceTagline(String(parsed.settings.instanceTagline));
-          if (parsed.settings.instanceDescription) setInstanceDescription(String(parsed.settings.instanceDescription));
-          if (parsed.settings.contactEmail) setContactEmail(String(parsed.settings.contactEmail));
-          if (parsed.settings.brandLogoUrl !== undefined) setBrandLogoUrl(String(parsed.settings.brandLogoUrl));
-          if (parsed.settings.brandLogoDarkUrl !== undefined)
-            setBrandLogoDarkUrl(String(parsed.settings.brandLogoDarkUrl));
-          if (parsed.settings.brandFaviconUrl !== undefined)
-            setBrandFaviconUrl(String(parsed.settings.brandFaviconUrl));
-          if (parsed.settings.brandAccentColor) setBrandAccentColor(String(parsed.settings.brandAccentColor));
-          if (parsed.settings.docsBaseUrl) setDocsBaseUrl(String(parsed.settings.docsBaseUrl));
-          if (typeof parsed.settings.showPoweredBy === "boolean") setShowPoweredBy(parsed.settings.showPoweredBy);
           if (parsed.settings.registrationMode) setRegistrationMode(parsed.settings.registrationMode);
           if (parsed.settings.federationMode) setFederationMode(parsed.settings.federationMode);
         }
@@ -315,9 +299,9 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
     reader.readAsText(file);
   };
 
-  const handleNextStep = () => {
+  const handleCompleteSetup = async () => {
     setError(null);
-    if (step === 2 && !status?.hasAdmin) {
+    if (!status?.hasAdmin) {
       if (!adminUsername.trim() || !/^[a-zA-Z0-9_-]{2,32}$/.test(adminUsername.trim())) {
         setError("Administrator username must be 2–32 alphanumeric characters.");
         return;
@@ -330,24 +314,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
         setError("Administrator password must be at least 8 characters.");
         return;
       }
-      if (adminPassword !== adminPasswordConfirm) {
-        setError("Administrator passwords do not match.");
-        return;
-      }
-      if (
-        contactEmail === "admin@ansatz.local" ||
-        contactEmail === "admin@ansatz.social" ||
-        contactEmail === "admin@modelscript.local" ||
-        contactEmail === "admin@modelscript.org"
-      ) {
-        setContactEmail(adminEmail.trim());
-      }
     }
-    setStep((prev) => (prev < 4 ? ((prev + 1) as 1 | 2 | 3 | 4) : prev));
-  };
-
-  const handleCompleteSetup = async () => {
-    setError(null);
     setSubmitting(true);
     try {
       const allowedEmailDomains = allowedDomainsInput
@@ -355,8 +322,14 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
         .map((d) => d.trim().toLowerCase())
         .filter(Boolean);
 
+      const trimmedTunnelToken = ingressMode === "cloudflare" && tunnelToken.trim() ? tunnelToken.trim() : undefined;
+      const presets = status?.presets || DEFAULT_PRESETS;
+      const activePreset = presets[selectedTier] || DEFAULT_PRESETS.tier1_federated;
+
       const res = await completeInstanceSetup({
         profileTier: selectedTier,
+        ingressMode,
+        ...(trimmedTunnelToken ? { tunnelToken: trimmedTunnelToken } : {}),
         ...(status?.hasAdmin
           ? {}
           : {
@@ -364,32 +337,25 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
                 username: adminUsername.trim(),
                 email: adminEmail.trim(),
                 password: adminPassword,
-                displayName: adminDisplayName.trim() || undefined,
               },
             }),
         settings: {
           instanceName: instanceName.trim() || "Ansatz",
           instanceBadge: instanceBadge.trim(),
-          instanceTagline: instanceTagline.trim(),
-          instanceDescription: instanceDescription.trim(),
-          contactEmail: contactEmail.trim(),
-          brandLogoUrl: brandLogoUrl.trim(),
-          brandLogoDarkUrl: brandLogoDarkUrl.trim(),
-          brandFaviconUrl: brandFaviconUrl.trim(),
-          brandAccentColor: brandAccentColor.trim() || "#06b6d4",
-          docsBaseUrl: docsBaseUrl.trim() || "https://modelscript.org",
-          showPoweredBy,
+          contactEmail: adminEmail.trim() || status?.settings.contactEmail || "admin@ansatz.local",
           registrationMode,
           allowedEmailDomains,
           federationMode,
-          autoQuarantineReportThreshold: autoQuarantineThreshold,
-          backupRetentionCount,
+          ingressMode,
+          ...(trimmedTunnelToken ? { tunnelToken: trimmedTunnelToken, cloudflareTunnelConfigured: true } : {}),
+          autoQuarantineReportThreshold: activePreset.autoQuarantineReportThreshold,
+          backupRetentionCount: activePreset.backupRetentionCount,
         },
-        initialInvitesCount,
-        initialInviteMaxUses,
-        initialInviteCredits,
-        initialInviteRole,
-        createInitialBackup,
+        initialInvitesCount: registrationMode === "invite_only" ? 3 : 0,
+        initialInviteMaxUses: 5,
+        initialInviteCredits: 100,
+        initialInviteRole: "user",
+        createInitialBackup: true,
         migrationBundle,
       });
 
@@ -398,6 +364,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
       if (res.token && res.user) {
         try {
           if (typeof window !== "undefined" && window.localStorage) {
+            window.localStorage.setItem("modelscript-auth-token", res.token);
             window.localStorage.setItem("token", res.token);
             window.localStorage.setItem("user", JSON.stringify(res.user));
           }
@@ -433,7 +400,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
 
   if (loading) {
     return (
-      <div style={{ padding: "48px 24px", maxWidth: "780px", margin: "0 auto", textAlign: "center" }}>
+      <div style={{ padding: "48px 24px", maxWidth: "720px", margin: "0 auto", textAlign: "center" }}>
         <p style={{ color: "var(--color-fg-muted)" }}>Inspecting instance initialization state...</p>
       </div>
     );
@@ -443,11 +410,11 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
     return (
       <div
         style={{
-          padding: "48px 24px",
-          maxWidth: "680px",
-          margin: "40px auto",
+          padding: "40px 24px",
+          maxWidth: "620px",
+          margin: "48px auto",
           border: "1px solid var(--color-border-default)",
-          borderRadius: "12px",
+          borderRadius: "14px",
           backgroundColor: "var(--color-canvas-subtle)",
           textAlign: "center",
         }}
@@ -455,16 +422,16 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
         <ShieldCheckIcon size={36} />
         <h2 style={{ margin: "12px 0 8px", fontSize: "20px", fontWeight: 700 }}>Instance Setup Already Completed</h2>
         <p style={{ margin: "0 0 20px", fontSize: "14px", color: "var(--color-fg-muted)" }}>
-          This {status.settings.instanceName || "Ansatz"} instance (<strong>{status.settings.instanceName}</strong>) has
-          already been initialized and its first-boot setup wizard is permanently locked.
+          This {status.settings.instanceName || "Ansatz"} instance (<strong>{status.settings.instanceName}</strong>) is
+          configured and its first-boot setup endpoint is locked.
         </p>
         <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
           <button
             type="button"
-            onClick={() => navigate("/admin")}
+            onClick={() => navigate("/")}
             style={{
               padding: "8px 16px",
-              borderRadius: "6px",
+              borderRadius: "8px",
               border: "none",
               backgroundColor: "var(--color-accent-emphasis)",
               color: "#ffffff",
@@ -472,17 +439,32 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
               cursor: "pointer",
             }}
           >
-            Open Instance Admin Console
+            Open Workspace
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/admin")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: "1px solid var(--color-border-default)",
+              backgroundColor: "var(--color-canvas-default)",
+              color: "var(--color-fg-default)",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Instance Admin Console
           </button>
           <button
             type="button"
             onClick={() => void handleRerunWizard()}
             style={{
               padding: "8px 16px",
-              borderRadius: "6px",
+              borderRadius: "8px",
               border: "1px solid var(--color-border-default)",
               backgroundColor: "var(--color-canvas-default)",
-              color: "var(--color-fg-default)",
+              color: "var(--color-fg-muted)",
               fontWeight: 600,
               cursor: "pointer",
               display: "inline-flex",
@@ -492,21 +474,6 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
           >
             <RocketIcon size={14} /> Re-run Setup Wizard
           </button>
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "6px",
-              border: "1px solid var(--color-border-default)",
-              backgroundColor: "var(--color-canvas-default)",
-              color: "var(--color-fg-default)",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Return to Home
-          </button>
         </div>
       </div>
     );
@@ -515,7 +482,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
   const presets = status?.presets || DEFAULT_PRESETS;
 
   return (
-    <div style={{ padding: "32px 20px", maxWidth: "860px", margin: "0 auto" }}>
+    <div style={{ padding: "32px 20px", maxWidth: "760px", margin: "0 auto" }}>
       {/* Header */}
       <div
         style={{
@@ -524,54 +491,51 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
           justifyContent: "space-between",
           flexWrap: "wrap",
           gap: "12px",
-          marginBottom: "24px",
-          paddingBottom: "16px",
-          borderBottom: "1px solid var(--color-border-default)",
+          marginBottom: "20px",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <div
-            style={{
-              width: "40px",
-              height: "40px",
-              borderRadius: "10px",
-              backgroundColor: "var(--color-accent-subtle)",
-              color: "var(--color-accent-fg)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <RocketIcon size={20} />
-          </div>
+          <AnsatzMark size={38} accentColor="#06b6d4" />
           <div>
-            <h1 style={{ margin: 0, fontSize: "22px", fontWeight: 700 }}>
+            <h1 style={{ margin: 0, fontSize: "21px", fontWeight: 800 }}>
               {instanceName || "Ansatz"} First-Run Install Wizard
             </h1>
             <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-fg-muted)" }}>
-              Bootstrap your founding administrator, security posture, federation policy, and baseline snapshot.
+              Choose a deployment profile and create your founding administrator account.
             </p>
           </div>
         </div>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <span
+          <label
             style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              padding: "3px 10px",
-              borderRadius: "999px",
-              backgroundColor: "var(--color-accent-subtle)",
-              color: "var(--color-accent-fg)",
+              padding: "5px 10px",
+              borderRadius: "6px",
+              border: "1px solid var(--color-border-default)",
+              backgroundColor: "var(--color-canvas-subtle)",
+              fontSize: "11.5px",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
             }}
+            title="Restore settings from an exported JSON migration bundle"
           >
-            {status?.edition === "ee" ? "Enterprise Edition (EE)" : "Community Edition (AGPLv3)"}
-          </span>
+            <UploadIcon size={12} />
+            <span>{migrationFileName ? `Bundle: ${migrationFileName}` : "Upload Bundle (.json)"}</span>
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={handleBundleUpload}
+              style={{ display: "none" }}
+            />
+          </label>
           {status?.airgapEnforced && (
             <span
               style={{
                 fontSize: "11px",
                 fontWeight: 700,
-                padding: "3px 10px",
+                padding: "4px 10px",
                 borderRadius: "999px",
                 backgroundColor: "rgba(210, 153, 34, 0.15)",
                 color: "var(--color-attention-fg)",
@@ -593,71 +557,20 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
             backgroundColor: "var(--color-canvas-subtle)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
             <span style={{ color: "var(--color-success-fg)", display: "flex" }}>
-              <CheckCircleIcon size={24} />
+              <CheckCircleIcon size={22} />
             </span>
             <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700 }}>Instance Ready — Setup Wizard Locked</h2>
           </div>
-          <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--color-fg-muted)" }}>
-            <strong>{completedResult.settings.instanceName}</strong> is now live and signed in as{" "}
-            <code>@{completedResult.adminUsername}</code>. The setup endpoint has been permanently locked.
+          <p style={{ margin: "0 0 18px", fontSize: "13.5px", color: "var(--color-fg-muted)" }}>
+            <strong>{completedResult.settings.instanceName}</strong> is live and signed in as{" "}
+            <code>@{completedResult.adminUsername}</code>.
           </p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: "12px",
-              marginBottom: "20px",
-            }}
-          >
-            <div
-              style={{
-                padding: "12px",
-                borderRadius: "8px",
-                border: "1px solid var(--color-border-default)",
-                backgroundColor: "var(--color-canvas-default)",
-              }}
-            >
-              <div style={{ fontSize: "11px", color: "var(--color-fg-muted)" }}>Registration Policy</div>
-              <div style={{ fontSize: "14px", fontWeight: 700, marginTop: "4px" }}>
-                {completedResult.settings.registrationMode}
-              </div>
-            </div>
-            <div
-              style={{
-                padding: "12px",
-                borderRadius: "8px",
-                border: "1px solid var(--color-border-default)",
-                backgroundColor: "var(--color-canvas-default)",
-              }}
-            >
-              <div style={{ fontSize: "11px", color: "var(--color-fg-muted)" }}>ActivityPub Federation</div>
-              <div style={{ fontSize: "14px", fontWeight: 700, marginTop: "4px" }}>
-                {completedResult.settings.federationMode}
-              </div>
-            </div>
-            {completedResult.backupSnapshot && (
-              <div
-                style={{
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--color-border-default)",
-                  backgroundColor: "var(--color-canvas-default)",
-                }}
-              >
-                <div style={{ fontSize: "11px", color: "var(--color-fg-muted)" }}>Baseline Hot Backup</div>
-                <div style={{ fontSize: "12px", fontWeight: 600, marginTop: "4px", fontFamily: "monospace" }}>
-                  {completedResult.backupSnapshot.fileName}
-                </div>
-              </div>
-            )}
-          </div>
-
           {completedResult.invites.length > 0 && (
-            <div style={{ marginBottom: "20px" }}>
-              <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>
+            <div style={{ marginBottom: "18px" }}>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-fg-muted)", marginBottom: "6px" }}>
                 Starter Invitation Codes ({completedResult.invites.length})
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -665,7 +578,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
                   <code
                     key={inv.code}
                     style={{
-                      padding: "6px 10px",
+                      padding: "5px 10px",
                       borderRadius: "6px",
                       border: "1px solid var(--color-border-default)",
                       backgroundColor: "var(--color-canvas-default)",
@@ -673,7 +586,7 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
                       fontWeight: 600,
                     }}
                   >
-                    {inv.code} ({inv.maxUses} uses · {inv.initialCredits} cr)
+                    {inv.code}
                   </code>
                 ))}
               </div>
@@ -683,10 +596,10 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={() => navigate("/admin")}
+              onClick={() => navigate("/home")}
               style={{
-                padding: "8px 16px",
-                borderRadius: "6px",
+                padding: "9px 18px",
+                borderRadius: "8px",
                 border: "none",
                 backgroundColor: "var(--color-accent-emphasis)",
                 color: "#ffffff",
@@ -694,14 +607,14 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
                 cursor: "pointer",
               }}
             >
-              Launch Instance Admin Console →
+              Open Engineering Workspace →
             </button>
             <button
               type="button"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/admin")}
               style={{
-                padding: "8px 16px",
-                borderRadius: "6px",
+                padding: "9px 16px",
+                borderRadius: "8px",
                 border: "1px solid var(--color-border-default)",
                 backgroundColor: "var(--color-canvas-default)",
                 color: "var(--color-fg-default)",
@@ -709,62 +622,12 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
                 cursor: "pointer",
               }}
             >
-              Go to Engineering Feed
+              Launch Instance Admin Console
             </button>
           </div>
         </div>
       ) : (
         <>
-          {/* Step Progress Bar */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: "8px",
-              marginBottom: "24px",
-            }}
-          >
-            {[
-              { num: 1, title: "1. Deployment Tier", icon: <ServerIcon size={14} /> },
-              { num: 2, title: "2. Founding Admin", icon: <KeyIcon size={14} /> },
-              { num: 3, title: "3. Instance Policy", icon: <GlobeIcon size={14} /> },
-              { num: 4, title: "4. Invites & Backup", icon: <DatabaseIcon size={14} /> },
-            ].map((item) => {
-              const active = step === item.num;
-              const done = step > item.num;
-              return (
-                <button
-                  key={item.num}
-                  type="button"
-                  onClick={() => {
-                    if (item.num < step) setStep(item.num as 1 | 2 | 3 | 4);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "10px 12px",
-                    borderRadius: "8px",
-                    border: active ? "2px solid var(--color-accent-emphasis)" : "1px solid var(--color-border-default)",
-                    backgroundColor: active
-                      ? "var(--color-accent-subtle)"
-                      : done
-                        ? "var(--color-canvas-subtle)"
-                        : "var(--color-canvas-default)",
-                    color: active ? "var(--color-accent-fg)" : "var(--color-fg-default)",
-                    fontSize: "12px",
-                    fontWeight: active ? 700 : 600,
-                    cursor: item.num < step ? "pointer" : "default",
-                    textAlign: "left",
-                  }}
-                >
-                  {item.icon}
-                  <span>{item.title}</span>
-                </button>
-              );
-            })}
-          </div>
-
           {error && (
             <div
               role="alert"
@@ -782,558 +645,250 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
             </div>
           )}
 
-          {/* Step 1: Deployment Tier Preset */}
-          {step === 1 && (
+          {/* Section 1: Compact 2x2 Deployment Profile Grid */}
+          <div
+            style={{
+              border: "1px solid var(--color-border-default)",
+              borderRadius: "12px",
+              padding: "18px 20px",
+              backgroundColor: "var(--color-canvas-subtle)",
+              marginBottom: "16px",
+            }}
+          >
+            <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "12px" }}>1. Deployment Profile</div>
             <div
               style={{
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "10px",
-                padding: "20px",
-                backgroundColor: "var(--color-canvas-subtle)",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))",
+                gap: "10px",
               }}
             >
-              <h2 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 700 }}>
-                Select Your Deployment Architecture Profile
-              </h2>
-              <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--color-fg-muted)" }}>
-                Choose a preset tailored to your deployment scale. You can fine-tune every setting in Step 3 or anytime
-                in the Instance Admin console.
-              </p>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
-                {(["tier0_local_dev", "tier1_federated", "tier2_corporate", "tier3_flagship"] as const).map(
-                  (tierKey) => {
-                    const p = presets[tierKey];
-                    const isSelected = selectedTier === tierKey;
-                    return (
-                      <div
-                        key={tierKey}
-                        onClick={() => applyTierPreset(tierKey)}
-                        style={{
-                          padding: "14px 16px",
-                          borderRadius: "8px",
-                          border: isSelected
-                            ? "2px solid var(--color-accent-emphasis)"
-                            : "1px solid var(--color-border-default)",
-                          backgroundColor: isSelected ? "var(--color-accent-subtle)" : "var(--color-canvas-default)",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span style={{ fontSize: "14px", fontWeight: 700 }}>{p.label}</span>
-                          <span style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--color-fg-muted)" }}>
-                            signup={p.registrationMode} · fed={p.federationMode} · backups={p.backupRetentionCount}
-                          </span>
-                        </div>
-                        <p style={{ margin: "6px 0 0", fontSize: "12px", color: "var(--color-fg-muted)" }}>
-                          {p.description}
-                        </p>
-                      </div>
-                    );
-                  },
-                )}
-              </div>
-
-              {/* Optional Migration Bundle Restore */}
-              <div
-                style={{
-                  padding: "14px",
-                  borderRadius: "8px",
-                  border: "1px dashed var(--color-border-default)",
-                  backgroundColor: "var(--color-canvas-default)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "10px",
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                    <UploadIcon size={14} /> Migrating from an existing {instanceName || "Ansatz"} instance?
-                  </div>
-                  <div style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginTop: "2px" }}>
-                    {migrationFileName
-                      ? `Loaded bundle: ${migrationFileName}`
-                      : "Optional: Upload a Portable Instance Migration Bundle (.json) to pre-load settings, federation rules, and feature flags."}
-                  </div>
-                </div>
-                <label
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid var(--color-border-default)",
-                    backgroundColor: "var(--color-canvas-subtle)",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Upload Bundle (.json)
-                  <input
-                    type="file"
-                    accept=".json,application/json"
-                    onChange={handleBundleUpload}
-                    style={{ display: "none" }}
-                  />
-                </label>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Founding Administrator Account */}
-          {step === 2 && (
-            <div
-              style={{
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "10px",
-                padding: "20px",
-                backgroundColor: "var(--color-canvas-subtle)",
-              }}
-            >
-              <h2 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 700 }}>
-                Create Founding Administrator Account
-              </h2>
-              <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--color-fg-muted)" }}>
-                This account receives full <code>admin</code> privileges, 1,000 initial compute credits, and automatic
-                Ed25519 + RSA-2048 ActivityPub actor keypair provisioning.
-              </p>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Admin Username
-                  </label>
-                  <input
-                    type="text"
-                    value={adminUsername}
-                    onChange={(e) => setAdminUsername(e.target.value)}
-                    placeholder="admin"
+              {(["tier0_local_dev", "tier1_federated", "tier2_corporate", "tier3_flagship"] as const).map((tierKey) => {
+                const p = presets[tierKey];
+                const isSelected = selectedTier === tierKey;
+                return (
+                  <button
+                    key={tierKey}
+                    type="button"
+                    onClick={() => applyTierPreset(tierKey)}
                     style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
+                      padding: "12px 14px",
+                      borderRadius: "10px",
+                      border: isSelected
+                        ? "2px solid var(--color-accent-emphasis)"
+                        : "1px solid var(--color-border-default)",
+                      backgroundColor: isSelected ? "var(--color-accent-subtle)" : "var(--color-canvas-default)",
                       color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Display Name
-                  </label>
-                  <input
-                    type="text"
-                    value={adminDisplayName}
-                    onChange={(e) => setAdminDisplayName(e.target.value)}
-                    placeholder="Instance Administrator"
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: "12px" }}>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                  Admin Email Address
-                </label>
-                <input
-                  type="email"
-                  value={adminEmail}
-                  onChange={(e) => setAdminEmail(e.target.value)}
-                  placeholder="admin@yourdomain.org"
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: "6px",
-                    border: "1px solid var(--color-border-default)",
-                    backgroundColor: "var(--color-canvas-default)",
-                    color: "var(--color-fg-default)",
-                    fontSize: "13px",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Password (min 8 chars)
-                  </label>
-                  <input
-                    type="password"
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Confirm Password
-                  </label>
-                  <input
-                    type="password"
-                    value={adminPasswordConfirm}
-                    onChange={(e) => setAdminPasswordConfirm(e.target.value)}
-                    placeholder="••••••••••••"
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Instance Identity, White-Label Branding, Registration & Federation Policy */}
-          {step === 3 && (
-            <div
-              style={{
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "10px",
-                padding: "20px",
-                backgroundColor: "var(--color-canvas-subtle)",
-              }}
-            >
-              <h2 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 700 }}>
-                Instance Identity, White-Label Branding &amp; Federation Policy
-              </h2>
-              <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--color-fg-muted)" }}>
-                Customize how your instance is branded in the navigation sidebar, login screen, and NodeInfo 2.0/2.1
-                discovery metadata.
-              </p>
-
-              {/* Live Brand Header Preview */}
-              <div
-                data-testid="setup-brand-preview"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "12px",
-                  padding: "10px 14px",
-                  marginBottom: "16px",
-                  borderRadius: "12px",
-                  border: "1px solid var(--color-border-default)",
-                  backgroundColor: "var(--color-canvas-default)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <AnsatzMark
-                    size={36}
-                    logoUrl={brandLogoUrl}
-                    alt={instanceName || "Ansatz"}
-                    accentColor={brandAccentColor}
-                  />
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px", lineHeight: 1.05 }}>
-                      <span style={{ fontSize: "17.5px", fontWeight: 800, letterSpacing: "-0.035em" }}>
-                        {instanceName.trim() || "Ansatz"}
-                      </span>
-                      <span
-                        style={{
-                          width: "6px",
-                          height: "6px",
-                          borderRadius: "999px",
-                          backgroundColor: brandAccentColor || "#22d3ee",
-                          display: "inline-block",
-                        }}
-                      />
-                      {instanceBadge.trim() && (
-                        <span
-                          style={{
-                            fontSize: "10px",
-                            fontWeight: 700,
-                            textTransform: "uppercase",
-                            padding: "1.5px 5px",
-                            borderRadius: "5px",
-                            backgroundColor: "rgba(6, 182, 212, 0.14)",
-                            border: `1px solid ${brandAccentColor || "#06b6d4"}`,
-                            color: brandAccentColor || "#06b6d4",
-                          }}
-                        >
-                          {instanceBadge.trim()}
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "11.5px",
-                        fontFamily: "var(--ms-font-mono, monospace)",
-                        color: "var(--color-fg-muted)",
-                        marginTop: "3px",
-                      }}
-                    >
-                      ansatz.social
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  {showPoweredBy && (
-                    <span style={{ fontSize: "11px", color: "var(--color-fg-muted)" }}>Powered by ModelScript</span>
-                  )}
-                  <span
-                    style={{
-                      padding: "2px 6px",
-                      borderRadius: "6px",
-                      fontFamily: "var(--ms-font-mono, monospace)",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "var(--color-fg-muted)",
-                      border: "1px solid var(--color-border-default)",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
                     }}
                   >
-                    ⌘K
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <span style={{ fontSize: "13px", fontWeight: 700 }}>{p.label}</span>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: "var(--color-accent-fg)",
+                      }}
+                    >
+                      {TIER_SUMMARY_BADGE[tierKey]}
+                    </span>
+                    <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--color-fg-muted)", lineHeight: 1.4 }}>
+                      {p.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 2: Founding Administrator & Instance Name */}
+          <div
+            style={{
+              border: "1px solid var(--color-border-default)",
+              borderRadius: "12px",
+              padding: "18px 20px",
+              backgroundColor: "var(--color-canvas-subtle)",
+              marginBottom: "14px",
+            }}
+          >
+            {status?.hasAdmin ? (
+              <div data-testid="setup-existing-admin-card">
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                  <span style={{ color: "var(--color-success-fg)", display: "flex" }}>
+                    <ShieldCheckIcon size={18} />
+                  </span>
+                  <span style={{ fontSize: "14px", fontWeight: 700 }}>
+                    Founding Administrator Account Already Configured
                   </span>
                 </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 2fr", gap: "12px", marginBottom: "12px" }}>
+                <p style={{ margin: "0 0 12px", fontSize: "12.5px", color: "var(--color-fg-muted)" }}>
+                  Your existing administrator credentials will be preserved while updating your instance profile.
+                </p>
                 <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Instance Brand Name
+                  <label htmlFor="setup-instance-name" style={labelStyle}>
+                    Instance Name
                   </label>
                   <input
+                    id="setup-instance-name"
                     type="text"
-                    aria-label="Instance Name"
+                    aria-label="Instance Brand Name"
                     value={instanceName}
-                    onChange={(e) => setInstanceName(e.target.value)}
+                    onChange={(e) => {
+                      setInstanceName(e.target.value);
+                      setInstanceNameTouched(true);
+                    }}
                     placeholder="Ansatz"
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Header Badge Pill
-                  </label>
-                  <input
-                    type="text"
-                    aria-label="Header Badge Pill"
-                    value={instanceBadge}
-                    onChange={(e) => setInstanceBadge(e.target.value)}
-                    placeholder="e.g. Lab, Internal"
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Public Contact Email
-                  </label>
-                  <input
-                    type="email"
-                    aria-label="Public Contact Email"
-                    value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
+                    style={inputStyle}
                   />
                 </div>
               </div>
+            ) : (
+              <>
+                <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "12px" }}>
+                  2. Instance Name &amp; Administrator Account
+                </div>
 
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                  <div>
+                    <label htmlFor="setup-instance-name" style={labelStyle}>
+                      Instance Name
+                    </label>
+                    <input
+                      id="setup-instance-name"
+                      type="text"
+                      aria-label="Instance Brand Name"
+                      value={instanceName}
+                      onChange={(e) => {
+                        setInstanceName(e.target.value);
+                        setInstanceNameTouched(true);
+                      }}
+                      placeholder="Ansatz"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="setup-admin-username" style={labelStyle}>
+                      Admin Username
+                    </label>
+                    <input
+                      id="setup-admin-username"
+                      type="text"
+                      value={adminUsername}
+                      onChange={(e) => setAdminUsername(e.target.value)}
+                      placeholder="admin"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div>
+                    <label htmlFor="setup-admin-email" style={labelStyle}>
+                      Admin Email Address
+                    </label>
+                    <input
+                      id="setup-admin-email"
+                      type="email"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      placeholder="admin@yourdomain.org"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="setup-admin-password" style={labelStyle}>
+                      Admin Password (min 8 chars)
+                    </label>
+                    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                      <input
+                        id="setup-admin-password"
+                        type={showPassword ? "text" : "password"}
+                        value={adminPassword}
+                        onChange={(e) => setAdminPassword(e.target.value)}
+                        placeholder="Minimum 8 characters"
+                        style={{ ...inputStyle, paddingRight: "36px" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        style={{
+                          position: "absolute",
+                          right: "8px",
+                          background: "none",
+                          border: "none",
+                          color: "var(--color-fg-muted)",
+                          cursor: "pointer",
+                          padding: "4px",
+                          display: "flex",
+                        }}
+                      >
+                        {showPassword ? <EyeClosedIcon size={15} /> : <EyeIcon size={15} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Optional Registration, Federation & Ingress Overrides */}
+          <div style={{ marginBottom: "14px" }}>
+            <button
+              type="button"
+              onClick={() => setShowAdvancedOptions((prev) => !prev)}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "4px 0",
+                color: "var(--color-fg-muted)",
+                fontSize: "12.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              {showAdvancedOptions
+                ? "Hide custom registration, federation & tunnel options ▲"
+                : "Customize registration, federation or Cloudflare Tunnel options ▼"}
+            </button>
+          </div>
+
+          {showAdvancedOptions && (
+            <div
+              style={{
+                border: "1px solid var(--color-border-default)",
+                borderRadius: "12px",
+                padding: "16px 20px",
+                backgroundColor: "var(--color-canvas-subtle)",
+                marginBottom: "16px",
+              }}
+            >
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
                 <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Subtitle / Login Tagline
-                  </label>
-                  <input
-                    type="text"
-                    aria-label="Instance Tagline"
-                    value={instanceTagline}
-                    onChange={(e) => setInstanceTagline(e.target.value)}
-                    placeholder="The Federated Scientific & Engineering Network"
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Instance Description (NodeInfo)
-                  </label>
-                  <input
-                    type="text"
-                    aria-label="Instance Description"
-                    value={instanceDescription}
-                    onChange={(e) => setInstanceDescription(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 120px", gap: "12px", marginBottom: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Custom Brand Logo URL (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    aria-label="Custom Brand Logo URL"
-                    value={brandLogoUrl}
-                    onChange={(e) => setBrandLogoUrl(e.target.value)}
-                    placeholder="/ansatz-logo.svg or https://..."
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Documentation Portal URL
-                  </label>
-                  <input
-                    type="text"
-                    aria-label="Documentation Portal URL"
-                    value={docsBaseUrl}
-                    onChange={(e) => setDocsBaseUrl(e.target.value)}
-                    placeholder="https://modelscript.org"
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Accent Color
-                  </label>
-                  <input
-                    type="text"
-                    aria-label="Brand Accent Color"
-                    value={brandAccentColor}
-                    onChange={(e) => setBrandAccentColor(e.target.value)}
-                    placeholder="#06b6d4"
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      fontFamily: "monospace",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              </div>
-
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  marginBottom: "14px",
-                  cursor: "pointer",
-                }}
-              >
-                <input type="checkbox" checked={showPoweredBy} onChange={(e) => setShowPoweredBy(e.target.checked)} />
-                <span>Display subtle &ldquo;Powered by ModelScript&rdquo; attribution link in sidebar footer</span>
-              </label>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Registration Mode
+                  <label htmlFor="setup-registration-mode" style={labelStyle}>
+                    Registration Policy
                   </label>
                   <select
+                    id="setup-registration-mode"
                     value={registrationMode}
                     onChange={(e) =>
                       setRegistrationMode(e.target.value as "open" | "invite_only" | "domain_allowlist" | "closed")
                     }
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                    }}
+                    style={inputStyle}
                   >
                     <option value="invite_only">Invite-Only (Require Invitation Token)</option>
                     <option value="domain_allowlist">Corporate Email Domain Allowlist</option>
@@ -1342,314 +897,139 @@ export const SetupWizardPage: React.FC<SetupWizardPageProps> = ({ initialStatus 
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    ActivityPub Federation Mode
+                  <label htmlFor="setup-federation-mode" style={labelStyle}>
+                    ActivityPub Federation
                   </label>
                   <select
+                    id="setup-federation-mode"
                     value={federationMode}
                     onChange={(e) => setFederationMode(e.target.value as "open" | "allowlist" | "disabled")}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                    }}
+                    style={inputStyle}
                   >
-                    <option value="open">Open Federation (Blocklist Enforced)</option>
+                    <option value="open">Open Federation</option>
                     <option value="allowlist">Trusted Peer Allowlist Only</option>
-                    <option value="disabled">Disabled (Intranet / Air-Gapped)</option>
+                    <option value="disabled">Disabled (Private / Air-Gapped)</option>
                   </select>
                 </div>
               </div>
 
               {registrationMode === "domain_allowlist" && (
                 <div style={{ marginBottom: "12px" }}>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
+                  <label htmlFor="setup-allowed-domains" style={labelStyle}>
                     Allowed Email Domains (comma-separated)
                   </label>
                   <input
+                    id="setup-allowed-domains"
                     type="text"
                     value={allowedDomainsInput}
                     onChange={(e) => setAllowedDomainsInput(e.target.value)}
                     placeholder="corp.example.com, lab.university.edu"
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
+                    style={inputStyle}
                   />
                 </div>
               )}
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Auto-Quarantine Report Threshold
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={autoQuarantineThreshold}
-                    onChange={(e) => setAutoQuarantineThreshold(Number(e.target.value))}
+              <div>
+                <label style={labelStyle}>Network Ingress</label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIngressMode("direct")}
                     style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      border:
+                        ingressMode === "direct"
+                          ? "2px solid var(--color-accent-emphasis)"
+                          : "1px solid var(--color-border-default)",
+                      backgroundColor:
+                        ingressMode === "direct" ? "var(--color-accent-subtle)" : "var(--color-canvas-default)",
                       color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Hot Backup Retention Count
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={90}
-                    value={backupRetentionCount}
-                    onChange={(e) => setBackupRetentionCount(Number(e.target.value))}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: Starter Invites & Baseline Backup */}
-          {step === 4 && (
-            <div
-              style={{
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "10px",
-                padding: "20px",
-                backgroundColor: "var(--color-canvas-subtle)",
-              }}
-            >
-              <h2 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 700 }}>
-                Starter Invitation Codes & Baseline Snapshot
-              </h2>
-              <p style={{ margin: "0 0 16px", fontSize: "13px", color: "var(--color-fg-muted)" }}>
-                Generate initial invite codes for your colleagues or moderators and record a pre-launch SQLite hot
-                backup before locking the install wizard.
-              </p>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                  gap: "12px",
-                  marginBottom: "16px",
-                }}
-              >
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    <PersonAddIcon size={12} /> Starter Invites Count
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={25}
-                    value={initialInvitesCount}
-                    onChange={(e) => setInitialInvitesCount(Number(e.target.value))}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Max Uses per Code
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={1000}
-                    value={initialInviteMaxUses}
-                    onChange={(e) => setInitialInviteMaxUses(Number(e.target.value))}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Initial Compute Credits
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={10000}
-                    value={initialInviteCredits}
-                    onChange={(e) => setInitialInviteCredits(Number(e.target.value))}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>
-                    Assigned Role
-                  </label>
-                  <select
-                    value={initialInviteRole}
-                    onChange={(e) => setInitialInviteRole(e.target.value as "user" | "moderator" | "auditor")}
-                    style={{
-                      width: "100%",
-                      padding: "8px 10px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      backgroundColor: "var(--color-canvas-default)",
-                      color: "var(--color-fg-default)",
-                      fontSize: "13px",
+                      fontSize: "12.5px",
+                      fontWeight: 600,
                     }}
                   >
-                    <option value="user">Standard Engineer (user)</option>
-                    <option value="moderator">Staff Moderator (moderator)</option>
-                    <option value="auditor">Compliance Auditor (auditor)</option>
-                  </select>
+                    Direct Public Ingress (Ports 80/443)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIngressMode("cloudflare")}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      border:
+                        ingressMode === "cloudflare"
+                          ? "2px solid var(--color-accent-emphasis)"
+                          : "1px solid var(--color-border-default)",
+                      backgroundColor:
+                        ingressMode === "cloudflare" ? "var(--color-accent-subtle)" : "var(--color-canvas-default)",
+                      color: "var(--color-fg-default)",
+                      fontSize: "12.5px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Cloudflare Tunnel (Zero Open Ports)
+                  </button>
                 </div>
-              </div>
 
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--color-border-default)",
-                  backgroundColor: "var(--color-canvas-default)",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={createInitialBackup}
-                  onChange={(e) => setCreateInitialBackup(e.target.checked)}
-                />
-                <span>
-                  Create an immediate <strong>first-boot-baseline</strong> hot SQLite backup with SHA-256 checksum
-                </span>
-              </label>
+                {ingressMode === "cloudflare" && (
+                  <div style={{ marginTop: "10px" }}>
+                    <label htmlFor="setup-tunnel-token" style={labelStyle}>
+                      Cloudflare Tunnel Token (optional if set in .env)
+                    </label>
+                    <input
+                      id="setup-tunnel-token"
+                      type="password"
+                      value={tunnelToken}
+                      onChange={(e) => setTunnelToken(e.target.value)}
+                      placeholder="eyJh..."
+                      style={inputStyle}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* Wizard Navigation Footer */}
+          {/* Setup Action Footer */}
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginTop: "20px",
+              marginTop: "16px",
+              flexWrap: "wrap",
+              gap: "12px",
             }}
           >
-            <div>
-              {step > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setStep((prev) => (prev - 1) as 1 | 2 | 3 | 4)}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: "6px",
-                    border: "1px solid var(--color-border-default)",
-                    backgroundColor: "var(--color-canvas-default)",
-                    color: "var(--color-fg-default)",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  ← Previous Step
-                </button>
-              )}
-            </div>
-            <div>
-              {step < 4 ? (
-                <button
-                  type="button"
-                  onClick={handleNextStep}
-                  style={{
-                    padding: "8px 18px",
-                    borderRadius: "6px",
-                    border: "none",
-                    backgroundColor: "var(--color-accent-emphasis)",
-                    color: "#ffffff",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Continue to Step {step + 1} →
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={handleCompleteSetup}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    padding: "9px 20px",
-                    borderRadius: "6px",
-                    border: "none",
-                    backgroundColor: "var(--color-success-emphasis)",
-                    color: "#ffffff",
-                    fontSize: "13px",
-                    fontWeight: 700,
-                    cursor: submitting ? "wait" : "pointer",
-                  }}
-                >
-                  <LockIcon size={14} />
-                  {submitting ? "Initializing & Locking Setup..." : "Complete Instance Setup & Sign In"}
-                </button>
-              )}
-            </div>
+            <span style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
+              Branding, logos, invites, and backups can be customized anytime in Instance Admin.
+            </span>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={handleCompleteSetup}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 22px",
+                borderRadius: "8px",
+                border: "none",
+                backgroundColor: "var(--color-success-emphasis)",
+                color: "#ffffff",
+                fontSize: "13.5px",
+                fontWeight: 700,
+                cursor: submitting ? "wait" : "pointer",
+              }}
+            >
+              <LockIcon size={14} />
+              {submitting ? "Initializing & Locking Setup..." : "Complete Instance Setup & Sign In"}
+            </button>
           </div>
         </>
       )}

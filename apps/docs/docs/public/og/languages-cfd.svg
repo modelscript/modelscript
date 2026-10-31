@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0f1c" />
+      <stop offset="55%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e1b4b" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#818cf8" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect x="64" y="64" width="1072" height="502" rx="24" fill="none" stroke="#334155" stroke-width="2" />
+  <rect x="64" y="64" width="1072" height="6" rx="3" fill="url(#accent)" />
+  <text x="112" y="156" fill="#22d3ee" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" letter-spacing="4">POLYGLOT LANGUAGE</text>
+  <text x="112" y="260" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="800">CFD (SU2 / OpenFOAM) (.su2)</text>
+  <text x="112" y="340" fill="#94a3b8" font-family="system-ui, -apple-system, sans-serif" font-size="30" font-weight="500">Computational fluid dynamics meshes</text>
+  <text x="112" y="505" fill="#64748b" font-family="ui-monospace, SFMono-Regular, monospace" font-size="22">modelscript.org · Computable Digital Thread · 44 Engineering Formats</text>
+</svg>

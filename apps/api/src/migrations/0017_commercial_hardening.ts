@@ -49,6 +49,7 @@ export const migration0017: Migration = {
   },
   down(ctx: MigrationContext) {
     ctx.execute(`
+      DROP TABLE IF EXISTS credit_escrow_holds;
       DROP TABLE IF EXISTS morsel_snippets;
       DROP TABLE IF EXISTS stripe_processed_events;
     `);

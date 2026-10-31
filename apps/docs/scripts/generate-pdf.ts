@@ -21,19 +21,27 @@ interface DocSection {
 
 const DOCUMENT_STRUCTURE: DocSection[] = [
   {
-    partTitle: "Part I: Getting Started & User Guide",
+    partTitle: "Part I: Getting Started, Operations & Ansatz Platform",
     files: [
       { title: "Introduction", relativePath: "guide/introduction.md" },
       { title: "Installation & Requirements", relativePath: "guide/installation.md" },
       { title: "Getting Started", relativePath: "guide/getting-started.md" },
+      { title: "AI Agents & MCP Workflows", relativePath: "guide/ai-agents.md" },
+      { title: "CI/CD & GitHub Actions", relativePath: "guide/ci-cd.md" },
       { title: "Embedding & React SDK", relativePath: "guide/embedding.md" },
       { title: "Platform Administration", relativePath: "guide/administration.md" },
+      { title: "Ansatz Platform Overview", relativePath: "ansatz/overview.md" },
+      { title: "ActivityPub Federation", relativePath: "ansatz/federation.md" },
+      { title: "Content-Addressable Package Registry", relativePath: "ansatz/package-registry.md" },
+      { title: "Cloud HPC Simulation", relativePath: "ansatz/cloud-hpc.md" },
+      { title: "Self-Hosting Guide", relativePath: "ansatz/self-hosting.md" },
     ],
   },
   {
     partTitle: "Part II: Compiler & Pipeline Architecture",
     files: [
       { title: "Compiler Pipeline Overview", relativePath: "architecture/overview.md" },
+      { title: "Monorepo & Taxonomy", relativePath: "architecture/monorepo.md" },
       { title: "WASM GLR Native Parser", relativePath: "architecture/glr-parser.md" },
       { title: "Salsa Query Engine", relativePath: "architecture/salsa-queries.md" },
       { title: "Linear DAE Arena", relativePath: "architecture/dae-arena.md" },
