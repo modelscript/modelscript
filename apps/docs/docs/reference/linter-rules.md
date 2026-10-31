@@ -1,6 +1,6 @@
 ---
 title: Linter Rules Reference
-description: Every diagnostic rule ModelScript ships — 803 rules across 43 languages, with codes, severities and message templates generated from the source.
+description: Every diagnostic rule ModelScript ships — 804 rules across 43 languages, with codes, severities and message templates generated from the source.
 outline: [2, 2]
 pageClass: lint-reference
 ---
@@ -9,7 +9,7 @@ pageClass: lint-reference
 
 # Linter Rules Reference
 
-ModelScript ships **803 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **804 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -34,7 +34,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [Modelica](#modelica)                     | `@modelscript/modelica`     |   307 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    48 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    10 | `msx reqif lint`        |
-| [SSP](#ssp)                               | `@modelscript/ssp`          |    13 | `msx lint`              |
+| [SSP](#ssp)                               | `@modelscript/ssp`          |    14 | `msx lint`              |
 | [OWL2](#owl2)                             | `@modelscript/owl2`         |    24 | `msx lint`              |
 | [STEP (ISO 10303)](#step)                 | `@modelscript/step`         |     8 | `msx lint`              |
 | [OpenSCAD](#scad)                         | `@modelscript/scad`         |     8 | `msx lint`              |
@@ -528,7 +528,7 @@ Requirements interchange & contract entailment. **10 rules** · `@modelscript/re
 
 ## SSP {#ssp}
 
-FMU system structure & parameterization. **13 rules** · `@modelscript/ssp` · Source: `languages/ssp/src/errors.ts` · [Language guide](../languages/ssp.md)
+FMU system structure & parameterization. **14 rules** · `@modelscript/ssp` · Source: `languages/ssp/src/errors.ts` · [Language guide](../languages/ssp.md)
 
 | Code                                | Rule                               | Severity                                | Message                                                                                                              |
 | :---------------------------------- | :--------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
@@ -545,6 +545,7 @@ FMU system structure & parameterization. **13 rules** · `@modelscript/ssp` · S
 | <span id="ssp-s7011"></span>`S7011` | `SSP_CYCLIC_CONNECTION`            | <Badge type="danger" text="error" />    | Connection creates an algebraic loop or cyclic dependency without delay.                                             |
 | <span id="ssp-s7012"></span>`S7012` | `SSP_INVALID_EXPERIMENT_BOUNDS`    | <Badge type="danger" text="error" />    | DefaultExperiment stopTime must be strictly greater than startTime.                                                  |
 | <span id="ssp-s7013"></span>`S7013` | `SSP_CONNECTOR_UNIT_MISMATCH`      | <Badge type="warning" text="warning" /> | Connector unit mismatch: '<code>&lt;startUnit&gt;</code>' connected to '<code>&lt;endUnit&gt;</code>'.               |
+| <span id="ssp-s7014"></span>`S7014` | `SSP_ALGEBRAIC_FEEDTHROUGH_LOOP`   | <Badge type="danger" text="error" />    | Algebraic feedthrough loop detected across connected components: <code>&lt;cyclePath&gt;</code>.                     |
 
 ## OWL2 {#owl2}
 

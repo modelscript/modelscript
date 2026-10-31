@@ -788,13 +788,13 @@ function detectAlgebraicFeedthroughLoops(
           const cycleEdges = [...pathEdges, edge];
           const cycleNodes = [...pathNodes];
 
-          // Check if this 2-node cycle is a bilateral physical conjugate effort/flow pair (e.g. V/A or N.m/rpm)
-          if (cycleEdges.length === 2) {
-            const [e1, e2] = cycleEdges as [DirectedSignalEdge, DirectedSignalEdge];
-            const hasExplicitFt = e1.explicitFeedthrough || e2.explicitFeedthrough;
-            const isConjugatePhysicalPair =
-              !hasExplicitFt && Boolean(e1.unit) && Boolean(e2.unit) && e1.unit !== e2.unit;
-            if (isConjugatePhysicalPair) {
+          // Check if this cycle involves dynamic physical domain variables with distinct physical units (e.g. V/A, N/m, W/K)
+          const hasExplicitFt = cycleEdges.some((e) => e.explicitFeedthrough);
+          if (!hasExplicitFt) {
+            const nonBlankUnits = new Set(
+              cycleEdges.map((e) => e.unit?.trim()).filter((u): u is string => Boolean(u && u.length > 0)),
+            );
+            if (nonBlankUnits.size >= 2) {
               continue;
             }
           }

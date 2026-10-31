@@ -1458,6 +1458,51 @@ export class LibraryDatabase {
         END;
       `);
     } catch {}
+
+    // Sanitize any previously indexed class/component descriptions that leaked raw Modelica annotation(...) clauses
+    // or annotation-internal modifier rows (Placement, Dialog, Icon, Documentation, etc.).
+    try {
+      const stripAnno = (raw: string): string | null => {
+        const cleaned = raw
+          .replace(/\s*\bannotation\s*\([\s\S]*$/i, "")
+          .trim()
+          .replace(/^"|"$/g, "")
+          .trim();
+        return cleaned.length > 0 ? cleaned : null;
+      };
+      const dirtyClasses = this.#db
+        .prepare(
+          `SELECT id, description FROM classes WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
+        )
+        .all() as Array<{ id: number; description: string }>;
+      const dirtyComps = this.#db
+        .prepare(
+          `SELECT id, description FROM components WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
+        )
+        .all() as Array<{ id: number; description: string }>;
+      if (dirtyClasses.length > 0 || dirtyComps.length > 0) {
+        const updClass = this.#db.prepare(`UPDATE classes SET description = ? WHERE id = ?`);
+        const updComp = this.#db.prepare(`UPDATE components SET description = ? WHERE id = ?`);
+        this.#db.transaction(() => {
+          for (const row of dirtyClasses) {
+            updClass.run(stripAnno(row.description), row.id);
+          }
+          for (const row of dirtyComps) {
+            updComp.run(stripAnno(row.description), row.id);
+          }
+        })();
+      }
+      this.#db.exec(`
+        DELETE FROM modifiers
+        WHERE modifier_name IN (
+          'Placement', 'Dialog', 'Icon', 'Diagram', 'Documentation',
+          'Evaluate', 'HideResult', 'choices', 'DynamicSelect',
+          'Line', 'Text', 'Rectangle', 'Ellipse', 'Polygon', 'Bitmap',
+          'coordinateSystem', 'graphics', 'smoothOrder', 'version'
+        );
+        UPDATE components SET causality = NULL WHERE type_name = 'import' AND causality = 'connector';
+      `);
+    } catch {}
   }
 
   // ── User management ─────────────────────────────────────────────
@@ -6294,39 +6339,53 @@ export class LibraryDatabase {
         return { ...brokenResult };
       }
       const ipToken = LibraryDatabase.#hashAuditIpToken(row.ip_address);
-      const tokenPayload: string = [
-        prevHash,
-        String(row.actor_id ?? ""),
-        row.action,
-        row.resource_type,
-        String(row.resource_id ?? ""),
-        ipToken,
-        row.details ?? "",
-      ].join("|");
-      const recomputedHmac: string = crypto.createHmac("sha256", auditSecret).update(tokenPayload).digest("hex");
-      const recomputedDefaultHmac: string =
-        auditSecret !== "msx-audit-chain-v1"
-          ? crypto.createHmac("sha256", "msx-audit-chain-v1").update(tokenPayload).digest("hex")
-          : recomputedHmac;
-      const recomputedTokenHash: string = crypto.createHash("sha256").update(tokenPayload).digest("hex");
+      const rawResourceId = row.resource_id ? String(row.resource_id) : "";
+      const sanitizedResourceId = rawResourceId.replace(/[^a-zA-Z0-9_.-]/g, "");
+
+      const candidatePayloads = [
+        [
+          prevHash,
+          String(row.actor_id ?? ""),
+          row.action,
+          row.resource_type,
+          sanitizedResourceId,
+          ipToken,
+          row.details ?? "",
+        ].join("|"),
+        [
+          prevHash,
+          String(row.actor_id ?? ""),
+          row.action,
+          row.resource_type,
+          rawResourceId,
+          ipToken,
+          row.details ?? "",
+        ].join("|"),
+      ];
+
+      const matchesHash = candidatePayloads.some((payload) => {
+        const hmac = crypto.createHmac("sha256", auditSecret).update(payload).digest("hex");
+        if (hmac === row.entry_hash) return true;
+        if (auditSecret !== "msx-audit-chain-v1") {
+          const defaultHmac = crypto.createHmac("sha256", "msx-audit-chain-v1").update(payload).digest("hex");
+          if (defaultHmac === row.entry_hash) return true;
+        }
+        const sha = crypto.createHash("sha256").update(payload).digest("hex");
+        return sha === row.entry_hash;
+      });
 
       const legacyPayload: string = [
         prevHash,
         String(row.actor_id ?? ""),
         row.action,
         row.resource_type,
-        String(row.resource_id ?? ""),
+        rawResourceId,
         String(row.ip_address ?? ""),
         row.details ?? "",
       ].join("|");
-      const recomputedLegacyHash: string = crypto.createHash("sha256").update(legacyPayload).digest("hex");
+      const matchesLegacy = crypto.createHash("sha256").update(legacyPayload).digest("hex") === row.entry_hash;
 
-      if (
-        recomputedHmac !== row.entry_hash &&
-        recomputedDefaultHmac !== row.entry_hash &&
-        recomputedTokenHash !== row.entry_hash &&
-        recomputedLegacyHash !== row.entry_hash
-      ) {
+      if (!matchesHash && !matchesLegacy) {
         const brokenResult = {
           valid: false,
           totalEntries: rows.length,

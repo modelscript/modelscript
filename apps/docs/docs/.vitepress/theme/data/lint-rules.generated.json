@@ -2380,6 +2380,12 @@
         "rule": "SSP_CONNECTOR_UNIT_MISMATCH",
         "severity": "warning",
         "message": "Connector unit mismatch: '<startUnit>' connected to '<endUnit>'."
+      },
+      {
+        "code": "S7014",
+        "rule": "SSP_ALGEBRAIC_FEEDTHROUGH_LOOP",
+        "severity": "error",
+        "message": "Algebraic feedthrough loop detected across connected components: <cyclePath>."
       }
     ]
   },

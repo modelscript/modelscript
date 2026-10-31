@@ -2,7 +2,12 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { getLanguageExtension, getLanguageInfo, MORSEL_LANGUAGES } from "../src/components/morsel/constants.js";
+import {
+  ALL_MORSEL_LANGUAGES,
+  getLanguageExtension,
+  getLanguageInfo,
+  MORSEL_LANGUAGES,
+} from "../src/components/morsel/constants.js";
 import { decompressMorselPayload } from "../src/components/morsel/util/permalink.js";
 import {
   buildEditorUrlForArtifact,
@@ -11,11 +16,18 @@ import {
 } from "../src/util/editor-routing.js";
 
 describe("44-Language Playground Registry & Single-File vs. Multi-File Editor Routing", () => {
-  it("registers all 44 polyglot engineering languages in MORSEL_LANGUAGES with extensions and starter templates", () => {
-    assert.ok(MORSEL_LANGUAGES.length >= 44, `Expected at least 44 languages, found ${MORSEL_LANGUAGES.length}`);
+  it("registers all 44 polyglot engineering languages in ALL_MORSEL_LANGUAGES with extensions and starter templates", () => {
+    assert.ok(
+      ALL_MORSEL_LANGUAGES.length >= 44,
+      `Expected at least 44 languages in ALL_MORSEL_LANGUAGES, found ${ALL_MORSEL_LANGUAGES.length}`,
+    );
+    assert.ok(
+      MORSEL_LANGUAGES.length >= 43,
+      `Expected at least 43 active languages in MORSEL_LANGUAGES, found ${MORSEL_LANGUAGES.length}`,
+    );
 
     const seenIds = new Set<string>();
-    for (const lang of MORSEL_LANGUAGES) {
+    for (const lang of ALL_MORSEL_LANGUAGES) {
       assert.ok(lang.id && lang.id.length > 0, "Language must have an id");
       assert.ok(!seenIds.has(lang.id), `Duplicate language id: ${lang.id}`);
       seenIds.add(lang.id);

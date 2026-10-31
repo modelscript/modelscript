@@ -1080,7 +1080,7 @@ export function getLanguageExtension(idOrAlias?: string | null): string {
 
 export function detectLanguageFromFilename(filename: string): string {
   const lower = filename.trim().toLowerCase();
-  for (const lang of MORSEL_LANGUAGES) {
+  for (const lang of ALL_MORSEL_LANGUAGES) {
     if (lower.endsWith(`.${lang.ext}`)) return lang.id;
     for (const ext of lang.extensions) {
       if (lower.endsWith(ext.toLowerCase())) return lang.id;

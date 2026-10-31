@@ -435,6 +435,30 @@ ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic 
 
 `@modelscript/mcp` supports three transport topologies: local `stdio`, remote HTTP Server-Sent Events (`SSE`), and in-browser WebAssembly (`PolyglotMcpHost`).
 
+### VS Code (`stdio` & `@modelscript` Copilot Participant)
+
+In VS Code (v1.99+), register `@modelscript/mcp` in `.vscode/mcp.json` using the `"servers"` root key:
+
+```json
+{
+  "servers": {
+    "modelscript": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelscript/mcp"]
+    }
+  }
+}
+```
+
+Or add it directly from your terminal via the VS Code CLI:
+
+```bash
+code --add-mcp '{"name":"modelscript","command":"npx","args":["-y","@modelscript/mcp"]}'
+```
+
+Installing the official **ModelScript VS Code Extension** (`ext install modelscript.modelscript`) also registers all 52 tools natively into `vscode.lm.registerTool`, unlocking the **`@modelscript`** GitHub Copilot Chat participant (`/explain`, `/fix`, `/simulate`, `/verify`, `/optimize`, `/diagram`) and the dedicated **ModelScript AI** sidebar panel.
+
 ### Claude Code (`stdio`)
 
 Register the MCP server directly in your project or user scope:
@@ -443,9 +467,9 @@ Register the MCP server directly in your project or user scope:
 claude mcp add modelscript -- npx -y @modelscript/mcp
 ```
 
-### Cursor, Windsurf, Claude Desktop & VS Code (`stdio`)
+### Cursor, Windsurf & Claude Desktop (`stdio`)
 
-Add `@modelscript/mcp` to `.cursor/mcp.json`, `.vscode/mcp.json`, or `claude_desktop_config.json`:
+Add `@modelscript/mcp` to `.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`, or `claude_desktop_config.json` using the `"mcpServers"` root key:
 
 ```json
 {
@@ -1743,13 +1767,13 @@ Ansatz can be deployed as an independent federated instance, a public flagship c
 
 Ansatz offers targeted deployment profiles to match your infrastructure sizing and operational goals:
 
-| Profile              | Active Containers                                           | Target Use Case                                                              | Database Engine                     | Min. RAM   |
-| :------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------- | :---------------------------------- | :--------- |
-| **`flagship`**       | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` public cluster with dual-domain routing  | SQLite WAL + TimescaleDB            | 4–8 GB     |
-| **`federated`**      | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live IoT simulation telemetry streaming                    | SQLite WAL + TimescaleDB            | 4 GB       |
-| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel`                             | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS          | **SQLite WAL only**                 | **1–2 GB** |
+| Profile              | Active Containers                                           | Target Use Case                                                                 | Database Engine                     | Min. RAM   |
+| :------------------- | :---------------------------------------------------------- | :------------------------------------------------------------------------------ | :---------------------------------- | :--------- |
+| **`flagship`**       | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` public cluster with dual-domain routing     | SQLite WAL + TimescaleDB            | 4–8 GB     |
+| **`federated`**      | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live IoT simulation telemetry streaming                       | SQLite WAL + TimescaleDB            | 4 GB       |
+| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel`                             | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS             | **SQLite WAL only**                 | **1–2 GB** |
 | **`corporate`**      | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped enclave, SSO domain allowlist, internal `/docs` | SQLite WAL (+ optional TimescaleDB) | 2–4 GB     |
-| **`quick-tunnel`**   | `caddy`, `web`, `api`, `quick-tunnel`                       | Zero-config demo with ephemeral `trycloudflare.com` URL                      | SQLite WAL only                     | 1.5 GB     |
+| **`quick-tunnel`**   | `caddy`, `web`, `api`, `quick-tunnel`                       | Zero-config demo with ephemeral `trycloudflare.com` URL                         | SQLite WAL only                     | 1.5 GB     |
 
 ---
 
@@ -7670,7 +7694,7 @@ When a `.ssp` ZIP archive is loaded into the workspace, `sspLanguage.container` 
 
 ### `.ssd` System Structure Diagnostics (`lintSsd`)
 
-### Diagnostics for SSP (13 rules)
+### Diagnostics for SSP (14 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `S7001` | error | `SSP_EMPTY_CONNECTOR_NAME` | Connector in <owner> has an empty name. |
@@ -7686,6 +7710,7 @@ When a `.ssp` ZIP archive is loaded into the workspace, `sspLanguage.container` 
 | `S7011` | error | `SSP_CYCLIC_CONNECTION` | Connection creates an algebraic loop or cyclic dependency without delay. |
 | `S7012` | error | `SSP_INVALID_EXPERIMENT_BOUNDS` | DefaultExperiment stopTime must be strictly greater than startTime. |
 | `S7013` | warning | `SSP_CONNECTOR_UNIT_MISMATCH` | Connector unit mismatch: '<startUnit>' connected to '<endUnit>'. |
+| `S7014` | error | `SSP_ALGEBRAIC_FEEDTHROUGH_LOOP` | Algebraic feedthrough loop detected across connected components: <cyclePath>. |
 
 ---
 
@@ -12796,7 +12821,7 @@ CANONICAL URL: https://modelscript.org/reference/linter-rules
 
 # Linter Rules Reference
 
-ModelScript ships **803 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **804 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -12821,7 +12846,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [Modelica](#modelica)                     | `@modelscript/modelica`     |   307 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    48 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    10 | `msx reqif lint`        |
-| [SSP](#ssp)                               | `@modelscript/ssp`          |    13 | `msx lint`              |
+| [SSP](#ssp)                               | `@modelscript/ssp`          |    14 | `msx lint`              |
 | [OWL2](#owl2)                             | `@modelscript/owl2`         |    24 | `msx lint`              |
 | [STEP (ISO 10303)](#step)                 | `@modelscript/step`         |     8 | `msx lint`              |
 | [OpenSCAD](#scad)                         | `@modelscript/scad`         |     8 | `msx lint`              |
@@ -13315,7 +13340,7 @@ Requirements interchange & contract entailment. **10 rules** · `@modelscript/re
 
 ## SSP {#ssp}
 
-FMU system structure & parameterization. **13 rules** · `@modelscript/ssp` · Source: `languages/ssp/src/errors.ts` · [Language guide](../languages/ssp.md)
+FMU system structure & parameterization. **14 rules** · `@modelscript/ssp` · Source: `languages/ssp/src/errors.ts` · [Language guide](../languages/ssp.md)
 
 | Code                                | Rule                               | Severity                                | Message                                                                                                              |
 | :---------------------------------- | :--------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
@@ -13332,6 +13357,7 @@ FMU system structure & parameterization. **13 rules** · `@modelscript/ssp` · S
 | <span id="ssp-s7011"></span>`S7011` | `SSP_CYCLIC_CONNECTION`            | [error]    | Connection creates an algebraic loop or cyclic dependency without delay.                                             |
 | <span id="ssp-s7012"></span>`S7012` | `SSP_INVALID_EXPERIMENT_BOUNDS`    | [error]    | DefaultExperiment stopTime must be strictly greater than startTime.                                                  |
 | <span id="ssp-s7013"></span>`S7013` | `SSP_CONNECTOR_UNIT_MISMATCH`      | [warning] | Connector unit mismatch: '<code>&lt;startUnit&gt;</code>' connected to '<code>&lt;endUnit&gt;</code>'.               |
+| <span id="ssp-s7014"></span>`S7014` | `SSP_ALGEBRAIC_FEEDTHROUGH_LOOP`   | [error]    | Algebraic feedthrough loop detected across connected components: <code>&lt;cyclePath&gt;</code>.                     |
 
 ## OWL2 {#owl2}
 
@@ -14262,9 +14288,38 @@ The `@modelscript/mcp` package exposes ModelScript's compilation, simulation, fo
 
 ModelScript supports three MCP execution architectures:
 
-#### A. Local `stdio` Server (`modelscript-mcp`)
+#### A. Local `stdio` Server (`@modelscript/mcp`)
 
-For local desktop AI agents, run the `modelscript-mcp` binary over standard input/output (`StdioServerTransport`):
+For local desktop AI agents, run `@modelscript/mcp` over standard input/output (`StdioServerTransport`):
+
+**VS Code (`.vscode/mcp.json`):**
+
+```json
+{
+  "servers": {
+    "modelscript": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelscript/mcp"],
+      "env": {
+        "MODELICAPATH": "/path/to/ModelicaStandardLibrary"
+      }
+    }
+  }
+}
+```
+
+**VS Code CLI & Claude Code CLI:**
+
+```bash
+# VS Code (adds to user/workspace MCP configuration)
+code --add-mcp '{"name":"modelscript","command":"npx","args":["-y","@modelscript/mcp"]}'
+
+# Claude Code
+claude mcp add modelscript -- npx -y @modelscript/mcp
+```
+
+**Cursor (`.cursor/mcp.json`), Windsurf & Claude Desktop (`claude_desktop_config.json`):**
 
 ```json
 {
