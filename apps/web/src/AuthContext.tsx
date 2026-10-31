@@ -19,6 +19,7 @@ export interface User {
   totp_enabled?: boolean | undefined;
   onboarding_completed?: boolean | number | undefined;
   engineering_persona?: string | null | undefined;
+  credit_balance?: number | undefined;
 }
 
 interface AuthContextType {
@@ -77,7 +78,7 @@ function getFallbackAuthContext(): AuthContextType {
     isAuthenticated: Boolean(cachedToken || cachedUser),
     isAdmin: Boolean(cachedUser && (cachedUser.account_type === "admin" || cachedUser.role === "admin")),
     isLoading: false,
-    login: async () => {},
+    login: async () => ({}),
     complete2FALogin: async () => {},
     register: async () => ({}),
     updateToken: () => {},

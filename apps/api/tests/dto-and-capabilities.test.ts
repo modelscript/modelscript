@@ -80,7 +80,7 @@ test("Wire-Format DTOs & Capabilities Anti-Corruption Layer", async (t) => {
   });
 
   await t.test("buildInstanceCapabilities adapts to Tier 1, Tier 2, and Tier 3 presets", () => {
-    // Corporate SCIF node (Tier 2): offline, air-gapped, no invites or public federation
+    // Corporate enclave node (Tier 2): offline, air-gapped, no invites or public federation
     const corporateCaps = buildInstanceCapabilities(
       {
         instanceTier: "tier2_corporate",

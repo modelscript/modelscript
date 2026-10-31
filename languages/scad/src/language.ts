@@ -444,6 +444,8 @@ export const scadLanguage = language({
 
     Statement: ($) =>
       choice(
+        $["IncludeStatement"]!,
+        $["UseStatement"]!,
         $["VariableDeclaration"]!,
         $["ModuleDeclaration"]!,
         $["FunctionDeclaration"]!,
@@ -454,6 +456,10 @@ export const scadLanguage = language({
         $["ChainedSolidStatement"]!,
         $["_EmptyStatement"]!,
       ),
+
+    IncludeStatement: ($) => $["INCLUDE_DIRECTIVE"]!,
+
+    UseStatement: ($) => $["USE_DIRECTIVE"]!,
 
     _EmptyStatement: () => ";",
 
@@ -635,11 +641,23 @@ export const scadLanguage = language({
 
     // ── Solid Statements & Hybrid Chaining ─────────────────────────────────
 
-    // Traditional OpenSCAD prefix operator syntax (`translate(...) rotate(...) cube(...);`)
+    // Traditional OpenSCAD prefix operator syntax (`translate(...) rotate(...) cube(...);` or `my_mod(...) { ... }`)
     PrefixSolid: ($) =>
-      seq(
-        field("operator", choice($["TransformOp"]!, $["BooleanOp"]!, $["TagPortOp"]!, $["LinearExtrudeOp"]!)),
-        field("child", $["Statement"]!),
+      choice(
+        seq(
+          field("operator", choice($["TransformOp"]!, $["BooleanOp"]!, $["TagPortOp"]!, $["LinearExtrudeOp"]!)),
+          field("child", $["Statement"]!),
+        ),
+        seq(field("operator", $["ModuleInstantiation"]!), field("child", $["OperatorChildStatement"]!)),
+      ),
+
+    OperatorChildStatement: ($) =>
+      choice(
+        $["BlockStatement"]!,
+        $["PrefixSolid"]!,
+        $["ChainedSolidStatement"]!,
+        $["ForStatement"]!,
+        $["IfStatement"]!,
       ),
 
     TransformOp: ($) =>
@@ -648,12 +666,25 @@ export const scadLanguage = language({
         seq("rotate", "(", optional(field("args", $["ArgumentList"]!)), ")"),
         seq("scale", "(", optional(field("args", $["ArgumentList"]!)), ")"),
         seq("mirror", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("multmatrix", "(", optional(field("args", $["ArgumentList"]!)), ")"),
         seq("color", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("offset", "(", optional(field("args", $["ArgumentList"]!)), ")"),
       ),
 
-    LinearExtrudeOp: ($) => seq("linear_extrude", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+    LinearExtrudeOp: ($) =>
+      choice(
+        seq("linear_extrude", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("rotate_extrude", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+      ),
 
-    BooleanOp: () => choice(seq("union", "(", ")"), seq("difference", "(", ")"), seq("intersection", "(", ")")),
+    BooleanOp: ($) =>
+      choice(
+        seq("union", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("difference", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("intersection", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("hull", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        seq("minkowski", "(", optional(field("args", $["ArgumentList"]!)), ")"),
+      ),
 
     // ModelScript extension for tagging boundary patches/ports on 3D solids
     TagPortOp: ($) =>
@@ -672,7 +703,19 @@ export const scadLanguage = language({
 
     MethodCall: ($) => seq(".", field("name", $["MethodName"]!), "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
-    MethodName: ($) => choice($["IDENTIFIER"]!, "translate", "rotate", "scale", "mirror", "color", "fillet", "chamfer"),
+    MethodName: ($) =>
+      choice(
+        $["IDENTIFIER"]!,
+        "translate",
+        "rotate",
+        "scale",
+        "mirror",
+        "multmatrix",
+        "color",
+        "offset",
+        "fillet",
+        "chamfer",
+      ),
 
     PrimarySolid: ($) =>
       choice(
@@ -707,11 +750,30 @@ export const scadLanguage = language({
 
     Expression: ($) =>
       choice(
+        $["LetExpression"]!,
         $["ConditionalExpression"]!,
         $["BinaryExpression"]!,
         $["UnaryExpression"]!,
         $["PostfixExpression"]!,
         $["PrimaryExpression"]!,
+      ),
+
+    LetExpression: ($) =>
+      prec.right(
+        PREC.CONDITIONAL,
+        seq("let", "(", optional(field("bindings", $["ArgumentList"]!)), ")", field("body", $["Expression"]!)),
+      ),
+
+    ListComprehension: ($) =>
+      seq(
+        "for",
+        "(",
+        field("var", $["IDENTIFIER"]!),
+        "=",
+        field("range", $["Expression"]!),
+        ")",
+        optional(seq("if", "(", field("condition", $["Expression"]!), ")")),
+        field("body", $["Expression"]!),
       ),
 
     ConditionalExpression: ($) =>
@@ -792,7 +854,17 @@ export const scadLanguage = language({
 
     ParenthesizedExpression: ($) => seq("(", field("expression", $["Expression"]!), ")"),
 
-    VectorLiteral: ($) => seq("[", optional(seq($["Expression"]!, repeat(seq(",", $["Expression"]!)))), "]"),
+    VectorLiteral: ($) =>
+      seq(
+        "[",
+        optional(
+          seq(
+            choice($["ListComprehension"]!, $["Expression"]!),
+            repeat(seq(",", choice($["ListComprehension"]!, $["Expression"]!))),
+          ),
+        ),
+        "]",
+      ),
 
     RangeLiteral: ($) =>
       seq(
@@ -807,6 +879,10 @@ export const scadLanguage = language({
       ),
 
     // ── Terminals ──────────────────────────────────────────────────────────
+
+    INCLUDE_DIRECTIVE: () => /include[ \t]*<[^>\r\n]+>/,
+
+    USE_DIRECTIVE: () => /use[ \t]*<[^>\r\n]+>/,
 
     IDENTIFIER: () => /\$?[a-zA-Z_][a-zA-Z0-9_]*/,
 

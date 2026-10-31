@@ -83,3 +83,29 @@ JOINT/1, SPHERICAL, I=1, J=2
   assert.ok(Math.abs((residual[1] ?? 0) - 0.2) < 1e-9);
   assert.ok(Math.abs((residual[2] ?? 0) - -0.05) < 1e-9);
 });
+
+test("Adams Kinematics - REVOLUTE, UNIVERSAL, CYLINDRICAL, PLANAR, and FIXED joint residuals", () => {
+  const deck = `
+PART/1, GROUND
+PART/2, MASS=1.0, IP=0.1, 0.1, 0.1
+MARKER/1, PART=1, QP=0.0, 0.0, 0.0
+MARKER/2, PART=2, QP=0.0, 0.0, 0.0
+JOINT/1, REVOLUTE, I=1, J=2
+JOINT/2, UNIVERSAL, I=1, J=2
+JOINT/3, CYLINDRICAL, I=1, J=2
+JOINT/4, PLANAR, I=1, J=2
+JOINT/5, FIXED, I=1, J=2
+`;
+  const dataset = parseAdams(deck);
+  const partPositions = new Map<string | number, Vector3D>([
+    [1, { x: 0, y: 0, z: 0 }],
+    [2, { x: 0, y: 0, z: 0 }],
+  ]);
+  const partRotations = new Map();
+
+  assert.equal(evaluateJointResidual(dataset.joints.get(1)!, dataset, partPositions, partRotations).length, 5);
+  assert.equal(evaluateJointResidual(dataset.joints.get(2)!, dataset, partPositions, partRotations).length, 4);
+  assert.equal(evaluateJointResidual(dataset.joints.get(3)!, dataset, partPositions, partRotations).length, 4);
+  assert.equal(evaluateJointResidual(dataset.joints.get(4)!, dataset, partPositions, partRotations).length, 3);
+  assert.equal(evaluateJointResidual(dataset.joints.get(5)!, dataset, partPositions, partRotations).length, 6);
+});

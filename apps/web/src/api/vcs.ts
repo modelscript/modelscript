@@ -3,6 +3,8 @@
 import axios from "axios";
 import { api } from "./client";
 
+const apiClient = api;
+
 export interface GitlabProject {
   id: number;
   description: string | null;
@@ -42,6 +44,8 @@ export interface GitlabCommit {
   author_email: string;
   created_at: string;
   status?: "success" | "failed" | undefined;
+  file_path?: string | undefined;
+  paths?: string[] | undefined;
 }
 
 export interface GitlabBranch {
@@ -115,6 +119,16 @@ export interface GitlabIssue {
   comments?: GitlabIssueComment[] | undefined;
 }
 
+export interface GitlabMergeRequestDiffFile {
+  path?: string | undefined;
+  old_path?: string | undefined;
+  new_path?: string | undefined;
+  additions?: number | undefined;
+  deletions?: number | undefined;
+  patch?: string | undefined;
+  diff?: string | undefined;
+}
+
 export interface GitlabMergeRequest {
   id: number;
   iid: number;
@@ -136,7 +150,18 @@ export interface GitlabMergeRequest {
   labels?: string[] | undefined;
   review_verdict?: "APPROVE" | "REQUEST_CHANGES" | "COMMENT" | undefined;
   diff_summary?: string | undefined;
-  diff_files?: { path: string; additions: number; deletions: number; patch: string }[] | undefined;
+  diff_files?:
+    | {
+        path: string;
+        additions: number;
+        deletions: number;
+        patch: string;
+        old_path?: string;
+        new_path?: string;
+        diff?: string;
+      }[]
+    | undefined;
+  changes?: GitlabMergeRequestDiffFile[] | undefined;
 }
 
 export interface RepoBotReviewRecord {
@@ -369,7 +394,7 @@ function toLanguagesBreakdownArray(map: Record<string, number>): { name: string;
   }));
 }
 
-function getLocalCustomFiles(projectIdOrPath: string): Record<string, string> {
+export function readSavedFilesMap(projectIdOrPath: string): Record<string, string> {
   if (typeof localStorage === "undefined") return {};
   try {
     const raw = localStorage.getItem(`modelscript.vcs.files.${projectIdOrPath}`);
@@ -379,43 +404,87 @@ function getLocalCustomFiles(projectIdOrPath: string): Record<string, string> {
   }
 }
 
+export function writeSavedFilesMap(projectIdOrPath: string, filesMap: Record<string, string>): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(`modelscript.vcs.files.${projectIdOrPath}`, JSON.stringify(filesMap));
+  } catch {
+    // Ignore storage error
+  }
+}
+
+function getLocalCustomFiles(projectIdOrPath: string): Record<string, string> {
+  return readSavedFilesMap(projectIdOrPath);
+}
+
 export async function saveRepositoryFile(
   projectIdOrPath: string,
   filePath: string,
   content: string,
   commitMessage?: string,
-  _ref?: string,
+  ref = "main",
   _provider?: string,
   authorName = "engineer",
 ): Promise<GitlabCommit> {
   const cleanPath = filePath.replace(/^\/+/, "");
-  if (typeof localStorage !== "undefined") {
+  const effectiveCommitMsg = commitMessage || `Update ${cleanPath}`;
+  let remoteCommit: Partial<GitlabCommit> | null = null;
+  try {
+    const { data } = await apiClient.put<Partial<GitlabCommit>>(
+      `/vcs/projects/${encodeURIComponent(String(projectIdOrPath))}/repository/files/${encodeURIComponent(cleanPath)}`,
+      {
+        branch: ref || "main",
+        content,
+        commit_message: effectiveCommitMsg,
+      },
+    );
+    if (data && typeof data === "object") {
+      remoteCommit = data;
+    }
+  } catch {
     try {
-      const current = getLocalCustomFiles(projectIdOrPath);
-      current[cleanPath] = content;
-      localStorage.setItem(`modelscript.vcs.files.${projectIdOrPath}`, JSON.stringify(current));
+      const { data } = await apiClient.post<Partial<GitlabCommit>>(
+        `/vcs/projects/${encodeURIComponent(String(projectIdOrPath))}/repository/files/${encodeURIComponent(cleanPath)}`,
+        {
+          branch: ref || "main",
+          content,
+          commit_message: effectiveCommitMsg,
+        },
+      );
+      if (data && typeof data === "object") {
+        remoteCommit = data;
+      }
     } catch {
-      // Ignore storage error
+      // Offline or unauthenticated fallback — persist in local storage below
     }
   }
-  const sha = Math.abs(
-    `${projectIdOrPath}:${cleanPath}:${Date.now()}`
-      .split("")
-      .reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0),
-  )
-    .toString(16)
-    .padStart(8, "a")
-    .repeat(5)
-    .slice(0, 40);
+
+  const current = readSavedFilesMap(projectIdOrPath);
+  current[cleanPath] = content;
+  writeSavedFilesMap(projectIdOrPath, current);
+
+  const sha =
+    remoteCommit?.id ||
+    Math.abs(
+      `${projectIdOrPath}:${cleanPath}:${Date.now()}`
+        .split("")
+        .reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0),
+    )
+      .toString(16)
+      .padStart(8, "a")
+      .repeat(5)
+      .slice(0, 40);
   const newCommit: GitlabCommit = {
     id: sha,
-    short_id: sha.slice(0, 8),
-    title: commitMessage || `Update ${cleanPath}`,
-    message: commitMessage || `Update ${cleanPath}`,
-    author_name: authorName,
-    author_email: `${authorName}@modelscript.org`,
-    created_at: new Date().toISOString(),
-    status: "success",
+    short_id: remoteCommit?.short_id || sha.slice(0, 8),
+    title: remoteCommit?.title || effectiveCommitMsg,
+    message: remoteCommit?.message || effectiveCommitMsg,
+    author_name: remoteCommit?.author_name || authorName,
+    author_email: remoteCommit?.author_email || `${authorName}@modelscript.org`,
+    created_at: remoteCommit?.created_at || new Date().toISOString(),
+    status: remoteCommit?.status || "success",
+    file_path: cleanPath,
+    paths: [cleanPath],
   };
   if (typeof localStorage !== "undefined") {
     try {
@@ -466,11 +535,27 @@ function getSynthesizedFallbackSpec(projectIdOrPath: string): FallbackRepoSpec {
 
 export async function getAllRepoFilePaths(
   projectIdOrPath: string,
-  _ref = "main",
-  _provider = "gitlab",
+  ref = "main",
+  provider = "gitlab",
 ): Promise<GitlabTreeNode[]> {
+  const treeEntries = await getRepositoryTree(projectIdOrPath, ref, "", provider).catch(() => [] as GitlabTreeNode[]);
+  const savedFiles = readSavedFilesMap(projectIdOrPath);
   const fb = getSynthesizedFallbackSpec(projectIdOrPath);
-  return Object.keys(fb.files)
+
+  const combinedPaths = new Set<string>();
+  for (const entry of treeEntries) {
+    if (entry.type === "blob" && entry.path) {
+      combinedPaths.add(entry.path.replace(/^\/+/, ""));
+    }
+  }
+  for (const savedPath of Object.keys(savedFiles)) {
+    if (savedPath) combinedPaths.add(savedPath.replace(/^\/+/, ""));
+  }
+  for (const fallbackPath of Object.keys(fb.files)) {
+    if (fallbackPath) combinedPaths.add(fallbackPath.replace(/^\/+/, ""));
+  }
+
+  return Array.from(combinedPaths)
     .sort()
     .map((filePath) => ({
       id: `blob-${filePath}`,
@@ -814,6 +899,8 @@ export const getGitlabTree = async (
   }
 };
 
+export const getRepositoryTree = getGitlabTree;
+
 export const getGitlabFileRaw = async (
   projectIdOrPath: string,
   filePath: string,
@@ -1054,19 +1141,35 @@ export const triggerGitlabPipeline = async (
   workflowName = "ModelScript DAE Balance & OMC Parity Suite",
   _provider = "gitlab",
 ): Promise<GitlabPipeline> => {
+  let remotePipeline: Partial<GitlabPipeline> | null = null;
+  try {
+    const { data } = await apiClient.post<Partial<GitlabPipeline>>(
+      `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipeline`,
+      {
+        ref: refName,
+        workflow_name: workflowName,
+      },
+    );
+    if (data && typeof data === "object") {
+      remotePipeline = data;
+    }
+  } catch {
+    // Offline or unauthenticated fallback — persist locally below
+  }
+
   const newRun: GitlabPipeline = {
-    id: Math.floor(10000 + Math.random() * 90000),
-    iid: Math.floor(150 + Math.random() * 50),
-    project_id: 1,
-    status: "success",
-    ref: refName,
-    sha: "a4f9c2187e3b9012d4567890abcdef1234567890",
-    source: "workflow_dispatch",
-    workflow_name: workflowName,
-    commit_title: `Manual verification run (${workflowName})`,
-    web_url: `https://github.com/${projectIdOrPath}/actions`,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    id: remotePipeline?.id || Math.floor(10000 + Math.random() * 90000),
+    iid: remotePipeline?.iid || Math.floor(150 + Math.random() * 50),
+    project_id: remotePipeline?.project_id || 1,
+    status: remotePipeline?.status || "success",
+    ref: remotePipeline?.ref || refName,
+    sha: remotePipeline?.sha || "a4f9c2187e3b9012d4567890abcdef1234567890",
+    source: remotePipeline?.source || "workflow_dispatch",
+    workflow_name: remotePipeline?.workflow_name || workflowName,
+    commit_title: remotePipeline?.commit_title || `Manual verification run (${workflowName})`,
+    web_url: remotePipeline?.web_url || `https://github.com/${projectIdOrPath}/actions`,
+    created_at: remotePipeline?.created_at || new Date().toISOString(),
+    updated_at: remotePipeline?.updated_at || new Date().toISOString(),
   };
   if (typeof localStorage !== "undefined") {
     try {
@@ -1482,6 +1585,19 @@ export const updateGitlabIssueState = async (
   nextState: "opened" | "closed",
   _provider = "gitlab",
 ): Promise<GitlabIssue> => {
+  const targetIid = typeof issueOrIid === "number" ? issueOrIid : issueOrIid.iid;
+  try {
+    await apiClient.put(
+      `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues/${encodeURIComponent(String(targetIid))}`,
+      {
+        state_event: nextState === "closed" ? "close" : "reopen",
+        state: nextState,
+      },
+    );
+  } catch {
+    // Offline or unauthenticated fallback — always update local state below
+  }
+
   const allIssues = mergeIssuesWithLocal(getFallbackIssues(projectIdOrPath), projectIdOrPath);
   const issue: GitlabIssue =
     typeof issueOrIid === "number"
@@ -1517,6 +1633,19 @@ export const addGitlabIssueComment = async (
   authorUsername = "engineer",
   _provider = "gitlab",
 ): Promise<GitlabIssueComment> => {
+  const targetIid = typeof issueOrIid === "number" ? issueOrIid : issueOrIid.iid;
+  try {
+    await apiClient.post(
+      `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues/${encodeURIComponent(String(targetIid))}/notes`,
+      {
+        body,
+        author: authorUsername,
+      },
+    );
+  } catch {
+    // Offline or unauthenticated fallback — always update local state below
+  }
+
   const allIssues = mergeIssuesWithLocal(getFallbackIssues(projectIdOrPath), projectIdOrPath);
   const issue: GitlabIssue | undefined =
     typeof issueOrIid === "number" ? allIssues.find((i) => i.iid === issueOrIid) : issueOrIid;
@@ -1769,6 +1898,19 @@ export const updateGitlabMergeRequestState = async (
   nextState: "opened" | "merged" | "closed",
   _provider = "gitlab",
 ): Promise<GitlabMergeRequest> => {
+  const targetIid = typeof mrOrIid === "number" ? mrOrIid : mrOrIid.iid;
+  try {
+    await apiClient.put(
+      `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/merge_requests/${encodeURIComponent(String(targetIid))}`,
+      {
+        state_event: nextState === "merged" ? "merge" : nextState === "closed" ? "close" : "reopen",
+        state: nextState,
+      },
+    );
+  } catch {
+    // Offline or unauthenticated fallback — always update local state below
+  }
+
   const allMrs = mergeMrsWithLocal(getFallbackMergeRequests(projectIdOrPath), projectIdOrPath);
   const mr: GitlabMergeRequest =
     typeof mrOrIid === "number"

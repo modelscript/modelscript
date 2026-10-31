@@ -21,10 +21,10 @@ import { sspTabularConfig } from "./tabular.js";
  */
 export const sspLanguage = language({
   name: "ssp",
-  fileExtensions: [".ssp", ".ssd", ".ssv"],
+  fileExtensions: [".ssp", ".ssd", ".ssv", ".ssm", ".ssb"],
   maturity: "stable",
   lsp: {
-    fileExtensions: [".ssp", ".ssd", ".ssv"],
+    fileExtensions: [".ssp", ".ssd", ".ssv", ".ssm", ".ssb"],
     icons: {
       light: "./assets/ssp/icon-light.png",
       dark: "./assets/ssp/icon-dark.png",
@@ -117,13 +117,24 @@ export const sspLanguage = language({
           size: entry.size,
           read: () => zip.read(data, entry.name),
           readText: () => zip.readText(data, entry.name),
-          // Recursively extract embedded `.fmu` archives; parse `.ssd`/`.ssv` descriptors; mount other resources in VFS
+          // Recursively extract embedded `.fmu` archives; parse `.ssd`/`.ssv`/`.ssm`/`.ssb` descriptors; mount other resources in VFS
           action: entry.name.endsWith(".fmu")
             ? ("extract_nested" as const)
-            : entry.name.endsWith(".ssd") || entry.name.endsWith(".ssv")
+            : entry.name.endsWith(".ssd") ||
+                entry.name.endsWith(".ssv") ||
+                entry.name.endsWith(".ssm") ||
+                entry.name.endsWith(".ssb")
               ? ("parse_as_language" as const)
               : ("mount_vfs" as const),
-          targetLanguage: entry.name.endsWith(".ssd") ? "ssp" : entry.name.endsWith(".ssv") ? "ssv" : undefined,
+          targetLanguage: entry.name.endsWith(".ssd")
+            ? "ssp"
+            : entry.name.endsWith(".ssv")
+              ? "ssv"
+              : entry.name.endsWith(".ssm")
+                ? "ssm"
+                : entry.name.endsWith(".ssb")
+                  ? "ssb"
+                  : undefined,
         })),
         metadata: {
           systemName: system.name,

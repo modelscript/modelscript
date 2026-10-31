@@ -76,14 +76,14 @@ export function solveCatenary(params: CatenarySolveParams): CatenaryResult {
   }
 
   // Bracket for suspended length s: h < s <= L
-  // Let f(s) = X_susp(s) + (L - s) - X
+  // Let f(s) = X_susp(s) + (L - s) - X, including elastic stretch H*s/EA
   const computeSpanError = (s: number): { err: number; H: number } => {
     if (s <= h) return { err: -1e9, H: 0 };
     // H = w * (s^2 - h^2) / (2 * h)
     const H = (w * (s * s - h * h)) / (2 * h);
     if (H <= 0) return { err: -1e9, H: 0 };
-    // X_susp = (H / w) * asinh(w * s / H)
-    const xSusp = (H / w) * Math.asinh((w * s) / H);
+    // X_susp = (H / w) * asinh(w * s / H) + (H * s) / EA
+    const xSusp = (H / w) * Math.asinh((w * s) / H) + (H * s) / ea;
     const xGrounded = L - s;
     return { err: xSusp + xGrounded - X, H };
   };
@@ -135,7 +135,7 @@ export function solveCatenary(params: CatenarySolveParams): CatenaryResult {
   for (let i = 1; i <= numSuspPts; i++) {
     const sLocal = (i / numSuspPts) * bestS;
     const zLocal = (bestH / w) * (Math.sqrt(1 + Math.pow((w * sLocal) / bestH, 2)) - 1);
-    const xLocal = groundedLen + (bestH / w) * Math.asinh((w * sLocal) / bestH);
+    const xLocal = groundedLen + (bestH / w) * Math.asinh((w * sLocal) / bestH) + (bestH * sLocal) / ea;
     profile.push({ x: xLocal, z: zLocal });
   }
 
@@ -155,8 +155,8 @@ export function solveCatenary(params: CatenarySolveParams): CatenaryResult {
   };
 }
 
-function solveLiftedOffCatenary(h: number, X: number, L: number, w: number, _ea: number): CatenaryResult {
-  // Bisection on H for fully suspended catenary
+function solveLiftedOffCatenary(h: number, X: number, L: number, w: number, ea: number): CatenaryResult {
+  // Bisection on H for fully suspended catenary with elastic stretch
   let hLow = 1e3;
   let hHigh = 1e8;
   let bestH = hLow;
@@ -164,9 +164,10 @@ function solveLiftedOffCatenary(h: number, X: number, L: number, w: number, _ea:
   for (let i = 0; i < 40; i++) {
     const H = 0.5 * (hLow + hHigh);
     const a = H / w;
-    // L^2 - h^2 = 4 * a^2 * sinh^2(X / (2 * a))
+    // L_eff^2 - h^2 = 4 * a^2 * sinh^2(X / (2 * a))
     const rhs = 2 * a * Math.sinh(X / (2 * a));
-    const target = Math.sqrt(Math.max(0, L * L - h * h));
+    const stretchedL = L + (H * L) / ea;
+    const target = Math.sqrt(Math.max(0, stretchedL * stretchedL - h * h));
     if (rhs < target) {
       hHigh = H;
     } else {

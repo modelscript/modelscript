@@ -983,6 +983,21 @@ export function tokenizeSysml(input: string): SysML2Token[] {
       continue;
     }
 
+    // Skip single-line comments //
+    if (ch === "/" && i + 1 < len && input[i + 1] === "/") {
+      i += 2;
+      while (i < len && input[i] !== "\n") i++;
+      continue;
+    }
+
+    // Skip block comments /* ... */
+    if (ch === "/" && i + 1 < len && input[i + 1] === "*") {
+      i += 2;
+      while (i + 1 < len && !(input[i] === "*" && input[i + 1] === "/")) i++;
+      if (i + 1 < len) i += 2;
+      continue;
+    }
+
     // Number: \d+(?:\.\d+)?(?:[eE][+-]?\d+)?
     if (ch >= "0" && ch <= "9") {
       const start = i;
@@ -1062,7 +1077,7 @@ export function tokenizeSysml(input: string): SysML2Token[] {
       continue;
     }
 
-    // Single-character operators: ^, +, -, *, /, %, =, <, >, !
+    // Single-character operators: ^, +, -, *, /, %, =, <, >, !, :
     if (
       ch === "^" ||
       ch === "+" ||
@@ -1073,7 +1088,8 @@ export function tokenizeSysml(input: string): SysML2Token[] {
       ch === "=" ||
       ch === "<" ||
       ch === ">" ||
-      ch === "!"
+      ch === "!" ||
+      ch === ":"
     ) {
       tokens.push({ type: "op", val: ch });
       i++;
@@ -1180,7 +1196,11 @@ export class SysmlExprParser {
     let op: string | null;
     while ((op = this.matchOp("*", "/", "%"))) {
       const right = this.parsePower();
-      left = this.arena.addBinaryExpr(op === "*" ? BinOp.Mul : BinOp.Div, left, right);
+      if (op === "%") {
+        left = this.arena.addCallExpr("mod", [left, right]);
+      } else {
+        left = this.arena.addBinaryExpr(op === "*" ? BinOp.Mul : BinOp.Div, left, right);
+      }
     }
     return left;
   }
@@ -1196,11 +1216,17 @@ export class SysmlExprParser {
 
   private parseUnary(): number {
     const t = this.peek();
-    if (t && (t.type === "op" || t.type === "kw") && (t.val === "-" || t.val === "!" || t.val === "not")) {
+    if (
+      t &&
+      (t.type === "op" || t.type === "kw") &&
+      (t.val === "-" || t.val === "+" || t.val === "!" || t.val === "not")
+    ) {
       this.pos++;
       const operand = this.parseUnary();
       if (t.val === "-") {
         return this.arena.addUnaryExpr(UnaryOp.Negate, operand);
+      } else if (t.val === "+") {
+        return operand;
       } else {
         return this.arena.addUnaryExpr(UnaryOp.Not, operand);
       }
@@ -1704,6 +1730,7 @@ export class SysML2CstFlattener {
     const attrUsages = findCstDescendants(compNode, "AttributeUsage");
     for (const au of attrUsages) {
       if (this.isDescendantOfPartUsage(au, compNode)) continue;
+      if (this.isDescendantOfActionOrCalc(au, compNode)) continue;
 
       const nameNode = findFirstDescendant(au, "Name") || findFirstDescendant(au, "ID");
       const attrName = nameNode?.text?.trim();
@@ -1739,7 +1766,11 @@ export class SysML2CstFlattener {
         this.states.push(fullName);
       }
 
-      const varIdx = this.arena.addVariable(fullName, VarType.Real, variability, causality, defaultVal);
+      const existingIdx = this.arena.lookupVariable(fullName);
+      const varIdx =
+        existingIdx !== -1
+          ? existingIdx
+          : this.arena.addVariable(fullName, VarType.Real, variability, causality, defaultVal);
 
       if (isState) {
         const startExpr = this.arena.addRealLiteral(defaultVal);
@@ -1768,6 +1799,22 @@ export class SysML2CstFlattener {
         }
         localBody = localBody.slice(0, sbm.index) + "/* subpart */" + localBody.slice(i);
         subpartBraceRegex.lastIndex = sbm.index + 13;
+      }
+
+      // Strip action/calc blocks with { ... } so local action parameters aren't treated as component attributes
+      const actionBraceRegex = /\b(?:action|calc)\s+(?:def\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\{/g;
+      let abm: RegExpExecArray | null;
+      while ((abm = actionBraceRegex.exec(localBody)) !== null) {
+        const openBrace = localBody.indexOf("{", abm.index);
+        let depth = 1;
+        let i = openBrace + 1;
+        while (i < localBody.length && depth > 0) {
+          if (localBody[i] === "{") depth++;
+          else if (localBody[i] === "}") depth--;
+          i++;
+        }
+        localBody = localBody.slice(0, abm.index) + "/* action */" + localBody.slice(i);
+        actionBraceRegex.lastIndex = abm.index + 12;
       }
 
       const attrRegex =
@@ -1802,7 +1849,11 @@ export class SysML2CstFlattener {
           this.states.push(fullName);
         }
 
-        const varIdx = this.arena.addVariable(fullName, VarType.Real, variability, causality, defaultVal);
+        const existingIdx = this.arena.lookupVariable(fullName);
+        const varIdx =
+          existingIdx !== -1
+            ? existingIdx
+            : this.arena.addVariable(fullName, VarType.Real, variability, causality, defaultVal);
 
         if (isState) {
           const startExpr = this.arena.addRealLiteral(defaultVal);
@@ -1917,6 +1968,22 @@ export class SysML2CstFlattener {
     return false;
   }
 
+  private isDescendantOfActionOrCalc(node: SysmlCstNode, currentComp: SysmlCstNode): boolean {
+    let p = node.parent;
+    while (p && p !== currentComp) {
+      if (
+        p.type === "ActionDefinition" ||
+        p.type === "ActionUsage" ||
+        p.type === "CalculationDefinition" ||
+        p.type === "CalculationUsage"
+      ) {
+        return true;
+      }
+      p = p.parent;
+    }
+    return false;
+  }
+
   private isDescendantOf(node: SysmlCstNode, ancestor: SysmlCstNode): boolean {
     let p = node.parent;
     while (p) {
@@ -1940,6 +2007,7 @@ export class SysML2CstFlattener {
     ];
     for (const au of assertUsages) {
       if (this.isDescendantOfPartUsage(au, compNode)) continue;
+      if (this.isDescendantOfActionOrCalc(au, compNode)) continue;
 
       const eqNodes = findCstDescendants(au, "EqualityExpression");
       if (eqNodes.length > 0) {
@@ -1968,6 +2036,7 @@ export class SysML2CstFlattener {
     const directResultExprs = findCstDescendants(compNode, "ResultExpressionMember");
     for (const re of directResultExprs) {
       if (this.isDescendantOfPartUsage(re, compNode)) continue;
+      if (this.isDescendantOfActionOrCalc(re, compNode)) continue;
       if (assertUsages.some((au) => this.isDescendantOf(re, au) || (au.text && re.text && au.text.includes(re.text))))
         continue;
 
@@ -2024,6 +2093,24 @@ export class SysML2CstFlattener {
         }
         scrubbedBody = scrubbedBody.slice(0, wm.index) + "/* when */" + scrubbedBody.slice(i);
         whenRegex.lastIndex = wm.index + 10;
+      }
+    }
+
+    // Scrub nested action/calc blocks so imperative statements are not treated as continuous equations
+    const actionBlockRegex = /\b(?:action|calc)\s+(?:def\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\{/g;
+    let abm: RegExpExecArray | null;
+    while ((abm = actionBlockRegex.exec(scrubbedBody)) !== null) {
+      const openBrace = scrubbedBody.indexOf("{", abm.index);
+      if (openBrace !== -1) {
+        let depth = 1;
+        let i = openBrace + 1;
+        while (i < scrubbedBody.length && depth > 0) {
+          if (scrubbedBody[i] === "{") depth++;
+          else if (scrubbedBody[i] === "}") depth--;
+          i++;
+        }
+        scrubbedBody = scrubbedBody.slice(0, abm.index) + "/* action */" + scrubbedBody.slice(i);
+        actionBlockRegex.lastIndex = abm.index + 12;
       }
     }
 

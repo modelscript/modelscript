@@ -168,7 +168,152 @@ export const KNOWN_COMPONENTS: Record<string, ComponentPhysicalConstants> = {
     Pc: 73.8,
     omega: 0.224,
   },
+  AMMONIA: {
+    name: "Ammonia",
+    formula: "NH3",
+    Tc: 405.4,
+    Pc: 113.5,
+    omega: 0.256,
+    antoine: { A: 7.55466, B: 1002.711, C: 247.885 },
+  },
+  HYDROGEN: {
+    name: "Hydrogen",
+    formula: "H2",
+    Tc: 33.2,
+    Pc: 13.0,
+    omega: -0.216,
+  },
+  ARGON: {
+    name: "Argon",
+    formula: "Ar",
+    Tc: 150.8,
+    Pc: 48.7,
+    omega: -0.004,
+  },
+  ETHYLENE: {
+    name: "Ethylene",
+    formula: "C2H4",
+    Tc: 282.4,
+    Pc: 50.4,
+    omega: 0.085,
+  },
+  PROPYLENE: {
+    name: "Propylene",
+    formula: "C3H6",
+    Tc: 364.9,
+    Pc: 46.0,
+    omega: 0.142,
+  },
+  CYCLOHEXANE: {
+    name: "Cyclohexane",
+    formula: "C6H12",
+    Tc: 553.5,
+    Pc: 40.7,
+    omega: 0.21,
+  },
 };
+
+export interface NrtlBinaryPair {
+  aij?: number | undefined;
+  aji?: number | undefined;
+  bij?: number | undefined; // K
+  bji?: number | undefined; // K
+  alpha?: number | undefined;
+}
+
+export const KNOWN_NRTL_PAIRS: Record<string, NrtlBinaryPair> = {
+  "METHANOL:WATER": { aij: -0.693, aji: 0.845, bij: 172.99, bji: 83.29, alpha: 0.3 },
+  "ETHANOL:WATER": { aij: -0.8009, aji: 3.4578, bij: 246.18, bji: -586.08, alpha: 0.3 },
+  "ACETONE:WATER": { aij: 0.6504, aji: 2.7322, bij: 335.8, bji: -214.9, alpha: 0.3 },
+  "ACETONE:METHANOL": { aij: 0.0, aji: 0.0, bij: 101.88, bji: 114.13, alpha: 0.3 },
+  "BENZENE:TOLUENE": { aij: 0.0, aji: 0.0, bij: -2.88, bji: 4.35, alpha: 0.3 },
+};
+
+/**
+ * Computes liquid-phase activity coefficients gamma_i using the Non-Random Two-Liquid (NRTL) model:
+ *   tau_ij = a_ij + b_ij / T,  G_ij = exp(-alpha_ij * tau_ij)
+ *   ln(gamma_i) = (sum_j x_j tau_ji G_ji) / (sum_k x_k G_ki)
+ *               + sum_j [ (x_j G_ij / sum_k x_k G_kj) * (tau_ij - (sum_m x_m tau_mj G_mj) / (sum_k x_k G_kj)) ]
+ */
+export function computeNrtlActivityCoefficients(
+  components: string[],
+  x: number[],
+  temperatureK: number,
+  customPairs?: Record<string, NrtlBinaryPair>,
+): number[] {
+  const n = components.length;
+  if (n <= 1) return x.map(() => 1.0);
+
+  const T = Math.max(temperatureK, 100.0);
+  const tau: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0.0));
+  const G: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(1.0));
+
+  for (let i = 0; i < n; i++) {
+    const ci = components[i]!.toUpperCase();
+    for (let j = 0; j < n; j++) {
+      if (i === j) {
+        tau[i]![j] = 0.0;
+        G[i]![j] = 1.0;
+        continue;
+      }
+      const cj = components[j]!.toUpperCase();
+      const keyFwd = `${ci}:${cj}`;
+      const keyRev = `${cj}:${ci}`;
+      const pairFwd = customPairs?.[keyFwd] ?? KNOWN_NRTL_PAIRS[keyFwd];
+      const pairRev = customPairs?.[keyRev] ?? KNOWN_NRTL_PAIRS[keyRev];
+
+      let aij = 0.0;
+      let bij = 0.0;
+      let alpha = 0.3;
+
+      if (pairFwd) {
+        aij = pairFwd.aij ?? 0.0;
+        bij = pairFwd.bij ?? 0.0;
+        alpha = pairFwd.alpha ?? 0.3;
+      } else if (pairRev) {
+        aij = pairRev.aji ?? 0.0;
+        bij = pairRev.bji ?? 0.0;
+        alpha = pairRev.alpha ?? 0.3;
+      }
+
+      const tVal = aij + bij / T;
+      tau[i]![j] = tVal;
+      G[i]![j] = Math.exp(-alpha * tVal);
+    }
+  }
+
+  const gamma: number[] = [];
+  for (let i = 0; i < n; i++) {
+    let num1 = 0.0;
+    let den1 = 0.0;
+    for (let j = 0; j < n; j++) {
+      const xj = Math.max(0.0, x[j] ?? 0.0);
+      num1 += xj * tau[j]![i]! * G[j]![i]!;
+      den1 += xj * G[j]![i]!;
+    }
+    const term1 = den1 > 1e-12 ? num1 / den1 : 0.0;
+
+    let term2 = 0.0;
+    for (let j = 0; j < n; j++) {
+      const xj = Math.max(0.0, x[j] ?? 0.0);
+      let denJ = 0.0;
+      let numJ = 0.0;
+      for (let k = 0; k < n; k++) {
+        const xk = Math.max(0.0, x[k] ?? 0.0);
+        denJ += xk * G[k]![j]!;
+        numJ += xk * tau[k]![j]! * G[k]![j]!;
+      }
+      if (denJ > 1e-12) {
+        term2 += ((xj * G[i]![j]!) / denJ) * (tau[i]![j]! - numJ / denJ);
+      }
+    }
+
+    const lnGamma = term1 + term2;
+    gamma.push(Math.exp(Math.max(-10.0, Math.min(10.0, lnGamma))));
+  }
+
+  return gamma;
+}
 
 export interface FlashCalculationInput {
   temperature: number; // Celsius
@@ -176,6 +321,8 @@ export interface FlashCalculationInput {
   components: string[];
   moleFractions: number[]; // z_i
   totalFlow?: number | undefined; // kmol/hr
+  propertyMethod?: string | undefined; // e.g., 'IDEAL', 'NRTL', 'PENG-ROB'
+  nrtlParams?: Record<string, NrtlBinaryPair> | undefined;
   customProperties?: Record<string, Partial<ComponentPhysicalConstants>> | undefined;
 }
 
@@ -187,6 +334,7 @@ export interface FlashCalculationResult {
   liquidFlow: number; // kmol/hr
   vaporFlow: number; // kmol/hr
   kValues: number[]; // K_i
+  activityCoefficients: number[]; // gamma_i
   iterations: number;
 }
 
@@ -194,12 +342,12 @@ export interface FlashCalculationResult {
  * Computes vapor-liquid equilibrium (VLE) flash for a multicomponent mixture.
  */
 export function solveFlashRachfordRice(input: FlashCalculationInput): FlashCalculationResult {
-  const { temperature, pressure, components, moleFractions, customProperties } = input;
+  const { temperature, pressure, components, moleFractions, customProperties, propertyMethod, nrtlParams } = input;
   const F = input.totalFlow ?? 100.0;
   const n = components.length;
 
-  // 1. Calculate K-values
-  const kValues: number[] = [];
+  // 1. Calculate ideal K-values (Raoult / Wilson)
+  const baseKValues: number[] = [];
   const tKelvin = temperature + 273.15;
   const safeP = Math.max(pressure, 0.01);
 
@@ -221,14 +369,19 @@ export function solveFlashRachfordRice(input: FlashCalculationInput): FlashCalcu
       Ki = (props.Pc / safeP) * Math.exp(5.373 * (1 + omega) * (1 - props.Tc / tKelvin));
     } else {
       // Generalized Lee-Kesler / Edmister estimation for unknown components
-      // Assume typical organic volatile with estimated Tc = 450K, Pc = 40 bar, omega = 0.25
       const estTc = 450.0;
       const estPc = 40.0;
       const estOmega = 0.25;
       Ki = (estPc / safeP) * Math.exp(5.373 * (1 + estOmega) * (1 - estTc / tKelvin));
     }
-    kValues.push(Math.max(1e-6, Ki));
+    baseKValues.push(Math.max(1e-6, Ki));
   }
+
+  const useNrtl = propertyMethod?.toUpperCase() === "NRTL" || nrtlParams !== undefined;
+  let activityCoefficients = useNrtl
+    ? computeNrtlActivityCoefficients(components, moleFractions, tKelvin, nrtlParams)
+    : moleFractions.map(() => 1.0);
+  let kValues = baseKValues.map((k, i) => k * activityCoefficients[i]!);
 
   // 2. Evaluate boundaries at psi = 0 and psi = 1
   let f0 = 0.0;
@@ -250,12 +403,20 @@ export function solveFlashRachfordRice(input: FlashCalculationInput): FlashCalcu
       liquidFlow: F,
       vaporFlow: 0.0,
       kValues,
+      activityCoefficients,
       iterations: 0,
     };
   }
 
   // Pure vapor check
   if (f1 >= 0.0) {
+    const xDew = moleFractions.map((z, i) => z / Math.max(kValues[i]!, 1e-6));
+    if (useNrtl) {
+      const sumXDew = xDew.reduce((a, b) => a + b, 0) || 1.0;
+      const xDewNorm = xDew.map((v) => v / sumXDew);
+      activityCoefficients = computeNrtlActivityCoefficients(components, xDewNorm, tKelvin, nrtlParams);
+      kValues = baseKValues.map((k, i) => k * activityCoefficients[i]!);
+    }
     return {
       vaporFraction: 1.0,
       state: "SUPERHEATED_VAPOR",
@@ -264,61 +425,110 @@ export function solveFlashRachfordRice(input: FlashCalculationInput): FlashCalcu
       liquidFlow: 0.0,
       vaporFlow: F,
       kValues,
+      activityCoefficients,
       iterations: 0,
     };
   }
 
-  // 3. Two-phase: Solve Rachford-Rice via Newton-Raphson
+  // 3. Two-phase: Solve Rachford-Rice via Newton-Raphson (with outer activity coefficient loop when NRTL enabled)
   let psi = 0.5;
-  const maxIter = 50;
+  const maxOuterIter = useNrtl ? 20 : 1;
+  const maxInnerIter = 50;
   const tol = 1e-7;
-  let iter = 0;
+  let totalIter = 0;
+  let liquidFractions = [...moleFractions];
 
-  for (iter = 0; iter < maxIter; iter++) {
-    let fVal = 0.0;
-    let fPrime = 0.0;
+  for (let outer = 0; outer < maxOuterIter; outer++) {
+    let inner = 0;
+    for (inner = 0; inner < maxInnerIter; inner++) {
+      let fVal = 0.0;
+      let fPrime = 0.0;
 
+      for (let i = 0; i < n; i++) {
+        const z = moleFractions[i]!;
+        const K = kValues[i]!;
+        const denom = 1.0 + psi * (K - 1.0);
+        fVal += (z * (K - 1.0)) / denom;
+        fPrime -= (z * Math.pow(K - 1.0, 2)) / (denom * denom);
+      }
+
+      if (Math.abs(fVal) < tol) break;
+
+      const delta = fVal / fPrime;
+      psi -= delta;
+
+      // Dampen and keep in bounds [0, 1]
+      if (psi <= 0.0) psi = 1e-4;
+      if (psi >= 1.0) psi = 1.0 - 1e-4;
+
+      if (Math.abs(delta) < tol) break;
+    }
+    totalIter += inner + 1;
+
+    // Update liquid mole fractions
+    const newX: number[] = [];
+    let sumX = 0.0;
     for (let i = 0; i < n; i++) {
       const z = moleFractions[i]!;
       const K = kValues[i]!;
-      const denom = 1.0 + psi * (K - 1.0);
-      fVal += (z * (K - 1.0)) / denom;
-      fPrime -= (z * Math.pow(K - 1.0, 2)) / (denom * denom);
+      const xi = z / (1.0 + psi * (K - 1.0));
+      newX.push(xi);
+      sumX += xi;
+    }
+    const normX = sumX > 0 ? newX.map((v) => v / sumX) : newX;
+
+    if (!useNrtl) {
+      liquidFractions = newX;
+      break;
     }
 
-    if (Math.abs(fVal) < tol) break;
+    const newGamma = computeNrtlActivityCoefficients(components, normX, tKelvin, nrtlParams);
+    let maxGammaDiff = 0.0;
+    for (let i = 0; i < n; i++) {
+      maxGammaDiff = Math.max(maxGammaDiff, Math.abs(newGamma[i]! - activityCoefficients[i]!));
+    }
+    activityCoefficients = newGamma;
+    kValues = baseKValues.map((k, i) => k * activityCoefficients[i]!);
+    liquidFractions = normX;
 
-    const delta = fVal / fPrime;
-    psi -= delta;
-
-    // Dampen and keep in bounds [0, 1]
-    if (psi <= 0.0) psi = 1e-4;
-    if (psi >= 1.0) psi = 1.0 - 1e-4;
-
-    if (Math.abs(delta) < tol) break;
+    if (maxGammaDiff < 1e-6) break;
   }
 
-  // 4. Compute phase compositions
-  const liquidFractions: number[] = [];
-  const vaporFractions: number[] = [];
+  // 4. Compute final phase compositions
+  const finalLiquid: number[] = [];
+  const finalVapor: number[] = [];
+  let sumL = 0.0;
+  let sumV = 0.0;
 
   for (let i = 0; i < n; i++) {
     const z = moleFractions[i]!;
     const K = kValues[i]!;
     const xi = z / (1.0 + psi * (K - 1.0));
     const yi = K * xi;
-    liquidFractions.push(xi);
-    vaporFractions.push(yi);
+    finalLiquid.push(xi);
+    finalVapor.push(yi);
+    sumL += xi;
+    sumV += yi;
+  }
+
+  if (useNrtl && sumL > 0 && sumV > 0) {
+    for (let i = 0; i < n; i++) {
+      finalLiquid[i] = finalLiquid[i]! / sumL;
+      finalVapor[i] = finalVapor[i]! / sumV;
+    }
+  } else {
+    void liquidFractions;
   }
 
   return {
     vaporFraction: psi,
     state: "TWO_PHASE",
-    liquidFractions,
-    vaporFractions,
+    liquidFractions: finalLiquid,
+    vaporFractions: finalVapor,
     liquidFlow: F * (1.0 - psi),
     vaporFlow: F * psi,
     kValues,
-    iterations: iter + 1,
+    activityCoefficients,
+    iterations: totalIter,
   };
 }

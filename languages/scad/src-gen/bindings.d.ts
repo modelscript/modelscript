@@ -1265,54 +1265,63 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  SourceFile = 59,
-  Statement = 60,
-  BlockStatement = 61,
-  VariableDeclaration = 62,
-  ModuleDeclaration = 63,
-  FunctionDeclaration = 64,
-  IfStatement = 65,
-  ForStatement = 66,
-  ParameterList = 67,
-  Parameter = 68,
-  ArgumentList = 69,
-  Argument = 70,
-  PrefixSolid = 71,
-  TransformOp = 72,
-  LinearExtrudeOp = 73,
-  BooleanOp = 74,
-  TagPortOp = 75,
-  ChainedSolidStatement = 76,
-  ChainedSolid = 77,
-  MethodCall = 78,
-  MethodName = 79,
-  PrimarySolid = 80,
-  CubePrimitive = 81,
-  CylinderPrimitive = 82,
-  SpherePrimitive = 83,
-  PolyhedronPrimitive = 84,
-  PolygonPrimitive = 85,
-  CirclePrimitive = 86,
-  SquarePrimitive = 87,
-  ModuleInstantiation = 88,
-  Expression = 89,
-  ConditionalExpression = 90,
-  BinaryExpression = 91,
-  UnaryExpression = 92,
-  PostfixExpression = 93,
-  PrimaryExpression = 94,
-  ParenthesizedExpression = 95,
-  VectorLiteral = 96,
-  RangeLiteral = 97,
-  BOOLEAN = 98,
-  START = 99,
-  _START = 99,
-  EmptyStatement = 102,
-  _EmptyStatement = 102,
-  IDENTIFIER = 142,
-  NUMBER = 143,
-  STRING = 144,
-  UNDEF = 146,
+  SourceFile = 67,
+  Statement = 68,
+  IncludeStatement = 69,
+  UseStatement = 70,
+  BlockStatement = 71,
+  VariableDeclaration = 72,
+  ModuleDeclaration = 73,
+  FunctionDeclaration = 74,
+  IfStatement = 75,
+  ForStatement = 76,
+  ParameterList = 77,
+  Parameter = 78,
+  ArgumentList = 79,
+  Argument = 80,
+  PrefixSolid = 81,
+  OperatorChildStatement = 82,
+  TransformOp = 83,
+  LinearExtrudeOp = 84,
+  BooleanOp = 85,
+  TagPortOp = 86,
+  ChainedSolidStatement = 87,
+  ChainedSolid = 88,
+  MethodCall = 89,
+  MethodName = 90,
+  PrimarySolid = 91,
+  CubePrimitive = 92,
+  CylinderPrimitive = 93,
+  SpherePrimitive = 94,
+  PolyhedronPrimitive = 95,
+  PolygonPrimitive = 96,
+  CirclePrimitive = 97,
+  SquarePrimitive = 98,
+  ModuleInstantiation = 99,
+  Expression = 100,
+  LetExpression = 101,
+  ListComprehension = 102,
+  ConditionalExpression = 103,
+  BinaryExpression = 104,
+  UnaryExpression = 105,
+  PostfixExpression = 106,
+  PrimaryExpression = 107,
+  ParenthesizedExpression = 108,
+  VectorLiteral = 109,
+  RangeLiteral = 110,
+  BOOLEAN = 111,
+  START = 112,
+  _START = 112,
+  EmptyStatement = 115,
+  _EmptyStatement = 115,
+  INCLUDEDIRECTIVE = 162,
+  INCLUDE_DIRECTIVE = 162,
+  USEDIRECTIVE = 163,
+  USE_DIRECTIVE = 163,
+  IDENTIFIER = 164,
+  NUMBER = 165,
+  STRING = 166,
+  UNDEF = 168,
   EOF = 1023,
 }
 
@@ -1349,26 +1358,28 @@ export declare enum FieldId {
   receiver = 15,
   Method = 16,
   method = 16,
-  Left = 17,
-  left = 17,
-  Right = 18,
-  right = 18,
-  Operand = 19,
-  operand = 19,
-  Index = 20,
-  index = 20,
-  FunctionNode = 21,
-  function = 21,
-  Arguments = 22,
-  arguments = 22,
-  Expression = 23,
-  expression = 23,
-  Start = 24,
-  start = 24,
-  Step = 25,
-  step = 25,
-  End = 26,
-  end = 26,
+  Bindings = 17,
+  bindings = 17,
+  Left = 18,
+  left = 18,
+  Right = 19,
+  right = 19,
+  Operand = 20,
+  operand = 20,
+  Index = 21,
+  index = 21,
+  FunctionNode = 22,
+  function = 22,
+  Arguments = 23,
+  arguments = 23,
+  Expression = 24,
+  expression = 24,
+  Start = 25,
+  start = 25,
+  Step = 26,
+  step = 26,
+  End = 27,
+  end = 27,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1384,6 +1395,14 @@ export interface StatementNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Statement;
 }
 export declare function isStatement(node: SyntaxNode | null | undefined): node is StatementNode;
+export interface IncludeStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IncludeStatement;
+}
+export declare function isIncludeStatement(node: SyntaxNode | null | undefined): node is IncludeStatementNode;
+export interface UseStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.UseStatement;
+}
+export declare function isUseStatement(node: SyntaxNode | null | undefined): node is UseStatementNode;
 export interface BlockStatementNode extends SyntaxNode {
   readonly typeId: SyntaxKind.BlockStatement;
 }
@@ -1428,6 +1447,10 @@ export interface PrefixSolidNode extends SyntaxNode {
   readonly typeId: SyntaxKind.PrefixSolid;
 }
 export declare function isPrefixSolid(node: SyntaxNode | null | undefined): node is PrefixSolidNode;
+export interface OperatorChildStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.OperatorChildStatement;
+}
+export declare function isOperatorChildStatement(node: SyntaxNode | null | undefined): node is OperatorChildStatementNode;
 export interface TransformOpNode extends SyntaxNode {
   readonly typeId: SyntaxKind.TransformOp;
 }
@@ -1500,6 +1523,14 @@ export interface ExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Expression;
 }
 export declare function isExpression(node: SyntaxNode | null | undefined): node is ExpressionNode;
+export interface LetExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.LetExpression;
+}
+export declare function isLetExpression(node: SyntaxNode | null | undefined): node is LetExpressionNode;
+export interface ListComprehensionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ListComprehension;
+}
+export declare function isListComprehension(node: SyntaxNode | null | undefined): node is ListComprehensionNode;
 export interface ConditionalExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ConditionalExpression;
 }
@@ -1536,6 +1567,14 @@ export interface BOOLEANNode extends SyntaxNode {
   readonly typeId: SyntaxKind.BOOLEAN;
 }
 export declare function isBOOLEAN(node: SyntaxNode | null | undefined): node is BOOLEANNode;
+export interface INCLUDEDIRECTIVENode extends SyntaxNode {
+  readonly typeId: SyntaxKind.INCLUDEDIRECTIVE;
+}
+export declare function isINCLUDEDIRECTIVE(node: SyntaxNode | null | undefined): node is INCLUDEDIRECTIVENode;
+export interface USEDIRECTIVENode extends SyntaxNode {
+  readonly typeId: SyntaxKind.USEDIRECTIVE;
+}
+export declare function isUSEDIRECTIVE(node: SyntaxNode | null | undefined): node is USEDIRECTIVENode;
 export interface IDENTIFIERNode extends SyntaxNode {
   readonly typeId: SyntaxKind.IDENTIFIER;
 }
@@ -1564,6 +1603,16 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is StatementNode;
+  };
+  export const IncludeStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IncludeStatementNode;
+  };
+  export const UseStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is UseStatementNode;
   };
   export const BlockStatement: {
     readonly typeId: number;
@@ -1660,6 +1709,11 @@ export declare namespace Cst {
     child(node: SyntaxNode | null | undefined): SyntaxNode | null;
     childList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
+  export const OperatorChildStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is OperatorChildStatementNode;
+  };
   export const TransformOp: {
     readonly typeId: number;
     readonly type: string;
@@ -1678,6 +1732,8 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is BooleanOpNode;
+    args(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const TagPortOp: {
     readonly typeId: number;
@@ -1784,6 +1840,28 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ExpressionNode;
   };
+  export const LetExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is LetExpressionNode;
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    bindings(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bindingsList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ListComprehension: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ListComprehensionNode;
+    var(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    varList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    range(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    rangeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    body(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    condition(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    conditionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
   export const ConditionalExpression: {
     readonly typeId: number;
     readonly type: string;
@@ -1860,6 +1938,16 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is BOOLEANNode;
+  };
+  export const INCLUDEDIRECTIVE: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is INCLUDEDIRECTIVENode;
+  };
+  export const USEDIRECTIVE: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is USEDIRECTIVENode;
   };
   export const IDENTIFIER: {
     readonly typeId: number;

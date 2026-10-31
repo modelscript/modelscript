@@ -10,6 +10,11 @@
  */
 
 import { EntailmentTheoryOracle, type DigitalThreadProofManifest } from "@modelscript/runtime";
+import {
+  checkContractEntailment,
+  extractContractExpression,
+  type LabeledContractFormula,
+} from "../smt/contract-verifier.js";
 import type { ReqIfDocument, ReqIfEntailmentResult, ReqIfSpecHierarchy } from "../types.js";
 
 export interface ReqIfEntailmentReport {
@@ -18,6 +23,11 @@ export interface ReqIfEntailmentReport {
   gapCount: number;
   results: ReqIfEntailmentResult[];
   manifests: DigitalThreadProofManifest[];
+}
+
+function isCompoundContractExpr(expr: string | undefined): boolean {
+  if (!expr) return false;
+  return /(?:&&|\|\||=>|->|\bimplies\b|\band\b|\bor\b|\bnot\b|!(?!=)|[+\-*/])/.test(expr);
 }
 
 export function verifyReqIfEntailment(doc: ReqIfDocument): ReqIfEntailmentReport {
@@ -84,20 +94,78 @@ export function verifyReqIfEntailment(doc: ReqIfDocument): ReqIfEntailmentReport
   for (const q of queries) {
     const parentObj = doc.specObjects.get(q.parentId);
     const parentContract = parentObj?.contract;
-    if (!parentObj || !parentContract) continue;
+    const parentExpr =
+      parentContract?.expression ?? (parentObj?.text ? extractContractExpression(parentObj.text) : undefined);
 
-    const validChildren = q.childIds.filter((cid) => {
+    if (!parentObj || (!parentContract && !parentExpr)) continue;
+
+    // Collect children that have either a parsed contract or an extractable contract expression
+    const allContractChildren = q.childIds.filter((cid) => {
       const c = doc.specObjects.get(cid);
-      return c && c.contract && c.contract.variable === parentContract.variable;
+      if (!c) return false;
+      return Boolean(c.contract || (c.text && extractContractExpression(c.text)));
     });
 
-    if (validChildren.length === 0) continue;
+    if (allContractChildren.length === 0) continue;
+
+    const sameVarChildren = parentContract
+      ? allContractChildren.filter((cid) => {
+          const c = doc.specObjects.get(cid);
+          return c?.contract?.variable === parentContract.variable;
+        })
+      : [];
+
+    const hasCompoundOrMultiVar =
+      isCompoundContractExpr(parentExpr) ||
+      allContractChildren.some((cid) => {
+        const c = doc.specObjects.get(cid);
+        const expr = c?.contract?.expression ?? (c?.text ? extractContractExpression(c.text) : undefined);
+        return isCompoundContractExpr(expr);
+      }) ||
+      sameVarChildren.length === 0;
+
+    if (hasCompoundOrMultiVar && parentExpr) {
+      const premises: LabeledContractFormula[] = allContractChildren.map((cid) => {
+        const c = doc.specObjects.get(cid);
+        const expr =
+          c?.contract?.expression ??
+          (c?.text ? extractContractExpression(c.text) : undefined) ??
+          (c?.contract ? `${c.contract.variable} ${c.contract.comparator} ${c.contract.limitValue}` : "true");
+        return { id: cid, formula: expr };
+      });
+
+      const smtRes = checkContractEntailment(premises, {
+        id: q.parentId,
+        formula: parentExpr,
+      });
+
+      if (smtRes.isEntailed) {
+        const manifestId = `smt-lra-proof-${q.parentId}`;
+        results.push({
+          isEntailed: true,
+          parentReqId: q.parentId,
+          childReqIds: allContractChildren,
+          proofManifestId: manifestId,
+        });
+      } else {
+        results.push({
+          isEntailed: false,
+          parentReqId: q.parentId,
+          childReqIds: allContractChildren,
+          diagnosticMessage: smtRes.diagnosticMessage || "Entailment Gap in compound contract",
+          counterexample: smtRes.counterexample,
+        });
+      }
+      continue;
+    }
+
+    if (sameVarChildren.length === 0) continue;
 
     oracle.pushLevel();
     oracle.assertLiteral({
       id: litId++,
       predicate: "entailment",
-      args: [q.parentId, validChildren],
+      args: [q.parentId, sameVarChildren],
     });
 
     const satResult = oracle.checkSat();
@@ -110,15 +178,33 @@ export function verifyReqIfEntailment(doc: ReqIfDocument): ReqIfEntailmentReport
       results.push({
         isEntailed: true,
         parentReqId: q.parentId,
-        childReqIds: validChildren,
+        childReqIds: sameVarChildren,
         proofManifestId: manifestId,
       });
     } else {
+      // Also compute concrete counterexample via SMT contract verifier
+      const premises: LabeledContractFormula[] = sameVarChildren.map((cid) => {
+        const c = doc.specObjects.get(cid);
+        const cContract = c?.contract;
+        return {
+          id: cid,
+          formula: cContract ? `${cContract.variable} ${cContract.comparator} ${cContract.limitValue}` : "true",
+        };
+      });
+      const parentFormula = parentContract
+        ? `${parentContract.variable} ${parentContract.comparator} ${parentContract.limitValue}`
+        : "true";
+      const smtCheck = checkContractEntailment(premises, {
+        id: q.parentId,
+        formula: parentFormula,
+      });
       results.push({
         isEntailed: false,
         parentReqId: q.parentId,
-        childReqIds: validChildren,
-        diagnosticMessage: satResult.conflict?.explanation || "Entailment contract violation",
+        childReqIds: sameVarChildren,
+        diagnosticMessage:
+          satResult.conflict?.explanation || smtCheck.diagnosticMessage || "Entailment contract violation",
+        counterexample: smtCheck.counterexample,
       });
     }
     oracle.popLevel();

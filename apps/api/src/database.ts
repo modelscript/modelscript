@@ -2294,7 +2294,7 @@ export class LibraryDatabase {
     }
   }
 
-  createOAuthUser(
+  registerFederatedUser(
     username: string,
     email: string,
     provider: string,
@@ -2324,6 +2324,15 @@ export class LibraryDatabase {
     });
 
     return transaction();
+  }
+
+  createOAuthUser(
+    username: string,
+    email: string,
+    provider: string,
+    providerUserId: string,
+  ): { id: number; username: string; email: string } {
+    return this.registerFederatedUser(username, email, provider, providerUserId);
   }
 
   getOAuthAccount(
@@ -6189,7 +6198,8 @@ export class LibraryDatabase {
         const ipToken = LibraryDatabase.#hashAuditIpToken(data.ipAddress);
         const actorIdStr =
           typeof data.actorId === "number" && Number.isFinite(data.actorId) ? String(data.actorId) : "";
-        const resourceIdStr = data.resourceId ? String(data.resourceId) : "";
+        const rawResourceId = data.resourceId ? String(data.resourceId) : "";
+        const resourceIdStr = rawResourceId.replace(/[^a-zA-Z0-9_.-]/g, "");
         const canonicalPayload = [
           prevHash,
           actorIdStr,
@@ -7370,20 +7380,21 @@ export class LibraryDatabase {
     const tunnelTokenVal = process.env["CLOUDFLARE_TUNNEL_TOKEN"]?.trim() || storedToken.trim();
     const publicUrl = process.env["PUBLIC_URL"] || "https://ansatz.social";
     const generatedAt = new Date().toISOString();
+    const escapeEnvValue = (val: string): string => val.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     const envLines = [
       `# ${s.instanceName} — Declarative Instance & White-Label Configuration`,
       `# Generated at ${generatedAt}`,
       `NODE_ENV=production`,
       `PUBLIC_URL=${publicUrl}`,
-      `MSX_INSTANCE_NAME="${s.instanceName.replace(/"/g, '\\"')}"`,
-      `MSX_INSTANCE_BADGE="${s.instanceBadge.replace(/"/g, '\\"')}"`,
-      `MSX_INSTANCE_TAGLINE="${s.instanceTagline.replace(/"/g, '\\"')}"`,
-      `MSX_CONTACT_EMAIL="${s.contactEmail.replace(/"/g, '\\"')}"`,
-      `MSX_BRAND_LOGO_URL="${s.brandLogoUrl.replace(/"/g, '\\"')}"`,
-      `MSX_BRAND_LOGO_DARK_URL="${s.brandLogoDarkUrl.replace(/"/g, '\\"')}"`,
-      `MSX_BRAND_FAVICON_URL="${s.brandFaviconUrl.replace(/"/g, '\\"')}"`,
-      `MSX_BRAND_ACCENT_COLOR="${s.brandAccentColor.replace(/"/g, '\\"')}"`,
-      `MSX_DOCS_BASE_URL="${s.docsBaseUrl.replace(/"/g, '\\"')}"`,
+      `MSX_INSTANCE_NAME="${escapeEnvValue(s.instanceName)}"`,
+      `MSX_INSTANCE_BADGE="${escapeEnvValue(s.instanceBadge)}"`,
+      `MSX_INSTANCE_TAGLINE="${escapeEnvValue(s.instanceTagline)}"`,
+      `MSX_CONTACT_EMAIL="${escapeEnvValue(s.contactEmail)}"`,
+      `MSX_BRAND_LOGO_URL="${escapeEnvValue(s.brandLogoUrl)}"`,
+      `MSX_BRAND_LOGO_DARK_URL="${escapeEnvValue(s.brandLogoDarkUrl)}"`,
+      `MSX_BRAND_FAVICON_URL="${escapeEnvValue(s.brandFaviconUrl)}"`,
+      `MSX_BRAND_ACCENT_COLOR="${escapeEnvValue(s.brandAccentColor)}"`,
+      `MSX_DOCS_BASE_URL="${escapeEnvValue(s.docsBaseUrl)}"`,
       `MSX_SHOW_POWERED_BY=${s.showPoweredBy ? "true" : "false"}`,
       `MSX_REGISTRATION_MODE=${s.registrationMode}`,
       `MODELSCRIPT_REGISTRATION_MODE=${s.registrationMode}`,
@@ -7393,7 +7404,7 @@ export class LibraryDatabase {
       `JWT_SECRET=${process.env["JWT_SECRET"] ? "<REDACTED_CUSTOM_JWT_SECRET>" : crypto.randomBytes(32).toString("hex")}`,
       `SMTP_HOST=${process.env["SMTP_HOST"] || "smtp.example.org"}`,
       `SMTP_PORT=${process.env["SMTP_PORT"] || "587"}`,
-      `EMAIL_FROM="${s.instanceName.replace(/"/g, '\\"')} <${s.contactEmail}>"`,
+      `EMAIL_FROM="${escapeEnvValue(s.instanceName)} <${s.contactEmail}>"`,
     ];
 
     const dockerComposeLines = [
@@ -7408,18 +7419,18 @@ export class LibraryDatabase {
       `    environment:`,
       `      NODE_ENV: "production"`,
       `      PUBLIC_URL: "${publicUrl}"`,
-      `      MSX_INSTANCE_NAME: "${s.instanceName.replace(/"/g, '\\"')}"`,
-      `      MSX_INSTANCE_BADGE: "${s.instanceBadge.replace(/"/g, '\\"')}"`,
-      `      MSX_INSTANCE_TAGLINE: "${s.instanceTagline.replace(/"/g, '\\"')}"`,
-      `      MSX_CONTACT_EMAIL: "${s.contactEmail.replace(/"/g, '\\"')}"`,
-      `      MSX_DOCS_BASE_URL: "${s.docsBaseUrl.replace(/"/g, '\\"')}"`,
+      `      MSX_INSTANCE_NAME: "${escapeEnvValue(s.instanceName)}"`,
+      `      MSX_INSTANCE_BADGE: "${escapeEnvValue(s.instanceBadge)}"`,
+      `      MSX_INSTANCE_TAGLINE: "${escapeEnvValue(s.instanceTagline)}"`,
+      `      MSX_CONTACT_EMAIL: "${escapeEnvValue(s.contactEmail)}"`,
+      `      MSX_DOCS_BASE_URL: "${escapeEnvValue(s.docsBaseUrl)}"`,
       `      MSX_SHOW_POWERED_BY: "${s.showPoweredBy ? "true" : "false"}"`,
       `      MSX_REGISTRATION_MODE: "${s.registrationMode}"`,
       `      MSX_FEDERATION_MODE: "${s.federationMode}"`,
       `      MSX_INGRESS_MODE: "${s.ingressMode}"`,
     ];
     if (tunnelTokenVal) {
-      dockerComposeLines.push(`      CLOUDFLARE_TUNNEL_TOKEN: "${tunnelTokenVal.replace(/"/g, '\\"')}"`);
+      dockerComposeLines.push(`      CLOUDFLARE_TUNNEL_TOKEN: "${escapeEnvValue(tunnelTokenVal)}"`);
     }
 
     const envStr = envLines.join("\n");
@@ -11369,7 +11380,8 @@ export class LibraryDatabase {
       }
     } catch (err) {
       console.warn(
-        `[HotBackup] S3 backup replication failed for ${path.basename(backupPath)}:`,
+        "[HotBackup] S3 backup replication failed for %s:",
+        path.basename(backupPath),
         err instanceof Error ? err.message : String(err),
       );
     }
@@ -11976,7 +11988,7 @@ export class LibraryDatabase {
     return this.#db.prepare(`SELECT * FROM job_steps WHERE job_id = ? ORDER BY id ASC`).all(jobId) as JobStepRow[];
   }
 
-  // ── Script Templates ────────────────────────────────────────────
+  // ── Script & Study Templates ────────────────────────────────────
 
   createScriptTemplate(
     name: string,
@@ -11988,10 +12000,18 @@ export class LibraryDatabase {
   ): number {
     const result = this.#db
       .prepare(
-        `INSERT OR IGNORE INTO script_templates (name, slug, description, category, icon, config) VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO script_templates (name, slug, description, category, icon, config, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(slug) DO UPDATE SET
+           name = excluded.name,
+           description = excluded.description,
+           category = excluded.category,
+           icon = excluded.icon,
+           config = excluded.config,
+           updated_at = datetime('now')`,
       )
       .run(name, slug, description, category, icon, JSON.stringify(config));
-    return result.lastInsertRowid as number;
+    return Number(result.lastInsertRowid);
   }
 
   getScriptTemplates(): ScriptTemplateRow[] {
@@ -12000,6 +12020,138 @@ export class LibraryDatabase {
 
   getScriptTemplate(id: number): ScriptTemplateRow | undefined {
     return this.#db.prepare(`SELECT * FROM script_templates WHERE id = ?`).get(id) as ScriptTemplateRow | undefined;
+  }
+
+  getScriptTemplateBySlugOrId(idOrSlug: number | string): ScriptTemplateRow | undefined {
+    const numId = typeof idOrSlug === "number" ? idOrSlug : parseInt(String(idOrSlug), 10);
+    if (!Number.isNaN(numId) && String(numId) === String(idOrSlug)) {
+      const byId = this.getScriptTemplate(numId);
+      if (byId) return byId;
+    }
+    return this.#db.prepare(`SELECT * FROM script_templates WHERE slug = ? LIMIT 1`).get(String(idOrSlug)) as
+      | ScriptTemplateRow
+      | undefined;
+  }
+
+  updateJobMetadata(jobId: number, patch: Record<string, unknown>): void {
+    const existing = this.getJob(jobId);
+    if (!existing) return;
+    let currentMeta: Record<string, unknown> = {};
+    try {
+      if (existing.metadata) {
+        currentMeta = JSON.parse(existing.metadata) as Record<string, unknown>;
+      }
+    } catch {}
+    const merged = { ...currentMeta, ...patch };
+    this.#db.prepare(`UPDATE jobs SET metadata = ? WHERE id = ?`).run(JSON.stringify(merged), existing.id);
+  }
+
+  getPackageStudyArtifacts(): {
+    artifactId: number;
+    packageName: string;
+    packageVersion: string;
+    path: string;
+    metadata: Record<string, unknown>;
+  }[] {
+    try {
+      const rows = this.#db
+        .prepare(
+          `SELECT a.id AS artifactId, p.name AS packageName, pv.version AS packageVersion, a.path, a.metadata
+           FROM artifacts a
+           JOIN package_versions pv ON pv.id = a.version_id
+           JOIN packages p ON p.id = pv.package_id
+           WHERE a.type = 'study-template'
+           ORDER BY pv.published_at DESC
+           LIMIT 100`,
+        )
+        .all() as {
+        artifactId: number;
+        packageName: string;
+        packageVersion: string;
+        path: string;
+        metadata: string | null;
+      }[];
+      return rows.map((r) => {
+        let meta: Record<string, unknown> = {};
+        try {
+          if (r.metadata) meta = JSON.parse(r.metadata) as Record<string, unknown>;
+        } catch {}
+        return {
+          artifactId: r.artifactId,
+          packageName: r.packageName,
+          packageVersion: r.packageVersion,
+          path: r.path,
+          metadata: meta,
+        };
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  searchIndexedModelsForStudy(opts?: { q?: string | undefined; limit?: number | undefined }): {
+    libraryName: string;
+    libraryVersion: string;
+    className: string;
+    classKind: string;
+    description: string | null;
+    components: {
+      name: string;
+      typeName: string;
+      variability: string | null;
+      causality: string | null;
+      description: string | null;
+      defaultValue: string | null;
+    }[];
+  }[] {
+    const limit = Math.min(Math.max(opts?.limit ?? 25, 1), 100);
+    const q = opts?.q?.trim();
+    try {
+      let sql = `SELECT id, library_name, library_version, class_name, class_kind, description
+                 FROM classes
+                 WHERE class_kind IN ('model', 'block', 'class', 'cad-assembly', 'part')`;
+      const params: (string | number)[] = [];
+      if (q) {
+        sql += ` AND (class_name LIKE ? OR library_name LIKE ? OR description LIKE ?)`;
+        params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+      }
+      sql += ` ORDER BY id DESC LIMIT ?`;
+      params.push(limit);
+
+      const classRows = this.#db.prepare(sql).all(...params) as ClassRow[];
+      const getComps = this.#db.prepare(
+        `SELECT id, component_name, type_name, description, causality, variability
+         FROM components WHERE class_id = ? LIMIT 30`,
+      );
+      const getMods = this.#db.prepare(
+        `SELECT modifier_name, modifier_value FROM modifiers WHERE component_id = ? LIMIT 5`,
+      );
+
+      return classRows.map((c) => {
+        const comps = getComps.all(c.id) as ComponentRow[];
+        return {
+          libraryName: c.library_name,
+          libraryVersion: c.library_version,
+          className: c.class_name,
+          classKind: c.class_kind,
+          description: c.description,
+          components: comps.map((comp) => {
+            const mods = getMods.all(comp.id) as { modifier_name: string; modifier_value: string | null }[];
+            const startMod = mods.find((m) => m.modifier_name === "start" || m.modifier_name === "value");
+            return {
+              name: comp.component_name,
+              typeName: comp.type_name,
+              variability: comp.variability,
+              causality: comp.causality,
+              description: comp.description,
+              defaultValue: startMod?.modifier_value ?? null,
+            };
+          }),
+        };
+      });
+    } catch {
+      return [];
+    }
   }
 
   // ── Serialized Instances (Digital Twins) ───────────────────────
@@ -12995,7 +13147,7 @@ export class LibraryDatabase {
 
   // ── Granular API Tokens ──────────────────────────────────────────
 
-  createApiToken(params: {
+  createApiKey(params: {
     userId: number;
     name: string;
     tokenPrefix: string;
@@ -13021,6 +13173,18 @@ export class LibraryDatabase {
         params.expiresAt ?? null,
       );
     return Number(result.lastInsertRowid);
+  }
+
+  createApiToken(params: {
+    userId: number;
+    name: string;
+    tokenPrefix: string;
+    tokenHash: string;
+    scopes: string[];
+    packagePattern?: string | undefined;
+    expiresAt?: string | null | undefined;
+  }): number {
+    return this.createApiKey(params);
   }
 
   getApiTokenByHash(tokenHash: string): ApiTokenRecord | null {

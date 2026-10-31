@@ -617,6 +617,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1", optionalAuth, physicsRouter(jobQueue, database));
 
   app.use("/api/v1/jobs", scriptsRouter(database));
+  app.use("/api/v1/studies", scriptsRouter(database));
 
   // Artifact viewer routes (query artifact metadata, viewer configs)
   app.use("/api/v1", artifactViewerRouter(database));

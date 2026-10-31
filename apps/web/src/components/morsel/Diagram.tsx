@@ -10,7 +10,7 @@ import {
   setDiagramOptions,
 } from "@modelscript/diagram";
 import type { Theme } from "@monaco-editor/react";
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { movePlacementGhost } from "./placement";
 
 export interface DiagramEditorHandle {
@@ -64,6 +64,16 @@ interface DiagramEditorProps {
   onNodeDoubleClick?: ((nodeId: string, nodeData?: any) => void) | undefined;
 }
 
+type DiagramGraphInstance = {
+  cleanSelection?: () => void;
+  select?: (cell: unknown) => void;
+  centerCell?: (cell: unknown, opts?: { animation?: { duration?: number } }) => void;
+  findViewByCell?: (cell: unknown) => { container?: HTMLElement | null } | null;
+  off?: (event: string, fn: unknown) => void;
+  on?: (event: string, fn: unknown) => void;
+  getCellById?: (id: string) => unknown;
+};
+
 const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -80,7 +90,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   }).current;
 
   const attachGraphListeners = () => {
-    const g = getGraph(containerRef.current);
+    const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
     if (g && typeof g.on === "function") {
       g.off?.("node:dblclick", handleNodeDblClick);
       g.on("node:dblclick", handleNodeDblClick);
@@ -186,15 +196,15 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   useEffect(() => {
     if (props.selectedName !== undefined) {
-      const g = getGraph(containerRef.current);
+      const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
       if (!g) return;
       if (!props.selectedName || isEphemeralDiagramNode(props.selectedName)) {
-        g.cleanSelection();
+        g.cleanSelection?.();
       } else {
         const cell = g.getCellById(props.selectedName);
         if (cell) {
-          g.cleanSelection();
-          g.select(cell);
+          g.cleanSelection?.();
+          g.select?.(cell);
           try {
             const cellView = g.findViewByCell(cell);
             if (cellView?.container) {
@@ -203,7 +213,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                 cellView.container?.classList.remove("modelscript-anchor-halo");
               }, 5400);
             }
-            g.centerCell(cell, { animation: { duration: 300 } });
+            g.centerCell?.(cell, { animation: { duration: 300 } });
           } catch {
             // fallback if animation unsupported
           }
@@ -211,6 +221,25 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       }
     }
   }, [props.selectedName, props.theme]);
+
+  const [scrubbedPoint, setScrubbedPoint] = useState<{
+    time: number | null;
+    values: Record<string, number> | null;
+  }>({ time: null, values: null });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleTimeScrub = (e: Event) => {
+      const detail = (e as CustomEvent<{ time?: number | null; values?: Record<string, number> | null }>).detail;
+      if (detail && detail.time != null && Number.isFinite(detail.time)) {
+        setScrubbedPoint({ time: detail.time, values: detail.values ?? null });
+      } else {
+        setScrubbedPoint({ time: null, values: null });
+      }
+    };
+    window.addEventListener("morsel:time-scrub", handleTimeScrub);
+    return () => window.removeEventListener("morsel:time-scrub", handleTimeScrub);
+  }, []);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
@@ -261,6 +290,46 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           }
         }}
       />
+      {scrubbedPoint.time != null && (
+        <div
+          data-testid="diagram-time-scrub-hud"
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            zIndex: 20,
+            pointerEvents: "none",
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "8px 12px",
+            padding: "6px 12px",
+            borderRadius: "999px",
+            fontSize: "11px",
+            fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', monospace",
+            backgroundColor: props.theme === "vs-dark" ? "rgba(22, 27, 34, 0.88)" : "rgba(255, 255, 255, 0.92)",
+            color: props.theme === "vs-dark" ? "#e6edf3" : "#1f2328",
+            border: `1px solid ${props.theme === "vs-dark" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)"}`,
+            boxShadow: "0 4px 14px rgba(0,0,0,0.22)",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          <span style={{ fontWeight: 700, color: props.theme === "vs-dark" ? "#58a6ff" : "#0969da" }}>
+            t = {scrubbedPoint.time.toFixed(3)}s
+          </span>
+          {scrubbedPoint.values &&
+            Object.entries(scrubbedPoint.values)
+              .slice(0, 4)
+              .map(([varName, val]) => (
+                <span key={varName} style={{ display: "inline-flex", gap: 4 }}>
+                  <span style={{ opacity: 0.75 }}>{varName}:</span>
+                  <span style={{ fontWeight: 600, color: props.theme === "vs-dark" ? "#3fb950" : "#1a7f37" }}>
+                    {typeof val === "number" && Number.isFinite(val) ? val.toFixed(3) : String(val)}
+                  </span>
+                </span>
+              ))}
+        </div>
+      )}
       {props.isLoading && (
         <div
           style={{

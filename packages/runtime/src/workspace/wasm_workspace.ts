@@ -1090,7 +1090,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         currentId = symId;
         newIds.push(symId);
 
-        // Capture precise identifier field ranges for diagnostic underlines and go-to-definition.
+        // Capture precise identifier and metadata field ranges for diagnostic underlines and go-to-definition.
         let fieldRanges: Record<string, { startOffset: number; endOffset: number }> | undefined;
         if (nameNode) {
           const nameStartOff = nameNode.startOffset ?? nameNode.startIndex ?? nodeStart;
@@ -1103,6 +1103,23 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           };
           if (hook.namePath) {
             fieldRanges[hook.namePath] = fieldRanges["name"]!;
+          }
+        }
+        if (hook.metadataFieldPaths) {
+          for (const [key, fieldPath] of Object.entries(hook.metadataFieldPaths)) {
+            const fieldNode = resolveFieldPath(node, fieldPath);
+            if (fieldNode) {
+              const fStart = fieldNode.startOffset ?? fieldNode.startIndex;
+              const fEnd = fieldNode.endOffset ?? fieldNode.endIndex;
+              if (typeof fStart === "number" && typeof fEnd === "number" && fEnd >= fStart) {
+                if (!fieldRanges) fieldRanges = {};
+                const range = { startOffset: fStart, endOffset: fEnd };
+                fieldRanges[key] = range;
+                if (fieldPath !== key) {
+                  fieldRanges[fieldPath] = range;
+                }
+              }
+            }
           }
         }
 

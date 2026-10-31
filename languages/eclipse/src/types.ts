@@ -40,6 +40,10 @@ export interface EclipseGrid {
   permX: number; // permeability X (mD)
   permY: number; // permeability Y (mD)
   permZ: number; // permeability Z (mD)
+  poroArray?: number[] | undefined;
+  permXArray?: number[] | undefined;
+  permYArray?: number[] | undefined;
+  permZArray?: number[] | undefined;
   range?: EclipseRange | undefined;
 }
 
@@ -151,6 +155,7 @@ export interface EclipseDeck {
   solution: EclipseSolution;
   wells: Map<string, EclipseWell>;
   timeSteps: number[]; // days
+  includes: string[];
   sourceFile?: string | undefined;
   rawKeywords: string[];
 }

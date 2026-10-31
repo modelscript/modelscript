@@ -1,6 +1,6 @@
 ---
 title: Linter Rules Reference
-description: Every diagnostic rule ModelScript ships — 794 rules across 43 languages, with codes, severities and message templates generated from the source.
+description: Every diagnostic rule ModelScript ships — 803 rules across 43 languages, with codes, severities and message templates generated from the source.
 outline: [2, 2]
 pageClass: lint-reference
 ---
@@ -9,7 +9,7 @@ pageClass: lint-reference
 
 # Linter Rules Reference
 
-ModelScript ships **794 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **803 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -46,7 +46,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [NASA ROCETS](#rocets)                    | `@modelscript/rocets`       |    14 | `msx lint`              |
 | [CCSDS](#ccsds)                           | `@modelscript/ccsds`        |     8 | `msx ccsds lint`        |
 | [EASY5](#easy5)                           | `@modelscript/easy5`        |    12 | `msx lint`              |
-| [AUTOSAR](#autosar)                       | `@modelscript/autosar`      |     8 | `msx autosar lint`      |
+| [AUTOSAR](#autosar)                       | `@modelscript/autosar`      |    15 | `msx autosar lint`      |
 | [MATLAB Simulink](#simulink)              | `@modelscript/simulink`     |    10 | `msx simulink lint`     |
 | [GT-SUITE](#gtsuite)                      | `@modelscript/gtsuite`      |    15 | `msx lint`              |
 | [ASAM OpenDRIVE](#opendrive)              | `@modelscript/opendrive`    |     8 | `msx opendrive lint`    |
@@ -55,7 +55,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [SIMPACK](#simpack)                       | `@modelscript/simpack`      |     6 | `msx simpack lint`      |
 | [PSCAD / EMTDC](#pscad)                   | `@modelscript/pscad`        |    17 | `msx lint`              |
 | [PSS/E](#psse)                            | `@modelscript/psse`         |    13 | `msx psse lint`         |
-| [OpenDSS](#opendss)                       | `@modelscript/opendss`      |     8 | `msx opendss lint`      |
+| [OpenDSS](#opendss)                       | `@modelscript/opendss`      |    10 | `msx opendss lint`      |
 | [OLGA](#olga)                             | `@modelscript/olga`         |    13 | `msx olga lint`         |
 | [PipelineStudio](#lps)                    | `@modelscript/lps`          |    12 | `msx lint`              |
 | [ECLIPSE](#eclipse)                       | `@modelscript/eclipse`      |    10 | `msx eclipse lint`      |
@@ -750,18 +750,25 @@ Dynamic simulation & linear control. **12 rules** · `@modelscript/easy5` · Sou
 
 ## AUTOSAR {#autosar}
 
-Classic & Adaptive software architecture. **8 rules** · `@modelscript/autosar` · Source: `languages/autosar/src/errors.ts` · [Language guide](../languages/autosar.md)
+Classic & Adaptive software architecture. **15 rules** · `@modelscript/autosar` · Source: `languages/autosar/src/errors.ts` · [Language guide](../languages/autosar.md)
 
-| Code                                    | Rule                                    | Severity                                | Message                                                                                                                                                                                                |
-| :-------------------------------------- | :-------------------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="autosar-m7401"></span>`M7401` | `unconnected-mandatory-port`            | <Badge type="warning" text="warning" /> | Required port '<code>&lt;portName&gt;</code>' on component prototype '<code>&lt;compName&gt;</code>' is not connected by any assembly connector.                                                       |
-| <span id="autosar-m7402"></span>`M7402` | `interface-mismatch`                    | <Badge type="danger" text="error" />    | Connector interface mismatch: provider port '<code>&lt;pPort&gt;</code>' uses interface '<code>&lt;pIf&gt;</code>', but requirer port '<code>&lt;rPort&gt;</code>' expects '<code>&lt;rIf&gt;</code>'. |
-| <span id="autosar-m7403"></span>`M7403` | `invalid-runnable-period`               | <Badge type="danger" text="error" />    | Timing event for runnable '<code>&lt;symbol&gt;</code>' defines non-positive period (<code>&lt;period&gt;</code> s).                                                                                   |
-| <span id="autosar-m7404"></span>`M7404` | `duplicate-short-name`                  | <Badge type="danger" text="error" />    | Duplicate SHORT-NAME '<code>&lt;name&gt;</code>' detected in package '<code>&lt;pkg&gt;</code>'.                                                                                                       |
-| <span id="autosar-m7405"></span>`M7405` | `invalid-data-type-mapping`             | <Badge type="danger" text="error" />    | Invalid data type mapping for '<code>&lt;dtName&gt;</code>': <code>&lt;reason&gt;</code>.                                                                                                              |
-| <span id="autosar-m7406"></span>`M7406` | `circular-composition-dependency`       | <Badge type="danger" text="error" />    | Circular software component composition dependency detected: <code>&lt;path&gt;</code>.                                                                                                                |
-| <span id="autosar-m7407"></span>`M7407` | `missing-software-address-method`       | <Badge type="warning" text="warning" /> | Variable data prototype '<code>&lt;variable&gt;</code>' lacks a declared SwAddrMethod memory section mapping.                                                                                          |
-| <span id="autosar-m7408"></span>`M7408` | `incompatible-port-interface-direction` | <Badge type="danger" text="error" />    | Port '<code>&lt;portName&gt;</code>' interface direction violation: <code>&lt;reason&gt;</code>.                                                                                                       |
+| Code                                    | Rule                                    | Severity                                | Message                                                                                                                                                                                                                                |
+| :-------------------------------------- | :-------------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="autosar-m7401"></span>`M7401` | `unconnected-mandatory-port`            | <Badge type="danger" text="error" />    | Required port '<code>&lt;portName&gt;</code>' on component '<code>&lt;compName&gt;</code>' (<code>&lt;typeName&gt;</code>) is unconnected in composition '<code>&lt;compSwc&gt;</code>'.                                               |
+| <span id="autosar-m7402"></span>`M7402` | `interface-mismatch`                    | <Badge type="danger" text="error" />    | Interface mismatch in connector '<code>&lt;connName&gt;</code>': Provider port '<code>&lt;pPort&gt;</code>' provides '<code>&lt;pIf&gt;</code>' while requester port '<code>&lt;rPort&gt;</code>' requires '<code>&lt;rIf&gt;</code>'. |
+| <span id="autosar-m7403"></span>`M7403` | `data-element-type-mismatch`            | <Badge type="warning" text="warning" /> | Data element '<code>&lt;deName&gt;</code>' in interface '<code>&lt;ifName&gt;</code>' has no data type reference.                                                                                                                      |
+| `M7403`                                 | `invalid-runnable-period`               | <Badge type="danger" text="error" />    | Timing event for runnable '<code>&lt;symbol&gt;</code>' defines non-positive period (<code>&lt;period&gt;</code> s).                                                                                                                   |
+| <span id="autosar-m7404"></span>`M7404` | `duplicate-short-name`                  | <Badge type="danger" text="error" />    | Duplicate SHORT-NAME '<code>&lt;name&gt;</code>' detected in package '<code>&lt;pkg&gt;</code>'.                                                                                                                                       |
+| <span id="autosar-m7405"></span>`M7405` | `invalid-data-type-mapping`             | <Badge type="danger" text="error" />    | Invalid data type mapping for '<code>&lt;dtName&gt;</code>': <code>&lt;reason&gt;</code>.                                                                                                                                              |
+| `M7405`                                 | `wcet-budget-overflow`                  | <Badge type="danger" text="error" />    | Execution time WCET (<code>&lt;wcetMs&gt;</code> ms) of runnable '<code>&lt;runnableName&gt;</code>' exceeds its timing event period (<code>&lt;periodMs&gt;</code> ms).                                                               |
+| <span id="autosar-m7406"></span>`M7406` | `circular-composition-dependency`       | <Badge type="danger" text="error" />    | Circular software component composition dependency detected: <code>&lt;path&gt;</code>.                                                                                                                                                |
+| `M7406`                                 | `overlapping-pdu-bits`                  | <Badge type="danger" text="error" />    | Signals '<code>&lt;sigA&gt;</code>' and '<code>&lt;sigB&gt;</code>' overlap bit index <code>&lt;bitIdx&gt;</code> in PDU '<code>&lt;pduName&gt;</code>'.                                                                               |
+| <span id="autosar-m7407"></span>`M7407` | `missing-software-address-method`       | <Badge type="warning" text="warning" /> | Variable data prototype '<code>&lt;variable&gt;</code>' lacks a declared SwAddrMethod memory section mapping.                                                                                                                          |
+| `M7407`                                 | `pdu-exceeds-frame-capacity`            | <Badge type="danger" text="error" />    | PDU '<code>&lt;pduName&gt;</code>' length (<code>&lt;pduLen&gt;</code> bytes) exceeds CAN frame '<code>&lt;frameName&gt;</code>' payload capacity (<code>&lt;frameLen&gt;</code> bytes).                                               |
+| <span id="autosar-m7408"></span>`M7408` | `cyclic-runnable-dependency`            | <Badge type="danger" text="error" />    | Cyclic data dependency detected between runnables: '<code>&lt;value&gt;</code>'.                                                                                                                                                       |
+| `M7408`                                 | `incompatible-port-interface-direction` | <Badge type="danger" text="error" />    | Port '<code>&lt;portName&gt;</code>' interface direction violation: <code>&lt;reason&gt;</code>.                                                                                                                                       |
+| <span id="autosar-m7409"></span>`M7409` | `missing-internal-behavior`             | <Badge type="warning" text="warning" /> | Atomic software component '<code>&lt;swcName&gt;</code>' lacks internal behavior definition.                                                                                                                                           |
+| <span id="autosar-m7410"></span>`M7410` | `untriggered-runnable`                  | <Badge type="info" text="info" />       | Runnable entity '<code>&lt;rName&gt;</code>' in SWC '<code>&lt;swcName&gt;</code>' has no associated RTE trigger event.                                                                                                                |
 
 ## MATLAB Simulink {#simulink}
 
@@ -906,13 +913,15 @@ Transmission power flow. **13 rules** · `@modelscript/psse` · Source: `languag
 
 ## OpenDSS {#opendss}
 
-Unbalanced distribution & DER hosting. **8 rules** · `@modelscript/opendss` · Source: `languages/opendss/src/errors.ts` · [Language guide](../languages/opendss.md)
+Unbalanced distribution & DER hosting. **10 rules** · `@modelscript/opendss` · Source: `languages/opendss/src/errors.ts` · [Language guide](../languages/opendss.md)
 
 | Code                                    | Rule                           | Severity                                | Message                                                                                                                                                                                          |
 | :-------------------------------------- | :----------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | <span id="opendss-m8401"></span>`M8401` | `unconnected-bus-node`         | <Badge type="danger" text="error" />    | <code>&lt;elemType&gt;</code> '<code>&lt;elemName&gt;</code>' references undefined bus node '<code>&lt;busName&gt;</code>'.                                                                      |
 | <span id="opendss-m8402"></span>`M8402` | `phase-count-mismatch`         | <Badge type="danger" text="error" />    | Element '<code>&lt;elemName&gt;</code>' (<code>&lt;elemPhases&gt;</code> phases) connected to bus '<code>&lt;busName&gt;</code>' with different phase count (<code>&lt;busPhases&gt;</code>).    |
-| <span id="opendss-m8403"></span>`M8403` | `transformer-voltage-mismatch` | <Badge type="warning" text="warning" /> | Transformer '<code>&lt;xfmrName&gt;</code>' winding <code>&lt;winding&gt;</code> rated voltage (<code>&lt;value&gt;</code> kV) differs from nominal bus voltage (<code>&lt;value&gt;</code> kV). |
+| `M8402`                                 | `transformer-impedance-zero`   | <Badge type="danger" text="error" />    | Transformer '<code>&lt;xfmrName&gt;</code>' specifies non-positive leakage reactance (xhl=<code>&lt;xhl&gt;</code>); must be &gt; 0.                                                             |
+| <span id="opendss-m8403"></span>`M8403` | `load-pf-out-of-range`         | <Badge type="warning" text="warning" /> | Load '<code>&lt;loadName&gt;</code>' specifies power factor (<code>&lt;pf&gt;</code>) outside valid range (0 &lt; &#124;pf&#124; &lt;= 1.0).                                                     |
+| `M8403`                                 | `transformer-voltage-mismatch` | <Badge type="warning" text="warning" /> | Transformer '<code>&lt;xfmrName&gt;</code>' winding <code>&lt;winding&gt;</code> rated voltage (<code>&lt;value&gt;</code> kV) differs from nominal bus voltage (<code>&lt;value&gt;</code> kV). |
 | <span id="opendss-m8404"></span>`M8404` | `reverse-power-hosting-risk`   | <Badge type="warning" text="warning" /> | Total DER generation capacity on feeder '<code>&lt;feederName&gt;</code>' (<code>&lt;value&gt;</code> kW) exceeds upstream transformer thermal rating (<code>&lt;value&gt;</code> kVA).          |
 | <span id="opendss-m8405"></span>`M8405` | `missing-circuit-definition`   | <Badge type="danger" text="error" />    | OpenDSS script defines circuit elements without declaring a 'New Circuit' voltage source.                                                                                                        |
 | <span id="opendss-m8406"></span>`M8406` | `negative-load-power`          | <Badge type="danger" text="error" />    | Load '<code>&lt;loadName&gt;</code>' specifies negative active power (<code>&lt;value&gt;</code> kW); use Generator or Storage for net generation.                                               |

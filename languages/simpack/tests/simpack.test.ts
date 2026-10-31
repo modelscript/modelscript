@@ -390,4 +390,103 @@ MARKER m1 b_chassis l_base 0.0 0.0
     const tElapsed = performance.now() - tStart;
     assert.ok(tElapsed < 500, `Benchmark took ${tElapsed}ms for ${N} operations (< 500ms expected)`);
   });
+
+  it("should detect unclosed 4-bar loop residuals (no telescoping cancellation) and iteratively close the loop", async () => {
+    const { solveLoopClosureResidual } = await import("../src/kinematics/loop-solver.js");
+    const openPositions = new Map([
+      ["b1", { x: 0, y: 0, z: 0 }],
+      ["b2", { x: 1, y: 0, z: 0 }],
+      ["b3", { x: 1, y: 1, z: 0 }],
+      ["b4", { x: 0, y: 2.5, z: 0 }],
+    ]);
+
+    const res = solveLoopClosureResidual(openPositions, ["b1", "b2", "b3", "b4"]);
+    assert.equal(res.isClosed, false);
+    const errNorm = Math.sqrt(res.closureError.x ** 2 + res.closureError.y ** 2 + res.closureError.z ** 2);
+    assert.ok(errNorm > 0.5, `Expected non-zero closure residual, got ${errNorm}`);
+    assert.ok(res.adjustedPositions);
+
+    // Re-evaluating the iteratively adjusted positions should close the loop
+    const recheck = solveLoopClosureResidual(res.adjustedPositions, ["b1", "b2", "b3", "b4"]);
+    assert.equal(recheck.isClosed, true);
+  });
+
+  it("should emit K7006 BAUMGARTE_DIVERGENCE when joint Baumgarte stabilization parameters are non-positive", () => {
+    const xml = `
+<simpack_model name="DivergentBaumgarte">
+  <body id="b1" mass="10.0" />
+  <marker id="m0" body="$inertial" x="0" y="0" z="0" />
+  <marker id="m1" body="b1" x="0" y="0" z="0" />
+  <joint id="j1" type="revolute" from="m0" to="m1" alpha="-5.0" beta="0.0" />
+</simpack_model>
+`;
+    const model = parseSpckXml(xml, "DivergentBaumgarte");
+    const diags = lintSimpackModel(model);
+    const k7006 = diags.filter((d) => d.code === "K7006");
+    assert.equal(k7006.length, 2);
+  });
+
+  it("should lower 3D marker lever arms, rotational joint constraints, and 6-DOF rotational/nonlinear bushings into DAE arena", async () => {
+    const { lowerSimpackToDae, getSimpackJointConstraintSpec } = await import("../src/dae/simpack-to-dae.js");
+
+    const xml = `
+<simpack_model name="BogieSuspension">
+  <body id="b_frame" mass="1200.0" ixx="400.0" iyy="800.0" izz="900.0" />
+  <body id="b_wheelset" mass="800.0" ixx="200.0" iyy="50.0" izz="200.0" />
+  <marker id="m_ground" body="$inertial" x="0" y="0" z="0" />
+  <marker id="m_frame_pivot" body="b_frame" x="0.5" y="0.2" z="-0.1" />
+  <marker id="m_frame_bush" body="b_frame" x="1.2" y="0.8" z="-0.3" />
+  <marker id="m_wheel_bush" body="b_wheelset" x="1.2" y="0.8" z="0.0" />
+  <joint id="j_rev" type="revolute" from="m_ground" to="m_frame_pivot" />
+  <bushing id="bush1" from="m_frame_bush" to="m_wheel_bush"
+    kx="500000" ky="500000" kz="800000"
+    cx="5000" cy="5000" cz="12000"
+    krx="25000" kry="15000" krz="30000"
+    crx="400" cry="300" crz="500"
+    k3z="1000000" />
+</simpack_model>
+`;
+    const model = parseSpckXml(xml, "BogieSuspension");
+    const dae = lowerSimpackToDae(model, undefined, { stabilization: "lagrange" });
+
+    // 2 bodies (24 vars) + 1 bushing with rotational stiffness (3 trans + 3 rot = 6 vars) + 1 revolute joint (5 lam vars) = 35
+    assert.equal(dae.varCount, 35);
+    assert.equal(dae.eqCount, 35);
+
+    const varNames = dae.getVariables().map((v) => v.name);
+    assert.ok(varNames.includes("bush1.tx") && varNames.includes("bush1.ty") && varNames.includes("bush1.tz"));
+    for (let k = 0; k < 5; k++) {
+      assert.ok(varNames.includes(`lam_j_rev_${k}`), `Expected lam_j_rev_${k}`);
+    }
+
+    const referencedVars = new Set<string>();
+    for (const eq of dae.getEquations()) {
+      dae.collectExprVarNames(eq.lhs, referencedVars);
+      dae.collectExprVarNames(eq.rhs, referencedVars);
+    }
+    // Verify 3D rotational lever arm terms (theta * sz - psi * sy) on offset markers
+    assert.ok(referencedVars.has("b_frame.theta") && referencedVars.has("b_frame.psi"));
+
+    // Verify joint constraint specs across all joint types
+    assert.equal(getSimpackJointConstraintSpec("spherical").transAxes.length, 3);
+    assert.equal(
+      getSimpackJointConstraintSpec("universal").transAxes.length +
+        getSimpackJointConstraintSpec("universal").rotAxes.length,
+      4,
+    );
+    assert.equal(
+      getSimpackJointConstraintSpec("cylindrical").transAxes.length +
+        getSimpackJointConstraintSpec("cylindrical").rotAxes.length,
+      4,
+    );
+    assert.equal(
+      getSimpackJointConstraintSpec("prismatic").transAxes.length +
+        getSimpackJointConstraintSpec("prismatic").rotAxes.length,
+      5,
+    );
+    assert.equal(
+      getSimpackJointConstraintSpec("fixed").transAxes.length + getSimpackJointConstraintSpec("fixed").rotAxes.length,
+      6,
+    );
+  });
 });

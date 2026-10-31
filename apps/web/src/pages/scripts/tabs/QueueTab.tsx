@@ -16,9 +16,13 @@ export interface QueueTabProps {
   setStatusFilter: (status: string) => void;
   domainFilter?: string | undefined;
   setDomainFilter?: ((domain: string) => void) | undefined;
+  standardFilter?: string | undefined;
+  setStandardFilter?: ((std: string) => void) | undefined;
   filteredJobs: UnifiedJobItem[];
   onInspectJob: (id: string | number) => void;
   onBrowseTemplates: () => void;
+  onRerunJob?: ((job: UnifiedJobItem) => void) | undefined;
+  onSaveJobAsTemplate?: ((job: UnifiedJobItem) => void) | undefined;
 }
 
 export const QueueTab: React.FC<QueueTabProps> = ({
@@ -29,9 +33,13 @@ export const QueueTab: React.FC<QueueTabProps> = ({
   setStatusFilter,
   domainFilter = "ALL",
   setDomainFilter,
+  standardFilter = "ALL",
+  setStandardFilter,
   filteredJobs,
   onInspectJob,
   onBrowseTemplates,
+  onRerunJob,
+  onSaveJobAsTemplate,
 }) => {
   return (
     <Box display="flex" flexDirection="column" gap={3}>
@@ -67,7 +75,7 @@ export const QueueTab: React.FC<QueueTabProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Filter jobs by name, ID, or solver..."
+            placeholder="Filter jobs by name, package, model, or solver..."
             style={{
               background: "transparent",
               border: "none",
@@ -89,28 +97,58 @@ export const QueueTab: React.FC<QueueTabProps> = ({
         </div>
 
         <Box display="flex" alignItems="center" gap={3} flexWrap="wrap">
+          {/* Open Standard Filters */}
+          {setStandardFilter && (
+            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+              <span style={{ fontSize: "12px", color: "var(--color-text-muted)", marginRight: "4px" }}>Standard:</span>
+              {(
+                [
+                  { id: "ALL", label: "All Formats", color: "var(--color-accent-purple, #6f42c1)" },
+                  { id: "sedml", label: ".sedml", color: "#06b6d4" },
+                  { id: "ssp-ssv", label: ".ssv", color: "#10b981" },
+                  { id: "dakota", label: ".dakota", color: "#f59e0b" },
+                ] as const
+              ).map((std) => (
+                <FilterChip
+                  key={std.id}
+                  $isSelected={standardFilter === std.id}
+                  $activeColor={std.color}
+                  onClick={() => setStandardFilter(std.id)}
+                >
+                  <span>{std.label}</span>
+                </FilterChip>
+              ))}
+            </Box>
+          )}
+
           {/* Domain Filters */}
           {setDomainFilter && (
             <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
               <span style={{ fontSize: "12px", color: "var(--color-text-muted)", marginRight: "4px" }}>Domain:</span>
-              {(["ALL", "MODELICA", "CFD", "FEA"] as const).map((dom) => (
-                <FilterChip
-                  key={dom}
-                  $isSelected={domainFilter === dom}
-                  $activeColor={
-                    dom === "MODELICA"
-                      ? "#eab308"
-                      : dom === "CFD"
-                        ? "var(--color-accent-cyan, #06b6d4)"
-                        : dom === "FEA"
-                          ? "#f43f5e"
-                          : "var(--color-accent-purple, #6f42c1)"
-                  }
-                  onClick={() => setDomainFilter(dom)}
-                >
-                  <span>{dom === "ALL" ? "All Domains" : dom}</span>
-                </FilterChip>
-              ))}
+              {(["ALL", "MODELICA", "CFD", "FEA", "PSCAD", "GENSYS", "SIMPACK", "SYSMLV2", "CAD"] as const).map(
+                (dom) => (
+                  <FilterChip
+                    key={dom}
+                    $isSelected={domainFilter === dom}
+                    $activeColor={
+                      dom === "MODELICA"
+                        ? "#eab308"
+                        : dom === "CFD"
+                          ? "var(--color-accent-cyan, #06b6d4)"
+                          : dom === "FEA"
+                            ? "#f43f5e"
+                            : dom === "PSCAD"
+                              ? "#10b981"
+                              : dom === "GENSYS" || dom === "SIMPACK"
+                                ? "#8b5cf6"
+                                : "var(--color-accent-purple, #6f42c1)"
+                    }
+                    onClick={() => setDomainFilter(dom)}
+                  >
+                    <span>{dom === "ALL" ? "All Domains" : dom}</span>
+                  </FilterChip>
+                ),
+              )}
             </Box>
           )}
 
@@ -170,8 +208,8 @@ export const QueueTab: React.FC<QueueTabProps> = ({
             fontSize="13px"
             style={{ maxWidth: 360, margin: "6px auto 16px", display: "block", color: "var(--color-text-muted)" }}
           >
-            {searchQuery || statusFilter !== "ALL" || domainFilter !== "ALL"
-              ? "Try adjusting your search query, domain, or status filter."
+            {searchQuery || statusFilter !== "ALL" || domainFilter !== "ALL" || standardFilter !== "ALL"
+              ? "Try adjusting your search query, standard format, domain, or status filter."
               : "You haven't launched any simulations yet. Pick a ready-to-run template or submit a custom job."}
           </Text>
           <button
@@ -194,7 +232,13 @@ export const QueueTab: React.FC<QueueTabProps> = ({
       ) : (
         <Box display="flex" flexDirection="column" gap={2}>
           {filteredJobs.map((job) => (
-            <UnifiedJobCard key={job.id} job={job} onInspect={onInspectJob} />
+            <UnifiedJobCard
+              key={job.id}
+              job={job}
+              onInspect={onInspectJob}
+              onRerun={onRerunJob}
+              onSaveAsTemplate={onSaveJobAsTemplate}
+            />
           ))}
         </Box>
       )}

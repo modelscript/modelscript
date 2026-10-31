@@ -37,7 +37,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface ReqifViewerProps {
   viewConfig: {
@@ -361,8 +361,8 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   onCodeChange,
   onRevealLine,
 }) => {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const navigate = useNavigate();
 
   const initialSource = useMemo(() => {
@@ -820,7 +820,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
           $bg={badge?.background}
           $color={badge?.color}
           $border={badge?.borderColor}
-          title={row.metadata?.entailmentExplanation || strVal}
+          title={String(row.metadata?.entailmentExplanation || strVal)}
         >
           {strVal || "—"}
         </BadgePill>
@@ -1096,17 +1096,14 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
           minHeight: isFullScreen ? "480px" : "340px",
           background: isDark ? "#0b1120" : "#f8fafc",
           position: "relative",
-          overflow: " auto",
+          overflow: "hidden",
         }}
       >
         <div
           style={{
             flex: 1,
             minHeight: 300,
-            padding: 12,
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
           }}
           onClick={(e) => {
             const target = (e.target as HTMLElement).closest("[data-reqif-id]");
@@ -1114,10 +1111,9 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
               setSelectedNodeId(target.getAttribute("data-reqif-id"));
             }
           }}
-          dangerouslySetInnerHTML={{
-            __html: sanitizeSvgMarkup(diagramData.svg),
-          }}
-        />
+        >
+          <InteractiveSvgStage svgHtml={sanitizeSvgMarkup(diagramData.svg, { isFullScreen })} />
+        </div>
         {selectedNode && (
           <div
             style={{
@@ -1195,9 +1191,11 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
           <BadgePill $bg="rgba(2, 132, 199, 0.16)" $color="#38bdf8" $border="rgba(56, 189, 248, 0.4)">
             OMG ReqIF 1.2
           </BadgePill>
-          <span style={{ fontWeight: 700, fontSize: 13 }}>
-            {(viewConfig?.title as string) || diagramData.model.title}
-          </span>
+          {!isFullScreen && (
+            <span style={{ fontWeight: 700, fontSize: 13 }}>
+              {(viewConfig?.title as string) || diagramData.model.title}
+            </span>
+          )}
           {isEdited && (
             <BadgePill $bg="rgba(245, 158, 11, 0.16)" $color="#fbbf24" $border="rgba(245, 158, 11, 0.45)">
               ● Edited (Synced to XML)
@@ -1418,13 +1416,15 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
               </PillButton>
             )}
 
-            <PillButton
-              $isDark={isDark}
-              onClick={handleOpenInPlayground}
-              title="Open in Ansatz Polyglot Playground (powered by ModelScript)"
-            >
-              Playground
-            </PillButton>
+            {!isFullScreen && (
+              <PillButton
+                $isDark={isDark}
+                onClick={handleOpenInPlayground}
+                title="Open in Ansatz Polyglot Playground (powered by ModelScript)"
+              >
+                Playground
+              </PillButton>
+            )}
           </div>
         </SubToolbar>
       )}

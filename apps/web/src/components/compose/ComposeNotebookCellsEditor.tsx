@@ -197,7 +197,6 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
 
 const CODE_BLOCK_LANGUAGES = [
   { id: "modelica", label: "Modelica" },
-  { id: "modelscript", label: "ModelScript" },
   { id: "sysml2", label: "SysML v2" },
   { id: "python", label: "Python" },
   { id: "typescript", label: "TypeScript" },
@@ -941,7 +940,8 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                   }}
                 >
                   <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--ms-text-2)" }}>
-                    {cell.title || `Embedded Artifact #${cell.artifactId}`}
+                    {(cell as { title?: string; artifactId?: number }).title ||
+                      `Embedded Artifact #${(cell as { artifactId?: number }).artifactId}`}
                   </span>
                   <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     {onDraftFromArtifactCell && (
@@ -950,7 +950,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                         disabled={Boolean(aiBusy)}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDraftFromArtifactCell(cell.artifactId, cell.id);
+                          onDraftFromArtifactCell((cell as { artifactId: number }).artifactId, cell.id);
                         }}
                         title="Generate an explanation section below using AI"
                       >
@@ -993,13 +993,13 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                   </div>
                 </div>
                 <div style={{ padding: "8px" }}>
-                  <ArtifactViewCard artifactId={cell.artifactId} />
+                  <ArtifactViewCard artifactId={(cell as { artifactId: number }).artifactId} />
                 </div>
                 <div style={{ padding: "0 12px 6px" }}>
                   <ArtifactCaptionInput
                     type="text"
                     placeholder="Write a caption for this figure or model..."
-                    value={cell.caption || ""}
+                    value={(cell as { caption?: string }).caption || ""}
                     onChange={(e) => updateArtifactCellCaption(cell.id, e.target.value)}
                   />
                 </div>

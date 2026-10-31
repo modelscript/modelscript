@@ -29,19 +29,32 @@ export function lintOpenDss(deck: DssDeck): OpenDssDiagnostic[] {
     });
   }
 
-  // Collect all valid bus names from circuit, lines, and transformers
+  // Collect all valid bus names and nominal phase counts / kVs from circuit, lines, and transformers
   const knownBuses = new Set<string>();
+  const busPhases = new Map<string, number>();
+  const busKv = new Map<string, number>();
   if (deck.circuit) {
     knownBuses.add(deck.circuit.bus1);
+    busPhases.set(deck.circuit.bus1, deck.circuit.phases);
+    busKv.set(deck.circuit.bus1, deck.circuit.baseKv);
+  }
+  for (const [, xfmr] of deck.transformers) {
+    for (let i = 0; i < xfmr.buses.length; i++) {
+      const b = xfmr.buses[i];
+      if (!b) continue;
+      knownBuses.add(b);
+      if (!busPhases.has(b)) busPhases.set(b, xfmr.phases);
+      const wKv = xfmr.kvs[i];
+      if (wKv !== undefined && !busKv.has(b)) {
+        busKv.set(b, wKv);
+      }
+    }
   }
   for (const [, line] of deck.lines) {
     knownBuses.add(line.bus1);
     knownBuses.add(line.bus2);
-  }
-  for (const [, xfmr] of deck.transformers) {
-    for (const b of xfmr.buses) {
-      knownBuses.add(b);
-    }
+    if (!busPhases.has(line.bus1)) busPhases.set(line.bus1, line.phases);
+    if (!busPhases.has(line.bus2)) busPhases.set(line.bus2, line.phases);
   }
 
   // 2. Check Line definitions
@@ -67,9 +80,54 @@ export function lintOpenDss(deck: DssDeck): OpenDssDiagnostic[] {
         range: line.range,
       });
     }
+
+    // M8402: Phase count mismatch
+    const b1Phases = busPhases.get(line.bus1);
+    if (b1Phases !== undefined && line.phases !== b1Phases) {
+      diags.push({
+        code: OpenDssErrorCode.PHASE_COUNT_MISMATCH.code,
+        rule: OpenDssErrorCode.PHASE_COUNT_MISMATCH.rule,
+        severity: OpenDssErrorCode.PHASE_COUNT_MISMATCH.severity,
+        message: OpenDssErrorCode.PHASE_COUNT_MISMATCH.message(line.name, line.phases, line.bus1, b1Phases),
+        range: line.range,
+      });
+    }
   }
 
-  // 3. Check Load definitions
+  // 3. Check Transformer definitions (M8402 & M8403)
+  for (const [, xfmr] of deck.transformers) {
+    if (xfmr.xhl !== undefined && xfmr.xhl <= 0) {
+      diags.push({
+        code: OpenDssErrorCode.TRANSFORMER_IMPEDANCE_ZERO.code,
+        rule: OpenDssErrorCode.TRANSFORMER_IMPEDANCE_ZERO.rule,
+        severity: OpenDssErrorCode.TRANSFORMER_IMPEDANCE_ZERO.severity,
+        message: OpenDssErrorCode.TRANSFORMER_IMPEDANCE_ZERO.message(xfmr.name, xfmr.xhl),
+        range: xfmr.range,
+      });
+    }
+
+    for (let i = 0; i < xfmr.buses.length; i++) {
+      const b = xfmr.buses[i];
+      if (!b) continue;
+      const wKv = xfmr.kvs[i];
+      const expectedKv = busKv.get(b);
+      if (
+        wKv !== undefined &&
+        expectedKv !== undefined &&
+        Math.abs(wKv - expectedKv) / Math.max(1e-6, expectedKv) > 0.1
+      ) {
+        diags.push({
+          code: OpenDssErrorCode.TRANSFORMER_VOLTAGE_MISMATCH.code,
+          rule: OpenDssErrorCode.TRANSFORMER_VOLTAGE_MISMATCH.rule,
+          severity: OpenDssErrorCode.TRANSFORMER_VOLTAGE_MISMATCH.severity,
+          message: OpenDssErrorCode.TRANSFORMER_VOLTAGE_MISMATCH.message(xfmr.name, i + 1, wKv, expectedKv),
+          range: xfmr.range,
+        });
+      }
+    }
+  }
+
+  // 4. Check Load definitions
   for (const [, load] of deck.loads) {
     // M8401: Unconnected bus node
     if (!knownBuses.has(load.bus1)) {
@@ -92,9 +150,20 @@ export function lintOpenDss(deck: DssDeck): OpenDssDiagnostic[] {
         range: load.range,
       });
     }
+
+    // M8403: Load power factor out of range
+    if (load.pf !== undefined && (Math.abs(load.pf) > 1.0 || load.pf === 0)) {
+      diags.push({
+        code: OpenDssErrorCode.LOAD_PF_OUT_OF_RANGE.code,
+        rule: OpenDssErrorCode.LOAD_PF_OUT_OF_RANGE.rule,
+        severity: OpenDssErrorCode.LOAD_PF_OUT_OF_RANGE.severity,
+        message: OpenDssErrorCode.LOAD_PF_OUT_OF_RANGE.message(load.name, load.pf),
+        range: load.range,
+      });
+    }
   }
 
-  // 4. Check PV systems
+  // 5. Check PV systems
   for (const [, pv] of deck.pvSystems) {
     if (!knownBuses.has(pv.bus1)) {
       diags.push({
@@ -107,7 +176,7 @@ export function lintOpenDss(deck: DssDeck): OpenDssDiagnostic[] {
     }
   }
 
-  // 5. M8404: Reverse power hosting risk check
+  // 6. M8404: Reverse power hosting risk check
   let totalDerKw = 0;
   for (const [, pv] of deck.pvSystems) totalDerKw += pv.pmpp;
   for (const [, st] of deck.storages) totalDerKw += st.kwRated;

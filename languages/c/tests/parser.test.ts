@@ -56,4 +56,32 @@ double compute_pid(double error, double dt, PidParams* p) {
     checkErrors(root);
     assert.deepEqual(errors, [], `Parser found errors:\n${errors.join("\n")}`);
   });
+
+  test("WASM parser supports chained postfix expressions (arr[i].field, p->next->val, matrix[i][j])", async () => {
+    const wasmBytes = fs.readFileSync(wasmPath);
+    const { parser } = await createWasmParser(wasmBytes);
+
+    const chainedSample = `
+double eval_chained(Node* p, int i, int j) {
+  double a = arr[i].field;
+  double b = p->next->val;
+  double c = matrix[i][j];
+  p->items[i].count++;
+  return a + b + c;
+}
+`;
+    const tree = parser.parse(chainedSample);
+    assert.ok(tree, "Parser should return syntax tree");
+    const errors: string[] = [];
+    function checkErrors(node: any) {
+      if (node.hasError && node.hasError()) {
+        errors.push(`Error at [${node.startPosition.row}:${node.startPosition.column}]: ${node.text}`);
+      }
+      for (let i = 0; i < node.childCount; i++) {
+        checkErrors(node.child(i));
+      }
+    }
+    checkErrors(tree.rootNode);
+    assert.deepEqual(errors, [], `Parser found errors on chained postfix:\n${errors.join("\n")}`);
+  });
 });

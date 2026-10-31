@@ -8,6 +8,12 @@ export * from "./lsp.js";
 export * from "./parser/swmm-parser.js";
 export * from "./projections/swmm-to-modelica.js";
 export * from "./solver/hydraulic-solver.js";
-export { routeNetworkFlow as solveSwmmNetworkFlow } from "./solver/hydraulic-solver.js";
+export {
+  computePreissmannSection,
+  computeSubcatchmentRunoff,
+  solveSwmmDynamicWave,
+  solveSwmmHydraulics,
+  routeNetworkFlow as solveSwmmNetworkFlow,
+} from "./solver/hydraulic-solver.js";
 export * from "./types.js";
 export * from "./workspace-index.js";

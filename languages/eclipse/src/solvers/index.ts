@@ -2,6 +2,7 @@
 
 export {
   solveReservoirDepletion,
+  type EclipseSimulationResult,
   type ReservoirSimulationResult,
   type ReservoirSolverOptions,
   type ReservoirStepRecord,

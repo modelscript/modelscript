@@ -26,14 +26,15 @@ export interface RuntimeFortranArray {
 }
 
 export interface FortranExecutionContext {
-  time: number;
-  dt: number;
-  firstStep: boolean;
-  inputs?: ((portName: string) => number) | undefined;
+  time?: number | undefined;
+  dt?: number | undefined;
+  firstStep?: boolean | undefined;
+  inputs?: ((portName: string) => number) | Record<string, number> | Map<string, number> | undefined;
   getInput?: ((portName: string) => number) | undefined;
-  setOutput: (portName: string, value: number) => void;
-  storf: Float64Array;
-  stori: Int32Array;
+  setOutput?: ((portName: string, value: number) => void) | undefined;
+  outputs?: Record<string, number> | Map<string, number> | undefined;
+  storf?: Float64Array | undefined;
+  stori?: Int32Array | undefined;
   locals?: Record<string, number | boolean | string> | undefined;
   arrays?: Record<string, RuntimeFortranArray> | undefined;
   onStatementSync?: ((line: number, locals: Record<string, number | boolean | string>) => void) | undefined;
@@ -54,6 +55,8 @@ export interface CompiledFortranComponent {
   signature: FortranRoutineSignature;
   moduleAst: FortranModuleAst;
 }
+
+export type CompiledUserComponentStep = FortranStepFunction & CompiledFortranComponent;
 
 function createRuntimeArrayFromSpec(spec: FortranArraySpec): RuntimeFortranArray {
   if (spec.allocatable || spec.dims.length === 0) {
@@ -124,6 +127,63 @@ export function compileFortranStep(
 
 export const compileFortranSegment = compileFortranStep;
 
+/**
+ * Compiles either raw Fortran source text or a pre-parsed `FortranStmt[]` AST into a
+ * user component step closure that is both directly callable (`compiled(ctx)`) and
+ * exposes `.step(ctx)` and component metadata.
+ */
+export function compileUserComponentStep(
+  sourceOrAst: string | FortranStmt[],
+  params: Record<string, string | number> = {},
+  portDims: Record<string, number> = {},
+): CompiledUserComponentStep {
+  if (typeof sourceOrAst === "string") {
+    const comp = compileFortranStep(sourceOrAst, params, portDims);
+    const fn = ((ctx: FortranExecutionContext) => comp.step(ctx)) as CompiledUserComponentStep;
+    return Object.assign(fn, comp);
+  }
+  const stmts = sourceOrAst;
+  const step = buildStepFunction(stmts);
+  const defaultSig: FortranRoutineSignature = {
+    name: "user_component",
+    kind: "script",
+    args: [],
+    inputs: [],
+    outputs: [],
+    locals: [],
+    constants: {},
+    arrays: {},
+  };
+  const emptyPrep = preprocessFortranSegment("", params, portDims);
+  const comp: CompiledFortranComponent = {
+    numRealStates: 16,
+    numIntStates: 16,
+    referencedPorts: [],
+    assignedPorts: [],
+    step,
+    ast: stmts,
+    metadata: emptyPrep,
+    signature: defaultSig,
+    moduleAst: {
+      units: new Map(),
+      moduleConstants: {},
+      entryUnit: {
+        name: "user_component",
+        kind: "script",
+        signature: defaultSig,
+        stmts,
+        calledRoutines: [],
+        usedModules: [],
+        startLine: 1,
+        endLine: 1,
+      },
+      callGraph: new Map(),
+    },
+  };
+  const fn = ((ctx: FortranExecutionContext) => step(ctx)) as CompiledUserComponentStep;
+  return Object.assign(fn, comp);
+}
+
 export function buildStepFunction(
   stmts: FortranStmt[],
   initialConstants: Record<string, number> = {},
@@ -131,9 +191,95 @@ export function buildStepFunction(
   moduleAst?: FortranModuleAst,
   callDepth: number = 0,
 ): FortranStepFunction {
-  return function step(ctx: FortranExecutionContext): void {
-    const locals: Record<string, number | boolean | string> = ctx.locals ?? {};
-    const arrays: Record<string, RuntimeFortranArray> = ctx.arrays ?? {};
+  // Collect any inline SUBROUTINE / FUNCTION AST nodes into a local unit map
+  const inlineUnits = new Map<string, FortranUnitAst>();
+  for (const s of stmts) {
+    if (s.kind === "subroutine" || s.kind === "function") {
+      const sig: FortranRoutineSignature = {
+        name: s.name,
+        kind: s.kind,
+        returnVar: s.kind === "function" ? (s.returnVar ?? s.name) : undefined,
+        args: s.params,
+        inputs: [],
+        outputs: s.params,
+        locals: [],
+        constants: {},
+        arrays: {},
+      };
+      inlineUnits.set(s.name.toUpperCase(), {
+        name: s.name,
+        kind: s.kind,
+        returnVar: sig.returnVar,
+        signature: sig,
+        stmts: s.body,
+        calledRoutines: [],
+        usedModules: [],
+        startLine: s.line ?? 1,
+        endLine: s.line ?? 1,
+      });
+    }
+  }
+
+  // If the AST consists solely of a single subroutine/function node, execute its body as the entry
+  const executableStmts =
+    stmts.length === 1 && (stmts[0]!.kind === "subroutine" || stmts[0]!.kind === "function")
+      ? stmts[0]!.body
+      : stmts.filter((s) => s.kind !== "subroutine" && s.kind !== "function");
+
+  const defaultStorf = new Float64Array(64);
+  const defaultStori = new Int32Array(64);
+
+  return function step(rawCtx: FortranExecutionContext = {}): void {
+    const locals: Record<string, number | boolean | string> = rawCtx.locals ?? {};
+    const arrays: Record<string, RuntimeFortranArray> = rawCtx.arrays ?? {};
+    const storf = rawCtx.storf ?? defaultStorf;
+    const stori = rawCtx.stori ?? defaultStori;
+    const ctxTime = rawCtx.time ?? 0;
+    const ctxDt = rawCtx.dt ?? 0.001;
+    const ctxFirstStep = rawCtx.firstStep ?? false;
+
+    const readInput = (portName: string): number => {
+      if (typeof rawCtx.inputs === "function") return rawCtx.inputs(portName);
+      if (typeof rawCtx.getInput === "function") return rawCtx.getInput(portName);
+      if (rawCtx.inputs instanceof Map) {
+        return (
+          rawCtx.inputs.get(portName) ??
+          rawCtx.inputs.get(portName.toLowerCase()) ??
+          rawCtx.inputs.get(portName.toUpperCase()) ??
+          0
+        );
+      }
+      if (rawCtx.inputs && typeof rawCtx.inputs === "object") {
+        const rec = rawCtx.inputs as Record<string, number>;
+        const v = rec[portName] ?? rec[portName.toLowerCase()] ?? rec[portName.toUpperCase()];
+        if (v !== undefined) return Number(v);
+      }
+      const locVal = locals[portName] ?? locals[portName.toLowerCase()] ?? locals[portName.toUpperCase()];
+      return locVal !== undefined ? Number(locVal) : 0;
+    };
+
+    const writeOutput = (portName: string, value: number): void => {
+      if (typeof rawCtx.setOutput === "function") {
+        rawCtx.setOutput(portName, value);
+      }
+      if (rawCtx.outputs instanceof Map) {
+        rawCtx.outputs.set(portName, value);
+      } else if (rawCtx.outputs && typeof rawCtx.outputs === "object") {
+        (rawCtx.outputs as Record<string, number>)[portName] = value;
+      }
+      locals[portName] = value;
+    };
+
+    const ctx = {
+      ...rawCtx,
+      time: ctxTime,
+      dt: ctxDt,
+      firstStep: ctxFirstStep,
+      inputs: readInput,
+      setOutput: writeOutput,
+      storf,
+      stori,
+    };
 
     for (const [k, v] of Object.entries(initialConstants)) {
       if (locals[k] === undefined && locals[k.toLowerCase()] === undefined && locals[k.toUpperCase()] === undefined) {
@@ -150,8 +296,27 @@ export function buildStepFunction(
     let nstorf = 0;
     let nstori = 0;
 
+    function lookupUnit(nameUpper: string): FortranUnitAst | undefined {
+      return inlineUnits.get(nameUpper) ?? moduleAst?.units.get(nameUpper);
+    }
+
     function getArray(name: string): RuntimeFortranArray | undefined {
-      return arrays[name] ?? arrays[name.toLowerCase()] ?? arrays[name.toUpperCase()];
+      const existing = arrays[name] ?? arrays[name.toLowerCase()] ?? arrays[name.toUpperCase()];
+      if (existing) return existing;
+      const locAny =
+        (locals as Record<string, unknown>)[name] ??
+        (locals as Record<string, unknown>)[name.toLowerCase()] ??
+        (locals as Record<string, unknown>)[name.toUpperCase()];
+      if (Array.isArray(locAny) || locAny instanceof Float64Array) {
+        const wrapped: RuntimeFortranArray = {
+          data: locAny instanceof Float64Array ? locAny : new Float64Array(locAny.map(Number)),
+          dims: [{ lower: 1, upper: locAny.length }],
+          allocated: true,
+        };
+        arrays[name] = wrapped;
+        return wrapped;
+      }
+      return undefined;
     }
 
     function setArray(name: string, arr: RuntimeFortranArray): void {
@@ -382,11 +547,11 @@ export function buildStepFunction(
           if (upper === "NSTORF") return nstorf;
           if (upper === "NSTORI") return nstori;
           const val = locals[expr.name] ?? locals[expr.name.toLowerCase()] ?? locals[upper];
-          return val !== undefined ? val : 0;
+          if (val !== undefined) return val;
+          return ctx.inputs(expr.name);
         }
         case "port": {
-          const fn = ctx.inputs ?? ctx.getInput;
-          return fn ? fn(expr.portName) : 0;
+          return ctx.inputs(expr.portName);
         }
         case "special": {
           if (expr.name === "TIME") return ctx.time;
@@ -416,8 +581,8 @@ export function buildStepFunction(
             }
             return 0;
           }
-          // Check user-defined FUNCTION in moduleAst
-          const callee = moduleAst?.units.get(expr.name.toUpperCase());
+          // Check user-defined FUNCTION in inlineUnits or moduleAst
+          const callee = lookupUnit(expr.name.toUpperCase());
           if (callee) {
             const argExprs: FortranExpr[] = expr.subscripts.map((s) =>
               s.kind === "index" ? s.expr : (s.start ?? { kind: "number", value: 0 }),
@@ -530,6 +695,10 @@ export function buildStepFunction(
               return Math.min(...evaluatedArgs);
             case "max":
               return Math.max(...evaluatedArgs);
+            case "mod":
+              return a1 !== 0 ? a0 % a1 : 0;
+            case "sign":
+              return a1 >= 0 ? Math.abs(a0) : -Math.abs(a0);
             default:
               return a0;
           }
@@ -554,7 +723,14 @@ export function buildStepFunction(
         const upper = expr.name.toUpperCase();
         if (upper === "NSTORF") nstorf = Math.trunc(Number(val));
         else if (upper === "NSTORI") nstori = Math.trunc(Number(val));
-        else locals[expr.name] = val;
+        else {
+          locals[expr.name] = val;
+          if (rawCtx.outputs instanceof Map) {
+            rawCtx.outputs.set(expr.name, Number(val));
+          } else if (rawCtx.outputs && typeof rawCtx.outputs === "object") {
+            (rawCtx.outputs as Record<string, number>)[expr.name] = Number(val);
+          }
+        }
       } else if (expr.kind === "state") {
         const rawIdx = evalExpr(expr.indexExpr);
         const idx = Math.trunc(Number(rawIdx));
@@ -576,11 +752,22 @@ export function buildStepFunction(
       }
     }
 
-    function execStmt(stmt: FortranStmt): void {
+    type ControlFlowSignal = "exit" | "cycle" | "return" | undefined;
+
+    function execStmt(stmt: FortranStmt): ControlFlowSignal {
       if (stmt.line !== undefined && ctx.onStatementSync) {
         ctx.onStatementSync(stmt.line, locals);
       }
       switch (stmt.kind) {
+        case "exit":
+          return "exit";
+        case "cycle":
+          return "cycle";
+        case "return":
+          return "return";
+        case "subroutine":
+        case "function":
+          return undefined;
         case "allocate": {
           for (const item of stmt.items) {
             const dims = item.dims.map((d) => ({
@@ -682,7 +869,14 @@ export function buildStepFunction(
             const upper = t.name.toUpperCase();
             if (upper === "NSTORF") nstorf = Math.trunc(Number(val));
             else if (upper === "NSTORI") nstori = Math.trunc(Number(val));
-            else locals[t.name] = val;
+            else {
+              locals[t.name] = val;
+              if (rawCtx.outputs instanceof Map) {
+                rawCtx.outputs.set(t.name, Number(val));
+              } else if (rawCtx.outputs && typeof rawCtx.outputs === "object") {
+                (rawCtx.outputs as Record<string, number>)[t.name] = Number(val);
+              }
+            }
           }
           break;
         }
@@ -693,10 +887,52 @@ export function buildStepFunction(
         }
         case "if": {
           const cond = Boolean(evalExpr(stmt.condition));
-          if (cond) {
-            for (const s of stmt.thenBody) execStmt(s);
-          } else if (stmt.elseBody) {
-            for (const s of stmt.elseBody) execStmt(s);
+          const branch = cond ? stmt.thenBody : stmt.elseBody;
+          if (branch) {
+            for (const s of branch) {
+              const sig = execStmt(s);
+              if (sig) return sig;
+            }
+          }
+          break;
+        }
+        case "selectCase": {
+          const selVal = evalExpr(stmt.selector);
+          let matchedBody: FortranStmt[] | undefined;
+          for (const branch of stmt.cases) {
+            if (branch.isDefault) continue;
+            let matches = false;
+            for (const cv of branch.values) {
+              if (cv.kind === "value") {
+                const v = evalExpr(cv.expr);
+                if (selVal === v || Number(selVal) === Number(v)) {
+                  matches = true;
+                  break;
+                }
+              } else if (cv.kind === "range") {
+                const numSel = Number(selVal);
+                const loOk = cv.lower === undefined || numSel >= Number(evalExpr(cv.lower));
+                const hiOk = cv.upper === undefined || numSel <= Number(evalExpr(cv.upper));
+                if (loOk && hiOk) {
+                  matches = true;
+                  break;
+                }
+              }
+            }
+            if (matches) {
+              matchedBody = branch.body;
+              break;
+            }
+          }
+          if (!matchedBody) {
+            const defBranch = stmt.cases.find((c) => c.isDefault);
+            matchedBody = defBranch?.body ?? stmt.defaultBody;
+          }
+          if (matchedBody) {
+            for (const s of matchedBody) {
+              const sig = execStmt(s);
+              if (sig) return sig;
+            }
           }
           break;
         }
@@ -710,8 +946,41 @@ export function buildStepFunction(
             for (let idx = startVal; stepVal > 0 ? idx <= endVal : idx >= endVal; idx += stepVal) {
               if (++iter > maxIters) break;
               locals[stmt.loopVar] = idx;
-              for (const s of stmt.body) execStmt(s);
+              let shouldExit = false;
+              for (const s of stmt.body) {
+                const sig = execStmt(s);
+                if (sig === "return") return "return";
+                if (sig === "exit") {
+                  shouldExit = true;
+                  break;
+                }
+                if (sig === "cycle") {
+                  break;
+                }
+              }
+              if (shouldExit) break;
             }
+          }
+          break;
+        }
+        case "doWhile": {
+          let iter = 0;
+          const maxIters = 10000;
+          while (evalExpr(stmt.condition)) {
+            if (++iter > maxIters) break;
+            let shouldExit = false;
+            for (const s of stmt.body) {
+              const sig = execStmt(s);
+              if (sig === "return") return "return";
+              if (sig === "exit") {
+                shouldExit = true;
+                break;
+              }
+              if (sig === "cycle") {
+                break;
+              }
+            }
+            if (shouldExit) break;
           }
           break;
         }
@@ -959,7 +1228,7 @@ export function buildStepFunction(
             }
 
             default: {
-              const callee = moduleAst?.units.get(subName);
+              const callee = lookupUnit(subName);
               if (callee) {
                 invokeUserUnit(callee, args);
               }
@@ -969,10 +1238,12 @@ export function buildStepFunction(
           break;
         }
       }
+      return undefined;
     }
 
-    for (const s of stmts) {
-      execStmt(s);
+    for (const s of executableStmts) {
+      const sig = execStmt(s);
+      if (sig === "return" || sig === "exit") break;
     }
   };
 }

@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert";
-import { containsDerivative, pantelidesIndexReductionArena, WasmPantelides } from "../src/analysis/wasm_pantelides.js";
+import {
+  analyzeStructuralDaeIndex,
+  computePryceSignatureMatrix,
+  containsDerivative,
+  pantelidesIndexReductionArena,
+  WasmPantelides,
+} from "../src/analysis/wasm_pantelides.js";
 import { BinOp, DAEBuilder, EqKind, Variability, VarType } from "../src/dae/wasm_dae.js";
 
 console.log("Testing Pantelides Index Reduction & WASM Runtime...");
@@ -146,6 +152,133 @@ console.log("Testing Pantelides Index Reduction & WASM Runtime...");
   assert.strictEqual(res.dummyDerivatives.size, 2, "Expected 2 dummy derivatives (1 position + 1 velocity)");
   assert.strictEqual(res.generatedEquations.length, 2, "Expected 2 differentiated equations (velocity + acceleration)");
   console.log("  ✔ Multi-step Index-3 holonomic constraint Pantelides reduction passed");
+}
+
+// Test 6: Pryce Sigma-Method & Pantelides on Index-3 Cartesian Pendulum
+//   der(x) = vx
+//   der(y) = vy
+//   m * der(vx) = -x * T
+//   m * der(vy) = -y * T - m * g
+//   x^2 + y^2 = L^2
+{
+  const arena = new DAEBuilder();
+  const x = arena.addVariable("x", VarType.Real, Variability.Continuous);
+  const y = arena.addVariable("y", VarType.Real, Variability.Continuous);
+  const vx = arena.addVariable("vx", VarType.Real, Variability.Continuous);
+  const vy = arena.addVariable("vy", VarType.Real, Variability.Continuous);
+  const T = arena.addVariable("T", VarType.Real, Variability.Continuous);
+  const m = arena.addVariable("m", VarType.Real, Variability.Parameter);
+  const g = arena.addVariable("g", VarType.Real, Variability.Parameter);
+  const L = arena.addVariable("L", VarType.Real, Variability.Parameter);
+  const derX = arena.addVariable("der(x)", VarType.Real, Variability.Continuous);
+  const derY = arena.addVariable("der(y)", VarType.Real, Variability.Continuous);
+  const derVx = arena.addVariable("der(vx)", VarType.Real, Variability.Continuous);
+  const derVy = arena.addVariable("der(vy)", VarType.Real, Variability.Continuous);
+
+  const stateVars = new Set<number>([x, y, vx, vy]);
+  const derivativeVars = new Set<number>([derX, derY, derVx, derVy]);
+  const parameters = new Set<number>([m, g, L]);
+
+  // Eq 0: der(x) = vx
+  arena.addEquation(EqKind.Simple, arena.addDerExpr(arena.addNameExpr("x")), arena.addNameExpr("vx"));
+  // Eq 1: der(y) = vy
+  arena.addEquation(EqKind.Simple, arena.addDerExpr(arena.addNameExpr("y")), arena.addNameExpr("vy"));
+  // Eq 2: m * der(vx) = -x * T
+  arena.addEquation(
+    EqKind.Simple,
+    arena.addBinaryExpr(BinOp.Mul, arena.addNameExpr("m"), arena.addDerExpr(arena.addNameExpr("vx"))),
+    arena.addBinaryExpr(BinOp.Mul, arena.addNegateExpr(arena.addNameExpr("x")), arena.addNameExpr("T")),
+  );
+  // Eq 3: m * der(vy) = -y * T - m * g
+  arena.addEquation(
+    EqKind.Simple,
+    arena.addBinaryExpr(BinOp.Mul, arena.addNameExpr("m"), arena.addDerExpr(arena.addNameExpr("vy"))),
+    arena.addBinaryExpr(
+      BinOp.Sub,
+      arena.addBinaryExpr(BinOp.Mul, arena.addNegateExpr(arena.addNameExpr("y")), arena.addNameExpr("T")),
+      arena.addBinaryExpr(BinOp.Mul, arena.addNameExpr("m"), arena.addNameExpr("g")),
+    ),
+  );
+  // Eq 4: x * x + y * y = L * L
+  arena.addEquation(
+    EqKind.Simple,
+    arena.addBinaryExpr(
+      BinOp.Add,
+      arena.addBinaryExpr(BinOp.Mul, arena.addNameExpr("x"), arena.addNameExpr("x")),
+      arena.addBinaryExpr(BinOp.Mul, arena.addNameExpr("y"), arena.addNameExpr("y")),
+    ),
+    arena.addBinaryExpr(BinOp.Mul, arena.addNameExpr("L"), arena.addNameExpr("L")),
+  );
+
+  // Verify Pryce Sigma-method signature matrix and dual offsets (c_i, d_j)
+  const sig = computePryceSignatureMatrix(arena, stateVars, derivativeVars, parameters);
+  assert.strictEqual(sig.structuralIndex, 3, "Pryce Sigma-method must detect Index-3 for Cartesian pendulum");
+  assert.deepStrictEqual(sig.c, [1, 1, 0, 0, 2], "Pryce equation differentiation offsets c_i must be [1, 1, 0, 0, 2]");
+  assert.deepStrictEqual(sig.d, [2, 2, 1, 1, 0], "Pryce variable derivative orders d_j must be [2, 2, 1, 1, 0]");
+
+  const analysis = analyzeStructuralDaeIndex(arena, stateVars, derivativeVars, parameters);
+  assert.strictEqual(analysis.structuralIndex, 3);
+  assert.strictEqual(analysis.equationDiffOrders.get(4), 2, "Holonomic constraint eq 4 must have diff order 2");
+  assert.strictEqual(analysis.variableOrders.get(T), 0, "Algebraic tension T must have derivative order 0");
+
+  // Run Pantelides index reduction on the Cartesian pendulum
+  const red = pantelidesIndexReductionArena(arena, stateVars, derivativeVars, parameters);
+  assert.strictEqual(red.structuralIndex, 3, "Pantelides reduction must report structural index 3");
+  assert.strictEqual(red.dummyDerivatives.size, 2, "Expected 2 dummy derivatives (1 position, 1 velocity)");
+  assert.strictEqual(red.generatedEquations.length, 2, "Expected 2 generated constraint equations");
+  const accelEqIdx = red.generatedEquations[1]!;
+  assert.strictEqual(
+    containsDerivative(arena, arena.getEqLhs(accelEqIdx)),
+    true,
+    "Second differentiated constraint must contain acceleration derivatives der(vx), der(vy)",
+  );
+  console.log("  ✔ Index-3 Cartesian Pendulum Pryce Sigma-method & Pantelides reduction passed");
+}
+
+// Test 7: Coupled Multi-Equation Structural Singularity via Bipartite Augmenting-Path MSS
+//   Eq 0: der(x) - (x + y) = 0
+//   Eq 1: der(x) + 2 * y = 0
+// Both equations contain der(x) and neither contains der(y) -> Hall MSS subset {Eq 0, Eq 1}!
+{
+  const arena = new DAEBuilder();
+  const x = arena.addVariable("x", VarType.Real, Variability.Continuous);
+  const y = arena.addVariable("y", VarType.Real, Variability.Continuous);
+  const derX = arena.addVariable("der(x)", VarType.Real, Variability.Continuous);
+  const derY = arena.addVariable("der(y)", VarType.Real, Variability.Continuous);
+
+  const stateVars = new Set<number>([x, y]);
+  const derivativeVars = new Set<number>([derX, derY]);
+  const parameters = new Set<number>();
+
+  // Eq 0: der(x) - (x + y) = 0
+  arena.addEquation(
+    EqKind.Simple,
+    arena.addBinaryExpr(
+      BinOp.Sub,
+      arena.addDerExpr(arena.addNameExpr("x")),
+      arena.addBinaryExpr(BinOp.Add, arena.addNameExpr("x"), arena.addNameExpr("y")),
+    ),
+    arena.addRealLiteral(0.0),
+  );
+  // Eq 1: der(x) + 2 * y = 0
+  arena.addEquation(
+    EqKind.Simple,
+    arena.addBinaryExpr(
+      BinOp.Add,
+      arena.addDerExpr(arena.addNameExpr("x")),
+      arena.addBinaryExpr(BinOp.Mul, arena.addRealLiteral(2.0), arena.addNameExpr("y")),
+    ),
+    arena.addRealLiteral(0.0),
+  );
+
+  const analysis = analyzeStructuralDaeIndex(arena, stateVars, derivativeVars, parameters);
+  assert(analysis.singularSubsets.length >= 1, "Must detect coupled singular subset {0, 1}");
+
+  const res = pantelidesIndexReductionArena(arena, stateVars, derivativeVars, parameters);
+  assert.strictEqual(res.structuralIndex, 2, "Coupled derivative-sharing singularity must reduce as Index-2");
+  assert.strictEqual(res.dummyDerivatives.size, 1, "Must select 1 dummy derivative state");
+  assert.strictEqual(res.generatedEquations.length, 1, "Must generate 1 differentiated equation");
+  console.log("  ✔ Coupled multi-equation MSS bipartite augmenting-path reduction passed");
 }
 
 console.log("=== All Pantelides Index Reduction Tests Passed Cleanly ===");

@@ -98,4 +98,93 @@ test("Phase 5: WebAssembly Emitter & Linear Memory IR", async (t) => {
       assert.equal(wasmResult, 55);
     },
   );
+
+  await t.test(
+    "compiles and executes STRING literals, ObjectLiterals, and FLWORExpressions in WebAssembly",
+    async () => {
+      const code = `
+      function evaluateAdvanced(): i32 {
+        let greeting = "ModelScript";
+        let cfg = { base: 100, scale: 3 };
+        let nums = [1, 2, 3, 4, 5];
+        let filtered =
+          for x in nums
+          where x > 2
+          return x * cfg.scale;
+        return greeting.length + cfg.base + filtered.length + filtered[0] + filtered[2];
+      }
+    `;
+
+      const wat = compiler.compileToWat(code);
+      assert.ok(wat.includes("(data (i32.const"), "WAT should emit static data segment for interned strings");
+      assert.ok(wat.includes("memory.grow"), "WAT should emit $__alloc with memory.grow bounds check");
+
+      const wasmResult = await compiler.executeWasm(code, "evaluateAdvanced", []);
+      // greeting.length = 11 ("ModelScript")
+      // cfg.base = 100
+      // filtered = [9, 12, 15], length = 3, filtered[0] = 9, filtered[2] = 15
+      // total = 11 + 100 + 3 + 9 + 15 = 138
+      assert.equal(wasmResult, 138);
+    },
+  );
+
+  await t.test(
+    "emits type-accurate u32 unsigned opcodes (i32.div_u, i32.lt_u, i32.gt_u) and f32 instructions",
+    async () => {
+      const code = `
+      function unsignedMath(a: u32, b: u32): u32 {
+        if (a > b && b < a) {
+          return a / b;
+        }
+        return 0;
+      }
+
+      function float32Math(x: f32, y: f32): f32 {
+        let z: f32 = (x * y) + x;
+        return z / y;
+      }
+    `;
+
+      const wat = compiler.compileToWat(code);
+      assert.ok(wat.includes("i32.gt_u"), "Expected i32.gt_u for u32 > comparison");
+      assert.ok(wat.includes("i32.lt_u"), "Expected i32.lt_u for u32 < comparison");
+      assert.ok(wat.includes("i32.div_u"), "Expected i32.div_u for u32 division");
+      assert.ok(wat.includes("f32.mul"), "Expected f32.mul for f32 multiplication");
+      assert.ok(wat.includes("f32.add"), "Expected f32.add for f32 addition");
+      assert.ok(wat.includes("f32.div"), "Expected f32.div for f32 division");
+
+      // 0x80000000 (2147483648 as unsigned u32, negative in signed i32) / 2 = 1073741824
+      const uRes = await compiler.executeWasm(code, "unsignedMath", [0x80000000 | 0, 2]);
+      assert.equal(uRes >>> 0, 1073741824);
+
+      // (4.0 * 2.0 + 4.0) / 2.0 = 6.0
+      const fRes = await compiler.executeWasm(code, "float32Math", [4.0, 2.0]);
+      assert.ok(Math.abs(fRes - 6.0) < 1e-5);
+    },
+  );
+
+  await t.test("compiles and executes multi-for relational joins and order by sorting in FLWORExpression", async () => {
+    const code = `
+      function relationalJoinAndSort(): i32 {
+        let sensors = [1, 2, 3, 4];
+        let actuators = [2, 4, 6];
+        let joined =
+          for s in sensors
+          for a in actuators
+          where s == (a / 2)
+          order by (s * 100 + a) descending
+          return s * 100 + a;
+        return joined.length * 10000 + joined[0] * 10 + joined[2];
+      }
+    `;
+
+    const wasmResult = await compiler.executeWasm(code, "relationalJoinAndSort", []);
+    // Matching pairs (s, a) where s == a / 2:
+    // (1, 2) -> 102
+    // (2, 4) -> 204
+    // (3, 6) -> 306
+    // Sorted descending: [306, 204, 102], length = 3
+    // Result: 3 * 10000 + 306 * 10 + 102 = 30000 + 3060 + 102 = 33162
+    assert.equal(wasmResult, 33162);
+  });
 });

@@ -551,6 +551,22 @@ process.on(
             console.warn(`[publish] Failed to extract metadata for artifact ${relPath}:`, extractErr);
           }
           database.storeArtifact(versionId, type, relPath, JSON.stringify(details));
+          if (type === "study-template") {
+            const cleanBase = path.basename(relPath).replace(/\.(sedml|ssv|dakota)$/i, "");
+            const studySlug = String(details["slug"] || `${name}-${cleanBase}`)
+              .toLowerCase()
+              .replace(/[^a-z0-9-_]/g, "-");
+            const studyName = String(details["name"] || cleanBase);
+            const studyDesc = String(details["description"] || `Study template from ${name}@${version}`);
+            const studyCategory = String(details["category"] || "simulation");
+            database.createScriptTemplate(studyName, studySlug, studyDesc, studyCategory, "sliders", {
+              ...details,
+              sourceType: "package",
+              packageName: name,
+              packageVersion: version,
+              artifactPath: relPath,
+            });
+          }
         }
       }
 

@@ -479,6 +479,9 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
   t_lspOffsetStack[stackTop] = packOffsetStack(getNodeLeadingPad(astRoot), false, false, false, false);
   stackTop++;
 
+  let lastValidNode: u32 = 0;
+  let lastValidNodeStart: u32 = 0;
+
   while (stackTop > 0) {
     if (t_lspBinaryBuffer.length >= 50000 * 7) {
       break;
@@ -505,12 +508,20 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
     // Range bounding pruning: if outside range and has no error flags, skip subtree
     if (rangeEnd > rangeStart && (nodeEnd < rangeStart || nodeStart > rangeEnd)) {
       if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0) {
+        if (len > 0 && type != 0) {
+          lastValidNode = node;
+          lastValidNodeStart = nodeStart;
+        }
         continue;
       }
     }
 
     // Diagnostics fast path: if grammar has no compiled lints, subtrees without error flags can be skipped
     if (!HAS_COMPILED_LINTS && (flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) == 0 && !inError && !inTainted) {
+      if (len > 0 && type != 0) {
+        lastValidNode = node;
+        lastValidNodeStart = nodeStart;
+      }
       continue;
     }
 
@@ -538,125 +549,138 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
     let allocatedDiag = false;
 
     if (isActualError) {
-
-
-
       let totalInputBytes: u32 = inputLength;
-      
       let dStart = nodeStart;
       let dEnd = nodeEnd > nodeStart ? nodeEnd : dStart + step;
 
-      // For ERROR nodes whose first child is a valid (non-error) node,
-      // narrow dStart past it. When recovery wraps popped stack nodes into
-      // an error, the first child is the valid node that was on the stack
-      // before the error. The diagnostic should start after it.
-      if (type == 0 && firstChild != 0) {
-        let cType = getNodeType(firstChild);
-        let cFlags = getNodeFlags(firstChild);
-        if (cType != 0 && (cFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0) {
-          let firstChildEnd = nodeStart + getNodePadding(firstChild) + getNodeByteLength(firstChild);
-          if (firstChildEnd > dStart && firstChildEnd < dEnd) {
-            dStart = firstChildEnd;
-          }
-        }
-      }
-
-      if ((flags & FLAG_IS_INSERTED) == 0 && dEnd > dStart) {
-        while (dStart < dEnd) {
-          let ch = peekChar(dStart);
-          if (ch == 10 || ch == 13 || ch == 32 || ch == 9 || ch == 0) {
-            dStart += step;
-          } else {
-            break;
-          }
-        }
-        while (dEnd > dStart && dEnd >= step && dEnd - step >= dStart) {
-          let ch = peekChar(dEnd - step);
-          if (ch == 10 || ch == 13 || ch == 32 || ch == 9 || ch == 0) {
-            dEnd -= step;
-          } else {
-            break;
-          }
-        }
-      }
-
-      if (dEnd <= dStart) {
-        if ((flags & FLAG_IS_INSERTED) != 0) {
-          if (nodeStart < totalInputBytes) {
-            dStart = nodeStart;
-            while (dStart < totalInputBytes && (peekChar(dStart) == 32 || peekChar(dStart) == 9 || peekChar(dStart) == 10 || peekChar(dStart) == 13)) {
-              dStart += step;
-            }
-            dEnd = dStart + step <= totalInputBytes ? dStart + step : totalInputBytes;
-          } else {
-            let scanPos = totalInputBytes;
-            while (scanPos >= step) {
-              let ch = peekChar(scanPos - step);
-              if (ch != 10 && ch != 13 && ch != 32 && ch != 9 && ch != 0) {
-                break;
-              }
-              scanPos -= step;
-            }
-            if (scanPos == 0) {
-              dStart = 0;
-              dEnd = totalInputBytes > 0 ? (totalInputBytes < step ? totalInputBytes : step) : 0;
-            } else {
-              if (scanPos >= step) {
-                let prevCh = peekChar(scanPos - step);
-                if (prevCh == 10 || prevCh == 13 || prevCh == 32 || prevCh == 9) {
-                  dStart = scanPos - step;
-                  dEnd = scanPos;
-                } else {
-                  let tokStart = scanPos - step;
-                  while (tokStart >= step) {
-                    let c = peekChar(tokStart - step);
-                    if (c == 10 || c == 13 || c == 32 || c == 9 || c == 0) break;
-                    tokStart -= step;
-                  }
-                  if (scanPos > tokStart) {
-                    dStart = tokStart;
-                    dEnd = scanPos;
-                  } else {
-                    dStart = scanPos - step;
-                    dEnd = scanPos;
-                  }
-                }
-              } else {
-                dStart = scanPos - step;
-                dEnd = scanPos;
-              }
-            }
-          }
-        }
-      }
-
       if ((flags & FLAG_IS_INSERTED) != 0) {
-        if (dStart < totalInputBytes) {
-          let ch = peekChar(dStart);
-          if (ch == 32 || ch == 9 || ch == 10 || ch == 13 || ch == 0) {
-            let prevNonWs = dStart;
-            while (prevNonWs >= step && (peekChar(prevNonWs - step) == 32 || peekChar(prevNonWs - step) == 9)) {
-              prevNonWs -= step;
-            }
-            if (prevNonWs >= step && peekChar(prevNonWs - step) != 10 && peekChar(prevNonWs - step) != 13) {
-              let prevCh = peekChar(prevNonWs - step);
-              let isPunct = prevCh == 59 || prevCh == 44 || prevCh == 40 || prevCh == 41 ||
-                            prevCh == 123 || prevCh == 125 || prevCh == 91 || prevCh == 93 ||
-                            prevCh == 61 || prevCh == 58;
-              if (isPunct) {
-                dStart = prevNonWs - step;
-                dEnd = prevNonWs;
-              } else {
-                let tokStart = prevNonWs - step;
-                while (tokStart >= step) {
-                  let c = peekChar(tokStart - step);
-                  if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0 ||
-                      c == 59 || c == 44 || c == 40 || c == 41 || c == 123 || c == 125 || c == 91 || c == 93 || c == 61 || c == 58) break;
-                  tokStart -= step;
-                }
-                dStart = tokStart;
-                dEnd = prevNonWs;
+        let lastLeafStart: u32 = 0;
+        let lastLeafEnd: u32 = 0;
+        if (lastValidNode != 0) {
+          let c = lastValidNode;
+          let cStart = lastValidNodeStart;
+          let guard = 0;
+          while (getNodeFirstChild(c) != 0 && guard++ < 64) {
+            let ch = getNodeFirstChild(c);
+            let off = cStart;
+            let lastCh: u32 = 0;
+            let lastChStart: u32 = off;
+            let idx = 0;
+            while (ch != 0) {
+              if (idx > 0) off += getNodeLeadingPad(ch);
+              let chLen = getNodeByteLength(ch);
+              if (chLen > 0 && (getNodeFlags(ch) & FLAG_IS_INSERTED) == 0) {
+                lastCh = ch;
+                lastChStart = off;
               }
+              off += chLen;
+              idx++;
+              ch = getNodeNextSibling(ch);
+            }
+            if (lastCh == 0) break;
+            c = lastCh;
+            cStart = lastChStart;
+          }
+          let cLen = getNodeByteLength(c);
+          if (cLen > 0) {
+            lastLeafStart = cStart;
+            lastLeafEnd = cStart + cLen;
+          }
+        }
+
+        if (lastLeafEnd > lastLeafStart && nodeStart == lastLeafEnd) {
+          dStart = lastLeafStart;
+          dEnd = lastLeafEnd;
+        } else {
+          let foundNextLeaf = false;
+          let sib = getNodeNextSibling(node);
+          let sibOff = nodeStart;
+          while (sib != 0 && getNodeByteLength(sib) == 0 && (getNodeFlags(sib) & FLAG_IS_INSERTED) != 0) {
+            sibOff += getNodeLeadingPad(sib);
+            sib = getNodeNextSibling(sib);
+          }
+          if (sib != 0 && getNodeByteLength(sib) > 0) {
+            sibOff += getNodeLeadingPad(sib);
+            let c = sib;
+            let guard = 0;
+            while (getNodeFirstChild(c) != 0 && guard++ < 64) {
+              let ch = getNodeFirstChild(c);
+              let idx = 0;
+              while (ch != 0 && getNodeByteLength(ch) == 0 && (getNodeFlags(ch) & FLAG_IS_INSERTED) != 0) {
+                if (idx > 0) sibOff += getNodeLeadingPad(ch);
+                idx++;
+                ch = getNodeNextSibling(ch);
+              }
+              if (ch == 0) break;
+              if (idx > 0) sibOff += getNodeLeadingPad(ch);
+              c = ch;
+            }
+            let cLen = getNodeByteLength(c);
+            if (cLen > 0) {
+              dStart = sibOff;
+              dEnd = sibOff + cLen;
+              foundNextLeaf = true;
+            }
+          }
+          if (!foundNextLeaf) {
+            if (lastLeafEnd > lastLeafStart) {
+              dStart = lastLeafStart;
+              dEnd = lastLeafEnd;
+            } else {
+              dStart = nodeStart < totalInputBytes ? nodeStart : (totalInputBytes >= step ? totalInputBytes - step : 0);
+              dEnd = dStart + step <= totalInputBytes ? dStart + step : totalInputBytes;
+            }
+          }
+        }
+      } else {
+        // For ERROR nodes whose leading children are valid (non-error) nodes,
+        // narrow dStart past them (including the next child's leading padding).
+        if (type == 0 && firstChild != 0) {
+          let child = firstChild;
+          let childOff: u32 = nodeStart;
+          let idx = 0;
+          while (child != 0) {
+            if (idx > 0) childOff += getNodeLeadingPad(child);
+            let cFlags = getNodeFlags(child);
+            let cType = getNodeType(child);
+            if (cType != 0 && (cFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0) {
+              childOff += getNodeByteLength(child);
+            } else {
+              break;
+            }
+            idx++;
+            child = getNodeNextSibling(child);
+          }
+          if (child != 0) {
+            if (childOff > dStart && childOff < dEnd) {
+              dStart = childOff;
+            }
+          } else {
+            let secondChild = getNodeNextSibling(firstChild);
+            if (secondChild != 0) {
+              let nextStart = nodeStart + getNodePadding(firstChild) + getNodeByteLength(firstChild) + getNodeLeadingPad(secondChild);
+              if (nextStart > dStart && nextStart < dEnd) {
+                dStart = nextStart;
+              }
+            }
+          }
+        }
+
+        if (dEnd > dStart) {
+          while (dStart < dEnd) {
+            let ch = peekChar(dStart);
+            if (ch == 10 || ch == 13 || ch == 32 || ch == 9 || ch == 0) {
+              dStart += step;
+            } else {
+              break;
+            }
+          }
+          while (dEnd > dStart && dEnd >= step && dEnd - step >= dStart) {
+            let ch = peekChar(dEnd - step);
+            if (ch == 10 || ch == 13 || ch == 32 || ch == 9 || ch == 0) {
+              dEnd -= step;
+            } else {
+              break;
             }
           }
         }
@@ -664,54 +688,49 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
 
       if (totalInputBytes > 0 && dEnd > totalInputBytes) {
         dEnd = totalInputBytes;
-        if (dEnd > step) dStart = dEnd - step;
-        else dStart = 0;
+        if (dEnd > step && dStart >= dEnd) dStart = dEnd - step;
+        else if (dStart >= dEnd) dStart = 0;
       }
       let tokType = (type != 0 && type <= (MAX_TERMINAL_ID as u16) ? type : 0);
-      if (tokType == 0 && firstChild != 0) {
+      let firstTokLen: u32 = (firstChild == 0 && dEnd > dStart) ? (dEnd - dStart) : 0;
+      if (firstChild != 0) {
         let chk = firstChild;
+        let chkOff: u32 = nodeStart;
+        let chkIdx = 0;
         while (chk != 0) {
-          let chkType = getNodeType(chk) & 0x7fff;
+          if (chkIdx > 0) chkOff += getNodeLeadingPad(chk);
           let chkLen = getNodeByteLength(chk);
           let chkFlags = getNodeFlags(chk);
-          if (chkType <= (MAX_TERMINAL_ID as u16) && chkLen > 0 && (chkFlags & FLAG_INVISIBLE) == 0) {
-            tokType = chkType;
+          if (chkOff + chkLen > dStart && chkLen > 0 && (chkFlags & (FLAG_INVISIBLE | FLAG_IS_INSERTED)) == 0) {
+            let leaf = chk;
+            let guard = 0;
+            while (getNodeFirstChild(leaf) != 0 && guard++ < 64) {
+              let lc = getNodeFirstChild(leaf);
+              while (lc != 0 && (getNodeByteLength(lc) == 0 || (getNodeFlags(lc) & (FLAG_INVISIBLE | FLAG_IS_INSERTED)) != 0)) {
+                lc = getNodeNextSibling(lc);
+              }
+              if (lc == 0) break;
+              leaf = lc;
+            }
+            let leafType = getNodeType(leaf) & 0x7fff;
+            let leafLen = getNodeByteLength(leaf);
+            if (leafLen > 0) {
+              firstTokLen = leafLen;
+              if (leafType <= (MAX_TERMINAL_ID as u16)) {
+                tokType = leafType;
+              }
+            }
             break;
           }
+          chkOff += chkLen;
+          chkIdx++;
           chk = getNodeNextSibling(chk);
         }
       }
       if ((tokType == 0 || tokType > (MAX_TERMINAL_ID as u16)) && dStart < totalInputBytes) {
         tokType = 0;
       }
-      if (dEnd > dStart && totalInputBytes > 0) {
-        if (dStart >= step && dStart < totalInputBytes) {
-          let chCurr = peekChar(dStart);
-          let chPrev = peekChar(dStart - step);
-          let isCurrWord = (chCurr >= 97 && chCurr <= 122) || (chCurr >= 65 && chCurr <= 90) || (chCurr >= 48 && chCurr <= 57) || chCurr == 95;
-          let isPrevWord = (chPrev >= 97 && chPrev <= 122) || (chPrev >= 65 && chPrev <= 90) || (chPrev >= 48 && chPrev <= 57) || chPrev == 95;
-          if (isCurrWord && isPrevWord) {
-            while (dStart >= step) {
-              let c = peekChar(dStart - step);
-              if (!((c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 95)) break;
-              dStart -= step;
-            }
-          }
-        }
-        if (dEnd >= step && dEnd < totalInputBytes) {
-          let chEnd = peekChar(dEnd);
-          let chBeforeEnd = peekChar(dEnd - step);
-          let isEndWord = (chEnd >= 97 && chEnd <= 122) || (chEnd >= 65 && chEnd <= 90) || (chEnd >= 48 && chEnd <= 57) || chEnd == 95;
-          let isBeforeWord = (chBeforeEnd >= 97 && chBeforeEnd <= 122) || (chBeforeEnd >= 65 && chBeforeEnd <= 90) || (chBeforeEnd >= 48 && chBeforeEnd <= 57) || chBeforeEnd == 95;
-          if (isEndWord && isBeforeWord) {
-            while (dEnd < totalInputBytes) {
-              let c = peekChar(dEnd);
-              if (!((c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 95)) break;
-              dEnd += step;
-            }
-          }
-        }
-      }
+      let packedTokInfo: u32 = (tokType as u32) | ((firstTokLen & 0xffff) << 16);
 
       if (dEnd > dStart) {
         if ((flags & FLAG_IS_INSERTED) != 0) {
@@ -722,14 +741,14 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
           let exp2: u32 = 0;
           for (let ei = 0; ei < errorCount; ei++) {
             if (t_errorStarts[ei] <= dEnd && t_errorEnds[ei] >= dStart) {
-              if (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0) {
+              if ((changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) || (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0)) {
                 exp1 = t_errorArg2[ei];
                 exp2 = t_errorArg3[ei];
                 break;
               }
             }
           }
-          lsp_allocDiagnostic(dStart, dEnd, 0, 2, tokType as u32, exp1, exp2);
+          lsp_allocDiagnostic(dStart, dEnd, 0, 2, packedTokInfo, exp1, exp2);
           allocatedDiag = true;
         }
       } else if (isLeaf && (type == 0 || ((flags & FLAG_HAS_ERROR) != 0))) {
@@ -740,18 +759,23 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
           let exp2: u32 = 0;
           for (let ei = 0; ei < errorCount; ei++) {
             if (t_errorStarts[ei] <= fallbackEnd && t_errorEnds[ei] >= fallbackStart) {
-              if (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0) {
+              if ((changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) || (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0)) {
                 exp1 = t_errorArg2[ei];
                 exp2 = t_errorArg3[ei];
                 break;
               }
             }
           }
-          lsp_allocDiagnostic(fallbackStart, fallbackEnd, 0, 2, tokType as u32, exp1, exp2);
+          lsp_allocDiagnostic(fallbackStart, fallbackEnd, 0, 2, packedTokInfo, exp1, exp2);
           allocatedDiag = true;
         }
       }
 
+    }
+
+    if (isLeaf && len > 0 && (flags & FLAG_IS_INSERTED) == 0 && type != 0) {
+      lastValidNode = node;
+      lastValidNodeStart = nodeStart;
     }
 
     let shouldLint = rangeEnd == 0 || (nodeStart <= rangeEnd && nodeEnd >= rangeStart && (nodeEnd - nodeStart <= (rangeEnd - rangeStart) * 8 + 512));
@@ -836,13 +860,18 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
  */
 export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd: u32): u32 {
   ensureLspBuffers();
-  let extractedCount: u32 = 0;
+  let extractedSyntaxCount: u32 = 0;
   if (astRoot != 0) {
     globalAstRoot = astRoot;
     lsp_extractDiagnosticsForRoot(astRoot, 0, rangeStart, rangeEnd);
-    extractedCount = t_lspBinaryBuffer.length / 7;
+    let totalCount: u32 = t_lspBinaryBuffer.length / 7;
+    for (let d: u32 = 0; d < totalCount; d++) {
+      if (t_lspBinaryBuffer[d * 7 + 2] == 0) {
+        extractedSyntaxCount++;
+      }
+    }
   }
-  if (extractedCount == 0 && astRoot == globalAstRoot) {
+  if (extractedSyntaxCount == 0 && astRoot == globalAstRoot) {
     for (let i = 0; i < errorCount; i++) {
       let s = t_errorStarts[i];
       let e = t_errorEnds[i];
@@ -868,13 +897,18 @@ export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd:
  */
 export function lsp_getDiagnostics(astRoot: u32): u32 {
   ensureLspBuffers();
-  let extractedCount: u32 = 0;
+  let extractedSyntaxCount: u32 = 0;
   if (astRoot != 0) {
     globalAstRoot = astRoot;
     lsp_extractDiagnosticsForRoot(astRoot, 0, 0, 0);
-    extractedCount = t_lspBinaryBuffer.length / 7;
+    let totalCount: u32 = t_lspBinaryBuffer.length / 7;
+    for (let d: u32 = 0; d < totalCount; d++) {
+      if (t_lspBinaryBuffer[d * 7 + 2] == 0) {
+        extractedSyntaxCount++;
+      }
+    }
   }
-  if (extractedCount == 0 && astRoot == globalAstRoot) {
+  if (extractedSyntaxCount == 0 && astRoot == globalAstRoot) {
     for (let i = 0; i < errorCount; i++) {
       let s = t_errorStarts[i];
       let e = t_errorEnds[i];

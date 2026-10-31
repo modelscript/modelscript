@@ -240,8 +240,8 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
           id: c.name || `C_${idx + 1}`,
           name: c.name || `Coupl ${idx + 1}`,
           type: /damp|c_/i.test(c.type || "") ? "spring_damper" : "spring_damper",
-          body1: c.from || "Track",
-          body2: c.to || bodies[idx % bodies.length]!.name,
+          fromBody: c.from || "Track",
+          toBody: c.to || bodies[idx % bodies.length]!.name,
         }));
         if (kinJoints.length === 0) {
           bodies.forEach((b, idx) => {
@@ -249,20 +249,17 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
               id: `K_${idx + 1}`,
               name: `Susp_${idx + 1}`,
               type: "spring_damper",
-              body1: idx === 0 ? "Track" : bodies[idx - 1]!.name,
-              body2: b.name,
+              fromBody: idx === 0 ? "Track" : bodies[idx - 1]!.name,
+              toBody: b.name,
             });
           });
         }
-        const built = renderKinematicDiagramSvg(
-          {
-            name: modelName,
-            dialect: "GENSYS",
-            bodies: kinBodies,
-            joints: kinJoints,
-          },
-          { isDark: true },
-        );
+        const built = renderKinematicDiagramSvg({
+          name: modelName,
+          dialect: "GENSYS",
+          bodies: kinBodies,
+          joints: kinJoints,
+        });
         return sanitizeSvgMarkup(built, { isFullScreen });
       } catch {
         return "";

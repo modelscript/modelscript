@@ -11,6 +11,7 @@ export interface ScadDependency {
 
 export interface ScadFileInfo {
   uri: string;
+  sourceText?: string | undefined;
   index: SymbolIndex;
   modules: Map<string, SymbolEntry>;
   functions: Map<string, SymbolEntry>;
@@ -57,8 +58,66 @@ export class ScadWorkspaceIndex implements IWorkspaceIndex {
     return this.fileInfos.get(uri);
   }
 
+  public getFileSource(uri: string): string | undefined {
+    return this.fileInfos.get(uri)?.sourceText;
+  }
+
   public getDependencies(uri: string): ScadDependency[] {
     return this.fileInfos.get(uri)?.dependencies ?? [];
+  }
+
+  /**
+   * Resolves an `include <targetPath>` or `use <targetPath>` path to a registered URI in the workspace index.
+   */
+  public resolveDependencyUri(targetPath: string, fromUri?: string): string | undefined {
+    const cleanTarget = targetPath.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+    if (!cleanTarget) return undefined;
+
+    if (fromUri) {
+      const normalizedFrom = fromUri.replace(/\\/g, "/");
+      const slashIdx = normalizedFrom.lastIndexOf("/");
+      if (slashIdx !== -1) {
+        const baseDir = normalizedFrom.slice(0, slashIdx + 1);
+        const combined = `${baseDir}${cleanTarget}`;
+        const protoMatch = combined.match(/^([a-zA-Z]+:\/\/)(.*)$/);
+        const prefix = protoMatch ? protoMatch[1]! : "";
+        const rest = protoMatch ? protoMatch[2]! : combined;
+        const segments = rest.split("/");
+        const resolvedSegments: string[] = [];
+        for (const seg of segments) {
+          if (seg === ".") continue;
+          if (seg === "..") {
+            if (resolvedSegments.length > 0 && resolvedSegments[resolvedSegments.length - 1] !== "") {
+              resolvedSegments.pop();
+            }
+          } else {
+            resolvedSegments.push(seg);
+          }
+        }
+        const candidateUri = `${prefix}${resolvedSegments.join("/")}`;
+        if (this.fileInfos.has(candidateUri)) return candidateUri;
+      }
+    }
+
+    const strippedTarget = cleanTarget.replace(/^(\.\.\/)+/, "");
+    for (const otherUri of this.fileInfos.keys()) {
+      if (otherUri === fromUri) continue;
+      if (
+        otherUri === cleanTarget ||
+        otherUri.endsWith(`/${cleanTarget}`) ||
+        otherUri.endsWith(cleanTarget) ||
+        (strippedTarget && (otherUri === strippedTarget || otherUri.endsWith(`/${strippedTarget}`)))
+      ) {
+        return otherUri;
+      }
+    }
+
+    return undefined;
+  }
+
+  public resolveDependencyInfo(targetPath: string, fromUri?: string): ScadFileInfo | undefined {
+    const uri = this.resolveDependencyUri(targetPath, fromUri);
+    return uri ? this.fileInfos.get(uri) : undefined;
   }
 
   public register(uri: string, _loader?: () => unknown): void {
@@ -301,6 +360,7 @@ export class ScadWorkspaceIndex implements IWorkspaceIndex {
     this.fileIndices.set(uri, index);
     this.fileInfos.set(uri, {
       uri,
+      sourceText: text,
       index,
       modules,
       functions,

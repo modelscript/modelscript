@@ -83,5 +83,9 @@ function exprToSpice(expr: VerilogAExpr): string {
       }
       return `${expr.func}(${expr.args.map(exprToSpice).join(", ")})`;
     }
+    case "ternary":
+      return `(${exprToSpice(expr.condition)} ? ${exprToSpice(expr.consequent)} : ${exprToSpice(expr.alternate)})`;
+    default:
+      return "0";
   }
 }

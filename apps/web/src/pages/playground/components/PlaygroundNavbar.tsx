@@ -20,7 +20,7 @@ import { AnsatzMark } from "../../../components/AnsatzLogo";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { getExtensionForDialect } from "../../../util/editor-routing";
-import { HERO_EXAMPLES, PLAYGROUND_LANGUAGES, type HeroExample } from "../constants";
+import { HERO_EXAMPLES, useVisiblePlaygroundLanguages, type HeroExample } from "../constants";
 import { Badge, BrandLink, NavLeft, NavRight, NavText, PlaygroundNavbar as NavbarContainer } from "../styles";
 
 export interface PlaygroundNavbarProps {
@@ -57,6 +57,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   const { user } = useAuth();
   const { theme } = useTheme();
   const branding = useInstanceBranding();
+  const visiblePlaygroundLanguages = useVisiblePlaygroundLanguages();
   const brandName = branding.instanceName || "Ansatz";
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -78,7 +79,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
     }
   };
 
-  const currentLangOption = PLAYGROUND_LANGUAGES.find((l) => l.id === currentLang) || {
+  const currentLangOption = visiblePlaygroundLanguages.find((l) => l.id === currentLang) || {
     id: currentLang,
     label: currentLang.toUpperCase(),
     ext: getExtensionForDialect(currentLang),
@@ -223,8 +224,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             </ActionMenu.Button>
             <ActionMenu.Overlay width="medium" style={{ maxHeight: "360px", overflowY: "auto" }}>
               <ActionList selectionVariant="single">
-                <ActionList.Group title="Engineering Dialect (44 Languages)">
-                  {PLAYGROUND_LANGUAGES.map((lang) => (
+                <ActionList.Group title={`Engineering Dialect (${visiblePlaygroundLanguages.length} Languages)`}>
+                  {visiblePlaygroundLanguages.map((lang) => (
                     <ActionList.Item
                       key={lang.id}
                       selected={lang.id === currentLang}

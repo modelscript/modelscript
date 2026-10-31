@@ -299,7 +299,13 @@ export const stepLanguage = language({
       category: "transform",
       execute: async (
         ctx: StepActionContext,
-        params: { documentText?: string | undefined; uri?: string | undefined },
+        params: {
+          documentText?: string | undefined;
+          uri?: string | undefined;
+          elementType?: "C3D4" | "C3D8" | undefined;
+          segments?: number | undefined;
+          layers?: number | undefined;
+        },
       ) => {
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "part" : "part";
@@ -309,102 +315,32 @@ export const stepLanguage = language({
           ctx.documentText ??
           (targetUri ? ctx.documents?.get?.(targetUri)?.getText?.() : undefined) ??
           "";
-        const lengthScale = /SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\.\s*\)/i.test(stepText) ? 1e-3 : 1.0;
-        const ptRegex =
-          /CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
-        let minX = Infinity,
-          minY = Infinity,
-          minZ = Infinity;
-        let maxX = -Infinity,
-          maxY = -Infinity,
-          maxZ = -Infinity;
-        let ptCount = 0;
-        let m: RegExpExecArray | null;
-        while ((m = ptRegex.exec(stepText)) !== null) {
-          const x = parseFloat(m[1]!) * lengthScale,
-            y = parseFloat(m[2]!) * lengthScale,
-            z = parseFloat(m[3]!) * lengthScale;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (z < minZ) minZ = z;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-          if (z > maxZ) maxZ = z;
-          ptCount++;
-        }
-        if (ptCount < 2 || !(maxX > minX || maxY > minY || maxZ > minZ)) {
-          minX = 0.0;
-          maxX = 0.2;
-          minY = -0.02;
-          maxY = 0.02;
-          minZ = 0.0;
-          maxZ = 0.01;
-        } else {
-          if (maxX - minX < 1e-4) {
-            minX -= 0.005;
-            maxX += 0.005;
-          }
-          if (maxY - minY < 1e-4) {
-            minY -= 0.005;
-            maxY += 0.005;
-          }
-          if (maxZ - minZ < 1e-4) {
-            minZ -= 0.005;
-            maxZ += 0.005;
-          }
-        }
+        const { generateConformingStepMesh } = await import("./cae-mesher.js");
+        const meshRes = generateConformingStepMesh(stepText, {
+          filename,
+          baseName,
+          elementType: params?.elementType,
+          segments: params?.segments,
+          layers: params?.layers,
+        });
 
-        // Generate a structured 3D C3D8 hexahedral grid over [minX..maxX] x [minY..maxY] x [minZ..maxZ]
-        const nx = 3,
-          ny = 2,
-          nz = 2;
-        const nodeLines: string[] = [];
-        const rootNodes: number[] = [];
-        const tipNodes: number[] = [];
-        const nodeIdAt = (ix: number, iy: number, iz: number) => 1 + ix + iy * (nx + 1) + iz * (nx + 1) * (ny + 1);
-
-        for (let iz = 0; iz <= nz; iz++) {
-          const z = minZ + (iz / nz) * (maxZ - minZ);
-          for (let iy = 0; iy <= ny; iy++) {
-            const y = minY + (iy / ny) * (maxY - minY);
-            for (let ix = 0; ix <= nx; ix++) {
-              const x = minX + (ix / nx) * (maxX - minX);
-              const nid = nodeIdAt(ix, iy, iz);
-              nodeLines.push(`${nid}, ${x.toFixed(6)}, ${y.toFixed(6)}, ${z.toFixed(6)}`);
-              if (ix === 0) rootNodes.push(nid);
-              if (ix === nx) tipNodes.push(nid);
-            }
-          }
-        }
-
-        const elemLines: string[] = [];
-        let elemId = 1;
-        for (let iz = 0; iz < nz; iz++) {
-          for (let iy = 0; iy < ny; iy++) {
-            for (let ix = 0; ix < nx; ix++) {
-              const n1 = nodeIdAt(ix, iy, iz);
-              const n2 = nodeIdAt(ix + 1, iy, iz);
-              const n3 = nodeIdAt(ix + 1, iy + 1, iz);
-              const n4 = nodeIdAt(ix, iy + 1, iz);
-              const n5 = nodeIdAt(ix, iy, iz + 1);
-              const n6 = nodeIdAt(ix + 1, iy, iz + 1);
-              const n7 = nodeIdAt(ix + 1, iy + 1, iz + 1);
-              const n8 = nodeIdAt(ix, iy + 1, iz + 1);
-              elemLines.push(`${elemId}, ${n1}, ${n2}, ${n3}, ${n4}, ${n5}, ${n6}, ${n7}, ${n8}`);
-              elemId++;
-            }
-          }
-        }
-
-        const boundaryLines = rootNodes.map((nid) => `${nid}, 1, 3, 0.0`);
-        const loadPerTipNode = Number((100.0 / Math.max(tipNodes.length, 1)).toFixed(4));
-        const cloadLines = tipNodes.map((nid) => `${nid}, 3, ${loadPerTipNode}`);
-
-        const inpText = `** CalculiX FEA Mesh Deck generated from CAD: ${filename}\n*HEADING\nDiscretized 3D Hexahedral Mesh for ${baseName}\n*NODE, NSET=NALL\n${nodeLines.join("\n")}\n*ELEMENT, TYPE=C3D8, ELSET=ESOLID\n${elemLines.join("\n")}\n*MATERIAL, NAME=STRUCTURAL_ALLOY\n*ELASTIC\n7.0e10, 0.33\n*DENSITY\n2700.0\n*PLASTIC\n250.0e6, 0.0\n*SOLID SECTION, ELSET=ESOLID, MATERIAL=STRUCTURAL_ALLOY\n*BOUNDARY\n${boundaryLines.join("\n")}\n*STEP\n*STATIC\n*CLOAD\n${cloadLines.join("\n")}\n*END STEP\n`;
         return {
           success: true,
           uri: targetUri,
-          deckText: inpText,
+          deckText: meshRes.inpDeck,
+          elementType: meshRes.elementType,
+          nodeCount: meshRes.nodes.length,
+          elementCount: meshRes.elementType === "C3D4" ? meshRes.tetrahedra.length : meshRes.hexahedra.length,
+          boundaryPatches: meshRes.boundaryPatches.map((p) => ({
+            name: p.name,
+            faceId: p.faceId,
+            surfaceType: p.surfaceType,
+            area: p.area,
+            nodeCount: p.nodeIds.length,
+            elementCount: p.elementIds.length,
+          })),
+          totalVolume: meshRes.totalVolume,
+          totalSurfaceArea: meshRes.totalSurfaceArea,
           suggestedFilename: `${baseName}_mesh.inp`,
         };
       },
@@ -429,7 +365,12 @@ export const stepLanguage = language({
       category: "transform",
       execute: async (
         ctx: StepActionContext,
-        params: { documentText?: string | undefined; uri?: string | undefined },
+        params: {
+          documentText?: string | undefined;
+          uri?: string | undefined;
+          segments?: number | undefined;
+          layers?: number | undefined;
+        },
       ) => {
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "body" : "body";
@@ -439,120 +380,30 @@ export const stepLanguage = language({
           ctx.documentText ??
           (targetUri ? ctx.documents?.get?.(targetUri)?.getText?.() : undefined) ??
           "";
-        const lengthScale = /SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\.\s*\)/i.test(stepText) ? 1e-3 : 1.0;
-        let minX = -0.1,
-          maxX = 0.1,
-          minY = -0.1,
-          maxY = 0.1,
-          minZ = -0.05,
-          maxZ = 0.05;
-        if (stepText) {
-          const ptRegex =
-            /CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
-          let bx0 = Infinity,
-            by0 = Infinity,
-            bz0 = Infinity;
-          let bx1 = -Infinity,
-            by1 = -Infinity,
-            bz1 = -Infinity;
-          let count = 0;
-          let m: RegExpExecArray | null;
-          while ((m = ptRegex.exec(stepText)) !== null) {
-            const x = parseFloat(m[1]!) * lengthScale,
-              y = parseFloat(m[2]!) * lengthScale,
-              z = parseFloat(m[3]!) * lengthScale;
-            if (x < bx0) bx0 = x;
-            if (y < by0) by0 = y;
-            if (z < bz0) bz0 = z;
-            if (x > bx1) bx1 = x;
-            if (y > by1) by1 = y;
-            if (z > bz1) bz1 = z;
-            count++;
-          }
-          if (count >= 2) {
-            minX = bx0;
-            maxX = Math.max(bx1, bx0 + 0.01);
-            minY = by0;
-            maxY = Math.max(by1, by0 + 0.01);
-            minZ = bz0;
-            maxZ = Math.max(bz1, bz0 + 0.01);
-          }
-        }
-        const refArea = Math.max(0.0001, Number(((maxY - minY) * (maxZ - minZ)).toFixed(6)));
-        const refLength = Math.max(0.001, Number((maxX - minX).toFixed(4)));
-
-        // Build a 3D SU2 hexahedral/tetrahedral volume mesh (.su2 format) around the CAD domain
-        const nx = 2,
-          ny = 2,
-          nz = 2;
-        const points: string[] = [];
-        const ptIdx = (ix: number, iy: number, iz: number) => ix + iy * (nx + 1) + iz * (nx + 1) * (ny + 1);
-        let pId = 0;
-        for (let iz = 0; iz <= nz; iz++) {
-          const z = minZ + (iz / nz) * (maxZ - minZ);
-          for (let iy = 0; iy <= ny; iy++) {
-            const y = minY + (iy / ny) * (maxY - minY);
-            for (let ix = 0; ix <= nx; ix++) {
-              const x = minX + (ix / nx) * (maxX - minX);
-              points.push(`${x.toFixed(6)} ${y.toFixed(6)} ${z.toFixed(6)} ${pId}`);
-              pId++;
-            }
-          }
-        }
-
-        // VTK_HEXAHEDRON = 12, VTK_QUAD = 9
-        const elems: string[] = [];
-        const inletQuads: string[] = [];
-        const outletQuads: string[] = [];
-        const wallQuads: string[] = [];
-        let eId = 0;
-        for (let iz = 0; iz < nz; iz++) {
-          for (let iy = 0; iy < ny; iy++) {
-            for (let ix = 0; ix < nx; ix++) {
-              const n0 = ptIdx(ix, iy, iz);
-              const n1 = ptIdx(ix + 1, iy, iz);
-              const n2 = ptIdx(ix + 1, iy + 1, iz);
-              const n3 = ptIdx(ix, iy + 1, iz);
-              const n4 = ptIdx(ix, iy, iz + 1);
-              const n5 = ptIdx(ix + 1, iy, iz + 1);
-              const n6 = ptIdx(ix + 1, iy + 1, iz + 1);
-              const n7 = ptIdx(ix, iy + 1, iz + 1);
-              elems.push(`12 ${n0} ${n1} ${n2} ${n3} ${n4} ${n5} ${n6} ${n7} ${eId}`);
-              eId++;
-              if (ix === 0) inletQuads.push(`9 ${n0} ${n3} ${n7} ${n4}`);
-              if (ix === nx - 1) outletQuads.push(`9 ${n1} ${n2} ${n6} ${n5}`);
-              if (iz === 0) wallQuads.push(`9 ${n0} ${n1} ${n2} ${n3}`);
-            }
-          }
-        }
-
-        const su2MeshText = [
-          `% SU2 3D Volume Mesh generated from STEP CAD: ${filename}`,
-          `NDIME= 3`,
-          `NELEM= ${elems.length}`,
-          ...elems,
-          `NPOIN= ${points.length}`,
-          ...points,
-          `NMARK= 3`,
-          `MARKER_TAG= wall`,
-          `MARKER_ELEMS= ${wallQuads.length}`,
-          ...wallQuads,
-          `MARKER_TAG= inlet`,
-          `MARKER_ELEMS= ${inletQuads.length}`,
-          ...inletQuads,
-          `MARKER_TAG= outlet`,
-          `MARKER_ELEMS= ${outletQuads.length}`,
-          ...outletQuads,
-          ``,
-        ].join("\n");
-
-        const cfgText = `% SU2 Aerodynamic Configuration generated from CAD: ${filename}\nSOLVER= INC_RANS\nKIND_TURB_MODEL= SST\nMATH_PROBLEM= DIRECT\nMESH_FILENAME= ${baseName}_mesh.su2\nINC_DENSITY_INIT= 1.225\nINC_VELOCITY_INIT= ( 10.0, 0.0, 0.0 )\nREF_LENGTH= ${refLength}\nREF_AREA= ${refArea}\nMARKER_HEATFLUX= ( wall, 0.0 )\nMARKER_INLET= ( inlet, 288.15, 10.0, 1.0, 0.0, 0.0 )\nMARKER_OUTLET= ( outlet, 101325.0 )\nITER= 250\n`;
+        const { generateConformingStepMesh } = await import("./cae-mesher.js");
+        const meshRes = generateConformingStepMesh(stepText, {
+          filename,
+          baseName,
+          segments: params?.segments,
+          layers: params?.layers,
+        });
 
         return {
           success: true,
           uri: targetUri,
-          meshText: su2MeshText,
-          configText: cfgText,
+          meshText: meshRes.su2Mesh,
+          configText: meshRes.su2Config,
+          nodeCount: meshRes.nodes.length,
+          elementCount: meshRes.tetrahedra.length > 0 ? meshRes.tetrahedra.length : meshRes.hexahedra.length,
+          boundaryPatches: meshRes.boundaryPatches.map((p) => ({
+            name: p.name,
+            faceId: p.faceId,
+            surfaceType: p.surfaceType,
+            area: p.area,
+            triangleCount: p.triangles.length,
+          })),
+          totalVolume: meshRes.totalVolume,
+          totalSurfaceArea: meshRes.totalSurfaceArea,
           suggestedFilename: `${baseName}_mesh.su2`,
         };
       },
@@ -588,57 +439,27 @@ export const stepLanguage = language({
           (targetUri ? ctx.documents?.get?.(targetUri)?.getText?.() : undefined) ??
           "";
         const { extractStepAssembly } = await import("./assembly-extractor.js");
+        const { generateConformingStepMesh } = await import("./cae-mesher.js");
         const assembly = stepText ? extractStepAssembly(stepText) : undefined;
         const firstMassProps = assembly?.massProperties.values().next().value;
+        const meshRes = generateConformingStepMesh(stepText, { filename, baseName });
 
-        let spanL = 0.2,
-          widthB = 0.025,
-          heightH = 0.01;
-        if (stepText) {
-          const ptRegex =
-            /CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
-          let minX = Infinity,
-            minY = Infinity,
-            minZ = Infinity;
-          let maxX = -Infinity,
-            maxY = -Infinity,
-            maxZ = -Infinity;
-          let count = 0;
-          let m: RegExpExecArray | null;
-          while ((m = ptRegex.exec(stepText)) !== null) {
-            const x = parseFloat(m[1]!),
-              y = parseFloat(m[2]!),
-              z = parseFloat(m[3]!);
-            if (x < minX) minX = x;
-            if (y < minY) minY = y;
-            if (z < minZ) minZ = z;
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-            if (z > maxZ) maxZ = z;
-            count++;
-          }
-          if (count >= 2) {
-            const dims = [
-              Math.max(maxX - minX, 0.005),
-              Math.max(maxY - minY, 0.005),
-              Math.max(maxZ - minZ, 0.005),
-            ].sort((a, b) => b - a);
-            spanL = dims[0]!;
-            widthB = dims[1]!;
-            heightH = dims[2]!;
-          }
-        }
-        const massKg = firstMassProps?.mass ?? Number((spanL * widthB * heightH * 2700.0).toFixed(4));
-        const sectionModulus = Math.max((widthB * heightH * heightH) / 6.0, 1e-9);
-        const nominalLoadN = 100.0;
-        const estimatedStressPa = Number(((nominalLoadN * spanL) / sectionModulus).toFixed(1));
+        const spanL = meshRes.characteristicLength;
+        const massKg = firstMassProps?.mass ?? Number(meshRes.massProperties.mass.toFixed(6));
+        const sectionModulus = meshRes.sectionModulus;
+        const estimatedStressPa = meshRes.estimatedStressPa;
         const yieldLimitPa = 250.0e6;
 
-        const moText = `model ${baseName}_FEA "FEA Structural Study for ${filename}"\n  parameter Real m = ${massKg} "Structural mass derived from STEP CAD [kg]";\n  parameter Real span = ${spanL.toFixed(4)} "Characteristic span [m]";\n  parameter Real maxStress = ${estimatedStressPa} "Estimated max von Mises stress [Pa]";\n  parameter Real yieldLimit = ${yieldLimitPa} "Yield strength limit [Pa]";\n  Boolean isSafe = maxStress <= yieldLimit;\nend ${baseName}_FEA;\n`;
+        const moText = `model ${baseName}_FEA "FEA Structural Study for ${filename}"\n  parameter Real m = ${massKg} "Structural mass derived from STEP CAD [kg]";\n  parameter Real V = ${Number(meshRes.totalVolume.toFixed(8))} "B-Rep polyhedral volume [m³]";\n  parameter Real A_surf = ${Number(meshRes.totalSurfaceArea.toFixed(6))} "B-Rep surface area [m²]";\n  parameter Real Z_sec = ${Number(sectionModulus.toExponential(4))} "B-Rep elastic section modulus [m³]";\n  parameter Real span = ${spanL.toFixed(4)} "Characteristic span [m]";\n  parameter Real maxStress = ${estimatedStressPa} "Estimated max von Mises stress [Pa]";\n  parameter Real yieldLimit = ${yieldLimitPa} "Yield strength limit [Pa]";\n  Boolean isSafe = maxStress <= yieldLimit;\nend ${baseName}_FEA;\n`;
         return {
           success: true,
           uri: targetUri,
           source: moText,
+          massKg,
+          volume: meshRes.totalVolume,
+          surfaceArea: meshRes.totalSurfaceArea,
+          sectionModulus,
+          estimatedStressPa,
           suggestedFilename: `${baseName}.fea.mo`,
         };
       },
@@ -665,47 +486,23 @@ export const stepLanguage = language({
           ctx.documentText ??
           (targetUri ? ctx.documents?.get?.(targetUri)?.getText?.() : undefined) ??
           "";
-        let dx = 0.2,
-          dy = 0.15,
-          dz = 0.05;
-        if (stepText) {
-          const ptRegex =
-            /CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
-          let minX = Infinity,
-            minY = Infinity,
-            minZ = Infinity;
-          let maxX = -Infinity,
-            maxY = -Infinity,
-            maxZ = -Infinity;
-          let count = 0;
-          let m: RegExpExecArray | null;
-          while ((m = ptRegex.exec(stepText)) !== null) {
-            const x = parseFloat(m[1]!),
-              y = parseFloat(m[2]!),
-              z = parseFloat(m[3]!);
-            if (x < minX) minX = x;
-            if (y < minY) minY = y;
-            if (z < minZ) minZ = z;
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-            if (z > maxZ) maxZ = z;
-            count++;
-          }
-          if (count >= 2) {
-            dx = Math.max(maxX - minX, 0.005);
-            dy = Math.max(maxY - minY, 0.005);
-            dz = Math.max(maxZ - minZ, 0.005);
-          }
-        }
-        const refArea = Number((dy * dz).toFixed(6));
-        const finenessRatio = dx / Math.max(Math.sqrt(refArea), 1e-4);
-        const estCd = Number(Math.min(Math.max(0.05 + 0.65 / Math.max(finenessRatio, 0.5), 0.08), 1.15).toFixed(4));
+        const { generateConformingStepMesh } = await import("./cae-mesher.js");
+        const meshRes = generateConformingStepMesh(stepText, { filename, baseName });
 
-        const moText = `model ${baseName}_CFD "CFD Aerodynamic Study for ${filename}"\n  parameter Real Cd = ${estCd} "Estimated drag coefficient from CAD fineness ratio";\n  parameter Real A_ref = ${refArea} "Projected frontal area from CAD bounding box [m²]";\n  parameter Real L_ref = ${dx.toFixed(4)} "Characteristic streamwise length [m]";\nend ${baseName}_CFD;\n`;
+        const refArea = Number(meshRes.crossSectionArea.yz.toFixed(6));
+        const wettedArea = Number(meshRes.totalSurfaceArea.toFixed(6));
+        const dx = meshRes.characteristicLength;
+        const estCd = meshRes.estimatedDragCoeff;
+
+        const moText = `model ${baseName}_CFD "CFD Aerodynamic Study for ${filename}"\n  parameter Real Cd = ${estCd} "Estimated drag coefficient from B-Rep wetted area and fineness ratio";\n  parameter Real A_ref = ${refArea} "Projected frontal cross-section area from B-Rep [m²]";\n  parameter Real A_wet = ${wettedArea} "Total wetted B-Rep surface area [m²]";\n  parameter Real L_ref = ${dx.toFixed(4)} "Characteristic streamwise length [m]";\nend ${baseName}_CFD;\n`;
         return {
           success: true,
           uri: targetUri,
           source: moText,
+          crossSectionArea: refArea,
+          wettedArea,
+          characteristicLength: dx,
+          estimatedDragCoeff: estCd,
           suggestedFilename: `${baseName}.cfd.mo`,
         };
       },

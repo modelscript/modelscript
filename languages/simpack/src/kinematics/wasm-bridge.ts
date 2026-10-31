@@ -487,6 +487,16 @@ export class WasmKinematicsBridge {
       z: f64[resOff + 2]!,
     };
 
+    const adjustedPositions = new Map<string, Vector3D>();
+    for (let i = 0; i < count; i++) {
+      const off = baseOff + i * 3;
+      adjustedPositions.set(chain[i]!, {
+        x: f64[off + 0]!,
+        y: f64[off + 1]!,
+        z: f64[off + 2]!,
+      });
+    }
+
     if (shouldFree) {
       this.free(bufPtr);
     }
@@ -496,6 +506,7 @@ export class WasmKinematicsBridge {
       bodyIndices: chain,
       closureError,
       isClosed: errMag < 1e-4,
+      adjustedPositions,
     };
   }
 

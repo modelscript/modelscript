@@ -1263,7 +1263,9 @@ export function lintOwl2Document(
 
       if (sups.includes("owl:Nothing")) {
         unsatisfiableClasses.add(cls);
-        emit(Owl2ErrorCode.UNSATISFIABLE_CLASS, targetNode, [cls, `SubClassOf(${cls} owl:Nothing) holds`], cls);
+        if (!cls.startsWith("__aux_")) {
+          emit(Owl2ErrorCode.UNSATISFIABLE_CLASS, targetNode, [cls, `SubClassOf(${cls} owl:Nothing) holds`], cls);
+        }
         continue;
       }
 
@@ -1276,12 +1278,14 @@ export function lintOwl2Document(
           const key = a < b ? `${a}|${b}` : `${b}|${a}`;
           if (disjointClassPairs.has(key)) {
             unsatisfiableClasses.add(cls);
-            emit(
-              Owl2ErrorCode.UNSATISFIABLE_CLASS,
-              targetNode,
-              [cls, `'${cls}' is a subclass of disjoint classes '${a}' and '${b}'`],
-              cls,
-            );
+            if (!cls.startsWith("__aux_")) {
+              emit(
+                Owl2ErrorCode.UNSATISFIABLE_CLASS,
+                targetNode,
+                [cls, `'${cls}' is a subclass of disjoint classes '${a}' and '${b}'`],
+                cls,
+              );
+            }
             foundDisjoint = true;
             break;
           }
@@ -1312,13 +1316,40 @@ export function lintOwl2Document(
     for (const b of cardBounds.values()) {
       if (b.min > b.max) {
         unsatisfiableClasses.add(b.classIri);
-        const targetNode = declaredClasses.get(b.classIri) ?? firstAxiomNodeByIri.get(b.classIri) ?? rootNode;
-        emit(
-          Owl2ErrorCode.UNSATISFIABLE_CLASS,
-          targetNode,
-          [b.classIri, `contradictory cardinality restrictions on '${b.propIri}' (min ${b.min} > max ${b.max})`],
-          b.classIri,
-        );
+        if (!b.classIri.startsWith("__aux_")) {
+          const targetNode = declaredClasses.get(b.classIri) ?? firstAxiomNodeByIri.get(b.classIri) ?? rootNode;
+          emit(
+            Owl2ErrorCode.UNSATISFIABLE_CLASS,
+            targetNode,
+            [b.classIri, `contradictory cardinality restrictions on '${b.propIri}' (min ${b.min} > max ${b.max})`],
+            b.classIri,
+          );
+        }
+      }
+    }
+
+    // Propagate unsatisfiability bottom-up across ObjectSomeValuesFrom and SubClassOf
+    let unsatChanged = true;
+    while (unsatChanged) {
+      unsatChanged = false;
+      for (const ax of axioms) {
+        if (
+          ax.type === "SubClassOf" &&
+          unsatisfiableClasses.has(ax.superClassIri) &&
+          !unsatisfiableClasses.has(ax.subClassIri)
+        ) {
+          unsatisfiableClasses.add(ax.subClassIri);
+          unsatChanged = true;
+        } else if (
+          ax.type === "ObjectSomeValuesFrom" &&
+          ax.subClassIri &&
+          ax.subClassIri !== "owl:Thing" &&
+          unsatisfiableClasses.has(ax.fillerClassIri) &&
+          !unsatisfiableClasses.has(ax.subClassIri)
+        ) {
+          unsatisfiableClasses.add(ax.subClassIri);
+          unsatChanged = true;
+        }
       }
     }
 
@@ -1329,27 +1360,31 @@ export function lintOwl2Document(
         const targetNode = declaredClasses.get(cls) ?? firstAxiomNodeByIri.get(cls) ?? rootNode;
         if (unsatisfiableClasses.has(ax.fillerClassIri)) {
           unsatisfiableClasses.add(cls);
-          emit(
-            Owl2ErrorCode.UNSATISFIABLE_CLASS,
-            targetNode,
-            [
+          if (!cls.startsWith("__aux_")) {
+            emit(
+              Owl2ErrorCode.UNSATISFIABLE_CLASS,
+              targetNode,
+              [
+                cls,
+                `ObjectSomeValuesFrom(${ax.propertyIri} ${ax.fillerClassIri}) has unsatisfiable filler '${ax.fillerClassIri}'`,
+              ],
               cls,
-              `ObjectSomeValuesFrom(${ax.propertyIri} ${ax.fillerClassIri}) has unsatisfiable filler '${ax.fillerClassIri}'`,
-            ],
-            cls,
-          );
+            );
+          }
         }
         const doms = objectPropDomains.get(ax.propertyIri);
         if (doms) {
           for (const dom of doms) {
             if (areClassesDisjoint(cls, dom)) {
               unsatisfiableClasses.add(cls);
-              emit(
-                Owl2ErrorCode.UNSATISFIABLE_CLASS,
-                targetNode,
-                [cls, `'${cls}' uses property '${ax.propertyIri}' whose domain '${dom}' is disjoint with '${cls}'`],
-                cls,
-              );
+              if (!cls.startsWith("__aux_")) {
+                emit(
+                  Owl2ErrorCode.UNSATISFIABLE_CLASS,
+                  targetNode,
+                  [cls, `'${cls}' uses property '${ax.propertyIri}' whose domain '${dom}' is disjoint with '${cls}'`],
+                  cls,
+                );
+              }
             }
           }
         }
@@ -1358,15 +1393,17 @@ export function lintOwl2Document(
           for (const rng of rngs) {
             if (areClassesDisjoint(ax.fillerClassIri, rng)) {
               unsatisfiableClasses.add(cls);
-              emit(
-                Owl2ErrorCode.UNSATISFIABLE_CLASS,
-                targetNode,
-                [
+              if (!cls.startsWith("__aux_")) {
+                emit(
+                  Owl2ErrorCode.UNSATISFIABLE_CLASS,
+                  targetNode,
+                  [
+                    cls,
+                    `ObjectSomeValuesFrom(${ax.propertyIri} ${ax.fillerClassIri}) filler '${ax.fillerClassIri}' is disjoint with property range '${rng}'`,
+                  ],
                   cls,
-                  `ObjectSomeValuesFrom(${ax.propertyIri} ${ax.fillerClassIri}) filler '${ax.fillerClassIri}' is disjoint with property range '${rng}'`,
-                ],
-                cls,
-              );
+                );
+              }
             }
           }
         }

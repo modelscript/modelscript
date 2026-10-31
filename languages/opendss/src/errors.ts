@@ -18,12 +18,26 @@ export const OpenDssErrorCode = {
     message: (elemName: string, elemPhases: number, busName: string, busPhases: number) =>
       `Element '${elemName}' (${elemPhases} phases) connected to bus '${busName}' with different phase count (${busPhases}).`,
   },
+  TRANSFORMER_IMPEDANCE_ZERO: {
+    code: 8402,
+    rule: "transformer-impedance-zero",
+    severity: "error" as const,
+    message: (xfmrName: string, xhl: number) =>
+      `Transformer '${xfmrName}' specifies non-positive leakage reactance (xhl=${xhl}); must be > 0.`,
+  },
   TRANSFORMER_VOLTAGE_MISMATCH: {
     code: 8403,
     rule: "transformer-voltage-mismatch",
     severity: "warning" as const,
     message: (xfmrName: string, winding: number, kv: number, busKv: number) =>
       `Transformer '${xfmrName}' winding ${winding} rated voltage (${kv.toFixed(2)} kV) differs from nominal bus voltage (${busKv.toFixed(2)} kV).`,
+  },
+  LOAD_PF_OUT_OF_RANGE: {
+    code: 8403,
+    rule: "load-pf-out-of-range",
+    severity: "warning" as const,
+    message: (loadName: string, pf: number) =>
+      `Load '${loadName}' specifies power factor (${pf}) outside valid range (0 < |pf| <= 1.0).`,
   },
   REVERSE_POWER_HOSTING_RISK: {
     code: 8404,

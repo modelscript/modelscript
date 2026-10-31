@@ -46,11 +46,29 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
     dae.addVariable(`Q_${busNum}_inj`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
   }
 
-  // 2. Declare synchronous machine rotor dynamics & air-gap power coupling (3 vars, 3 eqs per online generator)
+  // 2. Declare synchronous machine rotor dynamics, .dyr GENROU/EXST1/TGOV1 states & air-gap power coupling
   for (const gen of psseCase.generators) {
     if (gen.stat === 0) continue; // offline generator
     const genId = `${gen.i}_${gen.id.trim()}`;
-    const dyrGen = psseCase.dyr?.generatorsByBusId.get(genId) ?? psseCase.dyr?.generatorsByBusId.get(String(gen.i));
+    const dyrGen =
+      psseCase.dyr?.generatorsByBusId.get(genId) ??
+      psseCase.dyr?.generatorsByBusId.get(String(gen.i)) ??
+      psseCase.dyr?.records?.find(
+        (m) => m.ibus === gen.i && (m.model === "GENROU" || m.model === "GENSAL" || m.model === "GENCLS"),
+      );
+    const dyrExc =
+      psseCase.dyr?.excitersByBusId.get(genId) ??
+      psseCase.dyr?.excitersByBusId.get(String(gen.i)) ??
+      psseCase.dyr?.records?.find(
+        (m) => m.ibus === gen.i && (m.model === "EXST1" || m.model === "IEEET1" || m.model === "SEXS"),
+      );
+    const dyrGov =
+      psseCase.dyr?.governorsByBusId.get(genId) ??
+      psseCase.dyr?.governorsByBusId.get(String(gen.i)) ??
+      psseCase.dyr?.records?.find(
+        (m) => m.ibus === gen.i && (m.model === "TGOV1" || m.model === "IEEEG1" || m.model === "HYGOV"),
+      );
+
     const H = dyrGen?.namedParams["H"] !== undefined && dyrGen.namedParams["H"] > 0 ? dyrGen.namedParams["H"] : 3.5;
     const D = dyrGen?.namedParams["D"] !== undefined && dyrGen.namedParams["D"] >= 0 ? dyrGen.namedParams["D"] : 1.0;
     const bus = psseCase.buses.get(gen.i);
@@ -72,25 +90,102 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
     const omegaDiff = dae.addBinaryExpr(BinOp.Sub, omegaExpr, dae.addRealLiteral(omega0));
     dae.addEquation(EqKind.Simple, derDelta, omegaDiff);
 
+    // Optional TGOV1 governor state: Pm_${genId}
+    let pmExpr = dae.addRealLiteral(gen.pg);
+    if (dyrGov) {
+      const pmVar = dae.addVariable(`Pm_${genId}`, VarType.Real, Variability.Continuous, Causality.Local, gen.pg);
+      const rDroop = Math.max(0.005, dyrGov.namedParams["R"] ?? dyrGov.con[0] ?? 0.05);
+      const t1Gov = Math.max(0.01, dyrGov.namedParams["T1"] ?? dyrGov.con[1] ?? 0.5);
+      const derPm = dae.addDer(pmVar);
+      const lhsGov = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(t1Gov), derPm);
+      const droopGain = sbase / (rDroop * omega0);
+      const droopTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(droopGain), omegaDiff);
+      const pRefMinusDroop = dae.addBinaryExpr(BinOp.Sub, dae.addRealLiteral(gen.pg), droopTerm);
+      const pmNameExpr = dae.addNameExpr(`Pm_${genId}`);
+      const rhsGov = dae.addBinaryExpr(BinOp.Sub, pRefMinusDroop, pmNameExpr);
+      dae.addEquation(EqKind.Simple, lhsGov, rhsGov);
+      pmExpr = pmNameExpr;
+    }
+
+    // Optional EXST1 exciter state: Efd_${genId}
+    let efdExpr = dae.addRealLiteral(1.05);
+    const vrBusExpr = bus ? dae.addNameExpr(`V_${gen.i}_r`) : dae.addRealLiteral(1.0);
+    if (dyrExc) {
+      const efd0 = 1.05;
+      const efdVar = dae.addVariable(`Efd_${genId}`, VarType.Real, Variability.Continuous, Causality.Local, efd0);
+      const kaExc = Math.max(1.0, dyrExc.namedParams["KA"] ?? dyrExc.con[2] ?? 200.0);
+      const taExc = Math.max(0.005, dyrExc.namedParams["TA"] ?? dyrExc.con[3] ?? 0.02);
+      const vRef = (bus?.vm ?? 1.0) + efd0 / kaExc;
+      const derEfd = dae.addDer(efdVar);
+      const lhsExc = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(taExc), derEfd);
+      const vErr = dae.addBinaryExpr(BinOp.Sub, dae.addRealLiteral(vRef), vrBusExpr);
+      const kaVerr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kaExc), vErr);
+      const efdNameExpr = dae.addNameExpr(`Efd_${genId}`);
+      const rhsExc = dae.addBinaryExpr(BinOp.Sub, kaVerr, efdNameExpr);
+      dae.addEquation(EqKind.Simple, lhsExc, rhsExc);
+      efdExpr = efdNameExpr;
+    }
+
+    // Optional GENROU / GENSAL transient flux linkage states: Eqp_${genId} (E'_q) and Edp_${genId} (E'_d)
+    let eqpExpr: number | null = null;
+    if (dyrGen && (dyrGen.model === "GENROU" || dyrGen.model === "GENSAL")) {
+      const eqp0 = 1.05;
+      const edp0 = 0.0;
+      const eqpVar = dae.addVariable(`Eqp_${genId}`, VarType.Real, Variability.Continuous, Causality.Local, eqp0);
+      const edpVar = dae.addVariable(`Edp_${genId}`, VarType.Real, Variability.Continuous, Causality.Local, edp0);
+
+      const td0p = Math.max(0.05, dyrGen.namedParams["Td0p"] ?? dyrGen.con[0] ?? 6.5);
+      const tq0p = Math.max(0.05, dyrGen.namedParams["Tq0p"] ?? dyrGen.con[2] ?? 1.0);
+      const xdSync = Math.max(xd, dyrGen.namedParams["Xd"] ?? dyrGen.con[5] ?? 1.8);
+      const xqSync = Math.max(xd, dyrGen.namedParams["Xq"] ?? dyrGen.con[6] ?? 1.7);
+      const xqp = Math.max(0.05, dyrGen.namedParams["Xqp"] ?? dyrGen.con[8] ?? 0.55);
+
+      // Td0' * der(Eqp) = Efd - Eqp - ((Xd - Xd') / Xd') * (Eqp - V_r)
+      const derEqp = dae.addDer(eqpVar);
+      const lhsEqp = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(td0p), derEqp);
+      const eqpNameExpr = dae.addNameExpr(`Eqp_${genId}`);
+      const idDrop = dae.addBinaryExpr(
+        BinOp.Mul,
+        dae.addRealLiteral((xdSync - xd) / xd),
+        dae.addBinaryExpr(BinOp.Sub, eqpNameExpr, vrBusExpr),
+      );
+      const rhsEqp = dae.addBinaryExpr(BinOp.Sub, dae.addBinaryExpr(BinOp.Sub, efdExpr, eqpNameExpr), idDrop);
+      dae.addEquation(EqKind.Simple, lhsEqp, rhsEqp);
+
+      // Tq0' * der(Edp) = -Edp + ((Xq - Xq') / Xq') * (delta - delta0)
+      const derEdp = dae.addDer(edpVar);
+      const lhsEdp = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(tq0p), derEdp);
+      const edpNameExpr = dae.addNameExpr(`Edp_${genId}`);
+      const deltaDevForEdp = dae.addBinaryExpr(
+        BinOp.Sub,
+        dae.addNameExpr(`delta_${genId}`),
+        dae.addRealLiteral(delta0),
+      );
+      const iqTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral((xqSync - xqp) / xqp), deltaDevForEdp);
+      const rhsEdp = dae.addBinaryExpr(BinOp.Sub, iqTerm, edpNameExpr);
+      dae.addEquation(EqKind.Simple, lhsEdp, rhsEdp);
+
+      eqpExpr = eqpNameExpr;
+    }
+
     // Eq 2: (2H / omega0) * der(omega) = Pm - Pe - D * (omega - omega0)
     const derOmega = dae.addDer(omegaVar);
     const mInertia = (2 * H) / omega0;
     const lhsSwing = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(mInertia), derOmega);
 
-    const pmLiteral = dae.addRealLiteral(gen.pg);
     const peExpr = dae.addNameExpr(`Pe_${genId}`);
-    const pAccel = dae.addBinaryExpr(BinOp.Sub, pmLiteral, peExpr);
+    const pAccel = dae.addBinaryExpr(BinOp.Sub, pmExpr, peExpr);
     const dampTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(D), omegaDiff);
     const rhsSwing = dae.addBinaryExpr(BinOp.Sub, pAccel, dampTerm);
     dae.addEquation(EqKind.Simple, lhsSwing, rhsSwing);
 
-    // Eq 3: Air-gap electrical power coupled to rotor angle & terminal bus voltage
-    // Pe = Pg0 + (Sbase / xd) * (delta - delta0) * V_i_r
+    // Eq 3: Air-gap electrical power coupled to rotor angle, internal flux Eqp (if GENROU), & terminal bus voltage
+    // Pe = Pg0 + (Sbase / xd) * Eqp * (delta - delta0) * V_i_r
     const deltaExpr = dae.addNameExpr(`delta_${genId}`);
     const deltaDev = dae.addBinaryExpr(BinOp.Sub, deltaExpr, dae.addRealLiteral(delta0));
     const kSync = dae.addRealLiteral(sbase / xd);
-    const vrBusExpr = bus ? dae.addNameExpr(`V_${gen.i}_r`) : dae.addRealLiteral(1.0);
-    const syncPower = dae.addBinaryExpr(BinOp.Mul, dae.addBinaryExpr(BinOp.Mul, kSync, deltaDev), vrBusExpr);
+    const baseSyncTerm = dae.addBinaryExpr(BinOp.Mul, dae.addBinaryExpr(BinOp.Mul, kSync, deltaDev), vrBusExpr);
+    const syncPower = eqpExpr !== null ? dae.addBinaryExpr(BinOp.Mul, eqpExpr, baseSyncTerm) : baseSyncTerm;
     const peRhs = dae.addBinaryExpr(BinOp.Add, dae.addRealLiteral(gen.pg), syncPower);
     dae.addEquation(EqKind.Simple, peExpr, peRhs);
   }

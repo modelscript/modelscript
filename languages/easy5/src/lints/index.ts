@@ -9,6 +9,7 @@
  */
 
 import { getBlockDescriptor } from "../catalog/gp-library.js";
+import { computeEigenvalues } from "../linear/frequency-response.js";
 import { validateUserFortranCode } from "../script/user-code.js";
 import type { Easy5Component, Easy5Model } from "../types.js";
 
@@ -122,17 +123,95 @@ export const Easy5ErrorCode = {
   },
 };
 
+function getComponentSampleRate(comp: Easy5Component | undefined): number | undefined {
+  if (!comp) return undefined;
+  for (const key of ["TAU_S", "TS", "SAMPLE_TIME", "DT"]) {
+    const val = comp.parameters[key];
+    if (typeof val === "number" && val > 0) return val;
+  }
+  return undefined;
+}
+
 /**
  * Runs pre-flight static analysis on parsed EASY5 model.
  */
 export function lintEasy5(model: Easy5Model): Easy5Diagnostic[] {
   const diagnostics: Easy5Diagnostic[] = [];
 
+  // M7003: Duplicate Component IDs recorded during parsing
+  if (model.duplicateComponents) {
+    for (const dup of model.duplicateComponents) {
+      diagnostics.push({
+        code: Easy5ErrorCode.DUPLICATE_COMPONENT_ID.code,
+        id: Easy5ErrorCode.DUPLICATE_COMPONENT_ID.id,
+        rule: Easy5ErrorCode.DUPLICATE_COMPONENT_ID.rule,
+        severity: Easy5ErrorCode.DUPLICATE_COMPONENT_ID.severity,
+        message: Easy5ErrorCode.DUPLICATE_COMPONENT_ID.message(dup.id),
+        line: dup.line,
+        column: dup.column,
+        startOffset: dup.startOffset,
+        endOffset: dup.endOffset,
+        componentId: dup.id,
+      });
+    }
+  }
+
   // Track connected input ports
   const connectedInputPorts = new Set<string>();
   for (const conn of model.connections) {
     const key = `${conn.toComponent}.${conn.toPort}`.toUpperCase();
     connectedInputPorts.add(key);
+
+    // M7007: Port Dimension Mismatch
+    const fromComp = model.components.get(conn.fromComponent);
+    const toComp = model.components.get(conn.toComponent);
+    const dim1 = fromComp?.ports[conn.fromPort]?.dimension ?? 1;
+    const dim2 = toComp?.ports[conn.toPort]?.dimension ?? 1;
+    if (dim1 !== dim2) {
+      diagnostics.push({
+        code: Easy5ErrorCode.PORT_DIMENSION_MISMATCH.code,
+        id: Easy5ErrorCode.PORT_DIMENSION_MISMATCH.id,
+        rule: Easy5ErrorCode.PORT_DIMENSION_MISMATCH.rule,
+        severity: Easy5ErrorCode.PORT_DIMENSION_MISMATCH.severity,
+        message: Easy5ErrorCode.PORT_DIMENSION_MISMATCH.message(
+          `${conn.fromComponent}.${conn.fromPort}`,
+          `${conn.toComponent}.${conn.toPort}`,
+          dim1,
+          dim2,
+        ),
+        line: conn.line,
+        column: conn.column,
+        startOffset: conn.startOffset,
+        endOffset: conn.endOffset,
+        componentId: conn.toComponent,
+      });
+    }
+
+    // M7009: Sample Rate Mismatch
+    const rate1 = getComponentSampleRate(fromComp);
+    const rate2 = getComponentSampleRate(toComp);
+    const fromType = fromComp?.type.toUpperCase().replace(/^GP\//, "") ?? "";
+    const toType = toComp?.type.toUpperCase().replace(/^GP\//, "") ?? "";
+    if (
+      rate1 !== undefined &&
+      rate2 !== undefined &&
+      Math.abs(rate1 - rate2) > 1e-9 &&
+      fromType !== "RT" &&
+      toType !== "RT"
+    ) {
+      diagnostics.push({
+        code: Easy5ErrorCode.SAMPLE_RATE_MISMATCH.code,
+        id: Easy5ErrorCode.SAMPLE_RATE_MISMATCH.id,
+        rule: Easy5ErrorCode.SAMPLE_RATE_MISMATCH.rule,
+        severity: Easy5ErrorCode.SAMPLE_RATE_MISMATCH.severity,
+        message: Easy5ErrorCode.SAMPLE_RATE_MISMATCH.message(conn.fromComponent, conn.toComponent, rate1, rate2),
+        line: conn.line,
+        column: conn.column,
+        startOffset: conn.startOffset,
+        endOffset: conn.endOffset,
+        componentId: conn.toComponent,
+      });
+    }
   }
 
   // 1. Component Parameter and State Checks
@@ -167,7 +246,61 @@ export function lintEasy5(model: Easy5Model): Easy5Diagnostic[] {
       }
     }
 
-    // M7005: Improper Transfer Function (deg NUM > deg DEN)
+    // Determine allocated state count for this component
+    let allocatedStates =
+      typeof desc?.stateCount === "function" ? desc.stateCount(comp.parameters) : (desc?.stateCount ?? 0);
+    if (typeUpper === "TF") {
+      const den = Array.isArray(comp.parameters["DEN"]) ? (comp.parameters["DEN"] as number[]) : [1.0, 1.0];
+      allocatedStates = Math.max(0, den.length - 1);
+    } else if (typeUpper === "UG" && typeof comp.parameters["NSTATES"] === "number") {
+      allocatedStates = Math.max(0, Math.floor(comp.parameters["NSTATES"]));
+    }
+
+    // M7004: Uninitialized State
+    if (allocatedStates > 0) {
+      const hasExplicitS0 = comp.explicitParameters?.has("S0") ?? false;
+      const hasInitialStateEntry = Object.keys(comp.initialStates).length > 0;
+      if (!hasExplicitS0 && !hasInitialStateEntry) {
+        diagnostics.push({
+          code: Easy5ErrorCode.UNINITIALIZED_STATE.code,
+          id: Easy5ErrorCode.UNINITIALIZED_STATE.id,
+          rule: Easy5ErrorCode.UNINITIALIZED_STATE.rule,
+          severity: Easy5ErrorCode.UNINITIALIZED_STATE.severity,
+          message: Easy5ErrorCode.UNINITIALIZED_STATE.message(compId),
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+          componentId: compId,
+        });
+      }
+    }
+
+    // M7008: State Index Out Of Bounds in XS: / initialStates
+    if (typeUpper !== "UG" || typeof comp.parameters["NSTATES"] === "number") {
+      for (const stateKey of Object.keys(comp.initialStates)) {
+        const m = /^S\(?(\d+)\)?$/i.exec(stateKey);
+        if (m) {
+          const idx = parseInt(m[1]!, 10);
+          if (idx < 1 || idx > allocatedStates) {
+            diagnostics.push({
+              code: Easy5ErrorCode.STATE_INDEX_OUT_OF_BOUNDS.code,
+              id: Easy5ErrorCode.STATE_INDEX_OUT_OF_BOUNDS.id,
+              rule: Easy5ErrorCode.STATE_INDEX_OUT_OF_BOUNDS.rule,
+              severity: Easy5ErrorCode.STATE_INDEX_OUT_OF_BOUNDS.severity,
+              message: Easy5ErrorCode.STATE_INDEX_OUT_OF_BOUNDS.message(compId, idx, allocatedStates),
+              line: comp.line,
+              column: comp.column,
+              startOffset: comp.startOffset,
+              endOffset: comp.endOffset,
+              componentId: compId,
+            });
+          }
+        }
+      }
+    }
+
+    // M7005: Improper Transfer Function (deg NUM > deg DEN) & M7011: Unstable Linear Pole
     if (typeUpper === "TF") {
       const num = Array.isArray(comp.parameters["NUM"]) ? (comp.parameters["NUM"] as number[]) : [1.0];
       const den = Array.isArray(comp.parameters["DEN"]) ? (comp.parameters["DEN"] as number[]) : [1.0, 1.0];
@@ -186,6 +319,37 @@ export function lintEasy5(model: Easy5Model): Easy5Diagnostic[] {
           endOffset: comp.endOffset,
           componentId: compId,
         });
+      }
+
+      if (degDen >= 1 && den[0] !== undefined && Math.abs(den[0]) > 1e-12) {
+        const an = den[0];
+        const a = den.map((c) => c / an);
+        const n = degDen;
+        const compMat: number[][] = Array.from({ length: n }, () => new Array(n).fill(0.0));
+        for (let i = 0; i < n - 1; i++) {
+          compMat[i]![i + 1] = 1.0;
+        }
+        for (let j = 0; j < n; j++) {
+          compMat[n - 1]![j] = -a[n - j]!;
+        }
+        const poles = computeEigenvalues(compMat);
+        for (const p of poles) {
+          if (p.real > 1e-7) {
+            diagnostics.push({
+              code: Easy5ErrorCode.UNSTABLE_LINEAR_POLE.code,
+              id: Easy5ErrorCode.UNSTABLE_LINEAR_POLE.id,
+              rule: Easy5ErrorCode.UNSTABLE_LINEAR_POLE.rule,
+              severity: Easy5ErrorCode.UNSTABLE_LINEAR_POLE.severity,
+              message: Easy5ErrorCode.UNSTABLE_LINEAR_POLE.message(compId, p.real),
+              line: comp.line,
+              column: comp.column,
+              startOffset: comp.startOffset,
+              endOffset: comp.endOffset,
+              componentId: compId,
+            });
+            break;
+          }
+        }
       }
     }
 
@@ -226,6 +390,27 @@ export function lintEasy5(model: Easy5Model): Easy5Diagnostic[] {
             "LL",
             `lower limit (${ll}) exceeds upper limit (${ul})`,
           ),
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+          componentId: compId,
+        });
+      }
+    }
+
+    // M7012: Table Extrapolation Hazard
+    if (typeUpper === "FN" || typeof comp.parameters["TABLE"] === "string") {
+      const tableName = typeof comp.parameters["TABLE"] === "string" ? comp.parameters["TABLE"] : "FTAB1";
+      const extrap = comp.parameters["EXTRAP"] ?? comp.parameters["BOUNDED"];
+      const isBounded = extrap === "CLAMP" || extrap === "BOUNDED" || extrap === 1 || extrap === "TRUE";
+      if (!isBounded) {
+        diagnostics.push({
+          code: Easy5ErrorCode.TABLE_EXTRAPOLATION_HAZARD.code,
+          id: Easy5ErrorCode.TABLE_EXTRAPOLATION_HAZARD.id,
+          rule: Easy5ErrorCode.TABLE_EXTRAPOLATION_HAZARD.rule,
+          severity: Easy5ErrorCode.TABLE_EXTRAPOLATION_HAZARD.severity,
+          message: Easy5ErrorCode.TABLE_EXTRAPOLATION_HAZARD.message(compId, tableName),
           line: comp.line,
           column: comp.column,
           startOffset: comp.startOffset,

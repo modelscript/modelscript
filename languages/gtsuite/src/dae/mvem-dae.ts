@@ -50,6 +50,8 @@ export function lowerGtSuiteToDae(builder: IDaeBuilder, model: GtModel): GtDaeLo
 
   const engineSpeedRpm = model.simulationSettings.engineSpeedRpm || 3000.0;
   const speedVar = getOrAddVar("engine_speed_rpm", Variability.Parameter, engineSpeedRpm);
+  builder.addEquation(EqKind.Simple, builder.addName(speedVar), builder.addRealLiteral(engineSpeedRpm));
+  equationCount++;
 
   // 1. Intake Manifold Dynamics: dPim/dt = (R * T_im / V_im) * (mdot_throttle - mdot_eng)
   const intakePlenum = model.components.find((c) => c.kind === "plenum" || c.kind === "flow_split") as
@@ -102,6 +104,12 @@ export function lowerGtSuiteToDae(builder: IDaeBuilder, model: GtModel): GtDaeLo
   builder.addEquation(EqKind.Simple, builder.addName(mdotFuelVar), rhsMdotFuel);
   equationCount++;
 
+  // Constitutive equation for exhaust turbine/nozzle flow: mdot_turbine = c_turb * P_exhaust_manifold
+  const turbFlowCoeff = 0.0535 / pEm0;
+  const rhsMdotTurb = builder.addBinaryExpr(BinOp.Mul, builder.addRealLiteral(turbFlowCoeff), builder.addName(pEmVar));
+  builder.addEquation(EqKind.Simple, builder.addName(mdotTurbVar), rhsMdotTurb);
+  equationCount++;
+
   const vEm = 0.0025;
   const tEm = 1050.0; // K
   const exhManifoldGain = (rGas * tEm) / Math.max(1e-5, vEm);
@@ -127,10 +135,53 @@ export function lowerGtSuiteToDae(builder: IDaeBuilder, model: GtModel): GtDaeLo
     const omegaTcVar = getOrAddVar("omega_turbo_rad_s", Variability.Continuous, omega0);
     stateVarIndices.push(omegaTcVar);
 
+    // Constitutive equation for compressor mass flow: mdot_air_in = c_comp * omega_turbo_rad_s
+    const mdotAir0 = compressor?.massFlowKgS ?? 0.05;
+    const compFlowCoeff = mdotAir0 / Math.max(1.0, omega0);
+    const rhsMdotAir = builder.addBinaryExpr(
+      BinOp.Mul,
+      builder.addRealLiteral(compFlowCoeff),
+      builder.addName(omegaTcVar),
+    );
+    builder.addEquation(EqKind.Simple, builder.addName(mdotAirVar), rhsMdotAir);
+    equationCount++;
+
     const pCompVar = getOrAddVar("power_compressor_w", Variability.Continuous, 8000.0);
     const pTurbVar = getOrAddVar("power_turbine_w", Variability.Continuous, 8200.0);
 
-    // Simplified power balance: der(omega_tc) = (pTurb * 0.95 - pComp) / (J * omega_tc)
+    // Constitutive equation for compressor power: P_comp = mdot_air_in * cp_air * T_amb / eta_c * (PR^(0.286) - 1)
+    const cpAir = 1005.0;
+    const tAmb = 298.15;
+    const etaComp = Math.max(0.4, compressor?.efficiency ?? 0.76);
+    const prRatioExpr = builder.addBinaryExpr(BinOp.Div, builder.addName(pImVar), builder.addRealLiteral(101325.0));
+    const prMinusOne = builder.addBinaryExpr(BinOp.Sub, prRatioExpr, builder.addRealLiteral(1.0));
+    const compEnthalpyFactor = (cpAir * tAmb * 0.286) / etaComp;
+    const rhsPComp = builder.addBinaryExpr(
+      BinOp.Mul,
+      builder.addBinaryExpr(BinOp.Mul, builder.addName(mdotAirVar), builder.addRealLiteral(compEnthalpyFactor)),
+      prMinusOne,
+    );
+    builder.addEquation(EqKind.Simple, builder.addName(pCompVar), rhsPComp);
+    equationCount++;
+
+    // Constitutive equation for turbine power: P_turb = mdot_turbine * cp_exh * T_em * eta_t * (1 - (P_amb / P_em)^0.259)
+    const cpExh = 1150.0;
+    const etaTurb = Math.max(0.4, turbine?.efficiency ?? 0.72);
+    const erMinusOne = builder.addBinaryExpr(
+      BinOp.Sub,
+      builder.addBinaryExpr(BinOp.Div, builder.addName(pEmVar), builder.addRealLiteral(101325.0)),
+      builder.addRealLiteral(1.0),
+    );
+    const turbEnthalpyFactor = cpExh * tEm * etaTurb * 0.259;
+    const rhsPTurb = builder.addBinaryExpr(
+      BinOp.Mul,
+      builder.addBinaryExpr(BinOp.Mul, builder.addName(mdotTurbVar), builder.addRealLiteral(turbEnthalpyFactor)),
+      erMinusOne,
+    );
+    builder.addEquation(EqKind.Simple, builder.addName(pTurbVar), rhsPTurb);
+    equationCount++;
+
+    // Power balance ODE: der(omega_tc) = (pTurb * 0.95 - pComp) / (J * omega_tc)
     const netPower = builder.addBinaryExpr(
       BinOp.Sub,
       builder.addBinaryExpr(BinOp.Mul, builder.addRealLiteral(0.95), builder.addName(pTurbVar)),
@@ -140,6 +191,10 @@ export function lowerGtSuiteToDae(builder: IDaeBuilder, model: GtModel): GtDaeLo
     const rhsDerOmega = builder.addBinaryExpr(BinOp.Div, netPower, jOmega);
     const derOmega = builder.addDer(omegaTcVar);
     builder.addEquation(EqKind.Simple, derOmega, rhsDerOmega);
+    equationCount++;
+  } else {
+    // Naturally aspirated intake throttle constitutive equation: mdot_air_in = mdot_engine_flow
+    builder.addEquation(EqKind.Simple, builder.addName(mdotAirVar), builder.addName(mdotEngVar));
     equationCount++;
   }
 

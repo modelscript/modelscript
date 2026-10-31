@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  BeakerIcon,
   BookIcon,
   CheckIcon,
   CodeIcon,
@@ -11,6 +12,7 @@ import {
   LinkIcon,
   PackageIcon,
   PeopleIcon,
+  PlayIcon,
   ShieldCheckIcon,
   VerifiedIcon,
 } from "@primer/octicons-react";
@@ -32,6 +34,7 @@ import {
   type PackageDependent,
   type PackageStats,
 } from "../../../api";
+import type { LinkedStudyJobItemPayload, StudyDefinitionPayload } from "../../../api/compute";
 import {
   DependentBadge,
   Divider,
@@ -83,6 +86,15 @@ export interface PackageRightSidebarProps {
   }[];
   packageStats?: PackageStats | null | undefined;
   dependents: PackageDependent[];
+  linkedStudies?:
+    | {
+        bundledStudies: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+        linkedTemplates: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+        compatibleTemplates: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+        linkedJobs: LinkedStudyJobItemPayload[];
+      }
+    | undefined;
+  onOpenStudiesTab?: (() => void) | undefined;
   packageOwner?: string | null | undefined;
   collaborators: PackageCollaborator[];
   canManage: boolean;
@@ -103,6 +115,8 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
   availableDomains,
   packageStats,
   dependents,
+  linkedStudies,
+  onOpenStudiesTab,
   packageOwner,
   collaborators,
   canManage,
@@ -508,6 +522,75 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
           </Text>
         )}
       </MetaBlock>
+
+      <Divider />
+
+      {/* Linked Studies, Study Instances & Jobs */}
+      {(() => {
+        const bundled = linkedStudies?.bundledStudies || [];
+        const templates = linkedStudies?.linkedTemplates || [];
+        const jobs = linkedStudies?.linkedJobs || [];
+        const totalLinked = bundled.length + templates.length + jobs.length;
+
+        return (
+          <MetaBlock>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <MetaLabel style={{ marginBottom: 0 }}>Linked Studies &amp; Jobs ({totalLinked})</MetaLabel>
+              {onOpenStudiesTab && (
+                <Button
+                  size="small"
+                  variant="invisible"
+                  onClick={onOpenStudiesTab}
+                  style={{ fontSize: 11, padding: "2px 6px", color: "var(--color-accent-cyan, #06b6d4)" }}
+                >
+                  View all →
+                </Button>
+              )}
+            </div>
+            {totalLinked > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[...bundled, ...templates].slice(0, 3).map((tpl) => (
+                  <DependentBadge
+                    key={`tpl-${tpl.slug}`}
+                    to={`/jobs/templates/${tpl.slug}?package=${encodeURIComponent(name)}&version=${encodeURIComponent(version)}`}
+                    title={`Study Template (${(tpl.standardFormat || "sedml").toUpperCase()})`}
+                  >
+                    <BeakerIcon size={12} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {tpl.name}
+                    </span>
+                    <Label variant="secondary" style={{ fontSize: 9, padding: "0 4px", marginLeft: "auto" }}>
+                      .{tpl.standardFormat === "ssp-ssv" ? "ssv" : tpl.standardFormat === "dakota" ? "dakota" : "sedml"}
+                    </Label>
+                  </DependentBadge>
+                ))}
+                {jobs.slice(0, 3).map((job) => (
+                  <DependentBadge key={`job-${job.id}`} to={`/jobs/${job.id}`} title={`Study Instance Run #${job.id}`}>
+                    <PlayIcon size={12} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {job.name}
+                    </span>
+                    <Label variant="accent" style={{ fontSize: 9, padding: "0 4px", marginLeft: "auto" }}>
+                      #{job.id}
+                    </Label>
+                  </DependentBadge>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>
+                  No linked study instances yet
+                </Text>
+                {onOpenStudiesTab && (
+                  <Button size="small" leadingVisual={BeakerIcon} onClick={onOpenStudiesTab} style={{ fontSize: 11 }}>
+                    Run Study on {name.split("/").pop()}
+                  </Button>
+                )}
+              </div>
+            )}
+          </MetaBlock>
+        );
+      })()}
 
       <Divider />
 

@@ -67,32 +67,80 @@ export const CardFooter: React.FC<CardFooterProps> = ({
     });
   };
 
+  const rawViewType = String(artifact?.view_type || "").toLowerCase();
+  const isUntitledMediaOr3dViewer = [
+    "picture",
+    "video",
+    "youtube_video",
+    "audio",
+    "pdf",
+    "cad",
+    "cad-step",
+    "cad_step",
+    "cad-3d-viewer",
+    "step",
+    "stp",
+    "3d-model",
+    "simulation",
+    "simulation-result",
+    "fea-result",
+    "cfd-result",
+    "cfd-animation",
+    "gcode",
+    "cam-result",
+    "webgpu",
+    "webgpu-simulation",
+    "gpu-simulation",
+    "link-preview",
+  ].includes(rawViewType);
+
   return (
     <Box
       px={3}
-      py={2}
+      py={1}
       borderTop="1px solid var(--color-border)"
       backgroundColor="var(--color-canvas-subtle)"
       display="flex"
       justifyContent="space-between"
       alignItems="center"
-      style={{ gap: "12px", minHeight: "42px" }}
+      style={{ gap: "10px", minHeight: "38px" }}
     >
       <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0, flex: 1 }}>
-        <Text
-          style={{
-            fontSize: "13px",
-            lineHeight: "18px",
-            fontWeight: 600,
-            color: "var(--color-fg-muted)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-          title={artifact.title || viewConfig.title || ""}
-        >
-          {artifact.title || viewConfig.title || ""}
-        </Text>
+        {isUntitledMediaOr3dViewer ? (
+          <Text
+            style={{
+              fontSize: "12.5px",
+              lineHeight: "18px",
+              fontWeight: 600,
+              color: "var(--color-fg-muted)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={artifact.title || viewConfig.title || ""}
+          >
+            {artifact.title || viewConfig.title || ""}
+          </Text>
+        ) : (
+          <span
+            style={{
+              fontSize: "10.5px",
+              lineHeight: "14px",
+              background: "rgba(148, 163, 184, 0.12)",
+              color: "var(--color-fg-muted)",
+              border: "1px solid var(--color-border-default)",
+              padding: "2px 7px",
+              borderRadius: "9999px",
+              fontWeight: 600,
+              fontFamily: "var(--font-mono, monospace)",
+              whiteSpace: "nowrap",
+              textTransform: "uppercase",
+              letterSpacing: "0.03em",
+            }}
+          >
+            {rawViewType || "ARTIFACT"}
+          </span>
+        )}
         {viewConfig.provenance && (
           <span
             style={{

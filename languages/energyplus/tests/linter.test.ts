@@ -75,6 +75,21 @@ describe("EnergyPlus Pre-Flight Diagnostic Linters (M7901–M7908)", () => {
     assert(diags.some((d) => d.code === EnergyPlusErrorCode.UNMATCHED_INTERZONE_SURFACE.code));
   });
 
+  it("M7901: detects non-reciprocal interzone surface when target points elsewhere", () => {
+    const idf = `
+      Zone, ZoneA, 0, 0, 0, 0, 1, 1, 3.0, 80.0;
+      Zone, ZoneB, 0, 5, 0, 0, 1, 1, 3.0, 80.0;
+      BuildingSurface:Detailed, PartitionAB, Wall, WallConst, ZoneA, Surface, PartitionBA, NoSun, NoWind, 0.0, 4, 0,0,3, 0,0,0, 4,0,0, 4,0,3;
+      BuildingSurface:Detailed, PartitionBA, Wall, WallConst, ZoneB, Outdoors, , NoSun, NoWind, 0.0, 4, 4,0,3, 4,0,0, 0,0,0, 0,0,3;
+      Construction, WallConst, SomeMat;
+      Material, SomeMat, Rough, 0.1, 1.0, 2000, 800;
+    `;
+    const doc = parseIdf(idf);
+    const diags = lintEnergyPlus(doc);
+
+    assert(diags.some((d) => d.code === EnergyPlusErrorCode.UNMATCHED_INTERZONE_SURFACE.code));
+  });
+
   it("M7904: detects HVAC component referencing non-existent zone", () => {
     const idf = `
       Zone, RealZone, 0, 0, 0, 0, 1, 1, 3.0, 80.0;

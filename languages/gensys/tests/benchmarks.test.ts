@@ -171,9 +171,9 @@ describe("GENSYS Manchester Benchmark Railway Vehicle Simulation", () => {
     const model = parseGensysDeck(deck, "ManchesterBenchmark");
     const dae = lowerGensysToDae(model);
 
-    // 3 bodies * 6 vars + 6 springs * 3 vars = 36 variables
-    assert.equal(dae.varCount, 36);
-    assert.equal(dae.eqCount, 36);
+    // 3 bodies * 6 vars + 6 springs * 3 vars + 4 wheelsets * 13 vars = 88 variables
+    assert.equal(dae.varCount, 88);
+    assert.equal(dae.eqCount, 88);
 
     const carbodyZIdx = dae.lookupVariable("carbody.z");
     assert.ok(carbodyZIdx >= 0);

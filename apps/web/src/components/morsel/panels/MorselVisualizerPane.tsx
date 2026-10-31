@@ -890,7 +890,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       title={translations.codeView}
                       onClick={() => setView(MorselView.CODE)}
                       style={
-                        view === MorselView.CODE
+                        (view as MorselView) === MorselView.CODE
                           ? {
                               backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
                               borderRadius: 6,

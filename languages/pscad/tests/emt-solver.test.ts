@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { EmtSolver, type EmtNetlist } from "../src/index.js";
+import { EmtSolver, runEmtSimulation, type EmtNetlist } from "../src/index.js";
 
 describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
   it("should solve a 3-phase AC transmission line with cached LU factorization", () => {
@@ -248,5 +248,235 @@ describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
       if (Math.abs(vBus2[i]!) > maxV) maxV = Math.abs(vBus2[i]!);
     }
     assert.ok(maxV > 150e3 && maxV < 250e3, `Max bus voltage ${maxV} should be in nominal 230 kV range`);
+  });
+
+  it("should solve coupled 3-phase abc nodal admittance for phase-to-phase (LL) and SLG asymmetrical faults", () => {
+    const netlist: EmtNetlist = {
+      nominalFrequencyHz: 60.0,
+      buses: new Map([
+        ["GenBus", { id: "GenBus", name: "GenBus", baseKv: 230.0, phaseCount: 3, connectedBranchIds: ["Line1"] }],
+        ["FaultBus", { id: "FaultBus", name: "FaultBus", baseKv: 230.0, phaseCount: 3, connectedBranchIds: ["Line1"] }],
+      ]),
+      sources: [
+        {
+          id: "GridSrc",
+          name: "GridSrc",
+          bus: "GenBus",
+          vPeakKv: 230.0,
+          frequencyHz: 60.0,
+          phaseRad: 0.0,
+          mvaRating: 500.0,
+          rSourceOhm: 1.0,
+          lSourceH: 0.01,
+        },
+      ],
+      branches: [
+        {
+          id: "Line1",
+          kind: "rlc",
+          fromBus: "GenBus",
+          toBus: "FaultBus",
+          resistanceOhm: 2.0,
+          inductanceH: 0.02,
+          capacitanceF: 1e-6,
+        },
+      ],
+      transformers: [],
+      transmissionLines: [],
+      fmuInstances: [],
+      faults: [
+        {
+          id: "FltLL",
+          bus: "FaultBus",
+          faultType: "LL", // Phase B to Phase C fault
+          startSec: 0.015,
+          endSec: 0.045,
+          rFaultOhm: 0.01,
+        },
+      ],
+    };
+
+    const result = runEmtSimulation(netlist, {
+      timeStepSec: 50e-6,
+      durationSec: 0.05,
+    });
+
+    const va = result.vA.get("FaultBus")!;
+    const vb = result.vB.get("FaultBus")!;
+    const vc = result.vC.get("FaultBus")!;
+    assert.ok(va && vb && vc);
+
+    // During LL fault between Phase B and Phase C (steps 400..800):
+    // Phase A remains healthy (~230 kV peak), while |vB(t) - vC(t)| collapses near zero!
+    let maxVaFault = 0;
+    let maxDiffBCFault = 0;
+    for (let k = 450; k < 850; k++) {
+      maxVaFault = Math.max(maxVaFault, Math.abs(va[k]!));
+      maxDiffBCFault = Math.max(maxDiffBCFault, Math.abs(vb[k]! - vc[k]!));
+    }
+    assert.ok(maxVaFault > 180e3, `Unfaulted Phase A voltage should stay near nominal (>180 kV), got ${maxVaFault}`);
+    assert.ok(
+      maxDiffBCFault < 15e3,
+      `Phase B-to-C voltage difference should collapse during bolted LL fault (<15 kV), got ${maxDiffBCFault}`,
+    );
+  });
+
+  it("should simulate Bergeron distributed traveling-wave propagation delay and surge impedance", () => {
+    // 150 km overhead line with L' = 1 mH/km, C' = 10 nF/km:
+    // wave speed v = 1 / sqrt(1e-3 * 1e-8) = 316,227.77 km/s
+    // travel time tau = 150 * sqrt(1e-11) = 0.47434 ms (~23.7 steps at dt = 20 us)
+    // surge impedance Zc = sqrt(1e-3 / 1e-8) = 316.23 Ohm
+    const netlist: EmtNetlist = {
+      nominalFrequencyHz: 60.0,
+      buses: new Map([
+        ["SendBus", { id: "SendBus", name: "SendBus", baseKv: 230.0, phaseCount: 3, connectedBranchIds: ["BergLine"] }],
+        ["RecvBus", { id: "RecvBus", name: "RecvBus", baseKv: 230.0, phaseCount: 3, connectedBranchIds: ["BergLine"] }],
+      ]),
+      sources: [
+        {
+          id: "SendSrc",
+          name: "SendSrc",
+          bus: "SendBus",
+          vPeakKv: 230.0,
+          frequencyHz: 60.0,
+          phaseRad: Math.PI / 2, // Cosine wave starting at peak at t = 0
+          mvaRating: 1000.0,
+          rSourceOhm: 0.5,
+        },
+      ],
+      branches: [],
+      transformers: [],
+      transmissionLines: [
+        {
+          id: "BergLine",
+          fromBus: "SendBus",
+          toBus: "RecvBus",
+          lengthKm: 150.0,
+          rPerKm: 0.02,
+          lPerKm: 1e-3,
+          cPerKm: 1e-8,
+          modelType: "bergeron",
+        },
+      ],
+      fmuInstances: [],
+    };
+
+    const dt = 20e-6;
+    const result = runEmtSimulation(netlist, {
+      timeStepSec: dt,
+      durationSec: 0.01,
+    });
+
+    const vSend = result.vA.get("SendBus")!;
+    const vRecv = result.vA.get("RecvBus")!;
+    const iSend = result.iA.get("BergLine")!;
+    assert.ok(vSend && vRecv && iSend);
+
+    // At t = 0..0.35 ms (steps 0..17, before travel time tau = 0.474 ms):
+    // SendBus is immediately energized (~230 kV), while open-end RecvBus has NOT yet seen the wave!
+    assert.ok(Math.abs(vSend[2]!) > 200e3, `SendBus should be energized immediately at step 2, got ${vSend[2]}`);
+    for (let k = 0; k < 18; k++) {
+      assert.ok(
+        Math.abs(vRecv[k]!) < 1.0,
+        `RecvBus at step ${k} (t=${(k * dt * 1e3).toFixed(2)}ms < tau) must remain ~0 before wave arrival, got ${vRecv[k]}`,
+      );
+    }
+
+    // Initial sending-end current before reflection returns (2*tau) must equal vSend / (Zc + R/4)
+    const zChar = Math.sqrt(1e-3 / 1e-8); // 316.2277 Ohm
+    const expectedISend = vSend[5]! / (zChar + 0.25 * (150 * 0.02));
+    assert.ok(
+      Math.abs(iSend[5]! - expectedISend) / expectedISend < 0.02,
+      `Initial Bergeron sending current ${iSend[5]} should match vSend / Z_berg = ${expectedISend}`,
+    );
+
+    // After t > tau (step 30, t = 0.60 ms), the wave arrives at open-circuited RecvBus and doubles in voltage!
+    let maxRecvAfterArrival = 0;
+    for (let k = 25; k < 45; k++) {
+      maxRecvAfterArrival = Math.max(maxRecvAfterArrival, Math.abs(vRecv[k]!));
+    }
+    assert.ok(
+      maxRecvAfterArrival > 350e3,
+      `Open-end Bergeron receiving voltage should exhibit traveling-wave reflection (>350 kV), got ${maxRecvAfterArrival}`,
+    );
+  });
+
+  it("should simulate Park dq0 synchronous generator swing equation and subtransient EMF under fault", () => {
+    const netlist: EmtNetlist = {
+      nominalFrequencyHz: 60.0,
+      buses: new Map([
+        [
+          "GenTerm",
+          { id: "GenTerm", name: "GenTerm", baseKv: 16.5, phaseCount: 3, connectedBranchIds: ["SM1", "Load"] },
+        ],
+      ]),
+      sources: [],
+      branches: [
+        {
+          id: "Load",
+          kind: "rlc",
+          fromBus: "GenTerm",
+          toBus: "0",
+          resistanceOhm: 1.5,
+          inductanceH: 0.002,
+          capacitanceF: 0,
+        },
+      ],
+      transformers: [],
+      transmissionLines: [],
+      fmuInstances: [],
+      synchronousMachines: [
+        {
+          id: "SM1",
+          bus: "GenTerm",
+          ratedMva: 250.0,
+          ratedKvLL: 16.5,
+          frequencyHz: 60.0,
+          xdSub: 0.2,
+          xqSub: 0.2,
+          hInertiaSec: 3.0,
+          dampingPu: 2.0,
+          mechanicalPowerPu: 0.8,
+          fieldVoltagePu: 1.1,
+        },
+      ],
+      faults: [
+        {
+          id: "TermFault",
+          bus: "GenTerm",
+          faultType: "3PH",
+          startSec: 0.01,
+          endSec: 0.04,
+          rFaultOhm: 0.005,
+        },
+      ],
+    };
+
+    const result = runEmtSimulation(netlist, {
+      timeStepSec: 50e-6,
+      durationSec: 0.06,
+    });
+
+    const delta = result.controlSignals?.get("SM1_delta");
+    const omega = result.controlSignals?.get("SM1_omega");
+    const pe = result.controlSignals?.get("SM1_Pe");
+    const iGenA = result.iA.get("SM1");
+    assert.ok(delta && omega && pe && iGenA);
+
+    const omega0 = 2 * Math.PI * 60.0;
+    const deltaInit = delta[0]!;
+    const deltaEndFault = delta[800]!; // t = 0.04s (end of 3PH fault)
+    const omegaEndFault = omega[800]!;
+
+    // During the bolted 3PH terminal fault, electrical power Pe collapses near 0 while Pm = 0.8 pu,
+    // causing the rotor to accelerate (omega > omega0) and rotor angle delta to advance!
+    assert.ok(
+      omegaEndFault > omega0,
+      `Rotor speed at fault clearing (${omegaEndFault} rad/s) must exceed synchronous speed (${omega0} rad/s)`,
+    );
+    assert.ok(
+      deltaEndFault > deltaInit + 0.02,
+      `Rotor angle delta must advance during fault from ${deltaInit} to ${deltaEndFault} rad`,
+    );
   });
 });

@@ -86,9 +86,18 @@ export function lowerEclipseToDae(deck: EclipseDeck, options?: EclipseDaeOptions
     const iprRhs = dae.addBinaryExpr(BinOp.Mul, wiLit, dPExpr);
     dae.addEquation(EqKind.Simple, dae.addName(qOilW), iprRhs);
 
-    // Default simple GOR and WOR ratios
-    dae.addEquation(EqKind.Simple, dae.addName(qWaterW), dae.addRealLiteral(0.0));
-    dae.addEquation(EqKind.Simple, dae.addName(qGasW), dae.addRealLiteral(0.0));
+    // Fractional water rate and solution gas-oil ratio (GOR)
+    const mobRatio = dae.addCallExpr("max", [
+      dae.addRealLiteral(0.0),
+      dae.addBinaryExpr(BinOp.Sub, dae.addName(swVar), dae.addRealLiteral(swc)),
+    ]);
+    dae.addEquation(EqKind.Simple, dae.addName(qWaterW), dae.addBinaryExpr(BinOp.Mul, dae.addName(qOilW), mobRatio));
+    const gor = isField ? 500.0 : 90.0;
+    dae.addEquation(
+      EqKind.Simple,
+      dae.addName(qGasW),
+      dae.addBinaryExpr(BinOp.Mul, dae.addName(qOilW), dae.addRealLiteral(gor)),
+    );
 
     // Specified BHP or target rate control
     if (well.productionControl) {
@@ -119,8 +128,14 @@ export function lowerEclipseToDae(deck: EclipseDeck, options?: EclipseDaeOptions
   const dPdtExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(scale), dae.addName(qOilTotVar));
   dae.addEquation(EqKind.Simple, dae.addDer(pAvgVar), dPdtExpr);
 
-  // der(S_w) = 0.0 (quasi-steady water saturation)
-  dae.addEquation(EqKind.Simple, dae.addDer(swVar), dae.addRealLiteral(0.0));
+  // der(S_w) = (Q_oil_total * Bo - Q_water_total) / V_pore (voidage replacement saturation rate)
+  const swScale = boi / Math.max(1e-6, vPore);
+  const dSwdtExpr = dae.addBinaryExpr(
+    BinOp.Mul,
+    dae.addRealLiteral(swScale),
+    dae.addBinaryExpr(BinOp.Sub, dae.addName(qOilTotVar), dae.addName(qWaterTotVar)),
+  );
+  dae.addEquation(EqKind.Simple, dae.addDer(swVar), dSwdtExpr);
 
   return dae;
 }

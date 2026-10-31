@@ -209,6 +209,16 @@ export function parseIbis(content: string, filename?: string): IbisDeck {
               currentModel.fallingWaveforms.push(currentWaveform);
             }
           }
+        } else if (kw === "ALGORITHMIC MODEL" || kw === "BEGIN ALGORITHMIC MODEL") {
+          currentSection = "ALGORITHMIC MODEL";
+          if (currentModel) {
+            currentModel.algorithmicModel = currentModel.algorithmicModel ?? {
+              executables: [],
+              rawParameters: {},
+            };
+          }
+        } else if (kw === "END ALGORITHMIC MODEL") {
+          currentSection = "MODEL";
         }
         continue;
       }
@@ -325,6 +335,39 @@ export function parseIbis(content: string, filename?: string): IbisDeck {
           const vMin = tokens.length > 2 ? parseEngineeringNumber(tokens[2]!) : vTyp;
           const vMax = tokens.length > 3 ? parseEngineeringNumber(tokens[3]!) : vTyp;
           currentWaveform.rows.push({ vOrT: t, typ: vTyp, min: vMin, max: vMax });
+        }
+      }
+    } else if (currentSection === "ALGORITHMIC MODEL") {
+      if (currentModel && currentModel.algorithmicModel) {
+        const ami = currentModel.algorithmicModel;
+        const cleanTokens = tokens
+          .map((t) => {
+            let s = t;
+            while (s.startsWith("(")) s = s.slice(1);
+            while (s.endsWith(")")) s = s.slice(0, -1);
+            return s;
+          })
+          .filter((t) => t.length > 0);
+
+        if (cleanTokens.length >= 2) {
+          const key = cleanTokens[0]!.toLowerCase();
+          if (key === "executable" && cleanTokens.length >= 4) {
+            ami.executables.push({
+              platform: cleanTokens[1]!,
+              fileName: cleanTokens[2]!,
+              paramFile: cleanTokens[3]!,
+            });
+          } else if (key === "tx_tap_weights" || key === "txtapweights" || key === "ffe_taps") {
+            ami.txTapWeights = cleanTokens.slice(1).map(parseEngineeringNumber);
+          } else if (key === "ctle_gain_db" || key === "ctlegaindb" || key === "ctle_boost_db") {
+            ami.ctleGainDb = parseEngineeringNumber(cleanTokens[1]!);
+          } else if (key === "ctle_pole_ghz" || key === "ctlepoleghz") {
+            ami.ctlePoleGhz = parseEngineeringNumber(cleanTokens[1]!);
+          } else if (key === "dfe_taps" || key === "dfetaps") {
+            ami.dfeTaps = cleanTokens.slice(1).map(parseEngineeringNumber);
+          } else {
+            ami.rawParameters[cleanTokens[0]!] = cleanTokens.slice(1).join(" ");
+          }
         }
       }
     }

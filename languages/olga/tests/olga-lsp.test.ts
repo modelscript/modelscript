@@ -5,6 +5,8 @@ import { describe, it } from "node:test";
 import { lowerOlgaToDae } from "../src/dae/index.js";
 import { executeOlgaAction, getOlgaDocumentSymbols, getOlgaHover, validateOlga } from "../src/lsp.js";
 import { parseOlga } from "../src/parser/index.js";
+import { olgaToModelica } from "../src/projections/olga-to-modelica.js";
+import { OlgaWorkspaceIndex } from "../src/workspace-index.js";
 
 const SAMPLE_OLGA = `CASE TITLE = "SubseaTieback"
 FILES TABLE = "fluids.tab"
@@ -42,6 +44,19 @@ describe("OLGA LSP Services & DAE Lowering (@modelscript/olga)", () => {
     const dae = lowerOlgaToDae(model);
     assert.ok(dae.varCount >= 10);
     assert.ok(dae.eqCount >= 5);
+  });
+
+  it("indexes .key files in OlgaWorkspaceIndex and emits connect(...) equations in olgaToModelica", () => {
+    const idx = new OlgaWorkspaceIndex();
+    const symIdx = idx.indexFile("file:///subsea/tieback.key", SAMPLE_OLGA);
+    assert.ok(symIdx.byName.has("TiebackLine"));
+    assert.ok(symIdx.byName.has("TiebackLine.P-101"));
+    assert.ok(symIdx.byName.has("InletWell"));
+
+    const model = parseOlga(SAMPLE_OLGA);
+    const mo = olgaToModelica(model);
+    assert.ok(mo.includes("connect(InletWell.ports[1], P_101.port_a);"));
+    assert.ok(mo.includes("connect(P_101.port_b, HostSeparator.ports[1]);"));
   });
 
   it("executes domain actions: lint, to_sysml, to_dae, simulate_drift_flux", async () => {

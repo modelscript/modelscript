@@ -3,6 +3,7 @@
 import { cfdToDae } from "./dae/cfd-to-dae.js";
 import { parseCfdConfig } from "./dialects/index.js";
 import { lintCfdModel } from "./lints/index.js";
+import { extractCfdSlicingProperties } from "./materializer.js";
 import { cfdToModelica } from "./projections/index.js";
 import type { CaeDiagnostic, CfdModelData } from "./types.js";
 
@@ -311,13 +312,16 @@ export async function executeCfdAction(action: string, args: Record<string, unkn
     case "solve_cfd":
     case "evaluate_aerodynamics":
     case "solve": {
-      const mach = model.machNumber ?? 0.8;
-      const aoaDeg = model.aoa ?? 2.0;
+      const props = extractCfdSlicingProperties(content);
+      const mach = props.machNumber ?? model.machNumber ?? 0.8;
+      const aoaDeg = props.aoaDeg ?? model.aoa ?? 2.0;
       const aoaRad = (aoaDeg * Math.PI) / 180.0;
-      const cl = 2 * Math.PI * aoaRad;
-      const cd = 0.02 + 0.05 * cl * cl;
-      const qInf = 0.5 * (model.density ?? 1.225) * Math.pow(mach * 340.29, 2);
-      const refArea = parseFloat(model.directives.get("REF_AREA") ?? "1.0") || 1.0;
+      const cl = props.cl !== undefined && props.cl !== 0 ? props.cl : 2 * Math.PI * aoaRad;
+      const cd = props.cd ?? 0.02 + 0.05 * cl * cl;
+      const qInf = 0.5 * (props.density ?? model.density ?? 1.225) * Math.pow(mach * 340.29, 2);
+      const refArea = props.refArea ?? (parseFloat(model.directives.get("REF_AREA") ?? "1.0") || 1.0);
+      const liftN = props.liftForce !== undefined && props.liftForce !== 0 ? props.liftForce : qInf * refArea * cl;
+      const dragN = props.dragForce ?? qInf * refArea * cd;
 
       return {
         success: true,
@@ -325,9 +329,9 @@ export async function executeCfdAction(action: string, args: Record<string, unkn
         aoa: aoaDeg,
         cL: cl,
         cD: cd,
-        liftN: qInf * refArea * cl,
-        dragN: qInf * refArea * cd,
-        lOverD: cl / cd,
+        liftN,
+        dragN,
+        lOverD: cd !== 0 ? cl / cd : 0,
       };
     }
 

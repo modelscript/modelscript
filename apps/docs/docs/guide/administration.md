@@ -240,9 +240,9 @@ docker compose --profile standalone up -d
 
 ### Scenario B: Corporate Self-Hosted Enterprise Edition (`MSX_EDITION=ee`)
 
-For regulated utilities, defense primes, medical device manufacturers, and enterprise engineering organizations holding a signed `msx_lic_<payloadBase64Url>.<ed25519SigBase64Url>` license key.
+For regulated utilities, civil aerospace manufacturers, medical device companies, and enterprise engineering organizations holding a signed `msx_lic_<payloadBase64Url>.<ed25519SigBase64Url>` license key.
 
-#### B.1 Single-Container Air-Gapped Intranet Appliance (Recommended for SCIF / NERC CIP / ITAR)
+#### B.1 Single-Container Air-Gapped Intranet Appliance (Recommended for Isolated Enclaves / NERC CIP / Cleanrooms)
 
 Bundles the API server, `@modelscript/ee`, Web SPA, Unified Documentation Portal (`/docs`), and Web IDE into a single hardened container on port `8080` with zero outbound network dependencies:
 

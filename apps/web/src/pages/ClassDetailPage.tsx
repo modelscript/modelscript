@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ClassDetail, ClassSummary, JobStatus } from "../api";
 import { getClassDetail, getClasses, getJobStatus } from "../api";
+import { getLinkedPackageStudies, type LinkedStudyJobItemPayload, type StudyDefinitionPayload } from "../api/compute";
 import Box from "../components/Box";
 import {
   buildClassTree,
@@ -34,6 +35,7 @@ import {
   TypeLink,
   TypeMono,
 } from "./class-detail";
+import { PackageStudiesTab } from "./package/tabs/PackageStudiesTab";
 
 const ClassDetailPage: React.FC = () => {
   const rawParams = useParams<{
@@ -56,13 +58,32 @@ const ClassDetailPage: React.FC = () => {
   const [treeSearch, setTreeSearch] = useState("");
   const [domainFilter, setDomainFilter] = useState<"all" | ClassDomain>("all");
   const [activeTab, setActiveTab] = useState<ClassTabId>("overview");
+  const [linkedStudies, setLinkedStudies] = useState<{
+    bundledStudies: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+    linkedTemplates: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+    compatibleTemplates: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+    linkedJobs: LinkedStudyJobItemPayload[];
+  }>({
+    bundledStudies: [],
+    linkedTemplates: [],
+    compatibleTemplates: [],
+    linkedJobs: [],
+  });
+
+  const fetchLinkedClassStudies = useCallback(() => {
+    if (!name || !version || !className) return;
+    getLinkedPackageStudies({ package: name, version, model: className })
+      .then(setLinkedStudies)
+      .catch(() => {});
+  }, [name, version, className]);
 
   // Reset tab & diagram state when navigating between classes
   useEffect(() => {
     setActiveTab("overview");
     setDiagramLoaded(false);
     setDiagramError(false);
-  }, [className]);
+    fetchLinkedClassStudies();
+  }, [className, fetchLinkedClassStudies]);
 
   // Fetch all classes for the tree
   useEffect(() => {
@@ -270,6 +291,11 @@ const ClassDetailPage: React.FC = () => {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           equationsCount={equations.length}
+          studiesCount={
+            (linkedStudies.bundledStudies?.length || 0) +
+            (linkedStudies.linkedTemplates?.length || 0) +
+            (linkedStudies.linkedJobs?.length || 0)
+          }
         />
 
         {/* ── Body ── */}
@@ -318,6 +344,20 @@ const ClassDetailPage: React.FC = () => {
             )}
 
             {activeTab === "equations" && <ClassEquationsTab equations={equations} className={className!} />}
+
+            {activeTab === "studies" && (
+              <PackageStudiesTab
+                name={name!}
+                version={version!}
+                rootClassName={className!}
+                targetModelFilter={className!}
+                bundledStudies={linkedStudies.bundledStudies}
+                linkedTemplates={linkedStudies.linkedTemplates}
+                compatibleTemplates={linkedStudies.compatibleTemplates}
+                linkedJobs={linkedStudies.linkedJobs}
+                onRefresh={fetchLinkedClassStudies}
+              />
+            )}
 
             {activeTab === "source" && (
               <ClassSourceTab sourceCode={cls.sourceCode} sourceFile={cls.sourceFile} className={className!} />

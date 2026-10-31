@@ -42,6 +42,7 @@ export interface CfdModelData {
   directives: Map<string, string>;
   rawDirectives: Map<string, string>;
   markers: Map<string, CfdMarker>;
+  directiveLines?: Map<string, number> | undefined;
 }
 
 export type ParameterLookup = (name: string) => number | string | undefined;

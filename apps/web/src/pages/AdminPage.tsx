@@ -1274,7 +1274,10 @@ export const AdminPage: React.FC = () => {
               settings={instanceSettings}
               onSaveDomainTier={handleSaveDomainTier}
               onDeleteDomainRule={handleDeleteDomainRule}
-              onExportDomains={handleExportDomains}
+              onExportDomains={async (format) => {
+                await handleExportDomains(format);
+                return undefined;
+              }}
               onImportDomains={handleImportDomains}
               onTestDomain={testAdminFederationDomain}
               queueStats={federationQueueStats}

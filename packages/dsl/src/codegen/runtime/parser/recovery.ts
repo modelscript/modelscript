@@ -35,7 +35,7 @@ import {
   getExpectedTokensForState,
   debugLog,
 } from "./engine";
-import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenEnd, fixNodeLength, lookupActions, findActionEntry } from "./parser-loop";
+import { stateCanAccept, cloneNodeShallow, peekNextTokenInState, lastPeekedTokenLen, lastPeekedTokenEnd, fixNodeLength, lookupActions, findActionEntry, getRightmostLeafSpan } from "./parser-loop";
 import {
   getNodePadding,
   setNodePadding,
@@ -161,6 +161,10 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
     lastChild = clone;
   }
 
+  if (lastChild != 0) {
+    fixNodeLength(errNode);
+  }
+
   return errNode;
 }
 
@@ -266,54 +270,52 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
         let errNode = wrapPoppedNodesInError(head, anc, pos);
         let firstPad: u32 = getNodePadding(errNode);
 
-        let step: u32 = 1;
         let diagStart: u32 = anc.pos + firstPad;
-        let diagEnd: u32 = pos;
+        let diagEnd: u32 = diagStart + getNodeByteLength(errNode);
+        if (pos > diagEnd) diagEnd = pos;
 
         // Narrow diagStart past valid (non-error) children of the error node.
         // When depth > 0, the error node wraps popped stack nodes that were
         // successfully parsed. The diagnostic should only cover the disruption
         // point (after the valid nodes), not the valid content itself.
         if (depth > 0) {
-          let child = getNodeFirstChild(errNode);
-          let childOff: u32 = diagStart;
-          while (child != 0) {
-            let cFlags = getNodeFlags(child);
-            let cType = getNodeType(child);
-            if (cType != 0 && (cFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0) {
-              childOff += getNodePadding(child) + getNodeByteLength(child);
-            } else {
-              break;
+          let firstChild = getNodeFirstChild(errNode);
+          if (firstChild != 0) {
+            let child = firstChild;
+            let childOff: u32 = diagStart;
+            let idx = 0;
+            while (child != 0) {
+              if (idx > 0) childOff += getNodeLeadingPad(child);
+              let cFlags = getNodeFlags(child);
+              let cType = getNodeType(child);
+              if (cType != 0 && (cFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0) {
+                childOff += getNodeByteLength(child);
+              } else {
+                break;
+              }
+              idx++;
+              child = getNodeNextSibling(child);
             }
-            child = getNodeNextSibling(child);
-          }
-          if (childOff > diagStart) {
-            diagStart = childOff;
+            if (child != 0) {
+              diagStart = childOff;
+            } else {
+              // All popped children were non-error nodes: narrow past the first valid
+              // child onto the second child (if present), matching lsp.ts CST extraction.
+              let secondChild = getNodeNextSibling(firstChild);
+              if (secondChild != 0) {
+                let nextStart = diagStart + getNodeByteLength(firstChild) + getNodeLeadingPad(secondChild);
+                if (nextStart < diagEnd) {
+                  diagStart = nextStart;
+                }
+              }
+            }
           }
         }
         if (diagEnd <= diagStart) {
-          diagEnd = diagStart + (lexLen > 0 ? lexLen : step);
+          diagStart = srcLexPos;
+          diagEnd = srcLexPos + tLen;
         }
 
-        while (diagStart < diagEnd) {
-          let ch = peekChar(diagStart);
-          if (ch == 32 || ch == 9 || ch == 10 || ch == 13 || ch == 0) {
-            let cl = peekCharLen(diagStart);
-            diagStart += cl > 0 ? cl : step;
-          } else {
-            break;
-          }
-        }
-        while (diagEnd > diagStart && diagEnd >= step && diagEnd - step >= diagStart) {
-          let cl = peekCharLen(diagEnd - step);
-          let lastCh = peekChar(diagEnd - step);
-          if (lastCh == 32 || lastCh == 9 || lastCh == 10 || lastCh == 13 || lastCh == 0) {
-            let dec = cl > 0 ? cl : step;
-            diagEnd = diagEnd > diagStart + dec ? diagEnd - dec : diagStart;
-          } else {
-            break;
-          }
-        }
         let errLen = diagEnd > diagStart ? diagEnd - diagStart : 1;
         let penalty: i32 = ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR);
         let exp = getExpectedTokensForState(ancState);
@@ -472,7 +474,7 @@ export let lastKeywordMatchChars: u32 = 0;
  * Compares characters branchlessly with lowercase ASCII normalization.
  * Handles split-word typos like "mo del" -> "model" by inspecting downstream characters.
  */
-function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32): i32 {
+function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32, state: i32): i32 {
   lastKeywordMatchSpan = len;
   lastKeywordMatchChars = 0;
   if (changetype<usize>(token_string_offsets) == 0 || sym < 0 || sym >= token_string_offsets.length) return 50;
@@ -524,41 +526,32 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32): i32 {
     currP += chLen;
   }
 
-  // Also check if combined with next token ("mo" + "del" = "model")
+  // Also check if combined with next lexer token ("mo" + "del" = "model")
   let combinedMatch = false;
   if (matchChars == inputCharCount && matchChars < kwLen) {
-    let nextP = currP;
-    while (nextP < inputLength) {
-      let ch = peekChar(nextP);
-      let chLen = peekCharLen(nextP);
-      if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
-        nextP += chLen;
-      } else {
-        break;
-      }
-    }
     let remainingKw = kwLen - matchChars;
-    let nextMatch: u32 = 0;
-    let scanP = nextP;
-    while (nextMatch < remainingKw && scanP < inputLength) {
-      let ch = peekChar(scanP);
-      let chLen = peekCharLen(scanP);
-      let kwCh = token_string_bytes[offset + 1 + matchChars + nextMatch];
-      let inNorm = (ch >= 65 && ch <= 90) ? ch + 32 : ch;
-      let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
-      if (inNorm == kwNorm) {
-        nextMatch++;
-        scanP += chLen;
-      } else {
-        break;
+    let nextTok = peekNextTokenInState(currP, state);
+    let isNextWord = nextTok > 0 && nextTok <= MAX_TERMINAL_ID && token_is_word.length > nextTok && token_is_word[nextTok] == 1;
+    if (isNextWord && lastPeekedTokenLen == remainingKw && lastPeekedTokenEnd >= remainingKw) {
+      let scanP = lastPeekedTokenEnd - remainingKw;
+      let nextMatch: u32 = 0;
+      while (nextMatch < remainingKw && scanP < lastPeekedTokenEnd) {
+        let ch = peekChar(scanP);
+        let chLen = peekCharLen(scanP);
+        if (chLen == 0) chLen = 1;
+        let kwCh = token_string_bytes[offset + 1 + matchChars + nextMatch];
+        let inNorm = (ch >= 65 && ch <= 90) ? ch + 32 : ch;
+        let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
+        if (inNorm == kwNorm) {
+          nextMatch++;
+          scanP += chLen;
+        } else {
+          break;
+        }
       }
-    }
-    if (nextMatch == remainingKw) {
-      let afterCh = scanP < inputLength ? peekChar(scanP) : 0;
-      let isAfterWord = (afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57);
-      if (!isAfterWord) {
+      if (nextMatch == remainingKw) {
         combinedMatch = true;
-        lastKeywordMatchSpan = scanP - pos;
+        lastKeywordMatchSpan = lastPeekedTokenEnd - pos;
       }
     }
   }
@@ -661,6 +654,18 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
   let foundAny = false;
   let precomputedInsertedSym: i32 = -1;
 
+  let insDiagStart = srcLexPos;
+  let insDiagEnd = srcLexPos + (lexLen > 0 ? lexLen : 1);
+  if (pos > 0) {
+    let prevSpan = getRightmostLeafSpan(head, pos);
+    let pStart = (prevSpan >>> 32) as u32;
+    let pEnd = (prevSpan & 0xffffffff) as u32;
+    if (pEnd > pStart && pEnd == pos) {
+      insDiagStart = pStart;
+      insDiagEnd = pEnd;
+    }
+  }
+
   // 1. O(1) Precomputed Fast Path for missing token insertions
   if (depth == 0 && changetype<usize>(precomputed_repairs) != 0 && token >= 0 && token <= MAX_TERMINAL_ID) {
     let bestRep = precomputed_repairs[state * (MAX_TERMINAL_ID + 1) + token];
@@ -673,9 +678,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
           let insNode = allocNode(bestRep as u16, 0, 0, 0, false);
           setNodeFlags(insNode, FLAG_IS_INSERTED | FLAG_HAS_ERROR);
 
-          let diagStart = srcLexPos;
-          let diagEnd = srcLexPos + (lexLen > 0 ? lexLen : 1);
-          let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, bestRep as u32, 1, bestRep as u32, 0);
+          let nextTail = pushDiagnostic(head.errorTail, insDiagStart, insDiagEnd, bestRep as u32, 1, bestRep as u32, 0);
 
           let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
           let insHead = allocParseHead(
@@ -715,8 +718,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
   let bestSubstResolvedHead: ParseHead | null = null;
   let bestSubstSpan: u32 = curTLen;
 
-  let firstCh = peekChar(curSrcLexPos);
-  let isInputWord = (firstCh >= 65 && firstCh <= 90) || (firstCh >= 97 && firstCh <= 122) || firstCh == 95 || (firstCh >= 48 && firstCh <= 57);
+  let isInputWord = token > 0 && token <= MAX_TERMINAL_ID && token_is_word.length > token ? (token_is_word[token] == 1) : false;
   let seenEps0: i32 = -1;
   let seenEps1: i32 = -1;
   let seenEps2: i32 = -1;
@@ -729,7 +731,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
     // Strategy A: Keyword / Token Substitution (evaluated once per symbol `sym`)
     if (isInputWord && isWordSym) {
-      let simPenalty = computeKeywordSimilarityPenalty(curSrcLexPos, curTLen, sym);
+      let simPenalty = computeKeywordSimilarityPenalty(curSrcLexPos, curTLen, sym, state);
       if (simPenalty < bestSubstPenalty) {
         let span = lastKeywordMatchSpan;
         let matchCount = lastKeywordMatchChars;
@@ -758,50 +760,10 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
               }
             }
 
-            // Guard: If the very next word at nextPosAfterTok is ALREADY the target keyword `sym`,
+            // Guard: If the very next token at nextPosAfterTok in `state` is ALREADY the target keyword `sym`,
             // this is a stray token before the actual keyword, NOT a keyword substitution!
-            if (confirmed && changetype<usize>(token_string_offsets) != 0 && sym >= 0 && sym < token_string_offsets.length) {
-              let kwOffset = token_string_offsets[sym];
-              if (kwOffset >= 0 && kwOffset < token_string_bytes.length) {
-                let targetKwLen = token_string_bytes[kwOffset] as u32;
-                if (targetKwLen > 0) {
-                  let checkP = nextPosAfterTok;
-                  while (checkP < inputLength) {
-                    let ch = peekChar(checkP);
-                    let chLen = peekCharLen(checkP);
-                    if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
-                      checkP += chLen;
-                    } else {
-                      break;
-                    }
-                  }
-                  let scanP = checkP;
-                  let allMatch = true;
-                  for (let ki: u32 = 0; ki < targetKwLen; ki++) {
-                    if (scanP >= inputLength) {
-                      allMatch = false;
-                      break;
-                    }
-                    let ch = peekChar(scanP);
-                    let chLen = peekCharLen(scanP);
-                    let kwCh = token_string_bytes[kwOffset + 1 + ki];
-                    let inNorm = (ch >= 65 && ch <= 90) ? ch + 32 : ch;
-                    let kwNorm = (kwCh >= 65 && kwCh <= 90) ? kwCh + 32 : kwCh;
-                    if (inNorm != kwNorm) {
-                      allMatch = false;
-                      break;
-                    }
-                    scanP += chLen;
-                  }
-                  if (allMatch) {
-                    let afterCh = scanP < inputLength ? peekChar(scanP) : 0;
-                    let isWord = (afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57);
-                    if (!isWord) {
-                      confirmed = false;
-                    }
-                  }
-                }
-              }
+            if (confirmed && peekNextTokenInState(nextPosAfterTok, state) == sym) {
+              confirmed = false;
             }
 
             if (confirmed) {
@@ -863,9 +825,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
               let insNode = allocNode(sym as u16, 0, 0, 0, false);
               setNodeFlags(insNode, FLAG_IS_INSERTED | FLAG_HAS_ERROR);
 
-              let diagStart = curSrcLexPos;
-              let diagEnd = curSrcLexPos + curTLen;
-              let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 1, sym as u32, 0);
+              let nextTail = pushDiagnostic(head.errorTail, insDiagStart, insDiagEnd, sym as u32, 1, sym as u32, 0);
 
               let repairCost: i32 = isDelimLookahead ? ERROR_COST_PER_MISSING_TREE : (insCost * ERROR_COST_PER_MISSING_TREE);
               let insHead = allocParseHead(

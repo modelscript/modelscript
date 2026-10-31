@@ -30,6 +30,7 @@ export interface SwmmOutfall {
   id: string;
   elevation: number;
   type: "FREE" | "NORMAL" | "FIXED" | "TIDAL";
+  rawType?: string | undefined;
   stage?: number | undefined;
   tseries?: string | undefined;
   gated?: boolean | undefined;
@@ -108,6 +109,11 @@ export interface SwmmSubcatchment {
   impervPct: number; // Percent impervious [%]
   width: number; // Characteristic overland flow width [m or ft]
   slopePct: number; // Surface slope [%]
+  curbLen?: number | undefined;
+  nImperv?: number | undefined; // Manning's n for impervious area
+  nPerv?: number | undefined; // Manning's n for pervious area
+  dstoreImperv?: number | undefined; // Depression storage depth impervious [mm or in]
+  dstorePerv?: number | undefined; // Depression storage depth pervious [mm or in]
   range: SwmmRange;
 }
 
@@ -125,5 +131,7 @@ export interface SwmmDeck {
   weirs: Map<string, SwmmWeir>;
   crossSections: Map<string, SwmmCrossSection>;
   subcatchments: Map<string, SwmmSubcatchment>;
+  duplicateNodes?: { id: string; range: SwmmRange }[] | undefined;
+  duplicateLinks?: { id: string; range: SwmmRange }[] | undefined;
   range?: SwmmRange | undefined;
 }

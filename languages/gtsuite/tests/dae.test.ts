@@ -39,7 +39,12 @@ CONNECTIONS:
       result.stateVarIndices.length >= 2,
       "Expected state variables (intake & exhaust manifold pressure, turbo speed)",
     );
-    assert.ok(result.equationCount >= 5, "Expected continuous differential & algebraic equations");
+    assert.strictEqual(
+      result.variableMap.size,
+      result.equationCount,
+      "Expected structurally square MVEM DAE (N_vars == N_eqs)",
+    );
+    assert.strictEqual(builder.getVarCount(), builder.getEqCount());
     assert.ok(result.variableMap.has("P_INTAKE_MANIFOLD"));
     assert.ok(result.variableMap.has("P_EXHAUST_MANIFOLD"));
     assert.ok(result.variableMap.has("ENGINE_BRAKE_TORQUE_NM"));
@@ -65,5 +70,6 @@ CONNECTIONS:
     assert.ok(simResult.summary.meanPowerKw > 30.0, "Expected positive engine power");
     assert.ok(simResult.summary.maxCylinderPressureBar > 30.0, "Expected peak firing pressure > 30 bar");
     assert.ok(simResult.summary.meanBsfcGPerKwh > 150.0 && simResult.summary.meanBsfcGPerKwh < 500.0);
+    assert.ok(simResult.summary.indicatedMeanEffectivePressureBar > simResult.summary.brakeMeanEffectivePressureBar);
   });
 });

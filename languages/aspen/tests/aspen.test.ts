@@ -238,6 +238,11 @@ test("Aspen DAE Lowering: builds valid linear memory DAEBuilder arena", () => {
 
   assert.ok(dae.variables().length > 10, "Expected at least 10 state variables");
   assert.ok(dae.equations().length > 5, "Expected at least 5 equations");
+  assert.equal(
+    dae.variables().length,
+    dae.equations().length,
+    "Expected structurally square DAE system (N_vars === N_eqs)",
+  );
 
   // Verify stream state variables
   assert.ok(dae.lookupVariable("F_FEED") !== -1);
@@ -252,6 +257,43 @@ test("Aspen DAE Lowering: builds valid linear memory DAEBuilder arena", () => {
 
   // Verify pump variables
   assert.ok(dae.lookupVariable("W_pump_PUMP1") !== -1);
+});
+
+test("Aspen Linter: detects duplicate component ID (M8107) and missing EOS properties (M8103)", () => {
+  const badDeckText = `COMPONENTS
+    METHANOL CH4O
+    METHANOL CH4O
+    MYSTERY_CHEM XYZ99
+PROPERTIES PENG-ROB
+`;
+  const deck = parseAspen(badDeckText);
+  const diags = lintAspen(deck);
+
+  const m8107 = diags.find((d) => d.code === "M8107");
+  assert.ok(m8107, "Expected M8107 for duplicate component ID");
+  assert.match(m8107.message, /Duplicate component ID 'METHANOL'/);
+
+  const m8103 = diags.find((d) => d.code === "M8103");
+  assert.ok(m8103, "Expected M8103 for unknown component lacking critical properties");
+  assert.match(m8103.message, /Component 'MYSTERY_CHEM' lacks critical properties for property method 'PENG-ROB'/);
+});
+
+test("Aspen Flash Solver: solves non-ideal NRTL VLE flash with liquid activity coefficients", () => {
+  const res = solveFlashRachfordRice({
+    temperature: 78.0,
+    pressure: 0.9,
+    components: ["ETHANOL", "WATER"],
+    moleFractions: [0.4, 0.6],
+    totalFlow: 100.0,
+    propertyMethod: "NRTL",
+  });
+
+  assert.equal(res.activityCoefficients.length, 2);
+  // Ethanol-water exhibits positive deviation from Raoult's Law (gamma_i > 1)
+  assert.ok(res.activityCoefficients[0]! > 1.0, "Expected ethanol NRTL activity coefficient > 1");
+  assert.ok(res.activityCoefficients[1]! > 1.0, "Expected water NRTL activity coefficient > 1");
+  assert.equal(res.state, "TWO_PHASE");
+  assert.ok(res.vaporFraction > 0.0 && res.vaporFraction < 1.0);
 });
 
 test("Aspen Modelica Projection: generates syntactically valid Modelica 3.x code", () => {

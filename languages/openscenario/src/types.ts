@@ -87,6 +87,7 @@ export interface ScenarioAction {
   targetSpeed?: number | undefined; // m/s
   speedDynamics?: SpeedActionDynamics | undefined;
   targetLane?: number | undefined;
+  dynamicsDuration?: number | undefined; // seconds for lane change dynamics
   targetPosition?: ScenarioPosition | undefined;
   range?: OpenScenarioRange | undefined;
 }
@@ -104,11 +105,13 @@ export interface ScenarioCondition {
     | "distance"
     | "reachPosition"
     | "relativeSpeed"
-    | "parameter";
+    | "parameter"
+    | "storyboardElementState";
   rule: ConditionRule;
   value: number | string;
   entityRef?: string | undefined;
   targetEntityRef?: string | undefined;
+  storyboardElementRef?: string | undefined;
   targetPosition?: ScenarioPosition | undefined;
   freespace?: boolean | undefined;
   alongRoute?: boolean | undefined;

@@ -104,6 +104,7 @@ export class ModelScriptCompiler {
   }
 }
 
+export * from "./polyglot/resolver.js";
 export {
   JsEmitter,
   ModelScriptErrorCode,

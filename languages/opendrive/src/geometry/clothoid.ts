@@ -8,28 +8,70 @@
  */
 
 import type {
+  OpenDriveDocument,
   OpenDriveElevationRecord,
   OpenDriveGeometry,
+  OpenDriveLaneSection,
   OpenDriveRoad,
   OpenDriveSuperelevationRecord,
   TrackPoint3D,
 } from "../types.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Gauss-Legendre Quadrature Weights & Abscissae (16-point)
+// Gauss-Legendre Quadrature Weights & Abscissae (8-point and 16-point)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Positive half-interval abscissae for 8-point Gauss-Legendre quadrature on [-1, 1].
+ * Paired symmetrically as +/- GL8_X[i] with weights GL8_W[i] (4 symmetric pairs = 8 nodes).
+ */
+export const GL8_X = new Float64Array([0.1834346424956498, 0.525532409916329, 0.7966664774136267, 0.9602898564975363]);
+
+export const GL8_W = new Float64Array([0.362683783378362, 0.3137066458778873, 0.2223810344533745, 0.1012285362903763]);
+
+/**
+ * 8-point Gauss-Legendre quadrature for Fresnel integrals / Euler spirals (clothoid):
+ *   x(s) = x0 + int_0^s cos(hdg0 + k0*u + 0.5*kDot*u^2) du
+ *   y(s) = y0 + int_0^s sin(hdg0 + k0*u + 0.5*kDot*u^2) du
+ */
+export function integrateClothoidGL8(
+  x0: number,
+  y0: number,
+  hdg0: number,
+  k0: number,
+  kDot: number,
+  s: number,
+): [number, number] {
+  let sumCos = 0.0;
+  let sumSin = 0.0;
+  const halfS = 0.5 * s;
+
+  for (let i = 0; i < 4; i++) {
+    const xi = GL8_X[i] ?? 0;
+    const wi = GL8_W[i] ?? 0;
+    const tau1 = halfS * (1.0 + xi);
+    const tau2 = halfS * (1.0 - xi);
+    const theta1 = hdg0 + (k0 + 0.5 * kDot * tau1) * tau1;
+    const theta2 = hdg0 + (k0 + 0.5 * kDot * tau2) * tau2;
+
+    sumCos += wi * (Math.cos(theta1) + Math.cos(theta2));
+    sumSin += wi * (Math.sin(theta1) + Math.sin(theta2));
+  }
+
+  return [x0 + halfS * sumCos, y0 + halfS * sumSin];
+}
+
 export const GL16_X = new Float64Array([
-  0.0483076384160383, 0.1444719615827965, 0.2392873622521371, 0.3318686022821877, 0.4213512761306353,
-  0.5068999089322294, 0.5877157572407623, 0.6630442669302152, 0.7321821187402897, 0.7944837959679424,
-  0.8493676110372199, 0.8963211557660521, 0.9349060759377397, 0.9647622555875064, 0.9856115115452683,
-  0.9972638618494816,
+  0.0483076656877383, 0.1444719615827965, 0.2392873622521371, 0.3318686022821276, 0.4213512761306353,
+  0.5068999089322294, 0.5877157572407623, 0.6630442669302152, 0.7321821187402897, 0.7944837959679424, 0.84936761373257,
+  0.8963211557660521, 0.9349060759377397, 0.9647622555875064, 0.9856115115452684, 0.9972638618494816,
 ]);
 
 export const GL16_W = new Float64Array([
-  0.0964608656181412, 0.0956387200792749, 0.0939999710777595, 0.0915609440624059, 0.0883391784964648,
-  0.0843657936357903, 0.0796836109968817, 0.0743403212776814, 0.0683944322434544, 0.0619077180486047,
-  0.0549467125039912, 0.0475850989977884, 0.0399009848560514, 0.0319736166393529, 0.023886477386997, 0.0157297059050608,
+  0.0965400885147278, 0.0956387200792749, 0.0938443990808046, 0.0911738786957639, 0.0876520930044038,
+  0.0833119242269467, 0.0781938957870703, 0.0723457941088485, 0.0658222227763618, 0.0586840934785355,
+  0.0509980592623762, 0.0428358980222267, 0.0342738629130214, 0.0253920653092621, 0.0162743947309057,
+  0.0070186100094701,
 ]);
 
 /**
@@ -80,6 +122,26 @@ export function evaluateClothoid(
   const curvature = k0 + kDot * sClamped;
   const hdg = hdg0 + (k0 + 0.5 * kDot * sClamped) * sClamped;
   const [x, y] = integrateClothoidGL16(x0, y0, hdg0, k0, kDot, sClamped);
+  return { x, y, hdg: normalizeAngle(hdg), curvature };
+}
+
+/**
+ * Evaluates an Euler spiral (clothoid) using 8-point Gauss-Legendre quadrature.
+ */
+export function evaluateSpiral(
+  x0: number,
+  y0: number,
+  hdg0: number,
+  k0: number,
+  k1: number,
+  length: number,
+  s: number,
+): { x: number; y: number; hdg: number; curvature: number } {
+  const sClamped = Math.max(0, Math.min(length, s));
+  const kDot = length > 1e-9 ? (k1 - k0) / length : 0.0;
+  const curvature = k0 + kDot * sClamped;
+  const hdg = hdg0 + (k0 + 0.5 * kDot * sClamped) * sClamped;
+  const [x, y] = integrateClothoidGL8(x0, y0, hdg0, k0, kDot, sClamped);
   return { x, y, hdg: normalizeAngle(hdg), curvature };
 }
 
@@ -309,4 +371,200 @@ function normalizeAngle(rad: number): number {
   if (a > Math.PI) a -= 2 * Math.PI;
   if (a < -Math.PI) a += 2 * Math.PI;
   return a;
+}
+
+/**
+ * Evaluates exact 3D road pose (x, y, z, hdg, curvature, roll, pitch) at longitudinal
+ * station `s` and optional lateral offset `t` (positive to the left of the reference line),
+ * accounting for cubic elevation profile z(s) and superelevation roll angle phi(s).
+ */
+export function sampleRoadPose(road: OpenDriveRoad, s: number, t = 0.0): TrackPoint3D {
+  const sClamped = Math.max(0.0, Math.min(road.length, s));
+  const geom = findGeometryAt(road.planView, sClamped);
+  if (!geom) {
+    return { s: sClamped, x: 0, y: 0, z: 0, hdg: 0, curvature: 0, roll: 0, pitch: 0 };
+  }
+  const ds = sClamped - geom.s;
+  const { x: xRef, y: yRef, hdg, curvature } = evaluateGeometry(geom, ds);
+  const { z: zRef, pitch } = evaluateElevation(road.elevationProfile, sClamped);
+  const roll = evaluateSuperelevation(road.lateralProfile, sClamped);
+
+  if (t === 0.0) {
+    return { s: sClamped, x: xRef, y: yRef, z: zRef, hdg, curvature, roll, pitch };
+  }
+
+  const cosRoll = Math.cos(roll);
+  const sinRoll = Math.sin(roll);
+  const x = xRef - t * cosRoll * Math.sin(hdg);
+  const y = yRef + t * cosRoll * Math.cos(hdg);
+  const z = zRef + t * sinRoll;
+
+  return { s: sClamped, x, y, z, hdg, curvature, roll, pitch };
+}
+
+export interface FrenetCoordinate {
+  roadId: string;
+  s: number;
+  t: number;
+  laneId: number;
+  z: number;
+  hdg: number;
+  distance: number;
+}
+
+function resolveLaneIdAt(
+  sectionsOrContainer: OpenDriveLaneSection[] | { laneSections?: OpenDriveLaneSection[] } | undefined,
+  s: number,
+  t: number,
+): number {
+  const sections: OpenDriveLaneSection[] = Array.isArray(sectionsOrContainer)
+    ? sectionsOrContainer
+    : (sectionsOrContainer?.laneSections ?? []);
+  const firstSection = sections[0];
+  if (!firstSection || Math.abs(t) < 1e-6) return 0;
+
+  let section = firstSection;
+  for (let i = 1; i < sections.length; i++) {
+    const cand = sections[i];
+    if (cand && cand.s <= s) {
+      section = cand;
+    } else {
+      break;
+    }
+  }
+
+  const evalLaneWidth = (
+    laneObj: {
+      widths?: { sOffset: number; a: number; b: number; c: number; d: number }[];
+      widthRecords?: { sOffset: number; a: number; b: number; c: number; d: number }[];
+    },
+    dsSec: number,
+  ) => {
+    const widths = laneObj.widths ?? laneObj.widthRecords ?? [];
+    const firstWidth = widths[0];
+    if (!firstWidth) return 3.5;
+    let wRec = firstWidth;
+    for (let i = 1; i < widths.length; i++) {
+      const cand = widths[i];
+      if (cand && cand.sOffset <= dsSec) wRec = cand;
+      else break;
+    }
+    const du = Math.max(0, dsSec - wRec.sOffset);
+    return Math.max(0, wRec.a + wRec.b * du + wRec.c * du * du + wRec.d * du * du * du);
+  };
+
+  const dsSection = Math.max(0, s - section.s);
+  if (t > 0) {
+    // Left lanes have positive IDs sorted 1, 2, 3... outward from center
+    const leftSorted = [...(section.leftLanes ?? [])].sort((a, b) => a.id - b.id);
+    let accum = 0.0;
+    for (const lane of leftSorted) {
+      accum += evalLaneWidth(lane, dsSection);
+      if (t <= accum) return lane.id;
+    }
+    return leftSorted[leftSorted.length - 1]?.id ?? 1;
+  } else {
+    // Right lanes have negative IDs sorted -1, -2, -3... outward from center
+    const rightSorted = [...(section.rightLanes ?? [])].sort((a, b) => b.id - a.id);
+    let accum = 0.0;
+    const absT = -t;
+    for (const lane of rightSorted) {
+      accum += evalLaneWidth(lane, dsSection);
+      if (absT <= accum) return lane.id;
+    }
+    return rightSorted[rightSorted.length - 1]?.id ?? -1;
+  }
+}
+
+/**
+ * Projects a world Cartesian coordinate (x, y) onto an OpenDRIVE road or road network
+ * to recover curvilinear Frenet coordinates (roadId, s, t, laneId, z, hdg, distance)
+ * using coarse multi-seed sampling followed by damped Newton-Raphson closest-point iteration.
+ */
+export function worldToFrenet(
+  network: OpenDriveDocument | OpenDriveRoad | OpenDriveRoad[],
+  x: number,
+  y: number,
+): FrenetCoordinate {
+  const roads: OpenDriveRoad[] = Array.isArray(network) ? network : "roads" in network ? network.roads : [network];
+
+  let bestResult: FrenetCoordinate = {
+    roadId: roads[0]?.id ?? "0",
+    s: 0,
+    t: 0,
+    laneId: 0,
+    z: 0,
+    hdg: 0,
+    distance: Number.POSITIVE_INFINITY,
+  };
+
+  for (const road of roads) {
+    const L = Math.max(0, road.length);
+    if (L <= 0 || road.planView.length === 0) continue;
+
+    // 1. Coarse search along the road reference line
+    const numSamples = Math.max(32, Math.min(500, Math.ceil(L / 1.0)));
+    let bestS = 0.0;
+    let minDistSq = Number.POSITIVE_INFINITY;
+
+    for (let i = 0; i <= numSamples; i++) {
+      const sCand = (i / numSamples) * L;
+      const pose = sampleRoadPose(road, sCand, 0.0);
+      const dx = x - pose.x;
+      const dy = y - pose.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < minDistSq) {
+        minDistSq = d2;
+        bestS = sCand;
+      }
+    }
+
+    // 2. Newton-Raphson refinement on f(s) = (x(s) - x) * cos(hdg(s)) + (y(s) - y) * sin(hdg(s)) = 0
+    let s = bestS;
+    for (let iter = 0; iter < 15; iter++) {
+      const pose = sampleRoadPose(road, s, 0.0);
+      const cosH = Math.cos(pose.hdg);
+      const sinH = Math.sin(pose.hdg);
+      const dx = pose.x - x;
+      const dy = pose.y - y;
+
+      // Signed lateral offset t (positive to left of reference line)
+      const tCur = -(x - pose.x) * sinH + (y - pose.y) * cosH;
+      // Derivative of 0.5 * dist^2 with respect to s
+      const f = dx * cosH + dy * sinH;
+      if (Math.abs(f) < 1e-12) break;
+
+      // Second derivative f'(s) = 1 - curvature * t
+      const df = Math.max(1e-4, 1.0 - pose.curvature * tCur);
+      const step = f / df;
+      const sNext = Math.max(0.0, Math.min(L, s - step));
+      if (Math.abs(sNext - s) < 1e-10) {
+        s = sNext;
+        break;
+      }
+      s = sNext;
+    }
+
+    const finalPose = sampleRoadPose(road, s, 0.0);
+    const cosH = Math.cos(finalPose.hdg);
+    const sinH = Math.sin(finalPose.hdg);
+    const t = -(x - finalPose.x) * sinH + (y - finalPose.y) * cosH;
+    const dist = Math.hypot(x - finalPose.x, y - finalPose.y);
+
+    if (dist < bestResult.distance) {
+      const laneId = resolveLaneIdAt(road.lanes, s, t);
+      const poseAtT = sampleRoadPose(road, s, t);
+      bestResult = {
+        roadId: road.id,
+        s,
+        t,
+        laneId,
+        z: poseAtT.z,
+        hdg: finalPose.hdg,
+        distance: dist,
+      };
+    }
+  }
+
+  return bestResult;
 }

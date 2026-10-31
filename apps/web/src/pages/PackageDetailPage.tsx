@@ -22,6 +22,7 @@ import { PackageCompareTab } from "./package/tabs/PackageCompareTab";
 import { PackageDependenciesTab } from "./package/tabs/PackageDependenciesTab";
 import { PackageDigitalThreadTab } from "./package/tabs/PackageDigitalThreadTab";
 import { PackageReadmeTab } from "./package/tabs/PackageReadmeTab";
+import { PackageStudiesTab } from "./package/tabs/PackageStudiesTab";
 import { PackageVersionsTab } from "./package/tabs/PackageVersionsTab";
 import { HeaderBar, TABS, TreeSidebar, type PolyglotDomain, type TabId } from "./package/types";
 
@@ -323,6 +324,10 @@ const PackageDetailPage: React.FC = () => {
         <TabBar role="tablist">
           {TABS.map((tab) => {
             const depCount = Object.keys(pkg.dependencies || {}).length;
+            const studiesCount =
+              (pkg.linkedStudies?.bundledStudies?.length || 0) +
+              (pkg.linkedStudies?.linkedTemplates?.length || 0) +
+              (pkg.linkedStudies?.linkedJobs?.length || 0);
             return (
               <Tab
                 key={tab.id}
@@ -335,12 +340,17 @@ const PackageDetailPage: React.FC = () => {
                   ? tab.icon
                   : typeof tab.icon === "function" ||
                       (typeof tab.icon === "object" && tab.icon !== null && "$$typeof" in tab.icon)
-                    ? React.createElement(tab.icon as React.ComponentType<{ size?: number }>, { size: 16 })
+                    ? React.createElement(tab.icon as unknown as React.ComponentType<{ size?: number }>, { size: 16 })
                     : tab.icon}
                 <span>{tab.label}</span>
                 {tab.id === "artifacts" && pkg.artifactViewers.length > 0 && (
                   <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
                     {pkg.artifactViewers.length}
+                  </Label>
+                )}
+                {tab.id === "studies" && studiesCount > 0 && (
+                  <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
+                    {studiesCount}
                   </Label>
                 )}
                 {tab.id === "versions" && pkg.versionList.length > 0 && (
@@ -422,6 +432,30 @@ const PackageDetailPage: React.FC = () => {
                 setArtifactTabDomainFilter={setArtifactTabDomainFilter}
                 displayedArtifactViewers={pkg.displayedArtifactViewers}
                 fallbackArtifacts={pkg.artifacts}
+                linkedStudies={pkg.linkedStudies}
+                onViewArtifactStudies={(artifactPath) => {
+                  setSearchParams({ tab: "studies", artifact: artifactPath });
+                }}
+              />
+            )}
+
+            {activeTab === "studies" && (
+              <PackageStudiesTab
+                name={name!}
+                version={version!}
+                rootClassName={pkg.rootClassName}
+                targetArtifactFilter={searchParams.get("artifact") || undefined}
+                targetModelFilter={searchParams.get("model") || undefined}
+                onClearArtifactFilter={() => {
+                  setSearchParams({ tab: "studies" });
+                }}
+                bundledStudies={pkg.linkedStudies.bundledStudies}
+                linkedTemplates={pkg.linkedStudies.linkedTemplates}
+                compatibleTemplates={pkg.linkedStudies.compatibleTemplates}
+                linkedJobs={pkg.linkedStudies.linkedJobs}
+                onRefresh={() => {
+                  pkg.fetchData();
+                }}
               />
             )}
 
@@ -450,6 +484,8 @@ const PackageDetailPage: React.FC = () => {
             availableDomains={pkg.availableDomains}
             packageStats={pkg.packageStats}
             dependents={pkg.dependents}
+            linkedStudies={pkg.linkedStudies}
+            onOpenStudiesTab={() => setTab("studies")}
             packageOwner={pkg.packageOwner}
             collaborators={pkg.collaborators}
             canManage={pkg.canManage}

@@ -389,9 +389,11 @@ function parsePdu(elem: XmlElement, lineStarts: number[]): AutosarPdu {
       const length = Number(lenStrSig);
       const byteOrderStr = getChildText(mapElem, "PACKING-BYTE-ORDER");
       const byteOrder =
-        byteOrderStr === "LEAST-SIGNIFICANT-BYTE-FIRST"
-          ? "LEAST-SIGNIFICANT-BYTE-FIRST"
-          : "MOST-SIGNIFICANT-BYTE-FIRST";
+        byteOrderStr === "MOST-SIGNIFICANT-BYTE-FIRST"
+          ? "MOST-SIGNIFICANT-BYTE-FIRST"
+          : byteOrderStr === "LEAST-SIGNIFICANT-BYTE-FIRST"
+            ? "LEAST-SIGNIFICANT-BYTE-FIRST"
+            : undefined;
 
       signals.push({
         shortName: sigRef.split("/").pop() || sName,

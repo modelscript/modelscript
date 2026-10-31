@@ -10,6 +10,8 @@
 import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   JsbsimAeroCoeff,
+  JsbsimAeroExpr,
+  JsbsimAeroTable,
   JsbsimDocument,
   JsbsimEngine,
   JsbsimFcsChannel,
@@ -213,6 +215,143 @@ export function parseJsbsim(source: string, filename?: string): JsbsimDocument {
     }
   }
 
+  function splitNumbers(line: string): number[] {
+    const out: number[] = [];
+    let cur = "";
+    for (let i = 0; i < line.length; i++) {
+      const ch = line.charCodeAt(i);
+      if (ch === 32 || ch === 9 || ch === 13 || ch === 44) {
+        if (cur.length > 0) {
+          const val = Number.parseFloat(cur);
+          if (!Number.isNaN(val)) out.push(val);
+          cur = "";
+        }
+      } else {
+        cur += line[i];
+      }
+    }
+    if (cur.length > 0) {
+      const val = Number.parseFloat(cur);
+      if (!Number.isNaN(val)) out.push(val);
+    }
+    return out;
+  }
+
+  function parseTableElement(tblElem: XmlElement): JsbsimAeroTable {
+    const independentVars: JsbsimAeroTable["independentVars"] = [];
+    for (const iv of findChildren(tblElem, "independentVar")) {
+      const prop = iv.text?.trim() ?? "";
+      const rawLookup = getAttr(iv, "lookup")?.toLowerCase();
+      const lookup: "row" | "column" | "table" | undefined =
+        rawLookup === "row" || rawLookup === "column" || rawLookup === "table" ? rawLookup : undefined;
+      if (prop) independentVars.push({ lookup, property: prop });
+    }
+
+    const tdElem = findChild(tblElem, "tableData") ?? tblElem;
+    const rawText = tdElem.text ?? "";
+    const rawLines = rawText.split("\n");
+    const numericRows: number[][] = [];
+    for (const rawLine of rawLines) {
+      const trimmed = rawLine.trim();
+      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
+      const nums = splitNumbers(trimmed);
+      if (nums.length > 0) numericRows.push(nums);
+    }
+
+    const is2D =
+      independentVars.length >= 2 ||
+      independentVars.some((v) => v.lookup === "column") ||
+      (numericRows.length >= 2 && (numericRows[0]?.length ?? 0) >= 2 && (numericRows[1]?.length ?? 0) >= 3);
+
+    if (is2D && numericRows.length >= 2) {
+      const header = numericRows[0]!;
+      const dataFirstLen = numericRows[1]!.length;
+      const breakpointsCol = header.length === dataFirstLen ? header.slice(1) : header;
+      const breakpointsRow: number[] = [];
+      const values: number[][] = [];
+      for (let r = 1; r < numericRows.length; r++) {
+        const row = numericRows[r]!;
+        if (row.length >= 2) {
+          breakpointsRow.push(row[0]!);
+          values.push(row.slice(1));
+        }
+      }
+      return {
+        independentVars,
+        breakpointsRow,
+        breakpointsCol,
+        values,
+      };
+    }
+
+    // 1D table: each line is [x, y]
+    const breakpointsRow: number[] = [];
+    const rowVals: number[] = [];
+    for (const row of numericRows) {
+      if (row.length >= 2) {
+        breakpointsRow.push(row[0]!);
+        rowVals.push(row[1]!);
+      } else if (row.length === 1) {
+        breakpointsRow.push(breakpointsRow.length);
+        rowVals.push(row[0]!);
+      }
+    }
+    return {
+      independentVars,
+      breakpointsRow,
+      values: [rowVals],
+    };
+  }
+
+  function parseAeroExprNode(elem: XmlElement): JsbsimAeroExpr | undefined {
+    const tag = elem.name.toLowerCase();
+    if (tag === "value" || tag === "v") {
+      const val = Number.parseFloat(elem.text?.trim() ?? "0");
+      return { kind: "value", value: Number.isNaN(val) ? 0 : val };
+    }
+    if (tag === "property" || tag === "p") {
+      return { kind: "property", property: elem.text?.trim() ?? "" };
+    }
+    if (tag === "table" || tag === "tabledata") {
+      return { kind: "table", table: parseTableElement(elem) };
+    }
+    if (tag === "product" || tag === "sum" || tag === "difference" || tag === "quotient" || tag === "pow") {
+      const children: JsbsimAeroExpr[] = [];
+      for (const child of elem.children) {
+        const parsed = parseAeroExprNode(child);
+        if (parsed) children.push(parsed);
+      }
+      return { kind: tag, children };
+    }
+    return undefined;
+  }
+
+  function collectExprMetadata(
+    expr: JsbsimAeroExpr | undefined,
+    terms: { property: string; factor: number }[],
+  ): { firstValue: number | undefined; firstTable: JsbsimAeroTable | undefined } {
+    if (!expr) return { firstValue: undefined, firstTable: undefined };
+    if (expr.kind === "value") return { firstValue: expr.value, firstTable: undefined };
+    if (expr.kind === "property") {
+      if (expr.property) terms.push({ property: expr.property, factor: 1.0 });
+      return { firstValue: undefined, firstTable: undefined };
+    }
+    if (expr.kind === "table") {
+      for (const iv of expr.table.independentVars) {
+        if (iv.property) terms.push({ property: iv.property, factor: 1.0 });
+      }
+      return { firstValue: undefined, firstTable: expr.table };
+    }
+    let firstValue: number | undefined;
+    let firstTable: JsbsimAeroTable | undefined;
+    for (const child of expr.children) {
+      const sub = collectExprMetadata(child, terms);
+      if (firstValue === undefined && sub.firstValue !== undefined) firstValue = sub.firstValue;
+      if (firstTable === undefined && sub.firstTable !== undefined) firstTable = sub.firstTable;
+    }
+    return { firstValue, firstTable };
+  }
+
   // Aerodynamics
   const aeroElem = findChild(root, "aerodynamics");
   const aeroCoefficients: JsbsimAeroCoeff[] = [];
@@ -227,23 +366,25 @@ export function parseJsbsim(source: string, filename?: string): JsbsimDocument {
         const fnName = getAttr(fnElem, "name") ?? "coeff";
         const terms: { property: string; factor: number }[] = [];
 
-        // Check product or direct value
-        const prodElem = findChild(fnElem, "product");
-        let baseVal = 0.0;
-        if (prodElem) {
-          for (const propElem of findChildren(prodElem, "property")) {
-            if (propElem.text) terms.push({ property: propElem.text.trim(), factor: 1.0 });
+        let rootExpr: JsbsimAeroExpr | undefined;
+        for (const child of fnElem.children) {
+          const parsed = parseAeroExprNode(child);
+          if (parsed) {
+            rootExpr = parsed;
+            break;
           }
-          baseVal = getChildNum(prodElem, "value", 0.0);
-        } else {
-          baseVal = getChildNum(fnElem, "value", 0.0);
         }
+
+        const { firstValue, firstTable } = collectExprMetadata(rootExpr, terms);
+        const baseVal = firstValue ?? 0.0;
 
         aeroCoefficients.push({
           name: fnName,
           axis: axisName,
           baseValue: baseVal,
           terms,
+          ...(rootExpr ? { expr: rootExpr } : {}),
+          ...(firstTable ? { table: firstTable } : {}),
           range: computeRange(source, fnElem),
         });
       }

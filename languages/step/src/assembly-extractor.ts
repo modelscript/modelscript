@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { computeMeshMassProperties, tessellateStepSolid } from "./occ.js";
 import type {
   StepAssemblyEdge,
   StepAssemblyModel,
@@ -403,8 +404,8 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
       }
     }
 
-    // 2. Center of mass (CARTESIAN_POINT with 'centre of mass' or 'com' in name)
-    if (ent.type === "CARTESIAN_POINT") {
+    // 2. Center of mass (CARTESIAN_POINT or CENTRE_OF_SYMMETRY with exact word-boundary 'com' / 'centre of mass')
+    if (ent.type === "CARTESIAN_POINT" || ent.type === "CENTRE_OF_SYMMETRY") {
       const coords = getVector(id);
       if (coords) {
         const scaledCoords: [number, number, number] = [
@@ -413,14 +414,12 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
           coords[2] * lengthScale,
         ];
         allPoints.push(scaledCoords);
-        const lowerRaw = rawText.toLowerCase();
+        const ptArgs = parseArgs(rawText);
+        const ptName = ptArgs[0]?.match(/'([^']*)'/)?.[1]?.trim() ?? "";
         const isCoM =
-          lowerRaw.includes("centre of mass") ||
-          lowerRaw.includes("center of mass") ||
-          lowerRaw.includes("centre_of_mass") ||
-          lowerRaw.includes("center_of_mass") ||
-          /'com'/i.test(rawText) ||
-          lowerRaw.includes("com");
+          ent.type === "CENTRE_OF_SYMMETRY" ||
+          /cent(?:re|er)[\s_]+of[\s_]+(?:mass|gravity|symmetry)/i.test(ptName) ||
+          /(?:^|[\s_-])(?:com|cog|cg)(?:$|[\s_-])/i.test(ptName);
         if (isCoM) {
           if (!mappedPartId) unassignedCoM = scaledCoords;
           getPartAccum(ownerPartId).centerOfMass = scaledCoords;
@@ -469,24 +468,63 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     }
   }
 
+  // Compute exact closed-mesh polyhedral divergence-theorem mass properties when B-Rep geometry is present
+  const solidMesh = tessellateStepSolid(text);
+  const meshMassProps =
+    solidMesh.triangleCount > 0 ? computeMeshMassProperties(solidMesh, { lengthScale, density: 2700.0 }) : undefined;
+
   // Bind extracted mass properties to each associated part
   if (perPartAccum.size > 0) {
     for (const [partId, acc] of perPartAccum.entries()) {
+      const vol =
+        acc.volume ?? unassignedVolume ?? (meshMassProps && meshMassProps.volume > 0 ? meshMassProps.volume : 0.001);
+      const mass =
+        acc.mass ??
+        unassignedMass ??
+        (meshMassProps && meshMassProps.mass > 0 ? Number(meshMassProps.mass.toFixed(6)) : 1.0);
       massProperties.set(partId, {
-        mass: acc.mass ?? unassignedMass ?? 1.0,
-        centerOfMass: acc.centerOfMass ?? unassignedCoM ?? [0, 0, 0],
-        inertiaTensor: acc.inertiaTensor ??
-          unassignedInertia ?? { I_11: 1.0, I_22: 1.0, I_33: 1.0, I_21: 0, I_31: 0, I_32: 0 },
-        volume: acc.volume ?? unassignedVolume ?? 0.001,
+        mass,
+        centerOfMass:
+          acc.centerOfMass ??
+          unassignedCoM ??
+          (meshMassProps && meshMassProps.volume > 0 ? meshMassProps.centerOfMass : [0, 0, 0]),
+        inertiaTensor:
+          acc.inertiaTensor ??
+          unassignedInertia ??
+          (meshMassProps && meshMassProps.volume > 0
+            ? meshMassProps.inertiaTensor
+            : { I_11: 1.0, I_22: 1.0, I_33: 1.0, I_21: 0, I_31: 0, I_32: 0 }),
+        volume: vol,
       });
     }
   } else if (unassignedMass !== undefined || unassignedCoM !== undefined || unassignedInertia !== undefined) {
     massProperties.set(defaultPartId, {
-      mass: unassignedMass ?? 1.0,
-      centerOfMass: unassignedCoM ?? [0, 0, 0],
-      inertiaTensor: unassignedInertia ?? { I_11: 1.0, I_22: 1.0, I_33: 1.0, I_21: 0, I_31: 0, I_32: 0 },
-      volume: unassignedVolume ?? 0.001,
+      mass: unassignedMass ?? (meshMassProps && meshMassProps.mass > 0 ? Number(meshMassProps.mass.toFixed(6)) : 1.0),
+      centerOfMass:
+        unassignedCoM ?? (meshMassProps && meshMassProps.volume > 0 ? meshMassProps.centerOfMass : [0, 0, 0]),
+      inertiaTensor:
+        unassignedInertia ??
+        (meshMassProps && meshMassProps.volume > 0
+          ? meshMassProps.inertiaTensor
+          : { I_11: 1.0, I_22: 1.0, I_33: 1.0, I_21: 0, I_31: 0, I_32: 0 }),
+      volume: unassignedVolume ?? (meshMassProps && meshMassProps.volume > 0 ? meshMassProps.volume : 0.001),
     });
+  } else if (meshMassProps && meshMassProps.volume > 0) {
+    const targetPartIds = parts.size > 0 ? [...parts.keys()] : [defaultPartId];
+    for (let idx = 0; idx < targetPartIds.length; idx++) {
+      const partId = targetPartIds[idx]!;
+      const subSolid = solidMesh.solids[idx];
+      const props =
+        subSolid && subSolid.triangleCount > 0 && targetPartIds.length > 1
+          ? computeMeshMassProperties(subSolid, { lengthScale, density: 2700.0 })
+          : meshMassProps;
+      massProperties.set(partId, {
+        mass: Math.max(1e-6, Number(props.mass.toFixed(6))),
+        centerOfMass: props.centerOfMass,
+        inertiaTensor: props.inertiaTensor,
+        volume: props.volume,
+      });
+    }
   } else if (allPoints.length >= 4 && parts.size > 0) {
     let minX = Infinity,
       minY = Infinity,

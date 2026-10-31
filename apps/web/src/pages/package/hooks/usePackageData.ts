@@ -33,6 +33,11 @@ import {
   type PackageStats,
   type PendingPackageTransfer,
 } from "../../../api";
+import {
+  getLinkedPackageStudies,
+  type LinkedStudyJobItemPayload,
+  type StudyDefinitionPayload,
+} from "../../../api/compute";
 import { buildClassTree, filterClassTree } from "../../../components/classTreeUtils";
 import { classifyArtifactDomain, type PolyglotDomain } from "../types";
 
@@ -57,6 +62,17 @@ export function usePackageData(
   const [artifactViewers, setArtifactViewers] = useState<ArtifactViewerInfo[]>([]);
   const [packageStats, setPackageStats] = useState<PackageStats | null>(null);
   const [dependents, setDependents] = useState<PackageDependent[]>([]);
+  const [linkedStudies, setLinkedStudies] = useState<{
+    bundledStudies: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+    linkedTemplates: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+    compatibleTemplates: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+    linkedJobs: LinkedStudyJobItemPayload[];
+  }>({
+    bundledStudies: [],
+    linkedTemplates: [],
+    compatibleTemplates: [],
+    linkedJobs: [],
+  });
   const [libraryDetail, setLibraryDetail] = useState<LibraryVersion | null>(null);
   const [collaborators, setCollaborators] = useState<PackageCollaborator[]>([]);
   const [canManageServer, setCanManageServer] = useState(false);
@@ -75,7 +91,7 @@ export function usePackageData(
   const fetchData = useCallback(async () => {
     if (!name || !version) return;
     try {
-      const [rootCls, classList, npmData, viewers, stats, depData, libDetail, collabData, transfers] =
+      const [rootCls, classList, npmData, viewers, stats, depData, libDetail, collabData, transfers, linkedData] =
         await Promise.all([
           getClassDetail(name, version, name)
             .catch(() => (rootClassName !== name ? getClassDetail(name, version, rootClassName) : null))
@@ -88,6 +104,12 @@ export function usePackageData(
           getLibraryDetail(name, version).catch(() => null),
           getPackageCollaborators(name).catch(() => null),
           user ? getPendingPackageTransfers().catch(() => []) : Promise.resolve([]),
+          getLinkedPackageStudies({ package: name, version }).catch(() => ({
+            bundledStudies: [],
+            linkedTemplates: [],
+            compatibleTemplates: [],
+            linkedJobs: [],
+          })),
         ]);
       setRootClass(rootCls);
       setClasses(classList);
@@ -95,6 +117,7 @@ export function usePackageData(
       setArtifactViewers(viewers);
       setPackageStats(stats);
       setDependents(depData?.dependents || []);
+      setLinkedStudies(linkedData);
       setLibraryDetail(libDetail);
       setCollaborators(collabData?.collaborators || []);
       setCanManageServer(Boolean(libDetail?.canManage || collabData?.canManage));
@@ -300,6 +323,7 @@ export function usePackageData(
     artifactViewers,
     packageStats,
     dependents,
+    linkedStudies,
     libraryDetail,
     collaborators,
     pendingTransfers,

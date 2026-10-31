@@ -372,6 +372,10 @@ export class AspenParser {
         formula,
         loc: startLoc,
       };
+      if (deck.components.has(id)) {
+        deck.duplicateComponents = deck.duplicateComponents ?? [];
+        deck.duplicateComponents.push(comp);
+      }
       deck.components.set(id, comp);
       this.skipToNextLine();
     }

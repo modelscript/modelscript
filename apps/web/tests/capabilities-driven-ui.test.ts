@@ -23,7 +23,7 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
 
     const hasCap = (key: keyof InstanceCapabilities) => Boolean(tier2Corporate[key]);
 
-    // Golden tickets & Invites should be completely absent in Corporate SCIF
+    // Golden tickets & Invites should be completely absent in Corporate Enclave
     assert.equal(hasCap("userInvites"), false);
     assert.equal(hasCap("waitlist"), false);
     assert.equal(hasCap("botAccounts"), false);

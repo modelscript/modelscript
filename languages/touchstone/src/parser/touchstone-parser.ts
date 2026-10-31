@@ -91,6 +91,10 @@ export function parseTouchstone(content: string, filename?: string): TouchstoneD
     referenceResistance: 50,
   };
 
+  let hasOptionLine = false;
+  const invalidTokens: { token: string; line: number }[] = [];
+  const incompleteRows: { expected: number; received: number; line: number }[] = [];
+
   const len = content.length;
   let idx = 0;
   let line = 1;
@@ -140,6 +144,7 @@ export function parseTouchstone(content: string, filename?: string): TouchstoneD
 
     // Option line: starts with '#'
     if (ch === "#") {
+      hasOptionLine = true;
       options.line = line;
       let optLine = "";
       idx++; // skip '#'
@@ -177,8 +182,13 @@ export function parseTouchstone(content: string, filename?: string): TouchstoneD
             if (!isNaN(rVal)) {
               options.referenceResistance = rVal;
               t++;
+            } else {
+              invalidTokens.push({ token: optTokens[t + 1]!, line });
+              t++;
             }
           }
+        } else {
+          invalidTokens.push({ token: tok, line });
         }
       }
       continue;
@@ -253,13 +263,25 @@ export function parseTouchstone(content: string, filename?: string): TouchstoneD
     const fToken = dataTokens[tIdx]!;
     const freq = parseFloat(fToken.text);
     if (isNaN(freq)) {
+      invalidTokens.push({ token: fToken.text, line: fToken.line });
       tIdx++;
       continue;
     }
 
     if (tIdx + valuesPerPoint > dataTokens.length) {
-      // Incomplete data point
+      incompleteRows.push({
+        expected: valuesPerPoint - 1,
+        received: Math.max(0, dataTokens.length - tIdx - 1),
+        line: fToken.line,
+      });
       break;
+    }
+
+    for (let k = 1; k < valuesPerPoint; k++) {
+      const dTok = dataTokens[tIdx + k]!;
+      if (isNaN(parseFloat(dTok.text))) {
+        invalidTokens.push({ token: dTok.text, line: dTok.line });
+      }
     }
 
     const freqHz = freq * mult;
@@ -317,6 +339,9 @@ export function parseTouchstone(content: string, filename?: string): TouchstoneD
     points,
     comments,
     sourceFile: filename,
+    hasOptionLine,
+    invalidTokens,
+    incompleteRows,
   };
 }
 

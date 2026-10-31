@@ -9,6 +9,7 @@
  * 3. Passive, active, and source matrix stamps.
  */
 
+import { parseSpiceNumber } from "../parser/spice-parser.js";
 import type { SpiceCircuit, SpiceComponent, SpiceSubcircuit } from "../types.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,7 +24,7 @@ export function flattenSpiceCircuit(circuit: SpiceCircuit): SpiceComponent[] {
 
   for (const comp of circuit.components) {
     if (comp.kind === "X" && comp.subcktName) {
-      flattenInstance(comp, "", circuit.subcircuits, result);
+      flattenInstance(comp, "", circuit.subcircuits, circuit, new Map(), result);
     } else {
       result.push(comp);
     }
@@ -36,6 +37,8 @@ function flattenInstance(
   instance: SpiceComponent,
   prefix: string,
   subcircuits: Map<string, SpiceSubcircuit>,
+  circuit: SpiceCircuit,
+  parentParams: Map<string, number>,
   out: SpiceComponent[],
 ): void {
   const subName = (instance.subcktName ?? "").toUpperCase();
@@ -43,6 +46,29 @@ function flattenInstance(
   if (!sub) return;
 
   const currentPrefix = prefix ? `${prefix}.${instance.name}` : instance.name;
+
+  // Register any local subcircuit models into top-level circuit models
+  for (const m of sub.models) {
+    const mKey = m.name.toUpperCase();
+    if (!circuit.models.has(mKey)) {
+      circuit.models.set(mKey, m);
+    }
+  }
+
+  // Merge parameter scopes: parentParams -> sub.params -> instance.params
+  const mergedParams = new Map<string, number>(parentParams);
+  for (const [k, v] of sub.params) {
+    const num = typeof v === "number" ? v : parseSpiceNumber(String(v), mergedParams);
+    if (!Number.isNaN(num)) {
+      mergedParams.set(k.toUpperCase(), num);
+    }
+  }
+  for (const [k, v] of instance.params) {
+    const num = typeof v === "number" ? v : parseSpiceNumber(String(v), mergedParams);
+    if (!Number.isNaN(num)) {
+      mergedParams.set(k.toUpperCase(), num);
+    }
+  }
 
   // Node substitution map from subcircuit formal ports to instance actual nodes
   const nodeMap = new Map<string, string>();
@@ -56,11 +82,19 @@ function flattenInstance(
 
   const resolveNode = (formalNode: string): string => {
     const upper = formalNode.toUpperCase();
-    if (upper === "0" || upper === "GND") return "0";
+    if (upper === "0" || upper === "GND" || circuit.globalNodes.has(formalNode) || circuit.globalNodes.has(upper)) {
+      return upper === "GND" ? "0" : formalNode;
+    }
     const mapped = nodeMap.get(upper);
     if (mapped !== undefined) return mapped;
     return `${currentPrefix}.${formalNode}`;
   };
+
+  // Combine global and local subcircuits
+  const localSubcircuits = new Map<string, SpiceSubcircuit>(subcircuits);
+  for (const nested of sub.subcircuits) {
+    localSubcircuits.set(nested.name.toUpperCase(), nested);
+  }
 
   for (const child of sub.components) {
     if (child.kind === "X" && child.subcktName) {
@@ -70,14 +104,51 @@ function flattenInstance(
         name: child.name,
         nodes: childResolvedNodes,
       };
-      flattenInstance(childInst, currentPrefix, subcircuits, out);
+      flattenInstance(childInst, currentPrefix, localSubcircuits, circuit, mergedParams, out);
+    } else if (child.kind === "K") {
+      const l1 = child.inductor1 ?? child.nodes[0] ?? "";
+      const l2 = child.inductor2 ?? child.nodes[1] ?? "";
+      const prefL1 = l1 ? `${currentPrefix}.${l1}` : "";
+      const prefL2 = l2 ? `${currentPrefix}.${l2}` : "";
+      const resolvedVal =
+        child.rawValueExpr !== undefined
+          ? parseSpiceNumber(child.rawValueExpr, mergedParams)
+          : (child.value ?? child.couplingFactor ?? 1.0);
+      const kVal = !Number.isNaN(resolvedVal) ? resolvedVal : (child.value ?? 1.0);
+      out.push({
+        ...child,
+        name: `${currentPrefix}.${child.name}`,
+        nodes: [prefL1, prefL2],
+        inductor1: prefL1,
+        inductor2: prefL2,
+        value: kVal,
+        couplingFactor: kVal,
+        params: new Map(child.params),
+      });
     } else {
       const mappedNodes = child.nodes.map(resolveNode);
+      let resolvedValue = child.value;
+      if (child.rawValueExpr !== undefined) {
+        const evaluated = parseSpiceNumber(child.rawValueExpr, mergedParams);
+        if (!Number.isNaN(evaluated)) {
+          resolvedValue = evaluated;
+        }
+      }
+      const clonedParams = new Map<string, number | string>();
+      for (const [pk, pv] of child.params) {
+        if (typeof pv === "string") {
+          const evalP = parseSpiceNumber(pv, mergedParams);
+          clonedParams.set(pk, !Number.isNaN(evalP) ? evalP : pv);
+        } else {
+          clonedParams.set(pk, pv);
+        }
+      }
       const clonedComp: SpiceComponent = {
         ...child,
         name: `${currentPrefix}.${child.name}`,
         nodes: mappedNodes,
-        params: new Map(child.params),
+        value: resolvedValue,
+        params: clonedParams,
       };
       if (child.controlNodes) {
         clonedComp.controlNodes = [resolveNode(child.controlNodes[0]), resolveNode(child.controlNodes[1])];
@@ -258,6 +329,7 @@ export function buildMnaIndexing(components: SpiceComponent[]): MnaIndexing {
   const branchSources: string[] = [];
 
   for (const comp of components) {
+    if (comp.kind === "K") continue;
     for (const node of comp.nodes) {
       const norm = node.toUpperCase();
       if (norm !== "0" && norm !== "GND") {

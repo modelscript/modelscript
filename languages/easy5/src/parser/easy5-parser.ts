@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { getBlockDescriptor } from "../catalog/gp-library.js";
-import type { Easy5Component, Easy5Connection, Easy5Model, Easy5Port, Easy5Table } from "../types.js";
+import type {
+  Easy5Component,
+  Easy5Connection,
+  Easy5DuplicateComponent,
+  Easy5Model,
+  Easy5Port,
+  Easy5Table,
+} from "../types.js";
 
 /**
  * Parses EASY5 model source text (.ez5, .ezm, .ezd, .eas).
@@ -11,10 +18,12 @@ export function parseEasy5(sourceText: string): Easy5Model {
   const components = new Map<string, Easy5Component>();
   const connections: Easy5Connection[] = [];
   const tables = new Map<string, Easy5Table>();
+  const duplicateComponents: Easy5DuplicateComponent[] = [];
 
   let modelName = "Easy5Model";
   let modelTitle = "";
   let currentComponent: Easy5Component | null = null;
+  let currentTable: Easy5Table | null = null;
   let inFortranBlock = false;
   let fortranLines: string[] = [];
 
@@ -77,7 +86,75 @@ export function parseEasy5(sourceText: string): Easy5Model {
     if (secMatch) {
       currentSection = secMatch[1]!.toUpperCase();
       currentComponent = null;
+      currentTable = null;
       continue;
+    }
+
+    // Handle TABLES section
+    if (currentSection === "TABLES") {
+      if (/^END\s*_?\s*TABLE\b/i.test(trimmed)) {
+        currentTable = null;
+        continue;
+      }
+      const tableHeaderMatch = /^TABLE\s*:\s*([A-Za-z0-9_]+)/i.exec(trimmed);
+      if (tableHeaderMatch) {
+        const tName = tableHeaderMatch[1]!;
+        currentTable = {
+          name: tName,
+          dimension: 1,
+          xValues: [],
+          data: [],
+        };
+        tables.set(tName, currentTable);
+        tables.set(tName.toUpperCase(), currentTable);
+        continue;
+      }
+
+      if (currentTable) {
+        const dimMatch = /^DIMENSION\s*[:=]\s*([123])/i.exec(trimmed);
+        if (dimMatch) {
+          currentTable.dimension = parseInt(dimMatch[1]!, 10) as 1 | 2 | 3;
+          continue;
+        }
+        const xMatch = /^X\s*[:=]\s*(\S.*)$/i.exec(trimmed);
+        if (xMatch) {
+          currentTable.xValues = parseNumericList(xMatch[1]!);
+          continue;
+        }
+        const yMatch = /^Y\s*[:=]\s*(\S.*)$/i.exec(trimmed);
+        if (yMatch) {
+          currentTable.yValues = parseNumericList(yMatch[1]!);
+          continue;
+        }
+        const dataMatch = /^DATA\s*[:=]\s*(\S.*)$/i.exec(trimmed);
+        if (dataMatch) {
+          currentTable.data = parseNumericList(dataMatch[1]!);
+          continue;
+        }
+      }
+
+      // Inline table definition: e.g. AERO_CL X=[-10, 0, 10] DATA=[-0.5, 0.0, 0.8]
+      const inlineTableMatch = /^([A-Za-z0-9_]+)\s+(\S.*)$/i.exec(trimmed);
+      if (inlineTableMatch && /\bX\s*=|\bDATA\s*=/i.test(inlineTableMatch[2]!)) {
+        const tName = inlineTableMatch[1]!;
+        const props: Record<string, number | number[] | string> = {};
+        parseParameterList(inlineTableMatch[2]!, props);
+        const xValues = Array.isArray(props["X"]) ? (props["X"] as number[]) : [];
+        const yValues = Array.isArray(props["Y"]) ? (props["Y"] as number[]) : undefined;
+        const data = Array.isArray(props["DATA"]) ? (props["DATA"] as number[]) : [];
+        const dim = (typeof props["DIM"] === "number" ? props["DIM"] : yValues ? 2 : 1) as 1 | 2 | 3;
+        const tbl: Easy5Table = {
+          name: tName,
+          dimension: dim,
+          xValues,
+          yValues,
+          data,
+        };
+        tables.set(tName, tbl);
+        tables.set(tName.toUpperCase(), tbl);
+        currentTable = tbl;
+        continue;
+      }
     }
 
     // Handle COMPONENTS section
@@ -86,7 +163,13 @@ export function parseEasy5(sourceText: string): Easy5Model {
       // LA01 TYPE=GP/LA TITLE="Lead Lag" X=100 Y=200
       // or COMPONENT LA01 GP/LA
       const cmpMatch = /^([A-Za-z0-9_]{2,8})\s+(?:TYPE\s*=\s*)?([A-Za-z0-9_/]+)(?:\s+(\S.*))?$/i.exec(trimmed);
-      if (cmpMatch && !trimmed.startsWith("XP:") && !trimmed.startsWith("S0:") && !trimmed.startsWith("PORTS:")) {
+      if (
+        cmpMatch &&
+        !trimmed.startsWith("XP:") &&
+        !trimmed.startsWith("S0:") &&
+        !trimmed.startsWith("XS:") &&
+        !trimmed.startsWith("PORTS:")
+      ) {
         const id = cmpMatch[1]!.toUpperCase();
         const type = cmpMatch[2]!;
         const rest = cmpMatch[3] || "";
@@ -108,6 +191,17 @@ export function parseEasy5(sourceText: string): Easy5Model {
         const startOffset = getOffset(lineIdx, colIdx);
         const endOffset = startOffset + id.length;
 
+        const isDuplicate = components.has(id);
+        if (isDuplicate) {
+          duplicateComponents.push({
+            id,
+            line: lineIdx + 1,
+            column: colIdx + 1,
+            startOffset,
+            endOffset,
+          });
+        }
+
         // Default ports from catalog
         const desc = getBlockDescriptor(type);
         const ports: Record<string, Easy5Port> = {};
@@ -122,6 +216,7 @@ export function parseEasy5(sourceText: string): Easy5Model {
           type,
           title,
           parameters: desc ? { ...desc.defaultParameters } : {},
+          explicitParameters: new Set<string>(),
           initialStates: {},
           ports,
           location: { x: locX, y: locY },
@@ -131,7 +226,9 @@ export function parseEasy5(sourceText: string): Easy5Model {
           endOffset,
         };
 
-        components.set(id, comp);
+        if (!isDuplicate) {
+          components.set(id, comp);
+        }
         currentComponent = comp;
         continue;
       }
@@ -139,13 +236,13 @@ export function parseEasy5(sourceText: string): Easy5Model {
       // Parameter declarations XP: K=10.0, NUM=[1.0, 2.0]
       if (currentComponent && /^\s*XP\s*:\s*(\S.*)$/i.test(trimmed)) {
         const paramsStr = trimmed.replace(/^\s*XP\s*:\s*/i, "");
-        parseParameterList(paramsStr, currentComponent.parameters);
+        parseParameterList(paramsStr, currentComponent.parameters, currentComponent.explicitParameters);
         continue;
       }
 
-      // Initial state declarations S0: S1=1.0, S2=0.0
-      if (currentComponent && /^\s*S0\s*:\s*(\S.*)$/i.test(trimmed)) {
-        const statesStr = trimmed.replace(/^\s*S0\s*:\s*/i, "");
+      // Initial state declarations S0: S1=1.0, S2=0.0 or XS: S(1)=1.0
+      if (currentComponent && /^\s*(?:S0|XS)\s*:\s*(\S.*)$/i.test(trimmed)) {
+        const statesStr = trimmed.replace(/^\s*(?:S0|XS)\s*:\s*/i, "");
         parseInitialStates(statesStr, currentComponent.initialStates);
         continue;
       }
@@ -244,14 +341,27 @@ export function parseEasy5(sourceText: string): Easy5Model {
     components,
     connections,
     tables,
+    duplicateComponents: duplicateComponents.length > 0 ? duplicateComponents : undefined,
     sourceText,
   };
+}
+
+function parseNumericList(raw: string): number[] {
+  const cleaned = raw.replace(/^\[|\]$/g, "");
+  return cleaned
+    .split(/[\s,]+/)
+    .map((s) => parseFloat(s.trim()))
+    .filter((n) => !isNaN(n));
 }
 
 /**
  * Parses comma-separated parameter assignments: e.g. K=10.0, NUM=[1.0, 2.0], TABLE="aero.tab"
  */
-function parseParameterList(str: string, target: Record<string, number | number[] | string>): void {
+function parseParameterList(
+  str: string,
+  target: Record<string, number | number[] | string>,
+  explicitSet?: Set<string>,
+): void {
   // Regex splitting by comma outside brackets
   const parts: string[] = [];
   let current = "";
@@ -262,12 +372,14 @@ function parseParameterList(str: string, target: Record<string, number | number[
     if (char === "[" || char === "(") depth++;
     else if (char === "]" || char === ")") depth--;
 
-    if (char === "," && depth === 0) {
-      parts.push(current.trim());
-      current = "";
-    } else {
-      current += char;
+    if ((char === "," || (char === " " && depth === 0 && current.includes("="))) && depth === 0) {
+      if (char === "," || str.slice(i + 1).match(/^\s*[A-Za-z0-9_]+\s*=/)) {
+        parts.push(current.trim());
+        current = "";
+        continue;
+      }
     }
+    current += char;
   }
   if (current.trim()) parts.push(current.trim());
 
@@ -276,6 +388,7 @@ function parseParameterList(str: string, target: Record<string, number | number[
     if (eqIdx === -1) continue;
     const key = part.slice(0, eqIdx).trim().toUpperCase();
     const valRaw = part.slice(eqIdx + 1).trim();
+    explicitSet?.add(key);
 
     if (valRaw.startsWith("[") && valRaw.endsWith("]")) {
       const arrayElems = valRaw
@@ -310,7 +423,7 @@ function parseInitialStates(str: string, target: Record<string, number>): void {
 }
 
 /**
- * Parses custom port definitions: e.g. IN1=input, OUT1=output
+ * Parses custom port definitions: e.g. IN1=input, OUT1=output, VEC=input[3]
  */
 function parseCustomPorts(str: string, target: Record<string, Easy5Port>): void {
   const parts = str.split(",");
@@ -318,11 +431,17 @@ function parseCustomPorts(str: string, target: Record<string, Easy5Port>): void 
     const eqIdx = part.indexOf("=");
     if (eqIdx === -1) continue;
     const name = part.slice(0, eqIdx).trim().toUpperCase();
-    const kindStr = part
+    let kindStr = part
       .slice(eqIdx + 1)
       .trim()
       .toLowerCase();
+    let dimension: number | undefined;
+    const dimMatch = /(?:\[(\d+)\]|\((\d+)\)|:(\d+))$/.exec(kindStr);
+    if (dimMatch) {
+      dimension = parseInt(dimMatch[1] ?? dimMatch[2] ?? dimMatch[3] ?? "1", 10);
+      kindStr = kindStr.slice(0, dimMatch.index).trim();
+    }
     const kind = kindStr === "output" ? "output" : kindStr === "bidirectional" ? "bidirectional" : "input";
-    target[name] = { name, kind };
+    target[name] = { name, kind, ...(dimension !== undefined ? { dimension } : {}) };
   }
 }

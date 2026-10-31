@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { useMemo } from "react";
+import { getLanguageFlagKey, isLanguageEnabledInFlags, useFeatureFlags } from "../../FeatureFlagContext";
+import { isLanguageFlagEnabled } from "../../components/morsel/constants";
+
 export interface HeroExample {
   id: string;
   title: string;
@@ -12,9 +16,11 @@ export interface PlaygroundLanguageOption {
   id: string;
   label: string;
   ext: string;
+  featureFlag?: string | undefined;
+  hiddenByDefault?: boolean | undefined;
 }
 
-export const PLAYGROUND_LANGUAGES: PlaygroundLanguageOption[] = [
+export const ALL_PLAYGROUND_LANGUAGES: PlaygroundLanguageOption[] = [
   { id: "modelica", label: "Modelica 3.x", ext: ".mo" },
   { id: "sysml2", label: "SysML v2 / KerML", ext: ".sysml" },
   { id: "scad", label: "OpenSCAD (CSG)", ext: ".scad" },
@@ -28,7 +34,13 @@ export const PLAYGROUND_LANGUAGES: PlaygroundLanguageOption[] = [
   { id: "psse", label: "PSS/E Power Flow", ext: ".raw" },
   { id: "gensys", label: "GENSYS Railway", ext: ".tsimf" },
   { id: "simpack", label: "SIMPACK Multibody", ext: ".spck" },
-  { id: "modelscript", label: "ModelScript (.msx)", ext: ".msx" },
+  {
+    id: "modelscript",
+    label: "ModelScript (.msx)",
+    ext: ".msx",
+    featureFlag: "lang_modelscript",
+    hiddenByDefault: true,
+  },
   { id: "verilog-a", label: "Verilog-A", ext: ".va" },
   { id: "c", label: "C (Embedded)", ext: ".c" },
   { id: "fortran", label: "Fortran 90", ext: ".f90" },
@@ -60,6 +72,24 @@ export const PLAYGROUND_LANGUAGES: PlaygroundLanguageOption[] = [
   { id: "opendss", label: "OpenDSS Distribution Grid", ext: ".dss" },
   { id: "csv", label: "CSV Tabular Dataset", ext: ".csv" },
 ];
+
+export const PLAYGROUND_LANGUAGES: PlaygroundLanguageOption[] = ALL_PLAYGROUND_LANGUAGES.filter((lang) =>
+  isLanguageFlagEnabled(lang.featureFlag ?? getLanguageFlagKey(lang.id), !lang.hiddenByDefault),
+);
+
+export function getVisiblePlaygroundLanguages(isFlagEnabled?: (key: string) => boolean): PlaygroundLanguageOption[] {
+  return ALL_PLAYGROUND_LANGUAGES.filter((lang) => {
+    if (isFlagEnabled) {
+      return isLanguageEnabledInFlags(lang.id, isFlagEnabled);
+    }
+    return isLanguageFlagEnabled(lang.featureFlag ?? getLanguageFlagKey(lang.id), !lang.hiddenByDefault);
+  });
+}
+
+export function useVisiblePlaygroundLanguages(): PlaygroundLanguageOption[] {
+  const { isEnabled } = useFeatureFlags();
+  return useMemo(() => getVisiblePlaygroundLanguages(isEnabled), [isEnabled]);
+}
 
 export const HERO_EXAMPLES: HeroExample[] = [
   {

@@ -124,6 +124,15 @@ export interface SspSystem {
   connectors?: SspConnector[] | undefined;
   /** Components in the system. */
   components: SspComponent[];
+  /** Nested sub-systems declared inside `<ssd:Elements>`. */
+  systems?: SspSystem[] | undefined;
+  /** Structured `<ssd:Elements>` container with both components and nested systems. */
+  elements?:
+    | {
+        components: SspComponent[];
+        systems: SspSystem[];
+      }
+    | undefined;
   /** Connections between components. */
   connections: SspConnection[];
   /** Parameter bindings. */

@@ -93,6 +93,8 @@ export function parseSpckXml(xmlContent: string, defaultName: string = "SimpackM
       const type = (getAttr(el, "type")?.toLowerCase() ?? "revolute") as JointType;
       const fromMarker = getAttr(el, "from") ?? "";
       const toMarker = getAttr(el, "to") ?? "";
+      const alphaRaw = getAttr(el, "baumgarte_alpha") ?? getAttr(el, "baumgarteAlpha") ?? getAttr(el, "alpha");
+      const betaRaw = getAttr(el, "baumgarte_beta") ?? getAttr(el, "baumgarteBeta") ?? getAttr(el, "beta");
 
       model.joints.set(id, {
         id,
@@ -101,6 +103,8 @@ export function parseSpckXml(xmlContent: string, defaultName: string = "SimpackM
         fromMarker,
         toMarker,
         dofCount: type === "revolute" || type === "prismatic" ? 1 : type === "spherical" ? 3 : 6,
+        baumgarteAlpha: alphaRaw !== undefined ? parseNum(alphaRaw, 0) : undefined,
+        baumgarteBeta: betaRaw !== undefined ? parseNum(betaRaw, 0) : undefined,
       });
     } else if (tag === "force" || tag === "spring" || tag === "bushing") {
       const id = getAttr(el, "id") ?? `force_${model.forces.size + 1}`;
@@ -113,15 +117,33 @@ export function parseSpckXml(xmlContent: string, defaultName: string = "SimpackM
       const cx = parseNum(getAttr(el, "cx"), 0);
       const cy = parseNum(getAttr(el, "cy"), 0);
       const cz = parseNum(getAttr(el, "cz"), 0);
+      const krx = parseNum(getAttr(el, "krx"), 0);
+      const kry = parseNum(getAttr(el, "kry"), 0);
+      const krz = parseNum(getAttr(el, "krz"), 0);
+      const crx = parseNum(getAttr(el, "crx"), 0);
+      const cry = parseNum(getAttr(el, "cry"), 0);
+      const crz = parseNum(getAttr(el, "crz"), 0);
+      const k3x = parseNum(getAttr(el, "k3x"), 0);
+      const k3y = parseNum(getAttr(el, "k3y"), 0);
+      const k3z = parseNum(getAttr(el, "k3z"), 0);
+      const hasRot = krx !== 0 || kry !== 0 || krz !== 0 || crx !== 0 || cry !== 0 || crz !== 0;
+      const hasNonlin = k3x !== 0 || k3y !== 0 || k3z !== 0;
 
       model.forces.set(id, {
         id,
         name,
-        type: "spring_damper",
+        type: tag === "bushing" || hasRot ? "bushing" : "spring_damper",
         markerA,
         markerB,
         stiffness: { x: kx, y: ky, z: kz },
         damping: { x: cx, y: cy, z: cz },
+        ...(hasRot
+          ? {
+              rotationalStiffness: { x: krx, y: kry, z: krz },
+              rotationalDamping: { x: crx, y: cry, z: crz },
+            }
+          : {}),
+        ...(hasNonlin ? { nonlinearStiffness: { x: k3x, y: k3y, z: k3z } } : {}),
       });
     }
 

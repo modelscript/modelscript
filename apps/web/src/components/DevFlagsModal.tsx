@@ -2,8 +2,9 @@
 
 import { CheckIcon, SearchIcon, SyncIcon, XIcon } from "@primer/octicons-react";
 import React, { useMemo, useRef, useState } from "react";
-import { DEFAULT_FRONTEND_FLAGS, useFeatureFlags } from "../FeatureFlagContext";
+import { DEFAULT_FRONTEND_FLAGS, getLanguageFlagKey, useFeatureFlags } from "../FeatureFlagContext";
 import { useFocusTrap } from "../hooks/useFocusTrap";
+import { ALL_PLAYGROUND_LANGUAGES } from "../pages/playground/constants";
 
 interface DevFlagsModalProps {
   isOpen: boolean;
@@ -12,9 +13,23 @@ interface DevFlagsModalProps {
 
 interface FlagMetadata {
   title: string;
-  category: "Core" | "HPC & Compute" | "Simulation" | "Community & Federation" | "Advanced";
+  category: "Core" | "HPC & Compute" | "Simulation" | "Community & Federation" | "Advanced" | "Languages";
   description: string;
 }
+
+const LANGUAGE_FLAG_METADATA: Record<string, FlagMetadata> = Object.fromEntries(
+  ALL_PLAYGROUND_LANGUAGES.map((lang) => {
+    const key = getLanguageFlagKey(lang.id);
+    return [
+      key,
+      {
+        title: `Language: ${lang.label} (${lang.ext})`,
+        category: "Languages",
+        description: `Enable or hide ${lang.label} (${lang.ext}) across playground, composer, IDE, and study template dialect pickers.`,
+      } satisfies FlagMetadata,
+    ];
+  }),
+);
 
 const FLAG_METADATA: Record<string, FlagMetadata> = {
   cae_cloud_solver: {
@@ -101,6 +116,12 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     title: "Model Context Protocol (MCP) Gateway",
     category: "Advanced",
     description: "Server-Sent Events gateway for AI coding agent inspection and tool calls.",
+  },
+  ...LANGUAGE_FLAG_METADATA,
+  lang_modelscript_msx: {
+    title: "Language: ModelScript (.msx) [Alias]",
+    category: "Languages",
+    description: "Alias for lang_modelscript — exposes the experimental native ModelScript (.msx) language.",
   },
 };
 

@@ -85,4 +85,53 @@ CONNECTIONS:
     assert.ok(found, "Expected M8002 diagnostic for LOX to LH2 mix in valve");
     assert.strictEqual(found?.severity, "error");
   });
+
+  it("detects M8003, M8004, M8005, M8009, M8010, M8012, and M8014 propulsion diagnostics", () => {
+    const deck = `DECK: ComprehensiveLintDeck
+COMPONENTS:
+  SHAFT_IMBAL TYPE=SHAFT
+    PARAMS: P_PUMP=5.0E6, P_TURB=2.0E6
+  SPLIT01 TYPE=SPLITTER
+    PARAMS: MDOT_IN=50.0, MDOT_OUT=42.0
+  PUMP_CAV TYPE=PUMP
+    PARAMS: P_IN=8.0E4, P_VAP=6.0E4, NPSH_R=5.0E4, FLUID=UNOBTANIUM
+  VALV_CLOSED TYPE=VALVE
+    PARAMS: POSITION=0.0
+  CHAMBER_LOW TYPE=CHAMBER
+    PARAMS: PC=1.2E5, PA=1.0E5
+  USER01 TYPE=USER_ROUTINE
+CONNECTIONS:
+  PUMP_CAV.OUT_P -> VALV_CLOSED.IN_P
+`;
+    const model = parseRocetsDeck(deck);
+    const diags = lintRocets(model);
+    assert.ok(
+      diags.some((d) => d.id === RocetsErrorCode.SHAFT_POWER_IMBALANCE.id),
+      "Expected M8003",
+    );
+    assert.ok(
+      diags.some((d) => d.id === RocetsErrorCode.UNBALANCED_FLOW_SPLIT.id),
+      "Expected M8004",
+    );
+    assert.ok(
+      diags.some((d) => d.id === RocetsErrorCode.PUMP_CAVITATION_RISK.id),
+      "Expected M8005",
+    );
+    assert.ok(
+      diags.some((d) => d.id === RocetsErrorCode.CHOKED_FLOW_INCONSISTENCY.id),
+      "Expected M8009",
+    );
+    assert.ok(
+      diags.some((d) => d.id === RocetsErrorCode.USER_FORTRAN_ROUTINE_ERROR.id),
+      "Expected M8010",
+    );
+    assert.ok(
+      diags.some((d) => d.id === RocetsErrorCode.MISSING_FLUID_TABLE.id),
+      "Expected M8012",
+    );
+    assert.ok(
+      diags.some((d) => d.id === RocetsErrorCode.CLOSED_FLOW_CIRCUIT.id),
+      "Expected M8014",
+    );
+  });
 });

@@ -17,8 +17,10 @@ export function lowerAutosarToDae(model: AutosarModel, options?: AutosarDaeOptio
   const modelName = options?.modelName ?? "AutosarSystem";
   const dae = options?.builder ?? new DAEBuilder(undefined, modelName);
 
-  // Map of port variables: "compName.portName.dataElement" -> { varId: number, varName: string, exprId: number }
-  const portVarMap = new Map<string, { varId: number; varName: string; exprId: number }>();
+  // Map of port variables: "compName.portName.dataElement" -> { varId: number, varName: string, exprId: number, initVal: number }
+  const portVarMap = new Map<string, { varId: number; varName: string; exprId: number; initVal: number }>();
+  const uniquePortVars: { varId: number; varName: string; exprId: number; initVal: number }[] = [];
+  const definedVarIds = new Set<number>();
 
   // 1. Lower all Atomic SWC ports into variables
   for (const [compName, swc] of model.components) {
@@ -41,22 +43,24 @@ export function lowerAutosarToDae(model: AutosarModel, options?: AutosarDaeOptio
           const initVal = typeof de.initValue === "number" ? de.initValue : 0.0;
           const varId = dae.addVariable(varName, VarType.Real, Variability.Continuous, causality, initVal);
           const exprId = dae.addNameExpr(varName);
-          const entry = { varId, varName, exprId };
+          const entry = { varId, varName, exprId, initVal };
           portVarMap.set(`${compName}.${portName}.${de.shortName}`, entry);
           portVarMap.set(`${compName}.${portName}`, entry); // fallback
+          uniquePortVars.push(entry);
         }
       } else {
         const varName = `${compName}_${portName}`;
         const varId = dae.addVariable(varName, VarType.Real, Variability.Continuous, causality, 0.0);
         const exprId = dae.addNameExpr(varName);
-        const entry = { varId, varName, exprId };
+        const entry = { varId, varName, exprId, initVal: 0.0 };
         portVarMap.set(`${compName}.${portName}`, entry);
+        uniquePortVars.push(entry);
       }
     }
 
     // Lower internal behavior relationships
     if (swc.internalBehavior) {
-      lowerSwcBehavior(swc, dae, portVarMap);
+      lowerSwcBehavior(swc, dae, portVarMap, definedVarIds);
     }
   }
 
@@ -71,8 +75,17 @@ export function lowerAutosarToDae(model: AutosarModel, options?: AutosarDaeOptio
           conn.requirer?.component &&
           conn.requirer?.port
         ) {
-          const provKey = `${conn.provider.component}.${conn.provider.port}`;
-          const reqKey = `${conn.requirer.component}.${conn.requirer.port}`;
+          const provProto = comp.subComponents?.get(conn.provider.component);
+          const provCompName = provProto
+            ? (provProto.typeRef.split("/").pop() ?? conn.provider.component)
+            : conn.provider.component;
+          const reqProto = comp.subComponents?.get(conn.requirer.component);
+          const reqCompName = reqProto
+            ? (reqProto.typeRef.split("/").pop() ?? conn.requirer.component)
+            : conn.requirer.component;
+
+          const provKey = `${provCompName}.${conn.provider.port}`;
+          const reqKey = `${reqCompName}.${conn.requirer.port}`;
 
           // Connect matching data elements or direct port
           let matched = false;
@@ -80,8 +93,9 @@ export function lowerAutosarToDae(model: AutosarModel, options?: AutosarDaeOptio
             if (kProv.startsWith(`${provKey}.`)) {
               const deName = kProv.slice(provKey.length + 1);
               const reqEntry = portVarMap.get(`${reqKey}.${deName}`);
-              if (reqEntry !== undefined) {
-                dae.addEquation(EqKind.Simple, provEntry.exprId, reqEntry.exprId);
+              if (reqEntry !== undefined && !definedVarIds.has(reqEntry.varId)) {
+                dae.addEquation(EqKind.Simple, reqEntry.exprId, provEntry.exprId);
+                definedVarIds.add(reqEntry.varId);
                 matched = true;
               }
             }
@@ -90,12 +104,21 @@ export function lowerAutosarToDae(model: AutosarModel, options?: AutosarDaeOptio
           if (!matched) {
             const pEntry = portVarMap.get(provKey);
             const rEntry = portVarMap.get(reqKey);
-            if (pEntry !== undefined && rEntry !== undefined) {
-              dae.addEquation(EqKind.Simple, pEntry.exprId, rEntry.exprId);
+            if (pEntry !== undefined && rEntry !== undefined && !definedVarIds.has(rEntry.varId)) {
+              dae.addEquation(EqKind.Simple, rEntry.exprId, pEntry.exprId);
+              definedVarIds.add(rEntry.varId);
             }
           }
         }
       }
+    }
+  }
+
+  // Bind any remaining open/source port variables to their initial values for structural squareness
+  for (const entry of uniquePortVars) {
+    if (!definedVarIds.has(entry.varId)) {
+      dae.addEquation(EqKind.Simple, entry.exprId, dae.addRealLiteral(entry.initVal));
+      definedVarIds.add(entry.varId);
     }
   }
 
@@ -110,7 +133,8 @@ export function lowerAutosarToDae(model: AutosarModel, options?: AutosarDaeOptio
 function lowerSwcBehavior(
   swc: AutosarSwComponent,
   dae: DAEBuilder,
-  portVarMap: Map<string, { varId: number; varName: string; exprId: number }>,
+  portVarMap: Map<string, { varId: number; varName: string; exprId: number; initVal: number }>,
+  definedVarIds: Set<number>,
 ): void {
   if (!swc.internalBehavior) return;
 
@@ -128,10 +152,16 @@ function lowerSwcBehavior(
         const wEntry = portVarMap.get(wKey) ?? portVarMap.get(`${swc.shortName}.${write.port}`);
         const rEntry = portVarMap.get(rKey) ?? portVarMap.get(`${swc.shortName}.${read.port}`);
 
-        if (wEntry !== undefined && rEntry !== undefined && wEntry.varId !== rEntry.varId) {
+        if (
+          wEntry !== undefined &&
+          rEntry !== undefined &&
+          wEntry.varId !== rEntry.varId &&
+          !definedVarIds.has(wEntry.varId)
+        ) {
           // writeVar = 0.95 * readVar
           const gainExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(0.95), rEntry.exprId);
           dae.addEquation(EqKind.Simple, wEntry.exprId, gainExpr);
+          definedVarIds.add(wEntry.varId);
         }
       }
     }
@@ -140,7 +170,7 @@ function lowerSwcBehavior(
 
 function lowerVehiclePlantModel(
   dae: DAEBuilder,
-  portVarMap: Map<string, { varId: number; varName: string; exprId: number }>,
+  portVarMap: Map<string, { varId: number; varName: string; exprId: number; initVal: number }>,
 ): void {
   // Continuous 1D longitudinal vehicle dynamics
   dae.addVariable("vehicle_speed", VarType.Real, Variability.Continuous, Causality.Output, 0.0);
@@ -150,12 +180,17 @@ function lowerVehiclePlantModel(
   const derSpeedExpr = dae.addNameExpr("der_vehicle_speed");
 
   dae.addVariable("vehicle_position", VarType.Real, Variability.Continuous, Causality.Output, 0.0);
+  const vPosExpr = dae.addNameExpr("vehicle_position");
 
   dae.addVariable("der_vehicle_position", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
   const derPosExpr = dae.addNameExpr("der_vehicle_position");
 
   dae.addVariable("engine_torque", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
   const engineTorqueExpr = dae.addNameExpr("engine_torque");
+
+  // Bind state derivative variables to der(...)
+  dae.addEquation(EqKind.Simple, derPosExpr, dae.addDerExpr(vPosExpr));
+  dae.addEquation(EqKind.Simple, derSpeedExpr, dae.addDerExpr(vSpeedExpr));
 
   // der(vehicle_position) = vehicle_speed
   dae.addEquation(EqKind.Simple, derPosExpr, vSpeedExpr);

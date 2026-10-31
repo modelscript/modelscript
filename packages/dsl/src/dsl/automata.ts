@@ -201,6 +201,11 @@ export class LRAutomaton {
       const targetState = this.states[nt.stateId]!.transitions.get(nt.symbol);
       if (!targetState) continue;
       const dr = new Set<SymbolName>();
+      for (const item of targetState.items) {
+        if (item.production.left === "_START" && item.dot === item.production.right.length) {
+          dr.add("EOF");
+        }
+      }
       for (const [sym] of targetState.transitions) {
         if (!this.grammar.nonTerminals.has(sym)) {
           dr.add(sym);

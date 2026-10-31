@@ -180,6 +180,145 @@ export function lowerEasy5ToDae(builder: IDaeBuilder, model: Easy5Model): Easy5D
         break;
       }
 
+      case "DZ": {
+        // Deadband: OUT = if IN > DB then SLOPE*(IN - DB) else if IN < -DB then SLOPE*(IN + DB) else 0.0
+        const db =
+          typeof comp.parameters["DB"] === "number"
+            ? comp.parameters["DB"]
+            : typeof comp.parameters["UPPER"] === "number"
+              ? comp.parameters["UPPER"]
+              : 0.1;
+        const slope =
+          typeof comp.parameters["SLOPE"] === "number"
+            ? comp.parameters["SLOPE"]
+            : typeof comp.parameters["GAIN"] === "number"
+              ? comp.parameters["GAIN"]
+              : 1.0;
+        const inVar = getOrAddVar(`${compId}_IN`);
+        const outVar = getOrAddVar(`${compId}_OUT`);
+
+        const condPos = builder.addBinaryExpr(BinOp.Gt, builder.addName(inVar), builder.addRealLiteral(db));
+        const posExpr = builder.addBinaryExpr(
+          BinOp.Mul,
+          builder.addRealLiteral(slope),
+          builder.addBinaryExpr(BinOp.Sub, builder.addName(inVar), builder.addRealLiteral(db)),
+        );
+
+        const condNeg = builder.addBinaryExpr(BinOp.Lt, builder.addName(inVar), builder.addRealLiteral(-db));
+        const negExpr = builder.addBinaryExpr(
+          BinOp.Mul,
+          builder.addRealLiteral(slope),
+          builder.addBinaryExpr(BinOp.Add, builder.addName(inVar), builder.addRealLiteral(db)),
+        );
+
+        const innerIf = builder.addIfElse(condNeg, negExpr, builder.addRealLiteral(0.0));
+        const dzExpr = builder.addIfElse(condPos, posExpr, innerIf);
+
+        builder.addEquation(EqKind.Simple, builder.addName(outVar), dzExpr);
+        equationCount++;
+        break;
+      }
+
+      case "SW": {
+        // Switch: OUT = if CTL >= THRESHOLD then IN1 else IN2
+        const thresh = typeof comp.parameters["THRESHOLD"] === "number" ? comp.parameters["THRESHOLD"] : 0.0;
+        const in1Var = getOrAddVar(`${compId}_IN1`);
+        const in2Var = getOrAddVar(`${compId}_IN2`);
+        const ctlVar = getOrAddVar(`${compId}_CTL`);
+        const outVar = getOrAddVar(`${compId}_OUT`);
+
+        const cond = builder.addBinaryExpr(BinOp.Gte, builder.addName(ctlVar), builder.addRealLiteral(thresh));
+        const swExpr = builder.addIfElse(cond, builder.addName(in1Var), builder.addName(in2Var));
+
+        builder.addEquation(EqKind.Simple, builder.addName(outVar), swExpr);
+        equationCount++;
+        break;
+      }
+
+      case "FN": {
+        // 1D Function Table Lookup: piecewise-linear interpolation via addIfElse
+        const inVar = getOrAddVar(`${compId}_IN`);
+        const outVar = getOrAddVar(`${compId}_OUT`);
+        const tableName = typeof comp.parameters["TABLE"] === "string" ? comp.parameters["TABLE"].toUpperCase() : "";
+        const table = (tableName ? model.tables.get(tableName) : undefined) ?? model.tables.values().next().value;
+
+        if (!table || table.xValues.length === 0 || table.data.length === 0) {
+          builder.addEquation(EqKind.Simple, builder.addName(outVar), builder.addName(inVar));
+          equationCount++;
+          break;
+        }
+
+        const xs = table.xValues;
+        const ys: number[] =
+          typeof table.data[0] === "number" ? (table.data as number[]) : (table.data as number[][]).flat();
+        const m = Math.min(xs.length, ys.length);
+        if (m === 1) {
+          builder.addEquation(EqKind.Simple, builder.addName(outVar), builder.addRealLiteral(ys[0]!));
+          equationCount++;
+          break;
+        }
+
+        // Build nested if/else from highest breakpoint down to lowest
+        let interpExpr = builder.addRealLiteral(ys[m - 1]!);
+        for (let i = m - 2; i >= 0; i--) {
+          const x0 = xs[i]!;
+          const x1 = xs[i + 1]!;
+          const y0 = ys[i]!;
+          const y1 = ys[i + 1]!;
+          const dx = x1 - x0;
+          const slope = Math.abs(dx) > 1e-12 ? (y1 - y0) / dx : 0.0;
+          const segExpr = builder.addBinaryExpr(
+            BinOp.Add,
+            builder.addRealLiteral(y0),
+            builder.addBinaryExpr(
+              BinOp.Mul,
+              builder.addRealLiteral(slope),
+              builder.addBinaryExpr(BinOp.Sub, builder.addName(inVar), builder.addRealLiteral(x0)),
+            ),
+          );
+          const cond = builder.addBinaryExpr(BinOp.Lte, builder.addName(inVar), builder.addRealLiteral(x1));
+          interpExpr = builder.addIfElse(cond, segExpr, interpExpr);
+        }
+
+        // Clamp below xs[0]
+        const belowCond = builder.addBinaryExpr(BinOp.Lte, builder.addName(inVar), builder.addRealLiteral(xs[0]!));
+        const finalExpr = builder.addIfElse(belowCond, builder.addRealLiteral(ys[0]!), interpExpr);
+
+        builder.addEquation(EqKind.Simple, builder.addName(outVar), finalExpr);
+        equationCount++;
+        break;
+      }
+
+      case "TD": {
+        // First-order Padé / lag delay approximation: der(s) = (IN - s) / DELAY, OUT = s
+        const delay = Math.max(
+          1e-6,
+          typeof comp.parameters["DELAY"] === "number"
+            ? comp.parameters["DELAY"]
+            : typeof comp.parameters["TAU"] === "number"
+              ? comp.parameters["TAU"]
+              : 0.1,
+        );
+        const s0 =
+          comp.initialStates["S1"] ?? (typeof comp.parameters["S0"] === "number" ? comp.parameters["S0"] : 0.0);
+
+        const stateVar = getOrAddVar(`${compId}_s`, Variability.Continuous, s0);
+        stateVarIndices.push(stateVar);
+
+        const inVar = getOrAddVar(`${compId}_IN`);
+        const outVar = getOrAddVar(`${compId}_OUT`);
+
+        const inMinusS = builder.addBinaryExpr(BinOp.Sub, builder.addName(inVar), builder.addName(stateVar));
+        const derS = builder.addDer(stateVar);
+        const rhsDer = builder.addBinaryExpr(BinOp.Div, inMinusS, builder.addRealLiteral(delay));
+        builder.addEquation(EqKind.Simple, derS, rhsDer);
+        equationCount++;
+
+        builder.addEquation(EqKind.Simple, builder.addName(outVar), builder.addName(stateVar));
+        equationCount++;
+        break;
+      }
+
       case "UG": {
         // User General Component with embedded Fortran
         if (comp.userCode) {

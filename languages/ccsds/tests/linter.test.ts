@@ -124,4 +124,39 @@ DATA_STOP
     assert.strictEqual(d.severity, "error");
     assert(d.message.includes("Duplicate telemetry parameter declaration for 'BusVoltage'."));
   });
+
+  it("M8202: detects overlapping XTCE container bit offsets via LocationInContainerInBits", () => {
+    const src = `<?xml version="1.0" encoding="UTF-8"?>
+<SpaceSystem name="OverlapContainerSystem">
+  <TelemetryMetaData>
+    <ParameterSet>
+      <Parameter name="ParamA" parameterTypeRef="float" />
+      <Parameter name="ParamB" parameterTypeRef="float" />
+    </ParameterSet>
+    <ContainerSet>
+      <SequenceContainer name="BadPacket">
+        <EntryList>
+          <ParameterRefEntry parameterRef="ParamA">
+            <LocationInContainerInBits referenceLocation="containerStart">
+              <FixedValue>0</FixedValue>
+            </LocationInContainerInBits>
+          </ParameterRefEntry>
+          <ParameterRefEntry parameterRef="ParamB">
+            <LocationInContainerInBits referenceLocation="containerStart">
+              <FixedValue>16</FixedValue>
+            </LocationInContainerInBits>
+          </ParameterRefEntry>
+        </EntryList>
+      </SequenceContainer>
+    </ContainerSet>
+  </TelemetryMetaData>
+</SpaceSystem>
+`;
+    const doc = parseCcsds(src, "overlap.xtce");
+    const diags = lintCcsds(doc);
+    const d = diags.find((x) => x.code === "M8202");
+    assert(d !== undefined, "Expected M8202 overlapping bit offset diagnostic");
+    assert.strictEqual(d.severity, "error");
+    assert(d.message.includes("ParamB"));
+  });
 });

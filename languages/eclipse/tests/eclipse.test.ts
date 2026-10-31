@@ -308,3 +308,81 @@ test("ECLIPSE Workspace Index: indexes multi-file symbols accurately", () => {
   assert.ok(injSym);
   assert.equal(injSym.name, "INJ1");
 });
+
+test("ECLIPSE Parser: parses INCLUDE file references and resolves included decks", () => {
+  const deckWithIncludes = `RUNSPEC
+TITLE
+  Included Reservoir Model
+/
+DIMENS
+  5 5 2 /
+GRID
+INCLUDE
+  'grid/poro_perm.inc' /
+PROPS
+INCLUDE
+  'props/pvt_tables.inc' /
+SCHEDULE
+END
+`;
+
+  const includeFiles: Record<string, string> = {
+    "grid/poro_perm.inc": `DX
+  50*120.0 /
+DY
+  50*120.0 /
+DZ
+  50*30.0 /
+PORO
+  50*0.25 /
+PERMX
+  50*240.0 /
+PERMY
+  50*240.0 /
+PERMZ
+  50*24.0 /`,
+    "props/pvt_tables.inc": `PVDO
+  1000.0 1.12 1.30
+  4000.0 1.24 0.90 /`,
+  };
+
+  const deck = parseEclipse(deckWithIncludes, "main.data", (incPath) => includeFiles[incPath]);
+  assert.deepEqual(deck.includes, ["grid/poro_perm.inc", "props/pvt_tables.inc"]);
+  assert.equal(deck.grid.poro, 0.25);
+  assert.equal(deck.grid.permX, 240.0);
+  assert.equal(deck.props.pvdo.length, 2);
+});
+
+test("ECLIPSE 3D TPFA Solver: tracks spatial cellPressures and cellWaterSaturations across injector and producer cells", () => {
+  const deck = parseEclipse(VALID_ECLIPSE_DECK);
+  const res = solveReservoirDepletion(deck, { totalDays: 180.0, stepDays: 30.0 });
+
+  const totalCells = deck.dimensions.nx * deck.dimensions.ny * deck.dimensions.nz;
+  assert.equal(res.cellPressures.length, totalCells);
+  assert.equal(res.cellWaterSaturations.length, totalCells);
+
+  const lastStep = res.trajectory[res.trajectory.length - 1]!;
+  assert.equal(lastStep.cellPressures.length, totalCells);
+  assert.equal(lastStep.cellWaterSaturations.length, totalCells);
+
+  // PROD1 is at (i=2, j=3, k=1..3) -> 0-based (1, 2, 0) => index = 1 + 2*10 + 0 = 21
+  // INJ1 is at (i=8, j=8, k=1..3) -> 0-based (7, 7, 0) => index = 7 + 7*10 + 0 = 77
+  const prodCellIdx = 1 + 2 * 10;
+  const injCellIdx = 7 + 7 * 10;
+  const midCellIdx = 4 + 4 * 10;
+
+  // Injector cell pressure must exceed producer cell drawdown pressure
+  assert.ok(
+    res.cellPressures[injCellIdx]! > res.cellPressures[prodCellIdx]!,
+    `Injector cell pressure (${res.cellPressures[injCellIdx]}) must exceed producer cell pressure (${res.cellPressures[prodCellIdx]})`,
+  );
+  // Water saturation at water injector cell must increase above initial connate water (0.22) and exceed mid-reservoir cell
+  assert.ok(
+    res.cellWaterSaturations[injCellIdx]! > 0.25,
+    `Injector cell Sw (${res.cellWaterSaturations[injCellIdx]}) must increase above initial Sw=0.22`,
+  );
+  assert.ok(
+    res.cellWaterSaturations[injCellIdx]! > res.cellWaterSaturations[midCellIdx]!,
+    `Injector cell Sw (${res.cellWaterSaturations[injCellIdx]}) must exceed distant cell Sw (${res.cellWaterSaturations[midCellIdx]})`,
+  );
+});

@@ -20,11 +20,24 @@ export const AnsatzMark: React.FC<AnsatzMarkProps> = ({
   accentColor = "#38bdf8",
 }) => {
   const trimmedUrl = (logoUrl || "").trim();
+  const safeLogoUrl = React.useMemo(() => {
+    if (!trimmedUrl) return null;
+    // Allow safe http/https, relative paths, or safe data image URIs
+    if (/^(?:https?:\/\/|\/(?!\/)|\.\/|data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,)/i.test(trimmedUrl)) {
+      try {
+        return encodeURI(decodeURI(trimmedUrl));
+      } catch {
+        return encodeURI(trimmedUrl);
+      }
+    }
+    return null;
+  }, [trimmedUrl]);
+
   const isCustomLogo =
-    Boolean(trimmedUrl) &&
-    trimmedUrl !== "/ms-logo.png" &&
-    trimmedUrl !== "/ms-logo-light.png" &&
-    trimmedUrl !== "/ansatz-logo.svg";
+    Boolean(safeLogoUrl) &&
+    safeLogoUrl !== "/ms-logo.png" &&
+    safeLogoUrl !== "/ms-logo-light.png" &&
+    safeLogoUrl !== "/ansatz-logo.svg";
 
   const svgSize = Math.round(size * 0.68);
   const resolvedAccent =
@@ -51,9 +64,9 @@ export const AnsatzMark: React.FC<AnsatzMarkProps> = ({
         flexShrink: 0,
       }}
     >
-      {isCustomLogo ? (
+      {isCustomLogo && safeLogoUrl ? (
         <img
-          src={trimmedUrl}
+          src={safeLogoUrl}
           alt={alt}
           style={{ width: `${size}px`, height: `${size}px`, objectFit: "cover", display: "block" }}
         />

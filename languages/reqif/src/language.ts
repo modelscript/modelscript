@@ -160,6 +160,56 @@ export const reqifLanguage = language({
     },
   ],
 
+  // ZIP container handler for `.reqifz` ReqIF bundle archives
+  container: {
+    extensions: [".reqifz"],
+    extract: (data, { zip }) => {
+      const allEntries = zip.entries(data);
+      const reqifEntry =
+        allEntries.find((e) => e.name.toLowerCase().endsWith(".reqif")) ??
+        allEntries.find((e) => e.name.toLowerCase().endsWith(".xml"));
+      if (!reqifEntry) return null;
+
+      const reqifContent = zip.readText(data, reqifEntry.name);
+      if (!reqifContent) return null;
+
+      const doc = parseReqIf(reqifContent);
+
+      return {
+        manifest: {
+          path: reqifEntry.name,
+          content: reqifContent,
+          language: "reqif",
+        },
+        entries: allEntries.map((entry) => ({
+          path: entry.name,
+          size: entry.size,
+          read: () => zip.read(data, entry.name),
+          readText: () => zip.readText(data, entry.name),
+          action: entry.name.toLowerCase().endsWith(".reqif") ? ("parse_as_language" as const) : ("mount_vfs" as const),
+          targetLanguage: entry.name.toLowerCase().endsWith(".reqif") ? "reqif" : undefined,
+        })),
+        metadata: {
+          title: doc.header.title,
+          reqIfVersion: doc.header.reqIfVersion,
+          specObjectCount: doc.specObjects.size,
+          specRelationCount: doc.specRelations.length,
+          specificationCount: doc.specifications.length,
+        },
+        project: (targetLanguage: string) => {
+          const lang = targetLanguage.toLowerCase();
+          if (lang === "sysml2" || lang === "sysml") {
+            return reqifToSysml2(doc);
+          }
+          if (lang === "modelica") {
+            return reqifToModelicaVerifier(doc);
+          }
+          return null;
+        },
+      };
+    },
+  },
+
   polyglot: {
     typeMaps: {
       reqif: {

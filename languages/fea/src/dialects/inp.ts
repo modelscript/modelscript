@@ -38,6 +38,11 @@ export class InpDialect implements FeaDialect {
       elsetMaterials: new Map<string, string>(),
       sectionThickness: new Map<string, number>(),
       beamAreas: new Map<string, number>(),
+      nodeLines: new Map<number, number>(),
+      elementLines: new Map<number, number>(),
+      materialLines: new Map<string, number>(),
+      sectionLines: new Map<string, number>(),
+      boundaryLines: [],
     };
 
     let currentSection = "";
@@ -78,6 +83,7 @@ export class InpDialect implements FeaDialect {
       ENCASTRE: [1, 2, 3, 4, 5, 6],
       PINNED: [1, 2, 3],
       XSYMM: [1, 5, 6],
+      YSymm: [2, 4, 6],
       YSYMM: [2, 4, 6],
       ZSYMM: [3, 4, 5],
       XASYMM: [2, 3, 4],
@@ -86,6 +92,7 @@ export class InpDialect implements FeaDialect {
     };
 
     for (let i = 0; i < lines.length; i++) {
+      const lineNum = i + 1;
       const rawLine = lines[i]!.trim();
       if (!rawLine || rawLine.startsWith("**")) {
         continue;
@@ -120,12 +127,18 @@ export class InpDialect implements FeaDialect {
           const matName = currentOptions["NAME"] || "DEFAULT_MATERIAL";
           activeMaterial = { name: matName };
           data.materials.set(matName, activeMaterial);
+          data.materialLines!.set(matName, lineNum);
         } else if (keyword === "SOLID SECTION" || keyword === "SHELL SECTION" || keyword === "BEAM SECTION") {
           const elset = currentOptions["ELSET"];
           const matName = currentOptions["MATERIAL"];
-          if (elset && matName) {
-            data.elsetMaterials!.set(elset.toUpperCase(), matName);
+          if (elset) {
+            data.sectionLines!.set(elset.toUpperCase(), lineNum);
+            if (matName) {
+              data.elsetMaterials!.set(elset.toUpperCase(), matName);
+            }
           }
+        } else if (keyword === "BOUNDARY") {
+          data.boundaryLines!.push(lineNum);
         }
 
         continue;
@@ -144,6 +157,7 @@ export class InpDialect implements FeaDialect {
           const z = tokens.length >= 4 ? parseFloat(tokens[3]!) : 0.0;
           if (!isNaN(id) && !isNaN(x) && !isNaN(y) && !isNaN(z)) {
             data.nodes.set(id, { id, x, y, z });
+            data.nodeLines!.set(id, lineNum);
 
             if (currentOptions["NSET"]) {
               const setName = currentOptions["NSET"].toUpperCase();
@@ -167,6 +181,7 @@ export class InpDialect implements FeaDialect {
           const family = inferElementFamily(type);
           if (!isNaN(id) && nodeIds.length > 0) {
             data.elements.set(id, { id, type, nodes: nodeIds, elset: currentOptions["ELSET"], family });
+            data.elementLines!.set(id, lineNum);
             lastElementId = id;
 
             if (currentOptions["ELSET"]) {

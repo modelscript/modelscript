@@ -46,24 +46,36 @@ export function touchstoneToModelica(deck: TouchstoneDeck, modelName?: string): 
   lines.push(``);
   lines.push(`  // State differential equations der(x) = A*x + B*v`);
   for (let s = 0; s < totalStates; s++) {
-    const portIdx = Math.floor(s / ss.order) + 1;
-    const aVal = ss.A[s]![s]!;
-    const bVal = ss.B[s]![portIdx - 1]!;
-    lines.push(
-      `  der(x[${s + 1}]) = (${aVal.toExponential(4)}) * x[${s + 1}] + (${bVal.toExponential(4)}) * v[${portIdx}];`,
-    );
+    const terms: string[] = [];
+    for (let k = 0; k < totalStates; k++) {
+      const aVal = ss.A[s]?.[k] ?? 0.0;
+      if (Math.abs(aVal) > 1e-15 || k === s) {
+        terms.push(`(${aVal.toExponential(4)}) * x[${k + 1}]`);
+      }
+    }
+    for (let q = 0; q < numPorts; q++) {
+      const bVal = ss.B[s]?.[q] ?? 0.0;
+      if (Math.abs(bVal) > 1e-15) {
+        terms.push(`(${bVal.toExponential(4)}) * v[${q + 1}]`);
+      }
+    }
+    lines.push(`  der(x[${s + 1}]) = ${terms.join(" + ")};`);
   }
   lines.push(``);
   lines.push(`  // Port output current equations i = C*x + D*v`);
   for (let p = 0; p < numPorts; p++) {
     const portNum = p + 1;
     const terms: string[] = [];
-    const dVal = ss.D[p]?.[p] ?? 0.0;
-    terms.push(`(${dVal.toExponential(4)}) * v[${portNum}]`);
+    for (let q = 0; q < numPorts; q++) {
+      const dVal = ss.D[p]?.[q] ?? 0.0;
+      if (Math.abs(dVal) > 1e-15 || q === p) {
+        terms.push(`(${dVal.toExponential(4)}) * v[${q + 1}]`);
+      }
+    }
 
     for (let s = 0; s < totalStates; s++) {
       const cVal = ss.C[p]![s]!;
-      if (Math.abs(cVal) > 1e-12) {
+      if (Math.abs(cVal) > 1e-15) {
         terms.push(`(${cVal.toExponential(4)}) * x[${s + 1}]`);
       }
     }

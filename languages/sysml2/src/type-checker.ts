@@ -64,6 +64,7 @@ const STDLIB_PACKAGES = new Set<string>([
   "DataFunctions",
   "ControlFunctions",
   "StandardLibrary",
+  "Kernel",
 ]);
 
 const STDLIB_SYMBOLS = new Set<string>([
@@ -123,9 +124,147 @@ const STDLIB_SYMBOLS = new Set<string>([
   ...Object.keys(KNOWN_DIMENSIONS),
 ]);
 
+const STDLIB_PACKAGE_MEMBERS = new Map<string, Set<string>>();
+
+function addStdlibPkgMember(pkg: string, member: string): void {
+  let set = STDLIB_PACKAGE_MEMBERS.get(pkg);
+  if (!set) {
+    set = new Set<string>();
+    STDLIB_PACKAGE_MEMBERS.set(pkg, set);
+  }
+  set.add(member);
+}
+
+const stdlibEntryById = new Map<number, SymbolEntry>();
+for (const entry of kermlStdlibEntries) {
+  stdlibEntryById.set(entry.id, entry);
+}
+
 for (const entry of kermlStdlibEntries) {
   if (entry.name && entry.name !== "<anonymous>") {
-    STDLIB_SYMBOLS.add(entry.name.trim());
+    const cleanMember = entry.name.trim();
+    STDLIB_SYMBOLS.add(cleanMember);
+    // Walk parentId chain to register member under its enclosing stdlib Package(s)
+    let currParentId = entry.parentId;
+    while (currParentId != null) {
+      const parentEntry = stdlibEntryById.get(currParentId);
+      if (!parentEntry) break;
+      if (parentEntry.name && parentEntry.name !== "<anonymous>") {
+        addStdlibPkgMember(parentEntry.name.trim(), cleanMember);
+      }
+      currParentId = parentEntry.parentId;
+    }
+  }
+}
+
+for (const scalarType of [
+  "Real",
+  "Integer",
+  "Boolean",
+  "String",
+  "Natural",
+  "Positive",
+  "UnlimitedNatural",
+  "Complex",
+  "Rational",
+  "NumericalValue",
+  "ScalarValue",
+  "DataValue",
+]) {
+  addStdlibPkgMember("ScalarValues", scalarType);
+  addStdlibPkgMember("CoreTypes", scalarType);
+}
+
+const ISQ_FAMILY_PACKAGES = [
+  "ISQ",
+  "ISQBase",
+  "ISQSpaceTime",
+  "ISQMechanics",
+  "ISQThermodynamics",
+  "ISQElectromagnetism",
+  "ISQLight",
+  "ISQChemistryMolecular",
+  "ISQAtomicNuclear",
+  "Quantities",
+];
+const baseIsqMembers = new Set<string>(["Real"]);
+for (const pkg of ISQ_FAMILY_PACKAGES) {
+  for (const m of STDLIB_PACKAGE_MEMBERS.get(pkg) ?? []) {
+    baseIsqMembers.add(m);
+  }
+}
+for (const dimKey of Object.keys(KNOWN_DIMENSIONS)) {
+  baseIsqMembers.add(dimKey);
+  baseIsqMembers.add(`${dimKey}Value`);
+  STDLIB_SYMBOLS.add(`${dimKey}Value`);
+}
+for (const pkg of ISQ_FAMILY_PACKAGES) {
+  for (const m of baseIsqMembers) {
+    addStdlibPkgMember(pkg, m);
+  }
+}
+
+const SI_FAMILY_PACKAGES = [
+  "SI",
+  "SIBaseUnits",
+  "SIDerivedUnits",
+  "USCustomaryUnits",
+  "MeasurementReferences",
+  "UnitsAndScales",
+];
+const baseSiMembers = new Set<string>(Object.keys(KNOWN_DIMENSIONS));
+for (const pkg of SI_FAMILY_PACKAGES) {
+  for (const m of STDLIB_PACKAGE_MEMBERS.get(pkg) ?? []) {
+    baseSiMembers.add(m);
+  }
+}
+for (const pkg of SI_FAMILY_PACKAGES) {
+  for (const m of baseSiMembers) {
+    addStdlibPkgMember(pkg, m);
+  }
+}
+
+const FUNCTION_FAMILY_PACKAGES = [
+  "NumericalFunctions",
+  "TrigFunctions",
+  "DataFunctions",
+  "SequenceFunctions",
+  "ControlFunctions",
+  "VectorCalculations",
+];
+const baseFnMembers = new Set<string>([
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "sqrt",
+  "exp",
+  "log",
+  "ln",
+  "abs",
+  "min",
+  "max",
+  "sum",
+  "product",
+  "size",
+  "isEmpty",
+  "notEmpty",
+]);
+for (const pkg of FUNCTION_FAMILY_PACKAGES) {
+  for (const m of STDLIB_PACKAGE_MEMBERS.get(pkg) ?? []) {
+    baseFnMembers.add(m);
+  }
+}
+for (const pkg of FUNCTION_FAMILY_PACKAGES) {
+  for (const m of baseFnMembers) {
+    addStdlibPkgMember(pkg, m);
+    STDLIB_SYMBOLS.add(m);
   }
 }
 
@@ -138,12 +277,25 @@ export function isStdlibOrBuiltinSymbol(name: string): boolean {
   while (clean.endsWith("::*")) clean = clean.slice(0, -3);
   if (!clean || clean === "<anonymous>" || clean === "*") return true;
   if (clean.includes("::")) {
-    const parts = clean.split("::");
-    const rootPkg = parts[0]!.trim();
-    const leaf = parts[parts.length - 1]!.trim();
-    if (STDLIB_PACKAGES.has(rootPkg)) return true;
-    if (STDLIB_SYMBOLS.has(leaf)) return true;
-    return false;
+    const parts = clean
+      .split("::")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length === 0) return true;
+    // Every namespace prefix segment must be a recognized standard library package
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!STDLIB_PACKAGES.has(parts[i]!)) {
+        return false;
+      }
+    }
+    const leaf = parts[parts.length - 1]!;
+    if (STDLIB_PACKAGES.has(leaf)) return true;
+    const parentPkg = parts[parts.length - 2]!;
+    const pkgMembers = STDLIB_PACKAGE_MEMBERS.get(parentPkg);
+    if (pkgMembers) {
+      return pkgMembers.has(leaf);
+    }
+    return STDLIB_SYMBOLS.has(leaf);
   }
   return STDLIB_PACKAGES.has(clean) || STDLIB_SYMBOLS.has(clean);
 }
@@ -453,16 +605,27 @@ export function resolvePathInScope(db: QueryDB, scopeId: number | null, pathStr:
 
   // 1. If path contains "::", resolve via namespace path
   if (cleanPath.includes("::")) {
-    const segments = cleanPath.split("::");
+    const segments = cleanPath.split("::").map((s) => s.trim());
     const rootName = segments[0]!;
     const rest = segments.slice(1);
-    let curr: SymbolEntry | null = resolveFeatureInScopeLocal(db, scopeId, rootName);
-    for (const seg of rest) {
-      if (!curr) return null;
-      const children = db.childrenOf(curr.id);
-      curr = children.find((c) => c.name === seg) ?? null;
+    const candidateRoots: SymbolEntry[] = [];
+    const localRoot = resolveFeatureInScopeLocal(db, scopeId, rootName);
+    if (localRoot) candidateRoots.push(localRoot);
+    for (const globalSym of db.byName(rootName)?.filter(isDeclarationSymbol) ?? []) {
+      if (!candidateRoots.some((r) => r.id === globalSym.id)) {
+        candidateRoots.push(globalSym);
+      }
     }
-    return curr;
+    for (const root of candidateRoots) {
+      let curr: SymbolEntry | null = root;
+      for (const seg of rest) {
+        if (!curr) break;
+        const children = db.childrenOf(curr.id);
+        curr = children.find((c) => c.name === seg && isDeclarationSymbol(c)) ?? null;
+      }
+      if (curr) return curr;
+    }
+    return null;
   }
 
   // 2. If path contains ".", resolve via dot-notation (subpart -> port/feature)
@@ -703,7 +866,7 @@ export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResul
 
       const resolved =
         resolvePathInScope(db, self.parentId ?? self.id, cleanName) ??
-        db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol) ??
+        (!cleanName.includes("::") ? db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol) : null) ??
         null;
       if (!resolved) {
         return error(SysML2ErrorCode.SYMBOL_NOT_FOUND.message(cleanName), {
@@ -719,7 +882,7 @@ export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResul
     if (!cleanName || cleanName === "<anonymous>" || isStdlibOrBuiltinSymbol(cleanName)) continue;
     const resolved =
       resolvePathInScope(db, self.parentId ?? self.id, cleanName) ??
-      db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol) ??
+      (!cleanName.includes("::") ? db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol) : null) ??
       null;
     if (!resolved) {
       return error(SysML2ErrorCode.SYMBOL_NOT_FOUND.message(cleanName), {
@@ -760,7 +923,7 @@ export function checkImportResolution(db: QueryDB, self: SymbolEntry): LintResul
   const resolved =
     resolvePathInScope(db, self.parentId, cleanTarget) ??
     db.byName(cleanTarget)?.find(isDeclarationSymbol) ??
-    db.byName(normalizeTypeName(cleanTarget))?.find(isDeclarationSymbol) ??
+    (!cleanTarget.includes("::") ? db.byName(normalizeTypeName(cleanTarget))?.find(isDeclarationSymbol) : null) ??
     null;
 
   if (!resolved) {

@@ -5,6 +5,7 @@ import {
   ArrowLeftIcon,
   CheckCircleIcon,
   OrganizationIcon,
+  PencilIcon,
   PeopleIcon,
   PersonIcon,
   PlusIcon,
@@ -20,6 +21,8 @@ import {
   getMyOrganizations,
   getOrganizationMembers,
   removeOrganizationMember,
+  updateOrganization,
+  updateOrgMemberRole,
   type Organization,
   type OrganizationMember,
   type OrgRole,
@@ -48,16 +51,20 @@ const RoleBadge = styled.span<{ $role: OrgRole }>`
   background: ${(props) =>
     props.$role === "owner"
       ? "rgba(168, 85, 247, 0.2)"
-      : props.$role === "maintainer"
+      : props.$role === "admin" || props.$role === "maintainer"
         ? "rgba(6, 182, 212, 0.15)"
         : "rgba(16, 185, 129, 0.15)"};
   color: ${(props) =>
-    props.$role === "owner" ? "#c084fc" : props.$role === "maintainer" ? "#22d3ee" : "var(--ms-success)"};
+    props.$role === "owner"
+      ? "#c084fc"
+      : props.$role === "admin" || props.$role === "maintainer"
+        ? "#22d3ee"
+        : "var(--ms-success)"};
   border: 1px solid
     ${(props) =>
       props.$role === "owner"
         ? "rgba(168, 85, 247, 0.3)"
-        : props.$role === "maintainer"
+        : props.$role === "admin" || props.$role === "maintainer"
           ? "rgba(6, 182, 212, 0.3)"
           : "rgba(16, 185, 129, 0.3)"};
 `;
@@ -185,6 +192,14 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
   const [inviteUsername, setInviteUsername] = useState("");
   const [inviteRole, setInviteRole] = useState<OrgRole>("contributor");
 
+  // Edit organization profile form state
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editWebsite, setEditWebsite] = useState("");
+  const [editBillingEmail, setEditBillingEmail] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [confirmingRemoveUserId, setConfirmingRemoveUserId] = useState<number | null>(null);
 
@@ -214,6 +229,10 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
 
   useEffect(() => {
     if (selectedOrg) {
+      setEditDisplayName(selectedOrg.display_name || selectedOrg.name || "");
+      setEditDescription(selectedOrg.description || "");
+      setEditWebsite(selectedOrg.website || "");
+      setEditBillingEmail(selectedOrg.billing_email || "");
       getOrganizationMembers(selectedOrg.slug)
         .then(setMembers)
         .catch(() => setMembers([]));
@@ -221,6 +240,64 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
       setMembers([]);
     }
   }, [selectedOrg]);
+
+  const canManageOrg = !selectedOrg?.role || selectedOrg.role === "owner" || selectedOrg.role === "admin";
+
+  const handleUpdateOrgProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrg) return;
+    if (!editDisplayName.trim()) {
+      setFeedback({ type: "error", text: "Organization display name is required." });
+      return;
+    }
+    setIsSavingProfile(true);
+    try {
+      const updated = await updateOrganization(selectedOrg.slug, {
+        display_name: editDisplayName.trim(),
+        name: editDisplayName.trim(),
+        description: editDescription.trim() || null,
+        website: editWebsite.trim() || null,
+        billing_email: editBillingEmail.trim() || null,
+      });
+      const merged: Organization = {
+        ...selectedOrg,
+        ...updated,
+        name: updated?.name || updated?.display_name || editDisplayName.trim(),
+        display_name: updated?.display_name || editDisplayName.trim(),
+        description: updated?.description !== undefined ? updated.description : editDescription.trim() || null,
+        website: updated?.website !== undefined ? updated.website : editWebsite.trim() || null,
+        billing_email: updated?.billing_email !== undefined ? updated.billing_email : editBillingEmail.trim() || null,
+      };
+      setSelectedOrg(merged);
+      setOrganizations((prev) => prev.map((o) => (o.slug === selectedOrg.slug ? merged : o)));
+      setIsEditingProfile(false);
+      setFeedback({ type: "success", text: `Updated profile for '${merged.name}'.` });
+    } catch (err: unknown) {
+      setFeedback({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to update organization profile.",
+      });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleChangeMemberRole = async (username: string, newRole: OrgRole) => {
+    if (!selectedOrg) return;
+    try {
+      await updateOrgMemberRole(selectedOrg.slug, username, newRole);
+      setMembers((prev) => prev.map((m) => (m.username === username ? { ...m, role: newRole } : m)));
+      setFeedback({
+        type: "success",
+        text: `Updated ${username}'s role to ${newRole}.`,
+      });
+    } catch (err: unknown) {
+      setFeedback({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to update member role.",
+      });
+    }
+  };
 
   const handleCreateOrg = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -452,7 +529,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                 <Box>
                   <Box display="flex" alignItems="center" gap={2}>
                     <Text style={{ fontSize: "20px", fontWeight: 800, color: "var(--color-text-primary)" }}>
-                      {selectedOrg.name}
+                      {selectedOrg.display_name || selectedOrg.name}
                     </Text>
                     <RoleBadge $role={(selectedOrg.role as OrgRole) || "owner"}>
                       <ShieldCheckIcon size={12} />
@@ -477,6 +554,20 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                       {selectedOrg.description}
                     </Text>
                   )}
+                  {(selectedOrg.website || selectedOrg.billing_email) && (
+                    <Box display="flex" gap={3} flexWrap="wrap" mt={1}>
+                      {selectedOrg.website && (
+                        <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                          Website: {selectedOrg.website}
+                        </Text>
+                      )}
+                      {selectedOrg.billing_email && (
+                        <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                          Billing: {selectedOrg.billing_email}
+                        </Text>
+                      )}
+                    </Box>
+                  )}
                 </Box>
 
                 <Box display="flex" flexDirection="column" alignItems="flex-end" gap={1}>
@@ -484,14 +575,100 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                   <Text style={{ fontSize: "18px", fontWeight: 700, color: "var(--color-text-primary)" }}>
                     {members.length} {members.length === 1 ? "Active Seat" : "Active Seats"}
                   </Text>
-                  <SecondaryButton
-                    style={{ fontSize: "12px", padding: "4px 10px", marginTop: "4px" }}
-                    onClick={() => onNavigateTab?.("billing")}
-                  >
-                    Manage Compute Quotas
-                  </SecondaryButton>
+                  <Box display="flex" gap={2} flexWrap="wrap" mt={1}>
+                    {canManageOrg && (
+                      <SecondaryButton
+                        type="button"
+                        style={{ fontSize: "12px", padding: "4px 10px" }}
+                        onClick={() => setIsEditingProfile((prev) => !prev)}
+                      >
+                        <PencilIcon size={12} />
+                        <span>{isEditingProfile ? "Cancel Edit" : "Edit Organization Profile"}</span>
+                      </SecondaryButton>
+                    )}
+                    <SecondaryButton
+                      style={{ fontSize: "12px", padding: "4px 10px" }}
+                      onClick={() => onNavigateTab?.("billing")}
+                    >
+                      Manage Compute Quotas
+                    </SecondaryButton>
+                  </Box>
                 </Box>
               </Box>
+
+              {isEditingProfile && canManageOrg && (
+                <form
+                  onSubmit={handleUpdateOrgProfile}
+                  style={{
+                    borderTop: "1px solid var(--color-border-default)",
+                    paddingTop: "16px",
+                    marginTop: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                  }}
+                >
+                  <DetailTitle style={{ fontWeight: 700, fontSize: "14px" }}>Edit Organization Profile</DetailTitle>
+                  <Box display="flex" gap={2} flexWrap="wrap">
+                    <Box flex={1} minWidth={200}>
+                      <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                        Display Name
+                      </label>
+                      <StyledInput
+                        style={{ width: "100%" }}
+                        value={editDisplayName}
+                        onChange={(e) => setEditDisplayName(e.target.value)}
+                        placeholder="Organization display name"
+                        required
+                      />
+                    </Box>
+                    <Box flex={1} minWidth={200}>
+                      <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                        Website URL
+                      </label>
+                      <StyledInput
+                        style={{ width: "100%" }}
+                        value={editWebsite}
+                        onChange={(e) => setEditWebsite(e.target.value)}
+                        placeholder="https://example.org"
+                      />
+                    </Box>
+                  </Box>
+                  <Box display="flex" gap={2} flexWrap="wrap">
+                    <Box flex={1} minWidth={200}>
+                      <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                        Description
+                      </label>
+                      <StyledInput
+                        style={{ width: "100%" }}
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="Organization description"
+                      />
+                    </Box>
+                    <Box flex={1} minWidth={200}>
+                      <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: 4 }}>
+                        Billing Email
+                      </label>
+                      <StyledInput
+                        style={{ width: "100%" }}
+                        type="email"
+                        value={editBillingEmail}
+                        onChange={(e) => setEditBillingEmail(e.target.value)}
+                        placeholder="billing@example.org"
+                      />
+                    </Box>
+                  </Box>
+                  <Box display="flex" justifyContent="flex-end" gap={2}>
+                    <SecondaryButton type="button" onClick={() => setIsEditingProfile(false)}>
+                      Cancel
+                    </SecondaryButton>
+                    <PrimaryButton type="submit" disabled={isSavingProfile}>
+                      {isSavingProfile ? "Saving…" : "Save Organization Profile"}
+                    </PrimaryButton>
+                  </Box>
+                </form>
+              )}
             </OrgCard>
 
             {/* Invite Form */}
@@ -513,8 +690,10 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                     onChange={(e) => setInviteRole(e.target.value as OrgRole)}
                     style={{ minWidth: 140 }}
                   >
+                    <option value="member">Member (Read/Use)</option>
                     <option value="contributor">Contributor (Modeling)</option>
                     <option value="maintainer">Maintainer (Publishing)</option>
+                    <option value="admin">Admin (Team Management)</option>
                     <option value="owner">Owner (Full Admin)</option>
                   </StyledSelect>
                   <PrimaryButton type="submit">
@@ -576,7 +755,25 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                               </Box>
                             </td>
                             <td>
-                              <RoleBadge $role={member.role}>{member.role}</RoleBadge>
+                              {canManageOrg ? (
+                                <Box display="inline-flex" alignItems="center" gap={2}>
+                                  <RoleBadge $role={member.role}>{member.role}</RoleBadge>
+                                  <StyledSelect
+                                    aria-label={`Change role for ${member.username}`}
+                                    value={member.role}
+                                    onChange={(e) => handleChangeMemberRole(member.username, e.target.value as OrgRole)}
+                                    style={{ padding: "4px 8px", fontSize: "12px" }}
+                                  >
+                                    <option value="owner">owner</option>
+                                    <option value="admin">admin</option>
+                                    <option value="maintainer">maintainer</option>
+                                    <option value="contributor">contributor</option>
+                                    <option value="member">member</option>
+                                  </StyledSelect>
+                                </Box>
+                              ) : (
+                                <RoleBadge $role={member.role}>{member.role}</RoleBadge>
+                              )}
                             </td>
                             <td style={{ color: "var(--color-text-muted)", fontSize: "12px" }}>
                               {member.created_at ? new Date(member.created_at).toLocaleDateString() : "Active"}

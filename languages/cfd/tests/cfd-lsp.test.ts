@@ -61,6 +61,10 @@ describe("@modelscript/cfd LSP Services & DAE Lowering", () => {
     assert.ok(codes.includes("M7307"), "Should detect M7307: negative-surface-area");
     assert.ok(codes.includes("M7301"), "Should detect M7301: cfl-stability-violation");
     assert.ok(codes.includes("M7302"), "Should detect M7302: unresolved-mesh-file");
+
+    // Verify diagnostics point to actual directive lines (> 0) rather than hardcoded line 0
+    const m7305 = diags.find((d) => d.code === "M7305");
+    assert.ok(m7305 && m7305.range.start.line > 0, `Expected M7305 line > 0, got ${m7305?.range.start.line}`);
   });
 
   test("extracts document symbols hierarchy for domain, markers, and parameters", () => {
@@ -89,7 +93,11 @@ describe("@modelscript/cfd LSP Services & DAE Lowering", () => {
     const dae = cfdToDae(model, { numCells: 5, referenceArea: 0.753 });
 
     assert.ok(dae.varCount >= 15, `Expected >= 15 variables, got ${dae.varCount}`);
-    assert.ok(dae.eqCount >= 10, `Expected >= 10 equations, got ${dae.eqCount}`);
+    assert.equal(
+      dae.varCount,
+      dae.eqCount,
+      `Expected structurally square DAE (varCount=${dae.varCount}, eqCount=${dae.eqCount})`,
+    );
 
     const vars = dae.getVariables();
     const varNames = vars.map((v) => v.name);

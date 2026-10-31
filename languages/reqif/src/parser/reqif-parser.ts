@@ -11,6 +11,7 @@
  */
 
 import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
+import { defaultContainerToolkit } from "@modelscript/runtime";
 import type {
   AsilLevel,
   ContractComparator,
@@ -103,32 +104,370 @@ function createSpan(startOffset: number, endOffset: number, lineStarts: number[]
   };
 }
 
+interface ParsedAtomicClause {
+  variable: string;
+  lhsExpr: string;
+  comparator: ContractComparator;
+  limitValue: number;
+  unit?: string | undefined;
+  formulaText: string;
+}
+
 /**
- * Extracts formal numeric contract bounds from requirement text or attributes.
- * Examples: "Speed must be <= 120 km/h", "Power >= 50.5 kW", "temperature < 85"
+ * Normalize natural-language relational phrases (e.g. "shall not exceed", "is at least", "exceeds")
+ * into symbolic comparators (`<=`, `>=`, `<`, `>`, `==`).
+ */
+function normalizeVerbalComparators(clause: string): string {
+  return clause
+    .replace(/\b(?:shall|must|should|may|can|will)\s+not\s+exceed\b/gi, " <= ")
+    .replace(/\b(?:does|do)\s+not\s+exceed\b/gi, " <= ")
+    .replace(
+      /\b(?:is|are|be|remain|stay|maintained)\s+(?:less\s+than\s+or\s+equal\s+to|at\s+most|no\s+more\s+than|below\s+or\s+equal\s+to)\b/gi,
+      " <= ",
+    )
+    .replace(
+      /\b(?:is|are|be|remain|stay|maintained)\s+(?:greater\s+than\s+or\s+equal\s+to|at\s+least|no\s+less\s+than|above\s+or\s+equal\s+to)\b/gi,
+      " >= ",
+    )
+    .replace(/\b(?:is|are|be|remain|stay)\s+(?:less\s+than|below|under)\b/gi, " < ")
+    .replace(/\b(?:is|are|be|remain|stay)\s+(?:greater\s+than|above|over)\b/gi, " > ")
+    .replace(/\b(?:drops\s+below|falls\s+below)\b/gi, " < ")
+    .replace(/\b(?:exceeds|exceed)\b/gi, " > ")
+    .replace(/\b(?:is\s+equal\s+to|equals)\b/gi, " == ");
+}
+
+const PROSE_STOP_WORDS =
+  /\b(?:while|when|where|if|then|the|a|an|system|subsystem|vehicle|controller|powertrain|inverter|motor|battery|module|unit|must\s+be|shall\s+be|should\s+be|may\s+reach|can\s+be|is\s+less\s+than\s+or\s+equal\s+to|shall|must|should|may|can|will|maintain|maintains|ensure|ensures|set|sets|limit|limits|keep|keeps|deliver|delivers|provide|provides|achieve|achieves|have|has|is|are|be|to|reach|of|under|at|in|during|normal|operation)\b/gi;
+
+/**
+ * Parse a single atomic comparison (or linear-arithmetic comparison) from a clause fragment.
+ */
+function parseAtomicComparison(fragment: string): ParsedAtomicClause | undefined {
+  const verbNormalized = normalizeVerbalComparators(fragment);
+  const compMatch =
+    /^(.*?)\s*(<=|<|>=|>|==|!=)\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*([a-zA-Z%][a-zA-Z0-9_*/%^.-]*)?/i.exec(
+      verbNormalized,
+    );
+  if (!compMatch) return undefined;
+
+  const rawLhs = (compMatch[1] ?? "").trim();
+  const comp = (compMatch[2] ?? "==") as ContractComparator;
+  const num = parseFloat(compMatch[3] ?? "");
+  if (Number.isNaN(num)) return undefined;
+
+  // Avoid treating logical connectives like `and`, `or`, `within` as units
+  let rawUnit = compMatch[4]?.trim();
+  if (rawUnit && /^(?:and|or|implies|within|when|while|then|if|asil)\b/i.test(rawUnit)) {
+    rawUnit = undefined;
+  }
+
+  // Check if rawLhs is a multi-term linear arithmetic expression (e.g. `2*x + y` or `motor_power + aux_power`)
+  if (/[+\-*/]/.test(rawLhs)) {
+    const cleanedArith = rawLhs.replace(PROSE_STOP_WORDS, " ").replace(/\s+/g, " ").trim();
+    const idTokens = cleanedArith.match(/[a-zA-Z_][a-zA-Z0-9_.]*/g) ?? [];
+    const primaryVar = idTokens[0] ?? cleanedArith;
+    if (!primaryVar) return undefined;
+    return {
+      variable: primaryVar,
+      lhsExpr: cleanedArith,
+      comparator: comp,
+      limitValue: num,
+      unit: rawUnit || undefined,
+      formulaText: `${cleanedArith} ${comp} ${num}`,
+    };
+  }
+
+  const cleanedPrefix = rawLhs.replace(PROSE_STOP_WORDS, " ").trim();
+  const tokens = cleanedPrefix.split(/\s+/).filter(Boolean);
+  const varName = tokens[tokens.length - 1]?.replace(/[^a-zA-Z0-9_.]/g, "");
+  if (!varName || !/^[a-zA-Z_]/.test(varName)) return undefined;
+
+  return {
+    variable: varName,
+    lhsExpr: varName,
+    comparator: comp,
+    limitValue: num,
+    unit: rawUnit || undefined,
+    formulaText: `${varName} ${comp} ${num}`,
+  };
+}
+
+/**
+ * Parse a clause that may contain multiple conjunctions (`and`, `&&`, `, and`) or disjunctions (`or`, `||`)
+ * into a list of parsed atoms and a combined boolean formula string.
+ */
+function parseMultiAtomClause(clauseText: string):
+  | {
+      atoms: ParsedAtomicClause[];
+      formula: string;
+    }
+  | undefined {
+  const parts: { text: string; opBefore?: "&&" | "||" | undefined }[] = [];
+  const splitRegex = /\s*(?:&&|\band\b|;|\|\||\bor\b)\s*/gi;
+  let lastIdx = 0;
+  let prevOp: "&&" | "||" | undefined;
+  let m: RegExpExecArray | null;
+
+  while ((m = splitRegex.exec(clauseText)) !== null) {
+    const seg = clauseText.slice(lastIdx, m.index).trim();
+    if (seg) {
+      parts.push({ text: seg, opBefore: prevOp });
+    }
+    const rawConn = m[0].trim().toLowerCase();
+    prevOp = rawConn === "||" || rawConn === "or" ? "||" : "&&";
+    lastIdx = m.index + m[0].length;
+  }
+  const tail = clauseText.slice(lastIdx).trim();
+  if (tail) {
+    parts.push({ text: tail, opBefore: prevOp });
+  }
+
+  const atoms: ParsedAtomicClause[] = [];
+  let formula = "";
+  for (const part of parts) {
+    const atom = parseAtomicComparison(part.text);
+    if (!atom) continue;
+    if (atoms.length > 0) {
+      formula += ` ${part.opBefore ?? "&&"} ${atom.formulaText}`;
+    } else {
+      formula = atom.formulaText;
+    }
+    atoms.push(atom);
+  }
+
+  if (atoms.length === 0) return undefined;
+  return { atoms, formula };
+}
+
+/**
+ * Attempt to parse structured EARS (Easy Approach to Requirements Syntax) templates
+ * and conditional `If <cond> then <response>` requirements:
+ * - `While <precondition>, when <trigger>, the <system> shall <response> [within <duration>]`
+ * - `While <precondition>, the <system> shall <response> [within <duration>]`
+ * - `When <trigger>, the <system> shall <response> [within <duration>]`
+ * - `If <condition>, then [the <system> shall] <response> [within <duration>]`
+ * - `The <system> shall <response> within <duration>`
+ */
+function parseStructuredEarsOrCompoundContract(normalized: string): ReqIfContract | undefined {
+  // Strip trailing ASIL tag or period
+  let body = normalized
+    .replace(/\bASIL[- ]?[ABCD]\b\.?/gi, "")
+    .replace(/\bQM\b\.?/gi, "")
+    .trim();
+  body = body.replace(/\.$/, "").trim();
+
+  // Extract optional trailing `within <duration>` timing bound
+  let durationAtom: ParsedAtomicClause | undefined;
+  const withinMatch =
+    /\bwithin\s+(?:([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:<=|<)\s*)?([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*([a-zA-Z%][a-zA-Z0-9_/%^]*)?\s*$/i.exec(
+      body,
+    );
+  if (withinMatch) {
+    const durVar = withinMatch[1] || "response_time";
+    const durVal = parseFloat(withinMatch[2] ?? "");
+    const durUnit = withinMatch[3]?.trim();
+    if (!Number.isNaN(durVal)) {
+      durationAtom = {
+        variable: durVar,
+        lhsExpr: durVar,
+        comparator: "<=",
+        limitValue: durVal,
+        unit: durUnit || undefined,
+        formulaText: `${durVar} <= ${durVal}`,
+      };
+      body = body.slice(0, withinMatch.index).trim().replace(/,$/, "").trim();
+    }
+  }
+
+  // 1. Complex EARS: While <pre>, when <trig>, [the <sys>] shall <resp>
+  const complexEarsMatch = /^while\s+(.+?),\s*when\s+(.+?),\s*(?:the\s+.+?\s+)?(?:shall|must|should)\s+(.+)$/i.exec(
+    body,
+  );
+  if (complexEarsMatch) {
+    const preMatch = complexEarsMatch[1];
+    const trigMatch = complexEarsMatch[2];
+    const respMatch = complexEarsMatch[3];
+    if (preMatch && trigMatch && respMatch) {
+      const pre = parseMultiAtomClause(preMatch);
+      const trig = parseMultiAtomClause(trigMatch);
+      const resp = parseMultiAtomClause(respMatch);
+      if (resp && resp.atoms.length > 0) {
+        const totalAntecedentAtoms = (pre?.atoms.length ?? 0) + (trig?.atoms.length ?? 0);
+        const antecedentParts = [pre?.formula, trig?.formula].filter(Boolean);
+        const totalConsequentAtoms = resp.atoms.length + (durationAtom ? 1 : 0);
+        const consequentParts = [resp.formula, durationAtom?.formulaText].filter(Boolean);
+        const antecedent = totalAntecedentAtoms > 1 ? `(${antecedentParts.join(" && ")})` : antecedentParts[0];
+        const consequent =
+          totalConsequentAtoms > 1 ? `(${consequentParts.join(" && ")})` : (consequentParts[0] ?? resp.formula);
+        const primary = resp.atoms[0];
+        if (primary) {
+          return {
+            variable: primary.variable,
+            comparator: primary.comparator,
+            limitValue: primary.limitValue,
+            unit: primary.unit,
+            expression: antecedent ? `${antecedent} => ${consequent}` : consequent,
+          };
+        }
+      }
+    }
+  }
+
+  // 2. State-driven or Event-driven EARS: (While|When|Where) <cond>, [the <sys>] shall <resp>
+  const singleGuardEarsMatch = /^(?:while|when|where)\s+(.+?),\s*(?:the\s+.+?\s+)?(?:shall|must|should)\s+(.+)$/i.exec(
+    body,
+  );
+  if (singleGuardEarsMatch) {
+    const gMatch = singleGuardEarsMatch[1];
+    const rMatch = singleGuardEarsMatch[2];
+    if (gMatch && rMatch) {
+      const guard = parseMultiAtomClause(gMatch);
+      const resp = parseMultiAtomClause(rMatch);
+      if (guard && resp && resp.atoms.length > 0) {
+        const antecedent = guard.atoms.length > 1 ? `(${guard.formula})` : guard.formula;
+        const totalConsequentAtoms = resp.atoms.length + (durationAtom ? 1 : 0);
+        const consequentParts = [resp.formula, durationAtom?.formulaText].filter(Boolean);
+        const consequent =
+          totalConsequentAtoms > 1 ? `(${consequentParts.join(" && ")})` : (consequentParts[0] ?? resp.formula);
+        const primary = resp.atoms[0];
+        if (primary) {
+          return {
+            variable: primary.variable,
+            comparator: primary.comparator,
+            limitValue: primary.limitValue,
+            unit: primary.unit,
+            expression: `${antecedent} => ${consequent}`,
+          };
+        }
+      }
+    }
+  }
+
+  // 3. Conditional / Unwanted Behavior: If <cond>, then <resp> (or If <cond> then <resp>)
+  const ifThenMatch = /^if\s+(.+?)(?:,\s*then|\s+then|,\s*(?:the\s+.+?\s+)?(?:shall|must|should))\s+(.+)$/i.exec(body);
+  if (ifThenMatch) {
+    const condMatch = ifThenMatch[1];
+    const respMatch = ifThenMatch[2];
+    if (condMatch && respMatch) {
+      const cond = parseMultiAtomClause(condMatch);
+      const resp = parseMultiAtomClause(respMatch);
+      if (cond && resp && resp.atoms.length > 0) {
+        const antecedent = cond.atoms.length > 1 ? `(${cond.formula})` : cond.formula;
+        const totalConsequentAtoms = resp.atoms.length + (durationAtom ? 1 : 0);
+        const consequentParts = [resp.formula, durationAtom?.formulaText].filter(Boolean);
+        const consequent =
+          totalConsequentAtoms > 1 ? `(${consequentParts.join(" && ")})` : (consequentParts[0] ?? resp.formula);
+        const primary = resp.atoms[0];
+        if (primary) {
+          return {
+            variable: primary.variable,
+            comparator: primary.comparator,
+            limitValue: primary.limitValue,
+            unit: primary.unit,
+            expression: `${antecedent} => ${consequent}`,
+          };
+        }
+      }
+    }
+  }
+
+  // If the expression already uses symbolic negation `!(...)` or parenthesized boolean groups, let symbolic parser handle it
+  if (/(?:!\s*\(|\)\s*\|\||\)\s*&&)/.test(body)) {
+    return undefined;
+  }
+
+  // 4. Symbolic implication `A => B` or `A -> B` or `A implies B`
+  const symImpliesMatch = /^(.+?)\s*(?:=>|->|\bimplies\b)\s*(.+)$/i.exec(body);
+  if (symImpliesMatch) {
+    const lMatch = symImpliesMatch[1];
+    const rMatch = symImpliesMatch[2];
+    if (lMatch && rMatch) {
+      const left = parseMultiAtomClause(lMatch);
+      const right = parseMultiAtomClause(rMatch);
+      if (left && right && right.atoms.length > 0) {
+        const antecedent = left.atoms.length > 1 ? `(${left.formula})` : left.formula;
+        const totalConsequentAtoms = right.atoms.length + (durationAtom ? 1 : 0);
+        const consequentParts = [right.formula, durationAtom?.formulaText].filter(Boolean);
+        const consequent =
+          totalConsequentAtoms > 1 ? `(${consequentParts.join(" && ")})` : (consequentParts[0] ?? right.formula);
+        const primary = right.atoms[0];
+        if (primary) {
+          return {
+            variable: primary.variable,
+            comparator: primary.comparator,
+            limitValue: primary.limitValue,
+            unit: primary.unit,
+            expression: `${antecedent} => ${consequent}`,
+          };
+        }
+      }
+    }
+  }
+
+  // 5. Multi-clause conjunction/disjunction or Ubiquitous EARS with `within <duration>`
+  const multi = parseMultiAtomClause(body);
+  if (multi && (multi.atoms.length > 1 || durationAtom)) {
+    const primary = multi.atoms[0];
+    if (primary) {
+      const formulaParts = [multi.formula, durationAtom?.formulaText].filter(Boolean);
+      return {
+        variable: primary.variable,
+        comparator: primary.comparator,
+        limitValue: primary.limitValue,
+        unit: primary.unit,
+        expression: formulaParts.length > 1 ? `(${formulaParts.join(" && ")})` : multi.formula,
+      };
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Extracts formal numeric or compound EARS contract bounds from requirement text or attributes.
+ * Examples:
+ * - "Speed must be <= 120 km/h"
+ * - "@contract: 2*x + y <= 100 && x >= 10"
+ * - "While battery_soc >= 20 %, when throttle >= 80 %, the powertrain shall maintain torque >= 240 N*m within 50 ms"
+ * - "If speed >= 100 km/h and fault == 0, then brake_force >= 5000 N"
  */
 export function extractFormalContract(text: string): ReqIfContract | undefined {
   if (!text) return undefined;
-  const normalized = text.replace(/<[^<>]+>/g, " ").trim();
+  const normalized = text
+    .replace(/<\/?[a-zA-Z][^<>]*>/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .trim();
+
+  const explicitMatch = /(?:@contract\s*:|\[\s*contract\s*:)\s*([^\]]+?)(?:\]|$)/i.exec(normalized);
+  const explicitExpr = explicitMatch?.[1]?.trim().replace(/\.$/, "").trim();
+
+  if (!explicitExpr) {
+    const earsOrCompound = parseStructuredEarsOrCompoundContract(normalized);
+    if (earsOrCompound) {
+      return earsOrCompound;
+    }
+  }
+
+  const targetText = normalizeVerbalComparators(explicitExpr ?? normalized);
   const pattern =
-    /([a-zA-Z_][a-zA-Z0-9_.\s]*?)\s*(<=|<|>=|>|==|!=)\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*([a-zA-Z%][a-zA-Z0-9_/%^]*)?/i;
-  const match = pattern.exec(normalized);
+    /([a-zA-Z_][a-zA-Z0-9_.\s]*?)\s*(<=|<|>=|>|==|!=)\s*([-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)\s*([a-zA-Z%][a-zA-Z0-9_*/%^]*)?/i;
+  const match = pattern.exec(targetText);
   if (!match) return undefined;
 
   let rawPrefix = (match[1] ?? "").trim();
-  rawPrefix = rawPrefix
-    .replace(
-      /\b(must\s+be|shall\s+be|should\s+be|may\s+reach|can\s+be|is\s+less\s+than\s+or\s+equal\s+to|is|are|be|to|reach|of|under|at)\b/gi,
-      " ",
-    )
-    .trim();
+  rawPrefix = rawPrefix.replace(PROSE_STOP_WORDS, " ").trim();
   const tokens = rawPrefix.split(/\s+/).filter(Boolean);
   const varName = tokens[tokens.length - 1];
   if (!varName) return undefined;
 
   const comp = (match[2] ?? "==") as ContractComparator;
   const num = parseFloat(match[3] ?? "");
-  const unit = match[4]?.trim();
+  let unit = match[4]?.trim();
+  if (unit && /^(?:and|or|implies|within|when|while|then|if|asil|at|under|in)\b/i.test(unit)) {
+    unit = undefined;
+  }
 
   if (isNaN(num)) return undefined;
 
@@ -137,6 +476,11 @@ export function extractFormalContract(text: string): ReqIfContract | undefined {
     comparator: comp,
     limitValue: num,
     unit: unit || undefined,
+    expression:
+      explicitExpr ??
+      (/(?:&&|\|\||=>|->|\bimplies\b|\band\b|\bor\b|[+\-*/])/.test(normalized)
+        ? normalized
+        : `${varName} ${comp} ${num}`),
   };
 }
 
@@ -205,6 +549,17 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
     coreContent = nestedReqIfContent;
   }
 
+  const seenIdentifiers = new Set<string>();
+  const duplicateIdentifiers: Array<{ id: string; span?: SourceSpan | undefined }> = [];
+
+  function recordIdentifier(id: string, el: XmlElement): void {
+    if (seenIdentifiers.has(id)) {
+      duplicateIdentifiers.push({ id, span: createSpan(el.start, el.end, lineStarts) });
+    } else {
+      seenIdentifiers.add(id);
+    }
+  }
+
   // 2. Data Types
   const dataTypes = new Map<string, ReqIfDataType>();
   const dataTypesContainer = getChild(coreContent, "DATATYPES") || getChild(coreContent, "DATATYPE-DEFINITIONS");
@@ -221,6 +576,10 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
 
       const id = getAttr(dtEl, "IDENTIFIER") || `DT-${dataTypes.size + 1}`;
       const longName = getAttr(dtEl, "LONG-NAME");
+      const minStr = getAttr(dtEl, "MIN") ?? getChild(dtEl, "MIN")?.text.trim();
+      const maxStr = getAttr(dtEl, "MAX") ?? getChild(dtEl, "MAX")?.text.trim();
+      const min = minStr !== undefined && minStr !== "" && !isNaN(Number(minStr)) ? Number(minStr) : undefined;
+      const max = maxStr !== undefined && maxStr !== "" && !isNaN(Number(maxStr)) ? Number(maxStr) : undefined;
 
       const enumValues: ReqIfEnumValue[] = [];
       const specifiedValues = getChild(dtEl, "SPECIFIED-VALUES");
@@ -242,6 +601,8 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
         longName,
         kind,
         enumValues: enumValues.length > 0 ? enumValues : undefined,
+        min,
+        max,
       });
     }
   }
@@ -258,6 +619,7 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
       else if (rawTag.includes("RELATION-GROUP-TYPE")) kind = "RELATION-GROUP-TYPE";
 
       const id = getAttr(stEl, "IDENTIFIER") || `ST-${specTypes.size + 1}`;
+      recordIdentifier(id, stEl);
       const longName = getAttr(stEl, "LONG-NAME");
 
       const attributeDefinitions = new Map<string, ReqIfAttributeDefinition>();
@@ -326,6 +688,7 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
       if (!matchTag(soEl, "SPEC-OBJECT")) continue;
 
       const id = getAttr(soEl, "IDENTIFIER") || `REQ-${specObjects.size + 1}`;
+      recordIdentifier(id, soEl);
       const longName = getAttr(soEl, "LONG-NAME");
       const lastChange = getAttr(soEl, "LAST-CHANGE");
       const typeRef = getChildRefText(soEl, "TYPE", "SPEC-OBJECT-TYPE-REF");
@@ -375,11 +738,22 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
           }
 
           let parsedValue: string | number | boolean = rawValue;
-          if (kind === "REAL" || kind === "INTEGER") {
-            const num = parseFloat(String(rawValue));
-            if (!isNaN(num)) parsedValue = num;
+          const rawStr = String(rawValue).trim();
+          if (kind === "INTEGER") {
+            if (/^[-+]?\d+$/.test(rawStr)) {
+              parsedValue = parseInt(rawStr, 10);
+            }
+          } else if (kind === "REAL") {
+            if (/^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(rawStr)) {
+              parsedValue = parseFloat(rawStr);
+            }
           } else if (kind === "BOOLEAN") {
-            parsedValue = String(rawValue).toLowerCase() === "true";
+            const lower = rawStr.toLowerCase();
+            if (lower === "true" || lower === "1") {
+              parsedValue = true;
+            } else if (lower === "false" || lower === "0") {
+              parsedValue = false;
+            }
           }
 
           const attrSpan = createSpan(valEl.start, valEl.end, lineStarts);
@@ -494,6 +868,7 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
       if (!matchTag(srEl, "SPEC-RELATION")) continue;
 
       const id = getAttr(srEl, "IDENTIFIER") || `REL-${specRelations.length + 1}`;
+      recordIdentifier(id, srEl);
       const longName = getAttr(srEl, "LONG-NAME");
       const typeRef = getChildRefText(srEl, "TYPE", "SPEC-RELATION-TYPE-REF") || getAttr(srEl, "TYPE");
       const sourceId =
@@ -595,6 +970,7 @@ export function parseReqIf(xmlContent: string): ReqIfDocument {
     specObjects,
     specRelations,
     specifications,
+    duplicateIdentifiers: duplicateIdentifiers.length > 0 ? duplicateIdentifiers : undefined,
     rawXml: xmlContent,
   };
 }
@@ -794,4 +1170,71 @@ function escapeXml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+/**
+ * Result of unpacking and parsing a `.reqifz` ZIP container archive.
+ */
+export interface ReqIfzBundleResult {
+  /** All parsed `.reqif` documents discovered inside the `.reqifz` archive. */
+  documents: ReqIfDocument[];
+  /** Primary (first) `.reqif` document in the bundle. */
+  primaryDocument: ReqIfDocument;
+  /** Paths of all `.reqif` XML files in the bundle. */
+  reqIfPaths: string[];
+  /** Paths of supplementary attachment files (images, OLE objects, PDFs, etc.) in the bundle. */
+  attachmentPaths: string[];
+  /** Raw entry manifest of all files inside the `.reqifz` archive. */
+  entries: Array<{ path: string; size: number }>;
+}
+
+/**
+ * Extracts and parses a `.reqifz` ZIP bundle into its constituent `ReqIfDocument` models
+ * and supplementary attachment paths.
+ */
+export function extractReqIfzBundle(data: Uint8Array): ReqIfzBundleResult {
+  const zip = defaultContainerToolkit.zip;
+  const rawEntries = zip.entries(data);
+  const documents: ReqIfDocument[] = [];
+  const reqIfPaths: string[] = [];
+  const attachmentPaths: string[] = [];
+
+  for (const entry of rawEntries) {
+    const lower = entry.name.toLowerCase();
+    if (lower.endsWith(".reqif")) {
+      const xmlText = zip.readText(data, entry.name);
+      if (xmlText) {
+        reqIfPaths.push(entry.name);
+        documents.push(parseReqIf(xmlText));
+      }
+    } else {
+      attachmentPaths.push(entry.name);
+    }
+  }
+
+  // Fallback: if no file ended with `.reqif`, check `.xml` files containing `<REQ-IF`
+  if (documents.length === 0) {
+    for (const entry of rawEntries) {
+      if (entry.name.toLowerCase().endsWith(".xml")) {
+        const xmlText = zip.readText(data, entry.name);
+        if (xmlText && /<REQ-IF\b/i.test(xmlText)) {
+          reqIfPaths.push(entry.name);
+          documents.push(parseReqIf(xmlText));
+        }
+      }
+    }
+  }
+
+  const primaryDocument = documents[0];
+  if (!primaryDocument) {
+    throw new Error("No valid .reqif specification document found inside .reqifz archive");
+  }
+
+  return {
+    documents,
+    primaryDocument,
+    reqIfPaths,
+    attachmentPaths,
+    entries: rawEntries.map((e) => ({ path: e.name, size: e.size })),
+  };
 }

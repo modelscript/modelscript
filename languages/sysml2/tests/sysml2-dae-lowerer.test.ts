@@ -311,4 +311,119 @@ describe("SysML v2 Direct DAE Arena Lowering & Execution", () => {
     assert.strictEqual(x0, 1.0, "Initial position x(0) should be 1.0");
     assert(Math.abs(xEnd) < 0.6, "Final position x(2) should be damped");
   });
+
+  it("parses and executes nested if/else-if/else, while loops, and multi-line compound expressions via recursive descent", async () => {
+    const complexAction = `
+      action def AdaptiveController {
+        in item rawError : Real;
+        in item maxSteps : Real;
+        out item controlSignal : Real;
+        out item iterations : Real;
+
+        assign iterations := 0.0;
+        assign acc := 0.0;
+
+        if (rawError > 10.0) {
+          if (rawError > 50.0) {
+            assign controlSignal :=
+              100.0 + (rawError - 50.0) * 0.5;
+          } else {
+            assign controlSignal :=
+              20.0 + (rawError - 10.0) * 2.0;
+          }
+        } else if (rawError < -10.0) {
+          assign controlSignal := -20.0;
+        } else {
+          while (iterations < maxSteps) {
+            if (iterations < 2.0) {
+              assign acc := acc + rawError * 1.5;
+            } else {
+              assign acc := acc + rawError * 0.5;
+            }
+            assign iterations := iterations + 1.0;
+          }
+          assign controlSignal := acc;
+        }
+      }
+    `;
+
+    const lowered = await SysML2DaeLowerer.lowerAction(complexAction);
+    assert.strictEqual(lowered.name, "AdaptiveController");
+
+    // Nested inner-then branch (rawError = 70 > 50): 100 + (70 - 50) * 0.5 = 110
+    const resVeryHigh = SysML2DaeLowerer.execute(lowered, { rawError: 70.0, maxSteps: 4.0 });
+    assert.strictEqual(resVeryHigh["controlSignal"], 110.0);
+
+    // Nested inner-else branch (rawError = 25, 10 < 25 <= 50): 20 + (25 - 10) * 2 = 50
+    const resHigh = SysML2DaeLowerer.execute(lowered, { rawError: 25.0, maxSteps: 4.0 });
+    assert.strictEqual(resHigh["controlSignal"], 50.0);
+
+    // Else-if branch (rawError = -15 < -10): -20
+    const resNeg = SysML2DaeLowerer.execute(lowered, { rawError: -15.0, maxSteps: 4.0 });
+    assert.strictEqual(resNeg["controlSignal"], -20.0);
+
+    // Outer else branch with while + nested if/else (rawError = 4, maxSteps = 3):
+    // iter 0: acc += 4 * 1.5 = 6
+    // iter 1: acc += 4 * 1.5 = 12
+    // iter 2: acc += 4 * 0.5 = 14
+    const resLoop = SysML2DaeLowerer.execute(lowered, { rawError: 4.0, maxSteps: 3.0 });
+    assert.strictEqual(resLoop["controlSignal"], 14.0);
+    assert.strictEqual(resLoop["iterations"], 3.0);
+  });
+
+  it("evaluates calc def return expressions and early return statements", async () => {
+    const calcSysml = `
+      calc def PiecewiseEnergy {
+        in item mass : Real;
+        in item velocity : Real;
+        return energy : Real;
+
+        if (velocity <= 0.0) {
+          return 0.0;
+        }
+        return 0.5 * mass * (velocity ^ 2.0);
+      }
+    `;
+
+    const lowered = await SysML2DaeLowerer.lowerAction(calcSysml);
+    const zeroOut = SysML2DaeLowerer.execute(lowered, { mass: 10.0, velocity: -3.0 });
+    assert.strictEqual(zeroOut["energy"], 0.0);
+
+    const posOut = SysML2DaeLowerer.execute(lowered, { mass: 4.0, velocity: 5.0 });
+    assert.strictEqual(posOut["energy"], 50.0);
+  });
+
+  it("lowers hybrid continuous-discrete models containing both part/constraint equations and action/calc blocks into the same DAEBuilder arena", async () => {
+    const hybridSysml = `
+      part def ThermalPlantWithController {
+        attribute T : Real = 300.0;
+        attribute T_amb : Real = 290.0;
+        attribute tau : Real = 10.0;
+        attribute q_heat : Real = 5.0;
+
+        assert constraint {
+          der(T) == (T_amb - T) / tau + q_heat;
+        }
+
+        action def UpdateHeaterCommand {
+          in item T_meas : Real;
+          in item T_set : Real;
+          out item q_cmd : Real;
+
+          if (T_meas < T_set) {
+            assign q_cmd := (T_set - T_meas) * 2.5;
+          } else {
+            assign q_cmd := 0.0;
+          }
+        }
+      }
+    `;
+
+    const arena = await SysML2DaeLowerer.lowerSystem(hybridSysml);
+    // Must contain BOTH the continuous differential equation AND the imperative action statements
+    assert.strictEqual(arena.eqCount, 1, "Hybrid arena must contain the continuous differential equation");
+    assert(arena.stmtCount >= 4, `Hybrid arena must also contain lowered action statements, got ${arena.stmtCount}`);
+    assert(arena.lookupVariable("T") !== -1, "Continuous state variable T must be in arena");
+    assert(arena.lookupVariable("q_cmd") !== -1, "Discrete action output variable q_cmd must be in arena");
+  });
 });

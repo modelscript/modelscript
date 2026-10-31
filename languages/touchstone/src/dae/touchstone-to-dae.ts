@@ -32,9 +32,10 @@ export function lowerTouchstoneToDae(deck: TouchstoneDeck, options?: TouchstoneD
   const ss = fitStateSpaceModel(deck, order);
   const z0 = deck.options.referenceResistance || 50.0;
 
-  // 1. Declare Port reference impedance parameters
+  // 1. Declare Port reference impedance parameters and parameter bindings
   for (let p = 1; p <= numPorts; p++) {
-    dae.addVariable(`R_ref_${p}`, VarType.Real, Variability.Parameter, Causality.Local, z0);
+    const rRefVar = dae.addVariable(`R_ref_${p}`, VarType.Real, Variability.Parameter, Causality.Local, z0);
+    dae.addEquation(EqKind.Simple, dae.addName(rRefVar), dae.addRealLiteral(z0));
   }
 
   // 2. Declare Port voltages and currents
@@ -49,51 +50,80 @@ export function lowerTouchstoneToDae(deck: TouchstoneDeck, options?: TouchstoneD
     dae.addVariable(`x_${s}`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
   }
 
-  // 4. Construct state differential equations: der(x_k) = A_k * x_k + B_k * v_p
+  // 4. Construct full state differential equations: der(x_s) = sum_k(A[s][k] * x_k) + sum_q(B[s][q] * v_{q+1})
   for (let s = 0; s < totalStates; s++) {
     const stateVar = dae.lookupVariable(`x_${s + 1}`);
-    const portIdx = Math.floor(s / ss.order) + 1;
-    const vPortVar = dae.lookupVariable(`v_${portIdx}`);
+    if (stateVar === -1) continue;
 
-    if (stateVar !== -1 && vPortVar !== -1) {
-      const aVal = ss.A[s]![s]!;
-      const bVal = ss.B[s]![portIdx - 1]!;
-
-      // der(x_s) on LHS
-      const derX = dae.addDer(stateVar);
-      // A * x + B * v on RHS
-      const aTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(aVal), dae.addName(stateVar));
-      const bTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(bVal), dae.addName(vPortVar));
-      const rhs = dae.addBinaryExpr(BinOp.Add, aTerm, bTerm);
-
-      dae.addEquation(EqKind.Simple, derX, rhs);
+    let rhs: number | null = null;
+    for (let k = 0; k < totalStates; k++) {
+      const aVal = ss.A[s]?.[k] ?? 0.0;
+      if (Math.abs(aVal) > 1e-15 || k === s) {
+        const xkVar = dae.lookupVariable(`x_${k + 1}`);
+        if (xkVar !== -1) {
+          const term = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(aVal), dae.addName(xkVar));
+          rhs = rhs === null ? term : dae.addBinaryExpr(BinOp.Add, rhs, term);
+        }
+      }
     }
+
+    for (let q = 0; q < numPorts; q++) {
+      const bVal = ss.B[s]?.[q] ?? 0.0;
+      if (Math.abs(bVal) > 1e-15) {
+        const vPortVar = dae.lookupVariable(`v_${q + 1}`);
+        if (vPortVar !== -1) {
+          const term = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(bVal), dae.addName(vPortVar));
+          rhs = rhs === null ? term : dae.addBinaryExpr(BinOp.Add, rhs, term);
+        }
+      }
+    }
+
+    const derX = dae.addDer(stateVar);
+    dae.addEquation(EqKind.Simple, derX, rhs ?? dae.addRealLiteral(0.0));
   }
 
-  // 5. Construct port current algebraic equations: i_p = sum(C[p][k] * x_k) + D[p][p] * v_p
+  // 5. Construct port current algebraic equations: i_p = sum_q(D[p][q] * v_{q+1}) + sum_s(C[p][s] * x_{s+1})
+  // and reference port termination equations: v_p = -R_ref_p * i_p
   for (let p = 0; p < numPorts; p++) {
     const portNum = p + 1;
     const iVar = dae.lookupVariable(`i_${portNum}`);
     const vVar = dae.lookupVariable(`v_${portNum}`);
+    const rRefVar = dae.lookupVariable(`R_ref_${portNum}`);
 
     if (iVar !== -1 && vVar !== -1) {
-      // Direct term D * v
-      const dVal = ss.D[p]?.[p] ?? 0.0;
-      let rhs = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(dVal), dae.addName(vVar));
-
-      // Sum C_pk * x_k
-      for (let s = 0; s < totalStates; s++) {
-        const cVal = ss.C[p]![s]!;
-        if (Math.abs(cVal) > 1e-12) {
-          const sVar = dae.lookupVariable(`x_${s + 1}`);
-          if (sVar !== -1) {
-            const term = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(cVal), dae.addName(sVar));
-            rhs = dae.addBinaryExpr(BinOp.Add, rhs, term);
+      let rhs: number | null = null;
+      for (let q = 0; q < numPorts; q++) {
+        const dVal = ss.D[p]?.[q] ?? 0.0;
+        if (Math.abs(dVal) > 1e-15 || q === p) {
+          const vqVar = dae.lookupVariable(`v_${q + 1}`);
+          if (vqVar !== -1) {
+            const term = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(dVal), dae.addName(vqVar));
+            rhs = rhs === null ? term : dae.addBinaryExpr(BinOp.Add, rhs, term);
           }
         }
       }
 
-      dae.addEquation(EqKind.Simple, dae.addName(iVar), rhs);
+      for (let s = 0; s < totalStates; s++) {
+        const cVal = ss.C[p]![s]!;
+        if (Math.abs(cVal) > 1e-15) {
+          const sVar = dae.lookupVariable(`x_${s + 1}`);
+          if (sVar !== -1) {
+            const term = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(cVal), dae.addName(sVar));
+            rhs = rhs === null ? term : dae.addBinaryExpr(BinOp.Add, rhs, term);
+          }
+        }
+      }
+
+      dae.addEquation(EqKind.Simple, dae.addName(iVar), rhs ?? dae.addRealLiteral(0.0));
+
+      // Port reference termination: v_p = -R_ref_p * i_p
+      const rTerm = rRefVar !== -1 ? dae.addName(rRefVar) : dae.addRealLiteral(z0);
+      const negRI = dae.addBinaryExpr(
+        BinOp.Sub,
+        dae.addRealLiteral(0.0),
+        dae.addBinaryExpr(BinOp.Mul, rTerm, dae.addName(iVar)),
+      );
+      dae.addEquation(EqKind.Simple, dae.addName(vVar), negRI);
     }
   }
 

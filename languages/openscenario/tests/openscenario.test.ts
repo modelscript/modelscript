@@ -420,3 +420,131 @@ test("OpenSCENARIO Workspace Index: indexes multi-file symbols accurately", () =
   const storySym = index.findDefinition("CutInStory");
   assert.ok(storySym);
 });
+
+test("OpenSCENARIO Parser & Solver: resolves $Parameter references, interpolates lateral y during laneChange, and detects M8504 cyclic triggers", () => {
+  const paramLaneChangeXml = `<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" date="2026-10-26T12:00:00" description="Param &amp; LaneChange Test" author="ModelScript"/>
+  <ParameterDeclarations>
+    <ParameterDeclaration name="EgoInitSpeed" parameterType="double" value="28.0"/>
+    <ParameterDeclaration name="NpcInitSpeed" parameterType="double" value="15.0"/>
+  </ParameterDeclarations>
+  <Entities>
+    <ScenarioObject name="Ego">
+      <Vehicle name="Ego" vehicleCategory="car"/>
+    </ScenarioObject>
+    <ScenarioObject name="AdjacentSlowCar">
+      <Vehicle name="AdjacentSlowCar" vehicleCategory="car"/>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <Private entityRef="Ego">
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <LanePosition roadId="1" laneId="1" s="0.0"/>
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="$EgoInitSpeed"/>
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="AdjacentSlowCar">
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <LanePosition roadId="1" laneId="2" s="10.0"/>
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="\${NpcInitSpeed}"/>
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+    <Story name="LaneChangeStory">
+      <Act name="Act1">
+        <ManeuverGroup maximumExecutionCount="1" name="MG1">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Ego"/>
+          </Actors>
+          <Maneuver name="M1">
+            <Event name="EventA" priority="overwrite" maximumExecutionCount="1">
+              <Action name="LCAction">
+                <PrivateAction>
+                  <LateralAction>
+                    <LaneChangeAction>
+                      <LaneChangeActionDynamics dynamicsShape="sinusoidal" value="2.0" dynamicsDimension="time"/>
+                      <LaneChangeTarget>
+                        <AbsoluteTargetLane value="2"/>
+                      </LaneChangeTarget>
+                    </LaneChangeAction>
+                  </LateralAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="CondA" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition>
+                      <StoryboardElementStateCondition storyboardElementRef="EventB" state="completeState"/>
+                    </ByValueCondition>
+                  </Condition>
+                  <Condition name="TimeA" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition>
+                      <SimulationTimeCondition value="4.0" rule="greaterOrEqual"/>
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="EventB" priority="overwrite" maximumExecutionCount="1">
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="CondB" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition>
+                      <StoryboardElementStateCondition storyboardElementRef="EventA" state="completeState"/>
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+      </Act>
+    </Story>
+  </Storyboard>
+</OpenSCENARIO>`;
+
+  const doc = parseOpenScenario(paramLaneChangeXml);
+  assert.equal(doc.entities.get("Ego")?.initialSpeed, 28.0);
+  assert.equal(doc.entities.get("AdjacentSlowCar")?.initialSpeed, 15.0);
+
+  // Verify M8504 cyclic trigger diagnostic between EventA and EventB
+  const diags = lintOpenScenario(doc);
+  const m8504 = diags.find((d) => d.code === 8504);
+  assert.ok(m8504, "Expected M8504 cyclic event trigger diagnostic");
+
+  // Simulate: Ego passes AdjacentSlowCar in lane 1 while AdjacentSlowCar is in lane 2 (no collision at t < 4s),
+  // then at t = 4.0s Ego smoothly changes to lane 2 (y transitions from 3.5 to 7.0 m)
+  const sim = simulateScenario(doc, { duration: 7.0, stepSize: 0.1 });
+  assert.equal(sim.hasCollision, false, "Passing a vehicle in an adjacent lane should not trigger a false collision");
+  assert.ok(Math.abs((sim.finalStates["Ego"]?.y ?? 0) - 7.0) < 0.05, "Ego lateral y should reach lane 2 (7.0 m)");
+});

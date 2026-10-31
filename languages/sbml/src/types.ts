@@ -73,6 +73,37 @@ export interface SbmlReaction {
   range?: SbmlRange | undefined;
 }
 
+export interface SbmlFunctionDefinition {
+  id: string;
+  name?: string | undefined;
+  arguments: string[];
+  body: string;
+  range?: SbmlRange | undefined;
+}
+
+export type SbmlRuleType = "assignment" | "rate" | "algebraic";
+
+export interface SbmlRule {
+  type: SbmlRuleType;
+  variable: string;
+  formula: string;
+  range?: SbmlRange | undefined;
+}
+
+export interface SbmlEventAssignment {
+  variable: string;
+  formula: string;
+  range?: SbmlRange | undefined;
+}
+
+export interface SbmlEvent {
+  id?: string | undefined;
+  name?: string | undefined;
+  trigger: string;
+  assignments: SbmlEventAssignment[];
+  range?: SbmlRange | undefined;
+}
+
 export interface SbmlModel {
   id: string;
   name?: string | undefined;
@@ -82,6 +113,9 @@ export interface SbmlModel {
   species: Map<string, SbmlSpecies>;
   parameters: Map<string, SbmlParameter>;
   reactions: Map<string, SbmlReaction>;
+  functionDefinitions?: Map<string, SbmlFunctionDefinition> | undefined;
+  rules?: SbmlRule[] | undefined;
+  events?: SbmlEvent[] | undefined;
   range?: SbmlRange | undefined;
 }
 

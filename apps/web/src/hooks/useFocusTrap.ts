@@ -83,13 +83,13 @@ export function useFocusTrap(
         // Shift + Tab: if on the first element or outside the container, cycle to the last
         if (document.activeElement === firstElement || !currentContainer.contains(document.activeElement)) {
           e.preventDefault();
-          lastElement.focus();
+          lastElement?.focus();
         }
       } else {
         // Tab: if on the last element, cycle to the first
         if (document.activeElement === lastElement) {
           e.preventDefault();
-          firstElement.focus();
+          firstElement?.focus();
         }
       }
     };

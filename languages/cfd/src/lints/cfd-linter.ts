@@ -28,6 +28,16 @@ export interface CfdDiagnostic {
 export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
   const diagnostics: CfdDiagnostic[] = [];
 
+  const getLine = (...keys: string[]): number => {
+    if (model.directiveLines) {
+      for (const k of keys) {
+        const ln = model.directiveLines.get(k) ?? model.directiveLines.get(k.toUpperCase());
+        if (ln !== undefined) return ln;
+      }
+    }
+    return 1;
+  };
+
   // Check Mach number
   if (model.machNumber !== undefined) {
     if (model.machNumber < 0 || model.machNumber > 25) {
@@ -36,7 +46,7 @@ export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
         rule: CfdErrorCode.UNPHYSICAL_FREESTREAM_MACH.rule,
         severity: CfdErrorCode.UNPHYSICAL_FREESTREAM_MACH.severity,
         message: CfdErrorCode.UNPHYSICAL_FREESTREAM_MACH.message(model.machNumber),
-        line: 1,
+        line: getLine("MACH_NUMBER"),
         column: 1,
         quickFix: {
           title: "Reset Mach number to subsonic 0.8",
@@ -54,7 +64,7 @@ export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
       rule: CfdErrorCode.UNPHYSICAL_REYNOLDS_NUMBER.rule,
       severity: CfdErrorCode.UNPHYSICAL_REYNOLDS_NUMBER.severity,
       message: CfdErrorCode.UNPHYSICAL_REYNOLDS_NUMBER.message(model.reynoldsNumber),
-      line: 1,
+      line: getLine("REYNOLDS_NUMBER"),
       column: 1,
     });
   }
@@ -69,7 +79,7 @@ export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
         rule: CfdErrorCode.CFL_STABILITY_VIOLATION.rule,
         severity: CfdErrorCode.CFL_STABILITY_VIOLATION.severity,
         message: CfdErrorCode.CFL_STABILITY_VIOLATION.message(cfl),
-        line: 1,
+        line: getLine("CFL_NUMBER", "cfl"),
         column: 1,
         quickFix: {
           title: "Clamp CFL number to stable limit (1.0)",
@@ -89,7 +99,7 @@ export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
         rule: CfdErrorCode.UNRESOLVED_MESH_FILE.rule,
         severity: CfdErrorCode.UNRESOLVED_MESH_FILE.severity,
         message: CfdErrorCode.UNRESOLVED_MESH_FILE.message(mesh || "unspecified"),
-        line: 1,
+        line: getLine("MESH_FILENAME"),
         column: 1,
       });
     }
@@ -102,7 +112,7 @@ export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
       rule: CfdErrorCode.MISSING_INLET_BOUNDARY.rule,
       severity: CfdErrorCode.MISSING_INLET_BOUNDARY.severity,
       message: CfdErrorCode.MISSING_INLET_BOUNDARY.message(model.mathProblem || "FlowDomain"),
-      line: 1,
+      line: getLine("MATH_PROBLEM", "PHYSICAL_PROBLEM", "boundaryField"),
       column: 1,
     });
   }
@@ -114,7 +124,7 @@ export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
       rule: CfdErrorCode.MISSING_OUTLET_BOUNDARY.rule,
       severity: CfdErrorCode.MISSING_OUTLET_BOUNDARY.severity,
       message: CfdErrorCode.MISSING_OUTLET_BOUNDARY.message(model.mathProblem || "FlowDomain"),
-      line: 1,
+      line: getLine("MATH_PROBLEM", "PHYSICAL_PROBLEM", "boundaryField"),
       column: 1,
     });
   }
@@ -129,7 +139,7 @@ export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
         rule: CfdErrorCode.NEGATIVE_SURFACE_AREA.rule,
         severity: CfdErrorCode.NEGATIVE_SURFACE_AREA.severity,
         message: CfdErrorCode.NEGATIVE_SURFACE_AREA.message(refArea),
-        line: 1,
+        line: getLine("REF_AREA"),
         column: 1,
       });
     }
@@ -145,7 +155,7 @@ export function lintCfdModel(model: CfdModelData): CfdDiagnostic[] {
         rule: CfdErrorCode.TURBULENT_VISCOSITY_RATIO.rule,
         severity: CfdErrorCode.TURBULENT_VISCOSITY_RATIO.severity,
         message: CfdErrorCode.TURBULENT_VISCOSITY_RATIO.message(turbRatio),
-        line: 1,
+        line: getLine("VISCOSITY_RATIO"),
         column: 1,
       });
     }

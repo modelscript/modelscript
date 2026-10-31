@@ -64,7 +64,7 @@ ModelScript is an **open-core** computable digital thread for engineering. The c
 <div>
 <div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--vp-c-brand-1); letter-spacing: 0.05em; margin-bottom: 8px;">Enterprise Appliance (ee/)</div>
 <div style="font-size: 32px; font-weight: 800; color: var(--vp-c-text-1); margin-bottom: 8px;">$18,000 <span style="font-size: 14px; font-weight: 500; color: var(--vp-c-text-2);">/ year</span></div>
-<p style="font-size: 14px; color: var(--vp-c-text-2); margin-bottom: 20px; line-height: 1.5;">Air-gapped on-premise deployment for electric utilities, aerospace, automotive, and defense with strict regulatory firewalls.</p>
+<p style="font-size: 14px; color: var(--vp-c-text-2); margin-bottom: 20px; line-height: 1.5;">Air-gapped on-premise deployment for electric utilities, civil aerospace, automotive, and critical infrastructure with strict regulatory firewalls.</p>
 <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.8; color: var(--vp-c-text-1);">
   <li>✓ <strong>100% Air-Gapped Container Image (<code>ee/deploy/</code>)</strong></li>
   <li>✓ Offline Ed25519 license key (<code>MSX_LICENSE_KEY</code>)</li>

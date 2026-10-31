@@ -110,14 +110,25 @@ export function parseSsd(xml: string): SspSystem {
 
   const lineStarts = computeLineStarts(xml);
 
-  // Extract the <ssd:System> element
-  const systemEl = getChild(root, "System");
+  // Extract the <ssd:System> element (or use root if root is itself <System>)
+  const systemEl = root && matchName(root.name, "System") ? root : getChild(root, "System");
 
-  const systemName = (systemEl ? getAttr(systemEl, "name") : undefined) ?? name;
-  const systemDescription = (systemEl ? getAttr(systemEl, "description") : undefined) ?? description;
+  return parseSystemElement(systemEl, root, name, description, version, lineStarts);
+}
+
+function parseSystemElement(
+  systemEl: XmlElement | undefined,
+  root: XmlElement | null,
+  fallbackName: string,
+  fallbackDescription: string | undefined,
+  version: string,
+  lineStarts: number[],
+): SspSystem {
+  const systemName = (systemEl ? getAttr(systemEl, "name") : undefined) ?? fallbackName;
+  const systemDescription = (systemEl ? getAttr(systemEl, "description") : undefined) ?? fallbackDescription;
 
   // Parse system geometry if present
-  const sysGeomEl = getChild(systemEl, "SystemGeometry");
+  const sysGeomEl = getChild(systemEl, "SystemGeometry") ?? getChild(systemEl, "ElementGeometry");
   const systemGeometry = sysGeomEl ? parseElementGeometryAttrs(sysGeomEl) : undefined;
 
   // Parse boundary connectors (declared directly under <ssd:System>)
@@ -125,6 +136,20 @@ export function parseSsd(xml: string): SspSystem {
 
   // Parse components (<ssd:Elements>)
   const components = systemEl ? parseComponents(systemEl, lineStarts) : [];
+
+  // Parse nested sub-systems (<ssd:Elements> -> <ssd:System>)
+  const elementsEl = getChild(systemEl, "Elements");
+  const childSystemEls = getChildren(elementsEl, "System");
+  const systems: SspSystem[] = childSystemEls.map((subEl) =>
+    parseSystemElement(
+      subEl,
+      null,
+      getAttr(subEl, "name") ?? "SubSystem",
+      getAttr(subEl, "description"),
+      version,
+      lineStarts,
+    ),
+  );
 
   // Parse connections (<ssd:Connections>)
   const connections = systemEl ? parseConnections(systemEl, lineStarts) : [];
@@ -141,6 +166,11 @@ export function parseSsd(xml: string): SspSystem {
     version,
     connectors: systemConnectors,
     components,
+    systems,
+    elements: {
+      components,
+      systems,
+    },
     connections,
     parameterBindings,
     defaultExperiment,

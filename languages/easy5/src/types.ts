@@ -39,6 +39,8 @@ export interface Easy5Component {
   startOffset?: number | undefined;
   /** Source end offset. */
   endOffset?: number | undefined;
+  /** Parameter names explicitly set in the model source (for M7004 uninitialized state linting). */
+  explicitParameters?: Set<string> | undefined;
 }
 
 export interface Easy5Connection {
@@ -91,12 +93,21 @@ export interface Easy5AnalysisDirectives {
   linear?: Easy5LinearConfig | undefined;
 }
 
+export interface Easy5DuplicateComponent {
+  id: string;
+  line?: number | undefined;
+  column?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+}
+
 export interface Easy5Model {
   name: string;
   title?: string | undefined;
   components: Map<string, Easy5Component>;
   connections: Easy5Connection[];
   tables: Map<string, Easy5Table>;
+  duplicateComponents?: Easy5DuplicateComponent[] | undefined;
   directives?: Easy5AnalysisDirectives | undefined;
   sourceText?: string | undefined;
 }

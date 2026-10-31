@@ -7,7 +7,7 @@
  * Modelica.Thermal.HeatTransfer and Modelica Buildings library components.
  */
 
-import type { EnergyPlusDocument } from "../types.js";
+import type { EnergyPlusDocument, IdfMaterial, IdfMaterialNoMass, IdfSurface } from "../types.js";
 
 export function energyPlusToModelica(doc: EnergyPlusDocument): string {
   const bldgName = (doc.building?.name ?? "EnergyPlusBuilding").replace(/[^a-zA-Z0-9_]/g, "_");
@@ -20,6 +20,38 @@ export function energyPlusToModelica(doc: EnergyPlusDocument): string {
   lines.push(`  import Modelica.Thermal.HeatTransfer.Interfaces.*;`);
   lines.push("");
 
+  // Pre-calculate construction thermal transmittances (U-values)
+  const materialMap = new Map<string, IdfMaterial>();
+  for (const m of doc.materials) {
+    materialMap.set(m.name.toLowerCase(), m);
+  }
+  const materialNoMassMap = new Map<string, IdfMaterialNoMass>();
+  for (const m of doc.materialsNoMass) {
+    materialNoMassMap.set(m.name.toLowerCase(), m);
+  }
+
+  const uValueMap = new Map<string, number>();
+  for (const c of doc.constructions) {
+    let rVal = 0.17;
+    for (const layer of c.layers) {
+      const mat = materialMap.get(layer.toLowerCase());
+      const matNoMass = materialNoMassMap.get(layer.toLowerCase());
+      if (mat && mat.conductivity > 0.0) {
+        rVal += mat.thickness / mat.conductivity;
+      } else if (matNoMass && matNoMass.thermalResistance > 0.0) {
+        rVal += matNoMass.thermalResistance;
+      } else {
+        rVal += 0.2;
+      }
+    }
+    uValueMap.set(c.name.toLowerCase(), 1.0 / Math.max(0.1, rVal));
+  }
+
+  const surfaceByName = new Map<string, IdfSurface>();
+  for (const s of doc.surfaces) {
+    surfaceByName.set(s.name.toLowerCase(), s);
+  }
+
   // 1. Ambient & Ground Boundary Sources
   lines.push("  // Ambient & Boundary Conditions");
   lines.push('  FixedTemperature ambSource(T = 283.15) "Ambient Outdoor Temperature (10 deg C)";');
@@ -28,6 +60,7 @@ export function energyPlusToModelica(doc: EnergyPlusDocument): string {
 
   // 2. Zone Heat Capacitors & Internal Sources
   lines.push("  // Thermal Zones");
+  const zonesWithInternalGains = new Set<string>();
   for (const zone of doc.zones) {
     const zClean = zone.name.replace(/[^a-zA-Z0-9_]/g, "_");
     const vol = zone.volume ?? (zone.floorArea ?? 40.0) * (zone.ceilingHeight ?? 2.8);
@@ -49,6 +82,7 @@ export function energyPlusToModelica(doc: EnergyPlusDocument): string {
     }
 
     if (qInt > 0.0) {
+      zonesWithInternalGains.add(zClean);
       lines.push(`  FixedHeatFlow q_int_${zClean}(Q_flow = ${qInt.toFixed(1)}) "Internal heat gain in ${zone.name}";`);
     }
   }
@@ -59,20 +93,31 @@ export function energyPlusToModelica(doc: EnergyPlusDocument): string {
   const surfaceConductors: { name: string; zone: string; bc: string; adjZone?: string | undefined }[] = [];
 
   for (const surf of doc.surfaces) {
+    const bc = surf.boundaryCondition.toLowerCase();
+    if (bc === "adiabatic") {
+      continue;
+    }
+
     const sClean = surf.name.replace(/[^a-zA-Z0-9_]/g, "_");
     const zClean = surf.zoneName.replace(/[^a-zA-Z0-9_]/g, "_");
     const area = surf.grossArea && surf.grossArea > 0 ? surf.grossArea : 20.0;
-    const condVal = area * 1.2; // Nominal conductance W/K
+    const uVal = uValueMap.get(surf.constructionName.toLowerCase()) ?? 1.2;
+    const condVal = area * uVal;
     const condName = `wall_${sClean}`;
+
+    let adjZone: string | undefined;
+    if ((bc === "surface" || bc === "zone") && surf.outsideBoundaryConditionObject) {
+      const targetSurf = surfaceByName.get(surf.outsideBoundaryConditionObject.toLowerCase());
+      const adjZoneRaw = targetSurf ? targetSurf.zoneName : surf.outsideBoundaryConditionObject;
+      adjZone = adjZoneRaw.replace(/[^a-zA-Z0-9_]/g, "_");
+    }
 
     lines.push(`  ThermalConductor ${condName}(G = ${condVal.toFixed(2)}) "Surface ${surf.name}";`);
     surfaceConductors.push({
       name: condName,
       zone: zClean,
-      bc: surf.boundaryCondition.toLowerCase(),
-      adjZone: surf.outsideBoundaryConditionObject
-        ? surf.outsideBoundaryConditionObject.replace(/[^a-zA-Z0-9_]/g, "_")
-        : undefined,
+      bc,
+      adjZone,
     });
   }
   lines.push("");
@@ -83,6 +128,8 @@ export function energyPlusToModelica(doc: EnergyPlusDocument): string {
     lines.push(`  connect(${c.name}.port_a, zone_${c.zone}.port);`);
     if (c.bc === "ground") {
       lines.push(`  connect(${c.name}.port_b, gndSource.port);`);
+    } else if ((c.bc === "surface" || c.bc === "zone") && c.adjZone) {
+      lines.push(`  connect(${c.name}.port_b, zone_${c.adjZone}.port);`);
     } else {
       lines.push(`  connect(${c.name}.port_b, ambSource.port);`);
     }
@@ -90,7 +137,9 @@ export function energyPlusToModelica(doc: EnergyPlusDocument): string {
 
   for (const zone of doc.zones) {
     const zClean = zone.name.replace(/[^a-zA-Z0-9_]/g, "_");
-    lines.push(`  connect(q_int_${zClean}.port, zone_${zClean}.port);`);
+    if (zonesWithInternalGains.has(zClean)) {
+      lines.push(`  connect(q_int_${zClean}.port, zone_${zClean}.port);`);
+    }
   }
 
   lines.push(`end ${bldgName};`);

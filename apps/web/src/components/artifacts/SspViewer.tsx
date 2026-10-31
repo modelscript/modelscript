@@ -219,19 +219,20 @@ const DiagramStage = styled.div<{ $selectedFmu?: string | null; $dragging?: bool
     stroke-width: 2.5px;
   }
 
-  ${(p) =>
-    p.$selectedFmu
-      ? `
-    .ssp-fmu-node:not([data-fmu="${p.$selectedFmu.replace(/"/g, '\\"')}"]) {
+  ${(p) => {
+    if (!p.$selectedFmu) return "";
+    const escapedFmu = p.$selectedFmu.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `
+    .ssp-fmu-node:not([data-fmu="${escapedFmu}"]) {
       opacity: 0.45;
     }
-    .ssp-fmu-node[data-fmu="${p.$selectedFmu.replace(/"/g, '\\"')}"] rect:first-of-type {
+    .ssp-fmu-node[data-fmu="${escapedFmu}"] rect:first-of-type {
       stroke: #34d399;
       stroke-width: 3px;
       filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.45));
     }
-  `
-      : ""}
+  `;
+  }}
 `;
 
 const StageOverlayBottomLeft = styled.div`

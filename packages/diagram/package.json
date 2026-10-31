@@ -93,6 +93,10 @@
       "types": "./dist/html-diff-bundle.d.ts",
       "default": "./dist/html-diff-bundle.js"
     },
+    "./polyglot-diagram-builders": {
+      "types": "./dist/polyglot-diagram-builder.d.ts",
+      "default": "./dist/polyglot-diagram-builder.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"

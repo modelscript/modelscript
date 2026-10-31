@@ -31,9 +31,12 @@ import {
   dispatchCloudJob,
   getCloudSimulationResultCsv,
   getCloudSimulationStatus,
+  getCompatibleModels,
   getComputeProfiles,
+  getJobTemplates,
   getTimeline,
   getUserWallet,
+  runStudyJob,
   submitCloudSimulation,
   type CloudSimulationStatus,
   type ComputeProfileInfo,
@@ -227,10 +230,24 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
     [activeArtifact, explicitModelName],
   );
 
-  // Template state
+  // Template state (merges built-in HPC templates with live Open-Standard Study Templates)
+  const [serverTemplates, setServerTemplates] = useState<HpcWizardTemplate[]>([]);
+  const allTemplates = useMemo(() => {
+    const map = new Map<string, HpcWizardTemplate>();
+    for (const b of BUILTIN_HPC_TEMPLATES) {
+      map.set(b.slug, b);
+    }
+    for (const s of serverTemplates) {
+      if (!map.has(s.slug)) {
+        map.set(s.slug, s);
+      }
+    }
+    return Array.from(map.values());
+  }, [serverTemplates]);
+
   const defaultTemplate = useMemo(() => {
     if (initialTemplateSlug) {
-      const found = BUILTIN_HPC_TEMPLATES.find(
+      const found = allTemplates.find(
         (t) =>
           t.slug === initialTemplateSlug ||
           t.id === initialTemplateSlug ||
@@ -240,18 +257,18 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
     }
     const d = (explicitDialect || activeArtifact.dialect || "modelica").toLowerCase();
     if (d === "cfd" || d === "su2" || d === "openfoam") {
-      return BUILTIN_HPC_TEMPLATES.find((t) => t.id === "steady-state-cfd") || BUILTIN_HPC_TEMPLATES[0]!;
+      return allTemplates.find((t) => t.id === "steady-state-cfd") || allTemplates[0]!;
     }
     if (d === "fea" || d === "calculix") {
-      return BUILTIN_HPC_TEMPLATES.find((t) => t.id === "static-structural-fea") || BUILTIN_HPC_TEMPLATES[0]!;
+      return allTemplates.find((t) => t.id === "static-structural-fea") || allTemplates[0]!;
     }
-    return BUILTIN_HPC_TEMPLATES[0]!;
-  }, [initialTemplateSlug, explicitDialect, activeArtifact.dialect]);
+    return allTemplates[0]!;
+  }, [initialTemplateSlug, explicitDialect, activeArtifact.dialect, allTemplates]);
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(defaultTemplate.id);
   const selectedTemplate = useMemo(
-    () => BUILTIN_HPC_TEMPLATES.find((t) => t.id === selectedTemplateId) || BUILTIN_HPC_TEMPLATES[0]!,
-    [selectedTemplateId],
+    () => allTemplates.find((t) => t.id === selectedTemplateId || t.slug === selectedTemplateId) || allTemplates[0]!,
+    [selectedTemplateId, allTemplates],
   );
 
   // Wizard step & filters
@@ -288,6 +305,8 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
     ...(experimentConfig?.parameterOverrides || {}),
   }));
   const [selectedProfile, setSelectedProfile] = useState<string>(selectedTemplate.recommendedProfile);
+  const [studyStandardFormat, setStudyStandardFormat] = useState<"sedml" | "ssp-ssv" | "dakota">("sedml");
+  const [saveInstanceToPackage, setSaveInstanceToPackage] = useState<boolean>(false);
 
   const { refreshWallet } = useAuth();
   const [profiles, setProfiles] = useState<ComputeProfileInfo[]>([]);
@@ -318,13 +337,25 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
     }
     setTemplateFieldValues(defaults);
     setSelectedProfile(selectedTemplate.recommendedProfile);
+    if (
+      selectedTemplate.id.includes("sweep") ||
+      selectedTemplate.id.includes("monte-carlo") ||
+      selectedTemplate.id.includes("uq") ||
+      selectedTemplate.id.includes("optimization")
+    ) {
+      setStudyStandardFormat("dakota");
+    } else if (selectedTemplate.id.includes("ssv") || selectedTemplate.id.includes("co-sim")) {
+      setStudyStandardFormat("ssp-ssv");
+    } else {
+      setStudyStandardFormat("sedml");
+    }
   }, [selectedTemplate]);
 
   // Sync initial template slug or step when modal opens
   useEffect(() => {
     if (!isOpen) return;
     if (initialTemplateSlug) {
-      const match = BUILTIN_HPC_TEMPLATES.find(
+      const match = allTemplates.find(
         (t) =>
           t.slug === initialTemplateSlug ||
           t.id === initialTemplateSlug ||
@@ -335,13 +366,147 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
     if (initialStep) {
       setActiveStep(initialStep);
     }
-  }, [isOpen, initialTemplateSlug, initialStep]);
+  }, [isOpen, initialTemplateSlug, initialStep, allTemplates]);
 
-  // Load profiles, wallet, and recent timeline model artifacts on open
+  // Load profiles, wallet, server study templates, and recent timeline model artifacts on open
   useEffect(() => {
     if (!isOpen) return;
     getComputeProfiles().then(setProfiles).catch(console.error);
     getUserWallet().then(setWallet).catch(console.error);
+    getJobTemplates()
+      .then((res) => {
+        if (!Array.isArray(res?.templates)) return;
+        const mapped: HpcWizardTemplate[] = [];
+        for (const tpl of res.templates) {
+          const def = tpl.studyDefinition;
+          if (!def) continue;
+          const cat: HpcTemplateCategory = def.category.includes("CFD")
+            ? "Fluid Dynamics (CFD)"
+            : def.category.includes("FEA") || def.category.includes("Structural")
+              ? "Structural & Thermal FEA"
+              : def.category.includes("Uncertainty") || def.category.includes("Optimization")
+                ? "Design & UQ"
+                : def.category.includes("Verification") || def.category.includes("Requirements")
+                  ? "Verification & V&V"
+                  : "System Dynamics";
+          const dom: HpcWizardTemplate["domain"] = def.modelContract.domains.includes("cfd")
+            ? "cfd"
+            : def.modelContract.domains.includes("fea")
+              ? "fea"
+              : def.kind === "monte-carlo"
+                ? "monte-carlo"
+                : def.kind === "parameter-sweep"
+                  ? "sweep"
+                  : def.kind === "optimization"
+                    ? "optimization"
+                    : "modelica";
+          mapped.push({
+            id: def.slug,
+            slug: def.slug,
+            dbTemplateId: tpl.id,
+            name: def.name,
+            shortTitle: def.name.slice(0, 28),
+            category: cat,
+            domain: dom,
+            compatibleDialects: def.modelContract.domains,
+            badge:
+              def.standardFormat === "dakota" ? "DAKOTA" : def.standardFormat === "ssp-ssv" ? "SSP .SSV" : "SED-ML",
+            accentColor:
+              def.standardFormat === "dakota" ? "#f59e0b" : def.standardFormat === "ssp-ssv" ? "#10b981" : "#06b6d4",
+            icon: "beaker",
+            solver: def.execution.recommendedSolver,
+            recommendedProfile: def.execution.recommendedProfile,
+            estimatedDuration: "~8s",
+            estimatedCredits: `${def.execution.estimatedCredits} credits`,
+            description: def.description,
+            featured: Boolean(def.featured),
+            defaultExperiment: {
+              startTime: 0,
+              stopTime: Number(def.inputs.find((i) => i.key === "stopTime")?.defaultValue ?? 5),
+              numberOfIntervals: Number(def.inputs.find((i) => i.key === "numberOfIntervals")?.defaultValue ?? 500),
+              tolerance: String(def.inputs.find((i) => i.key === "tolerance")?.defaultValue ?? "1e-6"),
+            },
+            presets: [
+              {
+                id: "fast",
+                label: "Fast Preview",
+                badge: "Quick",
+                description: "Coarse discretization for rapid interactive feedback",
+                intervals: 200,
+                tolerance: "1e-4",
+                recommendedProfile: "cpu-small",
+              },
+              {
+                id: "balanced",
+                label: "Engineering Default",
+                badge: "Balanced",
+                description: "Standard industrial verification fidelity",
+                intervals: 500,
+                tolerance: "1e-6",
+                recommendedProfile: def.execution.recommendedProfile || "cpu-medium",
+              },
+              {
+                id: "high",
+                label: "Sign-Off Fidelity",
+                badge: "High Precision",
+                description: "Fine step control for formal sign-off",
+                intervals: 2000,
+                tolerance: "1e-8",
+                recommendedProfile: "cpu-large",
+              },
+            ],
+            fields: def.inputs.map((inp) => ({
+              key: inp.key,
+              label: inp.label,
+              type: inp.type === "select" ? ("select" as const) : ("number" as const),
+              defaultValue: typeof inp.defaultValue === "boolean" ? String(inp.defaultValue) : inp.defaultValue,
+              unit: inp.unit,
+              min: inp.min,
+              max: inp.max,
+              step: inp.step,
+              options: inp.options,
+              description: inp.description,
+            })),
+            pipelineSteps: def.execution.pipelineSteps.map((st, idx) => ({
+              title: st,
+              detail: `Stage ${idx + 1}`,
+              command: `msx study run ${def.slug}`,
+            })),
+          });
+        }
+        setServerTemplates(mapped);
+      })
+      .catch(() => {});
+
+    getCompatibleModels({ templateSlug: selectedTemplate.slug })
+      .then((res) => {
+        if (!Array.isArray(res?.models)) return;
+        const pkgItems: HpcModelArtifactItem[] = res.models
+          .filter((m) => m.code && m.code.trim().length > 10)
+          .map((m) => ({
+            id: m.id,
+            title: m.title || m.name || m.qualifiedName || m.id,
+            modelName: m.modelName || m.qualifiedName || m.name || "Model",
+            dialect: m.dialect || m.domain || "modelica",
+            author: m.packageName ? `${m.packageName}${m.packageVersion ? `@${m.packageVersion}` : ""}` : undefined,
+            category: m.packageName ? `Package (${m.packageName})` : "Catalog Model Artifact",
+            summary: m.summary || m.description || "Compatible package model artifact",
+            code: m.code || "",
+            sourceType: "feed" as const,
+          }));
+        if (pkgItems.length > 0) {
+          setDiscoveredArtifacts((prev) => {
+            const combined = [...pkgItems];
+            for (const p of prev) {
+              if (!combined.some((x) => x.modelName === p.modelName)) combined.push(p);
+            }
+            return combined;
+          });
+        }
+      })
+      .catch(() => {
+        /* ignore compatible model discovery errors */
+      });
 
     getTimeline({ limit: 15 })
       .then((res) => {
@@ -374,13 +539,19 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
           });
         }
         if (items.length > 0) {
-          setDiscoveredArtifacts(items);
+          setDiscoveredArtifacts((prev) => {
+            const combined = [...prev];
+            for (const it of items) {
+              if (!combined.some((x) => x.modelName === it.modelName)) combined.push(it);
+            }
+            return combined;
+          });
         }
       })
       .catch(() => {
         /* ignore timeline discovery errors */
       });
-  }, [isOpen]);
+  }, [isOpen, selectedTemplate.slug]);
 
   // Close on Escape key
   useEffect(() => {
@@ -472,7 +643,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
   // Filtered templates for the SharePoint-style gallery
   const filteredTemplates = useMemo(() => {
     const activeDialect = (explicitDialect || activeArtifact.dialect || "modelica").toLowerCase();
-    return BUILTIN_HPC_TEMPLATES.filter((t) => {
+    return allTemplates.filter((t) => {
       if (templateCategoryFilter === "RECOMMENDED") {
         if (!t.compatibleDialects.includes(activeDialect) && !t.featured) return false;
       } else if (templateCategoryFilter !== "ALL" && t.category !== templateCategoryFilter) {
@@ -489,7 +660,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
       }
       return true;
     });
-  }, [templateCategoryFilter, templateSearch, explicitDialect, activeArtifact.dialect]);
+  }, [allTemplates, templateCategoryFilter, templateSearch, explicitDialect, activeArtifact.dialect]);
 
   const currentProfile = useMemo(
     () => profiles.find((p) => p.id === selectedProfile) || profiles[0],
@@ -562,15 +733,43 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
     setElapsedSeconds(0);
     setCsvContent(null);
 
+    const targetName = (modelName || extractedMeta.modelName || "Model").trim();
+    const solverMethod = String(
+      experimentConfig?.solver ||
+        templateFieldValues["solver"] ||
+        templateFieldValues["integrator"] ||
+        tpl.solver ||
+        "cvode",
+    );
+
+    // Also synthesize & link the Open-Standard Study Instance (.sedml / .ssv / .dakota)
+    if (saveInstanceToPackage || tpl.dbTemplateId) {
+      void runStudyJob({
+        templateSlug: tpl.slug,
+        name: `${tpl.shortTitle} — ${targetName}`,
+        modelName: targetName,
+        modelDomain: activeArtifact.dialect || "modelica",
+        packageName: libraryName,
+        packageVersion: libraryVersion,
+        targetArtifact: targetName,
+        modelCode: effectiveSourceCode || undefined,
+        parameterOverrides: paramOverrides,
+        inputs: {
+          ...templateFieldValues,
+          stopTime,
+          numberOfIntervals,
+          tolerance,
+          solver: solverMethod,
+        },
+        executionTarget: "hpc-cluster",
+        computeProfile: selectedProfile,
+        standardFormat: studyStandardFormat,
+        saveInstanceToPackage,
+        linkToPackage: saveInstanceToPackage || Boolean(libraryName),
+      }).catch(() => {});
+    }
+
     try {
-      const targetName = (modelName || extractedMeta.modelName || "Model").trim();
-      const solverMethod = String(
-        experimentConfig?.solver ||
-          templateFieldValues["solver"] ||
-          templateFieldValues["integrator"] ||
-          tpl.solver ||
-          "cvode",
-      );
       const res = await submitCloudSimulation({
         modelName: targetName,
         modelSource: effectiveSourceCode || undefined,
@@ -959,6 +1158,27 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
                           </div>
 
                           <Box display="flex" alignItems="center" gap={1}>
+                            <span
+                              style={{
+                                fontSize: "9.5px",
+                                fontWeight: 700,
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                background: "var(--color-canvas-subtle)",
+                                color: "var(--color-fg-muted)",
+                                border: "1px solid var(--color-border-default)",
+                                fontFamily: "var(--font-mono, monospace)",
+                              }}
+                            >
+                              {tpl.id.includes("sweep") ||
+                              tpl.id.includes("monte-carlo") ||
+                              tpl.id.includes("uq") ||
+                              tpl.id.includes("optimization")
+                                ? ".dakota"
+                                : tpl.id.includes("ssv") || tpl.id.includes("co-sim")
+                                  ? ".ssv"
+                                  : ".sedml"}
+                            </span>
                             <span
                               style={{
                                 fontSize: "10px",
@@ -1438,6 +1658,69 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
                   </div>
                 </Box>
               )}
+
+              {/* Open-Standard Study Instance Artifact (.sedml / .ssv / .dakota) & Persistence */}
+              <Box
+                p={3}
+                borderRadius="12px"
+                bg="var(--color-canvas-subtle)"
+                border="1px solid var(--color-border-default)"
+              >
+                <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
+                  <Box display="flex" alignItems="center" gap={2}>
+                    <FileCodeIcon size={14} />
+                    <Text fontSize="12px" fontWeight="bold" color="var(--color-fg-default)">
+                      Synthesized Study Instance Artifact
+                    </Text>
+                  </Box>
+                  <code style={{ fontSize: "11px", color: "var(--color-accent-cyan, #06b6d4)" }}>
+                    studies/{selectedTemplate.slug}-{modelName.toLowerCase()}
+                    {studyStandardFormat === "ssp-ssv"
+                      ? ".ssv"
+                      : studyStandardFormat === "dakota"
+                        ? ".dakota"
+                        : ".sedml"}
+                  </code>
+                </Box>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "12px",
+                  }}
+                >
+                  <Box>
+                    <Text fontSize="11.5px" fontWeight="bold" color="var(--color-fg-muted)" mb={1} display="block">
+                      Open Engineering Standard
+                    </Text>
+                    <StyledSelect
+                      value={studyStandardFormat}
+                      onChange={(e) => setStudyStandardFormat(e.target.value as "sedml" | "ssp-ssv" | "dakota")}
+                    >
+                      <option value="sedml">SED-ML L1V4 (.sedml) — Simulation Experiment</option>
+                      <option value="ssp-ssv">ASAM SSP 2.0 (.ssv) — System Structure Parameter Set</option>
+                      <option value="dakota">Sandia Dakota (.dakota) — Parametric DOE / UQ / MOGA</option>
+                    </StyledSelect>
+                  </Box>
+
+                  <Box>
+                    <Text fontSize="11.5px" fontWeight="bold" color="var(--color-fg-muted)" mb={1} display="block">
+                      Link Rerunnable Study Instance To
+                    </Text>
+                    <StyledSelect
+                      value={saveInstanceToPackage ? "package-and-job" : "job-only"}
+                      onChange={(e) => setSaveInstanceToPackage(e.target.value === "package-and-job")}
+                    >
+                      <option value="job-only">Job Record (Rerunnable &amp; Saveable as Study Template)</option>
+                      <option value="package-and-job">
+                        Link to Package &amp; Model ({libraryName || "package"} Studies &amp; Jobs tab — keeps signed
+                        release immutable)
+                      </option>
+                    </StyledSelect>
+                  </Box>
+                </div>
+              </Box>
             </Box>
           )}
 

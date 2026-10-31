@@ -290,8 +290,8 @@ export const DigitalThreadExplorer: React.FC<DigitalThreadExplorerProps> = ({
         status: reviewAction,
         ...(reviewComment.trim() ? { comment: reviewComment.trim() } : {}),
         safetyStandard:
-          reviewDialogProposal.safety_standard ||
-          (reviewDialogProposal as any).safetyStandard ||
+          (reviewDialogProposal as { safety_standard?: string; safetyStandard?: string }).safety_standard ||
+          (reviewDialogProposal as { safety_standard?: string; safetyStandard?: string }).safetyStandard ||
           propSafetyStandard ||
           "ISO-26262",
       });

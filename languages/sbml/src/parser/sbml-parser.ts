@@ -11,11 +11,15 @@ import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   SbmlCompartment,
   SbmlDocument,
+  SbmlEvent,
+  SbmlEventAssignment,
+  SbmlFunctionDefinition,
   SbmlKineticLaw,
   SbmlModel,
   SbmlParameter,
   SbmlRange,
   SbmlReaction,
+  SbmlRule,
   SbmlSpecies,
   SbmlSpeciesReference,
 } from "../types.js";
@@ -97,9 +101,20 @@ function mathMlToInfix(elem: XmlElement): string {
     return elem.children.map(mathMlToInfix).join(" ");
   }
 
-  if (name === "ci" || name === "cn") {
+  if (name === "lambda") {
+    const bodyChildren = elem.children.filter((c) => c.name.toLowerCase() !== "bvar");
+    if (bodyChildren.length > 0) {
+      return bodyChildren.map(mathMlToInfix).join(" ");
+    }
     return elem.text?.trim() ?? "";
   }
+
+  if (name === "ci" || name === "cn" || name === "csymbol") {
+    return elem.text?.trim() ?? "";
+  }
+
+  if (name === "true") return "1";
+  if (name === "false") return "0";
 
   if (name === "apply") {
     const opElem = elem.children[0];
@@ -125,6 +140,29 @@ function mathMlToInfix(elem: XmlElement): string {
         return `exp(${args[0] ?? ""})`;
       case "ln":
         return `log(${args[0] ?? ""})`;
+      case "gt":
+        return `(${args[0] ?? "0"} > ${args[1] ?? "0"})`;
+      case "lt":
+        return `(${args[0] ?? "0"} < ${args[1] ?? "0"})`;
+      case "geq":
+        return `(${args[0] ?? "0"} >= ${args[1] ?? "0"})`;
+      case "leq":
+        return `(${args[0] ?? "0"} <= ${args[1] ?? "0"})`;
+      case "eq":
+        return `(${args[0] ?? "0"} == ${args[1] ?? "0"})`;
+      case "neq":
+        return `(${args[0] ?? "0"} != ${args[1] ?? "0"})`;
+      case "and":
+        return args.length > 0 ? `(${args.join(" && ")})` : "1";
+      case "or":
+        return args.length > 0 ? `(${args.join(" || ")})` : "0";
+      case "not":
+        return `(!(${args[0] ?? "0"}))`;
+      case "ci":
+      case "csymbol": {
+        const fnName = opElem.text?.trim() || op;
+        return `${fnName}(${args.join(", ")})`;
+      }
       default:
         return `${op}(${args.join(", ")})`;
     }
@@ -134,6 +172,16 @@ function mathMlToInfix(elem: XmlElement): string {
     return elem.children.map(mathMlToInfix).join(" ");
   }
 
+  return elem.text?.trim() ?? "";
+}
+
+function extractFormulaFromElement(elem: XmlElement): string {
+  const attrFormula = getAttr(elem, "formula");
+  if (attrFormula && attrFormula.trim().length > 0) return attrFormula.trim();
+  const formulaElem = findChild(elem, "formula");
+  if (formulaElem && formulaElem.text) return formulaElem.text.trim();
+  const mathElem = findChild(elem, "math");
+  if (mathElem) return mathMlToInfix(mathElem);
   return elem.text?.trim() ?? "";
 }
 
@@ -161,6 +209,47 @@ export function parseSbml(source: string, filename?: string): SbmlDocument {
   const species = new Map<string, SbmlSpecies>();
   const parameters = new Map<string, SbmlParameter>();
   const reactions = new Map<string, SbmlReaction>();
+  const functionDefinitions = new Map<string, SbmlFunctionDefinition>();
+  const rules: SbmlRule[] = [];
+  const events: SbmlEvent[] = [];
+
+  // 0. Function Definitions
+  const listOfFunctions = findChild(modelElem, "listOfFunctionDefinitions");
+  if (listOfFunctions) {
+    for (const fElem of findChildren(listOfFunctions, "functionDefinition")) {
+      const fId = getAttr(fElem, "id");
+      if (fId) {
+        const args: string[] = [];
+        let body = "";
+        const mathElem = findChild(fElem, "math");
+        const lambdaElem = mathElem ? findChild(mathElem, "lambda") : findChild(fElem, "lambda");
+        if (lambdaElem) {
+          for (const bvar of findChildren(lambdaElem, "bvar")) {
+            const ci = findChild(bvar, "ci") ?? bvar;
+            const argName = ci.text?.trim();
+            if (argName) args.push(argName);
+          }
+          body = mathMlToInfix(lambdaElem);
+        } else {
+          const argAttr = getAttr(fElem, "arguments");
+          if (argAttr) {
+            for (const a of argAttr.split(",")) {
+              const trimmed = a.trim();
+              if (trimmed) args.push(trimmed);
+            }
+          }
+          body = extractFormulaFromElement(fElem);
+        }
+        functionDefinitions.set(fId, {
+          id: fId,
+          name: getAttr(fElem, "name"),
+          arguments: args,
+          body,
+          range: computeRange(source, fElem),
+        });
+      }
+    }
+  }
 
   // 1. Compartments
   const listOfCompartments = findChild(modelElem, "listOfCompartments");
@@ -286,8 +375,10 @@ export function parseSbml(source: string, filename?: string): SbmlDocument {
           const localParams = new Map<string, SbmlParameter>();
           const listOfLocalParams = findChild(klElem, "listOfParameters") ?? findChild(klElem, "listOfLocalParameters");
           if (listOfLocalParams) {
-            for (const lpElem of findChildren(listOfLocalParams, "parameter") ||
-              findChildren(listOfLocalParams, "localParameter")) {
+            for (const lpElem of [
+              ...findChildren(listOfLocalParams, "parameter"),
+              ...findChildren(listOfLocalParams, "localParameter"),
+            ]) {
               const lpId = getAttr(lpElem, "id");
               if (lpId) {
                 localParams.set(lpId, {
@@ -336,6 +427,66 @@ export function parseSbml(source: string, filename?: string): SbmlDocument {
     }
   }
 
+  // 5. Rules (<listOfRules>: assignmentRule, rateRule, algebraicRule)
+  const listOfRules = findChild(modelElem, "listOfRules");
+  if (listOfRules) {
+    for (const rElem of listOfRules.children) {
+      const tag = rElem.name.toLowerCase();
+      const variable = getAttr(rElem, "variable") ?? "";
+      const formula = extractFormulaFromElement(rElem);
+      if (tag === "assignmentrule") {
+        rules.push({
+          type: "assignment",
+          variable,
+          formula,
+          range: computeRange(source, rElem),
+        });
+      } else if (tag === "raterule") {
+        rules.push({
+          type: "rate",
+          variable,
+          formula,
+          range: computeRange(source, rElem),
+        });
+      } else if (tag === "algebraicrule") {
+        rules.push({
+          type: "algebraic",
+          variable,
+          formula,
+          range: computeRange(source, rElem),
+        });
+      }
+    }
+  }
+
+  // 6. Events (<listOfEvents>: event -> trigger, listOfEventAssignments -> eventAssignment)
+  const listOfEvents = findChild(modelElem, "listOfEvents");
+  if (listOfEvents) {
+    for (const eElem of findChildren(listOfEvents, "event")) {
+      const trigElem = findChild(eElem, "trigger");
+      const trigger = trigElem ? extractFormulaFromElement(trigElem) : (getAttr(eElem, "trigger") ?? "");
+      const assignments: SbmlEventAssignment[] = [];
+      const listOfEas = findChild(eElem, "listOfEventAssignments") ?? eElem;
+      for (const eaElem of findChildren(listOfEas, "eventAssignment")) {
+        const variable = getAttr(eaElem, "variable");
+        if (variable) {
+          assignments.push({
+            variable,
+            formula: extractFormulaFromElement(eaElem),
+            range: computeRange(source, eaElem),
+          });
+        }
+      }
+      events.push({
+        id: getAttr(eElem, "id"),
+        name: getAttr(eElem, "name"),
+        trigger,
+        assignments,
+        range: computeRange(source, eElem),
+      });
+    }
+  }
+
   const model: SbmlModel = {
     id: modelId,
     name: modelName,
@@ -345,6 +496,9 @@ export function parseSbml(source: string, filename?: string): SbmlDocument {
     species,
     parameters,
     reactions,
+    functionDefinitions,
+    rules,
+    events,
     range: modelRange,
   };
 

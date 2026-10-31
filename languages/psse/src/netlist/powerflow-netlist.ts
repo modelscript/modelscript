@@ -228,7 +228,8 @@ export function extractPowerFlowNetlist(c: PsseCase): PowerFlowNetlist {
       }
     }
 
-    stampTwoWindingAdmittance(iIdx, jIdx, t.r12, t.x12, t.windv1, t.ang1, t.mag1, t.mag2);
+    const effTap12 = (t.windv1 > 0 ? t.windv1 : 1.0) / (t.windv2 > 0 ? t.windv2 : 1.0);
+    stampTwoWindingAdmittance(iIdx, jIdx, t.r12, t.x12, effTap12, t.ang1, t.mag1, t.mag2);
   }
 
   // 3. Add Fixed Shunts

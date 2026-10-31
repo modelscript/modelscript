@@ -78,6 +78,7 @@ export interface AspenDeck {
   title?: string | undefined;
   units?: string | undefined; // 'MET' | 'ENG' | 'SI'
   components: Map<string, AspenComponent>;
+  duplicateComponents?: AspenComponent[] | undefined;
   propertyMethod?: string | undefined; // e.g. 'NRTL', 'UNIQUAC', 'PENG-ROB', 'SRK', 'IDEAL'
   flowsheet: AspenFlowsheetEntry[];
   streams: Map<string, AspenStream>;

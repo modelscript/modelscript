@@ -114,10 +114,17 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
 
   const [expandedDeliveryId, setExpandedDeliveryId] = useState<number | null>(null);
   const [circuitBreakStatus, setCircuitBreakStatus] = useState<string | null>(null);
+  const [confirmPurgeDeadLettersOpen, setConfirmPurgeDeadLettersOpen] = useState(false);
 
   const [ingressChecking, setIngressChecking] = useState(false);
   const [ingressResult, setIngressResult] = useState<IngressVerificationResult | null>(null);
   const [ingressError, setIngressError] = useState<string | null>(null);
+
+  const handlePurgeDeadLetters = async () => {
+    if (!onPurgeDeliveries) return;
+    setConfirmPurgeDeadLettersOpen(false);
+    await onPurgeDeliveries("failed");
+  };
 
   const handleVerifyIngress = async () => {
     setIngressChecking(true);
@@ -484,7 +491,7 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
                 <ActionButton
                   $variant="danger"
                   disabled={loading || (queueStats ? queueStats.failed === 0 : false)}
-                  onClick={() => void onPurgeDeliveries("failed")}
+                  onClick={() => setConfirmPurgeDeadLettersOpen(true)}
                 >
                   <TrashIcon size={13} />
                   <span>Purge Dead-Letter Queue</span>
@@ -675,6 +682,37 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
                 disabled={loading || !importContent.trim()}
               >
                 Import Domain Rules
+              </ActionButton>
+            </Box>
+          </ModalBox>
+        </ModalOverlay>
+      )}
+
+      {confirmPurgeDeadLettersOpen && (
+        <ModalOverlay onClick={() => setConfirmPurgeDeadLettersOpen(false)}>
+          <ModalBox
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm Purge Dead-Letter Queue"
+          >
+            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
+              Purge Dead-Letter Delivery Queue
+            </span>
+            <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
+              Are you sure you want to permanently purge all failed ActivityPub S2S delivery records (
+              {queueStats?.failed ?? 0} item(s)) from the dead-letter queue?
+            </Box>
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <ActionButton
+                $variant="secondary"
+                onClick={() => setConfirmPurgeDeadLettersOpen(false)}
+                disabled={loading}
+              >
+                Cancel
+              </ActionButton>
+              <ActionButton $variant="danger" onClick={() => void handlePurgeDeadLetters()} disabled={loading}>
+                Confirm Purge
               </ActionButton>
             </Box>
           </ModalBox>

@@ -49,4 +49,26 @@ describe("Verilog-A Bidirectional Projections", () => {
     assert(spice.includes(".PARAM R=50"));
     assert(spice.includes(".ENDS resistor"));
   });
+
+  it("accumulates multiple <+ branch contributions and projects I(p, n) flow access in Modelica", () => {
+    const code = `
+      module parallel_rc(p, n);
+        inout p, n;
+        electrical p, n;
+        parameter real G = 0.01;
+        parameter real C = 1e-9;
+        real Q;
+        analog begin
+          Q = C * V(p, n);
+          I(p, n) <+ G * V(p, n);
+          I(p, n) <+ ddt(Q);
+        end
+      endmodule
+    `;
+    const doc = parseVerilogA(code);
+    const mo = verilogAToModelica(doc.modules[0]!);
+    const pinIEqCount = mo.split("\n").filter((l) => l.trim().startsWith("p.i =")).length;
+    assert.strictEqual(pinIEqCount, 1, "Multiple <+ contributions on (p, n) must be summed into a single p.i equation");
+    assert(mo.includes("der(Q)"), "Expected ddt(Q) projected as der(Q)");
+  });
 });

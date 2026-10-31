@@ -356,4 +356,93 @@ end subroutine rocket_stage
     assert.ok(fmu.cSources.modelC.includes("rocket_stage_step"));
     assert.ok(fmu.cSources.wasmModelC.includes("wasm_step"));
   });
+
+  test("parseFortranAst & compileUserComponentStep: executes DO WHILE, SELECT CASE, EXIT, CYCLE, RETURN, 2D arrays, and inline SUBROUTINE", async () => {
+    const { parseFortranAst, compileUserComponentStep } = await import("../src/index.js");
+
+    const src = `
+SUBROUTINE SCALE_AND_ACCUM(VAL, MULT, RES)
+  IMPLICIT NONE
+  REAL VAL, MULT, RES
+  IF (VAL < 0.0) THEN
+    RES = 0.0
+    RETURN
+  END IF
+  RES = VAL * MULT
+END SUBROUTINE
+
+INTEGER I, J, MODE
+REAL ACC, STEP_VAL, M(5, 3)
+
+ACC = 0.0
+DO I = 1, 10, 1
+  IF (I == 2) CYCLE
+  IF (I > 5) EXIT
+  DO J = 1, 2
+    M(I, J) = I * 10.0 + J
+    ACC = ACC + M(I, J)
+  END DO
+END DO
+
+I = 0
+DO WHILE (I < 4)
+  I = I + 1
+  IF (I == 3) CYCLE
+  ACC = ACC + 1.0
+END DO
+
+MODE = $ModeIn
+SELECT CASE (MODE)
+  CASE (1)
+    CALL SCALE_AND_ACCUM(ACC, 2.0, STEP_VAL)
+  CASE (2, 3)
+    CALL SCALE_AND_ACCUM(ACC, 0.5, STEP_VAL)
+  CASE (4:6)
+    CALL SCALE_AND_ACCUM(-5.0, 10.0, STEP_VAL)
+  CASE DEFAULT
+    STEP_VAL = -1.0
+END SELECT
+
+$OutAcc = ACC
+$OutStep = STEP_VAL
+`;
+
+    const ast = parseFortranAst(src);
+    assert.ok(ast.some((s) => s.kind === "subroutine" && s.name === "SCALE_AND_ACCUM"));
+    assert.ok(ast.some((s) => s.kind === "do"));
+    assert.ok(ast.some((s) => s.kind === "doWhile"));
+    assert.ok(ast.some((s) => s.kind === "selectCase"));
+
+    const compiled = compileUserComponentStep(src);
+    const outMap = new Map<string, number>();
+
+    // Mode 1: scales ACC by 2.0
+    // DO I = 1..10: I=1 -> M(1,1)=11, M(1,2)=12 (sum=23)
+    // I=2 -> CYCLE
+    // I=3 -> 31+32 = 63 (sum=86)
+    // I=4 -> 41+42 = 83 (sum=169)
+    // I=5 -> 51+52 = 103 (sum=272)
+    // I=6 -> EXIT
+    // DO WHILE (I < 4): I=1 (+1), I=2 (+1), I=3 (CYCLE), I=4 (+1) => +3 => ACC = 275
+    compiled({
+      inputs: { ModeIn: 1 },
+      outputs: outMap,
+    });
+    assert.equal(outMap.get("OutAcc"), 275.0);
+    assert.equal(outMap.get("OutStep"), 550.0);
+
+    // Mode 5 (matches CASE (4:6), calls SCALE_AND_ACCUM(-5.0, 10.0, STEP_VAL) which hits early RETURN with RES = 0.0)
+    compiled.step({
+      inputs: { ModeIn: 5 },
+      outputs: outMap,
+    });
+    assert.equal(outMap.get("OutStep"), 0.0);
+
+    // Mode 99 (matches CASE DEFAULT -> -1.0)
+    compiled.step({
+      inputs: { ModeIn: 99 },
+      outputs: outMap,
+    });
+    assert.equal(outMap.get("OutStep"), -1.0);
+  });
 });

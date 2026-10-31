@@ -263,14 +263,15 @@ export function tokenizeVerilogA(source: string): Token[] {
       continue;
     }
 
-    // '<=' or '>=' or '==' or '!='
+    // '<=' or '>=' or '==' or '!=' or '&&' or '||' or '**'
     if (
       (ch === "<" && peekNext() === "=") ||
       (ch === ">" && peekNext() === "=") ||
       (ch === "=" && peekNext() === "=") ||
       (ch === "!" && peekNext() === "=") ||
       (ch === "&" && peekNext() === "&") ||
-      (ch === "|" && peekNext() === "|")
+      (ch === "|" && peekNext() === "|") ||
+      (ch === "*" && peekNext() === "*")
     ) {
       const op = advance() + advance();
       tokens.push({
@@ -287,7 +288,7 @@ export function tokenizeVerilogA(source: string): Token[] {
     }
 
     // Single character operators and punctuations
-    const singleOpChars = "+-*/^<>=!";
+    const singleOpChars = "+-*/^<>=!?";
     if (singleOpChars.includes(ch)) {
       tokens.push({
         type: "OPERATOR",
@@ -903,7 +904,31 @@ export class VerilogAParser {
   }
 
   private parseExpression(): VerilogAExpr {
-    return this.parseLogicalOr();
+    return this.parseTernary();
+  }
+
+  private parseTernary(): VerilogAExpr {
+    const cond = this.parseLogicalOr();
+    if (this.match("?")) {
+      const consequent = this.parseExpression();
+      this.consume(":");
+      const alternate = this.parseTernary();
+      return {
+        kind: "ternary",
+        condition: cond,
+        consequent,
+        alternate,
+        sourceRange: {
+          startLine: cond.sourceRange.startLine,
+          startColumn: cond.sourceRange.startColumn,
+          endLine: alternate.sourceRange.endLine,
+          endColumn: alternate.sourceRange.endColumn,
+          startOffset: cond.sourceRange.startOffset,
+          endOffset: alternate.sourceRange.endOffset,
+        },
+      };
+    }
+    return cond;
   }
 
   private parseLogicalOr(): VerilogAExpr {
@@ -1022,10 +1047,10 @@ export class VerilogAParser {
   }
 
   private parseMultiplicative(): VerilogAExpr {
-    let expr = this.parseUnary();
+    let expr = this.parsePower();
     while (this.match("*", "/")) {
       const op = this.lastToken().value as "*" | "/";
-      const right = this.parseUnary();
+      const right = this.parsePower();
       expr = {
         kind: "binary",
         op,
@@ -1042,6 +1067,29 @@ export class VerilogAParser {
       };
     }
     return expr;
+  }
+
+  private parsePower(): VerilogAExpr {
+    const left = this.parseUnary();
+    if (this.match("**", "^")) {
+      const op = this.lastToken().value as "**" | "^";
+      const right = this.parsePower();
+      return {
+        kind: "binary",
+        op,
+        left,
+        right,
+        sourceRange: {
+          startLine: left.sourceRange.startLine,
+          startColumn: left.sourceRange.startColumn,
+          endLine: right.sourceRange.endLine,
+          endColumn: right.sourceRange.endColumn,
+          startOffset: left.sourceRange.startOffset,
+          endOffset: right.sourceRange.endOffset,
+        },
+      };
+    }
+    return left;
   }
 
   private parseUnary(): VerilogAExpr {

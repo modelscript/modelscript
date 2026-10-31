@@ -693,6 +693,9 @@ export class StructuredTextParser {
     const statements = this.parseStatements();
     this.consume("until");
     const condition = this.parseExpression();
+    if (this.checkPunctuation(";")) {
+      this.advance();
+    }
     const endTok = this.consume("end_repeat");
     if (this.checkPunctuation(";")) {
       this.advance();

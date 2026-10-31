@@ -30,12 +30,12 @@ const Overlay = styled.div`
 `;
 
 const ModalCard = styled.div`
-  background: var(--surface-overlay, #0e1424);
-  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.15));
+  background: var(--surface-overlay, var(--color-canvas-overlay));
+  border: 1px solid var(--border-subtle, var(--color-border-default));
   border-radius: var(--radius-xl, 16px);
   width: 100%;
   max-width: 520px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -43,7 +43,7 @@ const ModalCard = styled.div`
 
 const ModalHeader = styled.div`
   padding: 20px 24px;
-  border-bottom: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  border-bottom: 1px solid var(--border-subtle, var(--color-border-default));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -52,7 +52,7 @@ const ModalHeader = styled.div`
 const ModalTitle = styled.h2`
   font-size: 18px;
   font-weight: 700;
-  color: var(--color-text-heading, #fff);
+  color: var(--color-text-heading, var(--color-text-primary));
   margin: 0;
   display: flex;
   align-items: center;
@@ -62,7 +62,7 @@ const ModalTitle = styled.h2`
 const CloseButton = styled.button`
   background: none;
   border: none;
-  color: var(--color-text-muted, #8b949e);
+  color: var(--color-text-muted);
   cursor: pointer;
   padding: 4px;
   border-radius: 6px;
@@ -70,8 +70,8 @@ const CloseButton = styled.button`
   align-items: center;
   justify-content: center;
   &:hover {
-    color: var(--color-text-primary, #fff);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--color-text-primary);
+    background: var(--surface-elevated, var(--color-canvas-subtle));
   }
 `;
 
@@ -94,8 +94,8 @@ const QrContainer = styled.div`
 `;
 
 const SecretBox = styled.div`
-  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  background: var(--surface-elevated, var(--color-canvas-subtle));
+  border: 1px solid var(--border-subtle, var(--color-border-default));
   border-radius: 8px;
   padding: 12px 16px;
   display: flex;
@@ -105,13 +105,13 @@ const SecretBox = styled.div`
   font-family: monospace;
   font-size: 15px;
   letter-spacing: 0.1em;
-  color: var(--color-text-primary, #fff);
+  color: var(--color-text-primary);
 `;
 
 const CopyButton = styled.button`
   background: transparent;
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.2));
-  color: var(--color-text-primary, #fff);
+  border: 1px solid var(--border-subtle, var(--color-border-default));
+  color: var(--color-text-primary);
   border-radius: 6px;
   padding: 6px 12px;
   font-size: 12px;
@@ -121,7 +121,7 @@ const CopyButton = styled.button`
   align-items: center;
   gap: 6px;
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--surface-elevated, var(--color-canvas-subtle));
   }
 `;
 
@@ -129,9 +129,9 @@ const CodeInput = styled.input`
   width: 100%;
   padding: 12px 16px;
   border-radius: 8px;
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.2));
-  background: var(--color-canvas-default, #0d1117);
-  color: #fff;
+  border: 1px solid var(--border-subtle, var(--color-border-default));
+  background: var(--surface-elevated, var(--color-canvas-subtle));
+  color: var(--color-text-primary);
   font-size: 20px;
   font-family: monospace;
   letter-spacing: 0.25em;
@@ -148,8 +148,8 @@ const BackupCodeGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  background: var(--surface-elevated, var(--color-canvas-subtle));
+  border: 1px solid var(--border-subtle, var(--color-border-default));
   border-radius: 8px;
   padding: 16px;
   margin: 16px 0;
@@ -160,7 +160,8 @@ const BackupCodeGrid = styled.div`
 
 const BackupCodeItem = styled.div`
   padding: 6px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--surface-overlay, var(--color-canvas-default));
+  border: 1px solid var(--border-subtle, var(--color-border-default));
   border-radius: 4px;
   letter-spacing: 0.1em;
   font-weight: 600;
@@ -416,9 +417,9 @@ export default function TwoFactorModal({
                       width: "100%",
                       padding: "10px 14px",
                       borderRadius: "6px",
-                      border: "1px solid var(--color-border-default)",
-                      background: "var(--color-canvas-default)",
-                      color: "#fff",
+                      border: "1px solid var(--border-subtle, var(--color-border-default))",
+                      background: "var(--surface-elevated, var(--color-canvas-subtle))",
+                      color: "var(--color-text-primary)",
                       fontSize: "14px",
                     }}
                   />
@@ -447,9 +448,9 @@ export default function TwoFactorModal({
                     width: "100%",
                     padding: "10px 14px",
                     borderRadius: "6px",
-                    border: "1px solid var(--color-border-default)",
-                    background: "var(--color-canvas-default)",
-                    color: "#fff",
+                    border: "1px solid var(--border-subtle, var(--color-border-default))",
+                    background: "var(--surface-elevated, var(--color-canvas-subtle))",
+                    color: "var(--color-text-primary)",
                     fontSize: "14px",
                     fontFamily: "monospace",
                   }}

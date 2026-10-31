@@ -5,6 +5,7 @@
  */
 
 import { AspenErrorCode } from "../errors.js";
+import { KNOWN_COMPONENTS } from "../solvers/flash-solver.js";
 import type { AspenDeck, SourceLocation } from "../types.js";
 
 export interface AspenDiagnostic {
@@ -15,8 +16,48 @@ export interface AspenDiagnostic {
   loc: SourceLocation;
 }
 
+const KNOWN_COMPONENT_KEYS = (() => {
+  const keys = new Set<string>();
+  for (const [k, v] of Object.entries(KNOWN_COMPONENTS)) {
+    keys.add(k.toUpperCase());
+    keys.add(v.formula.toUpperCase());
+    keys.add(v.name.toUpperCase());
+  }
+  return keys;
+})();
+
 export function lintAspen(deck: AspenDeck): AspenDiagnostic[] {
   const diagnostics: AspenDiagnostic[] = [];
+
+  // 0a. M8107: Duplicate component IDs in COMPONENTS
+  if (deck.duplicateComponents) {
+    for (const dup of deck.duplicateComponents) {
+      diagnostics.push({
+        code: AspenErrorCode.DUPLICATE_COMPONENT_ID.code,
+        rule: AspenErrorCode.DUPLICATE_COMPONENT_ID.rule,
+        severity: AspenErrorCode.DUPLICATE_COMPONENT_ID.severity,
+        message: AspenErrorCode.DUPLICATE_COMPONENT_ID.message(dup.id),
+        loc: dup.loc,
+      });
+    }
+  }
+
+  // 0b. M8103: Component critical properties check against EOS / property method
+  const propMethod = deck.propertyMethod ?? "IDEAL";
+  for (const [compId, comp] of deck.components) {
+    const idKnown = KNOWN_COMPONENT_KEYS.has(compId.toUpperCase());
+    const formulaKnown = comp.formula ? KNOWN_COMPONENT_KEYS.has(comp.formula.toUpperCase()) : false;
+    const nameKnown = comp.name ? KNOWN_COMPONENT_KEYS.has(comp.name.toUpperCase()) : false;
+    if (!idKnown && !formulaKnown && !nameKnown) {
+      diagnostics.push({
+        code: AspenErrorCode.INVALID_EOS_PARAMETER.code,
+        rule: AspenErrorCode.INVALID_EOS_PARAMETER.rule,
+        severity: AspenErrorCode.INVALID_EOS_PARAMETER.severity,
+        message: AspenErrorCode.INVALID_EOS_PARAMETER.message(compId, propMethod),
+        loc: comp.loc,
+      });
+    }
+  }
 
   // Track producing streams and consuming streams
   const producedStreams = new Set<string>();

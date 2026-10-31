@@ -11,7 +11,14 @@
  */
 
 import { ScadErrorCode } from "./errors.js";
+import { parseScadSource } from "./evaluator.js";
 import type { ScadCstNode } from "./patcher.js";
+import type { ScadWorkspaceIndex } from "./workspace-index.js";
+
+export interface ScadLintOptions {
+  workspaceIndex?: ScadWorkspaceIndex | undefined;
+  uri?: string | undefined;
+}
 
 export type ScadConstValue = number | string | boolean | undefined | ScadConstValue[];
 
@@ -144,7 +151,17 @@ const BUILTIN_MODULES = new Set<string>([
 /**
  * Supported fluent CAD transformation and feature-modeling methods on `ChainedSolid` expressions.
  */
-const BUILTIN_METHODS = new Set<string>(["translate", "rotate", "scale", "mirror", "color", "fillet", "chamfer"]);
+const BUILTIN_METHODS = new Set<string>([
+  "translate",
+  "rotate",
+  "scale",
+  "mirror",
+  "multmatrix",
+  "color",
+  "offset",
+  "fillet",
+  "chamfer",
+]);
 
 /**
  * Signature metadata for a user-defined OpenSCAD module or function used for call-site validation.
@@ -356,11 +373,20 @@ function parseArgumentList(argListNode: ScadCstNode | null | undefined): {
 /**
  * Run semantic lints on a parsed OpenSCAD CST root node.
  */
-export function lintScadCst(rootNode: ScadCstNode | null | undefined, sourceText?: string): ScadDiagnostic[] {
+export function lintScadCst(
+  rootNode: ScadCstNode | null | undefined,
+  sourceText?: string,
+  options?: ScadLintOptions | ScadWorkspaceIndex,
+): ScadDiagnostic[] {
   if (!rootNode) return [];
   const rawText = sourceText ?? rootNode.tree?.sourceCode ?? rootNode.text ?? "";
   const locator = new LineLocator(rawText);
   const diagnostics: ScadDiagnostic[] = [];
+  const workspaceIndex =
+    options && "resolveDependencyInfo" in options ? options : (options as ScadLintOptions | undefined)?.workspaceIndex;
+  const currentUri =
+    options && !("resolveDependencyInfo" in options) ? (options as ScadLintOptions | undefined)?.uri : undefined;
+  let suppressEmit = false;
 
   const emit = (
     node: ScadCstNode | null | undefined,
@@ -368,6 +394,7 @@ export function lintScadCst(rootNode: ScadCstNode | null | undefined, sourceText
     severity: "error" | "warning" | "info",
     message: string,
   ) => {
+    if (suppressEmit) return;
     const startOffset = getNodeStart(node);
     const endOffset = Math.max(startOffset + 1, getNodeEnd(node));
     const startPos = locator.offsetToPos(startOffset);
@@ -416,6 +443,54 @@ export function lintScadCst(rootNode: ScadCstNode | null | undefined, sourceText
     if (type === "STRING") return exprNode.text.slice(1, -1);
     if (type === "UNDEF") return undefined;
     if (type === "IDENTIFIER") return scope.getVarValue(exprNode.text.trim());
+
+    if (type === "LetExpression") {
+      const letScope = new LintScope(scope);
+      let bodyExpr: ScadCstNode | null = null;
+      let inArgs = false;
+      let argsDone = false;
+      for (let i = 0; i < exprNode.childCount; i++) {
+        const c = exprNode.child(i);
+        if (!c) continue;
+        if (!argsDone && c.text === "(") {
+          inArgs = true;
+          continue;
+        }
+        if (inArgs && c.text === ")") {
+          inArgs = false;
+          argsDone = true;
+          continue;
+        }
+        if (c.type === "LetBinding" || (inArgs && c.type === "Argument")) {
+          const nameNode = findChildByType(c, "IDENTIFIER");
+          const valNode = findChildByType(c, "Expression");
+          if (nameNode && valNode) {
+            letScope.vars.set(nameNode.text.trim(), {
+              value: tryEvalExpr(valNode, letScope, depth + 1),
+              node: nameNode,
+            });
+          }
+        } else if (c.type === "ArgumentList") {
+          argsDone = true;
+          for (let j = 0; j < c.childCount; j++) {
+            const arg = c.child(j);
+            if (arg && (arg.type === "Argument" || arg.type === "LetBinding")) {
+              const nameNode = findChildByType(arg, "IDENTIFIER");
+              const valNode = findChildByType(arg, "Expression");
+              if (nameNode && valNode) {
+                letScope.vars.set(nameNode.text.trim(), {
+                  value: tryEvalExpr(valNode, letScope, depth + 1),
+                  node: nameNode,
+                });
+              }
+            }
+          }
+        } else if (c.type === "Expression" || c.type.endsWith("Expression")) {
+          bodyExpr = c;
+        }
+      }
+      return bodyExpr ? tryEvalExpr(bodyExpr, letScope, depth + 1) : undefined;
+    }
 
     if (type === "ParenthesizedExpression") {
       const inner = findChildByType(exprNode, "Expression");
@@ -605,6 +680,86 @@ export function lintScadCst(rootNode: ScadCstNode | null | undefined, sourceText
       return;
     }
 
+    if (type === "LetExpression") {
+      const letScope = new LintScope(scope);
+      let bodyExpr: ScadCstNode | null = null;
+      let inArgs = false;
+      let argsDone = false;
+      for (let i = 0; i < exprNode.childCount; i++) {
+        const c = exprNode.child(i);
+        if (!c) continue;
+        if (!argsDone && c.text === "(") {
+          inArgs = true;
+          continue;
+        }
+        if (inArgs && c.text === ")") {
+          inArgs = false;
+          argsDone = true;
+          continue;
+        }
+        if (c.type === "LetBinding" || (inArgs && c.type === "Argument")) {
+          const nameNode = findChildByType(c, "IDENTIFIER");
+          const valNode = findChildByType(c, "Expression");
+          if (valNode) checkExpression(valNode, letScope);
+          if (nameNode) {
+            letScope.vars.set(nameNode.text.trim(), {
+              value: valNode ? tryEvalExpr(valNode, letScope) : undefined,
+              node: nameNode,
+            });
+          }
+        } else if (c.type === "ArgumentList") {
+          argsDone = true;
+          for (let j = 0; j < c.childCount; j++) {
+            const arg = c.child(j);
+            if (arg && (arg.type === "Argument" || arg.type === "LetBinding")) {
+              const nameNode = findChildByType(arg, "IDENTIFIER");
+              const valNode = findChildByType(arg, "Expression");
+              if (valNode) checkExpression(valNode, letScope);
+              if (nameNode) {
+                letScope.vars.set(nameNode.text.trim(), {
+                  value: valNode ? tryEvalExpr(valNode, letScope) : undefined,
+                  node: nameNode,
+                });
+              }
+            }
+          }
+        } else if (c.type === "Expression" || c.type.endsWith("Expression")) {
+          bodyExpr = c;
+        }
+      }
+      if (bodyExpr) checkExpression(bodyExpr, letScope);
+      return;
+    }
+
+    if (type === "ListComprehension") {
+      const varNode = findChildByType(exprNode, "IDENTIFIER");
+      const exprs: ScadCstNode[] = [];
+      for (let i = 0; i < exprNode.childCount; i++) {
+        const c = exprNode.child(i);
+        if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
+          exprs.push(c);
+        }
+      }
+      const rangeNode = exprs[0];
+      if (rangeNode) checkExpression(rangeNode, scope);
+      const compScope = new LintScope(scope);
+      if (varNode) {
+        compScope.vars.set(varNode.text.trim(), { value: undefined, node: varNode });
+      }
+      for (let i = 1; i < exprs.length; i++) {
+        checkExpression(exprs[i], compScope);
+      }
+      return;
+    }
+
+    if (type === "VectorLiteral") {
+      const listComp = findChildByType(exprNode, "ListComprehension");
+      if (listComp) {
+        checkExpression(listComp, scope);
+        return;
+      }
+    }
+
     if (type === "PostfixExpression") {
       const first = exprNode.child(0);
       const second = exprNode.child(1);
@@ -734,6 +889,72 @@ export function lintScadCst(rootNode: ScadCstNode | null | undefined, sourceText
     for (const rawStmt of statements) {
       const stmt = rawStmt?.type === "Statement" ? rawStmt.child(0) : rawStmt;
       if (!stmt) continue;
+
+      if (stmt.type === "IncludeStatement" || stmt.type === "UseStatement") {
+        if (!workspaceIndex) continue;
+        const raw = stmt.text.trim();
+        const match = raw.match(/^(?:include|use)\s*<([^>]+)>/);
+        const targetPath = match?.[1]?.trim();
+        if (!targetPath) continue;
+        const depInfo = workspaceIndex.resolveDependencyInfo(targetPath, currentUri);
+        if (!depInfo) continue;
+
+        const isInclude = stmt.type === "IncludeStatement";
+        if (depInfo.sourceText) {
+          const depRoot = parseScadSource(depInfo.sourceText);
+          const depScope = new LintScope(null);
+          const depStmts: ScadCstNode[] = [];
+          for (let i = 0; i < depRoot.childCount; i++) {
+            const c = depRoot.child(i);
+            if (c && c.type === "Statement") depStmts.push(c);
+          }
+          const prevSuppress = suppressEmit;
+          suppressEmit = true;
+          try {
+            hoistDeclarations(depStmts, depScope);
+          } finally {
+            suppressEmit = prevSuppress;
+          }
+          for (const [modName, modSig] of depScope.modules) {
+            scope.modules.set(modName, modSig);
+          }
+          for (const [fnName, fnSig] of depScope.functions) {
+            scope.functions.set(fnName, fnSig);
+          }
+          if (isInclude) {
+            for (const [varName, varEntry] of depScope.vars) {
+              scope.vars.set(varName, varEntry);
+            }
+          }
+        } else {
+          for (const [modName] of depInfo.modules) {
+            scope.modules.set(modName, {
+              name: modName,
+              params: [],
+              requiredParams: new Set<string>(),
+              defaultExprs: new Map(),
+              bodyNode: null,
+              declScope: scope,
+            });
+          }
+          for (const [fnName] of depInfo.functions) {
+            scope.functions.set(fnName, {
+              name: fnName,
+              params: [],
+              requiredParams: new Set<string>(),
+              defaultExprs: new Map(),
+              bodyNode: null,
+              declScope: scope,
+            });
+          }
+          if (isInclude) {
+            for (const [varName] of depInfo.variables) {
+              scope.vars.set(varName, { value: undefined, node: null });
+            }
+          }
+        }
+        continue;
+      }
 
       if (stmt.type === "VariableDeclaration") {
         const nameNode = findChildByType(stmt, "IDENTIFIER");
@@ -938,9 +1159,13 @@ export function lintScadCst(rootNode: ScadCstNode | null | undefined, sourceText
 
   const checkStatement = (rawStmt: ScadCstNode | null | undefined, scope: LintScope) => {
     if (!rawStmt) return;
-    const stmt = rawStmt.type === "Statement" ? rawStmt.child(0) : rawStmt;
+    const stmt = rawStmt.type === "Statement" || rawStmt.type === "OperatorChildStatement" ? rawStmt.child(0) : rawStmt;
     if (!stmt) return;
     const type = stmt.type;
+
+    if (type === "IncludeStatement" || type === "UseStatement") {
+      return;
+    }
 
     if (type === "VariableDeclaration") {
       const nameNode = findChildByType(stmt, "IDENTIFIER");
@@ -1034,21 +1259,29 @@ export function lintScadCst(rootNode: ScadCstNode | null | undefined, sourceText
         findChildByType(stmt, "TransformOp") ??
         findChildByType(stmt, "LinearExtrudeOp") ??
         findChildByType(stmt, "BooleanOp") ??
-        findChildByType(stmt, "TagPortOp");
+        findChildByType(stmt, "TagPortOp") ??
+        findChildByType(stmt, "ModuleInstantiation");
       if (opNode) {
-        const argListNode = findChildByType(opNode, "ArgumentList");
-        const parsedArgs = parseArgumentList(argListNode);
-        for (const arg of parsedArgs.all) {
-          checkExpression(arg.valueNode, scope);
-        }
-        if (opNode.type === "LinearExtrudeOp") {
-          const heightArg = parsedArgs.positional[0] ?? parsedArgs.named.get("height");
-          if (heightArg) {
-            checkPositiveDimension(heightArg.valueNode, scope, "linear_extrude", "height");
+        if (opNode.type === "ModuleInstantiation") {
+          checkPrimarySolid(opNode, scope);
+        } else {
+          const argListNode = findChildByType(opNode, "ArgumentList");
+          const parsedArgs = parseArgumentList(argListNode);
+          for (const arg of parsedArgs.all) {
+            checkExpression(arg.valueNode, scope);
+          }
+          if (opNode.type === "LinearExtrudeOp" && opNode.text.trim().startsWith("linear_extrude")) {
+            const heightArg = parsedArgs.positional[0] ?? parsedArgs.named.get("height");
+            if (heightArg) {
+              checkPositiveDimension(heightArg.valueNode, scope, "linear_extrude", "height");
+            }
           }
         }
       }
-      const childStmt = findChildByType(stmt, "Statement") ?? findChildByType(stmt, "BlockStatement");
+      const childStmt =
+        findChildByType(stmt, "OperatorChildStatement") ??
+        findChildByType(stmt, "Statement") ??
+        findChildByType(stmt, "BlockStatement");
       if (childStmt) checkStatement(childStmt, scope);
       return;
     }

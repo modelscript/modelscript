@@ -23,6 +23,8 @@ export interface GenericSyntaxNode {
   getTypeId?: (() => number) | undefined;
 }
 
+export type CstNodeLike = GenericSyntaxNode;
+
 /**
  * Configuration options for OWL 2 Functional-Style Syntax CST lowering.
  */
@@ -45,6 +47,7 @@ export interface LoweringContext {
   prefixes: Map<string, string>;
   userPrefixes: Map<string, string>;
   expandPrefixes: boolean;
+  auxCounter?: number | undefined;
 }
 
 /**
@@ -67,6 +70,7 @@ export function extractOwl2Prefixes(rootNode: GenericSyntaxNode, sourceText?: st
     prefixes: new Map(BUILTIN_OWL2_PREFIXES),
     userPrefixes: new Map(),
     expandPrefixes: false,
+    auxCounter: 0,
   };
   walkForPrefixes(rootNode, ctx);
   return ctx.prefixes;
@@ -95,7 +99,9 @@ export function expandOwl2Iri(rawIri: string, prefixes: ReadonlyMap<string, stri
 
 /**
  * Lowers a parsed OWL 2 Functional-Style Syntax CST into typed OWL2Axiom records.
- * Covers all 27 OWL 2 Functional-Style Syntax axiom productions in the grammar.
+ * Covers all 27 OWL 2 Functional-Style Syntax axiom productions in the grammar,
+ * with recursive Tseitin / $\mathcal{SROIQ}$ normalization for nested class expressions
+ * and General Concept Inclusions (GCIs).
  */
 export function lowerCstToAxioms(
   rootNode: GenericSyntaxNode,
@@ -108,6 +114,7 @@ export function lowerCstToAxioms(
     prefixes: new Map(BUILTIN_OWL2_PREFIXES),
     userPrefixes: new Map(),
     expandPrefixes: options?.expandPrefixes ?? false,
+    auxCounter: 0,
   };
 
   walkForPrefixes(rootNode, ctx);
@@ -268,14 +275,14 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
     case "SubClassOfAxiom": {
       const exprs = getMeaningfulExpressions(node, ctx);
       if (exprs.length >= 2) {
-        const subClass = exprs[0]!;
-        const superClass = exprs[1]!;
-        const subIri = normalizeIri(getNodeText(subClass, ctx), ctx);
+        const subClass = unwrapClassExprNode(exprs[0]!);
+        const superClass = unwrapClassExprNode(exprs[1]!);
 
         // Lower `SubClassOf(ObjectUnionOf(A B ...) Super)` into a DisjunctiveClass axiom
-        if (subClass.type === "ObjectUnionOf") {
-          const unionIris = getIris(subClass, ctx);
-          const supIri = normalizeIri(getNodeText(superClass, ctx), ctx);
+        if (cleanNodeType(subClass) === "ObjectUnionOf") {
+          const unionOps = getClassExprOperands(subClass, ctx);
+          const unionIris = unionOps.map((op) => normalizeClassExprToIri(op, ctx, out)).filter(Boolean);
+          const supIri = normalizeClassExprToIri(superClass, ctx, out);
           if (unionIris.length >= 1 && supIri) {
             out.push({
               type: "DisjunctiveClass",
@@ -287,103 +294,31 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
           }
         }
 
-        // Check if superClass is a complex restriction
-        if (superClass.type === "ObjectSomeValuesFrom") {
-          const innerIris = getIris(superClass, ctx);
-          if (innerIris.length >= 2) {
-            out.push({
-              type: "ObjectSomeValuesFrom",
-              subClassIri: subIri || undefined,
-              propertyIri: innerIris[0]!,
-              fillerClassIri: innerIris[1]!,
-              sourceLang: "owl2",
-            });
-          }
-        } else if (superClass.type === "DataSomeValuesFrom") {
-          const innerIris = getIris(superClass, ctx);
-          if (innerIris.length >= 2) {
-            out.push({
-              type: "DataSomeValuesFrom",
-              subClassIri: subIri || undefined,
-              propertyIri: innerIris[0]!,
-              dataRange: innerIris[1]!,
-              sourceLang: "owl2",
-            });
-          }
-        } else if (superClass.type === "ObjectAllValuesFrom" || superClass.type === "DataAllValuesFrom") {
-          const innerIris = getIris(superClass, ctx);
-          if (innerIris.length >= 2) {
-            out.push({
-              type: "UniversalRestriction",
-              propertyIri: innerIris[0]!,
-              targetClassIri: innerIris[1]!,
-              classIri: subIri,
-              sourceLang: "owl2",
-            });
-          }
-        } else if (superClass.type === "ObjectHasSelf") {
-          const innerIris = getIris(superClass, ctx);
-          if (innerIris.length >= 1) {
-            out.push({
-              type: "SelfRestriction",
-              classIri: subIri,
-              propertyIri: innerIris[0]!,
-              sourceLang: "owl2",
-            });
-          }
-        } else if (superClass.type === "ObjectHasValue") {
-          const innerIris = getIris(superClass, ctx);
-          if (innerIris.length >= 2) {
-            out.push({
-              type: "ObjectSomeValuesFrom",
-              subClassIri: subIri || undefined,
-              propertyIri: innerIris[0]!,
-              fillerClassIri: innerIris[1]!,
-              sourceLang: "owl2",
-            });
-          }
-        } else if (superClass.type === "ObjectOneOf") {
-          const innerIris = getIris(superClass, ctx);
-          if (innerIris.length >= 1) {
-            out.push({
-              type: "ObjectOneOf",
-              classIri: subIri,
-              individualIris: innerIris,
-              sourceLang: "owl2",
-            });
-          }
-        } else if (
-          superClass.type === "ObjectMinCardinality" ||
-          superClass.type === "ObjectMaxCardinality" ||
-          superClass.type === "ObjectExactCardinality" ||
-          superClass.type === "DataMinCardinality" ||
-          superClass.type === "DataMaxCardinality" ||
-          superClass.type === "DataExactCardinality"
+        const subIri = normalizeClassExprToIri(subClass, ctx, out);
+        const superKind = cleanNodeType(superClass);
+
+        if (
+          superKind === "ObjectSomeValuesFrom" ||
+          superKind === "DataSomeValuesFrom" ||
+          superKind === "ObjectAllValuesFrom" ||
+          superKind === "DataAllValuesFrom" ||
+          superKind === "ObjectHasSelf" ||
+          superKind === "ObjectHasValue" ||
+          superKind === "ObjectOneOf" ||
+          superKind === "ObjectMinCardinality" ||
+          superKind === "ObjectMaxCardinality" ||
+          superKind === "ObjectExactCardinality" ||
+          superKind === "DataMinCardinality" ||
+          superKind === "DataMaxCardinality" ||
+          superKind === "DataExactCardinality"
         ) {
-          const cardType =
-            superClass.type === "ObjectMinCardinality" || superClass.type === "DataMinCardinality"
-              ? "min"
-              : superClass.type === "ObjectMaxCardinality" || superClass.type === "DataMaxCardinality"
-                ? "max"
-                : "exact";
-          const count = getInteger(superClass, ctx);
-          const innerIris = getIris(superClass, ctx);
-          if (innerIris.length >= 1) {
-            out.push({
-              type: "QualifiedCardinality",
-              classIri: subIri,
-              propertyIri: innerIris[0]!,
-              cardinalityType: cardType,
-              count,
-              fillerClassIri: innerIris[1],
-              sourceLang: "owl2",
-            });
-          }
+          lowerComplexClassRestriction(subIri, superClass, ctx, out, false);
         } else {
+          const supIri = normalizeClassExprToIri(superClass, ctx, out);
           out.push({
             type: "SubClassOf",
             subClassIri: subIri,
-            superClassIri: normalizeIri(getNodeText(superClass, ctx), ctx),
+            superClassIri: supIri,
             sourceLang: "owl2",
           });
         }
@@ -392,14 +327,14 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
     }
 
     case "EquivalentClassesAxiom": {
-      const exprs = getMeaningfulExpressions(node, ctx);
+      const exprs = getMeaningfulExpressions(node, ctx).map(unwrapClassExprNode);
       // Special-case `EquivalentClasses(C ObjectOneOf(i1 i2 ...))` into an ObjectOneOf enumeration axiom
       if (exprs.length === 2) {
-        const oneOfIdx = exprs.findIndex((e) => e.type === "ObjectOneOf");
+        const oneOfIdx = exprs.findIndex((e) => cleanNodeType(e) === "ObjectOneOf");
         if (oneOfIdx !== -1) {
           const otherExpr = exprs[oneOfIdx === 0 ? 1 : 0]!;
           const oneOfExpr = exprs[oneOfIdx]!;
-          const classIri = normalizeIri(getNodeText(otherExpr, ctx), ctx);
+          const classIri = normalizeClassExprToIri(otherExpr, ctx, out);
           const individualIris = getIris(oneOfExpr, ctx);
           if (classIri && individualIris.length > 0) {
             out.push({
@@ -412,7 +347,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
           }
         }
       }
-      const iris = exprs.map((c) => normalizeIri(getNodeText(c, ctx), ctx)).filter(Boolean);
+      const iris = exprs.map((c) => normalizeClassExprToIri(c, ctx, out)).filter(Boolean);
       if (iris.length >= 2) {
         out.push({ type: "EquivalentClasses", classIris: iris, sourceLang: "owl2" });
       }
@@ -421,7 +356,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
 
     case "DisjointClassesAxiom": {
       const iris = getMeaningfulExpressions(node, ctx)
-        .map((c) => normalizeIri(getNodeText(c, ctx), ctx))
+        .map((c) => normalizeClassExprToIri(c, ctx, out))
         .filter(Boolean);
       if (iris.length >= 2) {
         out.push({ type: "DisjointClasses", classIris: iris, sourceLang: "owl2" });
@@ -430,7 +365,21 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
     }
 
     case "SubObjectPropertyOfAxiom": {
+      const chainNode = getNodeChildren(node).find((c) => c.type === "ObjectPropertyChain");
       const iris = getIris(node, ctx);
+      if (chainNode && iris.length >= 1) {
+        const chainIris = getIris(chainNode, ctx);
+        if (chainIris.length >= 2) {
+          out.push({
+            type: "SubObjectPropertyChainOf" as unknown as "SubObjectPropertyOf",
+            subPropertyIri: chainIris[0]!,
+            superPropertyIri: iris[0]!,
+            propertyChainIris: chainIris,
+            sourceLang: "owl2",
+          } as unknown as OWL2Axiom);
+          return;
+        }
+      }
       if (iris.length >= 2) {
         out.push({
           type: "SubObjectPropertyOf",
@@ -520,7 +469,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
       if (children.length >= 2) {
         out.push({
           type: "ClassAssertion",
-          classIri: normalizeIri(getNodeText(children[0]!, ctx), ctx),
+          classIri: normalizeClassExprToIri(children[0]!, ctx, out),
           individualIri: normalizeIri(getNodeText(children[1]!, ctx), ctx),
           sourceLang: "owl2",
         });
@@ -641,7 +590,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
       const children = getMeaningfulExpressions(node, ctx);
       if (children.length >= 2) {
         const propIri = normalizeIri(getNodeText(children[0]!, ctx), ctx);
-        const domainIri = normalizeIri(getNodeText(children[1]!, ctx), ctx);
+        const domainIri = normalizeClassExprToIri(children[1]!, ctx, out);
         out.push({
           type: "ObjectPropertyDomain",
           propertyIri: propIri,
@@ -656,7 +605,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
       const children = getMeaningfulExpressions(node, ctx);
       if (children.length >= 2) {
         const propIri = normalizeIri(getNodeText(children[0]!, ctx), ctx);
-        const rangeIri = normalizeIri(getNodeText(children[1]!, ctx), ctx);
+        const rangeIri = normalizeClassExprToIri(children[1]!, ctx, out);
         out.push({
           type: "ObjectPropertyRange",
           propertyIri: propIri,
@@ -671,7 +620,7 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
       const children = getMeaningfulExpressions(node, ctx);
       if (children.length >= 2) {
         const propIri = normalizeIri(getNodeText(children[0]!, ctx), ctx);
-        const domainIri = normalizeIri(getNodeText(children[1]!, ctx), ctx);
+        const domainIri = normalizeClassExprToIri(children[1]!, ctx, out);
         out.push({
           type: "DataPropertyDomain",
           propertyIri: propIri,
@@ -700,6 +649,280 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
 
   for (const child of getNodeChildren(node)) {
     walkForAxioms(child, ctx, out);
+  }
+}
+
+/**
+ * Set of complex OWL 2 class expression non-terminal types eligible for Tseitin normalization.
+ */
+const COMPLEX_CLASS_EXPR_TYPES = new Set([
+  "ObjectIntersectionOf",
+  "ObjectUnionOf",
+  "ObjectComplementOf",
+  "ObjectSomeValuesFrom",
+  "ObjectAllValuesFrom",
+  "ObjectHasSelf",
+  "ObjectHasValue",
+  "ObjectOneOf",
+  "ObjectMinCardinality",
+  "ObjectMaxCardinality",
+  "ObjectExactCardinality",
+  "DataSomeValuesFrom",
+  "DataAllValuesFrom",
+  "DataMinCardinality",
+  "DataMaxCardinality",
+  "DataExactCardinality",
+  "DataHasValue",
+]);
+
+function unwrapClassExprNode(node: GenericSyntaxNode): GenericSyntaxNode {
+  let curr = node;
+  while (cleanNodeType(curr) === "_ClassExpression") {
+    const children = getNodeChildren(curr).filter((c) => {
+      const t = cleanNodeType(c);
+      return t !== "(" && t !== ")" && !AXIOM_KEYWORDS.has(t);
+    });
+    if (children.length === 1) {
+      curr = children[0]!;
+    } else {
+      break;
+    }
+  }
+  return curr;
+}
+
+function isComplexClassExpr(node: GenericSyntaxNode): boolean {
+  const unwrapped = unwrapClassExprNode(node);
+  return COMPLEX_CLASS_EXPR_TYPES.has(cleanNodeType(unwrapped)) && getNodeChildren(unwrapped).length > 0;
+}
+
+function getClassExprOperands(node: GenericSyntaxNode, _ctx: LoweringContext): GenericSyntaxNode[] {
+  const unwrapped = unwrapClassExprNode(node);
+  return getNodeChildren(unwrapped).filter((c) => {
+    const t = cleanNodeType(c);
+    if (AXIOM_KEYWORDS.has(t) || t.endsWith("Axiom")) return false;
+    if (getNodeChildren(c).length === 0 && COMPLEX_CLASS_EXPR_TYPES.has(t)) return false;
+    return true;
+  });
+}
+
+/**
+ * Recursively normalizes a class expression node into an atomic class IRI,
+ * introducing fresh `__aux_N` auxiliary concept declarations and structural
+ * $\mathcal{SROIQ}$ axioms when `rawNode` is a complex class expression.
+ */
+export function normalizeClassExprToIri(rawNode: GenericSyntaxNode, ctx: LoweringContext, out: OWL2Axiom[]): string {
+  const node = unwrapClassExprNode(rawNode);
+  if (!isComplexClassExpr(node)) {
+    return normalizeIri(getNodeText(node, ctx), ctx);
+  }
+  ctx.auxCounter = (ctx.auxCounter ?? 0) + 1;
+  const auxIri = `__aux_${ctx.auxCounter}`;
+  lowerComplexClassRestriction(auxIri, node, ctx, out, true);
+  return auxIri;
+}
+
+function lowerComplexClassRestriction(
+  targetClassIri: string,
+  rawExprNode: GenericSyntaxNode,
+  ctx: LoweringContext,
+  out: OWL2Axiom[],
+  isAuxDefinition: boolean,
+): void {
+  const exprNode = unwrapClassExprNode(rawExprNode);
+  const kind = cleanNodeType(exprNode);
+  const operands = getClassExprOperands(exprNode, ctx);
+
+  let declAxiom: Record<string, unknown> | undefined;
+  if (isAuxDefinition) {
+    declAxiom = { type: "ClassDeclaration", iri: targetClassIri, sourceLang: "owl2" };
+    out.push(declAxiom as unknown as OWL2Axiom);
+  }
+
+  switch (kind) {
+    case "ObjectIntersectionOf": {
+      const opIris = operands.map((op) => normalizeClassExprToIri(op, ctx, out)).filter(Boolean);
+      if (declAxiom) declAxiom["intersectionOf"] = opIris;
+      for (const opIri of opIris) {
+        out.push({
+          type: "SubClassOf",
+          subClassIri: targetClassIri,
+          superClassIri: opIri,
+          sourceLang: "owl2",
+        });
+      }
+      break;
+    }
+
+    case "ObjectUnionOf": {
+      const opIris = operands.map((op) => normalizeClassExprToIri(op, ctx, out)).filter(Boolean);
+      if (declAxiom) declAxiom["unionOf"] = opIris;
+      if (opIris.length >= 1) {
+        out.push({
+          type: "DisjunctiveClass",
+          superClassIri: targetClassIri,
+          classIris: opIris,
+          sourceLang: "owl2",
+          ...(isAuxDefinition ? { unionEquiv: true } : {}),
+        } as unknown as OWL2Axiom);
+      }
+      break;
+    }
+
+    case "ObjectComplementOf": {
+      const opNode = operands[0];
+      if (opNode) {
+        const opIri = normalizeClassExprToIri(opNode, ctx, out);
+        if (opIri) {
+          if (declAxiom) declAxiom["complementOf"] = opIri;
+          out.push({
+            type: "DisjointClasses",
+            classIris: [targetClassIri, opIri],
+            sourceLang: "owl2",
+          });
+        }
+      }
+      break;
+    }
+
+    case "ObjectSomeValuesFrom": {
+      if (operands.length >= 2) {
+        const propIri = normalizeIri(getNodeText(operands[0]!, ctx), ctx);
+        const fillerIri = normalizeClassExprToIri(operands[1]!, ctx, out);
+        if (propIri && fillerIri) {
+          if (declAxiom) {
+            declAxiom["someValuesFrom"] = { propertyIri: propIri, fillerClassIri: fillerIri };
+          }
+          out.push({
+            type: "ObjectSomeValuesFrom",
+            subClassIri: targetClassIri || undefined,
+            propertyIri: propIri,
+            fillerClassIri: fillerIri,
+            sourceLang: "owl2",
+          });
+        }
+      }
+      break;
+    }
+
+    case "DataSomeValuesFrom": {
+      if (operands.length >= 2) {
+        const propIri = normalizeIri(getNodeText(operands[0]!, ctx), ctx);
+        const dataRange = normalizeIri(getNodeText(operands[1]!, ctx), ctx);
+        if (propIri && dataRange) {
+          out.push({
+            type: "DataSomeValuesFrom",
+            subClassIri: targetClassIri || undefined,
+            propertyIri: propIri,
+            dataRange,
+            sourceLang: "owl2",
+          });
+        }
+      }
+      break;
+    }
+
+    case "ObjectAllValuesFrom":
+    case "DataAllValuesFrom": {
+      if (operands.length >= 2) {
+        const propIri = normalizeIri(getNodeText(operands[0]!, ctx), ctx);
+        const targetIri =
+          kind === "ObjectAllValuesFrom"
+            ? normalizeClassExprToIri(operands[1]!, ctx, out)
+            : normalizeIri(getNodeText(operands[1]!, ctx), ctx);
+        if (propIri && targetIri) {
+          if (declAxiom && kind === "ObjectAllValuesFrom") {
+            declAxiom["allValuesFrom"] = { propertyIri: propIri, targetClassIri: targetIri };
+          }
+          out.push({
+            type: "UniversalRestriction",
+            propertyIri: propIri,
+            targetClassIri: targetIri,
+            classIri: targetClassIri,
+            sourceLang: "owl2",
+          });
+        }
+      }
+      break;
+    }
+
+    case "ObjectHasSelf": {
+      const innerIris = getIris(exprNode, ctx);
+      const propIri = innerIris[0] ?? (operands[0] ? normalizeIri(getNodeText(operands[0], ctx), ctx) : "");
+      if (propIri) {
+        out.push({
+          type: "SelfRestriction",
+          classIri: targetClassIri,
+          propertyIri: propIri,
+          sourceLang: "owl2",
+        });
+      }
+      break;
+    }
+
+    case "ObjectHasValue": {
+      const innerIris = getIris(exprNode, ctx);
+      if (innerIris.length >= 2) {
+        out.push({
+          type: "ObjectSomeValuesFrom",
+          subClassIri: targetClassIri || undefined,
+          propertyIri: innerIris[0]!,
+          fillerClassIri: innerIris[1]!,
+          sourceLang: "owl2",
+          ...({ isNominal: true } as Record<string, unknown>),
+        });
+      }
+      break;
+    }
+
+    case "ObjectOneOf": {
+      const innerIris = getIris(exprNode, ctx);
+      if (innerIris.length >= 1) {
+        out.push({
+          type: "ObjectOneOf",
+          classIri: targetClassIri,
+          individualIris: innerIris,
+          sourceLang: "owl2",
+        });
+      }
+      break;
+    }
+
+    case "ObjectMinCardinality":
+    case "ObjectMaxCardinality":
+    case "ObjectExactCardinality":
+    case "DataMinCardinality":
+    case "DataMaxCardinality":
+    case "DataExactCardinality": {
+      const cardType =
+        kind === "ObjectMinCardinality" || kind === "DataMinCardinality"
+          ? "min"
+          : kind === "ObjectMaxCardinality" || kind === "DataMaxCardinality"
+            ? "max"
+            : "exact";
+      const count = getInteger(exprNode, ctx);
+      const nonIntOps = operands.filter((c) => cleanNodeType(c) !== "INTEGER");
+      const propIri = nonIntOps[0]
+        ? normalizeIri(getNodeText(nonIntOps[0], ctx), ctx)
+        : (getIris(exprNode, ctx)[0] ?? "");
+      const fillerIri = nonIntOps[1]
+        ? kind.startsWith("Object")
+          ? normalizeClassExprToIri(nonIntOps[1], ctx, out)
+          : normalizeIri(getNodeText(nonIntOps[1], ctx), ctx)
+        : undefined;
+      if (propIri) {
+        out.push({
+          type: "QualifiedCardinality",
+          classIri: targetClassIri,
+          propertyIri: propIri,
+          cardinalityType: cardType,
+          count,
+          fillerClassIri: fillerIri,
+          sourceLang: "owl2",
+        });
+      }
+      break;
+    }
   }
 }
 

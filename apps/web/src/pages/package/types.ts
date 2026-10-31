@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  BeakerIcon,
   BookIcon,
   CodeIcon,
   CpuIcon,
@@ -20,12 +21,13 @@ import type { ArtifactViewerInfo } from "../../api";
 
 /* ─── tab types ─── */
 
-export type TabId = "readme" | "digital-thread" | "versions" | "compare" | "artifacts" | "dependencies";
+export type TabId = "readme" | "digital-thread" | "artifacts" | "studies" | "versions" | "compare" | "dependencies";
 
 export const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "readme", label: "Readme", icon: React.createElement(BookIcon, { size: 16 }) },
   { id: "digital-thread", label: "Digital Thread", icon: React.createElement(CpuIcon, { size: 16 }) },
   { id: "artifacts", label: "Artifacts", icon: React.createElement(FileIcon, { size: 16 }) },
+  { id: "studies", label: "Studies & Jobs", icon: React.createElement(BeakerIcon, { size: 16 }) },
   { id: "versions", label: "Versions", icon: React.createElement(HistoryIcon, { size: 16 }) },
   { id: "compare", label: "Compare", icon: React.createElement(GitCompareIcon, { size: 16 }) },
   { id: "dependencies", label: "Dependencies", icon: React.createElement(DependabotIcon, { size: 16 }) },

@@ -13,15 +13,110 @@
 // ── Public interface ──
 
 /**
+ * Scalar variable type inferred or declared for a CSV column.
+ */
+export type CsvVarType = "Real" | "Integer" | "Boolean" | "String";
+
+/**
+ * Structured column header metadata extracted from a CSV header cell.
+ */
+export interface CsvColumnHeader {
+  /** Clean column identifier with `[unit]`, `(unit)`, and `: Type` annotations stripped. */
+  name: string;
+  /** Original trimmed header cell text. */
+  rawHeader: string;
+  /** Physical unit extracted from `[unit]` or `(unit)` annotation, if present. */
+  unit?: string | undefined;
+  /** Explicitly declared scalar type from `: Type` annotation, if present. */
+  declaredType?: CsvVarType | undefined;
+}
+
+/**
  * Parsed time-series measurement table extracted from a CSV document.
  */
 export interface CsvData {
-  /** Column headers (after mapping). */
+  /** Column headers (after mapping and annotation stripping). */
   columns: string[];
   /** Time column values. */
   time: number[];
   /** Variable data: column name → values[]. */
   data: Map<string, number[]>;
+  /** Extracted physical units keyed by column name (e.g., `"omega" -> "rad/s"`). */
+  units: Map<string, string>;
+  /** Inferred or explicitly declared column scalar types (`Real`, `Integer`, `Boolean`, `String`). */
+  columnTypes: Map<string, CsvVarType>;
+  /** Structured header annotations for all columns in the CSV header row. */
+  headers: CsvColumnHeader[];
+  /** Zero-copy Float64Array buffer for the time vector. */
+  timeBuffer: Float64Array;
+  /** Zero-copy Float64Array buffers for each measurement column. */
+  columnar: Map<string, Float64Array>;
+}
+
+/**
+ * Parse a CSV header cell into a clean column name, optional unit (`[rad/s]` or `(K)`),
+ * and optional declared scalar type (`: Boolean`, `: Real`, `: Integer`, `: String`).
+ */
+export function parseCsvHeaderAnnotation(rawHeader: string): CsvColumnHeader {
+  const rawTrimmed = rawHeader.trim();
+  let working = rawTrimmed;
+  let declaredType: CsvVarType | undefined;
+  let unit: string | undefined;
+
+  const normalizeVarType = (t: string): CsvVarType | undefined => {
+    const lower = t.toLowerCase();
+    if (lower === "real" || lower === "float" || lower === "double" || lower === "f64" || lower === "f32") {
+      return "Real";
+    }
+    if (lower === "integer" || lower === "int" || lower === "i32" || lower === "i64") {
+      return "Integer";
+    }
+    if (lower === "boolean" || lower === "bool") {
+      return "Boolean";
+    }
+    if (lower === "string" || lower === "str") {
+      return "String";
+    }
+    return undefined;
+  };
+
+  // Iteratively strip trailing `: Type` and `[unit]` / `(unit)` annotations in either order
+  for (let pass = 0; pass < 2; pass++) {
+    const typeMatch = working.match(/^(.*?)\s*:\s*([A-Za-z0-9_]+)\s*$/);
+    const tm1 = typeMatch?.[1]?.trim();
+    const tm2 = typeMatch?.[2];
+    if (tm1 && tm1.length > 0 && tm2) {
+      const norm = normalizeVarType(tm2);
+      if (norm) {
+        declaredType = norm;
+        working = tm1;
+      }
+    }
+
+    const bracketUnitMatch = working.match(/^(.*?)\s*\[\s*([^\]\r\n"]+)\s*\]\s*$/);
+    const bum1 = bracketUnitMatch?.[1]?.trim();
+    const bum2 = bracketUnitMatch?.[2]?.trim();
+    if (bum1 && bum1.length > 0 && bum2) {
+      unit = bum2;
+      working = bum1;
+      continue;
+    }
+
+    const parenUnitMatch = working.match(/^(.*?)\s*\(\s*([^)\r\n"]+)\s*\)\s*$/);
+    const pum1 = parenUnitMatch?.[1]?.trim();
+    const pum2 = parenUnitMatch?.[2]?.trim();
+    if (pum1 && pum1.length > 0 && pum2) {
+      unit = pum2;
+      working = pum1;
+    }
+  }
+
+  return {
+    name: working || rawTrimmed,
+    rawHeader: rawTrimmed,
+    ...(unit !== undefined ? { unit } : {}),
+    ...(declaredType !== undefined ? { declaredType } : {}),
+  };
 }
 
 /**
@@ -49,7 +144,10 @@ export interface CsvParseOptions {
  * @throws Error if the time column is not found or if the CSV is malformed.
  */
 export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions): CsvData {
-  const lines = splitCsvLines(csvText);
+  const lines = splitCsvLines(csvText).filter((l) => !l.trim().startsWith("#"));
+  while (lines.length > 0 && (lines[0] ?? "").trim() === "") {
+    lines.shift();
+  }
   if (lines.length < 2) {
     throw new Error("CSV must contain at least a header row and one data row.");
   }
@@ -58,21 +156,39 @@ export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions)
   // Detect delimiter
   const delimiter = options?.delimiter ?? detectDelimiter(firstLine);
 
-  // Parse header
+  // Parse header and extract unit/type annotations
   const rawHeaders = parseCsvRow(firstLine, delimiter);
   if (rawHeaders.length === 0) {
     throw new Error("CSV header row contains no columns.");
   }
 
-  // Apply column mapping
   const mapping = options?.columnMapping;
-  const headers = rawHeaders.map((h) => {
-    const trimmed = h.trim();
-    return mapping?.get(trimmed) ?? trimmed;
+  const parsedHeaders: CsvColumnHeader[] = rawHeaders.map((h) => {
+    const parsed = parseCsvHeaderAnnotation(h);
+    const mappedName = mapping?.get(parsed.rawHeader) ?? mapping?.get(parsed.name) ?? parsed.name;
+    return {
+      ...parsed,
+      name: mappedName,
+    };
   });
+  const headers = parsedHeaders.map((h) => h.name);
 
-  // Find time column
-  const timeColName = options?.timeColumn ?? findTimeColumn(headers);
+  const units = new Map<string, string>();
+  const columnTypes = new Map<string, CsvVarType>();
+  for (const ph of parsedHeaders) {
+    if (ph.unit) {
+      units.set(ph.name, ph.unit);
+    }
+    if (ph.declaredType) {
+      columnTypes.set(ph.name, ph.declaredType);
+    }
+  }
+
+  // Find time column (match either clean name or raw header)
+  const requestedTimeCol = options?.timeColumn
+    ? (mapping?.get(options.timeColumn) ?? parseCsvHeaderAnnotation(options.timeColumn).name)
+    : undefined;
+  const timeColName = requestedTimeCol ?? findTimeColumn(headers);
   if (!timeColName) {
     throw new Error(
       `Could not find a time column. Searched for "time" or "t" in headers: [${headers.join(", ")}]. ` +
@@ -87,16 +203,21 @@ export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions)
   // Parse data rows
   const time: number[] = [];
   const dataColumns = new Map<string, number[]>();
+  const rawCellTrackers = new Map<
+    string,
+    { allBool: boolean; allInt: boolean; hasNumeric: boolean; hasNonEmpty: boolean }
+  >();
   for (let i = 0; i < headers.length; i++) {
     const h = headers[i] ?? "";
     if (i !== timeColIdx && h) {
       dataColumns.set(h, []);
+      rawCellTrackers.set(h, { allBool: true, allInt: true, hasNumeric: false, hasNonEmpty: false });
     }
   }
 
   for (let rowIdx = 1; rowIdx < lines.length; rowIdx++) {
     const line = lines[rowIdx] ?? "";
-    if (line.trim() === "") continue; // skip blank lines
+    if (line.trim() === "" || line.trim().startsWith("#")) continue; // skip blank and comment lines
 
     const fields = parseCsvRow(line, delimiter);
     if (fields.length < headers.length) {
@@ -114,8 +235,37 @@ export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions)
     const rowValues: number[] = [];
     for (let i = 0; i < headers.length; i++) {
       if (i === timeColIdx) continue;
-      const val = parseFloat(fields[i] ?? "NaN");
-      if (isNaN(val)) hasNaN = true;
+      const h = headers[i] ?? "";
+      const rawCell = (fields[i] ?? "").trim();
+      const tracker = rawCellTrackers.get(h);
+      const lowerCell = rawCell.toLowerCase();
+
+      let val: number;
+      if (lowerCell === "true" || lowerCell === "false") {
+        val = lowerCell === "true" ? 1 : 0;
+        if (tracker) {
+          tracker.hasNonEmpty = true;
+          tracker.allInt = false;
+        }
+      } else {
+        val = parseFloat(rawCell || "NaN");
+        if (tracker && rawCell !== "") {
+          tracker.hasNonEmpty = true;
+          tracker.allBool = false;
+          if (!isNaN(val) && isStrictFiniteNumber(rawCell)) {
+            tracker.hasNumeric = true;
+            if (!/^[+-]?\d+$/.test(rawCell)) {
+              tracker.allInt = false;
+            }
+          } else {
+            tracker.allInt = false;
+          }
+        }
+      }
+
+      if (isNaN(val) && columnTypes.get(h) !== "String") {
+        hasNaN = true;
+      }
       rowValues.push(val);
     }
 
@@ -136,20 +286,105 @@ export function parseCsvMeasurements(csvText: string, options?: CsvParseOptions)
     throw new Error("CSV contains no valid data rows.");
   }
 
-  // Build output column list (excluding time)
+  // Finalize column type inference for columns without an explicit `: Type` annotation
+  if (!columnTypes.has(timeColName)) {
+    columnTypes.set(timeColName, "Real");
+  }
   const columns: string[] = [];
+  const columnar = new Map<string, Float64Array>();
   for (let i = 0; i < headers.length; i++) {
     const h = headers[i];
-    if (i !== timeColIdx && h) columns.push(h);
+    if (i !== timeColIdx && h) {
+      columns.push(h);
+      const arr = dataColumns.get(h) ?? [];
+      columnar.set(h, Float64Array.from(arr));
+      if (!columnTypes.has(h)) {
+        const tracker = rawCellTrackers.get(h);
+        if (tracker?.hasNonEmpty && tracker.allBool) {
+          columnTypes.set(h, "Boolean");
+        } else if (tracker?.hasNonEmpty && tracker.hasNumeric && tracker.allInt) {
+          columnTypes.set(h, "Integer");
+        } else if (tracker?.hasNonEmpty && !tracker.hasNumeric && !tracker.allBool) {
+          columnTypes.set(h, "String");
+        } else {
+          columnTypes.set(h, "Real");
+        }
+      }
+    }
   }
 
-  return { columns, time, data: dataColumns };
+  const timeBuffer = Float64Array.from(time);
+  return {
+    columns,
+    time,
+    data: dataColumns,
+    units,
+    columnTypes,
+    headers: parsedHeaders,
+    timeBuffer,
+    columnar,
+  };
+}
+
+/**
+ * Options for parsing raw tabular CSV records.
+ */
+export interface CsvRecordParseOptions {
+  /** Column delimiter (default: auto-detect from first line). */
+  delimiter?: string | undefined;
+  /** Whether to trim whitespace from cell values (default: false). */
+  trim?: boolean | undefined;
+  /** Ignore comment lines starting with '#' (default: true). */
+  skipComments?: boolean | undefined;
+}
+
+/**
+ * Parse CSV text into a 2D array of string cells (rows x columns).
+ */
+export function parseCsvRows(csvText: string, options?: CsvRecordParseOptions): string[][] {
+  if (!csvText || csvText.trim() === "") return [];
+  const lines = splitCsvLines(csvText);
+  const skipComments = options?.skipComments ?? true;
+  const filtered = skipComments ? lines.filter((l) => !l.trim().startsWith("#")) : lines;
+  const delimiter = options?.delimiter ?? (filtered.length > 0 ? detectDelimiter(filtered[0] ?? "") : ",");
+  const trim = options?.trim ?? false;
+
+  const rows: string[][] = [];
+  for (const line of filtered) {
+    if (line.trim() === "") continue;
+    rows.push(parseCsvRow(line, delimiter, trim));
+  }
+  return rows;
+}
+
+/**
+ * Parse CSV text into an array of object records using the first row as headers.
+ */
+export function parseCsvRecords(csvText: string, options?: CsvRecordParseOptions): Record<string, string>[] {
+  const rows = parseCsvRows(csvText, options);
+  const headers = rows[0];
+  if (!headers || rows.length < 2) return [];
+
+  const records: Record<string, string>[] = [];
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row) continue;
+    const record: Record<string, string> = {};
+    for (let c = 0; c < headers.length; c++) {
+      const h = headers[c] ?? "";
+      record[h] = row[c] ?? "";
+    }
+    records.push(record);
+  }
+
+  return records;
 }
 
 // ── Internal helpers ──
 
 /**
- * Split CSV text into lines, handling quoted fields that may contain newlines.
+ * Split CSV text into lines, handling quoted fields that may contain newlines or escaped quotes.
  */
 function splitCsvLines(text: string): string[] {
   const lines: string[] = [];
@@ -159,8 +394,13 @@ function splitCsvLines(text: string): string[] {
   for (let i = 0; i < text.length; i++) {
     const ch = text[i] ?? "";
     if (ch === '"') {
-      inQuote = !inQuote;
-      current += ch;
+      if (inQuote && text[i + 1] === '"') {
+        current += '""';
+        i++;
+      } else {
+        inQuote = !inQuote;
+        current += ch;
+      }
     } else if ((ch === "\n" || ch === "\r") && !inQuote) {
       if (ch === "\r" && text[i + 1] === "\n") i++; // CRLF
       lines.push(current);
@@ -188,9 +428,18 @@ function detectDelimiter(headerLine: string): string {
   for (const delim of candidates) {
     let count = 0;
     let inQuote = false;
-    for (const ch of headerLine) {
-      if (ch === '"') inQuote = !inQuote;
-      else if (ch === delim && !inQuote) count++;
+    for (let i = 0; i < headerLine.length; i++) {
+      const ch = headerLine[i];
+      if (!ch) continue;
+      if (ch === '"') {
+        if (inQuote && headerLine[i + 1] === '"') {
+          i++;
+        } else {
+          inQuote = !inQuote;
+        }
+      } else if (ch === delim && !inQuote) {
+        count++;
+      }
     }
     if (count > maxCount) {
       maxCount = count;
@@ -203,7 +452,7 @@ function detectDelimiter(headerLine: string): string {
 /**
  * Parse a single CSV row into fields, respecting quoted strings.
  */
-function parseCsvRow(line: string, delimiter: string): string[] {
+function parseCsvRow(line: string, delimiter: string, trim = true): string[] {
   const fields: string[] = [];
   let current = "";
   let inQuote = false;
@@ -219,13 +468,13 @@ function parseCsvRow(line: string, delimiter: string): string[] {
         inQuote = !inQuote;
       }
     } else if (ch === delimiter && !inQuote) {
-      fields.push(current.trim());
+      fields.push(trim ? current.trim() : current);
       current = "";
     } else {
       current += ch;
     }
   }
-  fields.push(current.trim());
+  fields.push(trim ? current.trim() : current);
   return fields;
 }
 
@@ -385,11 +634,9 @@ class CsvLineLocator {
  * Tokenize a CSV string into rows and cells while tracking exact byte spans and unclosed quotes.
  */
 function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter: string } {
-  // Detect delimiter from first non-empty line
-  let firstLineEnd = text.indexOf("\n");
-  if (firstLineEnd === -1) firstLineEnd = text.length;
-  const firstLine = text.slice(0, firstLineEnd).replace(/\r$/, "");
-  const delimiter = detectDelimiter(firstLine);
+  // Detect delimiter from first non-empty, non-comment line
+  const firstNonCommentLine = splitCsvLines(text).find((l) => l.trim().length > 0 && !l.trim().startsWith("#")) ?? "";
+  const delimiter = detectDelimiter(firstNonCommentLine);
 
   const rows: LocatedCsvRow[] = [];
   let i = 0;
@@ -401,6 +648,18 @@ function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter
     if (text[i] === "\r" || text[i] === "\n") {
       if (text[i] === "\r" && text[i + 1] === "\n") i += 2;
       else i++;
+      continue;
+    }
+
+    // Skip # comment lines while preserving byte offsets
+    let peekIdx = i;
+    while (peekIdx < len && (text[peekIdx] === " " || text[peekIdx] === "\t")) {
+      peekIdx++;
+    }
+    if (peekIdx < len && text[peekIdx] === "#") {
+      while (i < len && text[i] !== "\n" && text[i] !== "\r") {
+        i++;
+      }
       continue;
     }
 
@@ -527,18 +786,21 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
     });
   };
 
-  const { rows } = tokenizeCsvWithRanges(csvText);
+  const { rows, delimiter } = tokenizeCsvWithRanges(csvText);
   if (rows.length === 0) return diagnostics;
 
   const headerRow = rows[0];
   if (!headerRow) return diagnostics;
   const numCols = headerRow.cells.length;
   const seenHeaders = new Map<string, number>();
+  const parsedHeaders: CsvColumnHeader[] = [];
 
   // 1. Validate header cells (empty or duplicate headers, unclosed quotes)
   for (let c = 0; c < numCols; c++) {
     const cell = headerRow.cells[c];
     if (!cell) continue;
+    const parsedHeader = parseCsvHeaderAnnotation(cell.text);
+    parsedHeaders.push(parsedHeader);
     if (cell.unclosedQuote) {
       emit(
         cell.startOffset,
@@ -552,7 +814,8 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
       emit(cell.startOffset, cell.endOffset, "CSV_EMPTY_HEADER", "error", `Header column ${c + 1} is empty.`);
       continue;
     }
-    const existingCol = seenHeaders.get(cell.text);
+    const cleanKey = parsedHeader.name || cell.text;
+    const existingCol = seenHeaders.get(cleanKey);
     if (existingCol !== undefined) {
       emit(
         cell.startOffset,
@@ -562,7 +825,7 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
         `Duplicate header column '${cell.text}' (already defined at column ${existingCol + 1}).`,
       );
     } else {
-      seenHeaders.set(cell.text, c);
+      seenHeaders.set(cleanKey, c);
     }
   }
 
@@ -570,9 +833,12 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
   const numericCols = new Array<boolean>(numCols).fill(false);
   let timeColIdx = -1;
   for (let c = 0; c < numCols; c++) {
-    const hName = (headerRow.cells[c]?.text ?? "").toLowerCase();
+    const ph = parsedHeaders[c];
+    const hName = (ph?.name ?? headerRow.cells[c]?.text ?? "").toLowerCase();
     if (timeColIdx === -1 && (hName === "time" || hName === "t")) {
       timeColIdx = c;
+      numericCols[c] = true;
+    } else if (ph?.declaredType === "Real" || ph?.declaredType === "Integer") {
       numericCols[c] = true;
     }
   }
@@ -581,19 +847,24 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
     const row = rows[r];
     if (!row) continue;
     for (let c = 0; c < Math.min(numCols, row.cells.length); c++) {
+      const ph = parsedHeaders[c];
+      if (ph?.declaredType === "Boolean" || ph?.declaredType === "String") continue;
       if (isStrictFiniteNumber(row.cells[c]?.text ?? "")) {
         numericCols[c] = true;
       }
     }
   }
 
+  const altDelimiters = [",", ";", "\t"].filter((d) => d !== delimiter);
+  const delimLabel = (d: string) => (d === "\t" ? "tab ('\\t')" : `'${d}'`);
   let prevTimeVal: number | undefined;
 
-  // 2. Validate data rows (column count mismatch, unclosed quotes, invalid numeric cells, non-monotonic time)
+  // 2. Validate data rows (mixed delimiters, column count mismatch, unclosed quotes, invalid numeric cells, non-monotonic time)
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
     if (!row) continue;
 
+    let hasMixedDelimiter = false;
     for (let c = 0; c < row.cells.length; c++) {
       const cell = row.cells[c];
       if (!cell) continue;
@@ -605,6 +876,30 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
           "error",
           `Unclosed quoted string at row ${r + 1}, column ${c + 1}.`,
         );
+      }
+
+      // Check unquoted cells for mixed delimiters
+      const rawTrimmed = cell.rawText.trim();
+      if (!rawTrimmed.startsWith('"')) {
+        for (const alt of altDelimiters) {
+          if (rawTrimmed.includes(alt)) {
+            const subParts = rawTrimmed.split(alt).map((s) => s.trim());
+            if (
+              row.cells.length !== numCols ||
+              subParts.some((sp) => isStrictFiniteNumber(sp) || sp === "true" || sp === "false")
+            ) {
+              hasMixedDelimiter = true;
+              emit(
+                cell.startOffset,
+                cell.endOffset,
+                "CSV_MIXED_DELIMITER",
+                "error",
+                `Mixed delimiter ${delimLabel(alt)} found in row ${r + 1}, column ${c + 1}; expected primary delimiter ${delimLabel(delimiter)}.`,
+              );
+              break;
+            }
+          }
+        }
       }
     }
 
@@ -629,6 +924,10 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
           `Row ${r + 1} has ${row.cells.length} columns, expected ${numCols} to match header row.`,
         );
       }
+    }
+
+    if (hasMixedDelimiter && row.cells.length !== numCols) {
+      continue;
     }
 
     const checkCols = Math.min(numCols, row.cells.length);
@@ -675,4 +974,177 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
   }
 
   return diagnostics;
+}
+
+// ── Columnar Time-Table Interpolation ────────────────────────────────────────
+
+/**
+ * Interpolation method supported for CSV time-series tables.
+ */
+export type CsvInterpolationMethod = "linear" | "akima" | "constant";
+
+/**
+ * Zero-copy columnar time-series table backed by contiguous `Float64Array` buffers.
+ */
+export interface CsvColumnarTimeTable {
+  columns: string[];
+  time: Float64Array;
+  data: Map<string, Float64Array>;
+  units: Map<string, string>;
+  columnTypes: Map<string, CsvVarType>;
+}
+
+/**
+ * Convert raw CSV text or an already-parsed `CsvData` object into a zero-copy
+ * `CsvColumnarTimeTable` backed by `Float64Array` buffers.
+ */
+export function toColumnarTimeTable(input: string | CsvData, options?: CsvParseOptions): CsvColumnarTimeTable {
+  const parsed = typeof input === "string" ? parseCsvMeasurements(input, options) : input;
+  const timeBuf = parsed.timeBuffer instanceof Float64Array ? parsed.timeBuffer : Float64Array.from(parsed.time);
+  const colMap = new Map<string, Float64Array>();
+  for (const col of parsed.columns) {
+    const existing = parsed.columnar?.get(col);
+    if (existing instanceof Float64Array) {
+      colMap.set(col, existing);
+    } else {
+      colMap.set(col, Float64Array.from(parsed.data.get(col) ?? []));
+    }
+  }
+  return {
+    columns: [...parsed.columns],
+    time: timeBuf,
+    data: colMap,
+    units: new Map(parsed.units ?? []),
+    columnTypes: new Map(parsed.columnTypes ?? []),
+  };
+}
+
+/**
+ * Binary search (`O(log N)`) to locate interval index `i` in `0 <= i <= N - 2`
+ * such that `time[i] <= t <= time[i + 1]`.
+ */
+export function bsearchTimeInterval(time: Float64Array | number[], t: number): number {
+  const n = time.length;
+  if (n <= 2 || t <= (time[0] ?? 0)) return 0;
+  if (t >= (time[n - 1] ?? 0)) return n - 2;
+
+  let low = 0;
+  let high = n - 2;
+  while (low <= high) {
+    const mid = (low + high) >>> 1;
+    const tMid = time[mid] ?? 0;
+    const tNext = time[mid + 1] ?? 0;
+    if (t < tMid) {
+      high = mid - 1;
+    } else if (t > tNext) {
+      low = mid + 1;
+    } else {
+      return mid;
+    }
+  }
+  return Math.max(0, Math.min(n - 2, low));
+}
+
+/**
+ * Evaluate a single column at time `t` using `O(log N)` binary search and the specified
+ * interpolation scheme (`"linear"`, `"akima"`, or `"constant"`).
+ */
+export function interpolateCsvColumn(
+  time: Float64Array | number[],
+  values: Float64Array | number[],
+  t: number,
+  method: CsvInterpolationMethod = "linear",
+  intervalIdx?: number,
+): number {
+  const n = Math.min(time.length, values.length);
+  if (n === 0) return NaN;
+  if (n === 1 || t <= (time[0] ?? 0)) return values[0] ?? NaN;
+  if (t >= (time[n - 1] ?? 0)) return values[n - 1] ?? NaN;
+
+  const i = intervalIdx !== undefined ? intervalIdx : bsearchTimeInterval(time, t);
+  const t0 = time[i] ?? 0;
+  const t1 = time[i + 1] ?? 0;
+  const y0 = values[i] ?? 0;
+  const y1 = values[i + 1] ?? 0;
+
+  if (method === "constant" || t1 <= t0) {
+    return y0;
+  }
+
+  const h = t1 - t0;
+  const dx = t - t0;
+
+  if (method === "linear" || n < 3) {
+    return y0 + (dx / h) * (y1 - y0);
+  }
+
+  // Akima 5-point cubic spline interpolation with outlier-resistant slope weights
+  const secant = (k: number): number => {
+    if (k >= 0 && k < n - 1) {
+      const dt = (time[k + 1] ?? 0) - (time[k] ?? 0);
+      return dt > 0 ? ((values[k + 1] ?? 0) - (values[k] ?? 0)) / dt : 0;
+    }
+    if (k === -1) {
+      const m0 = secant(0);
+      const m1 = n >= 3 ? secant(1) : m0;
+      return 2 * m0 - m1;
+    }
+    if (k <= -2) {
+      const m_1 = secant(-1);
+      const m0 = secant(0);
+      return 2 * m_1 - m0;
+    }
+    if (k === n - 1) {
+      const mn2 = secant(n - 2);
+      const mn3 = n >= 3 ? secant(n - 3) : mn2;
+      return 2 * mn2 - mn3;
+    }
+    const mn1 = secant(n - 1);
+    const mn2 = secant(n - 2);
+    return 2 * mn1 - mn2;
+  };
+
+  const akimaSlope = (nodeIdx: number): number => {
+    const mm2 = secant(nodeIdx - 2);
+    const mm1 = secant(nodeIdx - 1);
+    const m0 = secant(nodeIdx);
+    const mp1 = secant(nodeIdx + 1);
+    const w1 = Math.abs(mp1 - m0);
+    const w2 = Math.abs(mm1 - mm2);
+    if (w1 + w2 > 1e-12) {
+      return (w1 * mm1 + w2 * m0) / (w1 + w2);
+    }
+    return 0.5 * (mm1 + m0);
+  };
+
+  const m_i = (y1 - y0) / h;
+  const s0 = akimaSlope(i);
+  const s1 = akimaSlope(i + 1);
+
+  const c2 = (3 * m_i - 2 * s0 - s1) / h;
+  const c3 = (s0 + s1 - 2 * m_i) / (h * h);
+  return y0 + dx * (s0 + dx * (c2 + dx * c3));
+}
+
+/**
+ * Interpolate all columns of a CSV time-series table at query time `t` using a shared
+ * `O(log N)` binary search over the `Float64Array` time vector.
+ */
+export function interpolateCsvTimeTable(
+  table: CsvData | CsvColumnarTimeTable,
+  t: number,
+  method: CsvInterpolationMethod = "linear",
+): Record<string, number> {
+  const timeVec = "timeBuffer" in table && table.timeBuffer instanceof Float64Array ? table.timeBuffer : table.time;
+  const n = timeVec.length;
+  const idx = n > 2 ? bsearchTimeInterval(timeVec, t) : 0;
+  const result: Record<string, number> = {};
+
+  for (const col of table.columns) {
+    const colVec = ("columnar" in table ? table.columnar?.get(col) : undefined) ?? table.data.get(col);
+    if (colVec) {
+      result[col] = interpolateCsvColumn(timeVec, colVec, t, method, idx);
+    }
+  }
+  return result;
 }

@@ -55,6 +55,11 @@ export interface FeaModelData {
   elsetMaterials?: Map<string, string> | undefined;
   sectionThickness?: Map<string, number> | undefined;
   beamAreas?: Map<string, number> | undefined;
+  nodeLines?: Map<number, number> | undefined;
+  elementLines?: Map<number, number> | undefined;
+  materialLines?: Map<string, number> | undefined;
+  sectionLines?: Map<string, number> | undefined;
+  boundaryLines?: number[] | undefined;
 }
 
 export type ParameterLookup = (name: string) => number | string | undefined;

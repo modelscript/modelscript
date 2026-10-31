@@ -47,6 +47,13 @@ export function cfdToDae(model: CfdModelData, options?: CfdDaeOptions): DAEBuild
   const liftVar = dae.addVariable("Lift", VarType.Real, Variability.Continuous, Causality.Output, liftNominal);
   const dragVar = dae.addVariable("Drag", VarType.Real, Variability.Continuous, Causality.Output, dragNominal);
 
+  // Algebraic definitions for C_L and C_D: C_L = clNominal, C_D = cd0 + kInduced * C_L^2
+  dae.addEquation(EqKind.Simple, clVar, dae.addRealLiteral(clNominal));
+  const clSq = dae.addBinaryExpr(BinOp.Mul, clVar, clVar);
+  const cdiExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kInduced), clSq);
+  const cdExpr = dae.addBinaryExpr(BinOp.Add, dae.addRealLiteral(cd0), cdiExpr);
+  dae.addEquation(EqKind.Simple, cdVar, cdExpr);
+
   // Lift and Drag definitions: Lift = qInf * refArea * C_L
   const liftCoeffProd = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(qInf * refArea), clVar);
   dae.addEquation(EqKind.Simple, liftVar, liftCoeffProd);
@@ -54,7 +61,38 @@ export function cfdToDae(model: CfdModelData, options?: CfdDaeOptions): DAEBuild
   const dragCoeffProd = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(qInf * refArea), cdVar);
   dae.addEquation(EqKind.Simple, dragVar, dragCoeffProd);
 
-  // 2. Discretize 1D Streamtube FVM Fluid Cells
+  // 2. Register boundary markers first so they can couple into cell 1 and cell N
+  let firstInletVar: number | null = null;
+  let firstOutletVar: number | null = null;
+
+  for (const [name, marker] of model.markers.entries()) {
+    const markerKind = marker.type.toUpperCase();
+    if (markerKind === "INLET" || markerKind === "MARKER_INLET") {
+      const p0Opt = typeof marker.options[0] === "number" && marker.options[0] > 1000 ? marker.options[0] : pInf * 1.05;
+      const inletVar = dae.addVariable(
+        `Inlet_${name}_TotalP`,
+        VarType.Real,
+        Variability.Parameter,
+        Causality.Input,
+        p0Opt,
+      );
+      dae.addEquation(EqKind.Simple, inletVar, dae.addRealLiteral(p0Opt));
+      if (firstInletVar === null) firstInletVar = inletVar;
+    } else if (markerKind === "OUTLET" || markerKind === "MARKER_OUTLET") {
+      const pBackOpt = typeof marker.options[0] === "number" && marker.options[0] > 1000 ? marker.options[0] : pInf;
+      const outletVar = dae.addVariable(
+        `Outlet_${name}_BackP`,
+        VarType.Real,
+        Variability.Parameter,
+        Causality.Input,
+        pBackOpt,
+      );
+      dae.addEquation(EqKind.Simple, outletVar, dae.addRealLiteral(pBackOpt));
+      if (firstOutletVar === null) firstOutletVar = outletVar;
+    }
+  }
+
+  // 3. Discretize 1D Streamtube FVM Fluid Cells
   const rhoVars: number[] = [];
   const uVars: number[] = [];
   const pVars: number[] = [];
@@ -79,10 +117,11 @@ export function cfdToDae(model: CfdModelData, options?: CfdDaeOptions): DAEBuild
     const dRhoDt = dae.addBinaryExpr(BinOp.Div, massFluxDiff, dae.addRealLiteral(dx));
     dae.addEquation(EqKind.Simple, derRho, dRhoDt);
 
-    // Conservation of Momentum: der(u_i) = -(p_i - p_{i-1}) / (rho_i * dx)
+    // Conservation of Momentum: der(u_i) = -(p_downstream - p_upstream) / (rho_i * dx)
     const derU = dae.addDer(uCell);
-    const prevP = i === 0 ? dae.addRealLiteral(pInf) : pVars[i - 1]!;
-    const dp = dae.addBinaryExpr(BinOp.Sub, pCell, prevP);
+    const prevP = i === 0 ? (firstInletVar ?? dae.addRealLiteral(pInf)) : pVars[i - 1]!;
+    const downP = i === numCells - 1 && firstOutletVar !== null ? firstOutletVar : pCell;
+    const dp = dae.addBinaryExpr(BinOp.Sub, downP, prevP);
     const rhoDx = dae.addBinaryExpr(BinOp.Mul, rhoCell, dae.addRealLiteral(dx));
     const dpDx = dae.addBinaryExpr(BinOp.Div, dp, rhoDx);
     const negDpDx = dae.addBinaryExpr(BinOp.Sub, dae.addRealLiteral(0.0), dpDx);
@@ -94,30 +133,6 @@ export function cfdToDae(model: CfdModelData, options?: CfdDaeOptions): DAEBuild
     const deltaP = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(c2), deltaRho);
     const pState = dae.addBinaryExpr(BinOp.Add, dae.addRealLiteral(pInf), deltaP);
     dae.addEquation(EqKind.Simple, pCell, pState);
-  }
-
-  // 3. Register boundary markers as algebraic equations
-  for (const [name, marker] of model.markers.entries()) {
-    const markerKind = marker.type.toUpperCase();
-    if (markerKind === "INLET" || markerKind === "MARKER_INLET") {
-      const inletVar = dae.addVariable(
-        `Inlet_${name}_TotalP`,
-        VarType.Real,
-        Variability.Parameter,
-        Causality.Input,
-        pInf * 1.05,
-      );
-      dae.addEquation(EqKind.Simple, inletVar, dae.addRealLiteral(pInf * 1.05));
-    } else if (markerKind === "OUTLET" || markerKind === "MARKER_OUTLET") {
-      const outletVar = dae.addVariable(
-        `Outlet_${name}_BackP`,
-        VarType.Real,
-        Variability.Parameter,
-        Causality.Input,
-        pInf,
-      );
-      dae.addEquation(EqKind.Simple, outletVar, dae.addRealLiteral(pInf));
-    }
   }
 
   return dae;

@@ -1455,9 +1455,7 @@ export class LspFacade {
           }
           text = text.trim();
           if (text.length > 0) {
-            const m = text.match(/^[a-zA-Z_][a-zA-Z0-9_]*|[^\s\w]/);
-            if (m) return m[0];
-            return text.split(/\s+/)[0];
+            return text.split(/\s+/)[0] ?? "";
           }
         }
       }
@@ -1627,12 +1625,14 @@ export class LspFacade {
         };
 
         let rawArg1 = (arg1 & 0x7fff) as number;
+        let firstTokLen = (arg1 >>> 16) as number;
+        let tokEndByte = firstTokLen > 0 && startByte + firstTokLen <= endByte ? startByte + firstTokLen : endByte;
         if (arg0 === 1 && rawArg1 > 0) {
           let symName = formatSyntaxTokenName(rawArg1);
           msg = `Syntax Error: Missing '${symName}'`;
           expectedTokensList = [symName];
         } else if (arg0 === 2) {
-          const extracted = extractTokenText(startByte, endByte);
+          const extracted = extractTokenText(startByte, tokEndByte);
           let symName = extracted;
           if (!symName) {
             symName = formatSyntaxTokenName(rawArg1);
@@ -1712,7 +1712,7 @@ export class LspFacade {
             msg = "Syntax Error";
           }
         } else if (arg0 === 0) {
-          let extracted = extractTokenText(startByte, endByte);
+          let extracted = extractTokenText(startByte, tokEndByte);
           let rawArg2 = (arg2 & 0x7fff) as number;
           let expName1 = rawArg2 > 0 ? formatSyntaxTokenName(rawArg2) : "";
           let symName = extracted || (rawArg1 > 0 ? formatSyntaxTokenName(rawArg1) : "");

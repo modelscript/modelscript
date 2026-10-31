@@ -3,12 +3,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  SbmlErrorCode,
   SbmlWorkspaceIndex,
   lintSbml,
   lowerSbmlToDae,
   parseSbml,
   sbmlToModelica,
   serializeSbml,
+  simulateSbmlGillespie,
+  simulateSbmlReactions,
   solveReactions,
 } from "../src/index.js";
 
@@ -226,7 +229,7 @@ test("SBML DAE Lowering: compiles species and reaction fluxes into DAEBuilder", 
   const dae = lowerSbmlToDae(doc);
 
   assert.ok(dae.variables().length >= 8, "Expected at least 8 variables");
-  assert.ok(dae.equations().length >= 6, "Expected at least 6 equations");
+  assert.equal(dae.variables().length, dae.equations().length, "Expected structurally square DAE (N_vars == N_eqs)");
 
   assert.notEqual(dae.lookupVariable("S_S"), -1);
   assert.notEqual(dae.lookupVariable("S_E"), -1);
@@ -234,6 +237,55 @@ test("SBML DAE Lowering: compiles species and reaction fluxes into DAEBuilder", 
   assert.notEqual(dae.lookupVariable("S_P"), -1);
   assert.notEqual(dae.lookupVariable("v_r1"), -1);
   assert.notEqual(dae.lookupVariable("V_cytosol"), -1);
+});
+
+test("SBML L3 localParameter parsing and M8809 undefined kinetic parameter lint", () => {
+  const l3Model = `<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" level="3" version="1">
+  <model id="L3Test">
+    <listOfCompartments>
+      <compartment id="cell" size="1.0" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="A" compartment="cell" initialConcentration="5.0"/>
+      <species id="B" compartment="cell" initialConcentration="0.0"/>
+    </listOfSpecies>
+    <listOfReactions>
+      <reaction id="rxn1" reversible="false">
+        <listOfReactants>
+          <speciesReference species="A" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="B" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply><times/><ci>k_local</ci><ci>unknown_param</ci><ci>A</ci></apply>
+          </math>
+          <listOfLocalParameters>
+            <localParameter id="k_local" value="0.25"/>
+          </listOfLocalParameters>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>`;
+  const doc = parseSbml(l3Model);
+  const rxn1 = doc.model.reactions.get("rxn1")!;
+  assert.ok(rxn1.kineticLaw?.parameters.has("k_local"), "Should parse <localParameter> in <listOfLocalParameters>");
+  assert.equal(rxn1.kineticLaw?.parameters.get("k_local")?.value, 0.25);
+
+  const diags = lintSbml(doc);
+  assert.ok(
+    diags.some((d) => d.code === SbmlErrorCode.UNDEFINED_KINETIC_PARAMETER.code && d.message.includes("unknown_param")),
+  );
+  assert.ok(
+    !diags.some((d) => d.code === SbmlErrorCode.UNDEFINED_KINETIC_PARAMETER.code && d.message.includes("k_local")),
+  );
+
+  const dae = lowerSbmlToDae(doc);
+  assert.equal(dae.variables().length, dae.equations().length);
+  assert.notEqual(dae.lookupVariable("param_rxn1_k_local"), -1);
 });
 
 test("SBML Modelica Projection: generates syntactically valid Modelica 3.x pathway", () => {
@@ -266,4 +318,130 @@ test("SBML Workspace Index: indexes multi-file symbols accurately", () => {
   const rSym = index.findDefinition("r1");
   assert.ok(rSym);
   assert.equal(rSym.name, "r1");
+});
+
+test("SBML Rules, Events, FunctionDefinitions, and Stiff Rosenbrock Integration", () => {
+  const advancedSbml = `<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="AdvancedPathway">
+    <listOfFunctionDefinitions>
+      <functionDefinition id="mm_rate">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <lambda>
+            <bvar><ci>vmax</ci></bvar>
+            <bvar><ci>sub</ci></bvar>
+            <bvar><ci>km</ci></bvar>
+            <apply>
+              <divide/>
+              <apply><times/><ci>vmax</ci><ci>sub</ci></apply>
+              <apply><plus/><ci>km</ci><ci>sub</ci></apply>
+            </apply>
+          </lambda>
+        </math>
+      </functionDefinition>
+    </listOfFunctionDefinitions>
+    <listOfCompartments>
+      <compartment id="cell" size="1.0" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="S" compartment="cell" initialConcentration="10.0" constant="false"/>
+      <species id="P" compartment="cell" initialConcentration="0.0" constant="false"/>
+      <species id="Stot" compartment="cell" initialConcentration="10.0" constant="false"/>
+      <species id="X" compartment="cell" initialConcentration="1.0" boundaryCondition="true" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="Vmax" value="2.0" constant="false"/>
+      <parameter id="Km" value="1.0" constant="true"/>
+    </listOfParameters>
+    <listOfRules>
+      <assignmentRule variable="Stot">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply><plus/><ci>S</ci><ci>P</ci></apply>
+        </math>
+      </assignmentRule>
+      <rateRule variable="X">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply><times/><cn>-0.5</cn><ci>X</ci></apply>
+        </math>
+      </rateRule>
+    </listOfRules>
+    <listOfReactions>
+      <reaction id="enz_rxn" reversible="false">
+        <listOfReactants>
+          <speciesReference species="S" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="P" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply><ci>mm_rate</ci><ci>Vmax</ci><ci>S</ci><ci>Km</ci></apply>
+          </math>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+    <listOfEvents>
+      <event id="bolus_event">
+        <trigger>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply><lt/><ci>S</ci><cn>5.0</cn></apply>
+          </math>
+        </trigger>
+        <listOfEventAssignments>
+          <eventAssignment variable="S">
+            <math xmlns="http://www.w3.org/1998/Math/MathML">
+              <apply><plus/><ci>S</ci><cn>4.0</cn></apply>
+            </math>
+          </eventAssignment>
+        </listOfEventAssignments>
+      </event>
+    </listOfEvents>
+  </model>
+</sbml>`;
+
+  const doc = parseSbml(advancedSbml);
+  assert.equal(doc.model.functionDefinitions?.size, 1);
+  assert.equal(doc.model.rules?.length, 2);
+  assert.equal(doc.model.events?.length, 1);
+
+  const res = simulateSbmlReactions(doc, {
+    duration: 5.0,
+    timeStep: 0.02,
+    method: "rosenbrock",
+  });
+
+  // Event added +4.0 to S when S dropped below 5.0, so Stot = S + P should now be 14.0
+  assert.ok(
+    Math.abs((res.finalConcentrations["Stot"] ?? 0) - 14.0) < 1e-6,
+    `Expected Stot == 14.0 after bolus event, got ${res.finalConcentrations["Stot"]}`,
+  );
+  // Rate rule dX/dt = -0.5 * X => X(5) = exp(-2.5) ~ 0.082085
+  assert.ok(
+    Math.abs((res.finalConcentrations["X"] ?? 0) - Math.exp(-2.5)) < 0.01,
+    `Expected X(5) ~ ${Math.exp(-2.5)}, got ${res.finalConcentrations["X"]}`,
+  );
+});
+
+test("SBML Gillespie SSA: exact discrete stochastic simulation conserves moiety counts", () => {
+  const doc = parseSbml(VALID_SBML_MODEL);
+  // Scale initial amounts to discrete molecule counts
+  doc.model.species.get("S")!.initialAmount = 100;
+  doc.model.species.get("E")!.initialAmount = 20;
+  doc.model.species.get("ES")!.initialAmount = 0;
+  doc.model.species.get("P")!.initialAmount = 0;
+  for (const s of doc.model.species.values()) {
+    s.initialConcentration = undefined;
+  }
+
+  const ssa = simulateSbmlGillespie(doc, { duration: 5.0, seed: 12345 });
+  assert.ok(ssa.stepsCount > 0, "Expected positive number of discrete SSA reaction firings");
+  assert.ok((ssa.reactionCounts["r1"] ?? 0) > 0);
+  assert.ok((ssa.reactionCounts["r2"] ?? 0) > 0);
+
+  // Exact integer conservation of total enzyme (E + ES == 20) and substrate moiety (S + ES + P == 100)
+  const totalEnzyme = (ssa.finalCounts["E"] ?? 0) + (ssa.finalCounts["ES"] ?? 0);
+  const totalSubstrate = (ssa.finalCounts["S"] ?? 0) + (ssa.finalCounts["ES"] ?? 0) + (ssa.finalCounts["P"] ?? 0);
+  assert.equal(totalEnzyme, 20);
+  assert.equal(totalSubstrate, 100);
+  assert.ok((ssa.finalCounts["P"] ?? 0) > 0);
 });

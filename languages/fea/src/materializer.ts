@@ -541,6 +541,8 @@ export interface FeaSlicingProperties {
   elementCount?: number | undefined;
   nodalDisplacements?: Record<number, [number, number, number]> | undefined;
   elementVonMisesPa?: Record<number, number> | undefined;
+  elementCauchyStressPa?: Record<number, [number, number, number, number, number, number]> | undefined;
+  naturalFrequenciesHz?: number[] | undefined;
 }
 
 /**
@@ -931,7 +933,21 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
 
   // Extract optional shell thickness or beam cross-sectional area
   const shellLines = extractCardLines(deckText, "SHELL SECTION");
-  const defaultThickness = shellLines.length > 0 ? parseFloat(shellLines[0]!) || 0.005 : 0.005;
+  let firstSectionThickness = 0.0;
+  if (modelData.sectionThickness && modelData.sectionThickness.size > 0) {
+    for (const tVal of modelData.sectionThickness.values()) {
+      if (tVal > 0) {
+        firstSectionThickness = tVal;
+        break;
+      }
+    }
+  }
+  const defaultThickness =
+    shellLines.length > 0
+      ? parseFloat(shellLines[0]!) || 0.005
+      : firstSectionThickness > 0
+        ? firstSectionThickness
+        : 0.005;
   const defaultCrossArea = defaultThickness * defaultThickness;
 
   // Map nodes to indices 0 .. N-1
@@ -945,6 +961,7 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
   const sparseRows: Map<number, number>[] | null =
     numDofs > 0 ? Array.from({ length: numDofs }, () => new Map<number, number>()) : null;
   const F = numDofs > 0 ? new Float64Array(numDofs) : null;
+  const nodalMass = new Float64Array(numNodes);
 
   const addK = (r: number, c: number, val: number) => {
     if (!sparseRows || val === 0.0) return;
@@ -960,6 +977,14 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     D: Float64Array;
     weight: number;
   }
+  interface Tet10GaussPt {
+    elemId: number;
+    nodeIndices: number[]; // length 10
+    volume: number;
+    B: Float64Array; // 6 x 30
+    D: Float64Array; // 6 x 6
+    weight: number;
+  }
   interface SubTri {
     elemId: number;
     nodeIndices: [number, number, number];
@@ -967,6 +992,8 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     thickness: number;
     Bm: Float64Array;
     Dps: Float64Array;
+    e1: [number, number, number];
+    e2: [number, number, number];
     e3: [number, number, number];
     gradX: [number, number, number];
     gradY: [number, number, number];
@@ -984,6 +1011,7 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
   }
 
   const subTets: SubTet[] = [];
+  const tet10Pts: Tet10GaussPt[] = [];
   const subTris: SubTri[] = [];
   const barEdges: BarEdge[] = [];
   let totalVolumeM3 = 0.0;
@@ -1038,16 +1066,23 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     const { volume, grads } = tetGeom;
     if (volume <= 1e-18 || !grads) return 0;
 
-    if (countVolume) {
-      const weightedVol = volume * weight;
-      totalVolumeM3 += weightedVol;
-      totalMassKg += weightedVol * elemMat.rho;
-    }
-
     const i0 = nodeIndex.get(n0)!;
     const i1 = nodeIndex.get(m1)!;
     const i2 = nodeIndex.get(m2)!;
     const i3 = nodeIndex.get(n3)!;
+
+    if (countVolume) {
+      const weightedVol = volume * weight;
+      const elemMass = weightedVol * elemMat.rho;
+      totalVolumeM3 += weightedVol;
+      totalMassKg += elemMass;
+      const quarterMass = 0.25 * elemMass;
+      nodalMass[i0] = nodalMass[i0]! + quarterMass;
+      nodalMass[i1] = nodalMass[i1]! + quarterMass;
+      nodalMass[i2] = nodalMass[i2]! + quarterMass;
+      nodalMass[i3] = nodalMass[i3]! + quarterMass;
+    }
+
     const D = buildIsotropicConstitutiveMatrix(elemMat.E, elemMat.nu);
     const B = buildTetStrainDisplacementMatrix(grads);
     subTets.push({ elemId, nodeIndices: [i0, i1, i2, i3], volume, B, D, weight });
@@ -1089,6 +1124,144 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     return volume * weight;
   };
 
+  /**
+   * Assembles a 10-node quadratic tetrahedron (C3D10 / CTETRA10) using 4-point degree-2
+   * Hammer-Marroud Gauss quadrature over the 10 quadratic shape functions N_0..N_9 plus
+   * octal 8-sub-tetrahedra coupling across corner and midside nodes.
+   */
+  const assembleTet10 = (elemId: number, ns: number[], elemMat: { E: number; nu: number; rho: number }) => {
+    const pts = ns.slice(0, 10).map((nid) => modelData.nodes.get(nid));
+    if (pts.some((p) => !p)) return;
+    const p0 = pts[0]!;
+    const p1 = pts[1]!;
+    const p2 = pts[2]!;
+    const p3 = pts[3]!;
+
+    const baseGeom = computeTetrahedronVolumeAndGradients(p0, p1, p2, p3);
+    if (baseGeom.volume <= 1e-18 || !baseGeom.grads) return;
+
+    const vol = baseGeom.volume;
+    const g = baseGeom.grads;
+    const elemMass = vol * elemMat.rho;
+    totalVolumeM3 += vol;
+    totalMassKg += elemMass;
+
+    const localIndices = ns.slice(0, 10).map((nid) => nodeIndex.get(nid)!);
+    // Distribute lumped mass across the 10 nodes (1/20 at corners, 2/15 at midside nodes; sum = 4/20 + 12/15 = 1)
+    for (let a = 0; a < 4; a++) {
+      nodalMass[localIndices[a]!] = nodalMass[localIndices[a]!]! + 0.05 * elemMass;
+    }
+    for (let a = 4; a < 10; a++) {
+      nodalMass[localIndices[a]!] = nodalMass[localIndices[a]!]! + (2.0 / 15.0) * elemMass;
+    }
+
+    const D = buildIsotropicConstitutiveMatrix(elemMat.E, elemMat.nu);
+
+    // 4-point degree-2 tetrahedral Gauss quadrature (Hammer-Marroud / Keast)
+    const alpha = 0.5854101966249685; // (5 + 3*sqrt(5)) / 20
+    const beta = 0.1381966011250105; // (5 - sqrt(5)) / 20
+    const quadZeta: readonly [number, number, number, number][] = [
+      [alpha, beta, beta, beta],
+      [beta, alpha, beta, beta],
+      [beta, beta, alpha, beta],
+      [beta, beta, beta, alpha],
+    ];
+    const midEdges: readonly [number, number][] = [
+      [0, 1], // node 4
+      [1, 2], // node 5
+      [2, 0], // node 6
+      [0, 3], // node 7
+      [1, 3], // node 8
+      [2, 3], // node 9
+    ];
+
+    const quadShare = 0.8;
+    for (const z of quadZeta) {
+      const wq = 0.25 * quadShare;
+      const B = new Float64Array(6 * 30);
+      for (let a = 0; a < 10; a++) {
+        let gx = 0.0,
+          gy = 0.0,
+          gz = 0.0;
+        if (a < 4) {
+          const dNdz = 4.0 * z[a]! - 1.0;
+          gx = dNdz * g[a]![0];
+          gy = dNdz * g[a]![1];
+          gz = dNdz * g[a]![2];
+        } else {
+          const [ea, eb] = midEdges[a - 4]!;
+          const za = z[ea]!;
+          const zb = z[eb]!;
+          gx = 4.0 * (za * g[eb]![0] + zb * g[ea]![0]);
+          gy = 4.0 * (za * g[eb]![1] + zb * g[ea]![1]);
+          gz = 4.0 * (za * g[eb]![2] + zb * g[ea]![2]);
+        }
+        const c0 = 3 * a;
+        const c1 = 3 * a + 1;
+        const c2 = 3 * a + 2;
+        B[0 * 30 + c0] = gx;
+        B[1 * 30 + c1] = gy;
+        B[2 * 30 + c2] = gz;
+        B[3 * 30 + c0] = gy;
+        B[3 * 30 + c1] = gx;
+        B[4 * 30 + c1] = gz;
+        B[4 * 30 + c2] = gy;
+        B[5 * 30 + c0] = gz;
+        B[5 * 30 + c2] = gx;
+      }
+
+      tet10Pts.push({ elemId, nodeIndices: localIndices, volume: vol, B, D, weight: wq });
+
+      if (sparseRows) {
+        const DB = new Float64Array(6 * 30);
+        for (let r = 0; r < 6; r++) {
+          for (let c = 0; c < 30; c++) {
+            let sum = 0.0;
+            for (let k = 0; k < 6; k++) {
+              sum += D[r * 6 + k]! * B[k * 30 + c]!;
+            }
+            DB[r * 30 + c] = sum;
+          }
+        }
+        const scale = vol * wq;
+        for (let a = 0; a < 10; a++) {
+          const ga = localIndices[a]!;
+          for (let da = 0; da < 3; da++) {
+            const rowLocal = 3 * a + da;
+            const rowGlobal = 3 * ga + da;
+            for (let b = 0; b < 10; b++) {
+              const gb = localIndices[b]!;
+              for (let db = 0; db < 3; db++) {
+                const colLocal = 3 * b + db;
+                const colGlobal = 3 * gb + db;
+                let kab = 0.0;
+                for (let s = 0; s < 6; s++) {
+                  kab += B[s * 30 + rowLocal]! * DB[s * 30 + colLocal]!;
+                }
+                addK(rowGlobal, colGlobal, scale * kab);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Octal 8-sub-tetrahedra partition for curved-edge and positive corner diagonal coupling
+    const octalSubTets: readonly [number, number, number, number][] = [
+      [0, 4, 6, 7],
+      [4, 1, 5, 8],
+      [6, 5, 2, 9],
+      [7, 8, 9, 3],
+      [4, 5, 6, 8],
+      [4, 6, 7, 8],
+      [6, 5, 9, 8],
+      [6, 9, 7, 8],
+    ];
+    for (const [a, b, c, d] of octalSubTets) {
+      assembleTet(elemId, ns[a]!, ns[b]!, ns[c]!, ns[d]!, elemMat, 1.0 - quadShare, false);
+    }
+  };
+
   const assembleShellTri = (
     elemId: number,
     n0: number,
@@ -1120,10 +1293,19 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     const area = 0.5 * normLen;
     if (area <= 1e-16) return;
 
+    const i0 = nodeIndex.get(n0)!;
+    const i1 = nodeIndex.get(n1)!;
+    const i2 = nodeIndex.get(n2)!;
+
     if (countVolume) {
       const vol = area * thickness * weight;
+      const elemMass = vol * elemMat.rho;
       totalVolumeM3 += vol;
-      totalMassKg += vol * elemMat.rho;
+      totalMassKg += elemMass;
+      const thirdMass = elemMass / 3.0;
+      nodalMass[i0] = nodalMass[i0]! + thirdMass;
+      nodalMass[i1] = nodalMass[i1]! + thirdMass;
+      nodalMass[i2] = nodalMass[i2]! + thirdMass;
     }
 
     const e1: [number, number, number] = [ux / L01, uy / L01, uz / L01];
@@ -1174,9 +1356,6 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
       factor * 0.5 * (1.0 - safeNu),
     ]);
 
-    const i0 = nodeIndex.get(n0)!;
-    const i1 = nodeIndex.get(n1)!;
-    const i2 = nodeIndex.get(n2)!;
     const localIndices: [number, number, number] = [i0, i1, i2];
 
     subTris.push({
@@ -1186,6 +1365,8 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
       thickness,
       Bm,
       Dps,
+      e1,
+      e2,
       e3,
       gradX,
       gradY,
@@ -1248,13 +1429,16 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     const dz = pB.z - pA.z;
     const L = Math.hypot(dx, dy, dz);
     if (L <= 1e-12) return;
-    if (countVolume) {
-      const vol = area * L;
-      totalVolumeM3 += vol;
-      totalMassKg += vol * elemMat.rho;
-    }
     const idxA = nodeIndex.get(nA)!;
     const idxB = nodeIndex.get(nB)!;
+    if (countVolume) {
+      const vol = area * L;
+      const elemMass = vol * elemMat.rho;
+      totalVolumeM3 += vol;
+      totalMassKg += elemMass;
+      nodalMass[idxA] = nodalMass[idxA]! + 0.5 * elemMass;
+      nodalMass[idxB] = nodalMass[idxB]! + 0.5 * elemMass;
+    }
     const dir: [number, number, number] = [dx / L, dy / L, dz / L];
     barEdges.push({ elemId, idxA, idxB, length: L, dir, area, E: elemMat.E });
 
@@ -1286,7 +1470,10 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     const isShellType = /^(?:S3|S4|CPS|CPE|CAX|CQUAD|CTRIA|SHELL)/i.test(elem.type) || elem.family === "shell";
     const isTetType = /^(?:C3D4|C3D10|CTETRA)/i.test(elem.type);
 
-    if ((ns.length === 4 && !isShellType) || (isTetType && ns.length >= 4)) {
+    if (ns.length >= 10 && isTetType) {
+      // 10-node quadratic tetrahedron (C3D10 / CTETRA10)
+      assembleTet10(elem.id, ns, elemMat);
+    } else if ((ns.length === 4 && !isShellType) || (isTetType && ns.length >= 4)) {
       assembleTet(elem.id, ns[0]!, ns[1]!, ns[2]!, ns[3]!, elemMat, 1.0, true);
     } else if (ns.length >= 8 && !isTetType) {
       // 8-node or 20-node hexahedron (C3D8 / C3D8R / C3D20 / CHEXA): symmetrized 2x5 tetrahedral decomposition
@@ -1498,6 +1685,8 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
   // Solve K * u = F with per-DOF Dirichlet boundary conditions and prescribed displacements
   const nodalDisplacements: Record<number, [number, number, number]> = {};
   const elementVonMisesPa: Record<number, number> = {};
+  const elementCauchyStressPa: Record<number, [number, number, number, number, number, number]> = {};
+  let naturalFrequenciesHz: number[] = [];
   let maxDisplacementM = 0.0;
   let computedMaxVonMisesPa = 0.0;
 
@@ -1567,6 +1756,95 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
       addK(i, i, reg);
     }
 
+    // Generalized modal eigenvalue solve (K - omega^2 M) phi = 0 on free DOFs when density > 0
+    if (totalMassKg > 0 && numElements > 0) {
+      const freeDofs: number[] = [];
+      for (let d = 0; d < numDofs; d++) {
+        if (prescribedDofMap.has(d)) continue;
+        const mNode = nodalMass[Math.floor(d / 3)] ?? 0;
+        const kDiag = sparseRows[d]!.get(d) ?? 0;
+        if (mNode > 1e-18 && kDiag > reg * 10.0) {
+          freeDofs.push(d);
+        }
+      }
+
+      const m = freeDofs.length;
+      if (m > 0 && m <= 180) {
+        const dofToLocal = new Map<number, number>();
+        const invSqrtM = new Float64Array(m);
+        for (let i = 0; i < m; i++) {
+          const gd = freeDofs[i]!;
+          dofToLocal.set(gd, i);
+          const mVal = nodalMass[Math.floor(gd / 3)]!;
+          invSqrtM[i] = 1.0 / Math.sqrt(mVal);
+        }
+
+        const dynMat = new Float64Array(m * m);
+        for (let i = 0; i < m; i++) {
+          const gd = freeDofs[i]!;
+          const scaleI = invSqrtM[i]!;
+          for (const [colGd, kVal] of sparseRows[gd]!.entries()) {
+            const j = dofToLocal.get(colGd);
+            if (j !== undefined) {
+              dynMat[i * m + j] = kVal * scaleI * invSqrtM[j]!;
+            }
+          }
+        }
+
+        // Cyclic Jacobi symmetric eigenvalue iterations
+        const maxSweeps = m <= 36 ? 25 : 12;
+        for (let sweep = 0; sweep < maxSweeps; sweep++) {
+          let maxOff = 0.0;
+          for (let p = 0; p < m - 1; p++) {
+            for (let q = p + 1; q < m; q++) {
+              const apq = dynMat[p * m + q]!;
+              const absApq = Math.abs(apq);
+              if (absApq > maxOff) maxOff = absApq;
+              if (absApq <= 1e-12) continue;
+
+              const app = dynMat[p * m + p]!;
+              const aqq = dynMat[q * m + q]!;
+              const tau = (aqq - app) / (2.0 * apq);
+              const t =
+                tau >= 0 ? 1.0 / (tau + Math.sqrt(1.0 + tau * tau)) : -1.0 / (-tau + Math.sqrt(1.0 + tau * tau));
+              const c = 1.0 / Math.sqrt(1.0 + t * t);
+              const s = t * c;
+
+              dynMat[p * m + p] = app - t * apq;
+              dynMat[q * m + q] = aqq + t * apq;
+              dynMat[p * m + q] = 0.0;
+              dynMat[q * m + p] = 0.0;
+
+              for (let r = 0; r < m; r++) {
+                if (r === p || r === q) continue;
+                const arp = dynMat[r * m + p]!;
+                const arq = dynMat[r * m + q]!;
+                const newRp = c * arp - s * arq;
+                const newRq = s * arp + c * arq;
+                dynMat[r * m + p] = newRp;
+                dynMat[p * m + r] = newRp;
+                dynMat[r * m + q] = newRq;
+                dynMat[q * m + r] = newRq;
+              }
+            }
+          }
+          if (maxOff <= 1e-10) break;
+        }
+
+        const eigVals: number[] = [];
+        for (let i = 0; i < m; i++) {
+          const lam = dynMat[i * m + i]!;
+          if (Number.isFinite(lam) && lam > 1e-6) {
+            eigVals.push(lam);
+          }
+        }
+        eigVals.sort((a, b) => a - b);
+        naturalFrequenciesHz = eigVals
+          .slice(0, 6)
+          .map((lam) => parseFloat((Math.sqrt(lam) / (2.0 * Math.PI)).toFixed(4)));
+      }
+    }
+
     // Exact symmetric Dirichlet elimination (lifting) for fixed and non-zero prescribed DOFs
     const diagScale = maxDiag > 0 ? maxDiag : defaultE;
     for (let r = 0; r < numDofs; r++) {
@@ -1603,7 +1881,36 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     }
 
     // Evaluate element Cauchy stress tensor and Von Mises stress across 3D solids, shells, and bars
-    const elemStressAccum = new Map<number, { vmSum: number; weightSum: number; maxVm: number }>();
+    const elemStressAccum = new Map<
+      number,
+      {
+        vmSum: number;
+        weightSum: number;
+        maxVm: number;
+        sigSum: [number, number, number, number, number, number];
+      }
+    >();
+
+    const accumElemStress = (
+      elemId: number,
+      w: number,
+      vm: number,
+      sig6: [number, number, number, number, number, number],
+    ) => {
+      const entry = elemStressAccum.get(elemId) ?? {
+        vmSum: 0,
+        weightSum: 0,
+        maxVm: 0,
+        sigSum: [0, 0, 0, 0, 0, 0],
+      };
+      entry.vmSum += vm * w;
+      entry.weightSum += w;
+      if (vm > entry.maxVm) entry.maxVm = vm;
+      for (let k = 0; k < 6; k++) {
+        entry.sigSum[k] = entry.sigSum[k]! + sig6[k]! * w;
+      }
+      elemStressAccum.set(elemId, entry);
+    };
 
     for (const tet of subTets) {
       const ue = new Float64Array(12);
@@ -1638,12 +1945,43 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
       const vm = Math.sqrt(
         0.5 * ((sxx - syy) ** 2 + (syy - szz) ** 2 + (szz - sxx) ** 2) + 3.0 * (txy ** 2 + tyz ** 2 + tzx ** 2),
       );
-      const entry = elemStressAccum.get(tet.elemId) ?? { vmSum: 0, weightSum: 0, maxVm: 0 };
-      const w = tet.volume * tet.weight;
-      entry.vmSum += vm * w;
-      entry.weightSum += w;
-      if (vm > entry.maxVm) entry.maxVm = vm;
-      elemStressAccum.set(tet.elemId, entry);
+      accumElemStress(tet.elemId, tet.volume * tet.weight, vm, [sxx, syy, szz, txy, tyz, tzx]);
+    }
+
+    for (const pt10 of tet10Pts) {
+      const ue = new Float64Array(30);
+      for (let a = 0; a < 10; a++) {
+        const ni = pt10.nodeIndices[a]!;
+        ue[3 * a + 0] = u[3 * ni + 0]!;
+        ue[3 * a + 1] = u[3 * ni + 1]!;
+        ue[3 * a + 2] = u[3 * ni + 2]!;
+      }
+      const strain = new Float64Array(6);
+      for (let r = 0; r < 6; r++) {
+        let s = 0.0;
+        for (let c = 0; c < 30; c++) {
+          s += pt10.B[r * 30 + c]! * ue[c]!;
+        }
+        strain[r] = s;
+      }
+      const sig = new Float64Array(6);
+      for (let r = 0; r < 6; r++) {
+        let s = 0.0;
+        for (let c = 0; c < 6; c++) {
+          s += pt10.D[r * 6 + c]! * strain[c]!;
+        }
+        sig[r] = s;
+      }
+      const sxx = sig[0]!,
+        syy = sig[1]!,
+        szz = sig[2]!;
+      const txy = sig[3]!,
+        tyz = sig[4]!,
+        tzx = sig[5]!;
+      const vm = Math.sqrt(
+        0.5 * ((sxx - syy) ** 2 + (syy - szz) ** 2 + (szz - sxx) ** 2) + 3.0 * (txy ** 2 + tyz ** 2 + tzx ** 2),
+      );
+      accumElemStress(pt10.elemId, pt10.volume * pt10.weight, vm, [sxx, syy, szz, txy, tyz, tzx]);
     }
 
     for (const tri of subTris) {
@@ -1683,12 +2021,26 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
       const txz = tri.G * gxz;
       const tyz = tri.G * gyz;
       const vm = Math.sqrt(sxx * sxx - sxx * syy + syy * syy + 3.0 * (txy * txy + txz * txz + tyz * tyz));
-      const entry = elemStressAccum.get(tri.elemId) ?? { vmSum: 0, weightSum: 0, maxVm: 0 };
-      const w = tri.area * tri.thickness * tri.weight;
-      entry.vmSum += vm * w;
-      entry.weightSum += w;
-      if (vm > entry.maxVm) entry.maxVm = vm;
-      elemStressAccum.set(tri.elemId, entry);
+
+      // Rotate local shell stress tensor into global 3D Cauchy stress tensor
+      const e1 = tri.e1,
+        e2 = tri.e2,
+        e3 = tri.e3;
+      const evalGlobalComp = (i: number, j: number) =>
+        sxx * e1[i]! * e1[j]! +
+        syy * e2[i]! * e2[j]! +
+        txy * (e1[i]! * e2[j]! + e2[i]! * e1[j]!) +
+        txz * (e1[i]! * e3[j]! + e3[i]! * e1[j]!) +
+        tyz * (e2[i]! * e3[j]! + e3[i]! * e2[j]!);
+
+      accumElemStress(tri.elemId, tri.area * tri.thickness * tri.weight, vm, [
+        evalGlobalComp(0, 0),
+        evalGlobalComp(1, 1),
+        evalGlobalComp(2, 2),
+        evalGlobalComp(0, 1),
+        evalGlobalComp(1, 2),
+        evalGlobalComp(2, 0),
+      ]);
     }
 
     for (const bar of barEdges) {
@@ -1696,18 +2048,33 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
       const duY = u[3 * bar.idxB + 1]! - u[3 * bar.idxA + 1]!;
       const duZ = u[3 * bar.idxB + 2]! - u[3 * bar.idxA + 2]!;
       const axialDisp = duX * bar.dir[0] + duY * bar.dir[1] + duZ * bar.dir[2];
-      const vm = Math.abs((bar.E * axialDisp) / bar.length);
-      const entry = elemStressAccum.get(bar.elemId) ?? { vmSum: 0, weightSum: 0, maxVm: 0 };
-      const w = bar.area * bar.length;
-      entry.vmSum += vm * w;
-      entry.weightSum += w;
-      if (vm > entry.maxVm) entry.maxVm = vm;
-      elemStressAccum.set(bar.elemId, entry);
+      const sigmaAxial = (bar.E * axialDisp) / bar.length;
+      const vm = Math.abs(sigmaAxial);
+      const nx = bar.dir[0],
+        ny = bar.dir[1],
+        nz = bar.dir[2];
+      accumElemStress(bar.elemId, bar.area * bar.length, vm, [
+        sigmaAxial * nx * nx,
+        sigmaAxial * ny * ny,
+        sigmaAxial * nz * nz,
+        sigmaAxial * nx * ny,
+        sigmaAxial * ny * nz,
+        sigmaAxial * nz * nx,
+      ]);
     }
 
     for (const [elemId, acc] of elemStressAccum.entries()) {
       const elemVm = acc.weightSum > 0 ? acc.vmSum / acc.weightSum : acc.maxVm;
       elementVonMisesPa[elemId] = elemVm;
+      const invW = acc.weightSum > 0 ? 1.0 / acc.weightSum : 1.0;
+      elementCauchyStressPa[elemId] = [
+        acc.sigSum[0] * invW,
+        acc.sigSum[1] * invW,
+        acc.sigSum[2] * invW,
+        acc.sigSum[3] * invW,
+        acc.sigSum[4] * invW,
+        acc.sigSum[5] * invW,
+      ];
       if (elemVm > computedMaxVonMisesPa) {
         computedMaxVonMisesPa = elemVm;
       }
@@ -1779,5 +2146,7 @@ export function extractFeaSlicingProperties(deckText: string): FeaSlicingPropert
     elementCount: numElements,
     nodalDisplacements,
     elementVonMisesPa,
+    elementCauchyStressPa,
+    naturalFrequenciesHz,
   };
 }

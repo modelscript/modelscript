@@ -12,6 +12,7 @@ import {
   estimateReadingTimeMinutes,
   extractNotebookHeadings,
   isNotebookPost,
+  type NotebookMetadata,
   parseNotebookFromContent,
 } from "../util/notebook";
 import { useOembedDiscovery, usePageTitle } from "../util/title";
@@ -26,7 +27,13 @@ const PostDetailPage: React.FC = () => {
   const notebookData = useMemo(
     () =>
       post && isNotebook
-        ? parseNotebookFromContent(post.content, post.artifact_view_id, post.metadata?.notebook)
+        ? parseNotebookFromContent(
+            post.content,
+            post.artifact_view_id !== undefined && post.artifact_view_id !== null
+              ? Number(post.artifact_view_id)
+              : null,
+            post.metadata?.notebook as Partial<NotebookMetadata> | undefined,
+          )
         : null,
     [post, isNotebook],
   );

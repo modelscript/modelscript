@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { useMemo } from "react";
+import { getLanguageFlagKey, isLanguageEnabledInFlags, useFeatureFlags } from "../../FeatureFlagContext";
+
 export const defaultCode = `model Untitled
   Modelica.Blocks.Sources.Sine sine(f = 1)
     annotation(Placement(transformation(origin = {-46, 22}, extent = {{-10, -10}, {10, 10}})));
@@ -61,9 +64,36 @@ export interface MorselLanguageInfo {
   supportsSimulation: boolean;
   supports3d: boolean;
   diagramTypes?: MorselDiagramTypeOption[];
+  featureFlag?: string | undefined;
+  hiddenByDefault?: boolean | undefined;
 }
 
-export const MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = [
+export function isLanguageFlagEnabled(langIdOrFlagKey?: string, defaultEnabled = true): boolean {
+  if (!langIdOrFlagKey) return defaultEnabled;
+  const flagKey = langIdOrFlagKey.startsWith("lang_") ? langIdOrFlagKey : getLanguageFlagKey(langIdOrFlagKey);
+  const candidateKeys =
+    flagKey === "lang_modelscript" || flagKey === "lang_modelscript_msx"
+      ? ["lang_modelscript", "lang_modelscript_msx"]
+      : [flagKey];
+  if (typeof window !== "undefined") {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      for (const k of candidateKeys) {
+        const urlVal = params.get(`ff_${k}`);
+        if (urlVal !== null) return urlVal === "1" || urlVal.toLowerCase() === "true";
+      }
+      for (const k of candidateKeys) {
+        const stored = window.localStorage?.getItem(`ff_${k}`);
+        if (stored !== null) return stored === "1" || stored.toLowerCase() === "true";
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+  return defaultEnabled;
+}
+
+export const ALL_MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = [
   {
     id: "modelica",
     name: "Modelica",
@@ -85,6 +115,8 @@ export const MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = [
     ext: "msx",
     extensions: [".msx", ".modelscript"],
     family: "modelica",
+    featureFlag: "lang_modelscript_msx",
+    hiddenByDefault: true,
     defaultCode: `model Oscillator
   parameter Real omega = 6.2831853;
   Real x(start = 1.0);
@@ -1008,8 +1040,26 @@ META_STOP
   },
 ];
 
+export const MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = ALL_MORSEL_LANGUAGES.filter((lang) =>
+  isLanguageFlagEnabled(lang.featureFlag ?? getLanguageFlagKey(lang.id), !lang.hiddenByDefault),
+);
+
+export function getVisibleMorselLanguages(isFlagEnabled?: (key: string) => boolean): readonly MorselLanguageInfo[] {
+  return ALL_MORSEL_LANGUAGES.filter((lang) => {
+    if (isFlagEnabled) {
+      return isLanguageEnabledInFlags(lang.id, isFlagEnabled);
+    }
+    return isLanguageFlagEnabled(lang.featureFlag ?? getLanguageFlagKey(lang.id), !lang.hiddenByDefault);
+  });
+}
+
+export function useVisibleMorselLanguages(): readonly MorselLanguageInfo[] {
+  const { isEnabled } = useFeatureFlags();
+  return useMemo(() => getVisibleMorselLanguages(isEnabled), [isEnabled]);
+}
+
 export const MORSEL_LANGUAGE_MAP: ReadonlyMap<string, MorselLanguageInfo> = new Map(
-  MORSEL_LANGUAGES.flatMap((lang) => {
+  ALL_MORSEL_LANGUAGES.flatMap((lang) => {
     const entries: [string, MorselLanguageInfo][] = [[lang.id, lang]];
     if (lang.id === "sysml2") {
       entries.push(["sysml", lang]);

@@ -237,9 +237,373 @@ function resolveArenaVarIdx(arena: DAEBuilder, nameId: number): number {
   return arena.getVarIdxByName(name);
 }
 
+export interface BltCausalAssignment {
+  eqIdx: number;
+  solvedVar: number;
+}
+
+export interface BltBlockTearing {
+  tearingVars: number[];
+  residualEqs: number[];
+  causalChain: Array<{ eqIdx: number; solvedVar: number }>;
+}
+
+export interface ArenaBltBlock {
+  eqIdxs: number[];
+  vars: number[];
+  tearing?: BltBlockTearing | undefined;
+}
+
 export interface ArenaBltResult {
   sortedEquations: number[];
-  blocks: { eqIdxs: number[]; vars: number[] }[];
+  blocks: ArenaBltBlock[];
+}
+
+function isTargetVarExpr(arena: DAEBuilder, exprId: number, varIdx: number): boolean {
+  if (exprId < 0) return false;
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.Name) {
+    return resolveArenaVarIdx(arena, arena.getExprData1(exprId)) === varIdx;
+  }
+  if (kind === ExprKind.Der) {
+    const argId = arena.getExprData1(exprId);
+    if (argId >= 0 && arena.getExprKind(argId) === ExprKind.Name) {
+      const name = arena.interner.resolve(arena.getExprData1(argId));
+      if (name) {
+        return arena.getVarIdxByName(`der(${name})`) === varIdx;
+      }
+    }
+  }
+  return false;
+}
+
+function analyzeExprPivot(
+  arena: DAEBuilder,
+  exprId: number,
+  varIdx: number,
+  blockVarSet: Set<number>,
+): { count: number; linear: boolean; monomial: boolean } {
+  if (exprId < 0) return { count: 0, linear: true, monomial: true };
+  if (isTargetVarExpr(arena, exprId, varIdx)) {
+    return { count: 1, linear: true, monomial: true };
+  }
+
+  const kind = arena.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.Negate: {
+      const inner = arena.getExprLeft(exprId) >= 0 ? arena.getExprLeft(exprId) : arena.getExprData1(exprId);
+      return analyzeExprPivot(arena, inner, varIdx, blockVarSet);
+    }
+    case ExprKind.Binary: {
+      const op = arena.getExprData1(exprId);
+      const left = arena.getExprLeft(exprId);
+      const right = arena.getExprRight(exprId);
+      if ((op === BinOp.Mul || op === BinOp.ElemMul) && (isZeroExpr(arena, left) || isZeroExpr(arena, right))) {
+        return { count: 0, linear: true, monomial: true };
+      }
+      const lRes = analyzeExprPivot(arena, left, varIdx, blockVarSet);
+      const rRes = analyzeExprPivot(arena, right, varIdx, blockVarSet);
+      const totalCount = lRes.count + rRes.count;
+      if (totalCount === 0) return { count: 0, linear: true, monomial: true };
+      if (totalCount > 1) return { count: totalCount, linear: false, monomial: false };
+
+      if (op === BinOp.Add || op === BinOp.Sub) {
+        const active = lRes.count === 1 ? lRes : rRes;
+        return { count: 1, linear: active.linear, monomial: active.monomial };
+      }
+      if (op === BinOp.Mul || op === BinOp.ElemMul) {
+        const active = lRes.count === 1 ? lRes : rRes;
+        const otherExpr = lRes.count === 1 ? right : left;
+        const otherDeps = new Set<number>();
+        collectArenaExprDeps(arena, otherExpr, otherDeps, true);
+        let otherHasBlockVar = false;
+        for (const d of otherDeps) {
+          if (blockVarSet.has(d)) {
+            otherHasBlockVar = true;
+            break;
+          }
+        }
+        return {
+          count: 1,
+          linear: active.linear && !otherHasBlockVar,
+          monomial: active.monomial,
+        };
+      }
+      if (op === BinOp.Div || op === BinOp.ElemDiv) {
+        if (lRes.count === 1 && rRes.count === 0) {
+          const rightDeps = new Set<number>();
+          collectArenaExprDeps(arena, right, rightDeps, true);
+          let rightHasBlockVar = false;
+          for (const d of rightDeps) {
+            if (blockVarSet.has(d)) {
+              rightHasBlockVar = true;
+              break;
+            }
+          }
+          return {
+            count: 1,
+            linear: lRes.linear && !rightHasBlockVar,
+            monomial: lRes.monomial,
+          };
+        }
+        return { count: 1, linear: false, monomial: false };
+      }
+      return { count: 1, linear: false, monomial: false };
+    }
+    default: {
+      const deps = new Set<number>();
+      collectArenaExprDeps(arena, exprId, deps, true);
+      if (!deps.has(varIdx)) return { count: 0, linear: true, monomial: true };
+      return { count: 2, linear: false, monomial: false };
+    }
+  }
+}
+
+function computeKronPivotScore(arena: DAEBuilder, eqIdx: number, varIdx: number, blockVarSet: Set<number>): number {
+  if (arena.getEqKind(eqIdx) !== EqKind.Simple) return 10;
+  const lhs = arena.getEqLhs(eqIdx);
+  const rhs = arena.getEqRhs(eqIdx);
+  const lRes = analyzeExprPivot(arena, lhs, varIdx, blockVarSet);
+  const rRes = analyzeExprPivot(arena, rhs, varIdx, blockVarSet);
+  const totalCount = lRes.count + rRes.count;
+  if (totalCount === 0) return 0;
+  if (totalCount > 1) return 10;
+
+  if (isTargetVarExpr(arena, lhs, varIdx) || isTargetVarExpr(arena, rhs, varIdx)) {
+    return 1000;
+  }
+  const active = lRes.count === 1 ? lRes : rRes;
+  if (active.linear) return 800;
+  if (active.monomial) return 500;
+  return 100;
+}
+
+/**
+ * Computes Kron's Algebraic Loop Tearing for a single strongly connected BLT block.
+ * Selects a minimal set of tearing variables (`tearingVars`) and matched residual
+ * equations (`residualEqs`) such that the remaining equations form a strictly
+ * lower-triangular causal assignment chain (`causalChain`), preferring linear/monomial
+ * occurrence-1 pivots along the causal chain.
+ */
+export function tearBltBlock(arena: DAEBuilder, eqIdxs: number[], vars: number[]): BltBlockTearing {
+  if (eqIdxs.length <= 1 || vars.length <= 1) {
+    return {
+      tearingVars: [...vars],
+      residualEqs: [...eqIdxs],
+      causalChain: [],
+    };
+  }
+
+  const blockVarSet = new Set<number>(vars);
+  const eqDepsMap = new Map<number, number[]>();
+  const pivotScores = new Map<number, Map<number, number>>();
+
+  for (const eqIdx of eqIdxs) {
+    const kind = arena.getEqKind(eqIdx);
+    const deps = new Set<number>();
+    if (kind === EqKind.For) {
+      const meta = arena.getForEquationMeta?.(eqIdx);
+      if (meta) {
+        const bodyEqs = meta.equations ?? meta.bodyEquations ?? [];
+        for (const bEq of bodyEqs) {
+          const bLhs = "lhs" in bEq ? bEq.lhs : (bEq as { lhsExprId: number }).lhsExprId;
+          const bRhs = "rhs" in bEq ? bEq.rhs : (bEq as { rhsExprId: number }).rhsExprId;
+          collectArenaExprDeps(arena, bLhs, deps, true);
+          collectArenaExprDeps(arena, bRhs, deps, true);
+        }
+      }
+    } else {
+      collectArenaExprDeps(arena, arena.getEqLhs(eqIdx), deps, true);
+      collectArenaExprDeps(arena, arena.getEqRhs(eqIdx), deps, true);
+    }
+
+    const blockDeps: number[] = [];
+    const scoreMap = new Map<number, number>();
+    for (const v of vars) {
+      if (deps.has(v)) {
+        blockDeps.push(v);
+        scoreMap.set(v, computeKronPivotScore(arena, eqIdx, v, blockVarSet));
+      }
+    }
+    eqDepsMap.set(eqIdx, blockDeps);
+    pivotScores.set(eqIdx, scoreMap);
+  }
+
+  const simulateFromTearingSet = (
+    initialTearingVars: number[],
+    minPivotScore: number,
+  ): {
+    complete: boolean;
+    score: number;
+    causalChain: Array<{ eqIdx: number; solvedVar: number }>;
+    residualEqs: number[];
+    knownVars: Set<number>;
+    usedEqs: Set<number>;
+  } => {
+    const knownVars = new Set<number>(initialTearingVars);
+    const usedEqs = new Set<number>();
+    const causalChain: Array<{ eqIdx: number; solvedVar: number }> = [];
+    let score = 0;
+
+    while (knownVars.size < vars.length) {
+      let bestEq = -1;
+      let bestVar = -1;
+      let bestPScore = -1;
+      let bestDepLen = Infinity;
+
+      for (const eqIdx of eqIdxs) {
+        if (usedEqs.has(eqIdx)) continue;
+        const deps = eqDepsMap.get(eqIdx) ?? [];
+        let unknownCount = 0;
+        let singleUnknown = -1;
+        for (const v of deps) {
+          if (!knownVars.has(v)) {
+            unknownCount++;
+            singleUnknown = v;
+            if (unknownCount > 1) break;
+          }
+        }
+        if (unknownCount === 1 && singleUnknown !== -1) {
+          const pScore = pivotScores.get(eqIdx)?.get(singleUnknown) ?? 10;
+          if (pScore < minPivotScore) continue;
+          if (pScore > bestPScore || (pScore === bestPScore && deps.length < bestDepLen)) {
+            bestPScore = pScore;
+            bestEq = eqIdx;
+            bestVar = singleUnknown;
+            bestDepLen = deps.length;
+          }
+        }
+      }
+
+      if (bestEq === -1 || bestVar === -1) break;
+      causalChain.push({ eqIdx: bestEq, solvedVar: bestVar });
+      usedEqs.add(bestEq);
+      knownVars.add(bestVar);
+      score += bestPScore;
+    }
+
+    const residualEqs = eqIdxs.filter((e) => !usedEqs.has(e));
+    // Prefer leaving nonlinear equations as residual equations
+    for (const rEq of residualEqs) {
+      const sMap = pivotScores.get(rEq);
+      if (sMap) {
+        let minS = Infinity;
+        for (const s of sMap.values()) {
+          if (s < minS) minS = s;
+        }
+        if (minS <= 100) score += 25;
+      }
+    }
+
+    return {
+      complete: knownVars.size === vars.length,
+      score,
+      causalChain,
+      residualEqs,
+      knownVars,
+      usedEqs,
+    };
+  };
+
+  // 1. Try size-1 tearing variable sets (preferring linear/monomial occurrence-1 pivots >= 500)
+  for (const minPivot of [500, 100, 10]) {
+    let bestRes: BltBlockTearing | null = null;
+    let bestScore = -Infinity;
+    for (const v of vars) {
+      const sim = simulateFromTearingSet([v], minPivot);
+      if (sim.complete && sim.score > bestScore) {
+        bestScore = sim.score;
+        bestRes = {
+          tearingVars: [v],
+          residualEqs: sim.residualEqs,
+          causalChain: sim.causalChain,
+        };
+      }
+    }
+    if (bestRes) return bestRes;
+  }
+
+  // 2. For moderate blocks, try size-2 tearing variable sets
+  if (vars.length <= 16) {
+    for (const minPivot of [500, 100, 10]) {
+      let bestRes: BltBlockTearing | null = null;
+      let bestScore = -Infinity;
+      for (let i = 0; i < vars.length; i++) {
+        for (let j = i + 1; j < vars.length; j++) {
+          const pair = [vars[i]!, vars[j]!];
+          const sim = simulateFromTearingSet(pair, minPivot);
+          if (sim.complete && sim.score > bestScore) {
+            bestScore = sim.score;
+            bestRes = {
+              tearingVars: pair,
+              residualEqs: sim.residualEqs,
+              causalChain: sim.causalChain,
+            };
+          }
+        }
+      }
+      if (bestRes) return bestRes;
+    }
+  }
+
+  // 3. General Kron greedy lookahead tearing for arbitrary-size blocks
+  const tearingVars: number[] = [];
+  let currentSim = simulateFromTearingSet([], 500);
+  while (!currentSim.complete) {
+    let bestCandidate = -1;
+    let bestSolvedCount = -1;
+    let bestScore = -Infinity;
+    let bestDegree = -1;
+
+    for (const v of vars) {
+      if (currentSim.knownVars.has(v)) continue;
+      const trial = simulateFromTearingSet([...tearingVars, v], 500);
+      let degree = 0;
+      for (const eqIdx of eqIdxs) {
+        if (!currentSim.usedEqs.has(eqIdx) && (eqDepsMap.get(eqIdx) ?? []).includes(v)) {
+          degree++;
+        }
+      }
+      const solvedCount = trial.knownVars.size;
+      if (
+        solvedCount > bestSolvedCount ||
+        (solvedCount === bestSolvedCount && trial.score > bestScore) ||
+        (solvedCount === bestSolvedCount && trial.score === bestScore && degree > bestDegree)
+      ) {
+        bestCandidate = v;
+        bestSolvedCount = solvedCount;
+        bestScore = trial.score;
+        bestDegree = degree;
+      }
+    }
+
+    if (bestCandidate === -1) break;
+    tearingVars.push(bestCandidate);
+    currentSim = simulateFromTearingSet(tearingVars, 500);
+    if (!currentSim.complete && tearingVars.length + 1 >= vars.length) {
+      currentSim = simulateFromTearingSet(tearingVars, 10);
+      break;
+    }
+  }
+
+  return {
+    tearingVars,
+    residualEqs: currentSim.residualEqs,
+    causalChain: currentSim.causalChain,
+  };
+}
+
+/**
+ * Computes and attaches Kron's tearing metadata (`block.tearing`) to all
+ * multi-equation algebraic loop blocks (`block.eqIdxs.length > 1 && block.vars.length > 1`).
+ */
+export function tearBltBlocksArena(arena: DAEBuilder, blocks: ArenaBltBlock[]): ArenaBltBlock[] {
+  for (const block of blocks) {
+    if (block.eqIdxs.length > 1 && block.vars.length > 1) {
+      block.tearing = tearBltBlock(arena, block.eqIdxs, block.vars);
+    }
+  }
+  return blocks;
 }
 
 /**
@@ -355,8 +719,8 @@ export function performBltTransformationArena(
       if (meta) {
         const bodyEqs = meta.equations ?? meta.bodyEquations ?? [];
         for (const bEq of bodyEqs) {
-          const bLhs = "lhs" in bEq ? bEq.lhs : (bEq as any).lhsExprId;
-          const bRhs = "rhs" in bEq ? bEq.rhs : (bEq as any).rhsExprId;
+          const bLhs = "lhs" in bEq ? bEq.lhs : (bEq as { lhsExprId: number }).lhsExprId;
+          const bRhs = "rhs" in bEq ? bEq.rhs : (bEq as { rhsExprId: number }).rhsExprId;
           collectArenaExprDeps(arena, bLhs, deps, true);
           collectArenaExprDeps(arena, bRhs, deps, true);
         }
@@ -383,7 +747,7 @@ export function performBltTransformationArena(
   let outEqsPtr = 0;
   let outBlocksPtr = 0;
   const sortedEquations: number[] = [];
-  const blocks: { eqIdxs: number[]; vars: number[] }[] = [];
+  const blocks: ArenaBltBlock[] = [];
 
   try {
     adjPtr = alloc(totalInts * 4);
@@ -447,7 +811,9 @@ export function performBltTransformationArena(
     }
   }
 
-  const result = {
+  tearBltBlocksArena(arena, blocks);
+
+  const result: ArenaBltResult = {
     sortedEquations,
     blocks,
   };

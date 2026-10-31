@@ -221,7 +221,7 @@ test("RELAP5 DAE Lowering: compiles two-phase volumes and kinetics into DAEBuild
   const dae = lowerRelap5ToDae(deck);
 
   assert.ok(dae.variables().length >= 18, "Expected at least 18 variables");
-  assert.ok(dae.equations().length >= 18, "Expected at least 18 equations");
+  assert.equal(dae.variables().length, dae.equations().length, "Expected structurally square DAE (N_vars == N_eqs)");
 
   assert.notEqual(dae.lookupVariable("P_100"), -1);
   assert.notEqual(dae.lookupVariable("alpha_100"), -1);
@@ -238,8 +238,8 @@ test("RELAP5 Modelica Projection: generates syntactically valid Modelica 3.x cod
   assert.ok(mo.includes("Real P_100(start = 15500000.0)"));
   assert.ok(mo.includes("Real mf_105(start = 100.0)"));
   assert.ok(mo.includes("Real reactor_power(start = 1.0)"));
-  assert.ok(mo.includes("der(P_100) = 0.0;"));
-  assert.ok(mo.includes("der(reactor_power) = 0.0;"));
+  assert.ok(mo.includes("der(P_100) = (1.0e6 / V_100_vol)"));
+  assert.ok(mo.includes("der(reactor_power) = ((reactivity - beta) / Lambda) * reactor_power"));
   assert.ok(mo.includes("end PwrPrimaryLoop;"));
 });
 

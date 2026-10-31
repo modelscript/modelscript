@@ -371,7 +371,7 @@ export function lintFortranSource(
 
     // 4. Program Unit Header (SUBROUTINE, FUNCTION, MODULE, PROGRAM)
     const unitHeaderMatch =
-      /^(?:(?:PURE|ELEMENTAL|RECURSIVE|REAL(?:\([^)]*\))?|INTEGER(?:\([^)]*\))?|DOUBLE\s+PRECISION|LOGICAL)\s+)*(SUBROUTINE|FUNCTION|MODULE|PROGRAM)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?(?:\s+(.*))?$/i.exec(
+      /^(?:(?:PURE|ELEMENTAL|RECURSIVE|REAL(?:\([^)]*\))?|INTEGER(?:\([^)]*\))?|DOUBLE\s+PRECISION|LOGICAL)\s+)*(SUBROUTINE|FUNCTION|MODULE|PROGRAM)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?(?:\s+(\S.*))?$/i.exec(
         trimmed,
       );
     if (unitHeaderMatch) {

@@ -131,6 +131,33 @@ R2 out 0 1k
         assert.ok(Math.abs(vOut - vIn / 2) < 1e-6);
       }
     });
+
+    it("should simulate a non-linear diode half-wave rectifier with RC load using inner Newton-Raphson", () => {
+      const netlist = `* Half-Wave Diode Rectifier
+V1 in 0 SINE(0 5 1k)
+D1 in out 1N4148
+R1 out 0 1k
+C1 out 0 1u
+.MODEL 1N4148 D (IS=1e-14 N=1.0)
+.TRAN 10u 2m UIC
+.END`;
+      const circuit = parseSpice(netlist);
+      const tran = solveTran(circuit, { tstep: 1e-5, tstop: 2e-3, uic: true });
+
+      const outSig = tran.nodeVoltages.get("OUT");
+      assert.ok(outSig && outSig.length > 50);
+
+      let maxOut = -Infinity;
+      let minOut = Infinity;
+      for (const v of outSig) {
+        if (v > maxOut) maxOut = v;
+        if (v < minOut) minOut = v;
+      }
+
+      // Peak output should be ~ 5V - Vd (~4.1V to 4.5V) and never go significantly negative
+      assert.ok(maxOut > 3.8 && maxOut < 4.6, `Expected rectified peak ~4.3V, got ${maxOut}`);
+      assert.ok(minOut >= -0.05, `Expected rectified output >= -0.05V, got ${minOut}`);
+    });
   });
 
   describe("AC Small-Signal Solver (.AC)", () => {
@@ -174,6 +201,80 @@ C1 out 0 159.155n
       // High frequency (100 kHz = 2 decades above cutoff): roll-off ~ -40 dB
       const magHighDb = outSig.magnitudeDb[outSig.magnitudeDb.length - 1] ?? 0;
       assert.ok(Math.abs(magHighDb - -40.0) < 1.0, `Expected high-frequency attenuation ~ -40 dB, got ${magHighDb}`);
+    });
+
+    it("should linearize a biased BJT common-emitter stage around .OP for small-signal .AC gain", () => {
+      const netlist = `* Common-Emitter BJT Small-Signal AC Amplifier
+VCC vcc 0 DC 12
+VIN in 0 DC 1.45 AC 1
+RB in base 10k
+RC vcc col 2k
+RE emit 0 500
+CE emit 0 100u
+Q1 col base emit NPN_AMP
+.MODEL NPN_AMP NPN (IS=1e-14 BF=150)
+.AC DEC 5 100 100k
+.END`;
+      const circuit = parseSpice(netlist);
+      const op = solveOp(circuit);
+      assert.ok(op.converged);
+      const vColDc = op.nodeVoltages.get("COL") ?? 12;
+      assert.ok(vColDc > 2.0 && vColDc < 11.0, `Expected active-region collector voltage, got ${vColDc}`);
+
+      const ac = solveAc(circuit);
+      const colSig = ac.nodeVoltages.get("COL");
+      assert.ok(colSig);
+      // At high frequency where CE bypasses RE, voltage gain |Vc/Vin| > 10 (> 20 dB) with ~180 deg phase inversion
+      const lastIdx = colSig.magnitude.length - 1;
+      const gainMag = colSig.magnitude[lastIdx] ?? 0;
+      assert.ok(gainMag > 10.0, `Expected common-emitter AC voltage gain > 10 V/V, got ${gainMag}`);
+    });
+  });
+
+  describe("Coupled Inductors (K) & Parameterized Subcircuit Expansion", () => {
+    it("should simulate 1:2 step-up transformer using coupled inductors K1 L1 L2 0.999 in .TRAN and .AC", () => {
+      const netlist = `* Coupled Inductor 1:2 Step-Up Transformer (L2/L1 = 4 => turns ratio = 2)
+V1 pri 0 SINE(0 5 1k) AC 5
+L1 pri 0 10m
+L2 sec 0 40m
+K1 L1 L2 0.999
+Rload sec 0 10k
+.TRAN 20u 2m UIC
+.AC LIN 3 1k 2k
+.END`;
+      const circuit = parseSpice(netlist);
+      const ac = solveAc(circuit);
+      const secAc = ac.nodeVoltages.get("SEC");
+      assert.ok(secAc);
+      const acOutMag = secAc.magnitude[0] ?? 0;
+      // Input AC = 5V, turns ratio sqrt(40m/10m) = 2 => secondary ~ 10V
+      assert.ok(Math.abs(acOutMag - 10.0) < 0.2, `Expected AC secondary amplitude ~10V, got ${acOutMag}`);
+
+      const tran = solveTran(circuit, { tstep: 20e-6, tstop: 2e-3, uic: true });
+      const secTran = tran.nodeVoltages.get("SEC") ?? [];
+      const maxSec = Math.max(...secTran);
+      assert.ok(maxSec > 9.5 && maxSec < 10.5, `Expected transient secondary peak ~10V, got ${maxSec}`);
+    });
+
+    it("should expand parameterized .SUBCKT instances with parameter overrides", () => {
+      const netlist = `* Parameterized Voltage Divider Subcircuit
+V1 in 0 DC 12
+X1 in out1 VDIV RTOP=3k RBOT=1k
+X2 in out2 VDIV RTOP=1k RBOT=3k
+.SUBCKT VDIV p_in p_out RTOP=1k RBOT=1k
+R1 p_in p_out {RTOP}
+R2 p_out 0 {RBOT}
+.ENDS VDIV
+.OP
+.END`;
+      const circuit = parseSpice(netlist);
+      assert.ok(circuit.expandedComponents && circuit.expandedComponents.length === 5);
+      const op = solveOp(circuit);
+      assert.ok(op.converged);
+      const vOut1 = op.nodeVoltages.get("OUT1") ?? 0;
+      const vOut2 = op.nodeVoltages.get("OUT2") ?? 0;
+      assert.ok(Math.abs(vOut1 - 3.0) < 1e-4, `Expected OUT1 = 3.0V, got ${vOut1}`);
+      assert.ok(Math.abs(vOut2 - 9.0) < 1e-4, `Expected OUT2 = 9.0V, got ${vOut2}`);
     });
   });
 });

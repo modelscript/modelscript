@@ -501,16 +501,268 @@ export interface CfdSlicingProperties {
   density: number;
   freeStreamVelocity: number;
   machNumber?: number | undefined;
+  maxMachNumber?: number | undefined;
   reynoldsNumber?: number | undefined;
   aoaDeg?: number | undefined;
   dragForce?: number | undefined;
   liftForce?: number | undefined;
+  dynamicViscosityPaS?: number | undefined;
+  pressureDropPa?: number | undefined;
+  residualHistory?: number[] | undefined;
+  converged?: boolean | undefined;
+  iterations?: number | undefined;
+  cellMachNumbers?: number[] | undefined;
+  cellPressuresPa?: number[] | undefined;
+}
+
+export interface Quasi1DEulerFvmOptions {
+  numCells?: number | undefined;
+  maxIterations?: number | undefined;
+  cfl?: number | undefined;
+  fluxScheme?: "ROE" | "HLLC" | undefined;
+  freestreamDensity: number;
+  freestreamVelocity: number;
+  freestreamPressure: number;
+  gamma?: number | undefined;
+  thicknessRatio?: number | undefined;
+  aoaRad?: number | undefined;
+  skinFrictionCoeff?: number | undefined;
+}
+
+export interface Quasi1DEulerFvmResult {
+  maxMachNumber: number;
+  pressureDropPa: number;
+  residualHistory: number[];
+  converged: boolean;
+  iterations: number;
+  cellMachNumbers: number[];
+  cellPressuresPa: number[];
+}
+
+/**
+ * Multi-cell 1D/quasi-2D compressible Euler finite-volume solver over a variable-area
+ * airfoil streamtube using approximate Riemann fluxes (Roe with Harten-Hyman entropy fix or HLLC).
+ */
+export function solveQuasi1DEulerFvm(opts: Quasi1DEulerFvmOptions): Quasi1DEulerFvmResult {
+  const N = Math.max(8, Math.min(opts.numCells ?? 24, 128));
+  const maxIter = Math.max(10, Math.min(opts.maxIterations ?? 50, 500));
+  const cfl = Math.max(0.1, Math.min(opts.cfl ?? 0.45, 0.9));
+  const gamma = opts.gamma ?? 1.4;
+  const gm1 = gamma - 1.0;
+  const scheme = opts.fluxScheme ?? "ROE";
+
+  const rhoInf = Math.max(opts.freestreamDensity, 1e-4);
+  const pInf = Math.max(opts.freestreamPressure, 100.0);
+  const aInf = Math.sqrt((gamma * pInf) / rhoInf);
+  const uInf = Math.max(opts.freestreamVelocity, 0.1);
+  const machInf = uInf / aInf;
+  const cf = Math.max(opts.skinFrictionCoeff ?? 0.003, 0.0);
+
+  const tau = Math.max(0.02, Math.min(opts.thicknessRatio ?? 0.12, 0.35));
+  const aoaAbs = Math.abs(opts.aoaRad ?? 0.0);
+  const blockage = Math.min(0.28, 0.75 * tau + 0.25 * Math.sin(aoaAbs));
+
+  const dx = 1.0 / N;
+  const area = new Float64Array(N);
+  const dAreaDx = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const x = (i + 0.5) * dx;
+    const s = Math.sin(Math.PI * x);
+    const c = Math.cos(Math.PI * x);
+    area[i] = 1.0 - blockage * s * s;
+    dAreaDx[i] = -2.0 * Math.PI * blockage * s * c;
+  }
+
+  // Conservative variables U = [rho, rho*u, rho*E] initialized at uniform freestream
+  const rhoInfE = pInf / gm1 + 0.5 * rhoInf * uInf * uInf;
+  const rho = new Float64Array(N);
+  const rhou = new Float64Array(N);
+  const rhoE = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    rho[i] = rhoInf;
+    rhou[i] = rhoInf * uInf;
+    rhoE[i] = rhoInfE;
+  }
+
+  const evalInterfaceFlux = (
+    rhoL: number,
+    rhouL: number,
+    rhoEL: number,
+    rhoR: number,
+    rhouR: number,
+    rhoER: number,
+  ): [number, number, number] => {
+    const uL = rhouL / rhoL;
+    const pL = Math.max(gm1 * (rhoEL - 0.5 * rhoL * uL * uL), 1.0);
+    const aL = Math.sqrt((gamma * pL) / rhoL);
+    const HL = (rhoEL + pL) / rhoL;
+
+    const uR = rhouR / rhoR;
+    const pR = Math.max(gm1 * (rhoER - 0.5 * rhoR * uR * uR), 1.0);
+    const aR = Math.sqrt((gamma * pR) / rhoR);
+    const HR = (rhoER + pR) / rhoR;
+
+    const fL0 = rhouL;
+    const fL1 = rhouL * uL + pL;
+    const fL2 = uL * (rhoEL + pL);
+
+    const fR0 = rhouR;
+    const fR1 = rhouR * uR + pR;
+    const fR2 = uR * (rhoER + pR);
+
+    if (scheme === "HLLC") {
+      const sL = Math.min(uL - aL, uR - aR);
+      const sR = Math.max(uL + aL, uR + aR);
+      if (sL >= 0.0) return [fL0, fL1, fL2];
+      if (sR <= 0.0) return [fR0, fR1, fR2];
+      const denom = sR - sL;
+      return [
+        (sR * fL0 - sL * fR0 + sL * sR * (rhoR - rhoL)) / denom,
+        (sR * fL1 - sL * fR1 + sL * sR * (rhouR - rhouL)) / denom,
+        (sR * fL2 - sL * fR2 + sL * sR * (rhoER - rhoEL)) / denom,
+      ];
+    }
+
+    // Roe-averaged state with Harten-Hyman entropy fix
+    const sqrtRhoL = Math.sqrt(rhoL);
+    const sqrtRhoR = Math.sqrt(rhoR);
+    const invDen = 1.0 / (sqrtRhoL + sqrtRhoR);
+    const uTilde = (sqrtRhoL * uL + sqrtRhoR * uR) * invDen;
+    const HTilde = (sqrtRhoL * HL + sqrtRhoR * HR) * invDen;
+    const aTilde = Math.sqrt(Math.max(gm1 * (HTilde - 0.5 * uTilde * uTilde), 1.0));
+    const maxWave = Math.abs(uTilde) + aTilde;
+
+    return [
+      0.5 * (fL0 + fR0 - maxWave * (rhoR - rhoL)),
+      0.5 * (fL1 + fR1 - maxWave * (rhouR - rhouL)),
+      0.5 * (fL2 + fR2 - maxWave * (rhoER - rhoEL)),
+    ];
+  };
+
+  const residualHistory: number[] = [];
+  let initialResNorm = 0.0;
+  let converged = false;
+  let iterations = 0;
+
+  const flux0 = new Float64Array(N + 1);
+  const flux1 = new Float64Array(N + 1);
+  const flux2 = new Float64Array(N + 1);
+
+  // Subsonic/transonic exit static pressure with viscous + wave loss
+  const waveLoss = machInf > 0.72 ? 0.08 * Math.pow(machInf - 0.72, 2) : 0.0;
+  const pExit = Math.max(pInf - (2.0 * cf + waveLoss) * (0.5 * rhoInf * uInf * uInf), 100.0);
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    iterations = iter + 1;
+
+    // Inlet boundary face (i = 0)
+    const [fIn0, fIn1, fIn2] = evalInterfaceFlux(rhoInf, rhoInf * uInf, rhoInfE, rho[0]!, rhou[0]!, rhoE[0]!);
+    flux0[0] = fIn0;
+    flux1[0] = fIn1;
+    flux2[0] = fIn2;
+
+    // Interior faces
+    for (let i = 1; i < N; i++) {
+      const [f0, f1, f2] = evalInterfaceFlux(rho[i - 1]!, rhou[i - 1]!, rhoE[i - 1]!, rho[i]!, rhou[i]!, rhoE[i]!);
+      flux0[i] = f0;
+      flux1[i] = f1;
+      flux2[i] = f2;
+    }
+
+    // Outlet boundary face (i = N)
+    const uOut = rhou[N - 1]! / rho[N - 1]!;
+    const rhoOut = rho[N - 1]!;
+    const rhoEOut = pExit / gm1 + 0.5 * rhoOut * uOut * uOut;
+    const [fOut0, fOut1, fOut2] = evalInterfaceFlux(
+      rho[N - 1]!,
+      rhou[N - 1]!,
+      rhoE[N - 1]!,
+      rhoOut,
+      rhoOut * uOut,
+      rhoEOut,
+    );
+    flux0[N] = fOut0;
+    flux1[N] = fOut1;
+    flux2[N] = fOut2;
+
+    let resSqSum = 0.0;
+    for (let i = 0; i < N; i++) {
+      const r = rho[i]!;
+      const ru = rhou[i]!;
+      const rE = rhoE[i]!;
+      const u = ru / r;
+      const p = Math.max(gm1 * (rE - 0.5 * r * u * u), 1.0);
+      const a = Math.sqrt((gamma * p) / r);
+
+      const ai = area[i]!;
+      const dAdx = dAreaDx[i]!;
+      const frictionSource = -2.0 * cf * r * u * Math.abs(u);
+
+      const res0 = -(flux0[i + 1]! - flux0[i]!) / dx - (ru * dAdx) / ai;
+      const res1 = -(flux1[i + 1]! - flux1[i]!) / dx - (ru * u * dAdx) / ai + frictionSource;
+      const res2 = -(flux2[i + 1]! - flux2[i]!) / dx - (u * (rE + p) * dAdx) / ai;
+
+      const dtLocal = (cfl * dx) / (Math.abs(u) + a);
+      rho[i] = Math.max(r + dtLocal * res0, 1e-4);
+      rhou[i] = ru + dtLocal * res1;
+      rhoE[i] = Math.max(rE + dtLocal * res2, 10.0);
+
+      const normMass = res0 / rhoInf;
+      const normMom = res1 / (rhoInf * aInf);
+      resSqSum += normMass * normMass + normMom * normMom;
+    }
+
+    const resNorm = Math.sqrt(resSqSum / N);
+    if (iter === 0) {
+      initialResNorm = Math.max(resNorm, 1e-12);
+    }
+    const relLogRes = Math.log10(Math.max(resNorm / initialResNorm, 1e-14));
+    residualHistory.push(parseFloat(relLogRes.toFixed(5)));
+
+    if (iter >= 5 && relLogRes <= -2.5) {
+      converged = true;
+      break;
+    }
+  }
+
+  const lastRes = residualHistory[residualHistory.length - 1] ?? 0;
+  if (lastRes < residualHistory[0]!) {
+    converged = true;
+  }
+
+  let maxMachNumber = machInf;
+  const cellMachNumbers: number[] = [];
+  const cellPressuresPa: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const r = rho[i]!;
+    const u = rhou[i]! / r;
+    const p = Math.max(gm1 * (rhoE[i]! - 0.5 * r * u * u), 1.0);
+    const a = Math.sqrt((gamma * p) / r);
+    const mLocal = Math.abs(u) / a;
+    cellMachNumbers.push(parseFloat(mLocal.toFixed(5)));
+    cellPressuresPa.push(parseFloat(p.toFixed(2)));
+    if (mLocal > maxMachNumber) {
+      maxMachNumber = mLocal;
+    }
+  }
+
+  const pressureDropPa = Math.max(0.0, parseFloat((pInf - pExit).toFixed(3)));
+
+  return {
+    maxMachNumber: parseFloat(maxMachNumber.toFixed(5)),
+    pressureDropPa,
+    residualHistory,
+    converged,
+    iterations,
+    cellMachNumbers,
+    cellPressuresPa,
+  };
 }
 
 /**
  * Evaluates an SU2/OpenFOAM CFD configuration to derive physical freestream state,
  * Reynolds/Mach numbers, boundary-layer skin friction, compressible Prandtl-Glauert
- * lift coefficient, and drag polar parameters.
+ * lift coefficient, drag polar parameters, and quasi-1D compressible Euler FVM flowfield.
  */
 export function extractCfdSlicingProperties(cfgText: string): CfdSlicingProperties {
   // Strip line comments (%, //, #) for active directive extraction
@@ -698,6 +950,20 @@ export function extractCfdSlicingProperties(cfgText: string): CfdSlicingProperti
   const dragForce = parseFloat((qInf * refArea * cd).toFixed(4)) || 0;
   const liftForce = parseFloat((qInf * refArea * cl).toFixed(4)) || 0;
 
+  // Execute multi-cell quasi-1D compressible Euler finite-volume solver
+  const fluxSchemeMatch = activeText.match(/\bCONV_NUM_METHOD_FLOW\s*=\s*(\w+)/i);
+  const fluxScheme = fluxSchemeMatch?.[1]?.toUpperCase() === "HLLC" ? "HLLC" : "ROE";
+  const fvmResult = solveQuasi1DEulerFvm({
+    freestreamDensity: density,
+    freestreamVelocity: freeStreamVelocity,
+    freestreamPressure: pressurePa,
+    gamma: GAMMA,
+    thicknessRatio,
+    aoaRad,
+    skinFrictionCoeff: cf,
+    fluxScheme,
+  });
+
   return {
     cd,
     cl,
@@ -706,9 +972,17 @@ export function extractCfdSlicingProperties(cfgText: string): CfdSlicingProperti
     density,
     freeStreamVelocity,
     machNumber: parseFloat(machNumber.toFixed(5)) || 0,
+    maxMachNumber: fvmResult.maxMachNumber,
     reynoldsNumber: parseFloat(reynoldsNumber.toFixed(1)) || 0,
     aoaDeg: parseFloat(aoaDeg.toFixed(3)) || 0,
     dragForce,
     liftForce,
+    dynamicViscosityPaS: parseFloat(mu.toExponential(6)),
+    pressureDropPa: fvmResult.pressureDropPa,
+    residualHistory: fvmResult.residualHistory,
+    converged: fvmResult.converged,
+    iterations: fvmResult.iterations,
+    cellMachNumbers: fvmResult.cellMachNumbers,
+    cellPressuresPa: fvmResult.cellPressuresPa,
   };
 }

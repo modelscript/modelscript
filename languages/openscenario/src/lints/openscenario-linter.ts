@@ -190,6 +190,61 @@ export function lintOpenScenario(doc: OpenScenarioDocument): DiagnosticItem[] {
     }
   }
 
+  // M8504: Cyclic event trigger detection
+  const eventDeps = new Map<
+    string,
+    { deps: Set<string>; range?: import("../types.js").OpenScenarioRange | undefined }
+  >();
+  for (const story of doc.stories) {
+    for (const act of story.acts) {
+      for (const mg of act.maneuverGroups) {
+        for (const m of mg.maneuvers) {
+          for (const ev of m.events) {
+            const deps = new Set<string>();
+            for (const c of ev.triggerConditions) {
+              if (c.storyboardElementRef) {
+                deps.add(c.storyboardElementRef);
+              }
+              if (c.kind === "parameter" && typeof c.entityRef === "string" && c.entityRef.length > 0) {
+                deps.add(c.entityRef);
+              }
+            }
+            eventDeps.set(ev.name, { deps, range: ev.range });
+          }
+        }
+      }
+    }
+  }
+  const reportedCycles = new Set<string>();
+  for (const [evA, infoA] of eventDeps.entries()) {
+    for (const depB of infoA.deps) {
+      if (depB === evA) {
+        diagnostics.push({
+          code: OpenScenarioErrorCode.CYCLIC_EVENT_TRIGGER.code,
+          rule: OpenScenarioErrorCode.CYCLIC_EVENT_TRIGGER.rule,
+          severity: OpenScenarioErrorCode.CYCLIC_EVENT_TRIGGER.severity,
+          message: OpenScenarioErrorCode.CYCLIC_EVENT_TRIGGER.message(evA, evA),
+          range: infoA.range,
+        });
+      } else {
+        const infoB = eventDeps.get(depB);
+        if (infoB && infoB.deps.has(evA)) {
+          const pairKey = [evA, depB].sort().join("::");
+          if (!reportedCycles.has(pairKey)) {
+            reportedCycles.add(pairKey);
+            diagnostics.push({
+              code: OpenScenarioErrorCode.CYCLIC_EVENT_TRIGGER.code,
+              rule: OpenScenarioErrorCode.CYCLIC_EVENT_TRIGGER.rule,
+              severity: OpenScenarioErrorCode.CYCLIC_EVENT_TRIGGER.severity,
+              message: OpenScenarioErrorCode.CYCLIC_EVENT_TRIGGER.message(evA, depB),
+              range: infoA.range,
+            });
+          }
+        }
+      }
+    }
+  }
+
   // M8508: Imminent collision in initial positions
   const entitiesList = Array.from(doc.entities.values());
   for (let i = 0; i < entitiesList.length; i++) {

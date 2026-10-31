@@ -309,4 +309,40 @@ REF_AREA= 1.0
     // High-AR wing has higher lift slope and lower induced drag share at same AOA
     assert.ok(highArWing.cl! > lowArWing.cl!);
   });
+
+  it("solves multi-cell quasi-1D compressible Euler finite-volume flowfield with Roe and HLLC Riemann fluxes", async () => {
+    const { extractCfdSlicingProperties, solveQuasi1DEulerFvm } = await import("../src/index.js");
+
+    const roeDeck = `
+SOLVER= EULER
+CONV_NUM_METHOD_FLOW= ROE
+MACH_NUMBER= 0.65
+AOA= 2.5
+FREESTREAM_PRESSURE= 101325.0
+FREESTREAM_TEMPERATURE= 288.15
+REF_LENGTH= 1.0
+REF_AREA= 0.5
+`;
+    const propsRoe = extractCfdSlicingProperties(roeDeck);
+    assert.ok(propsRoe.maxMachNumber !== undefined && propsRoe.maxMachNumber > propsRoe.machNumber!);
+    assert.ok(propsRoe.dynamicViscosityPaS !== undefined && Math.abs(propsRoe.dynamicViscosityPaS - 1.789e-5) < 1e-6);
+    assert.ok(propsRoe.pressureDropPa !== undefined && propsRoe.pressureDropPa > 0);
+    assert.ok(propsRoe.residualHistory && propsRoe.residualHistory.length >= 10);
+    assert.ok(propsRoe.cellMachNumbers && propsRoe.cellMachNumbers.length === 24);
+    assert.strictEqual(propsRoe.converged, true);
+
+    const hllcRes = solveQuasi1DEulerFvm({
+      numCells: 32,
+      maxIterations: 60,
+      fluxScheme: "HLLC",
+      freestreamDensity: 1.225,
+      freestreamVelocity: 220.0,
+      freestreamPressure: 101325.0,
+      thicknessRatio: 0.12,
+      aoaRad: (3.0 * Math.PI) / 180.0,
+    });
+    assert.strictEqual(hllcRes.cellMachNumbers.length, 32);
+    assert.ok(hllcRes.maxMachNumber > 0.64);
+    assert.ok(hllcRes.residualHistory[hllcRes.residualHistory.length - 1]! < hllcRes.residualHistory[0]!);
+  });
 });

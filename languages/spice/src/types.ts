@@ -97,10 +97,15 @@ export interface SpiceComponent {
   kind: ComponentKind;
   nodes: string[];
   value?: number | undefined;
+  rawValueExpr?: string | undefined;
   model?: string | undefined;
   params: Map<string, number | string>;
   sourceSpec?: SourceSpec | undefined;
   subcktName?: string | undefined;
+  // For mutual inductors (K):
+  inductor1?: string | undefined;
+  inductor2?: string | undefined;
+  couplingFactor?: number | undefined;
   // For controlled sources:
   controlNodes?: [string, string] | undefined; // For E, G
   controlSource?: string | undefined; // For F, H
@@ -171,6 +176,7 @@ export interface SpiceDirective {
 export interface SpiceCircuit {
   title: string;
   components: SpiceComponent[];
+  expandedComponents?: SpiceComponent[] | undefined;
   subcircuits: Map<string, SpiceSubcircuit>;
   models: Map<string, SpiceModel>;
   directives: SpiceDirective[];

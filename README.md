@@ -80,7 +80,7 @@ ModelScript provides first-class support for **44 engineering languages and simu
 
 > **Maturity Tiers** (enforced in `package.json#modelscript.tier` via `npm run lint:manifests`):
 >
-> - **`Stable` (14 languages)** — Reference-verified against external industry test suites or standard libraries (e.g., OpenModelica / MSL 4.1.0, OMG SysML v2 / KerML, IEEE 2800, EN 14363, ISO 10303 AP242, W3C OWL 2, FMI/SSP).
+> - **`Stable` (14 languages)** — Production-ready with complete WASM GLR parser, static linter, DAE/solver lowering, and verified against standard industry benchmarks, standard library snapshots, or comprehensive unit test suites (e.g., OpenModelica & MSL 4.1.0, OMG KerML standard library, Manchester Benchmark / EN 14363, NIST AP242).
 > - **`Beta` (15 languages)** — Domain-complete with native WASM GLR parser, static domain linter, `DAEBuilder`/solver lowering, and $\ge 5$ unit/integration test suites.
 > - **`Preview` (15 languages)** — Specialized dialect support with native WASM parser, core AST/DAE lowering, and baseline verification suites.
 
@@ -215,9 +215,9 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 
 ### Enterprise Edition (`ee/`)
 
-| Package                    | Responsibility                                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@modelscript/ee`](./ee/) | Commercial Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — offline Ed25519 license verifier (`MSX_LICENSE_KEY`), air-gapped NERC CIP / FERC CEII & ITAR/EAR compliance, FDA 21 CFR Part 11 DHF attestations, SAML/OIDC SSO & Org RBAC, Slurm HPC & Stripe billing, Operational Digital Twins, Digital Thread Governance, HIL codegen, and PLM/CAE connectors |
+| Package                    | Responsibility                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@modelscript/ee`](./ee/) | Commercial Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — offline Ed25519 license verifier (`MSX_LICENSE_KEY`), air-gapped NERC CIP / FERC CEII & EAR/OFAC trade compliance, FDA 21 CFR Part 11 DHF attestations, SAML/OIDC SSO & Org RBAC, Slurm HPC & Stripe billing, Operational Digital Twins, Digital Thread Governance, HIL codegen, and PLM/CAE connectors |
 
 ---
 

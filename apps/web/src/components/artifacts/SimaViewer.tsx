@@ -13,13 +13,12 @@ import {
 } from "@modelscript/sima";
 import { AlertIcon, CheckCircleIcon, CheckIcon, CopyIcon, PlayIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Spinner } from "@primer/react";
-import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface SimaViewerProps {
   viewConfig: {
@@ -58,8 +57,8 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 38px;
+  min-height: 38px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.78));
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
@@ -138,30 +137,6 @@ const ContentArea = styled.div`
   overflow: hidden;
   position: relative;
   background: #070b14;
-`;
-
-const SvgCanvas = styled.div`
-  flex: 1;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  padding: 6px;
-  background: #070b14;
-
-  svg {
-    width: 100%;
-    height: 100%;
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-  }
-
-  .mooring-line:hover line {
-    filter: brightness(1.3);
-  }
 `;
 
 const FloatingControlBar = styled.div`
@@ -400,7 +375,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
     const { model, dnvReport, offsetReport } = analysis;
     if (!model || model.lines.length === 0) {
       if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-        return DOMPurify.sanitize(viewConfig.svg);
+        return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
       }
       return "";
     }
@@ -456,8 +431,8 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
       }),
     });
 
-    return DOMPurify.sanitize(rawSvg);
-  }, [analysis, viewConfig.svg, title, selectedLine, alsBrokenMode, clampedLineIdx]);
+    return sanitizeSvgMarkup(rawSvg, { isFullScreen });
+  }, [analysis, viewConfig.svg, title, selectedLine, alsBrokenMode, clampedLineIdx, isFullScreen]);
 
   // Dynamically generate the 2D Catenary Sag Profile SVG for the currently selected mooring line
   const liveCatenarySvg = useMemo(() => {
@@ -523,8 +498,8 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
       })),
     });
 
-    return DOMPurify.sanitize(rawSvg);
-  }, [analysis, selectedLine, clampedLineIdx, alsBrokenMode]);
+    return sanitizeSvgMarkup(rawSvg, { isFullScreen });
+  }, [analysis, selectedLine, clampedLineIdx, alsBrokenMode, isFullScreen]);
 
   // Handle interactive clicking on mooring lines in the Polar Spread SVG
   const handleSpreadSvgClick = useCallback(
@@ -563,8 +538,8 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <ShieldCheckIcon size={16} fill="var(--color-accent-fg, #38bdf8)" />
-          <ModelTitle title={title}>{title}</ModelTitle>
+          <ShieldCheckIcon size={15} fill="var(--color-accent-fg, #38bdf8)" />
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge>SIMA Marine</PillBadge>
           <PillBadge $variant="meta">
             {lineCount} Lines · {waterDepth}m
@@ -600,7 +575,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
             </SegmentedControl.Button>
           </SegmentedControl>
 
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"
@@ -654,7 +629,9 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
               </FloatingControlBar>
             )}
 
-            <SvgCanvas onClick={handleSpreadSvgClick} dangerouslySetInnerHTML={{ __html: liveSpreadSvg }} />
+            <div onClick={handleSpreadSvgClick} style={{ display: "flex", flex: 1, minHeight: 0, width: "100%" }}>
+              <InteractiveSvgStage svgHtml={liveSpreadSvg} />
+            </div>
 
             {selectedLine && selectedDnvLine && (
               <FloatingInspectorChip>
@@ -726,7 +703,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
                 </AlsToggleButton>
               </FloatingControlBar>
             )}
-            <SvgCanvas dangerouslySetInnerHTML={{ __html: liveCatenarySvg }} />
+            <InteractiveSvgStage svgHtml={liveCatenarySvg} />
           </>
         ) : viewMode === "dnv" && analysis.dnvReport ? (
           <MatrixWrapper>

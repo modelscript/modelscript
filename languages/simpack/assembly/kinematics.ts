@@ -400,31 +400,152 @@ export function kin_evaluate_joint_constraint(
 // =============================================================================
 
 export function kin_solve_loop_closure(positionsPtr: usize, chainCount: i32, outResidualPtr: usize): f64 {
+  if (chainCount <= 1) {
+    store<f64>(outResidualPtr + 0, 0.0);
+    store<f64>(outResidualPtr + 8, 0.0);
+    store<f64>(outResidualPtr + 16, 0.0);
+    store<f64>(outResidualPtr + 24, 0.0);
+    return 0.0;
+  }
+
+  if (chainCount == 2) {
+    const x0: f64 = load<f64>(positionsPtr + 0);
+    const y0: f64 = load<f64>(positionsPtr + 8);
+    const z0: f64 = load<f64>(positionsPtr + 16);
+    const x1: f64 = load<f64>(positionsPtr + 24);
+    const y1: f64 = load<f64>(positionsPtr + 32);
+    const z1: f64 = load<f64>(positionsPtr + 40);
+    const rx2: f64 = x1 - x0;
+    const ry2: f64 = y1 - y0;
+    const rz2: f64 = z1 - z0;
+    const mag2: f64 = Math.sqrt(rx2 * rx2 + ry2 * ry2 + rz2 * rz2);
+    store<f64>(outResidualPtr + 0, rx2);
+    store<f64>(outResidualPtr + 8, ry2);
+    store<f64>(outResidualPtr + 16, rz2);
+    store<f64>(outResidualPtr + 24, mag2);
+    store<f64>(positionsPtr + 24, x0);
+    store<f64>(positionsPtr + 32, y0);
+    store<f64>(positionsPtr + 40, z0);
+    return mag2;
+  }
+
+  // Evaluate open-chain link lengths L_i = ||p_{i+1} - p_i|| for i = 0 .. n-2
+  let sumLinkLen: f64 = 0.0;
+  let refLen: f64 = 0.0;
+  for (let i: i32 = 0; i < chainCount - 1; i++) {
+    const off1: usize = <usize>(i * 24);
+    const off2: usize = <usize>((i + 1) * 24);
+    const dx: f64 = load<f64>(positionsPtr + off2 + 0) - load<f64>(positionsPtr + off1 + 0);
+    const dy: f64 = load<f64>(positionsPtr + off2 + 8) - load<f64>(positionsPtr + off1 + 8);
+    const dz: f64 = load<f64>(positionsPtr + off2 + 16) - load<f64>(positionsPtr + off1 + 16);
+    const len: f64 = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    sumLinkLen += len;
+    if (i == 0) {
+      refLen = len;
+    }
+  }
+
+  const meanOpenLen: f64 = sumLinkLen / <f64>(chainCount - 1);
+  const targetLen: f64 = refLen > 1e-12 ? refLen : meanOpenLen;
+
+  // Evaluate cut-joint closing link vector from last body (n-1) back to first body (0)
+  const offLast: usize = <usize>((chainCount - 1) * 24);
+  const closeDx: f64 = load<f64>(positionsPtr + 0) - load<f64>(positionsPtr + offLast + 0);
+  const closeDy: f64 = load<f64>(positionsPtr + 8) - load<f64>(positionsPtr + offLast + 8);
+  const closeDz: f64 = load<f64>(positionsPtr + 16) - load<f64>(positionsPtr + offLast + 16);
+  const closeLen: f64 = Math.sqrt(closeDx * closeDx + closeDy * closeDy + closeDz * closeDz);
+
   let rx: f64 = 0.0;
   let ry: f64 = 0.0;
   let rz: f64 = 0.0;
 
-  for (let i: i32 = 0; i < chainCount - 1; i++) {
+  if (closeLen > 1e-12) {
+    const scale: f64 = (closeLen - targetLen) / closeLen;
+    rx = closeDx * scale;
+    ry = closeDy * scale;
+    rz = closeDz * scale;
+  } else {
+    rx = targetLen;
+  }
+
+  // Accumulate link-length mismatch variance across intermediate links so distorted chains cannot cancel
+  let lengthVarSq: f64 = 0.0;
+  for (let i: i32 = 1; i < chainCount - 1; i++) {
     const off1: usize = <usize>(i * 24);
     const off2: usize = <usize>((i + 1) * 24);
-    rx += load<f64>(positionsPtr + off2 + 0) - load<f64>(positionsPtr + off1 + 0);
-    ry += load<f64>(positionsPtr + off2 + 8) - load<f64>(positionsPtr + off1 + 8);
-    rz += load<f64>(positionsPtr + off2 + 16) - load<f64>(positionsPtr + off1 + 16);
+    const dx: f64 = load<f64>(positionsPtr + off2 + 0) - load<f64>(positionsPtr + off1 + 0);
+    const dy: f64 = load<f64>(positionsPtr + off2 + 8) - load<f64>(positionsPtr + off1 + 8);
+    const dz: f64 = load<f64>(positionsPtr + off2 + 16) - load<f64>(positionsPtr + off1 + 16);
+    const len: f64 = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const diff: f64 = len - targetLen;
+    lengthVarSq += diff * diff;
+    if (len > 1e-12 && Math.abs(diff) > 1e-9) {
+      rx += (dx / len) * diff;
+      ry += (dy / len) * diff;
+      rz += (dz / len) * diff;
+    }
   }
 
-  if (chainCount > 2) {
-    const offLast: usize = <usize>((chainCount - 1) * 24);
-    const offFirst: usize = 0;
-    rx += load<f64>(positionsPtr + offFirst + 0) - load<f64>(positionsPtr + offLast + 0);
-    ry += load<f64>(positionsPtr + offFirst + 8) - load<f64>(positionsPtr + offLast + 8);
-    rz += load<f64>(positionsPtr + offFirst + 16) - load<f64>(positionsPtr + offLast + 16);
-  }
-
-  const errMag: f64 = Math.sqrt(rx * rx + ry * ry + rz * rz);
+  const errMag: f64 = Math.sqrt(rx * rx + ry * ry + rz * rz + lengthVarSq);
   store<f64>(outResidualPtr + 0, rx);
   store<f64>(outResidualPtr + 8, ry);
   store<f64>(outResidualPtr + 16, rz);
   store<f64>(outResidualPtr + 24, errMag);
+
+  // Iteratively adjust dependent body coordinates (indices 2 .. chainCount-1) to close the loop
+  if (errMag >= 1e-8 && targetLen > 1e-12) {
+    for (let iter: i32 = 0; iter < 30; iter++) {
+      // Forward pass: enforce link lengths L_i = targetLen from i = 1 .. chainCount-2
+      for (let i: i32 = 1; i < chainCount - 1; i++) {
+        const pOff1: usize = <usize>(i * 24);
+        const pOff2: usize = <usize>((i + 1) * 24);
+        const x1: f64 = load<f64>(positionsPtr + pOff1 + 0);
+        const y1: f64 = load<f64>(positionsPtr + pOff1 + 8);
+        const z1: f64 = load<f64>(positionsPtr + pOff1 + 16);
+        const dx: f64 = load<f64>(positionsPtr + pOff2 + 0) - x1;
+        const dy: f64 = load<f64>(positionsPtr + pOff2 + 8) - y1;
+        const dz: f64 = load<f64>(positionsPtr + pOff2 + 16) - z1;
+        const dist: f64 = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist > 1e-12) {
+          const s: f64 = targetLen / dist;
+          store<f64>(positionsPtr + pOff2 + 0, x1 + dx * s);
+          store<f64>(positionsPtr + pOff2 + 8, y1 + dy * s);
+          store<f64>(positionsPtr + pOff2 + 16, z1 + dz * s);
+        }
+      }
+      // Backward pass from anchor body 0 to body chainCount-1 and back down to 2
+      const x0: f64 = load<f64>(positionsPtr + 0);
+      const y0: f64 = load<f64>(positionsPtr + 8);
+      const z0: f64 = load<f64>(positionsPtr + 16);
+      const bdx: f64 = load<f64>(positionsPtr + offLast + 0) - x0;
+      const bdy: f64 = load<f64>(positionsPtr + offLast + 8) - y0;
+      const bdz: f64 = load<f64>(positionsPtr + offLast + 16) - z0;
+      const bdist: f64 = Math.sqrt(bdx * bdx + bdy * bdy + bdz * bdz);
+      if (bdist > 1e-12) {
+        const bs: f64 = targetLen / bdist;
+        store<f64>(positionsPtr + offLast + 0, x0 + bdx * bs);
+        store<f64>(positionsPtr + offLast + 8, y0 + bdy * bs);
+        store<f64>(positionsPtr + offLast + 16, z0 + bdz * bs);
+      }
+      for (let i: i32 = chainCount - 1; i > 2; i--) {
+        const pOffCurr: usize = <usize>(i * 24);
+        const pOffPrev: usize = <usize>((i - 1) * 24);
+        const xc: f64 = load<f64>(positionsPtr + pOffCurr + 0);
+        const yc: f64 = load<f64>(positionsPtr + pOffCurr + 8);
+        const zc: f64 = load<f64>(positionsPtr + pOffCurr + 16);
+        const dx: f64 = load<f64>(positionsPtr + pOffPrev + 0) - xc;
+        const dy: f64 = load<f64>(positionsPtr + pOffPrev + 8) - yc;
+        const dz: f64 = load<f64>(positionsPtr + pOffPrev + 16) - zc;
+        const dist: f64 = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist > 1e-12) {
+          const s: f64 = targetLen / dist;
+          store<f64>(positionsPtr + pOffPrev + 0, xc + dx * s);
+          store<f64>(positionsPtr + pOffPrev + 8, yc + dy * s);
+          store<f64>(positionsPtr + pOffPrev + 16, zc + dz * s);
+        }
+      }
+    }
+  }
 
   return errMag;
 }

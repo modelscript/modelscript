@@ -11,8 +11,23 @@
  */
 
 import { parseSpiceNumber } from "../parser/spice-parser.js";
-import type { AcOptions, AcResult, AcSignal, SpiceCircuit } from "../types.js";
+import type { AcOptions, AcResult, AcSignal, SpiceCircuit, SpiceComponent } from "../types.js";
 import { DenseMatrix, buildMnaIndexing, flattenSpiceCircuit, solveLinearSystem, type MnaIndexing } from "./mna.js";
+import {
+  extractPrecomputedNonlinearDevices,
+  findBranchIndex,
+  solveOp,
+  stampPrecomputedBjt,
+  stampPrecomputedDiode,
+  stampPrecomputedMosfet,
+} from "./op.js";
+
+interface AcInductorEntry {
+  comp: SpiceComponent;
+  L: number;
+  gammaSelf: number;
+  couplings: { otherIdx: number; gammaMutual: number }[];
+}
 
 export function solveAc(circuit: SpiceCircuit, options?: Partial<AcOptions>): AcResult {
   const components = flattenSpiceCircuit(circuit);
@@ -69,14 +84,108 @@ export function solveAc(circuit: SpiceCircuit, options?: Partial<AcOptions>): Ac
     baseMatrix.add(n + r, n + c, val);
   };
 
-  // 1. Pre-stamp Resistors (Pure Real Conductance)
+  // 1. Pre-stamp Resistors (Pure Real Conductance) and Controlled Sources (E, G, F, H)
   for (const comp of components) {
+    const n1 = comp.nodes[0] ?? "";
+    const n2 = comp.nodes[1] ?? "";
     if (comp.kind === "R") {
-      const n1 = comp.nodes[0] ?? "";
-      const n2 = comp.nodes[1] ?? "";
       const rVal = comp.value ?? 1e3;
       const g = rVal > 0 ? 1.0 / rVal : 1e12;
       stampTwoTerminal(indexing, n1, n2, g, addG_base);
+    } else if (comp.kind === "E" && comp.controlNodes) {
+      const bIdx = indexing.branchToIdx.get(comp.name);
+      if (bIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        const c1 = indexing.nodeToIdx.get(comp.controlNodes[0]?.toUpperCase() ?? "") ?? -1;
+        const c2 = indexing.nodeToIdx.get(comp.controlNodes[1]?.toUpperCase() ?? "") ?? -1;
+        const gain = comp.gain ?? comp.value ?? 1.0;
+        if (i1 >= 0) {
+          addG_base(i1, bIdx, 1.0);
+          addG_base(bIdx, i1, 1.0);
+        }
+        if (i2 >= 0) {
+          addG_base(i2, bIdx, -1.0);
+          addG_base(bIdx, i2, -1.0);
+        }
+        if (c1 >= 0) addG_base(bIdx, c1, -gain);
+        if (c2 >= 0) addG_base(bIdx, c2, gain);
+      }
+    } else if (comp.kind === "G" && comp.controlNodes) {
+      const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+      const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+      const c1 = indexing.nodeToIdx.get(comp.controlNodes[0]?.toUpperCase() ?? "") ?? -1;
+      const c2 = indexing.nodeToIdx.get(comp.controlNodes[1]?.toUpperCase() ?? "") ?? -1;
+      const gm = comp.gain ?? comp.value ?? 1e-3;
+      if (i1 >= 0 && c1 >= 0) addG_base(i1, c1, gm);
+      if (i1 >= 0 && c2 >= 0) addG_base(i1, c2, -gm);
+      if (i2 >= 0 && c1 >= 0) addG_base(i2, c1, -gm);
+      if (i2 >= 0 && c2 >= 0) addG_base(i2, c2, gm);
+    } else if (comp.kind === "F" && comp.controlSource) {
+      const cBranchIdx = findBranchIndex(indexing.branchToIdx, comp.controlSource);
+      if (cBranchIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        const gain = comp.gain ?? comp.value ?? 1.0;
+        if (i1 >= 0) addG_base(i1, cBranchIdx, gain);
+        if (i2 >= 0) addG_base(i2, cBranchIdx, -gain);
+      }
+    } else if (comp.kind === "H" && comp.controlSource) {
+      const bIdx = indexing.branchToIdx.get(comp.name);
+      const cBranchIdx = findBranchIndex(indexing.branchToIdx, comp.controlSource);
+      if (bIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        const gain = comp.gain ?? comp.value ?? 1.0;
+        if (i1 >= 0) {
+          addG_base(i1, bIdx, 1.0);
+          addG_base(bIdx, i1, 1.0);
+        }
+        if (i2 >= 0) {
+          addG_base(i2, bIdx, -1.0);
+          addG_base(bIdx, i2, -1.0);
+        }
+        if (cBranchIdx !== undefined) {
+          addG_base(bIdx, cBranchIdx, -gain);
+        }
+      }
+    }
+  }
+
+  // 1b. Linearize Nonlinear Devices (D, Q, M) around DC Operating Point (.OP)
+  const nlDevices = extractPrecomputedNonlinearDevices(components, circuit, indexing);
+  if (nlDevices.hasNonlinear) {
+    const op = solveOp(circuit);
+    const opSol = new Float64Array(n);
+    for (let i = 0; i < indexing.idxToNode.length; i++) {
+      const node = indexing.idxToNode[i];
+      if (node !== undefined) {
+        opSol[i] = op.nodeVoltages.get(node) ?? 0;
+      }
+    }
+    for (const [branch, bIdx] of indexing.branchToIdx) {
+      opSol[bIdx] = op.branchCurrents.get(branch) ?? 0;
+    }
+
+    const smallSignalG = new DenseMatrix(n);
+    const dummyRhs = new Float64Array(n);
+    for (const diode of nlDevices.diodes) {
+      stampPrecomputedDiode(smallSignalG, dummyRhs, diode, opSol);
+    }
+    for (const bjt of nlDevices.bjts) {
+      stampPrecomputedBjt(smallSignalG, dummyRhs, bjt, opSol);
+    }
+    for (const mosfet of nlDevices.mosfets) {
+      stampPrecomputedMosfet(smallSignalG, dummyRhs, mosfet, opSol);
+    }
+
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const gVal = smallSignalG.get(r, c);
+        if (gVal !== 0) {
+          addG_base(r, c, gVal);
+        }
+      }
     }
   }
 
@@ -130,9 +239,50 @@ export function solveAc(circuit: SpiceCircuit, options?: Partial<AcOptions>): Ac
     }
   }
 
-  // Pre-filter reactive components
+  // Pre-filter reactive components and coupled inductors (K)
   const capComponents = components.filter((c) => c.kind === "C");
-  const indComponents = components.filter((c) => c.kind === "L");
+  const indEntries: AcInductorEntry[] = [];
+  const indNameToIdx = new Map<string, number>();
+
+  for (const comp of components) {
+    if (comp.kind === "L") {
+      const lVal = comp.value ?? 1e-6;
+      const idx = indEntries.length;
+      indEntries.push({
+        comp,
+        L: lVal,
+        gammaSelf: lVal > 0 ? 1.0 / lVal : 1e12,
+        couplings: [],
+      });
+      indNameToIdx.set(comp.name.toUpperCase(), idx);
+    }
+  }
+
+  for (const comp of components) {
+    if (comp.kind === "K") {
+      const l1Name = (comp.inductor1 ?? comp.nodes[0] ?? "").toUpperCase();
+      const l2Name = (comp.inductor2 ?? comp.nodes[1] ?? "").toUpperCase();
+      const idx1 = indNameToIdx.get(l1Name);
+      const idx2 = indNameToIdx.get(l2Name);
+      if (idx1 !== undefined && idx2 !== undefined && idx1 !== idx2) {
+        const e1 = indEntries[idx1];
+        const e2 = indEntries[idx2];
+        if (!e1 || !e2) continue;
+        const rawK = comp.couplingFactor ?? comp.value ?? 0.999;
+        const kSign = rawK < 0 ? -1 : 1;
+        const kEff = kSign * Math.min(0.9999, Math.abs(rawK));
+        const M = kEff * Math.sqrt(e1.L * e2.L);
+        const det = e1.L * e2.L - M * M;
+        if (det > 1e-30) {
+          e1.gammaSelf = e2.L / det;
+          e2.gammaSelf = e1.L / det;
+          const gammaMut = -M / det;
+          e1.couplings.push({ otherIdx: idx2, gammaMutual: gammaMut });
+          e2.couplings.push({ otherIdx: idx1, gammaMutual: gammaMut });
+        }
+      }
+    }
+  }
 
   // Frequency Sweep Loop
   for (let fIdx = 0; fIdx < frequencies.length; fIdx++) {
@@ -159,13 +309,26 @@ export function solveAc(circuit: SpiceCircuit, options?: Partial<AcOptions>): Ac
       stampTwoTerminal(indexing, n1, n2, b, addB);
     }
 
-    // 2. Stamp Inductors (Susceptance B = -1 / (omega * L))
-    for (const comp of indComponents) {
-      const n1 = comp.nodes[0] ?? "";
-      const n2 = comp.nodes[1] ?? "";
-      const lVal = comp.value ?? 1e-6;
-      const b = lVal > 0 ? -1.0 / (omega * lVal) : -1e12;
-      stampTwoTerminal(indexing, n1, n2, b, addB);
+    // 2. Stamp Inductors & Coupled Inductors (Susceptance B = -Gamma / omega)
+    for (const entry of indEntries) {
+      const n1 = entry.comp.nodes[0] ?? "";
+      const n2 = entry.comp.nodes[1] ?? "";
+      const bSelf = -entry.gammaSelf / omega;
+      stampTwoTerminal(indexing, n1, n2, bSelf, addB);
+
+      const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+      const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+      for (const cpl of entry.couplings) {
+        const other = indEntries[cpl.otherIdx];
+        if (!other) continue;
+        const c1 = indexing.nodeToIdx.get((other.comp.nodes[0] ?? "").toUpperCase()) ?? -1;
+        const c2 = indexing.nodeToIdx.get((other.comp.nodes[1] ?? "").toUpperCase()) ?? -1;
+        const bMut = -cpl.gammaMutual / omega;
+        if (i1 >= 0 && c1 >= 0) addB(i1, c1, bMut);
+        if (i1 >= 0 && c2 >= 0) addB(i1, c2, -bMut);
+        if (i2 >= 0 && c1 >= 0) addB(i2, c1, -bMut);
+        if (i2 >= 0 && c2 >= 0) addB(i2, c2, bMut);
+      }
     }
 
     // Solve augmented linear system

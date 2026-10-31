@@ -1,15 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CodeIcon, FlameIcon, PlayIcon, WorkflowIcon } from "@primer/octicons-react";
+import {
+  CodeIcon,
+  FlameIcon,
+  PlayIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
+  WorkflowIcon,
+} from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
-import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { runPhysicsJob } from "../../api";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import {
+  highlightPolyglotLine,
+  InteractiveSvgStage,
+  renderSourceToDiagramSvg,
+  sanitizeSvgMarkup,
+} from "./PolyglotArtifactViewer";
 import SimulationResultViewer from "./SimulationResultViewer";
 
 export interface CfdConfigViewerProps {
@@ -52,14 +63,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 38px;
+  min-height: 38px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default, #30363d);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -101,22 +112,6 @@ const ContentArea = styled.div`
   display: flex;
   overflow: hidden;
   position: relative;
-`;
-
-const SvgCanvas = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 16px;
-  background: var(--color-canvas-inset, #010409);
-
-  svg {
-    max-width: 100%;
-    max-height: 100%;
-    height: auto;
-  }
 `;
 
 const InspectorSidebar = styled.div`
@@ -199,9 +194,8 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
   const [simCompleted, setSimCompleted] = useState(false);
   const [completedResultConfig, setCompletedResultConfig] = useState<any>(null);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">(() =>
-    typeof viewConfig?.svg === "string" && viewConfig.svg.includes("<svg") ? "diagram" : "code",
-  );
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [showInspector, setShowInspector] = useState<boolean>(() => !isFullScreen);
   const title = viewConfig.title || viewConfig.configName || "SU2 Aerodynamic Config (.cfg)";
 
   useEffect(() => {
@@ -241,10 +235,20 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.includes("<svg")) {
-      return DOMPurify.sanitize(viewConfig.svg);
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+    }
+    if (rawText.trim()) {
+      try {
+        const fallback = renderSourceToDiagramSvg(rawText, "cfd", title, true, isFullScreen);
+        if (fallback.svg) {
+          return fallback.svg;
+        }
+      } catch (err) {
+        console.warn("[CfdConfigViewer] Client-side schematic synthesis failed:", err);
+      }
     }
     return "";
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, rawText, title, isFullScreen]);
 
   const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
@@ -294,8 +298,8 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <FlameIcon size={16} fill="var(--color-attention-fg, currentColor)" />
-          <ModelTitle>{title}</ModelTitle>
+          <FlameIcon size={15} fill="var(--color-attention-fg, currentColor)" />
+          {!isFullScreen && <ModelTitle>{title}</ModelTitle>}
           <PillBadge>SU2 CFD Config</PillBadge>
         </HeaderLeft>
 
@@ -362,8 +366,18 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
           >
             {runningSim ? "Solving..." : "Run Solver"}
           </Button>
+          <Button
+            size="small"
+            variant="invisible"
+            leadingVisual={showInspector ? SidebarCollapseIcon : SidebarExpandIcon}
+            onClick={() => setShowInspector((v) => !v)}
+            title={showInspector ? "Hide telemetry sidebar" : "Show telemetry sidebar"}
+            style={{ color: showInspector ? "var(--color-attention-fg)" : "var(--color-fg-muted)" }}
+          >
+            Telemetry
+          </Button>
 
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"
@@ -398,7 +412,7 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
             <Spinner size="medium" />
           </Box>
         ) : effectiveViewMode === "diagram" && sanitizedSvg ? (
-          <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+          <InteractiveSvgStage svgHtml={sanitizedSvg} />
         ) : (
           <Box
             flex={1}
@@ -436,45 +450,47 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
           </Box>
         )}
 
-        <InspectorSidebar>
-          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-            Aerodynamic Setup Telemetry
-          </Text>
-          {solver && (
+        {showInspector && (
+          <InspectorSidebar>
+            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
+              Aerodynamic Setup Telemetry
+            </Text>
+            {solver && (
+              <StatItem>
+                <span>Flow Solver</span>
+                <strong style={{ color: "#38bdf8" }}>{solver}</strong>
+              </StatItem>
+            )}
+            {turbModel && (
+              <StatItem>
+                <span>Turbulence Model</span>
+                <strong>{turbModel}</strong>
+              </StatItem>
+            )}
+            {machNumber !== undefined && (
+              <StatItem>
+                <span>Mach Number (M)</span>
+                <strong>{machNumber}</strong>
+              </StatItem>
+            )}
+            {aoaDeg !== undefined && (
+              <StatItem>
+                <span>Angle of Attack (α)</span>
+                <strong>{aoaDeg}°</strong>
+              </StatItem>
+            )}
+            {reynoldsNumber !== undefined && (
+              <StatItem>
+                <span>Reynolds Number (Re)</span>
+                <strong>{reynoldsNumber >= 1e6 ? `${(reynoldsNumber / 1e6).toFixed(2)}M` : reynoldsNumber}</strong>
+              </StatItem>
+            )}
             <StatItem>
-              <span>Flow Solver</span>
-              <strong style={{ color: "#38bdf8" }}>{solver}</strong>
+              <span>Boundary Markers</span>
+              <strong>{viewConfig.markerCount ?? allMarkers.length}</strong>
             </StatItem>
-          )}
-          {turbModel && (
-            <StatItem>
-              <span>Turbulence Model</span>
-              <strong>{turbModel}</strong>
-            </StatItem>
-          )}
-          {machNumber !== undefined && (
-            <StatItem>
-              <span>Mach Number (M)</span>
-              <strong>{machNumber}</strong>
-            </StatItem>
-          )}
-          {aoaDeg !== undefined && (
-            <StatItem>
-              <span>Angle of Attack (α)</span>
-              <strong>{aoaDeg}°</strong>
-            </StatItem>
-          )}
-          {reynoldsNumber !== undefined && (
-            <StatItem>
-              <span>Reynolds Number (Re)</span>
-              <strong>{reynoldsNumber >= 1e6 ? `${(reynoldsNumber / 1e6).toFixed(2)}M` : reynoldsNumber}</strong>
-            </StatItem>
-          )}
-          <StatItem>
-            <span>Boundary Markers</span>
-            <strong>{viewConfig.markerCount ?? allMarkers.length}</strong>
-          </StatItem>
-        </InspectorSidebar>
+          </InspectorSidebar>
+        )}
       </ContentArea>
     </CardWrapper>
   );

@@ -28,7 +28,9 @@ export function lowerSimulinkToDae(model: SimulinkModel, options?: SimulinkLower
   return dae;
 }
 
-function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder): void {
+function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""): void {
+  const qualify = (blockName: string): string => (prefix ? `${prefix}.${blockName}` : blockName);
+
   // Map output ports: "srcBlock#port" -> ExprId in DAE
   const outputExprs = new Map<string, number>();
 
@@ -44,16 +46,17 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder): void {
     }
   }
 
-  // 1. Declare output signal variables for all blocks: ${block.name}.y (or .y_1, .y_2 for multi-port)
+  // 1. Declare output signal variables for all blocks: ${qualifiedBlockName}.y (or .y_1, .y_2 for multi-port)
   for (const block of system.blocks.values()) {
     const outPorts = block.ports.filter((p) => p.type === "out");
     const outCount = outPorts.length > 0 ? outPorts.length : 1;
+    const qName = qualify(block.name);
 
     for (let p = 1; p <= outCount; p++) {
-      const varName = outCount === 1 ? `${block.name}.y` : `${block.name}.y_${p}`;
+      const varName = outCount === 1 ? `${qName}.y` : `${qName}.y_${p}`;
       const varType = VarType.Real;
       const variability = block.type === "Constant" ? Variability.Parameter : Variability.Continuous;
-      const causality = block.type === "Inport" ? Causality.Input : Causality.Local;
+      const causality = block.type === "Inport" && !prefix ? Causality.Input : Causality.Local;
       const startVal =
         block.type === "Integrator" ? Number.parseFloat(String(block.parameters.get("InitialCondition") ?? "0")) : 0.0;
 
@@ -235,7 +238,7 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder): void {
         // y = (b_0 - b_n a_0) x_1 + ... + (b_{n-1} - b_n a_{n-1}) x_n + b_n u
         const stateExprs: number[] = [];
         for (let i = 1; i <= n; i++) {
-          const stateName = `${block.name}.x${i}`;
+          const stateName = `${qualify(block.name)}.x${i}`;
           dae.addVariable(stateName, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
           stateExprs.push(dae.addNameExpr(stateName));
         }
@@ -288,7 +291,7 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder): void {
       // -----------------------------------------------------------------------
       case "UnitDelay": {
         const uExpr = getInputExpr(block.name, 1);
-        const xPrevName = `${block.name}.x_prev`;
+        const xPrevName = `${qualify(block.name)}.x_prev`;
         const x0 = Number.parseFloat(String(block.parameters.get("InitialCondition") ?? "0"));
         dae.addVariable(xPrevName, VarType.Real, Variability.Discrete, Causality.Local, Number.isFinite(x0) ? x0 : 0.0);
         const xPrevExpr = dae.addNameExpr(xPrevName);
@@ -301,10 +304,78 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder): void {
       }
 
       // -----------------------------------------------------------------------
+      // Saturation: clamp(u, lower, upper)
+      // -----------------------------------------------------------------------
+      case "Saturation": {
+        const uExpr = getInputExpr(block.name, 1);
+        const upper = Number.parseFloat(String(block.parameters.get("UpperLimit") ?? "0.5"));
+        const lower = Number.parseFloat(String(block.parameters.get("LowerLimit") ?? "-0.5"));
+        const uMax = dae.addRealLiteral(Number.isFinite(upper) ? upper : 0.5);
+        const uMin = dae.addRealLiteral(Number.isFinite(lower) ? lower : -0.5);
+        const clampedLow = dae.addIfElse(dae.addBinaryExpr(BinOp.Lt, uExpr, uMin), uMin, uExpr);
+        const clamped = dae.addIfElse(dae.addBinaryExpr(BinOp.Gt, uExpr, uMax), uMax, clampedLow);
+        dae.addEquation(EqKind.Simple, outExpr, clamped);
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // DeadZone: 0 inside [start, end], linear outside
+      // -----------------------------------------------------------------------
+      case "DeadZone": {
+        const uExpr = getInputExpr(block.name, 1);
+        const dzStart = Number.parseFloat(String(block.parameters.get("LowerValue") ?? "-0.5"));
+        const dzEnd = Number.parseFloat(String(block.parameters.get("UpperValue") ?? "0.5"));
+        const loExpr = dae.addRealLiteral(Number.isFinite(dzStart) ? dzStart : -0.5);
+        const hiExpr = dae.addRealLiteral(Number.isFinite(dzEnd) ? dzEnd : 0.5);
+        const zeroExpr = dae.addRealLiteral(0.0);
+        const aboveHi = dae.addBinaryExpr(BinOp.Sub, uExpr, hiExpr);
+        const belowLo = dae.addBinaryExpr(BinOp.Sub, uExpr, loExpr);
+        const inner = dae.addIfElse(dae.addBinaryExpr(BinOp.Lt, uExpr, loExpr), belowLo, zeroExpr);
+        const dzOut = dae.addIfElse(dae.addBinaryExpr(BinOp.Gt, uExpr, hiExpr), aboveHi, inner);
+        dae.addEquation(EqKind.Simple, outExpr, dzOut);
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // Switch: u2 >= threshold ? u1 : u3
+      // -----------------------------------------------------------------------
+      case "Switch": {
+        const u1 = getInputExpr(block.name, 1);
+        const u2 = getInputExpr(block.name, 2);
+        const u3 = getInputExpr(block.name, 3);
+        const thresh = Number.parseFloat(String(block.parameters.get("Threshold") ?? "0.0"));
+        const threshExpr = dae.addRealLiteral(Number.isFinite(thresh) ? thresh : 0.0);
+        const cond = dae.addBinaryExpr(BinOp.Gte, u2, threshExpr);
+        dae.addEquation(EqKind.Simple, outExpr, dae.addIfElse(cond, u1, u3));
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // Abs: u >= 0 ? u : -u
+      // -----------------------------------------------------------------------
+      case "Abs": {
+        const uExpr = getInputExpr(block.name, 1);
+        const zero = dae.addRealLiteral(0.0);
+        const cond = dae.addBinaryExpr(BinOp.Gte, uExpr, zero);
+        const neg = dae.addBinaryExpr(BinOp.Sub, zero, uExpr);
+        dae.addEquation(EqKind.Simple, outExpr, dae.addIfElse(cond, uExpr, neg));
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // Step / Ramp source blocks
+      // -----------------------------------------------------------------------
+      case "Step": {
+        const afterVal = Number.parseFloat(String(block.parameters.get("After") ?? "1.0"));
+        dae.addEquation(EqKind.Simple, outExpr, dae.addRealLiteral(Number.isFinite(afterVal) ? afterVal : 1.0));
+        break;
+      }
+
+      // -----------------------------------------------------------------------
       // Inport / Outport / SubSystem Pass-through
       // -----------------------------------------------------------------------
       case "Inport": {
-        // Inport is driven externally
+        // Top-level Inport is driven externally; nested SubSystem Inport is bound by parent SubSystem
         break;
       }
       case "Outport": {
@@ -314,7 +385,31 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder): void {
       }
       case "SubSystem": {
         if (block.subsystem) {
-          lowerSystemToDae(block.subsystem, dae);
+          const subPrefix = qualify(block.name);
+          lowerSystemToDae(block.subsystem, dae, subPrefix);
+          // Bind outer SubSystem inputs to inner Inports and inner Outports to outer SubSystem outputs
+          const inports = Array.from(block.subsystem.blocks.values()).filter((b) => b.type === "Inport");
+          for (let idx = 0; idx < inports.length; idx++) {
+            const inBlock = inports[idx]!;
+            const portNum = Number.parseInt(String(inBlock.parameters.get("Port") ?? idx + 1), 10) || idx + 1;
+            const extIn = getInputExpr(block.name, portNum);
+            const inExpr = dae.addNameExpr(`${subPrefix}.${inBlock.name}.y`);
+            dae.addEquation(EqKind.Simple, inExpr, extIn);
+          }
+          const outports = Array.from(block.subsystem.blocks.values()).filter((b) => b.type === "Outport");
+          if (outports.length > 0) {
+            for (let idx = 0; idx < outports.length; idx++) {
+              const outBlock = outports[idx]!;
+              const portNum = Number.parseInt(String(outBlock.parameters.get("Port") ?? idx + 1), 10) || idx + 1;
+              const subOutExpr = outputExprs.get(`${block.name}#${portNum}`) ?? outExpr;
+              const innerOutExpr = dae.addNameExpr(`${subPrefix}.${outBlock.name}.y`);
+              dae.addEquation(EqKind.Simple, subOutExpr, innerOutExpr);
+            }
+          } else {
+            dae.addEquation(EqKind.Simple, outExpr, getInputExpr(block.name, 1));
+          }
+        } else {
+          dae.addEquation(EqKind.Simple, outExpr, getInputExpr(block.name, 1));
         }
         break;
       }

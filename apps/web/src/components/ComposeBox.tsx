@@ -406,8 +406,95 @@ export default function ComposeBox(props: ComposeBoxProps) {
   };
 
   const handleInteraction = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    if ("key" in e) {
+      const key = (e as React.KeyboardEvent<HTMLTextAreaElement>).key;
+      if (key === "ArrowDown" || key === "ArrowUp" || key === "Enter" || key === "Tab" || key === "Escape") {
+        return;
+      }
+    }
     autocomplete.updateTokenState(e.currentTarget.value, e.currentTarget.selectionStart || 0);
   };
+
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  useEffect(() => {
+    setActiveSuggestionIndex(0);
+  }, [
+    autocomplete.mentionQuery?.query,
+    autocomplete.hashtagQuery?.query,
+    autocomplete.mentionSuggestions.length,
+    autocomplete.hashtagSuggestions.length,
+  ]);
+
+  const forwardFilesToUpload = useCallback(
+    (files: FileList | File[]) => {
+      const fileArray = Array.from(files);
+      if (fileArray.length === 0) return;
+      for (const file of fileArray) {
+        void submitHandler.handleFileUpload({
+          target: { files: [file] as unknown as FileList },
+        } as React.ChangeEvent<HTMLInputElement>);
+      }
+    },
+    [submitHandler],
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const clipboardFiles = e.clipboardData?.files;
+      if (clipboardFiles && clipboardFiles.length > 0) {
+        e.preventDefault();
+        forwardFilesToUpload(clipboardFiles);
+        return;
+      }
+      const items = e.clipboardData?.items;
+      if (items && items.length > 0) {
+        const extractedFiles: File[] = [];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          if (item && item.kind === "file") {
+            const file = item.getAsFile();
+            if (file) extractedFiles.push(file);
+          }
+        }
+        if (extractedFiles.length > 0) {
+          e.preventDefault();
+          forwardFilesToUpload(extractedFiles);
+        }
+      }
+    },
+    [forwardFilesToUpload],
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+    setIsDraggingOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setIsDraggingOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDraggingOver(false);
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        forwardFilesToUpload(e.dataTransfer.files);
+      }
+    },
+    [forwardFilesToUpload],
+  );
 
   const includedUsers = useMemo(() => {
     return autocomplete.allMentionedUsers.filter((u: string) => !excludedUsers.has(u));
@@ -657,6 +744,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   hashtagQuery={autocomplete.hashtagQuery}
                   hashtagSuggestions={autocomplete.hashtagSuggestions}
                   onSelectHashtag={autocomplete.insertHashtag}
+                  activeIndex={activeSuggestionIndex}
+                  onHoverIndex={setActiveSuggestionIndex}
                 />
               </div>
               <div style={{ minWidth: 0, position: "sticky", top: "24px" }}>
@@ -734,6 +823,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
                 hashtagQuery={autocomplete.hashtagQuery}
                 hashtagSuggestions={autocomplete.hashtagSuggestions}
                 onSelectHashtag={autocomplete.insertHashtag}
+                activeIndex={activeSuggestionIndex}
+                onHoverIndex={setActiveSuggestionIndex}
               />
             </div>
           )}
@@ -781,6 +872,17 @@ export default function ComposeBox(props: ComposeBoxProps) {
             display={isModal ? "flex" : "block"}
             flexDirection={isModal ? "column" : undefined}
             height={isModal ? "100%" : undefined}
+            data-dragging={isDraggingOver ? "true" : undefined}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            style={{
+              border: isDraggingOver ? "2px dashed var(--color-accent-cyan, #06b6d4)" : "2px dashed transparent",
+              borderRadius: "12px",
+              backgroundColor: isDraggingOver ? "rgba(6, 182, 212, 0.06)" : undefined,
+              transition: "border-color 0.15s ease, background-color 0.15s ease",
+              boxSizing: "border-box",
+            }}
           >
             {replyToPost && !hideInput && (
               <Box
@@ -869,6 +971,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                         onChange={handleContentChange}
                         onKeyUp={handleInteraction}
                         onClick={handleInteraction}
+                        onPaste={handlePaste}
                         onScroll={(e) => {
                           if (backdropRef.current) {
                             backdropRef.current.scrollTop = e.currentTarget.scrollTop;
@@ -880,6 +983,48 @@ export default function ComposeBox(props: ComposeBoxProps) {
                         autoFocus={autoFocus}
                         style={{ marginBottom: replyToPost ? "0px" : "12px" }}
                         onKeyDown={(e) => {
+                          const hasMentions = Boolean(
+                            autocomplete.mentionQuery && autocomplete.mentionSuggestions.length > 0,
+                          );
+                          const hasHashtags = Boolean(
+                            !hasMentions && autocomplete.hashtagQuery && autocomplete.hashtagSuggestions.length > 0,
+                          );
+                          if (hasMentions || hasHashtags) {
+                            const list = hasMentions
+                              ? autocomplete.mentionSuggestions
+                              : autocomplete.hashtagSuggestions;
+                            if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              setActiveSuggestionIndex((prev) => (prev + 1) % list.length);
+                              return;
+                            }
+                            if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              setActiveSuggestionIndex((prev) => (prev - 1 + list.length) % list.length);
+                              return;
+                            }
+                            if ((e.key === "Enter" || e.key === "Tab") && !e.ctrlKey && !e.metaKey) {
+                              e.preventDefault();
+                              const chosen = list[activeSuggestionIndex] ?? list[0];
+                              if (chosen) {
+                                if (hasMentions) {
+                                  autocomplete.insertMention(chosen.username);
+                                } else {
+                                  const tag = chosen.display_name || chosen.displayName || chosen.concept;
+                                  autocomplete.insertHashtag(tag);
+                                }
+                              }
+                              setActiveSuggestionIndex(0);
+                              return;
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              autocomplete.setMentionQuery(null);
+                              autocomplete.setHashtagQuery(null);
+                              setActiveSuggestionIndex(0);
+                              return;
+                            }
+                          }
                           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                             submitHandler.handleSubmit();
                           }
@@ -905,6 +1050,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
                         hashtagQuery={autocomplete.hashtagQuery}
                         hashtagSuggestions={autocomplete.hashtagSuggestions}
                         onSelectHashtag={autocomplete.insertHashtag}
+                        activeIndex={activeSuggestionIndex}
+                        onHoverIndex={setActiveSuggestionIndex}
                       />
                     )}
                   </div>

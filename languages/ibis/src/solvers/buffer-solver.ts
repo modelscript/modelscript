@@ -115,3 +115,5 @@ export function evalIbisBufferOutput(
     current: evaluateBufferCurrent(model, voltage, 1),
   };
 }
+
+export * from "./channel-solver.js";

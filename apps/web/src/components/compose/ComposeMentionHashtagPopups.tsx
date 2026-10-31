@@ -11,6 +11,8 @@ export interface ComposeMentionHashtagPopupsProps {
   hashtagQuery: { query: string; index: number } | null;
   hashtagSuggestions: any[];
   onSelectHashtag: (tag: string) => void;
+  activeIndex?: number | undefined;
+  onHoverIndex?: ((index: number) => void) | undefined;
 }
 
 export const ComposeMentionHashtagPopups: React.FC<ComposeMentionHashtagPopupsProps> = ({
@@ -20,11 +22,15 @@ export const ComposeMentionHashtagPopups: React.FC<ComposeMentionHashtagPopupsPr
   hashtagQuery,
   hashtagSuggestions,
   onSelectHashtag,
+  activeIndex = 0,
+  onHoverIndex,
 }) => {
   return (
     <>
       {mentionQuery && mentionSuggestions.length > 0 && (
         <Box
+          role="listbox"
+          aria-label="Mention suggestions"
           position="absolute"
           bg="var(--surface-overlay)"
           border="1px solid var(--color-border)"
@@ -39,42 +45,57 @@ export const ComposeMentionHashtagPopups: React.FC<ComposeMentionHashtagPopupsPr
           overflow="auto"
           width="300px"
         >
-          {mentionSuggestions.map((u) => (
-            <Box
-              key={u.username}
-              display="flex"
-              alignItems="center"
-              p={2}
-              sx={{ cursor: "pointer", "&:hover": { bg: "rgba(255, 255, 255, 0.06)" } }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onSelectMention(u.username);
-              }}
-            >
-              <img
-                src={getAvatarUrl(u.username, u.avatar_url)}
-                alt=""
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "50%",
-                  marginRight: "12px",
-                  objectFit: "cover",
+          {mentionSuggestions.map((u, idx) => {
+            const isSelected = idx === activeIndex;
+            return (
+              <Box
+                key={u.username}
+                role="option"
+                aria-selected={isSelected}
+                display="flex"
+                alignItems="center"
+                p={2}
+                sx={{
+                  cursor: "pointer",
+                  bg: isSelected ? "rgba(6, 182, 212, 0.14)" : undefined,
+                  "&:hover": { bg: isSelected ? "rgba(6, 182, 212, 0.18)" : "rgba(255, 255, 255, 0.06)" },
                 }}
-              />
-              <Box>
-                <div style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-fg-default)" }}>
-                  {u.display_name || u.username}
-                </div>
-                <div style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>@{u.username}</div>
+                style={{
+                  backgroundColor: isSelected ? "rgba(6, 182, 212, 0.14)" : undefined,
+                }}
+                onMouseEnter={() => onHoverIndex?.(idx)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onSelectMention(u.username);
+                }}
+              >
+                <img
+                  src={getAvatarUrl(u.username, u.avatar_url)}
+                  alt=""
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "50%",
+                    marginRight: "12px",
+                    objectFit: "cover",
+                  }}
+                />
+                <Box>
+                  <div style={{ fontWeight: "bold", fontSize: "14px", color: "var(--color-fg-default)" }}>
+                    {u.display_name || u.username}
+                  </div>
+                  <div style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>@{u.username}</div>
+                </Box>
               </Box>
-            </Box>
-          ))}
+            );
+          })}
         </Box>
       )}
 
       {hashtagQuery && hashtagSuggestions.length > 0 && (
         <Box
+          role="listbox"
+          aria-label="Hashtag suggestions"
           position="absolute"
           bg="var(--surface-overlay)"
           border="1px solid var(--color-border)"
@@ -92,17 +113,28 @@ export const ComposeMentionHashtagPopups: React.FC<ComposeMentionHashtagPopupsPr
           <Box px={3} py={2} borderBottom="1px solid var(--color-border)">
             <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--color-text-muted)" }}>TRENDING TOPICS</span>
           </Box>
-          {hashtagSuggestions.map((t) => {
+          {hashtagSuggestions.map((t, idx) => {
             const tag = t.display_name || t.displayName || t.concept;
+            const isSelected = idx === activeIndex;
             return (
               <Box
                 key={t.concept}
+                role="option"
+                aria-selected={isSelected}
                 display="flex"
                 alignItems="center"
                 justifyContent="space-between"
                 p={2}
                 px={3}
-                sx={{ cursor: "pointer", "&:hover": { bg: "rgba(255, 255, 255, 0.06)" } }}
+                sx={{
+                  cursor: "pointer",
+                  bg: isSelected ? "rgba(6, 182, 212, 0.14)" : undefined,
+                  "&:hover": { bg: isSelected ? "rgba(6, 182, 212, 0.18)" : "rgba(255, 255, 255, 0.06)" },
+                }}
+                style={{
+                  backgroundColor: isSelected ? "rgba(6, 182, 212, 0.14)" : undefined,
+                }}
+                onMouseEnter={() => onHoverIndex?.(idx)}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   onSelectHashtag(tag);

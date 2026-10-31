@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWasmParser } from "../src-gen/bindings.js";
-import { ScadEvaluator } from "../src/evaluator.js";
+import { evaluateScad, ScadEvaluator } from "../src/evaluator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const wasmPath = path.join(__dirname, "../dist/parser.wasm");
@@ -123,6 +123,65 @@ default_size = 12;
   const degenSolid = new ScadEvaluator().evaluate(degenTree.rootNode);
   if (degenSolid !== null) {
     throw new Error("Expected degenerate 2-point polygon to return null");
+  }
+
+  // Verify synchronous evaluateScad with user-defined modules + children(), functions, for loops, conditionals & booleans
+  const parametricFlangeScad = `
+bolt_count = 4;
+pitch_radius = 18;
+use_chamfer_boss = true;
+boss_h = use_chamfer_boss ? 16 : 10;
+vec_list = [for (k = [0 : 1 : 3]) k * 90];
+
+function deg_x(r, ang) = r * cos(ang);
+function deg_y(r, ang) = r * sin(ang);
+
+module polar_copy(n = 4, r = 18) {
+  for (i = [0 : 1 : n - 1]) {
+    ang = i * (360 / n);
+    translate([deg_x(r, ang), deg_y(r, ang), 0])
+      children();
+  }
+}
+
+difference() {
+  union() {
+    cylinder(h = 6, r = 25, center = true);
+    if (use_chamfer_boss) {
+      cylinder(h = boss_h, r = 12, center = true);
+    } else {
+      cube([20, 20, 10], center = true);
+    }
+  }
+  // Center bore + bolt holes via polar_copy and children()
+  cylinder(h = 24, r = 6, center = true);
+  polar_copy(bolt_count, pitch_radius) {
+    cylinder(h = 20, r = 2.5, center = true);
+  }
+}
+`;
+
+  const evalRes = evaluateScad(parametricFlangeScad);
+  if (!evalRes.solid || evalRes.kind !== SolidKind.Subtract) {
+    throw new Error(`Expected Subtract root solid from evaluateScad, got ${evalRes.kind}`);
+  }
+  if (evalRes.variables.boss_h !== 16) {
+    throw new Error(`Expected boss_h = 16, got ${evalRes.variables.boss_h}`);
+  }
+  if (!Array.isArray(evalRes.variables.vec_list) || evalRes.variables.vec_list.length !== 4) {
+    throw new Error("Expected list comprehension vec_list of length 4");
+  }
+  if (evalRes.primitives.length < 7) {
+    throw new Error(
+      `Expected at least 7 leaf primitives (flange + boss + bore + 4 bolt holes), got ${evalRes.primitives.length}`,
+    );
+  }
+  if (evalRes.triangleCount <= 0 || evalRes.vertices.length === 0) {
+    throw new Error("Expected non-empty tessellated mesh from evaluateScad");
+  }
+  const bbox = evalRes.boundingBox;
+  if (bbox.max[0] - bbox.min[0] < 45) {
+    throw new Error(`Expected bounding box X span >= 45, got ${bbox.max[0] - bbox.min[0]}`);
   }
 
   console.log("✔ ScadEvaluator successfully lowered Hybrid SCAD into watertight Solid tree and STEP geometry!");

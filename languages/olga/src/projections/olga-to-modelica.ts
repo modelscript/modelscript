@@ -44,6 +44,20 @@ export function olgaToModelica(model: OlgaModel): string {
   }
 
   lines.push(`equation`);
+  for (const fp of model.flowpaths) {
+    const pLabels = fp.pipes.map((p) => p.label.replace(/[^a-zA-Z0-9_]/g, "_"));
+    for (let i = 0; i < pLabels.length - 1; i++) {
+      lines.push(`  connect(${pLabels[i]}.port_b, ${pLabels[i + 1]}.port_a);`);
+    }
+    if (pLabels.length > 0 && model.nodes.length > 0) {
+      const firstNode = model.nodes[0]!.name.replace(/[^a-zA-Z0-9_]/g, "_");
+      lines.push(`  connect(${firstNode}.ports[1], ${pLabels[0]}.port_a);`);
+      if (model.nodes.length > 1) {
+        const lastNode = model.nodes[model.nodes.length - 1]!.name.replace(/[^a-zA-Z0-9_]/g, "_");
+        lines.push(`  connect(${pLabels[pLabels.length - 1]}.port_b, ${lastNode}.ports[1]);`);
+      }
+    }
+  }
   lines.push(`end ${modelName};`);
   return lines.join("\n");
 }

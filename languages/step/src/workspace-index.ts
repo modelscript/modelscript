@@ -256,6 +256,25 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
         console.error(`[StepWorkspaceIndex] OCCT parse failed for ${uri}:`, e);
       }
     }
+    if (meshes.length === 0) {
+      try {
+        const { tessellateStepSolid } = await import("./occ.js");
+        const stepMesh = tessellateStepSolid(text);
+        if (stepMesh.triangleCount > 0) {
+          const targets = stepMesh.solids.length > 0 ? stepMesh.solids : [stepMesh];
+          meshes = targets.map((s) => ({
+            name: s.name,
+            attributes: {
+              position: { array: s.vertices },
+              normal: { array: s.normals },
+            },
+            index: { array: s.indices },
+          }));
+        }
+      } catch {
+        // ignore fallback tessellation errors
+      }
+    }
 
     this.fileMeshes.set(uri, meshes);
 

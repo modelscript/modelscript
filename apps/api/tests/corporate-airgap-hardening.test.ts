@@ -68,11 +68,11 @@ describe("Corporate Air-Gapped Tier Security Hardening vs Flagship & Federated T
       assert.deepEqual(settings.allowedEmailDomains, ["grid.utility.internal"]);
 
       // Verify environment variable locks override DB settings
-      process.env["MSX_ALLOWED_EMAIL_DOMAINS"] = "scif.defense.internal, r-and-d.defense.internal";
+      process.env["MSX_ALLOWED_EMAIL_DOMAINS"] = "lab.internal, r-and-d.energy.internal";
       process.env["MSX_REQUIRE_ADMIN_2FA"] = "true";
       try {
         const lockedSettings = db.getInstanceSettings();
-        assert.deepEqual(lockedSettings.allowedEmailDomains, ["scif.defense.internal", "r-and-d.defense.internal"]);
+        assert.deepEqual(lockedSettings.allowedEmailDomains, ["lab.internal", "r-and-d.energy.internal"]);
         assert.equal(lockedSettings.requireAdmin2FA, true);
         assert.ok(lockedSettings.lockedByEnv?.includes("allowedEmailDomains"));
         assert.ok(lockedSettings.lockedByEnv?.includes("requireAdmin2FA"));

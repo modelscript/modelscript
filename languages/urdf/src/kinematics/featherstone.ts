@@ -21,7 +21,10 @@ export interface LinkKinematicsNode {
   axis: Vector3D;
   mass: number;
   inertia: [number, number, number]; // [ixx, iyy, izz]
+  inertiaProducts?: [number, number, number] | undefined; // [ixy, ixz, iyz]
   originPos: Vector3D;
+  originRpy: Vector3D;
+  comOffset: Vector3D;
 }
 
 /**
@@ -62,6 +65,9 @@ export function buildKinematicTree(robot: UrdfRobot): LinkKinematicsNode[] {
     const ixx = link?.inertial?.ixx ?? mass * 0.1;
     const iyy = link?.inertial?.iyy ?? mass * 0.1;
     const izz = link?.inertial?.izz ?? mass * 0.1;
+    const ixy = link?.inertial?.ixy ?? 0;
+    const ixz = link?.inertial?.ixz ?? 0;
+    const iyz = link?.inertial?.iyz ?? 0;
 
     nodes.push({
       name: curr,
@@ -71,7 +77,10 @@ export function buildKinematicTree(robot: UrdfRobot): LinkKinematicsNode[] {
       axis: joint ? joint.axis : { x: 0, y: 0, z: 1 },
       mass,
       inertia: [ixx, iyy, izz],
+      inertiaProducts: [ixy, ixz, iyz],
       originPos: joint?.origin ? joint.origin.xyz : { x: 0, y: 0, z: 0 },
+      originRpy: joint?.origin?.rpy ? joint.origin.rpy : { x: 0, y: 0, z: 0 },
+      comOffset: link?.inertial?.origin?.xyz ? link.inertial.origin.xyz : { x: 0, y: 0, z: 0 },
     });
 
     // Enqueue children
@@ -89,10 +98,9 @@ function cross3(a: [number, number, number], b: [number, number, number]): [numb
   return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 }
 
-function rotationMatrixFromAxisAngle(
-  axis: Vector3D,
-  angleRad: number,
-): [number, number, number, number, number, number, number, number, number] {
+type RotMatrix9 = [number, number, number, number, number, number, number, number, number];
+
+function rotationMatrixFromAxisAngle(axis: Vector3D, angleRad: number): RotMatrix9 {
   const norm = Math.hypot(axis.x, axis.y, axis.z);
   if (norm < 1e-12 || Math.abs(angleRad) < 1e-12) {
     return [1, 0, 0, 0, 1, 0, 0, 0, 1];
@@ -120,10 +128,45 @@ function rotationMatrixFromAxisAngle(
   ];
 }
 
-function multRotVec(
-  R: [number, number, number, number, number, number, number, number, number],
-  v: [number, number, number],
-): [number, number, number] {
+function rotationMatrixFromRpy(rpy: Vector3D): RotMatrix9 {
+  if (Math.abs(rpy.x) < 1e-12 && Math.abs(rpy.y) < 1e-12 && Math.abs(rpy.z) < 1e-12) {
+    return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  }
+  const cr = Math.cos(rpy.x);
+  const sr = Math.sin(rpy.x);
+  const cp = Math.cos(rpy.y);
+  const sp = Math.sin(rpy.y);
+  const cy = Math.cos(rpy.z);
+  const sy = Math.sin(rpy.z);
+
+  return [
+    cy * cp,
+    cy * sp * sr - sy * cr,
+    cy * sp * cr + sy * sr,
+    sy * cp,
+    sy * sp * sr + cy * cr,
+    sy * sp * cr - cy * sr,
+    -sp,
+    cp * sr,
+    cp * cr,
+  ];
+}
+
+function multiplyRot9(A: RotMatrix9, B: RotMatrix9): RotMatrix9 {
+  return [
+    A[0] * B[0] + A[1] * B[3] + A[2] * B[6],
+    A[0] * B[1] + A[1] * B[4] + A[2] * B[7],
+    A[0] * B[2] + A[1] * B[5] + A[2] * B[8],
+    A[3] * B[0] + A[4] * B[3] + A[5] * B[6],
+    A[3] * B[1] + A[4] * B[4] + A[5] * B[7],
+    A[3] * B[2] + A[4] * B[5] + A[5] * B[8],
+    A[6] * B[0] + A[7] * B[3] + A[8] * B[6],
+    A[6] * B[1] + A[7] * B[4] + A[8] * B[7],
+    A[6] * B[2] + A[7] * B[5] + A[8] * B[8],
+  ];
+}
+
+function multRotVec(R: RotMatrix9, v: [number, number, number]): [number, number, number] {
   return [
     R[0] * v[0] + R[1] * v[1] + R[2] * v[2],
     R[3] * v[0] + R[4] * v[1] + R[5] * v[2],
@@ -131,10 +174,7 @@ function multRotVec(
   ];
 }
 
-function multRotTranspVec(
-  R: [number, number, number, number, number, number, number, number, number],
-  v: [number, number, number],
-): [number, number, number] {
+function multRotTranspVec(R: RotMatrix9, v: [number, number, number]): [number, number, number] {
   return [
     R[0] * v[0] + R[3] * v[1] + R[6] * v[2],
     R[1] * v[0] + R[4] * v[1] + R[7] * v[2],
@@ -143,8 +183,23 @@ function multRotTranspVec(
 }
 
 export interface SpatialTransform {
-  R: [number, number, number, number, number, number, number, number, number];
+  R: RotMatrix9;
   r: [number, number, number];
+}
+
+function computeJointSpatialTransform(node: LinkKinematicsNode, q_val: number): SpatialTransform {
+  const R_rpy = rotationMatrixFromRpy(node.originRpy ?? { x: 0, y: 0, z: 0 });
+  let R: RotMatrix9 = R_rpy;
+  let rTrans: [number, number, number] = [node.originPos.x, node.originPos.y, node.originPos.z];
+
+  if (node.jointType === "revolute" || node.jointType === "continuous") {
+    const R_joint = rotationMatrixFromAxisAngle(node.axis, q_val);
+    R = multiplyRot9(R_joint, R_rpy);
+  } else if (node.jointType === "prismatic") {
+    const deltaParent = multRotTranspVec(R_rpy, [q_val * node.axis.x, q_val * node.axis.y, q_val * node.axis.z]);
+    rTrans = [node.originPos.x + deltaParent[0], node.originPos.y + deltaParent[1], node.originPos.z + deltaParent[2]];
+  }
+  return { R, r: rTrans };
 }
 
 /**
@@ -239,14 +294,46 @@ function spatialCrossForce(v: SpatialVector, f: SpatialVector): SpatialVector {
 function linkSpatialInertia(node: LinkKinematicsNode): number[][] {
   const m = node.mass;
   const [ixx, iyy, izz] = node.inertia;
+  const [ixy, ixz, iyz] = node.inertiaProducts ?? [0, 0, 0];
+  const c = node.comOffset ?? { x: 0, y: 0, z: 0 };
+  const cx = c.x;
+  const cy = c.y;
+  const cz = c.z;
+
+  // Parallel-axis theorem: I_bar = I_com + m * [c]_x * [c]_x^T
+  const ixxBar = ixx + m * (cy * cy + cz * cz);
+  const iyyBar = iyy + m * (cx * cx + cz * cz);
+  const izzBar = izz + m * (cx * cx + cy * cy);
+  const ixyBar = ixy - m * cx * cy;
+  const ixzBar = ixz - m * cx * cz;
+  const iyzBar = iyz - m * cy * cz;
+
+  // Upper-right block: m * [c]_x; Lower-left block: m * [c]_x^T = -m * [c]_x
+  const mcx = m * cx;
+  const mcy = m * cy;
+  const mcz = m * cz;
+
   return [
-    [ixx, 0, 0, 0, 0, 0],
-    [0, iyy, 0, 0, 0, 0],
-    [0, 0, izz, 0, 0, 0],
-    [0, 0, 0, m, 0, 0],
-    [0, 0, 0, 0, m, 0],
-    [0, 0, 0, 0, 0, m],
+    [ixxBar, ixyBar, ixzBar, 0, -mcz, mcy],
+    [ixyBar, iyyBar, iyzBar, mcz, 0, -mcx],
+    [ixzBar, iyzBar, izzBar, -mcy, mcx, 0],
+    [0, mcz, -mcy, m, 0, 0],
+    [-mcz, 0, mcx, 0, m, 0],
+    [mcy, -mcx, 0, 0, 0, m],
   ];
+}
+
+function matVec6(M: number[][], vec: SpatialVector): SpatialVector {
+  const out: SpatialVector = [0, 0, 0, 0, 0, 0];
+  for (let r = 0; r < 6; r++) {
+    let sum = 0;
+    const row = M[r]!;
+    for (let c = 0; c < 6; c++) {
+      sum += (row[c] ?? 0) * (vec[c] ?? 0);
+    }
+    out[r] = sum;
+  }
+  return out;
 }
 
 /**
@@ -291,20 +378,8 @@ export function computeInverseDynamicsRnea(
           ? [node.axis.x, node.axis.y, node.axis.z, 0, 0, 0]
           : [0, 0, 0, 0, 0, 0];
 
-    // Compute frame transform X_i from parent to child
-    let R: [number, number, number, number, number, number, number, number, number] = [1, 0, 0, 0, 1, 0, 0, 0, 1];
-    let rTrans: [number, number, number] = [node.originPos.x, node.originPos.y, node.originPos.z];
-
-    if (node.jointType === "revolute" || node.jointType === "continuous") {
-      R = rotationMatrixFromAxisAngle(node.axis, q_val);
-    } else if (node.jointType === "prismatic") {
-      rTrans = [
-        node.originPos.x + q_val * node.axis.x,
-        node.originPos.y + q_val * node.axis.y,
-        node.originPos.z + q_val * node.axis.z,
-      ];
-    }
-    const xform: SpatialTransform = { R, r: rTrans };
+    // Compute frame transform X_i from parent to child including joint origin RPY
+    const xform = computeJointSpatialTransform(node, q_val);
     linkTransforms.set(node.name, xform);
 
     // Transform parent spatial velocity: v_shifted = X * v_parent
@@ -346,16 +421,18 @@ export function computeInverseDynamicsRnea(
     ];
     a.set(node.name, ai);
 
-    // Inertial force: f_i = I * a_i + v_i x* (I * v_i)
-    const m = node.mass;
-    const [ixx, iyy, izz] = node.inertia;
+    // Inertial force: f_i = I * a_i + v_i x* (I * v_i) using full 6x6 spatial inertia (with COM offset & off-diagonals)
+    const I = linkSpatialInertia(node);
+    const Ia = matVec6(I, ai);
+    const Iv = matVec6(I, vi);
+    const vCrossIv = spatialCrossForce(vi, Iv);
     const fi: SpatialVector = [
-      ixx * ai[0] + (izz - iyy) * vi[1] * vi[2],
-      iyy * ai[1] + (ixx - izz) * vi[0] * vi[2],
-      izz * ai[2] + (iyy - ixx) * vi[0] * vi[1],
-      m * ai[3],
-      m * ai[4],
-      m * ai[5],
+      Ia[0] + vCrossIv[0],
+      Ia[1] + vCrossIv[1],
+      Ia[2] + vCrossIv[2],
+      Ia[3] + vCrossIv[3],
+      Ia[4] + vCrossIv[4],
+      Ia[5] + vCrossIv[5],
     ];
     f.set(node.name, fi);
   }
@@ -429,19 +506,7 @@ export function computeForwardDynamicsAba(
           : [0, 0, 0, 0, 0, 0];
     S_map.set(node.name, S);
 
-    let R: [number, number, number, number, number, number, number, number, number] = [1, 0, 0, 0, 1, 0, 0, 0, 1];
-    let rTrans: [number, number, number] = [node.originPos.x, node.originPos.y, node.originPos.z];
-
-    if (node.jointType === "revolute" || node.jointType === "continuous") {
-      R = rotationMatrixFromAxisAngle(node.axis, q_val);
-    } else if (node.jointType === "prismatic") {
-      rTrans = [
-        node.originPos.x + q_val * node.axis.x,
-        node.originPos.y + q_val * node.axis.y,
-        node.originPos.z + q_val * node.axis.z,
-      ];
-    }
-    const xform: SpatialTransform = { R, r: rTrans };
+    const xform = computeJointSpatialTransform(node, q_val);
     xform_map.set(node.name, xform);
 
     const vParentXformed = transformSpatialMotion(xform, parentV);
@@ -471,9 +536,7 @@ export function computeForwardDynamicsAba(
     IA_map.set(node.name, I);
 
     // p_i = v_i x* (I * v_i)
-    const m = node.mass;
-    const [ixx, iyy, izz] = node.inertia;
-    const Iv: SpatialVector = [ixx * vi[0], iyy * vi[1], izz * vi[2], m * vi[3], m * vi[4], m * vi[5]];
+    const Iv = matVec6(I, vi);
     const pi = spatialCrossForce(vi, Iv);
     pA_map.set(node.name, pi);
   }

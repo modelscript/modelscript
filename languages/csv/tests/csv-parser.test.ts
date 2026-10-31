@@ -2,7 +2,17 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { lintCsv, parseCsvMeasurements, parseCsvToModelica } from "../src/csv-parser.js";
+import {
+  bsearchTimeInterval,
+  interpolateCsvColumn,
+  interpolateCsvTimeTable,
+  lintCsv,
+  parseCsvHeaderAnnotation,
+  parseCsvMeasurements,
+  parseCsvToModelica,
+  toColumnarTimeTable,
+} from "../src/csv-parser.js";
+import { csvVirtualComponentQueries } from "../src/language.js";
 
 describe("languages/csv: parseCsvMeasurements", () => {
   it("should parse standard comma-delimited time-series data", () => {
@@ -83,6 +93,44 @@ describe("languages/csv: parseCsvMeasurements", () => {
   it("should throw error when no valid data rows exist", () => {
     assert.throws(() => parseCsvMeasurements("time,val\n"), /at least a header row and one data row/);
   });
+
+  it("should parse header unit and scalar type annotations (omega [rad/s], temp (K), flag : Boolean)", () => {
+    const h1 = parseCsvHeaderAnnotation("omega [rad/s]");
+    assert.equal(h1.name, "omega");
+    assert.equal(h1.unit, "rad/s");
+
+    const h2 = parseCsvHeaderAnnotation("temp (K)");
+    assert.equal(h2.name, "temp");
+    assert.equal(h2.unit, "K");
+
+    const h3 = parseCsvHeaderAnnotation("flag : Boolean");
+    assert.equal(h3.name, "flag");
+    assert.equal(h3.declaredType, "Boolean");
+
+    const csv = [
+      "time [s],omega [rad/s],temp (K),flag : Boolean,step : Integer",
+      "0.0,10.5,293.15,true,1",
+      "1.0,20.0,300.00,false,2",
+    ].join("\n");
+    const parsed = parseCsvMeasurements(csv);
+
+    assert.deepEqual(parsed.columns, ["omega", "temp", "flag", "step"]);
+    assert.equal(parsed.units.get("time"), "s");
+    assert.equal(parsed.units.get("omega"), "rad/s");
+    assert.equal(parsed.units.get("temp"), "K");
+    assert.equal(parsed.columnTypes.get("omega"), "Real");
+    assert.equal(parsed.columnTypes.get("temp"), "Real");
+    assert.equal(parsed.columnTypes.get("flag"), "Boolean");
+    assert.equal(parsed.columnTypes.get("step"), "Integer");
+    assert.deepEqual(parsed.data.get("flag"), [1, 0]);
+    assert.ok(parsed.timeBuffer instanceof Float64Array);
+    assert.ok(parsed.columnar.get("omega") instanceof Float64Array);
+
+    // Verify CSVVirtualComponent queries resolve unit and varType from header annotations
+    assert.equal(csvVirtualComponentQueries.unit({} as any, { name: "omega [rad/s]" } as any), "rad/s");
+    assert.equal(csvVirtualComponentQueries.unit({} as any, { name: "temp (K)" } as any), "K");
+    assert.equal(csvVirtualComponentQueries.varType({} as any, { name: "flag : Boolean" } as any), "Boolean");
+  });
 });
 
 describe("languages/csv: parseCsvToModelica", () => {
@@ -146,5 +194,74 @@ describe("languages/csv: lintCsv semantic linter & narrow ranges", () => {
     const nonMonoTime = diags.find((d) => d.code === "CSV_NON_MONOTONIC_TIME");
     assert.ok(nonMonoTime, "Expected CSV_NON_MONOTONIC_TIME");
     assert.strictEqual(csv.slice(nonMonoTime.startOffset, nonMonoTime.endOffset), "0.5");
+  });
+
+  it("detects mixed delimiters within rows (CSV_MIXED_DELIMITER)", () => {
+    const csv = ["time,omega,temp", "0.0,10.5,293.15", "1.0,12.0;300.0"].join("\n");
+    const diags = lintCsv(csv);
+    const mixed = diags.find((d) => d.code === "CSV_MIXED_DELIMITER");
+    assert.ok(mixed, "Expected CSV_MIXED_DELIMITER diagnostic");
+    assert.strictEqual(mixed.line, 3);
+    assert.strictEqual(csv.slice(mixed.startOffset, mixed.endOffset), "12.0;300.0");
+  });
+
+  it("handles # comment lines and double-quote escaped quotes across parseCsvMeasurements and lintCsv", () => {
+    const csvWithCommentsAndEscapes = [
+      "# Telemetry export; sensor=T1",
+      'time,"sensor ""alpha""\nunit",value',
+      "# Mid-file comment line",
+      "0.0,10.5,100.0",
+      "1.0,11.0,200.0",
+    ].join("\n");
+
+    const parsed = parseCsvMeasurements(csvWithCommentsAndEscapes);
+    assert.deepEqual(parsed.time, [0.0, 1.0]);
+    assert.equal(parsed.columns.length, 2);
+    assert.ok(parsed.columns[0]!.includes('sensor "alpha"'));
+    assert.deepEqual(parsed.data.get("value"), [100.0, 200.0]);
+
+    const diags = lintCsv(csvWithCommentsAndEscapes);
+    assert.equal(diags.length, 0, `Expected 0 diagnostics on commented CSV, got: ${JSON.stringify(diags)}`);
+  });
+});
+
+describe("languages/csv: columnar time-table interpolation (constant, linear, akima)", () => {
+  it("performs O(log N) binary search and interpolates constant, linear, and Akima splines over Float64Array columns", () => {
+    // y = t^2 for column "quad", step function for "step"
+    const csv = [
+      "time [s],quad [m],step",
+      "0.0,0.0,10.0",
+      "1.0,1.0,10.0",
+      "2.0,4.0,10.0",
+      "3.0,9.0,50.0",
+      "4.0,16.0,50.0",
+      "5.0,25.0,50.0",
+    ].join("\n");
+
+    const table = toColumnarTimeTable(csv);
+    assert.ok(table.time instanceof Float64Array);
+    assert.ok(table.data.get("quad") instanceof Float64Array);
+    assert.equal(bsearchTimeInterval(table.time, 2.5), 2);
+
+    // 1. Constant (zero-order hold) interpolation at t = 2.5 -> value at t = 2.0 is 4.0
+    const constVals = interpolateCsvTimeTable(table, 2.5, "constant");
+    assert.equal(constVals.quad, 4.0);
+    assert.equal(constVals.step, 10.0);
+
+    // 2. Linear interpolation at t = 2.5 -> 0.5 * (4.0 + 9.0) = 6.5
+    const linVals = interpolateCsvTimeTable(table, 2.5, "linear");
+    assert.ok(Math.abs(linVals.quad! - 6.5) < 1e-12);
+    assert.ok(Math.abs(linVals.step! - 30.0) < 1e-12);
+
+    // 3. Akima spline interpolation at t = 2.5 -> closer to true 2.5^2 = 6.25 than linear (6.5),
+    // and zero overshoot on flat plateau [0, 2] for step column at t = 1.5
+    const akimaVals = interpolateCsvTimeTable(table, 2.5, "akima");
+    assert.ok(Math.abs(akimaVals.quad! - 6.25) < 0.05, `Expected Akima ~6.25, got ${akimaVals.quad}`);
+    const akimaPlateau = interpolateCsvColumn(table.time, table.data.get("step")!, 1.5, "akima");
+    assert.equal(akimaPlateau, 10.0, "Akima spline should have zero overshoot on flat segments");
+
+    // 4. Boundary clamping
+    assert.equal(interpolateCsvTimeTable(table, -5.0, "linear").quad, 0.0);
+    assert.equal(interpolateCsvTimeTable(table, 99.0, "akima").quad, 25.0);
   });
 });

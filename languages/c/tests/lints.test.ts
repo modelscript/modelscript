@@ -112,4 +112,19 @@ int count = 12.34;
     const m = diags.find((d) => d.code === 8410);
     assert.ok(m, "Should report M8410 for implicit lossy conversion");
   });
+
+  test("ignores commented-out code inside multi-line /* ... */ comments while preserving line numbers", () => {
+    const src = `/*
+double x = 10.0 / 0.0;
+if (a = 1) {
+  double v = *NULL;
+}
+*/
+double bad = 5.0 / 0.0;
+`;
+    const diags = lintC(src);
+    assert.equal(diags.length, 1, `Expected only 1 diagnostic, got: ${JSON.stringify(diags)}`);
+    assert.equal(diags[0]!.code, 8402);
+    assert.equal(diags[0]!.line, 7);
+  });
 });

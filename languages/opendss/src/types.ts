@@ -32,6 +32,8 @@ export interface DssLine {
   bus1: string;
   bus2: string;
   phases: number;
+  phaseNodes1?: number[] | undefined;
+  phaseNodes2?: number[] | undefined;
   length: number;
   units?: string | undefined;
   lineCode?: string | undefined;
@@ -68,10 +70,15 @@ export interface DssLoad {
   name: string;
   bus1: string;
   phases: number;
+  phaseNodes?: number[] | undefined;
   kv: number;
   kw: number;
   kvar: number;
+  pf?: number | undefined;
   model?: number | undefined;
+  daily?: string | undefined;
+  yearly?: string | undefined;
+  duty?: string | undefined;
   range: DssRange;
 }
 
@@ -82,11 +89,15 @@ export interface DssPVSystem {
   name: string;
   bus1: string;
   phases: number;
+  phaseNodes?: number[] | undefined;
   kv: number;
   kva: number;
   pmpp: number;
   pctCutIn?: number | undefined;
   pctCutOut?: number | undefined;
+  daily?: string | undefined;
+  yearly?: string | undefined;
+  duty?: string | undefined;
   range: DssRange;
 }
 
@@ -97,6 +108,7 @@ export interface DssStorage {
   name: string;
   bus1: string;
   phases: number;
+  phaseNodes?: number[] | undefined;
   kv: number;
   kwRated: number;
   kwhRated: number;
@@ -111,6 +123,7 @@ export interface DssCapacitor {
   name: string;
   bus1: string;
   phases: number;
+  phaseNodes?: number[] | undefined;
   kvar: number;
   kv: number;
   range: DssRange;
@@ -125,6 +138,21 @@ export interface DssLineCode {
   r1: number;
   x1: number;
   c1?: number | undefined;
+  r0?: number | undefined;
+  x0?: number | undefined;
+  c0?: number | undefined;
+  range: DssRange;
+}
+
+/**
+ * Time-series multiplier profile (LoadShape) for QSTS simulation.
+ */
+export interface DssLoadShape {
+  name: string;
+  npts: number;
+  interval: number;
+  mult: number[];
+  qmult?: number[] | undefined;
   range: DssRange;
 }
 
@@ -140,6 +168,7 @@ export interface DssDeck {
   storages: Map<string, DssStorage>;
   capacitors: Map<string, DssCapacitor>;
   lineCodes: Map<string, DssLineCode>;
+  loadShapes?: Map<string, DssLoadShape> | undefined;
   voltageBases: number[];
   comments: string[];
   sourceFile?: string | undefined;

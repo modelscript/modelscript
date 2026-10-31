@@ -25,6 +25,7 @@ export class Su2Dialect implements CfdDialect {
     const lines = cfgText.split(/\r?\n/);
 
     const rawDirectives = new Map<string, string>();
+    const directiveLines = new Map<string, number>();
     const markers = new Map<string, CfdMarker>();
     const inletMarkers: string[] = [];
     const outletMarkers: string[] = [];
@@ -38,9 +39,12 @@ export class Su2Dialect implements CfdDialect {
       directives: rawDirectives,
       rawDirectives,
       markers,
+      directiveLines,
     };
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const lineNum = i + 1;
       // Strip comments (% or #)
       let cleanLine = line;
       const commentIdx = cleanLine.search(/[%#]/);
@@ -57,6 +61,7 @@ export class Su2Dialect implements CfdDialect {
       const val = trimmed.substring(eqIdx + 1).trim();
 
       data.rawDirectives.set(key, val);
+      directiveLines.set(key, lineNum);
 
       if (key === "MATH_PROBLEM") {
         data.mathProblem = val;

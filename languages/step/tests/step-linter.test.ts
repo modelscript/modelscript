@@ -74,4 +74,49 @@ ENDSEC;
       "Should detect T1004 missing DATA section",
     );
   });
+
+  test("ignores #123 inside string literals and /* ... */ comments and supports multi-line entities", () => {
+    const multiLineStep = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'));
+ENDSEC;
+DATA;
+/* Comment referencing #888 should not trigger dangling error */
+#10 = CARTESIAN_POINT(
+  'Part (see #123 and #456)',
+  (0.0, 0.0, 0.0)
+);
+#20 = DIRECTION(
+  '',
+  (0.0, 0.0, 1.0)
+);
+#30 = AXIS2_PLACEMENT_3D(
+  'Placement',
+  #10,
+  #20,
+  #20
+);
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const diags = lintStepContent(multiLineStep);
+    assert.equal(diags.length, 0, `Expected 0 diagnostics, got: ${JSON.stringify(diags)}`);
+  });
+
+  test("T1008: warns on unrecognized FILE_SCHEMA application protocol", () => {
+    const unsupportedSchemaStep = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('CUSTOM_UNKNOWN_SCHEMA'));
+ENDSEC;
+DATA;
+#10 = CARTESIAN_POINT('',(0.0,0.0,0.0));
+ENDSEC;
+END-ISO-10303-21;
+`;
+    const diags = lintStepContent(unsupportedSchemaStep);
+    const t1008 = diags.find((d) => d.code === "T1008");
+    assert.ok(t1008, "Should emit T1008 for unrecognized schema");
+    assert.equal(t1008.numericCode, StepErrorCode.UNSUPPORTED_AP_SCHEMA.code);
+    assert.ok(t1008.message.includes("CUSTOM_UNKNOWN_SCHEMA"));
+  });
 });

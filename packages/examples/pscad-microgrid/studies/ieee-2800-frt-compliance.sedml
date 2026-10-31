@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4"
+       xmlns:msx="https://modelscript.org/ns/study-v1"
+       level="1" version="4">
+  <annotation>
+    <msx:studyMetadata
+      id="pkg.pscad-microgrid.ieee-2800-frt"
+      slug="pscad-microgrid-ieee-2800-frt"
+      name="IEEE 2800-2022 Microgrid LVRT / HVRT &amp; Reactive Current Injection Study"
+      version="1.1.0"
+      kind="verification"
+      category="power-emt"
+      domain="pscad"
+      executionTarget="local-native"
+      packageName="@examples/pscad-microgrid"
+      packageVersion="1.1.0">
+      <msx:description>Automated electromagnetic transient (EMT) verification study evaluating grid-forming inverter fault ride-through across symmetrical 3-phase and asymmetrical L-G voltage sags per IEEE Std 2800-2022 Clause 7.</msx:description>
+      <msx:input key="retainedVoltagePu" value="0.15"/>
+      <msx:input key="faultDurationMs" value="160"/>
+      <msx:input key="shortCircuitRatio" value="3.5"/>
+      <msx:input key="dtUs" value="25"/>
+    </msx:studyMetadata>
+  </annotation>
+  <listOfModels>
+    <model id="model_primary" name="MicrogridLVRT" language="urn:sedml:language:pscad-emt" source="pscad/microgrid_lvrt.pscx">
+      <listOfChanges>
+        <changeAttribute target="/model/parameter[@id='K_qv']/@value" newValue="2.5"/>
+        <changeAttribute target="/model/parameter[@id='SCR']/@value" newValue="3.5"/>
+      </listOfChanges>
+    </model>
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim_emt_frt" name="Dommel Trapezoidal EMT 25us Solver" initialTime="0.0" outputStartTime="0.0" outputEndTime="1.5" numberOfSteps="6000">
+      <algorithm kisaoID="KISAO:0000030" name="Dommel Trapezoidal EMT Nodal Solver">
+        <listOfAlgorithmParameters>
+          <algorithmParameter kisaoID="KISAO:0000209" name="relativeTolerance" value="1e-5"/>
+        </listOfAlgorithmParameters>
+      </algorithm>
+    </uniformTimeCourse>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task_base" modelReference="model_primary" simulationReference="sim_emt_frt"/>
+    <repeatedTask id="task_sweep" range="range_retainedVoltagePu" resetModel="true">
+      <listOfRanges>
+        <uniformRange id="range_retainedVoltagePu" start="0.05" end="0.85" numberOfSteps="8" type="linear"/>
+      </listOfRanges>
+      <listOfChanges>
+        <setValue modelReference="model_primary" target="/model/parameter[@id='retainedVoltagePu']/@value" range="range_retainedVoltagePu">
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <ci>range_retainedVoltagePu</ci>
+          </math>
+        </setValue>
+      </listOfChanges>
+      <listOfSubTasks>
+        <subTask order="1" task="task_base"/>
+      </listOfSubTasks>
+    </repeatedTask>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_time" name="time">
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>var_time</ci></math>
+      <listOfVariables>
+        <variable id="var_time" name="time" taskReference="task_sweep" symbol="urn:sedml:symbol:time"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_V_pcc_pu" name="V_pcc_pu">
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>var_V_pcc_pu</ci></math>
+      <listOfVariables>
+        <variable id="var_V_pcc_pu" name="V_pcc_pu" taskReference="task_sweep" target="/model/observable[@id='V_pcc_pu']"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_Iq_inj_pu" name="Iq_inj_pu">
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>var_Iq_inj_pu</ci></math>
+      <listOfVariables>
+        <variable id="var_Iq_inj_pu" name="Iq_inj_pu" taskReference="task_sweep" target="/model/observable[@id='Iq_inj_pu']"/>
+      </listOfVariables>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <plot2D id="plot_frt_envelope" name="PCC Voltage &amp; Reactive Current Injection vs. IEEE 2800 Ride-Through Envelope">
+      <listOfCurves>
+        <curve id="curve_vpcc" name="V_pcc_pu" logX="false" logY="false" xDataReference="dg_time" yDataReference="dg_V_pcc_pu"/>
+        <curve id="curve_iq" name="Iq_inj_pu" logX="false" logY="false" xDataReference="dg_time" yDataReference="dg_Iq_inj_pu"/>
+      </listOfCurves>
+    </plot2D>
+    <report id="report_kpis" name="IEEE 2800-2022 Clause 7 Compliance Summary">
+      <listOfDataSets>
+        <dataSet id="ds_iq_rise_time" label="Reactive Current 90% Rise Time (ms)" dataReference="dg_Iq_inj_pu"/>
+        <dataSet id="ds_v_recovery" label="Post-Fault Voltage Recovery (pu)" dataReference="dg_V_pcc_pu"/>
+      </listOfDataSets>
+    </report>
+  </listOfOutputs>
+</sedML>

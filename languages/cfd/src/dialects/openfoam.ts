@@ -84,6 +84,7 @@ export class OpenFoamDialect implements CfdDialect {
   public parse(content: string): CfdModelData {
     const rawDirectives = new Map<string, string>();
     const directives = new Map<string, string>();
+    const directiveLines = new Map<string, number>();
     const markers = new Map<string, CfdMarker>();
     const wallMarkers: string[] = [];
     const inletMarkers: string[] = [];
@@ -97,7 +98,17 @@ export class OpenFoamDialect implements CfdDialect {
       directives,
       rawDirectives,
       markers,
+      directiveLines,
     };
+
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const m = rawLines[i]!.trim().match(/^([a-zA-Z0-9_.]+)\b/);
+      if (m && m[1] && !directiveLines.has(m[1])) {
+        directiveLines.set(m[1], i + 1);
+        directiveLines.set(m[1].toUpperCase(), i + 1);
+      }
+    }
 
     // Strip comments
     const stripped = stripComments(content);

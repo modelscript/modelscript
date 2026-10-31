@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { ModelScriptErrorCode, type ModelScriptDiagnostic } from "./errors.js";
-import type { ModelScriptCstNode } from "./queries.js";
+import {
+  ModelScriptQueryEngine,
+  parseTypeName,
+  unwrapNode,
+  type ModelScriptCstNode,
+  type ModelScriptType,
+} from "./queries.js";
 
 /**
  * Lexical scope entry representing a declared variable, function, struct, parameter, or FLWOR variable.
@@ -10,6 +16,7 @@ interface SymbolInfo {
   name: string;
   kind: "variable" | "function" | "struct" | "parameter" | "flwor-var";
   type?: string | undefined;
+  semanticType?: ModelScriptType | undefined;
 }
 
 /**
@@ -17,6 +24,7 @@ interface SymbolInfo {
  */
 interface FunctionSig {
   paramCount: number;
+  paramTypes: (string | undefined)[];
   returnType?: string | undefined;
 }
 
@@ -25,18 +33,59 @@ interface FunctionSig {
  */
 interface StructSig {
   fields: Set<string>;
+  fieldTypes: Map<string, ModelScriptType>;
+}
+
+const PRIMITIVE_TYPES = new Set(["i32", "u32", "i64", "u64", "f32", "f64", "bool", "string", "usize", "void"]);
+
+function formatModelScriptType(type: ModelScriptType): string {
+  switch (type.kind) {
+    case "struct":
+      return type.name;
+    case "array":
+      return `Array<${formatModelScriptType(type.element)}>`;
+    default:
+      return type.kind;
+  }
+}
+
+function isNumericType(type: ModelScriptType): boolean {
+  return type.kind === "i32" || type.kind === "u32" || type.kind === "i64" || type.kind === "f64";
+}
+
+function isIntegerType(type: ModelScriptType): boolean {
+  return type.kind === "i32" || type.kind === "u32" || type.kind === "i64";
+}
+
+function isTypeCompatible(target: ModelScriptType, source: ModelScriptType): boolean {
+  if (target.kind === "unknown" || source.kind === "unknown") return true;
+  if (target.kind === source.kind) {
+    if (target.kind === "struct" && source.kind === "struct") {
+      return target.name === source.name;
+    }
+    if (target.kind === "array" && source.kind === "array") {
+      return isTypeCompatible(target.element, source.element);
+    }
+    return true;
+  }
+  if (isIntegerType(target) && isIntegerType(source)) return true;
+  if (target.kind === "f64" && isNumericType(source)) return true;
+  return false;
 }
 
 /**
  * Semantic CST linter for ModelScript that validates lexical scoping, duplicate
- * declarations, FLWOR comprehension variable bindings, function call arity, and
- * struct field access.
+ * declarations, type annotations, type compatibility, binary operator operands,
+ * FLWOR comprehension variable bindings, function call arity, and struct field access.
  */
 export class ModelScriptLinter {
   private diagnostics: ModelScriptDiagnostic[] = [];
   private scopes: Map<string, SymbolInfo>[] = [];
   private functions = new Map<string, FunctionSig>();
   private structs = new Map<string, StructSig>();
+  private queries = new ModelScriptQueryEngine();
+  private currentFunctionReturnType: ModelScriptType | undefined = undefined;
+  private inFlworClauseDepth = 0;
 
   /** Pushes a new lexical scope onto the scope stack. */
   private enterScope(): void {
@@ -62,6 +111,7 @@ export class ModelScriptLinter {
     kind: SymbolInfo["kind"],
     node: ModelScriptCstNode | null | undefined,
     type?: string,
+    semanticType?: ModelScriptType,
   ): boolean {
     const scope = this.currentScope();
     if (scope.has(name)) {
@@ -74,7 +124,8 @@ export class ModelScriptLinter {
       );
       return false;
     }
-    scope.set(name, { name, kind, type });
+    const resolvedSemantic = semanticType ?? (type && this.isKnownType(type) ? parseTypeName(type) : undefined);
+    scope.set(name, { name, kind, type, semanticType: resolvedSemantic });
     return true;
   }
 
@@ -93,26 +144,151 @@ export class ModelScriptLinter {
   }
 
   /**
+   * Checks whether a type string refers to a built-in primitive, generic container of known type,
+   * declared struct, or imported type symbol.
+   */
+  private isKnownType(typeStr: string): boolean {
+    const trimmed = typeStr.trim();
+    if (!trimmed) return true;
+    if (PRIMITIVE_TYPES.has(trimmed)) return true;
+    if ((trimmed.startsWith("Array<") || trimmed.startsWith("Slice<")) && trimmed.endsWith(">")) {
+      return this.isKnownType(trimmed.slice(6, -1));
+    }
+    if (trimmed.startsWith("ptr<") && trimmed.endsWith(">")) {
+      return this.isKnownType(trimmed.slice(4, -1));
+    }
+    if (this.structs.has(trimmed)) return true;
+    const sym = this.lookupSymbol(trimmed);
+    return sym !== undefined;
+  }
+
+  /**
+   * Extracts the leaf unrecognized type name from a potentially generic type annotation.
+   */
+  private extractUnknownTypeName(typeStr: string): string {
+    const trimmed = typeStr.trim();
+    if ((trimmed.startsWith("Array<") || trimmed.startsWith("Slice<")) && trimmed.endsWith(">")) {
+      return this.extractUnknownTypeName(trimmed.slice(6, -1));
+    }
+    if (trimmed.startsWith("ptr<") && trimmed.endsWith(">")) {
+      return this.extractUnknownTypeName(trimmed.slice(4, -1));
+    }
+    return trimmed;
+  }
+
+  /**
+   * Validates a type annotation CST node, emitting `2003` (`UNKNOWN_TYPE`) if unrecognized.
+   */
+  private validateTypeAnnotation(typeNode: ModelScriptCstNode | null | undefined): boolean {
+    if (!typeNode) return true;
+    const typeText = typeNode.text?.trim();
+    if (!typeText) return true;
+    if (!this.isKnownType(typeText)) {
+      const badName = this.extractUnknownTypeName(typeText);
+      this.addDiagnostic(
+        ModelScriptErrorCode.UNKNOWN_TYPE.code,
+        ModelScriptErrorCode.UNKNOWN_TYPE.rule,
+        "error",
+        ModelScriptErrorCode.UNKNOWN_TYPE.message(badName),
+        typeNode,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Builds a flat `Map<string, ModelScriptType>` from all active lexical scopes for `ModelScriptQueryEngine`.
+   */
+  private buildSemanticScope(): Map<string, ModelScriptType> {
+    const map = new Map<string, ModelScriptType>();
+    for (const scope of this.scopes) {
+      for (const [name, info] of scope.entries()) {
+        if (info.semanticType) {
+          map.set(name, info.semanticType);
+        }
+      }
+    }
+    return map;
+  }
+
+  /**
+   * Infers the `ModelScriptType` of an expression CST node using `ModelScriptQueryEngine`
+   * and hoisted function/struct signatures.
+   */
+  private inferExprType(rawNode: ModelScriptCstNode | null | undefined): ModelScriptType {
+    const node = unwrapNode(rawNode);
+    if (!node) return { kind: "unknown" };
+
+    if (node.type === "PostfixExpression") {
+      const calleeNode = node.childForFieldName?.("callee");
+      if (calleeNode) {
+        const fnSig = this.functions.get(calleeNode.text);
+        if (fnSig?.returnType && this.isKnownType(fnSig.returnType)) {
+          return parseTypeName(fnSig.returnType);
+        }
+        return { kind: "unknown" };
+      }
+
+      const objNode = node.childForFieldName?.("object");
+      const propNode = node.childForFieldName?.("property");
+      if (objNode && propNode) {
+        const objType = this.inferExprType(objNode);
+        const propName = propNode.text || "";
+        if (objType.kind === "struct") {
+          const structSig = this.structs.get(objType.name);
+          return structSig?.fieldTypes.get(propName) ?? { kind: "unknown" };
+        }
+        if ((objType.kind === "array" || objType.kind === "string") && propName === "length") {
+          return { kind: "i32" };
+        }
+        return { kind: "unknown" };
+      }
+
+      const arrNode = node.childForFieldName?.("array");
+      const idxNode = node.childForFieldName?.("index");
+      if (arrNode && idxNode) {
+        const arrType = this.inferExprType(arrNode);
+        return arrType.kind === "array" ? arrType.element : { kind: "unknown" };
+      }
+      return { kind: "unknown" };
+    }
+
+    if (node.type === "BinaryExpression") {
+      const left = node.childForFieldName?.("left");
+      const op = node.childForFieldName?.("operator")?.text || "";
+      const right = node.childForFieldName?.("right");
+      if (["==", "!=", "<", "<=", ">", ">=", "&&", "||"].includes(op)) {
+        return { kind: "bool" };
+      }
+      const lType = this.inferExprType(left);
+      const rType = this.inferExprType(right);
+      if (lType.kind === "unknown" || rType.kind === "unknown") {
+        return { kind: "unknown" };
+      }
+      if (lType.kind === "f64" || rType.kind === "f64") {
+        return { kind: "f64" };
+      }
+      return lType;
+    }
+
+    return this.queries.inferExpressionType(node, this.buildSemanticScope());
+  }
+
+  /**
    * Attempts to resolve the struct type name of an object receiver expression
    * (either via variable type annotation or `new StructName(...)` construction).
    */
   private resolveObjectStructName(node: ModelScriptCstNode | null | undefined): string | undefined {
-    let cur = node;
-    while (
-      cur &&
-      (cur.type === "Expression" || cur.type === "PrimaryExpression" || cur.type === "ParenthesizedExpression")
-    ) {
-      if (cur.type === "ParenthesizedExpression") {
-        cur = cur.childForFieldName?.("expression") ?? cur.namedChildren?.[0];
-      } else {
-        cur = cur.namedChildren?.[0] ?? cur.child?.(0);
-      }
-    }
+    const cur = unwrapNode(node);
     if (!cur) return undefined;
     if (cur.type === "IDENTIFIER") {
       const sym = this.lookupSymbol(cur.text);
       if (sym?.type && this.structs.has(sym.type)) {
         return sym.type;
+      }
+      if (sym?.semanticType?.kind === "struct" && this.structs.has(sym.semanticType.name)) {
+        return sym.semanticType.name;
       }
     } else if (cur.type === "NewExpression") {
       const ctor = cur.childForFieldName?.("constructor")?.text;
@@ -156,6 +332,9 @@ export class ModelScriptLinter {
     this.scopes = [];
     this.functions.clear();
     this.structs.clear();
+    this.queries.clear();
+    this.currentFunctionReturnType = undefined;
+    this.inFlworClauseDepth = 0;
 
     this.enterScope();
 
@@ -207,16 +386,24 @@ export class ModelScriptLinter {
         const idNode = child.childForFieldName?.("name");
         const name = idNode?.text;
         if (name) {
-          this.declareSymbol(name, "struct", idNode);
+          this.declareSymbol(name, "struct", idNode, name, { kind: "struct", name });
+          this.queries.structLayout(child);
           const fields = new Set<string>();
+          const fieldTypes = new Map<string, ModelScriptType>();
           for (let j = 0; j < child.childCount; j++) {
             const f = child.child(j);
             if (f?.type === "StructField") {
               const fName = f.childForFieldName?.("name")?.text;
-              if (fName) fields.add(fName);
+              const fTypeText = f.childForFieldName?.("type")?.text?.trim();
+              if (fName) {
+                fields.add(fName);
+                if (fTypeText) {
+                  fieldTypes.set(fName, parseTypeName(fTypeText));
+                }
+              }
             }
           }
-          this.structs.set(name, { fields });
+          this.structs.set(name, { fields, fieldTypes });
         }
       } else if (child.type === "FunctionDeclaration") {
         const idNode = child.childForFieldName?.("name");
@@ -225,13 +412,18 @@ export class ModelScriptLinter {
           this.declareSymbol(name, "function", idNode);
           const paramsNode = child.childForFieldName?.("parameters");
           let paramCount = 0;
+          const paramTypes: (string | undefined)[] = [];
           if (paramsNode) {
             for (let j = 0; j < paramsNode.childCount; j++) {
-              if (paramsNode.child(j)?.type === "Parameter") paramCount++;
+              const p = paramsNode.child(j);
+              if (p?.type === "Parameter") {
+                paramCount++;
+                paramTypes.push(p.childForFieldName?.("type")?.text?.trim());
+              }
             }
           }
-          const retType = child.childForFieldName?.("returnType")?.text;
-          this.functions.set(name, { paramCount, returnType: retType });
+          const retType = child.childForFieldName?.("returnType")?.text?.trim();
+          this.functions.set(name, { paramCount, paramTypes, returnType: retType });
         }
       }
     }
@@ -239,12 +431,22 @@ export class ModelScriptLinter {
 
   /**
    * Second pass: recursively traverses statements and expressions, managing lexical scopes
-   * and checking identifier resolution, call arities, and struct member accesses.
+   * and checking identifier resolution, types, operators, FLWOR clauses, call arities, and struct fields.
    */
   private walk(node: ModelScriptCstNode | null | undefined): void {
     if (!node) return;
 
     switch (node.type) {
+      case "StructDeclaration": {
+        for (let i = 0; i < node.childCount; i++) {
+          const child = node.child(i);
+          if (child?.type === "StructField") {
+            this.validateTypeAnnotation(child.childForFieldName?.("type"));
+          }
+        }
+        return;
+      }
+
       case "BlockStatement":
       case "ForStatement": {
         this.enterScope();
@@ -261,23 +463,128 @@ export class ModelScriptLinter {
         const valNode = node.childForFieldName?.("value");
         const name = idNode?.text;
 
+        const isTypeValid = this.validateTypeAnnotation(typeNode);
+
         // Lint initializer expression before binding the variable in scope
         if (valNode) {
           this.walk(valNode);
         }
 
-        let resolvedType = typeNode?.text?.trim();
+        const declaredTypeStr = typeNode?.text?.trim();
+        let semanticType: ModelScriptType | undefined;
+
+        if (declaredTypeStr && isTypeValid) {
+          semanticType = parseTypeName(declaredTypeStr);
+          if (valNode) {
+            const valType = this.inferExprType(valNode);
+            if (!isTypeCompatible(semanticType, valType)) {
+              this.addDiagnostic(
+                ModelScriptErrorCode.TYPE_MISMATCH.code,
+                ModelScriptErrorCode.TYPE_MISMATCH.rule,
+                "error",
+                ModelScriptErrorCode.TYPE_MISMATCH.message(
+                  formatModelScriptType(semanticType),
+                  formatModelScriptType(valType),
+                ),
+                valNode,
+              );
+            }
+          }
+        } else if (valNode) {
+          semanticType = this.inferExprType(valNode);
+        }
+
+        let resolvedType = declaredTypeStr;
         if (!resolvedType && valNode) {
           resolvedType = this.resolveObjectStructName(valNode);
         }
 
         if (name) {
-          this.declareSymbol(name, "variable", idNode, resolvedType);
+          this.declareSymbol(name, "variable", idNode, resolvedType, semanticType);
+        }
+        return;
+      }
+
+      case "AssignmentStatement": {
+        const targetNode = node.childForFieldName?.("target");
+        const valNode = node.childForFieldName?.("value");
+        this.walk(targetNode);
+        this.walk(valNode);
+
+        if (targetNode && valNode) {
+          const targetType = this.inferExprType(targetNode);
+          const valType = this.inferExprType(valNode);
+          if (!isTypeCompatible(targetType, valType)) {
+            this.addDiagnostic(
+              ModelScriptErrorCode.TYPE_MISMATCH.code,
+              ModelScriptErrorCode.TYPE_MISMATCH.rule,
+              "error",
+              ModelScriptErrorCode.TYPE_MISMATCH.message(
+                formatModelScriptType(targetType),
+                formatModelScriptType(valType),
+              ),
+              valNode,
+            );
+          }
+        }
+        return;
+      }
+
+      case "ReturnStatement": {
+        const valNode = node.childForFieldName?.("value");
+        if (valNode) {
+          this.walk(valNode);
+          if (this.currentFunctionReturnType) {
+            const valType = this.inferExprType(valNode);
+            if (!isTypeCompatible(this.currentFunctionReturnType, valType)) {
+              this.addDiagnostic(
+                ModelScriptErrorCode.TYPE_MISMATCH.code,
+                ModelScriptErrorCode.TYPE_MISMATCH.rule,
+                "error",
+                ModelScriptErrorCode.TYPE_MISMATCH.message(
+                  formatModelScriptType(this.currentFunctionReturnType),
+                  formatModelScriptType(valType),
+                ),
+                valNode,
+              );
+            }
+          }
         }
         return;
       }
 
       case "FunctionDeclaration": {
+        const idNode = node.childForFieldName?.("name");
+        const fnName = idNode?.text;
+        // Register nested functions if not at top level
+        if (fnName && !this.functions.has(fnName)) {
+          this.declareSymbol(fnName, "function", idNode);
+          const paramsNode = node.childForFieldName?.("parameters");
+          let paramCount = 0;
+          const paramTypes: (string | undefined)[] = [];
+          if (paramsNode) {
+            for (let j = 0; j < paramsNode.childCount; j++) {
+              const p = paramsNode.child(j);
+              if (p?.type === "Parameter") {
+                paramCount++;
+                paramTypes.push(p.childForFieldName?.("type")?.text?.trim());
+              }
+            }
+          }
+          const retType = node.childForFieldName?.("returnType")?.text?.trim();
+          this.functions.set(fnName, { paramCount, paramTypes, returnType: retType });
+        }
+
+        const returnTypeNode = node.childForFieldName?.("returnType");
+        const isRetValid = this.validateTypeAnnotation(returnTypeNode);
+        const prevReturnType = this.currentFunctionReturnType;
+        if (returnTypeNode?.text && isRetValid) {
+          const retStr = returnTypeNode.text.trim();
+          this.currentFunctionReturnType = retStr === "void" ? undefined : parseTypeName(retStr);
+        } else {
+          this.currentFunctionReturnType = undefined;
+        }
+
         const bodyNode = node.childForFieldName?.("body");
         const paramsNode = node.childForFieldName?.("parameters");
 
@@ -287,9 +594,12 @@ export class ModelScriptLinter {
             const p = paramsNode.child(i);
             if (p?.type === "Parameter") {
               const pId = p.childForFieldName?.("name");
-              const pType = p.childForFieldName?.("type")?.text?.trim();
+              const pTypeNode = p.childForFieldName?.("type");
+              const isParamTypeValid = this.validateTypeAnnotation(pTypeNode);
+              const pType = pTypeNode?.text?.trim();
               if (pId) {
-                this.declareSymbol(pId.text, "parameter", pId, pType);
+                const semType = pType && isParamTypeValid ? parseTypeName(pType) : undefined;
+                this.declareSymbol(pId.text, "parameter", pId, pType, semType);
               }
             }
           }
@@ -302,6 +612,103 @@ export class ModelScriptLinter {
           }
         }
         this.exitScope();
+        this.currentFunctionReturnType = prevReturnType;
+        return;
+      }
+
+      case "NewExpression": {
+        const ctorNode = node.childForFieldName?.("constructor");
+        if (ctorNode?.text && !this.isKnownType(ctorNode.text)) {
+          this.addDiagnostic(
+            ModelScriptErrorCode.UNKNOWN_TYPE.code,
+            ModelScriptErrorCode.UNKNOWN_TYPE.rule,
+            "error",
+            ModelScriptErrorCode.UNKNOWN_TYPE.message(ctorNode.text),
+            ctorNode,
+          );
+        }
+        const argsNode = node.childForFieldName?.("arguments");
+        if (argsNode) {
+          this.walk(argsNode);
+        }
+        return;
+      }
+
+      case "BinaryExpression": {
+        const leftNode = node.childForFieldName?.("left");
+        const opNode = node.childForFieldName?.("operator");
+        const rightNode = node.childForFieldName?.("right");
+
+        this.walk(leftNode);
+        this.walk(rightNode);
+
+        const op = opNode?.text || "";
+        const lType = this.inferExprType(leftNode);
+        const rType = this.inferExprType(rightNode);
+
+        if (lType.kind !== "unknown" && rType.kind !== "unknown") {
+          if (["-", "*", "/", "%"].includes(op)) {
+            if (!isNumericType(lType)) {
+              this.addDiagnostic(
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.code,
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
+                "error",
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, formatModelScriptType(lType)),
+                node,
+              );
+            } else if (!isNumericType(rType)) {
+              this.addDiagnostic(
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.code,
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
+                "error",
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, formatModelScriptType(rType)),
+                node,
+              );
+            }
+          } else if (op === "+") {
+            const bothNum = isNumericType(lType) && isNumericType(rType);
+            const bothStr = lType.kind === "string" && rType.kind === "string";
+            if (!bothNum && !bothStr) {
+              const badType =
+                !isNumericType(lType) && lType.kind !== "string"
+                  ? formatModelScriptType(lType)
+                  : !isNumericType(rType) && rType.kind !== "string"
+                    ? formatModelScriptType(rType)
+                    : `${formatModelScriptType(lType)} and ${formatModelScriptType(rType)}`;
+              this.addDiagnostic(
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.code,
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
+                "error",
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, badType),
+                node,
+              );
+            }
+          } else if (["<", "<=", ">", ">="].includes(op)) {
+            const bothNum = isNumericType(lType) && isNumericType(rType);
+            const bothStr = lType.kind === "string" && rType.kind === "string";
+            if (!bothNum && !bothStr) {
+              const badType = !isNumericType(lType) ? formatModelScriptType(lType) : formatModelScriptType(rType);
+              this.addDiagnostic(
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.code,
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
+                "error",
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, badType),
+                node,
+              );
+            }
+          } else if (["&&", "||"].includes(op)) {
+            if (lType.kind !== "bool" || rType.kind !== "bool") {
+              const badType = lType.kind !== "bool" ? formatModelScriptType(lType) : formatModelScriptType(rType);
+              this.addDiagnostic(
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.code,
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
+                "error",
+                ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, badType),
+                node,
+              );
+            }
+          }
+        }
         return;
       }
 
@@ -314,23 +721,43 @@ export class ModelScriptLinter {
           if (c.type === "ForClause") {
             const coll = c.childForFieldName?.("collection");
             this.walk(coll);
+            const collType = this.inferExprType(coll);
+            if (collType.kind !== "unknown" && collType.kind !== "array") {
+              this.addDiagnostic(
+                ModelScriptErrorCode.NON_ITERABLE_COLLECTION.code,
+                ModelScriptErrorCode.NON_ITERABLE_COLLECTION.rule,
+                "error",
+                ModelScriptErrorCode.NON_ITERABLE_COLLECTION.message(coll?.text || ""),
+                coll || c,
+              );
+            }
             const varId = c.childForFieldName?.("variable");
             if (varId) {
-              this.declareSymbol(varId.text, "flwor-var", varId);
+              const elemType: ModelScriptType = collType.kind === "array" ? collType.element : { kind: "unknown" };
+              this.declareSymbol(varId.text, "flwor-var", varId, undefined, elemType);
             }
           } else if (c.type === "LetClause") {
             const val = c.childForFieldName?.("value");
+            this.inFlworClauseDepth++;
             this.walk(val);
+            this.inFlworClauseDepth--;
+            const valType = this.inferExprType(val);
             const varId = c.childForFieldName?.("variable");
             if (varId) {
-              this.declareSymbol(varId.text, "flwor-var", varId);
+              this.declareSymbol(varId.text, "flwor-var", varId, undefined, valType);
             }
           } else if (c.type === "WhereClause") {
+            this.inFlworClauseDepth++;
             this.walk(c.childForFieldName?.("condition"));
+            this.inFlworClauseDepth--;
           } else if (c.type === "OrderByClause") {
+            this.inFlworClauseDepth++;
             this.walk(c.childForFieldName?.("criteria"));
+            this.inFlworClauseDepth--;
           } else if (c.type === "ReturnClause") {
+            this.inFlworClauseDepth++;
             this.walk(c.childForFieldName?.("value"));
+            this.inFlworClauseDepth--;
           }
         }
 
@@ -391,7 +818,7 @@ export class ModelScriptLinter {
       case "IDENTIFIER": {
         const name = node.text;
         const parent = node.parent;
-        // Skip identifiers that sit in declaration-name, field-key, named-arg, or type-reference positions
+        // Skip identifiers that sit in declaration-name, field-key, named-arg, constructor, or type-reference positions
         const isDeclarationName =
           ((parent?.type === "VariableDeclaration" ||
             parent?.type === "StructDeclaration" ||
@@ -401,6 +828,7 @@ export class ModelScriptLinter {
             parent.childForFieldName?.("name") === node) ||
           ((parent?.type === "ForClause" || parent?.type === "LetClause") &&
             parent.childForFieldName?.("variable") === node) ||
+          (parent?.type === "NewExpression" && parent.childForFieldName?.("constructor") === node) ||
           (parent?.type === "ObjectField" && parent.childForFieldName?.("key") === node) ||
           (parent?.type === "Argument" && parent.childForFieldName?.("name") === node) ||
           parent?.type === "CustomType" ||
@@ -412,13 +840,24 @@ export class ModelScriptLinter {
 
         if (!isDeclarationName && !isFieldAccess) {
           if (!this.isDeclared(name)) {
-            this.addDiagnostic(
-              ModelScriptErrorCode.UNDEFINED_VARIABLE.code,
-              ModelScriptErrorCode.UNDEFINED_VARIABLE.rule,
-              "error",
-              ModelScriptErrorCode.UNDEFINED_VARIABLE.message(name),
-              node,
-            );
+            if (this.inFlworClauseDepth > 0) {
+              this.addDiagnostic(
+                ModelScriptErrorCode.FLWOR_UNBOUND_VARIABLE.code,
+                ModelScriptErrorCode.FLWOR_UNBOUND_VARIABLE.rule,
+                "error",
+                ModelScriptErrorCode.FLWOR_UNBOUND_VARIABLE.message(name),
+                node,
+              );
+            }
+            if (!name.startsWith("$")) {
+              this.addDiagnostic(
+                ModelScriptErrorCode.UNDEFINED_VARIABLE.code,
+                ModelScriptErrorCode.UNDEFINED_VARIABLE.rule,
+                "error",
+                ModelScriptErrorCode.UNDEFINED_VARIABLE.message(name),
+                node,
+              );
+            }
           }
         }
         return;

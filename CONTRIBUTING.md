@@ -91,12 +91,12 @@ Source (.mo / domain file)
 
 The monorepo is organized into four distinct architectural layers to ensure clean separation of concerns:
 
-| Layer                                | Workspaces & Directories                                                                                                               | Primary Responsibility                                                                                   |
-| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------- |
-| **Layer 4: Enterprise**              | [`ee/`](./ee/)                                                                                                                         | Commercial enterprise edition, offline Ed25519 licensing, ITAR/NERC CIP air-gap, FDA 21 CFR Part 11      |
-| **Layer 3: Ansatz Platform**         | [`apps/web/`](./apps/web/), [`apps/api/`](./apps/api/), [`packages/embed/`](./packages/embed/), [`packages/react/`](./packages/react/) | Flagship web platform (`ansatz.social`), ActivityPub federation, package registry, Slurm HPC, billing    |
-| **Layer 2: Developer Tooling**       | [`apps/cli/`](./apps/cli/), [`apps/ide/`](./apps/ide/), [`apps/desktop/`](./apps/desktop/), [`apps/docs/`](./apps/docs/)               | Unified CLI (`msx`), VS Code Web extension, Tauri desktop app, VitePress documentation portal            |
-| **Layer 1: Core Engine & Languages** | [`languages/*`](./languages/), [`packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`](./packages/)                           | 44 domain languages, WASM GLR parsers, linear DAE arena, numerical solvers, TGG graph rewriting, FMI/SSP |
+| Layer                                | Workspaces & Directories                                                                                                               | Primary Responsibility                                                                                    |
+| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| **Layer 4: Enterprise**              | [`ee/`](./ee/)                                                                                                                         | Commercial enterprise edition, offline Ed25519 licensing, NERC CIP / isolated air-gap, FDA 21 CFR Part 11 |
+| **Layer 3: Ansatz Platform**         | [`apps/web/`](./apps/web/), [`apps/api/`](./apps/api/), [`packages/embed/`](./packages/embed/), [`packages/react/`](./packages/react/) | Flagship web platform (`ansatz.social`), ActivityPub federation, package registry, Slurm HPC, billing     |
+| **Layer 2: Developer Tooling**       | [`apps/cli/`](./apps/cli/), [`apps/ide/`](./apps/ide/), [`apps/desktop/`](./apps/desktop/), [`apps/docs/`](./apps/docs/)               | Unified CLI (`msx`), VS Code Web extension, Tauri desktop app, VitePress documentation portal             |
+| **Layer 1: Core Engine & Languages** | [`languages/*`](./languages/), [`packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`](./packages/)                           | 44 domain languages, WASM GLR parsers, linear DAE arena, numerical solvers, TGG graph rewriting, FMI/SSP  |
 
 ### Core Engine Workspaces
 
@@ -304,7 +304,7 @@ Choose the profile that matches your resource constraints and use case:
 | **`flagship`**       | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` cloud cluster                   | SQLite WAL + TimescaleDB            | ~4–8 GB       |
 | **`federated`**      | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live simulation telemetry streaming               | SQLite WAL + TimescaleDB            | ~4 GB         |
 | **`federated-lite`** | `caddy`, `web`, `api`, `tunnel`                             | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS | **SQLite WAL only**                 | **~1–2 GB**   |
-| **`corporate`**      | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped SCIF, SSO allowlist                 | SQLite WAL (+ optional TimescaleDB) | ~2–4 GB       |
+| **`corporate`**      | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped enclave, SSO allowlist              | SQLite WAL (+ optional TimescaleDB) | ~2–4 GB       |
 | **`quick-tunnel`**   | `caddy`, `web`, `api`, `quick-tunnel`                       | Instant zero-config demo with ephemeral `trycloudflare.com` URL     | SQLite WAL only                     | ~1.5 GB       |
 
 ### 2. Production Token-Driven Tunnel (Zero Open Inbound Ports)

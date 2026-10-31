@@ -10,6 +10,7 @@ import {
   parseOpenDss,
   serializeOpenDss,
   solveDistributionPowerFlow,
+  solveOpenDssQsts,
 } from "../src/index.js";
 
 const SAMPLE_IEEE_4BUS = `! IEEE 4-Bus Radial Distribution Feeder
@@ -146,12 +147,19 @@ test("OpenDSS DAE Lowering: compiles distribution grid into DAEBuilder linear me
 
   assert(vars.length >= 10, `Expected at least 10 DAE variables, got ${vars.length}`);
   assert(eqs.length >= 4, `Expected at least 4 equations, got ${eqs.length}`);
+  assert.strictEqual(
+    vars.length,
+    eqs.length,
+    `Expected structurally square OpenDSS DAE (N_vars=${vars.length} === N_eqs=${eqs.length})`,
+  );
 
-  // Check bus voltage variables exist
+  // Check bus voltage and component current variables exist
   assert.notStrictEqual(dae.lookupVariable("V_SourceBus"), -1);
   assert.notStrictEqual(dae.lookupVariable("V_SubBus"), -1);
   assert.notStrictEqual(dae.lookupVariable("V_LoadBus1"), -1);
   assert.notStrictEqual(dae.lookupVariable("I_line_Line1"), -1);
+  assert.notStrictEqual(dae.lookupVariable("I_xfmr_SubXfmr"), -1);
+  assert.notStrictEqual(dae.lookupVariable("I_pv_SolarFarm1"), -1);
 });
 
 test("OpenDSS Modelica Projection: generates syntactically valid Modelica 3.x code", () => {
@@ -160,10 +168,32 @@ test("OpenDSS Modelica Projection: generates syntactically valid Modelica 3.x co
 
   assert(mo.includes("model IEEE4BusFeeder"));
   assert(mo.includes("SineVoltage source"));
+  assert(mo.includes("IdealTransformer Xfmr_SubXfmr"));
   assert(mo.includes("Resistor R_Line1"));
   assert(mo.includes("Inductor L_Line1"));
   assert(mo.includes("Resistor Load_Load1"));
+  assert(mo.includes("ConstantCurrent PV_SolarFarm1"));
+  assert(mo.includes("connect(R_Line1.p, bus_SubBus);"));
   assert(mo.includes("end IEEE4BusFeeder;"));
+});
+
+test("OpenDSS Linter: detects zero transformer impedance (M8402) and out-of-range load power factor (M8403)", () => {
+  const dss = `
+    Clear
+    New Circuit.TestM8402 basekv=115.0 pu=1.0 bus1=SourceBus
+    New Transformer.ZeroX phases=3 windings=2 buses=[SourceBus, SubBus] kvs=[115, 12.47] kvas=[5000, 5000] xhl=0
+    New Load.BadPfLoad bus1=SubBus phases=3 kv=12.47 kw=500 kvar=100 pf=1.25
+  `;
+  const deck = parseOpenDss(dss);
+  const diags = lintOpenDss(deck);
+  assert(
+    diags.some((d) => d.code === 8402),
+    "Expected M8402 for xhl <= 0",
+  );
+  assert(
+    diags.some((d) => d.code === 8403),
+    "Expected M8403 for pf > 1.0",
+  );
 });
 
 test("OpenDSS Workspace Index: indexes multi-file symbols accurately", () => {
@@ -180,4 +210,51 @@ test("OpenDSS Workspace Index: indexes multi-file symbols accurately", () => {
 
   const lineSyms = fileIdx.byName.get("Line1");
   assert(lineSyms !== undefined && lineSyms.length > 0);
+});
+
+test("OpenDSS 3-Phase Unbalanced Power Flow: single-phase lateral load on phase A creates voltage unbalance", () => {
+  const dss = `
+    Clear
+    New Circuit.UnbalFeeder basekv=12.47 pu=1.00 phases=3 bus1=SourceBus
+    New LineCode.Overhead3P nphases=3 r1=0.25 x1=0.65 r0=0.65 x0=1.80 units=km
+    New Line.MainLine bus1=SourceBus.1.2.3 bus2=LateralBus.1.2.3 phases=3 linecode=Overhead3P length=3.0
+    New Load.SinglePhaseA bus1=LateralBus.1 phases=1 kv=7.2 kw=650 kvar=250
+  `;
+  const deck = parseOpenDss(dss);
+  const load = deck.loads.get("SinglePhaseA");
+  assert(load !== undefined);
+  assert.deepStrictEqual(load.phaseNodes, [1]);
+
+  const res = solveDistributionPowerFlow(deck);
+  assert.strictEqual(res.converged, true);
+  const latBus = res.buses.get("LateralBus");
+  assert(latBus !== undefined);
+  assert(
+    latBus.vMagPuA < latBus.vMagPuB && latBus.vMagPuA < latBus.vMagPuC,
+    `Expected phase A voltage (${latBus.vMagPuA}) < phase B (${latBus.vMagPuB}) and phase C (${latBus.vMagPuC})`,
+  );
+  assert(
+    latBus.voltageUnbalanceFactor > 0.005,
+    `Expected non-zero voltage unbalance factor, got ${latBus.voltageUnbalanceFactor}`,
+  );
+});
+
+test("OpenDSS QSTS: evaluates LoadShape time-series multipliers across daily feeder profile", () => {
+  const dss = `
+    Clear
+    New Circuit.QstsFeeder basekv=12.47 pu=1.02 phases=3 bus1=SourceBus
+    New LoadShape.DailyProfile npts=4 interval=1.0 mult=[0.5, 0.8, 1.2, 0.6]
+    New Line.Feeder1 bus1=SourceBus bus2=Bus2 phases=3 r1=0.2 x1=0.5 length=2.5
+    New Load.ResLoad bus1=Bus2 phases=3 kv=12.47 kw=1200 kvar=400 daily=DailyProfile
+  `;
+  const deck = parseOpenDss(dss);
+  assert(deck.loadShapes !== undefined);
+  assert.strictEqual(deck.loadShapes.size, 1);
+
+  const qsts = solveOpenDssQsts(deck, "DailyProfile");
+  assert.strictEqual(qsts.steps.length, 4);
+  assert.deepStrictEqual(qsts.multipliers, [0.5, 0.8, 1.2, 0.6]);
+  // Peak load at step 2 (mult=1.2) produces highest losses and lowest bus voltage
+  assert(qsts.lossesKwSeries[2]! > qsts.lossesKwSeries[0]!);
+  assert(qsts.minVoltagePuSeries[2]! < qsts.minVoltagePuSeries[0]!);
 });

@@ -39,6 +39,7 @@ export interface MooringLine {
   totalLength: number;
   pretension?: number | undefined; // N
   minBendingRadius?: number | undefined; // m (MBR)
+  curvatureRadius?: number | undefined; // m (actual or computed bend radius)
 }
 
 export interface HydrodynamicRaoEntry {
@@ -55,6 +56,7 @@ export interface HydrodynamicData {
   hydrostaticRestoring?: number[][]; // 6x6 C matrix
   retardationTimeSteps?: number[];
   retardationKernel?: number[][][]; // 6x6xT
+  qtfMatrix?: number[][] | undefined; // Quadratic Transfer Function matrix
 }
 
 export interface Vessel {

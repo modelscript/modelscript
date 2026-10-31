@@ -88,6 +88,27 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const [pendingPin, setPendingPin] = useState<SpatialPin | undefined>(undefined);
   const [showAiDetails, setShowAiDetails] = useState(false);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const actionErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (actionErrorTimerRef.current) {
+        clearTimeout(actionErrorTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showTransientActionError = (message: string) => {
+    setActionError(message);
+    if (actionErrorTimerRef.current) {
+      clearTimeout(actionErrorTimerRef.current);
+    }
+    actionErrorTimerRef.current = setTimeout(() => {
+      setActionError(null);
+    }, 4000);
+    toast.error(message);
+  };
 
   const parsedAuthor = useMemo(() => parseFederatedHandle(displayPost.username), [displayPost.username]);
   const parsedQuoteAuthor = useMemo(
@@ -208,12 +229,26 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
       return;
     }
 
+    const prevLiked = liked;
+    const prevLikeCount = likeCount;
+    const optimisticLiked = !prevLiked;
+    const optimisticLikeCount = Math.max(0, prevLikeCount + (optimisticLiked ? 1 : -1));
+
+    setLiked(optimisticLiked);
+    setLikeCount(optimisticLikeCount);
+    setActionError(null);
+
     try {
       const data = await likePost(displayPost.id);
-      setLiked(data.liked);
-      setLikeCount((prev: number) => prev + (data.liked ? 1 : -1));
+      if (data && typeof data.liked === "boolean" && data.liked !== optimisticLiked) {
+        setLiked(data.liked);
+        setLikeCount(Math.max(0, prevLikeCount + (data.liked ? 1 : -1)));
+      }
     } catch (err) {
       console.error(err);
+      setLiked(prevLiked);
+      setLikeCount(prevLikeCount);
+      showTransientActionError("Failed to update like. Please try again.");
     }
   };
 
@@ -225,12 +260,26 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
       return;
     }
 
+    const prevReposted = reposted;
+    const prevRepostCount = repostCount;
+    const optimisticReposted = !prevReposted;
+    const optimisticRepostCount = Math.max(0, prevRepostCount + (optimisticReposted ? 1 : -1));
+
+    setReposted(optimisticReposted);
+    setRepostCount(optimisticRepostCount);
+    setActionError(null);
+
     try {
       const data = await repostPost(displayPost.id);
-      setReposted(data.reposted);
-      setRepostCount((prev: number) => prev + (data.reposted ? 1 : -1));
+      if (data && typeof data.reposted === "boolean" && data.reposted !== optimisticReposted) {
+        setReposted(data.reposted);
+        setRepostCount(Math.max(0, prevRepostCount + (data.reposted ? 1 : -1)));
+      }
     } catch (err) {
       console.error(err);
+      setReposted(prevReposted);
+      setRepostCount(prevRepostCount);
+      showTransientActionError("Failed to update repost. Please try again.");
     }
   };
 
@@ -242,17 +291,32 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
       return;
     }
 
+    const prevBookmarked = bookmarked;
+    const prevBookmarkCount = bookmarkCount;
+    const optimisticBookmarked = !prevBookmarked;
+    const optimisticBookmarkCount = Math.max(0, prevBookmarkCount + (optimisticBookmarked ? 1 : -1));
+
+    setBookmarked(optimisticBookmarked);
+    setBookmarkCount(optimisticBookmarkCount);
+    setActionError(null);
+
     try {
       const data = await bookmarkPost(displayPost.id);
-      setBookmarked(data.bookmarked);
-      setBookmarkCount((prev: number) => prev + (data.bookmarked ? 1 : -1));
+      const finalBookmarked = typeof data?.bookmarked === "boolean" ? data.bookmarked : optimisticBookmarked;
+      if (finalBookmarked !== optimisticBookmarked) {
+        setBookmarked(finalBookmarked);
+        setBookmarkCount(Math.max(0, prevBookmarkCount + (finalBookmarked ? 1 : -1)));
+      }
       window.dispatchEvent(
         new CustomEvent("modelscript:bookmark-toggled", {
-          detail: { postId: displayPost.id, bookmarked: data.bookmarked },
+          detail: { postId: displayPost.id, bookmarked: finalBookmarked },
         }),
       );
     } catch (err) {
       console.error(err);
+      setBookmarked(prevBookmarked);
+      setBookmarkCount(prevBookmarkCount);
+      showTransientActionError("Failed to update bookmark. Please try again.");
     }
   };
 
@@ -404,6 +468,29 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   const modals =
     modalsContent && typeof document !== "undefined" ? createPortal(modalsContent, document.body) : modalsContent;
 
+  const errorBanner = actionError ? (
+    <Box
+      role="alert"
+      mt={2}
+      px={2.5}
+      py={1.5}
+      style={{
+        backgroundColor: "rgba(248, 81, 73, 0.12)",
+        border: "1px solid rgba(248, 81, 73, 0.35)",
+        borderRadius: "8px",
+        color: "var(--color-danger-fg, #f85149)",
+        fontSize: "12px",
+        fontWeight: 500,
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        setActionError(null);
+      }}
+    >
+      {actionError}
+    </Box>
+  ) : null;
+
   if (isDetail) {
     return (
       <>
@@ -414,6 +501,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor as any} />
           )}
           <PostActionsBar {...actionsBarProps} />
+          {errorBanner}
         </PostWrapper>
         {modals}
       </>
@@ -495,6 +583,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                   <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor as any} />
                 )}
                 <PostActionsBar {...actionsBarProps} />
+                {errorBanner}
               </Box>
             </Box>
           </Box>

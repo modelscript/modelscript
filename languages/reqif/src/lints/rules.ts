@@ -80,55 +80,135 @@ export const ReqIfErrorCode = {
 export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
   const diagnostics: ReqIfDiagnostic[] = [];
 
-  // M7006: Duplicate Spec Object IDs (tracked during raw parsing or index scan)
-  const idCounts = new Map<string, number>();
-  for (const [id] of doc.specObjects) {
-    idCounts.set(id, (idCounts.get(id) || 0) + 1);
-  }
-  for (const [id, count] of idCounts) {
-    if (count > 1) {
-      const obj = doc.specObjects.get(id);
+  // M7006: Duplicate Identifiers (recorded during parsing before Map.set overwrites)
+  if (doc.duplicateIdentifiers && doc.duplicateIdentifiers.length > 0) {
+    for (const dup of doc.duplicateIdentifiers) {
       diagnostics.push({
         code: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.code,
         rule: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.rule,
         severity: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.severity,
-        message: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.message(id),
-        span: obj?.span,
+        message: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.message(dup.id),
+        span: dup.span,
       });
+    }
+  } else {
+    const seenRelIds = new Set<string>();
+    for (const rel of doc.specRelations) {
+      if (seenRelIds.has(rel.identifier) || doc.specObjects.has(rel.identifier)) {
+        diagnostics.push({
+          code: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.code,
+          rule: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.rule,
+          severity: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.severity,
+          message: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.message(rel.identifier),
+          span: rel.span,
+        });
+      }
+      seenRelIds.add(rel.identifier);
     }
   }
 
-  // M7009 & M7007: Spec Object Type and Mandatory Attributes
+  // M7009, M7007, M7002, M7005, M7010: Spec Object Type, Mandatory Attributes, Attribute Type/Bounds, and Contracts
   for (const obj of doc.specObjects.values()) {
-    if (obj.typeRef) {
-      const specType = doc.specTypes.get(obj.typeRef);
-      if (!specType) {
-        diagnostics.push({
-          code: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.code,
-          rule: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.rule,
-          severity: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.severity,
-          message: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.message(obj.identifier, obj.typeRef),
-          span: obj.span,
-        });
-      } else {
-        // Check mandatory attributes
-        for (const ad of specType.attributeDefinitions.values()) {
-          if (ad.isMandatory) {
-            const hasAttr = obj.attributes.has(ad.identifier) || obj.attributes.has(ad.longName || "");
-            if (!hasAttr) {
-              diagnostics.push({
-                code: ReqIfErrorCode.MISSING_MANDATORY_ATTRIBUTE.code,
-                rule: ReqIfErrorCode.MISSING_MANDATORY_ATTRIBUTE.rule,
-                severity: ReqIfErrorCode.MISSING_MANDATORY_ATTRIBUTE.severity,
-                message: ReqIfErrorCode.MISSING_MANDATORY_ATTRIBUTE.message(
-                  obj.identifier,
-                  ad.longName || ad.identifier,
-                ),
-                span: obj.span,
-              });
-            }
+    const specType = obj.typeRef ? doc.specTypes.get(obj.typeRef) : undefined;
+    if (obj.typeRef && !specType) {
+      diagnostics.push({
+        code: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.code,
+        rule: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.rule,
+        severity: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.severity,
+        message: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.message(obj.identifier, obj.typeRef),
+        span: obj.span,
+      });
+    } else if (specType) {
+      // Check mandatory attributes
+      for (const ad of specType.attributeDefinitions.values()) {
+        if (ad.isMandatory) {
+          const hasAttr = obj.attributes.has(ad.identifier) || obj.attributes.has(ad.longName || "");
+          if (!hasAttr) {
+            diagnostics.push({
+              code: ReqIfErrorCode.MISSING_MANDATORY_ATTRIBUTE.code,
+              rule: ReqIfErrorCode.MISSING_MANDATORY_ATTRIBUTE.rule,
+              severity: ReqIfErrorCode.MISSING_MANDATORY_ATTRIBUTE.severity,
+              message: ReqIfErrorCode.MISSING_MANDATORY_ATTRIBUTE.message(obj.identifier, ad.longName || ad.identifier),
+              span: obj.span,
+            });
           }
         }
+      }
+    }
+
+    // M7002: Check attribute values against datatype definitions, min/max bounds, and literal types
+    for (const attr of obj.attributes.values()) {
+      const ad =
+        specType?.attributeDefinitions.get(attr.definitionRef) ??
+        (specType
+          ? Array.from(specType.attributeDefinitions.values()).find(
+              (a) => a.longName === attr.name || a.identifier === attr.name,
+            )
+          : undefined);
+      const dt = ad?.dataTypeRef ? doc.dataTypes.get(ad.dataTypeRef) : undefined;
+      const expectedKind = dt?.kind ?? ad?.kind ?? attr.kind;
+      const displayName = ad?.longName || attr.name || attr.definitionRef;
+
+      let mismatchExpected: string | undefined;
+      if (ad && ad.kind !== attr.kind) {
+        mismatchExpected = ad.kind;
+      } else if (dt && dt.kind !== attr.kind) {
+        mismatchExpected = dt.kind;
+      } else if (expectedKind === "INTEGER" && (typeof attr.value !== "number" || !Number.isInteger(attr.value))) {
+        mismatchExpected = "INTEGER";
+      } else if (expectedKind === "REAL" && (typeof attr.value !== "number" || Number.isNaN(attr.value))) {
+        mismatchExpected = "REAL";
+      } else if (expectedKind === "BOOLEAN" && typeof attr.value !== "boolean") {
+        mismatchExpected = "BOOLEAN";
+      } else if (dt && typeof attr.value === "number") {
+        if (dt.min !== undefined && attr.value < dt.min) {
+          mismatchExpected = `${dt.kind} >= ${dt.min}`;
+        } else if (dt.max !== undefined && attr.value > dt.max) {
+          mismatchExpected = `${dt.kind} <= ${dt.max}`;
+        }
+      } else if (dt && dt.kind === "ENUMERATION" && dt.enumValues && dt.enumValues.length > 0) {
+        const valStr = String(attr.value);
+        const validEnum = dt.enumValues.some((ev) => ev.identifier === valStr || ev.longName === valStr);
+        if (!validEnum) {
+          mismatchExpected = `ENUMERATION(${dt.identifier})`;
+        }
+      }
+
+      if (mismatchExpected) {
+        diagnostics.push({
+          code: ReqIfErrorCode.TYPE_ATTRIBUTE_MISMATCH.code,
+          rule: ReqIfErrorCode.TYPE_ATTRIBUTE_MISMATCH.rule,
+          severity: ReqIfErrorCode.TYPE_ATTRIBUTE_MISMATCH.severity,
+          message: ReqIfErrorCode.TYPE_ATTRIBUTE_MISMATCH.message(displayName, mismatchExpected, String(attr.value)),
+          span: attr.span ?? obj.span,
+        });
+      }
+    }
+
+    // M7010: Invalid contract comparator in requirement text or contract object
+    const validComparators = new Set(["<=", "<", ">=", ">", "==", "!="]);
+    if (obj.contract && !validComparators.has(obj.contract.comparator)) {
+      diagnostics.push({
+        code: ReqIfErrorCode.INVALID_CONTRACT_COMPARATOR.code,
+        rule: ReqIfErrorCode.INVALID_CONTRACT_COMPARATOR.rule,
+        severity: ReqIfErrorCode.INVALID_CONTRACT_COMPARATOR.severity,
+        message: ReqIfErrorCode.INVALID_CONTRACT_COMPARATOR.message(obj.identifier, obj.contract.comparator),
+        span: obj.span,
+      });
+    } else if (!obj.contract && obj.text) {
+      const normalizedText = obj.text.replace(/<[^<>]+>/g, " ").trim();
+      const badCompMatch =
+        /\b([a-zA-Z_][a-zA-Z0-9_.\s]*?)\s*(===|!==|=<|=>|<>|~=|><|<<|>>|(?<![<>!=])=(?!=))\s*[-+]?[0-9]*\.?[0-9]+/.exec(
+          normalizedText,
+        );
+      if (badCompMatch && badCompMatch[2]) {
+        diagnostics.push({
+          code: ReqIfErrorCode.INVALID_CONTRACT_COMPARATOR.code,
+          rule: ReqIfErrorCode.INVALID_CONTRACT_COMPARATOR.rule,
+          severity: ReqIfErrorCode.INVALID_CONTRACT_COMPARATOR.severity,
+          message: ReqIfErrorCode.INVALID_CONTRACT_COMPARATOR.message(obj.identifier, badCompMatch[2]),
+          span: obj.span,
+        });
       }
     }
 

@@ -3,13 +3,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  JsbsimWorkspaceIndex,
+  evaluateAeroExpr,
+  evaluateAeroTable,
   jsbsimToModelica,
+  JsbsimWorkspaceIndex,
+  linearizeFlightDynamics,
   lintJsbsim,
   lowerJsbsimToDae,
   parseJsbsim,
   serializeJsbsim,
   solveFlightDynamics,
+  trimFlightCondition,
 } from "../src/index.js";
 
 const VALID_C172_XML = `<?xml version="1.0"?>
@@ -273,4 +277,190 @@ test("JSBSim Workspace Index: indexes multi-file symbols accurately", () => {
 
   const gearSym = index.findDefinition("Gear_NOSE");
   assert.ok(gearSym);
+});
+
+test("JSBSim Linter & Solver: detects M8909 undefined FCS input, M8910 unrealistic CG location, and responds to elevatorDeg", () => {
+  const fcsCgXml = `<?xml version="1.0"?>
+<fdm_config name="UnstableFcsPlane" version="2.0">
+  <metrics>
+    <wingarea unit="FT2"> 174.0 </wingarea>
+    <wingspan unit="FT"> 36.0 </wingspan>
+    <chord unit="FT"> 4.9 </chord>
+    <location name="AERORP" unit="IN">
+      <x> 43.2 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+  </metrics>
+  <mass_balance>
+    <emptywt unit="LBS"> 1500.0 </emptywt>
+    <location name="CG" unit="IN">
+      <x> 250.0 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+    <ixx unit="SLUG*FT2"> 948.0 </ixx>
+    <iyy unit="SLUG*FT2"> 1346.0 </iyy>
+    <izz unit="SLUG*FT2"> 1967.0 </izz>
+    <ixz unit="SLUG*FT2"> 120.0 </ixz>
+  </mass_balance>
+  <ground_reactions>
+    <contact type="BOGEY" name="NOSE">
+      <location unit="IN"> <x> -6.8 </x> <y> 0.0 </y> <z> -30.0 </z> </location>
+    </contact>
+  </ground_reactions>
+  <flight_control name="FCS">
+    <channel name="Pitch">
+      <summer name="Pitch Trim Sum">
+        <input>fcs/elevator-cmd-norm</input>
+        <input>unknown_custom_bus/ghost_signal</input>
+        <output>fcs/pitch-trim-sum</output>
+      </summer>
+    </channel>
+  </flight_control>
+  <aerodynamics>
+    <axis name="LIFT">
+      <function name="aero/coefficient/CLalpha"><value> 5.1 </value></function>
+    </axis>
+    <axis name="DRAG">
+      <function name="aero/coefficient/CD0"><value> 0.031 </value></function>
+    </axis>
+    <axis name="PITCH">
+      <function name="aero/coefficient/Cmalpha"><value> -0.82 </value></function>
+    </axis>
+  </aerodynamics>
+</fdm_config>`;
+
+  const doc = parseJsbsim(fcsCgXml);
+  const diags = lintJsbsim(doc);
+
+  const m8909 = diags.find((d) => d.code === 8909);
+  assert.ok(m8909, "Expected M8909 undefined FCS input property diagnostic");
+  assert.ok(m8909.message.includes("unknown_custom_bus/ghost_signal"));
+
+  const m8910 = diags.find((d) => d.code === 8910);
+  assert.ok(m8910, "Expected M8910 unrealistic CG location diagnostic");
+
+  // Verify elevatorDeg affects pitch trajectory
+  const resZero = solveFlightDynamics(doc, { duration: 2.0, timeStep: 0.02, elevatorDeg: 0.0 });
+  const resDefl = solveFlightDynamics(doc, { duration: 2.0, timeStep: 0.02, elevatorDeg: -5.0 });
+  const pitchZero = resZero.trajectory[resZero.trajectory.length - 1]!.pitchDeg;
+  const pitchDefl = resDefl.trajectory[resDefl.trajectory.length - 1]!.pitchDeg;
+  assert.notEqual(pitchZero, pitchDefl, "Elevator deflection should alter pitch attitude trajectory");
+
+  // Verify DAE is square
+  const dae = lowerJsbsimToDae(doc);
+  assert.equal(dae.variables().length, dae.equations().length, "JSBSim DAE must be structurally square");
+});
+
+test("JSBSim Parser & Solver: parses 1D/2D <tableData> lookup tables, <product>/<sum> trees, trims steady flight, and extracts Short-Period & Phugoid modes", () => {
+  const tableXml = `<?xml version="1.0"?>
+<fdm_config name="c172_tables" version="2.0">
+  <metrics>
+    <wingarea unit="FT2"> 174.0 </wingarea>
+    <wingspan unit="FT"> 36.0 </wingspan>
+    <chord unit="FT"> 4.9 </chord>
+    <location name="AERORP" unit="IN"><x>43.2</x><y>0.0</y><z>0.0</z></location>
+  </metrics>
+  <mass_balance>
+    <emptywt unit="LBS"> 1500.0 </emptywt>
+    <location name="CG" unit="IN"><x>41.5</x><y>0.0</y><z>0.0</z></location>
+    <ixx unit="SLUG*FT2"> 948.0 </ixx>
+    <iyy unit="SLUG*FT2"> 1346.0 </iyy>
+    <izz unit="SLUG*FT2"> 1967.0 </izz>
+    <ixz unit="SLUG*FT2"> 0.0 </ixz>
+  </mass_balance>
+  <propulsion>
+    <engine file="Lycoming-O-320">
+      <location unit="IN"><x>20.0</x><y>0.0</y><z>0.0</z></location>
+      <max_thrust> 450.0 </max_thrust>
+    </engine>
+  </propulsion>
+  <aerodynamics>
+    <axis name="LIFT">
+      <function name="aero/coefficient/CLwbh">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <table>
+            <independentVar lookup="row">aero/alpha-rad</independentVar>
+            <tableData>
+              -0.20  -0.65
+               0.00   0.32
+               0.10   0.82
+               0.20   1.32
+            </tableData>
+          </table>
+        </product>
+      </function>
+    </axis>
+    <axis name="DRAG">
+      <function name="aero/coefficient/CD">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <sum>
+            <value> 0.028 </value>
+            <table>
+              <independentVar lookup="row">aero/alpha-rad</independentVar>
+              <independentVar lookup="column">fcs/flap-pos-deg</independentVar>
+              <tableData>
+                      0.0    15.0    30.0
+                0.0   0.000  0.015   0.035
+                0.1   0.020  0.040   0.070
+              </tableData>
+            </table>
+          </sum>
+        </product>
+      </function>
+    </axis>
+    <axis name="PITCH">
+      <function name="aero/coefficient/Cmalpha">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> -0.80 </value>
+        </product>
+      </function>
+    </axis>
+  </aerodynamics>
+</fdm_config>`;
+
+  const doc = parseJsbsim(tableXml);
+  const clCoeff = doc.model.aeroCoefficients.find((c) => c.axis === "LIFT")!;
+  assert.ok(clCoeff.table, "Expected 1D CL lookup table to be parsed");
+  assert.equal(clCoeff.table.breakpointsRow.length, 4);
+
+  // Verify 1D linear interpolation at alpha = 0.05 rad -> halfway between 0.32 and 0.82 = 0.57
+  const clAt005 = evaluateAeroTable(clCoeff.table, { "aero/alpha-rad": 0.05 });
+  assert.ok(Math.abs(clAt005 - 0.57) < 1e-9);
+
+  // Verify 2D bilinear interpolation and recursive <product><sum>...</sum></product> evaluation
+  const cdCoeff = doc.model.aeroCoefficients.find((c) => c.axis === "DRAG")!;
+  assert.ok(cdCoeff.expr && cdCoeff.table);
+  const cdVal = evaluateAeroExpr(cdCoeff.expr, {
+    "aero/qbar-psf": 40.0,
+    "metrics/Sw-sqft": 174.0,
+    "aero/alpha-rad": 0.05,
+    "fcs/flap-pos-deg": 7.5,
+  });
+  // At alpha=0.05, flap=7.5: 2D table bilinear midpoint between (0,0.015) and (0.020,0.040) is 0.01875
+  // sum = 0.028 + 0.01875 = 0.04675; product = 40 * 174 * 0.04675 = 325.38
+  assert.ok(Math.abs(cdVal - 40.0 * 174.0 * (0.028 + 0.01875)) < 1e-6);
+
+  // Verify Newton-Raphson flight trim solver
+  const trim = trimFlightCondition(doc, { speedFps: 180.0, altitudeFt: 5000.0 });
+  assert.equal(trim.converged, true);
+  assert.ok(trim.residualNorm < 1e-7);
+  assert.ok(Math.abs(trim.alphaRad - trim.thetaRad) < 1e-6, "In level flight (gamma=0), theta == alpha");
+  assert.ok(trim.throttle > 0.0 && trim.throttle < 1.0);
+
+  // Verify 4x4 longitudinal linearization and Short-Period / Phugoid modal extraction
+  const lin = linearizeFlightDynamics(doc, { speedFps: 180.0, altitudeFt: 5000.0 });
+  assert.equal(lin.A.length, 4);
+  assert.equal(lin.B.length, 4);
+  assert.equal(lin.eigenvalues.length, 4);
+  // Short-period mode has a significantly higher natural frequency than phugoid mode
+  assert.ok(lin.shortPeriod.naturalFrequencyRadSec > lin.phugoid.naturalFrequencyRadSec);
+  assert.ok(lin.shortPeriod.dampingRatio > 0.0, "Stable aircraft must have positive short-period damping");
 });

@@ -85,4 +85,48 @@ COMPONENTS:
     // At equilibrium with u=0, s must equal 0
     assert.ok(Math.abs(trim.trimmedStates["LA01_s"]!) < 1e-5);
   });
+
+  it("extracts complex-conjugate and real eigenvalues for 3rd and 4th order systems", () => {
+    // 3x3 block diagonal with real pole -3 and complex conjugate pair -1 +/- 2i:
+    // Characteristic polynomial: (s + 3)(s^2 + 2s + 5) = s^3 + 5s^2 + 11s + 15
+    const A3 = [
+      [0, 1, 0],
+      [0, 0, 1],
+      [-15, -11, -5],
+    ];
+    const eigs3 = computeEigenvalues(A3);
+    assert.strictEqual(eigs3.length, 3);
+    const realPole = eigs3.find((e) => Math.abs(e.imag) < 1e-3);
+    assert.ok(realPole, "Expected one real pole");
+    assert.ok(Math.abs(realPole.real - -3.0) < 1e-3, `Expected real pole -3.0, got ${realPole.real}`);
+
+    const complexPoles = eigs3.filter((e) => Math.abs(e.imag) > 1.0);
+    assert.strictEqual(complexPoles.length, 2, "Expected complex-conjugate pole pair");
+    assert.ok(Math.abs(complexPoles[0]!.real - -1.0) < 1e-3);
+    assert.ok(Math.abs(Math.abs(complexPoles[0]!.imag) - 2.0) < 1e-3);
+  });
+
+  it("linearizes TF, FN (with TABLES:), and UG components in buildModelEvaluator", () => {
+    const src = `MODEL: MultiBlockLinearize
+TABLES:
+  TABLE: GAIN_TAB
+    X = [0.0, 1.0, 2.0]
+    DATA = [0.0, 3.0, 6.0]
+  ENDTABLE
+COMPONENTS:
+  TF01 TYPE=GP/TF
+    XP: NUM=[2.0], DEN=[1.0, 4.0, 5.0], S0=0.0
+  FN01 TYPE=GP/FN
+    XP: TABLE=GAIN_TAB, EXTRAP=CLAMP
+CONNECTIONS:
+  TF01.OUT -> FN01.IN
+`;
+    const model = parseEasy5(src);
+    assert.ok(model.tables.has("GAIN_TAB"), "Expected TABLES: section to be parsed");
+    const lin = linearizeEasy5(model);
+    assert.strictEqual(lin.A.length, 2, "2nd-order TF should have 2 states");
+    // Companion matrix for s^2 + 4s + 5 has trace -4 and determinant 5
+    const trace = lin.A[0]![0]! + lin.A[1]![1]!;
+    assert.ok(Math.abs(trace - -4.0) < 1e-3, `Expected trace -4.0, got ${trace}`);
+  });
 });

@@ -42,6 +42,10 @@ function sanitizeId(name: string): string {
 /**
  * Lower an SSP system structure directly into the linear memory DAE arena.
  *
+ * Recursively flattens nested `<ssd:System>` subsystems and synthesizes default
+ * transfer equations for uncoupled component output ports and boundary inputs
+ * so the resulting DAE is structurally square (`dae.varCount === dae.eqCount`).
+ *
  * @param input Parsed SspSystem or raw SSD XML string
  * @param options DAE lowering options
  * @returns Populated DAEBuilder instance
@@ -51,66 +55,138 @@ export function lowerSspToDae(input: SspSystem | string, options?: SspDaeOptions
   const modelName = (options?.modelName ?? (system.name || "SspSystem")).replace(/[^a-zA-Z0-9_]/g, "_");
   const dae = options?.builder ?? new DAEBuilder(undefined, modelName);
 
-  // 1. Lower System Boundary Connectors
-  if (system.connectors) {
-    for (const c of system.connectors) {
-      const varName = sanitizeId(c.name);
-      const vType = mapVarType(c.type);
-      let causality = Causality.Local;
-      let variability = Variability.Continuous;
+  const nameExpr = (varName: string): number => dae.addName(dae.interner.intern(varName));
 
-      if (c.kind === "input") {
-        causality = Causality.Input;
-      } else if (c.kind === "output" || c.kind === "inout") {
-        causality = Causality.Output;
-      } else if (c.kind === "parameter" || c.kind === "calculatedParameter") {
-        variability = Variability.Parameter;
+  // Track which variables already have a defining equation so the system is structurally square (N_vars === N_eqs)
+  const drivenVars = new Set<string>();
+  // Track component input and output variables per component instance for default transfer equations
+  const componentPorts: Array<{
+    compPrefix: string;
+    inputs: string[];
+    outputs: string[];
+  }> = [];
+
+  const ensureVariable = (
+    varName: string,
+    vType: VarType,
+    variability: Variability,
+    causality: Causality,
+    startVal = 0.0,
+  ): number => {
+    const existing = dae.lookupVariable(varName);
+    if (existing !== -1) {
+      return existing;
+    }
+    return dae.addVariable(varName, vType, variability, causality, startVal);
+  };
+
+  /**
+   * Recursively lower an `SspSystem` (root or nested `<ssd:System>`) with hierarchical prefix `sysPrefix`.
+   */
+  const lowerSystemHierarchy = (sys: SspSystem, sysPrefix: string): void => {
+    // 1. Lower System Boundary Connectors
+    if (sys.connectors) {
+      for (const c of sys.connectors) {
+        const varName = `${sysPrefix}${sanitizeId(c.name)}`;
+        const vType = mapVarType(c.type);
+        let causality = Causality.Local;
+        let variability = Variability.Continuous;
+
+        if (c.kind === "input") {
+          causality = sysPrefix === "" ? Causality.Input : Causality.Local;
+        } else if (c.kind === "output" || c.kind === "inout") {
+          causality = sysPrefix === "" ? Causality.Output : Causality.Local;
+        } else if (c.kind === "parameter" || c.kind === "calculatedParameter") {
+          variability = Variability.Parameter;
+        }
+
+        ensureVariable(varName, vType, variability, causality, 0.0);
+      }
+    }
+
+    // 2. Lower Sub-Component Connectors
+    const comps = sys.elements?.components ?? sys.components ?? [];
+    for (const cmp of comps) {
+      const cmpPrefix = `${sysPrefix}${sanitizeId(cmp.name)}`;
+      const inputs: string[] = [];
+      const outputs: string[] = [];
+
+      for (const c of cmp.connectors) {
+        const varName = `${cmpPrefix}_${sanitizeId(c.name)}`;
+        const vType = mapVarType(c.type);
+        let causality = Causality.Local;
+        let variability = Variability.Continuous;
+
+        if (c.kind === "input") {
+          causality = Causality.Input;
+          inputs.push(varName);
+        } else if (c.kind === "output" || c.kind === "inout") {
+          causality = Causality.Output;
+          outputs.push(varName);
+        } else if (c.kind === "parameter" || c.kind === "calculatedParameter") {
+          variability = Variability.Parameter;
+        }
+
+        ensureVariable(varName, vType, variability, causality, 0.0);
       }
 
-      dae.addVariable(varName, vType, variability, causality, 0.0);
+      componentPorts.push({ compPrefix: cmpPrefix, inputs, outputs });
     }
-  }
 
-  // 2. Lower Sub-Component Connectors
-  for (const cmp of system.components) {
-    const cmpName = sanitizeId(cmp.name);
-    for (const c of cmp.connectors) {
-      const varName = `${cmpName}_${sanitizeId(c.name)}`;
-      const vType = mapVarType(c.type);
-      let causality = Causality.Local;
-      let variability = Variability.Continuous;
+    // 2b. Recursively lower nested <ssd:System> subsystems
+    const subSystems = sys.elements?.systems ?? sys.systems ?? [];
+    for (const sub of subSystems) {
+      const subPrefix = `${sysPrefix}${sanitizeId(sub.name)}_`;
+      lowerSystemHierarchy(sub, subPrefix);
+    }
 
-      if (c.kind === "input") {
-        causality = Causality.Input;
-      } else if (c.kind === "output" || c.kind === "inout") {
-        causality = Causality.Output;
-      } else if (c.kind === "parameter" || c.kind === "calculatedParameter") {
-        variability = Variability.Parameter;
+    // 3. Lower Parameter Bindings (from inline values or SSV)
+    for (const pb of sys.parameterBindings ?? []) {
+      const pbPrefix = pb.prefix ? `${sysPrefix}${sanitizeId(pb.prefix)}_` : sysPrefix;
+      for (const val of pb.values) {
+        const pName = `${pbPrefix}${sanitizeId(val.name)}`;
+        const existingId = dae.lookupVariable(pName);
+        const numVal =
+          typeof val.value === "number" ? val.value : typeof val.value === "boolean" ? (val.value ? 1.0 : 0.0) : 0.0;
+
+        if (existingId !== -1) {
+          dae.setVarStartValue(existingId, numVal);
+        } else {
+          const vType = mapVarType(val.type);
+          dae.addVariable(pName, vType, Variability.Parameter, Causality.Local, numVal);
+        }
       }
-
-      dae.addVariable(varName, vType, variability, causality, 0.0);
     }
-  }
 
-  // 3. Lower Parameter Bindings (from inline values or SSV)
-  for (const pb of system.parameterBindings) {
-    const prefix = pb.prefix ? `${sanitizeId(pb.prefix)}_` : "";
-    for (const val of pb.values) {
-      const pName = `${prefix}${sanitizeId(val.name)}`;
-      const existingId = dae.lookupVariable(pName);
-      const numVal =
-        typeof val.value === "number" ? val.value : typeof val.value === "boolean" ? (val.value ? 1.0 : 0.0) : 0.0;
-
-      if (existingId !== -1) {
-        dae.setVarStartValue(existingId, numVal);
+    // 4. Lower Connections to Equality Equations at this hierarchy level
+    for (const conn of sys.connections ?? []) {
+      let startVarName = "";
+      if (conn.startElement && conn.startElement !== sys.name) {
+        startVarName = `${sysPrefix}${sanitizeId(conn.startElement)}_${sanitizeId(conn.startConnector)}`;
       } else {
-        const vType = mapVarType(val.type);
-        dae.addVariable(pName, vType, Variability.Parameter, Causality.Local, numVal);
+        startVarName = `${sysPrefix}${sanitizeId(conn.startConnector)}`;
+      }
+
+      let endVarName = "";
+      if (conn.endElement && conn.endElement !== sys.name) {
+        endVarName = `${sysPrefix}${sanitizeId(conn.endElement)}_${sanitizeId(conn.endConnector)}`;
+      } else {
+        endVarName = `${sysPrefix}${sanitizeId(conn.endConnector)}`;
+      }
+
+      const startVarId = dae.lookupVariable(startVarName);
+      const endVarId = dae.lookupVariable(endVarName);
+
+      if (startVarId !== -1 && endVarId !== -1 && !drivenVars.has(endVarName)) {
+        dae.addEquation(EqKind.Simple, nameExpr(endVarName), nameExpr(startVarName));
+        drivenVars.add(endVarName);
       }
     }
-  }
+  };
 
-  // 4. Lower Parameter Mappings (SSM)
+  lowerSystemHierarchy(system, "");
+
+  // 5. Lower Parameter Mappings (SSM)
   if (options?.parameterMappings) {
     for (const pm of options.parameterMappings) {
       for (const m of pm.mappings) {
@@ -119,51 +195,55 @@ export function lowerSspToDae(input: SspSystem | string, options?: SspDaeOptions
         const srcId = dae.lookupVariable(srcName);
         const tgtId = dae.lookupVariable(tgtName);
 
-        if (srcId !== -1 && tgtId !== -1) {
+        if (srcId !== -1 && tgtId !== -1 && !drivenVars.has(tgtName)) {
           const factor = m.factor ?? 1.0;
           const offset = m.offset ?? 0.0;
 
           if (factor === 1.0 && offset === 0.0) {
-            dae.addEquation(EqKind.Simple, dae.addName(tgtId), dae.addName(srcId));
+            dae.addEquation(EqKind.Simple, nameExpr(tgtName), nameExpr(srcName));
           } else {
             const factorExpr = dae.addRealLiteral(factor);
-            const srcExpr = dae.addName(srcId);
+            const srcExpr = nameExpr(srcName);
             const mulExpr = dae.addBinaryExpr(BinOp.Mul, factorExpr, srcExpr);
             let rhsExpr = mulExpr;
             if (offset !== 0.0) {
               const offsetExpr = dae.addRealLiteral(offset);
               rhsExpr = dae.addBinaryExpr(BinOp.Add, mulExpr, offsetExpr);
             }
-            const lhsExpr = dae.addName(tgtId);
+            const lhsExpr = nameExpr(tgtName);
             dae.addEquation(EqKind.Simple, lhsExpr, rhsExpr);
           }
+          drivenVars.add(tgtName);
         }
       }
     }
   }
 
-  // 5. Lower Connections to Equality Equations
-  for (const conn of system.connections) {
-    let startVarName = "";
-    if (conn.startElement && conn.startElement !== system.name) {
-      startVarName = `${sanitizeId(conn.startElement)}_${sanitizeId(conn.startConnector)}`;
-    } else {
-      startVarName = sanitizeId(conn.startConnector);
-    }
+  // 6. Emit default transfer/pass-through equations for uncoupled component output ports
+  for (const comp of componentPorts) {
+    for (let i = 0; i < comp.outputs.length; i++) {
+      const outVar = comp.outputs[i]!;
+      if (drivenVars.has(outVar)) continue;
 
-    let endVarName = "";
-    if (conn.endElement && conn.endElement !== system.name) {
-      endVarName = `${sanitizeId(conn.endElement)}_${sanitizeId(conn.endConnector)}`;
-    } else {
-      endVarName = sanitizeId(conn.endConnector);
+      if (comp.inputs.length > 0) {
+        const mappedInput = comp.inputs[Math.min(i, comp.inputs.length - 1)]!;
+        dae.addEquation(EqKind.Simple, nameExpr(outVar), nameExpr(mappedInput));
+      } else {
+        const varIdx = dae.lookupVariable(outVar);
+        const startVal = varIdx !== -1 ? dae.getVarStartValue(varIdx) : 0.0;
+        dae.addEquation(EqKind.Simple, nameExpr(outVar), dae.addRealLiteral(startVal));
+      }
+      drivenVars.add(outVar);
     }
+  }
 
-    const startVarId = dae.lookupVariable(startVarName);
-    const endVarId = dae.lookupVariable(endVarName);
-
-    if (startVarId !== -1 && endVarId !== -1) {
-      dae.addEquation(EqKind.Simple, dae.addName(endVarId), dae.addName(startVarId));
-    }
+  // 7. Close any remaining undriven boundary/input/parameter variables so the DAE is square (varCount === eqCount)
+  for (let varIdx = 0; varIdx < dae.varCount; varIdx++) {
+    const varName = dae.getVarName(varIdx);
+    if (!varName || drivenVars.has(varName)) continue;
+    const startVal = dae.getVarStartValue(varIdx);
+    dae.addEquation(EqKind.Simple, nameExpr(varName), dae.addRealLiteral(startVal));
+    drivenVars.add(varName);
   }
 
   return dae;

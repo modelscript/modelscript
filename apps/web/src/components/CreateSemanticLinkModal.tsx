@@ -278,11 +278,13 @@ export const CreateSemanticLinkModal: React.FC<CreateSemanticLinkModalProps> = (
                 <FieldLabel>Element Name / Class</FieldLabel>
                 {classOptions.length > 0 && sourceDomain === "modelica" ? (
                   <Select value={sourceName} onChange={(e) => setSourceName(e.target.value)} style={{ width: "100%" }}>
-                    {classOptions.map((opt) => (
-                      <Select.Option key={opt} value={opt}>
-                        {opt}
-                      </Select.Option>
-                    ))}
+                    {classOptions
+                      .filter((opt): opt is string => Boolean(opt))
+                      .map((opt) => (
+                        <Select.Option key={opt} value={opt}>
+                          {opt}
+                        </Select.Option>
+                      ))}
                   </Select>
                 ) : (
                   <TextInput

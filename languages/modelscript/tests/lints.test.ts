@@ -137,3 +137,77 @@ function testFn(v: Vec2): f64 {
   assert.equal(diag.range.endLine, 12);
   assert.equal(diag.range.endColumn, 23);
 });
+
+test("ModelScript Linter catches unknown type annotations (2003)", async () => {
+  const compiler = new ModelScriptCompiler();
+  await compiler.init();
+
+  const code = `
+let item: MissingCustomType = 10;
+`;
+
+  const diags = compiler.lint(code);
+  assert.ok(
+    diags.some((d) => d.code === ModelScriptErrorCode.UNKNOWN_TYPE.code && d.message.includes("MissingCustomType")),
+    `Expected UNKNOWN_TYPE (2003), got: ${JSON.stringify(diags)}`,
+  );
+});
+
+test("ModelScript Linter catches type mismatch in variable declarations and returns (3001)", async () => {
+  const compiler = new ModelScriptCompiler();
+  await compiler.init();
+
+  const code = `
+let flag: bool = "not-a-bool";
+
+function getCount(): i32 {
+  return "wrong-return";
+}
+`;
+
+  const diags = compiler.lint(code);
+  const mismatches = diags.filter((d) => d.code === ModelScriptErrorCode.TYPE_MISMATCH.code);
+  assert.equal(mismatches.length, 2, `Expected 2 TYPE_MISMATCH diagnostics, got: ${JSON.stringify(diags)}`);
+});
+
+test("ModelScript Linter catches invalid binary operands (3002)", async () => {
+  const compiler = new ModelScriptCompiler();
+  await compiler.init();
+
+  const code = `
+let a: i32 = 10;
+let b: bool = true;
+let bad = a - b;
+`;
+
+  const diags = compiler.lint(code);
+  assert.ok(
+    diags.some((d) => d.code === ModelScriptErrorCode.INVALID_BINARY_OPERAND.code && d.message.includes("-")),
+    `Expected INVALID_BINARY_OPERAND (3002), got: ${JSON.stringify(diags)}`,
+  );
+});
+
+test("ModelScript Linter catches non-iterable FLWOR collection (4001) and unbound FLWOR variables (4002)", async () => {
+  const compiler = new ModelScriptCompiler();
+  await compiler.init();
+
+  const code = `
+let scalar: i32 = 42;
+let badFlwor =
+  for x in scalar
+  where x > unboundFlworVar
+  return x;
+`;
+
+  const diags = compiler.lint(code);
+  assert.ok(
+    diags.some((d) => d.code === ModelScriptErrorCode.NON_ITERABLE_COLLECTION.code),
+    `Expected NON_ITERABLE_COLLECTION (4001), got: ${JSON.stringify(diags)}`,
+  );
+  assert.ok(
+    diags.some(
+      (d) => d.code === ModelScriptErrorCode.FLWOR_UNBOUND_VARIABLE.code && d.message.includes("unboundFlworVar"),
+    ),
+    `Expected FLWOR_UNBOUND_VARIABLE (4002), got: ${JSON.stringify(diags)}`,
+  );
+});

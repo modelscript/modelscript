@@ -11,7 +11,8 @@ import {
 } from "@primer/octicons-react";
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { patchAdminInstanceSettings } from "../api";
+import { patchAdminInstanceSettings, verifyAdminSudo as verifySudoPassword } from "../api";
+import { setAdminSudoToken, type SudoRequiredEventDetail } from "../api/client";
 import { useAuth } from "../AuthContext";
 import { notifyInstanceBrandingUpdated, useInstanceBranding } from "../InstanceBrandingContext";
 import AnsatzMark from "./AnsatzLogo";
@@ -90,6 +91,13 @@ export const MaintenanceExperienceHost: React.FC = () => {
   const [endingMaint, setEndingMaint] = useState(false);
   const [noticeBanner, setNoticeBanner] = useState<string | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [sudoPrompt, setSudoPrompt] = useState<{
+    message: string;
+    resolvers: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }>;
+  } | null>(null);
+  const [sudoPassword, setSudoPassword] = useState("");
+  const [sudoError, setSudoError] = useState<string | null>(null);
+  const [sudoSubmitting, setSudoSubmitting] = useState(false);
 
   const isAdmin = user?.account_type === "admin" || user?.role === "admin";
   const isMaintenanceActive =
@@ -143,7 +151,7 @@ export const MaintenanceExperienceHost: React.FC = () => {
     }
   };
 
-  const handleQuickEndMaintenance = async () => {
+  const handleDisableMaintenance = async () => {
     setEndingMaint(true);
     try {
       const res = await patchAdminInstanceSettings({
@@ -171,6 +179,8 @@ export const MaintenanceExperienceHost: React.FC = () => {
     }
   };
 
+  const handleQuickEndMaintenance = handleDisableMaintenance;
+
   // Exempt routes where the full-screen lockdown overlay should not block access:
   // - /login (so admins can sign in during lockdown)
   // - /admin (so admins can manage the instance)
@@ -183,6 +193,73 @@ export const MaintenanceExperienceHost: React.FC = () => {
     pathname.startsWith("/playground") ||
     pathname.startsWith("/ide") ||
     pathname.startsWith("/setup");
+
+  // Listen for `modelscript:sudo-required` when not on `/admin` (AdminPage handles `/admin/*`)
+  useEffect(() => {
+    if (pathname.startsWith("/admin")) return;
+    const handleSudoRequired = (e: Event) => {
+      const customEvent = e as CustomEvent<SudoRequiredEventDetail>;
+      const detail = customEvent.detail;
+      if (detail?.handled) return;
+      if (detail) {
+        detail.handled = true;
+      }
+      setSudoError(null);
+      setSudoPrompt((prev) => ({
+        message: detail?.message || "Please confirm your administrator password to authorize this privileged action.",
+        resolvers: [
+          ...(prev?.resolvers || []),
+          ...(typeof detail?.resolve === "function" && typeof detail?.reject === "function"
+            ? [{ resolve: detail.resolve, reject: detail.reject }]
+            : []),
+        ],
+      }));
+    };
+    window.addEventListener("modelscript:sudo-required", handleSudoRequired);
+    return () => {
+      window.removeEventListener("modelscript:sudo-required", handleSudoRequired);
+    };
+  }, [pathname]);
+
+  const handleConfirmSudo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sudoPrompt || !sudoPassword) return;
+    setSudoSubmitting(true);
+    setSudoError(null);
+    try {
+      const res = await verifySudoPassword(sudoPassword);
+      setAdminSudoToken(res.sudoToken);
+      const resolvers = sudoPrompt.resolvers;
+      setSudoPrompt(null);
+      setSudoPassword("");
+      if (resolvers.length > 0) {
+        for (const r of resolvers) {
+          r.resolve(res.sudoToken);
+        }
+      } else {
+        await handleDisableMaintenance();
+      }
+    } catch (err: unknown) {
+      const apiMsg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
+          : undefined;
+      setSudoError(apiMsg || (err instanceof Error ? err.message : "Invalid administrator password."));
+    } finally {
+      setSudoSubmitting(false);
+    }
+  };
+
+  const handleCancelSudo = () => {
+    if (sudoPrompt) {
+      for (const r of sudoPrompt.resolvers) {
+        r.reject(new Error("Administrator step-up authentication cancelled."));
+      }
+    }
+    setSudoPrompt(null);
+    setSudoPassword("");
+    setSudoError(null);
+  };
 
   const showLockdownPortal =
     branding.maintenanceLevel === "lockdown" && (!isAdmin || branding.previewPublicMaintenance) && !isExemptRoute;
@@ -689,6 +766,113 @@ export const MaintenanceExperienceHost: React.FC = () => {
               completes.
               {branding.contactEmail ? ` Contact: ${branding.contactEmail}` : ""}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── GLOBAL INLINE SUDO STEP-UP MODAL (NON-/ADMIN ROUTES) ── */}
+      {sudoPrompt && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Administrator Step-Up Authentication"
+          data-testid="global-sudo-stepup-modal"
+          onClick={handleCancelSudo}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10050,
+            background: "rgba(0, 0, 0, 0.72)",
+            backdropFilter: "blur(8px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "460px",
+              width: "100%",
+              borderRadius: "12px",
+              background: "var(--surface-overlay, var(--color-canvas-overlay))",
+              border: "1px solid var(--border-subtle, var(--color-border-default))",
+              boxShadow: "0 20px 48px rgba(0, 0, 0, 0.55)",
+              padding: "24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+              color: "var(--color-text-primary)",
+              fontFamily: "var(--ms-font-sans, system-ui, sans-serif)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 800, fontSize: "16px" }}>
+              <ShieldLockIcon size={18} />
+              <span>Administrator Step-Up Authentication (Sudo Mode)</span>
+            </div>
+            <div style={{ fontSize: "13px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
+              {sudoPrompt.message}
+            </div>
+            <form onSubmit={handleConfirmSudo} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <input
+                type="password"
+                aria-label="Administrator Password"
+                placeholder="Enter your administrator password…"
+                value={sudoPassword}
+                onChange={(e) => setSudoPassword(e.target.value)}
+                autoFocus
+                required
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--border-subtle, var(--color-border-default))",
+                  background: "var(--surface-elevated, var(--color-canvas-subtle))",
+                  color: "var(--color-text-primary)",
+                  fontSize: "13px",
+                  outline: "none",
+                }}
+              />
+              {sudoError && (
+                <div style={{ fontSize: "12px", color: "var(--ms-danger, #ef4444)", fontWeight: 600 }}>{sudoError}</div>
+              )}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "4px" }}>
+                <button
+                  type="button"
+                  onClick={handleCancelSudo}
+                  disabled={sudoSubmitting}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-subtle, var(--color-border-default))",
+                    background: "transparent",
+                    color: "var(--color-text-primary)",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={sudoSubmitting || !sudoPassword}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "8px",
+                    border: "none",
+                    background: "linear-gradient(135deg, #0891b2, #06b6d4)",
+                    color: "#ffffff",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: sudoSubmitting || !sudoPassword ? "not-allowed" : "pointer",
+                    opacity: sudoSubmitting || !sudoPassword ? 0.6 : 1,
+                  }}
+                >
+                  {sudoSubmitting ? "Verifying…" : "Verify & Continue"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -7,6 +7,7 @@ import type {
   DssLine,
   DssLineCode,
   DssLoad,
+  DssLoadShape,
   DssPVSystem,
   DssRange,
   DssStorage,
@@ -26,6 +27,30 @@ export function extractBaseBusName(rawBus: string): string {
     return rawBus.slice(0, dot).trim();
   }
   return rawBus.trim();
+}
+
+/**
+ * Extract explicit phase numbers (1=A, 2=B, 3=C) from bus specification (e.g. "Bus2.1" -> [1], "Bus2.2.3" -> [2, 3]).
+ * Falls back to 1..phases when no explicit suffix is present.
+ */
+export function extractPhaseNodes(rawBus: string, defaultPhases: number): number[] {
+  const dot = rawBus.indexOf(".");
+  if (dot !== -1) {
+    const suffix = rawBus.slice(dot + 1).trim();
+    const parts = suffix.split(".");
+    const nodes: number[] = [];
+    for (const p of parts) {
+      const n = parseInt(p.trim(), 10);
+      if (n >= 1 && n <= 3) {
+        nodes.push(n);
+      }
+    }
+    if (nodes.length > 0) return nodes;
+  }
+  const count = Math.max(1, Math.min(3, defaultPhases));
+  const def: number[] = [];
+  for (let p = 1; p <= count; p++) def.push(p);
+  return def;
 }
 
 /**
@@ -97,6 +122,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
   const storages = new Map<string, DssStorage>();
   const capacitors = new Map<string, DssCapacitor>();
   const lineCodes = new Map<string, DssLineCode>();
+  const loadShapes = new Map<string, DssLoadShape>();
   const voltageBases: number[] = [];
   let circuit: DssCircuit | undefined;
 
@@ -207,29 +233,44 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           range,
         };
       } else if (elemClass === "line") {
-        const bus1 = extractBaseBusName(props.get("bus1") ?? "Bus1");
-        const bus2 = extractBaseBusName(props.get("bus2") ?? "Bus2");
+        const rawBus1 = props.get("bus1") ?? "Bus1";
+        const rawBus2 = props.get("bus2") ?? "Bus2";
+        const bus1 = extractBaseBusName(rawBus1);
+        const bus2 = extractBaseBusName(rawBus2);
         const phases = parseInt(props.get("phases") ?? "3", 10) || 3;
+        const phaseNodes1 = extractPhaseNodes(rawBus1, phases);
+        const phaseNodes2 = extractPhaseNodes(rawBus2, phases);
         const length = parseFloat(props.get("length") ?? "1.0") || 1.0;
         const lineCode = props.get("linecode");
         const r1Raw = props.get("r1");
         const x1Raw = props.get("x1");
         const c1Raw = props.get("c1");
+        const r0Raw = props.get("r0");
+        const x0Raw = props.get("x0");
+        const c0Raw = props.get("c0");
         const r1 = r1Raw !== undefined ? parseFloat(r1Raw) : undefined;
         const x1 = x1Raw !== undefined ? parseFloat(x1Raw) : undefined;
         const c1 = c1Raw !== undefined ? parseFloat(c1Raw) : undefined;
+        const r0 = r0Raw !== undefined ? parseFloat(r0Raw) : undefined;
+        const x0 = x0Raw !== undefined ? parseFloat(x0Raw) : undefined;
+        const c0 = c0Raw !== undefined ? parseFloat(c0Raw) : undefined;
 
         linesMap.set(elemName, {
           name: elemName,
           bus1,
           bus2,
           phases,
+          phaseNodes1,
+          phaseNodes2,
           length,
           units: props.get("units"),
           lineCode,
           r1,
           x1,
           c1,
+          r0,
+          x0,
+          c0,
           range,
         });
       } else if (elemClass === "transformer") {
@@ -256,42 +297,65 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           range,
         });
       } else if (elemClass === "load") {
-        const bus1 = extractBaseBusName(props.get("bus1") ?? "Bus1");
+        const rawBus1 = props.get("bus1") ?? "Bus1";
+        const bus1 = extractBaseBusName(rawBus1);
         const phases = parseInt(props.get("phases") ?? "3", 10) || 3;
+        const phaseNodes = extractPhaseNodes(rawBus1, phases);
         const kv = parseFloat(props.get("kv") ?? "12.47") || 12.47;
         const kw = parseFloat(props.get("kw") ?? "100.0");
         const kvar = parseFloat(props.get("kvar") ?? "30.0") || 0.0;
+        const pfRaw = props.get("pf");
+        const pf = pfRaw !== undefined ? parseFloat(pfRaw) : undefined;
         const modelRaw = props.get("model");
+        const daily = props.get("daily");
+        const yearly = props.get("yearly");
+        const duty = props.get("duty");
 
         loads.set(elemName, {
           name: elemName,
           bus1,
           phases,
+          phaseNodes,
           kv,
           kw: isNaN(kw) ? 100.0 : kw,
           kvar,
+          pf: pf !== undefined && !isNaN(pf) ? pf : undefined,
           model: modelRaw !== undefined ? parseInt(modelRaw, 10) : 1,
+          daily,
+          yearly,
+          duty,
           range,
         });
       } else if (elemClass === "pvsystem") {
-        const bus1 = extractBaseBusName(props.get("bus1") ?? "Bus1");
+        const rawBus1 = props.get("bus1") ?? "Bus1";
+        const bus1 = extractBaseBusName(rawBus1);
         const phases = parseInt(props.get("phases") ?? "3", 10) || 3;
+        const phaseNodes = extractPhaseNodes(rawBus1, phases);
         const kv = parseFloat(props.get("kv") ?? "12.47") || 12.47;
         const kva = parseFloat(props.get("kva") ?? "500.0") || 500.0;
         const pmpp = parseFloat(props.get("pmpp") ?? "450.0") || 450.0;
+        const daily = props.get("daily");
+        const yearly = props.get("yearly");
+        const duty = props.get("duty");
 
         pvSystems.set(elemName, {
           name: elemName,
           bus1,
           phases,
+          phaseNodes,
           kv,
           kva,
           pmpp,
+          daily,
+          yearly,
+          duty,
           range,
         });
       } else if (elemClass === "storage") {
-        const bus1 = extractBaseBusName(props.get("bus1") ?? "Bus1");
+        const rawBus1 = props.get("bus1") ?? "Bus1";
+        const bus1 = extractBaseBusName(rawBus1);
         const phases = parseInt(props.get("phases") ?? "3", 10) || 3;
+        const phaseNodes = extractPhaseNodes(rawBus1, phases);
         const kv = parseFloat(props.get("kv") ?? "12.47") || 12.47;
         const kwRated = parseFloat(props.get("kwrated") ?? "250.0") || 250.0;
         const kwhRated = parseFloat(props.get("kwhrated") ?? "1000.0") || 1000.0;
@@ -300,14 +364,17 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           name: elemName,
           bus1,
           phases,
+          phaseNodes,
           kv,
           kwRated,
           kwhRated,
           range,
         });
       } else if (elemClass === "capacitor") {
-        const bus1 = extractBaseBusName(props.get("bus1") ?? "Bus1");
+        const rawBus1 = props.get("bus1") ?? "Bus1";
+        const bus1 = extractBaseBusName(rawBus1);
         const phases = parseInt(props.get("phases") ?? "3", 10) || 3;
+        const phaseNodes = extractPhaseNodes(rawBus1, phases);
         const kvar = parseFloat(props.get("kvar") ?? "600.0") || 600.0;
         const kv = parseFloat(props.get("kv") ?? "12.47") || 12.47;
 
@@ -315,6 +382,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           name: elemName,
           bus1,
           phases,
+          phaseNodes,
           kvar,
           kv,
           range,
@@ -325,6 +393,12 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const x1 = parseFloat(props.get("x1") ?? "0.4") || 0.4;
         const c1Raw = props.get("c1");
         const c1 = c1Raw !== undefined ? parseFloat(c1Raw) : undefined;
+        const r0Raw = props.get("r0");
+        const x0Raw = props.get("x0");
+        const c0Raw = props.get("c0");
+        const r0 = r0Raw !== undefined ? parseFloat(r0Raw) : undefined;
+        const x0 = x0Raw !== undefined ? parseFloat(x0Raw) : undefined;
+        const c0 = c0Raw !== undefined ? parseFloat(c0Raw) : undefined;
 
         lineCodes.set(elemName, {
           name: elemName,
@@ -332,6 +406,31 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
           r1,
           x1,
           c1,
+          r0,
+          x0,
+          c0,
+          range,
+        });
+      } else if (elemClass === "loadshape") {
+        const multRaw = props.get("mult") ?? props.get("pmult") ?? "";
+        const mult = parseArrayValues(multRaw)
+          .map((v) => parseFloat(v))
+          .filter((v) => !isNaN(v));
+        const qmultRaw = props.get("qmult");
+        const qmult = qmultRaw
+          ? parseArrayValues(qmultRaw)
+              .map((v) => parseFloat(v))
+              .filter((v) => !isNaN(v))
+          : undefined;
+        const npts = parseInt(props.get("npts") ?? String(mult.length), 10) || mult.length || 1;
+        const interval = parseFloat(props.get("interval") ?? props.get("hr") ?? "1.0") || 1.0;
+
+        loadShapes.set(elemName, {
+          name: elemName,
+          npts,
+          interval,
+          mult,
+          qmult,
           range,
         });
       }
@@ -361,6 +460,7 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
     storages,
     capacitors,
     lineCodes,
+    loadShapes,
     voltageBases,
     comments,
     sourceFile: filename,

@@ -505,4 +505,47 @@ sub bogie_front
     const tElapsed = performance.now() - tStart;
     assert.ok(tElapsed < 500, `Benchmark took ${tElapsed}ms for ${N} FASTSIM solves (< 500ms expected)`);
   });
+
+  it("should emit G1005 INVALID_TRACK_GAUGE and G1006 UNCLOSED_RAIL_PROFILE diagnostics", async () => {
+    const { parseGensysDeck } = await import("../src/parser/deck-parser.js");
+    const { lintGensysModel } = await import("../src/lints/index.js");
+
+    const deck = `
+body bogie 2600 1500 2200 2600 0 0 0.6
+wheelset ws1 1800 -1.435 0.46 -0.05 unclosed_S1002
+spring k_prim bogie ws1 1200000 1000000 1500000 15000 12000 20000
+`;
+    const model = parseGensysDeck(deck, "InvalidWheelsetTrack");
+    const diags = lintGensysModel(model);
+    assert.ok(
+      diags.some((d) => d.code === "G1005"),
+      "Expected G1005 INVALID_TRACK_GAUGE",
+    );
+    assert.ok(
+      diags.some((d) => d.code === "G1006"),
+      "Expected G1006 UNCLOSED_RAIL_PROFILE",
+    );
+    assert.ok(!diags.some((d) => d.code === "G1004"), "Wheelset should be accepted as valid coupling body2");
+  });
+
+  it("should lower wheelset states and creep contact forces into a structurally square DAE", async () => {
+    const { parseGensysDeck } = await import("../src/parser/deck-parser.js");
+    const { lowerGensysToDae } = await import("../src/dae/gensys-to-dae.js");
+
+    const deck = `
+body bogie 2600 1500 2200 2600 0 0 0.6
+wheelset ws1 1800 1.435 0.46 0.15 S1002
+spring k_prim bogie ws1 1200000 1000000 1500000 15000 12000 20000
+`;
+    const model = parseGensysDeck(deck, "BogieWheelsetDae");
+    const dae = lowerGensysToDae(model);
+
+    assert.ok(dae.lookupVariable("ws1.y") >= 0);
+    assert.ok(dae.lookupVariable("ws1.psi") >= 0);
+    assert.ok(dae.lookupVariable("ws1.creep_x") >= 0);
+    assert.ok(dae.lookupVariable("ws1.creep_y") >= 0);
+    assert.ok(dae.lookupVariable("ws1.fx_creep") >= 0);
+    assert.ok(dae.lookupVariable("ws1.fy_creep") >= 0);
+    assert.equal(dae.varCount, dae.eqCount, `Expected square DAE (varCount=${dae.varCount}, eqCount=${dae.eqCount})`);
+  });
 });

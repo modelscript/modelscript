@@ -279,6 +279,30 @@ export function parseKvn(source: string): CcsdsDocument {
     endOffset: totalLength,
   };
 
+  // Normalize Keplerian elements when MEAN_MOTION or MEAN_ANOMALY are provided
+  if (
+    keplerian.semiMajorAxisKm === undefined &&
+    keplerian.meanMotionRevsPerDay !== undefined &&
+    keplerian.meanMotionRevsPerDay > 0
+  ) {
+    const nRadPerSec = (keplerian.meanMotionRevsPerDay * 2.0 * Math.PI) / 86400.0;
+    keplerian.semiMajorAxisKm = Math.cbrt(398600.4418 / (nRadPerSec * nRadPerSec));
+  }
+  if (keplerian.trueAnomalyDeg === undefined && keplerian.meanAnomalyDeg !== undefined) {
+    const e = Math.max(0.0, Math.min(0.999999, keplerian.eccentricity ?? 0.0));
+    const M = (keplerian.meanAnomalyDeg * Math.PI) / 180.0;
+    let E = M;
+    for (let iter = 0; iter < 30; iter++) {
+      const f = E - e * Math.sin(E) - M;
+      const fPrime = 1.0 - e * Math.cos(E);
+      const dE = f / Math.max(1e-12, fPrime);
+      E -= dE;
+      if (Math.abs(dE) < 1e-12) break;
+    }
+    const nu = 2.0 * Math.atan2(Math.sqrt(1.0 + e) * Math.sin(E * 0.5), Math.sqrt(1.0 - e) * Math.cos(E * 0.5));
+    keplerian.trueAnomalyDeg = ((nu * 180.0) / Math.PI + 360.0) % 360.0;
+  }
+
   if (format === "OPM") {
     const sv: CcsdsEphemerisPoint = {
       epoch: stateVector.epoch ?? "2000-01-01T00:00:00.000",
@@ -306,19 +330,23 @@ export function parseKvn(source: string): CcsdsDocument {
   }
 
   if (format === "OMM") {
+    const normalizedMean: CcsdsKeplerianElements = {
+      semiMajorAxisKm: keplerian.semiMajorAxisKm ?? 7000,
+      eccentricity: keplerian.eccentricity ?? 0.001,
+      inclinationDeg: keplerian.inclinationDeg ?? 28.5,
+      raanDeg: keplerian.raanDeg ?? 0,
+      argOfPericenterDeg: keplerian.argOfPericenterDeg ?? 0,
+      trueAnomalyDeg: keplerian.trueAnomalyDeg ?? 0,
+      meanAnomalyDeg: keplerian.meanAnomalyDeg,
+      meanMotionRevsPerDay: keplerian.meanMotionRevsPerDay,
+      bstar: keplerian.bstar,
+    };
     const doc: CcsdsOmmDocument = {
       format: "OMM",
       version,
       header,
       metadata,
-      meanElements: (keplerian as CcsdsKeplerianElements) ?? {
-        semiMajorAxisKm: 7000,
-        eccentricity: 0.001,
-        inclinationDeg: 28.5,
-        raanDeg: 0,
-        argOfPericenterDeg: 0,
-        trueAnomalyDeg: 0,
-      },
+      meanElements: normalizedMean,
       spacecraft: spacecraft.massKg !== undefined ? (spacecraft as CcsdsSpacecraftParameters) : undefined,
       range: docRange,
     };

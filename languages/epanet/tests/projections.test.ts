@@ -32,4 +32,20 @@ describe("EPANET Projections to Modelica.Fluid", () => {
     assert(mo.includes("connect(pipe_P1.port_b, sink_J1.ports[1]);"));
     assert(mo.includes("end MunicipalWaterModel;"));
   });
+
+  it("connects incident pipes at zero-demand intermediate junctions", () => {
+    const inp = `
+[RESERVOIRS]
+ R1  150.0
+[JUNCTIONS]
+ J_MID  50.0  0.0
+ J_END  40.0  20.0
+[PIPES]
+ P1  R1     J_MID  500  200  110  0  OPEN
+ P2  J_MID  J_END  500  200  110  0  OPEN
+`;
+    const net = parseInp(inp);
+    const mo = epanetToModelica(net);
+    assert(mo.includes("connect(pipe_P1.port_b, pipe_P2.port_a);"));
+  });
 });

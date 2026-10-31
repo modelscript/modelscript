@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
+import { detectOwl2Format, parseOwlXmlToAxioms, parseTurtleToOwl2Axioms } from "./parser/index.js";
 
 export interface Owl2FileInfo {
   uri: string;
@@ -90,8 +91,8 @@ export class Owl2WorkspaceIndex implements IWorkspaceIndex {
   }
 
   /**
-   * Parses an OWL 2 Functional-Style Syntax document and indexes all prefixes,
-   * ontology declaration, imports, and entity declarations.
+   * Parses an OWL 2 Functional-Style (`.ofn`), Turtle (`.ttl`), or OWL/XML (`.owx` / `.owl`) document
+   * and indexes all prefixes, ontology declaration, imports, and entity declarations.
    */
   public indexFile(uri: string, text: string): SymbolIndex {
     const symbols = new Map<SymbolId, SymbolEntry>();
@@ -125,8 +126,76 @@ export class Owl2WorkspaceIndex implements IWorkspaceIndex {
 
     const childIds: SymbolId[] = [];
 
+    const format = detectOwl2Format(text, uri);
+    if (format === "ttl" || format === "owx") {
+      // Extract prefixes from .ttl or .owx
+      if (format === "ttl") {
+        const pfxRegex = /(?:@prefix|PREFIX)\s+([A-Za-z0-9_-]*:)\s*<([^>]*)>/gi;
+        let m: RegExpExecArray | null;
+        while ((m = pfxRegex.exec(text)) !== null) {
+          prefixes.set(m[1]!, m[2]!);
+        }
+      } else {
+        const pfxRegex = /<Prefix\s+[^>]*name="([^"]*)"\s+[^>]*IRI="([^"]*)"/gi;
+        let m: RegExpExecArray | null;
+        while ((m = pfxRegex.exec(text)) !== null) {
+          const p = m[1]!;
+          prefixes.set(p.endsWith(":") ? p : `${p}:`, m[2]!);
+        }
+      }
+      const loweredAxioms = format === "ttl" ? parseTurtleToOwl2Axioms(text) : parseOwlXmlToAxioms(text);
+      for (const ax of loweredAxioms) {
+        let kind: "Class" | "ObjectProperty" | "DataProperty" | "Individual" | null = null;
+        let rawIri = "";
+        if (ax.type === "ClassDeclaration" && !ax.iri.startsWith("__aux_")) {
+          kind = "Class";
+          rawIri = ax.iri;
+        } else if (ax.type === "ObjectPropertyDeclaration") {
+          kind = "ObjectProperty";
+          rawIri = ax.iri;
+        } else if (ax.type === "DataPropertyDeclaration") {
+          kind = "DataProperty";
+          rawIri = ax.iri;
+        } else if (ax.type === "IndividualDeclaration") {
+          kind = "Individual";
+          rawIri = ax.iri;
+        }
+        if (kind && rawIri) {
+          const symId = idCounter++ as SymbolId;
+          const fullIri = expandIri(rawIri, prefixes);
+          const shortName = getShortName(rawIri);
+          const entry: SymbolEntry = {
+            id: symId,
+            name: shortName,
+            kind,
+            ruleName: `owl2_${kind.toLowerCase()}`,
+            namePath: fullIri,
+            fieldName: null,
+            parentId: rootId,
+            startOffset: 0,
+            endOffset: text.length,
+            exports: [],
+            inherits: [],
+            language: "owl2",
+            metadata: {},
+          };
+          symbols.set(symId, entry);
+          for (const key of new Set([shortName, fullIri, rawIri])) {
+            const list = byName.get(key) || [];
+            list.push(symId);
+            byName.set(key, list);
+          }
+          childIds.push(symId);
+          if (kind === "Class") classes.set(fullIri, entry);
+          else if (kind === "ObjectProperty") objectProperties.set(fullIri, entry);
+          else if (kind === "DataProperty") dataProperties.set(fullIri, entry);
+          else if (kind === "Individual") individuals.set(fullIri, entry);
+        }
+      }
+    }
+
     // Parse functional-style syntax declarations using stateful scanner
-    let i = 0;
+    let i = format === "ofn" ? 0 : text.length;
     const len = text.length;
 
     while (i < len) {

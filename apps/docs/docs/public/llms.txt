@@ -105,7 +105,7 @@
 
 ## Engineering Industries (12 Sectors)
 - [Industries Overview](https://modelscript.org/industries): Multi-domain solutions across 12 engineering sectors.
-- [Aerospace & Defense](https://modelscript.org/industries/aerospace): Flight dynamics, propulsion & mission telemetry (SysML v2 / KerML, ReqIF, CCSDS OEM / OPM / XTCE).
+- [Aerospace & Aviation](https://modelscript.org/industries/aerospace): Flight dynamics, propulsion & mission telemetry (SysML v2 / KerML, ReqIF, CCSDS OEM / OPM / XTCE).
 - [Automotive & Mobility](https://modelscript.org/industries/automotive): AUTOSAR, powertrain & autonomous-driving scenarios (AUTOSAR Classic & Adaptive, ASAM OpenDRIVE, ASAM OpenSCENARIO).
 - [Rail](https://modelscript.org/industries/rail): Vehicle dynamics, track geometry & EN 14363 (EN 14363, UIC 518, STEP AP242).
 - [Marine & Offshore](https://modelscript.org/industries/marine): Marine operations, risers & mooring (DNV-OS-E301, DNV-ST-0119, FMI 2.0 / 3.0).

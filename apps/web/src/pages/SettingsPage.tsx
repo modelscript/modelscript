@@ -158,7 +158,8 @@ export type TabType =
 const SettingsPage: React.FC = () => {
   const { tab: pathTab } = useParams<{ tab?: string | undefined }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const effectiveTab = (pathTab || searchParams.get("tab")) as TabType | null;
+  const queryTab = searchParams.get("tab") as TabType | null;
+  const effectiveTab = (pathTab || queryTab) as TabType | null;
   const [activeTab, setActiveTab] = useState<TabType>(effectiveTab || "account");
   const [mobileShowMenu, setMobileShowMenu] = useState<boolean>(!effectiveTab);
   const [searchQuery, setSearchQuery] = useState("");
@@ -179,19 +180,19 @@ const SettingsPage: React.FC = () => {
     activeTab === "deleteAccount";
 
   React.useEffect(() => {
-    if (effectiveTab && effectiveTab !== activeTab) {
+    if (effectiveTab) {
       setActiveTab(effectiveTab);
       setMobileShowMenu(false);
     } else if (isSubTab) {
       setMobileShowMenu(false);
     }
-  }, [effectiveTab, activeTab, isSubTab]);
+  }, [effectiveTab, isSubTab]);
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
     setMobileShowMenu(false);
     if (pathTab) {
-      navigate(`/settings?tab=${encodeURIComponent(tab)}`);
+      navigate(`/settings/${encodeURIComponent(tab)}`);
     } else {
       setSearchParams({ tab });
     }
@@ -388,7 +389,7 @@ const SettingsPage: React.FC = () => {
           <NotificationFiltersTab subView={activeTab} onNavigate={handleTabChange} />
         )}
         {(activeTab === "display" || activeTab === "contentPreferences" || activeTab === "other") && (
-          <DisplayAndPreferencesTab subView={activeTab} onNavigate={handleTabChange} />
+          <DisplayAndPreferencesTab subView={activeTab} onNavigate={(tab) => handleTabChange(tab as TabType)} />
         )}
         {(activeTab === "privacy" || activeTab === "deleteAccount") && (
           <PrivacyTab subView={activeTab} onNavigate={handleTabChange} onBack={handleMobileOrAccountBack} />

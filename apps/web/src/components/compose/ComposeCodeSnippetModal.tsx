@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { createArtifactView } from "../../api";
 import type { NotebookCell } from "../../util/notebook";
 import Box from "../Box";
-import { MORSEL_LANGUAGES, getLanguageInfo } from "../morsel/constants";
+import { getLanguageInfo, useVisibleMorselLanguages } from "../morsel/constants";
 import { CommandPill, TweetButton } from "./styles";
 
 const GENERAL_CODE_LANGUAGES = [
@@ -55,6 +55,7 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
   setContent,
   attachArtifactToComposer,
 }) => {
+  const visibleMorselLanguages = useVisibleMorselLanguages();
   if (!isOpen) return null;
 
   const snippetTitle = snippetFilename;
@@ -145,8 +146,8 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
                 outline: "none",
               }}
             >
-              <optgroup label="Engineering & Simulation Languages (44)">
-                {MORSEL_LANGUAGES.map((lang) => (
+              <optgroup label={`Engineering & Simulation Languages (${visibleMorselLanguages.length})`}>
+                {visibleMorselLanguages.map((lang) => (
                   <option key={lang.id} value={lang.id}>
                     {lang.label || lang.name} (.{lang.ext})
                   </option>

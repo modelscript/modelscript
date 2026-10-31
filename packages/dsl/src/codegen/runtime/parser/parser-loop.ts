@@ -1458,49 +1458,7 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
   let savedSrcLexPos = srcLexPos;
   let savedScannerState = currentScannerState;
 
-  // lex() internally skips whitespace/comments. After calling lex(pos),
-  // srcLexPos is where the real token starts (after extras), and lexLen is the token length.
-  let firstTok = lex(trailingStart);
-
-  // srcLexPos - trailingStart = whitespace between accepted node end and first error token
-  let errPad: u32 = srcLexPos > trailingStart ? srcLexPos - trailingStart : 0;
-
-  // Restore scanner state
-  lexPos = savedLexPos;
-  lexLen = savedLexLen;
-  srcLexPos = savedSrcLexPos;
-  currentScannerState = savedScannerState;
-
-  // If the first token is EOF, there's only trailing whitespace
-  if (firstTok == TOKEN_EOF) {
-    if (trailingLen > 0) {
-      if (isMutable(acceptedNode)) {
-        setNodeByteLength(acceptedNode, getNodeByteLength(acceptedNode) + trailingLen);
-      } else {
-        let cloned = cloneNodeShallow(acceptedNode);
-        setNodeByteLength(cloned, getNodeByteLength(cloned) + trailingLen);
-        acceptedNode = cloned;
-      }
-    }
-    return acceptedNode;
-  }
-
-  let errByteLen = trailingLen > errPad ? trailingLen - errPad : 0;
-  if (errByteLen == 0) return acceptedNode;
-
-  let errorNode = allocNode(NODE_TYPE_ERROR, errPad, errByteLen, 0);
-
-  // Lex the error content into child tokens of the ERROR node for AST fidelity
-  let lastTokNode: u32 = 0;
-  let errContentStart = trailingStart + errPad;
-  let lexP = errContentStart;
-
-  savedLexPos = lexPos;
-  savedLexLen = lexLen;
-  savedSrcLexPos = srcLexPos;
-  savedScannerState = currentScannerState;
-
-  // Force lexer to accept any token during error node construction, saving previous mask
+  // Force lexer to accept any token during trailing inspection, saving previous mask
   if (expected_tokens == 0) expected_tokens = atomicChunkAlloc(65536);
   if (savedExpectedTokensPtr == 0) savedExpectedTokensPtr = atomicChunkAlloc(65536);
   let _copyLen: u32 = (MAX_TERMINAL_ID as u32) + 1;
@@ -1508,8 +1466,76 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
   memory.copy(savedExpectedTokensPtr, expected_tokens, _copyLen);
   memory.fill(expected_tokens, 1, _copyLen);
 
+  // Skip whitespace and extra tokens (e.g. comments) to find the first real trailing token.
+  let scanP = trailingStart;
+  let firstTok = lex(scanP);
+  while (firstTok >= 0 && firstTok <= MAX_TERMINAL_ID && load<u8>(is_extra_token + firstTok) == 1) {
+    if (lexLen == 0) {
+      scanP += 1;
+      break;
+    }
+    let start = srcLexPos > scanP ? srcLexPos : scanP;
+    scanP = start + lexLen;
+    firstTok = lex(scanP);
+  }
+
+  // srcLexPos - trailingStart = whitespace/comments between accepted node end and first error token
+  let errPad: u32 = srcLexPos > trailingStart ? srcLexPos - trailingStart : 0;
+
+  // If the first token is EOF, there's only trailing whitespace/comments
+  if (firstTok == TOKEN_EOF) {
+    memory.copy(expected_tokens, savedExpectedTokensPtr, _copyLen);
+    g_expectedMemoState = -1;
+    g_expectedFrontierPos = 0xffffffff;
+    g_expectedFrontierVersion = 0xffffffff;
+    lexPos = savedLexPos;
+    lexLen = savedLexLen;
+    srcLexPos = savedSrcLexPos;
+    currentScannerState = savedScannerState;
+    if (trailingLen > 0) {
+      if (isMutable(acceptedNode)) {
+        setNodeByteLength(acceptedNode, getNodeByteLength(acceptedNode) + trailingLen);
+      } else {
+        let cloned = cloneNodeShallow(acceptedNode);
+        setNodeByteLength(cloned, getNodeByteLength(acceptedNode) + trailingLen);
+        acceptedNode = cloned;
+      }
+    }
+    return acceptedNode;
+  }
+
+  let errByteLen = trailingLen > errPad ? trailingLen - errPad : 0;
+  if (errByteLen == 0) {
+    memory.copy(expected_tokens, savedExpectedTokensPtr, _copyLen);
+    g_expectedMemoState = -1;
+    g_expectedFrontierPos = 0xffffffff;
+    g_expectedFrontierVersion = 0xffffffff;
+    lexPos = savedLexPos;
+    lexLen = savedLexLen;
+    srcLexPos = savedSrcLexPos;
+    currentScannerState = savedScannerState;
+    return acceptedNode;
+  }
+
+  let errorNode = allocNode(NODE_TYPE_ERROR, errPad, errByteLen, 0);
+  setNodeFlags(errorNode, getNodeFlags(errorNode) | FLAG_HAS_ERROR);
+
+  // Lex the error content into child tokens of the ERROR node for AST fidelity
+  let lastTokNode: u32 = 0;
+  let errContentStart = trailingStart + errPad;
+  let lexP = errContentStart;
+
   while (lexP < inputLength) {
     let tok = lex(lexP);
+    while (tok >= 0 && tok <= MAX_TERMINAL_ID && load<u8>(is_extra_token + tok) == 1) {
+      if (lexLen == 0) {
+        lexP += 1;
+        break;
+      }
+      let start = srcLexPos > lexP ? srcLexPos : lexP;
+      lexP = start + lexLen;
+      tok = lex(lexP);
+    }
     if (tok == TOKEN_EOF) break;
     let tLen = lexLen;
     if (tLen == 0) break;
@@ -1673,46 +1699,54 @@ export function fixNodeLength(node: u32): void {
   let gc = getNodeFirstChild(node);
   if (gc == 0) return;
 
-  let firstPad = getNodeLeadingPad(gc);
   let pPad = getNodePadding(node);
-  let totalLen = getNodeByteLength(gc);
+  let totalLen: u32 = 0;
+  let foundNonEmpty = false;
+  let prev: u32 = 0;
+  let curr = gc;
 
-  // Invariant: parent.padding absorbs the first child's leading whitespace,
-  // and the first child's padding must be 0. The LSP tree walker relies on
-  // this: it does NOT add the first child's padding to currOffset.
-  if (firstPad > 0 && pPad != firstPad) {
-    // Absorb (or re-absorb) the first child's padding into the parent.
-    // When pPad == 0, this is the initial absorption.
-    // When pPad != firstPad (both non-zero), the parent was allocated with
-    // explicit padding that doesn't match — re-absorb to restore invariant.
-    setNodePadding(node, firstPad);
-    if (isMutable(gc)) {
-      setNodePadding(gc, 0);
-    } else {
-      let clone = cloneNodeShallow(gc);
-      setNodePadding(clone, 0);
-      setFirstChild(node, clone);
-      setNextSibling(clone, getNodeNextSibling(gc));
-      // Bug #1 fix: Mark the remaining siblings as shared so they can't be
-      // mutated in-place by operations that share this sibling chain via the
-      // clone. Without this, isMutable() could return true for a sibling that
-      // is referenced by both the original tree and the clone's tree.
-      let sib = getNodeNextSibling(gc);
-      while (sib != 0) {
-        setNodeFlags(sib, getNodeFlags(sib) | FLAG_IS_SHARED);
-        sib = getNodeNextSibling(sib);
+  // Invariant: parent.padding absorbs the first non-empty child's leading whitespace,
+  // and that child's padding must be 0. This matches constructReducedParentNode.
+  while (curr != 0) {
+    let cPad = getNodeLeadingPad(curr);
+    let cLen = getNodeByteLength(curr);
+    if (!foundNonEmpty && (cPad > 0 || cLen > 0)) {
+      foundNonEmpty = true;
+      if (cPad > 0) {
+        if (pPad == 0) {
+          setNodePadding(node, cPad);
+        } else if (pPad != cPad) {
+          setNodePadding(node, pPad + cPad);
+        }
+        if (isMutable(curr)) {
+          setNodePadding(curr, 0);
+        } else {
+          let clone = cloneNodeShallow(curr);
+          setNodePadding(clone, 0);
+          if (prev == 0) {
+            setFirstChild(node, clone);
+          } else {
+            setNextSibling(prev, clone);
+          }
+          setNextSibling(clone, getNodeNextSibling(curr));
+          // Mark remaining siblings as shared so they can't be mutated in-place
+          // by operations that share this sibling chain via the clone.
+          let sib = getNodeNextSibling(curr);
+          while (sib != 0) {
+            setNodeFlags(sib, getNodeFlags(sib) | FLAG_IS_SHARED);
+            sib = getNodeNextSibling(sib);
+          }
+          curr = clone;
+        }
       }
-      gc = clone;
+      totalLen += cLen;
+    } else {
+      totalLen += cPad + cLen;
     }
+    prev = curr;
+    curr = getNodeNextSibling(curr);
   }
 
-  gc = getNodeNextSibling(gc);
-
-  while (gc != 0) {
-    totalLen += getNodeLeadingPad(gc) + getNodeByteLength(gc);
-    gc = getNodeNextSibling(gc);
-  }
-  
   setNodeByteLength(node, totalLen);
   setNodeMerkleHash(node, 0, 0);
 }
@@ -3405,8 +3439,13 @@ function processAcceptAction(head: ParseHead): void {
         let cType = getNodeType(c);
         if (cType == (MAX_TERMINAL_ID + 1) as u16) {
           let innerChild = getNodeFirstChild(c);
+          let isFirstInner = true;
           while (innerChild != 0) {
             let clone = cloneNodeShallow(innerChild);
+            if (isFirstInner && i > 0) {
+              setNodePadding(clone, getNodePadding(clone) + getNodeLeadingPad(c));
+            }
+            isFirstInner = false;
             if (firstCloned == 0) firstCloned = clone;
             if (lastC2 != 0) setNextSibling(lastC2, clone);
             lastC2 = clone;
@@ -3572,14 +3611,62 @@ export function isOldRangeEdited(start: u32, end: u32): boolean {
 }
 
 /**
+ * Finds the exact byte span `[start, end]` (packed as `(start << 32) | end`) of the
+ * rightmost non-empty leaf token on `head`'s stack.
+ */
+export function getRightmostLeafSpan(head: ParseHead | null, fallbackPos: u32): u64 {
+  let curr = head;
+  let hops = 0;
+  while (curr != null && hops++ < 32) {
+    let node = curr.astNode;
+    if (node != 0 && getNodeByteLength(node) > 0) {
+      let nLen = getNodeByteLength(node);
+      let nStart = curr.pos >= nLen ? curr.pos - nLen : 0;
+      let c = node;
+      let guard = 0;
+      while (getNodeFirstChild(c) != 0 && guard++ < 64) {
+        let ch = getNodeFirstChild(c);
+        let off = nStart;
+        let lastNonEmpty: u32 = 0;
+        let lastStart: u32 = off;
+        let idx = 0;
+        while (ch != 0) {
+          if (idx > 0) off += getNodeLeadingPad(ch);
+          let chLen = getNodeByteLength(ch);
+          if (chLen > 0 && (getNodeFlags(ch) & FLAG_IS_INSERTED) == 0) {
+            lastNonEmpty = ch;
+            lastStart = off;
+          }
+          off += chLen;
+          idx++;
+          ch = getNodeNextSibling(ch);
+        }
+        if (lastNonEmpty == 0) break;
+        c = lastNonEmpty;
+        nStart = lastStart;
+      }
+      let cLen = getNodeByteLength(c);
+      if (cLen > 0) {
+        return ((nStart as u64) << 32) | ((nStart + cLen) as u64);
+      }
+    }
+    curr = curr.prev;
+  }
+  let s = fallbackPos > 0 ? fallbackPos - 1 : 0;
+  let e = fallbackPos > s ? fallbackPos : s + 1;
+  return ((s as u64) << 32) | (e as u64);
+}
+
+/**
  * Graceful EOF Error Acceptance (Tree-sitter Strategy):
  * When parsing reaches TOKEN_EOF with unclosed blocks or unreduced constructs,
  * do not panic or flatten the CST. Instead, record an error diagnostic for the unclosed construct,
  * wrap the stack in an accepted root via processAcceptAction, and terminate cleanly.
  */
 function recoverEofAccept(head: ParseHead, pos: u32): void {
-  let diagStart = pos > 0 ? pos - 1 : 0;
-  let diagEnd = pos > diagStart ? pos : diagStart + 1;
+  let span = getRightmostLeafSpan(head, pos);
+  let diagStart = (span >>> 32) as u32;
+  let diagEnd = (span & 0xffffffff) as u32;
   let exp = getExpectedTokensForState(head.state);
   head.errorTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, TOKEN_EOF as u32, 2, (exp & 0xffffffff) as u32, ((exp >>> 32) & 0xffffffff) as u32);
   head.errorCost += 500;
@@ -4471,34 +4558,12 @@ export function findReusableNode(
       let isTerminalLeaf = nodeType <= (MAX_TERMINAL_ID as u16);
       if (t_editRangesCount <= 1) {
         if (end <= g_editStart && g_editStart > 0 && (g_editOldEnd > 0 || g_editNewEnd > 0)) {
-          if (end == g_editStart) {
-            let prevChar = peekPrevChar(g_editStart);
-            let isWordChar = (prevChar >= 48 && prevChar <= 57) || // 0-9
-                             (prevChar >= 65 && prevChar <= 90) || // A-Z
-                             (prevChar >= 97 && prevChar <= 122) || // a-z
-                             prevChar == 95 || // _
-                             prevChar == 46;   // .
-            if (isWordChar || !isTerminalLeaf) {
-              isTouchingEdit = true;
-            }
-          } else if (!isTerminalLeaf && isWhitespaceBetween(end, g_editStart)) {
+          if (end == g_editStart || (!isTerminalLeaf && isWhitespaceBetween(end, g_editStart))) {
             isTouchingEdit = true;
           }
         }
         if (!isTouchingEdit && start == g_editOldEnd && g_editNewEnd > 0 && pad == 0) {
-          let prevChar = peekPrevChar(g_editNewEnd);
-          let nextChar = peekChar(g_editNewEnd);
-          let prevIsWord = (prevChar >= 48 && prevChar <= 57) ||
-                           (prevChar >= 65 && prevChar <= 90) ||
-                           (prevChar >= 97 && prevChar <= 122) ||
-                           prevChar == 95 || prevChar == 46;
-          let nextIsWord = (nextChar >= 48 && nextChar <= 57) ||
-                           (nextChar >= 65 && nextChar <= 90) ||
-                           (nextChar >= 97 && nextChar <= 122) ||
-                           nextChar == 95 || nextChar == 46;
-          if (prevIsWord && nextIsWord) {
-            isTouchingEdit = true;
-          }
+          isTouchingEdit = true;
         }
       } else {
         let prevDelta: i32 = 0;
@@ -4507,37 +4572,14 @@ export function findReusableNode(
           let oldStart = (edit.start as i32 - prevDelta) as u32;
           let oldEditEnd = (edit.oldEnd as i32 - prevDelta) as u32;
           if (end <= oldStart && oldStart > 0) {
-            if (end == oldStart) {
-              // The input buffer holds the *new* text: read it at new coordinates.
-              let prevChar = peekPrevChar(edit.start);
-              let isWordChar = (prevChar >= 48 && prevChar <= 57) ||
-                               (prevChar >= 65 && prevChar <= 90) ||
-                               (prevChar >= 97 && prevChar <= 122) ||
-                               prevChar == 95 ||
-                               prevChar == 46;
-              if (isWordChar || !isTerminalLeaf) {
-                isTouchingEdit = true;
-              }
-            } else if (!isTerminalLeaf && isWhitespaceBetween((end as i32 + prevDelta) as u32, edit.start)) {
+            if (end == oldStart || (!isTerminalLeaf && isWhitespaceBetween((end as i32 + prevDelta) as u32, edit.start))) {
               isTouchingEdit = true;
             }
             break;
           }
           if (start == oldEditEnd && edit.newEnd > 0 && pad == 0) {
-            let prevChar = peekPrevChar(edit.newEnd);
-            let nextChar = peekChar(edit.newEnd);
-            let prevIsWord = (prevChar >= 48 && prevChar <= 57) ||
-                             (prevChar >= 65 && prevChar <= 90) ||
-                             (prevChar >= 97 && prevChar <= 122) ||
-                             prevChar == 95 || prevChar == 46;
-            let nextIsWord = (nextChar >= 48 && nextChar <= 57) ||
-                             (nextChar >= 65 && nextChar <= 90) ||
-                             (nextChar >= 97 && nextChar <= 122) ||
-                             nextChar == 95 || nextChar == 46;
-            if (prevIsWord && nextIsWord) {
-              isTouchingEdit = true;
-              break;
-            }
+            isTouchingEdit = true;
+            break;
           }
           prevDelta += (edit.newEnd - edit.oldEnd) as i32;
         }

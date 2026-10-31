@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"
+                  xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"
+                  xmlns:msx="https://modelscript.org/ns/study-v1"
+                  version="2.0"
+                  name="Drone Chassis Nominal Carbon-Epoxy Parameter Set">
+  <ssv:Parameters>
+    <ssv:Parameter name="armWallThicknessMm">
+      <ssv:Real value="2.2" unit="mm"/>
+    </ssv:Parameter>
+    <ssv:Parameter name="rootFilletRadiusMm">
+      <ssv:Real value="6.0" unit="mm"/>
+    </ssv:Parameter>
+    <ssv:Parameter name="payloadMassKg">
+      <ssv:Real value="1.45" unit="kg"/>
+    </ssv:Parameter>
+    <ssv:Parameter name="study.loadFactorG">
+      <ssv:Real value="6.0"/>
+    </ssv:Parameter>
+    <ssv:Parameter name="study.minSafetyFactor">
+      <ssv:Real value="1.5"/>
+    </ssv:Parameter>
+  </ssv:Parameters>
+  <ssc:Annotations>
+    <ssc:Annotation type="org.modelscript.study">
+      <msx:studyMetadata
+        id="pkg.drone-chassis.nominal-params"
+        slug="drone-chassis-nominal-params"
+        name="Drone Chassis ASAM SSP 2.0 Baseline Parameterization"
+        version="2.0"
+        kind="steady-state"
+        category="fea"
+        domain="ssp"
+        modelId="models/DroneAirframe.mo"
+        modelName="DroneAirframe"
+        executionTarget="local-wasm"
+        packageName="@examples/drone-chassis"
+        packageVersion="1.2.0">
+        <msx:description>Standard ASAM SSP 2.0 (.ssv) parameter value set binding structural geometry and payload parameters across CAD, FEA, and Modelica flight dynamics models.</msx:description>
+        <msx:observable name="vonMisesMPa"/>
+        <msx:observable name="tipDeflectionMm"/>
+      </msx:studyMetadata>
+    </ssc:Annotation>
+  </ssc:Annotations>
+</ssv:ParameterSet>

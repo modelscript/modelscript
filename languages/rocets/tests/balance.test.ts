@@ -28,6 +28,7 @@ CONNECTIONS:
     const balance = solveRocetsBalance(model);
 
     assert.ok(balance.converged);
+    assert.ok(balance.iterations >= 2, `Expected Newton-Raphson iterations >= 2, got ${balance.iterations}`);
     assert.strictEqual(balance.chamberPressurePa, 15.0e6);
     assert.strictEqual(balance.mixtureRatio, 6.0);
     assert.ok(balance.totalMassFlowKgS > 100.0, `Total mdot ${balance.totalMassFlowKgS} kg/s`);
@@ -35,6 +36,7 @@ CONNECTIONS:
     assert.ok(balance.ispVacSec > 350.0, `Isp vac ${balance.ispVacSec} s`);
     assert.ok(balance.pumpPowersW["PUMP_OX"]! > 0);
     assert.ok(balance.pumpPowersW["PUMP_FUEL"]! > 0);
+    assert.ok(balance.residual < 1e-4);
   });
 
   it("simulates ignition start transient trajectory", () => {

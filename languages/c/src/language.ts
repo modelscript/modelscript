@@ -453,21 +453,21 @@ export const cLanguage = language({
     CallExpression: ($) =>
       prec(
         C_PREC.POSTFIX,
-        seq(field("callee", $["PrimaryExpression"]!), "(", optional(field("arguments", $["ArgumentList"]!)), ")"),
+        seq(field("callee", $["PostfixExpression"]!), "(", optional(field("arguments", $["ArgumentList"]!)), ")"),
       ),
 
     ArgumentList: ($) => seq($["Expression"]!, repeat(seq(",", $["Expression"]!))),
 
     SubscriptExpression: ($) =>
-      prec(C_PREC.POSTFIX, seq(field("array", $["PrimaryExpression"]!), "[", field("index", $["Expression"]!), "]")),
+      prec(C_PREC.POSTFIX, seq(field("array", $["PostfixExpression"]!), "[", field("index", $["Expression"]!), "]")),
 
     MemberExpression: ($) =>
-      prec(C_PREC.POSTFIX, seq(field("target", $["PrimaryExpression"]!), ".", field("field", $["IDENTIFIER"]!))),
+      prec(C_PREC.POSTFIX, seq(field("target", $["PostfixExpression"]!), ".", field("field", $["IDENTIFIER"]!))),
 
     PointerMemberExpression: ($) =>
-      prec(C_PREC.POSTFIX, seq(field("target", $["PrimaryExpression"]!), "->", field("field", $["IDENTIFIER"]!))),
+      prec(C_PREC.POSTFIX, seq(field("target", $["PostfixExpression"]!), "->", field("field", $["IDENTIFIER"]!))),
 
-    PostfixIncrement: ($) => prec(C_PREC.POSTFIX, seq(field("operand", $["PrimaryExpression"]!), choice("++", "--"))),
+    PostfixIncrement: ($) => prec(C_PREC.POSTFIX, seq(field("operand", $["PostfixExpression"]!), choice("++", "--"))),
 
     PrimaryExpression: ($) =>
       choice(

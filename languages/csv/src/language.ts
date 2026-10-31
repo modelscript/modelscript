@@ -16,21 +16,94 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
-import { lintCsv, type CsvDiagnostic } from "./csv-parser.js";
+import { lintCsv, parseCsvHeaderAnnotation, type CsvDiagnostic, type CsvVarType } from "./csv-parser.js";
 
-export { lintCsv, type CsvDiagnostic };
+export { lintCsv, parseCsvHeaderAnnotation, type CsvDiagnostic, type CsvVarType };
 
 /**
  * Metadata attached to virtual CSV component symbols by the workspace indexer.
  */
 interface CsvMetadata {
-  /** Inferred or explicitly declared Modelica type name (e.g., `"Real"`). */
+  /** Inferred or explicitly declared Modelica type name (e.g., `"Real"`, `"Boolean"`). */
   typeSpecifier?: string | undefined;
+  /** Physical unit extracted from header annotation (e.g., `"rad/s"`, `"K"`). */
+  unit?: string | undefined;
+  /** Original raw header text before stripping unit/type annotations. */
+  rawHeader?: string | undefined;
   /** Dimensions of the tabular column or matrix. */
   arrayDimensions?: number[] | undefined;
   /** Parsed literal array or scalar value extracted from the CSV table. */
   csvValue?: unknown;
 }
+
+/**
+ * Query hooks for virtual CSV column/matrix component symbols.
+ */
+export const csvVirtualComponentQueries = {
+  // Resolve the target scalar class (defaults to top-level "Real" or header `: Type` annotation)
+  resolvedType: (db: QueryDB, self: SymbolEntry): SymbolEntry | null => {
+    const metadata = self.metadata as CsvMetadata | undefined;
+    const parsedHeader = parseCsvHeaderAnnotation(metadata?.rawHeader ?? self.name);
+    const typeName = metadata?.typeSpecifier ?? parsedHeader.declaredType ?? "Real";
+    const entries = db.byName(typeName);
+    return entries.find((e) => e.kind === "Class" && e.parentId === null) ?? null;
+  },
+  // Map the virtual CSV column to its corresponding top-level class symbol ID
+  classInstance: (db: QueryDB, self: SymbolEntry): SymbolId | null => {
+    const metadata = self.metadata as CsvMetadata | undefined;
+    const parsedHeader = parseCsvHeaderAnnotation(metadata?.rawHeader ?? self.name);
+    const typeName = metadata?.typeSpecifier ?? parsedHeader.declaredType ?? "Real";
+    const entries = db.byName(typeName);
+    const classSymbol = entries.find((e) => e.kind === "Class" && e.parentId === null);
+    return classSymbol ? classSymbol.id : null;
+  },
+  // Return the resolved scalar type name ("Real", "Integer", "Boolean", or "String")
+  varType: (_db: QueryDB, self: SymbolEntry): CsvVarType => {
+    const metadata = self.metadata as CsvMetadata | undefined;
+    const parsedHeader = parseCsvHeaderAnnotation(metadata?.rawHeader ?? self.name);
+    const rawType = metadata?.typeSpecifier ?? parsedHeader.declaredType ?? "Real";
+    if (rawType === "Integer" || rawType === "Boolean" || rawType === "String") {
+      return rawType;
+    }
+    return "Real";
+  },
+  // Return the extracted physical unit from `[unit]` or `(unit)` header annotations
+  unit: (_db: QueryDB, self: SymbolEntry): string | null => {
+    const metadata = self.metadata as CsvMetadata | undefined;
+    if (metadata?.unit) return metadata.unit;
+    const parsedHeader = parseCsvHeaderAnnotation(metadata?.rawHeader ?? self.name);
+    return parsedHeader.unit ?? null;
+  },
+  variability: (): string => "constant",
+  causality: (): string => "local",
+  isOuter: (): boolean => false,
+  isInner: (): boolean => false,
+  isProtected: (): boolean => false,
+  isFinal: (): boolean => false,
+  // Return raw numeric array dimensions attached by the workspace indexer
+  resolvedArrayDimensions: (_db: QueryDB, self: SymbolEntry): number[] | null => {
+    const metadata = self.metadata as CsvMetadata | undefined;
+    const dims = metadata?.arrayDimensions;
+    return dims ?? null;
+  },
+  // Wrap numeric dimensions as literal expressions for the Modelica flattener
+  arrayDimensions: (_db: QueryDB, self: SymbolEntry) => {
+    const metadata = self.metadata as CsvMetadata | undefined;
+    const dims = metadata?.arrayDimensions;
+    if (!dims || dims.length === 0) return null;
+    return dims.map((d: number) => ({ kind: "literal", value: d }));
+  },
+  // Expose parsed CSV cell/column values as a constant literal binding expression
+  effectiveModification: (_db: QueryDB, self: SymbolEntry) => {
+    const metadata = self.metadata as CsvMetadata | undefined;
+    const csvValue = metadata?.csvValue;
+    if (csvValue === undefined) return null;
+    return {
+      args: [],
+      bindingExpression: { kind: "literal", value: csvValue },
+    };
+  },
+};
 
 /**
  * ModelScript CSV language specification.
@@ -133,16 +206,20 @@ export const csvLanguage = language({
           instantiate: (db: QueryDB, self: SymbolEntry): SymbolId[] => {
             return db.childrenOf(self.id).map((c) => c.id);
           },
-          // Resolve column component names within the CSV document scope
+          // Resolve column component names within the CSV document scope (by clean name or raw header)
           resolveSimpleName: (db: QueryDB, self: SymbolEntry) => {
             const children = db.childrenOf(self.id);
             const byNameMap = new Map<string, SymbolEntry>();
             for (const child of children) {
               byNameMap.set(child.name, child);
+              const parsed = parseCsvHeaderAnnotation(child.name);
+              if (parsed.name && !byNameMap.has(parsed.name)) {
+                byNameMap.set(parsed.name, child);
+              }
             }
-            return (name: string) => byNameMap.get(name) ?? null;
+            return (name: string) => byNameMap.get(name) ?? byNameMap.get(parseCsvHeaderAnnotation(name).name) ?? null;
           },
-          // Validate header uniqueness, row column counts, numeric cells, and time monotonicity
+          // Validate header uniqueness, row column counts, mixed delimiters, numeric cells, and time monotonicity
           lint__csvTableValidity: (db: QueryDB, self: SymbolEntry) => {
             const text = db["cstText"](self.startOffset, self.endOffset, self);
             if (!text) return null;
@@ -202,52 +279,7 @@ export const csvLanguage = language({
           kind: "Component",
           name: self["syntax"] ?? "", // dummy access to record namePath
         }),
-        queries: {
-          // Resolve the target scalar class (defaults to top-level "Real")
-          resolvedType: (db: QueryDB, self: SymbolEntry): SymbolEntry | null => {
-            const metadata = self.metadata as CsvMetadata | undefined;
-            const typeName = metadata?.typeSpecifier ?? "Real";
-            const entries = db.byName(typeName);
-            return entries.find((e) => e.kind === "Class" && e.parentId === null) ?? null;
-          },
-          // Map the virtual CSV column to its corresponding top-level class symbol ID
-          classInstance: (db: QueryDB, self: SymbolEntry): SymbolId | null => {
-            const metadata = self.metadata as CsvMetadata | undefined;
-            const typeName = metadata?.typeSpecifier ?? "Real";
-            const entries = db.byName(typeName);
-            const classSymbol = entries.find((e) => e.kind === "Class" && e.parentId === null);
-            return classSymbol ? classSymbol.id : null;
-          },
-          variability: (): string => "constant",
-          causality: (): string => "local",
-          isOuter: (): boolean => false,
-          isInner: (): boolean => false,
-          isProtected: (): boolean => false,
-          isFinal: (): boolean => false,
-          // Return raw numeric array dimensions attached by the workspace indexer
-          resolvedArrayDimensions: (_db: QueryDB, self: SymbolEntry): number[] | null => {
-            const metadata = self.metadata as CsvMetadata | undefined;
-            const dims = metadata?.arrayDimensions;
-            return dims ?? null;
-          },
-          // Wrap numeric dimensions as literal expressions for the Modelica flattener
-          arrayDimensions: (_db: QueryDB, self: SymbolEntry) => {
-            const metadata = self.metadata as CsvMetadata | undefined;
-            const dims = metadata?.arrayDimensions;
-            if (!dims || dims.length === 0) return null;
-            return dims.map((d: number) => ({ kind: "literal", value: d }));
-          },
-          // Expose parsed CSV cell/column values as a constant literal binding expression
-          effectiveModification: (_db: QueryDB, self: SymbolEntry) => {
-            const metadata = self.metadata as CsvMetadata | undefined;
-            const csvValue = metadata?.csvValue;
-            if (csvValue === undefined) return null;
-            return {
-              args: [],
-              bindingExpression: { kind: "literal", value: csvValue },
-            };
-          },
-        },
+        queries: csvVirtualComponentQueries,
       }),
   },
 

@@ -8,13 +8,13 @@ Ansatz can be deployed as an independent federated instance, a public flagship c
 
 Ansatz offers targeted deployment profiles to match your infrastructure sizing and operational goals:
 
-| Profile              | Active Containers                                           | Target Use Case                                                              | Database Engine                     | Min. RAM   |
-| :------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------- | :---------------------------------- | :--------- |
-| **`flagship`**       | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` public cluster with dual-domain routing  | SQLite WAL + TimescaleDB            | 4–8 GB     |
-| **`federated`**      | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live IoT simulation telemetry streaming                    | SQLite WAL + TimescaleDB            | 4 GB       |
-| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel`                             | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS          | **SQLite WAL only**                 | **1–2 GB** |
-| **`corporate`**      | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped SCIF, SSO domain allowlist, internal `/docs` | SQLite WAL (+ optional TimescaleDB) | 2–4 GB     |
-| **`quick-tunnel`**   | `caddy`, `web`, `api`, `quick-tunnel`                       | Zero-config demo with ephemeral `trycloudflare.com` URL                      | SQLite WAL only                     | 1.5 GB     |
+| Profile              | Active Containers                                           | Target Use Case                                                                 | Database Engine                     | Min. RAM   |
+| :------------------- | :---------------------------------------------------------- | :------------------------------------------------------------------------------ | :---------------------------------- | :--------- |
+| **`flagship`**       | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` public cluster with dual-domain routing     | SQLite WAL + TimescaleDB            | 4–8 GB     |
+| **`federated`**      | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live IoT simulation telemetry streaming                       | SQLite WAL + TimescaleDB            | 4 GB       |
+| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel`                             | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS             | **SQLite WAL only**                 | **1–2 GB** |
+| **`corporate`**      | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped enclave, SSO domain allowlist, internal `/docs` | SQLite WAL (+ optional TimescaleDB) | 2–4 GB     |
+| **`quick-tunnel`**   | `caddy`, `web`, `api`, `quick-tunnel`                       | Zero-config demo with ephemeral `trycloudflare.com` URL                         | SQLite WAL only                     | 1.5 GB     |
 
 ---
 

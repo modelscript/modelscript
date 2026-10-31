@@ -11,6 +11,7 @@
  */
 
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
+import { evaluateSysML2Expression, extractAtomicComparisons, type SysML2ExprAst } from "./evaluator.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public interfaces
@@ -62,6 +63,31 @@ export function classifyConstraint(lhs: string, expression: string, entryName?: 
   return "static_parameter";
 }
 
+function collectAstIdentifiers(node: SysML2ExprAst, out: Set<string>): void {
+  switch (node.kind) {
+    case "Identifier":
+      out.add(node.name);
+      break;
+    case "UnaryExpr":
+      collectAstIdentifiers(node.operand, out);
+      break;
+    case "BinaryExpr":
+      collectAstIdentifiers(node.left, out);
+      collectAstIdentifiers(node.right, out);
+      break;
+    case "ConditionalExpr":
+      collectAstIdentifiers(node.condition, out);
+      collectAstIdentifiers(node.thenExpr, out);
+      collectAstIdentifiers(node.elseExpr, out);
+      break;
+    case "CallExpr":
+      for (const a of node.args) collectAstIdentifiers(a, out);
+      break;
+    default:
+      break;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Constraint extraction
 // ─────────────────────────────────────────────────────────────────────
@@ -70,8 +96,9 @@ export function classifyConstraint(lhs: string, expression: string, entryName?: 
  * Extract constraints from SysML2 analysis/verification cases.
  *
  * Scans the QueryDB for constraint entries within analysis definitions,
- * parses their CST text into comparison expressions, and resolves RHS
- * values from the requirement hierarchy.
+ * parses their CST text into comparison expressions (including compound
+ * boolean `and`/`or`/`implies`/`not` blocks and arithmetic RHS expressions),
+ * and resolves RHS values from the requirement hierarchy.
  *
  * @param db      The polyglot QueryDB containing the SysML2 index
  * @param filter  Optional analysis/package name to restrict extraction to
@@ -96,28 +123,76 @@ export function extractSysML2Constraints(db: QueryDB, filter?: string): Extracte
     const cstText = db.cstText(entry.startOffset, entry.endOffset, entry);
     if (!cstText) continue;
 
-    // Try to parse a comparison from the CST text
-    const comp = parseComparisonFromText(cstText);
-    if (!comp) continue;
+    // Extract all atomic comparisons from compound constraint blocks
+    const atomicComps = extractAtomicComparisons(cstText);
+    const comps =
+      atomicComps.length > 0
+        ? atomicComps.map((a) => ({
+            lhs: a.lhs,
+            op: a.negated
+              ? a.operator === "<="
+                ? ">"
+                : a.operator === "<"
+                  ? ">="
+                  : a.operator === ">="
+                    ? "<"
+                    : a.operator === ">"
+                      ? "<="
+                      : a.operator
+              : a.operator,
+            rhs: a.rhs,
+            rhsAst: a.rhsAst,
+          }))
+        : (() => {
+            const single = parseComparisonFromText(cstText);
+            return single ? [{ ...single, rhsAst: undefined }] : [];
+          })();
 
-    // Try to resolve the RHS to a numeric value
-    const rhsNum = parseFloat(String(comp.rhs));
-    const resolvedRhs = !isNaN(rhsNum) && isFinite(rhsNum) ? rhsNum : resolveRhsFromDb(db, entry, String(comp.rhs));
-
-    // Find the parent requirement name (if any)
     const reqName = findRequirementName(db, entry);
-    const kind = classifyConstraint(comp.lhs, cstText, entry.name);
 
-    constraints.push({
-      expression: `${comp.lhs} ${comp.op} ${comp.rhs}`,
-      operator: comp.op as ExtractedConstraint["operator"],
-      lhs: comp.lhs,
-      rhs: resolvedRhs,
-      source: "sysml2",
-      requirementName: reqName,
-      constraintName: entry.name,
-      kind,
-    });
+    for (const comp of comps) {
+      if (comp.op === "!=") continue;
+      let resolvedRhs: number | string = comp.rhs;
+
+      if (comp.rhsAst) {
+        const idents = new Set<string>();
+        collectAstIdentifiers(comp.rhsAst, idents);
+        const env: Record<string, number> = {};
+        let allNumeric = true;
+        for (const id of idents) {
+          const val = resolveRhsFromDb(db, entry, id);
+          if (typeof val === "number" && !Number.isNaN(val)) {
+            env[id] = val;
+          } else {
+            allNumeric = false;
+          }
+        }
+        if (allNumeric) {
+          const evalVal = evaluateSysML2Expression(comp.rhsAst, env);
+          if (typeof evalVal === "number" && Number.isFinite(evalVal)) {
+            resolvedRhs = evalVal;
+          }
+        } else if (idents.size === 1) {
+          resolvedRhs = resolveRhsFromDb(db, entry, String(comp.rhs));
+        }
+      } else {
+        const rhsNum = parseFloat(String(comp.rhs));
+        resolvedRhs = !isNaN(rhsNum) && isFinite(rhsNum) ? rhsNum : resolveRhsFromDb(db, entry, String(comp.rhs));
+      }
+
+      const kind = classifyConstraint(comp.lhs, cstText, entry.name);
+
+      constraints.push({
+        expression: `${comp.lhs} ${comp.op} ${comp.rhs}`,
+        operator: comp.op as ExtractedConstraint["operator"],
+        lhs: comp.lhs,
+        rhs: resolvedRhs,
+        source: "sysml2",
+        requirementName: reqName,
+        constraintName: entry.name,
+        kind,
+      });
+    }
   }
 
   return constraints;

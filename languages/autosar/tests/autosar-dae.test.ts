@@ -93,9 +93,10 @@ describe("AUTOSAR DAE Arena Lowering (@modelscript/autosar)", () => {
     const model = parseArxml(POWERTRAIN_ARXML);
     const dae = lowerAutosarToDae(model, { includePlantModel: true });
 
-    // Validate variables were emitted in linear memory arena
+    // Validate variables were emitted in linear memory arena and DAE is structurally square
     assert.ok(dae.varCount >= 5);
     assert.ok(dae.eqCount >= 3);
+    assert.equal(dae.varCount, dae.eqCount, "AUTOSAR DAE lowering must be structurally square");
 
     // Check variable names
     const varNames: string[] = [];

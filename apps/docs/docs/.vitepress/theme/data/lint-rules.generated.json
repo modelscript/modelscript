@@ -3266,14 +3266,20 @@
       {
         "code": "M7401",
         "rule": "unconnected-mandatory-port",
-        "severity": "warning",
-        "message": "Required port '<portName>' on component prototype '<compName>' is not connected by any assembly connector."
+        "severity": "error",
+        "message": "Required port '<portName>' on component '<compName>' (<typeName>) is unconnected in composition '<compSwc>'."
       },
       {
         "code": "M7402",
         "rule": "interface-mismatch",
         "severity": "error",
-        "message": "Connector interface mismatch: provider port '<pPort>' uses interface '<pIf>', but requirer port '<rPort>' expects '<rIf>'."
+        "message": "Interface mismatch in connector '<connName>': Provider port '<pPort>' provides '<pIf>' while requester port '<rPort>' requires '<rIf>'."
+      },
+      {
+        "code": "M7403",
+        "rule": "data-element-type-mismatch",
+        "severity": "warning",
+        "message": "Data element '<deName>' in interface '<ifName>' has no data type reference."
       },
       {
         "code": "M7403",
@@ -3294,10 +3300,22 @@
         "message": "Invalid data type mapping for '<dtName>': <reason>."
       },
       {
+        "code": "M7405",
+        "rule": "wcet-budget-overflow",
+        "severity": "error",
+        "message": "Execution time WCET (<wcetMs> ms) of runnable '<runnableName>' exceeds its timing event period (<periodMs> ms)."
+      },
+      {
         "code": "M7406",
         "rule": "circular-composition-dependency",
         "severity": "error",
         "message": "Circular software component composition dependency detected: <path>."
+      },
+      {
+        "code": "M7406",
+        "rule": "overlapping-pdu-bits",
+        "severity": "error",
+        "message": "Signals '<sigA>' and '<sigB>' overlap bit index <bitIdx> in PDU '<pduName>'."
       },
       {
         "code": "M7407",
@@ -3306,10 +3324,34 @@
         "message": "Variable data prototype '<variable>' lacks a declared SwAddrMethod memory section mapping."
       },
       {
+        "code": "M7407",
+        "rule": "pdu-exceeds-frame-capacity",
+        "severity": "error",
+        "message": "PDU '<pduName>' length (<pduLen> bytes) exceeds CAN frame '<frameName>' payload capacity (<frameLen> bytes)."
+      },
+      {
+        "code": "M7408",
+        "rule": "cyclic-runnable-dependency",
+        "severity": "error",
+        "message": "Cyclic data dependency detected between runnables: '<value>'."
+      },
+      {
         "code": "M7408",
         "rule": "incompatible-port-interface-direction",
         "severity": "error",
         "message": "Port '<portName>' interface direction violation: <reason>."
+      },
+      {
+        "code": "M7409",
+        "rule": "missing-internal-behavior",
+        "severity": "warning",
+        "message": "Atomic software component '<swcName>' lacks internal behavior definition."
+      },
+      {
+        "code": "M7410",
+        "rule": "untriggered-runnable",
+        "severity": "info",
+        "message": "Runnable entity '<rName>' in SWC '<swcName>' has no associated RTE trigger event."
       }
     ]
   },
@@ -3931,6 +3973,18 @@
         "rule": "phase-count-mismatch",
         "severity": "error",
         "message": "Element '<elemName>' (<elemPhases> phases) connected to bus '<busName>' with different phase count (<busPhases>)."
+      },
+      {
+        "code": "M8402",
+        "rule": "transformer-impedance-zero",
+        "severity": "error",
+        "message": "Transformer '<xfmrName>' specifies non-positive leakage reactance (xhl=<xhl>); must be > 0."
+      },
+      {
+        "code": "M8403",
+        "rule": "load-pf-out-of-range",
+        "severity": "warning",
+        "message": "Load '<loadName>' specifies power factor (<pf>) outside valid range (0 < |pf| <= 1.0)."
       },
       {
         "code": "M8403",

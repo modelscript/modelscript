@@ -53,6 +53,28 @@ export function lintSimpackModel(model: SimpackModel): SimpackDiagnostic[] {
         message: SimpackErrorCode.UNKNOWN_TO_MARKER.message(id, joint.toMarker),
       });
     }
+    if (
+      joint.baumgarteAlpha !== undefined &&
+      (joint.baumgarteAlpha <= 0 || !Number.isFinite(joint.baumgarteAlpha) || joint.baumgarteAlpha > 1e5)
+    ) {
+      diagnostics.push({
+        code: SimpackErrorCode.BAUMGARTE_DIVERGENCE.code,
+        rule: SimpackErrorCode.BAUMGARTE_DIVERGENCE.rule,
+        severity: SimpackErrorCode.BAUMGARTE_DIVERGENCE.severity,
+        message: SimpackErrorCode.BAUMGARTE_DIVERGENCE.message(id, "alpha", joint.baumgarteAlpha),
+      });
+    }
+    if (
+      joint.baumgarteBeta !== undefined &&
+      (joint.baumgarteBeta <= 0 || !Number.isFinite(joint.baumgarteBeta) || joint.baumgarteBeta > 1e5)
+    ) {
+      diagnostics.push({
+        code: SimpackErrorCode.BAUMGARTE_DIVERGENCE.code,
+        rule: SimpackErrorCode.BAUMGARTE_DIVERGENCE.rule,
+        severity: SimpackErrorCode.BAUMGARTE_DIVERGENCE.severity,
+        message: SimpackErrorCode.BAUMGARTE_DIVERGENCE.message(id, "beta", joint.baumgarteBeta),
+      });
+    }
   }
 
   const mobility = analyzeMobility(model);

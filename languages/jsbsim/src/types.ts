@@ -75,11 +75,33 @@ export interface JsbsimFcsChannel {
   range?: JsbsimRange | undefined;
 }
 
+export interface JsbsimAeroTable {
+  independentVars: {
+    lookup?: "row" | "column" | "table" | undefined;
+    property: string;
+  }[];
+  breakpointsRow: number[];
+  breakpointsCol?: number[] | undefined;
+  values: number[][];
+}
+
+export type JsbsimAeroExpr =
+  | { kind: "value"; value: number }
+  | { kind: "property"; property: string }
+  | { kind: "table"; table: JsbsimAeroTable }
+  | { kind: "product"; children: JsbsimAeroExpr[] }
+  | { kind: "sum"; children: JsbsimAeroExpr[] }
+  | { kind: "difference"; children: JsbsimAeroExpr[] }
+  | { kind: "quotient"; children: JsbsimAeroExpr[] }
+  | { kind: "pow"; children: JsbsimAeroExpr[] };
+
 export interface JsbsimAeroCoeff {
   name: string;
   axis: "LIFT" | "DRAG" | "SIDE" | "ROLL" | "PITCH" | "YAW";
   baseValue: number;
   terms: { property: string; factor: number }[];
+  expr?: JsbsimAeroExpr | undefined;
+  table?: JsbsimAeroTable | undefined;
   range?: JsbsimRange | undefined;
 }
 

@@ -70,6 +70,31 @@ describe("@modelscript/fea LSP Services & DAE Lowering", () => {
     assert.ok(codes.includes("M7401"), "Should detect M7401: zero-elastic-modulus");
     assert.ok(codes.includes("M7402"), "Should detect M7402: poisson-ratio-limit");
     assert.ok(codes.includes("M7407"), "Should detect M7407: negative-yield-stress");
+
+    // Verify diagnostics point to actual material line (> 0) rather than hardcoded line 0
+    const m7401 = diags.find((d) => d.code === "M7401");
+    assert.ok(m7401 && m7401.range.start.line > 0, `Expected M7401 line > 0, got ${m7401?.range.start.line}`);
+  });
+
+  test("detects M7405 when mesh has elements but no material definition", () => {
+    const noMatDeck = `*HEADING
+Unassigned Material Mesh
+*NODE
+1, 0.0, 0.0, 0.0
+2, 1.0, 0.0, 0.0
+3, 0.0, 1.0, 0.0
+4, 0.0, 0.0, 1.0
+*ELEMENT, TYPE=C3D4, ELSET=PART_A
+10, 1, 2, 3, 4
+*BOUNDARY
+1, 1, 3, 0.0
+2, 1, 3, 0.0
+3, 1, 3, 0.0
+`;
+    const diags = validateFea(noMatDeck, "nomat.inp");
+    const m7405 = diags.find((d) => d.code === "M7405");
+    assert.ok(m7405, "Should emit M7405 for missing material definition");
+    assert.ok(m7405.range.start.line > 0, "M7405 should report element line number > 0");
   });
 
   test("extracts document symbols hierarchy for materials, element sets, and mesh counts", () => {

@@ -230,14 +230,18 @@ function checkGimbalLock(dataset: AdamsDataset, diagnostics: AdamsDiagnostic[]):
   for (const marker of dataset.markers.values()) {
     if (!marker.useEuler) continue;
 
-    // In Euler 3-1-3: theta near 0 deg or 180 deg is singular
+    // In Euler 3-1-3: theta near 0 deg (with non-zero collinear psi & phi) or 180 deg is singular
     // In Tait-Bryan 1-2-3: pitch near +/- 90 deg is singular
     const pitchDeg = Math.abs(marker.orientation.y * (180.0 / Math.PI));
-    if (Math.abs(pitchDeg - 90.0) < 1.0) {
+    const hasCollinearZRotations =
+      pitchDeg < 1.0 && Math.abs(marker.orientation.x) > 1e-6 && Math.abs(marker.orientation.z) > 1e-6;
+    const isNear90 = Math.abs(pitchDeg - 90.0) < 1.0;
+    const isNear180 = Math.abs(pitchDeg - 180.0) < 1.0;
+    if (isNear90 || isNear180 || hasCollinearZRotations) {
       diagnostics.push({
         code: "M7302",
         severity: "warning",
-        message: `Euler orientation of marker '${marker.id}' is near singularity (pitch angle: ${pitchDeg.toFixed(2)} deg).`,
+        message: `Euler orientation of marker '${marker.id}' is near singularity (theta/pitch angle: ${pitchDeg.toFixed(2)} deg).`,
         range: marker.range ?? DEFAULT_RANGE,
       });
     }

@@ -24,7 +24,10 @@ export interface CLintOptions {
 
 export function lintCSource(source: string, options: CLintOptions = {}): CDiagnostic[] {
   const diags: CDiagnostic[] = [];
-  const lines = source.split(/\r?\n/);
+  const strippedSource = source
+    .replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\r\n]/g, " "))
+    .replace(/\/\/[^\r\n]*/g, "");
+  const lines = strippedSource.split(/\r?\n/);
 
   // 1. M8402: Constant division or modulo by zero: / 0 or % 0
   for (let idx = 0; idx < lines.length; idx++) {

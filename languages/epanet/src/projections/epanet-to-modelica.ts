@@ -70,19 +70,51 @@ export function epanetToModelica(net: EpanetNetwork): string {
     const n1 = p.node1.toLowerCase();
     const n2 = p.node2.toLowerCase();
 
-    // Check if node1 is reservoir/tank
+    // Check if node1 is reservoir/tank/demand sink
     const isRes1 = net.reservoirs.some((r) => r.id.toLowerCase() === n1);
     const isTank1 = net.tanks.some((t) => t.id.toLowerCase() === n1);
+    const isSink1 = net.junctions.some((j) => j.id.toLowerCase() === n1 && j.demand > 0);
     if (isRes1) {
       lines.push(`  connect(res_${p.node1.replace(/[^a-zA-Z0-9_]/g, "_")}.ports[1], pipe_${cleanPipeId}.port_a);`);
     } else if (isTank1) {
       lines.push(`  connect(tank_${p.node1.replace(/[^a-zA-Z0-9_]/g, "_")}.ports[1], pipe_${cleanPipeId}.port_a);`);
+    } else if (isSink1) {
+      lines.push(`  connect(sink_${p.node1.replace(/[^a-zA-Z0-9_]/g, "_")}.ports[1], pipe_${cleanPipeId}.port_a);`);
     }
 
-    // Check if node2 is sink
+    // Check if node2 is reservoir/tank/demand sink
+    const isRes2 = net.reservoirs.some((r) => r.id.toLowerCase() === n2);
+    const isTank2 = net.tanks.some((t) => t.id.toLowerCase() === n2);
     const isSink2 = net.junctions.some((j) => j.id.toLowerCase() === n2 && j.demand > 0);
     if (isSink2) {
       lines.push(`  connect(pipe_${cleanPipeId}.port_b, sink_${p.node2.replace(/[^a-zA-Z0-9_]/g, "_")}.ports[1]);`);
+    } else if (isRes2) {
+      lines.push(`  connect(pipe_${cleanPipeId}.port_b, res_${p.node2.replace(/[^a-zA-Z0-9_]/g, "_")}.ports[1]);`);
+    } else if (isTank2) {
+      lines.push(`  connect(pipe_${cleanPipeId}.port_b, tank_${p.node2.replace(/[^a-zA-Z0-9_]/g, "_")}.ports[1]);`);
+    }
+  }
+
+  // Connect incident pipe ports at zero-demand junctions
+  for (const j of net.junctions) {
+    if (j.demand <= 0) {
+      const jId = j.id.toLowerCase();
+      const incidentPorts: string[] = [];
+      for (const p of net.pipes) {
+        const cleanPipeId = p.id.replace(/[^a-zA-Z0-9_]/g, "_");
+        if (p.node2.toLowerCase() === jId) {
+          incidentPorts.push(`pipe_${cleanPipeId}.port_b`);
+        }
+        if (p.node1.toLowerCase() === jId) {
+          incidentPorts.push(`pipe_${cleanPipeId}.port_a`);
+        }
+      }
+      if (incidentPorts.length >= 2) {
+        const anchorPort = incidentPorts[0]!;
+        for (let k = 1; k < incidentPorts.length; k++) {
+          lines.push(`  connect(${anchorPort}, ${incidentPorts[k]!});`);
+        }
+      }
     }
   }
 

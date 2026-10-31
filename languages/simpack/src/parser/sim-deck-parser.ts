@@ -136,12 +136,14 @@ export function parseSimDeck(source: string, defaultName: string = "SimpackModel
       });
     }
 
-    // $JOINT <id> <type> <fromMarker> <toMarker>
+    // $JOINT <id> <type> <fromMarker> <toMarker> [alpha] [beta]
     else if ((cmd === "joint" || cmd === "$joint") && tokens.length >= 5) {
       const id = tokens[1] ?? `j_${model.joints.size + 1}`;
       const type = (tokens[2]?.toLowerCase() ?? "revolute") as SimpackJoint["type"];
       const fromMarker = tokens[3] ?? "";
       const toMarker = tokens[4] ?? "";
+      const baumgarteAlpha = tokens[5] !== undefined ? evaluateMathExpr(tokens[5], scope, 0) : undefined;
+      const baumgarteBeta = tokens[6] !== undefined ? evaluateMathExpr(tokens[6], scope, 0) : undefined;
 
       model.joints.set(id, {
         id,
@@ -150,6 +152,8 @@ export function parseSimDeck(source: string, defaultName: string = "SimpackModel
         fromMarker,
         toMarker,
         dofCount: type === "revolute" ? 1 : 6,
+        baumgarteAlpha,
+        baumgarteBeta,
       });
     }
 
@@ -172,15 +176,28 @@ export function parseSimDeck(source: string, defaultName: string = "SimpackModel
       const cx = evaluateMathExpr(tokens[7], scope, 0);
       const cy = evaluateMathExpr(tokens[8], scope, 0);
       const cz = evaluateMathExpr(tokens[9], scope, 0);
+      const krx = evaluateMathExpr(tokens[10], scope, 0);
+      const kry = evaluateMathExpr(tokens[11], scope, 0);
+      const krz = evaluateMathExpr(tokens[12], scope, 0);
+      const crx = evaluateMathExpr(tokens[13], scope, 0);
+      const cry = evaluateMathExpr(tokens[14], scope, 0);
+      const crz = evaluateMathExpr(tokens[15], scope, 0);
+      const hasRot = krx !== 0 || kry !== 0 || krz !== 0 || crx !== 0 || cry !== 0 || crz !== 0;
 
       model.forces.set(id, {
         id,
         name: id,
-        type: "spring_damper",
+        type: cmd.includes("bushing") || hasRot ? "bushing" : "spring_damper",
         markerA,
         markerB,
         stiffness: { x: kx, y: ky, z: kz },
         damping: { x: cx, y: cy, z: cz },
+        ...(hasRot
+          ? {
+              rotationalStiffness: { x: krx, y: kry, z: krz },
+              rotationalDamping: { x: crx, y: cry, z: crz },
+            }
+          : {}),
       });
     }
   }

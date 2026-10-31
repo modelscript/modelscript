@@ -143,38 +143,49 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   lexerCode += `\nexport let is_extra_token: usize = 0;\n`;
   lexerCode += `export function initExtras(): void {\n`;
   lexerCode += `  if (is_extra_token == 0) {\n    let extraCap: u32 = ((MAX_TERMINAL_ID as u32) + 1) > 2048 ? ((MAX_TERMINAL_ID as u32) + 1) : 2048;\n    is_extra_token = atomicChunkAlloc(extraCap);\n    memory.fill(is_extra_token, 0, extraCap);\n  }\n`;
+  const findUnderlyingTokenValue = (r: any): any => {
+    if (!r) return undefined;
+    const t = (r.type || "").toUpperCase();
+    if (t === "TOKEN") {
+      return r.value !== undefined ? r.value : (r.arg ?? r.child ?? r.children);
+    }
+    if (r.rule) return findUnderlyingTokenValue(r.rule);
+    if (r.arg) return findUnderlyingTokenValue(r.arg);
+    if (r.children && r.children.length === 1) return findUnderlyingTokenValue(r.children[0]);
+    if (r.args && r.args.length === 1) return findUnderlyingTokenValue(r.args[0]);
+    return undefined;
+  };
   if (normalized.extras) {
     for (const rule of normalized.extras) {
       const rType = (rule.type || "").toUpperCase();
-      if (rType === "TOKEN") {
-        const ruleVal =
-          (rule as any).value !== undefined ? (rule as any).value : (rule as any).child || (rule as any).children;
-        let val = ruleVal ? ruleVal.toString() : "";
-        if (typeof (rule as any).value === "string") val = `"${(rule as any).value}"`;
-        const mappedInt =
-          normalized.symToInt.get(val) ??
-          ((rule as any).name ? normalized.symToInt.get((rule as any).name) : undefined);
-        if (mappedInt !== undefined) {
-          lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
-        }
-      } else if (rType === "SYMBOL") {
+      if (rType === "SYMBOL") {
         const symName = (rule as any).name || (rule as any).value;
-        // Find evaluated rule that corresponds to this symbol
         const evalRule = normalized.evaluatedRules[symName];
-        if (evalRule && evalRule.type === "TOKEN") {
-          const ruleVal =
-            (evalRule as any).value !== undefined
-              ? (evalRule as any).value
-              : (evalRule as any).child || (evalRule as any).children;
-          let val = ruleVal ? ruleVal.toString() : symName;
-          if (typeof (evalRule as any).value === "string") val = `"${(evalRule as any).value}"`;
+        const tokVal = findUnderlyingTokenValue(evalRule);
+        if (tokVal !== undefined) {
+          let val = tokVal ? tokVal.toString() : symName;
+          if (typeof tokVal === "string" && !(val.startsWith("/") && val.endsWith("/"))) {
+            val = `"${tokVal}"`;
+          }
           const mappedInt = normalized.symToInt.get(val) ?? normalized.symToInt.get(symName);
           if (mappedInt !== undefined) {
             lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
           }
-        } else {
-          // If the symbol resolves to a regex, symToInt will have the symName or regex string
-          const mappedInt = normalized.symToInt.get(symName);
+        }
+        const symInt = normalized.symToInt.get(symName);
+        if (symInt !== undefined) {
+          lexerCode += `  store<u8>(is_extra_token + <u32>${symInt}, 1);\n`;
+        }
+      } else {
+        const tokVal = findUnderlyingTokenValue(rule);
+        if (tokVal !== undefined) {
+          let val = tokVal ? tokVal.toString() : "";
+          if (typeof tokVal === "string" && !(val.startsWith("/") && val.endsWith("/"))) {
+            val = `"${tokVal}"`;
+          }
+          const mappedInt =
+            normalized.symToInt.get(val) ??
+            ((rule as any).name ? normalized.symToInt.get((rule as any).name) : undefined);
           if (mappedInt !== undefined) {
             lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
           }

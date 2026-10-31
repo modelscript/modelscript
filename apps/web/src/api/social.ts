@@ -395,7 +395,7 @@ export type AiDraftTone = "technical" | "concise" | "expand" | "hashtags";
 export type AiPolishMode = "polish" | "concise" | "expand" | "hashtags";
 
 export interface AiDraftRequest {
-  artifactId?: number | undefined;
+  artifactId?: number | null | undefined;
   artifactIds?: number[] | undefined;
   artifactMeta?:
     | {
@@ -414,6 +414,7 @@ export interface AiDraftResponse {
   notebookTitle: string;
   notebookSummary: string;
   domain: string;
+  highlights?: string[] | undefined;
   suggestedHashtags: string[];
   provider: string;
   model: string;

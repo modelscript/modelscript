@@ -150,7 +150,115 @@ export function lintSwmm(deck: SwmmDeck): SwmmDiagnostic[] {
     }
   }
 
-  // Check Isolated Junctions: M8210
+  // Check Duplicate Node IDs: M8206
+  const emittedDupNodes = new Set<string>();
+  for (const dup of deck.duplicateNodes ?? []) {
+    emittedDupNodes.add(`${dup.id}:${dup.range.startLine}`);
+    diags.push({
+      code: SwmmErrorCode.DUPLICATE_NODE_ID.code,
+      rule: SwmmErrorCode.DUPLICATE_NODE_ID.rule,
+      severity: SwmmErrorCode.DUPLICATE_NODE_ID.severity,
+      message: SwmmErrorCode.DUPLICATE_NODE_ID.message(dup.id),
+      range: dup.range,
+    });
+  }
+  const crossSectionNodeSeen = new Set<string>();
+  for (const [id, j] of deck.junctions) {
+    crossSectionNodeSeen.add(id);
+    void j;
+  }
+  for (const [id, o] of deck.outfalls) {
+    if (crossSectionNodeSeen.has(id) && !emittedDupNodes.has(`${id}:${o.range.startLine}`)) {
+      diags.push({
+        code: SwmmErrorCode.DUPLICATE_NODE_ID.code,
+        rule: SwmmErrorCode.DUPLICATE_NODE_ID.rule,
+        severity: SwmmErrorCode.DUPLICATE_NODE_ID.severity,
+        message: SwmmErrorCode.DUPLICATE_NODE_ID.message(id),
+        range: o.range,
+      });
+    }
+    crossSectionNodeSeen.add(id);
+  }
+  for (const [id, s] of deck.storage) {
+    if (crossSectionNodeSeen.has(id) && !emittedDupNodes.has(`${id}:${s.range.startLine}`)) {
+      diags.push({
+        code: SwmmErrorCode.DUPLICATE_NODE_ID.code,
+        rule: SwmmErrorCode.DUPLICATE_NODE_ID.rule,
+        severity: SwmmErrorCode.DUPLICATE_NODE_ID.severity,
+        message: SwmmErrorCode.DUPLICATE_NODE_ID.message(id),
+        range: s.range,
+      });
+    }
+    crossSectionNodeSeen.add(id);
+  }
+
+  // Check Duplicate Link IDs: M8207
+  const emittedDupLinks = new Set<string>();
+  for (const dup of deck.duplicateLinks ?? []) {
+    emittedDupLinks.add(`${dup.id}:${dup.range.startLine}`);
+    diags.push({
+      code: SwmmErrorCode.DUPLICATE_LINK_ID.code,
+      rule: SwmmErrorCode.DUPLICATE_LINK_ID.rule,
+      severity: SwmmErrorCode.DUPLICATE_LINK_ID.severity,
+      message: SwmmErrorCode.DUPLICATE_LINK_ID.message(dup.id),
+      range: dup.range,
+    });
+  }
+  const crossSectionLinkSeen = new Set<string>();
+  for (const [id] of deck.conduits) crossSectionLinkSeen.add(id);
+  for (const [id, p] of deck.pumps) {
+    if (crossSectionLinkSeen.has(id) && !emittedDupLinks.has(`${id}:${p.range.startLine}`)) {
+      diags.push({
+        code: SwmmErrorCode.DUPLICATE_LINK_ID.code,
+        rule: SwmmErrorCode.DUPLICATE_LINK_ID.rule,
+        severity: SwmmErrorCode.DUPLICATE_LINK_ID.severity,
+        message: SwmmErrorCode.DUPLICATE_LINK_ID.message(id),
+        range: p.range,
+      });
+    }
+    crossSectionLinkSeen.add(id);
+  }
+  for (const [id, o] of deck.orifices) {
+    if (crossSectionLinkSeen.has(id) && !emittedDupLinks.has(`${id}:${o.range.startLine}`)) {
+      diags.push({
+        code: SwmmErrorCode.DUPLICATE_LINK_ID.code,
+        rule: SwmmErrorCode.DUPLICATE_LINK_ID.rule,
+        severity: SwmmErrorCode.DUPLICATE_LINK_ID.severity,
+        message: SwmmErrorCode.DUPLICATE_LINK_ID.message(id),
+        range: o.range,
+      });
+    }
+    crossSectionLinkSeen.add(id);
+  }
+  for (const [id, w] of deck.weirs) {
+    if (crossSectionLinkSeen.has(id) && !emittedDupLinks.has(`${id}:${w.range.startLine}`)) {
+      diags.push({
+        code: SwmmErrorCode.DUPLICATE_LINK_ID.code,
+        rule: SwmmErrorCode.DUPLICATE_LINK_ID.rule,
+        severity: SwmmErrorCode.DUPLICATE_LINK_ID.severity,
+        message: SwmmErrorCode.DUPLICATE_LINK_ID.message(id),
+        range: w.range,
+      });
+    }
+    crossSectionLinkSeen.add(id);
+  }
+
+  // Check Outfalls: M8204
+  const validOutfallTypes = new Set(["FREE", "NORMAL", "FIXED", "TIDAL"]);
+  for (const [id, o] of deck.outfalls) {
+    const rawT = (o.rawType ?? o.type).toUpperCase();
+    if (!validOutfallTypes.has(rawT)) {
+      diags.push({
+        code: SwmmErrorCode.UNSUPPORTED_OUTFALL_TYPE.code,
+        rule: SwmmErrorCode.UNSUPPORTED_OUTFALL_TYPE.rule,
+        severity: SwmmErrorCode.UNSUPPORTED_OUTFALL_TYPE.severity,
+        message: SwmmErrorCode.UNSUPPORTED_OUTFALL_TYPE.message(id, rawT),
+        range: o.range,
+      });
+    }
+  }
+
+  // Check Isolated Junctions (M8210) & Surcharge Overflow Risk (M8205)
   for (const [id, j] of deck.junctions) {
     if (!connectedNodes.has(id)) {
       diags.push({
@@ -160,6 +268,32 @@ export function lintSwmm(deck: SwmmDeck): SwmmDiagnostic[] {
         message: SwmmErrorCode.ISOLATED_NETWORK_NODE.message(id),
         range: j.range,
       });
+    }
+
+    if (j.maxDepth > 0.0) {
+      const rimElev = j.elevation + j.maxDepth;
+      let maxCrownElev = -Infinity;
+      for (const [cId, c] of deck.conduits) {
+        if (c.inletNode === id || c.outletNode === id) {
+          const xsec = deck.crossSections.get(cId);
+          if (xsec) {
+            const offset = c.inletNode === id ? (c.inOffset ?? 0.0) : (c.outOffset ?? 0.0);
+            const crown = j.elevation + offset + xsec.geom1;
+            if (crown > maxCrownElev) {
+              maxCrownElev = crown;
+            }
+          }
+        }
+      }
+      if (maxCrownElev > rimElev) {
+        diags.push({
+          code: SwmmErrorCode.SURCHARGE_OVERFLOW_RISK.code,
+          rule: SwmmErrorCode.SURCHARGE_OVERFLOW_RISK.rule,
+          severity: SwmmErrorCode.SURCHARGE_OVERFLOW_RISK.severity,
+          message: SwmmErrorCode.SURCHARGE_OVERFLOW_RISK.message(id, rimElev, maxCrownElev),
+          range: j.range,
+        });
+      }
     }
   }
 

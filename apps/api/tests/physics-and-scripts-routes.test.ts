@@ -255,6 +255,213 @@ test("Physics, Scripts, and Instance Lifecycle REST Routes", async (t) => {
     assert.notStrictEqual(resStreamAuthQuery.status, 401);
   });
 
+  await t.test("Studies: SharePoint-style Study Template Gallery, Facets, and Custom Authoring", async () => {
+    const resGallery = await request(app).get("/api/v1/studies/templates");
+    assert.strictEqual(resGallery.status, 200);
+    assert.ok(Array.isArray(resGallery.body.templates));
+    assert.ok(Array.isArray(resGallery.body.studyDefinitions));
+    assert.ok(resGallery.body.studyDefinitions.length >= 13);
+    assert.ok(resGallery.body.facets?.bySource?.official >= 8);
+    assert.ok(resGallery.body.facets?.bySource?.package >= 5);
+
+    // Filter by package-contributed studies
+    const resPkgOnly = await request(app).get("/api/v1/studies/templates?sourceType=package");
+    assert.strictEqual(resPkgOnly.status, 200);
+    assert.ok(resPkgOnly.body.studyDefinitions.every((sd: { sourceType: string }) => sd.sourceType === "package"));
+
+    // Filter by Monte Carlo kind
+    const resMcOnly = await request(app).get("/api/v1/studies/templates?kind=monte-carlo");
+    assert.strictEqual(resMcOnly.status, 200);
+    assert.ok(resMcOnly.body.studyDefinitions.length >= 2);
+    assert.ok(resMcOnly.body.studyDefinitions.every((sd: { kind: string }) => sd.kind === "monte-carlo"));
+
+    // Author a new custom Study Template
+    const resCreate = await request(app)
+      .post("/api/v1/studies/templates")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        name: "Thermal Shock Reliability Audit",
+        slug: "thermal-shock-reliability-audit",
+        description: "Evaluates cyclic thermal fatigue and solder joint strain under MIL-STD-883.",
+        kind: "parameter-sweep",
+        category: "verification",
+        packageName: "@aero/avionics-reliability",
+        packageVersion: "1.2.0",
+        tags: ["mil-std-883", "thermal-fatigue", "sweep"],
+      });
+    assert.strictEqual(resCreate.status, 201);
+    assert.strictEqual(resCreate.body.slug, "thermal-shock-reliability-audit");
+
+    // Fetch by slug
+    const resDetail = await request(app).get("/api/v1/jobs/templates/thermal-shock-reliability-audit");
+    assert.strictEqual(resDetail.status, 200);
+    assert.strictEqual(resDetail.body.template.slug, "thermal-shock-reliability-audit");
+    assert.strictEqual(resDetail.body.studyDefinition.packageName, "@aero/avionics-reliability");
+    assert.ok(Array.isArray(resDetail.body.compatibleModels));
+  });
+
+  await t.test("Studies: Compatible Models Discovery, Source Inspection & Full Study Run Execution", async () => {
+    const resCompat = await request(app).get("/api/v1/jobs/compatible-models?templateSlug=ieee-2800-frt-compliance");
+    assert.strictEqual(resCompat.status, 200);
+    assert.ok(Array.isArray(resCompat.body.models));
+    assert.ok(resCompat.body.models.length >= 1);
+
+    const resInspect = await request(app)
+      .post("/api/v1/jobs/inspect-model")
+      .send({
+        code: [
+          "model CustomResonator",
+          '  parameter Real L(unit="H") = 0.025 "Inductance";',
+          '  parameter Real C(unit="F") = 0.001 "Capacitance";',
+          '  Real v_cap(start = 10.0, unit="V") "Capacitor voltage";',
+          "equation",
+          "  der(v_cap) = -v_cap / (L * C);",
+          "end CustomResonator;",
+        ].join("\n"),
+      });
+    assert.strictEqual(resInspect.status, 200);
+    assert.strictEqual(resInspect.body.modelName, "CustomResonator");
+    assert.strictEqual(resInspect.body.parameters.length, 2);
+    assert.strictEqual(resInspect.body.parameters[0].name, "L");
+    assert.strictEqual(resInspect.body.parameters[0].defaultValue, 0.025);
+
+    // Execute a Monte Carlo Study Run against a bound Model
+    const resMcRun = await request(app)
+      .post("/api/v1/jobs/templates/monte-carlo-sweep/run")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        modelName: "BatteryPackThermalRC",
+        packageName: "@energy/li-ion-thermal-pack",
+        executionTarget: "local-wasm",
+        studyInputs: { samples: 16, stopTime: 6.0, covPercent: 10 },
+        parameterOverrides: { R_internal: 0.022, C_thermal: 820 },
+      });
+    assert.strictEqual(resMcRun.status, 200);
+    assert.ok(resMcRun.body.jobId);
+    assert.strictEqual(resMcRun.body.status, "SUCCESS");
+    assert.strictEqual(resMcRun.body.studyResults.studyKind, "monte-carlo");
+    assert.strictEqual(resMcRun.body.studyResults.sampleCount, 16);
+    assert.ok(Array.isArray(resMcRun.body.studyResults.ensembleBands));
+    assert.ok(resMcRun.body.studyResults.ensembleBands[0].p95.length > 10);
+    assert.ok(Array.isArray(resMcRun.body.studyResults.sobolIndices));
+    assert.ok(resMcRun.body.studyResults.provenance.sha256Lock.length === 64);
+
+    // Verify synthesized Dakota Study Instance Artifact on the Monte Carlo job
+    assert.ok(resMcRun.body.studyResults.studyInstance);
+    assert.strictEqual(resMcRun.body.studyResults.studyInstance.standardFormat, "dakota");
+    assert.ok(resMcRun.body.studyResults.studyInstance.filename.endsWith(".dakota"));
+    assert.ok(resMcRun.body.studyResults.studyInstance.sourceContent.includes("sample_type lhs"));
+
+    // Verify POST /api/v1/jobs/synthesize for SED-ML (.sedml) and SSP (.ssv)
+    const resSynthSedml = await request(app)
+      .post("/api/v1/jobs/synthesize")
+      .send({
+        templateSlug: "modelica-sundials-dae",
+        modelName: "RLC_Resonator",
+        studyInputs: { stopTime: 5.0, intervals: 400 },
+      });
+    assert.strictEqual(resSynthSedml.status, 200);
+    assert.strictEqual(resSynthSedml.body.studyInstance.standardFormat, "sedml");
+    assert.ok(resSynthSedml.body.studyInstance.sourceContent.includes("<sedML"));
+
+    const resSynthSsv = await request(app).post("/api/v1/jobs/synthesize").send({
+      templateSlug: "ssp-variant-calibration",
+      modelName: "DriveTrainCoSim",
+    });
+    assert.strictEqual(resSynthSsv.status, 200);
+    assert.strictEqual(resSynthSsv.body.studyInstance.standardFormat, "ssp-ssv");
+    assert.ok(resSynthSsv.body.studyInstance.sourceContent.includes("<ssv:ParameterSet"));
+
+    // Verify GET /api/v1/jobs/:id returns the enriched studyResults
+    const resJobDetail = await request(app)
+      .get(`/api/v1/jobs/${resMcRun.body.jobId}`)
+      .set("Authorization", `Bearer ${authToken}`);
+    assert.strictEqual(resJobDetail.status, 200);
+    assert.ok(resJobDetail.body.studyResults);
+    assert.strictEqual(resJobDetail.body.studyResults.templateSlug, "monte-carlo-sweep");
+    assert.ok(resJobDetail.body.studyResults.studyInstance);
+
+    // Verify GET /api/v1/jobs/:id/study-instance returns the StudyInstanceArtifact
+    const resStudyInstance = await request(app)
+      .get(`/api/v1/jobs/${resMcRun.body.jobId}/study-instance`)
+      .set("Authorization", `Bearer ${authToken}`);
+    assert.strictEqual(resStudyInstance.status, 200);
+    assert.strictEqual(resStudyInstance.body.studyInstance.standardFormat, "dakota");
+
+    // Verify POST /api/v1/jobs/:id/rerun creates a new job from the persisted StudyInstanceArtifact
+    const resRerun = await request(app)
+      .post(`/api/v1/jobs/${resMcRun.body.jobId}/rerun`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({});
+    assert.strictEqual(resRerun.status, 200);
+    assert.ok(resRerun.body.jobId);
+    assert.notStrictEqual(resRerun.body.jobId, resMcRun.body.jobId);
+
+    // Verify POST /api/v1/jobs/:id/save-as-template publishes the job's Study Instance to the Gallery
+    const resSaveTpl = await request(app)
+      .post(`/api/v1/jobs/${resMcRun.body.jobId}/save-as-template`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        name: "Battery Pack UQ Saved Blueprint",
+        slug: "battery-pack-uq-saved-blueprint",
+      });
+    assert.strictEqual(resSaveTpl.status, 201);
+    assert.ok(resSaveTpl.body.slug.startsWith("battery-pack-uq-saved-blueprint"));
+
+    // Verify GET /api/v1/jobs/:id/result returns trajectory CSV
+    const resCsv = await request(app)
+      .get(`/api/v1/jobs/${resMcRun.body.jobId}/result`)
+      .set("Authorization", `Bearer ${authToken}`);
+    assert.strictEqual(resCsv.status, 200);
+    assert.ok(resCsv.text.startsWith("time,"));
+
+    // Execute an IEEE 2800 Verification Study Run and verify complianceMatrix
+    const resIeeeRun = await request(app).post("/api/v1/studies/templates/ieee-2800-frt-compliance/run").send({
+      executionTarget: "local-wasm",
+    });
+    assert.strictEqual(resIeeeRun.status, 200);
+    assert.ok(Array.isArray(resIeeeRun.body.studyResults.complianceMatrix));
+    assert.ok(resIeeeRun.body.studyResults.complianceMatrix.length >= 3);
+
+    // Verify Cluster Topology Status returns structured partitions and nodes
+    const resCluster = await request(app).get("/api/v1/cae/cluster/status");
+    assert.strictEqual(resCluster.status, 200);
+    assert.ok(Array.isArray(resCluster.body.partitions));
+    assert.ok(resCluster.body.partitions.length >= 3);
+    assert.ok(Array.isArray(resCluster.body.nodes));
+    assert.ok(resCluster.body.nodes.length >= 3);
+
+    // Execute a study with linkToPackage=true & targetArtifact, and verify GET /api/v1/jobs/linked
+    const resLinkedRun = await request(app).post("/api/v1/jobs/runs").set("Authorization", `Bearer ${authToken}`).send({
+      templateSlug: "structural-fea-audit",
+      name: "Drone Chassis FEA Sign-off",
+      modelName: "QuadcopterFrame.step",
+      modelDomain: "fea",
+      packageName: "@modelscript/drone-chassis",
+      packageVersion: "2.1.0",
+      targetArtifact: "QuadcopterFrame.step",
+      linkToPackage: true,
+      saveInstanceToPackage: true,
+      standardFormat: "sedml",
+      executionTarget: "local-wasm",
+    });
+    assert.strictEqual(resLinkedRun.status, 200);
+    assert.strictEqual(resLinkedRun.body.studyResults.studyInstance.targetArtifact, "QuadcopterFrame.step");
+
+    const resLinkedQuery = await request(app).get(
+      "/api/v1/jobs/linked?package=%40modelscript%2Fdrone-chassis&artifact=QuadcopterFrame.step",
+    );
+    assert.strictEqual(resLinkedQuery.status, 200);
+    assert.ok(Array.isArray(resLinkedQuery.body.bundledStudies));
+    assert.ok(Array.isArray(resLinkedQuery.body.linkedTemplates));
+    assert.ok(resLinkedQuery.body.linkedTemplates.length >= 1);
+    assert.strictEqual(resLinkedQuery.body.linkedTemplates[0].bundledInRelease, false);
+    assert.ok(Array.isArray(resLinkedQuery.body.linkedJobs));
+    assert.ok(resLinkedQuery.body.linkedJobs.length >= 1);
+    assert.strictEqual(resLinkedQuery.body.linkedJobs[0].targetArtifact, "QuadcopterFrame.step");
+    assert.ok(resLinkedQuery.body.linkedJobs[0].studyInstanceArtifact?.content.includes("<sedML"));
+  });
+
   // ── Physical Hardware Instances ────────────────────────────────────
 
   await t.test("Instances: Hardware birth certificate registration and queries", async () => {

@@ -218,8 +218,28 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
     return Qload0[i]! + IloadQ[i]! * v - YloadQ[i]! * v * v;
   };
 
-  const enforceQ = options.enforceQLimits ?? false;
   const useFastDecoupled = options.algorithm === "fast_decoupled";
+  const enforceQ = options.enforceQLimits ?? !useFastDecoupled;
+
+  // Helper to check PV bus reactive limits and switch violated PV buses to PQ
+  const checkAndSwitchPvQLimits = (Qcalc: Float64Array): boolean => {
+    let switched = false;
+    for (let i = 0; i < N; i++) {
+      if (busTypes[i] === 2 && hasGenAtBus[i] && Qmin[i]! < Qmax[i]!) {
+        const qReq = Qcalc[i]! + evalQload(i);
+        if (qReq > Qmax[i]! + 1e-5) {
+          Qgen[i] = Qmax[i]!;
+          busTypes[i] = 1; // Switch PV -> PQ at upper limit
+          switched = true;
+        } else if (qReq < Qmin[i]! - 1e-5) {
+          Qgen[i] = Qmin[i]!;
+          busTypes[i] = 1; // Switch PV -> PQ at lower limit
+          switched = true;
+        }
+      }
+    }
+    return switched;
+  };
 
   // Active indices:
   // Non-slack buses participate in delta P / delta theta
@@ -254,20 +274,9 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
       Qcalc[i] = vi * qSum;
     }
 
-    // Optional PV-to-PQ Q-limit switching
+    // PV-to-PQ Q-limit switching
     if (enforceQ && iter >= 1) {
-      for (let i = 0; i < N; i++) {
-        if (busTypes[i] === 2 && hasGenAtBus[i] && Qmin[i]! < Qmax[i]!) {
-          const qReq = Qcalc[i]! + evalQload(i);
-          if (qReq > Qmax[i]! + 1e-5) {
-            Qgen[i] = Qmax[i]!;
-            busTypes[i] = 1; // Switch PV -> PQ at upper limit
-          } else if (qReq < Qmin[i]! - 1e-5) {
-            Qgen[i] = Qmin[i]!;
-            busTypes[i] = 1; // Switch PV -> PQ at lower limit
-          }
-        }
-      }
+      checkAndSwitchPvQLimits(Qcalc);
     }
 
     const nonSlackIndices: number[] = [];
@@ -306,8 +315,11 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
       if (Math.abs(dQ) > maxMismatch) maxMismatch = Math.abs(dQ);
     }
 
-    // Check convergence
+    // Check convergence (ensuring no PV Q-limits are violated before accepting convergence)
     if (maxMismatch < tol) {
+      if (enforceQ && checkAndSwitchPvQLimits(Qcalc)) {
+        continue;
+      }
       converged = true;
       break;
     }
@@ -647,7 +659,7 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
     const g = r / zMagSq;
     const b = -x / zMagSq;
 
-    const a = xf.windv1 > 0 ? xf.windv1 : 1.0;
+    const a = (xf.windv1 > 0 ? xf.windv1 : 1.0) / (xf.windv2 > 0 ? xf.windv2 : 1.0);
     const alpha = ((xf.ang1 || 0) * Math.PI) / 180.0;
     const delta = thetaI - thetaJ - alpha;
 

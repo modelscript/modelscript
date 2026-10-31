@@ -7,12 +7,7 @@
  * dependency. The connection is a standard JSON-RPC2 link over `postMessage`.
  */
 
-import {
-  BrowserMessageReader,
-  BrowserMessageWriter,
-  createProtocolConnection,
-  type ProtocolConnection,
-} from "vscode-languageserver-protocol/browser";
+import type { ProtocolConnection } from "vscode-languageserver-protocol/browser";
 
 let connection: ProtocolConnection | null = null;
 let worker: Worker | null = null;
@@ -29,6 +24,9 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
+    const { BrowserMessageReader, BrowserMessageWriter, createProtocolConnection } =
+      await import("vscode-languageserver-protocol/browser");
+
     // The LSP bundle is copied to /lsp/server/dist/browserServerMain.js
     // by viteStaticCopy. We create a plain Worker pointing at that URL.
     const origin =

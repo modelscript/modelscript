@@ -89,12 +89,12 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     if (!editorRef.current || props.embed) return;
     editorRef.current.updateOptions({
       fontSize: editorFontSize,
-      tabSize: editorTabSize,
       wordWrap: editorWordWrap,
       lineNumbers: editorLineNumbers,
       minimap: { enabled: editorMinimap },
       bracketPairColorization: { enabled: bracketPairColorization },
     });
+    editorRef.current.getModel()?.updateOptions({ tabSize: editorTabSize });
   }, [
     props.embed,
     editorFontSize,
@@ -185,6 +185,27 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     ed.onDidScrollChange(sendVisibleRanges);
     sendVisibleRanges();
   };
+
+  // ── Sync external content changes without wiping undo/redo stack ──
+  useEffect(() => {
+    const code = props.content;
+    const model = editorRef.current?.getModel();
+    if (!model || code === undefined || code === model.getValue()) return;
+    lastValueRef.current = code;
+    if (editorRef.current) {
+      editorRef.current.pushUndoStop();
+      editorRef.current.executeEdits("morsel-external-sync", [
+        {
+          range: model.getFullModelRange(),
+          text: code,
+          forceMoveMarkers: true,
+        },
+      ]);
+      editorRef.current.pushUndoStop();
+    } else {
+      model.setValue(code);
+    }
+  }, [props.content]);
 
   // ── Handler: content changed ──
   const sendDidChange = debounce((value: string) => {

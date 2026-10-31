@@ -18,6 +18,65 @@ export interface FeatureFlagContextType {
 
 const FeatureFlagContext = createContext<FeatureFlagContextType | null>(null);
 
+export const POLYGLOT_LANGUAGE_IDS = [
+  "modelica",
+  "modelscript",
+  "sysml2",
+  "step",
+  "owl2",
+  "scad",
+  "pscad",
+  "spice",
+  "fea",
+  "cfd",
+  "ssp",
+  "psse",
+  "gensys",
+  "simpack",
+  "verilog-a",
+  "c",
+  "fortran",
+  "plcopen",
+  "autosar",
+  "simulink",
+  "reqif",
+  "ccsds",
+  "opendrive",
+  "openscenario",
+  "urdf",
+  "adams",
+  "sima",
+  "olga",
+  "lps",
+  "epanet",
+  "swmm",
+  "gtsuite",
+  "easy5",
+  "rocets",
+  "relap5",
+  "energyplus",
+  "aspen",
+  "eclipse",
+  "sbml",
+  "jsbsim",
+  "touchstone",
+  "ibis",
+  "opendss",
+  "csv",
+] as const;
+
+export function getLanguageFlagKey(langId: string): string {
+  const normalized = langId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_");
+  return `lang_${normalized}`;
+}
+
+const DEFAULT_LANGUAGE_FLAGS: FeatureFlags = Object.fromEntries(
+  POLYGLOT_LANGUAGE_IDS.map((id) => [getLanguageFlagKey(id), id !== "modelscript"]),
+);
+
 export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   modelica_simulation: true,
   morsel_playground: true,
@@ -36,6 +95,8 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   bot_accounts: false,
   sparql_rdf_endpoints: false,
   mcp_gateway_sse: false,
+  ...DEFAULT_LANGUAGE_FLAGS,
+  lang_modelscript_msx: false,
 };
 
 function readStorageOverrides(): Record<string, boolean> {
@@ -183,6 +244,20 @@ export function useFeatureFlags(): FeatureFlagContextType {
     };
   }
   return ctx;
+}
+
+export function isLanguageEnabledInFlags(langId: string, isEnabledFn?: (key: string) => boolean): boolean {
+  const key = getLanguageFlagKey(langId);
+  const check = isEnabledFn ?? ((k: string) => DEFAULT_FRONTEND_FLAGS[k] ?? k !== "lang_modelscript");
+  if (langId === "modelscript" || key === "lang_modelscript") {
+    return check("lang_modelscript") || check("lang_modelscript_msx");
+  }
+  return check(key);
+}
+
+export function useLanguageEnabled(langId: string): boolean {
+  const { isEnabled } = useFeatureFlags();
+  return isLanguageEnabledInFlags(langId, isEnabled);
 }
 
 export function FeatureGate({

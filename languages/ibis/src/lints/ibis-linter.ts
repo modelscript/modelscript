@@ -125,12 +125,40 @@ export function lintIbis(deck: IbisDeck): IbisDiagnostic[] {
       }
     }
 
-    // Check monotonic slope on pulldown table
+    // Check monotonic slope on I/V tables
     checkMonotonicTable(diags, mod.name, "Pulldown", mod.pulldown, mod.line);
+    checkMonotonicTable(diags, mod.name, "Pullup", mod.pullup, mod.line);
     checkMonotonicTable(diags, mod.name, "GND Clamp", mod.gndClamp, mod.line);
+    checkMonotonicTable(diags, mod.name, "Power Clamp", mod.powerClamp, mod.line);
+
+    // M8318: Clamping diode divergence (> 10A)
+    checkClampDivergence(diags, mod.name, "GND_Clamp", mod.gndClamp, mod.line);
+    checkClampDivergence(diags, mod.name, "POWER_Clamp", mod.powerClamp, mod.line);
   }
 
   return diags;
+}
+
+function checkClampDivergence(
+  diags: IbisDiagnostic[],
+  modelName: string,
+  clampType: string,
+  table: TableRow[] | undefined,
+  line: number,
+): void {
+  if (!table) return;
+  for (const row of table) {
+    if (Math.abs(row.typ) > 10.0) {
+      diags.push({
+        code: IbisErrorCode.CLAMPING_DIODE_DIVERGENCE.code,
+        rule: IbisErrorCode.CLAMPING_DIODE_DIVERGENCE.rule,
+        severity: IbisErrorCode.CLAMPING_DIODE_DIVERGENCE.severity,
+        message: IbisErrorCode.CLAMPING_DIODE_DIVERGENCE.message(modelName, clampType, row.typ),
+        range: { startLine: line, startCol: 1, endLine: line, endCol: 20 },
+      });
+      break;
+    }
+  }
 }
 
 function checkMonotonicTable(
@@ -145,7 +173,7 @@ function checkMonotonicTable(
   for (let i = 0; i < table.length - 1; i++) {
     const p0 = table[i]!;
     const p1 = table[i + 1]!;
-    // In pulldown and ground clamp, current should monotonically increase with voltage
+    // In IBIS tables (where Pullup/Power Clamp are Vcc-referenced), current should monotonically increase with table voltage
     if (p1.vOrT > p0.vOrT && p1.typ < p0.typ - 1e-4) {
       diags.push({
         code: IbisErrorCode.NON_MONOTONIC_IV_CURVE.code,

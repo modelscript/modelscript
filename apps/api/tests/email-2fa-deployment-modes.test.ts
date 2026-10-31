@@ -270,7 +270,7 @@ test("Email, 2FA, Registration & Admin Governance Across Deployment Modes", asyn
         // Register in air-gapped mode without live SMTP -> should auto-verify and grant initial credits
         const regRes = await request(app).post("/api/v1/auth/register").set("X-Forwarded-For", "10.10.0.3").send({
           username: "airgap_scientist",
-          email: "scientist@scif.local",
+          email: "scientist@enclave.local",
           password: "Password123!",
           acceptTerms: true,
         });

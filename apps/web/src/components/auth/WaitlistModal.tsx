@@ -26,13 +26,13 @@ const Overlay = styled.div`
 `;
 
 const ModalCard = styled.div`
-  background: var(--surface-overlay, #0e1424);
-  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.15));
+  background: var(--surface-overlay, var(--color-canvas-overlay));
+  border: 1px solid var(--border-subtle, var(--color-border-default));
   border-radius: var(--radius-xl, 16px);
   width: 100%;
   max-width: 540px;
   max-height: 90vh;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -52,7 +52,7 @@ const ModalCard = styled.div`
 
 const ModalHeader = styled.div`
   padding: 20px 24px;
-  border-bottom: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  border-bottom: 1px solid var(--border-subtle, var(--color-border-default));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -61,7 +61,7 @@ const ModalHeader = styled.div`
 const ModalTitle = styled.h2`
   font-size: 18px;
   font-weight: 700;
-  color: var(--color-text-heading, #fff);
+  color: var(--color-text-heading, var(--color-text-primary));
   margin: 0;
   display: flex;
   align-items: center;
@@ -71,7 +71,7 @@ const ModalTitle = styled.h2`
 const CloseButton = styled.button`
   background: none;
   border: none;
-  color: var(--color-text-secondary, #94a3b8);
+  color: var(--color-text-secondary, var(--color-text-muted));
   cursor: pointer;
   padding: 6px;
   border-radius: var(--radius-md, 8px);
@@ -81,8 +81,8 @@ const CloseButton = styled.button`
   transition: all 0.15s ease;
 
   &:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--color-text-primary);
+    background: var(--surface-elevated, var(--color-canvas-subtle));
   }
 `;
 
@@ -113,15 +113,15 @@ const Field = styled.div`
 const Label = styled.label`
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-text-primary, #e2e8f0);
+  color: var(--color-text-primary);
 `;
 
 const Input = styled.input`
-  background: var(--surface-subtle, #151d30);
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.12));
+  background: var(--surface-elevated, var(--color-canvas-subtle));
+  border: 1px solid var(--border-subtle, var(--color-border-default));
   border-radius: var(--radius-md, 8px);
   padding: 10px 14px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-size: 14px;
   outline: none;
   transition: border-color 0.15s ease;
@@ -132,11 +132,11 @@ const Input = styled.input`
 `;
 
 const Select = styled.select`
-  background: var(--surface-subtle, #151d30);
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.12));
+  background: var(--surface-elevated, var(--color-canvas-subtle));
+  border: 1px solid var(--border-subtle, var(--color-border-default));
   border-radius: var(--radius-md, 8px);
   padding: 10px 14px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-size: 14px;
   outline: none;
   cursor: pointer;
@@ -146,17 +146,17 @@ const Select = styled.select`
   }
 
   option {
-    background: #0e1424;
-    color: #fff;
+    background: var(--surface-overlay, var(--color-canvas-overlay));
+    color: var(--color-text-primary);
   }
 `;
 
 const Textarea = styled.textarea`
-  background: var(--surface-subtle, #151d30);
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.12));
+  background: var(--surface-elevated, var(--color-canvas-subtle));
+  border: 1px solid var(--border-subtle, var(--color-border-default));
   border-radius: var(--radius-md, 8px);
   padding: 10px 14px;
-  color: #fff;
+  color: var(--color-text-primary);
   font-size: 14px;
   outline: none;
   min-height: 80px;
@@ -169,7 +169,7 @@ const Textarea = styled.textarea`
 
 const ModalFooter = styled.div`
   padding: 16px 24px;
-  border-top: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  border-top: 1px solid var(--border-subtle, var(--color-border-default));
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -177,8 +177,8 @@ const ModalFooter = styled.div`
 
 const CancelButton = styled.button`
   background: transparent;
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.15));
-  color: var(--color-text-secondary, #94a3b8);
+  border: 1px solid var(--border-subtle, var(--color-border-default));
+  color: var(--color-text-secondary, var(--color-text-muted));
   padding: 9px 18px;
   border-radius: var(--radius-md, 8px);
   font-size: 14px;
@@ -187,8 +187,8 @@ const CancelButton = styled.button`
   transition: all 0.15s ease;
 
   &:hover {
-    color: #fff;
-    border-color: rgba(255, 255, 255, 0.3);
+    color: var(--color-text-primary);
+    background: var(--surface-elevated, var(--color-canvas-subtle));
   }
 `;
 
@@ -298,7 +298,16 @@ export default function WaitlistModal({
               <div style={{ color: "var(--color-accent-cyan, #06b6d4)" }}>
                 <CheckCircleFillIcon size={56} />
               </div>
-              <h3 style={{ fontSize: "20px", fontWeight: 700, color: "#fff", margin: 0 }}>Application Received</h3>
+              <h3
+                style={{
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  color: "var(--color-text-heading, var(--color-text-primary))",
+                  margin: 0,
+                }}
+              >
+                Application Received
+              </h3>
               <p
                 style={{
                   fontSize: "14px",

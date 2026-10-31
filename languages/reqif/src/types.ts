@@ -83,6 +83,7 @@ export interface ReqIfContract {
   comparator: ContractComparator;
   limitValue: number;
   unit?: string | undefined;
+  expression?: string | undefined;
 }
 
 export interface ReqIfSpecObject {
@@ -133,6 +134,7 @@ export interface ReqIfDocument {
   specObjects: Map<string, ReqIfSpecObject>;
   specRelations: ReqIfSpecRelation[];
   specifications: ReqIfSpecification[];
+  duplicateIdentifiers?: Array<{ id: string; span?: SourceSpan | undefined }> | undefined;
   rawXml?: string | undefined;
 }
 
@@ -158,4 +160,5 @@ export interface ReqIfEntailmentResult {
   childReqIds: string[];
   proofManifestId?: string | undefined;
   diagnosticMessage?: string | undefined;
+  counterexample?: Record<string, number> | undefined;
 }

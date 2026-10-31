@@ -6,6 +6,7 @@ export * from "./lints/index.js";
 export * from "./lsp.js";
 export * from "./parser/reqif-parser.js";
 export * from "./projections/index.js";
+export * from "./smt/contract-verifier.js";
 export * from "./tabular.js";
 export * from "./types.js";
 export * from "./verification/entailment.js";

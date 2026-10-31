@@ -51,6 +51,46 @@ export type FortranStmt =
       line?: number | undefined;
     }
   | {
+      kind: "doWhile";
+      condition: FortranExpr;
+      body: FortranStmt[];
+      line?: number | undefined;
+    }
+  | {
+      kind: "selectCase";
+      selector: FortranExpr;
+      cases: FortranCaseBranch[];
+      defaultBody?: FortranStmt[] | undefined;
+      line?: number | undefined;
+    }
+  | {
+      kind: "exit";
+      line?: number | undefined;
+    }
+  | {
+      kind: "cycle";
+      line?: number | undefined;
+    }
+  | {
+      kind: "return";
+      line?: number | undefined;
+    }
+  | {
+      kind: "subroutine";
+      name: string;
+      params: string[];
+      body: FortranStmt[];
+      line?: number | undefined;
+    }
+  | {
+      kind: "function";
+      name: string;
+      params: string[];
+      returnVar?: string | undefined;
+      body: FortranStmt[];
+      line?: number | undefined;
+    }
+  | {
       kind: "call";
       subroutine: string;
       args: FortranExpr[];
@@ -72,6 +112,17 @@ export type FortranStmt =
       delta: number;
       line?: number | undefined;
     };
+
+export type FortranCaseValue =
+  | { kind: "value"; expr: FortranExpr }
+  | { kind: "range"; lower?: FortranExpr | undefined; upper?: FortranExpr | undefined };
+
+export interface FortranCaseBranch {
+  values: FortranCaseValue[];
+  isDefault?: boolean | undefined;
+  body: FortranStmt[];
+  line?: number | undefined;
+}
 
 export type FortranExpr =
   | { kind: "number"; value: number }
@@ -413,8 +464,18 @@ const FORTRAN_KEYWORDS = new Set([
   "elseif",
   "endif",
   "do",
+  "while",
   "enddo",
+  "select",
+  "selectcase",
+  "case",
+  "default",
+  "endselect",
+  "exit",
+  "cycle",
   "end",
+  "endsubroutine",
+  "endfunction",
   "call",
   "subroutine",
   "function",
@@ -692,7 +753,10 @@ export function tokenizeFortran(text: string): Token[] {
 export class FortranAstParser {
   private pos = 0;
 
-  constructor(private tokens: Token[]) {}
+  constructor(
+    private tokens: Token[],
+    private parseSubprogramsAsNodes: boolean = false,
+  ) {}
 
   public parseProgram(): FortranStmt[] {
     const stmts: FortranStmt[] = [];
@@ -781,6 +845,110 @@ export class FortranAstParser {
     }
   }
 
+  private isEndSelect(): boolean {
+    if (this.checkKeyword("endselect")) return true;
+    if (
+      this.checkKeyword("end") &&
+      this.tokens[this.pos + 1]?.type === "KEYWORD" &&
+      this.tokens[this.pos + 1]?.value === "select"
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  private consumeEndSelect(): void {
+    if (this.checkKeyword("endselect")) {
+      this.consume();
+    } else if (this.checkKeyword("end")) {
+      this.consume();
+      if (this.checkKeyword("select")) this.consume();
+    }
+  }
+
+  private isCaseBoundary(): boolean {
+    return this.checkKeyword("case") || this.isEndSelect();
+  }
+
+  private isEndSubroutine(): boolean {
+    if (this.checkKeyword("endsubroutine")) return true;
+    if (this.checkKeyword("end")) {
+      const next = this.tokens[this.pos + 1];
+      if (next?.type === "KEYWORD" && next.value === "subroutine") return true;
+      // Standalone END not followed by if/do/select/function/program/module on same line
+      const endLine = this.peek()?.line;
+      if (!next || next.line !== endLine) return true;
+    }
+    return false;
+  }
+
+  private consumeEndSubroutine(): void {
+    const endLine = this.peek()?.line;
+    if (this.checkKeyword("endsubroutine")) {
+      this.consume();
+      if (this.peek()?.type === "IDENT" && this.peek()?.line === endLine) this.consume();
+    } else if (this.checkKeyword("end")) {
+      this.consume();
+      if (this.checkKeyword("subroutine")) this.consume();
+      if (this.peek()?.type === "IDENT" && this.peek()?.line === endLine) this.consume();
+    }
+  }
+
+  private isEndFunction(): boolean {
+    if (this.checkKeyword("endfunction")) return true;
+    if (this.checkKeyword("end")) {
+      const next = this.tokens[this.pos + 1];
+      if (next?.type === "KEYWORD" && next.value === "function") return true;
+      const endLine = this.peek()?.line;
+      if (!next || next.line !== endLine) return true;
+    }
+    return false;
+  }
+
+  private consumeEndFunction(): void {
+    const endLine = this.peek()?.line;
+    if (this.checkKeyword("endfunction")) {
+      this.consume();
+      if (this.peek()?.type === "IDENT" && this.peek()?.line === endLine) this.consume();
+    } else if (this.checkKeyword("end")) {
+      this.consume();
+      if (this.checkKeyword("function")) this.consume();
+      if (this.peek()?.type === "IDENT" && this.peek()?.line === endLine) this.consume();
+    }
+  }
+
+  private parseCaseValues(): FortranCaseValue[] {
+    const values: FortranCaseValue[] = [];
+    while (this.pos < this.tokens.length && this.peek()?.type !== "RPAREN") {
+      if (this.peek()?.type === "COLON") {
+        this.consume(); // eat ':'
+        let upper: FortranExpr | undefined;
+        if (this.peek()?.type !== "COMMA" && this.peek()?.type !== "RPAREN") {
+          upper = this.parseExpr();
+        }
+        values.push({ kind: "range", upper });
+      } else {
+        const first = this.parseExpr();
+        if (this.peek()?.type === "COLON") {
+          this.consume(); // eat ':'
+          let upper: FortranExpr | undefined;
+          if (this.peek()?.type !== "COMMA" && this.peek()?.type !== "RPAREN") {
+            upper = this.parseExpr();
+          }
+          values.push({ kind: "range", lower: first, upper });
+        } else {
+          values.push({ kind: "value", expr: first });
+        }
+      }
+      if (this.peek()?.type === "COMMA") {
+        this.consume();
+      } else {
+        break;
+      }
+    }
+    return values;
+  }
+
   private parseSubscriptList(): FortranSubscript[] {
     const subs: FortranSubscript[] = [];
     while (this.pos < this.tokens.length && this.peek()?.type !== "RPAREN") {
@@ -832,35 +1000,55 @@ export class FortranAstParser {
     if (!tok) return null;
     const stmtLine = tok.line;
 
-    // 0. Skip SUBROUTINE / FUNCTION / PROGRAM / MODULE headers and END SUBROUTINE / IMPLICIT NONE / USE / CONTAINS
-    if (
-      this.checkKeyword("subroutine") ||
-      this.checkKeyword("function") ||
-      this.checkKeyword("program") ||
-      this.checkKeyword("module")
-    ) {
-      this.consume();
-      if (this.peek()?.type === "IDENT") this.consume();
+    // 0. Handle SUBROUTINE / FUNCTION / PROGRAM / MODULE headers
+    if (this.checkKeyword("subroutine") || this.checkKeyword("function")) {
+      const unitKind = this.consume().value.toLowerCase() as "subroutine" | "function";
+      const name = this.peek()?.type === "IDENT" ? this.consume().value : "anonymous";
+      const params: string[] = [];
       if (this.peek()?.type === "LPAREN") {
-        let depth = 0;
-        while (this.pos < this.tokens.length) {
-          const t = this.consume();
-          if (t.type === "LPAREN") depth++;
-          else if (t.type === "RPAREN") {
-            depth--;
-            if (depth <= 0) break;
+        this.consume(); // eat '('
+        while (this.pos < this.tokens.length && this.peek()?.type !== "RPAREN") {
+          if (this.peek()?.type === "IDENT") {
+            params.push(this.consume().value);
+          } else {
+            this.consume();
           }
+          if (this.peek()?.type === "COMMA") this.consume();
         }
+        if (this.peek()?.type === "RPAREN") this.consume();
       }
       // Optional RESULT(var)
+      let returnVar: string | undefined;
       if (this.peek()?.type === "IDENT" && this.peek()?.value.toLowerCase() === "result") {
         this.consume();
         if (this.peek()?.type === "LPAREN") {
           this.consume();
-          if (this.peek()?.type === "IDENT") this.consume();
+          if (this.peek()?.type === "IDENT") returnVar = this.consume().value;
           if (this.peek()?.type === "RPAREN") this.consume();
         }
       }
+      if (this.parseSubprogramsAsNodes) {
+        const body: FortranStmt[] = [];
+        while (this.pos < this.tokens.length) {
+          if (unitKind === "subroutine" ? this.isEndSubroutine() : this.isEndFunction()) {
+            if (unitKind === "subroutine") this.consumeEndSubroutine();
+            else this.consumeEndFunction();
+            break;
+          }
+          const inner = this.parseStatement();
+          if (inner) body.push(inner);
+        }
+        if (unitKind === "subroutine") {
+          return { kind: "subroutine", name, params, body, line: stmtLine };
+        }
+        return { kind: "function", name, params, returnVar, body, line: stmtLine };
+      }
+      return null;
+    }
+
+    if (this.checkKeyword("program") || this.checkKeyword("module")) {
+      this.consume();
+      if (this.peek()?.type === "IDENT") this.consume();
       return null;
     }
 
@@ -881,8 +1069,31 @@ export class FortranAstParser {
       return null;
     }
 
-    if (this.checkKeyword("return") || this.checkKeyword("continue")) {
+    if (this.checkKeyword("exit")) {
       this.consume();
+      return { kind: "exit", line: stmtLine };
+    }
+
+    if (this.checkKeyword("cycle")) {
+      this.consume();
+      return { kind: "cycle", line: stmtLine };
+    }
+
+    if (this.checkKeyword("return")) {
+      this.consume();
+      return { kind: "return", line: stmtLine };
+    }
+
+    if (this.checkKeyword("continue")) {
+      this.consume();
+      return null;
+    }
+
+    if (this.checkKeyword("endsubroutine") || this.checkKeyword("endfunction")) {
+      this.consume();
+      if (this.peek()?.type === "IDENT" && this.peek()?.line === stmtLine) {
+        this.consume();
+      }
       return null;
     }
 
@@ -1033,7 +1244,7 @@ export class FortranAstParser {
           line: stmtLine,
         };
       } else {
-        // Single-line IF: IF (cond) assignment/call
+        // Single-line IF: IF (cond) assignment/call/exit/cycle/return
         const singleStmt = this.parseStatement();
         return {
           kind: "if",
@@ -1044,11 +1255,32 @@ export class FortranAstParser {
       }
     }
 
-    // 1b. DO Statement: DO var = start, end [, step] ... END DO
+    // 1b. DO Statement: DO var = start, end [, step] ... END DO or DO WHILE (cond) ... END DO
     if (this.checkKeyword("do")) {
       this.consume(); // eat 'do'
       if (this.peek()?.type === "NUMBER") {
         this.consume();
+      }
+      if (this.checkKeyword("while")) {
+        this.consume(); // eat 'while'
+        if (this.peek()?.type === "LPAREN") this.consume();
+        const condition = this.parseExpr();
+        if (this.peek()?.type === "RPAREN") this.consume();
+        const body: FortranStmt[] = [];
+        while (this.pos < this.tokens.length) {
+          if (this.isEndDo()) {
+            this.consumeEndDo();
+            break;
+          }
+          const inner = this.parseStatement();
+          if (inner) body.push(inner);
+        }
+        return {
+          kind: "doWhile",
+          condition,
+          body,
+          line: stmtLine,
+        };
       }
       if (this.peek()?.type === "IDENT" && this.tokens[this.pos + 1]?.type === "ASSIGN") {
         const loopVar = this.consume().value;
@@ -1080,7 +1312,87 @@ export class FortranAstParser {
           line: stmtLine,
         };
       }
-      return null;
+      // Unconditional DO ... END DO loop (exited via EXIT)
+      const body: FortranStmt[] = [];
+      while (this.pos < this.tokens.length) {
+        if (this.isEndDo()) {
+          this.consumeEndDo();
+          break;
+        }
+        const inner = this.parseStatement();
+        if (inner) body.push(inner);
+      }
+      return {
+        kind: "doWhile",
+        condition: { kind: "boolean", value: true },
+        body,
+        line: stmtLine,
+      };
+    }
+
+    // 1c. SELECT CASE (expr) ... CASE (...) ... CASE DEFAULT ... END SELECT
+    if (this.checkKeyword("select") || this.checkKeyword("selectcase")) {
+      const firstKw = this.consume().value.toLowerCase();
+      if (firstKw === "select" && this.checkKeyword("case")) {
+        this.consume(); // eat 'case'
+      }
+      if (this.peek()?.type === "LPAREN") this.consume();
+      const selector = this.parseExpr();
+      if (this.peek()?.type === "RPAREN") this.consume();
+
+      const cases: FortranCaseBranch[] = [];
+      let defaultBody: FortranStmt[] | undefined;
+
+      while (this.pos < this.tokens.length) {
+        if (this.isEndSelect()) {
+          this.consumeEndSelect();
+          break;
+        }
+        if (this.checkKeyword("case")) {
+          const caseLine = this.peek()?.line;
+          this.consume(); // eat 'case'
+          if (this.checkKeyword("default")) {
+            this.consume(); // eat 'default'
+            const branchBody: FortranStmt[] = [];
+            while (this.pos < this.tokens.length && !this.isCaseBoundary()) {
+              const s = this.parseStatement();
+              if (s) branchBody.push(s);
+            }
+            defaultBody = branchBody;
+            cases.push({ values: [], isDefault: true, body: branchBody, line: caseLine });
+          } else if (this.peek()?.type === "LPAREN") {
+            this.consume(); // eat '('
+            const values = this.parseCaseValues();
+            if (this.peek()?.type === "RPAREN") this.consume();
+            const branchBody: FortranStmt[] = [];
+            while (this.pos < this.tokens.length && !this.isCaseBoundary()) {
+              const s = this.parseStatement();
+              if (s) branchBody.push(s);
+            }
+            cases.push({ values, body: branchBody, line: caseLine });
+          } else {
+            // Single unparenthesized case value fallback
+            const v = this.parseExpr();
+            const branchBody: FortranStmt[] = [];
+            while (this.pos < this.tokens.length && !this.isCaseBoundary()) {
+              const s = this.parseStatement();
+              if (s) branchBody.push(s);
+            }
+            cases.push({ values: [{ kind: "value", expr: v }], body: branchBody, line: caseLine });
+          }
+        } else {
+          // Skip unexpected token before first CASE
+          this.consume();
+        }
+      }
+
+      return {
+        kind: "selectCase",
+        selector,
+        cases,
+        defaultBody,
+        line: stmtLine,
+      };
     }
 
     // 2. CALL Statement: CALL Subroutine(args)
@@ -1434,8 +1746,30 @@ export class FortranAstParser {
 
 export function parseFortranScript(code: string): FortranStmt[] {
   const tokens = tokenizeFortran(code);
-  const parser = new FortranAstParser(tokens);
+  const parser = new FortranAstParser(tokens, false);
   return parser.parseProgram();
+}
+
+/**
+ * Parses Fortran source into a structured AST statement list, preserving
+ * `SUBROUTINE` / `FUNCTION` blocks as first-class AST nodes alongside
+ * `if`, `do`, `doWhile`, `selectCase`, `exit`, `cycle`, `return`, `call`, and `assign`.
+ */
+export function parseFortranAst(code: string): FortranStmt[] {
+  const tokens = tokenizeFortran(code);
+  const parser = new FortranAstParser(tokens, true);
+  const stmts = parser.parseProgram();
+  Object.defineProperty(stmts, "statements", {
+    value: stmts,
+    enumerable: false,
+    configurable: true,
+  });
+  Object.defineProperty(stmts, "body", {
+    value: stmts,
+    enumerable: false,
+    configurable: true,
+  });
+  return stmts;
 }
 
 function collectCallsFromExpr(expr: FortranExpr, out: Set<string>, arrayNames: Set<string>): void {
@@ -1488,6 +1822,17 @@ function collectCallsFromStmts(stmts: FortranStmt[], out: Set<string>, arrayName
       collectCallsFromExpr(s.startExpr, out, arrayNames);
       collectCallsFromExpr(s.endExpr, out, arrayNames);
       if (s.stepExpr) collectCallsFromExpr(s.stepExpr, out, arrayNames);
+      collectCallsFromStmts(s.body, out, arrayNames);
+    } else if (s.kind === "doWhile") {
+      collectCallsFromExpr(s.condition, out, arrayNames);
+      collectCallsFromStmts(s.body, out, arrayNames);
+    } else if (s.kind === "selectCase") {
+      collectCallsFromExpr(s.selector, out, arrayNames);
+      for (const c of s.cases) {
+        collectCallsFromStmts(c.body, out, arrayNames);
+      }
+      if (s.defaultBody) collectCallsFromStmts(s.defaultBody, out, arrayNames);
+    } else if (s.kind === "subroutine" || s.kind === "function") {
       collectCallsFromStmts(s.body, out, arrayNames);
     }
   }
@@ -1567,7 +1912,7 @@ export function parseFortranModule(source: string): FortranModuleAst {
       continue;
     }
 
-    if (/^end\s+(?:subroutine|function)\b/i.test(clean)) {
+    if (/^end\s*(?:subroutine|function)\b/i.test(clean)) {
       if (activeSubOrFunc) {
         activeSubOrFunc.endLine = idx + 1;
         spans.push(activeSubOrFunc);
@@ -1576,7 +1921,7 @@ export function parseFortranModule(source: string): FortranModuleAst {
       continue;
     }
 
-    if (/^end\s+program\b/i.test(clean)) {
+    if (/^end\s*program\b/i.test(clean)) {
       if (activeProg) {
         activeProg.endLine = idx + 1;
         spans.push(activeProg);
@@ -1631,7 +1976,11 @@ export function parseFortranModule(source: string): FortranModuleAst {
   }
 
   let entryUnit: FortranUnitAst | undefined;
+  const coveredLines = new Set<number>();
   for (const span of spans) {
+    for (let ln = span.startLine; ln <= span.endLine; ln++) {
+      coveredLines.add(ln);
+    }
     const paddedSource = "\n".repeat(span.startLine - 1) + lines.slice(span.startLine - 1, span.endLine).join("\n");
     const sig = extractFortranSignature(paddedSource, moduleConstants);
     const stmts = parseFortranScript(paddedSource);
@@ -1658,8 +2007,35 @@ export function parseFortranModule(source: string): FortranModuleAst {
     }
   }
 
-  // If no explicit PROGRAM, prefer a subroutine that calls other subroutines in the module, or the first subroutine
-  if (entryUnit && entryUnit.kind !== "program" && spans.length > 1) {
+  // Check if there are top-level script statements outside any SUBROUTINE/FUNCTION/PROGRAM/MODULE span
+  const hasModuleWrapper = lines.some((l) => /^\s*module\s+[A-Za-z_]/i.test(l));
+  if (!hasModuleWrapper) {
+    const topLevelLines = lines.map((line, i) => (coveredLines.has(i + 1) ? "" : line));
+    const topLevelSource = topLevelLines.join("\n");
+    const topLevelStmts = parseFortranScript(topLevelSource);
+    if (topLevelStmts.length > 0) {
+      const sig = extractFortranSignature(topLevelSource, moduleConstants);
+      const arrayNames = new Set(Object.keys(sig.arrays).map((k) => k.toUpperCase()));
+      const calledSet = new Set<string>();
+      collectCallsFromStmts(topLevelStmts, calledSet, arrayNames);
+      const scriptUnit: FortranUnitAst = {
+        name: "main",
+        kind: "script",
+        signature: { ...sig, name: "main", kind: "script" },
+        stmts: topLevelStmts,
+        calledRoutines: Array.from(calledSet),
+        usedModules: sig.usedModules ?? [],
+        startLine: 1,
+        endLine: lines.length,
+      };
+      units.set("MAIN", scriptUnit);
+      callGraph.set("MAIN", scriptUnit.calledRoutines);
+      entryUnit = scriptUnit;
+    }
+  }
+
+  // If no explicit PROGRAM or top-level script, prefer a subroutine that calls other subroutines in the module
+  if (entryUnit && entryUnit.kind !== "program" && entryUnit.kind !== "script" && spans.length > 1) {
     for (const u of units.values()) {
       if (u.kind === "subroutine" && u.calledRoutines.some((c) => units.has(c))) {
         entryUnit = u;

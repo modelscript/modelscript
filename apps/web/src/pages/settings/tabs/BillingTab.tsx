@@ -7,6 +7,7 @@ import {
   CpuIcon,
   CreditCardIcon,
   LinkExternalIcon,
+  OrganizationIcon,
   PlusIcon,
   RocketIcon,
   ServerIcon,
@@ -21,8 +22,12 @@ import {
   createCheckoutSession,
   createPaymentIntent,
   getInvoiceDownloadUrl,
+  getOrgWallet,
   getUserBillingSummary,
+  listUserOrganizations,
+  type Organization,
   topUpCredits,
+  topUpOrgCredits,
   type UserBillingSummary,
 } from "../../../api";
 import Box from "../../../components/Box";
@@ -311,14 +316,14 @@ function normalizeBillingSummary(raw: unknown): BillingSummaryView {
   }));
 
   return {
-    userId: Number(raw.userId ?? raw.user_id ?? 0),
+    userId: Number(rawObj["userId"] ?? rawObj["user_id"] ?? 0),
     creditBalance: balance,
     totalSpent,
     totalJobs,
     totalCpuSeconds,
     totalGpuSeconds,
-    profileUsage: raw.profileUsage ?? {},
-    recentTransactions: raw.recentTransactions ?? [],
+    profileUsage: (rawObj["profileUsage"] as BillingSummaryView["profileUsage"]) ?? {},
+    recentTransactions: (rawObj["recentTransactions"] as BillingSummaryView["recentTransactions"]) ?? [],
     wallet: {
       balance,
       total_spent: totalSpent,
@@ -336,15 +341,35 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
 
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState<number | null>(null);
   const [billingSummary, setBillingSummary] = useState<BillingSummaryView | null>(null);
   const [isLiveActive, setIsLiveActive] = useState<boolean>(false);
   const [isTopUpLoading, setIsTopUpLoading] = useState(false);
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    listUserOrganizations()
+      .then((orgs) => {
+        if (!cancelled && Array.isArray(orgs)) {
+          setOrganizations(orgs);
+        }
+      })
+      .catch(() => {
+        // Fallback when unauthenticated or no orgs
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedOrg = organizations.find((o) => o.id === selectedOrgId) ?? null;
+
   const fetchSummary = useCallback(async () => {
     try {
-      const data = await getUserBillingSummary();
+      const data = selectedOrgId !== null ? await getOrgWallet(selectedOrgId) : await getUserBillingSummary();
       setBillingSummary(normalizeBillingSummary(data));
       setIsLiveActive(true);
       setError(null);
@@ -353,7 +378,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
       setBillingSummary(DEFAULT_COMMUNITY_VIEW);
       setIsLiveActive(Boolean(isStripeFeatureEnabled));
     }
-  }, [isStripeFeatureEnabled]);
+  }, [isStripeFeatureEnabled, selectedOrgId]);
 
   useEffect(() => {
     fetchSummary();
@@ -383,7 +408,10 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
           // Fallback if payment-intent endpoint is not needed in sandbox
         }
       }
-      const updatedWallet = await topUpCredits(amount, isLiveActive ? "credit_card" : "sandbox_card", paymentIntentId);
+      const updatedWallet =
+        selectedOrgId !== null
+          ? await topUpOrgCredits(selectedOrgId, amount, paymentIntentId)
+          : await topUpCredits(amount, isLiveActive ? "credit_card" : "sandbox_card", paymentIntentId);
       setBillingSummary((prev) => {
         if (!prev) return null;
         const uw = updatedWallet as { newBalance?: number; balance?: number } | null | undefined;
@@ -400,8 +428,9 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
       });
       fetchSummary();
       window.dispatchEvent(new CustomEvent("modelscript:wallet-update"));
+      const targetLabel = selectedOrg ? `@${selectedOrg.slug} organization wallet` : "your personal wallet";
       setTopUpSuccess(
-        `Successfully credited +${amount.toFixed(2)} compute credits to your wallet (${
+        `Successfully credited +${amount.toFixed(2)} compute credits to ${targetLabel} (${
           isLiveActive ? "Live Top-Up" : "Developer Sandbox"
         }).`,
       );
@@ -427,6 +456,64 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
           Manage your subscription tier, high-performance computing quotas, and metered compute credit ledgers across
           SLURM and local solver clusters.
         </DetailSubtitle>
+
+        {organizations.length > 0 && (
+          <Box
+            mb={3}
+            p={3}
+            style={{
+              background: "var(--color-canvas-subtle)",
+              border: "1px solid var(--color-border-default)",
+              borderRadius: "10px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <Box display="flex" alignItems="center" gap={2}>
+              <OrganizationIcon size={16} style={{ color: "var(--color-accent-cyan, #06b6d4)" }} />
+              <div>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                  Billing Context: Personal Wallet vs. Organization
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                  {selectedOrg
+                    ? `Viewing shared compute quota and credit ledger for ${selectedOrg.display_name || selectedOrg.name} (@${selectedOrg.slug}).`
+                    : "Viewing your personal compute credit balance and individual job ledger."}
+                </div>
+              </div>
+            </Box>
+            <select
+              aria-label="Billing context"
+              value={selectedOrgId === null ? "personal" : String(selectedOrgId)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedOrgId(val === "personal" ? null : Number(val));
+                setTopUpSuccess(null);
+                setError(null);
+              }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--color-border-default)",
+                background: "var(--color-canvas-default)",
+                color: "var(--color-text-primary)",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <option value="personal">Personal Wallet</option>
+              {organizations.map((org) => (
+                <option key={org.id} value={String(org.id)}>
+                  {org.display_name || org.name} (@{org.slug})
+                </option>
+              ))}
+            </select>
+          </Box>
+        )}
 
         {error && (
           <Box

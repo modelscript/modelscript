@@ -139,6 +139,62 @@ function appendCylinderTriangles(
   }
 }
 
+function appendSphereTriangles(
+  out: TriangulatedMesh,
+  cx: number,
+  cy: number,
+  cz: number,
+  radius: number,
+  latBands = 16,
+  lonBands = 24,
+): void {
+  for (let lat = 0; lat < latBands; lat++) {
+    const theta0 = (lat / latBands) * Math.PI;
+    const theta1 = ((lat + 1) / latBands) * Math.PI;
+    const sinT0 = Math.sin(theta0);
+    const cosT0 = Math.cos(theta0);
+    const sinT1 = Math.sin(theta1);
+    const cosT1 = Math.cos(theta1);
+
+    for (let lon = 0; lon < lonBands; lon++) {
+      const phi0 = (lon / lonBands) * Math.PI * 2;
+      const phi1 = ((lon + 1) / lonBands) * Math.PI * 2;
+      const cosP0 = Math.cos(phi0);
+      const sinP0 = Math.sin(phi0);
+      const cosP1 = Math.cos(phi1);
+      const sinP1 = Math.sin(phi1);
+
+      const p00: [number, number, number] = [
+        cx + radius * sinT0 * cosP0,
+        cy + radius * cosT0,
+        cz + radius * sinT0 * sinP0,
+      ];
+      const p01: [number, number, number] = [
+        cx + radius * sinT0 * cosP1,
+        cy + radius * cosT0,
+        cz + radius * sinT0 * sinP1,
+      ];
+      const p10: [number, number, number] = [
+        cx + radius * sinT1 * cosP0,
+        cy + radius * cosT1,
+        cz + radius * sinT1 * sinP0,
+      ];
+      const p11: [number, number, number] = [
+        cx + radius * sinT1 * cosP1,
+        cy + radius * cosT1,
+        cz + radius * sinT1 * sinP1,
+      ];
+
+      if (lat !== 0) {
+        pushTriangle(out, p00, p10, p01);
+      }
+      if (lat !== latBands - 1) {
+        pushTriangle(out, p01, p10, p11);
+      }
+    }
+  }
+}
+
 /** Build a binary STL Uint8Array from triangulated positions & normals. */
 export function buildBinaryStlBuffer(mesh: TriangulatedMesh): Uint8Array {
   const triCount = Math.floor(mesh.positions.length / 9);
@@ -552,17 +608,38 @@ export function tessellateStepSource(stepCode: string): {
           ? products.map((p) => p.name)
           : [extractStepFilename(stepCode)?.replace(/\.(step|stp|p21)$/i, "") || "STEP_Solid"];
 
+  const totalTriangles = Math.floor(mesh.positions.length / 9);
+  const entityCount = Math.max(1, namedEntities.length);
+
   namedEntities.forEach((rawName, idx) => {
     const cleanName = rawName.replace(/[^A-Za-z0-9_.-]/g, "_") || `Part_${idx + 1}`;
     const partColor = palette[idx % palette.length]!;
-    const glbUri = buildGlbDataUri(mesh, cleanName, partColor);
+    let partMesh: TriangulatedMesh;
+    if (entityCount === 1) {
+      partMesh = mesh;
+    } else if (totalTriangles >= entityCount) {
+      const startTri = Math.floor((idx * totalTriangles) / entityCount);
+      const endTri = Math.floor(((idx + 1) * totalTriangles) / entityCount);
+      partMesh = {
+        positions: mesh.positions.slice(startTri * 9, endTri * 9),
+        normals: mesh.normals.slice(startTri * 9, endTri * 9),
+      };
+    } else if (idx < totalTriangles) {
+      partMesh = {
+        positions: mesh.positions.slice(idx * 9, (idx + 1) * 9),
+        normals: mesh.normals.slice(idx * 9, (idx + 1) * 9),
+      };
+    } else {
+      partMesh = { positions: [], normals: [] };
+    }
+    const glbUri = buildGlbDataUri(partMesh, cleanName, partColor);
     if (glbUri) {
       const offsetPt = placements[idx]?.ptId ? getPoint(placements[idx]!.ptId) : null;
       components.push({
         name: cleanName,
         cad: {
           uri: glbUri,
-          position: offsetPt ?? [idx * 1.5, 0, 0],
+          position: offsetPt ?? [0, 0, 0],
           rotation: [0, 0, 0],
           scale: [1, 1, 1],
         },
@@ -574,29 +651,222 @@ export function tessellateStepSource(stepCode: string): {
   return { vtkBuffer, stlBuffer, components };
 }
 
+function splitTopLevelArgs(input: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
+    else if (ch === "," && depth === 0) {
+      parts.push(input.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  const tail = input.slice(start).trim();
+  if (tail) parts.push(tail);
+  return parts;
+}
+
+function evalScadExpr(rawExpr: string | undefined, vars: Record<string, number>, fallback = 0): number {
+  if (!rawExpr) return fallback;
+  const tokens = rawExpr.trim().match(/(\d+(?:\.\d+)?|\.\d+|[A-Za-z_$]\w*|[+\-*/()])/g) ?? [];
+  if (tokens.length === 0) return fallback;
+
+  let pos = 0;
+
+  const parseExpression = (): number => {
+    let val = parseTerm();
+    while (pos < tokens.length && (tokens[pos] === "+" || tokens[pos] === "-")) {
+      const op = tokens[pos++]!;
+      const right = parseTerm();
+      val = op === "+" ? val + right : val - right;
+    }
+    return val;
+  };
+
+  const parseTerm = (): number => {
+    let val = parseFactor();
+    while (pos < tokens.length && (tokens[pos] === "*" || tokens[pos] === "/")) {
+      const op = tokens[pos++]!;
+      const right = parseFactor();
+      val = op === "*" ? val * right : right !== 0 ? val / right : 0;
+    }
+    return val;
+  };
+
+  const parseFactor = (): number => {
+    const tok = tokens[pos];
+    if (tok === undefined) return 0;
+    if (tok === "+") {
+      pos++;
+      return parseFactor();
+    }
+    if (tok === "-") {
+      pos++;
+      return -parseFactor();
+    }
+    if (tok === "(") {
+      pos++;
+      const inner = parseExpression();
+      if (tokens[pos] === ")") pos++;
+      return inner;
+    }
+    pos++;
+    if (/^[A-Za-z_$]/.test(tok)) {
+      if (tokens[pos] === "(") {
+        pos++;
+        const arg = parseExpression();
+        if (tokens[pos] === ")") pos++;
+        if (tok === "sin") return Math.sin((arg * Math.PI) / 180);
+        if (tok === "cos") return Math.cos((arg * Math.PI) / 180);
+        if (tok === "abs") return Math.abs(arg);
+        if (tok === "sqrt") return Math.sqrt(Math.max(0, arg));
+      }
+      return vars[tok] !== undefined ? vars[tok]! : fallback;
+    }
+    const num = parseFloat(tok);
+    return Number.isFinite(num) ? num : fallback;
+  };
+
+  const res = parseExpression();
+  return Number.isFinite(res) ? res : fallback;
+}
+
 /** Tessellate OpenSCAD source primitives (cube, cylinder, sphere) into 3D CadComponents + VTK buffer. */
 export function tessellateScadSource(scadCode: string): {
   vtkBuffer: Uint8Array;
   components: CadComponent[];
 } {
+  const cleanCode = scadCode.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const vars: Record<string, number> = {};
+  const scalarVarRegex = /\b([A-Za-z_]\w*)\s*=\s*(-?\d+(?:\.\d+)?)\s*;/g;
+  let vm: RegExpExecArray | null;
+  while ((vm = scalarVarRegex.exec(cleanCode)) !== null) {
+    vars[vm[1]!] = parseFloat(vm[2]!);
+  }
+  const exprVarRegex = /(?:^|[;\n{}])\s*([A-Za-z_]\w*)\s*=\s*([^;=\n[\]]+?)\s*;/g;
+  while ((vm = exprVarRegex.exec(cleanCode)) !== null) {
+    const name = vm[1]!;
+    if (!(name in vars)) {
+      const evaluated = evalScadExpr(vm[2]!, vars, NaN);
+      if (Number.isFinite(evaluated)) {
+        vars[name] = evaluated;
+      }
+    }
+  }
+
+  const resolveActiveTranslation = (matchIndex: number): [number, number, number] => {
+    const prefix = cleanCode.slice(Math.max(0, matchIndex - 260), matchIndex);
+    const transMatches = Array.from(
+      prefix.matchAll(/translate\s*\(\s*(?:v\s*=\s*)?\[\s*([^\]]+)\s*\]\s*\)\s*(?:\{\s*[^{}]*)?$/gi),
+    );
+    const lastMatch = transMatches[transMatches.length - 1];
+    if (!lastMatch?.[1]) return [0, 0, 0];
+    const coords = splitTopLevelArgs(lastMatch[1]);
+    const tx = evalScadExpr(coords[0], vars, 0) / 25;
+    const tz = evalScadExpr(coords[1], vars, 0) / 25;
+    const ty = evalScadExpr(coords[2], vars, 0) / 25;
+    return [tx, ty, tz];
+  };
+
   const mesh: TriangulatedMesh = { positions: [], normals: [] };
-  const cubeRegex = /cube\s*\(\s*\[\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*\]/gi;
   let m: RegExpExecArray | null;
-  while ((m = cubeRegex.exec(scadCode)) !== null) {
-    const sx = Math.max(0.2, parseFloat(m[1]!) / 25);
-    const sz = Math.max(0.2, parseFloat(m[2]!) / 25);
-    const sy = Math.max(0.1, parseFloat(m[3]!) / 25);
-    appendBoxTriangles(mesh, 0, sy / 2, 0, sx, sy, sz);
+
+  const cubeRegex = /\bcube\s*\(([^;]*?)\)/gi;
+  while ((m = cubeRegex.exec(cleanCode)) !== null) {
+    const argsStr = m[1]!;
+    const [tx, ty, tz] = resolveActiveTranslation(m.index);
+    const vecMatch = /\[\s*([^\]]+)\s*\]/.exec(argsStr);
+    let sx = 0.4;
+    let sy = 0.4;
+    let sz = 0.4;
+    if (vecMatch?.[1]) {
+      const dims = splitTopLevelArgs(vecMatch[1]);
+      sx = Math.max(0.2, Math.abs(evalScadExpr(dims[0], vars, 10)) / 25);
+      sz = Math.max(0.2, Math.abs(evalScadExpr(dims[1], vars, 10)) / 25);
+      sy = Math.max(0.1, Math.abs(evalScadExpr(dims[2], vars, 10)) / 25);
+    } else {
+      const parts = splitTopLevelArgs(argsStr);
+      const firstPart = parts[0]?.replace(/^size\s*=\s*/i, "");
+      const s = Math.max(0.2, Math.abs(evalScadExpr(firstPart, vars, 10)) / 25);
+      sx = s;
+      sy = s;
+      sz = s;
+    }
+    appendBoxTriangles(mesh, tx, ty + sy / 2, tz, sx, sy, sz);
   }
-  const cylRegex = /cylinder\s*\(([^)]*)\)/gi;
-  while ((m = cylRegex.exec(scadCode)) !== null) {
-    const args = m[1]!;
-    const hMatch = /h\s*=\s*([0-9.]+)/.exec(args);
-    const rMatch = /r\s*=\s*([0-9.]+)/.exec(args) ?? /d\s*=\s*([0-9.]+)/.exec(args);
-    const h = Math.max(0.2, parseFloat(hMatch?.[1] || "12") / 25);
-    const r = Math.max(0.1, parseFloat(rMatch?.[1] || "6") / 25);
-    appendCylinderTriangles(mesh, 0, h / 2, 0, r, h, 24);
+
+  const cylRegex = /\bcylinder\s*\(([^;]*?)\)/gi;
+  while ((m = cylRegex.exec(cleanCode)) !== null) {
+    const argsStr = m[1]!;
+    const [tx, ty, tz] = resolveActiveTranslation(m.index);
+    const parts = splitTopLevelArgs(argsStr);
+    const named: Record<string, string> = {};
+    const positional: string[] = [];
+    for (const p of parts) {
+      const kv = /^([A-Za-z_]\w*)\s*=\s*(.+)$/.exec(p);
+      if (kv) {
+        named[kv[1]!] = kv[2]!;
+      } else {
+        positional.push(p);
+      }
+    }
+    const hVal =
+      named.h !== undefined
+        ? evalScadExpr(named.h, vars, 12)
+        : positional[0] !== undefined
+          ? evalScadExpr(positional[0], vars, 12)
+          : 12;
+    let rVal = 6;
+    if (named.r !== undefined) {
+      rVal = evalScadExpr(named.r, vars, 6);
+    } else if (named.r1 !== undefined || named.r2 !== undefined) {
+      const r1 = named.r1 !== undefined ? evalScadExpr(named.r1, vars, 6) : evalScadExpr(named.r2, vars, 6);
+      const r2 = named.r2 !== undefined ? evalScadExpr(named.r2, vars, 6) : r1;
+      rVal = (r1 + r2) / 2;
+    } else if (named.d !== undefined) {
+      rVal = evalScadExpr(named.d, vars, 12) / 2;
+    } else if (named.d1 !== undefined || named.d2 !== undefined) {
+      const d1 = named.d1 !== undefined ? evalScadExpr(named.d1, vars, 12) : evalScadExpr(named.d2, vars, 12);
+      const d2 = named.d2 !== undefined ? evalScadExpr(named.d2, vars, 12) : d1;
+      rVal = (d1 + d2) / 4;
+    } else if (positional[1] !== undefined) {
+      rVal = evalScadExpr(positional[1], vars, 6);
+    }
+    const h = Math.max(0.2, Math.abs(hVal) / 25);
+    const r = Math.max(0.1, Math.abs(rVal) / 25);
+    appendCylinderTriangles(mesh, tx, ty + h / 2, tz, r, h, 24);
   }
+
+  const sphereRegex = /\bsphere\s*\(([^;]*?)\)/gi;
+  while ((m = sphereRegex.exec(cleanCode)) !== null) {
+    const argsStr = m[1]!;
+    const [tx, ty, tz] = resolveActiveTranslation(m.index);
+    const parts = splitTopLevelArgs(argsStr);
+    const named: Record<string, string> = {};
+    const positional: string[] = [];
+    for (const p of parts) {
+      const kv = /^([A-Za-z_]\w*)\s*=\s*(.+)$/.exec(p);
+      if (kv) {
+        named[kv[1]!] = kv[2]!;
+      } else {
+        positional.push(p);
+      }
+    }
+    let rVal = 8;
+    if (named.r !== undefined) {
+      rVal = evalScadExpr(named.r, vars, 8);
+    } else if (named.d !== undefined) {
+      rVal = evalScadExpr(named.d, vars, 16) / 2;
+    } else if (positional[0] !== undefined) {
+      rVal = evalScadExpr(positional[0], vars, 8);
+    }
+    const r = Math.max(0.1, Math.abs(rVal) / 25);
+    appendSphereTriangles(mesh, tx, ty + r, tz, r, 16, 24);
+  }
+
   const vtkBuffer = buildVtkXmlBuffer(mesh);
   const glbUri = buildGlbDataUri(mesh, "OpenSCAD_Solid", [0.25, 0.78, 0.52, 1.0]);
   const components: CadComponent[] = glbUri

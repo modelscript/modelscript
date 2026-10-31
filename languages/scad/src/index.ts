@@ -6,14 +6,30 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWasmParser, type TreeSitterParser } from "../src-gen/bindings.js";
 import { ScadErrorCode } from "./errors.js";
-import { ScadEvaluator, type ScadEvaluationOptions } from "./evaluator.js";
+import {
+  evaluateScad,
+  parseScadSource,
+  ScadEvaluator,
+  type ScadEvaluationOptions,
+  type ScadEvaluationResult,
+  type ScadValue,
+} from "./evaluator.js";
 import { scadLanguage } from "./language.js";
-import { lintScadCst, type ScadDiagnostic } from "./linter.js";
+import { lintScadCst, type ScadDiagnostic, type ScadLintOptions } from "./linter.js";
 import { ScadPatcher, type ScadCstNode, type ScadCstTree } from "./patcher.js";
+import type { ScadWorkspaceIndex } from "./workspace-index.js";
 
 export * from "./workspace-index.js";
-export { lintScadCst, ScadErrorCode, ScadEvaluator, scadLanguage, ScadPatcher };
-export type { ScadCstNode, ScadCstTree, ScadDiagnostic, ScadEvaluationOptions };
+export { evaluateScad, lintScadCst, parseScadSource, ScadErrorCode, ScadEvaluator, scadLanguage, ScadPatcher };
+export type {
+  ScadCstNode,
+  ScadCstTree,
+  ScadDiagnostic,
+  ScadEvaluationOptions,
+  ScadEvaluationResult,
+  ScadLintOptions,
+  ScadValue,
+};
 
 export interface ScadCadComponent {
   name: string;
@@ -80,11 +96,14 @@ export async function getScadParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer | 
 /**
  * Parses and semantically lints OpenSCAD source code, returning diagnostics with narrow byte and line/column ranges.
  */
-export async function lintScad(source: string): Promise<ScadDiagnostic[]> {
+export async function lintScad(
+  source: string,
+  options?: ScadLintOptions | ScadWorkspaceIndex,
+): Promise<ScadDiagnostic[]> {
   const parser = await getScadParser();
   const tree = parser.parse(source);
   if (!tree) return [];
-  return lintScadCst(tree.rootNode, source);
+  return lintScadCst(tree.rootNode, source, options);
 }
 
 /**

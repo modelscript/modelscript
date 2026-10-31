@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BookIcon, FileCodeIcon, SlidersIcon, WorkflowIcon } from "@primer/octicons-react";
+import { BeakerIcon, BookIcon, FileCodeIcon, SlidersIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Heading, Label, Text } from "@primer/react";
 import React from "react";
 import Box from "../../../components/Box";
@@ -18,6 +18,7 @@ export interface ClassDetailHeaderProps {
   activeTab: ClassTabId;
   setActiveTab: (tab: ClassTabId) => void;
   equationsCount: number;
+  studiesCount?: number | undefined;
 }
 
 export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
@@ -29,6 +30,7 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   activeTab,
   setActiveTab,
   equationsCount,
+  studiesCount = 0,
 }) => {
   const signature = formatFormalSignature({
     className,
@@ -147,6 +149,16 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
             <TabCountBadge $active={activeTab === "equations"}>{equationsCount}</TabCountBadge>
           </TabButton>
         )}
+        <TabButton
+          role="tab"
+          aria-selected={activeTab === "studies"}
+          $active={activeTab === "studies"}
+          onClick={() => setActiveTab("studies")}
+        >
+          <BeakerIcon size={15} />
+          Studies &amp; Jobs
+          {studiesCount > 0 && <TabCountBadge $active={activeTab === "studies"}>{studiesCount}</TabCountBadge>}
+        </TabButton>
         {cls.sourceCode && (
           <TabButton
             role="tab"

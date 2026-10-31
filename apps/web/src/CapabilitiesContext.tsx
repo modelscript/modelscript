@@ -56,7 +56,7 @@ const CapabilitiesContext = createContext<CapabilitiesContextValue>({
   edition: "ce",
   airgapEnforced: false,
   capabilities: DEFAULT_CAPABILITIES,
-  hasCapability: (key: string) => Boolean(DEFAULT_CAPABILITIES[key]),
+  hasCapability: (key: keyof InstanceCapabilities | string) => Boolean(DEFAULT_CAPABILITIES[String(key)]),
   loading: false,
   refreshCapabilities: async () => {},
 });

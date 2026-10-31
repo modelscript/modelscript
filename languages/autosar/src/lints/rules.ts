@@ -233,12 +233,12 @@ function checkInternalBehavior(swc: AutosarSwComponent, diags: AutosarDiagnostic
 }
 
 function checkPduAndFrames(model: AutosarModel, diags: AutosarDiagnostic[]): void {
-  // M7406: Overlapping PDU bits
+  // M7406: Overlapping PDU bits (supporting both Intel little-endian and Motorola big-endian sawtooth bit ordering)
   for (const [pduName, pdu] of model.pdus) {
     const occupiedBits = new Map<number, string>(); // bitIdx -> signalName
     for (const sig of pdu.signals) {
+      let bitIdx = sig.startBit;
       for (let b = 0; b < sig.length; b++) {
-        const bitIdx = sig.startBit + b;
         const existingSig = occupiedBits.get(bitIdx);
         if (existingSig && existingSig !== sig.shortName) {
           diags.push({
@@ -251,6 +251,11 @@ function checkPduAndFrames(model: AutosarModel, diags: AutosarDiagnostic[]): voi
           break;
         }
         occupiedBits.set(bitIdx, sig.shortName);
+        if (sig.byteOrder === "MOST-SIGNIFICANT-BYTE-FIRST") {
+          bitIdx = bitIdx % 8 === 0 ? bitIdx + 15 : bitIdx - 1;
+        } else {
+          bitIdx++;
+        }
       }
     }
   }

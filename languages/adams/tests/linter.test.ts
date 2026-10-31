@@ -121,3 +121,19 @@ SPRINGDAMPER/1, TRANSLATIONAL, I=1, J=2, K=-500.0, C=-10.0
   const m7308 = diags.filter((d) => d.code === "M7308");
   assert.equal(m7308.length, 2);
 });
+
+test("Adams Linter - M7302: Euler 3-1-3 and Tait-Bryan gimbal lock singularities", () => {
+  const deck = `
+PART/1, GROUND
+PART/2, MASS = 1.0, IP = 0.1, 0.1, 0.1
+MARKER/1, PART=1, QP=0,0,0, REULER=30D, 0D, 45D
+MARKER/2, PART=2, QP=0,0,0, REULER=0D, 90D, 0D
+MARKER/3, PART=2, QP=0,0,0, REULER=0D, 180D, 0D
+JOINT/1, REVOLUTE, I=1, J=2
+`;
+  const dataset = parseAdams(deck);
+  const diags = lintAdamsModel(dataset);
+
+  const m7302 = diags.filter((d) => d.code === "M7302");
+  assert.equal(m7302.length, 3);
+});

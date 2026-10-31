@@ -11,6 +11,7 @@ import {
   createPsseWasmParser,
   extractPowerFlowNetlist,
   lintPsse,
+  lowerPsseToDae,
   parseDyr,
   parseRaw,
   psseToEmtNetlist,
@@ -509,4 +510,96 @@ test("PSS/E Diagram Bi-Directional Writeback: Mutates Bus, Generator, Load, and 
   assert.ok(bus4);
   assert.equal(bus4.baseKv, 138.0);
   assert.ok(Math.abs(bus4.vm - 1.025) < 1e-3);
+});
+
+test("PSS/E Phase 2: Enforces PV-to-PQ reactive power limit switching (Qmin <= Qg <= Qmax)", () => {
+  const parsed = parseRaw(IEEE_14_RAW);
+  // Increase reactive load on Bus 2 and restrict Qmax on PV Bus 2 generator to 15 MVAR so it hits Qmax
+  const load2 = parsed.loads.find((l) => l.i === 2);
+  assert.ok(load2);
+  load2.ql = 65.0;
+  const gen2 = parsed.generators.find((g) => g.i === 2);
+  assert.ok(gen2);
+  gen2.qt = 15.0;
+  gen2.qb = -10.0;
+
+  const res = solvePowerFlow(parsed);
+  assert.equal(res.converged, true);
+  const bus2Res = res.buses.find((b) => b.busNumber === 2);
+  assert.ok(bus2Res);
+  // Bus 2 must have switched from PV to PQ and clamped its reactive generation at Qmax = 15 MVAR
+  assert.equal(bus2Res.type, "PQ");
+  assert.ok(Math.abs(bus2Res.qgMvar - 15.0) < 1e-2, `Expected Bus 2 Qg clamped at 15 MVAR, got ${bus2Res.qgMvar}`);
+  assert.ok(bus2Res.vm < 1.045, `Expected Bus 2 voltage to sag below PV setpoint 1.045 pu, got ${bus2Res.vm}`);
+});
+
+test("PSS/E Phase 2: Incorporates off-nominal transformer tap ratio (windv1/windv2) and phase-shift angle (ang1)", () => {
+  const raw2BusTap = [
+    "0, 100.0, 33, 0, 1, 60.0 / 2-Bus Off-Nominal Tap & Phase-Shift Test",
+    "1, 'SLACK', 138.0, 3, 1, 1, 1, 1.00, 0.0 /",
+    "2, 'LOAD ', 138.0, 1, 1, 1, 1, 1.00, 0.0 /",
+    "0 / END OF BUS DATA, BEGIN LOAD DATA",
+    "2, '1 ', 1, 1, 1, 50.0, 20.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0 /",
+    "0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA",
+    "0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA",
+    "1, '1 ', 50.0, 20.0, 200.0, -200.0, 1.00, 0, 100.0, 0.0, 0.2, 0.0, 0.0, 1.0, 1, 100.0, 200.0, 0.0 /",
+    "0 / END OF GENERATOR DATA, BEGIN BRANCH DATA",
+    "0 / END OF BRANCH DATA, BEGIN TRANSFORMER DATA",
+    "1, 2, 0, '1 ', 1, 1, 1, 0.0, 0.0, 2, 'XFMR1', 1, 1, 1.0, 0, 1.0, 0, 1.0, 0, 1.0, '          '",
+    "0.002, 0.08, 100.0",
+    "0.95, 0.0, 5.0, 100.0, 100.0, 100.0, 0, 0, 1.1, 0.9, 1.1, 0.9, 33, 0, 0.0, 0.0, 0.0",
+    "1.05, 0.0 /",
+    "0 / END OF TRANSFORMER DATA",
+    "Q",
+  ].join("\n");
+
+  const parsedTap = parseRaw(raw2BusTap);
+  const resTap = solvePowerFlow(parsedTap);
+  assert.equal(resTap.converged, true);
+
+  // Compare against nominal tap (windv1=1.0, windv2=1.0, ang1=0.0)
+  const parsedNom = parseRaw(raw2BusTap);
+  parsedNom.transformers[0]!.windv1 = 1.0;
+  parsedNom.transformers[0]!.windv2 = 1.0;
+  parsedNom.transformers[0]!.ang1 = 0.0;
+  const resNom = solvePowerFlow(parsedNom);
+  assert.equal(resNom.converged, true);
+
+  const v2Tap = resTap.buses.find((b) => b.busNumber === 2)!.vm;
+  const v2Nom = resNom.buses.find((b) => b.busNumber === 2)!.vm;
+  const va2Tap = resTap.buses.find((b) => b.busNumber === 2)!.va;
+  const va2Nom = resNom.buses.find((b) => b.busNumber === 2)!.va;
+
+  // Off-nominal ratio t = 0.95 / 1.05 < 1.0 boosts secondary voltage V2 compared to nominal tap 1.0
+  assert.ok(
+    v2Tap > v2Nom + 0.05,
+    `Expected off-nominal tap t=0.95/1.05 to boost V2 (${v2Tap}) above nominal (${v2Nom})`,
+  );
+  // Phase shift ang1 = 5 deg shifts secondary voltage angle
+  assert.ok(Math.abs(va2Tap - va2Nom) > 3.0, `Expected 5-deg phase shift to shift angle Va2 (${va2Tap} vs ${va2Nom})`);
+});
+
+test("PSS/E Phase 2: Lowers .dyr GENROU, EXST1, and TGOV1 dynamic state equations into square DAEBuilder", () => {
+  const parsed = parseRaw(IEEE_14_RAW);
+  const dyrText = [
+    "1 'GENROU' 1 6.50 0.05 0.50 0.06 5.14 2.00 1.80 1.70 0.30 0.55 0.20 0.13 0.09 0.35 /",
+    "1 'EXST1'  1 0.02 1.15 -1.15 1.00 10.0 200.0 0.02 5.00 -5.00 0.10 0.03 0.0 /",
+    "1 'TGOV1'  1 0.05 0.50 1.05 0.00 1.00 2.10 0.50 /",
+  ].join("\n");
+  parsed.dyr = parseDyr(dyrText);
+
+  const dae = lowerPsseToDae(parsed);
+  // Base 5-bus/3-gen IEEE_14_RAW has 5*4 + 3*3 = 29 vars/eqs; adding GENROU (+2: Eqp, Edp), EXST1 (+1: Efd), TGOV1 (+1: Pm) on Gen 1_1 adds 4 states & 4 ODEs -> 33 vars/eqs
+  assert.equal(dae.getVarCount(), 33);
+  assert.equal(dae.getEqCount(), 33);
+  assert.equal(dae.getVarCount(), dae.getEqCount(), "DAE with .dyr GENROU/EXST1/TGOV1 must remain structurally square");
+
+  const varNames: string[] = [];
+  for (let i = 0; i < dae.getVarCount(); i++) {
+    varNames.push(dae.getVarName(i));
+  }
+  assert.ok(varNames.includes("Eqp_1_1"), "Expected GENROU q-axis transient flux state Eqp_1_1");
+  assert.ok(varNames.includes("Edp_1_1"), "Expected GENROU d-axis transient flux state Edp_1_1");
+  assert.ok(varNames.includes("Efd_1_1"), "Expected EXST1 exciter field voltage state Efd_1_1");
+  assert.ok(varNames.includes("Pm_1_1"), "Expected TGOV1 governor mechanical power state Pm_1_1");
 });

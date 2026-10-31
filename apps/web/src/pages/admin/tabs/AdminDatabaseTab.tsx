@@ -19,7 +19,7 @@ import {
   uploadAdminBackup,
 } from "../../../api";
 import Box from "../../../components/Box";
-import { ActionButton, Badge, Card, Input, StatGrid, Table } from "../styles";
+import { ActionButton, Badge, Card, Input, ModalBox, ModalOverlay, StatGrid, Table } from "../styles";
 import type { AdminBackupInfo, AdminDbStatus } from "../types";
 
 export interface AdminDatabaseTabProps {
@@ -62,6 +62,8 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
 }) => {
   const [backupLabel, setBackupLabel] = useState("");
   const [keepCount, setKeepCount] = useState(7);
+  const [confirmPruneOpen, setConfirmPruneOpen] = useState(false);
+  const [confirmDeleteBackupFile, setConfirmDeleteBackupFile] = useState<string | null>(null);
   const [exportedBundle, setExportedBundle] = useState<AdminInstanceBundle | null>(null);
   const [bundleStatusMsg, setBundleStatusMsg] = useState<string | null>(null);
   const [sourceActorUri, setSourceActorUri] = useState("");
@@ -84,6 +86,18 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
     if (!onCreateHotBackup) return;
     await onCreateHotBackup(backupLabel.trim() || undefined);
     setBackupLabel("");
+  };
+
+  const handlePruneSnapshots = async () => {
+    if (!onPruneBackups) return;
+    setConfirmPruneOpen(false);
+    await onPruneBackups(keepCount);
+  };
+
+  const handleDeleteBackup = async (fileName: string) => {
+    if (!onDeleteBackup) return;
+    setConfirmDeleteBackupFile(null);
+    await onDeleteBackup(fileName);
   };
 
   const handleDownloadBackup = async (fileName: string) => {
@@ -266,7 +280,7 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
                   value={keepCount}
                   onChange={(e) => setKeepCount(Math.max(1, Number(e.target.value) || 7))}
                 />
-                <ActionButton $variant="secondary" disabled={loading} onClick={() => void onPruneBackups(keepCount)}>
+                <ActionButton $variant="secondary" disabled={loading} onClick={() => setConfirmPruneOpen(true)}>
                   <TrashIcon size={13} />
                   <span>Prune Old Snapshots</span>
                 </ActionButton>
@@ -382,7 +396,7 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
                             <ActionButton
                               $variant="danger"
                               disabled={loading}
-                              onClick={() => void onDeleteBackup(b.fileName)}
+                              onClick={() => setConfirmDeleteBackupFile(b.fileName)}
                             >
                               <TrashIcon size={13} />
                               <span>Delete</span>
@@ -564,6 +578,64 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
             </tbody>
           </Table>
         </div>
+      )}
+
+      {confirmPruneOpen && (
+        <ModalOverlay onClick={() => setConfirmPruneOpen(false)}>
+          <ModalBox
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm Prune Old Snapshots"
+          >
+            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
+              Confirm Prune Old Snapshots
+            </span>
+            <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete older SQLite WAL snapshots and retain only the latest{" "}
+              <strong>{keepCount}</strong> snapshot(s)?
+            </Box>
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <ActionButton $variant="secondary" onClick={() => setConfirmPruneOpen(false)} disabled={loading}>
+                Cancel
+              </ActionButton>
+              <ActionButton $variant="danger" onClick={() => void handlePruneSnapshots()} disabled={loading}>
+                Confirm Prune
+              </ActionButton>
+            </Box>
+          </ModalBox>
+        </ModalOverlay>
+      )}
+
+      {confirmDeleteBackupFile && (
+        <ModalOverlay onClick={() => setConfirmDeleteBackupFile(null)}>
+          <ModalBox
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm Delete Snapshot"
+          >
+            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
+              Delete Backup Snapshot
+            </span>
+            <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete backup snapshot <code>{confirmDeleteBackupFile}</code>? This
+              action cannot be undone.
+            </Box>
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <ActionButton $variant="secondary" onClick={() => setConfirmDeleteBackupFile(null)} disabled={loading}>
+                Cancel
+              </ActionButton>
+              <ActionButton
+                $variant="danger"
+                onClick={() => void handleDeleteBackup(confirmDeleteBackupFile)}
+                disabled={loading}
+              >
+                Confirm Delete
+              </ActionButton>
+            </Box>
+          </ModalBox>
+        </ModalOverlay>
       )}
     </div>
   );

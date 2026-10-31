@@ -1302,9 +1302,9 @@ docker compose --profile standalone up -d
 
 ### Scenario B: Corporate Self-Hosted Enterprise Edition (`MSX_EDITION=ee`)
 
-For regulated utilities, defense primes, medical device manufacturers, and enterprise engineering organizations holding a signed `msx_lic_<payloadBase64Url>.<ed25519SigBase64Url>` license key.
+For regulated utilities, civil aerospace manufacturers, medical device companies, and enterprise engineering organizations holding a signed `msx_lic_<payloadBase64Url>.<ed25519SigBase64Url>` license key.
 
-#### B.1 Single-Container Air-Gapped Intranet Appliance (Recommended for SCIF / NERC CIP / ITAR)
+#### B.1 Single-Container Air-Gapped Intranet Appliance (Recommended for Isolated Enclaves / NERC CIP / Cleanrooms)
 
 Bundles the API server, `@modelscript/ee`, Web SPA, Unified Documentation Portal (`/docs`), and Web IDE into a single hardened container on port `8080` with zero outbound network dependencies:
 
@@ -1743,13 +1743,13 @@ Ansatz can be deployed as an independent federated instance, a public flagship c
 
 Ansatz offers targeted deployment profiles to match your infrastructure sizing and operational goals:
 
-| Profile | Active Containers | Target Use Case | Database Engine | Min. RAM |
-| :--- | :--- | :--- | :--- | :--- |
-| **`flagship`** | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` public cluster with dual-domain routing | SQLite WAL + TimescaleDB | 4–8 GB |
-| **`federated`** | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel` | Research lab with live IoT simulation telemetry streaming | SQLite WAL + TimescaleDB | 4 GB |
-| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel` | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS | **SQLite WAL only** | **1–2 GB** |
-| **`corporate`** | `caddy`, `web`, `api` (EE), `timescaledb` (optional) | Enterprise intranet, air-gapped SCIF, SSO domain allowlist, internal `/docs` | SQLite WAL (+ optional TimescaleDB) | 2–4 GB |
-| **`quick-tunnel`** | `caddy`, `web`, `api`, `quick-tunnel` | Zero-config demo with ephemeral `trycloudflare.com` URL | SQLite WAL only | 1.5 GB |
+| Profile              | Active Containers                                           | Target Use Case                                                              | Database Engine                     | Min. RAM   |
+| :------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------- | :---------------------------------- | :--------- |
+| **`flagship`**       | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` public cluster with dual-domain routing  | SQLite WAL + TimescaleDB            | 4–8 GB     |
+| **`federated`**      | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live IoT simulation telemetry streaming                    | SQLite WAL + TimescaleDB            | 4 GB       |
+| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel`                             | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS          | **SQLite WAL only**                 | **1–2 GB** |
+| **`corporate`**      | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped enclave, SSO domain allowlist, internal `/docs` | SQLite WAL (+ optional TimescaleDB) | 2–4 GB     |
+| **`quick-tunnel`**   | `caddy`, `web`, `api`, `quick-tunnel`                       | Zero-config demo with ephemeral `trycloudflare.com` URL                      | SQLite WAL only                     | 1.5 GB     |
 
 ---
 
@@ -1818,23 +1818,28 @@ DEPLOYMENT_PRESET=tier1_federated
 ### 3. Launch Services
 
 #### Option A: Lightweight Homelab / VPS (Embedded SQLite only, ~1-2 GB RAM)
+
 ```bash
 docker compose --profile federated-lite up -d
 ```
 
 #### Option B: Full Federated Node (with TimescaleDB Telemetry Historian)
+
 ```bash
 docker compose --profile federated up -d
 ```
 
 #### Option C: Flagship Cluster (`modelscript.org` + `ansatz.social`)
+
 Both `--profile flagship` and `--profile federated` activate the full production stack (`caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`):
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \
   --env-file .env --profile flagship up -d
 ```
 
 #### Option D: 1-Click Ephemeral Demo (No Account or Domain Needed)
+
 ```bash
 docker compose --profile quick-tunnel up
 ```
@@ -1844,7 +1849,9 @@ docker compose --profile quick-tunnel up
 ## First-Run Setup Wizard (`/setup`) vs. Headless Preinstall
 
 ### Interactive Setup Wizard
+
 When launching a fresh federated node without pre-seeded admin variables:
+
 1. Open `https://hub.mycompany.org/setup` in your browser.
 2. Select your **Deployment Profile**:
    - **Tier 1: Independent Federated Node:** Open ActivityPub S2S federation with peer nodes.
@@ -1854,6 +1861,7 @@ When launching a fresh federated node without pre-seeded admin variables:
 4. Complete configuration and download your initial baseline snapshot. The wizard locks permanently upon completion.
 
 ### Headless Preinstallation
+
 For automated CI/CD, Terraform, or Ansible deployments, setting `ADMIN_INIT_USERNAME`, `ADMIN_INIT_PASSWORD`, and `DEPLOYMENT_PRESET` automatically provisions the administrator, applies tier settings, generates cryptographic keys, and permanently locks the setup wizard on first boot.
 
 ---
@@ -1892,16 +1900,20 @@ Backups are recorded in `apps/api/data/backups/` and verified with SHA-256 check
 ## Maintenance Mode, Step-Up Sudo & Prometheus Metrics
 
 ### Multi-Tiered Maintenance Mode
+
 Operators can transition a node between four operational states via the **Admin Console → Settings** tab (`PATCH /api/v1/admin/settings`) or environment variables (`MSX_MAINTENANCE_MODE`, `MSX_MAINTENANCE_ETA`):
+
 - **`off`**: Normal read/write operation.
 - **`scheduled`**: Displays an upcoming maintenance window banner and `maintenanceEta` countdown across Web and Docs without blocking traffic.
 - **`read_only`**: Allows `GET`/`HEAD`/`OPTIONS` browsing and package downloads while returning `503 Service Unavailable` (with `Retry-After`) on user mutations.
 - **`lockdown`**: Blocks all non-admin requests while allowing staff administrators to perform upgrades or forensic recovery.
 
 ### Step-Up Sudo Mode (`REQUIRE_ADMIN_SUDO=true`)
+
 Destructive administrative mutations (role promotions, database restores, migration bundle imports, and DMCA counter-notice restorations) support **Step-Up Sudo** verification (`POST /api/v1/admin/sudo`), issuing a short-lived 15-minute `admin_sudo` elevation token after re-verifying the administrator's password or TOTP code.
 
 ### Prometheus & OpenMetrics Endpoint
+
 Scrape `GET /api/v1/admin/metrics` (authenticated with an admin Bearer token or `ms_bot_*` monitoring token) to collect OpenMetrics gauges and counters for Node.js heap/RSS memory, SQLite WAL & backup footprint, user/package/post totals, ActivityPub S2S delivery states, and HPC job queue depth.
 
 ---
@@ -1909,6 +1921,7 @@ Scrape `GET /api/v1/admin/metrics` (authenticated with an admin Bearer token or 
 ## Upgrading & Rollback Runbook
 
 ### Standard Zero-Data-Loss Upgrade
+
 1. **Enable Read-Only Drain (Optional):** Set Maintenance Mode to `read_only` in `/admin` or run a pre-upgrade snapshot:
    ```bash
    docker compose exec api node apps/cli/dist/main.js db backup --label pre-upgrade
@@ -1928,7 +1941,9 @@ Scrape `GET /api/v1/admin/metrics` (authenticated with an admin Bearer token or 
    ```
 
 ### Point-in-Time Rollback Procedure
+
 If a deployment needs to be rolled back to a previous release:
+
 1. **Restore the Pre-Upgrade SQLite Snapshot** (automatically creates a `pre-restore` safety backup before swapping the database file):
    ```bash
    docker compose exec api node apps/cli/dist/main.js db restore --file modelscript-backup-pre-upgrade.db
@@ -2028,21 +2043,21 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 
 ## Monorepo Package Matrix
 
-| Package                   | Path                | Primary Responsibility                                                                                                                |
-| :------------------------ | :------------------ | :------------------------------------------------------------------------------------------------------------------------------------ |
-| `@modelscript/dsl`        | `packages/dsl`      | Grammar combinators, Ahead-of-Time WASM GLR parser compiler (`buildParser`), TGG/DPO engine, Critical Pair Analysis, E-graphs         |
-| `@modelscript/runtime`    | `packages/runtime`  | Linear-memory `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, BLT/Pantelides solver, 13 Formal Theory Oracles |
-| `@modelscript/simulate`   | `packages/simulate` | Numerical integrators (SUNDIALS CVODE/IDA, Radau IIA, DOPRI5, Dommel EMT), WebGPU batched solver, FNO surrogates, Monte Carlo         |
-| `@modelscript/cad`        | `packages/cad`      | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, 3D tetrahedral FEA solver, Gerber ECAD parser            |
-| `@modelscript/diagram`    | `packages/diagram`  | Polyglot schematic layout engine, orthogonal Manhattan connection router, SVG/Canvas renderer, dark-mode color inversion              |
-| `@modelscript/exchange`   | `packages/exchange` | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, WebSerial/AudioWorklet HIL           |
-| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server, semantic tokens, hover, go-to-definition, code actions, background worker pool                             |
+| Package                   | Path                | Primary Responsibility                                                                                                                                      |
+| :------------------------ | :------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@modelscript/dsl`        | `packages/dsl`      | Grammar combinators, Ahead-of-Time WASM GLR parser compiler (`buildParser`), TGG/DPO engine, Critical Pair Analysis, E-graphs                               |
+| `@modelscript/runtime`    | `packages/runtime`  | Linear-memory `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, BLT/Pantelides solver, 13 Formal Theory Oracles                       |
+| `@modelscript/simulate`   | `packages/simulate` | Numerical integrators (SUNDIALS CVODE/IDA, Radau IIA, DOPRI5, Dommel EMT), WebGPU batched solver, FNO surrogates, Monte Carlo                               |
+| `@modelscript/cad`        | `packages/cad`      | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, 3D tetrahedral FEA solver, Gerber ECAD parser                                  |
+| `@modelscript/diagram`    | `packages/diagram`  | Polyglot schematic layout engine, orthogonal Manhattan connection router, SVG/Canvas renderer, dark-mode color inversion                                    |
+| `@modelscript/exchange`   | `packages/exchange` | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, WebSerial/AudioWorklet HIL                                 |
+| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                   |
 | `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 52 core and 70+ domain-specific ModelScript compilation, simulation, verification, and knowledge graph tools |
-| `@modelscript/ide-client` | `packages/ide`      | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports                   |
-| `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)             |
-| `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (`flatten`, `simulate`, `verify`, `align`, `polyglot`, `fmu`, `csg`, `surrogate`, `mc`, `hil`)         |
-| `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, and WebSocket simulation backend server                                                                        |
-| `@modelscript/web`        | `apps/web`          | Browser-native WebAssembly Polyglot Playground and visual modeling environment                                                        |
+| `@modelscript/ide-client` | `packages/ide`      | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports                                         |
+| `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                   |
+| `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (`flatten`, `simulate`, `verify`, `align`, `polyglot`, `fmu`, `csg`, `surrogate`, `mc`, `hil`)                               |
+| `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, and WebSocket simulation backend server                                                                                              |
+| `@modelscript/web`        | `apps/web`          | Browser-native WebAssembly Polyglot Playground and visual modeling environment                                                                              |
 
 ================================================================================
 DOCUMENT: Monorepo & Taxonomy
@@ -9220,17 +9235,24 @@ msx autosar simulate-rte PowertrainSystem.arxml --duration=0.5 --step=0.01 --out
 
 ## Automotive Pre-Flight Linters & Diagnostic Rules
 
-### Diagnostics for AUTOSAR (8 rules)
+### Diagnostics for AUTOSAR (15 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
-| `M7401` | warning | `unconnected-mandatory-port` | Required port '<portName>' on component prototype '<compName>' is not connected by any assembly connector. |
-| `M7402` | error | `interface-mismatch` | Connector interface mismatch: provider port '<pPort>' uses interface '<pIf>', but requirer port '<rPort>' expects '<rIf>'. |
+| `M7401` | error | `unconnected-mandatory-port` | Required port '<portName>' on component '<compName>' (<typeName>) is unconnected in composition '<compSwc>'. |
+| `M7402` | error | `interface-mismatch` | Interface mismatch in connector '<connName>': Provider port '<pPort>' provides '<pIf>' while requester port '<rPort>' requires '<rIf>'. |
+| `M7403` | warning | `data-element-type-mismatch` | Data element '<deName>' in interface '<ifName>' has no data type reference. |
 | `M7403` | error | `invalid-runnable-period` | Timing event for runnable '<symbol>' defines non-positive period (<period> s). |
 | `M7404` | error | `duplicate-short-name` | Duplicate SHORT-NAME '<name>' detected in package '<pkg>'. |
 | `M7405` | error | `invalid-data-type-mapping` | Invalid data type mapping for '<dtName>': <reason>. |
+| `M7405` | error | `wcet-budget-overflow` | Execution time WCET (<wcetMs> ms) of runnable '<runnableName>' exceeds its timing event period (<periodMs> ms). |
 | `M7406` | error | `circular-composition-dependency` | Circular software component composition dependency detected: <path>. |
+| `M7406` | error | `overlapping-pdu-bits` | Signals '<sigA>' and '<sigB>' overlap bit index <bitIdx> in PDU '<pduName>'. |
 | `M7407` | warning | `missing-software-address-method` | Variable data prototype '<variable>' lacks a declared SwAddrMethod memory section mapping. |
+| `M7407` | error | `pdu-exceeds-frame-capacity` | PDU '<pduName>' length (<pduLen> bytes) exceeds CAN frame '<frameName>' payload capacity (<frameLen> bytes). |
+| `M7408` | error | `cyclic-runnable-dependency` | Cyclic data dependency detected between runnables: '<value>'. |
 | `M7408` | error | `incompatible-port-interface-direction` | Port '<portName>' interface direction violation: <reason>. |
+| `M7409` | warning | `missing-internal-behavior` | Atomic software component '<swcName>' lacks internal behavior definition. |
+| `M7410` | info | `untriggered-runnable` | Runnable entity '<rName>' in SWC '<swcName>' has no associated RTE trigger event. |
 
 ---
 
@@ -10303,11 +10325,13 @@ CANONICAL URL: https://modelscript.org/languages/opendss
 
 The OpenDSS linter verifies electrical connectivity and DER operating envelopes:
 
-### Diagnostics for OpenDSS (8 rules)
+### Diagnostics for OpenDSS (10 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `M8401` | error | `unconnected-bus-node` | <elemType> '<elemName>' references undefined bus node '<busName>'. |
 | `M8402` | error | `phase-count-mismatch` | Element '<elemName>' (<elemPhases> phases) connected to bus '<busName>' with different phase count (<busPhases>). |
+| `M8402` | error | `transformer-impedance-zero` | Transformer '<xfmrName>' specifies non-positive leakage reactance (xhl=<xhl>); must be > 0. |
+| `M8403` | warning | `load-pf-out-of-range` | Load '<loadName>' specifies power factor (<pf>) outside valid range (0 < \|pf\| <= 1.0). |
 | `M8403` | warning | `transformer-voltage-mismatch` | Transformer '<xfmrName>' winding <winding> rated voltage (<value> kV) differs from nominal bus voltage (<value> kV). |
 | `M8404` | warning | `reverse-power-hosting-risk` | Total DER generation capacity on feeder '<feederName>' (<value> kW) exceeds upstream transformer thermal rating (<value> kVA). |
 | `M8405` | error | `missing-circuit-definition` | OpenDSS script defines circuit elements without declaring a 'New Circuit' voltage source. |
@@ -12310,11 +12334,11 @@ CANONICAL URL: https://modelscript.org/industries
 <IndustriesIndex />
 
 ================================================================================
-DOCUMENT: Aerospace & Defense Engineering Industry
+DOCUMENT: Aerospace & Aviation Engineering Industry
 CANONICAL URL: https://modelscript.org/industries/aerospace
 ================================================================================
 
-# Aerospace & Defense
+# Aerospace & Aviation
 
 **Tagline:** Flight dynamics, propulsion & mission telemetry
 **Summary:** Connect SysML v2 architectures and ReqIF requirements to JSBSim flight models, NASA ROCETS propulsion decks, and CCSDS telemetry, then simulate, verify, and export FMUs without leaving one toolchain.
@@ -12772,7 +12796,7 @@ CANONICAL URL: https://modelscript.org/reference/linter-rules
 
 # Linter Rules Reference
 
-ModelScript ships **794 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **803 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -12809,7 +12833,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [NASA ROCETS](#rocets)                    | `@modelscript/rocets`       |    14 | `msx lint`              |
 | [CCSDS](#ccsds)                           | `@modelscript/ccsds`        |     8 | `msx ccsds lint`        |
 | [EASY5](#easy5)                           | `@modelscript/easy5`        |    12 | `msx lint`              |
-| [AUTOSAR](#autosar)                       | `@modelscript/autosar`      |     8 | `msx autosar lint`      |
+| [AUTOSAR](#autosar)                       | `@modelscript/autosar`      |    15 | `msx autosar lint`      |
 | [MATLAB Simulink](#simulink)              | `@modelscript/simulink`     |    10 | `msx simulink lint`     |
 | [GT-SUITE](#gtsuite)                      | `@modelscript/gtsuite`      |    15 | `msx lint`              |
 | [ASAM OpenDRIVE](#opendrive)              | `@modelscript/opendrive`    |     8 | `msx opendrive lint`    |
@@ -12818,7 +12842,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [SIMPACK](#simpack)                       | `@modelscript/simpack`      |     6 | `msx simpack lint`      |
 | [PSCAD / EMTDC](#pscad)                   | `@modelscript/pscad`        |    17 | `msx lint`              |
 | [PSS/E](#psse)                            | `@modelscript/psse`         |    13 | `msx psse lint`         |
-| [OpenDSS](#opendss)                       | `@modelscript/opendss`      |     8 | `msx opendss lint`      |
+| [OpenDSS](#opendss)                       | `@modelscript/opendss`      |    10 | `msx opendss lint`      |
 | [OLGA](#olga)                             | `@modelscript/olga`         |    13 | `msx olga lint`         |
 | [PipelineStudio](#lps)                    | `@modelscript/lps`          |    12 | `msx lint`              |
 | [ECLIPSE](#eclipse)                       | `@modelscript/eclipse`      |    10 | `msx eclipse lint`      |
@@ -13513,18 +13537,25 @@ Dynamic simulation & linear control. **12 rules** · `@modelscript/easy5` · Sou
 
 ## AUTOSAR {#autosar}
 
-Classic & Adaptive software architecture. **8 rules** · `@modelscript/autosar` · Source: `languages/autosar/src/errors.ts` · [Language guide](../languages/autosar.md)
+Classic & Adaptive software architecture. **15 rules** · `@modelscript/autosar` · Source: `languages/autosar/src/errors.ts` · [Language guide](../languages/autosar.md)
 
-| Code                                    | Rule                                    | Severity                                | Message                                                                                                                                                                                                |
-| :-------------------------------------- | :-------------------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="autosar-m7401"></span>`M7401` | `unconnected-mandatory-port`            | [warning] | Required port '<code>&lt;portName&gt;</code>' on component prototype '<code>&lt;compName&gt;</code>' is not connected by any assembly connector.                                                       |
-| <span id="autosar-m7402"></span>`M7402` | `interface-mismatch`                    | [error]    | Connector interface mismatch: provider port '<code>&lt;pPort&gt;</code>' uses interface '<code>&lt;pIf&gt;</code>', but requirer port '<code>&lt;rPort&gt;</code>' expects '<code>&lt;rIf&gt;</code>'. |
-| <span id="autosar-m7403"></span>`M7403` | `invalid-runnable-period`               | [error]    | Timing event for runnable '<code>&lt;symbol&gt;</code>' defines non-positive period (<code>&lt;period&gt;</code> s).                                                                                   |
-| <span id="autosar-m7404"></span>`M7404` | `duplicate-short-name`                  | [error]    | Duplicate SHORT-NAME '<code>&lt;name&gt;</code>' detected in package '<code>&lt;pkg&gt;</code>'.                                                                                                       |
-| <span id="autosar-m7405"></span>`M7405` | `invalid-data-type-mapping`             | [error]    | Invalid data type mapping for '<code>&lt;dtName&gt;</code>': <code>&lt;reason&gt;</code>.                                                                                                              |
-| <span id="autosar-m7406"></span>`M7406` | `circular-composition-dependency`       | [error]    | Circular software component composition dependency detected: <code>&lt;path&gt;</code>.                                                                                                                |
-| <span id="autosar-m7407"></span>`M7407` | `missing-software-address-method`       | [warning] | Variable data prototype '<code>&lt;variable&gt;</code>' lacks a declared SwAddrMethod memory section mapping.                                                                                          |
-| <span id="autosar-m7408"></span>`M7408` | `incompatible-port-interface-direction` | [error]    | Port '<code>&lt;portName&gt;</code>' interface direction violation: <code>&lt;reason&gt;</code>.                                                                                                       |
+| Code                                    | Rule                                    | Severity                                | Message                                                                                                                                                                                                                                |
+| :-------------------------------------- | :-------------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="autosar-m7401"></span>`M7401` | `unconnected-mandatory-port`            | [error]    | Required port '<code>&lt;portName&gt;</code>' on component '<code>&lt;compName&gt;</code>' (<code>&lt;typeName&gt;</code>) is unconnected in composition '<code>&lt;compSwc&gt;</code>'.                                               |
+| <span id="autosar-m7402"></span>`M7402` | `interface-mismatch`                    | [error]    | Interface mismatch in connector '<code>&lt;connName&gt;</code>': Provider port '<code>&lt;pPort&gt;</code>' provides '<code>&lt;pIf&gt;</code>' while requester port '<code>&lt;rPort&gt;</code>' requires '<code>&lt;rIf&gt;</code>'. |
+| <span id="autosar-m7403"></span>`M7403` | `data-element-type-mismatch`            | [warning] | Data element '<code>&lt;deName&gt;</code>' in interface '<code>&lt;ifName&gt;</code>' has no data type reference.                                                                                                                      |
+| `M7403`                                 | `invalid-runnable-period`               | [error]    | Timing event for runnable '<code>&lt;symbol&gt;</code>' defines non-positive period (<code>&lt;period&gt;</code> s).                                                                                                                   |
+| <span id="autosar-m7404"></span>`M7404` | `duplicate-short-name`                  | [error]    | Duplicate SHORT-NAME '<code>&lt;name&gt;</code>' detected in package '<code>&lt;pkg&gt;</code>'.                                                                                                                                       |
+| <span id="autosar-m7405"></span>`M7405` | `invalid-data-type-mapping`             | [error]    | Invalid data type mapping for '<code>&lt;dtName&gt;</code>': <code>&lt;reason&gt;</code>.                                                                                                                                              |
+| `M7405`                                 | `wcet-budget-overflow`                  | [error]    | Execution time WCET (<code>&lt;wcetMs&gt;</code> ms) of runnable '<code>&lt;runnableName&gt;</code>' exceeds its timing event period (<code>&lt;periodMs&gt;</code> ms).                                                               |
+| <span id="autosar-m7406"></span>`M7406` | `circular-composition-dependency`       | [error]    | Circular software component composition dependency detected: <code>&lt;path&gt;</code>.                                                                                                                                                |
+| `M7406`                                 | `overlapping-pdu-bits`                  | [error]    | Signals '<code>&lt;sigA&gt;</code>' and '<code>&lt;sigB&gt;</code>' overlap bit index <code>&lt;bitIdx&gt;</code> in PDU '<code>&lt;pduName&gt;</code>'.                                                                               |
+| <span id="autosar-m7407"></span>`M7407` | `missing-software-address-method`       | [warning] | Variable data prototype '<code>&lt;variable&gt;</code>' lacks a declared SwAddrMethod memory section mapping.                                                                                                                          |
+| `M7407`                                 | `pdu-exceeds-frame-capacity`            | [error]    | PDU '<code>&lt;pduName&gt;</code>' length (<code>&lt;pduLen&gt;</code> bytes) exceeds CAN frame '<code>&lt;frameName&gt;</code>' payload capacity (<code>&lt;frameLen&gt;</code> bytes).                                               |
+| <span id="autosar-m7408"></span>`M7408` | `cyclic-runnable-dependency`            | [error]    | Cyclic data dependency detected between runnables: '<code>&lt;value&gt;</code>'.                                                                                                                                                       |
+| `M7408`                                 | `incompatible-port-interface-direction` | [error]    | Port '<code>&lt;portName&gt;</code>' interface direction violation: <code>&lt;reason&gt;</code>.                                                                                                                                       |
+| <span id="autosar-m7409"></span>`M7409` | `missing-internal-behavior`             | [warning] | Atomic software component '<code>&lt;swcName&gt;</code>' lacks internal behavior definition.                                                                                                                                           |
+| <span id="autosar-m7410"></span>`M7410` | `untriggered-runnable`                  | [info]       | Runnable entity '<code>&lt;rName&gt;</code>' in SWC '<code>&lt;swcName&gt;</code>' has no associated RTE trigger event.                                                                                                                |
 
 ## MATLAB Simulink {#simulink}
 
@@ -13669,13 +13700,15 @@ Transmission power flow. **13 rules** · `@modelscript/psse` · Source: `languag
 
 ## OpenDSS {#opendss}
 
-Unbalanced distribution & DER hosting. **8 rules** · `@modelscript/opendss` · Source: `languages/opendss/src/errors.ts` · [Language guide](../languages/opendss.md)
+Unbalanced distribution & DER hosting. **10 rules** · `@modelscript/opendss` · Source: `languages/opendss/src/errors.ts` · [Language guide](../languages/opendss.md)
 
 | Code                                    | Rule                           | Severity                                | Message                                                                                                                                                                                          |
 | :-------------------------------------- | :----------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | <span id="opendss-m8401"></span>`M8401` | `unconnected-bus-node`         | [error]    | <code>&lt;elemType&gt;</code> '<code>&lt;elemName&gt;</code>' references undefined bus node '<code>&lt;busName&gt;</code>'.                                                                      |
 | <span id="opendss-m8402"></span>`M8402` | `phase-count-mismatch`         | [error]    | Element '<code>&lt;elemName&gt;</code>' (<code>&lt;elemPhases&gt;</code> phases) connected to bus '<code>&lt;busName&gt;</code>' with different phase count (<code>&lt;busPhases&gt;</code>).    |
-| <span id="opendss-m8403"></span>`M8403` | `transformer-voltage-mismatch` | [warning] | Transformer '<code>&lt;xfmrName&gt;</code>' winding <code>&lt;winding&gt;</code> rated voltage (<code>&lt;value&gt;</code> kV) differs from nominal bus voltage (<code>&lt;value&gt;</code> kV). |
+| `M8402`                                 | `transformer-impedance-zero`   | [error]    | Transformer '<code>&lt;xfmrName&gt;</code>' specifies non-positive leakage reactance (xhl=<code>&lt;xhl&gt;</code>); must be &gt; 0.                                                             |
+| <span id="opendss-m8403"></span>`M8403` | `load-pf-out-of-range`         | [warning] | Load '<code>&lt;loadName&gt;</code>' specifies power factor (<code>&lt;pf&gt;</code>) outside valid range (0 &lt; &#124;pf&#124; &lt;= 1.0).                                                     |
+| `M8403`                                 | `transformer-voltage-mismatch` | [warning] | Transformer '<code>&lt;xfmrName&gt;</code>' winding <code>&lt;winding&gt;</code> rated voltage (<code>&lt;value&gt;</code> kV) differs from nominal bus voltage (<code>&lt;value&gt;</code> kV). |
 | <span id="opendss-m8404"></span>`M8404` | `reverse-power-hosting-risk`   | [warning] | Total DER generation capacity on feeder '<code>&lt;feederName&gt;</code>' (<code>&lt;value&gt;</code> kW) exceeds upstream transformer thermal rating (<code>&lt;value&gt;</code> kVA).          |
 | <span id="opendss-m8405"></span>`M8405` | `missing-circuit-definition`   | [error]    | OpenDSS script defines circuit elements without declaring a 'New Circuit' voltage source.                                                                                                        |
 | <span id="opendss-m8406"></span>`M8406` | `negative-load-power`          | [error]    | Load '<code>&lt;loadName&gt;</code>' specifies negative active power (<code>&lt;value&gt;</code> kW); use Generator or Storage for net generation.                                               |

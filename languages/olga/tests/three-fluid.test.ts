@@ -79,4 +79,61 @@ for (let i = 0; i < lastProfile.cells.length; i++) {
 console.log(
   `✔ 3-Fluid 9-equation simulation completed (Avg droplet fraction: ${(simResult.summary.averageDropletFraction * 100).toFixed(2)}%)!`,
 );
+
+// 3. Test Spatial Upwind Wave Propagation & Outlet-to-Inlet Pressure Coupling Across Cells
+console.log("3. Testing spatial upwind holdup wave propagation across cells...");
+const waveOpi = `<?xml version="1.0" encoding="utf-8"?>
+<Model Name="Multi-Segment Wave Propagation" StartTime="0" EndTime="40" MinDt="0.1" MaxDt="1.0">
+  <Flowpath Name="FLOWLINE">
+    <Pipe Name="SEG_1" Length="400.0" Diameter="0.20" Elevation="10.0" Roughness="0.000045" Discretization="4" />
+    <Pipe Name="SEG_2" Length="400.0" Diameter="0.25" Elevation="40.0" Roughness="0.000045" Discretization="4" />
+    <Valve Name="INLINE_CHOKE" Position="750.0" Diameter="0.14" Opening="0.70" Cd="0.80" />
+  </Flowpath>
+  <Node Name="INLET" Type="TERMINAL" Flowpath="FLOWLINE" Fraction="0.0" Pressure="9000000" Temperature="335.15" MassRate="30.0" GasMassFraction="0.18" WaterCut="0.20" />
+  <Node Name="OUTLET_SEP" Type="SEPARATOR" Flowpath="FLOWLINE" Fraction="1.0" Pressure="3000000" Temperature="295.15" />
+</Model>`;
+
+const waveModel = parseOpi(waveOpi);
+// Inject a high inlet water-cut step (0.75 vs initial 0.20) to track spatial advection wave from cell 0 -> downstream cells
+const waveSim = simulateThreeFluidDAE(waveModel, {
+  durationSeconds: 30,
+  timeStepSeconds: 1.0,
+  gridCells: 8,
+  advectionOrder: 2,
+  inletWaterCutStep: 0.75,
+});
+
+const initCells = waveSim.profiles[0]!.cells;
+const midCells = waveSim.profiles[10]!.cells;
+const finalCells = waveSim.profiles[waveSim.profiles.length - 1]!.cells;
+
+// Cell 0 (inlet) should see water holdup rise first, followed by downstream cells
+const initWater0 = initCells[0]!.alphaFilmWater + initCells[0]!.alphaDropletWater;
+const midWater0 = midCells[0]!.alphaFilmWater + midCells[0]!.alphaDropletWater;
+const initWater3 = initCells[3]!.alphaFilmWater + initCells[3]!.alphaDropletWater;
+const finalWater3 = finalCells[3]!.alphaFilmWater + finalCells[3]!.alphaDropletWater;
+
+assert.ok(
+  midWater0 > initWater0 + 0.05,
+  `Inlet cell water holdup must increase from upwind boundary (init=${initWater0}, mid=${midWater0})`,
+);
+assert.ok(
+  finalWater3 > initWater3 + 0.02,
+  `Downstream cell 3 must receive advected water holdup wave from upstream cells (init=${initWater3}, final=${finalWater3})`,
+);
+
+// Monotonically decreasing pressure from inlet (cell 0) to outlet separator (cell N-1)
+for (let i = 0; i < finalCells.length - 1; i++) {
+  assert.ok(
+    finalCells[i]!.pressurePa > finalCells[i + 1]!.pressurePa,
+    `Cell ${i} pressure (${finalCells[i]!.pressurePa}) must exceed downstream cell ${i + 1} pressure (${finalCells[i + 1]!.pressurePa})`,
+  );
+}
+assert.ok(
+  waveSim.summary.phaseInversionLocationM !== null,
+  "Water-cut front crossing inversion point should record phaseInversionLocationM",
+);
+console.log(
+  `✔ Spatial upwind wave propagation verified (phase inversion at x=${waveSim.summary.phaseInversionLocationM?.toFixed(1)} m)!`,
+);
 console.log("=== All 3-Fluid 9-Equation Mechanistic Solver Tests Passed! ===");

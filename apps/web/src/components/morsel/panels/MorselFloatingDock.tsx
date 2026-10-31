@@ -21,7 +21,7 @@ import {
 } from "@primer/octicons-react";
 import { ActionList, ActionMenu, IconButton } from "@primer/react";
 import React from "react";
-import { MORSEL_LANGUAGES, getLanguageInfo } from "../constants";
+import { getLanguageInfo, useVisibleMorselLanguages } from "../constants";
 import { MorselView } from "./types";
 export { MorselView };
 
@@ -96,6 +96,7 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
   isDark,
   toggleTheme,
 }) => {
+  const visibleMorselLanguages = useVisibleMorselLanguages();
   const activeLangInfo = getLanguageInfo(dialect);
   const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");
   if (isNarrow) return null;
@@ -149,7 +150,7 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
             </ActionMenu.Button>
             <ActionMenu.Overlay width="medium" style={{ maxHeight: 340, overflowY: "auto" }}>
               <ActionList selectionVariant="single">
-                {MORSEL_LANGUAGES.map((lang) => (
+                {visibleMorselLanguages.map((lang) => (
                   <ActionList.Item
                     key={lang.id}
                     selected={activeLangInfo.id === lang.id}

@@ -47,6 +47,8 @@ export interface SimpackJoint {
   fromMarker: string;
   toMarker: string;
   dofCount: number;
+  baumgarteAlpha?: number | undefined;
+  baumgarteBeta?: number | undefined;
 }
 
 export interface SimpackForceElement {
@@ -57,6 +59,9 @@ export interface SimpackForceElement {
   markerB: string;
   stiffness: Vector3D;
   damping: Vector3D;
+  rotationalStiffness?: Vector3D | undefined;
+  rotationalDamping?: Vector3D | undefined;
+  nonlinearStiffness?: Vector3D | undefined;
 }
 
 export interface SimpackModel {

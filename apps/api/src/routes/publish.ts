@@ -292,7 +292,7 @@ export function publishRouter(
         try {
           await indexDataPackageResources(database, versionId, libraryPath, initialManifestStr);
         } catch (dpErr) {
-          console.warn(`[publish] Non-fatal error indexing Data Package resources for ${name}@${version}:`, dpErr);
+          console.warn("[publish] Non-fatal error indexing Data Package resources for %s@%s:", name, version, dpErr);
         }
 
         // 9. Enqueue background processing in a child process.

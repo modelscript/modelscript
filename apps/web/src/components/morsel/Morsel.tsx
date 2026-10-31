@@ -852,7 +852,14 @@ export default function MorselEditor(props: MorselEditorProps) {
     [pendingSelection],
   );
 
-  const handleTreeHighlight = useCallback((_name: string | null) => {}, []);
+  const [highlightedComponent, setHighlightedComponent] = useState<string | null>(null);
+
+  const handleTreeHighlight = useCallback((name: string | null) => {
+    setHighlightedComponent(name);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("morsel:highlight-component", { detail: { name } }));
+    }
+  }, []);
 
   useEffect(() => {
     if (props.embed) return;
@@ -1049,7 +1056,7 @@ export default function MorselEditor(props: MorselEditorProps) {
               diagramEditorRef={diagramEditorRef}
               diagramData={diagramData}
               selectedTreeClassName={selectedTreeClassName}
-              selectedComponent={selectedComponent}
+              selectedComponent={selectedComponent ?? highlightedComponent}
               setSelectedComponent={setSelectedComponent}
               isDiagramLoading={isDiagramLoading}
               setIsDiagramLoading={setIsDiagramLoading}
@@ -1088,6 +1095,13 @@ export default function MorselEditor(props: MorselEditorProps) {
             {/* Split Resizer */}
             {isSplit(view) && !isNarrow && (
               <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-valuenow={Math.round(splitRatio * 100)}
+                aria-valuemin={20}
+                aria-valuemax={80}
+                aria-label="Resize split panes"
+                tabIndex={0}
                 style={{
                   width: view === View.SPLIT_COLUMNS ? 6 : "100%",
                   height: view === View.SPLIT_ROWS ? 6 : "100%",
@@ -1102,6 +1116,38 @@ export default function MorselEditor(props: MorselEditorProps) {
                   borderTop:
                     view === View.SPLIT_ROWS ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}` : "none",
                   transition: "background-color 0.15s",
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSplitRatio((prev) => Math.max(0.2, Number((prev - 0.05).toFixed(2))));
+                  } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setSplitRatio((prev) => Math.min(0.8, Number((prev + 0.05).toFixed(2))));
+                  }
+                }}
+                onTouchStart={() => {
+                  isDraggingSplit.current = true;
+                  document.body.style.userSelect = "none";
+                }}
+                onTouchMove={(e) => {
+                  if (!isDraggingSplit.current || !splitContainerRef.current) return;
+                  const touch = e.touches[0];
+                  if (!touch) return;
+                  const rect = splitContainerRef.current.getBoundingClientRect();
+                  if (view === View.SPLIT_COLUMNS) {
+                    const x = touch.clientX - rect.left;
+                    const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
+                    setSplitRatio(ratio);
+                  } else {
+                    const y = touch.clientY - rect.top;
+                    const ratio = Math.min(0.8, Math.max(0.2, y / rect.height));
+                    setSplitRatio(ratio);
+                  }
+                }}
+                onTouchEnd={() => {
+                  isDraggingSplit.current = false;
+                  document.body.style.userSelect = "";
                 }}
                 onMouseDown={(e) => {
                   e.preventDefault();

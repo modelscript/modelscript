@@ -288,4 +288,69 @@ describe("@modelscript/sima workspace index & projections suite", () => {
     assert.ok(simaLanguage.fileExtensions.includes(".inp"));
     assert.ok(simaLanguage.fileExtensions.includes(".sima"));
   });
+
+  it("accounts for axial elastic stretch Hs/EA in grounded catenary regime", () => {
+    const stiffRes = solveCatenary({
+      waterDepth: 200,
+      horizontalSpan: 796.732,
+      lineLength: 835.5,
+      submergedWeight: 3200.0,
+      axialStiffnessEA: 1e10,
+    });
+    const compliantRes = solveCatenary({
+      waterDepth: 200,
+      horizontalSpan: 796.732,
+      lineLength: 835.5,
+      submergedWeight: 3200.0,
+      axialStiffnessEA: 5e7,
+    });
+    assert.equal(stiffRes.isLiftedOff, false);
+    assert.equal(compliantRes.isLiftedOff, false);
+    assert.ok(
+      compliantRes.horizontalTension < stiffRes.horizontalTension,
+      "More compliant mooring line (smaller EA) must exhibit lower horizontal tension for the same grounded span",
+    );
+  });
+
+  it("emits M7010, M7012, M7014, and M7015 marine diagnostics when violated", () => {
+    const model = parseCardDeck(SAMPLE_SIMO_DECK);
+    // M7014: Asymmetric QTF matrix
+    model.vessels[0]!.hydrodynamics = {
+      frequencies: [0.4, 0.8],
+      headings: [0],
+      raos: {},
+      qtfMatrix: [
+        [1000, 500],
+        [100, 1000],
+      ],
+    };
+    // M7010: Slack compression hazard in high wave (Hs > 5) with low pretension
+    model.environment.wave.hs = 9.5;
+    model.lines[0]!.pretension = 2000;
+    // M7015: Exceeds minimum bend radius
+    model.lines[0]!.minBendingRadius = 15.0;
+    model.lines[0]!.curvatureRadius = 4.2;
+    // M7012: Anchor uplift on catenary line with large horizontal span
+    model.lines[1]!.anchorPosition = [830.0, 0.0, -200.0];
+    model.lines[1]!.fairleadPosition = [0.0, 0.0, 0.0];
+    model.lines[1]!.totalLength = 850.0;
+
+    const diags = lintSimaProject(model);
+    assert.ok(
+      diags.some((d) => d.id === "M7010"),
+      "Expected M7010 SLACK_COMPRESSION_HAZARD",
+    );
+    assert.ok(
+      diags.some((d) => d.id === "M7012"),
+      "Expected M7012 ANCHOR_UPLIFT_WARNING",
+    );
+    assert.ok(
+      diags.some((d) => d.id === "M7014"),
+      "Expected M7014 QTF_SYMMETRY_VIOLATION",
+    );
+    assert.ok(
+      diags.some((d) => d.id === "M7015"),
+      "Expected M7015 EXCEEDS_MINIMUM_BEND_RADIUS",
+    );
+  });
 });

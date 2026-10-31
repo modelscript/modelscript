@@ -37,6 +37,11 @@ export class BdfDialect implements FeaDialect {
       elsetMaterials: new Map(),
       sectionThickness: new Map(),
       beamAreas: new Map(),
+      nodeLines: new Map(),
+      elementLines: new Map(),
+      materialLines: new Map(),
+      sectionLines: new Map(),
+      boundaryLines: [],
     };
 
     /**
@@ -63,8 +68,10 @@ export class BdfDialect implements FeaDialect {
       return digits.length > 0 ? digits : [1, 2, 3];
     }
 
-    const cardTokensList: string[][] = [];
-    for (const rawLine of lines) {
+    const cardTokensList: { tokens: string[]; lineNum: number }[] = [];
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const rawLine = lines[lineIdx]!;
+      const lineNum = lineIdx + 1;
       // Strip comments starting with $
       const commentIdx = rawLine.indexOf("$");
       const cleanLine = commentIdx !== -1 ? rawLine.slice(0, commentIdx) : rawLine;
@@ -94,7 +101,7 @@ export class BdfDialect implements FeaDialect {
       }
 
       if (isContinuation && cardTokensList.length > 0) {
-        const prev = cardTokensList[cardTokensList.length - 1]!;
+        const prev = cardTokensList[cardTokensList.length - 1]!.tokens;
         // Remove trailing continuation marker on previous line if present (e.g. "+C1")
         if (
           prev.length >= 2 &&
@@ -107,11 +114,11 @@ export class BdfDialect implements FeaDialect {
         // Skip leading continuation marker in tokens[0]
         prev.push(...tokens.slice(1));
       } else {
-        cardTokensList.push(tokens);
+        cardTokensList.push({ tokens, lineNum });
       }
     }
 
-    for (const tokens of cardTokensList) {
+    for (const { tokens, lineNum } of cardTokensList) {
       if (tokens.length === 0 || !tokens[0]) continue;
       const card = tokens[0].toUpperCase();
 
@@ -122,9 +129,11 @@ export class BdfDialect implements FeaDialect {
         const z = parseNastranFloat(tokens[5]!);
         if (!isNaN(id)) {
           data.nodes.set(id, { id, x: isNaN(x) ? 0 : x, y: isNaN(y) ? 0 : y, z: isNaN(z) ? 0 : z });
+          data.nodeLines!.set(id, lineNum);
         }
       } else if (card === "CQUAD4" && tokens.length >= 7) {
         const id = parseInt(tokens[1]!, 10);
+        const pid = tokens[2]?.trim() ? `PID_${tokens[2]!.trim().toUpperCase()}` : undefined;
         const n1 = parseInt(tokens[3]!, 10);
         const n2 = parseInt(tokens[4]!, 10);
         const n3 = parseInt(tokens[5]!, 10);
@@ -136,9 +145,15 @@ export class BdfDialect implements FeaDialect {
             family: "shell",
             nodes: [n1, n2, n3, n4].filter((n) => !isNaN(n)),
           });
+          if (pid) {
+            if (!data.elementSets.has(pid)) data.elementSets.set(pid, new Set());
+            data.elementSets.get(pid)!.add(id);
+          }
+          data.elementLines!.set(id, lineNum);
         }
       } else if (card === "CTRIA3" && tokens.length >= 6) {
         const id = parseInt(tokens[1]!, 10);
+        const pid = tokens[2]?.trim() ? `PID_${tokens[2]!.trim().toUpperCase()}` : undefined;
         const n1 = parseInt(tokens[3]!, 10);
         const n2 = parseInt(tokens[4]!, 10);
         const n3 = parseInt(tokens[5]!, 10);
@@ -149,9 +164,15 @@ export class BdfDialect implements FeaDialect {
             family: "shell",
             nodes: [n1, n2, n3].filter((n) => !isNaN(n)),
           });
+          if (pid) {
+            if (!data.elementSets.has(pid)) data.elementSets.set(pid, new Set());
+            data.elementSets.get(pid)!.add(id);
+          }
+          data.elementLines!.set(id, lineNum);
         }
       } else if (card === "CTETRA" && tokens.length >= 7) {
         const id = parseInt(tokens[1]!, 10);
+        const pid = tokens[2]?.trim() ? `PID_${tokens[2]!.trim().toUpperCase()}` : undefined;
         const maxNodeIdx = tokens.length >= 13 ? 13 : 7;
         const nodes = tokens
           .slice(3, maxNodeIdx)
@@ -164,6 +185,11 @@ export class BdfDialect implements FeaDialect {
             family: "solid",
             nodes,
           });
+          if (pid) {
+            if (!data.elementSets.has(pid)) data.elementSets.set(pid, new Set());
+            data.elementSets.get(pid)!.add(id);
+          }
+          data.elementLines!.set(id, lineNum);
         }
       } else if (card === "CHEXA" && tokens.length >= 11) {
         const id = parseInt(tokens[1]!, 10);
@@ -174,6 +200,7 @@ export class BdfDialect implements FeaDialect {
           .filter((n) => !isNaN(n));
         if (!isNaN(id) && nodes.length >= 8) {
           data.elements.set(id, { id, type: "CHEXA", family: "solid", nodes });
+          data.elementLines!.set(id, lineNum);
         }
       } else if (card === "CPENTA" && tokens.length >= 9) {
         const id = parseInt(tokens[1]!, 10);
@@ -184,6 +211,7 @@ export class BdfDialect implements FeaDialect {
           .filter((n) => !isNaN(n));
         if (!isNaN(id) && nodes.length >= 6) {
           data.elements.set(id, { id, type: "CPENTA", family: "solid", nodes });
+          data.elementLines!.set(id, lineNum);
         }
       } else if ((card === "CBAR" || card === "CBEAM" || card === "CROD") && tokens.length >= 5) {
         const id = parseInt(tokens[1]!, 10);
@@ -196,6 +224,7 @@ export class BdfDialect implements FeaDialect {
             family: card === "CROD" ? "truss" : "beam",
             nodes: [n1, n2],
           });
+          data.elementLines!.set(id, lineNum);
         }
       } else if (card === "CONROD" && tokens.length >= 4) {
         const id = parseInt(tokens[1]!, 10);
@@ -208,6 +237,33 @@ export class BdfDialect implements FeaDialect {
             family: "truss",
             nodes: [n1, n2],
           });
+          data.elementLines!.set(id, lineNum);
+        }
+      } else if (card === "PSHELL" && tokens.length >= 4) {
+        const pidKey = `PID_${tokens[1]!.trim().toUpperCase()}`;
+        const mid = tokens[2]?.trim();
+        const t = parseNastranFloat(tokens[3]!);
+        if (mid) data.elsetMaterials!.set(pidKey, mid);
+        if (!isNaN(t) && t > 0) data.sectionThickness!.set(pidKey, t);
+        data.sectionLines!.set(pidKey, lineNum);
+        const pidSet = data.elementSets.get(pidKey);
+        if (pidSet) {
+          for (const eid of pidSet) {
+            const el = data.elements.get(eid);
+            if (el) el.elset = pidKey;
+          }
+        }
+      } else if (card === "PSOLID" && tokens.length >= 3) {
+        const pidKey = `PID_${tokens[1]!.trim().toUpperCase()}`;
+        const mid = tokens[2]?.trim();
+        if (mid) data.elsetMaterials!.set(pidKey, mid);
+        data.sectionLines!.set(pidKey, lineNum);
+        const pidSet = data.elementSets.get(pidKey);
+        if (pidSet) {
+          for (const eid of pidSet) {
+            const el = data.elements.get(eid);
+            if (el) el.elset = pidKey;
+          }
         }
       } else if (card === "MAT1" && tokens.length >= 3) {
         const mid = tokens[1]!;
@@ -220,7 +276,9 @@ export class BdfDialect implements FeaDialect {
           nu: nu !== undefined && !isNaN(nu) ? nu : undefined,
           rho: rho !== undefined && !isNaN(rho) ? rho : undefined,
         });
+        data.materialLines!.set(mid, lineNum);
       } else if (card === "SPC1" && tokens.length >= 4) {
+        data.boundaryLines!.push(lineNum);
         const compDofs = parseComponentDofs(tokens[2]);
         const applyFixedDofs = (g: number) => {
           data.fixedNodes.add(g);
@@ -248,6 +306,7 @@ export class BdfDialect implements FeaDialect {
           }
         }
       } else if (card === "SPC" && tokens.length >= 4) {
+        data.boundaryLines!.push(lineNum);
         for (let j = 2; j < tokens.length; j += 3) {
           const g = parseInt(tokens[j]!, 10);
           if (isNaN(g)) continue;
@@ -285,6 +344,16 @@ export class BdfDialect implements FeaDialect {
           loadVec[0] += f * n1;
           loadVec[1] += f * n2;
           loadVec[2] += f * n3;
+        }
+      }
+    }
+
+    for (const pidKey of data.sectionLines!.keys()) {
+      const pidSet = data.elementSets.get(pidKey);
+      if (pidSet) {
+        for (const eid of pidSet) {
+          const el = data.elements.get(eid);
+          if (el) el.elset = pidKey;
         }
       }
     }

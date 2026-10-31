@@ -344,13 +344,13 @@ export default function SignupPage() {
                 !authConfig) && (
                 <>
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
-                    {(!authConfig || authConfig.oauthProviders.includes("github")) && (
+                    {(!authConfig || authConfig.oauthProviders?.includes("github")) && (
                       <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
                         <MarkGithubIcon size={16} />
                         Sign up with GitHub
                       </ProviderButton>
                     )}
-                    {(!authConfig || authConfig.oauthProviders.includes("gitlab")) && (
+                    {(!authConfig || authConfig.oauthProviders?.includes("gitlab")) && (
                       <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
                         <GitLabIcon />
                         Sign up with GitLab

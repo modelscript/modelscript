@@ -137,6 +137,28 @@ export const RocetsErrorCode = {
   },
 };
 
+const SUPPORTED_FLUID_TABLES = new Set([
+  "LOX",
+  "OXYGEN",
+  "GOX",
+  "LH2",
+  "HYDROGEN",
+  "GH2",
+  "LCH4",
+  "METHANE",
+  "RP1",
+  "KEROSENE",
+  "COMBUSTION_GAS",
+  "HELIUM",
+  "NITROGEN",
+  "MMH",
+  "NTO",
+  "N2O4",
+  "H2O",
+  "WATER",
+  "AIR",
+]);
+
 /**
  * Runs all pre-flight static propulsion diagnostics on a parsed ROCETS model.
  */
@@ -146,6 +168,7 @@ export function lintRocets(model: RocetsEngineModel): RocetsDiagnostic[] {
   // Track incoming and outgoing connections per component port
   const incoming = new Map<string, string[]>();
   const outgoing = new Map<string, string[]>();
+  const compOutgoingTargets = new Map<string, string[]>();
 
   for (const conn of model.connections) {
     const fromKey = `${conn.fromComponent}.${conn.fromPort}`;
@@ -158,11 +181,127 @@ export function lintRocets(model: RocetsEngineModel): RocetsDiagnostic[] {
     const inList = incoming.get(toKey) || [];
     inList.push(fromKey);
     incoming.set(toKey, inList);
+
+    const cTargets = compOutgoingTargets.get(conn.fromComponent) || [];
+    cTargets.push(conn.toComponent);
+    compOutgoingTargets.set(conn.fromComponent, cTargets);
+  }
+
+  const emittedFluids = new Set<string>();
+  const checkFluidTable = (fluid: string | undefined, compId?: string, line?: number, col?: number) => {
+    if (!fluid) return;
+    const upper = fluid.toUpperCase();
+    if (!SUPPORTED_FLUID_TABLES.has(upper) && !emittedFluids.has(`${compId ?? ""}:${upper}`)) {
+      emittedFluids.add(`${compId ?? ""}:${upper}`);
+      diags.push({
+        ...RocetsErrorCode.MISSING_FLUID_TABLE,
+        message: RocetsErrorCode.MISSING_FLUID_TABLE.message(fluid),
+        componentId: compId,
+        line,
+        column: col,
+      });
+    }
+  };
+
+  let pumpCount = 0;
+  let turbineCount = 0;
+  let explicitPumpPowerSum = 0;
+  let explicitTurbPowerSum = 0;
+  for (const [, c] of model.components) {
+    const ct = c.type.toUpperCase();
+    if (ct === "PUMP") {
+      pumpCount++;
+      if (typeof c.parameters["POWER"] === "number") explicitPumpPowerSum += c.parameters["POWER"];
+    } else if (ct === "TURBINE") {
+      turbineCount++;
+      if (typeof c.parameters["POWER"] === "number") explicitTurbPowerSum += c.parameters["POWER"];
+    }
   }
 
   // 1. Component checks
   for (const [compId, comp] of model.components) {
     const t = comp.type.toUpperCase();
+
+    // M8012: Fluid table check on component parameter and ports
+    if (typeof comp.parameters["FLUID"] === "string") {
+      checkFluidTable(comp.parameters["FLUID"], compId, comp.line, comp.column);
+    }
+    for (const port of Object.values(comp.ports)) {
+      checkFluidTable(port.fluid, compId, comp.line, comp.column);
+    }
+
+    // M8010: User Fortran routine check
+    if (comp.userCode !== undefined || t === "USER_ROUTINE") {
+      const code = comp.userCode ?? "";
+      if (!code.trim()) {
+        diags.push({
+          ...RocetsErrorCode.USER_FORTRAN_ROUTINE_ERROR,
+          message: RocetsErrorCode.USER_FORTRAN_ROUTINE_ERROR.message(
+            compId,
+            "missing SUBROUTINE body in USER_ROUTINE block",
+          ),
+          componentId: compId,
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+        });
+      } else {
+        const lines = code.split(/\r?\n/);
+        let hasSubroutine = false;
+        let hasEnd = false;
+        for (const raw of lines) {
+          const trimmed = raw.trim().toUpperCase();
+          if (!trimmed || trimmed.startsWith("C ") || trimmed.startsWith("!")) continue;
+          if (trimmed.startsWith("SUBROUTINE ")) hasSubroutine = true;
+          if (trimmed === "END" || trimmed.startsWith("END SUBROUTINE")) hasEnd = true;
+          let depth = 0;
+          for (const ch of trimmed) {
+            if (ch === "(") depth++;
+            if (ch === ")") depth--;
+          }
+          if (depth !== 0) {
+            diags.push({
+              ...RocetsErrorCode.USER_FORTRAN_ROUTINE_ERROR,
+              message: RocetsErrorCode.USER_FORTRAN_ROUTINE_ERROR.message(
+                compId,
+                "unbalanced parentheses in Fortran expression",
+              ),
+              componentId: compId,
+              line: comp.line,
+              column: comp.column,
+              startOffset: comp.startOffset,
+              endOffset: comp.endOffset,
+            });
+          }
+        }
+        if (!hasSubroutine) {
+          diags.push({
+            ...RocetsErrorCode.USER_FORTRAN_ROUTINE_ERROR,
+            message: RocetsErrorCode.USER_FORTRAN_ROUTINE_ERROR.message(
+              compId,
+              "missing SUBROUTINE header declaration",
+            ),
+            componentId: compId,
+            line: comp.line,
+            column: comp.column,
+            startOffset: comp.startOffset,
+            endOffset: comp.endOffset,
+          });
+        }
+        if (!hasEnd) {
+          diags.push({
+            ...RocetsErrorCode.USER_FORTRAN_ROUTINE_ERROR,
+            message: RocetsErrorCode.USER_FORTRAN_ROUTINE_ERROR.message(compId, "missing END statement"),
+            componentId: compId,
+            line: comp.line,
+            column: comp.column,
+            startOffset: comp.startOffset,
+            endOffset: comp.endOffset,
+          });
+        }
+      }
+    }
 
     // Valve checks
     if (t === "VALVE" || t === "ORIFICE") {
@@ -183,13 +322,156 @@ export function lintRocets(model: RocetsEngineModel): RocetsDiagnostic[] {
       }
     }
 
-    // Chamber checks
-    if (t === "CHAMBER" || t === "TC" || t === "COMBUSTOR") {
+    // Pump checks: M8005 (cavitation risk) & M8014 (closed flow circuit)
+    if (t === "PUMP") {
+      const npshMargin = comp.parameters["NPSH_MARGIN"];
+      const pIn =
+        (typeof comp.parameters["P_IN"] === "number" ? comp.parameters["P_IN"] : undefined) ??
+        (typeof comp.parameters["IN_P"] === "number" ? comp.parameters["IN_P"] : undefined) ??
+        comp.ports["IN_P"]?.pressurePa;
+      const pVap = typeof comp.parameters["P_VAP"] === "number" ? comp.parameters["P_VAP"] : 1.0e5;
+      const npshReq = typeof comp.parameters["NPSH_R"] === "number" ? comp.parameters["NPSH_R"] : 5.0e4;
+
+      if (typeof npshMargin === "number" && npshMargin < 0) {
+        diags.push({
+          ...RocetsErrorCode.PUMP_CAVITATION_RISK,
+          message: RocetsErrorCode.PUMP_CAVITATION_RISK.message(compId, npshMargin / 1000.0),
+          componentId: compId,
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+        });
+      } else if (
+        typeof pIn === "number" &&
+        (comp.parameters["P_IN"] !== undefined ||
+          comp.parameters["IN_P"] !== undefined ||
+          comp.parameters["P_VAP"] !== undefined ||
+          comp.parameters["NPSH_R"] !== undefined) &&
+        pIn - pVap - npshReq < 0
+      ) {
+        const marginKpa = (pIn - pVap - npshReq) / 1000.0;
+        diags.push({
+          ...RocetsErrorCode.PUMP_CAVITATION_RISK,
+          message: RocetsErrorCode.PUMP_CAVITATION_RISK.message(compId, marginKpa),
+          componentId: compId,
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+        });
+      }
+
+      // M8014: Closed flow circuit from pump discharge
+      const targets = compOutgoingTargets.get(compId) ?? [];
+      if (targets.length > 0) {
+        const allBlocked = targets.every((tId) => {
+          const targetComp = model.components.get(tId);
+          if (!targetComp) return false;
+          const tt = targetComp.type.toUpperCase();
+          if (tt !== "VALVE" && tt !== "ORIFICE") return false;
+          const pos = targetComp.parameters["POSITION"] ?? targetComp.parameters["X"];
+          return typeof pos === "number" && pos === 0.0;
+        });
+        if (allBlocked) {
+          diags.push({
+            ...RocetsErrorCode.CLOSED_FLOW_CIRCUIT,
+            message: RocetsErrorCode.CLOSED_FLOW_CIRCUIT.message(compId),
+            componentId: compId,
+            line: comp.line,
+            column: comp.column,
+            startOffset: comp.startOffset,
+            endOffset: comp.endOffset,
+          });
+        }
+      }
+    }
+
+    // M8004: Unbalanced flow split at junctions/splitters/components with explicit flow rates
+    const mdotInParam = comp.parameters["MDOT_IN"];
+    const mdotOutParam = comp.parameters["MDOT_OUT"];
+    if (typeof mdotInParam === "number" && typeof mdotOutParam === "number") {
+      const diff = Math.abs(mdotInParam - mdotOutParam);
+      if (diff > 1e-2) {
+        diags.push({
+          ...RocetsErrorCode.UNBALANCED_FLOW_SPLIT,
+          message: RocetsErrorCode.UNBALANCED_FLOW_SPLIT.message(compId, diff),
+          componentId: compId,
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+        });
+      }
+    } else if (Array.isArray(comp.parameters["SPLIT_FRACTIONS"])) {
+      const fracs = comp.parameters["SPLIT_FRACTIONS"];
+      const sum = fracs.reduce((a, b) => a + b, 0);
+      const diff = Math.abs(sum - 1.0);
+      if (diff > 1e-2) {
+        diags.push({
+          ...RocetsErrorCode.UNBALANCED_FLOW_SPLIT,
+          message: RocetsErrorCode.UNBALANCED_FLOW_SPLIT.message(compId, diff),
+          componentId: compId,
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+        });
+      }
+    } else if (t === "JUNCTION" || t === "SPLITTER" || t === "MIXER" || t === "TEE") {
+      let portInFlow = 0;
+      let portOutFlow = 0;
+      let hasInFlow = false;
+      let hasOutFlow = false;
+      for (const p of Object.values(comp.ports)) {
+        if (typeof p.massFlowKgS === "number") {
+          if (p.direction === "in") {
+            portInFlow += p.massFlowKgS;
+            hasInFlow = true;
+          } else if (p.direction === "out") {
+            portOutFlow += p.massFlowKgS;
+            hasOutFlow = true;
+          }
+        }
+      }
+      if (hasInFlow && hasOutFlow && Math.abs(portInFlow - portOutFlow) > 1e-2) {
+        diags.push({
+          ...RocetsErrorCode.UNBALANCED_FLOW_SPLIT,
+          message: RocetsErrorCode.UNBALANCED_FLOW_SPLIT.message(compId, Math.abs(portInFlow - portOutFlow)),
+          componentId: compId,
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+        });
+      }
+    }
+
+    // Chamber / Nozzle checks
+    if (t === "CHAMBER" || t === "TC" || t === "COMBUSTOR" || t === "NOZZLE") {
       const pc = comp.parameters["PC"] ?? comp.parameters["P_CHAMBER"];
       if (typeof pc === "number" && pc <= 0) {
         diags.push({
           ...RocetsErrorCode.NEGATIVE_CHAMBER_PRESSURE,
           message: RocetsErrorCode.NEGATIVE_CHAMBER_PRESSURE.message(compId, pc),
+          componentId: compId,
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+        });
+      }
+
+      // M8009: Choked flow inconsistency (PR = Pc / Pa < 1.89)
+      const pa =
+        (typeof comp.parameters["PA"] === "number" ? comp.parameters["PA"] : undefined) ??
+        (typeof comp.parameters["P_AMB"] === "number" ? comp.parameters["P_AMB"] : undefined) ??
+        (typeof comp.parameters["P_EXIT"] === "number" ? comp.parameters["P_EXIT"] : undefined) ??
+        101325.0;
+      if (typeof pc === "number" && pc > 0 && pa > 0 && pc / pa < 1.89) {
+        diags.push({
+          ...RocetsErrorCode.CHOKED_FLOW_INCONSISTENCY,
+          message: RocetsErrorCode.CHOKED_FLOW_INCONSISTENCY.message(compId, pc / pa),
           componentId: compId,
           line: comp.line,
           column: comp.column,
@@ -225,7 +507,7 @@ export function lintRocets(model: RocetsEngineModel): RocetsDiagnostic[] {
       }
     }
 
-    // Shaft checks
+    // Shaft checks: M8013 (overspeed) & M8003 (shaft power imbalance)
     if (t === "SHAFT") {
       const rpm = comp.parameters["SPEED_RPM"] ?? comp.parameters["N"] ?? 30000;
       const maxRpm = comp.parameters["MAX_RPM"] ?? 45000;
@@ -233,6 +515,52 @@ export function lintRocets(model: RocetsEngineModel): RocetsDiagnostic[] {
         diags.push({
           ...RocetsErrorCode.TURBINE_OVERSPEED_HAZARD,
           message: RocetsErrorCode.TURBINE_OVERSPEED_HAZARD.message(compId, rpm, maxRpm),
+          componentId: compId,
+          line: comp.line,
+          column: comp.column,
+          startOffset: comp.startOffset,
+          endOffset: comp.endOffset,
+        });
+      }
+
+      const pPumpExplicit =
+        typeof comp.parameters["P_PUMP"] === "number"
+          ? comp.parameters["P_PUMP"]
+          : typeof comp.parameters["PUMP_POWER"] === "number"
+            ? comp.parameters["PUMP_POWER"]
+            : explicitPumpPowerSum;
+      const pTurbExplicit =
+        typeof comp.parameters["P_TURB"] === "number"
+          ? comp.parameters["P_TURB"]
+          : typeof comp.parameters["TURBINE_POWER"] === "number"
+            ? comp.parameters["TURBINE_POWER"]
+            : explicitTurbPowerSum;
+
+      if (pPumpExplicit > 0 && pTurbExplicit > 0) {
+        const relDiff = Math.abs(pTurbExplicit - pPumpExplicit) / Math.max(pPumpExplicit, pTurbExplicit);
+        if (relDiff > 0.1) {
+          diags.push({
+            ...RocetsErrorCode.SHAFT_POWER_IMBALANCE,
+            message: RocetsErrorCode.SHAFT_POWER_IMBALANCE.message(
+              compId,
+              `turbine power (${pTurbExplicit} W) does not balance pump power (${pPumpExplicit} W)`,
+            ),
+            componentId: compId,
+            line: comp.line,
+            column: comp.column,
+            startOffset: comp.startOffset,
+            endOffset: comp.endOffset,
+          });
+        }
+      } else if ((pumpCount > 0 && turbineCount === 0) || (turbineCount > 0 && pumpCount === 0)) {
+        diags.push({
+          ...RocetsErrorCode.SHAFT_POWER_IMBALANCE,
+          message: RocetsErrorCode.SHAFT_POWER_IMBALANCE.message(
+            compId,
+            pumpCount > 0
+              ? "pumps present on shaft without any driving turbine"
+              : "turbine present on shaft without any driven pump load",
+          ),
           componentId: compId,
           line: comp.line,
           column: comp.column,
@@ -259,8 +587,10 @@ export function lintRocets(model: RocetsEngineModel): RocetsDiagnostic[] {
     }
   }
 
-  // 2. Connection checks (Fluid type continuity)
+  // 2. Connection checks (Fluid type continuity & M8012 fluid table)
   for (const conn of model.connections) {
+    checkFluidTable(conn.fluid, conn.fromComponent, conn.line, conn.column);
+
     const fromComp = model.components.get(conn.fromComponent);
     const toComp = model.components.get(conn.toComponent);
 

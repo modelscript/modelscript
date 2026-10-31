@@ -497,6 +497,19 @@ export default function CadViewer({
     [components, selectedName],
   );
 
+  // Synchronized time scrubber: seek 3D animation when user scrubs simulation results chart
+  useEffect(() => {
+    if (typeof window === "undefined" || !animationController) return;
+    const handleTimeScrub = (e: Event) => {
+      const detail = (e as CustomEvent<{ time?: number | null; values?: Record<string, number> | null }>).detail;
+      if (detail?.time != null && Number.isFinite(detail.time)) {
+        animationController.seek(detail.time);
+      }
+    };
+    window.addEventListener("morsel:time-scrub", handleTimeScrub);
+    return () => window.removeEventListener("morsel:time-scrub", handleTimeScrub);
+  }, [animationController]);
+
   if (error) {
     return (
       <div

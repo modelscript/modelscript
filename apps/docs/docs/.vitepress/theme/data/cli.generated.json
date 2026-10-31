@@ -2827,6 +2827,256 @@
           }
         ],
         "subcommands": []
+      },
+      {
+        "name": "accounts",
+        "specs": [
+          "accounts <action> [username]"
+        ],
+        "aliases": [],
+        "describe": "Manage local and remote accounts (tootctl accounts equivalent: list, modify, prune)",
+        "positionals": [
+          {
+            "name": "action",
+            "aliases": [],
+            "type": "string",
+            "description": "Account operation to execute",
+            "choices": [
+              "list",
+              "modify",
+              "prune"
+            ]
+          },
+          {
+            "name": "username",
+            "aliases": [],
+            "type": "string",
+            "description": "Username to inspect or modify"
+          }
+        ],
+        "options": [
+          {
+            "name": "user-id",
+            "aliases": [],
+            "type": "number",
+            "description": "Explicit numeric user ID"
+          },
+          {
+            "name": "role",
+            "aliases": [],
+            "type": "string",
+            "description": "Assign staff role",
+            "choices": [
+              "user",
+              "moderator",
+              "auditor",
+              "admin"
+            ]
+          },
+          {
+            "name": "status",
+            "aliases": [],
+            "type": "string",
+            "description": "Assign account status",
+            "choices": [
+              "active",
+              "frozen",
+              "suspended"
+            ]
+          },
+          {
+            "name": "days",
+            "aliases": [],
+            "type": "number",
+            "description": "Inactivity window in days when pruning unreferenced remote accounts",
+            "default": 90
+          },
+          {
+            "name": "url",
+            "aliases": [],
+            "type": "string",
+            "description": "Base URL of the hub node",
+            "default": "http://localhost:3000"
+          },
+          {
+            "name": "token",
+            "aliases": [],
+            "type": "string",
+            "description": "Admin Bearer JWT token (or set MSX_TOKEN)"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "domains",
+        "specs": [
+          "domains <action> [domain]"
+        ],
+        "aliases": [],
+        "describe": "Manage federation domain policies (list, block, silence, allow, purge)",
+        "positionals": [
+          {
+            "name": "action",
+            "aliases": [],
+            "type": "string",
+            "description": "Domain policy action",
+            "choices": [
+              "list",
+              "block",
+              "silence",
+              "allow",
+              "purge"
+            ]
+          },
+          {
+            "name": "domain",
+            "aliases": [],
+            "type": "string",
+            "description": "Target remote domain hostname"
+          }
+        ],
+        "options": [
+          {
+            "name": "tier",
+            "aliases": [],
+            "type": "string",
+            "description": "Explicit federation tier",
+            "choices": [
+              "allow",
+              "silence",
+              "suspend"
+            ]
+          },
+          {
+            "name": "reason",
+            "aliases": [],
+            "type": "string",
+            "description": "Public or administrative moderation comment"
+          },
+          {
+            "name": "reject-media",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Strip and refuse remote media/artifact attachments from this domain"
+          },
+          {
+            "name": "reject-reports",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Ignore incoming ActivityPub Flag reports from this domain"
+          },
+          {
+            "name": "obfuscate",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Partially obfuscate domain name on public blocklist"
+          },
+          {
+            "name": "url",
+            "aliases": [],
+            "type": "string",
+            "description": "Base URL of the hub node",
+            "default": "http://localhost:3000"
+          },
+          {
+            "name": "token",
+            "aliases": [],
+            "type": "string",
+            "description": "Admin Bearer JWT token (or set MSX_TOKEN)"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "prune-remote",
+        "specs": [
+          "prune-remote"
+        ],
+        "aliases": [],
+        "describe": "Prune unengaged remote posts, cached remote media, and stale remote actor profiles (tootctl statuses/media remove)",
+        "positionals": [],
+        "options": [
+          {
+            "name": "days",
+            "aliases": [],
+            "type": "number",
+            "description": "Retain unengaged remote statuses for N days",
+            "default": 90
+          },
+          {
+            "name": "media-days",
+            "aliases": [],
+            "type": "number",
+            "description": "Retain cached remote media/artifacts for N days",
+            "default": 14
+          },
+          {
+            "name": "account-days",
+            "aliases": [],
+            "type": "number",
+            "description": "Retain unreferenced remote accounts for N days",
+            "default": 90
+          },
+          {
+            "name": "url",
+            "aliases": [],
+            "type": "string",
+            "description": "Base URL of the hub node",
+            "default": "http://localhost:3000"
+          },
+          {
+            "name": "token",
+            "aliases": [],
+            "type": "string",
+            "description": "Admin Bearer JWT token (or set MSX_TOKEN)"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "relay",
+        "specs": [
+          "relay <action> [target]"
+        ],
+        "aliases": [],
+        "describe": "Manage ActivityPub relay subscriptions (list, add, pause, resume, remove)",
+        "positionals": [
+          {
+            "name": "action",
+            "aliases": [],
+            "type": "string",
+            "description": "Relay operation",
+            "choices": [
+              "list",
+              "add",
+              "pause",
+              "resume",
+              "remove"
+            ]
+          },
+          {
+            "name": "target",
+            "aliases": [],
+            "type": "string",
+            "description": "Relay inbox URL (for add) or numeric relay ID (for pause/resume/remove)"
+          }
+        ],
+        "options": [
+          {
+            "name": "url",
+            "aliases": [],
+            "type": "string",
+            "description": "Base URL of the hub node",
+            "default": "http://localhost:3000"
+          },
+          {
+            "name": "token",
+            "aliases": [],
+            "type": "string",
+            "description": "Admin Bearer JWT token (or set MSX_TOKEN)"
+          }
+        ],
+        "subcommands": []
       }
     ]
   },

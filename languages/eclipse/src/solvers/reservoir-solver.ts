@@ -32,6 +32,8 @@ export interface ReservoirStepRecord {
   cumulativeGas: number;
   waterCut: number;
   wells: WellProductionSample[];
+  cellPressures: number[];
+  cellWaterSaturations: number[];
 }
 
 export interface ReservoirSimulationResult {
@@ -46,7 +48,11 @@ export interface ReservoirSimulationResult {
   cumulativeOilProduced: number;
   stepsCount: number;
   trajectory: ReservoirStepRecord[];
+  cellPressures: number[];
+  cellWaterSaturations: number[];
 }
+
+export type EclipseSimulationResult = ReservoirSimulationResult;
 
 function interpolatePvdo(
   pvdo: { pressure: number; fvf: number; viscosity?: number | undefined }[],
@@ -106,9 +112,9 @@ export function solveReservoirDepletion(
   const bblPerFt3 = 1.0 / 5.614583;
 
   // 1. Volumetric calculations
-  const nx = deck.dimensions.nx;
-  const ny = deck.dimensions.ny;
-  const nz = deck.dimensions.nz;
+  const nx = Math.max(1, deck.dimensions.nx);
+  const ny = Math.max(1, deck.dimensions.ny);
+  const nz = Math.max(1, deck.dimensions.nz);
   const totalCells = nx * ny * nz;
 
   const dx = deck.grid.dx;
@@ -120,8 +126,10 @@ export function solveReservoirDepletion(
   const phi = deck.grid.poro;
   const vPoreTotal = vBulkTotal * phi;
   const vPore = isField ? vPoreTotal * bblPerFt3 : vPoreTotal; // bbl or m^3
+  const vPoreCellDefault = vPore / totalCells;
 
   const swc = deck.solution.initialSwat ?? deck.props.swof[0]?.saturation ?? 0.2;
+  const maxSw = deck.props.swof[deck.props.swof.length - 1]?.saturation ?? 0.85;
   const boi = deck.props.pvdo[0]?.fvf ?? 1.25; // rb/stb or rm3/sm3
   const bgi = deck.props.pvdg[0]?.fvf ?? 0.001; // rb/scf or rm3/sm3
 
@@ -132,18 +140,87 @@ export function solveReservoirDepletion(
   const sgi = Math.max(0, 1.0 - swc - 0.7); // initial free gas if any
   const giip = isField ? (vPore * sgi) / (bgi * 1000.0) : (vPore * sgi) / bgi;
 
-  // 2. Initial Reservoir State
+  // 2. Initial Reservoir State & 3D TPFA Grid Initialization
   let pres = deck.solution.initialPressure ?? 4000.0; // psi or bar
   const initPres = pres;
   const ct = options?.totalCompressibility ?? (isField ? 1.2e-5 : 1.7e-4);
+
+  const cellP = new Float64Array(totalCells);
+  const cellSw = new Float64Array(totalCells);
+  const cellVp = new Float64Array(totalCells);
+  const cellTx = new Float64Array(totalCells);
+  const cellTy = new Float64Array(totalCells);
+  const cellTz = new Float64Array(totalCells);
+
+  // Darcy transmissibility conversion factor (rb/d / (cP * psi) or rm3/d / (cP * bar))
+  const cDarcy = isField ? 0.001127 : 0.008527;
+
+  for (let idx = 0; idx < totalCells; idx++) {
+    cellP[idx] = initPres;
+    cellSw[idx] = swc;
+    const poroCell = deck.grid.poroArray?.[idx] ?? phi;
+    cellVp[idx] = Math.max(1e-3, isField ? vBulkCell * poroCell * bblPerFt3 : vBulkCell * poroCell);
+
+    const kx = Math.max(1e-4, deck.grid.permXArray?.[idx] ?? deck.grid.permX);
+    const ky = Math.max(1e-4, deck.grid.permYArray?.[idx] ?? deck.grid.permY);
+    const kz = Math.max(1e-4, deck.grid.permZArray?.[idx] ?? deck.grid.permZ);
+
+    cellTx[idx] = (cDarcy * kx * dy * dz) / Math.max(1e-3, dx);
+    cellTy[idx] = (cDarcy * ky * dx * dz) / Math.max(1e-3, dy);
+    cellTz[idx] = (cDarcy * kz * dx * dy) / Math.max(1e-3, dz);
+  }
+
+  // Build 3D TPFA internal face list with harmonic geometric transmissibility:
+  // T_{i+1/2}^{geom} = 2 * T_i * T_{i+1} / (T_i + T_{i+1})
+  const faceCellA: number[] = [];
+  const faceCellB: number[] = [];
+  const faceGeomT: number[] = [];
+
+  const cellIndex = (i: number, j: number, k: number): number => i + j * nx + k * nx * ny;
+
+  for (let k = 0; k < nz; k++) {
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const cA = cellIndex(i, j, k);
+        if (i + 1 < nx) {
+          const cB = cellIndex(i + 1, j, k);
+          const tA = cellTx[cA] ?? 0.0;
+          const tB = cellTx[cB] ?? 0.0;
+          faceCellA.push(cA);
+          faceCellB.push(cB);
+          faceGeomT.push((2.0 * tA * tB) / Math.max(1e-12, tA + tB));
+        }
+        if (j + 1 < ny) {
+          const cB = cellIndex(i, j + 1, k);
+          const tA = cellTy[cA] ?? 0.0;
+          const tB = cellTy[cB] ?? 0.0;
+          faceCellA.push(cA);
+          faceCellB.push(cB);
+          faceGeomT.push((2.0 * tA * tB) / Math.max(1e-12, tA + tB));
+        }
+        if (k + 1 < nz) {
+          const cB = cellIndex(i, j, k + 1);
+          const tA = cellTz[cA] ?? 0.0;
+          const tB = cellTz[cB] ?? 0.0;
+          faceCellA.push(cA);
+          faceCellB.push(cB);
+          faceGeomT.push((2.0 * tA * tB) / Math.max(1e-12, tA + tB));
+        }
+      }
+    }
+  }
+  const nFaces = faceCellA.length;
 
   let cumOil = 0.0;
   let cumWater = 0.0;
   let cumGas = 0.0;
 
-  // Well Setup: compute Peaceman well index WI if not explicitly specified
+  // Well Setup: compute Peaceman well index WI if not explicitly specified, and map completions to 3D cells
   const wellList = Array.from(deck.wells.values());
+  const wellCellIndices = new Map<string, { cellIdx: number; wi: number }[]>();
+
   for (const w of wellList) {
+    const perfCells: { cellIdx: number; wi: number }[] = [];
     for (const c of w.completions) {
       if (c.wellIndex <= 0) {
         // Peaceman model: ro = 0.28 * sqrt(dx^2 + dy^2) / 2
@@ -154,7 +231,26 @@ export function solveReservoirDepletion(
         const factor = isField ? 0.00708 : 0.00852;
         c.wellIndex = (factor * kAvg * dz) / Math.log(Math.max(1.1, ro / rw));
       }
+      if (c.status === "OPEN") {
+        const ci = Math.max(0, Math.min(nx - 1, (c.i || w.i || 1) - 1));
+        const cj = Math.max(0, Math.min(ny - 1, (c.j || w.j || 1) - 1));
+        const kStart = Math.max(0, Math.min(nz - 1, (c.k1 || 1) - 1));
+        const kEnd = Math.max(kStart, Math.min(nz - 1, (c.k2 || c.k1 || 1) - 1));
+        const nLayers = kEnd - kStart + 1;
+        const wiPerLayer = c.wellIndex / nLayers;
+        for (let ck = kStart; ck <= kEnd; ck++) {
+          perfCells.push({ cellIdx: cellIndex(ci, cj, ck), wi: wiPerLayer });
+        }
+      }
     }
+    if (perfCells.length === 0) {
+      const ci = Math.max(0, Math.min(nx - 1, (w.i || 1) - 1));
+      const cj = Math.max(0, Math.min(ny - 1, (w.j || 1) - 1));
+      const kAvg = Math.sqrt(deck.grid.permX * deck.grid.permY);
+      const defaultWi = (isField ? 0.00708 : 0.00852) * kAvg * dz;
+      perfCells.push({ cellIdx: cellIndex(ci, cj, 0), wi: defaultWi });
+    }
+    wellCellIndices.set(w.name, perfCells);
   }
 
   // 3. Time Stepping
@@ -199,9 +295,7 @@ export function solveReservoirDepletion(
       const muW = deck.props.pvtw?.muw ?? 0.5; // cP
 
       // Current average water saturation in reservoir at the producer drainage zone
-      // Advances with cumulative oil recovery and Buckley-Leverett waterflood displacement
       const recoveryFrac = stoiip > 0 ? (cumOil + stepOil) / stoiip : 0.0;
-      const maxSw = deck.props.swof[deck.props.swof.length - 1]?.saturation ?? 0.8;
       const displaceableMobileFraction = Math.max(0.1, 1.0 - swc - 0.2);
       const avgSw = Math.min(maxSw, swc + (maxSw - swc) * Math.min(1.0, recoveryFrac / displaceableMobileFraction));
       const { krw, kro } = interpolateSwof(deck.props.swof, avgSw);
@@ -218,22 +312,24 @@ export function solveReservoirDepletion(
       let subGasInj = 0.0;
 
       const subWellSamples: WellProductionSample[] = [];
+      const cellWellResSource = new Float64Array(totalCells); // net reservoir volume source (rb/d or rm3/d)
+      const cellWaterSource = new Float64Array(totalCells); // net surface water source (stb/d or sm3/d)
 
       // Calculate rates from each producer and injector well
       for (const w of wellList) {
+        const perfs = wellCellIndices.get(w.name) ?? [];
+        const totalWi = perfs.reduce((acc, p) => acc + p.wi, 0);
+
         if (w.productionControl && w.productionControl.status === "OPEN") {
           const pc = w.productionControl;
           const bhpLimit = pc.bhpLimit;
-          const dP = Math.max(0, pres - bhpLimit);
 
-          let totalWi = 0.0;
-          for (const c of w.completions) {
-            if (c.status === "OPEN") totalWi += c.wellIndex;
-          }
-          if (totalWi === 0.0) {
-            const kAvg = Math.sqrt(deck.grid.permX * deck.grid.permY);
-            totalWi = (isField ? 0.00708 : 0.00852) * kAvg * dz;
-          }
+          // Average local perforation pressure blended with reservoir pressure
+          const avgPerfP =
+            perfs.length > 0
+              ? 0.5 * pres + 0.5 * (perfs.reduce((acc, p) => acc + (cellP[p.cellIdx] ?? 0), 0) / perfs.length)
+              : pres;
+          const dP = Math.max(0, avgPerfP - bhpLimit);
 
           // Inflow rate via Peaceman equation: q_oil = WI * (kro / (muO * bo)) * (P_res - P_bhp)
           const wellMobility = kro / Math.max(0.1, muO * bo);
@@ -241,10 +337,18 @@ export function solveReservoirDepletion(
           const qOil = Math.min(pc.oilRate > 0 ? pc.oilRate : maxRate, maxRate);
           const actualBhp =
             pc.oilRate > 0 && qOil < maxRate && totalWi * wellMobility > 0
-              ? pres - qOil / (totalWi * wellMobility)
+              ? avgPerfP - qOil / (totalWi * wellMobility)
               : bhpLimit;
 
-          const qWater = waterCut > 0.001 ? (qOil * waterCut) / Math.max(1e-4, 1.0 - waterCut) : 0.0;
+          // Also incorporate local perforation water cut if waterflood front has reached producer cell
+          const avgPerfSw =
+            perfs.length > 0 ? perfs.reduce((acc, p) => acc + (cellSw[p.cellIdx] ?? 0), 0) / perfs.length : avgSw;
+          const perfRelPerm = interpolateSwof(deck.props.swof, Math.max(avgSw, avgPerfSw));
+          const perfMobW = perfRelPerm.krw / Math.max(1e-4, muW);
+          const perfMobO = perfRelPerm.kro / Math.max(1e-4, muO);
+          const effWaterCut = perfMobW + perfMobO > 0 ? Math.max(waterCut, perfMobW / (perfMobW + perfMobO)) : waterCut;
+
+          const qWater = effWaterCut > 0.001 ? (qOil * effWaterCut) / Math.max(1e-4, 1.0 - effWaterCut) : 0.0;
           // Dissolved solution gas-oil ratio Rs(P) scales with reservoir pressure
           const pRatio = Math.max(0.1, Math.min(1.5, pres / initPres));
           const baseGor = isField ? 500.0 : 90.0;
@@ -257,12 +361,20 @@ export function solveReservoirDepletion(
           subWaterProd += qWater * subDt;
           subGasProd += qGas * subDt;
 
+          // Distribute sink across perforated 3D cells
+          const qResTotalRate = bo * qOil + bw * qWater + bg * qGas;
+          for (const perf of perfs) {
+            const wFrac = totalWi > 0 ? perf.wi / totalWi : 1.0 / perfs.length;
+            cellWellResSource[perf.cellIdx] = (cellWellResSource[perf.cellIdx] ?? 0) - qResTotalRate * wFrac;
+            cellWaterSource[perf.cellIdx] = (cellWaterSource[perf.cellIdx] ?? 0) - qWater * wFrac;
+          }
+
           subWellSamples.push({
             wellName: w.name,
             oilRate: qOil,
             waterRate: qWater,
             gasRate: qGas,
-            waterCut,
+            waterCut: effWaterCut,
             bhp: actualBhp,
           });
         } else if (w.injectionControl && w.injectionControl.status === "OPEN") {
@@ -270,8 +382,17 @@ export function solveReservoirDepletion(
           const qInj = ic.rate;
           if (ic.fluidType === "WATER") {
             subWaterInj += qInj * subDt;
+            for (const perf of perfs) {
+              const wFrac = totalWi > 0 ? perf.wi / totalWi : 1.0 / perfs.length;
+              cellWellResSource[perf.cellIdx] = (cellWellResSource[perf.cellIdx] ?? 0) + bw * qInj * wFrac;
+              cellWaterSource[perf.cellIdx] = (cellWaterSource[perf.cellIdx] ?? 0) + qInj * wFrac;
+            }
           } else {
             subGasInj += qInj * subDt;
+            for (const perf of perfs) {
+              const wFrac = totalWi > 0 ? perf.wi / totalWi : 1.0 / perfs.length;
+              cellWellResSource[perf.cellIdx] = (cellWellResSource[perf.cellIdx] ?? 0) + bg * qInj * wFrac;
+            }
           }
           subWellSamples.push({
             wellName: w.name,
@@ -289,12 +410,101 @@ export function solveReservoirDepletion(
       stepGasProd += subGasProd;
       latestWellSamples = subWellSamples;
 
-      // Material balance: net reservoir voidage = produced volume - injected volume
+      // Global Material Balance: net reservoir voidage = produced volume - injected volume
       const vProdRes = bo * subOil + bw * subWaterProd + bg * subGasProd;
       const vInjRes = bw * subWaterInj + bg * subGasInj;
       const netDeltaVp = vProdRes - vInjRes;
       const deltaP = netDeltaVp / (vPore * ct);
       pres = Math.max(100.0, pres - deltaP);
+
+      // 3D Two-Point Flux Approximation (TPFA) IMPES Pressure & Saturation Solve
+      if (totalCells > 0 && nFaces > 0) {
+        // Compute phase and total transmissibilities on each internal face using upstream mobility weighting:
+        // T_{p, i+1/2} = (2 * T_i * T_{i+1} / (T_i + T_{i+1})) * (k_{rp} / (mu_p * B_p))
+        const faceTotalT = new Float64Array(nFaces);
+        const faceWaterT = new Float64Array(nFaces);
+
+        for (let f = 0; f < nFaces; f++) {
+          const cA = faceCellA[f] ?? 0;
+          const cB = faceCellB[f] ?? 0;
+          const geomT = faceGeomT[f] ?? 0.0;
+          const upCell = (cellP[cA] ?? 0.0) >= (cellP[cB] ?? 0.0) ? cA : cB;
+          const swUp = cellSw[upCell] ?? 0.0;
+          const pUp = cellP[upCell] ?? 0.0;
+
+          const pvtUp = interpolatePvdo(deck.props.pvdo, pUp);
+          const relUp = interpolateSwof(deck.props.swof, swUp);
+
+          const tOil = geomT * (relUp.kro / Math.max(1e-4, pvtUp.muO * pvtUp.bo));
+          const tWat = geomT * (relUp.krw / Math.max(1e-4, muW * bw));
+
+          faceWaterT[f] = tWat;
+          // Reservoir volume transmissibility = B_o * T_oil + B_w * T_wat
+          faceTotalT[f] = pvtUp.bo * tOil + bw * tWat;
+        }
+
+        // Solve implicit TPFA pressure system:
+        // (Vp_i * ct / subDt) * (P_i^{n+1} - P_i^n) + sum_{j} T_{t,ij} (P_i^{n+1} - P_j^{n+1}) = q_{res,i}
+        const diag = new Float64Array(totalCells);
+        const rhs = new Float64Array(totalCells);
+        for (let i = 0; i < totalCells; i++) {
+          const accum = ((cellVp[i] ?? 0.0) * ct) / Math.max(1e-4, subDt);
+          diag[i] = accum;
+          rhs[i] = accum * (cellP[i] ?? 0.0) + (cellWellResSource[i] ?? 0.0);
+        }
+        for (let f = 0; f < nFaces; f++) {
+          const cA = faceCellA[f] ?? 0;
+          const cB = faceCellB[f] ?? 0;
+          const tTot = faceTotalT[f] ?? 0.0;
+          diag[cA] = (diag[cA] ?? 0) + tTot;
+          diag[cB] = (diag[cB] ?? 0) + tTot;
+        }
+
+        // Gauss-Seidel / SOR iterations for 3D elliptic pressure field
+        const nIter = 12;
+        for (let iter = 0; iter < nIter; iter++) {
+          const offDiagSum = new Float64Array(totalCells);
+          for (let f = 0; f < nFaces; f++) {
+            const cA = faceCellA[f] ?? 0;
+            const cB = faceCellB[f] ?? 0;
+            const tTot = faceTotalT[f] ?? 0.0;
+            offDiagSum[cA] = (offDiagSum[cA] ?? 0) + tTot * (cellP[cB] ?? 0.0);
+            offDiagSum[cB] = (offDiagSum[cB] ?? 0) + tTot * (cellP[cA] ?? 0.0);
+          }
+          for (let i = 0; i < totalCells; i++) {
+            const pNew = ((rhs[i] ?? 0.0) + (offDiagSum[i] ?? 0.0)) / Math.max(1e-9, diag[i] ?? 0.0);
+            cellP[i] = Math.max(100.0, 0.25 * (cellP[i] ?? 0.0) + 0.75 * pNew);
+          }
+        }
+
+        // Anchor spatial average to global material balance pressure `pres` while preserving TPFA spatial gradients
+        let sumCellP = 0.0;
+        for (let i = 0; i < totalCells; i++) {
+          sumCellP += cellP[i] ?? 0.0;
+        }
+        const meanCellP = sumCellP / totalCells;
+        const shiftP = pres - meanCellP;
+        for (let i = 0; i < totalCells; i++) {
+          cellP[i] = Math.max(100.0, (cellP[i] ?? 0.0) + shiftP);
+        }
+
+        // Explicit upwind water saturation update (IMPES):
+        // (Vp_i / B_w) * (Sw_i^{n+1} - Sw_i^n) / subDt = sum_{j} T_{w,ij} (P_j^{n+1} - P_i^{n+1}) + q_{w,i}
+        const netWaterFlux = new Float64Array(totalCells);
+        for (let f = 0; f < nFaces; f++) {
+          const cA = faceCellA[f] ?? 0;
+          const cB = faceCellB[f] ?? 0;
+          const qWatAB = (faceWaterT[f] ?? 0.0) * ((cellP[cA] ?? 0.0) - (cellP[cB] ?? 0.0)); // positive from A to B
+          netWaterFlux[cA] = (netWaterFlux[cA] ?? 0) - qWatAB;
+          netWaterFlux[cB] = (netWaterFlux[cB] ?? 0) + qWatAB;
+        }
+
+        for (let i = 0; i < totalCells; i++) {
+          const vpCell = cellVp[i] ?? vPoreCellDefault;
+          const dSw = (((netWaterFlux[i] ?? 0.0) + (cellWaterSource[i] ?? 0.0)) * bw * subDt) / Math.max(1e-3, vpCell);
+          cellSw[i] = Math.max(swc, Math.min(maxSw, (cellSw[i] ?? 0.0) + dSw));
+        }
+      }
     }
 
     cumOil += stepOil;
@@ -311,6 +521,8 @@ export function solveReservoirDepletion(
       cumulativeGas: cumGas,
       waterCut: overallWc,
       wells: latestWellSamples,
+      cellPressures: Array.from(cellP),
+      cellWaterSaturations: Array.from(cellSw),
     });
   }
 
@@ -328,5 +540,7 @@ export function solveReservoirDepletion(
     cumulativeOilProduced: cumOil,
     stepsCount: trajectory.length,
     trajectory,
+    cellPressures: Array.from(cellP),
+    cellWaterSaturations: Array.from(cellSw),
   };
 }

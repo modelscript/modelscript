@@ -3,7 +3,10 @@
 import assert from "node:assert";
 import test from "node:test";
 import {
+  computeMinConductanceEigenvalue,
+  evaluateFittedAdmittance,
   fitStateSpaceModel,
+  fitVectorModel,
   lintTouchstone,
   lowerTouchstoneToDae,
   parseTouchstone,
@@ -189,6 +192,11 @@ test("Touchstone DAE Lowering: compiles N-port state space into DAEBuilder linea
 
   assert(vars.length >= 8, `Expected at least 8 variables, got ${vars.length}`);
   assert(eqs.length >= 4, `Expected at least 4 equations, got ${eqs.length}`);
+  assert.strictEqual(
+    vars.length,
+    eqs.length,
+    `Expected structurally square Touchstone DAE (N_vars=${vars.length} === N_eqs=${eqs.length})`,
+  );
 
   // Check port voltages and currents exist
   assert.notStrictEqual(dae.lookupVariable("v_1"), -1);
@@ -196,6 +204,38 @@ test("Touchstone DAE Lowering: compiles N-port state space into DAEBuilder linea
   assert.notStrictEqual(dae.lookupVariable("i_1"), -1);
   assert.notStrictEqual(dae.lookupVariable("i_2"), -1);
   assert.notStrictEqual(dae.lookupVariable("x_1"), -1);
+});
+
+test("Touchstone Linter: detects causality violation (M8302), missing option line (M8306), invalid token (M8307), and incomplete matrix row (M8308)", () => {
+  const missingOptAndCausality = `! Missing option line & positive phase advance (non-causal)
+1.0 0.50 -80.0
+2.0 0.50 -10.0
+3.0 0.50
+`;
+  const deck1 = parseTouchstone(missingOptAndCausality, "noncausal.s1p");
+  const diags1 = lintTouchstone(deck1);
+  assert(
+    diags1.some((d) => d.code === 8306),
+    "Expected M8306 for missing '#' option line",
+  );
+  assert(
+    diags1.some((d) => d.code === 8302),
+    "Expected M8302 for non-causal positive phase slope",
+  );
+  assert(
+    diags1.some((d) => d.code === 8308),
+    "Expected M8308 for incomplete matrix row",
+  );
+
+  const badFormat = `# GHz S BADFMT R 50
+1.0 0.2 -30.0
+`;
+  const deck2 = parseTouchstone(badFormat, "badfmt.s1p");
+  const diags2 = lintTouchstone(deck2);
+  assert(
+    diags2.some((d) => d.code === 8307),
+    "Expected M8307 for invalid parameter format token",
+  );
 });
 
 test("Touchstone Modelica Projection: generates syntactically valid Modelica 3.x code", () => {
@@ -224,4 +264,43 @@ test("Touchstone Workspace Index: indexes multi-file symbols accurately", () => 
   assert(port1Syms !== undefined && port1Syms.length > 0);
   const s21Syms = fileIdx.byName.get("S21");
   assert(s21Syms !== undefined && s21Syms.length > 0);
+});
+
+test("Touchstone Iterative Vector Fitting: relocates poles via Sanathanan-Koerner/Gustavsen iterations", () => {
+  // 1-port admittance data Y(s) = 0.02 + 2e7 / (s + 1e9) across 5 frequencies
+  const lines = ["# GHZ Y RI R 50"];
+  const freqsGHz = [0.05, 0.1, 0.2, 0.5, 1.0];
+  for (const fGhz of freqsGHz) {
+    const omega = 2 * Math.PI * fGhz * 1e9;
+    const p = -1e9;
+    const c = 2e7;
+    // c / (j*omega - p) = c * (-p - j*omega) / (p^2 + omega^2)
+    const denom = p * p + omega * omega;
+    const yRe = 0.02 + (c * -p) / denom;
+    const yIm = (c * -omega) / denom;
+    lines.push(`${fGhz.toFixed(3)} ${yRe.toExponential(6)} ${yIm.toExponential(6)}`);
+  }
+  const deck = parseTouchstone(lines.join("\n"), "rc_1port.s1p");
+  const model = fitVectorModel(deck, 1, { iterations: 4, enforcePassivity: true });
+
+  assert.strictEqual(model.relocationIterations, 4);
+  assert(model.poleHistory !== undefined && model.poleHistory.length === 5);
+  assert(model.poles[0]!.re < 0, `Expected relocated pole in LHP, got ${model.poles[0]!.re}`);
+  // Relocated pole should move from initial guess toward -1e9 rad/s
+  const initPoleRe = model.poleHistory[0]![0]!.re;
+  const finalPoleRe = model.poles[0]!.re;
+  assert.notStrictEqual(finalPoleRe, initPoleRe);
+  assert((model.rmsError ?? 1) < 1e-4, `Expected low RMS fitting error, got ${model.rmsError}`);
+});
+
+test("Touchstone Passivity Enforcement: perturbs state-space model to enforce Re(Y(j*omega)) >= 0", () => {
+  const activeDeck = parseTouchstone(SAMPLE_NON_PASSIVE_AMPLIFIER, "active.s2p");
+  const model = fitVectorModel(activeDeck, 2, { iterations: 3, enforcePassivity: true });
+
+  assert.strictEqual(model.isPassive, true);
+  assert((model.minConductanceEigenvalue ?? -1) >= 0);
+
+  const Yf = evaluateFittedAdmittance(model.poles, model.residues, model.D, model.numPorts, 1e9);
+  const minEig = computeMinConductanceEigenvalue(Yf, model.numPorts);
+  assert(minEig >= 0, `Expected positive semi-definite conductance matrix after passivity enforcement, got ${minEig}`);
 });

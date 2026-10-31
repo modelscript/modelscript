@@ -260,15 +260,15 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
             id: j.name || `J_${i + 1}`,
             name: j.name || `Joint ${i + 1}`,
             type: (j.type as any) || "revolute",
-            body1: j.from || "Ground",
-            body2: j.to || resolvedBodies[i % resolvedBodies.length]!.name,
+            fromBody: j.from || "Ground",
+            toBody: j.to || resolvedBodies[i % resolvedBodies.length]!.name,
           })),
           ...resolvedForces.map((f, i) => ({
             id: f.name || `F_${i + 1}`,
             name: f.name || `Force ${i + 1}`,
-            type: "spring_damper" as const,
-            body1: f.from || "Ground",
-            body2: f.to || resolvedBodies[i % resolvedBodies.length]!.name,
+            type: "spring_damper",
+            fromBody: f.from || "Ground",
+            toBody: f.to || resolvedBodies[i % resolvedBodies.length]!.name,
           })),
         ];
         if (kinJoints.length === 0 && resolvedBodies.length > 0) {
@@ -277,20 +277,17 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
               id: `J_${idx + 1}`,
               name: `J_${idx + 1}`,
               type: "revolute",
-              body1: idx === 0 ? "Ground" : resolvedBodies[idx - 1]!.name,
-              body2: b.name,
+              fromBody: idx === 0 ? "Ground" : resolvedBodies[idx - 1]!.name,
+              toBody: b.name,
             });
           });
         }
-        const built = renderKinematicDiagramSvg(
-          {
-            name: modelName,
-            dialect: "SIMPACK",
-            bodies: kinBodies,
-            joints: kinJoints,
-          },
-          { isDark: true },
-        );
+        const built = renderKinematicDiagramSvg({
+          name: modelName,
+          dialect: "SIMPACK",
+          bodies: kinBodies,
+          joints: kinJoints,
+        });
         return sanitizeSvgMarkup(built, { isFullScreen });
       } catch {
         return "";
@@ -308,7 +305,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
       const rawCoords = (b as any).position || (b as any).cg;
       const coords: [number, number, number] =
         Array.isArray(rawCoords) && rawCoords.length === 3
-          ? rawCoords
+          ? [Number(rawCoords[0]), Number(rawCoords[1]), Number(rawCoords[2])]
           : [idx * 1.6 - (resolvedBodies.length - 1) * 0.8, (idx % 2) * 0.6, 0.8 + (idx % 3) * 0.4];
       posMap.set(b.name, coords);
       nodes.push({

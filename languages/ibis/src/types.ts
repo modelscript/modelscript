@@ -82,6 +82,27 @@ export type IbisModelType =
   | "Terminator";
 
 /**
+ * Executable entry inside [Algorithmic Model].
+ */
+export interface IbisAmiExecutable {
+  platform: string;
+  fileName: string;
+  paramFile: string;
+}
+
+/**
+ * IBIS-AMI ([Algorithmic Model]) specification on a [Model].
+ */
+export interface IbisAmiModel {
+  executables: IbisAmiExecutable[];
+  txTapWeights?: number[] | undefined;
+  ctleGainDb?: number | undefined;
+  ctlePoleGhz?: number | undefined;
+  dfeTaps?: number[] | undefined;
+  rawParameters: Record<string, string>;
+}
+
+/**
  * Buffer model declaration in [Model] section.
  */
 export interface IbisModel {
@@ -105,6 +126,7 @@ export interface IbisModel {
   ramp?: IbisRamp | undefined;
   risingWaveforms?: IbisWaveform[] | undefined;
   fallingWaveforms?: IbisWaveform[] | undefined;
+  algorithmicModel?: IbisAmiModel | undefined;
   line: number;
 }
 

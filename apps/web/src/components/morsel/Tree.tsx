@@ -414,7 +414,8 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           </div>
           {(() => {
             const isFolder = node.classKind === "owl2-folder" || node.classKind === "ontology-folder";
-            if (isFolder && node.description) {
+            const nodeDesc = (node as { description?: string }).description;
+            if (isFolder && nodeDesc) {
               return (
                 <span
                   style={{
@@ -424,7 +425,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
                     flexShrink: 0,
                   }}
                 >
-                  {node.description}
+                  {nodeDesc}
                 </span>
               );
             }

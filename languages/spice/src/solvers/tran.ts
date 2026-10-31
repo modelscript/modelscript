@@ -16,10 +16,18 @@ import {
   DenseMatrix,
   buildMnaIndexing,
   flattenSpiceCircuit,
+  solveLinearSystem,
   stampConductance,
   stampCurrentSource,
 } from "./mna.js";
-import { solveOp } from "./op.js";
+import {
+  extractPrecomputedNonlinearDevices,
+  findBranchIndex,
+  solveOp,
+  stampPrecomputedBjt,
+  stampPrecomputedDiode,
+  stampPrecomputedMosfet,
+} from "./op.js";
 
 interface CapacitorState {
   comp: SpiceComponent;
@@ -28,9 +36,16 @@ interface CapacitorState {
   iPrev: number;
 }
 
+interface InductorCoupling {
+  otherIdx: number;
+  gammaMutual: number;
+}
+
 interface InductorState {
   comp: SpiceComponent;
   L: number;
+  gammaSelf: number;
+  couplings: InductorCoupling[];
   vPrev: number;
   iPrev: number;
 }
@@ -65,6 +80,7 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
   // Track state of capacitors and inductors
   const capStates: CapacitorState[] = [];
   const indStates: InductorState[] = [];
+  const indNameToIdx = new Map<string, number>();
 
   for (const comp of components) {
     if (comp.kind === "C") {
@@ -72,7 +88,43 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
       capStates.push({ comp, C: val, vPrev: 0, iPrev: 0 });
     } else if (comp.kind === "L") {
       const val = comp.value ?? 1e-6;
-      indStates.push({ comp, L: val, vPrev: 0, iPrev: 0 });
+      const idx = indStates.length;
+      indStates.push({
+        comp,
+        L: val,
+        gammaSelf: val > 0 ? 1.0 / val : 1e12,
+        couplings: [],
+        vPrev: 0,
+        iPrev: 0,
+      });
+      indNameToIdx.set(comp.name.toUpperCase(), idx);
+    }
+  }
+
+  // Process mutual inductors (K cards) to build inverse inductance matrix Gamma = L^-1
+  for (const comp of components) {
+    if (comp.kind === "K") {
+      const l1Name = (comp.inductor1 ?? comp.nodes[0] ?? "").toUpperCase();
+      const l2Name = (comp.inductor2 ?? comp.nodes[1] ?? "").toUpperCase();
+      const idx1 = indNameToIdx.get(l1Name);
+      const idx2 = indNameToIdx.get(l2Name);
+      if (idx1 !== undefined && idx2 !== undefined && idx1 !== idx2) {
+        const ls1 = indStates[idx1];
+        const ls2 = indStates[idx2];
+        if (!ls1 || !ls2) continue;
+        const rawK = comp.couplingFactor ?? comp.value ?? 0.999;
+        const kSign = rawK < 0 ? -1 : 1;
+        const kEff = kSign * Math.min(0.9999, Math.abs(rawK));
+        const M = kEff * Math.sqrt(ls1.L * ls2.L);
+        const det = ls1.L * ls2.L - M * M;
+        if (det > 1e-30) {
+          ls1.gammaSelf = ls2.L / det;
+          ls2.gammaSelf = ls1.L / det;
+          const gammaMut = -M / det;
+          ls1.couplings.push({ otherIdx: idx2, gammaMutual: gammaMut });
+          ls2.couplings.push({ otherIdx: idx1, gammaMutual: gammaMut });
+        }
+      }
     }
   }
 
@@ -111,7 +163,7 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
     const v1 = getNodeVoltage(ls.comp.nodes[0], currentSol);
     const v2 = getNodeVoltage(ls.comp.nodes[1], currentSol);
     ls.vPrev = v1 - v2; // In DC, inductor voltage is ~0
-    ls.iPrev = 0;
+    ls.iPrev = uic ? 0 : (v1 - v2) * 1e6;
   }
 
   // Result trajectories
@@ -152,15 +204,30 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
     stampConductance(matrix, indexing, n1, n2, Gc);
   }
 
-  // 3. Inductors companion conductances
+  // 3. Inductors (and coupled K inductors) companion conductances
+  const alphaInd = method === "trapezoidal" ? 0.5 * h : h;
   for (const ls of indStates) {
     const n1 = ls.comp.nodes[0] ?? "";
     const n2 = ls.comp.nodes[1] ?? "";
-    const Gl = method === "trapezoidal" ? h / (2.0 * ls.L) : h / ls.L;
+    const Gl = alphaInd * ls.gammaSelf;
     stampConductance(matrix, indexing, n1, n2, Gl);
+
+    const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+    const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+    for (const cpl of ls.couplings) {
+      const other = indStates[cpl.otherIdx];
+      if (!other) continue;
+      const c1 = indexing.nodeToIdx.get((other.comp.nodes[0] ?? "").toUpperCase()) ?? -1;
+      const c2 = indexing.nodeToIdx.get((other.comp.nodes[1] ?? "").toUpperCase()) ?? -1;
+      const Gm = alphaInd * cpl.gammaMutual;
+      if (i1 >= 0 && c1 >= 0) matrix.add(i1, c1, Gm);
+      if (i1 >= 0 && c2 >= 0) matrix.add(i1, c2, -Gm);
+      if (i2 >= 0 && c1 >= 0) matrix.add(i2, c1, -Gm);
+      if (i2 >= 0 && c2 >= 0) matrix.add(i2, c2, Gm);
+    }
   }
 
-  // 4. Voltage Sources and VCVS branch equations
+  // 4. Voltage Sources and Controlled Sources (E, G, F, H)
   for (const comp of components) {
     const n1 = comp.nodes[0] ?? "";
     const n2 = comp.nodes[1] ?? "";
@@ -199,11 +266,57 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
         if (c1 >= 0) matrix.add(bIdx, c1, -gain);
         if (c2 >= 0) matrix.add(bIdx, c2, gain);
       }
+    } else if (comp.kind === "G" && comp.controlNodes) {
+      const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+      const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+      const c1 = indexing.nodeToIdx.get(comp.controlNodes[0]?.toUpperCase() ?? "") ?? -1;
+      const c2 = indexing.nodeToIdx.get(comp.controlNodes[1]?.toUpperCase() ?? "") ?? -1;
+      const gm = comp.gain ?? comp.value ?? 1e-3;
+
+      if (i1 >= 0 && c1 >= 0) matrix.add(i1, c1, gm);
+      if (i1 >= 0 && c2 >= 0) matrix.add(i1, c2, -gm);
+      if (i2 >= 0 && c1 >= 0) matrix.add(i2, c1, -gm);
+      if (i2 >= 0 && c2 >= 0) matrix.add(i2, c2, gm);
+    } else if (comp.kind === "F" && comp.controlSource) {
+      const cBranchIdx = findBranchIndex(indexing.branchToIdx, comp.controlSource);
+      if (cBranchIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        const gain = comp.gain ?? comp.value ?? 1.0;
+        if (i1 >= 0) matrix.add(i1, cBranchIdx, gain);
+        if (i2 >= 0) matrix.add(i2, cBranchIdx, -gain);
+      }
+    } else if (comp.kind === "H" && comp.controlSource) {
+      const bIdx = indexing.branchToIdx.get(comp.name);
+      const cBranchIdx = findBranchIndex(indexing.branchToIdx, comp.controlSource);
+      if (bIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        const gain = comp.gain ?? comp.value ?? 1.0;
+        if (i1 >= 0) {
+          matrix.add(i1, bIdx, 1.0);
+          matrix.add(bIdx, i1, 1.0);
+        }
+        if (i2 >= 0) {
+          matrix.add(i2, bIdx, -1.0);
+          matrix.add(bIdx, i2, -1.0);
+        }
+        if (cBranchIdx !== undefined) {
+          matrix.add(bIdx, cBranchIdx, -gain);
+        }
+      }
     }
   }
 
-  // Factorize once before time stepping
-  if (!luSolver.factorize(matrix)) {
+  // 5. Pre-extract non-linear devices (D, Q, M)
+  const nlDevices = extractPrecomputedNonlinearDevices(components, circuit, indexing);
+  const iterMatrix = nlDevices.hasNonlinear ? new DenseMatrix(indexing.totalSize) : null;
+  const iterRhs = nlDevices.hasNonlinear ? new Float64Array(indexing.totalSize) : null;
+  const iterSol = nlDevices.hasNonlinear ? new Float64Array(indexing.totalSize) : null;
+  const candidateSol = nlDevices.hasNonlinear ? new Float64Array(indexing.totalSize) : null;
+
+  // Factorize once before time stepping if purely linear
+  if (!nlDevices.hasNonlinear && !luSolver.factorize(matrix)) {
     return {
       time: timePoints,
       nodeVoltages: nodeTrajectories,
@@ -248,12 +361,18 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
       if (i2 >= 0) rhs[i2] = (rhs[i2] ?? 0) - Ieq;
     }
 
-    // 2. Inductors companion history currents
+    // 2. Inductors (and coupled K inductors) companion history currents
+    const betaInd = method === "trapezoidal" ? 1.0 : 0.0;
     for (const ls of indStates) {
       const n1 = ls.comp.nodes[0] ?? "";
       const n2 = ls.comp.nodes[1] ?? "";
-      const Gl = method === "trapezoidal" ? h / (2.0 * ls.L) : h / ls.L;
-      const Ieq = method === "trapezoidal" ? ls.iPrev + Gl * ls.vPrev : ls.iPrev;
+      let dIdtPrev = ls.gammaSelf * ls.vPrev;
+      for (const cpl of ls.couplings) {
+        const other = indStates[cpl.otherIdx];
+        if (!other) continue;
+        dIdtPrev += cpl.gammaMutual * other.vPrev;
+      }
+      const Ieq = ls.iPrev + betaInd * alphaInd * dIdtPrev;
 
       const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
       const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
@@ -277,8 +396,52 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
       }
     }
 
-    // 4. Solve linear system in-place in O(N^2) (zero allocations)
-    luSolver.solve(rhs, nextSol);
+    // 4. Solve system at time step t
+    if (!nlDevices.hasNonlinear) {
+      // Fast path for linear circuits: O(N^2) solve using pre-factorized LU
+      luSolver.solve(rhs, nextSol);
+    } else if (iterMatrix && iterRhs && iterSol && candidateSol) {
+      // Non-linear Newton-Raphson loop at time step t
+      iterSol.set(currentSol);
+      const maxNrIters = 50;
+      const nrTol = 1e-6;
+      const damping = 0.8;
+
+      for (let nr = 0; nr < maxNrIters; nr++) {
+        iterMatrix.data.set(matrix.data);
+        iterRhs.set(rhs);
+
+        for (const diode of nlDevices.diodes) {
+          stampPrecomputedDiode(iterMatrix, iterRhs, diode, iterSol);
+        }
+        for (const bjt of nlDevices.bjts) {
+          stampPrecomputedBjt(iterMatrix, iterRhs, bjt, iterSol);
+        }
+        for (const mosfet of nlDevices.mosfets) {
+          stampPrecomputedMosfet(iterMatrix, iterRhs, mosfet, iterSol);
+        }
+
+        const solved = solveLinearSystem(iterMatrix, iterRhs, candidateSol, luSolver);
+        if (!solved) break;
+
+        let maxDiff = 0;
+        for (let j = 0; j < indexing.totalSize; j++) {
+          const diff = Math.abs((candidateSol[j] ?? 0) - (iterSol[j] ?? 0));
+          if (diff > maxDiff) maxDiff = diff;
+        }
+
+        if (maxDiff < nrTol) {
+          iterSol.set(candidateSol);
+          break;
+        }
+
+        const alpha = nr < 10 ? 1.0 : damping;
+        for (let j = 0; j < indexing.totalSize; j++) {
+          iterSol[j] = alpha * (candidateSol[j] ?? 0) + (1.0 - alpha) * (iterSol[j] ?? 0);
+        }
+      }
+      nextSol.set(iterSol);
+    }
 
     // 5. Update Capacitor and Inductor internal states for next step
     for (const cs of capStates) {
@@ -297,20 +460,27 @@ export function solveTran(circuit: SpiceCircuit, options?: Partial<TransientOpti
       cs.iPrev = iNew;
     }
 
-    for (const ls of indStates) {
+    const vIndNew = indStates.map((ls) => {
       const v1 = getNodeVoltage(ls.comp.nodes[0], nextSol);
       const v2 = getNodeVoltage(ls.comp.nodes[1], nextSol);
-      const vNew = v1 - v2;
-      let iNew: number;
-      if (method === "trapezoidal") {
-        const Gl = h / (2.0 * ls.L);
-        iNew = ls.iPrev + Gl * (vNew + ls.vPrev);
-      } else {
-        const Gl = h / ls.L;
-        iNew = ls.iPrev + Gl * vNew;
+      return v1 - v2;
+    });
+    const iIndNew = indStates.map((ls, idx) => {
+      const vNew = vIndNew[idx] ?? 0;
+      let dIdtNew = ls.gammaSelf * vNew;
+      let dIdtPrev = ls.gammaSelf * ls.vPrev;
+      for (const cpl of ls.couplings) {
+        dIdtNew += cpl.gammaMutual * (vIndNew[cpl.otherIdx] ?? 0);
+        dIdtPrev += cpl.gammaMutual * (indStates[cpl.otherIdx]?.vPrev ?? 0);
       }
-      ls.vPrev = vNew;
-      ls.iPrev = iNew;
+      return ls.iPrev + alphaInd * (dIdtNew + betaInd * dIdtPrev);
+    });
+    for (let idx = 0; idx < indStates.length; idx++) {
+      const ls = indStates[idx];
+      if (ls) {
+        ls.vPrev = vIndNew[idx] ?? 0;
+        ls.iPrev = iIndNew[idx] ?? 0;
+      }
     }
 
     currentSol.set(nextSol);
@@ -339,7 +509,7 @@ export function evaluateSourceWaveform(comp: SpiceComponent, t: number): number 
     // PULSE(v1 v2 td tr tf pw per)
     if (t < w.td) return w.v1;
 
-    const tRel = (t - w.td) % w.per;
+    const tRel = w.per > 0 ? (t - w.td) % w.per : t - w.td;
 
     if (tRel < w.tr) {
       // Rising edge
@@ -363,8 +533,23 @@ export function evaluateSourceWaveform(comp: SpiceComponent, t: number): number 
     const td = w.td ?? 0;
     if (t < td) return w.vo;
     const thetaRad = ((w.theta ?? 0) * Math.PI) / 180.0;
+    const edamp = w.theta ? Math.exp(-(t - td) * w.theta) : 1.0;
     const arg = 2.0 * Math.PI * w.freq * (t - td) + thetaRad;
-    return w.vo + w.va * Math.sin(arg);
+    return w.vo + w.va * edamp * Math.sin(arg);
+  }
+
+  if (w.kind === "EXP") {
+    // EXP(v1 v2 td1 tau1 td2 tau2)
+    if (t <= w.td1) return w.v1;
+    const term1 = (w.v2 - w.v1) * (1.0 - Math.exp(-(t - w.td1) / Math.max(w.tau1, 1e-15)));
+    if (t <= w.td2) return w.v1 + term1;
+    const term2 = (w.v1 - w.v2) * (1.0 - Math.exp(-(t - w.td2) / Math.max(w.tau2, 1e-15)));
+    return w.v1 + term1 + term2;
+  }
+
+  if (w.kind === "SFFM") {
+    // SFFM(vo va fc mdi fs)
+    return w.vo + w.va * Math.sin(2.0 * Math.PI * w.fc * t + w.modIndex * Math.sin(2.0 * Math.PI * w.fs * t));
   }
 
   if (w.kind === "PWL") {

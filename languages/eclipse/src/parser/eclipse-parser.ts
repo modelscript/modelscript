@@ -77,6 +77,7 @@ const KNOWN_DATA_KEYWORDS = new Set([
   "WCONPROD",
   "WCONINJE",
   "TSTEP",
+  "INCLUDE",
 ]);
 
 function expandRepeat(token: string): string[] {
@@ -127,7 +128,15 @@ function parseNum(val: string | undefined, defaultVal: number): number {
   return isNaN(num) ? defaultVal : num;
 }
 
-export function parseEclipse(source: string, filename?: string): EclipseDeck {
+export function parseEclipse(
+  source: string,
+  filename?: string,
+  includeResolver?: (includePath: string) => string | undefined,
+): EclipseDeck {
+  return parseEclipseInternal(source, filename, includeResolver, new Set<string>());
+}
+
+function parseEclipseRecords(source: string): RawKeywordRecord[] {
   const lines = source.split("\n");
   const records: RawKeywordRecord[] = [];
 
@@ -320,6 +329,40 @@ export function parseEclipse(source: string, filename?: string): EclipseDeck {
     });
   }
 
+  return records;
+}
+
+function parseEclipseInternal(
+  source: string,
+  filename: string | undefined,
+  includeResolver: ((includePath: string) => string | undefined) | undefined,
+  visitedIncludes: Set<string>,
+): EclipseDeck {
+  const baseRecords = parseEclipseRecords(source);
+  const records: RawKeywordRecord[] = [];
+  const includes: string[] = [];
+
+  function expandRecords(recs: RawKeywordRecord[]): void {
+    for (const rec of recs) {
+      records.push(rec);
+      if (rec.keyword === "INCLUDE" && rec.tokens.length > 0) {
+        const incPath = (rec.tokens[0] ?? "").trim();
+        if (incPath.length > 0) {
+          includes.push(incPath);
+          if (includeResolver && !visitedIncludes.has(incPath)) {
+            visitedIncludes.add(incPath);
+            const incContent = includeResolver(incPath);
+            if (incContent !== undefined) {
+              expandRecords(parseEclipseRecords(incContent));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  expandRecords(baseRecords);
+
   // Build Structured Eclipse Deck
   let title = "ECLIPSE Reservoir Simulation Model";
   const dimensions: EclipseDimensions = { nx: 10, ny: 10, nz: 3 };
@@ -394,12 +437,16 @@ export function parseEclipse(source: string, filename?: string): EclipseDeck {
       grid.tops = parseFloat(tok[0] ?? "5000.0");
     } else if (kw === "PORO" && tok.length > 0) {
       grid.poro = parseFloat(tok[0] ?? "0.22");
+      grid.poroArray = tok.map((v) => parseNum(v, grid.poro));
     } else if (kw === "PERMX" && tok.length > 0) {
       grid.permX = parseFloat(tok[0] ?? "150.0");
+      grid.permXArray = tok.map((v) => parseNum(v, grid.permX));
     } else if (kw === "PERMY" && tok.length > 0) {
       grid.permY = parseFloat(tok[0] ?? "150.0");
+      grid.permYArray = tok.map((v) => parseNum(v, grid.permY));
     } else if (kw === "PERMZ" && tok.length > 0) {
       grid.permZ = parseFloat(tok[0] ?? "15.0");
+      grid.permZArray = tok.map((v) => parseNum(v, grid.permZ));
     }
 
     // PROPS
@@ -562,6 +609,7 @@ export function parseEclipse(source: string, filename?: string): EclipseDeck {
     solution,
     wells,
     timeSteps,
+    includes,
     sourceFile: filename,
     rawKeywords,
   };
@@ -580,6 +628,12 @@ export function serializeEclipse(deck: EclipseDeck): string {
   lines.push(`TITLE`);
   lines.push(`  ${deck.title}`);
   lines.push(`/`);
+  if (deck.includes && deck.includes.length > 0) {
+    for (const inc of deck.includes) {
+      lines.push(`INCLUDE`);
+      lines.push(`  '${inc}' /`);
+    }
+  }
   lines.push(``);
   lines.push(`DIMENS`);
   lines.push(`  ${deck.dimensions.nx} ${deck.dimensions.ny} ${deck.dimensions.nz} /`);

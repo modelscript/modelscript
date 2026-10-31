@@ -501,7 +501,7 @@
         "SysML v2"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 15
   },
   {
     "slug": "simulink",
@@ -796,7 +796,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 8
+    "ruleCount": 10
   },
   {
     "slug": "olga",

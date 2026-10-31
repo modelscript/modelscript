@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWasmParser, type SyntaxNode, type TreeSitterParser } from "../src-gen/bindings.js";
-import { CAstParser, parseCScript, tokenizeC, type CExpr, type CStmt, type CToken } from "./ast.js";
+import { CAstParser, parseCScript, tokenizeC, type CExpr, type CStmt, type CSwitchCase, type CToken } from "./ast.js";
 import {
   scrapeCHeader,
   type CFunctionParam,
@@ -28,6 +28,16 @@ import {
 } from "./codegen/step-compiler.js";
 import { lowerCToDae, type CDaeLoweringResult } from "./dae/lowering.js";
 import { CErrorCode, type CErrorCodeKey } from "./errors.js";
+import {
+  verifyCRoutine,
+  type CVerificationDiagnostic,
+  type CVerificationDiagnosticCode,
+  type CVerificationOptions,
+  type CVerificationResult,
+  type NumericInterval,
+  type PointerAbstractState,
+  type PointerStatus,
+} from "./formal/verifier.js";
 import { getCLanguageConfiguration, getCMonarchDefinition, getCTextMateGrammar } from "./ide/index.js";
 import { cLanguage } from "./language.js";
 import { lintC, lintCSource, type CDiagnostic, type CLintOptions } from "./lints/index.js";
@@ -54,6 +64,7 @@ export {
   preprocessCSegment,
   scrapeCHeader,
   tokenizeC,
+  verifyCRoutine,
 };
 
 export type {
@@ -70,7 +81,15 @@ export type {
   CStmt,
   CStructDefinition,
   CStructField,
+  CSwitchCase,
   CToken,
+  CVerificationDiagnostic,
+  CVerificationDiagnosticCode,
+  CVerificationOptions,
+  CVerificationResult,
+  NumericInterval,
+  PointerAbstractState,
+  PointerStatus,
   PreprocessedC,
   ScrapedCHeader,
   SyntaxNode,

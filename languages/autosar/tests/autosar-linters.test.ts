@@ -182,6 +182,44 @@ describe("AUTOSAR Pre-Flight Automotive Linter (M7401–M7410)", () => {
     assert.ok(diags.some((d) => d.message.includes("overlap bit index 8")));
   });
 
+  it("M7406: should detect Motorola big-endian (MOST-SIGNIFICANT-BYTE-FIRST) sawtooth bit overlap across byte boundaries", () => {
+    const arxml = `<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Com</SHORT-NAME>
+      <ELEMENTS>
+        <I-SIGNAL-I-PDU>
+          <SHORT-NAME>MotorolaPdu</SHORT-NAME>
+          <LENGTH>8</LENGTH>
+          <I-SIGNAL-TO-PDU-MAPPINGS>
+            <I-SIGNAL-TO-I-PDU-MAPPING>
+              <SHORT-NAME>SigA_Map</SHORT-NAME>
+              <START-POSITION>3</START-POSITION>
+              <LENGTH>8</LENGTH>
+              <PACKING-BYTE-ORDER>MOST-SIGNIFICANT-BYTE-FIRST</PACKING-BYTE-ORDER>
+              <I-SIGNAL-REF>SignalA</I-SIGNAL-REF>
+            </I-SIGNAL-TO-I-PDU-MAPPING>
+            <I-SIGNAL-TO-I-PDU-MAPPING>
+              <SHORT-NAME>SigB_Map</SHORT-NAME>
+              <START-POSITION>15</START-POSITION>
+              <LENGTH>4</LENGTH>
+              <PACKING-BYTE-ORDER>MOST-SIGNIFICANT-BYTE-FIRST</PACKING-BYTE-ORDER>
+              <I-SIGNAL-REF>SignalB</I-SIGNAL-REF>
+            </I-SIGNAL-TO-I-PDU-MAPPING>
+          </I-SIGNAL-TO-PDU-MAPPINGS>
+        </I-SIGNAL-I-PDU>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>`;
+    const model = parseArxml(arxml);
+    const diags = lintAutosarModel(model);
+    // SignalA starts at bit 3 (MSB-first sawtooth: 3, 2, 1, 0, then jumps +15 to 15, 14, 13, 12)
+    // SignalB starts at bit 15, overlapping at bit index 15
+    assert.ok(diags.some((d) => d.code === "M7406" && d.message.includes("overlap bit index 15")));
+  });
+
   it("M7407: should report PDU length exceeding CAN frame capacity", () => {
     const arxml = `<?xml version="1.0" encoding="UTF-8"?>
 <AUTOSAR>

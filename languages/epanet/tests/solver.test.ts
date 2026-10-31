@@ -80,4 +80,41 @@ describe("EPANET Todini Global Gradient Hydraulic Solver", () => {
     assert(pJ1 > 0, `Expected positive pressure at J1, got ${pJ1}`);
     assert(pJ2 > 0, `Expected positive pressure at J2, got ${pJ2}`);
   });
+
+  it("supports Darcy-Weisbach friction, minor losses, pumps, and valves (TCV/FCV/PRV)", () => {
+    const pumpValveInp = `
+[OPTIONS]
+ Headloss D-W
+
+[RESERVOIRS]
+ R1  50.0
+
+[JUNCTIONS]
+ J1  50.0  0.0
+ J2  60.0  0.0
+ J3  55.0  12.0
+
+[PUMPS]
+ PMP1  R1  J1  HEAD C_PUMP
+
+[VALVES]
+ V1  J1  J2  150  TCV  5.0  2.0
+
+[PIPES]
+ P1  J2  J3  400  150  0.1  1.5  OPEN
+
+[CURVES]
+ C_PUMP  20.0  45.0
+`;
+    const net = parseInp(pumpValveInp);
+    const res = solveHydraulics(net);
+
+    assert.strictEqual(res.converged, true);
+    const hR1 = res.nodeHeads.get("R1") ?? 0;
+    const hJ1 = res.nodeHeads.get("J1") ?? 0;
+    assert(hJ1 > hR1, `Pump PMP1 must increase head above reservoir R1 (${hJ1} > ${hR1})`);
+    assert(Math.abs((res.linkFlows.get("PMP1") ?? 0) - 12.0) < 0.5);
+    assert(Math.abs((res.linkFlows.get("V1") ?? 0) - 12.0) < 0.5);
+    assert(Math.abs((res.linkFlows.get("P1") ?? 0) - 12.0) < 0.5);
+  });
 });

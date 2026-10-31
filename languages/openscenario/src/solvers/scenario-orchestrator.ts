@@ -56,14 +56,19 @@ export interface OrchestratorOptions {
 }
 
 interface ActiveActionRuntime {
+  kind: "speed" | "laneChange";
   entityRef: string;
   eventName: string;
   targetSpeed: number;
   rate: number; // acceleration/deceleration rate (m/s^2)
+  startY?: number;
+  targetY?: number;
   targetLane?: number;
   progress: number;
   duration: number;
 }
+
+const LANE_WIDTH_M = 3.5;
 
 export function simulateScenario(doc: OpenScenarioDocument, options?: OrchestratorOptions): ScenarioSimulationResult {
   const duration = options?.duration ?? 10.0;
@@ -89,9 +94,15 @@ export function simulateScenario(doc: OpenScenarioDocument, options?: Orchestrat
     if (ent.initialPosition?.kind === "world" && ent.initialPosition.world) {
       x = ent.initialPosition.world.x;
       y = ent.initialPosition.world.y;
+      if (Math.abs(y) >= LANE_WIDTH_M * 0.5) {
+        lane = Math.round(y / LANE_WIDTH_M);
+      }
     } else if (ent.initialPosition?.kind === "lane" && ent.initialPosition.lane) {
       x = ent.initialPosition.lane.s;
       lane = ent.initialPosition.lane.laneId;
+      y = lane * LANE_WIDTH_M + (ent.initialPosition.lane.offset ?? 0);
+    } else {
+      y = lane * LANE_WIDTH_M;
     }
 
     actorStates.set(ent.name, {
@@ -150,6 +161,7 @@ export function simulateScenario(doc: OpenScenarioDocument, options?: Orchestrat
                         a.speedDynamics?.rate ?? (a.speedDynamics?.duration ? diff / a.speedDynamics.duration : 3.0);
                       const actionDur = rate > 0 ? diff / rate : 0;
                       runningActions.push({
+                        kind: "speed",
                         entityRef: a.entityRef,
                         eventName: ev.name,
                         targetSpeed: a.targetSpeed,
@@ -159,7 +171,23 @@ export function simulateScenario(doc: OpenScenarioDocument, options?: Orchestrat
                       });
                     } else if (a.kind === "laneChange" && a.targetLane !== undefined) {
                       const state = actorStates.get(a.entityRef);
-                      if (state) state.lane = a.targetLane;
+                      if (state) {
+                        const lcDur = a.dynamicsDuration ?? 3.0;
+                        const startY = state.y;
+                        const targetY = a.targetLane * LANE_WIDTH_M;
+                        runningActions.push({
+                          kind: "laneChange",
+                          entityRef: a.entityRef,
+                          eventName: ev.name,
+                          targetSpeed: state.speed,
+                          rate: 0,
+                          startY,
+                          targetY,
+                          targetLane: a.targetLane,
+                          duration: lcDur,
+                          progress: 0,
+                        });
+                      }
                     }
                   }
                 }
@@ -176,18 +204,37 @@ export function simulateScenario(doc: OpenScenarioDocument, options?: Orchestrat
       if (!act) continue;
       const state = actorStates.get(act.entityRef);
       if (state) {
-        state.acceleration = act.rate;
-        state.speed = Math.max(0, state.speed + act.rate * dt);
-        act.progress += dt;
-        if (
-          act.progress >= act.duration ||
-          (act.rate > 0 && state.speed >= act.targetSpeed) ||
-          (act.rate < 0 && state.speed <= act.targetSpeed)
-        ) {
-          state.speed = act.targetSpeed;
-          state.acceleration = 0;
-          runningActions.splice(i, 1);
-          eventStates.set(act.eventName, "completed");
+        if (act.kind === "laneChange") {
+          act.progress += dt;
+          const u = act.duration > 0 ? Math.min(1.0, act.progress / act.duration) : 1.0;
+          // Smooth sinusoidal lateral trajectory y(u) = startY + (targetY - startY) * 0.5 * (1 - cos(pi * u))
+          const sFactor = 0.5 * (1.0 - Math.cos(Math.PI * u));
+          const startY = act.startY ?? state.y;
+          const targetY = act.targetY ?? state.y;
+          state.y = startY + (targetY - startY) * sFactor;
+          if (u >= 0.5 && act.targetLane !== undefined) {
+            state.lane = act.targetLane;
+          }
+          if (u >= 1.0) {
+            state.y = targetY;
+            if (act.targetLane !== undefined) state.lane = act.targetLane;
+            runningActions.splice(i, 1);
+            eventStates.set(act.eventName, "completed");
+          }
+        } else {
+          state.acceleration = act.rate;
+          state.speed = Math.max(0, state.speed + act.rate * dt);
+          act.progress += dt;
+          if (
+            act.progress >= act.duration ||
+            (act.rate > 0 && state.speed >= act.targetSpeed) ||
+            (act.rate < 0 && state.speed <= act.targetSpeed)
+          ) {
+            state.speed = act.targetSpeed;
+            state.acceleration = 0;
+            runningActions.splice(i, 1);
+            eventStates.set(act.eventName, "completed");
+          }
         }
       }
     }
@@ -197,7 +244,7 @@ export function simulateScenario(doc: OpenScenarioDocument, options?: Orchestrat
       state.x += state.speed * dt + 0.5 * state.acceleration * dt * dt;
     }
 
-    // 4. Compute Metrics: TTC and RSS safety distance between Ego and other vehicles
+    // 4. Compute Metrics: TTC and RSS safety distance between Ego and other vehicles in the same lane
     const egoState = actorStates.get(egoName);
     let leadState: ActorKinematicState | undefined;
     let distance: number | undefined;
@@ -206,10 +253,12 @@ export function simulateScenario(doc: OpenScenarioDocument, options?: Orchestrat
     const stepViolations: string[] = [];
 
     if (egoState) {
-      // Find closest lead vehicle in same or adjacent lane ahead of ego
+      // Find closest lead vehicle in the same lane (or within lateral collision corridor) ahead of ego
       let closestAheadDist = Infinity;
       for (const [name, state] of actorStates.entries()) {
         if (name === egoName) continue;
+        const sameLaneOrCorridor = state.lane === egoState.lane && Math.abs(state.y - egoState.y) < 2.2;
+        if (!sameLaneOrCorridor) continue;
         const dx = state.x - egoState.x;
         if (dx > 0 && dx < closestAheadDist) {
           closestAheadDist = dx;

@@ -28,10 +28,13 @@
 import {
   box,
   chamfer,
+  compileToStep,
+  computeSolidAABB,
   cylinder,
   fillet,
   intersect,
   linearExtrude,
+  ManifoldWorker,
   mirror,
   polyhedron,
   rotate,
@@ -40,15 +43,19 @@ import {
   sphere,
   subtract,
   tagPatch,
+  torus,
   translate,
   union,
+  type AABB,
   type BoundaryPatchType,
+  type ManifoldSurfaceMesh,
   type Solid,
   type SolidSourceMetadata,
   type Vec3,
 } from "@modelscript/cad";
 
 import type { ScadCstNode, ScadCstTree } from "./patcher.js";
+import type { ScadWorkspaceIndex } from "./workspace-index.js";
 
 export type ScadValue = number | string | boolean | undefined | ScadValue[];
 
@@ -61,11 +68,16 @@ interface ScadCallableDef {
 }
 
 /**
- * Options for configuring an OpenSCAD evaluation run, such as externally injected variables.
+ * Options for configuring an OpenSCAD evaluation run, such as externally injected variables
+ * and cross-file workspace index resolution.
  */
 export interface ScadEvaluationOptions {
   /** Optional map of initial variable bindings (e.g., synchronized from Modelica parameters). */
   variables?: Record<string, ScadValue> | undefined;
+  /** Optional multi-file workspace index for resolving `include <...>` and `use <...>` directives. */
+  workspaceIndex?: ScadWorkspaceIndex | undefined;
+  /** Optional document URI for relative dependency resolution in `workspaceIndex`. */
+  uri?: string | undefined;
 }
 
 /**
@@ -149,6 +161,7 @@ class Scope {
   public variables = new Map<string, ScadValue>();
   public functions = new Map<string, ScadCallableDef>();
   public modules = new Map<string, ScadCallableDef>();
+  public childrenSolids?: Solid[] | undefined;
 
   constructor(public parent: Scope | null = null) {
     if (!parent) {
@@ -200,6 +213,15 @@ class Scope {
     if (this.parent) return this.parent.getModule(name);
     return undefined;
   }
+
+  /**
+   * Resolves child solids passed to a user-defined module instantiation for `children()`.
+   */
+  getChildren(): Solid[] {
+    if (this.childrenSolids !== undefined) return this.childrenSolids;
+    if (this.parent) return this.parent.getChildren();
+    return [];
+  }
 }
 
 /**
@@ -221,14 +243,30 @@ function applyEulerRotation(solid: Solid, rot: Vec3, sourceMeta?: SolidSourceMet
  */
 export class ScadEvaluator {
   private globalScope: Scope;
+  private workspaceIndex?: ScadWorkspaceIndex | undefined;
+  private currentUri?: string | undefined;
+  private activeDirectiveStack = new Set<string>();
 
   constructor(options?: ScadEvaluationOptions) {
     this.globalScope = new Scope();
+    this.workspaceIndex = options?.workspaceIndex;
+    this.currentUri = options?.uri;
     if (options?.variables) {
       for (const [k, v] of Object.entries(options.variables)) {
         this.globalScope.setVar(k, v);
       }
     }
+  }
+
+  /**
+   * Returns a snapshot of all variables in the global scope.
+   */
+  public getVariables(): Record<string, ScadValue> {
+    const out: Record<string, ScadValue> = {};
+    for (const [k, v] of this.globalScope.variables.entries()) {
+      out[k] = v;
+    }
+    return out;
   }
 
   /**
@@ -275,17 +313,77 @@ export class ScadEvaluator {
     return acc;
   }
 
+  private extractDirectiveTarget(stmtNode: ScadCstNode): string | null {
+    const text = stmtNode.text.trim();
+    const open = text.indexOf("<");
+    const close = open !== -1 ? text.indexOf(">", open + 1) : -1;
+    if (open !== -1 && close !== -1) {
+      return text.slice(open + 1, close).trim();
+    }
+    return null;
+  }
+
+  private resolveDirectiveCst(targetPath: string): { uri: string; rootNode: ScadCstNode } | null {
+    if (!this.workspaceIndex) return null;
+    const depInfo = this.workspaceIndex.resolveDependencyInfo(targetPath, this.currentUri);
+    if (!depInfo?.sourceText) return null;
+    if (this.activeDirectiveStack.has(depInfo.uri)) return null;
+    return {
+      uri: depInfo.uri,
+      rootNode: parseScadSource(depInfo.sourceText),
+    };
+  }
+
   /**
    * Evaluates all child statements of a block or root node in order, pre-scanning and hoisting
-   * `function` and `module` declarations before evaluating variables and geometry statements.
+   * `use`/`include`, `function`, and `module` declarations before evaluating variables and geometry statements.
    */
   private evaluateStatements(containerNode: ScadCstNode, scope: Scope, outSolids: Solid[]): void {
-    // Pass 1a: Hoist function declarations so functions and module defaults can call them regardless of order
+    // Pass 1a: Hoist function and module declarations from `use <...>` and `include <...>` directives,
+    // plus local `function` declarations so functions and module defaults can call them regardless of order
     for (let i = 0; i < containerNode.childCount; i++) {
       let stmt = containerNode.child(i);
       if (!stmt) continue;
       if (stmt.type === "Statement") stmt = stmt.child(0);
-      if (stmt && stmt.type === "FunctionDeclaration") {
+      if (!stmt) continue;
+
+      if (stmt.type === "UseStatement") {
+        const target = this.extractDirectiveTarget(stmt);
+        const resolved = target ? this.resolveDirectiveCst(target) : null;
+        if (resolved) {
+          const prevUri = this.currentUri;
+          this.currentUri = resolved.uri;
+          this.activeDirectiveStack.add(resolved.uri);
+          try {
+            const useScope = new Scope();
+            const discardedSolids: Solid[] = [];
+            this.evaluateStatements(resolved.rootNode, useScope, discardedSolids);
+            for (const [k, fnDef] of useScope.functions.entries()) {
+              scope.functions.set(k, fnDef);
+            }
+            for (const [k, modDef] of useScope.modules.entries()) {
+              scope.modules.set(k, modDef);
+            }
+          } finally {
+            this.activeDirectiveStack.delete(resolved.uri);
+            this.currentUri = prevUri;
+          }
+        }
+      } else if (stmt.type === "IncludeStatement") {
+        const target = this.extractDirectiveTarget(stmt);
+        const resolved = target ? this.resolveDirectiveCst(target) : null;
+        if (resolved) {
+          for (let j = 0; j < resolved.rootNode.childCount; j++) {
+            let incStmt = resolved.rootNode.child(j);
+            if (incStmt?.type === "Statement") incStmt = incStmt.child(0);
+            if (incStmt?.type === "FunctionDeclaration") {
+              this.registerFunctionDeclaration(incStmt, scope);
+            } else if (incStmt?.type === "ModuleDeclaration") {
+              this.registerModuleDeclaration(incStmt, scope);
+            }
+          }
+        }
+      } else if (stmt.type === "FunctionDeclaration") {
         this.registerFunctionDeclaration(stmt, scope);
       }
     }
@@ -300,7 +398,7 @@ export class ScadEvaluator {
       }
     }
 
-    // Pass 2: Evaluate variable assignments, control flow, and geometry statements in order
+    // Pass 2: Evaluate variable assignments, include statements, control flow, and geometry statements in order
     const pendingPortTags: { portName: string; portType: BoundaryPatchType; normal?: Vec3 | undefined }[] = [];
     for (let i = 0; i < containerNode.childCount; i++) {
       const stmt = containerNode.child(i);
@@ -383,9 +481,30 @@ export class ScadEvaluator {
   private evaluateStatement(stmtNode: ScadCstNode, scope: Scope, outSolids: Solid[]): void {
     const type = stmtNode.type;
 
-    if (type === "Statement") {
+    if (type === "Statement" || type === "OperatorChildStatement") {
       const inner = stmtNode.child(0);
       if (inner) this.evaluateStatement(inner, scope, outSolids);
+      return;
+    }
+
+    if (type === "UseStatement") {
+      return;
+    }
+
+    if (type === "IncludeStatement") {
+      const target = this.extractDirectiveTarget(stmtNode);
+      const resolved = target ? this.resolveDirectiveCst(target) : null;
+      if (resolved) {
+        const prevUri = this.currentUri;
+        this.currentUri = resolved.uri;
+        this.activeDirectiveStack.add(resolved.uri);
+        try {
+          this.evaluateStatements(resolved.rootNode, scope, outSolids);
+        } finally {
+          this.activeDirectiveStack.delete(resolved.uri);
+          this.currentUri = prevUri;
+        }
+      }
       return;
     }
 
@@ -412,10 +531,10 @@ export class ScadEvaluator {
     if (type === "IfStatement") {
       const condNode = this.findChildByType(stmtNode, "Expression");
       const condVal = condNode ? this.evaluateExpression(condNode, scope) : false;
-      const children = stmtNode.children ?? [];
       const stmts: ScadCstNode[] = [];
-      for (const c of children) {
-        if (c.type === "Statement" || c.type === "BlockStatement") stmts.push(c);
+      for (let i = 0; i < stmtNode.childCount; i++) {
+        const c = stmtNode.child(i);
+        if (c && (c.type === "Statement" || c.type === "BlockStatement")) stmts.push(c);
       }
       if (condVal && stmts[0]) {
         this.evaluateStatement(stmts[0], scope, outSolids);
@@ -646,16 +765,23 @@ export class ScadEvaluator {
       this.findChildByType(prefixNode, "TransformOp") ??
       this.findChildByType(prefixNode, "LinearExtrudeOp") ??
       this.findChildByType(prefixNode, "BooleanOp") ??
-      this.findChildByType(prefixNode, "TagPortOp");
+      this.findChildByType(prefixNode, "TagPortOp") ??
+      this.findChildByType(prefixNode, "ModuleInstantiation");
     const childNode =
-      this.findChildByType(prefixNode, "Statement") ?? this.findChildByType(prefixNode, "BlockStatement");
+      this.findChildByType(prefixNode, "Statement") ??
+      this.findChildByType(prefixNode, "OperatorChildStatement") ??
+      this.findChildByType(prefixNode, "BlockStatement");
 
     if (!opNode || !childNode) return null;
+
+    if (opNode.type === "ModuleInstantiation") {
+      return this.tryEvaluateSolid(opNode, scope, childNode);
+    }
 
     const opText = opNode.text.trim();
 
     // 0. LinearExtrudeOp: linear_extrude(height, twist, scale, center)
-    if (opNode.type === "LinearExtrudeOp" || opText.startsWith("linear_extrude")) {
+    if (opText.startsWith("linear_extrude")) {
       const argListNode = this.findChildByType(opNode, "ArgumentList");
       const args = this.evaluateArgumentList(argListNode, scope);
       const height = Number(args.positional[0] ?? args.named.get("height") ?? 10);
@@ -672,6 +798,49 @@ export class ScadEvaluator {
         }
         const extruded = this.applyLinearExtrudeToTree(combined, height, twist, scaleVal);
         return center ? translate(extruded, [0, 0, -height / 2]) : extruded;
+      }
+      return null;
+    }
+
+    // 0b. RotateExtrudeOp: rotate_extrude(angle, $fn)
+    if (opText.startsWith("rotate_extrude")) {
+      const argListNode = this.findChildByType(opNode, "ArgumentList");
+      const args = this.evaluateArgumentList(argListNode, scope);
+      const angle = Number(args.positional[0] ?? args.named.get("angle") ?? 360);
+      const fn = Math.max(8, Number(args.named.get("$fn") ?? scope.getVar("$fn") ?? 24));
+
+      const childSolids: Solid[] = [];
+      this.evaluateStatement(childNode, scope, childSolids);
+      if (childSolids.length > 0) {
+        const first = childSolids[0]!;
+        if (first.kind === SolidKind.Extrusion && first.polygon.length >= 3) {
+          let sumR = 0;
+          let minR = Infinity;
+          let maxR = -Infinity;
+          let minZ = Infinity;
+          let maxZ = -Infinity;
+          for (const [px, py] of first.polygon) {
+            const r = Math.abs(px);
+            sumR += r;
+            if (r < minR) minR = r;
+            if (r > maxR) maxR = r;
+            if (py < minZ) minZ = py;
+            if (py > maxZ) maxZ = py;
+          }
+          const majorR = sumR / first.polygon.length;
+          const minorR = Math.max(0.5, (maxR - minR + (maxZ - minZ)) / 4);
+          if (minR > 1e-3 && angle >= 359) {
+            return torus({
+              major: majorR,
+              minor: minorR,
+              majorSegments: fn,
+              minorSegments: Math.max(8, Math.floor(fn / 2)),
+            });
+          }
+          const h = Math.max(1, maxZ - minZ);
+          return cylinder({ radius: Math.max(1, maxR), height: h, segments: fn });
+        }
+        return first;
       }
       return null;
     }
@@ -699,9 +868,9 @@ export class ScadEvaluator {
       return tagPatch(combinedChild, { portName, portType, normal });
     }
 
-    // 2. BooleanOp: union, difference, intersection
-    if (opNode.type === "BooleanOp" || /^(union|difference|intersection)/.test(opText)) {
-      if (opText.startsWith("union")) {
+    // 2. BooleanOp: union, difference, intersection, hull, minkowski
+    if (opNode.type === "BooleanOp" || /^(union|difference|intersection|hull|minkowski)/.test(opText)) {
+      if (opText.startsWith("union") || opText.startsWith("hull") || opText.startsWith("minkowski")) {
         let acc = childSolids[0]!;
         for (let i = 1; i < childSolids.length; i++) {
           acc = union(acc, childSolids[i]!);
@@ -724,7 +893,7 @@ export class ScadEvaluator {
       }
     }
 
-    // 3. TransformOp: translate, rotate, scale, mirror, color
+    // 3. TransformOp: translate, rotate, scale, mirror, multmatrix, color, offset
     const argListNode = this.findChildByType(opNode, "ArgumentList");
     const args = this.evaluateArgumentList(argListNode, scope);
 
@@ -749,7 +918,9 @@ export class ScadEvaluator {
           ? "scale"
           : opText.startsWith("mirror")
             ? "mirror"
-            : undefined;
+            : opText.startsWith("multmatrix")
+              ? "multmatrix"
+              : undefined;
 
     const sourceMeta: SolidSourceMetadata = {
       transformMethod,
@@ -784,6 +955,50 @@ export class ScadEvaluator {
         ? [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 1)]
         : [Number(v), 0, 0];
       return mirror(combinedChild, vec, sourceMeta);
+    }
+    if (opText.startsWith("multmatrix")) {
+      const m = args.positional[0] ?? args.named.get("m");
+      if (Array.isArray(m) && m.length >= 3) {
+        const r0 = Array.isArray(m[0]) ? m[0] : [1, 0, 0, 0];
+        const r1 = Array.isArray(m[1]) ? m[1] : [0, 1, 0, 0];
+        const r2 = Array.isArray(m[2]) ? m[2] : [0, 0, 1, 0];
+        const sx = Math.hypot(Number(r0[0] ?? 1), Number(r1[0] ?? 0), Number(r2[0] ?? 0)) || 1;
+        const sy = Math.hypot(Number(r0[1] ?? 0), Number(r1[1] ?? 1), Number(r2[1] ?? 0)) || 1;
+        const sz = Math.hypot(Number(r0[2] ?? 0), Number(r1[2] ?? 0), Number(r2[2] ?? 1)) || 1;
+        const tx = Number(r0[3] ?? 0);
+        const ty = Number(r1[3] ?? 0);
+        const tz = Number(r2[3] ?? 0);
+        let transformed = combinedChild;
+        if (Math.abs(sx - 1) > 1e-6 || Math.abs(sy - 1) > 1e-6 || Math.abs(sz - 1) > 1e-6) {
+          transformed = scale(transformed, [sx, sy, sz], sourceMeta);
+        }
+        if (Math.abs(tx) > 1e-9 || Math.abs(ty) > 1e-9 || Math.abs(tz) > 1e-9) {
+          transformed = translate(transformed, [tx, ty, tz], { ...sourceMeta, translation: [tx, ty, tz] });
+        }
+        return transformed;
+      }
+      return combinedChild;
+    }
+    if (opText.startsWith("offset")) {
+      const d = Number(args.positional[0] ?? args.named.get("r") ?? args.named.get("delta") ?? 0);
+      if (combinedChild.kind === SolidKind.Extrusion && combinedChild.polygon.length >= 3 && Math.abs(d) > 1e-9) {
+        let cx = 0;
+        let cy = 0;
+        for (const [px, py] of combinedChild.polygon) {
+          cx += px;
+          cy += py;
+        }
+        cx /= combinedChild.polygon.length;
+        cy /= combinedChild.polygon.length;
+        const offsetPoly: [number, number][] = combinedChild.polygon.map(([px, py]) => {
+          const dx = px - cx;
+          const dy = py - cy;
+          const len = Math.hypot(dx, dy) || 1;
+          return [px + (dx / len) * d, py + (dy / len) * d];
+        });
+        return linearExtrude(offsetPoly, combinedChild.height ?? 1.0);
+      }
+      return combinedChild;
     }
 
     return combinedChild;
@@ -870,7 +1085,7 @@ export class ScadEvaluator {
    * Evaluates a 3D/2D primitive (`cube`, `cylinder`, `sphere`, `polyhedron`, `polygon`, `square`, `circle`)
    * or user-defined `ModuleInstantiation` into a `Solid` with attached source metadata.
    */
-  private tryEvaluateSolid(node: ScadCstNode, scope: Scope): Solid | null {
+  private tryEvaluateSolid(node: ScadCstNode, scope: Scope, externalChildStmt?: ScadCstNode | null): Solid | null {
     const type = node.type;
 
     if (type === "CubePrimitive") {
@@ -926,7 +1141,7 @@ export class ScadEvaluator {
           : rDefault;
       const rAvg = (r1 + r2) / 2 || rDefault;
 
-      const fn = scope.getVar("$fn") ?? 24;
+      const fn = args.named.get("$fn") ?? scope.getVar("$fn") ?? 24;
       const center = args.named.get("center") ?? false;
 
       let paramName: string | undefined;
@@ -971,7 +1186,7 @@ export class ScadEvaluator {
       const r = Number(
         args.positional[0] ?? args.named.get("r") ?? (args.named.has("d") ? Number(args.named.get("d")) / 2 : 1),
       );
-      const fn = scope.getVar("$fn") ?? 16;
+      const fn = args.named.get("$fn") ?? scope.getVar("$fn") ?? 16;
 
       let paramName: string | undefined;
       if (argListNode) {
@@ -1080,7 +1295,7 @@ export class ScadEvaluator {
       const r = Number(
         args.named.get("r") ?? (args.named.has("d") ? Number(args.named.get("d")) / 2 : (args.positional[0] ?? 1)),
       );
-      const fn = Math.max(8, Number(scope.getVar("$fn") ?? 24));
+      const fn = Math.max(8, Number(args.named.get("$fn") ?? scope.getVar("$fn") ?? 24));
       const poly: [number, number][] = [];
       for (let i = 0; i < fn; i++) {
         const th = (i / fn) * 2 * Math.PI;
@@ -1093,13 +1308,79 @@ export class ScadEvaluator {
       const nameNode = this.findChildByType(node, "IDENTIFIER");
       if (!nameNode) return null;
       const modName = nameNode.text.trim();
-      const modDef = scope.getModule(modName);
-      if (!modDef) return null;
-
       const argListNode = this.findChildByType(node, "ArgumentList");
       const args = this.evaluateArgumentList(argListNode, scope);
 
+      // Built-in children() module inside user-defined modules
+      if (modName === "children") {
+        const childList = scope.getChildren();
+        if (childList.length === 0) return null;
+        if (args.positional.length > 0 && args.positional[0] !== undefined) {
+          const rawIdx = args.positional[0];
+          if (Array.isArray(rawIdx)) {
+            const selected = rawIdx.map((idx) => childList[Number(idx)]).filter((s): s is Solid => s !== undefined);
+            if (selected.length === 0) return null;
+            let acc = selected[0]!;
+            for (let i = 1; i < selected.length; i++) acc = union(acc, selected[i]!);
+            return acc;
+          }
+          return childList[Number(rawIdx)] ?? null;
+        }
+        if (childList.length === 1) return childList[0]!;
+        let acc = childList[0]!;
+        for (let i = 1; i < childList.length; i++) {
+          acc = union(acc, childList[i]!);
+        }
+        return acc;
+      }
+
+      if (modName === "echo") {
+        return null;
+      }
+
+      if (modName === "assert") {
+        if (!args.positional[0]) {
+          throw new Error(String(args.positional[1] ?? "OpenSCAD assert() failed"));
+        }
+        return null;
+      }
+
+      if (modName === "torus") {
+        const R = Number(args.positional[0] ?? args.named.get("R") ?? args.named.get("majorRadius") ?? 10);
+        const r = Number(args.positional[1] ?? args.named.get("r") ?? args.named.get("minorRadius") ?? 2);
+        return torus({ major: R, minor: r });
+      }
+
+      const modDef = scope.getModule(modName);
+      if (!modDef) return null;
+
+      // Evaluate any child statements attached to this module instantiation (`mod() { ... }`)
+      const childStmt =
+        externalChildStmt ??
+        this.findChildByType(node, "Statement") ??
+        this.findChildByType(node, "OperatorChildStatement") ??
+        this.findChildByType(node, "BlockStatement");
+      const instChildren: Solid[] = [];
+      if (childStmt) {
+        const unwrappedChild =
+          childStmt.type === "Statement" || childStmt.type === "OperatorChildStatement"
+            ? (childStmt.child(0) ?? childStmt)
+            : childStmt;
+        if (unwrappedChild.type === "BlockStatement") {
+          for (let i = 0; i < unwrappedChild.childCount; i++) {
+            const ch = unwrappedChild.child(i);
+            if (ch && ch.type !== "{" && ch.type !== "}") {
+              this.evaluateStatement(ch, scope, instChildren);
+            }
+          }
+        } else {
+          this.evaluateStatement(unwrappedChild, scope, instChildren);
+        }
+      }
+
       const modScope = new Scope(modDef.scope);
+      modScope.childrenSolids = instChildren;
+      modScope.setVar("$children", instChildren.length);
       for (let i = 0; i < modDef.params.length; i++) {
         const pName = modDef.params[i]!;
         let val = args.positional[i];
@@ -1110,6 +1391,12 @@ export class ScadEvaluator {
           val = this.evaluateExpression(defExpr, modScope);
         }
         modScope.setVar(pName, val);
+      }
+      // Also allow special variables like $fn passed as named arguments to module calls
+      for (const [k, v] of args.named.entries()) {
+        if (k.startsWith("$") || !modDef.params.includes(k)) {
+          modScope.setVar(k, v);
+        }
       }
 
       const modSolids: Solid[] = [];
@@ -1131,6 +1418,22 @@ export class ScadEvaluator {
   }
 
   // ── Expressions ──────────────────────────────────────────────────────────
+
+  private isExpressionChild(c: ScadCstNode | null | undefined): c is ScadCstNode {
+    if (!c) return false;
+    const t = c.type;
+    if (t === "[" || t === "]" || t === "(" || t === ")" || t === "," || t === ":" || t === "?" || t === ";") {
+      return false;
+    }
+    const txt = c.text.trim();
+    if (
+      c.childCount === 0 &&
+      (txt === "[" || txt === "]" || txt === "(" || txt === ")" || txt === "," || txt === ":" || txt === "?")
+    ) {
+      return false;
+    }
+    return true;
+  }
 
   /**
    * Evaluates an OpenSCAD expression CST node (literals, vectors, ranges, arithmetic, conditionals,
@@ -1176,12 +1479,71 @@ export class ScadEvaluator {
       return scope.getVar(name);
     }
 
+    if (type === "LetExpression") {
+      const letScope = new Scope(scope);
+      const argList = this.findChildByType(exprNode, "ArgumentList");
+      if (argList) {
+        for (let i = 0; i < argList.childCount; i++) {
+          const arg = argList.child(i);
+          if (!arg || arg.type !== "Argument") continue;
+          const nameNode = this.findChildByType(arg, "IDENTIFIER");
+          const valNode = this.findChildByType(arg, "Expression");
+          if (nameNode && valNode) {
+            letScope.setVar(nameNode.text.trim(), this.evaluateExpression(valNode, letScope));
+          }
+        }
+      }
+      let bodyExpr: ScadCstNode | null = null;
+      for (let i = exprNode.childCount - 1; i >= 0; i--) {
+        const c = exprNode.child(i);
+        if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
+          bodyExpr = c;
+          break;
+        }
+      }
+      return bodyExpr ? this.evaluateExpression(bodyExpr, letScope) : undefined;
+    }
+
+    if (type === "ListComprehension") {
+      const varNode = this.findChildByType(exprNode, "IDENTIFIER");
+      const exprChildren: ScadCstNode[] = [];
+      let hasIfToken = false;
+      for (let i = 0; i < exprNode.childCount; i++) {
+        const c = exprNode.child(i);
+        if (!c) continue;
+        if (c.type === "if" || (c.childCount === 0 && c.text.trim() === "if")) {
+          hasIfToken = true;
+        } else if (c.type === "Expression" || c.type.endsWith("Expression")) {
+          exprChildren.push(c);
+        }
+      }
+      const rangeNode = exprChildren[0];
+      const condNode = exprChildren.length >= 3 ? (hasIfToken ? exprChildren[1] : exprChildren[2]) : undefined;
+      const bodyNode = exprChildren.length >= 3 ? (hasIfToken ? exprChildren[2] : exprChildren[1]) : exprChildren[1];
+      if (!varNode || !rangeNode || !bodyNode) return [];
+      const rangeVal = this.evaluateExpression(rangeNode, scope);
+      if (!Array.isArray(rangeVal)) return [];
+      const compScope = new Scope(scope);
+      const out: ScadValue[] = [];
+      for (const item of rangeVal) {
+        compScope.setVar(varNode.text.trim(), item);
+        if (condNode && !this.evaluateExpression(condNode, compScope)) continue;
+        out.push(this.evaluateExpression(bodyNode, compScope));
+      }
+      return out;
+    }
+
     if (type === "VectorLiteral") {
       const elements: ScadValue[] = [];
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
-        if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
-          elements.push(this.evaluateExpression(c, scope));
+        if (this.isExpressionChild(c)) {
+          if (c.type === "ListComprehension") {
+            const compVals = this.evaluateExpression(c, scope);
+            if (Array.isArray(compVals)) elements.push(...compVals);
+          } else {
+            elements.push(this.evaluateExpression(c, scope));
+          }
         }
       }
       return elements;
@@ -1191,7 +1553,7 @@ export class ScadEvaluator {
       const exprs: ScadValue[] = [];
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
-        if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
+        if (this.isExpressionChild(c)) {
           exprs.push(this.evaluateExpression(c, scope));
         }
       }
@@ -1200,15 +1562,18 @@ export class ScadEvaluator {
       let end = start;
       if (exprs.length === 2) {
         end = Number(exprs[1]);
+        if (end < start) step = -1;
       } else if (exprs.length >= 3) {
         step = Number(exprs[1]);
         end = Number(exprs[2]);
       }
       const result: number[] = [];
       if (step > 0) {
-        for (let v = start; v <= end; v += step) result.push(v);
+        for (let v = start; v <= end + 1e-9; v += step)
+          result.push(Math.abs(v - Math.round(v)) < 1e-9 ? Math.round(v) : v);
       } else if (step < 0) {
-        for (let v = start; v >= end; v += step) result.push(v);
+        for (let v = start; v >= end - 1e-9; v += step)
+          result.push(Math.abs(v - Math.round(v)) < 1e-9 ? Math.round(v) : v);
       }
       return result;
     }
@@ -1219,10 +1584,11 @@ export class ScadEvaluator {
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
         if (!c) continue;
-        if (c.type === "Expression" || c.type.endsWith("Expression")) {
+        const trimmed = c.text.trim();
+        if (c.childCount === 0 && /^(\+|-|\*|\/|%|\^|==|!=|<|<=|>|>=|&&|\|\|)$/.test(trimmed)) {
+          op = trimmed;
+        } else if (this.isExpressionChild(c)) {
           exprs.push(this.evaluateExpression(c, scope));
-        } else if (/^(\+|-|\*|\/|%|\^|==|!=|<|<=|>|>=|&&|\|\|)$/.test(c.text.trim())) {
-          op = c.text.trim();
         }
       }
       const left = exprs[0];
@@ -1240,6 +1606,9 @@ export class ScadEvaluator {
         if (op === "/") return left.map((v) => Number(v) / right);
         if (op === "+") return left.map((v) => Number(v) + right);
         if (op === "-") return left.map((v) => Number(v) - right);
+      }
+      if (typeof left === "number" && Array.isArray(right)) {
+        if (op === "*") return right.map((v) => left * Number(v));
       }
 
       const lNum = Number(left);
@@ -1281,18 +1650,19 @@ export class ScadEvaluator {
 
     if (type === "UnaryExpression") {
       const op = exprNode.child(0)?.text.trim() ?? "";
-      const valNode = this.findChildByType(exprNode, "Expression");
+      const valNode = this.findChildByType(exprNode, "Expression") ?? exprNode.child(1);
       const val = valNode ? this.evaluateExpression(valNode, scope) : 0;
       if (op === "!") return !val;
-      if (op === "-") return -Number(val);
+      if (op === "-") return Array.isArray(val) ? val.map((v) => -Number(v)) : -Number(val);
+      if (op === "+") return Array.isArray(val) ? val.map((v) => Number(v)) : Number(val);
       return val;
     }
 
-    if (type === "ConditionalExpression") {
+    if (type === "ConditionalExpression" || type === "TernaryExpression") {
       const exprs: ScadCstNode[] = [];
       for (let i = 0; i < exprNode.childCount; i++) {
         const c = exprNode.child(i);
-        if (c && (c.type === "Expression" || c.type.endsWith("Expression"))) {
+        if (this.isExpressionChild(c)) {
           exprs.push(c);
         }
       }
@@ -1305,13 +1675,26 @@ export class ScadEvaluator {
     if (type === "PostfixExpression") {
       const first = exprNode.child(0);
       if (!first) return undefined;
-      const target = this.evaluateExpression(first, scope);
 
       const second = exprNode.child(1);
       if (second?.text === "[") {
-        const idxNode = this.findChildByType(exprNode, "Expression");
+        const target = this.evaluateExpression(first, scope);
+        const idxNode = this.findChildByType(exprNode, "Expression") ?? exprNode.child(2);
         const idx = idxNode ? this.evaluateExpression(idxNode, scope) : 0;
-        return Array.isArray(target) ? target[Number(idx)] : undefined;
+        if (Array.isArray(target)) return target[Number(idx)];
+        if (typeof target === "string") return target[Number(idx)];
+        return undefined;
+      }
+
+      if (second?.text === ".") {
+        const target = this.evaluateExpression(first, scope);
+        const prop = exprNode.child(2)?.text.trim();
+        if (Array.isArray(target)) {
+          if (prop === "x") return target[0];
+          if (prop === "y") return target[1];
+          if (prop === "z") return target[2];
+        }
+        return undefined;
       }
 
       if (second?.text === "(") {
@@ -1650,4 +2033,1002 @@ export class ScadEvaluator {
     }
     return null;
   }
+}
+
+// ── Synchronous OpenSCAD Parser & High-Level Evaluator ───────────────────────
+
+interface ScadToken {
+  type: "ident" | "number" | "string" | "op" | "punct" | "directive" | "eof";
+  text: string;
+  start: number;
+  end: number;
+}
+
+class SyntheticScadCstNode implements ScadCstNode {
+  public type: string;
+  public text: string;
+  public startIndex: number;
+  public endIndex: number;
+  public startOffset: number;
+  public endOffset: number;
+  public children: ScadCstNode[];
+
+  constructor(type: string, text: string, children: ScadCstNode[] = [], start = 0, end = text.length) {
+    this.type = type;
+    this.text = text;
+    this.children = children;
+    this.startIndex = start;
+    this.endIndex = end;
+    this.startOffset = start;
+    this.endOffset = end;
+  }
+
+  get childCount(): number {
+    return this.children.length;
+  }
+
+  child(index: number): ScadCstNode | null {
+    return this.children[index] ?? null;
+  }
+}
+
+function tokenizeScad(source: string): ScadToken[] {
+  const tokens: ScadToken[] = [];
+  let i = 0;
+  const n = source.length;
+
+  while (i < n) {
+    const ch = source[i]!;
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+    // Line comment
+    if (ch === "/" && source[i + 1] === "/") {
+      i += 2;
+      while (i < n && source[i] !== "\n") i++;
+      continue;
+    }
+    // Block comment
+    if (ch === "/" && source[i + 1] === "*") {
+      i += 2;
+      while (i < n && !(source[i] === "*" && source[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    // include <...> or use <...> directive
+    if (
+      (source.startsWith("include", i) && /[ \t<]/.test(source[i + 7] ?? "")) ||
+      (source.startsWith("use", i) && /[ \t<]/.test(source[i + 3] ?? ""))
+    ) {
+      const kwLen = source.startsWith("include", i) ? 7 : 3;
+      let j = i + kwLen;
+      while (j < n && (source[j] === " " || source[j] === "\t")) j++;
+      if (source[j] === "<") {
+        const closeAngle = source.indexOf(">", j + 1);
+        if (closeAngle !== -1) {
+          tokens.push({
+            type: "directive",
+            text: source.slice(i, closeAngle + 1),
+            start: i,
+            end: closeAngle + 1,
+          });
+          i = closeAngle + 1;
+          continue;
+        }
+      }
+    }
+    // Modifiers (!, #, %, *) before statements — treat ! as op when in expression, or skip modifier prefix if needed
+    // String literal
+    if (ch === '"') {
+      const start = i;
+      i++;
+      while (i < n && source[i] !== '"') {
+        if (source[i] === "\\") i++;
+        i++;
+      }
+      if (i < n) i++;
+      tokens.push({ type: "string", text: source.slice(start, i), start, end: i });
+      continue;
+    }
+    // Number literal
+    if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(source[i + 1] ?? ""))) {
+      const start = i;
+      while (i < n && /[0-9]/.test(source[i]!)) i++;
+      if (i < n && source[i] === "." && source[i + 1] !== ".") {
+        i++;
+        while (i < n && /[0-9]/.test(source[i]!)) i++;
+      }
+      if (i < n && (source[i] === "e" || source[i] === "E")) {
+        i++;
+        if (i < n && (source[i] === "+" || source[i] === "-")) i++;
+        while (i < n && /[0-9]/.test(source[i]!)) i++;
+      }
+      tokens.push({ type: "number", text: source.slice(start, i), start, end: i });
+      continue;
+    }
+    // Identifier or $special
+    if (/[A-Za-z_$]/.test(ch)) {
+      const start = i;
+      i++;
+      while (i < n && /[A-Za-z0-9_$]/.test(source[i]!)) i++;
+      tokens.push({ type: "ident", text: source.slice(start, i), start, end: i });
+      continue;
+    }
+    // Two-character operators
+    const two = source.slice(i, i + 2);
+    if (two === "==" || two === "!=" || two === "<=" || two === ">=" || two === "&&" || two === "||") {
+      tokens.push({ type: "op", text: two, start: i, end: i + 2 });
+      i += 2;
+      continue;
+    }
+    // Single-character operators
+    if ("+-*/%^<>!?=".includes(ch)) {
+      tokens.push({ type: "op", text: ch, start: i, end: i + 1 });
+      i++;
+      continue;
+    }
+    // Punctuation
+    if ("(){}[],:;.".includes(ch)) {
+      tokens.push({ type: "punct", text: ch, start: i, end: i + 1 });
+      i++;
+      continue;
+    }
+    // Skip visual modifiers like #, %
+    i++;
+  }
+
+  tokens.push({ type: "eof", text: "", start: n, end: n });
+  return tokens;
+}
+
+const PRIMITIVE_MAP: Record<string, string> = {
+  cube: "CubePrimitive",
+  cylinder: "CylinderPrimitive",
+  sphere: "SpherePrimitive",
+  polyhedron: "PolyhedronPrimitive",
+  polygon: "PolygonPrimitive",
+  circle: "CirclePrimitive",
+  square: "SquarePrimitive",
+};
+
+const TRANSFORM_OPS = new Set(["translate", "rotate", "scale", "mirror", "multmatrix", "color", "offset"]);
+const BOOLEAN_OPS = new Set(["union", "difference", "intersection", "hull", "minkowski"]);
+const EXTRUDE_OPS = new Set(["linear_extrude", "rotate_extrude"]);
+
+/**
+ * Parses OpenSCAD source code synchronously into a CST tree compatible with `ScadEvaluator`.
+ */
+export function parseScadSource(source: string): ScadCstNode {
+  const tokens = tokenizeScad(source);
+  let pos = 0;
+
+  const peek = (offset = 0): ScadToken => tokens[pos + offset] ?? tokens[tokens.length - 1]!;
+  const next = (): ScadToken => {
+    const tok = peek();
+    if (pos < tokens.length - 1) pos++;
+    return tok;
+  };
+  const matchText = (txt: string): boolean => {
+    if (peek().text === txt) {
+      next();
+      return true;
+    }
+    return false;
+  };
+
+  const wrapExpr = (node: ScadCstNode): ScadCstNode => {
+    if (node.type === "Expression") return node;
+    return new SyntheticScadCstNode("Expression", node.text, [node], node.startIndex, node.endIndex);
+  };
+
+  function parseExpression(): ScadCstNode {
+    const startTok = peek();
+    if (startTok.type === "ident" && startTok.text === "let" && peek(1).text === "(") {
+      next(); // 'let'
+      next(); // '('
+      const argList = parseArgumentList();
+      matchText(")");
+      const body = parseExpression();
+      return wrapExpr(
+        new SyntheticScadCstNode(
+          "LetExpression",
+          source.slice(startTok.start, body.endIndex),
+          [argList, body],
+          startTok.start,
+          body.endIndex,
+        ),
+      );
+    }
+    const cond = parseLogicalOr();
+    if (matchText("?")) {
+      const thenBranch = parseExpression();
+      matchText(":");
+      const elseBranch = parseExpression();
+      return wrapExpr(
+        new SyntheticScadCstNode(
+          "ConditionalExpression",
+          source.slice(cond.startIndex ?? 0, elseBranch.endIndex ?? 0),
+          [cond, new SyntheticScadCstNode("?", "?"), thenBranch, new SyntheticScadCstNode(":", ":"), elseBranch],
+          cond.startIndex,
+          elseBranch.endIndex,
+        ),
+      );
+    }
+    return wrapExpr(cond);
+  }
+
+  function parseLogicalOr(): ScadCstNode {
+    let left = parseLogicalAnd();
+    while (peek().text === "||") {
+      const opTok = next();
+      const right = parseLogicalAnd();
+      left = new SyntheticScadCstNode(
+        "BinaryExpression",
+        source.slice(left.startIndex ?? 0, right.endIndex ?? 0),
+        [wrapExpr(left), new SyntheticScadCstNode("||", opTok.text), wrapExpr(right)],
+        left.startIndex,
+        right.endIndex,
+      );
+    }
+    return left;
+  }
+
+  function parseLogicalAnd(): ScadCstNode {
+    let left = parseEquality();
+    while (peek().text === "&&") {
+      const opTok = next();
+      const right = parseEquality();
+      left = new SyntheticScadCstNode(
+        "BinaryExpression",
+        source.slice(left.startIndex ?? 0, right.endIndex ?? 0),
+        [wrapExpr(left), new SyntheticScadCstNode("&&", opTok.text), wrapExpr(right)],
+        left.startIndex,
+        right.endIndex,
+      );
+    }
+    return left;
+  }
+
+  function parseEquality(): ScadCstNode {
+    let left = parseRelational();
+    while (peek().text === "==" || peek().text === "!=") {
+      const opTok = next();
+      const right = parseRelational();
+      left = new SyntheticScadCstNode(
+        "BinaryExpression",
+        source.slice(left.startIndex ?? 0, right.endIndex ?? 0),
+        [wrapExpr(left), new SyntheticScadCstNode(opTok.text, opTok.text), wrapExpr(right)],
+        left.startIndex,
+        right.endIndex,
+      );
+    }
+    return left;
+  }
+
+  function parseRelational(): ScadCstNode {
+    let left = parseAdditive();
+    while (peek().text === "<" || peek().text === "<=" || peek().text === ">" || peek().text === ">=") {
+      const opTok = next();
+      const right = parseAdditive();
+      left = new SyntheticScadCstNode(
+        "BinaryExpression",
+        source.slice(left.startIndex ?? 0, right.endIndex ?? 0),
+        [wrapExpr(left), new SyntheticScadCstNode(opTok.text, opTok.text), wrapExpr(right)],
+        left.startIndex,
+        right.endIndex,
+      );
+    }
+    return left;
+  }
+
+  function parseAdditive(): ScadCstNode {
+    let left = parseMultiplicative();
+    while (peek().text === "+" || peek().text === "-") {
+      const opTok = next();
+      const right = parseMultiplicative();
+      left = new SyntheticScadCstNode(
+        "BinaryExpression",
+        source.slice(left.startIndex ?? 0, right.endIndex ?? 0),
+        [wrapExpr(left), new SyntheticScadCstNode(opTok.text, opTok.text), wrapExpr(right)],
+        left.startIndex,
+        right.endIndex,
+      );
+    }
+    return left;
+  }
+
+  function parseMultiplicative(): ScadCstNode {
+    let left = parsePower();
+    while (peek().text === "*" || peek().text === "/" || peek().text === "%") {
+      const opTok = next();
+      const right = parsePower();
+      left = new SyntheticScadCstNode(
+        "BinaryExpression",
+        source.slice(left.startIndex ?? 0, right.endIndex ?? 0),
+        [wrapExpr(left), new SyntheticScadCstNode(opTok.text, opTok.text), wrapExpr(right)],
+        left.startIndex,
+        right.endIndex,
+      );
+    }
+    return left;
+  }
+
+  function parsePower(): ScadCstNode {
+    const left = parseUnary();
+    if (peek().text === "^") {
+      const opTok = next();
+      const right = parsePower();
+      return new SyntheticScadCstNode(
+        "BinaryExpression",
+        source.slice(left.startIndex ?? 0, right.endIndex ?? 0),
+        [wrapExpr(left), new SyntheticScadCstNode("^", opTok.text), wrapExpr(right)],
+        left.startIndex,
+        right.endIndex,
+      );
+    }
+    return left;
+  }
+
+  function parseUnary(): ScadCstNode {
+    if (peek().text === "-" || peek().text === "+" || peek().text === "!") {
+      const opTok = next();
+      const operand = parseUnary();
+      return new SyntheticScadCstNode(
+        "UnaryExpression",
+        source.slice(opTok.start, operand.endIndex ?? opTok.end),
+        [new SyntheticScadCstNode(opTok.text, opTok.text, [], opTok.start, opTok.end), wrapExpr(operand)],
+        opTok.start,
+        operand.endIndex,
+      );
+    }
+    return parsePostfix();
+  }
+
+  function parsePostfix(): ScadCstNode {
+    let expr = parsePrimary();
+    while (true) {
+      if (peek().text === "(") {
+        const openTok = next();
+        const argList = parseArgumentList();
+        const closeTok = matchText(")") ? tokens[pos - 1]! : openTok;
+        expr = new SyntheticScadCstNode(
+          "PostfixExpression",
+          source.slice(expr.startIndex ?? 0, closeTok.end),
+          [expr, new SyntheticScadCstNode("(", "("), argList, new SyntheticScadCstNode(")", ")")],
+          expr.startIndex,
+          closeTok.end,
+        );
+      } else if (peek().text === "[") {
+        const openTok = next();
+        const idxExpr = parseExpression();
+        const closeTok = matchText("]") ? tokens[pos - 1]! : openTok;
+        expr = new SyntheticScadCstNode(
+          "PostfixExpression",
+          source.slice(expr.startIndex ?? 0, closeTok.end),
+          [expr, new SyntheticScadCstNode("[", "["), wrapExpr(idxExpr), new SyntheticScadCstNode("]", "]")],
+          expr.startIndex,
+          closeTok.end,
+        );
+      } else if (peek().text === ".") {
+        next();
+        const propTok = next();
+        expr = new SyntheticScadCstNode(
+          "PostfixExpression",
+          source.slice(expr.startIndex ?? 0, propTok.end),
+          [
+            expr,
+            new SyntheticScadCstNode(".", "."),
+            new SyntheticScadCstNode("IDENTIFIER", propTok.text, [], propTok.start, propTok.end),
+          ],
+          expr.startIndex,
+          propTok.end,
+        );
+      } else {
+        break;
+      }
+    }
+    return expr;
+  }
+
+  function parsePrimary(): ScadCstNode {
+    const tok = peek();
+    if (tok.type === "number") {
+      next();
+      return new SyntheticScadCstNode("NUMBER", tok.text, [], tok.start, tok.end);
+    }
+    if (tok.type === "string") {
+      next();
+      return new SyntheticScadCstNode("STRING", tok.text, [], tok.start, tok.end);
+    }
+    if (tok.type === "ident") {
+      next();
+      if (tok.text === "true" || tok.text === "false") {
+        return new SyntheticScadCstNode("BOOLEAN", tok.text, [], tok.start, tok.end);
+      }
+      if (tok.text === "undef") {
+        return new SyntheticScadCstNode("UNDEF", tok.text, [], tok.start, tok.end);
+      }
+      return new SyntheticScadCstNode("IDENTIFIER", tok.text, [], tok.start, tok.end);
+    }
+    if (tok.text === "(") {
+      const openTok = next();
+      const inner = parseExpression();
+      const closeTok = matchText(")") ? tokens[pos - 1]! : openTok;
+      return new SyntheticScadCstNode(
+        "ParenthesizedExpression",
+        source.slice(openTok.start, closeTok.end),
+        [new SyntheticScadCstNode("(", "("), wrapExpr(inner), new SyntheticScadCstNode(")", ")")],
+        openTok.start,
+        closeTok.end,
+      );
+    }
+    if (tok.text === "[") {
+      const openTok = next();
+      if (matchText("]")) {
+        const closeTok = tokens[pos - 1]!;
+        return new SyntheticScadCstNode("VectorLiteral", "[]", [], openTok.start, closeTok.end);
+      }
+      // Check for list comprehension `[for (v = range) ...]`
+      if (peek().text === "for") {
+        next(); // 'for'
+        matchText("(");
+        const varTok = next();
+        matchText("=");
+        const rangeExpr = parseExpression();
+        matchText(")");
+        let condExpr: ScadCstNode | undefined;
+        if (peek().text === "if") {
+          next();
+          matchText("(");
+          condExpr = parseExpression();
+          matchText(")");
+        }
+        const bodyExpr = parseExpression();
+        const closeTok = matchText("]") ? tokens[pos - 1]! : openTok;
+        const compChildren: ScadCstNode[] = [
+          new SyntheticScadCstNode("IDENTIFIER", varTok.text, [], varTok.start, varTok.end),
+          wrapExpr(rangeExpr),
+          wrapExpr(bodyExpr),
+        ];
+        if (condExpr) compChildren.push(wrapExpr(condExpr));
+        const compNode = new SyntheticScadCstNode(
+          "ListComprehension",
+          source.slice(openTok.start, closeTok.end),
+          compChildren,
+          openTok.start,
+          closeTok.end,
+        );
+        return new SyntheticScadCstNode(
+          "VectorLiteral",
+          source.slice(openTok.start, closeTok.end),
+          [compNode],
+          openTok.start,
+          closeTok.end,
+        );
+      }
+      const firstExpr = parseExpression();
+      if (matchText(":")) {
+        const secondExpr = parseExpression();
+        const rangeChildren: ScadCstNode[] = [
+          new SyntheticScadCstNode("[", "["),
+          wrapExpr(firstExpr),
+          new SyntheticScadCstNode(":", ":"),
+          wrapExpr(secondExpr),
+        ];
+        if (matchText(":")) {
+          const thirdExpr = parseExpression();
+          rangeChildren.push(new SyntheticScadCstNode(":", ":"), wrapExpr(thirdExpr));
+        }
+        const closeTok = matchText("]") ? tokens[pos - 1]! : openTok;
+        rangeChildren.push(new SyntheticScadCstNode("]", "]"));
+        return new SyntheticScadCstNode(
+          "RangeLiteral",
+          source.slice(openTok.start, closeTok.end),
+          rangeChildren,
+          openTok.start,
+          closeTok.end,
+        );
+      }
+      const vecChildren: ScadCstNode[] = [new SyntheticScadCstNode("[", "["), wrapExpr(firstExpr)];
+      while (matchText(",")) {
+        if (peek().text === "]") break;
+        vecChildren.push(new SyntheticScadCstNode(",", ","));
+        vecChildren.push(wrapExpr(parseExpression()));
+      }
+      const closeTok = matchText("]") ? tokens[pos - 1]! : openTok;
+      vecChildren.push(new SyntheticScadCstNode("]", "]"));
+      return new SyntheticScadCstNode(
+        "VectorLiteral",
+        source.slice(openTok.start, closeTok.end),
+        vecChildren,
+        openTok.start,
+        closeTok.end,
+      );
+    }
+    next();
+    return new SyntheticScadCstNode("UNDEF", "undef", [], tok.start, tok.end);
+  }
+
+  function parseArgumentList(): ScadCstNode {
+    const start = peek().start;
+    const args: ScadCstNode[] = [];
+    while (peek().type !== "eof" && peek().text !== ")") {
+      const argStart = peek().start;
+      if (peek().type === "ident" && peek(1).text === "=") {
+        const nameTok = next();
+        next(); // '='
+        const valExpr = parseExpression();
+        args.push(
+          new SyntheticScadCstNode(
+            "Argument",
+            source.slice(argStart, valExpr.endIndex ?? nameTok.end),
+            [
+              new SyntheticScadCstNode("IDENTIFIER", nameTok.text, [], nameTok.start, nameTok.end),
+              new SyntheticScadCstNode("=", "="),
+              wrapExpr(valExpr),
+            ],
+            argStart,
+            valExpr.endIndex,
+          ),
+        );
+      } else {
+        const valExpr = parseExpression();
+        args.push(
+          new SyntheticScadCstNode(
+            "Argument",
+            source.slice(argStart, valExpr.endIndex ?? argStart),
+            [wrapExpr(valExpr)],
+            argStart,
+            valExpr.endIndex,
+          ),
+        );
+      }
+      if (!matchText(",")) break;
+    }
+    const end = peek().start;
+    return new SyntheticScadCstNode("ArgumentList", source.slice(start, end), args, start, end);
+  }
+
+  function parseParameterList(): ScadCstNode {
+    const start = peek().start;
+    const params: ScadCstNode[] = [];
+    while (peek().type !== "eof" && peek().text !== ")") {
+      if (peek().type !== "ident") {
+        next();
+        continue;
+      }
+      const nameTok = next();
+      const paramChildren: ScadCstNode[] = [
+        new SyntheticScadCstNode("IDENTIFIER", nameTok.text, [], nameTok.start, nameTok.end),
+      ];
+      let endPos = nameTok.end;
+      if (matchText("=")) {
+        paramChildren.push(new SyntheticScadCstNode("=", "="));
+        const defExpr = parseExpression();
+        paramChildren.push(wrapExpr(defExpr));
+        endPos = defExpr.endIndex ?? endPos;
+      }
+      params.push(
+        new SyntheticScadCstNode(
+          "Parameter",
+          source.slice(nameTok.start, endPos),
+          paramChildren,
+          nameTok.start,
+          endPos,
+        ),
+      );
+      if (!matchText(",")) break;
+    }
+    const end = peek().start;
+    return new SyntheticScadCstNode("ParameterList", source.slice(start, end), params, start, end);
+  }
+
+  function parseBlockStatement(): ScadCstNode {
+    const openTok = next(); // '{'
+    const children: ScadCstNode[] = [new SyntheticScadCstNode("{", "{", [], openTok.start, openTok.end)];
+    while (peek().type !== "eof" && peek().text !== "}") {
+      const stmt = parseStatement();
+      if (stmt) children.push(stmt);
+    }
+    const closeTok = matchText("}") ? tokens[pos - 1]! : openTok;
+    children.push(new SyntheticScadCstNode("}", "}", [], closeTok.start, closeTok.end));
+    return new SyntheticScadCstNode(
+      "BlockStatement",
+      source.slice(openTok.start, closeTok.end),
+      children,
+      openTok.start,
+      closeTok.end,
+    );
+  }
+
+  function parseStatement(): ScadCstNode | null {
+    while (matchText(";")) {
+      // skip empty semicolons
+    }
+    const tok = peek();
+    if (tok.type === "eof" || tok.text === "}") return null;
+
+    // Strip OpenSCAD debug/background/root modifiers (!, #, %, *) before statements
+    if (tok.type === "op" && (tok.text === "!" || tok.text === "*")) {
+      next();
+    }
+
+    if (peek().type === "directive") {
+      const dirTok = next();
+      const stmtType = dirTok.text.startsWith("include") ? "IncludeStatement" : "UseStatement";
+      const termType = dirTok.text.startsWith("include") ? "INCLUDE_DIRECTIVE" : "USE_DIRECTIVE";
+      const dirNode = new SyntheticScadCstNode(
+        stmtType,
+        dirTok.text,
+        [new SyntheticScadCstNode(termType, dirTok.text, [], dirTok.start, dirTok.end)],
+        dirTok.start,
+        dirTok.end,
+      );
+      return new SyntheticScadCstNode("Statement", dirTok.text, [dirNode], dirTok.start, dirTok.end);
+    }
+
+    if (peek().text === "{") {
+      const blk = parseBlockStatement();
+      return new SyntheticScadCstNode("Statement", blk.text, [blk], blk.startIndex, blk.endIndex);
+    }
+
+    // module declaration
+    if (peek().type === "ident" && peek().text === "module") {
+      const modStart = next().start;
+      const nameTok = next();
+      matchText("(");
+      const paramList = parseParameterList();
+      matchText(")");
+      const body = parseStatement();
+      const endPos = body?.endIndex ?? nameTok.end;
+      const decl = new SyntheticScadCstNode(
+        "ModuleDeclaration",
+        source.slice(modStart, endPos),
+        [
+          new SyntheticScadCstNode("IDENTIFIER", nameTok.text, [], nameTok.start, nameTok.end),
+          paramList,
+          ...(body ? [body] : []),
+        ],
+        modStart,
+        endPos,
+      );
+      return new SyntheticScadCstNode("Statement", decl.text, [decl], modStart, endPos);
+    }
+
+    // function declaration
+    if (peek().type === "ident" && peek().text === "function") {
+      const fnStart = next().start;
+      const nameTok = next();
+      matchText("(");
+      const paramList = parseParameterList();
+      matchText(")");
+      matchText("=");
+      const bodyExpr = parseExpression();
+      matchText(";");
+      const endPos = bodyExpr.endIndex ?? nameTok.end;
+      const decl = new SyntheticScadCstNode(
+        "FunctionDeclaration",
+        source.slice(fnStart, endPos),
+        [
+          new SyntheticScadCstNode("IDENTIFIER", nameTok.text, [], nameTok.start, nameTok.end),
+          paramList,
+          wrapExpr(bodyExpr),
+        ],
+        fnStart,
+        endPos,
+      );
+      return new SyntheticScadCstNode("Statement", decl.text, [decl], fnStart, endPos);
+    }
+
+    // if statement
+    if (peek().type === "ident" && peek().text === "if") {
+      const ifStart = next().start;
+      matchText("(");
+      const condExpr = parseExpression();
+      matchText(")");
+      const thenStmt = parseStatement();
+      const children: ScadCstNode[] = [wrapExpr(condExpr)];
+      if (thenStmt) children.push(thenStmt);
+      let endPos = thenStmt?.endIndex ?? condExpr.endIndex ?? ifStart;
+      if (peek().type === "ident" && peek().text === "else") {
+        next();
+        const elseStmt = parseStatement();
+        if (elseStmt) {
+          children.push(elseStmt);
+          endPos = elseStmt.endIndex ?? endPos;
+        }
+      }
+      const ifNode = new SyntheticScadCstNode("IfStatement", source.slice(ifStart, endPos), children, ifStart, endPos);
+      return new SyntheticScadCstNode("Statement", ifNode.text, [ifNode], ifStart, endPos);
+    }
+
+    // for statement (supports single or comma-separated multiple loop variables)
+    if (peek().type === "ident" && peek().text === "for") {
+      const forStart = next().start;
+      matchText("(");
+      const bindings: { nameTok: ScadToken; rangeExpr: ScadCstNode }[] = [];
+      while (peek().type !== "eof" && peek().text !== ")") {
+        const vTok = next();
+        matchText("=");
+        const rExpr = parseExpression();
+        bindings.push({ nameTok: vTok, rangeExpr: rExpr });
+        if (!matchText(",")) break;
+      }
+      matchText(")");
+      let bodyStmt = parseStatement();
+      const endPos = bodyStmt?.endIndex ?? forStart;
+      for (let b = bindings.length - 1; b >= 0; b--) {
+        const { nameTok, rangeExpr } = bindings[b]!;
+        const forNode = new SyntheticScadCstNode(
+          "ForStatement",
+          source.slice(forStart, endPos),
+          [
+            new SyntheticScadCstNode("IDENTIFIER", nameTok.text, [], nameTok.start, nameTok.end),
+            wrapExpr(rangeExpr),
+            ...(bodyStmt ? [bodyStmt] : []),
+          ],
+          forStart,
+          endPos,
+        );
+        bodyStmt = new SyntheticScadCstNode("Statement", forNode.text, [forNode], forStart, endPos);
+      }
+      return bodyStmt;
+    }
+
+    // variable assignment (`name = expr;`)
+    if (peek().type === "ident" && peek(1).text === "=") {
+      const varTok = next();
+      next(); // '='
+      const valExpr = parseExpression();
+      matchText(";");
+      const endPos = valExpr.endIndex ?? varTok.end;
+      const decl = new SyntheticScadCstNode(
+        "VariableDeclaration",
+        source.slice(varTok.start, endPos),
+        [new SyntheticScadCstNode("IDENTIFIER", varTok.text, [], varTok.start, varTok.end), wrapExpr(valExpr)],
+        varTok.start,
+        endPos,
+      );
+      return new SyntheticScadCstNode("Statement", decl.text, [decl], varTok.start, endPos);
+    }
+
+    // Prefix operator or primitive/module call
+    if (peek().type === "ident" && peek(1).text === "(") {
+      const opTok = next();
+      const opName = opTok.text;
+      next(); // '('
+      const argList = parseArgumentList();
+      const closeParen = matchText(")") ? tokens[pos - 1]! : opTok;
+      const callEnd = closeParen.end;
+      const callText = source.slice(opTok.start, callEnd);
+
+      // Check if prefix operator (TransformOp, BooleanOp, LinearExtrudeOp, TagPortOp)
+      if (TRANSFORM_OPS.has(opName) || BOOLEAN_OPS.has(opName) || EXTRUDE_OPS.has(opName) || opName === "tag_port") {
+        const opType = TRANSFORM_OPS.has(opName)
+          ? "TransformOp"
+          : BOOLEAN_OPS.has(opName)
+            ? "BooleanOp"
+            : EXTRUDE_OPS.has(opName)
+              ? "LinearExtrudeOp"
+              : "TagPortOp";
+        const opNode = new SyntheticScadCstNode(opType, callText, [argList], opTok.start, callEnd);
+        let childStmt: ScadCstNode;
+        if (matchText(";")) {
+          childStmt = new SyntheticScadCstNode("Statement", ";", [], callEnd, callEnd + 1);
+        } else {
+          childStmt = parseStatement() ?? new SyntheticScadCstNode("Statement", ";", [], callEnd, callEnd);
+        }
+        const prefixEnd = childStmt.endIndex ?? callEnd;
+        const prefixNode = new SyntheticScadCstNode(
+          "PrefixSolid",
+          source.slice(opTok.start, prefixEnd),
+          [opNode, childStmt],
+          opTok.start,
+          prefixEnd,
+        );
+        return new SyntheticScadCstNode("Statement", prefixNode.text, [prefixNode], opTok.start, prefixEnd);
+      }
+
+      // Otherwise it is a primitive (`cube`, `cylinder`, `sphere`, ...) or `ModuleInstantiation`
+      const primType = PRIMITIVE_MAP[opName] ?? "ModuleInstantiation";
+      const primChildren: ScadCstNode[] = [
+        new SyntheticScadCstNode("IDENTIFIER", opName, [], opTok.start, opTok.end),
+        argList,
+      ];
+
+      // Check if user-defined module instantiation has a child block or child statement (`my_mod() { ... }` or `my_mod() cube(5);`)
+      if (
+        primType === "ModuleInstantiation" &&
+        peek().text !== ";" &&
+        peek().text !== "." &&
+        peek().text !== "}" &&
+        peek().type !== "eof"
+      ) {
+        const modChildStmt = parseStatement();
+        if (modChildStmt) {
+          primChildren.push(modChildStmt);
+        }
+      }
+
+      const primNode = new SyntheticScadCstNode(primType, callText, primChildren, opTok.start, callEnd);
+      const primarySolid = new SyntheticScadCstNode("PrimarySolid", callText, [primNode], opTok.start, callEnd);
+      const chainedChildren: ScadCstNode[] = [primarySolid];
+      let chainEnd = callEnd;
+
+      // Fluent method calls (`.translate(...).fillet(...)`)
+      while (peek().text === ".") {
+        const dotTok = next();
+        const methodTok = next();
+        matchText("(");
+        const mArgs = parseArgumentList();
+        const mClose = matchText(")") ? tokens[pos - 1]! : methodTok;
+        chainEnd = mClose.end;
+        chainedChildren.push(
+          new SyntheticScadCstNode(
+            "MethodCall",
+            source.slice(dotTok.start, chainEnd),
+            [new SyntheticScadCstNode("MethodName", methodTok.text, [], methodTok.start, methodTok.end), mArgs],
+            dotTok.start,
+            chainEnd,
+          ),
+        );
+      }
+
+      matchText(";");
+      const chainedSolid = new SyntheticScadCstNode(
+        "ChainedSolid",
+        source.slice(opTok.start, chainEnd),
+        chainedChildren,
+        opTok.start,
+        chainEnd,
+      );
+      const stmtNode = new SyntheticScadCstNode(
+        "ChainedSolidStatement",
+        source.slice(opTok.start, chainEnd),
+        [chainedSolid],
+        opTok.start,
+        chainEnd,
+      );
+      return new SyntheticScadCstNode("Statement", stmtNode.text, [stmtNode], opTok.start, chainEnd);
+    }
+
+    // Fallback: advance one token to avoid infinite loop
+    next();
+    return null;
+  }
+
+  const rootChildren: ScadCstNode[] = [];
+  while (peek().type !== "eof") {
+    const stmt = parseStatement();
+    if (stmt) rootChildren.push(stmt);
+  }
+  return new SyntheticScadCstNode("SourceFile", source, rootChildren, 0, source.length);
+}
+
+/**
+ * Result of `evaluateScad`, combining the root CSG `Solid` properties with convenience
+ * accessors for tessellated mesh data, bounding box, variables, and STEP export.
+ */
+export type ScadEvaluationResult = Solid & {
+  /** The combined root CSG `Solid` (or `null` if the script produced no geometry). */
+  readonly solid: Solid | null;
+  /** Top-level `Solid` parts produced by the script. */
+  readonly solids: Solid[];
+  /** Leaf primitive `Solid` nodes collected across the CSG tree. */
+  readonly primitives: Solid[];
+  /** Evaluated global scope variables (`Record<string, ScadValue>`). */
+  readonly variables: Record<string, ScadValue>;
+  /** Lazily tessellated 2-manifold surface mesh (`vertices`, `indices`, `normals`, `tags`). */
+  readonly mesh: ManifoldSurfaceMesh;
+  /** Lazily tessellated vertex coordinates (`Float32Array`). */
+  readonly vertices: Float32Array;
+  /** Lazily tessellated triangle vertex indices (`Uint32Array`). */
+  readonly indices: Uint32Array;
+  /** Lazily tessellated vertex normals (`Float32Array`). */
+  readonly normals: Float32Array;
+  /** Number of triangles in the tessellated surface mesh. */
+  readonly triangleCount: number;
+  /** Axis-aligned bounding box `{ min: Vec3, max: Vec3 }`. */
+  readonly boundingBox: AABB;
+  /** Alias for `boundingBox`. */
+  readonly bounds: AABB;
+  /** Compiles the evaluated CSG solid into an ISO 10303-21 STEP B-Rep string. */
+  toStep(): string;
+};
+
+function collectLeafPrimitives(solid: Solid | null, out: Solid[]): void {
+  if (!solid) return;
+  switch (solid.kind) {
+    case SolidKind.Union:
+    case SolidKind.Subtract:
+    case SolidKind.Intersect:
+      collectLeafPrimitives(solid.left, out);
+      collectLeafPrimitives(solid.right, out);
+      break;
+    case SolidKind.Transform:
+    case SolidKind.TaggedPatch:
+    case SolidKind.Fillet:
+    case SolidKind.Chamfer:
+      collectLeafPrimitives(solid.child, out);
+      break;
+    default:
+      out.push(solid);
+      break;
+  }
+}
+
+/**
+ * Synchronously parses (if given OpenSCAD source text) and evaluates an OpenSCAD model into
+ * a CSG `Solid` augmented with lazy mesh, bounding-box, variable, and STEP export accessors.
+ */
+export function evaluateScad(
+  sourceOrRoot: string | ScadCstNode,
+  options?: ScadEvaluationOptions,
+): ScadEvaluationResult {
+  const rootNode = typeof sourceOrRoot === "string" ? parseScadSource(sourceOrRoot) : sourceOrRoot;
+  const evaluator = new ScadEvaluator(options);
+  const solids = evaluator.evaluateParts(rootNode);
+  let combined: Solid | null = null;
+  if (solids.length === 1) {
+    combined = solids[0]!;
+  } else if (solids.length > 1) {
+    combined = solids[0]!;
+    for (let i = 1; i < solids.length; i++) {
+      combined = union(combined, solids[i]!);
+    }
+  }
+
+  const variables = evaluator.getVariables();
+  const primitives: Solid[] = [];
+  for (const s of solids) collectLeafPrimitives(s, primitives);
+
+  let cachedMesh: ManifoldSurfaceMesh | undefined;
+  const getMesh = (): ManifoldSurfaceMesh => {
+    if (!cachedMesh) {
+      cachedMesh = combined
+        ? ManifoldWorker.evaluateSolid(combined)
+        : {
+            vertices: new Float32Array(0),
+            indices: new Uint32Array(0),
+            normals: new Float32Array(0),
+            faceTagIndices: new Uint32Array(0),
+            tags: [],
+          };
+    }
+    return cachedMesh;
+  };
+
+  let cachedBBox: AABB | undefined;
+  const getBBox = (): AABB => {
+    if (!cachedBBox) {
+      cachedBBox = combined ? computeSolidAABB(combined) : { min: [0, 0, 0], max: [0, 0, 0] };
+    }
+    return cachedBBox;
+  };
+
+  const baseTarget: Record<string, unknown> = combined ? { ...combined } : { kind: "empty", name: "empty" };
+
+  Object.defineProperties(baseTarget, {
+    solid: { get: () => combined, enumerable: false },
+    solids: { get: () => solids, enumerable: false },
+    primitives: { get: () => primitives, enumerable: false },
+    variables: { get: () => variables, enumerable: false },
+    mesh: { get: getMesh, enumerable: false },
+    vertices: { get: () => getMesh().vertices, enumerable: false },
+    indices: { get: () => getMesh().indices, enumerable: false },
+    normals: { get: () => getMesh().normals, enumerable: false },
+    triangleCount: { get: () => Math.floor(getMesh().indices.length / 3), enumerable: false },
+    boundingBox: { get: getBBox, enumerable: false },
+    bounds: { get: getBBox, enumerable: false },
+    toStep: {
+      value: () => {
+        if (!combined) throw new Error("No solid geometry generated");
+        return compileToStep(combined);
+      },
+      enumerable: false,
+    },
+  });
+
+  return baseTarget as unknown as ScadEvaluationResult;
 }

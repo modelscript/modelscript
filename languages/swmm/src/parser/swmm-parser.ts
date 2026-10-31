@@ -34,7 +34,12 @@ export function parseSwmm(source: string): SwmmDeck {
     weirs: new Map(),
     crossSections: new Map(),
     subcatchments: new Map(),
+    duplicateNodes: [],
+    duplicateLinks: [],
   };
+
+  const seenNodes = new Set<string>();
+  const seenLinks = new Set<string>();
 
   const lines = source.split(/\r?\n/);
   let currentSection = "";
@@ -101,6 +106,10 @@ export function parseSwmm(source: string): SwmmDeck {
         // Name Elevation [MaxDepth] [InitDepth] [SurDepth] [Apond]
         if (tokens.length >= 2) {
           const id = tokens[0]!.text.toUpperCase();
+          if (seenNodes.has(id)) {
+            deck.duplicateNodes!.push({ id, range: fullLineRange });
+          }
+          seenNodes.add(id);
           const elev = parseFloat(tokens[1]!.text);
           const maxDepth = tokens.length > 2 ? parseFloat(tokens[2]!.text) : 0.0;
           const initDepth = tokens.length > 3 ? parseFloat(tokens[3]!.text) : 0.0;
@@ -124,6 +133,10 @@ export function parseSwmm(source: string): SwmmDeck {
         // Name Elevation Type [StageData] [Gated]
         if (tokens.length >= 3) {
           const id = tokens[0]!.text.toUpperCase();
+          if (seenNodes.has(id)) {
+            deck.duplicateNodes!.push({ id, range: fullLineRange });
+          }
+          seenNodes.add(id);
           const elev = parseFloat(tokens[1]!.text);
           const typeStr = tokens[2]!.text.toUpperCase();
           const validTypes = ["FREE", "NORMAL", "FIXED", "TIDAL"];
@@ -135,6 +148,7 @@ export function parseSwmm(source: string): SwmmDeck {
             id,
             elevation: isNaN(elev) ? 0.0 : elev,
             type,
+            rawType: typeStr,
             stage: stage != null && !isNaN(stage) ? stage : undefined,
             gated,
             range: fullLineRange,
@@ -147,6 +161,10 @@ export function parseSwmm(source: string): SwmmDeck {
         // Name Elev MaxDepth InitDepth Shape ...
         if (tokens.length >= 3) {
           const id = tokens[0]!.text.toUpperCase();
+          if (seenNodes.has(id)) {
+            deck.duplicateNodes!.push({ id, range: fullLineRange });
+          }
+          seenNodes.add(id);
           const elev = parseFloat(tokens[1]!.text);
           const maxDepth = parseFloat(tokens[2]!.text);
           const initDepth = tokens.length > 3 ? parseFloat(tokens[3]!.text) : 0.0;
@@ -168,6 +186,10 @@ export function parseSwmm(source: string): SwmmDeck {
         // Name FromNode ToNode Length Roughness [InOffset] [OutOffset] [InitFlow] [MaxFlow]
         if (tokens.length >= 5) {
           const id = tokens[0]!.text.toUpperCase();
+          if (seenLinks.has(id)) {
+            deck.duplicateLinks!.push({ id, range: fullLineRange });
+          }
+          seenLinks.add(id);
           const inletNode = tokens[1]!.text.toUpperCase();
           const outletNode = tokens[2]!.text.toUpperCase();
           const length = parseFloat(tokens[3]!.text);
@@ -197,6 +219,10 @@ export function parseSwmm(source: string): SwmmDeck {
         // Name FromNode ToNode [PumpCurve] [Status] [Startup] [Shutoff]
         if (tokens.length >= 3) {
           const id = tokens[0]!.text.toUpperCase();
+          if (seenLinks.has(id)) {
+            deck.duplicateLinks!.push({ id, range: fullLineRange });
+          }
+          seenLinks.add(id);
           const inletNode = tokens[1]!.text.toUpperCase();
           const outletNode = tokens[2]!.text.toUpperCase();
           const curve = tokens.length > 3 ? tokens[3]!.text : undefined;
@@ -218,6 +244,10 @@ export function parseSwmm(source: string): SwmmDeck {
         // Name FromNode ToNode Type Offset Cd ...
         if (tokens.length >= 6) {
           const id = tokens[0]!.text.toUpperCase();
+          if (seenLinks.has(id)) {
+            deck.duplicateLinks!.push({ id, range: fullLineRange });
+          }
+          seenLinks.add(id);
           const inletNode = tokens[1]!.text.toUpperCase();
           const outletNode = tokens[2]!.text.toUpperCase();
           const type = tokens[3]!.text.toUpperCase() === "BOTTOM" ? "BOTTOM" : "SIDE";
@@ -241,6 +271,10 @@ export function parseSwmm(source: string): SwmmDeck {
         // Name FromNode ToNode Type Offset Cd ...
         if (tokens.length >= 6) {
           const id = tokens[0]!.text.toUpperCase();
+          if (seenLinks.has(id)) {
+            deck.duplicateLinks!.push({ id, range: fullLineRange });
+          }
+          seenLinks.add(id);
           const inletNode = tokens[1]!.text.toUpperCase();
           const outletNode = tokens[2]!.text.toUpperCase();
           const typeStr = tokens[3]!.text.toUpperCase();
@@ -286,7 +320,7 @@ export function parseSwmm(source: string): SwmmDeck {
       }
 
       case "SUBCATCHMENTS": {
-        // Name RainGage Outlet Area PctImperv Width PctSlope
+        // Name RainGage Outlet Area PctImperv Width PctSlope [CurbLen]
         if (tokens.length >= 7) {
           const id = tokens[0]!.text.toUpperCase();
           const rainGage = tokens[1]!.text;
@@ -295,6 +329,7 @@ export function parseSwmm(source: string): SwmmDeck {
           const imperv = parseFloat(tokens[4]!.text);
           const width = parseFloat(tokens[5]!.text);
           const slope = parseFloat(tokens[6]!.text);
+          const curbLen = tokens.length > 7 ? parseFloat(tokens[7]!.text) : undefined;
 
           deck.subcatchments.set(id, {
             id,
@@ -304,8 +339,28 @@ export function parseSwmm(source: string): SwmmDeck {
             impervPct: isNaN(imperv) ? 50.0 : imperv,
             width: isNaN(width) ? 100.0 : width,
             slopePct: isNaN(slope) ? 1.0 : slope,
+            curbLen: curbLen != null && !isNaN(curbLen) ? curbLen : undefined,
             range: fullLineRange,
           });
+        }
+        break;
+      }
+
+      case "SUBAREAS": {
+        // Subcatchment N-Imperv N-Perv S-Imperv S-Perv [PctZero] [RouteTo]
+        if (tokens.length >= 5) {
+          const id = tokens[0]!.text.toUpperCase();
+          const sc = deck.subcatchments.get(id);
+          if (sc) {
+            const nImperv = parseFloat(tokens[1]!.text);
+            const nPerv = parseFloat(tokens[2]!.text);
+            const sImperv = parseFloat(tokens[3]!.text);
+            const sPerv = parseFloat(tokens[4]!.text);
+            if (!isNaN(nImperv)) sc.nImperv = nImperv;
+            if (!isNaN(nPerv)) sc.nPerv = nPerv;
+            if (!isNaN(sImperv)) sc.dstoreImperv = sImperv;
+            if (!isNaN(sPerv)) sc.dstorePerv = sPerv;
+          }
         }
         break;
       }
@@ -371,6 +426,17 @@ export function serializeSwmm(deck: SwmmDeck): string {
     }
   }
   out.push("");
+
+  if (deck.subcatchments.size > 0) {
+    out.push("[SUBCATCHMENTS]");
+    out.push(";;Name           RainGage         Outlet           Area       %Imperv    Width      %Slope     CurbLen");
+    for (const [id, sc] of deck.subcatchments) {
+      out.push(
+        `${id.padEnd(16, " ")} ${(sc.rainGage ?? "GAGE1").padEnd(16, " ")} ${sc.outlet.padEnd(16, " ")} ${sc.area.toFixed(2).padEnd(10, " ")} ${sc.impervPct.toFixed(2).padEnd(10, " ")} ${sc.width.toFixed(2).padEnd(10, " ")} ${sc.slopePct.toFixed(2).padEnd(10, " ")} ${(sc.curbLen ?? 0).toFixed(2)}`,
+      );
+    }
+    out.push("");
+  }
 
   if (deck.junctions.size > 0) {
     out.push("[JUNCTIONS]");

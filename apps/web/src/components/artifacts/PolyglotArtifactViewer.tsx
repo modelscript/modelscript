@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
-import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, PlayIcon, WorkflowIcon } from "@primer/octicons-react";
+import {
+  BeakerIcon,
+  CheckIcon,
+  CodeIcon,
+  CopyIcon,
+  DownloadIcon,
+  PlayIcon,
+  WorkflowIcon,
+} from "@primer/octicons-react";
 import { Button, Label, Spinner, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
@@ -12,6 +20,7 @@ import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import FortranViewer from "./FortranViewer";
 import ReqifViewer from "./ReqifViewer";
+import StudyTemplateViewer from "./StudyTemplateViewer";
 
 export interface PolyglotArtifactViewerProps {
   viewConfig: any;
@@ -30,6 +39,7 @@ export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions):
   if (!rawSvg) return "";
   const sanitized = DOMPurify.sanitize(rawSvg, {
     USE_PROFILES: { svg: true, svgFilters: true },
+    ALLOW_DATA_ATTR: true,
     ADD_TAGS: ["use", "foreignObject"],
     ADD_ATTR: [
       "target",
@@ -42,6 +52,8 @@ export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions):
       "data-fmu",
       "data-node",
       "data-id",
+      "data-line-index",
+      "data-reqif-id",
     ],
   });
   const maxH = options?.maxHeight ?? (options?.isFullScreen ? "none" : "360px");
@@ -375,7 +387,8 @@ export function renderSourceToDiagramSvg(
 }
 
 export interface InteractiveSvgStageProps {
-  svgMarkup: string;
+  svgMarkup?: string | undefined;
+  svgHtml?: string | undefined;
   isFullScreen?: boolean | undefined;
   minHeight?: string | undefined;
   background?: string | undefined;
@@ -385,6 +398,7 @@ export interface InteractiveSvgStageProps {
 
 export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
   svgMarkup,
+  svgHtml,
   isFullScreen = false,
   minHeight,
   background,
@@ -481,7 +495,7 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
           transformOrigin: "center center",
           transition: isDragging ? "none" : "transform 0.12s ease-out",
         }}
-        dangerouslySetInnerHTML={{ __html: svgMarkup }}
+        dangerouslySetInnerHTML={{ __html: svgMarkup ?? svgHtml ?? "" }}
       />
       {children}
       <div
@@ -913,6 +927,22 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
     );
   }
 
+  if (
+    dialect === "study-template" ||
+    dialect === "study" ||
+    Boolean(viewConfig?.filename && /\.(sedml|ssv|dakota)$/i.test(String(viewConfig.filename)))
+  ) {
+    return (
+      <StudyTemplateViewer
+        viewConfig={{
+          ...viewConfig,
+          rawStandardSource: rawCode || inlineCode || viewConfig?.rawStandardSource,
+        }}
+        artifactPath={viewConfig?.filename || viewConfig?.path}
+      />
+    );
+  }
+
   const handleCopy = () => {
     if (!rawCode) return;
     navigator.clipboard.writeText(rawCode);
@@ -951,6 +981,59 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
       title: resolvedTitle,
     });
     navigate(`/playground?fromArtifact=${resolvedId}#m=${hash}`);
+  };
+
+  const handleRunStudy = () => {
+    const d = dialect.toLowerCase();
+    let slug = "modelica-sundials-dae";
+    if (d === "fmu" || d === "fmi" || d === "ssp") slug = "fmi-cosim-master";
+    else if (d === "cfd" || d === "su2" || d === "openfoam") slug = "su2-rans-polar-sweep";
+    else if (d === "fea" || d === "calculix" || d === "step" || d === "scad" || d === "openscad")
+      slug = "calculix-nonlinear-fea";
+    else if (d === "pscad" || d === "psse" || d === "opendss") slug = "pscad-emt-fault-ride-through";
+    else if (d === "simpack" || d === "gensys" || d === "adams" || d === "urdf") slug = "simpack-rail-en14363";
+    else if (
+      d === "spice" ||
+      d === "verilog-a" ||
+      d === "verilog-ams" ||
+      d === "vhdl-ams" ||
+      d === "touchstone" ||
+      d === "ibis"
+    ) {
+      slug = "spice-pvt-corner-mc";
+    } else if (d === "sysml2" || d === "sysmlv2") slug = "sysmlv2-req-verification";
+    else if (d === "sbml" || d === "cellml") slug = "sbml-copasi-identifiability";
+    else if (
+      [
+        "olga",
+        "sima",
+        "lps",
+        "epanet",
+        "swmm",
+        "gtsuite",
+        "easy5",
+        "rocets",
+        "relap5",
+        "energyplus",
+        "aspen",
+        "eclipse",
+        "jsbsim",
+      ].includes(d)
+    ) {
+      slug = "domain-process-aero-sweep";
+    } else if (["matlab", "python", "julia", "c", "cpp", "rust", "fortran"].includes(d)) {
+      slug = "scientific-hpc-batch";
+    }
+
+    const params = new URLSearchParams();
+    params.set("domain", dialect);
+    params.set("model", title);
+    if (viewConfig?.packageName) params.set("package", String(viewConfig.packageName));
+    if (viewConfig?.packageVersion) params.set("version", String(viewConfig.packageVersion));
+    if (viewConfig?.filename || viewConfig?.path) {
+      params.set("artifact", String(viewConfig.filename || viewConfig.path));
+    }
+    navigate(`/jobs/templates/${slug}?${params.toString()}`);
   };
 
   return (
@@ -1005,6 +1088,11 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
           {!isCodeOnlyDialect && svgMarkup && effectiveViewMode === "diagram" && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadSvg}>
               SVG
+            </Button>
+          )}
+          {!isFullScreen && (
+            <Button size="small" leadingVisual={BeakerIcon} onClick={handleRunStudy}>
+              Run Study
             </Button>
           )}
           {Boolean(viewConfig?.standalone) && !isFullScreen && (

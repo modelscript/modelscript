@@ -59,28 +59,128 @@ export function computeEigenvalues(A: number[][]): SystemEigenvalue[] {
     });
   }
 
-  // QR algorithm with shifts for general matrices (up to n = 20)
+  // Upper Hessenberg reduction via Householder reflections for general n >= 3
   const H = A.map((row) => [...row]);
-  const maxIter = 100 * n;
+  for (let k = 0; k < n - 2; k++) {
+    let normSq = 0.0;
+    for (let i = k + 1; i < n; i++) {
+      const val = H[i]![k]!;
+      normSq += val * val;
+    }
+    const norm = Math.sqrt(normSq);
+    if (norm < 1e-15) continue;
+
+    const x0 = H[k + 1]![k]!;
+    const sign = x0 >= 0 ? 1.0 : -1.0;
+    const u0 = x0 + sign * norm;
+    const v = new Array(n - (k + 1)).fill(0.0);
+    v[0] = 1.0;
+    let vNormSq = 1.0;
+    for (let i = k + 2; i < n; i++) {
+      const vi = H[i]![k]! / u0;
+      v[i - (k + 1)] = vi;
+      vNormSq += vi * vi;
+    }
+    const beta = 2.0 / vNormSq;
+
+    // Premultiply H[k+1..n-1, k..n-1] by (I - beta * v * v^T)
+    for (let j = k; j < n; j++) {
+      let dot = 0.0;
+      for (let i = k + 1; i < n; i++) {
+        dot += v[i - (k + 1)]! * H[i]![j]!;
+      }
+      dot *= beta;
+      for (let i = k + 1; i < n; i++) {
+        H[i]![j] = H[i]![j]! - dot * v[i - (k + 1)]!;
+      }
+    }
+
+    // Postmultiply H[0..n-1, k+1..n-1] by (I - beta * v * v^T)
+    for (let i = 0; i < n; i++) {
+      let dot = 0.0;
+      for (let j = k + 1; j < n; j++) {
+        dot += H[i]![j]! * v[j - (k + 1)]!;
+      }
+      dot *= beta;
+      for (let j = k + 1; j < n; j++) {
+        H[i]![j] = H[i]![j]! - dot * v[j - (k + 1)]!;
+      }
+    }
+  }
+
+  const maxIter = 200 * n;
   let iter = 0;
   let m = n - 1;
 
   const results: { real: number; imag: number }[] = [];
 
+  function push2x2Block(a: number, b: number, c: number, d: number): void {
+    const tr = a + d;
+    const det = a * d - b * c;
+    const disc = tr * tr - 4.0 * det;
+    if (disc >= 0) {
+      const sqrtDisc = Math.sqrt(disc);
+      results.push({ real: (tr + sqrtDisc) / 2.0, imag: 0.0 });
+      results.push({ real: (tr - sqrtDisc) / 2.0, imag: 0.0 });
+    } else {
+      const sqrtDisc = Math.sqrt(-disc);
+      results.push({ real: tr / 2.0, imag: sqrtDisc / 2.0 });
+      results.push({ real: tr / 2.0, imag: -sqrtDisc / 2.0 });
+    }
+  }
+
   while (m >= 1 && iter < maxIter) {
     iter++;
-    // Check if subdiagonal element is negligible
-    if (Math.abs(H[m]![m - 1]!) < 1e-10 * (Math.abs(H[m - 1]![m - 1]!) + Math.abs(H[m]![m]!))) {
+    // 1. Check if 1x1 subdiagonal element H[m][m-1] is negligible
+    const scale1 = Math.abs(H[m - 1]![m - 1]!) + Math.abs(H[m]![m]!) + 1e-15;
+    if (Math.abs(H[m]![m - 1]!) < 1e-10 * scale1) {
       results.push({ real: H[m]![m]!, imag: 0.0 });
       m--;
       continue;
     }
 
+    // 2. Check if 2x2 block at [m-1..m, m-1..m] is decoupled
+    const is2x2Decoupled =
+      m === 1 ||
+      Math.abs(H[m - 1]![m - 2]!) < 1e-10 * (Math.abs(H[m - 2]![m - 2]!) + Math.abs(H[m - 1]![m - 1]!) + 1e-15);
+
+    if (is2x2Decoupled) {
+      const a = H[m - 1]![m - 1]!;
+      const b = H[m - 1]![m]!;
+      const c = H[m]![m - 1]!;
+      const d = H[m]![m]!;
+      const tr = a + d;
+      const det = a * d - b * c;
+      const disc = tr * tr - 4.0 * det;
+      // Deflate 2x2 block immediately if complex conjugate or m === 1
+      if (disc < 0 || m === 1) {
+        push2x2Block(a, b, c, d);
+        m -= 2;
+        continue;
+      }
+    }
+
     // Wilkinson shift from bottom 2x2 submatrix
-    const d = (H[m - 1]![m - 1]! - H[m]![m]!) / 2.0;
-    const signD = d >= 0 ? 1 : -1;
-    const subDiagSq = H[m]![m - 1]! * H[m - 1]![m]!;
-    const mu = H[m]![m]! - (signD * subDiagSq) / (Math.abs(d) + Math.sqrt(d * d + subDiagSq + 1e-15));
+    const a2 = H[m - 1]![m - 1]!;
+    const b2 = H[m - 1]![m]!;
+    const c2 = H[m]![m - 1]!;
+    const d2 = H[m]![m]!;
+    const tr2 = a2 + d2;
+    const det2 = a2 * d2 - b2 * c2;
+    const disc2 = tr2 * tr2 - 4.0 * det2;
+
+    // Exceptional shift every 30 iterations to break symmetry / stagnation on pure imaginary or companion matrices
+    let mu: number;
+    if (iter % 30 === 0) {
+      mu = d2 + 0.75 * Math.abs(c2);
+    } else if (disc2 >= 0) {
+      const s = Math.sqrt(disc2);
+      const l1 = (tr2 + s) / 2.0;
+      const l2 = (tr2 - s) / 2.0;
+      mu = Math.abs(l1 - d2) < Math.abs(l2 - d2) ? l1 : l2;
+    } else {
+      mu = tr2 / 2.0;
+    }
 
     // Shift: H - mu I
     for (let i = 0; i <= m; i++) {
@@ -138,8 +238,15 @@ export function computeEigenvalues(A: number[][]): SystemEigenvalue[] {
     }
   }
 
-  if (m === 0) {
-    results.push({ real: H[0]![0]!, imag: 0.0 });
+  // Extract any remaining blocks if iteration limit was reached
+  while (m >= 0) {
+    if (m === 0) {
+      results.push({ real: H[0]![0]!, imag: 0.0 });
+      m--;
+    } else {
+      push2x2Block(H[m - 1]![m - 1]!, H[m - 1]![m]!, H[m]![m - 1]!, H[m]![m]!);
+      m -= 2;
+    }
   }
 
   return results.map((e) => {

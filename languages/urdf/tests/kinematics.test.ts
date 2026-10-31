@@ -108,4 +108,41 @@ describe("URDF Kinematics & Featherstone Algorithms (@modelscript/urdf)", () => 
     assert.ok(Math.abs(qdd1_recovered - 2.5) < 1e-3, `Expected joint_1 qdd ~ 2.5, got ${qdd1_recovered}`);
     assert.ok(Math.abs(qdd2_recovered - -1.5) < 1e-3, `Expected joint_2 qdd ~ -1.5, got ${qdd2_recovered}`);
   });
+
+  it("should account for joint.origin.rpy rotation, inertial COM offset, and off-diagonal inertia products in RNEA and ABA", () => {
+    const rpyComUrdf = `<?xml version="1.0"?>
+<robot name="rpy_com_pendulum">
+  <link name="base_link">
+    <inertial><mass value="10.0"/><inertia ixx="1" iyy="1" izz="1"/></inertial>
+  </link>
+  <link name="arm_link">
+    <inertial>
+      <origin xyz="0.5 0 0" rpy="0 0 0"/>
+      <mass value="2.0"/>
+      <inertia ixx="0.05" iyy="0.08" izz="0.10" ixy="0.005" ixz="0.002" iyz="0.001"/>
+    </inertial>
+  </link>
+  <joint name="shoulder" type="revolute">
+    <parent link="base_link"/><child link="arm_link"/>
+    <origin xyz="0 0 1.0" rpy="1.5707963267948966 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+</robot>`;
+    const robot = parseUrdf(rpyComUrdf);
+    const q = new Map([["shoulder", 0.2]]);
+    const qd = new Map([["shoulder", 0.7]]);
+    const qdd = new Map([["shoulder", 1.4]]);
+
+    const rnea = computeInverseDynamicsRnea(robot, q, qd, qdd, 9.80665);
+    const tauShoulder = rnea.jointTorques.get("shoulder")!;
+    // With 90 deg roll RPY and 0.5m COM offset, gravity and parallel-axis inertia produce significant torque (> 5 N*m)
+    assert.ok(Math.abs(tauShoulder) > 5.0, `Expected gravity + inertia torque > 5 N*m, got ${tauShoulder}`);
+
+    const aba = computeForwardDynamicsAba(robot, q, qd, rnea.jointTorques, 9.80665);
+    const qddRecovered = aba.jointAccelerations.get("shoulder")!;
+    assert.ok(
+      Math.abs(qddRecovered - 1.4) < 1e-5,
+      `Expected RNEA-ABA equivalence with RPY + COM offset (1.4 vs ${qddRecovered})`,
+    );
+  });
 });

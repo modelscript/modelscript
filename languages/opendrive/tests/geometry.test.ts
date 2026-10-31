@@ -3,10 +3,14 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
+  evaluateClothoid,
   evaluateElevation,
   evaluateGeometry,
+  evaluateSpiral,
   evaluateSuperelevation,
+  sampleRoadPose,
   sampleRoadTrack,
+  worldToFrenet,
 } from "../src/geometry/clothoid.js";
 import type {
   OpenDriveArcGeometry,
@@ -210,5 +214,66 @@ describe("OpenDRIVE Analytical Geometry & Fresnel Clothoid Kernel", () => {
     assert(last.x > 50.0);
     assert(last.y > 0.0);
     assert(last.z > 6.9);
+  });
+
+  it("evaluates 8-point Gauss-Legendre clothoid quadrature (evaluateSpiral) and sampleRoadPose with lateral banking", () => {
+    const gl8 = evaluateSpiral(0.0, 0.0, 0.0, 0.0, 0.02, 50.0, 35.0);
+    const gl16 = evaluateClothoid(0.0, 0.0, 0.0, 0.0, 0.02, 50.0, 35.0);
+    assert(Math.abs(gl8.x - gl16.x) < 1e-5);
+    assert(Math.abs(gl8.y - gl16.y) < 1e-5);
+    assert(Math.abs(gl8.hdg - gl16.hdg) < 1e-12);
+    assert(Math.abs(gl8.curvature - gl16.curvature) < 1e-12);
+
+    const road: OpenDriveRoad = {
+      id: "R_Spiral",
+      name: "SpiralRoad",
+      length: 100.0,
+      junction: "-1",
+      planView: [
+        {
+          type: "spiral",
+          s: 0.0,
+          x: 0.0,
+          y: 0.0,
+          hdg: 0.0,
+          length: 100.0,
+          curvStart: 0.0,
+          curvEnd: 0.01,
+          range: dummyRange,
+        },
+      ],
+      elevationProfile: [{ s: 0.0, a: 10.0, b: 0.05, c: 0.001, d: 0.0, range: dummyRange }],
+      lateralProfile: [{ s: 0.0, a: 0.1, b: 0.0, c: 0.0, d: 0.0, range: dummyRange }],
+      lanes: [
+        {
+          s: 0.0,
+          leftLanes: [
+            { id: 1, type: "driving", widths: [{ sOffset: 0, a: 3.5, b: 0, c: 0, d: 0 }], range: dummyRange },
+          ],
+          centerLane: { id: 0, type: "none", widths: [], range: dummyRange },
+          rightLanes: [
+            { id: -1, type: "driving", widths: [{ sOffset: 0, a: 3.5, b: 0, c: 0, d: 0 }], range: dummyRange },
+          ],
+          range: dummyRange,
+        },
+      ],
+      signals: [],
+      range: dummyRange,
+    };
+
+    // Sample pose at s = 40.0, lateral offset t = -1.75 (center of right lane -1)
+    const poseCenter = sampleRoadPose(road, 40.0, 0.0);
+    const poseOffset = sampleRoadPose(road, 40.0, -1.75);
+    assert(Math.abs(poseCenter.z - (10.0 + 0.05 * 40 + 0.001 * 1600)) < 1e-9);
+    assert(Math.abs(poseOffset.z - (poseCenter.z - 1.75 * Math.sin(0.1))) < 1e-9);
+
+    // Project offset world point back to Frenet coordinates via Newton-Raphson
+    const xWorld = poseCenter.x - -1.75 * Math.sin(poseCenter.hdg);
+    const yWorld = poseCenter.y + -1.75 * Math.cos(poseCenter.hdg);
+    const frenet = worldToFrenet(road, xWorld, yWorld);
+    assert.strictEqual(frenet.roadId, "R_Spiral");
+    assert(Math.abs(frenet.s - 40.0) < 1e-5, `Expected s ~ 40.0, got ${frenet.s}`);
+    assert(Math.abs(frenet.t - -1.75) < 1e-5, `Expected t ~ -1.75, got ${frenet.t}`);
+    assert.strictEqual(frenet.laneId, -1);
   });
 });

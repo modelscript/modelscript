@@ -824,4 +824,64 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
     const diags3 = (await engine.runAllLintsAsync(uri)).filter((d) => d.severity === "error");
     assert.strictEqual(diags3.length, 0);
   });
+
+  it("verifies qualified Pkg::Member references against known KerML/SysML/ISQ stdlib members", async () => {
+    const { isStdlibOrBuiltinSymbol } = await import("../src/type-checker.js");
+
+    // Valid stdlib package members
+    assert.strictEqual(isStdlibOrBuiltinSymbol("ScalarValues::Real"), true);
+    assert.strictEqual(isStdlibOrBuiltinSymbol("ScalarValues::Boolean"), true);
+    assert.strictEqual(isStdlibOrBuiltinSymbol("ISQ::MassValue"), true);
+    assert.strictEqual(isStdlibOrBuiltinSymbol("ISQ::ForceValue"), true);
+    assert.strictEqual(isStdlibOrBuiltinSymbol("SI::kg"), true);
+    assert.strictEqual(isStdlibOrBuiltinSymbol("DataFunctions::sin"), true);
+
+    // Invalid members inside real stdlib packages or valid member names inside bogus packages
+    assert.strictEqual(isStdlibOrBuiltinSymbol("ScalarValues::BogusScalar"), false);
+    assert.strictEqual(isStdlibOrBuiltinSymbol("ISQ::FakeQuantity"), false);
+    assert.strictEqual(isStdlibOrBuiltinSymbol("SI::FakeUnit"), false);
+    assert.strictEqual(isStdlibOrBuiltinSymbol("BogusPackage::Real"), false);
+
+    const { parser } = await createWasmParser(sysmlWasm);
+    const ws = createSysML2WorkspaceIndex();
+    const code = `
+      package StdlibMemberVerification {
+        import ScalarValues::BogusScalar;
+        part def Host {
+          attribute badAttr : ScalarValues::BogusScalar;
+          attribute badIsq : ISQ::FakeQuantity;
+          attribute goodAttr : ScalarValues::Real;
+          attribute goodIsq : ISQ::MassValue;
+        }
+      }
+    `;
+    const uri = "file:///workspace/StdlibMemberVerification.sysml";
+    ws.register(uri, () => {
+      const tree = parser.parse(code);
+      return tree ? (tree.rootNode as any) : null;
+    });
+    const unified = await ws.toUnifiedAsync();
+    const qe = createSysML2QueryEngine(unified, parser.parse(code));
+    const db = qe.toQueryDB();
+
+    const badAttr = db.byName("badAttr")[0]!;
+    const badAttrDiag = qe.fetch("lint__symbolNotFound", badAttr.id);
+    assert.ok(badAttrDiag, "ScalarValues::BogusScalar must trigger S2002");
+    assert.strictEqual((badAttrDiag as any).code, 2002);
+
+    const badIsq = db.byName("badIsq")[0]!;
+    const badIsqDiag = qe.fetch("lint__symbolNotFound", badIsq.id);
+    assert.ok(badIsqDiag, "ISQ::FakeQuantity must trigger S2002");
+    assert.strictEqual((badIsqDiag as any).code, 2002);
+
+    const goodAttr = db.byName("goodAttr")[0]!;
+    assert.strictEqual(qe.fetch("lint__symbolNotFound", goodAttr.id), null);
+
+    const goodIsq = db.byName("goodIsq")[0]!;
+    assert.strictEqual(qe.fetch("lint__symbolNotFound", goodIsq.id), null);
+
+    const allDiags = qe.runAllLints(uri);
+    const importDiags = allDiags.filter((d) => d.code === 2005);
+    assert.strictEqual(importDiags.length, 1, "import ScalarValues::BogusScalar must trigger S2005");
+  });
 });

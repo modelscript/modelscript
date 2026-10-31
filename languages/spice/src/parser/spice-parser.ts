@@ -572,6 +572,7 @@ export class SpiceParser {
       case "L": {
         if (tokens.length >= 4) {
           comp.nodes = [tokens[1] ?? "", tokens[2] ?? ""];
+          comp.rawValueExpr = tokens[3];
           comp.value = parseSpiceNumber(tokens[3] ?? "0", this.globalParams);
           this.parseKeyValues(tokens.slice(4), params);
         }
@@ -636,6 +637,7 @@ export class SpiceParser {
         if (tokens.length >= 6) {
           comp.nodes = [tokens[1] ?? "", tokens[2] ?? ""];
           comp.controlNodes = [tokens[3] ?? "", tokens[4] ?? ""];
+          comp.rawValueExpr = tokens[5];
           comp.gain = parseSpiceNumber(tokens[5] ?? "1", this.globalParams);
           comp.value = comp.gain;
         }
@@ -646,6 +648,7 @@ export class SpiceParser {
         if (tokens.length >= 5) {
           comp.nodes = [tokens[1] ?? "", tokens[2] ?? ""];
           comp.controlSource = tokens[3];
+          comp.rawValueExpr = tokens[4];
           comp.gain = parseSpiceNumber(tokens[4] ?? "1", this.globalParams);
           comp.value = comp.gain;
         }
@@ -657,8 +660,15 @@ export class SpiceParser {
       }
       case "K": {
         if (tokens.length >= 4) {
-          comp.nodes = [tokens[1] ?? "", tokens[2] ?? ""];
-          comp.value = parseSpiceNumber(tokens[3] ?? "1", this.globalParams);
+          const l1 = tokens[1] ?? "";
+          const l2 = tokens[2] ?? "";
+          const kVal = parseSpiceNumber(tokens[3] ?? "1", this.globalParams);
+          comp.nodes = [l1, l2];
+          comp.inductor1 = l1;
+          comp.inductor2 = l2;
+          comp.rawValueExpr = tokens[3];
+          comp.value = kVal;
+          comp.couplingFactor = kVal;
         }
         break;
       }
@@ -875,10 +885,16 @@ export class SpiceParser {
         }
       } else if (upper.startsWith("PULSE")) {
         spec.waveform = this.parsePulseWaveform(tok, tokens.slice(i + 1));
-        break;
+        while (i < tokens.length && !(tokens[i] ?? "").includes(")")) {
+          i++;
+        }
+        i++;
       } else if (upper.startsWith("SINE") || upper.startsWith("SIN")) {
         spec.waveform = this.parseSineWaveform(tok, tokens.slice(i + 1));
-        break;
+        while (i < tokens.length && !(tokens[i] ?? "").includes(")")) {
+          i++;
+        }
+        i++;
       } else {
         const val = parseSpiceNumber(tok, this.globalParams);
         if (!Number.isNaN(val) && spec.dc === undefined) {
@@ -997,9 +1013,20 @@ export class SpiceParser {
   }
 }
 
-export function parseSpice(sourceText: string): SpiceCircuit {
+import { flattenSpiceCircuit } from "../solvers/mna.js";
+
+export interface ParseSpiceOptions {
+  expandSubcircuits?: boolean | undefined;
+}
+
+export function parseSpice(sourceText: string, options?: ParseSpiceOptions): SpiceCircuit {
   const parser = new SpiceParser();
-  return parser.parse(sourceText);
+  const circuit = parser.parse(sourceText);
+  circuit.expandedComponents = flattenSpiceCircuit(circuit);
+  if (options?.expandSubcircuits) {
+    circuit.components = circuit.expandedComponents;
+  }
+  return circuit;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

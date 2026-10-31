@@ -26,7 +26,7 @@ describe("EPANET Zero-GC Linear DAE Lowering", () => {
     const arena = lowerEpanetToDae(net);
 
     assert(arena.getVarCount() >= 5, `Expected at least 5 variables, got ${arena.getVarCount()}`);
-    assert(arena.getEqCount() >= 5, `Expected at least 5 equations, got ${arena.getEqCount()}`);
+    assert.strictEqual(arena.getVarCount(), arena.getEqCount(), "Expected structurally square DAE (N_vars == N_eqs)");
 
     const varNames = arena.variables().map((v) => v.name);
     assert(varNames.includes("res_R1_H"), "Must include reservoir head");

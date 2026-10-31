@@ -170,15 +170,46 @@ export const getCloudSimulationResultCsv = async (jobId: string): Promise<string
 
 // ── Cluster Health & Live HPC Queues ───────────────────────────────
 
+export interface ClusterPartitionInfo {
+  name: string;
+  label?: string | undefined;
+  state: string;
+  nodesTotal?: number | undefined;
+  nodesIdle?: number | undefined;
+  cpusPerNode?: number | undefined;
+  memoryGb?: number | undefined;
+  gpus?: string | number | undefined;
+  maxTime?: string | undefined;
+  costCreditsPerMin?: number | undefined;
+  solvers?: string[] | undefined;
+}
+
+export interface ClusterNodeInfo {
+  name: string;
+  partition?: string | undefined;
+  state: string;
+  cpus?: number | undefined;
+  cpusAlloc?: number | undefined;
+  cpusTotal?: number | undefined;
+  memoryGb?: number | undefined;
+  memoryUsedGb?: number | undefined;
+  memoryTotalGb?: number | undefined;
+  load?: number | undefined;
+  loadAvg?: number | string | undefined;
+}
+
 export interface ClusterStatus {
   backend: "slurm-rest" | "slurm" | "local-process" | string;
   connected: boolean;
   latencyMs: number;
   version?: string | undefined;
   stagingBackend?: string | undefined;
-  partitions: { name: string; state: string }[];
+  partitions: ClusterPartitionInfo[];
   nodesCount: number;
-  nodes?: { name: string; state: string }[] | undefined;
+  nodes?: ClusterNodeInfo[] | undefined;
+  maxTime?: string | undefined;
+  gpus?: string | number | undefined;
+  vramPerNode?: string | undefined;
 }
 
 export const getClusterStatus = async (): Promise<ClusterStatus> => {
@@ -200,6 +231,7 @@ export const getClusterStatus = async (): Promise<ClusterStatus> => {
 
 export interface UnifiedJob {
   id: string | number;
+  dbJobId?: number | null | undefined;
   name: string;
   domain: string;
   profile: string;
@@ -210,12 +242,26 @@ export interface UnifiedJob {
   startedAt?: string | number | undefined;
   hasVtu?: boolean | undefined;
   hasCsv?: boolean | undefined;
+  studyKind?: string | undefined;
+  standardFormat?: StudyStandardFormat | undefined;
+  templateSlug?: string | undefined;
+  modelName?: string | undefined;
+  targetArtifact?: string | undefined;
+  packageName?: string | undefined;
+  packageVersion?: string | undefined;
+  executionTarget?: string | undefined;
+  sampleCount?: number | undefined;
+  kpis?:
+    | { id: string; label: string; value: number | string; unit?: string | undefined; status?: string | undefined }[]
+    | undefined;
 }
 
 export interface ComputeJobStep {
   id: number;
   name: string;
   status: string;
+  started_at?: string | undefined;
+  completed_at?: string | null | undefined;
 }
 
 export interface ComputeJob {
@@ -237,7 +283,8 @@ export interface ComputeJob {
   error?: string | undefined;
   hasResult?: boolean | undefined;
   resultPath?: string | undefined;
-  metadata?: string | Record<string, any> | undefined;
+  metadata?: string | Record<string, unknown> | undefined;
+  studyResults?: unknown | undefined;
   steps?: ComputeJobStep[] | undefined;
   job?: ComputeJob | undefined;
 }
@@ -246,6 +293,16 @@ function mapToComputeJob(data: any, fallbackId: string | number): ComputeJob {
   const raw = data?.job && typeof data.job === "object" ? data.job : data || {};
   const steps: ComputeJobStep[] = Array.isArray(data?.steps) ? data.steps : Array.isArray(raw?.steps) ? raw.steps : [];
 
+  let parsedMeta: Record<string, unknown> = {};
+  try {
+    if (typeof raw.metadata === "string") {
+      parsedMeta = JSON.parse(raw.metadata);
+    } else if (raw.metadata && typeof raw.metadata === "object") {
+      parsedMeta = raw.metadata;
+    }
+  } catch {}
+
+  const studyResults = data?.studyResults || raw?.studyResults || parsedMeta?.studyResults;
   const resolvedId = raw.id ?? raw.jobId ?? fallbackId;
   const startedIso =
     raw.started_at ??
@@ -268,20 +325,24 @@ function mapToComputeJob(data: any, fallbackId: string | number): ComputeJob {
     type:
       raw.type ||
       (raw.domain ? String(raw.domain).toUpperCase() : raw.solver ? String(raw.solver).toUpperCase() : "SIMULATION"),
-    domain: raw.domain || (raw.solver === "su2" ? "cfd" : raw.solver === "calculix" ? "fea" : "simulation"),
-    solver: raw.solver,
-    profile: raw.profile || raw.compute_profile || raw.computeProfile || "standard",
+    domain:
+      raw.domain ||
+      parsedMeta?.modelDomain ||
+      (raw.solver === "su2" ? "cfd" : raw.solver === "calculix" ? "fea" : "simulation"),
+    solver: raw.solver || parsedMeta?.solver || studyResults?.solver,
+    profile: raw.profile || raw.compute_profile || raw.computeProfile || parsedMeta?.computeProfile || "standard",
     started_at: startedIso,
     startedAt: raw.startedAt ?? raw.startTime ?? startedIso,
     completed_at: completedIso,
     completedAt: raw.completedAt ?? raw.endTime ?? completedIso,
-    elapsedSeconds: raw.elapsedSeconds,
+    elapsedSeconds: raw.elapsedSeconds ?? raw.cpu_seconds,
     costCredits: raw.costCredits ?? raw.cost_credits ?? raw.usage?.costCredits,
     usage: raw.usage,
     error: raw.error,
-    hasResult: raw.hasResult ?? Boolean(raw.resultPath),
+    hasResult: raw.hasResult ?? Boolean(raw.resultPath || studyResults),
     resultPath: raw.resultPath,
     metadata: raw.metadata,
+    studyResults,
     steps,
   };
 
@@ -294,16 +355,21 @@ function mapToComputeJob(data: any, fallbackId: string | number): ComputeJob {
 
 export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
   const jobs: UnifiedJob[] = [];
+  const seenDbIds = new Set<string>();
 
   try {
     const cloudRes = await api.get<{ jobs: any[] }>("/cloud/jobs");
     if (cloudRes.data?.jobs && Array.isArray(cloudRes.data.jobs)) {
       for (const j of cloudRes.data.jobs) {
-        const rawCloudId = String(j.jobId ?? j.id ?? "");
-        const prefixedId = rawCloudId.startsWith("cloud-") ? rawCloudId : `cloud-${rawCloudId}`;
+        // Use canonical dbJobId when available so we never duplicate SQLite jobs
+        const canonicalId = j.dbJobId ? String(j.dbJobId) : `cloud-${String(j.jobId ?? j.id ?? "")}`;
+        if (seenDbIds.has(canonicalId)) continue;
+        seenDbIds.add(canonicalId);
+
         jobs.push({
-          id: prefixedId,
-          name: j.name || `Job #${rawCloudId.slice(0, 8)}`,
+          id: j.dbJobId ?? canonicalId,
+          dbJobId: j.dbJobId ?? null,
+          name: j.name || `Job #${canonicalId.slice(0, 8)}`,
           domain: j.domain || "modelica",
           profile: j.profile || "standard",
           status: j.status,
@@ -320,21 +386,22 @@ export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
     const caeRes = await api.get<{ jobs: any[] }>("/cae/user-jobs", { params: { limit } });
     if (caeRes.data?.jobs && Array.isArray(caeRes.data.jobs)) {
       for (const j of caeRes.data.jobs) {
-        const rawCaeId = String(j.id ?? "");
-        const prefixedId = rawCaeId.startsWith("cae-") ? rawCaeId : `cae-${rawCaeId}`;
-        if (!jobs.some((existing) => String(existing.id) === prefixedId || String(existing.id) === rawCaeId)) {
-          jobs.push({
-            id: prefixedId,
-            name: j.name,
-            domain: j.solver === "su2" ? "cfd" : j.solver === "calculix" ? "fea" : "simulation",
-            profile: j.computeProfile || "standard",
-            status: j.status === "SUCCESS" ? "completed" : j.status === "FAILED" ? "failed" : "running",
-            costCredits: j.costCredits,
-            startedAt: j.startedAt,
-            hasVtu: j.hasVtu,
-            hasCsv: j.hasScalars,
-          });
-        }
+        const canonicalId = String(j.id ?? "");
+        if (seenDbIds.has(canonicalId)) continue;
+        seenDbIds.add(canonicalId);
+
+        jobs.push({
+          id: j.id,
+          dbJobId: typeof j.id === "number" ? j.id : Number(j.id) || null,
+          name: j.name,
+          domain: j.solver === "su2" ? "cfd" : j.solver === "calculix" ? "fea" : "simulation",
+          profile: j.computeProfile || "standard",
+          status: j.status === "SUCCESS" ? "completed" : j.status === "FAILED" ? "failed" : "running",
+          costCredits: j.costCredits,
+          startedAt: j.startedAt,
+          hasVtu: j.hasVtu,
+          hasCsv: j.hasScalars,
+        });
       }
     }
   } catch {
@@ -344,15 +411,428 @@ export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
   return jobs;
 };
 
-// ── Background Jobs & Script Templates API ──────────────────────────
+// ── Background Jobs & Engineering Study Templates API ───────────────
 
 export const getDbJobs = async (): Promise<{ jobs: any[] }> => {
   const { data } = await api.get("/jobs");
   return data;
 };
 
-export const getJobTemplates = async (): Promise<{ templates: any[] }> => {
-  const { data } = await api.get("/jobs/templates");
+export type StudyStandardFormat = "sedml" | "ssp-ssv" | "dakota";
+
+export interface StudyInstanceArtifactPayload {
+  standardFormat: StudyStandardFormat;
+  filename: string;
+  fileName?: string | undefined;
+  fileExtension?: ".sedml" | ".ssv" | ".dakota" | undefined;
+  mimeType: string;
+  sourceContent: string;
+  templateSlug: string;
+  templateVersion?: string | undefined;
+  modelId: string;
+  modelName: string;
+  modelDomain: string;
+  packageName?: string | undefined;
+  packageVersion?: string | undefined;
+  executionTarget: string;
+  computeProfile?: string | undefined;
+  inputs: Record<string, number | string | boolean>;
+  parameterBindings: { parameterName: string; nominalValue: number; min?: number; max?: number; unit?: string }[];
+  observables: string[];
+  createdAt: string;
+}
+
+export interface StudyGalleryFilters {
+  q?: string | undefined;
+  sourceType?: string | undefined;
+  standardFormat?: string | undefined;
+  kind?: string | undefined;
+  category?: string | undefined;
+  domain?: string | undefined;
+  target?: string | undefined;
+}
+
+export interface StudyPresetPayload {
+  id: string;
+  label: string;
+  description: string;
+  targetHint?: string | undefined;
+  target?: string | undefined;
+  profile?: "standard" | "high-cpu" | "gpu-a100" | undefined;
+  values: Record<string, number | string | boolean>;
+}
+
+export interface StudyInputFieldPayload {
+  key: string;
+  label: string;
+  type: "number" | "integer" | "select" | "boolean" | "text" | string;
+  unit?: string | undefined;
+  defaultValue: number | string | boolean;
+  min?: number | undefined;
+  max?: number | undefined;
+  step?: number | undefined;
+  options?: { value: string; label: string }[] | undefined;
+  description?: string | undefined;
+  group?: string | undefined;
+}
+
+export interface StudyDefinitionPayload {
+  schemaVersion?: string | undefined;
+  standardFormat?: StudyStandardFormat | undefined;
+  id?: string | undefined;
+  slug: string;
+  name: string;
+  version?: string | undefined;
+  kind?: string | undefined;
+  archetype?: string | undefined;
+  category?: string | undefined;
+  sourceType?: "official" | "package" | "community" | string | undefined;
+  packageName?: string | null | undefined;
+  packageVersion?: string | null | undefined;
+  artifactPath?: string | null | undefined;
+  targetModel?: string | null | undefined;
+  targetArtifact?: string | null | undefined;
+  bundledInRelease?: boolean | undefined;
+  authorUsername?: string | undefined;
+  standardAlignment?: string | undefined;
+  solver?: string | undefined;
+  estimatedDuration?: string | undefined;
+  icon?: string | undefined;
+  description?: string | undefined;
+  tags?: string[] | undefined;
+  featured?: boolean | undefined;
+  starsCount?: number | undefined;
+  runsCount?: number | undefined;
+  modelContract?:
+    | {
+        domains?: string[] | undefined;
+        dialects?: string[] | undefined;
+        parameterSlots?: { slotId: string; label: string; description?: string; unit?: string }[] | undefined;
+        observableSlots?: { slotId: string; label: string; description?: string; unit?: string }[] | undefined;
+      }
+    | undefined;
+  inputs?: StudyInputFieldPayload[] | undefined;
+  presets?: StudyPresetPayload[] | undefined;
+  execution?:
+    | {
+        supportedTargets?: string[] | undefined;
+        defaultTarget?: string | undefined;
+        recommendedSolver?: string | undefined;
+        recommendedProfile?: "wasm-edge" | "standard" | "high-cpu" | "gpu-a100" | string | undefined;
+        estimatedCredits?: number | undefined;
+        pipelineSteps?: string[] | undefined;
+      }
+    | undefined;
+  steps?:
+    | (string | { id?: string; name?: string; title?: string; description?: string; command?: string })[]
+    | undefined;
+}
+
+export interface CompatibleModelItem {
+  id: string;
+  name?: string | undefined;
+  title?: string | undefined;
+  qualifiedName?: string | undefined;
+  modelName?: string | undefined;
+  domain?: string | undefined;
+  dialect?: string | undefined;
+  source?: string | undefined;
+  sourceType?: string | undefined;
+  packageName?: string | undefined;
+  packageVersion?: string | undefined;
+  description?: string | undefined;
+  summary?: string | undefined;
+  parameters: {
+    name: string;
+    type?: string | undefined;
+    defaultValue?: number | string | boolean | undefined;
+    value?: number | undefined;
+    unit?: string | undefined;
+    min?: number | undefined;
+    max?: number | undefined;
+    description?: string | undefined;
+  }[];
+  observables: {
+    name: string;
+    type?: string | undefined;
+    unit?: string | undefined;
+    description?: string | undefined;
+  }[];
+  code?: string | undefined;
+}
+
+export interface StudyEnsembleBand {
+  observable?: string | undefined;
+  variable?: string | undefined;
+  unit?: string | undefined;
+  time?: number[] | undefined;
+  t?: number[] | undefined;
+  mean: number[];
+  p05: number[];
+  p50: number[];
+  p95: number[];
+  min?: number[] | undefined;
+  max?: number[] | undefined;
+}
+
+export interface StudyTimeSeries {
+  time?: number[] | undefined;
+  t?: number[] | undefined;
+  series?: Record<string, number[]> | undefined;
+  variables?: { name: string; unit?: string | undefined; values: number[] }[] | undefined;
+}
+
+export interface StudyRunResultsPayload {
+  studyKind: string;
+  standardFormat?: StudyStandardFormat | undefined;
+  studyInstance?: StudyInstanceArtifactPayload | undefined;
+  templateSlug: string;
+  templateName: string;
+  modelName: string;
+  modelDomain?: string | undefined;
+  packageName?: string | undefined;
+  packageVersion?: string | undefined;
+  executionTarget: string;
+  computeProfile: string;
+  solver: string;
+  sampleCount: number;
+  kpis: {
+    id: string;
+    label: string;
+    value: number | string;
+    unit?: string | undefined;
+    status?: "pass" | "warn" | "fail" | "info" | string | undefined;
+  }[];
+  timeSeries?: StudyTimeSeries | undefined;
+  ensembleBands?: StudyEnsembleBand[] | undefined;
+  sobolIndices?: { parameter: string; firstOrder: number; totalOrder: number }[] | undefined;
+  sweepPoints?:
+    | {
+        sampleIndex: number;
+        parameters: Record<string, number>;
+        metrics: Record<string, number>;
+        status: string;
+        feasible?: boolean | undefined;
+        paretoOptimal?: boolean | undefined;
+      }[]
+    | undefined;
+  complianceMatrix?:
+    | {
+        caseId?: string | undefined;
+        clause?: string | undefined;
+        standardRef?: string | undefined;
+        description?: string | undefined;
+        requirement?: string | undefined;
+        measuredValue?: string | undefined;
+        measured?: string | undefined;
+        limitSpec?: string | undefined;
+        passed?: boolean | undefined;
+        status?: "PASS" | "WARN" | "FAIL" | string | undefined;
+      }[]
+    | undefined;
+  provenance?:
+    | {
+        studySchemaVersion?: string | undefined;
+        templateSlug?: string | undefined;
+        templateVersion?: string | undefined;
+        modelName?: string | undefined;
+        packageName?: string | undefined;
+        packageVersion?: string | undefined;
+        sha256Lock?: string | undefined;
+        sha256LockHash?: string | undefined;
+        completedAt?: string | undefined;
+        executionTarget?: string | undefined;
+        computeProfile?: string | undefined;
+      }
+    | undefined;
+}
+
+export const getJobTemplates = async (
+  filters?: StudyGalleryFilters,
+): Promise<{
+  templates: StudyDefinitionPayload[];
+  studyDefinitions?: StudyDefinitionPayload[];
+  facets?: {
+    bySource: Record<string, number>;
+    byStandard?: Record<string, number>;
+    byKind: Record<string, number>;
+    byCategory: Record<string, number>;
+    byDomain: Record<string, number>;
+    byTarget: Record<string, number>;
+  };
+}> => {
+  const { data } = await api.get("/jobs/templates", { params: filters });
+  return data;
+};
+
+export const createStudyTemplate = async (payload: {
+  name: string;
+  slug?: string;
+  description: string;
+  kind: string;
+  category: string;
+  standardFormat?: StudyStandardFormat;
+  rawStandardContent?: string;
+  filename?: string;
+  packageName?: string;
+  packageVersion?: string;
+  tags?: string[];
+  modelContract?: unknown;
+  inputs?: unknown[];
+  execution?: unknown;
+  outputs?: unknown;
+}): Promise<unknown> => {
+  const { data } = await api.post("/jobs/templates", payload);
+  return data;
+};
+
+export const synthesizeStudyInstance = async (payload: {
+  templateIdOrSlug?: string | number | undefined;
+  templateSlug?: string | number | undefined;
+  standardFormat?: StudyStandardFormat | undefined;
+  modelId?: string | undefined;
+  modelName?: string | undefined;
+  modelDomain?: string | undefined;
+  dialect?: string | undefined;
+  modelCode?: string | undefined;
+  packageName?: string | null | undefined;
+  packageVersion?: string | null | undefined;
+  executionTarget?: string | undefined;
+  computeProfile?: string | undefined;
+  presetId?: string | undefined;
+  inputs?: Record<string, number | string | boolean> | undefined;
+  studyInputs?: Record<string, number | string | boolean> | undefined;
+  parameterOverrides?: Record<string, number> | undefined;
+  observables?: string[] | undefined;
+  saveInstanceToPackage?: string | boolean | undefined;
+}): Promise<{
+  studyDefinition: StudyDefinitionPayload;
+  model: CompatibleModelItem;
+  studyInstance: StudyInstanceArtifactPayload;
+}> => {
+  const { data } = await api.post("/jobs/synthesize", payload);
+  return data;
+};
+
+export const runStudyJob = async (payload: {
+  templateSlug?: string | undefined;
+  templateIdOrSlug?: string | number | undefined;
+  name?: string | undefined;
+  modelName?: string | undefined;
+  modelDomain?: string | undefined;
+  modelCode?: string | undefined;
+  packageName?: string | null | undefined;
+  packageVersion?: string | null | undefined;
+  targetArtifact?: string | undefined;
+  executionTarget?: string | undefined;
+  computeProfile?: string | undefined;
+  standardFormat?: StudyStandardFormat | undefined;
+  inputs?: Record<string, unknown> | undefined;
+  parameterOverrides?: Record<string, number> | undefined;
+  saveInstanceToPackage?: string | boolean | undefined;
+  [key: string]: unknown;
+}): Promise<unknown> => {
+  const { data } = await api.post("/jobs/runs", payload);
+  return data;
+};
+
+export const rerunStudyJob = async (
+  jobId: string | number,
+  overrides?: {
+    executionTarget?: string;
+    computeProfile?: string;
+    inputs?: Record<string, number | string | boolean>;
+    studyInstanceSource?: string;
+  },
+): Promise<unknown> => {
+  const { data } = await api.post(`/jobs/${jobId}/rerun`, overrides || {});
+  return data;
+};
+
+export const saveJobAsStudyTemplate = async (
+  jobId: string | number,
+  payload?: {
+    name?: string;
+    slug?: string;
+    description?: string;
+    packageName?: string;
+    packageVersion?: string;
+    standardFormat?: StudyStandardFormat;
+  },
+): Promise<{
+  id: number;
+  slug: string;
+  studyDefinition: StudyDefinitionPayload;
+  template?: { id: number; slug: string; name: string } | undefined;
+}> => {
+  const { data } = await api.post(`/jobs/${jobId}/save-as-template`, payload || {});
+  return data;
+};
+
+export interface LinkedStudyJobItemPayload {
+  id: number;
+  name: string;
+  status: string;
+  type: string;
+  createdAt: string;
+  completedAt?: string | null | undefined;
+  templateSlug: string;
+  studyKind: string;
+  standardFormat: StudyStandardFormat;
+  modelName: string;
+  modelDomain: string;
+  targetArtifact?: string | null | undefined;
+  packageName?: string | null | undefined;
+  packageVersion?: string | null | undefined;
+  executionTarget: string;
+  computeProfile: string;
+  sampleCount: number;
+  kpis: { id: string; label: string; value: number | string; unit?: string | undefined; status?: string | undefined }[];
+  studyInstance?: StudyInstanceArtifactPayload | undefined;
+}
+
+export const getLinkedPackageStudies = async (params: {
+  package?: string | undefined;
+  version?: string | undefined;
+  artifact?: string | undefined;
+  model?: string | undefined;
+  domain?: string | undefined;
+}): Promise<{
+  bundledStudies: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+  linkedTemplates: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+  compatibleTemplates: (StudyDefinitionPayload & { dbId?: number | undefined })[];
+  linkedJobs: LinkedStudyJobItemPayload[];
+}> => {
+  const { data } = await api.get("/jobs/linked", { params });
+  return data;
+};
+
+export const getJobStudyInstance = async (
+  jobId: string | number,
+): Promise<{ studyInstance: StudyInstanceArtifactPayload }> => {
+  const { data } = await api.get(`/jobs/${jobId}/study-instance`);
+  return data;
+};
+
+export const getCompatibleModels = async (params?: {
+  templateSlug?: string;
+  domain?: string;
+  q?: string;
+  limit?: number;
+}): Promise<{ models: CompatibleModelItem[] }> => {
+  const { data } = await api.get("/jobs/compatible-models", { params });
+  return data;
+};
+
+export const inspectModelSource = async (
+  code: string,
+  modelNameHint?: string,
+): Promise<{
+  modelName: string;
+  parameters: unknown[];
+  observables: unknown[];
+}> => {
+  const { data } = await api.post("/jobs/inspect-model", { code, modelNameHint });
   return data;
 };
 

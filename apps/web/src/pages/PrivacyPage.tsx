@@ -181,7 +181,7 @@ export default function PrivacyPage() {
         <h2>4. Your Rights (GDPR / CCPA)</h2>
         <p>
           You have the right to request an export of your personal data archive or request full account and data
-          deletion at any time via your <Link to="/settings?tab=dataArchive">Account Settings</Link>.
+          deletion at any time via your <Link to="/settings/dataArchive">Account Settings</Link>.
         </p>
       </Section>
     </Container>

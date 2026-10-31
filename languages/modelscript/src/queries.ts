@@ -7,6 +7,7 @@ export type ModelScriptType =
   | { kind: "i32" }
   | { kind: "u32" }
   | { kind: "i64" }
+  | { kind: "f32" }
   | { kind: "f64" }
   | { kind: "bool" }
   | { kind: "string" }
@@ -43,6 +44,7 @@ export function getTypeSizeAndAlign(type: ModelScriptType): { size: number; alig
   switch (type.kind) {
     case "i32":
     case "u32":
+    case "f32":
       return { size: 4, align: 4 };
     case "i64":
     case "f64":
@@ -60,7 +62,7 @@ export function getTypeSizeAndAlign(type: ModelScriptType): { size: number; alig
 }
 
 /**
- * Parses a textual type annotation (e.g., `"f64"`, `"Array<i32>"`, `"Vector3"`)
+ * Parses a textual type annotation (e.g., `"f64"`, `"f32"`, `"u32"`, `"Array<i32>"`, `"Vector3"`)
  * into a structured `ModelScriptType`.
  */
 export function parseTypeName(typeStr: string): ModelScriptType {
@@ -68,6 +70,7 @@ export function parseTypeName(typeStr: string): ModelScriptType {
   if (trimmed === "i32") return { kind: "i32" };
   if (trimmed === "u32") return { kind: "u32" };
   if (trimmed === "i64") return { kind: "i64" };
+  if (trimmed === "f32") return { kind: "f32" };
   if (trimmed === "f64") return { kind: "f64" };
   if (trimmed === "bool") return { kind: "bool" };
   if (trimmed === "string") return { kind: "string" };
@@ -344,8 +347,13 @@ export class ModelScriptQueryEngine {
         break;
       }
       case "UnaryExpression": {
-        const op = node.childForFieldName ? node.childForFieldName("operator")?.text : node.children?.[0]?.text;
-        const operand = node.childForFieldName ? node.childForFieldName("operand") : node.children?.[1];
+        const ch = Array.isArray(node.children)
+          ? node.children
+          : Array.from({ length: node.childCount || 0 }, (_, i) => node.child(i)).filter(
+              (c): c is ModelScriptCstNode => c !== null,
+            );
+        const op = node.childForFieldName?.("operator")?.text ?? ch[0]?.text;
+        const operand = node.childForFieldName?.("operand") ?? ch[1];
         if (op === "!") {
           result = { kind: "bool" };
         } else {
@@ -354,11 +362,16 @@ export class ModelScriptQueryEngine {
         break;
       }
       case "BinaryExpression": {
-        const left = node.childForFieldName ? node.childForFieldName("left") : node.children?.[0];
-        const op = node.childForFieldName ? node.childForFieldName("operator")?.text : node.children?.[1]?.text;
-        const right = node.childForFieldName ? node.childForFieldName("right") : node.children?.[2];
+        const ch = Array.isArray(node.children)
+          ? node.children
+          : Array.from({ length: node.childCount || 0 }, (_, i) => node.child(i)).filter(
+              (c): c is ModelScriptCstNode => c !== null,
+            );
+        const left = node.childForFieldName?.("left") ?? ch[0];
+        const op = node.childForFieldName?.("operator")?.text ?? ch[1]?.text;
+        const right = node.childForFieldName?.("right") ?? ch[2];
 
-        // Relational and logical operators always yield boolean results; arithmetic promotes to f64
+        // Relational and logical operators always yield boolean results; arithmetic promotes across numeric hierarchy
         if (op && ["==", "!=", "<", "<=", ">", ">="].includes(op)) {
           result = { kind: "bool" };
         } else if (op && ["&&", "||"].includes(op)) {
@@ -368,16 +381,28 @@ export class ModelScriptQueryEngine {
           const rType = this.inferExpressionType(right, scope);
           if (lType.kind === "f64" || rType.kind === "f64") {
             result = { kind: "f64" };
-          } else {
+          } else if (lType.kind === "f32" || rType.kind === "f32") {
+            result = { kind: "f32" };
+          } else if (lType.kind === "i64" || rType.kind === "i64") {
+            result = { kind: "i64" };
+          } else if (lType.kind === "u32" || rType.kind === "u32") {
+            result = { kind: "u32" };
+          } else if (lType.kind !== "unknown") {
             result = lType;
+          } else {
+            result = rType;
           }
         }
         break;
       }
       case "ArrayLiteral": {
-        const elements = node.namedChildren || [];
-        if (elements.length > 0) {
-          const elemType = this.inferExpressionType(elements[0], scope);
+        const ch =
+          node.namedChildren ??
+          Array.from({ length: node.childCount || 0 }, (_, i) => node.child(i)).filter(
+            (c): c is ModelScriptCstNode => c !== null && c.type !== "[" && c.type !== "]" && c.type !== ",",
+          );
+        if (ch.length > 0) {
+          const elemType = this.inferExpressionType(ch[0], scope);
           result = { kind: "array", element: elemType };
         } else {
           result = { kind: "array", element: { kind: "unknown" } };
@@ -385,42 +410,87 @@ export class ModelScriptQueryEngine {
         break;
       }
       case "NewExpression": {
+        const ch =
+          node.namedChildren ??
+          Array.from({ length: node.childCount || 0 }, (_, i) => node.child(i)).filter(
+            (c): c is ModelScriptCstNode =>
+              c !== null && c.type !== "new" && c.type !== "(" && c.type !== ")" && c.type !== ",",
+          );
         const ctorName =
           node.childForFieldName?.("constructor")?.text ||
           node.childForFieldName?.("class")?.text ||
-          node.namedChildren?.[0]?.text ||
+          ch[0]?.text ||
           "AnonymousStruct";
         result = { kind: "struct", name: ctorName };
         break;
       }
       case "FLWORExpression": {
-        // A FLWOR query always evaluates to an array of its ReturnClause expression type
-        const returnClause = node.namedChildren?.find((c: ModelScriptCstNode) => c.type === "ReturnClause");
+        const ch =
+          node.namedChildren ??
+          Array.from({ length: node.childCount || 0 }, (_, i) => node.child(i)).filter(
+            (c): c is ModelScriptCstNode => c !== null,
+          );
+        const flworScope = new Map(scope);
+        for (const c of ch) {
+          if (c.type === "ForClause") {
+            const fcChildren = Array.from({ length: c.childCount || 0 }, (_, i) => c.child(i)).filter(
+              (fc): fc is ModelScriptCstNode => fc !== null,
+            );
+            const varNode = c.childForFieldName?.("variable") ?? fcChildren.find((fc) => fc.type === "IDENTIFIER");
+            const inIdx = fcChildren.findIndex((fc) => fc.type === "in");
+            const collNode = c.childForFieldName?.("collection") ?? (inIdx >= 0 ? fcChildren[inIdx + 1] : undefined);
+            if (varNode?.text && collNode) {
+              const collType = this.inferExpressionType(collNode, flworScope);
+              flworScope.set(varNode.text, collType.kind === "array" ? collType.element : { kind: "f64" });
+            }
+          }
+        }
+        const returnClause = ch.find((c: ModelScriptCstNode) => c.type === "ReturnClause");
         if (returnClause) {
+          const rcChildren = Array.from({ length: returnClause.childCount || 0 }, (_, i) =>
+            returnClause.child(i),
+          ).filter((rc): rc is ModelScriptCstNode => rc !== null && rc.type !== "return");
           const expr =
             returnClause.childForFieldName?.("value") ||
             returnClause.childForFieldName?.("expression") ||
-            returnClause.namedChildren?.[0];
-          const itemType = this.inferExpressionType(expr, scope);
+            returnClause.namedChildren?.[0] ||
+            rcChildren[0];
+          const itemType = this.inferExpressionType(expr, flworScope);
           result = { kind: "array", element: itemType };
         }
         break;
       }
       case "PostfixExpression": {
-        const objNode = node.childForFieldName?.("object");
-        const propNode = node.childForFieldName?.("property");
-        const arrNode = node.childForFieldName?.("array");
-        const idxNode = node.childForFieldName?.("index");
+        let objNode = node.childForFieldName?.("object") ?? null;
+        let propNode = node.childForFieldName?.("property") ?? null;
+        let arrNode = node.childForFieldName?.("array") ?? null;
+        let idxNode = node.childForFieldName?.("index") ?? null;
+
+        if (!objNode && !arrNode) {
+          const ch = Array.from({ length: node.childCount || 0 }, (_, i) => node.child(i)).filter(
+            (c): c is ModelScriptCstNode => c !== null,
+          );
+          if (ch.some((c) => c.type === ".")) {
+            objNode = ch[0] ?? null;
+            propNode = ch[2] ?? null;
+          } else if (ch.some((c) => c.type === "[")) {
+            arrNode = ch[0] ?? null;
+            idxNode = ch[2] ?? null;
+          } else if (ch.some((c) => c.type === "(") && ch[0]?.text && scope.has(ch[0].text)) {
+            result = scope.get(ch[0].text)!;
+            break;
+          }
+        }
 
         if (objNode && propNode) {
           const propName = propNode.text || "";
           const objType = this.inferExpressionType(objNode, scope);
-          if (objType.kind === "struct") {
+          if (propName === "length" && (objType.kind === "array" || objType.kind === "string")) {
+            result = { kind: "i32" };
+          } else if (objType.kind === "struct") {
             const layout = this.findStructLayout(objType.name, node);
             const field = layout?.fields.find((f) => f.name === propName);
             result = field ? field.type : { kind: "f64" };
-          } else if (objType.kind === "array" && propName === "length") {
-            result = { kind: "i32" };
           } else {
             const fieldType = this.findFieldInAnyStruct(propName, node);
             result = fieldType ?? { kind: "f64" };

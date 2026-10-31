@@ -877,14 +877,12 @@ export class ValidationService {
       return;
     }
 
-    // Pre-process text if needed (e.g. Modelica 'shape' keyword)
+    // Pre-process text if needed via plugin hook
     let processedText = text;
     if (plugin?.preprocessText) {
       processedText = plugin.preprocessText(text);
     } else if (typeof (globalThis as any).preprocessLanguageText === "function") {
       processedText = (globalThis as any).preprocessLanguageText(langId, text);
-    } else if (langId === "modelica" || uri.endsWith(".mo")) {
-      processedText = text.replace(/\bshape\b/g, "model");
     }
 
     const oldCached = this.documentManager.documentTrees.get(uri);

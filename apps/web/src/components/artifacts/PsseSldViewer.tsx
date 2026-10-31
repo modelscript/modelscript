@@ -218,7 +218,7 @@ function parsePsseRawClient(code: string) {
       const vm = Number.parseFloat(parts[7] || "1.0");
       const va = Number.parseFloat(parts[8] || "0.0") || 0;
       if (id > 0) {
-        buses.push({ id, name, baseKv, type, vm: Number.isNaN(vm) ? 1.0 : vm, va });
+        buses.push({ i: id, name, baseKv, ide: type, vm: Number.isNaN(vm) ? 1.0 : vm, va });
       }
       if (!Number.isNaN(vm) && vm > 0) {
         if (vm < minVm) minVm = vm;
@@ -230,7 +230,7 @@ function parsePsseRawClient(code: string) {
       const ql = Number.parseFloat(parts[6] || "0") || 0;
       if (!Number.isNaN(pl)) {
         loadMw += pl;
-        if (bus > 0) loads.push({ bus, pl, ql, status: 1 });
+        if (bus > 0) loads.push({ i: bus, id: "1", pl, ql, status: 1 });
       }
     } else if (section === 3 && parts.length >= 3) {
       const bus = Number.parseInt(parts[0] || "0", 10);
@@ -238,7 +238,7 @@ function parsePsseRawClient(code: string) {
       const qg = Number.parseFloat(parts[3] || "0") || 0;
       if (!Number.isNaN(pg)) {
         genMw += pg;
-        if (bus > 0) generators.push({ bus, pg, qg, status: 1 });
+        if (bus > 0) generators.push({ i: bus, id: "1", pg, qg, stat: 1 });
       }
     } else if (section === 4 && parts.length >= 4) {
       const fromBus = Number.parseInt(parts[0] || "0", 10);
@@ -246,13 +246,13 @@ function parsePsseRawClient(code: string) {
       const r = Number.parseFloat(parts[3] || "0.01") || 0.01;
       const x = Number.parseFloat(parts[4] || "0.05") || 0.05;
       if (fromBus > 0 && toBus > 0) {
-        branches.push({ fromBus, toBus, r, x, status: 1 });
+        branches.push({ i: fromBus, j: toBus, ckt: "1", r, x, b: 0, st: 1 });
       }
     } else if (section === 5 && parts.length >= 2) {
       const bus1 = Number.parseInt(parts[0] || "0", 10);
       const bus2 = Number.parseInt(parts[1] || "0", 10);
       if (bus1 > 0 && bus2 > 0) {
-        transformers.push({ bus1, bus2, status: 1 });
+        transformers.push({ i: bus1, j: bus2, ckt: "1", stat: 1 });
       }
     }
   }
@@ -311,10 +311,10 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
       parsedClient?.buses && parsedClient.buses.length > 0
         ? parsedClient.buses
         : (viewConfig.buses || []).map((b) => ({
-            id: b.id,
+            i: b.id,
             name: b.name,
             baseKv: b.baseKv,
-            type: 1,
+            ide: 1,
             vm: b.vm,
             va: b.va,
           }));

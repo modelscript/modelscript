@@ -19,6 +19,8 @@ import {
 
 export type { SimulationResultsProps };
 
+const BASELINE_GLOBAL_KEY = "modelscript:simulation-baseline";
+
 export function SimulationResults({
   jobId,
   localData,
@@ -28,7 +30,8 @@ export function SimulationResults({
   selectedVariables,
   onVariablesLoaded,
   colorMode: propColorMode,
-}: SimulationResultsProps) {
+  modelName,
+}: SimulationResultsProps & { modelName?: string | null | undefined }) {
   const { theme } = useTheme();
   const colorMode = propColorMode || (theme === "dark" ? "dark" : "light");
   const [data, setData] = useState<Record<string, number | string>[]>(localData || []);
@@ -40,17 +43,28 @@ export function SimulationResults({
   const [hiddenVars, setHiddenVars] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
+  const baselineScopeKey = modelName || jobId ? `${BASELINE_GLOBAL_KEY}:${modelName || jobId}` : null;
+
   // Baseline comparison state (Run A vs Run B)
   const [baselineData, setBaselineData] = useState<Record<string, number | string>[] | null>(() => {
     try {
-      const stored = sessionStorage.getItem("modelscript:simulation-baseline");
+      const stored =
+        (baselineScopeKey ? sessionStorage.getItem(baselineScopeKey) : null) ??
+        sessionStorage.getItem(BASELINE_GLOBAL_KEY);
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
     }
   });
   const [isComparingBaseline, setIsComparingBaseline] = useState<boolean>(() => {
-    return !!sessionStorage.getItem("modelscript:simulation-baseline");
+    try {
+      return Boolean(
+        (baselineScopeKey ? sessionStorage.getItem(baselineScopeKey) : null) ??
+        sessionStorage.getItem(BASELINE_GLOBAL_KEY),
+      );
+    } catch {
+      return false;
+    }
   });
 
   // Dual-cursor measurement state (C1, C2, dt, frequency, slope)
@@ -206,34 +220,71 @@ export function SimulationResults({
     return { chartData: data, minMaxMap: minMax };
   }, [data, isNormalized, selectedVariables]);
 
-  // Merge baseline trajectory into chartData if comparison is active
+  // Merge baseline trajectory into chartData if comparison is active (with linear interpolation for mismatched solver timestamps)
   const mergedChartData = useMemo(() => {
     if (!baselineData || !isComparingBaseline || !chartData.length) {
       return chartData;
     }
     const baselineMap = new Map<string, Record<string, number | string>>();
+    const sortedBaseline: { t: number; row: Record<string, number | string> }[] = [];
     for (const bRow of baselineData) {
       const t = Number(bRow.time);
       if (!isNaN(t)) {
         baselineMap.set(t.toFixed(4), bRow);
+        sortedBaseline.push({ t, row: bRow });
       }
     }
+    sortedBaseline.sort((a, b) => a.t - b.t);
+
+    const interpolateBaselineValue = (tTarget: number, varName: string): number | string | undefined => {
+      const exactRow = baselineMap.get(tTarget.toFixed(4));
+      if (exactRow && exactRow[varName] !== undefined) {
+        return exactRow[varName];
+      }
+      if (sortedBaseline.length === 0) return undefined;
+      const tMin = sortedBaseline[0]!.t;
+      const tMax = sortedBaseline[sortedBaseline.length - 1]!.t;
+      if (tTarget < tMin || tTarget > tMax) return undefined;
+      if (sortedBaseline.length === 1) {
+        return sortedBaseline[0]!.row[varName];
+      }
+
+      let lo = 0;
+      let hi = sortedBaseline.length - 1;
+      while (lo + 1 < hi) {
+        const mid = (lo + hi) >> 1;
+        if (sortedBaseline[mid]!.t <= tTarget) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      const p0 = sortedBaseline[lo]!;
+      const p1 = sortedBaseline[hi]!;
+      const v0 = Number(p0.row[varName]);
+      const v1 = Number(p1.row[varName]);
+      if (!Number.isFinite(v0) || !Number.isFinite(v1)) {
+        return p0.row[varName] ?? p1.row[varName];
+      }
+      const span = p1.t - p0.t;
+      if (Math.abs(span) < 1e-12) return v0;
+      const alpha = (tTarget - p0.t) / span;
+      return v0 + alpha * (v1 - v0);
+    };
 
     return chartData.map((row, idx) => {
       const t = Number(row.time);
-      const bRow = !isNaN(t) ? baselineMap.get(t.toFixed(4)) : baselineData[idx];
       const merged: Record<string, number | string> = { ...row };
-      if (bRow) {
-        for (const v of selectedVariables) {
-          if (bRow[v] !== undefined) {
-            const rawBVal = Number(bRow[v]);
-            const mm = minMaxMap[v];
-            if (isNormalized && !isNaN(rawBVal) && mm) {
-              merged[`_raw_${v} [Baseline]`] = rawBVal;
-              merged[`${v} [Baseline]`] = ((rawBVal - mm.min) / (mm.max - mm.min || 1)) * 100;
-            } else {
-              merged[`${v} [Baseline]`] = bRow[v];
-            }
+      for (const v of selectedVariables) {
+        const bVal = !isNaN(t) ? interpolateBaselineValue(t, v) : baselineData[idx]?.[v];
+        if (bVal !== undefined) {
+          const rawBVal = Number(bVal);
+          const mm = minMaxMap[v];
+          if (isNormalized && !isNaN(rawBVal) && mm) {
+            merged[`_raw_${v} [Baseline]`] = rawBVal;
+            merged[`${v} [Baseline]`] = ((rawBVal - mm.min) / (mm.max - mm.min || 1)) * 100;
+          } else {
+            merged[`${v} [Baseline]`] = bVal;
           }
         }
       }
@@ -244,7 +295,11 @@ export function SimulationResults({
   const handlePinBaseline = () => {
     if (!data.length) return;
     try {
-      sessionStorage.setItem("modelscript:simulation-baseline", JSON.stringify(data));
+      const serialized = JSON.stringify(data);
+      if (baselineScopeKey) {
+        sessionStorage.setItem(baselineScopeKey, serialized);
+      }
+      sessionStorage.setItem(BASELINE_GLOBAL_KEY, serialized);
     } catch {}
     setBaselineData([...data]);
     setIsComparingBaseline(true);
@@ -252,7 +307,10 @@ export function SimulationResults({
 
   const handleClearBaseline = () => {
     try {
-      sessionStorage.removeItem("modelscript:simulation-baseline");
+      if (baselineScopeKey) {
+        sessionStorage.removeItem(baselineScopeKey);
+      }
+      sessionStorage.removeItem(BASELINE_GLOBAL_KEY);
     } catch {}
     setBaselineData(null);
     setIsComparingBaseline(false);
@@ -332,10 +390,84 @@ export function SimulationResults({
     return { t1, t2, dt, freq, deltas };
   }, [cursor1Time, cursor2Time, data, selectedVariables]);
 
+  const getValuesAtTime = (tTarget: number): Record<string, number> => {
+    const values: Record<string, number> = {};
+    if (!data.length) return values;
+    let closest = data[0]!;
+    let minDiff = Math.abs(Number(closest.time) - tTarget);
+    for (let i = 1; i < data.length; i++) {
+      const diff = Math.abs(Number(data[i]!.time) - tTarget);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = data[i]!;
+      }
+    }
+    const varsToExtract = activeVariables.length > 0 ? activeVariables : selectedVariables;
+    for (const v of varsToExtract) {
+      const numVal = Number(closest[v]);
+      if (Number.isFinite(numVal)) {
+        values[v] = numVal;
+      }
+    }
+    for (const [k, rawVal] of Object.entries(closest)) {
+      if (k !== "time" && !(k in values)) {
+        const numVal = Number(rawVal);
+        if (Number.isFinite(numVal)) {
+          values[k] = numVal;
+        }
+      }
+    }
+    return values;
+  };
+
+  const dispatchTimeScrub = (t: number | null) => {
+    if (typeof window === "undefined") return;
+    if (t === null || !Number.isFinite(t)) {
+      window.dispatchEvent(new CustomEvent("morsel:time-scrub", { detail: { time: null, values: null } }));
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("morsel:time-scrub", { detail: { time: t, values: getValuesAtTime(t) } }));
+  };
+
+  const handlePlotMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!data.length) return;
+    const tStart = Number(data[0]!.time);
+    const tEnd = Number(data[data.length - 1]!.time);
+    if (!Number.isFinite(tStart) || !Number.isFinite(tEnd)) return;
+
+    const gridEl =
+      e.currentTarget.querySelector(".recharts-cartesian-grid") ??
+      e.currentTarget.querySelector(".recharts-surface") ??
+      e.currentTarget;
+    const rect = gridEl.getBoundingClientRect();
+    if (rect.width <= 0) return;
+
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const rawT = tStart + ratio * (tEnd - tStart);
+    let nearestT = rawT;
+    let minDiff = Infinity;
+    for (let i = 0; i < data.length; i++) {
+      const rowT = Number(data[i]!.time);
+      const diff = Math.abs(rowT - rawT);
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearestT = rowT;
+      }
+    }
+    dispatchTimeScrub(nearestT);
+  };
+
+  const handlePlotMouseLeave = () => {
+    dispatchTimeScrub(null);
+  };
+
   const handleChartClick = (e: any) => {
-    if (!cursorMode || !e || e.activeLabel === undefined) return;
+    if (!e || e.activeLabel === undefined) return;
     const t = Number(e.activeLabel);
     if (isNaN(t)) return;
+
+    dispatchTimeScrub(t);
+    if (!cursorMode) return;
 
     if (activeCursorPlacement === 1 || cursor1Time === null) {
       setCursor1Time(t);
@@ -350,6 +482,7 @@ export function SimulationResults({
     setCursor1Time(null);
     setCursor2Time(null);
     setActiveCursorPlacement(1);
+    dispatchTimeScrub(null);
   };
 
   const handleExportCsv = () => {
@@ -510,25 +643,31 @@ export function SimulationResults({
       />
 
       {/* Main Plot Area */}
-      <TrajectoryChart
-        mergedChartData={mergedChartData}
-        rawData={data}
-        xAxisVar={xAxisVar}
-        isNormalized={isNormalized}
-        isLogScale={isLogScale}
-        colorMode={colorMode}
-        minMaxMap={minMaxMap}
-        isComparingBaseline={isComparingBaseline}
-        cursorMode={cursorMode}
-        cursor1Time={cursor1Time}
-        cursor2Time={cursor2Time}
-        activeVariables={activeVariables}
-        selectedVariables={selectedVariables}
-        sweepResults={sweepResults}
-        baselineData={baselineData}
-        colors={SIMULATION_COLORS}
-        onChartClick={handleChartClick}
-      />
+      <div
+        style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}
+        onMouseMove={handlePlotMouseMove}
+        onMouseLeave={handlePlotMouseLeave}
+      >
+        <TrajectoryChart
+          mergedChartData={mergedChartData}
+          rawData={data}
+          xAxisVar={xAxisVar}
+          isNormalized={isNormalized}
+          isLogScale={isLogScale}
+          colorMode={colorMode}
+          minMaxMap={minMaxMap}
+          isComparingBaseline={isComparingBaseline}
+          cursorMode={cursorMode}
+          cursor1Time={cursor1Time}
+          cursor2Time={cursor2Time}
+          activeVariables={activeVariables}
+          selectedVariables={selectedVariables}
+          sweepResults={sweepResults}
+          baselineData={baselineData}
+          colors={SIMULATION_COLORS}
+          onChartClick={handleChartClick}
+        />
+      </div>
 
       {/* Collapsible Statistical Summary Drawer */}
       <StatisticsDrawer

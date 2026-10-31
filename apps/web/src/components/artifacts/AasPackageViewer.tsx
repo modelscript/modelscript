@@ -61,7 +61,8 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
     >
       {/* ── Top Header Bar ────────────────────────────────────────── */}
       <Box
-        p={3}
+        px={3}
+        py={isFullScreen ? 2 : 3}
         bg="var(--color-canvas-default)"
         borderBottom="1px solid var(--color-border-default)"
         display="flex"
@@ -71,14 +72,16 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
         gap={2}
       >
         <Box display="flex" alignItems="center" gap={2}>
-          <Box p={2} bg="rgba(139, 92, 246, 0.12)" borderRadius="8px">
-            <PackageIcon size={20} fill="var(--color-accent-purple)" />
+          <Box p="6px" bg="rgba(139, 92, 246, 0.12)" borderRadius="8px">
+            <PackageIcon size={16} fill="var(--color-accent-purple)" />
           </Box>
           <Box>
             <Box display="flex" alignItems="center" gap={2}>
-              <Text fontSize={3} fontWeight="bold">
-                {manifest.title || viewConfig.packageName}
-              </Text>
+              {!isFullScreen && (
+                <Text fontSize={2} fontWeight="bold">
+                  {manifest.title || viewConfig.packageName}
+                </Text>
+              )}
               <Text
                 fontSize={1}
                 px={2}

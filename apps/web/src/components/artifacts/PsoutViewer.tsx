@@ -39,14 +39,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 38px;
+  min-height: 38px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default, #30363d);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -173,8 +173,8 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <PulseIcon size={16} fill="#c084fc" />
-          <ModelTitle>{title}</ModelTitle>
+          <PulseIcon size={15} fill="#c084fc" />
+          {!isFullScreen && <ModelTitle>{title}</ModelTitle>}
           <PillBadge>PSOUT Waveform ({channels.length} ch)</PillBadge>
         </HeaderLeft>
 
@@ -226,7 +226,7 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
             </button>
           </Box>
 
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"

@@ -26,6 +26,7 @@ export interface ScheduledTask {
   period?: number;
   nextTriggerTime: number;
   eventType: "TIMING-EVENT" | "DATA-RECEIVED-EVENT" | "INIT-EVENT";
+  dataReceivePointRef?: { port: string; dataElement: string } | undefined;
 }
 
 /**
@@ -38,9 +39,18 @@ export class VirtualRte {
   private implementations: Map<string, RunnableImplementation> = new Map(); // "swc.runnable"
   private tasks: ScheduledTask[] = [];
   private executionLog: VirtualRteLogEntry[] = [];
+  private protoToTypeMap: Map<string, string> = new Map();
 
   constructor(model: AutosarModel) {
     this.model = model;
+    for (const comp of this.model.components.values()) {
+      if (comp.subComponents) {
+        for (const [protoName, proto] of comp.subComponents) {
+          const typeName = proto.typeRef.split("/").pop() ?? proto.typeRef;
+          this.protoToTypeMap.set(protoName, typeName);
+        }
+      }
+    }
     this.initScheduler();
   }
 
@@ -73,8 +83,36 @@ export class VirtualRte {
             nextTriggerTime: 0.0,
             eventType: "INIT-EVENT",
           });
+        } else if (ev.kind === "DATA-RECEIVED-EVENT") {
+          this.tasks.push({
+            swcName,
+            runnableName: runnable.shortName,
+            runnable,
+            nextTriggerTime: Number.POSITIVE_INFINITY,
+            eventType: "DATA-RECEIVED-EVENT",
+            dataReceivePointRef: ev.dataReceivePointRef,
+          });
         }
       }
+    }
+  }
+
+  private notifyDataReceived(swcOrProto: string | undefined, port: string, dataElement: string): void {
+    const resolvedSwc = swcOrProto ? (this.protoToTypeMap.get(swcOrProto) ?? swcOrProto) : undefined;
+    for (const t of this.tasks) {
+      if (t.eventType !== "DATA-RECEIVED-EVENT") continue;
+      if (resolvedSwc && t.swcName !== resolvedSwc && t.swcName !== swcOrProto) continue;
+      if (t.dataReceivePointRef) {
+        if (t.dataReceivePointRef.port && t.dataReceivePointRef.port !== port) continue;
+        if (t.dataReceivePointRef.dataElement && t.dataReceivePointRef.dataElement !== dataElement) continue;
+      } else {
+        // Fallback: check runnable's dataReadAccess
+        const matchesRead = t.runnable.dataReadAccess.some(
+          (r) => r.port === port && (!r.dataElement || r.dataElement === dataElement),
+        );
+        if (!matchesRead) continue;
+      }
+      t.nextTriggerTime = this.currentTime;
     }
   }
 
@@ -91,6 +129,10 @@ export class VirtualRte {
   public setSignal(port: string, dataElement: string, value: number | string, swcName?: string): void {
     if (swcName) {
       this.buffers.set(this.bufferKey(swcName, port, dataElement), value);
+      const resolvedSwc = this.protoToTypeMap.get(swcName);
+      if (resolvedSwc) {
+        this.buffers.set(this.bufferKey(resolvedSwc, port, dataElement), value);
+      }
     }
     this.buffers.set(`${port}.${dataElement}`, value);
   }
@@ -102,6 +144,11 @@ export class VirtualRte {
     if (swcName) {
       const val = this.buffers.get(this.bufferKey(swcName, port, dataElement));
       if (val !== undefined) return val;
+      const resolvedSwc = this.protoToTypeMap.get(swcName);
+      if (resolvedSwc) {
+        const resVal = this.buffers.get(this.bufferKey(resolvedSwc, port, dataElement));
+        if (resVal !== undefined) return resVal;
+      }
     }
     return this.buffers.get(`${port}.${dataElement}`);
   }
@@ -128,14 +175,14 @@ export class VirtualRte {
       if (!earliestTask) break;
 
       this.currentTime = earliestTask.nextTriggerTime;
-      this.executeTask(earliestTask);
-
       if (earliestTask.period !== undefined && earliestTask.period > 0) {
         earliestTask.nextTriggerTime += earliestTask.period;
       } else {
-        // One-shot event
+        // One-shot or event-driven trigger
         earliestTask.nextTriggerTime = Number.POSITIVE_INFINITY;
       }
+
+      this.executeTask(earliestTask);
     }
 
     this.currentTime = targetTime;
@@ -158,7 +205,7 @@ export class VirtualRte {
       write: (port: string, dataElement: string, value: number | string) => {
         writes[`${port}.${dataElement}`] = value;
         this.setSignal(port, dataElement, value, task.swcName);
-        this.routeConnectedPorts(task.swcName, port, dataElement, value);
+        this.routeConnectedPorts(task.swcName, port, dataElement, value, new Set());
       },
     };
 
@@ -184,8 +231,18 @@ export class VirtualRte {
     });
   }
 
-  private routeConnectedPorts(srcComp: string, srcPort: string, dataElement: string, value: number | string): void {
-    // Route value across compositions containing connectors
+  private routeConnectedPorts(
+    srcComp: string,
+    srcPort: string,
+    dataElement: string,
+    value: number | string,
+    visited: Set<string>,
+  ): void {
+    const visitKey = `${srcComp}.${srcPort}.${dataElement}`;
+    if (visited.has(visitKey)) return;
+    visited.add(visitKey);
+
+    // Route value across compositions containing assembly and delegation connectors
     for (const comp of this.model.components.values()) {
       if (comp.kind === "COMPOSITION-SW-COMPONENT-TYPE" && comp.connectors) {
         for (const conn of comp.connectors) {
@@ -200,10 +257,41 @@ export class VirtualRte {
               if (conn.requirer.port) {
                 if (conn.requirer.component) {
                   this.setSignal(conn.requirer.port, dataElement, value, conn.requirer.component);
+                  this.notifyDataReceived(conn.requirer.component, conn.requirer.port, dataElement);
+                  this.routeConnectedPorts(conn.requirer.component, conn.requirer.port, dataElement, value, visited);
                 }
-                if (reqTypeName) {
+                if (reqTypeName && reqTypeName !== conn.requirer.component) {
                   this.setSignal(conn.requirer.port, dataElement, value, reqTypeName);
+                  this.notifyDataReceived(reqTypeName, conn.requirer.port, dataElement);
+                  this.routeConnectedPorts(reqTypeName, conn.requirer.port, dataElement, value, visited);
                 }
+              }
+            }
+          } else if (conn.kind === "DELEGATION-SW-CONNECTOR" && conn.outerPort && conn.innerPort?.port) {
+            const innerProto = comp.subComponents?.get(conn.innerPort.component ?? "");
+            const innerTypeName = innerProto?.typeRef.split("/").pop() ?? conn.innerPort.component;
+
+            // Outward delegation: inner component P-port -> composition outer P-port
+            if (
+              (conn.innerPort.component === srcComp || innerTypeName === srcComp) &&
+              conn.innerPort.port === srcPort
+            ) {
+              this.setSignal(conn.outerPort, dataElement, value, comp.shortName);
+              this.notifyDataReceived(comp.shortName, conn.outerPort, dataElement);
+              this.routeConnectedPorts(comp.shortName, conn.outerPort, dataElement, value, visited);
+            }
+
+            // Inward delegation: composition outer R-port -> inner component R-port
+            if (comp.shortName === srcComp && conn.outerPort === srcPort) {
+              if (conn.innerPort.component) {
+                this.setSignal(conn.innerPort.port, dataElement, value, conn.innerPort.component);
+                this.notifyDataReceived(conn.innerPort.component, conn.innerPort.port, dataElement);
+                this.routeConnectedPorts(conn.innerPort.component, conn.innerPort.port, dataElement, value, visited);
+              }
+              if (innerTypeName && innerTypeName !== conn.innerPort.component) {
+                this.setSignal(conn.innerPort.port, dataElement, value, innerTypeName);
+                this.notifyDataReceived(innerTypeName, conn.innerPort.port, dataElement);
+                this.routeConnectedPorts(innerTypeName, conn.innerPort.port, dataElement, value, visited);
               }
             }
           }

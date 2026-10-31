@@ -8,10 +8,11 @@
  * and MNA matrix stamping.
  */
 
-import type { OperatingPoint, SpiceCircuit } from "../types.js";
+import type { OperatingPoint, SpiceCircuit, SpiceComponent } from "../types.js";
 import {
   DenseLU,
   DenseMatrix,
+  type MnaIndexing,
   buildMnaIndexing,
   flattenSpiceCircuit,
   solveLinearSystem,
@@ -111,63 +112,45 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
       if (i1 >= 0 && c2 >= 0) baseMatrix.add(i1, c2, -gm);
       if (i2 >= 0 && c1 >= 0) baseMatrix.add(i2, c1, -gm);
       if (i2 >= 0 && c2 >= 0) baseMatrix.add(i2, c2, gm);
+    } else if (comp.kind === "F" && comp.controlSource) {
+      // CCCS: I(n1->n2) = gain * I(V_ctrl)
+      const cBranchIdx = findBranchIndex(indexing.branchToIdx, comp.controlSource);
+      if (cBranchIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        const gain = comp.gain ?? comp.value ?? 1.0;
+        if (i1 >= 0) baseMatrix.add(i1, cBranchIdx, gain);
+        if (i2 >= 0) baseMatrix.add(i2, cBranchIdx, -gain);
+      }
+    } else if (comp.kind === "H" && comp.controlSource) {
+      // CCVS: V(n1) - V(n2) - gain * I(V_ctrl) = 0
+      const bIdx = indexing.branchToIdx.get(comp.name);
+      const cBranchIdx = findBranchIndex(indexing.branchToIdx, comp.controlSource);
+      if (bIdx !== undefined) {
+        const i1 = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+        const i2 = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+        const gain = comp.gain ?? comp.value ?? 1.0;
+        if (i1 >= 0) {
+          baseMatrix.add(i1, bIdx, 1.0);
+          baseMatrix.add(bIdx, i1, 1.0);
+        }
+        if (i2 >= 0) {
+          baseMatrix.add(i2, bIdx, -1.0);
+          baseMatrix.add(bIdx, i2, -1.0);
+        }
+        if (cBranchIdx !== undefined) {
+          baseMatrix.add(bIdx, cBranchIdx, -gain);
+        }
+      }
     }
   }
 
   // 2. Pre-extract and cache semiconductor parameters and integer node indices
-  const precomputedDiodes: PrecomputedDiode[] = [];
-  const precomputedBjts: PrecomputedBjt[] = [];
-  const precomputedMosfets: PrecomputedMosfet[] = [];
-
-  for (const comp of components) {
-    if (comp.kind === "D") {
-      const modelName = (comp.model ?? "").toUpperCase();
-      const model = circuit.models.get(modelName);
-      const Is = model?.params.get("IS") ?? DEFAULT_DIODE_IS;
-      const N = model?.params.get("N") ?? DEFAULT_DIODE_N;
-      const nVt = N * THERMAL_VOLTAGE_VT;
-      const n1 = comp.nodes[0] ?? "";
-      const n2 = comp.nodes[1] ?? "";
-      const iAnode = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
-      const iCathode = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
-      precomputedDiodes.push({ iAnode, iCathode, Is, nVt });
-    } else if (comp.kind === "Q") {
-      const modelName = (comp.model ?? "").toUpperCase();
-      const model = circuit.models.get(modelName);
-      const betaF = model?.params.get("BF") ?? 100.0;
-      const Is = model?.params.get("IS") ?? 1e-14;
-      const colNode = comp.nodes[0] ?? "";
-      const baseNode = comp.nodes[1] ?? "";
-      const emitNode = comp.nodes[2] ?? "";
-      const iCol = indexing.nodeToIdx.get(colNode.toUpperCase()) ?? -1;
-      const iBase = indexing.nodeToIdx.get(baseNode.toUpperCase()) ?? -1;
-      const iEmit = indexing.nodeToIdx.get(emitNode.toUpperCase()) ?? -1;
-      precomputedBjts.push({ iCol, iBase, iEmit, betaF, Is });
-    } else if (comp.kind === "M") {
-      const modelName = (comp.model ?? "").toUpperCase();
-      const model = circuit.models.get(modelName);
-      const isPmos = model?.type === "PMOS";
-      const Vth = model?.params.get("VTO") ?? (isPmos ? -0.7 : 0.7);
-      const Kp = model?.params.get("KP") ?? 1e-4;
-      const W = Number(comp.params.get("W") ?? 10e-6);
-      const L = Number(comp.params.get("L") ?? 1e-6);
-      const beta = Kp * (W / L);
-      const drainNode = comp.nodes[0] ?? "";
-      const gateNode = comp.nodes[1] ?? "";
-      const sourceNode = comp.nodes[2] ?? "";
-      const iDrain = indexing.nodeToIdx.get(drainNode.toUpperCase()) ?? -1;
-      const iGate = indexing.nodeToIdx.get(gateNode.toUpperCase()) ?? -1;
-      const iSource = indexing.nodeToIdx.get(sourceNode.toUpperCase()) ?? -1;
-      precomputedMosfets.push({
-        iDrain,
-        iGate,
-        iSource,
-        isPmos,
-        absVth: Math.abs(Vth),
-        beta,
-      });
-    }
-  }
+  const {
+    diodes: precomputedDiodes,
+    bjts: precomputedBjts,
+    mosfets: precomputedMosfets,
+  } = extractPrecomputedNonlinearDevices(components, circuit, indexing);
 
   const matrix = new DenseMatrix(indexing.totalSize);
   const rhs = new Float64Array(indexing.totalSize);
@@ -245,14 +228,14 @@ export function solveOp(circuit: SpiceCircuit, options?: OpSolverOptions): Opera
 // Non-Linear Semiconductor Companions (Pre-computed Zero-Lookup)
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface PrecomputedDiode {
+export interface PrecomputedDiode {
   iAnode: number;
   iCathode: number;
   Is: number;
   nVt: number;
 }
 
-interface PrecomputedBjt {
+export interface PrecomputedBjt {
   iCol: number;
   iBase: number;
   iEmit: number;
@@ -260,7 +243,7 @@ interface PrecomputedBjt {
   Is: number;
 }
 
-interface PrecomputedMosfet {
+export interface PrecomputedMosfet {
   iDrain: number;
   iGate: number;
   iSource: number;
@@ -269,7 +252,89 @@ interface PrecomputedMosfet {
   beta: number;
 }
 
-function stampPrecomputedDiode(
+export function findBranchIndex(branchToIdx: Map<string, number>, name: string): number | undefined {
+  const direct = branchToIdx.get(name);
+  if (direct !== undefined) return direct;
+  const upper = name.toUpperCase();
+  for (const [k, v] of branchToIdx) {
+    if (k.toUpperCase() === upper) return v;
+  }
+  return undefined;
+}
+
+export function extractPrecomputedNonlinearDevices(
+  components: SpiceComponent[],
+  circuit: SpiceCircuit,
+  indexing: MnaIndexing,
+): {
+  diodes: PrecomputedDiode[];
+  bjts: PrecomputedBjt[];
+  mosfets: PrecomputedMosfet[];
+  hasNonlinear: boolean;
+} {
+  const diodes: PrecomputedDiode[] = [];
+  const bjts: PrecomputedBjt[] = [];
+  const mosfets: PrecomputedMosfet[] = [];
+
+  for (const comp of components) {
+    if (comp.kind === "D") {
+      const modelName = (comp.model ?? "").toUpperCase();
+      const model = circuit.models.get(modelName);
+      const Is = model?.params.get("IS") ?? DEFAULT_DIODE_IS;
+      const N = model?.params.get("N") ?? DEFAULT_DIODE_N;
+      const nVt = N * THERMAL_VOLTAGE_VT;
+      const n1 = comp.nodes[0] ?? "";
+      const n2 = comp.nodes[1] ?? "";
+      const iAnode = indexing.nodeToIdx.get(n1.toUpperCase()) ?? -1;
+      const iCathode = indexing.nodeToIdx.get(n2.toUpperCase()) ?? -1;
+      diodes.push({ iAnode, iCathode, Is, nVt });
+    } else if (comp.kind === "Q") {
+      const modelName = (comp.model ?? "").toUpperCase();
+      const model = circuit.models.get(modelName);
+      const betaF = model?.params.get("BF") ?? 100.0;
+      const Is = model?.params.get("IS") ?? 1e-14;
+      const colNode = comp.nodes[0] ?? "";
+      const baseNode = comp.nodes[1] ?? "";
+      const emitNode = comp.nodes[2] ?? "";
+      const iCol = indexing.nodeToIdx.get(colNode.toUpperCase()) ?? -1;
+      const iBase = indexing.nodeToIdx.get(baseNode.toUpperCase()) ?? -1;
+      const iEmit = indexing.nodeToIdx.get(emitNode.toUpperCase()) ?? -1;
+      bjts.push({ iCol, iBase, iEmit, betaF, Is });
+    } else if (comp.kind === "M") {
+      const modelName = (comp.model ?? "").toUpperCase();
+      const model = circuit.models.get(modelName);
+      const isPmos = model?.type === "PMOS";
+      const Vth = model?.params.get("VTO") ?? (isPmos ? -0.7 : 0.7);
+      const Kp = model?.params.get("KP") ?? 1e-4;
+      const W = Number(comp.params.get("W") ?? 10e-6);
+      const L = Number(comp.params.get("L") ?? 1e-6);
+      const beta = Kp * (W / L);
+      const drainNode = comp.nodes[0] ?? "";
+      const gateNode = comp.nodes[1] ?? "";
+      const sourceNode = comp.nodes[2] ?? "";
+      const iDrain = indexing.nodeToIdx.get(drainNode.toUpperCase()) ?? -1;
+      const iGate = indexing.nodeToIdx.get(gateNode.toUpperCase()) ?? -1;
+      const iSource = indexing.nodeToIdx.get(sourceNode.toUpperCase()) ?? -1;
+      mosfets.push({
+        iDrain,
+        iGate,
+        iSource,
+        isPmos,
+        absVth: Math.abs(Vth),
+        beta,
+      });
+    }
+  }
+
+  return {
+    diodes,
+    bjts,
+    mosfets,
+    hasNonlinear: diodes.length > 0 || bjts.length > 0 || mosfets.length > 0,
+  };
+}
+
+export function stampPrecomputedDiode(
   matrix: DenseMatrix,
   rhs: Float64Array,
   diode: PrecomputedDiode,
@@ -302,7 +367,7 @@ function stampPrecomputedDiode(
   if (iCathode >= 0) rhs[iCathode] = (rhs[iCathode] ?? 0) + ieq;
 }
 
-function stampPrecomputedBjt(
+export function stampPrecomputedBjt(
   matrix: DenseMatrix,
   rhs: Float64Array,
   bjt: PrecomputedBjt,
@@ -344,7 +409,7 @@ function stampPrecomputedBjt(
   if (iEmit >= 0) rhs[iEmit] = (rhs[iEmit] ?? 0) + ieqCol;
 }
 
-function stampPrecomputedMosfet(
+export function stampPrecomputedMosfet(
   matrix: DenseMatrix,
   rhs: Float64Array,
   mos: PrecomputedMosfet,

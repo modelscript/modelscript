@@ -42,12 +42,13 @@ import {
   getGitlabFileRaw,
   getGitlabTags,
   getGitlabTree,
+  readSavedFilesMap,
   saveRepositoryFile,
 } from "../../../api";
 import Box from "../../../components/Box";
 import CloudSimulationModal from "../../../components/CloudSimulationModal";
 import { useToast } from "../../../components/ToastContext";
-import { useFeatureFlag } from "../../../FeatureFlagContext";
+import { useFeatureFlag, useLanguageEnabled } from "../../../FeatureFlagContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import CommitInfoBar from "../components/CommitInfoBar";
@@ -68,15 +69,81 @@ export interface CodeTabProps {
   provider: string;
 }
 
+function isLikelyFilePath(pathStr: string): boolean {
+  if (!pathStr) return false;
+  const base = pathStr.split("/").pop() || "";
+  if (/^(readme|license|cmakelists\.txt|makefile|dockerfile)$/i.test(base)) return true;
+  return /\.[a-z0-9]{1,8}$/i.test(base);
+}
+
+function matchCommitForTreeNode(
+  node: GitlabTreeNode,
+  commits: GitlabCommit[],
+  savedFiles: Record<string, string>,
+): GitlabCommit | undefined {
+  if (commits.length === 0) return undefined;
+  const nodePathLower = node.path.toLowerCase();
+  const nodeNameLower = node.name.toLowerCase();
+  const stem = nodeNameLower.replace(/\.[^.]+$/, "");
+
+  const matched = commits.find((c) => {
+    if (c.file_path) {
+      const fp = c.file_path.toLowerCase();
+      if (fp === nodePathLower || (node.type === "tree" && fp.startsWith(`${nodePathLower}/`))) {
+        return true;
+      }
+    }
+    if (Array.isArray(c.paths)) {
+      if (
+        c.paths.some((p) => {
+          const pl = p.toLowerCase();
+          return pl === nodePathLower || (node.type === "tree" && pl.startsWith(`${nodePathLower}/`));
+        })
+      ) {
+        return true;
+      }
+    }
+    const text = `${c.title || ""} ${c.message || ""}`.toLowerCase();
+    if (text.includes(nodePathLower) || text.includes(nodeNameLower)) {
+      return true;
+    }
+    if (stem.length >= 4 && text.includes(stem)) {
+      return true;
+    }
+    if ((stem === "readme" || stem === "doc" || stem === "docs") && text.includes("documentation")) {
+      return true;
+    }
+    return false;
+  });
+
+  if (matched) return matched;
+
+  const isEditedInSaved =
+    savedFiles[node.path] !== undefined ||
+    (node.type === "tree" && Object.keys(savedFiles).some((k) => k.startsWith(`${node.path}/`)));
+  if (isEditedInSaved) {
+    return commits[0];
+  }
+
+  return commits[0];
+}
+
 export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const currentPath = searchParams.get("path") || "";
-  const currentFile = searchParams.get("file") || null;
+  const rawPathParam = searchParams.get("path") || "";
+  const rawFileParam = searchParams.get("file") || null;
+  const currentFile = rawFileParam || (isLikelyFilePath(rawPathParam) ? rawPathParam : null);
+  const currentPath = currentFile
+    ? currentFile.includes("/")
+      ? currentFile.split("/").slice(0, -1).join("/")
+      : ""
+    : rawPathParam;
   const defaultBranch = repo.default_branch || "main";
   const activeRef = searchParams.get("ref") || defaultBranch;
 
   const { showToast } = useToast();
   const hasCae = useFeatureFlag("cae_cloud_solver");
+  const hasMsxLang = useLanguageEnabled("modelscript");
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const { theme } = useTheme();
@@ -89,18 +156,22 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
       else next.delete("path");
     }
     if (updates.file !== undefined) {
-      if (updates.file) next.set("file", updates.file);
-      else next.delete("file");
+      if (updates.file) {
+        next.set("file", updates.file);
+        next.set("path", updates.file);
+      } else {
+        next.delete("file");
+      }
     }
     if (updates.ref !== undefined) {
-      if (updates.ref && updates.ref !== defaultBranch) next.set("ref", updates.ref);
+      if (updates.ref) next.set("ref", updates.ref);
       else next.delete("ref");
     }
-    setSearchParams(next);
+    setSearchParams(next, { replace: true });
   };
 
   const setPathAndFile = (nextPath: string, nextFile: string | null) => {
-    updateParams({ path: nextPath, file: nextFile });
+    updateParams({ path: nextFile || nextPath, file: nextFile });
   };
 
   const [tree, setTree] = useState<GitlabTreeNode[]>([]);
@@ -958,6 +1029,8 @@ git push -u origin ${defaultBranch}`}
             ) : (
               tree.map((node) => {
                 const domainBadge = node.type === "blob" ? getFileDomainBadge(node.name) : null;
+                const savedFiles = readSavedFilesMap(projectId);
+                const nodeCommit = matchCommitForTreeNode(node, commits, savedFiles) || latestCommit;
                 return (
                   <FileRow
                     key={node.id || node.path}
@@ -996,17 +1069,17 @@ git push -u origin ${defaultBranch}`}
                         </span>
                       )}
                     </Box>
-                    {latestCommit && (
+                    {nodeCommit && (
                       <Box
                         flex={2}
                         color="var(--color-fg-muted)"
                         style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: "13px" }}
                       >
-                        <span>{latestCommit.title}</span>
+                        <span>{nodeCommit.title}</span>
                       </Box>
                     )}
                     <Box color="var(--color-fg-muted)" textAlign="right" width="120px" style={{ fontSize: "13px" }}>
-                      {latestCommit ? getRelativeTime(latestCommit.created_at) : ""}
+                      {nodeCommit ? getRelativeTime(nodeCommit.created_at) : ""}
                     </Box>
                   </FileRow>
                 );
@@ -1174,11 +1247,15 @@ git push -u origin ${defaultBranch}`}
                     name: "architecture/SystemModel.sysml",
                     code: `package SystemModel {\n  part def Actuator {\n    attribute mass : Real;\n  }\n  part actuator : Actuator;\n}\n`,
                   },
-                  {
-                    label: "ModelScript (.msx)",
-                    name: "src/Controller.msx",
-                    code: `model Controller {\n  param kp: Real = 2.5;\n  var u: Real = 0.0;\n}\n`,
-                  },
+                  ...(hasMsxLang
+                    ? [
+                        {
+                          label: "ModelScript (.msx)",
+                          name: "src/Controller.msx",
+                          code: `model Controller {\n  param kp: Real = 2.5;\n  var u: Real = 0.0;\n}\n`,
+                        },
+                      ]
+                    : []),
                   {
                     label: "README.md",
                     name: "README.md",

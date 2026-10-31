@@ -85,7 +85,7 @@ export type VerilogAExpr =
     }
   | {
       kind: "binary";
-      op: "+" | "-" | "*" | "/" | "^" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "&&" | "||";
+      op: "+" | "-" | "*" | "/" | "^" | "**" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "&&" | "||";
       left: VerilogAExpr;
       right: VerilogAExpr;
       sourceRange: SourceRange;
@@ -94,6 +94,13 @@ export type VerilogAExpr =
       kind: "unary";
       op: "+" | "-" | "!";
       argument: VerilogAExpr;
+      sourceRange: SourceRange;
+    }
+  | {
+      kind: "ternary";
+      condition: VerilogAExpr;
+      consequent: VerilogAExpr;
+      alternate: VerilogAExpr;
       sourceRange: SourceRange;
     }
   | {

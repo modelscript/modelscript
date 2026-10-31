@@ -200,11 +200,26 @@ const ProfilePage: React.FC = () => {
       ) : activeTab === "Solutions" ? (
         <ProfileSolutions username={profile.username} isOwnProfile={isOwnProfile} />
       ) : activeTab === "Posts" ? (
-        <ProfilePosts username={profile.username} type="posts" />
+        <ProfilePosts
+          username={profile.username}
+          type="posts"
+          isOwnProfile={isOwnProfile}
+          pinnedPostId={profile.pinned_post_id}
+          onPinChange={(postId, pinned) => {
+            setProfile((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    pinned_post_id: pinned ? postId : prev.pinned_post_id === postId ? null : prev.pinned_post_id,
+                  }
+                : prev,
+            );
+          }}
+        />
       ) : activeTab === "Replies" ? (
-        <ProfilePosts username={profile.username} type="replies" />
+        <ProfilePosts username={profile.username} type="replies" isOwnProfile={isOwnProfile} />
       ) : activeTab === "Artifacts" ? (
-        <ProfilePosts username={profile.username} type="artifacts" />
+        <ProfilePosts username={profile.username} type="artifacts" isOwnProfile={isOwnProfile} />
       ) : (
         <Box p={4} textAlign="center">
           <Heading as="h2" style={{ fontSize: "20px" }}>

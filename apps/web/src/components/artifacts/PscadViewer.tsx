@@ -235,9 +235,12 @@ function parsePscadClient(code: string) {
     const row = Math.floor(idx / 4);
     components.push({
       id: idMatch?.[1] || `c_${idx + 1}`,
-      definition: defName,
-      x: xMatch?.[1] ? Number.parseInt(xMatch[1], 10) : 140 + col * 180,
-      y: yMatch?.[1] ? Number.parseInt(yMatch[1], 10) : 140 + row * 120,
+      definitionName: defName,
+      instanceName: params.Name || defName.split(":").pop() || `C${idx + 1}`,
+      position: {
+        x: xMatch?.[1] ? Number.parseInt(xMatch[1], 10) : 140 + col * 180,
+        y: yMatch?.[1] ? Number.parseInt(yMatch[1], 10) : 140 + row * 120,
+      },
       parameters: params,
     });
     idx++;
@@ -266,8 +269,8 @@ function parsePscadClient(code: string) {
   }
 
   const busMatches = Array.from(code.matchAll(/<Bus\b|<Wire\b/gi));
-  const xfrmrCount = components.filter((c) => /xfmr|trans|tp3/i.test(c.definition)).length;
-  const ibrCount = components.filter((c) => /ibr|inv|vsc|pv|bess|wind/i.test(c.definition)).length;
+  const xfrmrCount = components.filter((c) => /xfmr|trans|tp3/i.test(c.definitionName)).length;
+  const ibrCount = components.filter((c) => /ibr|inv|vsc|pv|bess|wind/i.test(c.definitionName)).length;
   const dtMatch = code.match(/time_step\s*=\s*"?([0-9.eE+-]+)"?/i);
   const timeStepUs = dtMatch?.[1] ? Number.parseFloat(dtMatch[1]) : undefined;
   return {
@@ -321,31 +324,37 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     const clientComps: PscadComponentLike[] =
       parsedClient?.components && parsedClient.components.length > 0
         ? parsedClient.components
-        : (viewConfig.netlist?.components || []).map((c, idx) => ({
-            id: c.id,
-            definition: c.definition,
-            x: 140 + (idx % 4) * 180,
-            y: 140 + Math.floor(idx / 4) * 120,
-            parameters: c.name ? { Name: c.name } : {},
-          }));
+        : (viewConfig.netlist?.components || []).map((c, idx) => {
+            const params: Record<string, string | number> = c.name ? { Name: c.name } : {};
+            return {
+              id: c.id,
+              definitionName: c.definition,
+              instanceName: c.name || c.id,
+              position: {
+                x: 140 + (idx % 4) * 180,
+                y: 140 + Math.floor(idx / 4) * 120,
+              },
+              parameters: params,
+            };
+          });
     if (clientComps.length > 0) {
       try {
-        const built = renderPscadSvg(
-          {
-            name: title,
-            timeStepUs: viewConfig.timeStepUs ?? parsedClient?.timeStepUs ?? 50,
+        const built = renderPscadSvg({
+          name: title,
+          rootModule: {
+            name: "Main",
+            buses: [],
             components: clientComps,
             wires: parsedClient?.wires || [],
           },
-          { isDark: true },
-        );
+        });
         return sanitizeSvgMarkup(built, { isFullScreen });
       } catch {
         return "";
       }
     }
     return "";
-  }, [viewConfig.svg, viewConfig.netlist, viewConfig.timeStepUs, parsedClient, title, isFullScreen]);
+  }, [viewConfig.svg, viewConfig.netlist, parsedClient, title, isFullScreen]);
 
   const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 

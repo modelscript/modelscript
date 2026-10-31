@@ -1613,7 +1613,7 @@ export function authRouter(database: LibraryDatabase): Router {
             );
             return;
           }
-          user = database.createOAuthUser(username, email, provider, providerUserId);
+          user = database.registerFederatedUser(username, email, provider, providerUserId);
           database.updateOAuthTokens(user.id, provider, accessToken, refreshToken, expiresAt);
         }
       }
@@ -2265,7 +2265,7 @@ export function authRouter(database: LibraryDatabase): Router {
       const tokenPrefix = plaintextToken.slice(0, 14); // e.g. "ms_pat_7e9a2f1"
       const tokenHash = crypto.createHash("sha256").update(plaintextToken).digest("hex");
 
-      const tokenId = database.createApiToken({
+      const tokenId = database.createApiKey({
         userId: req.user!.id,
         name: name.trim(),
         tokenPrefix,

@@ -9,6 +9,7 @@ import {
   type SymbolEntry,
 } from "@modelscript/runtime";
 import { extractBalancedBlock } from "./activity-cfa.js";
+import { evaluateSysML2Constraint, parseSysML2Expression } from "./evaluator.js";
 import { SysML2EventTraceExplorer } from "./event-trace-explorer.js";
 import { extractVariables, parseGuardConstraints, type GuardConstraint } from "./state-machine-verifier.js";
 
@@ -85,6 +86,11 @@ export function verifyTemporalContract(
   // Parse assumption and guarantee bounds
   const aConstraints = parseGuardConstraints(contract.assumption);
   const gConstraints = parseGuardConstraints(contract.guarantee);
+  const useCompoundEvaluator =
+    /\b(?:or|xor|implies|not)\b|\|\||=>|->|[+\-*/^]/i.test(contract.assumption) ||
+    /\b(?:or|xor|implies|not)\b|\|\||=>|->|[+\-*/^]/i.test(contract.guarantee);
+  const aAst = useCompoundEvaluator ? parseSysML2Expression(contract.assumption) : null;
+  const gAst = useCompoundEvaluator ? parseSysML2Expression(contract.guarantee) : null;
 
   let worstMargin = Infinity;
   let violationTime: number | undefined = undefined;
@@ -95,6 +101,28 @@ export function verifyTemporalContract(
     const t = times[i]!;
     if (contract.timeHorizon) {
       if (t < contract.timeHorizon[0] || t > contract.timeHorizon[1]) continue;
+    }
+
+    if (useCompoundEvaluator && aAst && gAst) {
+      const env: Record<string, number> = { time: t, t };
+      for (const [sigName, values] of Object.entries(signals)) {
+        const v = values[i];
+        if (v !== undefined) env[sigName] = v;
+      }
+      const aEval = evaluateSysML2Constraint(aAst, env);
+      if (!aEval.satisfied) continue;
+
+      const gEval = evaluateSysML2Constraint(gAst, env);
+      if (gEval.margin < worstMargin) {
+        worstMargin = gEval.margin;
+      }
+      if (!gEval.satisfied && violationTime === undefined) {
+        violationTime = t;
+        const firstSignalVal = Object.values(signals)[0]?.[i];
+        counterexample = firstSignalVal;
+        violationReason = `At t = ${t.toFixed(4)}s: assumption '${contract.assumption}' held, but guarantee '${contract.guarantee}' violated (${gEval.violatedAtoms.join(", ")})`;
+      }
+      continue;
     }
 
     // Check if assumption holds at time t

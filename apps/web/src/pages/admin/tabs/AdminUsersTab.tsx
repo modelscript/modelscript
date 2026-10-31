@@ -72,7 +72,8 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
   const [revokeSessions, setRevokeSessions] = useState(true);
   const [purgePosts, setPurgePosts] = useState(false);
   const [markEmailVerified, setMarkEmailVerified] = useState(false);
-  const [resetUser2FA, setResetUser2FA] = useState(false);
+  const [reset2FAFlag, setReset2FAFlag] = useState(false);
+  const [confirmReset2FAUser, setConfirmReset2FAUser] = useState<AdminUserSummary | null>(null);
 
   const [creditModalUser, setCreditModalUser] = useState<AdminUserSummary | null>(null);
   const [creditDelta, setCreditDelta] = useState<string>("100");
@@ -80,6 +81,11 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
 
   const [forensicsData, setForensicsData] = useState<AdminUserForensics | null>(initialForensics);
   const [forensicsLoading, setForensicsLoading] = useState(false);
+
+  const resetUser2FA = async (userId: number) => {
+    setConfirmReset2FAUser(null);
+    await onModerateUser(userId, { reset2FA: true });
+  };
 
   const handleOpenForensics = async (userId: number) => {
     setForensicsLoading(true);
@@ -108,7 +114,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
     setRevokeSessions(nextStatus !== "active");
     setPurgePosts(false);
     setMarkEmailVerified(false);
-    setResetUser2FA(false);
+    setReset2FAFlag(false);
   };
 
   const handleConfirmGovernance = async () => {
@@ -120,7 +126,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
       revokeSessions,
       purgePosts,
       ...(markEmailVerified ? { emailVerified: true } : {}),
-      ...(resetUser2FA ? { reset2FA: true } : {}),
+      ...(reset2FAFlag ? { reset2FA: true } : {}),
     });
     setSelectedUser(null);
   };
@@ -335,7 +341,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
                       <ActionButton
                         $variant="secondary"
                         disabled={loading}
-                        onClick={() => void onModerateUser(u.id, { reset2FA: true })}
+                        onClick={() => setConfirmReset2FAUser(u)}
                         title="Emergency reset two-factor authentication (TOTP) for locked-out user"
                       >
                         <ShieldCheckIcon size={13} />
@@ -567,7 +573,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
                   cursor: "pointer",
                 }}
               >
-                <input type="checkbox" checked={resetUser2FA} onChange={(e) => setResetUser2FA(e.target.checked)} />
+                <input type="checkbox" checked={reset2FAFlag} onChange={(e) => setReset2FAFlag(e.target.checked)} />
                 Emergency reset 2FA (TOTP) &amp; recovery codes for @{selectedUser.username}
               </label>
             )}
@@ -592,6 +598,37 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
               </ActionButton>
               <ActionButton $variant="primary" onClick={handleConfirmGovernance} disabled={loading}>
                 Apply Governance Action
+              </ActionButton>
+            </Box>
+          </ModalBox>
+        </ModalOverlay>
+      )}
+
+      {confirmReset2FAUser && (
+        <ModalOverlay onClick={() => setConfirmReset2FAUser(null)}>
+          <ModalBox
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirm Emergency 2FA Reset"
+          >
+            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
+              Confirm Emergency 2FA Reset — @{confirmReset2FAUser.username} (#{confirmReset2FAUser.id})
+            </span>
+            <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
+              Are you sure you want to reset two-factor authentication (TOTP) and invalidate all recovery codes for{" "}
+              <strong>@{confirmReset2FAUser.username}</strong>? This action is logged in the immutable audit trail.
+            </Box>
+            <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+              <ActionButton $variant="secondary" onClick={() => setConfirmReset2FAUser(null)} disabled={loading}>
+                Cancel
+              </ActionButton>
+              <ActionButton
+                $variant="danger"
+                onClick={() => void resetUser2FA(confirmReset2FAUser.id)}
+                disabled={loading}
+              >
+                Confirm Reset 2FA
               </ActionButton>
             </Box>
           </ModalBox>

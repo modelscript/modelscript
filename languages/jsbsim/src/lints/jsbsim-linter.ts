@@ -125,5 +125,59 @@ export function lintJsbsim(doc: JsbsimDocument): DiagnosticItem[] {
     }
   }
 
+  // M8909: Undefined FCS input property
+  const definedFcsOutputs = new Set<string>();
+  for (const ch of model.fcsChannels) {
+    if (ch.output) definedFcsOutputs.add(ch.output);
+    if (ch.name) definedFcsOutputs.add(ch.name);
+  }
+  const validBuiltInPrefixes = [
+    "fcs/",
+    "aero/",
+    "velocities/",
+    "attitude/",
+    "position/",
+    "metrics/",
+    "propulsion/",
+    "gear/",
+    "atmosphere/",
+    "accelerations/",
+    "ic/",
+    "ap/",
+    "systems/",
+    "sim-time-sec",
+  ];
+  for (const ch of model.fcsChannels) {
+    for (const inp of ch.inputs) {
+      const cleanInp = inp.replace(/^-/, "").trim();
+      if (!cleanInp) continue;
+      const isKnownOutput = definedFcsOutputs.has(cleanInp);
+      const isBuiltIn = validBuiltInPrefixes.some((p) => cleanInp.startsWith(p));
+      if (!isKnownOutput && !isBuiltIn) {
+        diagnostics.push({
+          code: JsbsimErrorCode.UNDEFINED_FCS_INPUT.code,
+          rule: JsbsimErrorCode.UNDEFINED_FCS_INPUT.rule,
+          severity: JsbsimErrorCode.UNDEFINED_FCS_INPUT.severity,
+          message: JsbsimErrorCode.UNDEFINED_FCS_INPUT.message(ch.name, cleanInp),
+          range: ch.range,
+        });
+      }
+    }
+  }
+
+  // M8910: Unrealistic CG location relative to aerodynamic center
+  const cgX = model.massBalance.cgLocation.x;
+  const aeroX = model.metrics.aeroCenter.x;
+  const maxArm = Math.max(model.metrics.chord > 0 ? model.metrics.chord * 12.0 : 50.0, 50.0);
+  if ((cgX !== 0 || aeroX !== 0) && Math.abs(cgX - aeroX) > maxArm) {
+    diagnostics.push({
+      code: JsbsimErrorCode.UNREALISTIC_CG_LOCATION.code,
+      rule: JsbsimErrorCode.UNREALISTIC_CG_LOCATION.rule,
+      severity: JsbsimErrorCode.UNREALISTIC_CG_LOCATION.severity,
+      message: JsbsimErrorCode.UNREALISTIC_CG_LOCATION.message(cgX, aeroX),
+      range: model.massBalance.range,
+    });
+  }
+
   return diagnostics;
 }

@@ -90,4 +90,57 @@ COMPONENTS:
     const diags = lintEasy5(model);
     assert.ok(diags.some((d) => d.code === 7010 && d.message.includes("M4070")));
   });
+
+  it("M7003, M7004, M7007, M7008, M7009, M7011, M7012: emits all remaining pre-flight diagnostics", () => {
+    const src = `MODEL: FullDiagnosticCheck
+COMPONENTS:
+  GA01 TYPE=GP/GA
+    PORTS: IN=input[2], OUT=output[2]
+    XP: K=1.0, TAU_S=0.01
+  GA01 TYPE=GP/GA
+    XP: K=2.0
+  IN01 TYPE=GP/IN
+    PORTS: IN=input[1], OUT=output[1]
+    XP: GAIN=1.0, TAU_S=0.05
+  TF01 TYPE=GP/TF
+    XP: NUM=[1.0], DEN=[1.0, -2.0]
+    XS: S(5)=1.0
+  FN01 TYPE=GP/FN
+    XP: TABLE=AERO_LUT
+CONNECTIONS:
+  GA01.OUT -> IN01.IN
+  IN01.OUT -> TF01.IN
+  TF01.OUT -> FN01.IN
+`;
+    const model = parseEasy5(src);
+    const diags = lintEasy5(model);
+    assert.ok(
+      diags.some((d) => d.code === 7003),
+      "Expected M7003 duplicate component ID",
+    );
+    assert.ok(
+      diags.some((d) => d.code === 7004 && d.componentId === "IN01"),
+      "Expected M7004 uninitialized state",
+    );
+    assert.ok(
+      diags.some((d) => d.code === 7007),
+      "Expected M7007 port dimension mismatch",
+    );
+    assert.ok(
+      diags.some((d) => d.code === 7008),
+      "Expected M7008 state index out of bounds",
+    );
+    assert.ok(
+      diags.some((d) => d.code === 7009),
+      "Expected M7009 sample rate mismatch",
+    );
+    assert.ok(
+      diags.some((d) => d.code === 7011),
+      "Expected M7011 unstable linear pole",
+    );
+    assert.ok(
+      diags.some((d) => d.code === 7012),
+      "Expected M7012 table extrapolation hazard",
+    );
+  });
 });

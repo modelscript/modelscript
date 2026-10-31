@@ -62,63 +62,81 @@ export function verilogAToModelica(mod: VerilogAModule): string {
   }
 
   if (mod.analogBlock) {
-    for (const stmt of mod.analogBlock.statements) {
-      emitModelicaStatement(stmt, lines, "  ");
-    }
+    emitModelicaStatementList(mod.analogBlock.statements, lines, "  ");
   }
 
   lines.push(`end ${mod.name};`);
   return lines.join("\n");
 }
 
-function emitModelicaStatement(stmt: VerilogAStatement, lines: string[], indent: string): void {
-  if (stmt.kind === "block") {
-    for (const s of stmt.statements) {
-      emitModelicaStatement(s, lines, indent);
+function flattenStatements(stmts: VerilogAStatement[]): VerilogAStatement[] {
+  const out: VerilogAStatement[] = [];
+  for (const s of stmts) {
+    if (s.kind === "block") {
+      out.push(...flattenStatements(s.statements));
+    } else {
+      out.push(s);
     }
-    return;
   }
+  return out;
+}
 
-  if (stmt.kind === "assignment") {
-    const rhsStr = exprToModelica(stmt.rhs);
-    lines.push(`${indent}${stmt.variable} = ${rhsStr};`);
-    return;
-  }
+function emitModelicaStatementList(stmts: VerilogAStatement[], lines: string[], indent: string): void {
+  const flat = flattenStatements(stmts);
+  const flowBranches = new Map<string, { n1: string; n2: string; terms: string[] }>();
+  const potBranches = new Map<string, { n1: string; n2: string; terms: string[] }>();
 
-  if (stmt.kind === "if") {
-    const condStr = exprToModelica(stmt.condition);
-    lines.push(`${indent}if ${condStr} then`);
-    for (const s of stmt.thenBranch) {
-      emitModelicaStatement(s, lines, indent + "  ");
+  for (const stmt of flat) {
+    if (stmt.kind === "assignment") {
+      const rhsStr = exprToModelica(stmt.rhs);
+      lines.push(`${indent}${stmt.variable} = ${rhsStr};`);
+      continue;
     }
-    if (stmt.elseBranch && stmt.elseBranch.length > 0) {
-      lines.push(`${indent}else`);
-      for (const s of stmt.elseBranch) {
-        emitModelicaStatement(s, lines, indent + "  ");
+
+    if (stmt.kind === "if") {
+      const condStr = exprToModelica(stmt.condition);
+      lines.push(`${indent}if ${condStr} then`);
+      emitModelicaStatementList(stmt.thenBranch, lines, indent + "  ");
+      if (stmt.elseBranch && stmt.elseBranch.length > 0) {
+        lines.push(`${indent}else`);
+        emitModelicaStatementList(stmt.elseBranch, lines, indent + "  ");
       }
+      lines.push(`${indent}end if;`);
+      continue;
     }
-    lines.push(`${indent}end if;`);
-    return;
-  }
 
-  if (stmt.kind === "contribution") {
-    const { lhs, rhs } = stmt;
-    const rhsStr = exprToModelica(rhs);
-
-    if (lhs.nature === "I" || lhs.nature === "Flow") {
+    if (stmt.kind === "contribution") {
+      const { lhs, rhs } = stmt;
+      const rhsStr = exprToModelica(rhs);
       const n1 = lhs.node1;
       const n2 = lhs.node2 ?? "0";
-      lines.push(`${indent}// Current branch ${n1} -> ${n2}`);
-      lines.push(`${indent}${n1}.i = ${rhsStr};`);
-      if (n2 !== "0" && n2 !== "gnd") {
-        lines.push(`${indent}${n2}.i = -(${rhsStr});`);
+      const key = `${n1}:${n2}`;
+
+      if (lhs.nature === "I" || lhs.nature === "Flow") {
+        const entry = flowBranches.get(key) ?? { n1, n2, terms: [] };
+        entry.terms.push(rhsStr);
+        flowBranches.set(key, entry);
+      } else if (lhs.nature === "V" || lhs.nature === "Potential") {
+        const entry = potBranches.get(key) ?? { n1, n2, terms: [] };
+        entry.terms.push(rhsStr);
+        potBranches.set(key, entry);
       }
-    } else if (lhs.nature === "V" || lhs.nature === "Potential") {
-      const n1 = lhs.node1;
-      const n2 = lhs.node2 ?? "0";
-      const v2Str = n2 === "0" || n2 === "gnd" ? "0.0" : `v_${n2}`;
-      lines.push(`${indent}v_${n1} - ${v2Str} = ${rhsStr};`);
     }
+  }
+
+  for (const { n1, n2, terms } of flowBranches.values()) {
+    const sumStr = terms.length === 1 ? (terms[0] ?? "") : terms.map((t) => `(${t})`).join(" + ");
+    lines.push(`${indent}// Current branch ${n1} -> ${n2}`);
+    lines.push(`${indent}${n1}.i = ${sumStr};`);
+    if (n2 !== "0" && n2 !== "gnd") {
+      lines.push(`${indent}${n2}.i = -(${sumStr});`);
+    }
+  }
+
+  for (const { n1, n2, terms } of potBranches.values()) {
+    const sumStr = terms.length === 1 ? (terms[0] ?? "") : terms.map((t) => `(${t})`).join(" + ");
+    const v2Str = n2 === "0" || n2 === "gnd" ? "0.0" : `v_${n2}`;
+    lines.push(`${indent}v_${n1} - ${v2Str} = ${sumStr};`);
   }
 }
 
@@ -131,14 +149,21 @@ function exprToModelica(expr: VerilogAExpr): string {
       if (expr.name === "$temperature") return "300.15";
       return expr.name;
     case "branch_access": {
+      if (expr.nature === "I" || expr.nature === "Flow") {
+        return `${expr.node1}.i`;
+      }
       const v1 = `v_${expr.node1}`;
       const v2 = expr.node2 ? `v_${expr.node2}` : "0.0";
       return `(${v1} - ${v2})`;
     }
-    case "binary":
-      return `(${exprToModelica(expr.left)} ${expr.op} ${exprToModelica(expr.right)})`;
+    case "binary": {
+      const mOp = expr.op === "**" ? "^" : expr.op;
+      return `(${exprToModelica(expr.left)} ${mOp} ${exprToModelica(expr.right)})`;
+    }
     case "unary":
       return `(${expr.op}${exprToModelica(expr.argument)})`;
+    case "ternary":
+      return `(if ${exprToModelica(expr.condition)} then ${exprToModelica(expr.consequent)} else ${exprToModelica(expr.alternate)})`;
     case "call": {
       const firstArg = expr.args[0];
       if (expr.func === "ddt" && firstArg) {

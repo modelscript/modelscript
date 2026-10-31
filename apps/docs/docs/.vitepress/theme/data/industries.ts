@@ -62,7 +62,7 @@ export const INDUSTRIES: Industry[] = [
   // ───────────────────────────── Transportation ─────────────────────────────
   {
     slug: "aerospace",
-    name: "Aerospace & Defense",
+    name: "Aerospace & Aviation",
     group: "transportation",
     icon: "plane",
     accent: "#38bdf8",

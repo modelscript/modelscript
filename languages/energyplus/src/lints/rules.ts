@@ -150,12 +150,13 @@ export function lintEnergyPlus(doc: EnergyPlusDocument): IdfDiagnostic[] {
   }
 
   // 4. Surfaces: Construction resolution, Interzone match, Convexity (M7901, M7902, M7907)
-  const surfaceMap = new Map<string, { zone: string; target?: string | undefined; range: IdfRange }>();
+  const surfaceMap = new Map<string, { zone: string; target?: string | undefined; range: IdfRange; bc: string }>();
   for (const surf of doc.surfaces) {
     surfaceMap.set(surf.name.toLowerCase(), {
       zone: surf.zoneName,
       target: surf.outsideBoundaryConditionObject,
       range: surf.range,
+      bc: surf.boundaryCondition.toLowerCase(),
     });
   }
 
@@ -182,7 +183,12 @@ export function lintEnergyPlus(doc: EnergyPlusDocument): IdfDiagnostic[] {
         });
       } else {
         const targetEntry = surfaceMap.get(targetName.toLowerCase());
-        if (!targetEntry) {
+        if (
+          !targetEntry ||
+          targetEntry.bc !== "surface" ||
+          !targetEntry.target ||
+          targetEntry.target.toLowerCase() !== surf.name.toLowerCase()
+        ) {
           diagnostics.push({
             code: EnergyPlusErrorCode.UNMATCHED_INTERZONE_SURFACE.code,
             severity: EnergyPlusErrorCode.UNMATCHED_INTERZONE_SURFACE.severity,

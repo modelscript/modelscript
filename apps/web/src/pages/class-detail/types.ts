@@ -5,7 +5,7 @@ import type { ClassDomain, EnrichedComponent } from "../../components/classTreeU
 
 export type { ClassDetail, ClassDomain, ClassSummary, EnrichedComponent, JobStatus };
 
-export type ClassTabId = "overview" | "parameters" | "equations" | "source";
+export type ClassTabId = "overview" | "parameters" | "equations" | "studies" | "source";
 
 export interface DigitalThreadTwinInfo {
   twinTarget: string | null;

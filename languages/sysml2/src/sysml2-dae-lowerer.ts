@@ -106,10 +106,10 @@ export interface LoweredConstraintDae {
 }
 
 type ParsedAstStmt =
-  | { kind: "assign"; target: string; expr: string }
-  | { kind: "while"; cond: string; body: ParsedAstStmt[] }
-  | { kind: "if"; cond: string; thenBody: ParsedAstStmt[]; elseBody?: ParsedAstStmt[] | undefined }
-  | { kind: "return"; expr?: string | undefined };
+  | { kind: "assign"; target: string; exprTokens: SysML2Token[] }
+  | { kind: "while"; condTokens: SysML2Token[]; body: ParsedAstStmt[] }
+  | { kind: "if"; condTokens: SysML2Token[]; thenBody: ParsedAstStmt[]; elseBody?: ParsedAstStmt[] | undefined }
+  | { kind: "return"; exprTokens?: SysML2Token[] | undefined };
 
 /**
  * Compiles SysML v2 calculations, action scripts, and physical part/constraint equations
@@ -124,7 +124,17 @@ export class SysML2DaeLowerer {
   }
 
   /**
-   * Lowers a complete SysML v2 Action or Calculation definition into a DAEBuilder.
+   * Lowers a pre-tokenized expression into an arena ExprId.
+   */
+  private static lowerTokens(tokens: SysML2Token[], arena: DAEBuilder): number {
+    if (tokens.length === 0) return arena.addRealLiteral(0);
+    const parser = new SysmlExprParser(tokens, arena);
+    return parser.parse();
+  }
+
+  /**
+   * Lowers a complete SysML v2 Action or Calculation definition (or all action/calc blocks
+   * embedded in a hybrid model) into a DAEBuilder.
    */
   public static async lowerAction(sysmlSource: string, existingArena?: DAEBuilder): Promise<LoweredActionDae> {
     try {
@@ -133,51 +143,91 @@ export class SysML2DaeLowerer {
 
     const arena = existingArena ?? new DAEBuilder();
 
-    // Extract name
-    const nameMatch = /(?:action|calc)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)/.exec(sysmlSource);
-    const name = nameMatch ? nameMatch[1]! : "AnonymousAction";
+    // Extract all action/calc blocks in the source (supports standalone or embedded in part/package)
+    const blockHeaderRegex = /\b(?:action|calc)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
+    const actionBlocks: { name: string; bodyText: string }[] = [];
+    let bm: RegExpExecArray | null;
+    while ((bm = blockHeaderRegex.exec(sysmlSource)) !== null) {
+      const blockName = bm[1]!;
+      const openBrace = sysmlSource.indexOf("{", bm.index);
+      if (openBrace !== -1) {
+        const { body, endPos } = this.extractBraceBlock(sysmlSource, openBrace);
+        actionBlocks.push({ name: blockName, bodyText: body });
+        blockHeaderRegex.lastIndex = endPos;
+      }
+    }
 
+    if (actionBlocks.length === 0) {
+      const nameMatch = /(?:action|calc)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)/.exec(sysmlSource);
+      const fallbackName = nameMatch ? nameMatch[1]! : "AnonymousAction";
+      const openBrace = sysmlSource.indexOf("{");
+      const closeBrace = sysmlSource.lastIndexOf("}");
+      const bodyText =
+        openBrace !== -1 && closeBrace > openBrace ? sysmlSource.slice(openBrace + 1, closeBrace) : sysmlSource;
+      actionBlocks.push({ name: fallbackName, bodyText });
+    }
+
+    const name = actionBlocks[0]!.name;
     const inputs: string[] = [];
     const outputs: string[] = [];
     const locals: string[] = [];
 
-    // 1. Extract pins / parameters
-    const pinRegex = /\b(in|out)\s+(?:item\s+|attribute\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_.]+))?/g;
-    let pm: RegExpExecArray | null;
-    while ((pm = pinRegex.exec(sysmlSource)) !== null) {
-      const dir = pm[1];
-      const pName = pm[2]!;
-      const isInput = dir === "in";
-
-      if (isInput) {
-        inputs.push(pName);
-        arena.addVariable(pName, VarType.Real, Variability.Continuous, Causality.Input);
-      } else {
-        outputs.push(pName);
-        arena.addVariable(pName, VarType.Real, Variability.Continuous, Causality.Output);
-      }
-    }
-
-    // Return parameter in calc def: return [name] : [type];
-    const retParamMatch = /\breturn\s+(?:item\s+|attribute\s+)?([A-Za-z_][A-Za-z0-9_]*)/.exec(sysmlSource);
-    if (retParamMatch && !outputs.includes(retParamMatch[1]!)) {
-      outputs.push(retParamMatch[1]!);
-      arena.addVariable(retParamMatch[1]!, VarType.Real, Variability.Continuous, Causality.Output);
-    }
-
-    // 2. Extract action body
-    const openBrace = sysmlSource.indexOf("{");
-    const closeBrace = sysmlSource.lastIndexOf("}");
-    const bodyText =
-      openBrace !== -1 && closeBrace > openBrace ? sysmlSource.slice(openBrace + 1, closeBrace) : sysmlSource;
-
     const startStmtIdx = arena.stmtCount;
 
-    // 3. Parse statements into structured AST
-    const ast = this.parseStatementsToAst(bodyText);
+    for (const block of actionBlocks) {
+      const { bodyText } = block;
 
-    // 4. Lower AST to arena
-    this.emitAstStatements(ast, arena, locals, outputs);
+      // 1. Extract pins / parameters from this action/calc block
+      const pinRegex = /\b(in|out)\s+(?:item\s+|attribute\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_.:]+))?/g;
+      let pm: RegExpExecArray | null;
+      while ((pm = pinRegex.exec(bodyText)) !== null) {
+        const dir = pm[1];
+        const pName = pm[2]!;
+        const isInput = dir === "in";
+
+        if (isInput) {
+          if (!inputs.includes(pName)) inputs.push(pName);
+          if (arena.lookupVariable(pName) === -1) {
+            arena.addVariable(pName, VarType.Real, Variability.Continuous, Causality.Input);
+          }
+        } else {
+          if (!outputs.includes(pName)) outputs.push(pName);
+          if (arena.lookupVariable(pName) === -1) {
+            arena.addVariable(pName, VarType.Real, Variability.Continuous, Causality.Output);
+          }
+        }
+      }
+
+      // Return parameter declaration in calc def: return [item|attribute] <name> : <type>;
+      const retParamRegex =
+        /\breturn\s+(?:(?:item|attribute)\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*:\s*[A-Za-z_][A-Za-z0-9_.:]*)/g;
+      let rpm: RegExpExecArray | null;
+      while ((rpm = retParamRegex.exec(bodyText)) !== null) {
+        const retName = (rpm[1] ?? rpm[2])!;
+        if (!outputs.includes(retName)) {
+          outputs.push(retName);
+        }
+        if (arena.lookupVariable(retName) === -1) {
+          arena.addVariable(retName, VarType.Real, Variability.Continuous, Causality.Output);
+        }
+      }
+
+      // 2. Parse statements into structured AST via recursive descent
+      const ast = this.parseStatementsToAst(bodyText);
+
+      // If a calc/action has a return expression (e.g. `return a + b;`) without a declared output pin,
+      // synthesize a default output variable so `execute` can return the computed value.
+      if (outputs.length === 0 && this.hasValuedReturn(ast)) {
+        const defaultOut = "result";
+        outputs.push(defaultOut);
+        if (arena.lookupVariable(defaultOut) === -1) {
+          arena.addVariable(defaultOut, VarType.Real, Variability.Continuous, Causality.Output);
+        }
+      }
+
+      // 3. Lower AST to arena
+      this.emitAstStatements(ast, arena, locals, outputs, inputs);
+    }
 
     const stmtCount = arena.stmtCount - startStmtIdx;
 
@@ -192,110 +242,401 @@ export class SysML2DaeLowerer {
     };
   }
 
-  /**
-   * Parses imperative action/calculation statements (`while`, `if`/`else`, `return`, `assign`)
-   * from a brace-delimited body string into a lightweight statement tree.
-   */
-  private static parseStatementsToAst(bodyText: string): ParsedAstStmt[] {
-    const stmts: ParsedAstStmt[] = [];
-    let pos = 0;
-
-    while (pos < bodyText.length) {
-      while (pos < bodyText.length && /\s/.test(bodyText[pos]!)) pos++;
-      if (pos >= bodyText.length) break;
-
-      const remaining = bodyText.slice(pos);
-
-      // 1. While loop: while (...) { ... }
-      if (/^while\b/.test(remaining)) {
-        const condMatch = /^while\s*\(([^)]+)\)\s*\{/.exec(remaining);
-        if (condMatch) {
-          const cond = condMatch[1]!.trim();
-          const openBrace = pos + condMatch[0].length - 1;
-          const { body, endPos } = this.extractBraceBlock(bodyText, openBrace);
-          const bodyAst = this.parseStatementsToAst(body);
-          stmts.push({ kind: "while", cond, body: bodyAst });
-          pos = endPos;
-          continue;
-        }
-      }
-
-      // 2. If statement: if (...) { ... } [else { ... }]
-      if (/^if\b/.test(remaining)) {
-        const condMatch = /^if\s*\(([^)]+)\)\s*\{/.exec(remaining);
-        if (condMatch) {
-          const cond = condMatch[1]!.trim();
-          const openBrace = pos + condMatch[0].length - 1;
-          const { body: thenBody, endPos: thenEnd } = this.extractBraceBlock(bodyText, openBrace);
-          const thenAst = this.parseStatementsToAst(thenBody);
-
-          let elseAst: ParsedAstStmt[] | undefined;
-          let nextPos = thenEnd;
-          const afterThen = bodyText.slice(thenEnd).trimStart();
-          if (afterThen.startsWith("else")) {
-            const elseOpen = bodyText.indexOf("{", thenEnd);
-            if (elseOpen !== -1) {
-              const { body: elseBody, endPos: elseEnd } = this.extractBraceBlock(bodyText, elseOpen);
-              elseAst = this.parseStatementsToAst(elseBody);
-              nextPos = elseEnd;
-            }
-          }
-
-          stmts.push({ kind: "if", cond, thenBody: thenAst, elseBody: elseAst });
-          pos = nextPos;
-          continue;
-        }
-      }
-
-      // 3. Return statement: return expr;
-      if (/^return\b/.test(remaining)) {
-        const semi = remaining.indexOf(";");
-        if (semi !== -1) {
-          const expr = remaining.slice(6, semi).trim();
-          stmts.push({ kind: "return", expr });
-          pos += semi + 1;
-          continue;
-        }
-      }
-
-      // 4. Assignments: assign x := expr; or x := expr; or x = expr;
-      const assignMatch = /^(?:assign\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::=|=)\s*([^;\s\r\n][^;\r\n]*);/.exec(remaining);
-      if (assignMatch) {
-        stmts.push({
-          kind: "assign",
-          target: assignMatch[1]!,
-          expr: assignMatch[2]!.trim(),
-        });
-        pos += assignMatch[0].length;
-        continue;
-      }
-
-      const nextSemi = remaining.indexOf(";");
-      if (nextSemi !== -1) {
-        pos += nextSemi + 1;
-      } else {
-        break;
+  private static hasValuedReturn(stmts: ParsedAstStmt[]): boolean {
+    for (const s of stmts) {
+      if (s.kind === "return" && s.exprTokens && s.exprTokens.length > 0) return true;
+      if (s.kind === "while" && this.hasValuedReturn(s.body)) return true;
+      if (s.kind === "if") {
+        if (this.hasValuedReturn(s.thenBody)) return true;
+        if (s.elseBody && this.hasValuedReturn(s.elseBody)) return true;
       }
     }
+    return false;
+  }
 
+  /**
+   * Parses imperative action/calculation statements (`while`, `if`/`else`, `return`, `assign`)
+   * from a body string into a structured statement AST using recursive-descent over tokens.
+   */
+  private static parseStatementsToAst(bodyText: string): ParsedAstStmt[] {
+    const tokens = tokenizeSysml(bodyText);
+    const { stmts } = this.parseBlockStatements(tokens, 0, false);
     return stmts;
   }
 
   /**
-   * Computes the total number of linear statement slots required by a statement block
-   * so `While` and `If` headers can record exact jump offsets in `stmtData`.
+   * Recursive-descent block statement parser over `SysML2Token[]`.
    */
-  private static countAstSlots(stmts: ParsedAstStmt[]): number {
+  private static parseBlockStatements(
+    tokens: SysML2Token[],
+    startPos: number,
+    stopAtCloseBrace: boolean,
+  ): { stmts: ParsedAstStmt[]; nextPos: number } {
+    const stmts: ParsedAstStmt[] = [];
+    let pos = startPos;
+    const len = tokens.length;
+
+    while (pos < len) {
+      const t = tokens[pos]!;
+
+      // Skip stray semicolons
+      if (t.type === "semi") {
+        pos++;
+        continue;
+      }
+
+      // End of nested block
+      if (t.type === "paren" && t.val === "}") {
+        if (stopAtCloseBrace) {
+          return { stmts, nextPos: pos + 1 };
+        }
+        pos++;
+        continue;
+      }
+
+      // Skip pin declarations: `in ...;` or `out ...;`
+      if (t.type === "kw" && (t.val === "in" || t.val === "out")) {
+        while (pos < len && tokens[pos]!.type !== "semi") pos++;
+        if (pos < len && tokens[pos]!.type === "semi") pos++;
+        continue;
+      }
+
+      // 1. While statement: `while (cond) { ... }` or `while cond { ... }`
+      if (t.type === "kw" && (t.val === "while" || t.val === "loop")) {
+        pos++;
+        if (pos < len && tokens[pos]!.type === "kw" && tokens[pos]!.val === "while") {
+          pos++;
+        }
+        const { condTokens, nextPos: afterCond } = this.parseConditionTokens(tokens, pos);
+        pos = afterCond;
+        const { body, nextPos: afterBody } = this.parseBodyBlockOrSingleStmt(tokens, pos);
+        pos = afterBody;
+        stmts.push({ kind: "while", condTokens, body });
+        continue;
+      }
+
+      // 2. If / Else-If / Else statement: `if (cond) { ... } [else if (...) { ... }] [else { ... }]`
+      if (t.type === "kw" && t.val === "if") {
+        const { stmt, nextPos } = this.parseIfStatement(tokens, pos);
+        stmts.push(stmt);
+        pos = nextPos;
+        continue;
+      }
+
+      // 3. Return statement or return parameter declaration
+      if (t.type === "kw" && t.val === "return") {
+        pos++;
+        let hadDeclPrefix = false;
+        if (
+          pos < len &&
+          tokens[pos]!.type === "kw" &&
+          (tokens[pos]!.val === "item" || tokens[pos]!.val === "attribute")
+        ) {
+          hadDeclPrefix = true;
+          pos++;
+        }
+
+        // Check if this is `return <name> : <Type> [= <expr>];`
+        if (
+          pos < len &&
+          tokens[pos]!.type === "ident" &&
+          (hadDeclPrefix || (pos + 1 < len && tokens[pos + 1]!.type === "op" && tokens[pos + 1]!.val === ":"))
+        ) {
+          const retVarName = tokens[pos]!.val;
+          pos++;
+          if (pos < len && tokens[pos]!.type === "op" && tokens[pos]!.val === ":") {
+            pos++;
+            // Skip type specifier tokens (includingPkg::Type)
+            while (
+              pos < len &&
+              tokens[pos]!.type !== "semi" &&
+              !(tokens[pos]!.type === "op" && (tokens[pos]!.val === "=" || tokens[pos]!.val === ":="))
+            ) {
+              pos++;
+            }
+          }
+          if (pos < len && tokens[pos]!.type === "op" && (tokens[pos]!.val === "=" || tokens[pos]!.val === ":=")) {
+            pos++;
+            const { exprTokens, nextPos: afterExpr } = this.collectExprTokensUntilSemiOrBrace(tokens, pos);
+            pos = afterExpr;
+            if (exprTokens.length > 0) {
+              stmts.push({ kind: "assign", target: retVarName, exprTokens });
+            }
+          } else if (pos < len && tokens[pos]!.type === "semi") {
+            pos++;
+          }
+          continue;
+        }
+
+        // Value return: `return <expr>;` or `return;`
+        const { exprTokens, nextPos: afterRet } = this.collectExprTokensUntilSemiOrBrace(tokens, pos);
+        pos = afterRet;
+        stmts.push({
+          kind: "return",
+          exprTokens: exprTokens.length > 0 ? exprTokens : undefined,
+        });
+        continue;
+      }
+
+      // 4. Assignment or local attribute/item binding:
+      //    `[assign | attribute | item] <ident> [: <Type>] (:= | =) <expr>;`
+      let scanPos = pos;
+      let hasAssignPrefix = false;
+      if (
+        tokens[scanPos]!.type === "kw" &&
+        (tokens[scanPos]!.val === "assign" || tokens[scanPos]!.val === "attribute" || tokens[scanPos]!.val === "item")
+      ) {
+        hasAssignPrefix = true;
+        scanPos++;
+        if (
+          scanPos < len &&
+          tokens[scanPos]!.type === "kw" &&
+          (tokens[scanPos]!.val === "attribute" || tokens[scanPos]!.val === "item")
+        ) {
+          scanPos++;
+        }
+      }
+
+      if (scanPos < len && tokens[scanPos]!.type === "ident") {
+        const targetName = tokens[scanPos]!.val;
+        let afterTarget = scanPos + 1;
+
+        // Optional `: Type` annotation
+        if (afterTarget < len && tokens[afterTarget]!.type === "op" && tokens[afterTarget]!.val === ":") {
+          afterTarget++;
+          while (
+            afterTarget < len &&
+            tokens[afterTarget]!.type !== "semi" &&
+            !(
+              tokens[afterTarget]!.type === "op" &&
+              (tokens[afterTarget]!.val === "=" || tokens[afterTarget]!.val === ":=")
+            )
+          ) {
+            afterTarget++;
+          }
+        }
+
+        if (
+          afterTarget < len &&
+          tokens[afterTarget]!.type === "op" &&
+          (tokens[afterTarget]!.val === ":=" || tokens[afterTarget]!.val === "=")
+        ) {
+          const exprStart = afterTarget + 1;
+          const { exprTokens, nextPos: afterExpr } = this.collectExprTokensUntilSemiOrBrace(tokens, exprStart);
+          if (exprTokens.length > 0) {
+            stmts.push({ kind: "assign", target: targetName, exprTokens });
+          }
+          pos = afterExpr;
+          continue;
+        } else if (hasAssignPrefix) {
+          // Local attribute/item declaration without initializer; skip to `;`
+          while (afterTarget < len && tokens[afterTarget]!.type !== "semi") afterTarget++;
+          if (afterTarget < len && tokens[afterTarget]!.type === "semi") afterTarget++;
+          pos = afterTarget;
+          continue;
+        }
+      }
+
+      // 5. Fallback: skip to next semicolon or closing brace so parser always makes progress
+      const { exprTokens, nextPos: nextAfter } = this.collectExprTokensUntilSemiOrBrace(tokens, pos);
+      if (nextAfter > pos) {
+        // If this is a trailing bare result expression at the end of a calc block, treat as return
+        const isAtBlockEnd =
+          nextAfter >= len || (tokens[nextAfter]?.type === "paren" && tokens[nextAfter]?.val === "}");
+        if (isAtBlockEnd && exprTokens.length > 0) {
+          stmts.push({ kind: "return", exprTokens });
+        }
+        pos = nextAfter;
+      } else {
+        pos++;
+      }
+    }
+
+    return { stmts, nextPos: pos };
+  }
+
+  /**
+   * Parses an `if (cond) { ... } [else if (...) { ... } | else { ... }]` construct recursively.
+   */
+  private static parseIfStatement(tokens: SysML2Token[], ifPos: number): { stmt: ParsedAstStmt; nextPos: number } {
+    let pos = ifPos + 1; // consume 'if'
+    const { condTokens, nextPos: afterCond } = this.parseConditionTokens(tokens, pos);
+    pos = afterCond;
+
+    // Optional 'then' keyword in KerML/SysML conditional statements
+    if (pos < tokens.length && tokens[pos]!.type === "ident" && tokens[pos]!.val === "then") {
+      pos++;
+    }
+
+    const { body: thenBody, nextPos: afterThen } = this.parseBodyBlockOrSingleStmt(tokens, pos);
+    pos = afterThen;
+
+    let elseBody: ParsedAstStmt[] | undefined;
+    if (pos < tokens.length && tokens[pos]!.type === "kw" && tokens[pos]!.val === "else") {
+      pos++; // consume 'else'
+      if (pos < tokens.length && tokens[pos]!.type === "kw" && tokens[pos]!.val === "if") {
+        // Chained `else if (...) { ... }`
+        const { stmt: nestedIf, nextPos: afterNestedIf } = this.parseIfStatement(tokens, pos);
+        elseBody = [nestedIf];
+        pos = afterNestedIf;
+      } else {
+        const { body: parsedElse, nextPos: afterElse } = this.parseBodyBlockOrSingleStmt(tokens, pos);
+        elseBody = parsedElse;
+        pos = afterElse;
+      }
+    }
+
+    return {
+      stmt: { kind: "if", condTokens, thenBody, elseBody },
+      nextPos: pos,
+    };
+  }
+
+  /**
+   * Extracts condition expression tokens from `( ... )` or up to `{` / `then`.
+   */
+  private static parseConditionTokens(
+    tokens: SysML2Token[],
+    startPos: number,
+  ): { condTokens: SysML2Token[]; nextPos: number } {
+    const condTokens: SysML2Token[] = [];
+    let pos = startPos;
+    const len = tokens.length;
+
+    if (pos < len && tokens[pos]!.type === "paren" && tokens[pos]!.val === "(") {
+      let depth = 1;
+      pos++; // consume outer '('
+      while (pos < len && depth > 0) {
+        const tk = tokens[pos]!;
+        if (tk.type === "paren" && tk.val === "(") {
+          depth++;
+          condTokens.push(tk);
+        } else if (tk.type === "paren" && tk.val === ")") {
+          depth--;
+          if (depth > 0) condTokens.push(tk);
+        } else {
+          condTokens.push(tk);
+        }
+        pos++;
+      }
+      // If additional boolean operators follow `( ... )` before `{`, e.g. `(a > 0) && (b > 0) {`
+      while (
+        pos < len &&
+        !(tokens[pos]!.type === "paren" && tokens[pos]!.val === "{") &&
+        !(tokens[pos]!.type === "ident" && tokens[pos]!.val === "then")
+      ) {
+        condTokens.push(tokens[pos]!);
+        pos++;
+      }
+      return { condTokens, nextPos: pos };
+    }
+
+    while (
+      pos < len &&
+      !(tokens[pos]!.type === "paren" && tokens[pos]!.val === "{") &&
+      !(tokens[pos]!.type === "ident" && tokens[pos]!.val === "then") &&
+      tokens[pos]!.type !== "semi"
+    ) {
+      condTokens.push(tokens[pos]!);
+      pos++;
+    }
+    return { condTokens, nextPos: pos };
+  }
+
+  /**
+   * Parses a `{ ... }` brace-delimited statement block or a single statement if unbraced.
+   */
+  private static parseBodyBlockOrSingleStmt(
+    tokens: SysML2Token[],
+    startPos: number,
+  ): { body: ParsedAstStmt[]; nextPos: number } {
+    let pos = startPos;
+    const len = tokens.length;
+    if (pos < len && tokens[pos]!.type === "paren" && tokens[pos]!.val === "{") {
+      pos++; // consume '{'
+      const { stmts, nextPos } = this.parseBlockStatements(tokens, pos, true);
+      return { body: stmts, nextPos };
+    }
+    // Single statement fallback
+    const { stmts, nextPos } = this.parseBlockStatements(
+      tokens.slice(0, this.findSingleStmtEnd(tokens, pos)),
+      pos,
+      false,
+    );
+    return { body: stmts, nextPos };
+  }
+
+  private static findSingleStmtEnd(tokens: SysML2Token[], startPos: number): number {
+    let pos = startPos;
+    let parenDepth = 0;
+    while (pos < tokens.length) {
+      const tk = tokens[pos]!;
+      if (tk.type === "paren" && (tk.val === "(" || tk.val === "{")) parenDepth++;
+      else if (tk.type === "paren" && (tk.val === ")" || tk.val === "}")) {
+        if (parenDepth === 0) return pos;
+        parenDepth--;
+      } else if (tk.type === "semi" && parenDepth === 0) {
+        return pos + 1;
+      }
+      pos++;
+    }
+    return pos;
+  }
+
+  /**
+   * Collects expression tokens until a top-level `;` or closing `}`.
+   */
+  private static collectExprTokensUntilSemiOrBrace(
+    tokens: SysML2Token[],
+    startPos: number,
+  ): { exprTokens: SysML2Token[]; nextPos: number } {
+    const exprTokens: SysML2Token[] = [];
+    let pos = startPos;
+    let parenDepth = 0;
+    const len = tokens.length;
+
+    while (pos < len) {
+      const tk = tokens[pos]!;
+      if (tk.type === "paren" && tk.val === "(") {
+        parenDepth++;
+        exprTokens.push(tk);
+        pos++;
+      } else if (tk.type === "paren" && tk.val === ")") {
+        if (parenDepth > 0) parenDepth--;
+        exprTokens.push(tk);
+        pos++;
+      } else if (tk.type === "semi" && parenDepth === 0) {
+        pos++; // consume ';'
+        break;
+      } else if (tk.type === "paren" && (tk.val === "}" || tk.val === "{") && parenDepth === 0) {
+        break;
+      } else {
+        exprTokens.push(tk);
+        pos++;
+      }
+    }
+
+    return { exprTokens, nextPos: pos };
+  }
+
+  /**
+   * Computes the number of direct logical statements emitted by `emitAstStatements` for a block.
+   * Note: `executeArenaStatements` (`skipArenaStatement` / `countArenaStatementSlots`) expects
+   * `StmtKind.While`, `StmtKind.If`, and `StmtKind.Block` headers to store the count of direct
+   * logical child statements in that block (each nested `If` or `While` counts as 1 logical
+   * statement because `skipArenaStatement` skips its entire nested subtree in one step).
+   */
+  private static countDirectStatements(stmts: ParsedAstStmt[], outputs: string[]): number {
     let count = 0;
     for (const s of stmts) {
-      if (s.kind === "assign" || s.kind === "return") {
+      if (s.kind === "assign" || s.kind === "while" || s.kind === "if") {
         count += 1;
-      } else if (s.kind === "while") {
-        count += 1 + this.countAstSlots(s.body);
-      } else if (s.kind === "if") {
-        count += 1 + this.countAstSlots(s.thenBody);
-        if (s.elseBody && s.elseBody.length > 0) {
-          count += 1 + this.countAstSlots(s.elseBody);
+      } else if (s.kind === "return") {
+        if (s.exprTokens && s.exprTokens.length > 0 && outputs.length > 0) {
+          // Valued return emits an assignment to the output variable followed by Return
+          count += 2;
+        } else {
+          count += 1;
         }
       }
     }
@@ -310,39 +651,49 @@ export class SysML2DaeLowerer {
     arena: DAEBuilder,
     locals: string[],
     outputs: string[],
+    inputs: string[] = [],
   ): void {
     for (const stmt of stmts) {
       if (stmt.kind === "assign") {
         const target = stmt.target;
-        if (!locals.includes(target) && !outputs.includes(target)) {
+        if (!locals.includes(target) && !outputs.includes(target) && !inputs.includes(target)) {
           locals.push(target);
+        }
+        if (arena.lookupVariable(target) === -1) {
           arena.addVariable(target, VarType.Real, Variability.Continuous, Causality.Local);
         }
 
         const targetNameId = arena.interner.intern(target);
         const targetExprId = arena.addName(targetNameId);
-        const srcExprId = this.lowerExpression(stmt.expr, arena);
+        const srcExprId = this.lowerTokens(stmt.exprTokens, arena);
         arena.addAssignmentStmt(targetExprId, srcExprId);
       } else if (stmt.kind === "while") {
-        const condId = this.lowerExpression(stmt.cond, arena);
-        const bodySlots = this.countAstSlots(stmt.body);
-        arena.addStatement(StmtKind.While, condId, bodySlots);
-        this.emitAstStatements(stmt.body, arena, locals, outputs);
+        const condId = this.lowerTokens(stmt.condTokens, arena);
+        const bodyCount = this.countDirectStatements(stmt.body, outputs);
+        arena.addStatement(StmtKind.While, condId, bodyCount);
+        this.emitAstStatements(stmt.body, arena, locals, outputs, inputs);
       } else if (stmt.kind === "if") {
-        const condId = this.lowerExpression(stmt.cond, arena);
-        const thenSlots = this.countAstSlots(stmt.thenBody);
+        const condId = this.lowerTokens(stmt.condTokens, arena);
+        const thenCount = this.countDirectStatements(stmt.thenBody, outputs);
         const hasElse = Boolean(stmt.elseBody && stmt.elseBody.length > 0);
         const branchCount = hasElse ? 1 : 0;
 
-        arena.addStatement(StmtKind.If, condId, thenSlots, branchCount);
-        this.emitAstStatements(stmt.thenBody, arena, locals, outputs);
+        arena.addStatement(StmtKind.If, condId, thenCount, branchCount);
+        this.emitAstStatements(stmt.thenBody, arena, locals, outputs, inputs);
 
         if (hasElse && stmt.elseBody) {
-          const elseSlots = this.countAstSlots(stmt.elseBody);
-          arena.addStatement(StmtKind.Block, -1, elseSlots);
-          this.emitAstStatements(stmt.elseBody, arena, locals, outputs);
+          const elseCount = this.countDirectStatements(stmt.elseBody, outputs);
+          arena.addStatement(StmtKind.Block, -1, elseCount);
+          this.emitAstStatements(stmt.elseBody, arena, locals, outputs, inputs);
         }
       } else if (stmt.kind === "return") {
+        if (stmt.exprTokens && stmt.exprTokens.length > 0 && outputs.length > 0) {
+          const outTarget = outputs[outputs.length - 1]!;
+          const targetNameId = arena.interner.intern(outTarget);
+          const targetExprId = arena.addName(targetNameId);
+          const retExprId = this.lowerTokens(stmt.exprTokens, arena);
+          arena.addAssignmentStmt(targetExprId, retExprId);
+        }
         arena.addReturnStmt();
       }
     }
@@ -381,8 +732,21 @@ export class SysML2DaeLowerer {
       denseEnv[nameId] = val;
     }
 
-    // Execute statements
-    executeArenaStatements(arena, startStmtIdx, stmtCount, denseEnv);
+    // Execute statements (catching ArenaReturnSignal on early `return`)
+    try {
+      executeArenaStatements(arena, startStmtIdx, stmtCount, denseEnv);
+    } catch (err: unknown) {
+      if (
+        !(
+          err &&
+          typeof err === "object" &&
+          "__brand" in err &&
+          (err as { __brand?: string }).__brand === "ArenaReturnSignal"
+        )
+      ) {
+        throw err;
+      }
+    }
 
     // Gather outputs
     const result: Record<string, number> = {};
@@ -453,22 +817,30 @@ export class SysML2DaeLowerer {
   }
 
   /**
-   * Universal entry point: lowers any SysML v2 source (Action, Calculation, Constraint, or Part) into a DAEBuilder.
+   * Universal entry point: lowers any SysML v2 source (Action, Calculation, Constraint, Part,
+   * or hybrid continuous-discrete system combining both) into a unified DAEBuilder arena.
    */
   public static async lowerSystem(sysmlSource: string, existingArena?: DAEBuilder): Promise<DAEBuilder> {
-    if (
+    const arena = existingArena ?? new DAEBuilder();
+    const hasDeclarative =
       /\b(?:constraint|assert\s+constraint|when)\b/.test(sysmlSource) ||
-      /==/.test(sysmlSource) ||
       /\bder\s*\(/.test(sysmlSource) ||
       /\bport\s+def\b/.test(sysmlSource) ||
-      /\bpart\s+def\b/.test(sysmlSource)
-    ) {
-      const res = await this.lowerConstraint(sysmlSource, existingArena);
-      return res.arena;
-    } else {
-      const res = await this.lowerAction(sysmlSource, existingArena);
-      return res.arena;
+      /\bpart\s+def\b/.test(sysmlSource) ||
+      /\bpart\s+[A-Za-z_][A-Za-z0-9_]*\s*:/.test(sysmlSource);
+    const hasImperative = /\b(?:action|calc)\s+(?:def\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\{/.test(sysmlSource);
+
+    if (hasDeclarative && hasImperative) {
+      await this.lowerConstraint(sysmlSource, arena);
+      await this.lowerAction(sysmlSource, arena);
+      return arena;
     }
+    if (hasDeclarative || (!hasImperative && /==/.test(sysmlSource))) {
+      await this.lowerConstraint(sysmlSource, arena);
+      return arena;
+    }
+    await this.lowerAction(sysmlSource, arena);
+    return arena;
   }
 
   /**

@@ -15,6 +15,35 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function extractDocComment(body: string): string {
+  let searchPos = 0;
+  while (searchPos < body.length) {
+    const docIdx = body.indexOf("doc", searchPos);
+    if (docIdx === -1) break;
+    const prevChar = docIdx > 0 ? body[docIdx - 1] : " ";
+    if (/[a-zA-Z0-9_]/.test(prevChar!)) {
+      searchPos = docIdx + 3;
+      continue;
+    }
+    let afterDoc = docIdx + 3;
+    while (
+      afterDoc < body.length &&
+      (body[afterDoc] === " " || body[afterDoc] === "\t" || body[afterDoc] === "\n" || body[afterDoc] === "\r")
+    ) {
+      afterDoc++;
+    }
+    if (body.slice(afterDoc, afterDoc + 2) === "/*") {
+      const commentStart = afterDoc + 2;
+      const commentEnd = body.indexOf("*/", commentStart);
+      if (commentEnd !== -1) {
+        return body.slice(commentStart, commentEnd).trim();
+      }
+    }
+    searchPos = docIdx + 3;
+  }
+  return "";
+}
+
 /**
  * Extracts SysML v2 Part Definitions & Part Usages into a BOM / Element Table.
  */
@@ -39,7 +68,7 @@ export function extractSysml2PartRows(text: string): TabularRow[] {
       return m?.[1]?.trim() ?? "";
     };
 
-    const docMatch = body.match(/doc\s*\/\*([\s\S]*?)\*\//);
+    const docText = extractDocComment(body);
 
     rows.push({
       id: name,
@@ -53,7 +82,7 @@ export function extractSysml2PartRows(text: string): TabularRow[] {
         mass: extractAttr("mass"),
         power: extractAttr("power"),
         cost: extractAttr("cost"),
-        doc: docMatch?.[1]?.trim() ?? "",
+        doc: docText,
       },
     });
   }
@@ -94,7 +123,7 @@ export function extractSysml2RequirementRows(text: string): TabularRow[] {
     const name = match[3] ?? match[4] ?? shortId ?? "UnnamedRequirement";
     if (!shortId && !match[3] && !match[4]) continue;
     const body = match[6] ?? ";";
-    const docMatch = body.match(/doc\s*\/\*([\s\S]*?)\*\//);
+    const docText = extractDocComment(body);
 
     const satisfiedBy = [...(satisfiedByMap.get(name) ?? []), ...(shortId ? (satisfiedByMap.get(shortId) ?? []) : [])];
     const verifiedBy = [...(verifiedByMap.get(name) ?? []), ...(shortId ? (verifiedByMap.get(shortId) ?? []) : [])];
@@ -105,7 +134,7 @@ export function extractSysml2RequirementRows(text: string): TabularRow[] {
       cells: {
         shortId: shortId || name,
         name,
-        doc: docMatch?.[1]?.trim() ?? "",
+        doc: docText,
         satisfiedBy: satisfiedBy.join(", "),
         verifiedBy: verifiedBy.join(", "),
         status:

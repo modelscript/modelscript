@@ -2,13 +2,17 @@
 
 import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, FlameIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
-import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import {
+  highlightPolyglotLine,
+  InteractiveSvgStage,
+  renderSourceToDiagramSvg,
+  sanitizeSvgMarkup,
+} from "./PolyglotArtifactViewer";
 
 export interface RocetsViewerProps {
   viewConfig: {
@@ -43,14 +47,14 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 44px;
-  min-height: 44px;
+  height: 38px;
+  min-height: 38px;
   background: var(--surface-hud, rgba(14, 20, 36, 0.7));
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
+  padding: 0 12px;
   z-index: 10;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -59,12 +63,12 @@ const Toolbar = styled.div`
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 `;
 
 const ModelTitle = styled.div`
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
@@ -122,22 +126,6 @@ const ContentArea = styled.div`
   position: relative;
 `;
 
-const SvgCanvas = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 16px;
-  background: var(--color-canvas-inset, var(--color-canvas-default));
-
-  svg {
-    max-width: 100%;
-    max-height: 100%;
-    height: auto;
-  }
-`;
-
 const CodePre = styled.pre`
   flex: 1;
   margin: 0;
@@ -168,14 +156,14 @@ const LineNo = styled.span`
 `;
 
 const InspectorSidebar = styled.div`
-  width: 250px;
+  width: 240px;
   border-left: 1px solid var(--color-border-default);
   background: var(--color-canvas-subtle);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 14px;
-  gap: 12px;
+  padding: 12px 14px;
+  gap: 10px;
 `;
 
 const StatItem = styled.div`
@@ -211,7 +199,8 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">(() => (viewConfig.svg ? "diagram" : "code"));
+  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [showInspector, setShowInspector] = useState(!isFullScreen);
   const title = viewConfig.title || viewConfig.engineName || "ROCETS Liquid Propulsion (.roc)";
 
   useEffect(() => {
@@ -239,10 +228,18 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return DOMPurify.sanitize(viewConfig.svg);
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+    }
+    if (rawText.trim()) {
+      try {
+        const fallback = renderSourceToDiagramSvg(rawText, "rocets", title, true, isFullScreen);
+        if (fallback.svg) return fallback.svg;
+      } catch (err) {
+        console.warn("[RocetsViewer] Client-side schematic fallback failed:", err);
+      }
     }
     return "";
-  }, [viewConfig.svg]);
+  }, [viewConfig.svg, rawText, title, isFullScreen]);
 
   const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
@@ -289,7 +286,7 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
       <Toolbar>
         <HeaderLeft>
           <FlameIcon size={16} fill="var(--color-danger-fg, currentColor)" />
-          <ModelTitle>{title}</ModelTitle>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge>ROCETS Propulsion</PillBadge>
         </HeaderLeft>
 
@@ -306,6 +303,9 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
               <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
                 <CodeIcon size={12} /> Deck Source
               </SegmentBtn>
+              <SegmentBtn type="button" $active={showInspector} onClick={() => setShowInspector((v) => !v)}>
+                Telemetry
+              </SegmentBtn>
             </SegmentedControl>
           )}
           {sanitizedSvg && (
@@ -316,7 +316,7 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
           <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
             {copied ? "Copied" : "Copy"}
           </Button>
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
               Open in Playground
             </Button>
@@ -345,38 +345,40 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
             )}
           </CodePre>
         ) : (
-          <SvgCanvas dangerouslySetInnerHTML={{ __html: sanitizedSvg }} />
+          <InteractiveSvgStage svgHtml={sanitizedSvg} />
         )}
 
-        <InspectorSidebar>
-          <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-            Propulsion Power Balance
-          </Text>
-          <StatItem>
-            <span>Engine Cycle</span>
-            <strong style={{ color: "#38bdf8" }}>{cycleType || "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Thrust</span>
-            <strong>{thrustKn !== undefined ? `${thrustKn} kN` : "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Chamber Pressure</span>
-            <strong>{chamberPressureBar !== undefined ? `${chamberPressureBar} bar` : "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Specific Impulse</span>
-            <strong>{ispSec !== undefined ? `${ispSec} s` : "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Propellant Flow</span>
-            <strong>{massFlowKgSec !== undefined ? `${massFlowKgSec} kg/s` : "—"}</strong>
-          </StatItem>
-          <StatItem>
-            <span>Turbopump RPM</span>
-            <strong>{turbopumpRpm !== undefined ? `${turbopumpRpm.toLocaleString()} RPM` : "—"}</strong>
-          </StatItem>
-        </InspectorSidebar>
+        {showInspector && (
+          <InspectorSidebar>
+            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
+              Propulsion Power Balance
+            </Text>
+            <StatItem>
+              <span>Engine Cycle</span>
+              <strong style={{ color: "#38bdf8" }}>{cycleType || "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>Thrust</span>
+              <strong>{thrustKn !== undefined ? `${thrustKn} kN` : "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>Chamber Pressure</span>
+              <strong>{chamberPressureBar !== undefined ? `${chamberPressureBar} bar` : "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>Specific Impulse</span>
+              <strong>{ispSec !== undefined ? `${ispSec} s` : "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>Propellant Flow</span>
+              <strong>{massFlowKgSec !== undefined ? `${massFlowKgSec} kg/s` : "—"}</strong>
+            </StatItem>
+            <StatItem>
+              <span>Turbopump RPM</span>
+              <strong>{turbopumpRpm !== undefined ? `${turbopumpRpm.toLocaleString()} RPM` : "—"}</strong>
+            </StatItem>
+          </InspectorSidebar>
+        )}
       </ContentArea>
     </CardWrapper>
   );

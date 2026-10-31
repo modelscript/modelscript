@@ -151,6 +151,64 @@ export function lintSbml(doc: SbmlDocument): DiagnosticItem[] {
       }
     }
 
+    // M8809: Undefined kinetic parameter/symbol in kinetic law formula
+    if (r.kineticLaw && r.kineticLaw.formula.trim()) {
+      const BUILTIN_MATH_SYMBOLS = new Set([
+        "time",
+        "exp",
+        "log",
+        "ln",
+        "sin",
+        "cos",
+        "tan",
+        "asin",
+        "acos",
+        "atan",
+        "sinh",
+        "cosh",
+        "tanh",
+        "sqrt",
+        "pow",
+        "abs",
+        "min",
+        "max",
+        "floor",
+        "ceil",
+        "pi",
+        "e",
+        "true",
+        "false",
+      ]);
+      const seenUndefined = new Set<string>();
+      const identRegex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
+      let match: RegExpExecArray | null;
+      while ((match = identRegex.exec(r.kineticLaw.formula)) !== null) {
+        const sym = match[0];
+        if (!sym || seenUndefined.has(sym) || BUILTIN_MATH_SYMBOLS.has(sym)) continue;
+        // Skip scientific notation exponent markers like 1e-3 (already avoided since identRegex requires leading alpha/underscore, unless preceded by digit)
+        const prevIdx = match.index - 1;
+        const prevChar = prevIdx >= 0 ? r.kineticLaw.formula[prevIdx] : undefined;
+        if (prevChar && /[0-9.]/.test(prevChar)) continue;
+
+        const isDefined =
+          model.species.has(sym) ||
+          model.compartments.has(sym) ||
+          model.parameters.has(sym) ||
+          r.kineticLaw.parameters.has(sym);
+
+        if (!isDefined) {
+          seenUndefined.add(sym);
+          diagnostics.push({
+            code: SbmlErrorCode.UNDEFINED_KINETIC_PARAMETER.code,
+            rule: SbmlErrorCode.UNDEFINED_KINETIC_PARAMETER.rule,
+            severity: SbmlErrorCode.UNDEFINED_KINETIC_PARAMETER.severity,
+            message: SbmlErrorCode.UNDEFINED_KINETIC_PARAMETER.message(r.id, sym),
+            range: r.kineticLaw.range ?? r.range,
+          });
+        }
+      }
+    }
+
     // M8810: Circular species assignment (species as both reactant and product with same stoichiometry)
     for (const reactRef of r.reactants) {
       const prodRef = r.products.find((p) => p.species === reactRef.species);

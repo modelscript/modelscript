@@ -9,7 +9,7 @@
  */
 
 import type { IWorkspaceIndex, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
-import { parseOpi } from "./parser/opi-parser.js";
+import { parseOlga } from "./parser/index.js";
 import type { OlgaModel } from "./types.js";
 
 export class OlgaWorkspaceIndex implements IWorkspaceIndex {
@@ -81,7 +81,7 @@ export class OlgaWorkspaceIndex implements IWorkspaceIndex {
     }
     let idCounter = baseId;
 
-    const parsedModel = parseOpi(text);
+    const parsedModel = parseOlga(text);
     this.fileModels.set(uri, parsedModel);
 
     // Root OlgaCase Symbol

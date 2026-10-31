@@ -4,7 +4,7 @@ import type { ArtifactViewerInfo, ClassDetail, ClassSummary } from "../api";
 
 /* ─── Types ─── */
 
-export type DomainType = "modelica" | "sysml2" | "cad" | "dataset" | "fea";
+export type DomainType = "modelica" | "sysml2" | "cad" | "dataset" | "fea" | "cfd" | "scad";
 
 export interface DigitalThreadTwin {
   id: string;
@@ -16,6 +16,7 @@ export interface DigitalThreadTwin {
     variable?: string | undefined;
     unit?: string | undefined;
     quantity?: string | undefined;
+    resourcePath?: string | undefined;
   };
   target: {
     domain: DomainType;

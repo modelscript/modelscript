@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckCircleFillIcon, CpuIcon, GearIcon, PackageIcon } from "@primer/octicons-react";
+import { BeakerIcon, CheckCircleFillIcon, CpuIcon, GearIcon, PackageIcon, PlayIcon } from "@primer/octicons-react";
 import { Button, Label, NavList, Text, Truncate } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
@@ -51,7 +51,7 @@ export const ClassRightSidebar: React.FC<ClassRightSidebarProps> = ({
       cls.classKind === "record" ||
       cls.classKind === "function" ||
       !cls.components?.some((c) => {
-        const k = (c.classKind || "").toLowerCase();
+        const k = ((c as { classKind?: string }).classKind || "").toLowerCase();
         return (
           k === "model" ||
           k === "block" ||
@@ -281,6 +281,93 @@ export const ClassRightSidebar: React.FC<ClassRightSidebarProps> = ({
                 </Button>
               </DetailRow>
             )}
+          </GlassCard>
+        </>
+      )}
+
+      {/* Compatible Engineering Studies */}
+      {["model", "block", "class", "part", "cad-assembly", "subcircuit"].includes(
+        (cls.classKind || "").toLowerCase(),
+      ) && (
+        <>
+          <SectionTitle as="h3" style={{ marginTop: 24, display: "flex", alignItems: "center", gap: 6 }}>
+            <BeakerIcon size={14} /> Compatible Engineering Studies
+          </SectionTitle>
+          <GlassCard style={{ border: "1px solid rgba(56, 189, 248, 0.3)", background: "rgba(56, 189, 248, 0.04)" }}>
+            {[
+              {
+                slug: "monte-carlo-uq",
+                title: "Monte Carlo UQ & Sobol Sensitivity",
+                badge: "UQ · SOBOL",
+                color: "#a855f7",
+                desc: `Quasi-Monte Carlo ensemble across ${Math.max(1, cls.components.length)} declared parameters`,
+              },
+              {
+                slug: "parameter-grid-sweep",
+                title: "2D Parameter Grid Sweep",
+                badge: "DOE · SWEEP",
+                color: "#38bdf8",
+                desc: "Full-factorial response surface & operating envelope map",
+              },
+              {
+                slug: "pareto-calibration",
+                title: "Multi-Objective Pareto Calibration",
+                badge: "NSGA-II",
+                color: "#10b981",
+                desc: "Calibrate model parameters against telemetry or KPI targets",
+              },
+              ...(twinInfo?.cadTarget || libraryName.toLowerCase().includes("drone")
+                ? [
+                    {
+                      slug: "drone-chassis-structural-fea",
+                      title: "Structural Von Mises Stress Audit",
+                      badge: "FEA · 3D",
+                      color: "#fbbf24",
+                      desc: "3D solid finite-element yield safety factor verification",
+                    },
+                  ]
+                : []),
+            ].map((study, idx, arr) => {
+              const fqn = className.startsWith(libraryName) ? className : `${libraryName}.${className}`;
+              return (
+                <DetailRow
+                  key={study.slug}
+                  style={{
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: 6,
+                    borderBottom: idx === arr.length - 1 ? "none" : undefined,
+                  }}
+                >
+                  <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" gap={2}>
+                    <Text style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-heading)" }}>
+                      {study.title}
+                    </Text>
+                    <Label
+                      size="small"
+                      style={{
+                        fontSize: 9,
+                        borderColor: `${study.color}66`,
+                        color: study.color,
+                        background: `${study.color}14`,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {study.badge}
+                    </Label>
+                  </Box>
+                  <Text style={{ fontSize: 11, color: "var(--color-text-muted)", lineHeight: 1.4 }}>{study.desc}</Text>
+                  <Button
+                    size="small"
+                    leadingVisual={PlayIcon}
+                    onClick={() => onNavigate(`/jobs/templates/${study.slug}?model=${encodeURIComponent(fqn)}`)}
+                    style={{ marginTop: 2, width: "100%", fontSize: 11 }}
+                  >
+                    Configure &amp; Run on {className.split(".").pop()}
+                  </Button>
+                </DetailRow>
+              );
+            })}
           </GlassCard>
         </>
       )}

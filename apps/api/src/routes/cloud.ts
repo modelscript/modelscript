@@ -659,6 +659,7 @@ getErrorString();
 
       res.status(202).json({
         jobId,
+        dbJobId,
         status: "queued",
         profile: profile.id,
         lockfile,
@@ -681,6 +682,7 @@ getErrorString();
 
     const list: {
       jobId: string;
+      dbJobId?: number | null | undefined;
       domain: string;
       name: string;
       profile: string;
@@ -697,6 +699,7 @@ getErrorString();
       }
       list.push({
         jobId: id,
+        dbJobId: job.dbJobId ?? null,
         domain: job.domain,
         name: job.name,
         profile: job.profile,

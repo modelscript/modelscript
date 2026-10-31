@@ -90,6 +90,13 @@ import {
 import { ModelicaModificationEnv } from "./support/wasm-bridge.js";
 import type { FlattenerBackend, FlattenOptions } from "./types.js";
 
+interface CstNodeLike {
+  type?: string | undefined;
+  text?: string | undefined;
+  children?: CstNodeLike[] | undefined;
+  [key: string]: unknown;
+}
+
 export class ModelicaFlattener {
   bodySnapshot: DAEBuilder | null = null;
   public db: QueryDB;
@@ -1195,7 +1202,7 @@ export class ModelicaFlattener {
       return true;
     }
 
-    if (/\bfor\s+[a-zA-Z_]\w*\s+in\b/.test(text)) {
+    if (text.includes("for")) {
       const cst = this.db.cstNode(classId) as any;
       if (cst) {
         const forEqs: any[] = [];
@@ -1208,6 +1215,22 @@ export class ModelicaFlattener {
           for (const c of n.children || []) findForEqs(c);
         };
         findForEqs(cst);
+        const collectCstIdentifiers = (n: any, out: string[]) => {
+          if (!n) return;
+          if (n.type === "identifier" || n.type === "IDENT") {
+            const idTxt = n.text?.trim();
+            if (idTxt) out.push(idTxt);
+            return;
+          }
+          if (Array.isArray(n.children) && n.children.length > 0) {
+            for (const c of n.children) collectCstIdentifiers(c, out);
+          } else if (typeof n.text === "string") {
+            const t = n.text.trim();
+            if (t.length > 0 && t !== ":" && Number.isNaN(Number(t))) {
+              out.push(t);
+            }
+          }
+        };
         for (const fe of forEqs) {
           const fi = fe.children?.find(
             (c: any) =>
@@ -1220,17 +1243,15 @@ export class ModelicaFlattener {
                 ?.find((c: any) => c.type === "for_index" || c.type === "ForIndex")
                 ?.children?.find((c: any) => c.type === "expression" || c.type === "Expression");
             if (expr) {
-              const exprText = expr.text?.trim() ?? "";
-              const idMatches = exprText.match(/[a-zA-Z_]\w*/g);
-              if (idMatches) {
-                for (const idName of idMatches) {
-                  const compSym = this.db.byName(idName)?.find((s) => s.parentId === classId && s.kind === "Component");
-                  if (compSym) {
-                    const ci = this.db.query<any>("componentInstance", compSym.id);
-                    if (ci && ci.variability !== "parameter" && ci.variability !== "constant") {
-                      this._unsupportedWasmCache.set(classId, true);
-                      return true;
-                    }
+              const idNames: string[] = [];
+              collectCstIdentifiers(expr, idNames);
+              for (const idName of idNames) {
+                const compSym = this.db.byName(idName)?.find((s) => s.parentId === classId && s.kind === "Component");
+                if (compSym) {
+                  const ci = this.db.query<any>("componentInstance", compSym.id);
+                  if (ci && ci.variability !== "parameter" && ci.variability !== "constant") {
+                    this._unsupportedWasmCache.set(classId, true);
+                    return true;
                   }
                 }
               }
@@ -1307,12 +1328,26 @@ export class ModelicaFlattener {
         }
       }
       if (child.kind === "Component") {
-        const childCst = this.db.cstNode(child.id) as any;
-        if (childCst?.text && /\bif\s+/.test(childCst.text) && !/\bthen\b/.test(childCst.text)) {
+        const childCst = this.db.cstNode(child.id) as CstNodeLike | null | undefined;
+        const hasConditionAttr = (n: CstNodeLike | null | undefined): boolean => {
+          if (!n) return false;
+          if (n.type === "condition_attribute" || n.type === "ConditionAttribute") return true;
+          if (n.type === "modification" || n.type === "comment" || n.type === "string_comment") return false;
+          for (const c of n.children || []) {
+            if (hasConditionAttr(c)) return true;
+          }
+          return false;
+        };
+        if (hasConditionAttr(childCst)) {
           this._unsupportedWasmCache.set(classId, true);
           return true;
         }
-        const compInst = this.db.query<any>("componentInstance", child.id);
+        const compInst = this.db.query<{
+          typeSpecifier?: string;
+          typeName?: string;
+          classInstance?: SymbolId | null;
+          classTargetId?: SymbolId | null;
+        }>("componentInstance", child.id);
         const rawSpec = String(compInst?.typeSpecifier ?? compInst?.typeName ?? "").trim();
         if (rawSpec.includes(".")) {
           const specParts = rawSpec.split(".");
@@ -2415,14 +2450,106 @@ export class ModelicaFlattener {
                 }
               }
 
-              const normDecl = (s: string) =>
-                s
-                  .replace(/\s+if\s+true\b/g, "")
-                  .replace(/\(\s*([a-zA-Z_]\w*)\s*=\s*/g, "($1 = ")
-                  .replace(/\s+/g, " ")
-                  .trim();
+              const canonicalizeDeclCst = (
+                clauseNode: CstNodeLike | null | undefined,
+                rawFallback: string,
+                imports?: Map<string, string>,
+              ): string => {
+                const isTrivialTrueCond = (n: CstNodeLike | null | undefined): boolean => {
+                  if (!n || (n.type !== "condition_attribute" && n.type !== "ConditionAttribute")) return false;
+                  const children = (n.children || []).filter(
+                    (c: CstNodeLike | null | undefined) =>
+                      c?.type !== "if" && c?.text?.trim() !== "if" && c?.text?.trim() !== "",
+                  );
+                  if (children.length === 1 && children[0]?.text?.trim() === "true") return true;
+                  const txt = (n.text ?? "").trim();
+                  return txt.startsWith("if") && txt.slice(2).trim() === "true";
+                };
 
-              if (normDecl(resolvedLocalText) === normDecl(baseText)) {
+                const tokens: string[] = [];
+                const collectTokens = (n: CstNodeLike | null | undefined): void => {
+                  if (!n) return;
+                  if (isTrivialTrueCond(n)) return;
+                  if (Array.isArray(n.children) && n.children.length > 0) {
+                    for (const ch of n.children) collectTokens(ch);
+                    return;
+                  }
+                  const t = (n.text ?? "").trim();
+                  if (t && t !== ";") tokens.push(t);
+                };
+
+                if (clauseNode && Array.isArray(clauseNode.children) && clauseNode.children.length > 0) {
+                  collectTokens(clauseNode);
+                } else {
+                  let s = rawFallback.trim();
+                  if (s.endsWith("if true")) s = s.slice(0, -7).trim();
+                  tokens.push(...s.split(/\s+/).filter(Boolean));
+                }
+
+                let joined = "";
+                for (const tok of tokens) {
+                  if (!joined) {
+                    joined = tok;
+                  } else if (
+                    tok === "(" ||
+                    tok === ")" ||
+                    tok === "[" ||
+                    tok === "]" ||
+                    tok === "." ||
+                    tok === "," ||
+                    joined.endsWith("(") ||
+                    joined.endsWith("[") ||
+                    joined.endsWith(".")
+                  ) {
+                    joined += tok;
+                  } else {
+                    joined += ` ${tok}`;
+                  }
+                }
+                // Normalize `ident=val` inside single-token leaves if any
+                let normalized = "";
+                let inQuote = false;
+                for (let idx = 0; idx < joined.length; idx++) {
+                  const ch = joined[idx]!;
+                  if (ch === '"') inQuote = !inQuote;
+                  if (!inQuote && ch === "=") {
+                    const prev = normalized[normalized.length - 1];
+                    if (
+                      prev &&
+                      prev !== " " &&
+                      prev !== ":" &&
+                      prev !== "<" &&
+                      prev !== ">" &&
+                      prev !== "=" &&
+                      prev !== "/"
+                    ) {
+                      normalized += " ";
+                    }
+                    normalized += "=";
+                    const next = joined[idx + 1];
+                    if (next && next !== " " && next !== "=") {
+                      normalized += " ";
+                    }
+                  } else {
+                    normalized += ch;
+                  }
+                }
+                if (imports && imports.size > 0) {
+                  for (const [alias, target] of imports) {
+                    const prefix = `${alias}.`;
+                    if (normalized.startsWith(prefix)) {
+                      normalized = `${target}.${normalized.slice(prefix.length)}`;
+                    }
+                    normalized = normalized.replaceAll(` ${prefix}`, ` ${target}.`);
+                  }
+                }
+                return normalized.trim();
+              };
+
+              if (
+                canonicalizeDeclCst(localClause ?? localCst, resolvedLocalText, targetImports) ===
+                canonicalizeDeclCst(baseClause ?? baseCst, baseText)
+              ) {
                 continue;
               }
 
@@ -3444,56 +3571,97 @@ export class ModelicaFlattener {
     const visitedClasses = new Set<SymbolId>();
     const classQueue: SymbolId[] = [rootClassId];
 
-    const extractDirectCondLeaves = (cCst: any): string[] => {
+    const extractDirectCondLeaves = (cCst: CstNodeLike | null | undefined): string[] => {
       if (!cCst) return [];
       const rawCText: string = cCst.text ?? "";
       if (!rawCText.includes("if ")) return [];
       const leaves: string[] = [];
-      const collectFromText = (txt: string): void => {
-        if (!txt.includes("if ")) return;
-        const clean = stripCommentsAndStrings(txt);
-        for (const m of clean.matchAll(/\bif\s+([^;]+);?/g)) {
-          const condExpr = m[1] ?? "";
-          if (/\bthen\b/.test(condExpr)) continue;
-          const ids = condExpr.match(/[a-zA-Z_]\w*/g) || [];
-          for (const id of ids) {
-            if (id !== "true" && id !== "false" && id !== "not" && id !== "and" && id !== "or") {
-              leaves.push(id);
-            }
+      const IGNORED_KEYWORDS = new Set(["if", "true", "false", "not", "and", "or", "then", "else"]);
+
+      const isIdentToken = (tok: string): boolean => {
+        if (!tok || IGNORED_KEYWORDS.has(tok)) return false;
+        const c0 = tok.charCodeAt(0);
+        const isStart = (c0 >= 65 && c0 <= 90) || (c0 >= 97 && c0 <= 122) || c0 === 95;
+        if (!isStart) return false;
+        for (let i = 1; i < tok.length; i++) {
+          const code = tok.charCodeAt(i);
+          const ok =
+            (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || code === 95;
+          if (!ok) return false;
+        }
+        return true;
+      };
+
+      const collectCondNodeIdentifiers = (condNode: CstNodeLike | null | undefined): void => {
+        if (!condNode) return;
+        if (condNode.type === "comment" || condNode.type === "string_comment" || condNode.type === "annotation") {
+          return;
+        }
+        if (condNode.type === "identifier" || condNode.type === "IDENT") {
+          const id = (condNode.text ?? "").trim();
+          if (isIdentToken(id)) leaves.push(id);
+          return;
+        }
+        if (Array.isArray(condNode.children) && condNode.children.length > 0) {
+          for (const ch of condNode.children) {
+            collectCondNodeIdentifiers(ch);
           }
+          return;
+        }
+        const leafTxt = stripCommentsAndStrings(condNode.text ?? "").trim();
+        if (isIdentToken(leafTxt)) {
+          leaves.push(leafTxt);
         }
       };
+
       if (Array.isArray(cCst.children) && cCst.children.length > 0) {
-        const walkOwnDecls = (node: any): void => {
+        const walkOwnDecls = (node: CstNodeLike | null | undefined): void => {
           if (!node) return;
-          if (node !== cCst && node.type === "class_definition") return;
-          if (node.type === "equation_section" || node.type === "algorithm_section") return;
-          if (node.type === "condition_attribute") {
-            const clean = stripCommentsAndStrings(node.text ?? "");
-            const ids = clean.replace(/^\s*if\b/, "").match(/[a-zA-Z_]\w*/g) || [];
-            for (const id of ids) {
-              if (id !== "true" && id !== "false" && id !== "not" && id !== "and" && id !== "or") {
-                leaves.push(id);
-              }
-            }
+          if (node !== cCst && (node.type === "class_definition" || node.type === "ClassDefinition")) return;
+          if (
+            node.type === "equation_section" ||
+            node.type === "algorithm_section" ||
+            node.type === "modification" ||
+            node.type === "comment" ||
+            node.type === "string_comment" ||
+            node.type === "annotation"
+          ) {
             return;
           }
-          if (
-            node.type === "component_clause" ||
-            node.type === "component_clause1" ||
-            node.type === "component_declaration" ||
-            node.type === "component_declaration1"
-          ) {
-            collectFromText(node.text ?? "");
+          if (node.type === "condition_attribute" || node.type === "ConditionAttribute") {
+            collectCondNodeIdentifiers(node);
             return;
+          }
+          // Handle flat token children inside component_declaration if `condition_attribute` is unboxed
+          if (
+            (node.type === "component_declaration" || node.type === "component_declaration1") &&
+            Array.isArray(node.children)
+          ) {
+            const hasExplicitCondChild = node.children.some(
+              (ch: CstNodeLike | null | undefined) =>
+                ch?.type === "condition_attribute" || ch?.type === "ConditionAttribute",
+            );
+            if (!hasExplicitCondChild) {
+              let afterIf = false;
+              for (const ch of node.children) {
+                if (!ch) continue;
+                if (ch.type === "comment" || ch.type === "string_comment" || ch.type === "annotation") break;
+                if (!afterIf && (ch.type === "if" || ch.text?.trim() === "if")) {
+                  afterIf = true;
+                  continue;
+                }
+                if (afterIf) {
+                  collectCondNodeIdentifiers(ch);
+                }
+              }
+              if (afterIf) return;
+            }
           }
           for (const ch of node.children || []) {
             walkOwnDecls(ch);
           }
         };
         walkOwnDecls(cCst);
-      } else {
-        collectFromText(rawCText);
       }
       return leaves;
     };

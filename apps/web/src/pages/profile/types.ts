@@ -14,6 +14,7 @@ export interface ProfileData {
   follower_count: number;
   following_count: number;
   post_count?: number | undefined;
+  pinned_post_id?: number | string | null | undefined;
   created_at: string;
 }
 

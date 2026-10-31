@@ -67,6 +67,9 @@ export interface TouchstoneDeck {
   points: TouchstonePoint[];
   comments: string[];
   sourceFile?: string | undefined;
+  hasOptionLine?: boolean | undefined;
+  invalidTokens?: { token: string; line: number }[] | undefined;
+  incompleteRows?: { expected: number; received: number; line: number }[] | undefined;
 }
 
 /**
@@ -99,4 +102,9 @@ export interface StateSpaceModel {
   D: number[][];
   poles: Complex[];
   residues: Complex[][][];
+  relocationIterations?: number | undefined;
+  poleHistory?: Complex[][] | undefined;
+  isPassive?: boolean | undefined;
+  minConductanceEigenvalue?: number | undefined;
+  rmsError?: number | undefined;
 }

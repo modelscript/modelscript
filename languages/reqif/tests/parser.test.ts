@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createZipArchive, defaultContainerToolkit, extractContainerArchive } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { extractFormalContract, parseReqIf, serializeReqIf } from "../src/index.js";
+import { extractFormalContract, extractReqIfzBundle, parseReqIf, reqifLanguage, serializeReqIf } from "../src/index.js";
 
 const SAMPLE_REQIF_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <REQ-IF xmlns="http://www.omg.org/spec/ReqIF/20110401/reqif.xsd" xmlns:xhtml="http://www.w3.org/1999/xhtml">
@@ -164,5 +165,55 @@ describe("@modelscript/reqif parser", () => {
       assert.strictEqual(obj2.contract?.limitValue, obj1.contract?.limitValue);
       assert.strictEqual(obj2.contract?.comparator, obj1.contract?.comparator);
     }
+  });
+
+  it("extracts and parses .reqifz ZIP bundles via extractReqIfzBundle and reqifLanguage.container", async () => {
+    const reqifzData = createZipArchive({
+      "PowertrainSpec.reqif": SAMPLE_REQIF_XML,
+      "attachments/architecture-diagram.svg": "<svg></svg>",
+    });
+
+    const bundle = extractReqIfzBundle(reqifzData);
+    assert.strictEqual(bundle.documents.length, 1);
+    assert.deepStrictEqual(bundle.reqIfPaths, ["PowertrainSpec.reqif"]);
+    assert.deepStrictEqual(bundle.attachmentPaths, ["attachments/architecture-diagram.svg"]);
+    assert.strictEqual(bundle.primaryDocument.header.title, "Electric Vehicle Powertrain Requirements");
+    assert.strictEqual(bundle.primaryDocument.specObjects.size, 2);
+
+    assert.ok(reqifLanguage.container);
+    const extracted = await extractContainerArchive(reqifzData, reqifLanguage.container, defaultContainerToolkit);
+    assert.ok(extracted);
+    assert.strictEqual(extracted?.manifest?.path, "PowertrainSpec.reqif");
+    assert.strictEqual(extracted?.entries.length, 2);
+    const projectedSysml = extracted?.project?.("sysml2");
+    assert.strictEqual(typeof projectedSysml, "string");
+    assert.ok(projectedSysml?.includes("requirement"));
+  });
+
+  it("parses structured EARS requirement templates and multi-clause conjunctions/implications", () => {
+    const earsComplex = extractFormalContract(
+      "While battery_soc >= 20 %, when throttle_req >= 80 %, the powertrain shall maintain motor_torque >= 240 N*m within 50 ms.",
+    );
+    assert.ok(earsComplex);
+    assert.strictEqual(earsComplex.variable, "motor_torque");
+    assert.strictEqual(earsComplex.comparator, ">=");
+    assert.strictEqual(earsComplex.limitValue, 240);
+    assert.strictEqual(earsComplex.unit, "N*m");
+    assert.strictEqual(
+      earsComplex.expression,
+      "(battery_soc >= 20 && throttle_req >= 80) => (motor_torque >= 240 && response_time <= 50)",
+    );
+
+    const conditionalConj = extractFormalContract(
+      "If vehicle_speed >= 100 km/h and fault_code == 0, then brake_force >= 5000 N and decel_rate >= 6.5 m/s^2",
+    );
+    assert.ok(conditionalConj);
+    assert.strictEqual(conditionalConj.variable, "brake_force");
+    assert.strictEqual(conditionalConj.comparator, ">=");
+    assert.strictEqual(conditionalConj.limitValue, 5000);
+    assert.strictEqual(
+      conditionalConj.expression,
+      "(vehicle_speed >= 100 && fault_code == 0) => (brake_force >= 5000 && decel_rate >= 6.5)",
+    );
   });
 });

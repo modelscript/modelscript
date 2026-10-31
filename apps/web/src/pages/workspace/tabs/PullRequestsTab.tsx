@@ -47,23 +47,112 @@ export interface PullRequestsTabProps {
   defaultBranch?: string | undefined;
 }
 
-function buildDefaultDiffForPr(mr: GitlabMergeRequest, projectId: string): string {
-  if (mr.diff_summary) return mr.diff_summary;
+interface NormalizedPrDiffFile {
+  path: string;
+  old_path?: string | undefined;
+  new_path?: string | undefined;
+  additions: number;
+  deletions: number;
+  patch: string;
+}
+
+function getDiffFilesForPr(mr: GitlabMergeRequest, projectId: string): NormalizedPrDiffFile[] {
+  if (Array.isArray(mr.diff_files) && mr.diff_files.length > 0) {
+    return mr.diff_files.map((df) => {
+      const patch = df.patch || df.diff || "";
+      const path = df.new_path || df.path || df.old_path || "src/SystemArchitecture.mo";
+      const lines = patch.split("\n");
+      const additions =
+        typeof df.additions === "number"
+          ? df.additions
+          : lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length;
+      const deletions =
+        typeof df.deletions === "number"
+          ? df.deletions
+          : lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
+      return {
+        path,
+        old_path: df.old_path,
+        new_path: df.new_path,
+        additions,
+        deletions,
+        patch,
+      };
+    });
+  }
+
+  if (Array.isArray(mr.changes) && mr.changes.length > 0) {
+    return mr.changes.map((ch) => {
+      const patch = ch.diff || ch.patch || "";
+      const path = ch.new_path || ch.path || ch.old_path || "src/SystemArchitecture.mo";
+      const lines = patch.split("\n");
+      const additions =
+        typeof ch.additions === "number"
+          ? ch.additions
+          : lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length;
+      const deletions =
+        typeof ch.deletions === "number"
+          ? ch.deletions
+          : lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
+      return {
+        path,
+        old_path: ch.old_path,
+        new_path: ch.new_path,
+        additions,
+        deletions,
+        patch,
+      };
+    });
+  }
+
   const repoName = projectId.split("/").pop() || "Model";
-  return `diff --git a/${repoName}/ThermalSubSystem.mo b/${repoName}/ThermalSubSystem.mo
+  const branchSlug = (mr.source_branch || "feature/model-update")
+    .replace(/^(feature|fix|chore|refactor|release)\//i, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim();
+  const derivedModelName =
+    branchSlug
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join("") || "SystemArchitecture";
+  const filePath = `${repoName}/${derivedModelName}.mo`;
+  const patch =
+    mr.diff_summary ||
+    `diff --git a/${filePath} b/${filePath}
 index 4a81c2e..9f03d1b 100644
---- a/${repoName}/ThermalSubSystem.mo
-+++ b/${repoName}/ThermalSubSystem.mo
-@@ -12,7 +12,9 @@ model ThermalSubSystem "${mr.title}"
+--- a/${filePath} (${mr.target_branch})
++++ b/${filePath} (${mr.source_branch})
+@@ -12,7 +12,10 @@ model ${derivedModelName} "${mr.title}"
+   // Merge branch: ${mr.source_branch} -> ${mr.target_branch}
    parameter Modelica.Units.SI.ThermalConductance G = 12.5 "Nominal conductance";
    parameter Modelica.Units.SI.HeatCapacity C = 420.0 "Lumped thermal capacity";
-+  parameter Real relTol(min = 1e-9) = 1e-6 "Solver relative tolerance";
++  parameter Real relTol(min = 1e-9) = 1e-6 "Solver relative tolerance (${mr.source_branch})";
    Modelica.Units.SI.Temperature T(start = 293.15, fixed = true);
  equation
 -  C * der(T) = -G * (T - 293.15);
-+  // Regularized heat convection law with smooth zero-crossing
++  // ${mr.title}
 +  C * der(T) = -G * (T - 293.15) + 0.05 * noEvent(smooth(1, tanh(293.15 - T)));
- end ThermalSubSystem;`;
+ end ${derivedModelName};`;
+
+  const lines = patch.split("\n");
+  return [
+    {
+      path: filePath,
+      old_path: filePath,
+      new_path: filePath,
+      additions: lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length,
+      deletions: lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length,
+      patch,
+    },
+  ];
+}
+
+function buildDefaultDiffForPr(mr: GitlabMergeRequest, projectId: string): string {
+  if (mr.diff_summary) return mr.diff_summary;
+  return getDiffFilesForPr(mr, projectId)
+    .map((f) => f.patch)
+    .join("\n\n");
 }
 
 function buildFallbackBotReview(mr: GitlabMergeRequest, projectId: string): RepoBotReviewRecord {
@@ -252,6 +341,11 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
     setBotReviews((prev) => ({ ...prev, [mr.iid]: fallback }));
     showToast(`AI Engineering Review completed for PR #${mr.iid}`, "success");
   };
+
+  const diffFiles = useMemo(
+    () => (selectedMr ? getDiffFilesForPr(selectedMr, projectId) : []),
+    [selectedMr, projectId],
+  );
 
   return (
     <Box>
@@ -497,7 +591,7 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
                 leadingVisual={FileDiffIcon}
                 onClick={() => setDetailTab("diff")}
               >
-                Files Changed (1)
+                Files Changed ({diffFiles.length})
               </Button>
               <Button
                 size="small"
@@ -565,67 +659,80 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
             )}
 
             {detailTab === "diff" && (
-              <Box borderRadius={2} border="1px solid var(--color-border-default)" style={{ overflow: "hidden" }}>
-                <Box
-                  p={2}
-                  px={3}
-                  bg="var(--color-canvas-subtle)"
-                  borderBottom="1px solid var(--color-border-default)"
-                  display="flex"
-                  justifyContent="space-between"
-                  alignItems="center"
-                >
-                  <Text fontSize="12px" fontWeight="bold" style={{ fontFamily: "monospace" }}>
-                    ThermalSubSystem.mo
-                  </Text>
-                  <Box display="flex" gap={2} fontSize="12px">
-                    <span style={{ color: "var(--color-success-fg)", fontWeight: 700 }}>+3</span>
-                    <span style={{ color: "var(--color-danger-fg)", fontWeight: 700 }}>-1</span>
-                  </Box>
-                </Box>
-                <pre
-                  style={{
-                    margin: 0,
-                    padding: "12px 16px",
-                    fontSize: "12.5px",
-                    lineHeight: 1.55,
-                    fontFamily: "ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,monospace",
-                    overflowX: "auto",
-                    background: "var(--color-canvas-default)",
-                  }}
-                >
-                  {buildDefaultDiffForPr(selectedMr, projectId)
-                    .split("\n")
-                    .map((line, idx) => {
-                      const isAdd = line.startsWith("+") && !line.startsWith("+++");
-                      const isDel = line.startsWith("-") && !line.startsWith("---");
-                      const isHunk = line.startsWith("@@");
-                      return (
-                        <div
-                          key={idx}
-                          style={{
-                            backgroundColor: isAdd
-                              ? "rgba(46, 160, 67, 0.15)"
-                              : isDel
-                                ? "rgba(248, 81, 73, 0.15)"
-                                : isHunk
-                                  ? "rgba(56, 139, 253, 0.12)"
-                                  : "transparent",
-                            color: isAdd
-                              ? "var(--color-success-fg)"
-                              : isDel
-                                ? "var(--color-danger-fg)"
-                                : isHunk
-                                  ? "var(--color-accent-fg)"
-                                  : "var(--color-fg-default)",
-                            padding: "0 6px",
-                          }}
-                        >
-                          {line}
-                        </div>
-                      );
-                    })}
-                </pre>
+              <Box display="flex" flexDirection="column" gap={3}>
+                {diffFiles.map((file, fileIdx) => {
+                  const displayPath =
+                    file.old_path && file.new_path && file.old_path !== file.new_path
+                      ? `${file.old_path} → ${file.new_path}`
+                      : file.path;
+                  return (
+                    <Box
+                      key={`${file.path}-${fileIdx}`}
+                      borderRadius={2}
+                      border="1px solid var(--color-border-default)"
+                      style={{ overflow: "hidden" }}
+                    >
+                      <Box
+                        p={2}
+                        px={3}
+                        bg="var(--color-canvas-subtle)"
+                        borderBottom="1px solid var(--color-border-default)"
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="center"
+                      >
+                        <Text fontSize="12px" fontWeight="bold" style={{ fontFamily: "monospace" }}>
+                          {displayPath}
+                        </Text>
+                        <Box display="flex" gap={2} fontSize="12px">
+                          <span style={{ color: "var(--color-success-fg)", fontWeight: 700 }}>+{file.additions}</span>
+                          <span style={{ color: "var(--color-danger-fg)", fontWeight: 700 }}>-{file.deletions}</span>
+                        </Box>
+                      </Box>
+                      <pre
+                        style={{
+                          margin: 0,
+                          padding: "12px 16px",
+                          fontSize: "12.5px",
+                          lineHeight: 1.55,
+                          fontFamily: "ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,monospace",
+                          overflowX: "auto",
+                          background: "var(--color-canvas-default)",
+                        }}
+                      >
+                        {file.patch.split("\n").map((line, idx) => {
+                          const isAdd = line.startsWith("+") && !line.startsWith("+++");
+                          const isDel = line.startsWith("-") && !line.startsWith("---");
+                          const isHunk = line.startsWith("@@");
+                          return (
+                            <div
+                              key={idx}
+                              style={{
+                                backgroundColor: isAdd
+                                  ? "rgba(46, 160, 67, 0.15)"
+                                  : isDel
+                                    ? "rgba(248, 81, 73, 0.15)"
+                                    : isHunk
+                                      ? "rgba(56, 139, 253, 0.12)"
+                                      : "transparent",
+                                color: isAdd
+                                  ? "var(--color-success-fg)"
+                                  : isDel
+                                    ? "var(--color-danger-fg)"
+                                    : isHunk
+                                      ? "var(--color-accent-fg)"
+                                      : "var(--color-fg-default)",
+                                padding: "0 6px",
+                              }}
+                            >
+                              {line}
+                            </div>
+                          );
+                        })}
+                      </pre>
+                    </Box>
+                  );
+                })}
               </Box>
             )}
 

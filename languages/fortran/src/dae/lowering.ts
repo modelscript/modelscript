@@ -24,9 +24,10 @@ function unrollConstantDoLoops(lines: string[], constants: Record<string, number
   while (i < lines.length) {
     const raw = lines[i]!;
     const trimmed = raw.trim();
-    const doMatch = /^DO\s+(?:[0-9]+\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^,]+),\s*([^,]+)(?:,\s*([^,]+))?$/i.exec(
-      trimmed,
-    );
+    const doMatch =
+      /^DO\s+(?:[0-9]+\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^,\s]+)\s*,\s*([^,\s]+)(?:\s*,\s*([^,\s]+))?\s*$/i.exec(
+        trimmed,
+      );
     if (doMatch) {
       const loopVar = doMatch[1]!;
       const parseBound = (s: string): number | null => {
@@ -213,13 +214,20 @@ export function lowerFortranToDae(
       continue;
     }
 
-    // 2. Scalarized Array Element Assignment: A(1) = expr or M(1, 2) = expr
-    const arrTargetMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([0-9]+(?:\s*,\s*[0-9]+)*)\s*\)$/.exec(target);
+    // 2. Scalarized Array Element Assignment: A(1) = expr, A(I) = expr, or M(I, J) = expr
+    const arrTargetMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*([^)]+)\s*\)$/.exec(target);
     if (arrTargetMatch && !/^(?:SD|S|X)$/i.test(arrTargetMatch[1]!)) {
       const base = arrTargetMatch[1]!;
       const indices = arrTargetMatch[2]!
         .split(",")
-        .map((s) => s.trim())
+        .map((s) => {
+          const clean = s.trim();
+          const n = Number(clean);
+          if (!Number.isNaN(n)) return String(Math.round(n));
+          const c = sig.constants[clean] ?? sig.constants[clean.toLowerCase()] ?? sig.constants[clean.toUpperCase()];
+          if (typeof c === "number") return String(Math.round(c));
+          return clean.replace(/[^A-Za-z0-9_]/g, "_");
+        })
         .join("_");
       const scalarName = `${base}_${indices}`;
       const varIdx = getOrAddVar(scalarName, false);
@@ -352,7 +360,7 @@ function tokenizeFortranExpr(expr: string): FortranExprToken[] {
         }
       }
 
-      // Check for scalarized constant-index array access: A(1) or M(1, 2)
+      // Check for scalarized array access: A(1), A(I), or M(I, J)
       if (
         !/^(?:SQRT|SIN|COS|TAN|ASIN|ACOS|ATAN|ATAN2|EXP|LOG|LOG10|ALOG|ABS|MAX|MIN|MOD|SIGN|POW|REAL|INT|DBLE)$/i.test(
           ident,
@@ -363,7 +371,7 @@ function tokenizeFortranExpr(expr: string): FortranExprToken[] {
         const parenClose = expr.indexOf(")", i);
         if (parenClose > i) {
           const inner = expr.slice(i + 1, parenClose).trim();
-          if (/^[0-9]+(?:\s*,\s*[0-9]+)*$/.test(inner)) {
+          if (/^[A-Za-z0-9_]+(?:\s*,\s*[A-Za-z0-9_]+)*$/.test(inner)) {
             const idxSuffix = inner
               .split(",")
               .map((s) => s.trim())

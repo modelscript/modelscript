@@ -125,6 +125,107 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
           </>
         )}
 
+        {["modelica", "modelica-diagram", "msx", "modelscript"].includes(artifact.view_type?.toLowerCase()) && (
+          <>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>Class / Model</span>
+              <span style={{ fontFamily: "var(--font-mono, monospace)" }}>
+                {viewConfig.modelName || viewConfig.title || "Modelica DAE"}
+              </span>
+            </Box>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>Compiler Kernel</span>
+              <span style={{ color: "#38bdf8" }}>WASM GLR + DAE Arena</span>
+            </Box>
+            {viewConfig.componentCount !== undefined && (
+              <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+                <span style={{ color: "var(--color-fg-muted)" }}>Components</span>
+                <span>{viewConfig.componentCount}</span>
+              </Box>
+            )}
+          </>
+        )}
+
+        {["pscad", "pscx", "pslx", "psse", "psse-sld", "raw"].includes(artifact.view_type?.toLowerCase()) && (
+          <>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>Grid Domain</span>
+              <span style={{ color: "#f59e0b" }}>
+                {String(artifact.view_type).toLowerCase().includes("psse") ? "PSS/E Load Flow" : "PSCAD EMT"}
+              </span>
+            </Box>
+            {viewConfig.systemFrequencyHz !== undefined && (
+              <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+                <span style={{ color: "var(--color-fg-muted)" }}>Nominal Freq</span>
+                <span style={{ fontFamily: "var(--font-mono, monospace)" }}>{viewConfig.systemFrequencyHz} Hz</span>
+              </Box>
+            )}
+            {(viewConfig.busCount !== undefined || viewConfig.componentCount !== undefined) && (
+              <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+                <span style={{ color: "var(--color-fg-muted)" }}>Topology Nodes</span>
+                <span>{viewConfig.busCount ?? viewConfig.componentCount}</span>
+              </Box>
+            )}
+          </>
+        )}
+
+        {["ssp", "ssd", "ssp-topology"].includes(artifact.view_type?.toLowerCase()) && (
+          <>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>Standard</span>
+              <span style={{ color: "#38bdf8" }}>MA SSP 1.0 / FMI Co-Sim</span>
+            </Box>
+            {viewConfig.fmuCount !== undefined && (
+              <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+                <span style={{ color: "var(--color-fg-muted)" }}>Coupled FMUs</span>
+                <span>{viewConfig.fmuCount}</span>
+              </Box>
+            )}
+          </>
+        )}
+
+        {["simpack", "spck", "gensys", "gensys-track"].includes(artifact.view_type?.toLowerCase()) && (
+          <>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>Kinematics Engine</span>
+              <span style={{ color: "#22d3ee" }}>Spatial Multibody DAE</span>
+            </Box>
+            {viewConfig.bodyCount !== undefined && (
+              <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+                <span style={{ color: "var(--color-fg-muted)" }}>Rigid Bodies</span>
+                <span>{viewConfig.bodyCount}</span>
+              </Box>
+            )}
+          </>
+        )}
+
+        {["owl", "owl2", "ontology", "rdf", "ttl"].includes(artifact.view_type?.toLowerCase()) && (
+          <>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>Reasoner</span>
+              <span style={{ color: "#a78bfa" }}>W3C OWL 2 DL / HermiT</span>
+            </Box>
+          </>
+        )}
+
+        {["sima", "sima-mooring"].includes(artifact.view_type?.toLowerCase()) && (
+          <>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>Offshore Code</span>
+              <span style={{ color: "#34d399" }}>DNV-OS-E301 Mooring</span>
+            </Box>
+          </>
+        )}
+
+        {["reqif", "reqifz", "reqif-viewer"].includes(artifact.view_type?.toLowerCase()) && (
+          <>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>Specification</span>
+              <span style={{ color: "#38bdf8" }}>OMG ReqIF 1.2 + ISO 26262</span>
+            </Box>
+          </>
+        )}
+
         {viewConfig.url && (
           <Box display="flex" flexDirection="column" gap={1} py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
             <span style={{ color: "var(--color-fg-muted)" }}>Asset Resource</span>
@@ -220,13 +321,82 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
         ) : ["sysml", "sysml2", "sysml-architecture-viewer", "kerml"].includes(artifact.view_type?.toLowerCase()) ? (
           <>
             <div>
-              🌳 <b>Architecture:</b> Browse part definitions and ports
+              🌳 <b>Architecture:</b> Browse IBD / BDD diagrams and pan/zoom
             </div>
             <div>
-              🛡️ <b>Verification:</b> Inspect requirements satisfaction
+              🛡️ <b>Verification:</b> Inspect requirements satisfaction matrix
             </div>
             <div>
-              📄 <b>Source:</b> Copy KerML / SysML v2 source code
+              🔧 <b>Interactive Edit:</b> Switch to Edit mode for bidirectional AST sync
+            </div>
+          </>
+        ) : ["modelica", "modelica-diagram", "msx", "modelscript"].includes(artifact.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              🧩 <b>Schematic Edit:</b> Drag components, wire ports, and edit parameters
+            </div>
+            <div>
+              ▶️ <b>Simulate DAE:</b> Run in-browser WASM DAE solver and plot trajectories
+            </div>
+            <div>
+              🔄 <b>Split Sync:</b> Bidirectional sync between X6 diagram and Modelica code
+            </div>
+          </>
+        ) : ["pscad", "pscx", "pslx", "psse", "psse-sld", "raw"].includes(artifact.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              ⚡ <b>Grid Schematic:</b> Pan and zoom single-line / EMT schematics
+            </div>
+            <div>
+              📊 <b>Telemetry:</b> Toggle sidebar to inspect bus voltages &amp; IEEE 2800 status
+            </div>
+            <div>
+              🔧 <b>Interactive Edit:</b> Edit power network topology and parameters
+            </div>
+          </>
+        ) : ["ssp", "ssd", "ssp-topology"].includes(artifact.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              🔗 <b>FMU Topology:</b> Click any FMU block in the sidebar to highlight it on canvas
+            </div>
+            <div>
+              ✋ <b>Pan &amp; Zoom:</b> Drag stage to pan, use HUD controls to zoom
+            </div>
+          </>
+        ) : ["simpack", "spck", "gensys", "gensys-track"].includes(artifact.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              🧊 <b>3D Multibody:</b> Orbit 3D kinematic topology or inspect 2D schematic
+            </div>
+            <div>
+              🛤️ <b>Dynamics:</b> Verify EN 14363 stability &amp; degree-of-freedom mobility
+            </div>
+          </>
+        ) : ["owl", "owl2", "ontology", "rdf", "ttl"].includes(artifact.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              🕸️ <b>Ontology Graph:</b> Click class nodes to inspect axioms and disjointness
+            </div>
+            <div>
+              🔍 <b>Filter &amp; Search:</b> Filter classes and object properties in real time
+            </div>
+          </>
+        ) : ["sima", "sima-mooring"].includes(artifact.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              ⚓ <b>Mooring Spread:</b> Click mooring lines or toggle ALS line-break test
+            </div>
+            <div>
+              📐 <b>Catenary &amp; DNV:</b> Inspect 2D catenary sag profile and DNV-OS-E301 table
+            </div>
+          </>
+        ) : ["reqif", "reqifz", "reqif-viewer"].includes(artifact.view_type?.toLowerCase()) ? (
+          <>
+            <div>
+              📋 <b>Tabular &amp; RTM:</b> Double-click cells to edit requirements and traceability
+            </div>
+            <div>
+              🕸️ <b>Architecture Diagram:</b> Pan/zoom requirements graph and click nodes to filter
             </div>
           </>
         ) : ["dataset", "dataset-table", "csv", "tsv", "json-table"].includes(artifact.view_type?.toLowerCase()) ? (
@@ -244,10 +414,10 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
         ) : (
           <>
             <div>
-              📄 <b>Source View:</b> Syntax highlighted inspection
+              🔍 <b>Pan &amp; Zoom:</b> Drag diagram stage to pan, use zoom HUD controls
             </div>
             <div>
-              📋 <b>Copy:</b> Export code to system clipboard
+              📄 <b>Source View:</b> Switch between schematic diagram and syntax-highlighted code
             </div>
           </>
         )}

@@ -1,0 +1,49 @@
+# ============================================================================
+# Sandia Dakota Study Specification (.dakota)
+# Quadrotor Downwash & Forward-Flight Drag Polar Sweep (SU2 RANS)
+# ============================================================================
+# @msx-id pkg.drone-chassis.aero-rans-sweep
+# @msx-slug drone-chassis-aero-rans-sweep
+# @msx-name Quadrotor Forward-Flight Pitch & Freestream Velocity RANS Polar Sweep
+# @msx-version 1.2.0
+# @msx-kind parameter-sweep
+# @msx-category cfd
+# @msx-domain cfd
+# @msx-model-id cfd/rotor_downwash.cfg
+# @msx-model-name QuadrotorDownwashRANS
+# @msx-target hpc-cluster
+# @msx-package @examples/drone-chassis
+# @msx-description Multi-dimensional Sandia Dakota parameter study sweeping forward flight pitch angle (-15 deg to -2 deg) and freestream velocity (5 to 25 m/s) using SU2 k-omega SST RANS.
+# @msx-input gridPointsPerDim = 7
+# @msx-input turbulenceModel = "SST"
+# @msx-input maxIterations = 500
+
+environment
+  tabular_data
+    tabular_data_file = 'drone_aero_polar_results.dat'
+
+method
+  multidim_parameter_study
+    partitions = 7 5
+
+model
+  single
+
+variables
+  continuous_design = 2
+    initial_point = -8.0 15.0
+    lower_bounds  = -15.0 5.0
+    upper_bounds  = -2.0 25.0
+    descriptors   = 'pitchAngleDeg' 'freestreamVelMs'
+
+interface
+  fork
+    analysis_drivers = 'msx study-driver --domain=cfd --model=cfd/rotor_downwash.cfg --target=hpc-cluster'
+    asynchronous
+    evaluation_concurrency = 16
+
+responses
+  response_functions = 2
+  descriptors = 'hoverFigureOfMerit' 'parasiticDragN'
+  no_gradients
+  no_hessians

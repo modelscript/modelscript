@@ -70,6 +70,9 @@ export function parseXtce(source: string): XtceDocument {
   const commands: XtceCommand[] = [];
 
   let currentContainer: Partial<XtceContainer> | null = null;
+  let currentEntry: XtceContainerEntry | null = null;
+  let currentEntryPrevEndBit = 0;
+  let currentLocationRef = "containerStart";
   let currentCommand: Partial<XtceCommand> | null = null;
 
   let offset = 0;
@@ -154,9 +157,19 @@ export function parseXtce(source: string): XtceDocument {
         const last = currentContainer.entries[currentContainer.entries.length - 1]!;
         bitOff = last.bitOffset + last.bitLength;
       }
+      currentEntryPrevEndBit = bitOff;
+      if (attrs["bitOffset"] !== undefined) {
+        const parsedOff = parseInt(attrs["bitOffset"], 10);
+        if (!Number.isNaN(parsedOff)) bitOff = parsedOff;
+      }
 
       const matchedParam = parameters.find((p) => p.name.toLowerCase() === pref.toLowerCase());
-      const bLen = matchedParam ? matchedParam.bitLength : 16;
+      const bLen =
+        attrs["bitLength"] !== undefined
+          ? parseInt(attrs["bitLength"], 10)
+          : matchedParam
+            ? matchedParam.bitLength
+            : 16;
 
       const entry: XtceContainerEntry = {
         parameterRef: pref,
@@ -164,11 +177,38 @@ export function parseXtce(source: string): XtceDocument {
         bitLength: bLen,
       };
       currentContainer.entries!.push(entry);
+      currentEntry = line.includes("/>") || line.includes("</ParameterRefEntry>") ? null : entry;
+      currentLocationRef = "containerStart";
+    }
+
+    if (currentEntry && line.includes("<LocationInContainerInBits")) {
+      const attrs = parseAttributes(line.slice(line.indexOf("<LocationInContainerInBits")));
+      currentLocationRef = attrs["referenceLocation"] ?? "containerStart";
+      if (attrs["fixedValue"] !== undefined) {
+        const v = parseInt(attrs["fixedValue"], 10);
+        if (!Number.isNaN(v)) {
+          currentEntry.bitOffset = currentLocationRef === "previousEntry" ? currentEntryPrevEndBit + v : v;
+        }
+      }
+    }
+
+    if (currentEntry && line.includes("<FixedValue>") && line.includes("</FixedValue>")) {
+      const start = line.indexOf("<FixedValue>") + "<FixedValue>".length;
+      const end = line.indexOf("</FixedValue>");
+      const v = parseInt(line.slice(start, end).trim(), 10);
+      if (!Number.isNaN(v)) {
+        currentEntry.bitOffset = currentLocationRef === "previousEntry" ? currentEntryPrevEndBit + v : v;
+      }
+    }
+
+    if (currentEntry && line.includes("</ParameterRefEntry>")) {
+      currentEntry = null;
     }
 
     if (currentContainer && line.includes("</SequenceContainer>")) {
       containers.push(currentContainer as XtceContainer);
       currentContainer = null;
+      currentEntry = null;
     }
 
     // Check for MetaCommand

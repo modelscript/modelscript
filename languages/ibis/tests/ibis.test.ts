@@ -11,6 +11,7 @@ import {
   lowerIbisToDae,
   parseIbis,
   serializeIbis,
+  simulateIbisChannel,
 } from "../src/index.js";
 
 const SAMPLE_IBIS = `[IBIS Ver] 3.2
@@ -201,12 +202,45 @@ test("IBIS DAE Lowering: compiles package RLC and driver into DAEBuilder linear 
 
   assert(vars.length >= 8, `Expected at least 8 DAE variables, got ${vars.length}`);
   assert(eqs.length >= 3, `Expected at least 3 equations, got ${eqs.length}`);
+  assert.strictEqual(
+    vars.length,
+    eqs.length,
+    `Expected structurally square IBIS DAE (N_vars=${vars.length} === N_eqs=${eqs.length})`,
+  );
 
   // Check pin variables
   assert.notStrictEqual(dae.lookupVariable("v_pin_TX_CHIP_3"), -1);
   assert.notStrictEqual(dae.lookupVariable("v_die_TX_CHIP_3"), -1);
   assert.notStrictEqual(dae.lookupVariable("i_pkg_TX_CHIP_3"), -1);
   assert.notStrictEqual(dae.lookupVariable("L_pkg_TX_CHIP_3"), -1);
+});
+
+test("IBIS Linter: detects clamping diode current divergence > 10A (M8318)", () => {
+  const ibs = `[IBIS Ver] 3.2
+[Component] CLAMP_CHIP
+[Package]
+R_pkg 0.1 0.05 0.2
+L_pkg 1.0nH 0.5nH 2.0nH
+C_pkg 1.0pF 0.5pF 1.5pF
+[Pin]
+1 IO1 CLAMP_MOD
+
+[Model] CLAMP_MOD
+Model_type Input
+C_comp 1.5pF 1.0pF 2.0pF
+[Voltage Range] 3.3V 3.0V 3.6V
+[GND Clamp]
+-1.0 -25.0 -15.0 -35.0
+ 0.0   0.0   0.0   0.0
+ 3.3   0.0   0.0   0.0
+[End]
+`;
+  const deck = parseIbis(ibs);
+  const diags = lintIbis(deck);
+  assert(
+    diags.some((d) => d.code === 8318),
+    "Expected M8318 for clamp current > 10A",
+  );
 });
 
 test("IBIS Modelica Projection: generates syntactically valid Modelica 3.x code", () => {
@@ -235,4 +269,74 @@ test("IBIS Workspace Index: indexes multi-file symbols accurately", () => {
 
   const modSyms = fileIdx.byName.get("LVCMOS_33_OUT");
   assert(modSyms !== undefined && modSyms.length > 0);
+});
+
+test("IBIS-AMI Channel Solver: parses [Algorithmic Model] and opens degraded eye with FFE/CTLE/DFE equalization", () => {
+  const amiIbis = `[IBIS Ver] 5.0
+[File Name] serdes_10g.ibs
+[Component] SERDES_TX
+[Package]
+R_pkg 0.10 0.05 0.15
+L_pkg 1.0nH 0.5nH 1.5nH
+C_pkg 0.5pF 0.3pF 0.8pF
+[Pin] signal_name model_name R_pin L_pin C_pin
+1 TX_P SERDES_10G_TX
+
+[Model] SERDES_10G_TX
+Model_type Output
+C_comp 0.8pF 0.6pF 1.0pF
+[Voltage Range] 1.0V 0.95V 1.05V
+[Pulldown]
+0.0 0.000 0.000 0.000
+0.2 0.005 0.004 0.006
+1.0 0.025 0.020 0.030
+[Pullup]
+0.0 0.000 0.000 0.000
+0.2 0.005 0.004 0.006
+1.0 0.025 0.020 0.030
+[Algorithmic Model]
+Executable Linux_gcc_64 libtx_ami.so tx_ami.ami
+TX_Tap_Weights -0.10 0.80 -0.10
+CTLE_Gain_dB 6.0
+DFE_Taps 0.08 0.03
+[End Algorithmic Model]
+[End]
+`;
+
+  const deck = parseIbis(amiIbis);
+  const mod = deck.models.get("SERDES_10G_TX");
+  assert(mod !== undefined);
+  assert(mod.algorithmicModel !== undefined);
+  assert.strictEqual(mod.algorithmicModel.executables.length, 1);
+  assert.deepStrictEqual(mod.algorithmicModel.txTapWeights, [-0.1, 0.8, -0.1]);
+  assert.strictEqual(mod.algorithmicModel.ctleGainDb, 6.0);
+  assert.deepStrictEqual(mod.algorithmicModel.dfeTaps, [0.08, 0.03]);
+
+  // Simulate unequalized lossy channel (14 dB insertion loss at Nyquist)
+  const unequalized = simulateIbisChannel(mod, {
+    dataRateGbps: 10,
+    channelLossDb: 14,
+    txTapWeights: [1.0],
+    ctleGainDb: 0,
+    dfeTaps: [],
+  });
+
+  // Simulate equalized channel using TX FFE + RX CTLE + RX DFE from [Algorithmic Model]
+  const equalized = simulateIbisChannel(mod, {
+    dataRateGbps: 10,
+    channelLossDb: 14,
+  });
+
+  assert(
+    equalized.eyeHeightV > unequalized.eyeHeightV,
+    `Expected FFE/CTLE/DFE equalization to increase eyeHeightV (${equalized.eyeHeightV} > ${unequalized.eyeHeightV})`,
+  );
+  assert(
+    equalized.eyeWidthPs >= unequalized.eyeWidthPs,
+    `Expected equalized eyeWidthPs (${equalized.eyeWidthPs}) >= unequalized (${unequalized.eyeWidthPs})`,
+  );
+  assert(
+    equalized.eyeHeightBer1e12V > 0,
+    `Expected open statistical eye at BER 1e-12, got ${equalized.eyeHeightBer1e12V}`,
+  );
 });

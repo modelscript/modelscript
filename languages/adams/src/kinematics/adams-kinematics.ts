@@ -4,7 +4,9 @@
  * @modelscript/adams — Spatial Kinematics Kernel & Coordinate Transformations.
  *
  * Implements Tait-Bryan and Euler 3-1-3 rotation matrix algebra, forward kinematics,
- * joint constraint residual evaluations, and coordinate partitioning helpers.
+ * marker orientation composition, joint constraint residual evaluations across all
+ * canonical Adams joint types (SPHERICAL, REVOLUTE, UNIVERSAL, CYLINDRICAL,
+ * TRANSLATIONAL, PLANAR, FIXED, SCREW), and coordinate partitioning helpers.
  */
 
 import type { AdamsDataset, AdamsJoint, AdamsMarker, Vector3D } from "../types.js";
@@ -50,6 +52,31 @@ export function rotationMatrixTaitBryan(roll: number, pitch: number, yaw: number
 }
 
 /**
+ * Multiplies two 3x3 rotation matrices: C = A * B.
+ */
+export function multiplyMatrices3x3(a: Matrix3x3, b: Matrix3x3): Matrix3x3 {
+  const [a0, a1, a2] = a;
+  const [b0, b1, b2] = b;
+  return [
+    [
+      a0[0] * b0[0] + a0[1] * b1[0] + a0[2] * b2[0],
+      a0[0] * b0[1] + a0[1] * b1[1] + a0[2] * b2[1],
+      a0[0] * b0[2] + a0[1] * b1[2] + a0[2] * b2[2],
+    ],
+    [
+      a1[0] * b0[0] + a1[1] * b1[0] + a1[2] * b2[0],
+      a1[0] * b0[1] + a1[1] * b1[1] + a1[2] * b2[1],
+      a1[0] * b0[2] + a1[1] * b1[2] + a1[2] * b2[2],
+    ],
+    [
+      a2[0] * b0[0] + a2[1] * b1[0] + a2[2] * b2[0],
+      a2[0] * b0[1] + a2[1] * b1[1] + a2[2] * b2[1],
+      a2[0] * b0[2] + a2[1] * b1[2] + a2[2] * b2[2],
+    ],
+  ];
+}
+
+/**
  * Multiplies a 3x3 matrix by a 3D vector: v_out = M * v.
  */
 export function transformVector(m: Matrix3x3, v: Vector3D): Vector3D {
@@ -57,6 +84,24 @@ export function transformVector(m: Matrix3x3, v: Vector3D): Vector3D {
     x: m[0][0] * v.x + m[0][1] * v.y + m[0][2] * v.z,
     y: m[1][0] * v.x + m[1][1] * v.y + m[1][2] * v.z,
     z: m[2][0] * v.x + m[2][1] * v.y + m[2][2] * v.z,
+  };
+}
+
+/**
+ * Computes the dot product of two 3D vectors.
+ */
+export function dotVector3D(a: Vector3D, b: Vector3D): number {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+/**
+ * Computes the cross product of two 3D vectors: a x b.
+ */
+export function crossVector3D(a: Vector3D, b: Vector3D): Vector3D {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
   };
 }
 
@@ -73,8 +118,19 @@ export function computeMarkerGlobalPosition(marker: AdamsMarker, partPos: Vector
 }
 
 /**
+ * Computes the global 3x3 orientation matrix of an Adams marker given its parent part rotation.
+ */
+export function computeMarkerGlobalOrientation(marker: AdamsMarker, partRot: Matrix3x3): Matrix3x3 {
+  const { x, y, z } = marker.orientation;
+  if (x === 0 && y === 0 && z === 0) return partRot;
+  const localRot = marker.useEuler ? rotationMatrixEuler313(x, y, z) : rotationMatrixTaitBryan(x, y, z);
+  return multiplyMatrices3x3(partRot, localRot);
+}
+
+/**
  * Evaluates the geometric constraint residual vector Phi(q) for an Adams joint.
- * For spherical, revolute, universal, or fixed joints, evaluates position disparity.
+ * Supports SPHERICAL (3), REVOLUTE (5), UNIVERSAL (4), CYLINDRICAL (4),
+ * TRANSLATIONAL (5), PLANAR (3), FIXED (6), and SCREW (5).
  */
 export function evaluateJointResidual(
   joint: AdamsJoint,
@@ -94,16 +150,23 @@ export function evaluateJointResidual(
   ];
 
   const posA = partPositions.get(mA.partId) ?? defaultPos;
-  const rotA = partRotations.get(mA.partId) ?? identityRot;
+  const rotA = computeMarkerGlobalOrientation(mA, partRotations.get(mA.partId) ?? identityRot);
   const posB = partPositions.get(mB.partId) ?? defaultPos;
-  const rotB = partRotations.get(mB.partId) ?? identityRot;
+  const rotB = computeMarkerGlobalOrientation(mB, partRotations.get(mB.partId) ?? identityRot);
 
-  const globA = computeMarkerGlobalPosition(mA, posA, rotA);
-  const globB = computeMarkerGlobalPosition(mB, posB, rotB);
+  const globA = computeMarkerGlobalPosition(mA, posA, partRotations.get(mA.partId) ?? identityRot);
+  const globB = computeMarkerGlobalPosition(mB, posB, partRotations.get(mB.partId) ?? identityRot);
 
   const dx = globA.x - globB.x;
   const dy = globA.y - globB.y;
   const dz = globA.z - globB.z;
+  const dr: Vector3D = { x: dx, y: dy, z: dz };
+
+  const xA = transformVector(rotA, { x: 1, y: 0, z: 0 });
+  const zA = transformVector(rotA, { x: 0, y: 0, z: 1 });
+  const xB = transformVector(rotB, { x: 1, y: 0, z: 0 });
+  const yB = transformVector(rotB, { x: 0, y: 1, z: 0 });
+  const zB = transformVector(rotB, { x: 0, y: 0, z: 1 });
 
   switch (joint.type) {
     case "SPHERICAL":
@@ -111,24 +174,48 @@ export function evaluateJointResidual(
       return [dx, dy, dz];
 
     case "REVOLUTE": {
-      // 3 translational constraints + 2 rotational perpendicularity constraints
-      const zAxisLocal: Vector3D = { x: 0, y: 0, z: 1 };
-      const zA = transformVector(rotA, zAxisLocal);
-      const zB = transformVector(rotB, zAxisLocal);
-      // zA x zB = 0 => 2 independent components
+      // 3 translational constraints + 2 rotational perpendicularity constraints (zA x zB = 0)
       const rotRes1 = zA.y * zB.z - zA.z * zB.y;
       const rotRes2 = zA.z * zB.x - zA.x * zB.z;
       return [dx, dy, dz, rotRes1, rotRes2];
     }
 
-    case "FIXED": {
-      // 6 constraints: 3 translational + 3 rotational
-      return [dx, dy, dz, rotA[0][1] - rotB[0][1], rotA[0][2] - rotB[0][2], rotA[1][2] - rotB[1][2]];
+    case "UNIVERSAL": {
+      // 3 translational constraints + 1 rotational perpendicularity constraint (zA . xB = 0)
+      return [dx, dy, dz, dotVector3D(zA, xB)];
+    }
+
+    case "CYLINDRICAL": {
+      // 2 translational constraints perpendicular to zB + 2 rotational constraints (zA parallel to zB)
+      return [dotVector3D(dr, xB), dotVector3D(dr, yB), dotVector3D(zA, xB), dotVector3D(zA, yB)];
     }
 
     case "TRANSLATIONAL": {
-      // 2 translational constraints perpendicular to axis of translation + 3 rotational constraints
-      return [dx, dy, rotA[0][0] - rotB[0][0], rotA[1][1] - rotB[1][1], rotA[2][2] - rotB[2][2]];
+      // 2 translational constraints perpendicular to zB + 3 rotational constraints
+      return [dotVector3D(dr, xB), dotVector3D(dr, yB), dotVector3D(zA, xB), dotVector3D(zA, yB), dotVector3D(xA, yB)];
+    }
+
+    case "PLANAR": {
+      // 1 translational constraint along zB + 2 rotational constraints (zA parallel to zB)
+      return [dotVector3D(dr, zB), dotVector3D(zA, xB), dotVector3D(zA, yB)];
+    }
+
+    case "FIXED": {
+      // 6 constraints: 3 translational + 3 rotational
+      return [dx, dy, dz, dotVector3D(zA, xB), dotVector3D(zA, yB), dotVector3D(xA, yB)];
+    }
+
+    case "SCREW": {
+      // 2 translational perpendicular to zB + 2 rotational + 1 helical coupling (dz - pitch * dpsi / 2pi)
+      const pitch = joint.pitch ?? 0.01;
+      const dpsi = Math.atan2(dotVector3D(xA, yB), dotVector3D(xA, xB));
+      return [
+        dotVector3D(dr, xB),
+        dotVector3D(dr, yB),
+        dotVector3D(zA, xB),
+        dotVector3D(zA, yB),
+        dotVector3D(dr, zB) - (pitch / (2 * Math.PI)) * dpsi,
+      ];
     }
 
     default:

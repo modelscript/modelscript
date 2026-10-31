@@ -180,13 +180,14 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
       const y = 60 + row * 100;
       return {
         name: bName,
-        blockType: bType,
-        position: [x, y, x + 130, y + 54],
+        type: bType,
+        position: { x, y, width: 130, height: 54 },
       };
     });
     const lines: SimulinkLineLike[] = [];
     for (let i = 0; i < blocks.length - 1; i++) {
       lines.push({
+        id: `line_${i + 1}`,
         srcBlock: blocks[i]!.name,
         srcPort: 1,
         dstBlock: blocks[i + 1]!.name,

@@ -3,6 +3,7 @@
 import { feaToDae } from "./dae/fea-to-dae.js";
 import { parseFeaDeck } from "./dialects/index.js";
 import { lintFeaModel } from "./lints/index.js";
+import { extractFeaSlicingProperties } from "./materializer.js";
 import { feaToModelica } from "./projections/index.js";
 import type { CaeDiagnostic, FeaModelData } from "./types.js";
 
@@ -303,22 +304,28 @@ export async function executeFeaAction(action: string, args: Record<string, unkn
 
     case "solve_fea":
     case "solve": {
-      // Linear elasticity static solve
-      let totalForce = 0;
-      for (const f of model.nodalLoads.values()) {
-        totalForce += Math.sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+      const props = extractFeaSlicingProperties(content);
+      let maxDisp = props.maxDisplacementM ?? 0;
+      let maxStress = props.maxVonMisesPa ?? 0;
+      if (maxDisp <= 0) {
+        let totalForce = 0;
+        for (const f of model.nodalLoads.values()) {
+          totalForce += Math.sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+        }
+        let avgE = 2.1e11;
+        for (const mat of model.materials.values()) {
+          if (mat.E && mat.E > 0) avgE = mat.E;
+        }
+        maxDisp = totalForce > 0 ? totalForce / (avgE * 0.01) : 0.001;
+        if (maxStress <= 0) {
+          maxStress = maxDisp * avgE * 1e-3;
+        }
       }
-      let avgE = 2.1e11;
-      for (const mat of model.materials.values()) {
-        if (mat.E && mat.E > 0) avgE = mat.E;
-      }
-      const maxDisp = totalForce > 0 ? totalForce / (avgE * 0.01) : 0.001;
-      const maxStress = maxDisp * avgE * 1e-3;
 
       return {
         success: true,
-        numNodes: model.nodes.size,
-        numElements: model.elements.size,
+        numNodes: props.nodeCount ?? model.nodes.size,
+        numElements: props.elementCount ?? model.elements.size,
         maxDisplacementM: maxDisp,
         maxStressPa: maxStress,
       };

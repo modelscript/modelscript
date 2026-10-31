@@ -29,9 +29,25 @@ import type {
   SpeedActionDynamics,
 } from "../types.js";
 
+let activeParamMap: Map<string, string> = new Map();
+
+function resolveParamValue(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("${") && trimmed.endsWith("}")) {
+    const key = trimmed.slice(2, -1).trim();
+    return activeParamMap.get(key) ?? raw;
+  }
+  if (trimmed.startsWith("$") && trimmed.length > 1) {
+    const key = trimmed.slice(1).trim();
+    return activeParamMap.get(key) ?? raw;
+  }
+  return raw;
+}
+
 function getAttr(elem: XmlElement, name: string): string | undefined {
   const a = elem.attributes.find((attr) => attr.name.toLowerCase() === name.toLowerCase());
-  return a?.value;
+  return resolveParamValue(a?.value);
 }
 
 function getNumAttr(elem: XmlElement, name: string, defaultValue = 0): number {
@@ -78,6 +94,7 @@ function makeRange(source: string, elem: XmlElement): OpenScenarioRange {
 }
 
 export function parseOpenScenario(source: string, filename?: string): OpenScenarioDocument {
+  activeParamMap = new Map();
   const trimmed = source.trim();
 
   // If OSC 2.0 text DSL is detected
@@ -123,10 +140,15 @@ export function parseOpenScenario(source: string, filename?: string): OpenScenar
   const paramDecls = findChild(root, "ParameterDeclarations");
   if (paramDecls) {
     for (const p of findChildren(paramDecls, "ParameterDeclaration")) {
+      const pName = getAttr(p, "name") ?? "";
+      const pVal = getAttr(p, "value") ?? "";
+      if (pName) {
+        activeParamMap.set(pName, pVal);
+      }
       parameters.push({
-        name: getAttr(p, "name") ?? "",
+        name: pName,
         parameterType: (getAttr(p, "parameterType") as ScenarioParameter["parameterType"]) ?? "string",
-        value: getAttr(p, "value") ?? "",
+        value: pVal,
       });
     }
   }
@@ -407,6 +429,12 @@ function parsePrivateAction(
   if (latElem) {
     const lcElem = findChild(latElem, "LaneChangeAction");
     if (lcElem) {
+      const dynElem = findChild(lcElem, "LaneChangeActionDynamics");
+      let dynamicsDuration: number | undefined;
+      if (dynElem) {
+        const val = getNumAttr(dynElem, "value", 3.0);
+        dynamicsDuration = val > 0 ? val : 3.0;
+      }
       const targetElem = findChild(lcElem, "LaneChangeTarget");
       let targetLane: number | undefined;
       if (targetElem) {
@@ -418,6 +446,7 @@ function parsePrivateAction(
         kind: "laneChange",
         entityRef,
         targetLane,
+        dynamicsDuration,
         range: makeRange(source, paElem),
       };
     }
@@ -604,6 +633,24 @@ function parseTriggerConditions(source: string, triggerElem: XmlElement): Scenar
             rule,
             value: val,
             entityRef: ref,
+            range: makeRange(source, c),
+          });
+          continue;
+        }
+
+        // StoryboardElementStateCondition
+        const sbStateElem = findChild(valueCond, "StoryboardElementStateCondition");
+        if (sbStateElem) {
+          const sbRef = getAttr(sbStateElem, "storyboardElementRef") ?? "";
+          const stateVal = getAttr(sbStateElem, "state") ?? "completeState";
+          conditions.push({
+            name,
+            delay,
+            conditionEdge: edge,
+            kind: "storyboardElementState",
+            rule: "equalTo",
+            value: stateVal,
+            storyboardElementRef: sbRef,
             range: makeRange(source, c),
           });
           continue;

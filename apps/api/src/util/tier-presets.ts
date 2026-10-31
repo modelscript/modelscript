@@ -62,7 +62,7 @@ export const SETUP_TIER_PRESETS: Record<string, SetupTierPreset> = {
     id: "tier2_corporate",
     label: "Tier 2: Ansatz Enterprise (Corporate Intranet / Air-Gapped Appliance)",
     description:
-      "Email domain allowlist registration with outbound ActivityPub federation disabled. Ideal for internal R&D intranets and classified SCIF/air-gapped appliances.",
+      "Email domain allowlist registration with outbound ActivityPub federation disabled. Ideal for internal R&D intranets and secure air-gapped lab appliances.",
     registrationMode: "domain_allowlist",
     federationMode: "disabled",
     waitlistEnabled: false,

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4"
+       xmlns:msx="https://modelscript.org/ns/study-v1"
+       level="1" version="4">
+  <annotation>
+    <msx:studyMetadata
+      id="pkg.drone-chassis.structural-fea-audit"
+      slug="drone-chassis-structural-fea-audit"
+      name="Drone Chassis 6g Pull-Up Structural Stress &amp; Modal Resonance Study"
+      version="1.2.0"
+      kind="steady-state"
+      category="fea"
+      domain="fea"
+      executionTarget="local-native"
+      packageName="@examples/drone-chassis"
+      packageVersion="1.2.0">
+      <msx:description>Coupled linear static von Mises stress verification and 6-mode Lanczos eigenfrequency extraction for the carbon-fiber quadrotor airframe under a 6g emergency pull-up maneuver.</msx:description>
+      <msx:input key="loadFactorG" value="6.0"/>
+      <msx:input key="yieldStrengthMPa" value="600.0"/>
+      <msx:input key="minSafetyFactor" value="1.5"/>
+      <msx:input key="numEigenmodes" value="6"/>
+    </msx:studyMetadata>
+  </annotation>
+  <listOfModels>
+    <model id="model_primary" name="DroneAirframe" language="urn:sedml:language:calculix-inp" source="fea/frame_stress.inp">
+      <listOfChanges>
+        <changeAttribute target="/model/parameter[@id='armWallThicknessMm']/@value" newValue="2.2"/>
+        <changeAttribute target="/model/parameter[@id='rootFilletRadiusMm']/@value" newValue="6.0"/>
+      </listOfChanges>
+    </model>
+  </listOfModels>
+  <listOfSimulations>
+    <steadyState id="sim_fea_static_modal" name="CalculiX Static + ARPACK Lanczos Eigenfrequency">
+      <algorithm kisaoID="KISAO:0000407" name="CalculiX / Abaqus Sparse Direct FEA Solver">
+        <listOfAlgorithmParameters>
+          <algorithmParameter kisaoID="KISAO:0000209" name="relativeTolerance" value="1e-6"/>
+        </listOfAlgorithmParameters>
+      </algorithm>
+    </steadyState>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task_main" modelReference="model_primary" simulationReference="sim_fea_static_modal"/>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_vonMisesMPa" name="vonMisesMPa">
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>var_vonMisesMPa</ci></math>
+      <listOfVariables>
+        <variable id="var_vonMisesMPa" name="vonMisesMPa" taskReference="task_main" target="/model/observable[@id='vonMisesMPa']"/>
+      </listOfVariables>
+    </dataGenerator>
+    <dataGenerator id="dg_tipDeflectionMm" name="tipDeflectionMm">
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>var_tipDeflectionMm</ci></math>
+      <listOfVariables>
+        <variable id="var_tipDeflectionMm" name="tipDeflectionMm" taskReference="task_main" target="/model/observable[@id='tipDeflectionMm']"/>
+      </listOfVariables>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <plot2D id="plot_stress_profile" name="Arm Spanwise Von Mises Stress Distribution">
+      <listOfCurves>
+        <curve id="curve_stress" name="vonMisesMPa" logX="false" logY="false" xDataReference="dg_tipDeflectionMm" yDataReference="dg_vonMisesMPa"/>
+      </listOfCurves>
+    </plot2D>
+    <report id="report_kpis" name="Drone Chassis Structural Verification Report">
+      <listOfDataSets>
+        <dataSet id="ds_peak_stress" label="Peak Von Mises Stress (MPa)" dataReference="dg_vonMisesMPa"/>
+        <dataSet id="ds_tip_deflection" label="Max Motor Mount Deflection (mm)" dataReference="dg_tipDeflectionMm"/>
+      </listOfDataSets>
+    </report>
+  </listOfOutputs>
+</sedML>

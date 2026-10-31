@@ -21,16 +21,21 @@ describe("CCSDS Zero-GC Linear DAE Lowering", () => {
     const doc = parseCcsds(SAMPLE_OPM, "hubble.opm");
     const arena = lowerCcsdsToDae(doc);
 
-    assert(arena.getVarCount() >= 12, `Expected >= 12 variables, got ${arena.getVarCount()}`);
-    assert(arena.getEqCount() >= 7, `Expected >= 7 equations, got ${arena.getEqCount()}`);
+    assert.strictEqual(arena.getVarCount(), 15, `Expected 15 variables, got ${arena.getVarCount()}`);
+    assert.strictEqual(arena.getEqCount(), 15, `Expected 15 equations, got ${arena.getEqCount()}`);
+    assert.strictEqual(arena.getVarCount(), arena.getEqCount(), "DAE must be structurally square");
 
-    // Verify key state variables were emitted
+    // Verify key state and algebraic variables were emitted
     const xVar = arena.findVar("HUBBLE_x");
     assert(xVar !== null);
     const vxVar = arena.findVar("HUBBLE_vx");
     assert(vxVar !== null);
     const rVar = arena.findVar("HUBBLE_r");
     assert(rVar !== null);
+    const vVar = arena.findVar("HUBBLE_v");
+    assert(vVar !== null);
+    const energyVar = arena.findVar("HUBBLE_energy");
+    assert(energyVar !== null);
     const altVar = arena.findVar("HUBBLE_altitude");
     assert(altVar !== null);
   });

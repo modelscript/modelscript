@@ -99,4 +99,11 @@ export const SspErrorCode = {
     message: (startUnit: string, endUnit: string) =>
       `Connector unit mismatch: '${startUnit}' connected to '${endUnit}'.`,
   },
+  ALGEBRAIC_FEEDTHROUGH_LOOP: {
+    code: 7014,
+    stdCode: "S7014",
+    rule: "SSP_ALGEBRAIC_FEEDTHROUGH_LOOP",
+    severity: "error" as const,
+    message: (cyclePath: string) => `Algebraic feedthrough loop detected across connected components: ${cyclePath}.`,
+  },
 } as const;

@@ -148,4 +148,127 @@ describe("Simulink DAE Arena Lowering (@modelscript/simulink)", () => {
     assert.ok(udOut >= 0, "Must create output variable UD1.y");
     assert.ok(udPrev >= 0, "Must create discrete state variable UD1.x_prev");
   });
+
+  it("should lower Saturation, DeadZone, Switch, Abs, Step, and hierarchical SubSystem blocks", () => {
+    const mdl = `Model {
+  Name "NonlinearAndSubSystem"
+  System {
+    Name "NonlinearAndSubSystem"
+    Block {
+      BlockType Step
+      Name "Step1"
+      Time 1.0
+      Before 0.0
+      After 5.0
+    }
+    Block {
+      BlockType Saturation
+      Name "Sat1"
+      UpperLimit 2.0
+      LowerLimit -2.0
+    }
+    Block {
+      BlockType DeadZone
+      Name "DZ1"
+      LowerValue -0.5
+      UpperValue 0.5
+    }
+    Block {
+      BlockType Abs
+      Name "Abs1"
+    }
+    Block {
+      BlockType Switch
+      Name "Sw1"
+      Threshold 1.0
+    }
+    Block {
+      BlockType SubSystem
+      Name "Controller"
+      System {
+        Name "Controller"
+        Block {
+          BlockType Inport
+          Name "In1"
+          Port 1
+        }
+        Block {
+          BlockType Gain
+          Name "SubGain"
+          Gain 3.0
+        }
+        Block {
+          BlockType Outport
+          Name "Out1"
+          Port 1
+        }
+        Line {
+          SrcBlock "In1"
+          SrcPort 1
+          DstBlock "SubGain"
+          DstPort 1
+        }
+        Line {
+          SrcBlock "SubGain"
+          SrcPort 1
+          DstBlock "Out1"
+          DstPort 1
+        }
+      }
+    }
+    Line {
+      SrcBlock "Step1"
+      SrcPort 1
+      DstBlock "Sat1"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "Sat1"
+      SrcPort 1
+      DstBlock "DZ1"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "DZ1"
+      SrcPort 1
+      DstBlock "Abs1"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "Abs1"
+      SrcPort 1
+      DstBlock "Sw1"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "Step1"
+      SrcPort 1
+      DstBlock "Sw1"
+      DstPort 2
+    }
+    Line {
+      SrcBlock "Sat1"
+      SrcPort 1
+      DstBlock "Sw1"
+      DstPort 3
+    }
+    Line {
+      SrcBlock "Sw1"
+      SrcPort 1
+      DstBlock "Controller"
+      DstPort 1
+    }
+  }
+}`;
+    const model = parseMdl(mdl);
+    const dae = lowerSimulinkToDae(model);
+
+    assert.ok(dae.lookupVariable("Step1.y") >= 0);
+    assert.ok(dae.lookupVariable("Sat1.y") >= 0);
+    assert.ok(dae.lookupVariable("DZ1.y") >= 0);
+    assert.ok(dae.lookupVariable("Abs1.y") >= 0);
+    assert.ok(dae.lookupVariable("Sw1.y") >= 0);
+    assert.ok(dae.lookupVariable("Controller.SubGain.y") >= 0);
+    assert.ok(dae.eqCount >= 8, "Should emit equations for all nonlinear and subsystem blocks");
+  });
 });

@@ -2,9 +2,9 @@
 
 import {
   renderOlgaSchematicSvg,
-  type OlgaBranchLike,
-  type OlgaEquipmentLike,
+  type OlgaFlowpathLike,
   type OlgaNodeLike,
+  type OlgaValveLike,
 } from "@modelscript/diagram";
 import {
   AlertIcon,
@@ -232,8 +232,37 @@ function parseOlgaClient(code: string) {
   }
 
   const nodes: OlgaNodeLike[] = [];
-  const branches: OlgaBranchLike[] = [];
-  const equipment: OlgaEquipmentLike[] = [];
+  const flowpaths: OlgaFlowpathLike[] = [];
+  const valves: OlgaValveLike[] = [];
+
+  for (const em of code.matchAll(
+    /\b(VALVE|CHOKE|PUMP|COMPRESSOR|SEPARATOR|HEATER)\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?/gi,
+  )) {
+    valves.push({
+      name: em[2] || `V_${valves.length + 1}`,
+      position: 500 * (valves.length + 1),
+      diameter: diameterMeters,
+      opening: 0.85,
+    });
+  }
+
+  for (const bm of code.matchAll(/\bBRANCH\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?([^\n]*)/gi)) {
+    const label = bm[1] || `FP_${flowpaths.length + 1}`;
+    flowpaths.push({
+      name: label,
+      pipes: [
+        {
+          label: `PIPE_${flowpaths.length + 1}`,
+          length: totalLengthM > 0 ? totalLengthM : 5000,
+          elevation: 0,
+          diameter: diameterMeters,
+        },
+      ],
+      valves: flowpaths.length === 0 ? valves : [],
+    });
+  }
+
+  const defaultFp = flowpaths[0]?.name || "FLOWLINE";
 
   for (const nm of code.matchAll(/\bNODE\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?([^\n]*)/gi)) {
     const label = nm[1] || `N_${nodes.length + 1}`;
@@ -242,53 +271,36 @@ function parseOlgaClient(code: string) {
     const pMatch = rest.match(/\bPRESSURE\s*=\s*([0-9.eE+-]+)/i);
     const tMatch = rest.match(/\bTEMPERATURE\s*=\s*([0-9.eE+-]+)/i);
     nodes.push({
-      label,
+      name: label,
       type: typeMatch?.[1] || (nodes.length === 0 ? "CLOSED" : "PRESSURE"),
-      ...(pMatch?.[1] ? { pressureBar: Number.parseFloat(pMatch[1]) } : {}),
-      ...(tMatch?.[1] ? { temperatureC: Number.parseFloat(tMatch[1]) } : {}),
+      flowpath: defaultFp,
+      boundaryPosition: nodes.length === 0 ? 0 : totalLengthM > 0 ? totalLengthM : 5000,
+      ...(pMatch?.[1] ? { pressure: Number.parseFloat(pMatch[1]) } : {}),
+      ...(tMatch?.[1] ? { temperature: Number.parseFloat(tMatch[1]) } : {}),
     });
   }
 
-  for (const bm of code.matchAll(/\bBRANCH\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?([^\n]*)/gi)) {
-    const label = bm[1] || `BR_${branches.length + 1}`;
-    const rest = bm[2] || "";
-    const fromMatch = rest.match(/\bFROM\s*=\s*["']?([A-Za-z0-9_-]+)["']?/i);
-    const toMatch = rest.match(/\bTO\s*=\s*["']?([A-Za-z0-9_-]+)["']?/i);
-    const from = fromMatch?.[1] || nodes[0]?.label || "WELLHEAD";
-    const to = toMatch?.[1] || nodes[nodes.length - 1]?.label || "SEPARATOR";
-    branches.push({
-      label,
-      from,
-      to,
-      pipes: [
-        {
-          label: `PIPE_${branches.length + 1}`,
-          length: totalLengthM > 0 ? totalLengthM : 5000,
-          elevation: 0,
-          diameter: diameterMeters,
-        },
-      ],
-    });
-  }
-
-  for (const em of code.matchAll(
-    /\b(VALVE|CHOKE|PUMP|COMPRESSOR|SEPARATOR|HEATER)\b[^\n]*?\bLABEL\s*=\s*["']?([A-Za-z0-9_-]+)["']?/gi,
-  )) {
-    equipment.push({
-      type: (em[1] || "VALVE").toUpperCase(),
-      label: em[2] || `EQ_${equipment.length + 1}`,
-    });
-  }
-
-  if (branches.length === 0 && (totalLengthM > 0 || code.trim().length > 0)) {
+  if (flowpaths.length === 0 && (totalLengthM > 0 || code.trim().length > 0)) {
     if (nodes.length < 2) {
-      nodes.push({ label: "INLET", type: "MASS", pressureBar: 120, temperatureC: 65 });
-      nodes.push({ label: "OUTLET", type: "PRESSURE", pressureBar: 45, temperatureC: 25 });
+      nodes.push({
+        name: "INLET",
+        type: "MASS",
+        flowpath: "FLOWLINE",
+        boundaryPosition: 0,
+        pressure: 120,
+        temperature: 65,
+      });
+      nodes.push({
+        name: "OUTLET",
+        type: "PRESSURE",
+        flowpath: "FLOWLINE",
+        boundaryPosition: totalLengthM > 0 ? totalLengthM : 4500,
+        pressure: 45,
+        temperature: 25,
+      });
     }
-    branches.push({
-      label: "FLOWLINE",
-      from: nodes[0]!.label,
-      to: nodes[nodes.length - 1]!.label,
+    flowpaths.push({
+      name: "FLOWLINE",
       pipes: [
         {
           label: "P1",
@@ -297,14 +309,14 @@ function parseOlgaClient(code: string) {
           diameter: diameterMeters,
         },
       ],
+      valves,
     });
   }
 
   const pipeCount = Array.from(code.matchAll(/\bPIPE\b|\bBRANCH\b/gi)).length;
   return {
     nodes,
-    branches,
-    equipment,
+    flowpaths,
     lengthKm: totalLengthM > 0 ? Number((totalLengthM / 1000).toFixed(2)) : undefined,
     diameterInches,
     pipeCount: pipeCount > 0 ? pipeCount : undefined,
@@ -347,13 +359,12 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
       return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
     }
-    if (parsedClient && parsedClient.branches.length > 0) {
+    if (parsedClient && parsedClient.flowpaths.length > 0) {
       try {
         const built = renderOlgaSchematicSvg({
           title,
           nodes: parsedClient.nodes,
-          branches: parsedClient.branches,
-          equipment: parsedClient.equipment,
+          flowpaths: parsedClient.flowpaths,
         });
         return sanitizeSvgMarkup(built, { isFullScreen });
       } catch {

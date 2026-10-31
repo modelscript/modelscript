@@ -6,7 +6,7 @@ import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { createArtifactView } from "../api";
-import { MORSEL_LANGUAGES, getLanguageInfo } from "./morsel/constants";
+import { getLanguageInfo, useVisibleMorselLanguages } from "./morsel/constants";
 import MorselEditor from "./morsel/Morsel";
 
 const ModalBackdrop = styled.div`
@@ -134,6 +134,7 @@ equation
 end MySystem;`,
   initialDialect = "modelica",
 }) => {
+  const visibleMorselLanguages = useVisibleMorselLanguages();
   const [code, setCode] = useState(initialCode);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [attaching, setAttaching] = useState(false);
@@ -150,7 +151,7 @@ end MySystem;`,
       !trimmedCode ||
       trimmedCode === initialCode.trim() ||
       trimmedCode === prevLangInfo.defaultCode.trim() ||
-      MORSEL_LANGUAGES.some((lang) => lang.defaultCode.trim() === trimmedCode);
+      visibleMorselLanguages.some((lang) => lang.defaultCode.trim() === trimmedCode);
 
     setDialect(nextDialect);
     setAttachError(null);
@@ -212,7 +213,7 @@ end MySystem;`,
               onChange={(e) => handleDialectChange(e.target.value)}
               aria-label="Engineering language"
             >
-              {MORSEL_LANGUAGES.map((lang) => (
+              {visibleMorselLanguages.map((lang) => (
                 <option key={lang.id} value={lang.id}>
                   {lang.label || lang.name} (.{lang.ext})
                 </option>

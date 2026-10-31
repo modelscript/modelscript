@@ -26,6 +26,43 @@ export interface TouchstoneDiagnostic {
 export function lintTouchstone(deck: TouchstoneDeck): TouchstoneDiagnostic[] {
   const diags: TouchstoneDiagnostic[] = [];
 
+  // M8306: Missing '#' option line
+  if (deck.hasOptionLine === false) {
+    diags.push({
+      code: TouchstoneErrorCode.MISSING_OPTION_LINE.code,
+      rule: TouchstoneErrorCode.MISSING_OPTION_LINE.rule,
+      severity: TouchstoneErrorCode.MISSING_OPTION_LINE.severity,
+      message: TouchstoneErrorCode.MISSING_OPTION_LINE.message(),
+      range: { startLine: 1, startCol: 1, endLine: 1, endCol: 1 },
+    });
+  }
+
+  // M8307: Invalid parameter format / token
+  if (deck.invalidTokens) {
+    for (const inv of deck.invalidTokens) {
+      diags.push({
+        code: TouchstoneErrorCode.INVALID_PARAMETER_FORMAT.code,
+        rule: TouchstoneErrorCode.INVALID_PARAMETER_FORMAT.rule,
+        severity: TouchstoneErrorCode.INVALID_PARAMETER_FORMAT.severity,
+        message: TouchstoneErrorCode.INVALID_PARAMETER_FORMAT.message(inv.token),
+        range: { startLine: inv.line, startCol: 1, endLine: inv.line, endCol: 20 },
+      });
+    }
+  }
+
+  // M8308: Incomplete matrix data row
+  if (deck.incompleteRows) {
+    for (const inc of deck.incompleteRows) {
+      diags.push({
+        code: TouchstoneErrorCode.INCOMPLETE_MATRIX_DATA.code,
+        rule: TouchstoneErrorCode.INCOMPLETE_MATRIX_DATA.rule,
+        severity: TouchstoneErrorCode.INCOMPLETE_MATRIX_DATA.severity,
+        message: TouchstoneErrorCode.INCOMPLETE_MATRIX_DATA.message(inc.expected, inc.received),
+        range: { startLine: inc.line, startCol: 1, endLine: inc.line, endCol: 20 },
+      });
+    }
+  }
+
   // 1. M8311: No frequency points
   if (deck.points.length === 0) {
     diags.push({
@@ -54,11 +91,13 @@ export function lintTouchstone(deck: TouchstoneDeck): TouchstoneDiagnostic[] {
     });
   }
 
+  let causalityReported = false;
+
   // Sweep across all points
   for (let i = 0; i < deck.points.length; i++) {
     const pt = deck.points[i]!;
 
-    // 3. Monotonic frequency and duplicate check
+    // 3. Monotonic frequency, duplicate check, and M8302 causality (negative group delay) check
     if (i > 0) {
       const prevPt = deck.points[i - 1]!;
       if (pt.frequencyHz === prevPt.frequencyHz) {
@@ -92,6 +131,35 @@ export function lintTouchstone(deck: TouchstoneDeck): TouchstoneDiagnostic[] {
             endCol: 15,
           },
         });
+      } else if (!causalityReported) {
+        // M8302: Check for non-causal positive phase slope (negative group delay tau_g = -d(phi)/d(omega) < 0)
+        const sPrev = deck.numPorts >= 2 ? prevPt.matrix[1]![0]! : prevPt.matrix[0]![0]!;
+        const sCurr = deck.numPorts >= 2 ? pt.matrix[1]![0]! : pt.matrix[0]![0]!;
+        const magPrev = Math.sqrt(sPrev.re * sPrev.re + sPrev.im * sPrev.im);
+        const magCurr = Math.sqrt(sCurr.re * sCurr.re + sCurr.im * sCurr.im);
+        if (magPrev > 0.05 && magCurr > 0.05) {
+          // Cross product sCurr * conj(sPrev) gives phase difference dPhi in (-pi, pi]
+          const prodRe = sCurr.re * sPrev.re + sCurr.im * sPrev.im;
+          const prodIm = sCurr.im * sPrev.re - sCurr.re * sPrev.im;
+          const dPhi = Math.atan2(prodIm, prodRe);
+          if (dPhi > 0.25) {
+            causalityReported = true;
+            diags.push({
+              code: TouchstoneErrorCode.CAUSALITY_VIOLATION.code,
+              rule: TouchstoneErrorCode.CAUSALITY_VIOLATION.rule,
+              severity: TouchstoneErrorCode.CAUSALITY_VIOLATION.severity,
+              message: TouchstoneErrorCode.CAUSALITY_VIOLATION.message(
+                `positive phase advance (+${((dPhi * 180) / Math.PI).toFixed(1)} deg) implies negative group delay between ${prevPt.frequency} and ${pt.frequency} ${deck.options.frequencyUnit}`,
+              ),
+              range: {
+                startLine: pt.line,
+                startCol: 1,
+                endLine: pt.line,
+                endCol: 30,
+              },
+            });
+          }
+        }
       }
     }
 

@@ -485,4 +485,79 @@ RIGHT, 1, 5000.0
     assert.ok((largeProps.maxDisplacementM ?? 0) >= 0.0054);
     assert.ok(largeProps.maxVonMisesPa > 1.0e8);
   });
+
+  it("solves 10-node quadratic tetrahedra (C3D10), PSHELL CQUAD4 shells, Cauchy stress tensors, and modal natural frequencies", () => {
+    const c3d10Deck = `*HEADING
+Quadratic C3D10 Tetrahedron
+*NODE
+1, 0.0, 0.0, 0.0
+2, 1.0, 0.0, 0.0
+3, 0.0, 1.0, 0.0
+4, 0.0, 0.0, 1.0
+5, 0.5, 0.0, 0.0
+6, 0.5, 0.5, 0.0
+7, 0.0, 0.5, 0.0
+8, 0.0, 0.0, 0.5
+9, 0.5, 0.0, 0.5
+10, 0.0, 0.5, 0.5
+*ELEMENT, TYPE=C3D10, ELSET=ETET10
+1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+*MATERIAL, NAME=TI64
+*ELASTIC
+1.14e11, 0.34
+*DENSITY
+4430.0
+*BOUNDARY
+1, 1, 3, 0.0
+2, 3, 3, 0.0
+3, 3, 3, 0.0
+5, 3, 3, 0.0
+6, 3, 3, 0.0
+7, 3, 3, 0.0
+*STEP
+*STATIC
+*CLOAD
+4, 3, 2000.0
+8, 3, 1000.0
+9, 3, 1000.0
+10, 3, 1000.0
+*END STEP
+`;
+    const tet10Props = extractFeaSlicingProperties(c3d10Deck);
+    assert.strictEqual(tet10Props.nodeCount, 10);
+    assert.strictEqual(tet10Props.elementCount, 1);
+    assert.ok(Math.abs((tet10Props.totalVolumeM3 ?? 0) - 1.0 / 6.0) < 1e-6);
+    // Verify midside nodes (e.g., node 8, 9, 10) have non-zero displacements from quadratic stiffness assembly
+    assert.ok((tet10Props.nodalDisplacements?.[8]?.[2] ?? 0) > 0);
+    assert.ok((tet10Props.nodalDisplacements?.[9]?.[2] ?? 0) > 0);
+    assert.ok((tet10Props.nodalDisplacements?.[10]?.[2] ?? 0) > 0);
+    // Verify 6-component Cauchy stress tensor [sxx, syy, szz, txy, tyz, tzx]
+    const cauchy = tet10Props.elementCauchyStressPa?.[1];
+    assert.ok(cauchy && cauchy.length === 6);
+    assert.ok(cauchy[2] > 0, `Expected tensile sigma_zz > 0, got ${cauchy[2]}`);
+    // Verify positive modal natural frequencies (Hz)
+    assert.ok(tet10Props.naturalFrequenciesHz && tet10Props.naturalFrequenciesHz.length > 0);
+    assert.ok(tet10Props.naturalFrequenciesHz[0]! > 0);
+
+    // BDF CQUAD4 + PSHELL thickness test
+    const bdfShell = `$ BDF CQUAD4 with PSHELL
+GRID,1,,0.0,0.0,0.0
+GRID,2,,1.0,0.0,0.0
+GRID,3,,1.0,1.0,0.0
+GRID,4,,0.0,1.0,0.0
+CQUAD4,10,5,1,2,3,4
+PSHELL,5,1,0.02
+MAT1,1,7.0E10,,0.3,2700.0
+SPC1,1,123,1
+SPC1,1,13,4
+FORCE,1,2,0,10000.0,1.0,0.0,0.0
+FORCE,1,3,0,10000.0,1.0,0.0,0.0
+ENDDATA
+`;
+    const bdfProps = extractFeaSlicingProperties(bdfShell);
+    // Area = 1.0 m^2, thickness = 0.02 m -> volume = 0.02 m^3, mass = 0.02 * 2700 = 54 kg
+    assert.strictEqual(bdfProps.mass, 54);
+    assert.ok(Math.abs(bdfProps.maxVonMisesPa - 1.0e6) < 2e4);
+    assert.ok(bdfProps.naturalFrequenciesHz && bdfProps.naturalFrequenciesHz.length > 0);
+  });
 });

@@ -52,25 +52,26 @@ function tanh(x: f64): f64 {
 }
 
 @inline
-function computeSpanError(s: f64, h: f64, X: f64, L: f64, w: f64): f64 {
+function computeSpanError(s: f64, h: f64, X: f64, L: f64, w: f64, ea: f64): f64 {
   if (s <= h) return -1e9;
   const H = (w * (s * s - h * h)) / (2.0 * h);
   if (H <= 0.0) return -1e9;
-  const xSusp = (H / w) * asinh((w * s) / H);
+  const xSusp = (H / w) * asinh((w * s) / H) + (H * s) / ea;
   const xGrounded = L - s;
   return xSusp + xGrounded - X;
 }
 
-function solveLiftedOffCatenary(h: f64, X: f64, L: f64, w: f64): i32 {
+function solveLiftedOffCatenary(h: f64, X: f64, L: f64, w: f64, ea: f64): i32 {
   let hLow = 1e3;
   let hHigh = 1e8;
   let bestH = hLow;
-  const target = Math.sqrt(Math.max(0.0, L * L - h * h));
 
   for (let i = 0; i < 40; i++) {
     const H = 0.5 * (hLow + hHigh);
     const a = H / w;
     const rhs = 2.0 * a * sinh(X / (2.0 * a));
+    const stretchedL = L + (H * L) / ea;
+    const target = Math.sqrt(Math.max(0.0, stretchedL * stretchedL - h * h));
     if (rhs < target) {
       hHigh = H;
     } else {
@@ -151,9 +152,9 @@ export function catenary_solve(h: f64, X: f64, L: f64, w: f64, ea: f64): i32 {
   }
 
   // Check if fully lifted off at s = L
-  const atLErr = computeSpanError(L, h, X, L, w);
+  const atLErr = computeSpanError(L, h, X, L, w, ea);
   if (atLErr < 0.0) {
-    return solveLiftedOffCatenary(h, X, L, w);
+    return solveLiftedOffCatenary(h, X, L, w, ea);
   }
 
   // Bisection on s in (h, L]
@@ -165,7 +166,7 @@ export function catenary_solve(h: f64, X: f64, L: f64, w: f64, ea: f64): i32 {
   for (let iter = 0; iter < 40; iter++) {
     const sMid = 0.5 * (sLow + sHigh);
     const H = (w * (sMid * sMid - h * h)) / (2.0 * h);
-    const err = computeSpanError(sMid, h, X, L, w);
+    const err = computeSpanError(sMid, h, X, L, w, ea);
     bestH = H;
     bestS = sMid;
 
@@ -208,7 +209,7 @@ export function catenary_solve(h: f64, X: f64, L: f64, w: f64, ea: f64): i32 {
     const sLocal = ((<f64>i) / (<f64>numSuspPts)) * bestS;
     const ratio = (w * sLocal) / bestH;
     const zLocal = (bestH / w) * (Math.sqrt(1.0 + ratio * ratio) - 1.0);
-    const xLocal = groundedLen + (bestH / w) * asinh(ratio);
+    const xLocal = groundedLen + (bestH / w) * asinh(ratio) + (bestH * sLocal) / ea;
     store<f64>(OFF_PROFILE_PTS + (ptIdx * 2 + 0) * 8, xLocal);
     store<f64>(OFF_PROFILE_PTS + (ptIdx * 2 + 1) * 8, zLocal);
     ptIdx++;

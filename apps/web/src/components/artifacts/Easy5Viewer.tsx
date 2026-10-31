@@ -181,8 +181,8 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
         const y = 60 + row * 100;
         blocks.push({
           name: blkName,
-          blockType: blkType,
-          position: [x, y, x + 120, y + 54],
+          type: blkType,
+          position: { x, y, width: 120, height: 54 },
         });
         if (/\b(IN|INTEGRATOR|LAG|POLE|TF|SECOND_ORDER|ACTUATOR|VALVE)\b/i.test(line)) stateCount++;
       } else {
@@ -193,6 +193,7 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
           const srcBlock = connMatch[1]!.split(".")[0]!;
           const dstBlock = connMatch[2]!.split(".")[0]!;
           lines.push({
+            id: `line_${lines.length + 1}`,
             srcBlock,
             srcPort: 1,
             dstBlock,
