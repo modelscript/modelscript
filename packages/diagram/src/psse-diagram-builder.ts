@@ -769,3 +769,5 @@ export function renderPsseSvg(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay)
   svg += `</svg>\n`;
   return svg;
 }
+
+export const renderPsseSldSvg = renderPsseSvg;

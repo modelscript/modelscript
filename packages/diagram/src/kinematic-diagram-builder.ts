@@ -37,7 +37,9 @@ export interface KinematicForceElementLike {
 }
 
 export interface KinematicSystemLike {
-  title: string;
+  title?: string | undefined;
+  name?: string | undefined;
+  dialect?: string | undefined;
   bodies: KinematicBodyLike[];
   joints: KinematicJointLike[];
   forces?: KinematicForceElementLike[] | undefined;
@@ -443,7 +445,7 @@ export function renderKinematicSvg(
   </defs>
   <rect width="100%" height="100%" fill="${bgColor}" />
   <text x="20" y="30" font-family="Inter, sans-serif" font-size="16" font-weight="700" fill="${textColor}">
-    ${escapeXml(system.title)}
+    ${escapeXml(system.title || system.name || "Kinematic Mechanism")}
   </text>
   ${svgElements}
 </svg>
@@ -468,3 +470,5 @@ function escapeXml(str: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 }
+
+export const renderKinematicDiagramSvg = renderKinematicSvg;
