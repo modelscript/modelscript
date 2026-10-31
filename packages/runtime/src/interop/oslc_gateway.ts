@@ -14,8 +14,7 @@
  * with lossless JSON-LD / Turtle export and an embedded HTTP REST server with content negotiation.
  */
 
-import http from "node:http";
-import { URL } from "node:url";
+import type * as http from "node:http";
 import type { ReqIfRequirement, ReqIfSpecification } from "./reqif.js";
 import { DigitalThreadHypergraph, ThreadDomain } from "./thread_hypergraph.js";
 
@@ -672,6 +671,10 @@ export class OslcGateway {
    * Starts the embedded OSLC HTTP server.
    */
   async startServer(port: number = 8080, host: string = "localhost"): Promise<number> {
+    if (typeof window !== "undefined") {
+      throw new Error("Embedded OSLC HTTP server is not supported in browser environments.");
+    }
+    const http = await import(/* @vite-ignore */ "node:http");
     if (this.server) {
       return (this.server.address() as any).port;
     }

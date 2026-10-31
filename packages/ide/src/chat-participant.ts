@@ -28,8 +28,12 @@ export function registerChatParticipant(context: vscode.ExtensionContext): void 
   const participant = vscode.chat.createChatParticipant(
     "modelscript.chat",
     async (request, chatContext, stream, token) => {
-      // Collect tool references
-      const tools = vscode.lm.tools.filter((t) => t.name.startsWith("modelscript_"));
+      // Collect all ModelScript MCP & compiler tool references
+      const tools = vscode.lm.tools.filter((t) =>
+        /^(modelscript_|modelica_|tgg_|validate_system_consistency|rtm_|pscad_|cad_fea_|polyglot_|formal_verify_|olga_|gensys_|simpack_)/.test(
+          t.name,
+        ),
+      );
 
       // Build messages
       const messages = [vscode.LanguageModelChatMessage.User(SYSTEM_PROMPT)];

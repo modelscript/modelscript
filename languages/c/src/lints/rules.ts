@@ -22,11 +22,36 @@ export interface CLintOptions {
   declaredBounds?: Record<string, number> | undefined;
 }
 
+function stripCComments(source: string): string {
+  let result = "";
+  let i = 0;
+  const len = source.length;
+  while (i < len) {
+    if (source[i] === "/" && source[i + 1] === "*") {
+      const closeIdx = source.indexOf("*/", i + 2);
+      if (closeIdx === -1) {
+        result += source.slice(i).replace(/[^\r\n]/g, " ");
+        break;
+      }
+      const comment = source.slice(i, closeIdx + 2);
+      result += comment.replace(/[^\r\n]/g, " ");
+      i = closeIdx + 2;
+    } else if (source[i] === "/" && source[i + 1] === "/") {
+      const newlineIdx = source.indexOf("\n", i + 2);
+      if (newlineIdx === -1) {
+        break;
+      }
+      i = newlineIdx;
+    } else {
+      result += source[i++];
+    }
+  }
+  return result;
+}
+
 export function lintCSource(source: string, options: CLintOptions = {}): CDiagnostic[] {
   const diags: CDiagnostic[] = [];
-  const strippedSource = source
-    .replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\r\n]/g, " "))
-    .replace(/\/\/[^\r\n]*/g, "");
+  const strippedSource = stripCComments(source);
   const lines = strippedSource.split(/\r?\n/);
 
   // 1. M8402: Constant division or modulo by zero: / 0 or % 0

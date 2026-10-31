@@ -333,7 +333,14 @@ export function generateFmu(dae: DAEBuilder, options: FmuOptions, _stateVars?: S
         const typeName = `${sv.name}Type`;
         enumTypes.set(
           typeName,
-          literals.map((lit: { name: string }) => ({ name: lit.name, description: null })),
+          literals.map((lit: unknown) => {
+            const litRecord = typeof lit === "object" && lit !== null ? (lit as Record<string, unknown>) : null;
+            const litName = litRecord ? String(litRecord["stringValue"] ?? litRecord["name"] ?? lit) : String(lit);
+            return {
+              name: litName,
+              description: null,
+            };
+          }),
         );
         sv.declaredType = typeName;
       }

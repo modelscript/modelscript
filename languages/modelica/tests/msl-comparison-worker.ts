@@ -776,14 +776,32 @@ export function collectInheritedClassFqns(cls: any, visited = new Set<string>())
   return fqns;
 }
 
+const workerAdapterCache = new WeakMap<Context, Map<number, any>>();
+
 export function buildClassAdapter(context: Context, symbolId: number, visited = new Set<number>()): any {
+  let ctxMap = workerAdapterCache.get(context);
+  if (!ctxMap) {
+    ctxMap = new Map<number, any>();
+    workerAdapterCache.set(context, ctxMap);
+  }
+  const existing = ctxMap.get(symbolId);
+  if (existing !== undefined) return existing;
+
   if (visited.has(symbolId)) return null;
   visited.add(symbolId);
 
   const queryDB = context.queryEngine.toQueryDB();
   const entry = queryDB.symbol(symbolId);
   if (!entry) return null;
-  const cstNode = queryDB.cstNode(symbolId);
+  let cachedClassCst: any;
+  let classCstLoaded = false;
+  const getClassCst = () => {
+    if (!classCstLoaded) {
+      cachedClassCst = queryDB.cstNode(symbolId);
+      classCstLoaded = true;
+    }
+    return cachedClassCst;
+  };
   const children = queryDB.childrenOf(symbolId) || [];
   const components: any[] = [];
   const connectEquations: any[] = [];
@@ -791,61 +809,157 @@ export function buildClassAdapter(context: Context, symbolId: number, visited = 
 
   for (const child of children) {
     if (child.kind === "Component" || child.kind === "Variable") {
-      const childCst = queryDB.cstNode(child.id);
-      const childClassId = queryDB.query("classInstance", child.id);
-      const compCls = childClassId ? buildClassAdapter(context, childClassId, new Set(visited)) : null;
-      const childMod = queryDB.query("effectiveModification", child.id) as any;
-      let exprText = childMod?.bindingExpression?.text ?? childMod?.bindingExpression?.value;
-      if (exprText === undefined && childMod?.args) {
-        const startArg = childMod.args.find((a: any) => a.name === "start");
-        if (startArg) {
-          exprText = startArg.value?.text ?? startArg.value;
+      let cachedChildCst: any;
+      let childCstLoaded = false;
+      const getChildCst = () => {
+        if (!childCstLoaded) {
+          cachedChildCst = queryDB.cstNode(child.id);
+          childCstLoaded = true;
         }
-      }
-      components.push({
+        return cachedChildCst;
+      };
+      let cachedCompCls: any;
+      let compClsLoaded = false;
+      const getCompCls = () => {
+        if (!compClsLoaded) {
+          let tName = (child.metadata?.typeSpecifier ?? child.metadata?.typeName ?? "").trim();
+          if (!tName) {
+            let curr = getChildCst() as any;
+            while (curr && curr.type !== "ComponentClause" && curr.type !== "component_clause") {
+              curr = curr.parent;
+            }
+            tName =
+              (Cst?.ComponentClause?.typeSpecifier ? Cst.ComponentClause.typeSpecifier(curr)?.text : null)?.trim() ??
+              "";
+          }
+          if (
+            tName === "Real" ||
+            tName === "Integer" ||
+            tName === "Boolean" ||
+            tName === "String" ||
+            tName === "StateSelect" ||
+            tName === "ExternalObject" ||
+            tName === "Clock" ||
+            tName.startsWith("SI.") ||
+            tName.startsWith("Units.SI.") ||
+            tName.startsWith("Modelica.SIunits.") ||
+            tName.startsWith("Modelica.Units.")
+          ) {
+            cachedCompCls = null;
+          } else {
+            const childClassId = queryDB.query("classInstance", child.id);
+            cachedCompCls = childClassId ? buildClassAdapter(context, childClassId, new Set(visited)) : null;
+          }
+          compClsLoaded = true;
+        }
+        return cachedCompCls;
+      };
+      let cachedChildMod: any;
+      let childModLoaded = false;
+      const getChildMod = () => {
+        if (!childModLoaded) {
+          cachedChildMod = queryDB.query("effectiveModification", child.id) as any;
+          childModLoaded = true;
+        }
+        return cachedChildMod;
+      };
+      let cachedModObj: any;
+      const compObj: any = {
         id: child.id,
         name: child.name,
         entry: child,
-        cstNode: childCst,
-        abstractSyntaxNode: childCst,
-        classInstance: compCls,
+      };
+      Object.defineProperties(compObj, {
+        cstNode: {
+          enumerable: true,
+          configurable: true,
+          get: getChildCst,
+        },
+        abstractSyntaxNode: {
+          enumerable: true,
+          configurable: true,
+          get: getChildCst,
+        },
+        classInstance: {
+          enumerable: true,
+          configurable: true,
+          get: getCompCls,
+        },
         modification: {
-          expression: exprText !== undefined ? { text: String(exprText) } : undefined,
-          getModificationArgument: (argName: string) => {
-            const foundArg = childMod?.args?.find((a: any) => a.name === argName);
-            if (foundArg) {
-              const valText = foundArg.value?.text ?? foundArg.value;
-              return { expression: valText !== undefined ? { text: String(valText) } : undefined };
+          enumerable: true,
+          configurable: true,
+          get() {
+            if (cachedModObj !== undefined) return cachedModObj;
+            const childMod = getChildMod();
+            let exprText = childMod?.bindingExpression?.text ?? childMod?.bindingExpression?.value;
+            if (exprText === undefined && childMod?.args) {
+              const startArg = childMod.args.find((a: any) => a.name === "start");
+              if (startArg) {
+                exprText = startArg.value?.text ?? startArg.value;
+              }
             }
-            return undefined;
+            cachedModObj = {
+              expression: exprText !== undefined ? { text: String(exprText) } : undefined,
+              getModificationArgument: (argName: string) => {
+                const foundArg = childMod?.args?.find((a: any) => a.name === argName);
+                if (foundArg) {
+                  const valText = foundArg.value?.text ?? foundArg.value;
+                  return { expression: valText !== undefined ? { text: String(valText) } : undefined };
+                }
+                return undefined;
+              },
+            };
+            return cachedModObj;
           },
         },
       });
+      components.push(compObj);
     } else if (child.kind === "ConnectEquation" || child.ruleName?.includes("connect")) {
-      const connCst = queryDB.cstNode(child.id);
-      let lhs = "";
-      let rhs = "";
-      if (connCst) {
-        const lhsNode = Cst?.ConnectEquation?.lhs ? Cst.ConnectEquation.lhs(connCst) : null;
-        const rhsNode = Cst?.ConnectEquation?.rhs ? Cst.ConnectEquation.rhs(connCst) : null;
-        lhs = lhsNode?.text?.trim() ?? "";
-        rhs = rhsNode?.text?.trim() ?? "";
-        if (!lhs || !rhs) {
-          const cRefs = (connCst.children || []).filter(
-            (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
-          );
-          if (!lhs && cRefs.length > 0) lhs = cRefs[0]?.text?.trim() ?? "";
-          if (!rhs && cRefs.length > 1) rhs = cRefs[1]?.text?.trim() ?? "";
+      let cachedConnCst: any;
+      let connCstLoaded = false;
+      const getConnCst = () => {
+        if (!connCstLoaded) {
+          cachedConnCst = queryDB.cstNode(child.id);
+          connCstLoaded = true;
+        }
+        return cachedConnCst;
+      };
+      let lhs = child.metadata?.lhs ? String(child.metadata.lhs) : "";
+      let rhs = child.metadata?.rhs ? String(child.metadata.rhs) : "";
+      if (!lhs || !rhs) {
+        const connCst = getConnCst();
+        if (connCst) {
+          const lhsNode = Cst?.ConnectEquation?.lhs ? Cst.ConnectEquation.lhs(connCst) : null;
+          const rhsNode = Cst?.ConnectEquation?.rhs ? Cst.ConnectEquation.rhs(connCst) : null;
+          lhs = lhsNode?.text?.trim() ?? "";
+          rhs = rhsNode?.text?.trim() ?? "";
+          if (!lhs || !rhs) {
+            const cRefs = (connCst.children || []).filter(
+              (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
+            );
+            if (!lhs && cRefs.length > 0) lhs = cRefs[0]?.text?.trim() ?? "";
+            if (!rhs && cRefs.length > 1) rhs = cRefs[1]?.text?.trim() ?? "";
+          }
         }
       }
-      if (!lhs && child.metadata?.lhs) lhs = String(child.metadata.lhs);
-      if (!rhs && child.metadata?.rhs) rhs = String(child.metadata.rhs);
-      connectEquations.push({
+      const connAnnCache = new Map<string, any>();
+      const connObj: any = {
         lhs,
         rhs,
-        cstNode: connCst,
-        annotation: (name: string) => (connCst ? new AnnotationEvaluator().evaluate(connCst, name) : null),
+        annotation: (name: string) => {
+          if (connAnnCache.has(name)) return connAnnCache.get(name);
+          const connCst = getConnCst();
+          const res = connCst ? new AnnotationEvaluator().evaluate(connCst, name) : null;
+          connAnnCache.set(name, res);
+          return res;
+        },
+      };
+      Object.defineProperty(connObj, "cstNode", {
+        enumerable: true,
+        configurable: true,
+        get: getConnCst,
       });
+      connectEquations.push(connObj);
     } else if (child.kind === "Extends" || child.ruleName?.includes("extends")) {
       let baseSym = queryDB.query("resolvedBaseClass", child.id);
       if (!baseSym && child.name) {
@@ -873,8 +987,6 @@ export function buildClassAdapter(context: Context, symbolId: number, visited = 
     id: symbolId,
     db: queryDB,
     context,
-    cstNode,
-    abstractSyntaxNode: cstNode,
     isClassInstance: true,
     name: entry.name,
     classKind: entry.metadata?.classKind,
@@ -883,6 +995,18 @@ export function buildClassAdapter(context: Context, symbolId: number, visited = 
     connectEquations,
     extendsClassInstances,
   };
+  Object.defineProperties(adapter, {
+    cstNode: {
+      enumerable: true,
+      configurable: true,
+      get: getClassCst,
+    },
+    abstractSyntaxNode: {
+      enumerable: true,
+      configurable: true,
+      get: getClassCst,
+    },
+  });
 
   adapter.resolveName = (parts: string[]): any => {
     if (!parts || parts.length === 0) return null;
@@ -902,17 +1026,38 @@ export function buildClassAdapter(context: Context, symbolId: number, visited = 
   const evaluator = new AnnotationEvaluator(adapter);
   for (const comp of components) {
     comp.parent = adapter;
-    const childCst = comp.cstNode ?? queryDB.cstNode(comp.id);
-    comp.annotation = (name: string) => (childCst ? evaluator.evaluate(childCst, name) : null);
+    const compAnnCache = new Map<string, any>();
+    comp.annotation = (name: string) => {
+      if (compAnnCache.has(name)) return compAnnCache.get(name);
+      const childCst = comp.cstNode;
+      const res = childCst ? evaluator.evaluate(childCst, name) : null;
+      compAnnCache.set(name, res);
+      return res;
+    };
   }
 
+  const staticAnnCache = new Map<string, any>();
+  const ctxAnnCache = new WeakMap<object, Map<string, any>>();
   adapter.annotation = (name: string, _ctx?: any) => {
+    const cstNode = getClassCst();
     if (!cstNode) return null;
-    if (_ctx && (_ctx.classInstance || _ctx.modification || _ctx.cstNode)) {
-      return new AnnotationEvaluator({ componentInstance: _ctx, classInstance: adapter }).evaluate(cstNode, name);
+    if (!_ctx || (!_ctx.classInstance && !_ctx.modification && !_ctx.cstNode)) {
+      if (staticAnnCache.has(name)) return staticAnnCache.get(name);
+      const res = evaluator.evaluate(cstNode, name);
+      staticAnnCache.set(name, res);
+      return res;
     }
-    return evaluator.evaluate(cstNode, name);
+    let perCtx = ctxAnnCache.get(_ctx);
+    if (perCtx && perCtx.has(name)) return perCtx.get(name);
+    const res = new AnnotationEvaluator({ componentInstance: _ctx, classInstance: adapter }).evaluate(cstNode, name);
+    if (!perCtx) {
+      perCtx = new Map<string, any>();
+      ctxAnnCache.set(_ctx, perCtx);
+    }
+    perCtx.set(name, res);
+    return res;
   };
+  ctxMap.set(symbolId, adapter);
   return adapter;
 }
 
@@ -1467,10 +1612,13 @@ async function executeDiagramStage(context: Context, task: WorkerTask): Promise<
       };
     }
     const diagData = await buildDiagramData(cls);
-    const nodeCount = diagData.nodes?.length || 0;
+    const componentNodes = (diagData.nodes ?? []).filter(
+      (n: any) => n.shape !== "solder-dot" && !String(n.id ?? "").startsWith("solder_dot_"),
+    );
+    const nodeCount = componentNodes.length;
     const edgeCount = diagData.edges?.length || 0;
-    const unresolved = diagData.nodes?.filter((n: any) => n.markup?.children?.[0]?.attrs?.stroke === "#ef4444") || [];
-    let fullSvg = renderDiagramSvg(cls);
+    const unresolved = componentNodes.filter((n: any) => n.markup?.children?.[0]?.attrs?.stroke === "#ef4444");
+    let fullSvg = renderDiagramSvg(cls, diagData.diagramBackground ?? undefined);
     if (!fullSvg && nodeCount > 0) {
       const minX = diagData.coordinateSystem?.extent?.[0]?.[0] ?? -100;
       const minY = diagData.coordinateSystem?.extent?.[0]?.[1] ?? -100;
@@ -1500,7 +1648,7 @@ async function executeDiagramStage(context: Context, task: WorkerTask): Promise<
 
     let diffSummary: string | undefined;
     if (omcDiag.success && (!nodeCountMatch || !edgeCountMatch)) {
-      const msNames = diagData.nodes?.map((n: any) => n.id) || [];
+      const msNames = componentNodes.map((n: any) => n.id);
       const omcNames = omcDiag.components?.map((c: any) => c.name) || [];
       const extraInMs = msNames.filter((n: string) => !omcNames.includes(n));
       const extraInOmc = omcNames.filter((n: string) => !msNames.includes(n));
@@ -1564,18 +1712,31 @@ async function executeDiagramStage(context: Context, task: WorkerTask): Promise<
 
 // ── Worker Task Runner ─────────────────────────────────────────────────────────
 
-async function runTask(task: WorkerTask): Promise<WorkerResult> {
-  const tTotalStart = Date.now();
+let workerWasmInitialized = false;
+let cachedWorkerContext: {
+  context: Context;
+  indexCachePath: string;
+  mslDir: string;
+} | null = null;
 
-  // 1. Initialize WASM & ModelScript context
-  await initBltWasm();
-  const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
-  const { parser } = await createWasmParser(modelicaWasm);
-  Context.registerParser(".mo", parser as any);
+async function getOrInitWorkerContext(task: WorkerTask): Promise<Context> {
+  if (!workerWasmInitialized) {
+    await initBltWasm();
+    const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
+    const { parser } = await createWasmParser(modelicaWasm);
+    Context.registerParser(".mo", parser as any);
+    workerWasmInitialized = true;
+  }
+
+  if (
+    cachedWorkerContext &&
+    cachedWorkerContext.indexCachePath === task.indexCachePath &&
+    cachedWorkerContext.mslDir === task.mslDir
+  ) {
+    return cachedWorkerContext.context;
+  }
 
   const context = new Context(new NodeFileSystem());
-
-  // 2. Hydrate index from cache
   const rawIndex = JSON.parse(fs.readFileSync(task.indexCachePath, "utf-8"));
   const symbolIndex = {
     symbols: new Map<number, any>(rawIndex.symbols),
@@ -1586,6 +1747,20 @@ async function runTask(task: WorkerTask): Promise<WorkerResult> {
   linkMslPackageHierarchy(symbolIndex, task.mslDir);
   context.setSymbolIndex(symbolIndex);
   await context.addLibrary(task.mslDir, { skipIndex: true });
+
+  cachedWorkerContext = {
+    context,
+    indexCachePath: task.indexCachePath,
+    mslDir: task.mslDir,
+  };
+  return context;
+}
+
+async function runTask(task: WorkerTask): Promise<WorkerResult> {
+  const tTotalStart = Date.now();
+
+  // 1. Initialize or reuse WASM & hydrated ModelScript context
+  const context = await getOrInitWorkerContext(task);
 
   // 3. Route according to task.stage
   let status: WorkerResult["status"] = "MATCH";
@@ -1685,23 +1860,22 @@ async function runTask(task: WorkerTask): Promise<WorkerResult> {
   };
 }
 
-// ── Standard Input / Output IPC ───────────────────────────────────────────────
+// ── Standard Input / Output IPC (Supports Persistent Multi-Task Pool) ─────────
 
-const rl = readline.createInterface({ input: process.stdin });
-let inputBuffer = "";
+const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 
-rl.on("line", (line) => {
-  inputBuffer += line;
-});
-
-rl.on("close", async () => {
+(async () => {
   try {
-    const task: WorkerTask = JSON.parse(inputBuffer.trim());
-    const result = await runTask(task);
-    console.log(JSON.stringify(result));
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const task: WorkerTask = JSON.parse(trimmed);
+      const result = await runTask(task);
+      process.stdout.write(JSON.stringify(result) + "\n");
+    }
     process.exit(0);
   } catch (err: any) {
     console.error("Worker fatal error:", err);
     process.exit(1);
   }
-});
+})();

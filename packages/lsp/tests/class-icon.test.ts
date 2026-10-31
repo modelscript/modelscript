@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createWasmParser } from "@modelscript/dsl/bindings";
-import { getClassIconSvg } from "@modelscript/modelica/diagram";
+import {
+  AnnotationEvaluator,
+  evaluateConnectLineWasm,
+  evaluateDiagramWasm,
+  evaluateIconWasm,
+  evaluatePlacementWasm,
+  getClassIconSvg,
+  renderIconSvgWasm,
+} from "@modelscript/modelica/diagram";
 import assert from "assert";
 import { readFileSync } from "fs";
 import test from "node:test";
@@ -226,4 +234,136 @@ test("test-nested-package-icons", async () => {
   assert(basicSvg.includes("<line"), "Basic SVG must include basic component line graphics");
 
   console.log("test-nested-package-icons passed successfully!");
+});
+
+test("test-wasm-icon-kernel", async () => {
+  console.log("Starting test-wasm-icon-kernel...");
+  const parser = (globalThis as any).modelicaParser;
+  assert(parser, "modelicaParser must be initialized");
+
+  const findClassDef = (node: any): any => {
+    if (!node) return null;
+    if (node.type === "class_definition") return node;
+    for (const ch of node.children || []) {
+      const found = findClassDef(ch);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  // 1. Test Capacitor.mo (literal Icon graphics + Text -> evaluated in WASM)
+  const capacitorPath = resolve(
+    repoRoot,
+    "data/libraries/Modelica/4.1.0/extracted/Modelica/Electrical/Analog/Basic/Capacitor.mo",
+  );
+  const capacitorText = readFileSync(capacitorPath, "utf-8");
+  const capTree = parser.parse(capacitorText);
+  const capClassNode = findClassDef(capTree.rootNode);
+  assert(capClassNode, "Capacitor class_definition CST node must be found");
+
+  const wasmCapIcon = evaluateIconWasm(capClassNode);
+  assert(wasmCapIcon, "evaluateIconWasm must evaluate Capacitor.mo in WASM without fallback");
+  assert.strictEqual(wasmCapIcon["@type"], "Icon");
+  assert.strictEqual(wasmCapIcon.graphics?.length, 6, "Capacitor must have 6 graphic items");
+  assert.strictEqual(wasmCapIcon.graphics[0]["@type"], "Line");
+  assert.strictEqual(wasmCapIcon.graphics[4]["@type"], "Text");
+  assert.strictEqual(wasmCapIcon.graphics[4].textString, "C=%C");
+  assert.strictEqual(wasmCapIcon.graphics[5].textString, "%name");
+
+  // 2. Test pure geometric icon directly serialized in WASM via renderIconSvgWasm
+  const pureGeoSource = `model PureGeoIcon
+    annotation(Icon(coordinateSystem(extent={{-100,-100},{100,100}}), graphics={
+      Rectangle(extent={{-70,30},{70,-30}}, lineColor={0,0,255}, fillColor={255,255,255}, fillPattern=FillPattern.Solid),
+      Line(points={{-90,0},{-70,0}}, color={0,0,255})
+    }));
+  end PureGeoIcon;`;
+  const geoTree = parser.parse(pureGeoSource);
+  const geoClassNode = findClassDef(geoTree.rootNode);
+  assert(geoClassNode, "PureGeoIcon class_definition CST node must be found");
+  const wasmSvg = renderIconSvgWasm(geoClassNode, 20);
+  assert(wasmSvg && wasmSvg.startsWith("<svg"), "renderIconSvgWasm must serialize pure geometric icon in WASM");
+  assert(wasmSvg.includes("<path"), "WASM SVG must include <path for Rectangle");
+  assert(wasmSvg.includes("<line"), "WASM SVG must include <line for Line");
+
+  // 3. Test Resistor.mo (has dynamic visible=useHeatPort -> bails out cleanly to undefined so TS evaluator handles it)
+  const resistorPath = resolve(
+    repoRoot,
+    "data/libraries/Modelica/4.1.0/extracted/Modelica/Electrical/Analog/Basic/Resistor.mo",
+  );
+  const resistorText = readFileSync(resistorPath, "utf-8");
+  const resTree = parser.parse(resistorText);
+  const resClassNode = findClassDef(resTree.rootNode);
+  assert(resClassNode, "Resistor class_definition CST node must be found");
+  const wasmResIcon = evaluateIconWasm(resClassNode);
+  assert.strictEqual(
+    wasmResIcon,
+    undefined,
+    "Resistor with dynamic visible=useHeatPort must return undefined for TS fallback",
+  );
+  const tsFallbackIcon = new AnnotationEvaluator().evaluate(resClassNode, "Icon");
+  assert(tsFallbackIcon && tsFallbackIcon.graphics?.length === 6, "TS fallback must evaluate all 6 Resistor items");
+
+  // 4. Test evaluateDiagramWasm, evaluatePlacementWasm, and evaluateConnectLineWasm
+  const diagramSource = `model TestDiagramWasm
+    Resistor R1 annotation(Placement(visible=true, transformation(origin={-20, 40}, extent={{-10,-10},{10,10}}, rotation=90), iconTransformation(origin={0, 10}, extent={{-5,-5},{5,5}}, rotation=180)));
+  equation
+    connect(R1.p, R1.n) annotation(Line(points={{-20,50},{-20,60},{20,60},{20,30},{-20,30}}, color={0,0,255}, thickness=0.5, pattern=LinePattern.Dash, smooth=Smooth.Bezier, arrow={Arrow.None, Arrow.Filled}, arrowSize=4));
+    annotation(Diagram(coordinateSystem(preserveAspectRatio=false, extent={{-120,-80},{120,80}}), graphics={
+      Rectangle(extent={{-100,60},{100,-60}}, lineColor={0,0,0})
+    }));
+  end TestDiagramWasm;`;
+  const diagTree = parser.parse(diagramSource);
+  const diagClassNode = findClassDef(diagTree.rootNode);
+  assert(diagClassNode, "TestDiagramWasm class_definition CST node must be found");
+
+  const wasmDiag = evaluateDiagramWasm(diagClassNode);
+  assert(wasmDiag, "evaluateDiagramWasm must evaluate Diagram annotation in WASM");
+  assert.strictEqual(wasmDiag["@type"], "Diagram");
+  assert.deepStrictEqual(wasmDiag.coordinateSystem?.extent, [
+    [-120, -80],
+    [120, 80],
+  ]);
+  assert.strictEqual(wasmDiag.coordinateSystem?.preserveAspectRatio, false);
+  assert.strictEqual(wasmDiag.graphics?.length, 1);
+  assert.strictEqual(wasmDiag.graphics[0]["@type"], "Rectangle");
+
+  const findByType = (node: any, targetType: string): any => {
+    if (!node) return null;
+    if (node.type === targetType) return node;
+    for (const ch of node.children || []) {
+      const found = findByType(ch, targetType);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  const compDeclNode = findByType(diagClassNode, "component_declaration");
+  assert(compDeclNode, "component_declaration CST node must be found");
+  const wasmPlacement = evaluatePlacementWasm(compDeclNode);
+  assert(wasmPlacement, "evaluatePlacementWasm must evaluate Placement annotation in WASM");
+  assert.strictEqual(wasmPlacement["@type"], "Placement");
+  assert.strictEqual(wasmPlacement.visible, true);
+  assert.deepStrictEqual(wasmPlacement.transformation?.origin, [-20, 40]);
+  assert.deepStrictEqual(wasmPlacement.transformation?.extent, [
+    [-10, -10],
+    [10, 10],
+  ]);
+  assert.strictEqual(wasmPlacement.transformation?.rotation, 90);
+  assert.deepStrictEqual(wasmPlacement.iconTransformation?.origin, [0, 10]);
+  assert.strictEqual(wasmPlacement.iconTransformation?.rotation, 180);
+
+  const someEqNode = findByType(diagClassNode, "some_equation");
+  assert(someEqNode, "some_equation CST node must be found");
+  const wasmLine = evaluateConnectLineWasm(someEqNode);
+  assert(wasmLine, "evaluateConnectLineWasm must evaluate connect Line annotation in WASM");
+  assert.strictEqual(wasmLine["@type"], "Line");
+  assert.strictEqual(wasmLine.points?.length, 5);
+  assert.deepStrictEqual(wasmLine.color, [0, 0, 255]);
+  assert.strictEqual(wasmLine.thickness, 0.5);
+  assert.strictEqual(wasmLine.pattern, "Dash");
+  assert.strictEqual(wasmLine.smooth, "Bezier");
+  assert.deepStrictEqual(wasmLine.arrow, ["None", "Filled"]);
+  assert.strictEqual(wasmLine.arrowSize, 4);
+
+  console.log("test-wasm-icon-kernel passed successfully!");
 });

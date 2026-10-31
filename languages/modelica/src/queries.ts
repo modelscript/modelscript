@@ -6,8 +6,13 @@
 
 import { error, info } from "@modelscript/dsl";
 import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/runtime";
-import { Cst } from "../src-gen/bindings.js";
-import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
+import { Cst, type SyntaxNode } from "../src-gen/bindings.js";
+import {
+  AnnotationEvaluator,
+  evaluateDiagramWasm,
+  evaluateIconWasm,
+  evaluatePlacementWasm,
+} from "./diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "./errors.js";
 import { runModelicaCfaAnalysis } from "./lints/cfa.js";
 import { findNonlinearTermsInCst } from "./lints/homotopy-synthesis.js";
@@ -1135,6 +1140,15 @@ export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
     (sym as any)._isEncapsulated = true;
     return true;
   }
+  const queryDbWithCst = db as { cstText?: (s: number, e: number, sym?: unknown) => string | null };
+  if (sym.startOffset != null && sym.endOffset != null && typeof queryDbWithCst.cstText === "function") {
+    const header = queryDbWithCst.cstText(sym.startOffset, Math.min(sym.endOffset, sym.startOffset + 120), sym);
+    if (typeof header === "string" && header.length > 0) {
+      const res = /^(?:\s*(?:within\b[^;]*;|final|inner|outer|redeclare|replaceable)\b)*\s*encapsulated\b/.test(header);
+      (sym as { _isEncapsulated?: boolean })._isEncapsulated = res;
+      return res;
+    }
+  }
   const cst = db.cstNode(sym.id) as any;
   if (cst && cst.children) {
     for (const ch of cst.children) {
@@ -1145,12 +1159,7 @@ export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
       if (ch.type === "class_prefixes" || ch.type === "class_specifier") break;
     }
   }
-  let text = "";
-  if (sym.startOffset != null && sym.endOffset != null && typeof (db as any).cstText === "function") {
-    text = (db as any).cstText(sym.startOffset, Math.min(sym.endOffset, sym.startOffset + 120), sym) ?? "";
-  } else if (cst) {
-    text = (cst.text ?? "").slice(0, 120);
-  }
+  const text = cst ? (cst.text ?? "").slice(0, 120) : "";
   const res = /^(?:\s*(?:within\b[^;]*;|final|inner|outer|redeclare|replaceable)\b)*\s*encapsulated\b/.test(text);
   (sym as any)._isEncapsulated = res;
   return res;
@@ -1249,20 +1258,41 @@ export function resolveSimpleNameHelper(
 
   const unspecializedSym = db.symbol(unspecializedId);
   if (unspecializedSym) {
-    const cstText = (db.cstNode(unspecializedId) as any)?.text;
-    const enumMatch = typeof cstText === "string" ? cstText.match(/enumeration\s*\(([^)]+)\)/) : null;
-    if (enumMatch?.[1]) {
-      const hasLit = enumMatch[1]
-        .split(",")
-        .some((p: string) => p.trim().split(/\s+/)[0]?.replace(/^'|'$/g, "") === name);
-      if (hasLit) {
-        return {
-          ...unspecializedSym,
-          id: -1 as any,
-          parentId: unspecializedId,
-          kind: "EnumerationLiteral" as any,
-          name,
-        };
+    const unspecMeta = unspecializedSym.metadata as Record<string, unknown> | undefined;
+    const uKind = String(unspecMeta?.["classKind"] ?? unspecMeta?.["classPrefixes"] ?? "");
+    if (!uKind || uKind.includes("type") || uKind.includes("enumeration") || uKind === "class") {
+      let cstText: string | undefined;
+      const queryDbWithCst = db as { cstText?: (s: number, e: number, sym?: unknown) => string | null };
+      if (
+        unspecializedSym.startOffset != null &&
+        unspecializedSym.endOffset != null &&
+        typeof queryDbWithCst.cstText === "function"
+      ) {
+        if (unspecializedSym.endOffset - unspecializedSym.startOffset < 8192) {
+          cstText =
+            queryDbWithCst.cstText(unspecializedSym.startOffset, unspecializedSym.endOffset, unspecializedSym) ??
+            undefined;
+        }
+      } else {
+        cstText = (db.cstNode(unspecializedId) as { text?: string } | null)?.text;
+      }
+      const enumMatch =
+        typeof cstText === "string" && cstText.includes("enumeration")
+          ? cstText.match(/enumeration\s*\(([^)]+)\)/)
+          : null;
+      if (enumMatch?.[1]) {
+        const hasLit = enumMatch[1]
+          .split(",")
+          .some((p: string) => p.trim().split(/\s+/)[0]?.replace(/^'|'$/g, "") === name);
+        if (hasLit) {
+          return {
+            ...unspecializedSym,
+            id: -1 as SymbolId,
+            parentId: unspecializedId,
+            kind: "EnumerationLiteral" as SymbolEntry["kind"],
+            name,
+          };
+        }
       }
     }
   }
@@ -1279,8 +1309,16 @@ export function resolveSimpleNameHelper(
     const self = db.symbol(classId);
     const meta = self?.metadata as Record<string, unknown>;
     if (self && !meta?.["isPredefined"]) {
-      const cst = db.cstNode(classId) as any;
-      const classSpecifier = getShortClassSpecifierNode(cst);
+      let mayBeShortClass = true;
+      const queryDbWithCst = db as { cstText?: (s: number, e: number, sym?: unknown) => string | null };
+      if (self.startOffset != null && self.endOffset != null && typeof queryDbWithCst.cstText === "function") {
+        const hdr = queryDbWithCst.cstText(self.startOffset, Math.min(self.endOffset, self.startOffset + 256), self);
+        if (typeof hdr === "string" && hdr.length > 0) {
+          mayBeShortClass = hdr.includes("=");
+        }
+      }
+      const cst = mayBeShortClass ? (db.cstNode(classId) as { type?: string } | null) : null;
+      const classSpecifier = cst ? getShortClassSpecifierNode(cst) : null;
       if (classSpecifier) {
         const effMod = db.query<any>("effectiveModification", classId);
         const redeclClassArg = effMod?.args?.find(
@@ -2430,6 +2468,24 @@ export function isOuterQuery(db: QueryDB, self: SymbolEntry): boolean {
 export const classDefinitionQueries: Record<string, any> = {
   /** All direct children of this class. */
   members: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id),
+  /** Evaluates and memoizes the Icon annotation graphics for this class definition. */
+  classIconGraphics: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id);
+    if (!cst) return null;
+    const wasmIcon = evaluateIconWasm(cst);
+    if (wasmIcon !== undefined) return wasmIcon;
+    const evaluator = new AnnotationEvaluator();
+    return evaluator.evaluate(cst, "Icon");
+  },
+  /** Evaluates and memoizes the Diagram annotation graphics for this class definition. */
+  classDiagramGraphics: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id);
+    if (!cst) return null;
+    const wasmDiagram = evaluateDiagramWasm(cst);
+    if (wasmDiagram !== undefined) return wasmDiagram;
+    const evaluator = new AnnotationEvaluator();
+    return evaluator.evaluate(cst, "Diagram");
+  },
   /** Returns `true` if this class definition carries a `redeclare` prefix. */
   isRedeclare: (db: QueryDB, self: SymbolEntry) => isRedeclareQuery(db, self),
   /** Checks whether this class is declared with the `inner` dynamic scoping prefix. */
@@ -3421,8 +3477,18 @@ export const classDefinitionQueries: Record<string, any> = {
       }
 
       // Also handle extends in LongClassSpecifier
-      const selfCst = db.cstNode(sourceId) as any;
-      const spec = Cst.ClassDefinition.classSpecifier(selfCst);
+      let mayBeClassExtends = self.parentId !== null;
+      if (mayBeClassExtends && self.startOffset != null && self.endOffset != null) {
+        const queryDbWithCst = db as { cstText?: (s: number, e: number, sym?: unknown) => string | null };
+        if (typeof queryDbWithCst.cstText === "function") {
+          const hdr = queryDbWithCst.cstText(self.startOffset, Math.min(self.endOffset, self.startOffset + 160), self);
+          if (typeof hdr === "string" && hdr.length > 0) {
+            mayBeClassExtends = /\bextends\b/.test(hdr);
+          }
+        }
+      }
+      const selfCst = mayBeClassExtends ? (db.cstNode(sourceId) as SyntaxNode | null) : null;
+      const spec = selfCst ? Cst.ClassDefinition.classSpecifier(selfCst) : null;
       if (spec?.type === "LongClassSpecifier") {
         let hasExtends = false;
         for (let i = 0; i < spec.childCount; i++) {
@@ -4118,6 +4184,15 @@ export const extendsClauseQueries: Record<string, any> = {
  * merged modifications, and component-level semantic diagnostics (`M2003`, `M2004`, `M4043`, `M4076`).
  */
 export const componentDeclarationQueries: Record<string, any> = {
+  /** Evaluates and memoizes the Placement annotation for this component declaration. */
+  componentPlacement: (db: QueryDB, self: SymbolEntry) => {
+    const cst = db.cstNode(self.id);
+    if (!cst) return null;
+    const wasmPlacement = evaluatePlacementWasm(cst);
+    if (wasmPlacement !== undefined) return wasmPlacement;
+    const evaluator = new AnnotationEvaluator();
+    return evaluator.evaluate(cst, "Placement");
+  },
   /**
    * Get the raw type specifier name for this component.
    */
@@ -4151,15 +4226,19 @@ export const componentDeclarationQueries: Record<string, any> = {
     if (specArgs?.data?.isRedeclaration && specArgs.data.redeclaredTypeSpecifier) {
       typeName = specArgs.data.redeclaredTypeSpecifier;
     } else {
-      const cstNode = db.cstNode(self.id);
-      let current = cstNode as any;
-      while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
-        current = current.parent;
+      const selfMeta = self.metadata as Record<string, unknown> | undefined;
+      typeName = String(selfMeta?.["typeSpecifier"] ?? selfMeta?.["type_specifier"] ?? "").trim();
+      if (!typeName) {
+        const cstNode = db.cstNode(self.id);
+        let current = cstNode as any;
+        while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
+          current = current.parent;
+        }
+        const typeSpecNode =
+          Cst.ComponentClause.typeSpecifier(current) ??
+          current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+        typeName = typeSpecNode?.text ?? "";
       }
-      const typeSpecNode =
-        Cst.ComponentClause.typeSpecifier(current) ??
-        current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
-      typeName = typeSpecNode?.text ?? "";
     }
 
     if (!typeName || typeof typeName !== "string") return null;
@@ -4535,14 +4614,16 @@ export const componentDeclarationQueries: Record<string, any> = {
     if (specArgs?.data?.isRedeclaration && specArgs.data.redeclaredTypeSpecifier) {
       typeName = specArgs.data.redeclaredTypeSpecifier;
     } else {
-      const cstNode = db.cstNode(self.id);
-      let current = cstNode as any;
-      while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
-        current = current.parent;
+      typeName = (self.metadata as any)?.typeSpecifier ?? (self.metadata as any)?.type_specifier ?? "";
+      if (!typeName) {
+        const cstNode = db.cstNode(self.id);
+        let current = cstNode as any;
+        while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
+          current = current.parent;
+        }
+        const typeSpecNode = Cst.ComponentClause.typeSpecifier(current);
+        typeName = typeSpecNode?.text ?? "";
       }
-      const typeSpecNode = Cst.ComponentClause.typeSpecifier(current);
-      typeName =
-        typeSpecNode?.text ?? (self.metadata as any)?.typeSpecifier ?? (self.metadata as any)?.type_specifier ?? "";
     }
 
     if (!typeName) return null;

@@ -5,7 +5,6 @@ import { describe, it } from "node:test";
 import * as vscode from "vscode";
 import { CadViewerPanel } from "../src/cad-viewer-panel.js";
 import { MultiBodyAnimationPanel } from "../src/multibody-animation-panel.js";
-import { PacemakerProgrammerPanel } from "../src/pacemaker-programmer-panel.js";
 import { AnimationController } from "../src/webview/cad-viewer/animation-controller.js";
 import { parseCadAnnotationString } from "../src/webview/cad-viewer/parse-cad-annotations.js";
 
@@ -105,86 +104,6 @@ describe("Medical Device & 4D Deformable Organ UX Studio", () => {
 
       const computedDist = controller.computeClearanceDistance("CannulaTip", "VentricleWall");
       assert.strictEqual(computedDist, 1.2);
-    });
-  });
-
-  describe("Workstream 3: Virtual Electrophysiology & Device Programmer Panel", () => {
-    it("creates PacemakerProgrammerPanel with standard clinical dual-chamber DDD defaults", () => {
-      const extensionUri = vscode.Uri.file("/extension");
-      PacemakerProgrammerPanel.createOrShow(extensionUri);
-
-      const panel = PacemakerProgrammerPanel.currentPanel;
-      assert.notStrictEqual(panel, undefined);
-
-      const state = panel!.getCurrentState();
-      assert.strictEqual(state.parameters.mode, "DDD");
-      assert.strictEqual(state.parameters.lowerRateLimit, 60);
-      assert.strictEqual(state.parameters.upperTrackingLimit, 130);
-      assert.strictEqual(state.parameters.pacedAvDelay, 150);
-      assert.strictEqual(state.parameters.sensedAvDelay, 120);
-      assert.strictEqual(state.parameters.ventricularVoltage, 2.5);
-      assert.strictEqual(state.parameters.pvarp, 250);
-      assert.strictEqual(state.parameters.ventricularBlanking, 28);
-
-      panel!.dispose();
-      assert.strictEqual(PacemakerProgrammerPanel.currentPanel, undefined);
-    });
-
-    it("updates pacing mode and electrophysiology parameters dynamically", () => {
-      const extensionUri = vscode.Uri.file("/extension");
-      PacemakerProgrammerPanel.createOrShow(extensionUri);
-
-      const panel = PacemakerProgrammerPanel.currentPanel!;
-
-      // Change pacing mode to rate-responsive CRT-D
-      panel.updateParameter("mode", "CRT-D");
-      panel.updateParameter("lowerRateLimit", 70);
-      panel.updateParameter("pacedAvDelay", 130);
-      panel.updateParameter("ventricularVoltage", 3.0);
-
-      const updated = panel.getCurrentState();
-      assert.strictEqual(updated.parameters.mode, "CRT-D");
-      assert.strictEqual(updated.parameters.lowerRateLimit, 70);
-      assert.strictEqual(updated.parameters.pacedAvDelay, 130);
-      assert.strictEqual(updated.parameters.ventricularVoltage, 3.0);
-
-      panel.dispose();
-    });
-
-    it("triggers arrhythmia and stress disturbances: 3° AV Block, Bradycardia, PVC, Lead Dislodgement", () => {
-      const extensionUri = vscode.Uri.file("/extension");
-      PacemakerProgrammerPanel.createOrShow(extensionUri);
-      const panel = PacemakerProgrammerPanel.currentPanel!;
-
-      // 1. Induce Complete 3° AV Block
-      const blockRes = panel.injectDisturbance("avBlock");
-      assert.strictEqual(blockRes.name, "avBlock");
-      assert.strictEqual(blockRes.appliedParameters["avBlock"], true);
-      assert.strictEqual(panel.getCurrentState().telemetry.activeDisturbance, "3° AV Block");
-      assert.strictEqual(panel.getCurrentState().telemetry.vpPercent, 100);
-
-      // 2. Trigger Vasovagal Bradycardia
-      const bradyRes = panel.injectDisturbance("bradycardia");
-      assert.strictEqual(bradyRes.name, "bradycardia");
-      assert.strictEqual(bradyRes.appliedParameters["intrinsicSinusRate"], 35.0);
-      assert.strictEqual(panel.getCurrentState().telemetry.activeDisturbance, "Bradycardia (35 bpm)");
-
-      // 3. Inject Premature Ventricular Contraction (PVC)
-      const pvcRes = panel.injectDisturbance("pvc");
-      assert.strictEqual(pvcRes.appliedParameters["ectopicVentricularBeat"], true);
-
-      // 4. Simulate Lead Micro-Dislodgement
-      const dislodgeRes = panel.injectDisturbance("leadDislodgement");
-      assert.strictEqual(dislodgeRes.appliedParameters["pacingCaptureThreshold"], 4.2);
-      assert.strictEqual(panel.getCurrentState().telemetry.rvLeadImpedance, 1580);
-
-      // 5. Restore Normal Sinus Rhythm
-      const restoreRes = panel.injectDisturbance("resetNormal");
-      assert.strictEqual(restoreRes.appliedParameters["avBlock"], false);
-      assert.strictEqual(restoreRes.appliedParameters["intrinsicSinusRate"], 72.0);
-      assert.strictEqual(panel.getCurrentState().telemetry.activeDisturbance, null);
-
-      panel.dispose();
     });
   });
 

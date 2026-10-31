@@ -103,10 +103,13 @@ function tetSignedVolume6(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3): number {
 }
 
 function sanitizePatchName(raw: string, fallback: string): string {
-  const cleaned = raw
-    .trim()
-    .replace(/[^a-zA-Z0-9_]/g, "_")
-    .replace(/^_+|_+$/g, "");
+  let cleaned = raw.trim().replace(/[^a-zA-Z0-9_]/g, "_");
+  while (cleaned.startsWith("_")) {
+    cleaned = cleaned.slice(1);
+  }
+  while (cleaned.endsWith("_")) {
+    cleaned = cleaned.slice(0, -1);
+  }
   return cleaned.length > 0 ? cleaned : fallback;
 }
 

@@ -278,7 +278,14 @@ export function generateFmi3(dae: DAEBuilder, options: Fmi3Options, stateVars?: 
         const typeName = `${fv.name}Type`;
         enumTypes.set(
           typeName,
-          literals.map((lit: { name: string }) => ({ name: lit.name, description: null })),
+          literals.map((lit: unknown) => {
+            const litRecord = typeof lit === "object" && lit !== null ? (lit as Record<string, unknown>) : null;
+            const litName = litRecord ? String(litRecord["stringValue"] ?? litRecord["name"] ?? lit) : String(lit);
+            return {
+              name: litName,
+              description: null,
+            };
+          }),
         );
         fv.declaredType = typeName;
       }

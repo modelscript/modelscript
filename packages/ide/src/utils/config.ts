@@ -88,6 +88,7 @@ export interface ModelScriptFeatureFlags {
   formalVerification: boolean;
   caeWorkbench: boolean;
   coSimulation: boolean;
+  cloudCompute: boolean;
   digitalThread: boolean;
   polyglotProjection: boolean;
   scaffolding: boolean;
@@ -99,7 +100,8 @@ export const FEATURE_MIN_CHANNEL: Record<keyof ModelScriptFeatureFlags, FeatureC
   codeLensSimulate: "stable",
   formalVerification: "preview",
   caeWorkbench: "preview",
-  coSimulation: "preview",
+  coSimulation: "experimental",
+  cloudCompute: "experimental",
   digitalThread: "experimental",
   polyglotProjection: "experimental",
   scaffolding: "experimental",
@@ -129,7 +131,12 @@ export const FEATURE_LABELS: Record<
   coSimulation: {
     label: "FMI Co-Simulation & MQTT",
     description: "Multi-FMU Co-Simulation Orchestrator and live MQTT participants view",
-    channel: "preview",
+    channel: "experimental",
+  },
+  cloudCompute: {
+    label: "Cloud HPC Job Dispatch",
+    description: "Remote cloud simulation job execution, queue management, and status bar telemetry",
+    channel: "experimental",
   },
   digitalThread: {
     label: "Cross-Domain Digital Thread",
@@ -152,8 +159,8 @@ export const FEATURE_LABELS: Record<
     channel: "experimental",
   },
   demos: {
-    label: "Vertical Showcases & Trade Study Demos",
-    description: "Drone reachability demo, trade study Tier 1-3 CodeLenses, and medical/VR showcases",
+    label: "Vertical Showcase Demos",
+    description: "Reachability flowpipe comparison and vertical verification showcases",
     channel: "dev",
   },
 };
@@ -201,6 +208,7 @@ export function getResolvedFeatureFlags(): ModelScriptFeatureFlags & { channel: 
     formalVerification: isFeatureEnabled("formalVerification"),
     caeWorkbench: isFeatureEnabled("caeWorkbench"),
     coSimulation: isFeatureEnabled("coSimulation"),
+    cloudCompute: isFeatureEnabled("cloudCompute"),
     digitalThread: isFeatureEnabled("digitalThread"),
     polyglotProjection: isFeatureEnabled("polyglotProjection"),
     scaffolding: isFeatureEnabled("scaffolding"),
@@ -222,6 +230,7 @@ export async function syncFeatureContextKeys(): Promise<void> {
       "formalVerification",
       "caeWorkbench",
       "coSimulation",
+      "cloudCompute",
       "digitalThread",
       "polyglotProjection",
       "scaffolding",
@@ -260,7 +269,8 @@ export function getStatusBarConfig(): {
           ? "never"
           : "whenActive";
     const demosEnabled = isFeatureEnabled("demos");
-    const showCloudStatus = cfg?.get<boolean>("showCloudStatus") ?? false;
+    const cloudEnabled = isFeatureEnabled("cloudCompute");
+    const showCloudStatus = (cfg?.get<boolean>("showCloudStatus") ?? false) && cloudEnabled;
     const showSocialFeed = (cfg?.get<boolean>("showSocialFeed") ?? false) && demosEnabled;
     return { visibility, showCloudStatus, showSocialFeed };
   } catch {
@@ -358,25 +368,36 @@ export function getOllamaUrl(): string {
   return "http://localhost:11434";
 }
 
+function normalizeAnsatzBaseUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim().replace(/\/+$/, "");
+  if (trimmed.endsWith("/api/v1") || trimmed.endsWith("/registry")) {
+    return trimmed;
+  }
+  return `${trimmed}/api/v1`;
+}
+
 /**
- * Returns the configured or default ModelScript Package Registry API URL.
+ * Returns the configured or default Ansatz Package Registry API base URL (ending in `/api/v1`).
  */
 export function getRegistryUrl(): string {
   try {
     const regCfg = vscode.workspace?.getConfiguration?.("modelscript.registry");
-    const custom = regCfg?.get<string>("url");
-    if (custom && typeof custom === "string" && custom.trim().length > 0) {
-      return custom.trim().replace(/\/+$/, "");
+    const inspect = regCfg?.inspect<string>("url");
+    const explicitRegUrl = inspect?.workspaceFolderValue ?? inspect?.workspaceValue ?? inspect?.globalValue;
+    if (explicitRegUrl && typeof explicitRegUrl === "string" && explicitRegUrl.trim().length > 0) {
+      return normalizeAnsatzBaseUrl(explicitRegUrl);
     }
     const rootCfg = vscode.workspace?.getConfiguration?.("modelscript");
-    const legacy = rootCfg?.get<string>("registryUrl");
-    if (legacy && typeof legacy === "string" && legacy.trim().length > 0) {
-      return legacy.trim().replace(/\/+$/, "");
+    const legacyInspect = rootCfg?.inspect<string>("registryUrl");
+    const explicitLegacy =
+      legacyInspect?.workspaceFolderValue ?? legacyInspect?.workspaceValue ?? legacyInspect?.globalValue;
+    if (explicitLegacy && typeof explicitLegacy === "string" && explicitLegacy.trim().length > 0) {
+      return normalizeAnsatzBaseUrl(explicitLegacy);
     }
   } catch {
     // Fallback
   }
-  return `${getApiBaseUrl()}/registry`;
+  return normalizeAnsatzBaseUrl(getApiBaseUrl());
 }
 
 /**

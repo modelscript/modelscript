@@ -378,6 +378,19 @@ export const modelicaLanguage = language({
               }
             })(),
           },
+          {
+            filename: "annotation.ts",
+            path: (() => {
+              try {
+                return new URL(
+                  import.meta.url.includes("/dist/") ? "../../assembly/annotation.ts" : "../assembly/annotation.ts",
+                  import.meta.url,
+                ).pathname;
+              } catch {
+                return "annotation.ts";
+              }
+            })(),
+          },
         ]
       : [],
 

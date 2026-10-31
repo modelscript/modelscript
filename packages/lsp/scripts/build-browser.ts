@@ -42,6 +42,14 @@ async function run() {
     plugins: [ignorePlugin],
   });
   console.log("Bundle completed successfully!");
+
+  const fs = await import("fs");
+  const assetGz = path.resolve(pkgDir, "assets/msl-icons.json.gz");
+  const distGz = path.resolve(pkgDir, "dist/msl-icons.json.gz");
+  if (fs.existsSync(assetGz)) {
+    fs.copyFileSync(assetGz, distGz);
+    console.log("Copied msl-icons.json.gz to dist/");
+  }
 }
 
 run().catch((err) => {

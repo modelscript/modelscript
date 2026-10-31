@@ -92,7 +92,7 @@ export function parseEasy5(sourceText: string): Easy5Model {
 
     // Handle TABLES section
     if (currentSection === "TABLES") {
-      if (/^END\s*_?\s*TABLE\b/i.test(trimmed)) {
+      if (/^END[\s_]+TABLE\b/i.test(trimmed)) {
         currentTable = null;
         continue;
       }

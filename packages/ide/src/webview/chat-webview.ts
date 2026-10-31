@@ -90,7 +90,7 @@ interface PendingCloudStream {
 let engine: MLCEngineLike | null = null;
 let engineLoading = false;
 let isGenerating = false;
-let currentProvider = modelProviderSelect?.value || "webgpu";
+let currentProvider = modelProviderSelect?.value || "wasm";
 const conversation: ChatMessage[] = [];
 const pendingToolCalls = new Map<string, (result: unknown) => void>();
 const pendingCloudStreams = new Map<string, PendingCloudStream>();
@@ -107,7 +107,9 @@ let activeWebgpuLabel = "Qwen3-1.7B";
 if (modelProviderSelect) {
   modelProviderSelect.addEventListener("change", () => {
     currentProvider = modelProviderSelect.value;
-    if (currentProvider === "webgpu") {
+    if (currentProvider === "wasm") {
+      statusEl.textContent = "WASM ready";
+    } else if (currentProvider === "webgpu") {
       statusEl.textContent = engine ? `${activeWebgpuLabel} ready` : "Ready";
     } else if (currentProvider === "ollama") {
       statusEl.textContent = "Ollama ready";
@@ -286,6 +288,36 @@ export const MODELSCRIPT_TOOLS = [
         properties: {
           modelName: { type: "string", description: "Target model or state machine name" },
           safetyProperty: { type: "string", description: "Safety invariant expression to prove" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "pscad_lint",
+      description: "Run all 11 electrical EMT static lint rules (M6001–M6011) on a PSCAD .pscx or .pswx model.",
+      parameters: {
+        type: "object",
+        properties: {
+          fileName: { type: "string", description: "Target PSCAD file name" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "pscad_verify_ieee2800",
+      description:
+        "Automate IEEE Std 2800-2022 LVRT/HVRT voltage ride-through and reactive current injection verification on a PSCAD EMT model.",
+      parameters: {
+        type: "object",
+        properties: {
+          fileName: { type: "string", description: "Target PSCAD file name" },
+          retainedVoltagePu: { type: "number", description: "Fault retained voltage in per-unit" },
+          tStop: { type: "number", description: "Simulation stop time in seconds" },
+          stepUs: { type: "number", description: "Fixed EMT time step in microseconds" },
         },
       },
     },
@@ -634,13 +666,23 @@ window.addEventListener("message", (event) => {
         pendingToolCalls.delete(msg.id);
       }
       break;
-    case "activeFileContext":
+    case "activeFileContext": {
       activeFileName = msg.fileName ?? null;
       activeFileContent = msg.content ?? null;
       activeSelectedText = msg.selectedText ?? null;
       activeCursorLine = typeof msg.cursorLine === "number" ? msg.cursorLine : null;
       activeSymbols = Array.isArray(msg.symbols) ? msg.symbols : [];
+      const ctxEl = document.getElementById("context-file");
+      if (ctxEl) {
+        if (activeFileName) {
+          const topSym = activeSymbols[0] ? ` · ${activeSymbols[0].kind} ${activeSymbols[0].name}` : "";
+          ctxEl.textContent = `${activeFileName}${topSym}`;
+        } else {
+          ctxEl.textContent = "Workspace Ready · MCP Active";
+        }
+      }
       break;
+    }
     case "cloudStreamChunk": {
       const stream = pendingCloudStreams.get(msg.id);
       if (stream) stream.onChunk({ content: msg.content || "" });
@@ -891,7 +933,7 @@ async function* streamChatCompletion(
         }
       }
     }
-  } else if (currentProvider === "hosted-mcp") {
+  } else if (currentProvider === "wasm" || currentProvider === "hosted-mcp") {
     yield* streamFromCloud(messages);
   }
 }
@@ -981,11 +1023,13 @@ async function sendMessage(): Promise<void> {
       }
 
       statusEl.textContent =
-        currentProvider === "webgpu"
-          ? "Qwen3-0.6B ready"
-          : currentProvider === "ollama"
-            ? "Ollama ready"
-            : "Cloud ready";
+        currentProvider === "wasm"
+          ? "WASM ready"
+          : currentProvider === "webgpu"
+            ? `${activeWebgpuLabel} ready`
+            : currentProvider === "ollama"
+              ? "Ollama ready"
+              : "Cloud ready";
 
       if (!visibleText && nativeToolCalls.length === 0) {
         msgEl.innerHTML = "I couldn't generate a response. Try a more specific instruction.";
@@ -1191,6 +1235,16 @@ inputEl.addEventListener("keydown", (e) => {
 inputEl.addEventListener("input", () => {
   inputEl.style.height = "28px";
   inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
+});
+
+document.querySelectorAll<HTMLButtonElement>(".qs-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    if (chip.dataset.prompt) {
+      inputEl.value = chip.dataset.prompt;
+      inputEl.focus();
+      sendMessage();
+    }
+  });
 });
 
 // ── Initialize ──

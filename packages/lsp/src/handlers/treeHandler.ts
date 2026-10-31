@@ -3,6 +3,7 @@
 import type { TreeNodeInfo } from "@modelscript/runtime";
 import { LspContext } from "../lsp-context.js";
 import { fqnCacheState, getTreeChildrenFast } from "../utils/hierarchy-utils.js";
+import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
 
 export interface ProjectTreeNodeInfo {
   id: string;
@@ -61,7 +62,27 @@ export function registerTreeHandlers(context: LspContext) {
         fqnCacheState.index = unifiedIndex;
       }
 
-      return await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
+      if (params.parentId?.startsWith("__LIB__:Modelica") || params.parentId?.startsWith("Modelica")) {
+        await loadPrebakedMslIcons(params.uri);
+      }
+
+      const nodes = await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
+      for (const node of nodes) {
+        if (!node.iconSvg && node.compositeName) {
+          if (iconCache.has(node.compositeName)) {
+            const cached = iconCache.get(node.compositeName);
+            if (cached) node.iconSvg = cached;
+          } else {
+            for (const [key, svg] of iconCache) {
+              if (svg && (key === node.compositeName || key.endsWith("." + node.compositeName))) {
+                node.iconSvg = svg;
+                break;
+              }
+            }
+          }
+        }
+      }
+      return nodes;
     },
   );
 
@@ -189,81 +210,108 @@ export function registerTreeHandlers(context: LspContext) {
     },
   );
 
-  context.connection.onRequest(
-    "modelscript/getClassIcon",
-    async (params: { className: string; uri?: string | undefined }): Promise<string | null> => {
-      if (
-        !params.className ||
-        params.className.startsWith("__LIB__:") ||
-        params.className.startsWith("__ONTOLOGY__:")
-      ) {
-        return null;
-      }
-      if (iconCache.has(params.className)) {
-        return iconCache.get(params.className) || null;
-      }
+  async function resolveClassIcon(className: string, uri?: string | undefined): Promise<string | null> {
+    if (!className || className.startsWith("__LIB__:") || className.startsWith("__ONTOLOGY__:")) {
+      return null;
+    }
+    if (iconCache.has(className)) {
+      return iconCache.get(className) || null;
+    }
 
-      // Yield to event loop to avoid blocking LSP completely
-      await new Promise((r) => setTimeout(r, 0));
+    if (className.startsWith("Modelica.") || className === "Modelica") {
+      await loadPrebakedMslIcons(uri);
+      if (iconCache.has(className)) {
+        return iconCache.get(className) || null;
+      }
+    }
 
-      // Check if unified index has this symbol with metadata.iconSvg (e.g. PSCAD components)
-      const uw = context.workspaceManager.unifiedWorkspace;
-      const unified =
-        typeof uw?.toTreeIndex === "function"
-          ? uw.toTreeIndex()
-          : typeof uw?.toUnifiedPartial === "function"
-            ? uw.toUnifiedPartial()
-            : uw?.toUnified?.();
-      if (unified) {
-        let symIds = unified.byName.get(params.className);
-        if (!symIds || symIds.length === 0) {
-          const parts = params.className.split(".");
-          const leaf = parts[parts.length - 1]!;
-          symIds = unified.byName.get(leaf);
-        }
-        if (symIds && symIds.length > 0) {
-          for (const id of symIds) {
-            const entry = unified.symbols.get(id);
-            if (entry?.metadata?.["iconSvg"]) {
-              const svg = String(entry.metadata["iconSvg"]);
-              iconCache.set(params.className, svg);
-              return svg;
-            }
-            if (
-              entry?.language === "pscad" ||
-              entry?.metadata?.["language"] === "pscad" ||
-              entry?.ruleName?.startsWith("pscad")
-            ) {
-              // PSCAD project, case study, or library container
-              iconCache.set(params.className, null);
-              return null;
-            }
+    // Yield to event loop to avoid blocking LSP completely
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Check if unified index has this symbol with metadata.iconSvg (e.g. PSCAD components)
+    const uw = context.workspaceManager.unifiedWorkspace;
+    const unified =
+      typeof uw?.toTreeIndex === "function"
+        ? uw.toTreeIndex()
+        : typeof uw?.toUnifiedPartial === "function"
+          ? uw.toUnifiedPartial()
+          : uw?.toUnified?.();
+    if (unified) {
+      let symIds = unified.byName.get(className);
+      if (!symIds || symIds.length === 0) {
+        const parts = className.split(".");
+        const leaf = parts[parts.length - 1]!;
+        symIds = unified.byName.get(leaf);
+      }
+      if (symIds && symIds.length > 0) {
+        for (const id of symIds) {
+          const entry = unified.symbols.get(id);
+          if (entry?.metadata?.["iconSvg"]) {
+            const svg = String(entry.metadata["iconSvg"]);
+            iconCache.set(className, svg);
+            return svg;
+          }
+          if (
+            entry?.language === "pscad" ||
+            entry?.metadata?.["language"] === "pscad" ||
+            entry?.ruleName?.startsWith("pscad")
+          ) {
+            // PSCAD project, case study, or library container
+            iconCache.set(className, null);
+            return null;
           }
         }
       }
+    }
 
-      const getIconSvg = (globalThis as any).getClassIconSvg ?? (globalThis as any).modelicaDiagramOps?.getClassIconSvg;
-      if (!getIconSvg) {
-        iconCache.set(params.className, null);
+    const getIconSvg = (globalThis as any).getClassIconSvg ?? (globalThis as any).modelicaDiagramOps?.getClassIconSvg;
+    if (!getIconSvg) {
+      iconCache.set(className, null);
+      return null;
+    }
+
+    try {
+      const cls = context.workspaceManager.resolveClassInstance(uri || "file:///", className, {
+        iconOnly: true,
+      });
+      if (!cls) {
+        iconCache.set(className, null);
         return null;
       }
 
-      try {
-        const cls = context.workspaceManager.resolveClassInstance(params.uri || "file:///", params.className, {
-          iconOnly: true,
-        });
-        if (!cls) {
-          iconCache.set(params.className, null);
-          return null;
-        }
+      const svg = getIconSvg(cls, 20, false);
+      iconCache.set(className, svg || null);
+      return svg || null;
+    } catch (_e) {
+      iconCache.set(className, null);
+      return null;
+    }
+  }
 
-        const svg = getIconSvg(cls, 20, false);
-        iconCache.set(params.className, svg || null);
-        return svg || null;
-      } catch (_e) {
-        iconCache.set(params.className, null);
-        return null;
+  context.connection.onRequest(
+    "modelscript/getClassIcon",
+    async (params: { className: string; uri?: string | undefined }): Promise<string | null> => {
+      return resolveClassIcon(params.className, params.uri);
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/getClassIcons",
+    async (params: { classNames: string[]; uri?: string | undefined }): Promise<Record<string, string | null>> => {
+      const results: Record<string, string | null> = {};
+      if (!Array.isArray(params.classNames) || params.classNames.length === 0) {
+        return results;
       }
+      const chunkSize = 10;
+      for (let i = 0; i < params.classNames.length; i += chunkSize) {
+        const chunk = params.classNames.slice(i, i + chunkSize);
+        await Promise.all(
+          chunk.map(async (className) => {
+            results[className] = await resolveClassIcon(className, params.uri);
+          }),
+        );
+      }
+      return results;
     },
   );
 

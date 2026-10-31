@@ -101,7 +101,12 @@ export class LibraryTreeItem extends vscode.TreeItem {
     this.id = info.id;
     this.tooltip = info.compositeName;
     this.description = info.description ?? info.classKind;
-    this.contextValue = info.classKind;
+    const isInstalledPkg =
+      (info.id.startsWith("__LIB__:") &&
+        info.id !== "__LIB__:Modelica Standard Library" &&
+        !info.id.includes("SysML")) ||
+      Boolean(info.uri && info.uri.includes("/packages/") && !info.compositeName?.includes("."));
+    this.contextValue = isInstalledPkg ? "installedPackage" : info.classKind;
 
     // Use OWL2 themed icons for ontology items
     if (info.language === "owl2") {
@@ -451,12 +456,31 @@ export class LibraryTreeProvider
     }, 80);
   }
 
+  private iconsDirPromise: Promise<vscode.Uri | null> | null = null;
+
+  private async ensureIconsDir(): Promise<vscode.Uri | null> {
+    if (!this.context?.globalStorageUri || this.context.globalStorageUri.scheme !== "file") {
+      return null;
+    }
+    if (!this.iconsDirPromise) {
+      this.iconsDirPromise = (async () => {
+        try {
+          const iconsDir = vscode.Uri.joinPath(this.context!.globalStorageUri, "icons");
+          await vscode.workspace.fs.createDirectory(iconsDir);
+          return iconsDir;
+        } catch {
+          return null;
+        }
+      })();
+    }
+    return this.iconsDirPromise;
+  }
+
   private async saveSvgIcon(className: string, svg: string): Promise<vscode.Uri | undefined> {
     if (!svg) return undefined;
-    if (this.context?.globalStorageUri && this.context.globalStorageUri.scheme === "file") {
+    const iconsDir = await this.ensureIconsDir();
+    if (iconsDir) {
       try {
-        const iconsDir = vscode.Uri.joinPath(this.context.globalStorageUri, "icons");
-        await vscode.workspace.fs.createDirectory(iconsDir);
         const safeName = className.replace(/[^a-zA-Z0-9_.-]/g, "_");
         const fileUri = vscode.Uri.joinPath(iconsDir, `${safeName}.svg`);
         await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(svg));
@@ -476,45 +500,63 @@ export class LibraryTreeProvider
     const toFetch = nodes.map((n) => n.compositeName);
     for (const name of toFetch) this.iconFetchPending.add(name);
 
-    const concurrency = 2;
+    const batchSize = 40;
 
-    for (let i = 0; i < toFetch.length; i += concurrency) {
-      const batch = toFetch.slice(i, i + concurrency);
-      const batchItems = items.slice(i, i + concurrency);
-      await Promise.all(
-        batch.map(async (className, idx) => {
-          try {
-            const svg = await this.client
-              .sendRequest<string | null>("modelscript/getClassIcon", {
-                className,
-                uri: this.documentUri,
-              })
-              .catch((err) => {
-                console.error(`[library-tree-provider] getClassIcon error for ${className}:`, err);
-                return null;
-              });
+    for (let i = 0; i < toFetch.length; i += batchSize) {
+      const batchNames = toFetch.slice(i, i + batchSize);
+      const batchItems = items.slice(i, i + batchSize);
 
+      try {
+        let iconsMap: Record<string, string | null> | null = null;
+        try {
+          iconsMap = await this.client.sendRequest<Record<string, string | null>>("modelscript/getClassIcons", {
+            classNames: batchNames,
+            uri: this.documentUri,
+          });
+        } catch {
+          // Fallback to individual getClassIcon if server does not yet support getClassIcons
+          iconsMap = {};
+          await Promise.all(
+            batchNames.map(async (className) => {
+              try {
+                iconsMap![className] = await this.client.sendRequest<string | null>("modelscript/getClassIcon", {
+                  className,
+                  uri: this.documentUri,
+                });
+              } catch {
+                iconsMap![className] = null;
+              }
+            }),
+          );
+        }
+
+        if (iconsMap) {
+          for (let idx = 0; idx < batchNames.length; idx++) {
+            const className = batchNames[idx]!;
+            const svg = iconsMap[className];
             this.iconCache.set(className, svg || "");
             if (svg) {
-              const uri = await this.saveSvgIcon(className, svg);
-              if (uri) {
-                this.iconUriCache.set(className, uri);
-              }
               const item = batchItems[idx];
               if (item) {
+                const dataUri = svgToIconUri(svg);
                 item.info.iconSvg = svg;
-                item.iconPath = uri ?? svgToIconUri(svg);
+                item.iconPath = dataUri;
                 item.info.pendingIcon = false;
               }
+              // Persist to globalStorage in background without blocking UI
+              this.saveSvgIcon(className, svg).then((uri) => {
+                if (uri) this.iconUriCache.set(className, uri);
+              });
             }
-          } finally {
-            this.iconFetchPending.delete(className);
           }
-        }),
-      );
+        }
+      } finally {
+        for (const name of batchNames) {
+          this.iconFetchPending.delete(name);
+        }
+      }
+
       this.scheduleRefresh(batchItems);
-      // Yield to event loop between batches so user interactions are never blocked
-      await new Promise((r) => setTimeout(r, 20));
     }
   }
 }

@@ -26,7 +26,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { createWasmParser } from "../src-gen/bindings.js";
 import { Context } from "../src/context.js";
-import { normalizeModelicaSyntaxDiagnostic } from "../src/errors.js";
+import { ModelicaErrorCode, normalizeModelicaSyntaxDiagnostic } from "../src/errors.js";
 import { ModelicaClassKind } from "../src/types.js";
 import { areDaeOutputsEquivalent } from "./dae-normalizer.js";
 import { NodeFileSystem } from "./node-filesystem.js";
@@ -1310,10 +1310,27 @@ function runTestCaseCore(
         if (cdMessage.startsWith("Syntax Error: Unexpected")) {
           if (emittedSpecificSyntaxDiag) continue;
           const startOff = cd.startOffset ?? 0;
-          const normalizedSyntax = normalizeModelicaSyntaxDiagnostic(cdMessage, testCase.source.slice(startOff));
+          const normalizedSyntax = normalizeModelicaSyntaxDiagnostic(
+            cdMessage,
+            testCase.source.slice(startOff),
+            testCase.source,
+            startOff,
+          );
           if (normalizedSyntax) {
             cdMessage = normalizedSyntax;
             emittedSpecificSyntaxDiag = true;
+            if (
+              normalizedSyntax === ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR.message() &&
+              /^[}\]]/.test(testCase.source.slice(startOff))
+            ) {
+              const before = testCase.source.slice(0, startOff);
+              const openIdx = Math.max(before.lastIndexOf("{"), before.lastIndexOf("["));
+              if (openIdx >= 0) {
+                cd.startOffset = openIdx;
+                cd.endOffset = openIdx + 1;
+                delete (cd as any).range;
+              }
+            }
           }
         }
         const sevStr =
@@ -1355,7 +1372,7 @@ function runTestCaseCore(
             while (e > s && /\s/.test(testCase.source[e - 1])) {
               e--;
             }
-            if (s !== startOffset || e !== endOffset) {
+            if (!startPosition || !endPosition || s !== startOffset || e !== endOffset) {
               startPosition = byteToPosition(s);
               endPosition = byteToPosition(e);
             }

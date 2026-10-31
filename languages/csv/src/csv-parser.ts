@@ -82,32 +82,39 @@ export function parseCsvHeaderAnnotation(rawHeader: string): CsvColumnHeader {
 
   // Iteratively strip trailing `: Type` and `[unit]` / `(unit)` annotations in either order
   for (let pass = 0; pass < 2; pass++) {
-    const typeMatch = working.match(/^(.*?)\s*:\s*([A-Za-z0-9_]+)\s*$/);
-    const tm1 = typeMatch?.[1]?.trim();
-    const tm2 = typeMatch?.[2];
-    if (tm1 && tm1.length > 0 && tm2) {
-      const norm = normalizeVarType(tm2);
-      if (norm) {
-        declaredType = norm;
-        working = tm1;
+    const colonIdx = working.lastIndexOf(":");
+    if (colonIdx > 0) {
+      const typeCand = working.slice(colonIdx + 1).trim();
+      if (/^[A-Za-z0-9_]+$/.test(typeCand)) {
+        const norm = normalizeVarType(typeCand);
+        if (norm) {
+          declaredType = norm;
+          working = working.slice(0, colonIdx).trim();
+        }
       }
     }
 
-    const bracketUnitMatch = working.match(/^(.*?)\s*\[\s*([^\]\r\n"]+)\s*\]\s*$/);
-    const bum1 = bracketUnitMatch?.[1]?.trim();
-    const bum2 = bracketUnitMatch?.[2]?.trim();
-    if (bum1 && bum1.length > 0 && bum2) {
-      unit = bum2;
-      working = bum1;
-      continue;
+    if (working.endsWith("]")) {
+      const openIdx = working.lastIndexOf("[");
+      if (openIdx > 0) {
+        const u = working.slice(openIdx + 1, -1).trim();
+        if (u.length > 0 && !/[\]\r\n"]/.test(u)) {
+          unit = u;
+          working = working.slice(0, openIdx).trim();
+          continue;
+        }
+      }
     }
 
-    const parenUnitMatch = working.match(/^(.*?)\s*\(\s*([^)\r\n"]+)\s*\)\s*$/);
-    const pum1 = parenUnitMatch?.[1]?.trim();
-    const pum2 = parenUnitMatch?.[2]?.trim();
-    if (pum1 && pum1.length > 0 && pum2) {
-      unit = pum2;
-      working = pum1;
+    if (working.endsWith(")")) {
+      const openIdx = working.lastIndexOf("(");
+      if (openIdx > 0) {
+        const u = working.slice(openIdx + 1, -1).trim();
+        if (u.length > 0 && !/[)\r\n"]/.test(u)) {
+          unit = u;
+          working = working.slice(0, openIdx).trim();
+        }
+      }
     }
   }
 
@@ -752,7 +759,7 @@ function tokenizeCsvWithRanges(text: string): { rows: LocatedCsvRow[]; delimiter
  */
 function isStrictFiniteNumber(str: string): boolean {
   if (!str) return false;
-  return /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(str);
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(str);
 }
 
 /**

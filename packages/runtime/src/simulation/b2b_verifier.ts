@@ -9,7 +9,6 @@
  * zero-allocation C99 Software-in-the-Loop (SiL).
  */
 
-import { execFileSync } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -95,6 +94,11 @@ export class B2BEquivalenceVerifier {
     const modelId = path.basename(rawId, path.extname(rawId)).replace(/[^a-zA-Z0-9_]/g, "_");
 
     // 2. Check compiler availability
+    if (typeof window !== "undefined") {
+      throw new Error("B2BEquivalenceVerifier is not supported in browser environments.");
+    }
+    const { execFileSync } = await import(/* @vite-ignore */ "node:child_process");
+
     let compilerVersion = "";
     try {
       compilerVersion =

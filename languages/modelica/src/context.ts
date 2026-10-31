@@ -271,22 +271,31 @@ export class Context {
     const contextTree = {
       getText: (startOffset: number, endOffset: number, entry?: any) => {
         if (!entry || !entry.resourceId || (startOffset === 0 && endOffset === 0)) return null;
-        let tree = this.#trees.get(entry.resourceId);
-        if (!tree) {
+        let text = this.#fileTexts.get(entry.resourceId);
+        if (text === undefined) {
+          const existingTree = this.#trees.get(entry.resourceId);
+          if (existingTree) {
+            const src = (existingTree as any).sourceCode as string | undefined;
+            if (src !== undefined) {
+              text = src;
+              this.#fileTexts.set(entry.resourceId, text);
+            } else {
+              const offset = existingTree.rootNode.startIndex;
+              return existingTree.rootNode.text.substring(startOffset - offset, endOffset - offset);
+            }
+          }
+        }
+        if (text === undefined) {
           if (missingResources.has(entry.resourceId)) return null;
           try {
-            const text = this.#fs.read(entry.resourceId);
-            tree = this.parse(".mo", text);
-            this.#trees.set(entry.resourceId, tree);
+            text = this.#fs.read(entry.resourceId);
+            this.#fileTexts.set(entry.resourceId, text);
           } catch {
             missingResources.add(entry.resourceId);
             return null;
           }
         }
-        const src = (tree as any).sourceCode as string | undefined;
-        if (src) return src.substring(startOffset, endOffset);
-        const offset = tree.rootNode.startIndex;
-        return tree.rootNode.text.substring(startOffset - offset, endOffset - offset);
+        return text.substring(startOffset, endOffset);
       },
       getNode: (startOffset: number, endOffset: number, entry?: any) => {
         if (entry && entry.id < 0) return null;
@@ -295,7 +304,11 @@ export class Context {
         if (!tree && entry?.resourceId) {
           if (missingResources.has(entry.resourceId)) return null;
           try {
-            const text = this.#fs.read(entry.resourceId);
+            let text = this.#fileTexts.get(entry.resourceId);
+            if (text === undefined) {
+              text = this.#fs.read(entry.resourceId);
+              this.#fileTexts.set(entry.resourceId, text);
+            }
             tree = this.parse(".mo", text);
             this.#trees.set(entry.resourceId, tree);
           } catch {
@@ -412,22 +425,31 @@ export class Context {
     const contextTree = {
       getText: (startOffset: number, endOffset: number, entry?: any) => {
         if (!entry || !entry.resourceId || (startOffset === 0 && endOffset === 0)) return null;
-        let tree = this.#trees.get(entry.resourceId);
-        if (!tree) {
+        let text = this.#fileTexts.get(entry.resourceId);
+        if (text === undefined) {
+          const existingTree = this.#trees.get(entry.resourceId);
+          if (existingTree) {
+            const src = (existingTree as any).sourceCode as string | undefined;
+            if (src !== undefined) {
+              text = src;
+              this.#fileTexts.set(entry.resourceId, text);
+            } else {
+              const offset = existingTree.rootNode.startIndex;
+              return existingTree.rootNode.text.substring(startOffset - offset, endOffset - offset);
+            }
+          }
+        }
+        if (text === undefined) {
           if (missingResources.has(entry.resourceId)) return null;
           try {
-            const text = this.#fs.read(entry.resourceId);
-            tree = this.parse(".mo", text);
-            this.#trees.set(entry.resourceId, tree);
+            text = this.#fs.read(entry.resourceId);
+            this.#fileTexts.set(entry.resourceId, text);
           } catch {
             missingResources.add(entry.resourceId);
             return null;
           }
         }
-        const src = (tree as any).sourceCode as string | undefined;
-        if (src) return src.substring(startOffset, endOffset);
-        const offset = tree.rootNode.startIndex;
-        return tree.rootNode.text.substring(startOffset - offset, endOffset - offset);
+        return text.substring(startOffset, endOffset);
       },
       getNode: (startOffset: number, endOffset: number, entry?: any) => {
         if (!entry || !entry.resourceId || entry.id < 0 || (startOffset === 0 && endOffset === 0)) return null;
@@ -435,7 +457,11 @@ export class Context {
         if (!tree && entry?.resourceId) {
           if (missingResources.has(entry.resourceId)) return null;
           try {
-            const text = this.#fs.read(entry.resourceId);
+            let text = this.#fileTexts.get(entry.resourceId);
+            if (text === undefined) {
+              text = this.#fs.read(entry.resourceId);
+              this.#fileTexts.set(entry.resourceId, text);
+            }
             tree = this.parse(".mo", text);
             this.#trees.set(entry.resourceId, tree);
           } catch {
@@ -1275,11 +1301,14 @@ export class Context {
     while (i--) {
       if (this.#libraries[i]?.path === path) {
         this.#libraries.splice(i, 1);
+        this.#resolvedUriCache.clear();
         return true;
       }
     }
     return false;
   }
+
+  #resolvedUriCache = new Map<string, string | null>();
 
   /**
    * Resolves a 'modelica://' URI into an absolute file system path.
@@ -1289,6 +1318,8 @@ export class Context {
    */
   resolveURI(uri: string): string | null {
     if (!uri.startsWith("modelica://")) return null;
+    const cached = this.#resolvedUriCache.get(uri);
+    if (cached !== undefined) return cached;
     const parts = uri.substring(11).split("/");
     const libraryName = parts.shift();
     if (!libraryName) return null;
@@ -1300,7 +1331,7 @@ export class Context {
         const result = stats?.isDirectory()
           ? this.#fs.resolve(this.#fs.join(library.path, relativePath))
           : this.#fs.resolve(this.#fs.join(this.#fs.join(library.path, ".."), libraryName, relativePath));
-        console.log(`resolveURI: ${uri} -> ${result}`);
+        this.#resolvedUriCache.set(uri, result);
         return result;
       }
     }

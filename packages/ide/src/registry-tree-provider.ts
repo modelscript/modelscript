@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as vscode from "vscode";
+import { getRegistryUrl } from "./utils/config.js";
 
-interface RegistryPackageSummary {
+export interface AnsatzPackageSummary {
   name: string;
-  latestVersion: string;
+  versions?: string[] | undefined;
+  latestVersion?: string | null | undefined;
   description?: string | undefined;
+  license?: string | undefined;
+  author?: string | undefined;
+  scope?: string | undefined;
+  totalDownloads?: number | undefined;
+  downloads30d?: number | undefined;
+  domains?: string[] | undefined;
+  isDeprecated?: boolean | undefined;
 }
 
 interface RegistryPackument {
@@ -13,410 +22,274 @@ interface RegistryPackument {
   version: string;
   description?: string | undefined;
   modelicaVersion?: string | undefined;
+  license?: string | undefined;
   size?: number | undefined;
 }
 
-export class RegistryWebviewProvider implements vscode.WebviewViewProvider {
-  private _view?: vscode.WebviewView | undefined;
-  private registryUrl: string;
+interface PackageQuickPickItem extends vscode.QuickPickItem {
+  pkg: AnsatzPackageSummary;
+}
 
-  constructor(private readonly context: vscode.ExtensionContext) {
-    this.registryUrl = vscode.workspace
-      .getConfiguration("modelscript")
-      .get("registryUrl", "http://127.0.0.1:3000/api/v1");
-  }
+/**
+ * Fetches matching packages from the Ansatz registry (`/api/v1/packages` with fallback to `/api/v1/libraries`).
+ */
+export async function searchAnsatzPackages(query: string, signal?: AbortSignal): Promise<AnsatzPackageSummary[]> {
+  const baseUrl = getRegistryUrl().replace(/\/+$/, "");
+  const encodedQuery = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+  const endpoints = [`${baseUrl}/packages${encodedQuery}`, `${baseUrl}/libraries${encodedQuery}`];
 
-  public resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken,
-  ) {
-    this._view = webviewView;
-
-    webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [this.context.extensionUri],
-    };
-
-    webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
-
-    webviewView.webview.onDidReceiveMessage(async (data) => {
-      switch (data.type) {
-        case "search": {
-          await this.searchPackages(data.query);
-          break;
-        }
-        case "install": {
-          vscode.commands.executeCommand("modelscript.registry.install", data.packageName, data.packageVersion);
-          break;
-        }
-        case "open": {
-          vscode.commands.executeCommand("modelscript.registry.openPackage", data.packageName, data.packageVersion);
-          break;
-        }
-      }
-    });
-
-    // Initial load
-    this.searchPackages("");
-  }
-
-  private async searchPackages(query: string) {
-    if (!this._view) return;
+  let lastError: unknown;
+  for (const url of endpoints) {
     try {
-      const url = query
-        ? `${this.registryUrl}/libraries?q=${encodeURIComponent(query)}`
-        : `${this.registryUrl}/libraries`;
-      const resp = await fetch(url);
-      if (!resp.ok) throw new Error("Fetch failed");
-      const data = (await resp.json()) as { packages: RegistryPackageSummary[] };
-
-      const packages = data.packages.slice(0, query ? undefined : 25).map((p: RegistryPackageSummary) => ({
-        name: p.name,
-        version: p.latestVersion,
-        description: p.description || `Version ${p.latestVersion}`,
-      }));
-
-      this._view.webview.postMessage({ type: "results", packages });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      this._view.webview.postMessage({
-        type: "error",
-        message: `Failed to fetch packages: ${message}`,
-      });
+      const resp = await fetch(url, signal ? { signal } : undefined);
+      if (!resp.ok) {
+        lastError = new Error(`HTTP ${resp.status}`);
+        continue;
+      }
+      const data = (await resp.json()) as { packages?: AnsatzPackageSummary[] | undefined };
+      if (Array.isArray(data.packages)) {
+        return data.packages;
+      }
+    } catch (err) {
+      if ((err as { name?: string })?.name === "AbortError") {
+        throw err;
+      }
+      lastError = err;
     }
   }
 
-  private getHtmlForWebview(webview: vscode.Webview) {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'unsafe-inline'; connect-src *;">
-  <title>Packages</title>
-  <style>
-    body {
-      font-family: var(--vscode-font-family);
-      color: var(--vscode-foreground);
-      background-color: var(--vscode-sideBar-background);
-      padding: 0;
-      margin: 0;
-    }
-    .search-container {
-      padding: 10px;
-      position: sticky;
-      top: 0;
-      background-color: var(--vscode-sideBar-background);
-      border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border);
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      position: relative;
-    }
-    input {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 6px 30px 6px 8px; /* padding-right for the icon */
-      background: var(--vscode-input-background);
-      color: var(--vscode-input-foreground);
-      border: 1px solid var(--vscode-input-border);
-      border-radius: 2px;
-      outline: none;
-    }
-    input:focus {
-      border-color: var(--vscode-focusBorder);
-    }
-    .search-icon {
-      position: absolute;
-      right: 18px;
-      top: 50%;
-      transform: translateY(-50%);
-      pointer-events: none;
-    }
-    .search-icon svg {
-      width: 14px;
-      height: 14px;
-      fill: var(--vscode-button-background); /* Blue magnifying glass */
-    }
-    .package-list {
-      display: flex;
-      flex-direction: column;
-    }
-    .package-item {
-      display: flex;
-      padding: 10px;
-      border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border);
-      cursor: pointer;
-    }
-    .package-item:hover {
-      background-color: var(--vscode-list-hoverBackground);
-    }
-    .icon {
-      width: 32px;
-      height: 32px;
-      flex-shrink: 0;
-      margin-right: 10px;
-      background-color: var(--vscode-badge-background);
-      color: var(--vscode-badge-foreground);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      border-radius: 4px;
-    }
-    .content {
-      flex: 1;
-      min-width: 0;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 4px;
-    }
-    .title {
-      font-weight: 600;
-      font-size: 13px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .version {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground);
-      margin-left: 8px;
-    }
-    .description {
-      font-size: 12px;
-      color: var(--vscode-descriptionForeground);
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .actions {
-      display: none;
-      margin-top: 6px;
-    }
-    .package-item:hover .actions {
-      display: flex;
-      gap: 6px;
-    }
-    button {
-      background: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-      border: 1px solid var(--vscode-button-border, transparent);
-      padding: 4px 8px;
-      border-radius: 2px;
-      cursor: pointer;
-      font-size: 11px;
-    }
-    button:hover {
-      background: var(--vscode-button-hoverBackground);
-    }
-    .loading {
-      padding: 20px;
-      text-align: center;
-      color: var(--vscode-descriptionForeground);
-    }
-  </style>
-</head>
-<body>
-  <div class="search-container">
-    <input type="text" id="searchInput" placeholder="Search packages..." autocomplete="off">
-    <div class="search-icon">
-      <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M15.7 14.3l-3.1-3.1c.9-1.2 1.4-2.6 1.4-4.2 0-3.9-3.1-7-7-7s-7 3.1-7 7 3.1 7 7 7c1.5 0 3-.5 4.2-1.4l3.1 3.1c.2.2.5.2.7 0l.7-.7c.2-.2.2-.5 0-.7zM2 7c0-2.8 2.2-5 5-5s5 2.2 5 5-2.2 5-5 5-5-2.2-5-5z"/></svg>
-    </div>
-  </div>
-  <div id="packageList" class="package-list">
-    <div class="loading">Loading packages...</div>
-  </div>
+  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "Failed to reach Ansatz registry"));
+}
 
-  <script>
-    const vscode = acquireVsCodeApi();
-    const searchInput = document.getElementById('searchInput');
-    const packageList = document.getElementById('packageList');
-    
-    let debounceTimer;
-    searchInput.addEventListener('input', (e) => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        packageList.innerHTML = '<div class="loading">Searching...</div>';
-        vscode.postMessage({ type: 'search', query: e.target.value });
-      }, 300);
-    });
+function toQuickPickItem(pkg: AnsatzPackageSummary): PackageQuickPickItem {
+  const version = pkg.latestVersion || pkg.versions?.[0] || "latest";
+  const domainBadges = pkg.domains && pkg.domains.length > 0 ? ` · [${pkg.domains.join(", ")}]` : "";
+  const downloads =
+    typeof pkg.totalDownloads === "number" && pkg.totalDownloads > 0
+      ? ` · $(cloud-download) ${pkg.totalDownloads}`
+      : "";
+  const deprecated = pkg.isDeprecated ? " $(warning) [Deprecated]" : "";
 
-    window.addEventListener('message', event => {
-      const message = event.data;
-      if (message.type === 'results') {
-        renderPackages(message.packages);
-      } else if (message.type === 'error') {
-        packageList.innerHTML = '<div class="loading">' + message.message + '</div>';
+  return {
+    label: `$(package) ${pkg.name}`,
+    description: `v${version}${domainBadges}${downloads}${deprecated}`,
+    detail: pkg.description || `Install ${pkg.name}@${version} from Ansatz into Standard Libraries`,
+    alwaysShow: true,
+    buttons: [
+      {
+        iconPath: new vscode.ThemeIcon("info"),
+        tooltip: "View Package Details",
+      },
+    ],
+    pkg,
+  };
+}
+
+/**
+ * Opens an interactive VS Code QuickPick that searches Ansatz live and installs the chosen package
+ * directly into the workspace and Standard Libraries tree view.
+ */
+export async function showAnsatzPackagePicker(): Promise<void> {
+  const quickPick = vscode.window.createQuickPick<PackageQuickPickItem>();
+  quickPick.title = "Add Package from Ansatz Registry";
+  quickPick.placeholder =
+    "Search Ansatz packages by name, domain, or keyword (e.g., Modelica, Thermal, PlanarMechanics)...";
+  quickPick.matchOnDescription = true;
+  quickPick.matchOnDetail = true;
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let activeAbort: AbortController | null = null;
+
+  const runSearch = async (query: string) => {
+    if (activeAbort) {
+      activeAbort.abort();
+    }
+    const controller = new AbortController();
+    activeAbort = controller;
+    quickPick.busy = true;
+
+    try {
+      const results = await searchAnsatzPackages(query, controller.signal);
+      if (controller.signal.aborted) return;
+
+      if (results.length === 0 && query.trim().length > 0) {
+        // Allow direct install of typed package spec (e.g., "MyPackage" or "MyPackage@1.0.0")
+        const [rawName, rawVer] = query.trim().split("@");
+        const directPkg: AnsatzPackageSummary = {
+          name: rawName || query.trim(),
+          latestVersion: rawVer || "latest",
+          description: `Install '${query.trim()}' directly from Ansatz registry`,
+        };
+        quickPick.items = [toQuickPickItem(directPkg)];
+      } else {
+        quickPick.items = results.slice(0, 50).map(toQuickPickItem);
       }
-    });
-
-    function renderPackages(packages) {
-      if (packages.length === 0) {
-        packageList.innerHTML = '<div class="loading">No packages found</div>';
-        return;
+    } catch (err) {
+      if ((err as { name?: string })?.name === "AbortError") return;
+      const raw = query.trim();
+      if (raw.length > 0) {
+        const [rawName, rawVer] = raw.split("@");
+        quickPick.items = [
+          toQuickPickItem({
+            name: rawName || raw,
+            latestVersion: rawVer || "latest",
+            description: `Install '${raw}' from Ansatz (${getRegistryUrl()})`,
+          }),
+        ];
+      } else {
+        quickPick.items = [];
       }
-      
-      packageList.innerHTML = '';
-      packages.forEach(pkg => {
-        const item = document.createElement('div');
-        item.className = 'package-item';
-        
-        const firstLetter = pkg.name.charAt(0).toUpperCase();
-        
-        item.innerHTML = \`
-          <div class="icon">\${firstLetter}</div>
-          <div class="content">
-            <div class="header">
-              <span class="title" title="\${pkg.name}">\${pkg.name}</span>
-              <span class="version">\${pkg.version}</span>
-            </div>
-            <div class="description" title="\${pkg.description || ''}">\${pkg.description || ''}</div>
-            <div class="actions">
-              <button class="install-btn">Install</button>
-            </div>
-          </div>
-        \`;
-        
-        item.addEventListener('click', (e) => {
-          if (e.target.className === 'install-btn') {
-            e.stopPropagation();
-            vscode.postMessage({ type: 'install', packageName: pkg.name, packageVersion: pkg.version });
-          } else {
-            vscode.postMessage({ type: 'open', packageName: pkg.name, packageVersion: pkg.version });
-          }
-        });
-        
-        packageList.appendChild(item);
+    } finally {
+      if (activeAbort === controller) {
+        quickPick.busy = false;
+      }
+    }
+  };
+
+  quickPick.onDidChangeValue((value) => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      void runSearch(value);
+    }, 220);
+  });
+
+  quickPick.onDidTriggerItemButton((event) => {
+    const { pkg } = event.item;
+    const version = pkg.latestVersion || pkg.versions?.[0] || "latest";
+    quickPick.hide();
+    void vscode.commands.executeCommand("modelscript.registry.openPackage", pkg.name, version);
+  });
+
+  quickPick.onDidAccept(async () => {
+    const selected = quickPick.selectedItems[0];
+    if (!selected) return;
+    quickPick.hide();
+
+    const { pkg } = selected;
+    let targetVersion = pkg.latestVersion || pkg.versions?.[0] || "latest";
+
+    if (pkg.versions && pkg.versions.length > 1) {
+      const versionItems: (vscode.QuickPickItem & { version: string })[] = pkg.versions.map((v, idx) =>
+        idx === 0 ? { label: v, description: "(latest)", version: v } : { label: v, version: v },
+      );
+      const pickedVer = await vscode.window.showQuickPick(versionItems, {
+        title: `Select Version for ${pkg.name}`,
+        placeHolder: `Choose version of ${pkg.name} to add to Standard Libraries`,
       });
+      if (!pickedVer) return;
+      targetVersion = pickedVer.version;
     }
-  </script>
-</body>
-</html>`;
+
+    await vscode.commands.executeCommand("modelscript.registry.install", pkg.name, targetVersion);
+  });
+
+  quickPick.onDidHide(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    if (activeAbort) activeAbort.abort();
+    quickPick.dispose();
+  });
+
+  quickPick.show();
+  void runSearch("");
+}
+
+/**
+ * Resolves `"latest"` version against Ansatz if needed so the LSP loader receives a concrete semver when available.
+ */
+async function resolveConcreteVersion(packageName: string, requestedVersion: string): Promise<string> {
+  if (requestedVersion && requestedVersion !== "latest") {
+    return requestedVersion;
   }
+  const baseUrl = getRegistryUrl().replace(/\/+$/, "");
+  for (const prefix of ["packages", "libraries"]) {
+    try {
+      const resp = await fetch(`${baseUrl}/${prefix}/${encodeURIComponent(packageName)}`);
+      if (resp.ok) {
+        const data = (await resp.json()) as { latestVersion?: string; versions?: string[] };
+        if (data.latestVersion) return data.latestVersion;
+        if (Array.isArray(data.versions) && data.versions.length > 0 && data.versions[0]) {
+          return data.versions[0];
+        }
+      }
+    } catch {
+      // Fall through
+    }
+  }
+  return requestedVersion || "latest";
 }
 
 export function registerRegistryView(
   context: vscode.ExtensionContext,
   lspClient?: { sendNotification: (method: string, params: unknown) => void },
-) {
-  const provider = new RegistryWebviewProvider(context);
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider("modelscript.registryView", provider));
+): void {
+  const openPicker = async () => {
+    await showAnsatzPackagePicker();
+  };
 
-  const registryUrl = vscode.workspace
-    .getConfiguration("modelscript")
-    .get("registryUrl", "http://127.0.0.1:3000/api/v1");
-
-  // Open Registry command
+  // Register unified Standard Libraries '+' button and command palette aliases
   context.subscriptions.push(
-    vscode.commands.registerCommand("modelscript.openRegistry", () => {
-      vscode.commands.executeCommand("modelscript.registryView.focus");
-    }),
+    vscode.commands.registerCommand("modelscript.libraryView.addPackage", openPicker),
+    vscode.commands.registerCommand("modelscript.registry.search", openPicker),
+    vscode.commands.registerCommand("modelscript.openRegistry", openPicker),
   );
 
-  // Install command
+  // Install package from Ansatz into Standard Libraries & workspace package.json
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "modelscript.registry.install",
-      async (packageName: string, packageVersion = "latest") => {
+      async (packageName?: string, packageVersion = "latest") => {
         if (!packageName || typeof packageName !== "string") {
-          const input = await vscode.window.showInputBox({ prompt: "Package name to install (from ModelScript Hub)" });
-          if (!input) return;
-          packageName = input;
-        }
-
-        const folders = vscode.workspace.workspaceFolders;
-        let targetFolder = folders ? folders[0] : undefined;
-
-        if (folders && folders.length > 1) {
-          const picks = folders.map((f) => ({ label: f.name, description: f.uri.fsPath, folder: f }));
-          const picked = await vscode.window.showQuickPick(picks, {
-            placeHolder: `Select workspace to install ${packageName}`,
-          });
-          if (!picked) return;
-          targetFolder = picked.folder;
-        }
-
-        if (!targetFolder) {
-          vscode.window.showErrorMessage("No workspace folder open. Cannot install package.");
+          await showAnsatzPackagePicker();
           return;
         }
 
-        vscode.window.withProgress(
+        const resolvedVersion = await resolveConcreteVersion(packageName, packageVersion);
+
+        await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: `Installing ${packageName}...`,
+            title: `Adding ${packageName}@${resolvedVersion} from Ansatz...`,
             cancellable: false,
           },
           async () => {
-            const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
-
-            if (!isWeb) {
-              // Desktop: use npm terminal install
-              try {
-                const terminal = vscode.window.createTerminal({
-                  name: "ModelScript Install",
-                  cwd: targetFolder?.uri,
-                  hideFromUser: true,
-                });
-
-                terminal.sendText(
-                  `npm install @modelscript/${packageName.toLowerCase()}@${packageVersion} --registry=${registryUrl}`,
-                );
-                terminal.sendText("exit");
-
-                return new Promise<void>((resolve) => {
-                  const disp = vscode.window.onDidCloseTerminal((t) => {
-                    if (t === terminal) {
-                      disp.dispose();
-                      vscode.commands.executeCommand("modelscript.registryView.focus");
-                      resolve();
-                    }
-                  });
-                });
-              } catch {
-                // Fall through to web fallback
-              }
-            }
-
-            // Web IDE fallback: update package.json and notify LSP to load from registry
             try {
-              if (!targetFolder) throw new Error("No target folder");
-              const packageJsonUri = vscode.Uri.joinPath(targetFolder.uri, "package.json");
-              let packageJsonObj: { dependencies?: Record<string, string> | undefined } = {};
-              try {
-                const data = await vscode.workspace.fs.readFile(packageJsonUri);
-                packageJsonObj = JSON.parse(new TextDecoder().decode(data)) as {
-                  dependencies?: Record<string, string> | undefined;
-                };
-              } catch {
-                // Ignore read errors
+              // 1. Update workspace package.json if a workspace folder is open
+              const folders = vscode.workspace.workspaceFolders;
+              const targetFolder = folders?.[0];
+              if (targetFolder) {
+                try {
+                  const packageJsonUri = vscode.Uri.joinPath(targetFolder.uri, "package.json");
+                  let packageJsonObj: { dependencies?: Record<string, string> | undefined } = {};
+                  try {
+                    const data = await vscode.workspace.fs.readFile(packageJsonUri);
+                    packageJsonObj = JSON.parse(new TextDecoder().decode(data)) as {
+                      dependencies?: Record<string, string> | undefined;
+                    };
+                  } catch {
+                    // Create or ignore if package.json does not exist yet
+                  }
+                  packageJsonObj.dependencies = packageJsonObj.dependencies || {};
+                  packageJsonObj.dependencies[packageName] = resolvedVersion;
+
+                  const encoded = new TextEncoder().encode(JSON.stringify(packageJsonObj, null, 2));
+                  await vscode.workspace.fs.writeFile(packageJsonUri, encoded);
+                } catch {
+                  // Non-fatal if workspace is read-only or virtual without package.json
+                }
               }
-              packageJsonObj.dependencies = packageJsonObj.dependencies || {};
-              packageJsonObj.dependencies[`@modelscript/${packageName.toLowerCase()}`] = packageVersion;
 
-              const encoded = new TextEncoder().encode(JSON.stringify(packageJsonObj, null, 2));
-              await vscode.workspace.fs.writeFile(packageJsonUri, encoded);
-
-              vscode.window.showInformationMessage(`Loading ${packageName}@${packageVersion}...`);
-              vscode.commands.executeCommand("modelscript.registryView.focus");
-              // Notify the LSP to actually load the library files from the registry
+              // 2. Notify the LSP to fetch the pre-computed bundle / files from Ansatz and index into VFS
               if (lspClient) {
                 lspClient.sendNotification("modelscript/installDependency", {
                   name: packageName,
-                  version: packageVersion,
+                  version: resolvedVersion,
                 });
                 setTimeout(() => {
-                  vscode.commands.executeCommand("modelscript.libraryView.refresh");
-                }, 500); // Give the LSP a moment to process before refreshing the view
+                  void vscode.commands.executeCommand("modelscript.libraryView.refresh");
+                }, 600);
               }
-            } catch (fallbackErr) {
-              vscode.window.showErrorMessage(`Failed to install package: ${fallbackErr}`);
+            } catch (err) {
+              vscode.window.showErrorMessage(`Failed to add package '${packageName}': ${err}`);
             }
           },
         );
@@ -424,117 +297,97 @@ export function registerRegistryView(
     ),
   );
 
-  // Uninstall command
-  context.subscriptions.push(
-    vscode.commands.registerCommand("modelscript.registry.uninstall", async (packageName: string) => {
-      if (!packageName || typeof packageName !== "string") {
-        const input = await vscode.window.showInputBox({ prompt: "Package name to uninstall" });
-        if (!input) return;
-        packageName = input;
-      }
+  // Uninstall / remove package command
+  const uninstallHandler = async (arg?: string | { info?: { name?: string; id?: string } }) => {
+    let packageName =
+      typeof arg === "string"
+        ? arg
+        : typeof arg?.info?.name === "string"
+          ? arg.info.name
+          : typeof arg?.info?.id === "string"
+            ? arg.info.id.replace(/^__LIB__:/, "")
+            : undefined;
 
-      const folders = vscode.workspace.workspaceFolders;
-      let targetFolder = folders ? folders[0] : undefined;
+    if (!packageName) {
+      const input = await vscode.window.showInputBox({ prompt: "Package name to remove from workspace" });
+      if (!input) return;
+      packageName = input.trim();
+    }
 
-      if (folders && folders.length > 1) {
-        const picks = folders.map((f) => ({ label: f.name, description: f.uri.fsPath, folder: f }));
-        const picked = await vscode.window.showQuickPick(picks, {
-          placeHolder: `Select workspace to uninstall ${packageName}`,
-        });
-        if (!picked) return;
-        targetFolder = picked.folder;
-      }
-
-      if (!targetFolder) {
-        vscode.window.showErrorMessage("No workspace folder open. Cannot uninstall package.");
-        return;
-      }
-
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `Uninstalling ${packageName}...`,
-          cancellable: false,
-        },
-        async () => {
-          const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
-
-          if (!isWeb) {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Removing ${packageName}...`,
+        cancellable: false,
+      },
+      async () => {
+        try {
+          const folders = vscode.workspace.workspaceFolders;
+          const targetFolder = folders?.[0];
+          if (targetFolder) {
             try {
-              const terminal = vscode.window.createTerminal({
-                name: "ModelScript Uninstall",
-                cwd: targetFolder?.uri,
-                hideFromUser: true,
-              });
-
-              terminal.sendText(`npm uninstall @modelscript/${packageName.toLowerCase()}`);
-              terminal.sendText("exit");
-
-              return new Promise<void>((resolve) => {
-                const disp = vscode.window.onDidCloseTerminal((t) => {
-                  if (t === terminal) {
-                    disp.dispose();
-                    vscode.commands.executeCommand("modelscript.registryView.focus");
-                    resolve();
-                  }
-                });
-              });
-            } catch {
-              // Fall through to web fallback
-            }
-          }
-
-          // Web IDE fallback
-          try {
-            if (!targetFolder) throw new Error("No target folder");
-            const packageJsonUri = vscode.Uri.joinPath(targetFolder.uri, "package.json");
-            try {
+              const packageJsonUri = vscode.Uri.joinPath(targetFolder.uri, "package.json");
               const data = await vscode.workspace.fs.readFile(packageJsonUri);
               const packageJsonObj = JSON.parse(new TextDecoder().decode(data)) as {
                 dependencies?: Record<string, string> | undefined;
               };
               if (packageJsonObj.dependencies) {
+                Reflect.deleteProperty(packageJsonObj.dependencies, packageName);
                 Reflect.deleteProperty(packageJsonObj.dependencies, `@modelscript/${packageName.toLowerCase()}`);
                 const encoded = new TextEncoder().encode(JSON.stringify(packageJsonObj, null, 2));
                 await vscode.workspace.fs.writeFile(packageJsonUri, encoded);
-                vscode.window.showInformationMessage(`Removed ${packageName} from package.json.`);
               }
             } catch {
-              // Ignore
+              // Ignore if no package.json
             }
-            vscode.commands.executeCommand("modelscript.registryView.focus");
-            if (lspClient) {
-              lspClient.sendNotification("modelscript/uninstallDependency", { name: packageName });
-              setTimeout(() => {
-                vscode.commands.executeCommand("modelscript.libraryView.refresh");
-              }, 500);
-            }
-          } catch (fallbackErr) {
-            vscode.window.showErrorMessage(`Failed to uninstall package: ${fallbackErr}`);
           }
-        },
-      );
-    }),
+
+          if (lspClient) {
+            lspClient.sendNotification("modelscript/uninstallDependency", { name: packageName });
+            setTimeout(() => {
+              void vscode.commands.executeCommand("modelscript.libraryView.refresh");
+            }, 500);
+          }
+          vscode.window.showInformationMessage(`Removed ${packageName}.`);
+        } catch (err) {
+          vscode.window.showErrorMessage(`Failed to remove package '${packageName}': ${err}`);
+        }
+      },
+    );
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("modelscript.registry.uninstall", uninstallHandler),
+    vscode.commands.registerCommand("modelscript.libraryView.removePackage", uninstallHandler),
   );
 
-  // Open package README
+  // Open package details / README
   context.subscriptions.push(
     vscode.commands.registerCommand("modelscript.registry.openPackage", async (name: string, version: string) => {
+      const resolvedVersion = await resolveConcreteVersion(name, version);
       const panel = vscode.window.createWebviewPanel(
         "modelscript.packageDetail",
-        `${name}@${version}`,
+        `${name}@${resolvedVersion}`,
         vscode.ViewColumn.One,
         { enableScripts: true },
       );
 
       panel.webview.onDidReceiveMessage((message) => {
         if (message.command === "install") {
-          vscode.commands.executeCommand("modelscript.registry.install", name, version);
+          void vscode.commands.executeCommand("modelscript.registry.install", name, resolvedVersion);
         }
       });
 
       try {
-        const resp = await fetch(`${registryUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`);
+        const registryUrl = getRegistryUrl().replace(/\/+$/, "");
+        let resp = await fetch(
+          `${registryUrl}/packages/${encodeURIComponent(name)}/${encodeURIComponent(resolvedVersion)}`,
+        );
+        if (!resp.ok) {
+          resp = await fetch(
+            `${registryUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(resolvedVersion)}`,
+          );
+        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const packument = (await resp.json()) as RegistryPackument;
         const readme = packument.description || "No description available.";
@@ -543,19 +396,16 @@ export function registerRegistryView(
           h1 { font-size: 24px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
           .meta { color: var(--vscode-descriptionForeground); font-size: 13px; margin-bottom: 24px; }
           .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
-          .install-box { background: var(--vscode-textBlockQuote-background); border: 1px solid var(--vscode-textBlockQuote-border); border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 13px; margin-bottom: 24px; cursor: text; user-select: all; display: flex; justify-content: space-between; align-items: center; }
-          .install-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; outline: none; }
+          .install-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; outline: none; }
           .install-btn:hover { background: var(--vscode-button-hoverBackground); }
           .readme { line-height: 1.7; }
         </style></head><body>
-          <h1>${escapeHtml(packument.name)} <button class="install-btn" onclick="acquireVsCodeApi().postMessage({command: 'install'})">Install Package</button></h1>
+          <h1>${escapeHtml(packument.name || name)} <button class="install-btn" onclick="acquireVsCodeApi().postMessage({command: 'install'})">Add to Standard Libraries</button></h1>
           <div class="meta">
-            <span class="badge">${escapeHtml(packument.version)}</span>
+            <span class="badge">v${escapeHtml(packument.version || resolvedVersion)}</span>
+            ${packument.license ? `<span class="badge">${escapeHtml(packument.license)}</span>` : ""}
             ${packument.modelicaVersion ? `<span class="badge">Modelica ${escapeHtml(packument.modelicaVersion)}</span>` : ""}
-            <span>${packument.size ? Math.round(packument.size / 1024) : 0} KB</span>
-          </div>
-          <div class="install-box">
-            <span>npm install @modelscript/${escapeHtml(packument.name.toLowerCase())}@${escapeHtml(packument.version)}</span>
+            ${packument.size ? `<span>${Math.round(packument.size / 1024)} KB</span>` : ""}
           </div>
           <div class="readme">${escapeHtml(readme)}</div>
         </body></html>`;
@@ -564,8 +414,6 @@ export function registerRegistryView(
       }
     }),
   );
-
-  return provider;
 }
 
 function escapeHtml(text: string): string {

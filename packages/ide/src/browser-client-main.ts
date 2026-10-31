@@ -36,7 +36,6 @@ import { HostBridgeService } from "./services/host-bridge-service.js";
 import { LspClientManager } from "./services/lsp-client-manager.js";
 import { MarkdownPreviewService } from "./services/markdown-preview-service.js";
 import { initWorkspaceAndTree, registerVirtualFileSystems } from "./services/virtual-fs-service.js";
-import { SimulationViewPanel } from "./simulation-view-panel.js";
 import { StepEditorProvider } from "./step-editor-provider.js";
 import {
   FEATURE_LABELS,
@@ -50,7 +49,6 @@ import {
   type ModelScriptFeatureFlags,
   syncFeatureContextKeys,
 } from "./utils/config.js";
-import { VrVisualizationPanel } from "./vr-visualization-panel.js";
 
 let lspManager: LspClientManager | undefined;
 export let languageWorker: Worker | undefined;
@@ -465,10 +463,6 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     }),
 
-    safeRegisterCommand("modelscript.openVrVisualization", () => {
-      VrVisualizationPanel.createOrShow(context.extensionUri);
-    }),
-
     safeRegisterCommand("modelscript.owl2.goToDeclaration", async (iri: string) => {
       if (!iri) return;
       const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
@@ -518,19 +512,8 @@ export async function activate(context: vscode.ExtensionContext) {
       );
     }),
 
-    safeRegisterCommand("modelscript.openSimulationView", async (uri?: vscode.Uri, className?: string) => {
-      let targetUri = uri;
-      if (!targetUri && vscode.window.activeTextEditor) {
-        targetUri = vscode.window.activeTextEditor.document.uri;
-      }
-      if (!targetUri) return;
-      if (!className) {
-        className = await vscode.window.showInputBox({ prompt: "Enter the Study class name to simulate:" });
-        if (!className) return;
-      }
-      if (lspManager?.client) {
-        SimulationViewPanel.createOrShow(context, lspManager.client, className, targetUri.toString());
-      }
+    safeRegisterCommand("modelscript.openSimulationView", async (uri?: vscode.Uri | string, className?: string) => {
+      await vscode.commands.executeCommand("modelscript.runSimulation", uri, className);
     }),
 
     safeRegisterCommand(

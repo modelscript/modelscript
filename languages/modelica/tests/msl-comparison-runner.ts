@@ -111,8 +111,18 @@ function parseArgs(): RunnerOptions {
   return opts;
 }
 
-async function runWorker(task: WorkerTask, timeoutMs: number): Promise<WorkerResult> {
-  return new Promise((resolve) => {
+class PersistentWorker {
+  private child: ReturnType<typeof spawn> | null = null;
+  private stdoutBuf = "";
+  private stderrBuf = "";
+  private activeResolve: ((res: WorkerResult) => void) | null = null;
+  private activeTask: WorkerTask | null = null;
+  private activeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private ensureProcess(): ReturnType<typeof spawn> {
+    if (this.child && !this.child.killed && this.child.exitCode === null) {
+      return this.child;
+    }
     const workerScript = path.resolve(__dirname, "msl-comparison-worker.ts");
     const child = spawn(
       process.execPath,
@@ -122,70 +132,112 @@ async function runWorker(task: WorkerTask, timeoutMs: number): Promise<WorkerRes
         stdio: ["pipe", "pipe", "pipe"],
       },
     );
+    this.stdoutBuf = "";
+    this.stderrBuf = "";
 
-    let stdoutData = "";
-    let stderrData = "";
-    let timedOut = false;
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // ignore
+    child.stdout?.on("data", (chunk: Buffer) => {
+      this.stdoutBuf += chunk.toString();
+      let nlIdx = this.stdoutBuf.indexOf("\n");
+      while (nlIdx !== -1) {
+        const line = this.stdoutBuf.slice(0, nlIdx).trim();
+        this.stdoutBuf = this.stdoutBuf.slice(nlIdx + 1);
+        if (line.startsWith("{") && line.endsWith("}") && this.activeResolve) {
+          try {
+            const parsed: WorkerResult = JSON.parse(line);
+            const resolve = this.activeResolve;
+            if (this.activeTimer) clearTimeout(this.activeTimer);
+            this.activeTimer = null;
+            this.activeResolve = null;
+            this.activeTask = null;
+            this.stderrBuf = "";
+            resolve(parsed);
+          } catch {
+            // ignore non-task JSON output
+          }
+        }
+        nlIdx = this.stdoutBuf.indexOf("\n");
       }
-    }, timeoutMs);
-
-    child.stdout.on("data", (chunk) => {
-      stdoutData += chunk.toString();
     });
 
-    child.stderr.on("data", (chunk) => {
-      stderrData += chunk.toString();
+    child.stderr?.on("data", (chunk: Buffer) => {
+      this.stderrBuf += chunk.toString();
     });
 
     child.on("close", (code) => {
-      clearTimeout(timer);
-
-      if (timedOut) {
-        return resolve({
+      if (this.child === child) {
+        this.child = null;
+      }
+      if (this.activeResolve && this.activeTask) {
+        const resolve = this.activeResolve;
+        const task = this.activeTask;
+        if (this.activeTimer) clearTimeout(this.activeTimer);
+        this.activeTimer = null;
+        this.activeResolve = null;
+        this.activeTask = null;
+        const errDetails = this.stderrBuf.trim() || this.stdoutBuf.trim() || `Worker exited with code ${code}`;
+        this.stdoutBuf = "";
+        this.stderrBuf = "";
+        resolve({
           modelFqn: task.modelFqn,
-          status: "TIMEOUT",
-          durationMs: timeoutMs,
+          status: "MS_ERROR",
+          durationMs: 0,
           stage: task.stage,
-          error: "Process timed out",
+          error: errDetails,
         });
       }
-
-      try {
-        const lastJsonLine = stdoutData
-          .trim()
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l.startsWith("{") && l.endsWith("}"))
-          .pop();
-        if (lastJsonLine) {
-          const parsed: WorkerResult = JSON.parse(lastJsonLine);
-          return resolve(parsed);
-        }
-      } catch (err: any) {
-        // JSON parsing failed
-      }
-
-      const errDetails = stderrData.trim() || stdoutData.trim() || `Worker exited with code ${code}`;
-      resolve({
-        modelFqn: task.modelFqn,
-        status: "MS_ERROR",
-        durationMs: 0,
-        stage: task.stage,
-        error: errDetails,
-      });
     });
 
-    // Send task payload
-    child.stdin.write(JSON.stringify(task) + "\n");
-    child.stdin.end();
-  });
+    this.child = child;
+    return child;
+  }
+
+  async runTask(task: WorkerTask, timeoutMs: number): Promise<WorkerResult> {
+    return new Promise((resolve) => {
+      const child = this.ensureProcess();
+      this.activeTask = task;
+      this.activeResolve = resolve;
+      this.stderrBuf = "";
+
+      this.activeTimer = setTimeout(() => {
+        if (this.activeResolve === resolve) {
+          this.activeResolve = null;
+          this.activeTask = null;
+          this.activeTimer = null;
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            // ignore
+          }
+          this.child = null;
+          resolve({
+            modelFqn: task.modelFqn,
+            status: "TIMEOUT",
+            durationMs: timeoutMs,
+            stage: task.stage,
+            error: "Process timed out",
+          });
+        }
+      }, timeoutMs);
+
+      child.stdin?.write(JSON.stringify(task) + "\n");
+    });
+  }
+
+  close(): void {
+    if (this.activeTimer) {
+      clearTimeout(this.activeTimer);
+      this.activeTimer = null;
+    }
+    if (this.child) {
+      try {
+        this.child.stdin?.end();
+        this.child.kill("SIGTERM");
+      } catch {
+        // ignore
+      }
+      this.child = null;
+    }
+  }
 }
 
 function renderTrajectorySparkline(traj: NonNullable<SimComparisonResult["comparison"]["sampleTrajectory"]>): string {
@@ -808,78 +860,84 @@ async function main() {
   const queue = [...selectedModels];
 
   async function workerLoop() {
-    while (queue.length > 0) {
-      const model = queue.shift();
-      if (!model) break;
-      const task: WorkerTask = {
-        modelFqn: model.fqn,
-        mslDir,
-        version: options.version,
-        cacheDir,
-        indexCachePath,
-        stage: options.stage,
-        forceOmc: options.forceOmc,
-        simTolerance: options.tolerance,
-      };
+    const worker = new PersistentWorker();
+    try {
+      while (queue.length > 0) {
+        const model = queue.shift();
+        if (!model) break;
+        const task: WorkerTask = {
+          modelFqn: model.fqn,
+          mslDir,
+          version: options.version,
+          cacheDir,
+          indexCachePath,
+          stage: options.stage,
+          forceOmc: options.forceOmc,
+          simTolerance: options.tolerance,
+        };
 
-      const result = await runWorker(task, options.timeoutMs);
-      results.push(result);
-      completed++;
+        const result = await worker.runTask(task, options.timeoutMs);
+        results.push(result);
+        completed++;
 
-      const pct = ((completed / selectedModels.length) * 100).toFixed(0).padStart(3);
-      const idxStr = `[${String(completed).padStart(String(selectedModels.length).length)}/${selectedModels.length}]`;
-      const durStr = `${result.durationMs}ms`.padStart(7);
-      const cpuMemStr =
-        result.cpuMs !== undefined && result.peakMemoryMB !== undefined
-          ? `(cpu: ${result.cpuMs}ms, mem: ${result.peakMemoryMB}MB)`
-          : "";
+        const pct = ((completed / selectedModels.length) * 100).toFixed(0).padStart(3);
+        const idxStr = `[${String(completed).padStart(String(selectedModels.length).length)}/${selectedModels.length}]`;
+        const durStr = `${result.durationMs}ms`.padStart(7);
+        const cpuMemStr =
+          result.cpuMs !== undefined && result.peakMemoryMB !== undefined
+            ? `(cpu: ${result.cpuMs}ms, mem: ${result.peakMemoryMB}MB)`
+            : "";
 
-      let statusDisplay = result.status;
-      if (result.status === "MATCH") {
-        let details = "";
-        if (result.flatten)
-          details = `DAE(v=${result.flatten.modelscript.varCount}, e=${result.flatten.modelscript.eqCount})`;
-        else if (result.simulation)
-          details = `Sim(vars=${result.simulation.comparison.matchedVariables}, maxRelErr=${result.simulation.comparison.maxRelativeError.toExponential(1)})`;
-        else if (result.icon)
-          details = `Icon(elems=${result.icon.modelscript.elementCount}, len=${result.icon.modelscript.svgLength})`;
-        else if (result.diagram)
-          details = `Diag(nodes=${result.diagram.modelscript.nodeCount}, edges=${result.diagram.modelscript.edgeCount})`;
-        statusDisplay = `\x1b[32mMATCH\x1b[0m     ${details}`;
-      } else if (result.status === "DIFF") {
-        let details = "";
-        if (result.flatten) details = result.flatten.comparison.diffSummary || "";
-        else if (result.simulation) details = result.simulation.comparison.errorSummary || "";
-        else if (result.diagram)
-          details = result.diagram.diffSummary || `Unresolved nodes: ${result.diagram.modelscript.unresolvedCount}`;
-        statusDisplay = `\x1b[33mDIFF\x1b[0m      ${details}`;
-      } else if (result.status === "SKIPPED") {
-        statusDisplay = `\x1b[90mSKIPPED\x1b[0m   (not applicable/no annotation)`;
-      } else if (result.status === "MS_ERROR") {
-        const preview = (
-          result.error ||
-          result.diagram?.modelscript.error ||
-          result.icon?.modelscript.error ||
-          result.flatten?.modelscript.error ||
-          result.simulation?.modelscript.error ||
-          ""
-        )
-          .replace(/\n/g, " ")
-          .slice(0, 60);
-        statusDisplay = `\x1b[31mMS_ERROR\x1b[0m  ${preview}`;
-      } else if (result.status === "OMC_ERROR") {
-        const preview = (result.flatten?.omc.error || result.simulation?.omc.error || "").slice(0, 50);
-        statusDisplay = `\x1b[35mOMC_ERROR\x1b[0m ${preview}`;
-      } else if (result.status === "TIMEOUT") {
-        statusDisplay = `\x1b[31mTIMEOUT\x1b[0m   (> ${options.timeoutMs / 1000}s)`;
+        let statusDisplay = result.status;
+        if (result.status === "MATCH") {
+          let details = "";
+          if (result.flatten)
+            details = `DAE(v=${result.flatten.modelscript.varCount}, e=${result.flatten.modelscript.eqCount})`;
+          else if (result.simulation)
+            details = `Sim(vars=${result.simulation.comparison.matchedVariables}, maxRelErr=${result.simulation.comparison.maxRelativeError.toExponential(1)})`;
+          else if (result.icon)
+            details = `Icon(elems=${result.icon.modelscript.elementCount}, len=${result.icon.modelscript.svgLength})`;
+          else if (result.diagram)
+            details = `Diag(nodes=${result.diagram.modelscript.nodeCount}, edges=${result.diagram.modelscript.edgeCount})`;
+          statusDisplay = `\x1b[32mMATCH\x1b[0m     ${details}`;
+        } else if (result.status === "DIFF") {
+          let details = "";
+          if (result.flatten) details = result.flatten.comparison.diffSummary || "";
+          else if (result.simulation) details = result.simulation.comparison.errorSummary || "";
+          else if (result.diagram)
+            details = result.diagram.diffSummary || `Unresolved nodes: ${result.diagram.modelscript.unresolvedCount}`;
+          statusDisplay = `\x1b[33mDIFF\x1b[0m      ${details}`;
+        } else if (result.status === "SKIPPED") {
+          statusDisplay = `\x1b[90mSKIPPED\x1b[0m   (not applicable/no annotation)`;
+        } else if (result.status === "MS_ERROR") {
+          const preview = (
+            result.error ||
+            result.diagram?.modelscript.error ||
+            result.icon?.modelscript.error ||
+            result.flatten?.modelscript.error ||
+            result.simulation?.modelscript.error ||
+            ""
+          )
+            .replace(/\n/g, " ")
+            .slice(0, 60);
+          statusDisplay = `\x1b[31mMS_ERROR\x1b[0m  ${preview}`;
+        } else if (result.status === "OMC_ERROR") {
+          const preview = (result.flatten?.omc.error || result.simulation?.omc.error || "").slice(0, 50);
+          statusDisplay = `\x1b[35mOMC_ERROR\x1b[0m ${preview}`;
+        } else if (result.status === "TIMEOUT") {
+          statusDisplay = `\x1b[31mTIMEOUT\x1b[0m   (> ${options.timeoutMs / 1000}s)`;
+        }
+
+        console.log(`${idxStr} ${pct}% | ${durStr} ${cpuMemStr.padEnd(26)} | ${result.modelFqn} -> ${statusDisplay}`);
       }
-
-      console.log(`${idxStr} ${pct}% | ${durStr} ${cpuMemStr.padEnd(26)} | ${result.modelFqn} -> ${statusDisplay}`);
+    } finally {
+      worker.close();
     }
   }
 
   // Spawn parallel workers
-  const workerPromises = Array.from({ length: options.jobs }, () => workerLoop());
+  const activeWorkers = Math.min(options.jobs, Math.max(1, selectedModels.length));
+  const workerPromises = Array.from({ length: activeWorkers }, () => workerLoop());
   await Promise.all(workerPromises);
 
   const totalDurationSec = (Date.now() - tSuiteStart) / 1000;

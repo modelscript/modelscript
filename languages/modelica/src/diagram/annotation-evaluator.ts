@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Cst } from "../../src-gen/bindings.js";
+import { Cst, type SyntaxNode } from "../../src-gen/bindings.js";
 import { resolveModelicaConstant } from "../constants.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../types.js";
 
@@ -106,6 +106,17 @@ function findNamedModExprInClassMod(classMod: any, targetName: string): any {
 
 function extractModExprFromCstNode(node: any, targetArgName?: string): any {
   if (!node) return null;
+  if (targetArgName && typeof node.tree?.sourceCode === "string") {
+    const src: string = node.tree.sourceCode;
+    const sIdx = node.startIndex ?? 0;
+    const eIdx = node.endIndex ?? src.length;
+    const annIdx = src.indexOf("annotation", sIdx);
+    const limitIdx = annIdx !== -1 && annIdx < eIdx ? annIdx : eIdx;
+    const pos = src.indexOf(targetArgName, sIdx);
+    if (pos === -1 || pos >= limitIdx) {
+      return null;
+    }
+  }
   let curr = node;
   while (
     curr &&
@@ -164,9 +175,19 @@ function extractModExprFromCstNode(node: any, targetArgName?: string): any {
 
 function findExtendsModExprInClassCst(classCstNode: any, targetArgName: string): any {
   if (!classCstNode || !targetArgName) return null;
+  if (typeof classCstNode.tree?.sourceCode === "string") {
+    const src: string = classCstNode.tree.sourceCode;
+    const sIdx = classCstNode.startIndex ?? 0;
+    const eIdx = classCstNode.endIndex ?? src.length;
+    const extPos = src.indexOf("extends", sIdx);
+    if (extPos === -1 || extPos >= eIdx) return null;
+    const argPos = src.indexOf(targetArgName, extPos);
+    if (argPos === -1 || argPos >= eIdx) return null;
+  }
   const walk = (node: any, depth: number): any => {
     if (!node || depth > 6) return null;
-    if (Cst.ExtendsClause.is(node) || node.type === "extends_clause" || node.type === "ExtendsClause") {
+    const t = node.type;
+    if (Cst.ExtendsClause.is(node) || t === "extends_clause" || t === "ExtendsClause") {
       const classMod = extractClassModNode(node);
       if (classMod) {
         const found = findNamedModExprInClassMod(classMod, targetArgName);
@@ -174,10 +195,22 @@ function findExtendsModExprInClassCst(classCstNode: any, targetArgName: string):
       }
       return null;
     }
-    // Do not descend into nested class definitions
+    // Do not descend into nested class definitions, components, equations, algorithms, or annotations
     if (
       depth > 0 &&
-      (Cst.ClassDefinition.is(node) || node.type === "class_definition" || node.type === "ClassDefinition")
+      (Cst.ClassDefinition.is(node) ||
+        t === "class_definition" ||
+        t === "ClassDefinition" ||
+        t === "component_clause" ||
+        t === "ComponentClause" ||
+        t === "equation_section" ||
+        t === "EquationSection" ||
+        t === "algorithm_section" ||
+        t === "AlgorithmSection" ||
+        t === "annotation_clause" ||
+        t === "AnnotationClause" ||
+        t === "import_clause" ||
+        t === "ImportClause")
     ) {
       return null;
     }
@@ -281,6 +314,9 @@ function extractEvaluatedValue(resolved: any, evalScope?: any): any {
   return undefined;
 }
 
+const classResolvedNameCache = new WeakMap<object, Map<string, unknown>>();
+let activeScopeDeps: Map<string, unknown> | null = null;
+
 function resolveAnnotationName(name: string, evalScope: any): any {
   if (!name || typeof name !== "string") return undefined;
   const trimmed = name.trim();
@@ -309,6 +345,15 @@ function resolveAnnotationName(name: string, evalScope: any): any {
     }
   }
 
+  const isTopLevelDep = activeScopeDeps !== null && activeNameResolutions.size === 0;
+  const resolvedVal = resolveAnnotationNameInScope(trimmed, parts, evalScope);
+  if (isTopLevelDep && activeScopeDeps && !activeScopeDeps.has(trimmed)) {
+    activeScopeDeps.set(trimmed, resolvedVal);
+  }
+  return resolvedVal;
+}
+
+function resolveAnnotationNameInScope(trimmed: string, parts: string[], evalScope: any): any {
   if (!evalScope) return undefined;
   if (activeNameResolutions.has(trimmed)) return undefined;
   activeNameResolutions.add(trimmed);
@@ -321,53 +366,33 @@ function resolveAnnotationName(name: string, evalScope: any): any {
         ? evalScope
         : null);
     if (compInst) {
-      const mod = compInst.modification;
-      if (mod) {
-        if (typeof mod.getModificationArgument === "function") {
-          const modArg = mod.getModificationArgument(trimmed);
-          if (modArg !== undefined) {
-            const val = extractEvaluatedValue(modArg, compInst.parent ?? evalScope);
-            if (val !== undefined && val !== trimmed) return val;
-          }
-        }
-        const argsList = mod.arguments ?? mod.args;
-        if (Array.isArray(argsList)) {
-          const foundArg = argsList.find((a: any) => a?.name === trimmed);
-          if (foundArg !== undefined) {
-            const val = evaluateRawOrCstExpr(
-              foundArg.value ?? foundArg.expression ?? foundArg,
-              compInst.parent ?? evalScope,
-            );
-            if (val !== undefined && val !== trimmed) return val;
-          }
-        }
-        if (mod.classModification) {
-          const modExpr = findNamedModExprInClassMod(mod.classModification, trimmed);
-          if (modExpr) {
-            const val = evaluateRawOrCstExpr(modExpr, compInst.parent ?? evalScope);
-            if (val !== undefined && val !== trimmed) return val;
-          }
-        }
-      }
       const compCst = compInst.cstNode ?? compInst.abstractSyntaxNode ?? compInst.declaration?.cstNode;
-      if (compCst) {
-        const modExpr = extractModExprFromCstNode(compCst, trimmed);
-        if (modExpr) {
-          const val = evaluateRawOrCstExpr(modExpr, compInst.parent ?? evalScope);
-          if (val !== undefined && val !== trimmed) return val;
+      let mayHaveOverride = true;
+      if (compCst && typeof compCst.tree?.sourceCode === "string") {
+        const src: string = compCst.tree.sourceCode;
+        const sIdx = compCst.startIndex ?? 0;
+        const eIdx = compCst.endIndex ?? src.length;
+        const annIdx = src.indexOf("annotation", sIdx);
+        const limitIdx = annIdx !== -1 && annIdx < eIdx ? annIdx : eIdx;
+        const pos = src.indexOf(trimmed, sIdx);
+        if (pos === -1 || pos >= limitIdx) {
+          mayHaveOverride = false;
         }
       }
-      const compSymId = compInst.id ?? compInst.declaration?.id ?? compInst.entry?.id;
-      const compDb =
-        compInst.db ?? compInst.parent?.db ?? evalScope.db ?? evalScope.classInstance?.db ?? compInst.classInstance?.db;
-      if (compSymId !== undefined && typeof compDb?.query === "function") {
-        try {
-          const effMod = compDb.query("effectiveModification", compSymId);
-          if (effMod?.args) {
-            const foundArg = Array.isArray(effMod.args)
-              ? effMod.args.find((a: any) => a?.name === trimmed)
-              : effMod.args.get?.(trimmed);
-            if (foundArg) {
+      if (mayHaveOverride) {
+        const mod = compInst.modification;
+        if (mod) {
+          if (typeof mod.getModificationArgument === "function") {
+            const modArg = mod.getModificationArgument(trimmed);
+            if (modArg !== undefined) {
+              const val = extractEvaluatedValue(modArg, compInst.parent ?? evalScope);
+              if (val !== undefined && val !== trimmed) return val;
+            }
+          }
+          const argsList = mod.arguments ?? mod.args;
+          if (Array.isArray(argsList)) {
+            const foundArg = argsList.find((a: { name?: string }) => a?.name === trimmed);
+            if (foundArg !== undefined) {
               const val = evaluateRawOrCstExpr(
                 foundArg.value ?? foundArg.expression ?? foundArg,
                 compInst.parent ?? evalScope,
@@ -375,7 +400,45 @@ function resolveAnnotationName(name: string, evalScope: any): any {
               if (val !== undefined && val !== trimmed) return val;
             }
           }
-        } catch {}
+          if (mod.classModification) {
+            const modExpr = findNamedModExprInClassMod(mod.classModification, trimmed);
+            if (modExpr) {
+              const val = evaluateRawOrCstExpr(modExpr, compInst.parent ?? evalScope);
+              if (val !== undefined && val !== trimmed) return val;
+            }
+          }
+        }
+        if (compCst) {
+          const modExpr = extractModExprFromCstNode(compCst, trimmed);
+          if (modExpr) {
+            const val = evaluateRawOrCstExpr(modExpr, compInst.parent ?? evalScope);
+            if (val !== undefined && val !== trimmed) return val;
+          }
+        }
+        const compSymId = compInst.id ?? compInst.declaration?.id ?? compInst.entry?.id;
+        const compDb =
+          compInst.db ??
+          compInst.parent?.db ??
+          evalScope.db ??
+          evalScope.classInstance?.db ??
+          compInst.classInstance?.db;
+        if (compSymId !== undefined && typeof compDb?.query === "function") {
+          try {
+            const effMod = compDb.query("effectiveModification", compSymId);
+            if (effMod?.args) {
+              const foundArg = Array.isArray(effMod.args)
+                ? effMod.args.find((a: { name?: string }) => a?.name === trimmed)
+                : effMod.args.get?.(trimmed);
+              if (foundArg) {
+                const val = evaluateRawOrCstExpr(
+                  foundArg.value ?? foundArg.expression ?? foundArg,
+                  compInst.parent ?? evalScope,
+                );
+                if (val !== undefined && val !== trimmed) return val;
+              }
+            }
+          } catch {}
+        }
       }
     }
 
@@ -420,17 +483,55 @@ function resolveAnnotationName(name: string, evalScope: any): any {
     };
 
     for (const scope of candidateScopes) {
+      if (scope?.isClassInstance) {
+        const cachedMap = classResolvedNameCache.get(scope);
+        if (cachedMap && cachedMap.has(trimmed)) {
+          const cachedVal = cachedMap.get(trimmed);
+          if (cachedVal !== undefined) return cachedVal;
+          continue;
+        }
+      }
       const extVal = checkExtendsMods(scope);
-      if (extVal !== undefined) return extVal;
+      if (extVal !== undefined) {
+        if (scope?.isClassInstance) {
+          let cachedMap = classResolvedNameCache.get(scope);
+          if (!cachedMap) {
+            cachedMap = new Map<string, unknown>();
+            classResolvedNameCache.set(scope, cachedMap);
+          }
+          cachedMap.set(trimmed, extVal);
+        }
+        return extVal;
+      }
     }
 
     for (const scope of candidateScopes) {
+      if (scope?.isClassInstance) {
+        const cachedMap = classResolvedNameCache.get(scope);
+        if (cachedMap && cachedMap.has(trimmed)) {
+          const cachedVal = cachedMap.get(trimmed);
+          if (cachedVal !== undefined) return cachedVal;
+          continue;
+        }
+      }
+      const cacheOnClass = (val: unknown) => {
+        if (scope?.isClassInstance) {
+          let cachedMap = classResolvedNameCache.get(scope);
+          if (!cachedMap) {
+            cachedMap = new Map<string, unknown>();
+            classResolvedNameCache.set(scope, cachedMap);
+          }
+          cachedMap.set(trimmed, val);
+        }
+        return val;
+      };
+
       // Direct method resolveSimpleName (mock objects or legacy classes)
       if (typeof scope.resolveSimpleName === "function") {
         const resolved = scope.resolveSimpleName(trimmed);
         if (resolved != null) {
           const val = extractEvaluatedValue(resolved, scope);
-          if (val !== undefined) return val;
+          if (val !== undefined) return cacheOnClass(val);
         }
       }
 
@@ -444,7 +545,7 @@ function resolveAnnotationName(name: string, evalScope: any): any {
               const sym = resolver(trimmed);
               if (sym != null) {
                 const val = extractEvaluatedValue(sym, scope);
-                if (val !== undefined) return val;
+                if (val !== undefined) return cacheOnClass(val);
               }
             }
           } catch {}
@@ -453,7 +554,7 @@ function resolveAnnotationName(name: string, evalScope: any): any {
           const syms = scope.byName(trimmed);
           if (syms && syms.length > 0) {
             const val = extractEvaluatedValue(syms[0], scope);
-            if (val !== undefined) return val;
+            if (val !== undefined) return cacheOnClass(val);
           }
         }
       }
@@ -463,7 +564,7 @@ function resolveAnnotationName(name: string, evalScope: any): any {
         const resolved = scope.resolveName(parts);
         if (resolved != null) {
           const val = extractEvaluatedValue(resolved, scope);
-          if (val !== undefined) return val;
+          if (val !== undefined) return cacheOnClass(val);
         }
       }
 
@@ -494,7 +595,8 @@ function resolveAnnotationName(name: string, evalScope: any): any {
       };
 
       const hierarchyVal = findInClassHierarchy(scope);
-      if (hierarchyVal !== undefined) return hierarchyVal;
+      if (hierarchyVal !== undefined) return cacheOnClass(hierarchyVal);
+      cacheOnClass(undefined);
     }
 
     return undefined;
@@ -1109,49 +1211,76 @@ export function evaluateCSTExpression(node: any, evalScope?: any): any {
 // ── Condition Attribute Evaluator ───────────────────────────────────────────
 
 export function evaluateCondition(component: any, parentContext?: any): boolean | undefined {
-  let node = component?.cstNode ?? component?.abstractSyntaxNode ?? component?.declaration?.cstNode;
-  if (!node && component?.id != null) {
-    const db = component.db ?? component.parent?.db ?? parentContext?.db ?? parentContext?.classInstance?.db;
-    if (typeof db?.cstNode === "function") {
-      try {
-        node = db.cstNode(component.id);
-      } catch {}
+  if (!component) return true;
+  let condition: unknown = component._cachedConditionNode;
+  if (condition === null) return true;
+
+  if (condition === undefined) {
+    let node = component?.cstNode ?? component?.abstractSyntaxNode ?? component?.declaration?.cstNode;
+    if (!node && component?.id != null) {
+      const db = component.db ?? component.parent?.db ?? parentContext?.db ?? parentContext?.classInstance?.db;
+      if (typeof db?.cstNode === "function") {
+        try {
+          node = db.cstNode(component.id);
+        } catch {}
+      }
     }
-  }
-  if (!node) return true;
+    if (!node) {
+      component._cachedConditionNode = null;
+      return true;
+    }
 
-  while (
-    node &&
-    !Cst.ComponentDeclaration.is(node) &&
-    !Cst.ComponentClause.is(node) &&
-    !("conditionAttribute" in node) &&
-    node.parent &&
-    (Cst.Declaration.is(node) ||
-      Cst.Identifier.is(node) ||
-      node.type === "declaration" ||
-      node.type === "Declaration" ||
-      node.type === "identifier" ||
-      node.type === "Identifier" ||
-      Cst.ComponentDeclaration.is(node.parent))
-  ) {
-    node = node.parent;
-  }
+    if (typeof node.tree?.sourceCode === "string" && !("conditionAttribute" in node)) {
+      const src: string = node.tree.sourceCode;
+      const sIdx = node.startIndex ?? 0;
+      const eIdx = node.endIndex ?? src.length;
+      const annIdx = src.indexOf("annotation", sIdx);
+      const limitIdx = annIdx !== -1 && annIdx < eIdx ? annIdx : eIdx;
+      const slice = src.slice(sIdx, limitIdx);
+      if (!slice.includes(" if ") && !slice.includes("\tif ") && !slice.includes("\nif ")) {
+        component._cachedConditionNode = null;
+        return true;
+      }
+    }
 
-  let condition: any = null;
-  if ("conditionAttribute" in node) {
-    condition = node.conditionAttribute?.condition;
-  } else if (Cst.ComponentDeclaration.is(node)) {
-    const condAttr = node.children?.find((c: any) => Cst.ConditionAttribute.is(c));
-    condition = condAttr?.children?.find((c: any) => Cst.Expression.is(c)) ?? condAttr?.children?.[1];
-  } else if (Cst.ComponentClause.is(node)) {
-    const condAttr = node.children?.find((c: any) => Cst.ConditionAttribute.is(c));
-    condition = condAttr?.children?.find((c: any) => Cst.Expression.is(c)) ?? condAttr?.children?.[1];
+    while (
+      node &&
+      !Cst.ComponentDeclaration.is(node) &&
+      !Cst.ComponentClause.is(node) &&
+      !("conditionAttribute" in node) &&
+      node.parent &&
+      (Cst.Declaration.is(node) ||
+        Cst.Identifier.is(node) ||
+        node.type === "declaration" ||
+        node.type === "Declaration" ||
+        node.type === "identifier" ||
+        node.type === "Identifier" ||
+        Cst.ComponentDeclaration.is(node.parent))
+    ) {
+      node = node.parent;
+    }
+
+    condition = null;
+    if ("conditionAttribute" in node) {
+      condition = node.conditionAttribute?.condition ?? null;
+    } else if (Cst.ComponentDeclaration.is(node)) {
+      const condAttr = node.children?.find((c: SyntaxNode) => Cst.ConditionAttribute.is(c));
+      condition = condAttr?.children?.find((c: SyntaxNode) => Cst.Expression.is(c)) ?? condAttr?.children?.[1] ?? null;
+    } else if (Cst.ComponentClause.is(node)) {
+      const condAttr = node.children?.find((c: SyntaxNode) => Cst.ConditionAttribute.is(c));
+      condition = condAttr?.children?.find((c: SyntaxNode) => Cst.Expression.is(c)) ?? condAttr?.children?.[1] ?? null;
+    }
+    if (
+      !condition &&
+      node.parent &&
+      (Cst.ComponentDeclaration.is(node.parent) || Cst.ComponentClause.is(node.parent))
+    ) {
+      const condAttr = (node.parent as SyntaxNode).children?.find((c: SyntaxNode) => Cst.ConditionAttribute.is(c));
+      condition = condAttr?.children?.find((c: SyntaxNode) => Cst.Expression.is(c)) ?? condAttr?.children?.[1] ?? null;
+    }
+    component._cachedConditionNode = condition;
+    if (!condition) return true;
   }
-  if (!condition && node.parent && (Cst.ComponentDeclaration.is(node.parent) || Cst.ComponentClause.is(node.parent))) {
-    const condAttr = node.parent.children?.find((c: any) => Cst.ConditionAttribute.is(c));
-    condition = condAttr?.children?.find((c: any) => Cst.Expression.is(c)) ?? condAttr?.children?.[1];
-  }
-  if (!condition) return true;
 
   const scope =
     parentContext && component.parent && parentContext !== component.parent
@@ -1251,14 +1380,679 @@ function applyPositionalArguments(obj: any, funcName: string, positionalValues: 
   }
 }
 
+const WASM_FILL_PATTERNS = [
+  "None",
+  "Solid",
+  "Horizontal",
+  "Vertical",
+  "Cross",
+  "Forward",
+  "Backward",
+  "CrossDiag",
+  "HorizontalCylinder",
+  "VerticalCylinder",
+  "Sphere",
+];
+const WASM_LINE_PATTERNS = ["None", "Solid", "Dash", "Dot", "DashDot", "DashDotDot"];
+const WASM_SMOOTH_MODES = ["None", "Bezier"];
+const WASM_TEXT_ALIGNMENTS = ["Left", "Center", "Right"];
+const WASM_ARROWS = ["None", "Open", "Filled", "Half"];
+
+function unpackWasmColor(packed: number): [number, number, number] {
+  return [(packed >> 16) & 0xff, (packed >> 8) & 0xff, packed & 0xff];
+}
+
+interface WasmAnnotationExports {
+  annotation_scanIcon: (ptr: number, startIdx: number) => number;
+  annotation_scanDiagram: (ptr: number, startIdx: number) => number;
+  annotation_scanPlacement?: (ptr: number, startIdx: number) => number;
+  annotation_scanConnectLine?: (ptr: number, startIdx: number) => number;
+  annotation_hasIcon: () => number;
+  annotation_hasCoordSys: () => number;
+  annotation_getCoordX1: () => number;
+  annotation_getCoordY1: () => number;
+  annotation_getCoordX2: () => number;
+  annotation_getCoordY2: () => number;
+  annotation_getPreserveAspectRatio: () => number;
+  annotation_getGraphicKind: (i: number) => number;
+  annotation_getGraphicStroke: (i: number) => number;
+  annotation_getGraphicFill: (i: number) => number;
+  annotation_getGraphicFillPattern: (i: number) => number;
+  annotation_getGraphicLinePattern: (i: number) => number;
+  annotation_getGraphicThickness: (i: number) => number;
+  annotation_getGraphicVisible: (i: number) => number;
+  annotation_getGraphicOriginX: (i: number) => number;
+  annotation_getGraphicOriginY: (i: number) => number;
+  annotation_getGraphicRotation: (i: number) => number;
+  annotation_getGraphicRectX1: (i: number) => number;
+  annotation_getGraphicRectY1: (i: number) => number;
+  annotation_getGraphicRectX2: (i: number) => number;
+  annotation_getGraphicRectY2: (i: number) => number;
+  annotation_getGraphicRadius: (i: number) => number;
+  annotation_getGraphicPointsOffset: (i: number) => number;
+  annotation_getGraphicPointsCount: (i: number) => number;
+  annotation_getPointX: (idx: number) => number;
+  annotation_getPointY: (idx: number) => number;
+  annotation_getGraphicSmooth: (i: number) => number;
+  annotation_getGraphicArrowStart?: (i: number) => number;
+  annotation_getGraphicArrowEnd?: (i: number) => number;
+  annotation_getGraphicArrowSize?: (i: number) => number;
+  annotation_getGraphicTextOffset: (i: number) => number;
+  annotation_getGraphicTextLen: (i: number) => number;
+  annotation_getGraphicFontSize: (i: number) => number;
+  annotation_getGraphicTextAlignment: (i: number) => number;
+  annotation_getPlacementVisible: () => number;
+  annotation_getPlacementIconVisible: () => number;
+  annotation_hasTransformation: () => number;
+  annotation_transHasOrigin: () => number;
+  annotation_getTransOriginX: () => number;
+  annotation_getTransOriginY: () => number;
+  annotation_transHasExtent: () => number;
+  annotation_getTransX1: () => number;
+  annotation_getTransY1: () => number;
+  annotation_getTransX2: () => number;
+  annotation_getTransY2: () => number;
+  annotation_transHasRotation: () => number;
+  annotation_getTransRotation: () => number;
+  annotation_hasIconTransformation: () => number;
+  annotation_iconTransHasOrigin: () => number;
+  annotation_getIconTransOriginX: () => number;
+  annotation_getIconTransOriginY: () => number;
+  annotation_iconTransHasExtent: () => number;
+  annotation_getIconTransX1: () => number;
+  annotation_getIconTransY1: () => number;
+  annotation_getIconTransX2: () => number;
+  annotation_getIconTransY2: () => number;
+  annotation_iconTransHasRotation: () => number;
+  annotation_getIconTransRotation: () => number;
+  annotation_renderIconSvg?: (ptr: number, startIdx: number, size: number) => number;
+  annotation_getSvgBufferPtr?: () => number;
+  getInputBuffer?: () => number;
+  lsp_getInputBuffer?: () => number;
+}
+
+function ensureWasmAnnotationBuffer(ast: unknown): { exports: WasmAnnotationExports; src: string } | null {
+  const astNode = ast as
+    | {
+        ptr?: number;
+        startIndex?: number;
+        endIndex?: number;
+        tree?: {
+          facade?: {
+            exports?: WasmAnnotationExports;
+            loadSource?: (s: string) => void;
+            _activeAnnotationSource?: string;
+            currentInputLength?: number;
+            wasmMemory?: { buffer: ArrayBuffer };
+          };
+          sourceCode?: string;
+        };
+      }
+    | null
+    | undefined;
+  if (!astNode || typeof astNode.ptr !== "number" || astNode.ptr <= 0) return null;
+  const tree = astNode.tree;
+  const facade = tree?.facade;
+  const exports = facade?.exports;
+  const src = tree?.sourceCode;
+  if (!exports?.annotation_scanIcon || typeof src !== "string" || typeof facade?.loadSource !== "function") {
+    return null;
+  }
+
+  let needsLoad = facade._activeAnnotationSource !== src || facade.currentInputLength !== src.length;
+  if (!needsLoad && facade.wasmMemory && (exports.getInputBuffer || exports.lsp_getInputBuffer)) {
+    const getInputBuf = exports.getInputBuffer ?? exports.lsp_getInputBuffer;
+    const textPtr = getInputBuf ? getInputBuf() : 0;
+    const startIdx = astNode.startIndex ?? 0;
+    const endIdx = astNode.endIndex ?? src.length;
+    if (textPtr > 0 && endIdx <= src.length && startIdx < endIdx) {
+      const mem16 = new Uint16Array(facade.wasmMemory.buffer, textPtr, src.length);
+      if (
+        mem16[0] !== src.charCodeAt(0) ||
+        mem16[startIdx] !== src.charCodeAt(startIdx) ||
+        mem16[endIdx - 1] !== src.charCodeAt(endIdx - 1)
+      ) {
+        needsLoad = true;
+      }
+    }
+  }
+
+  if (needsLoad) {
+    facade.loadSource(src);
+    facade._activeAnnotationSource = src;
+  }
+  return { exports, src };
+}
+
+export interface WasmGraphicItem {
+  "@type": string;
+  extent?: [[number, number], [number, number]];
+  points?: [number, number][];
+  lineColor?: [number, number, number];
+  textColor?: [number, number, number];
+  color?: [number, number, number];
+  fillColor?: [number, number, number];
+  fillPattern?: string;
+  pattern?: string;
+  lineThickness?: number;
+  thickness?: number;
+  radius?: number;
+  smooth?: string;
+  arrow?: [string, string];
+  arrowSize?: number;
+  textString?: string;
+  string?: string;
+  fontSize?: number;
+  horizontalAlignment?: string;
+  visible?: boolean;
+  origin?: [number, number];
+  rotation?: number;
+}
+
+function readWasmGraphicSlot(exports: WasmAnnotationExports, src: string, i: number): WasmGraphicItem | undefined {
+  const kind: number = exports.annotation_getGraphicKind(i);
+  const stroke: number = exports.annotation_getGraphicStroke(i);
+  const fill: number = exports.annotation_getGraphicFill(i);
+  const fillPat = WASM_FILL_PATTERNS[exports.annotation_getGraphicFillPattern(i)] ?? "None";
+  const linePat = WASM_LINE_PATTERNS[exports.annotation_getGraphicLinePattern(i)] ?? "Solid";
+  const thickness: number = exports.annotation_getGraphicThickness(i);
+  const visible: boolean = exports.annotation_getGraphicVisible(i) !== 0;
+  const ox: number = exports.annotation_getGraphicOriginX(i);
+  const oy: number = exports.annotation_getGraphicOriginY(i);
+  const rot: number = exports.annotation_getGraphicRotation(i);
+
+  let item: WasmGraphicItem | undefined;
+  if (kind === 1) {
+    item = {
+      "@type": "Rectangle",
+      extent: [
+        [exports.annotation_getGraphicRectX1(i), exports.annotation_getGraphicRectY1(i)],
+        [exports.annotation_getGraphicRectX2(i), exports.annotation_getGraphicRectY2(i)],
+      ],
+      lineColor: unpackWasmColor(stroke >= 0 ? stroke : 0),
+      fillPattern: fillPat,
+      pattern: linePat,
+      lineThickness: thickness,
+      radius: exports.annotation_getGraphicRadius(i),
+    };
+    if (fill >= 0) item.fillColor = unpackWasmColor(fill);
+  } else if (kind === 2) {
+    item = {
+      "@type": "Ellipse",
+      extent: [
+        [exports.annotation_getGraphicRectX1(i), exports.annotation_getGraphicRectY1(i)],
+        [exports.annotation_getGraphicRectX2(i), exports.annotation_getGraphicRectY2(i)],
+      ],
+      lineColor: unpackWasmColor(stroke >= 0 ? stroke : 0),
+      fillPattern: fillPat,
+      pattern: linePat,
+      lineThickness: thickness,
+    };
+    if (fill >= 0) item.fillColor = unpackWasmColor(fill);
+  } else if (kind === 3) {
+    const ptOff: number = exports.annotation_getGraphicPointsOffset(i);
+    const ptCount: number = exports.annotation_getGraphicPointsCount(i);
+    const points: [number, number][] = new Array(ptCount);
+    for (let p = 0; p < ptCount; p++) {
+      points[p] = [exports.annotation_getPointX(ptOff + p), exports.annotation_getPointY(ptOff + p)];
+    }
+    item = {
+      "@type": "Line",
+      points,
+      color: unpackWasmColor(stroke >= 0 ? stroke : 0),
+      thickness,
+      pattern: linePat,
+      smooth: WASM_SMOOTH_MODES[exports.annotation_getGraphicSmooth(i)] ?? "None",
+    };
+    const arrowStart: number = exports.annotation_getGraphicArrowStart?.(i) ?? 0;
+    const arrowEnd: number = exports.annotation_getGraphicArrowEnd?.(i) ?? 0;
+    if (arrowStart !== 0 || arrowEnd !== 0) {
+      item.arrow = [WASM_ARROWS[arrowStart] ?? "None", WASM_ARROWS[arrowEnd] ?? "None"];
+    }
+    const arrowSize: number = exports.annotation_getGraphicArrowSize?.(i) ?? 0;
+    if (arrowSize !== 0) {
+      item.arrowSize = arrowSize;
+    }
+  } else if (kind === 4) {
+    const ptOff: number = exports.annotation_getGraphicPointsOffset(i);
+    const ptCount: number = exports.annotation_getGraphicPointsCount(i);
+    const points: [number, number][] = new Array(ptCount);
+    for (let p = 0; p < ptCount; p++) {
+      points[p] = [exports.annotation_getPointX(ptOff + p), exports.annotation_getPointY(ptOff + p)];
+    }
+    item = {
+      "@type": "Polygon",
+      points,
+      lineColor: unpackWasmColor(stroke >= 0 ? stroke : 0),
+      fillPattern: fillPat,
+      pattern: linePat,
+      lineThickness: thickness,
+      smooth: WASM_SMOOTH_MODES[exports.annotation_getGraphicSmooth(i)] ?? "None",
+    };
+    if (fill >= 0) item.fillColor = unpackWasmColor(fill);
+  } else if (kind === 5) {
+    const textOff: number = exports.annotation_getGraphicTextOffset(i);
+    const textLen: number = exports.annotation_getGraphicTextLen(i);
+    let nextIdx = textOff + textLen + 1;
+    while (nextIdx < src.length && src.charCodeAt(nextIdx) <= 32) nextIdx++;
+    const nextCh = src.charCodeAt(nextIdx);
+    if (textOff > 0 && nextCh !== 44 && nextCh !== 41) {
+      return undefined;
+    }
+    const textVal = textOff > 0 ? src.substring(textOff, textOff + textLen) : "";
+    if (textVal.includes("\\") || textVal.includes('"')) {
+      return undefined;
+    }
+    item = {
+      "@type": "Text",
+      extent: [
+        [exports.annotation_getGraphicRectX1(i), exports.annotation_getGraphicRectY1(i)],
+        [exports.annotation_getGraphicRectX2(i), exports.annotation_getGraphicRectY2(i)],
+      ],
+      lineColor: unpackWasmColor(stroke >= 0 ? stroke : 0),
+      textColor: unpackWasmColor(stroke >= 0 ? stroke : 0),
+      fillPattern: fillPat,
+      pattern: linePat,
+      lineThickness: thickness,
+      textString: textVal,
+      string: textVal,
+      fontSize: exports.annotation_getGraphicFontSize(i),
+      horizontalAlignment: WASM_TEXT_ALIGNMENTS[exports.annotation_getGraphicTextAlignment(i)] ?? "Center",
+    };
+    if (fill >= 0) item.fillColor = unpackWasmColor(fill);
+  } else {
+    return undefined;
+  }
+
+  if (!visible) item.visible = false;
+  if (ox !== 0 || oy !== 0) item.origin = [ox, oy];
+  if (rot !== 0) item.rotation = rot;
+  return item;
+}
+
+const wasmAstCache = new WeakMap<object, Map<number, unknown>>();
+
+function getWasmAstCache(tree: unknown, ptr: number, mode: number): { hit: boolean; value: unknown } {
+  if (!tree || typeof tree !== "object") return { hit: false, value: undefined };
+  const map = wasmAstCache.get(tree);
+  if (!map) return { hit: false, value: undefined };
+  const key = ptr * 4 + mode;
+  if (!map.has(key)) return { hit: false, value: undefined };
+  return { hit: true, value: map.get(key) };
+}
+
+function setWasmAstCache<T>(tree: unknown, ptr: number, mode: number, value: T): T {
+  if (!tree || typeof tree !== "object") return value;
+  let map = wasmAstCache.get(tree);
+  if (!map) {
+    map = new Map<number, unknown>();
+    wasmAstCache.set(tree, map);
+  }
+  map.set(ptr * 4 + mode, value);
+  return value;
+}
+
+export interface WasmGraphicLayer {
+  "@type": "Diagram" | "Icon";
+  coordinateSystem?: {
+    "@type": "coordinateSystem";
+    extent: [[number, number], [number, number]];
+    preserveAspectRatio: boolean;
+  };
+  graphics?: WasmGraphicItem[];
+}
+
+function evaluateGraphicsLayerWasm(ast: unknown, isDiagram: boolean): WasmGraphicLayer | null | undefined {
+  const astNode = ast as
+    | {
+        ptr?: number;
+        type?: string;
+        startIndex?: number;
+        endIndex?: number;
+        children?: Array<{ type?: string; ptr?: number }>;
+        tree?: { sourceCode?: string; facade?: unknown };
+      }
+    | null
+    | undefined;
+  if (!astNode || typeof astNode.ptr !== "number" || astNode.ptr <= 0) return undefined;
+  const t = astNode.type;
+  if (t !== "class_definition" && t !== "ClassDefinition" && t !== "stored_definition" && t !== "StoredDefinition") {
+    return undefined;
+  }
+  const mode = isDiagram ? 1 : 0;
+  let targetAst = astNode;
+  if (t === "stored_definition" || t === "StoredDefinition") {
+    const classDefs = (astNode.children || []).filter(
+      (c: { type?: string }) => c.type === "class_definition" || c.type === "ClassDefinition",
+    );
+    if (classDefs.length === 1 && typeof classDefs[0]!.ptr === "number" && classDefs[0]!.ptr > 0) {
+      targetAst = classDefs[0] as typeof targetAst;
+    } else if (classDefs.length > 1) {
+      return setWasmAstCache(astNode.tree, astNode.ptr, mode, undefined);
+    }
+  }
+  const cached = getWasmAstCache(targetAst.tree, targetAst.ptr!, mode);
+  if (cached.hit) return cached.value as WasmGraphicLayer | null | undefined;
+
+  const src = targetAst.tree?.sourceCode;
+  if (typeof src === "string") {
+    const startIdx = targetAst.startIndex ?? 0;
+    const endIdx = targetAst.endIndex ?? src.length;
+    const targetUpper = isDiagram ? "Diagram" : "Icon";
+    const targetLower = isDiagram ? "diagram" : "icon";
+    const pos = src.indexOf(targetUpper, startIdx);
+    const lowerPos = pos === -1 || pos >= endIdx ? src.indexOf(targetLower, startIdx) : pos;
+    if (lowerPos === -1 || lowerPos >= endIdx) {
+      return setWasmAstCache(targetAst.tree, targetAst.ptr!, mode, null);
+    }
+  }
+
+  const ctx = ensureWasmAnnotationBuffer(targetAst);
+  if (!ctx) return undefined;
+  const { exports } = ctx;
+  const scanFn = isDiagram ? exports.annotation_scanDiagram : exports.annotation_scanIcon;
+  if (typeof scanFn !== "function") return undefined;
+
+  const count: number = scanFn(targetAst.ptr!, targetAst.startIndex ?? 0);
+  if (count < 0) return setWasmAstCache(targetAst.tree, targetAst.ptr!, mode, undefined);
+  if (exports.annotation_hasIcon() === 0) return setWasmAstCache(targetAst.tree, targetAst.ptr!, mode, null);
+
+  const layer: WasmGraphicLayer = { "@type": isDiagram ? "Diagram" : "Icon" };
+  if (exports.annotation_hasCoordSys() !== 0) {
+    layer.coordinateSystem = {
+      "@type": "coordinateSystem",
+      extent: [
+        [exports.annotation_getCoordX1(), exports.annotation_getCoordY1()],
+        [exports.annotation_getCoordX2(), exports.annotation_getCoordY2()],
+      ],
+      preserveAspectRatio: exports.annotation_getPreserveAspectRatio() !== 0,
+    };
+  }
+
+  if (count > 0) {
+    const graphics: WasmGraphicItem[] = [];
+    for (let i = 0; i < count; i++) {
+      const item = readWasmGraphicSlot(exports, ctx.src, i);
+      if (!item) return setWasmAstCache(targetAst.tree, targetAst.ptr!, mode, undefined);
+      graphics.push(item);
+    }
+    layer.graphics = graphics;
+  }
+
+  return setWasmAstCache(targetAst.tree, targetAst.ptr!, mode, layer);
+}
+
+/**
+ * Fast-path in-WASM Icon annotation evaluator using the unmanaged linear graphics arena.
+ * Returns:
+ * - `null` if the class has no Icon annotation
+ * - `IIcon` object if evaluated in WASM
+ * - `undefined` if the annotation uses dynamic/non-literal constructs requiring the TypeScript fallback
+ */
+export function evaluateIconWasm(ast: unknown): WasmGraphicLayer | null | undefined {
+  return evaluateGraphicsLayerWasm(ast, false);
+}
+
+/**
+ * Fast-path in-WASM Diagram annotation evaluator using the unmanaged linear graphics arena.
+ */
+export function evaluateDiagramWasm(ast: unknown): WasmGraphicLayer | null | undefined {
+  return evaluateGraphicsLayerWasm(ast, true);
+}
+
+interface WasmTransformation {
+  "@type": "transformation" | "iconTransformation";
+  origin?: [number, number];
+  extent?: [[number, number], [number, number]];
+  rotation?: number;
+}
+
+interface WasmPlacement {
+  "@type": "Placement";
+  visible?: boolean;
+  iconVisible?: boolean;
+  transformation?: WasmTransformation;
+  iconTransformation?: WasmTransformation;
+}
+
+/**
+ * Fast-path in-WASM Placement annotation evaluator for component declarations.
+ */
+export function evaluatePlacementWasm(ast: unknown): unknown {
+  const astNode = ast as
+    | {
+        ptr?: number;
+        startIndex?: number;
+        endIndex?: number;
+        type?: string;
+        parent?: { ptr?: number; startIndex?: number; endIndex?: number };
+        tree?: { sourceCode?: string };
+      }
+    | null
+    | undefined;
+  if (!astNode || typeof astNode.ptr !== "number" || astNode.ptr <= 0) return undefined;
+  const cached = getWasmAstCache(astNode.tree, astNode.ptr, 2);
+  if (cached.hit) return cached.value;
+
+  let targetAst = astNode;
+  const src = targetAst.tree?.sourceCode;
+  if (typeof src === "string") {
+    let startIdx = targetAst.startIndex ?? 0;
+    let endIdx = targetAst.endIndex ?? src.length;
+    let pos = src.indexOf("Placement", startIdx);
+    let lowerPos = pos === -1 || pos >= endIdx ? src.indexOf("placement", startIdx) : pos;
+    if (
+      (lowerPos === -1 || lowerPos >= endIdx) &&
+      (astNode.type === "declaration" ||
+        astNode.type === "Declaration" ||
+        astNode.type === "connect_equation" ||
+        astNode.type === "ConnectEquation") &&
+      astNode.parent &&
+      typeof astNode.parent.ptr === "number" &&
+      astNode.parent.ptr > 0
+    ) {
+      targetAst = astNode.parent;
+      startIdx = targetAst.startIndex ?? 0;
+      endIdx = targetAst.endIndex ?? src.length;
+      pos = src.indexOf("Placement", startIdx);
+      lowerPos = pos === -1 || pos >= endIdx ? src.indexOf("placement", startIdx) : pos;
+    }
+    if (lowerPos === -1 || lowerPos >= endIdx) {
+      return setWasmAstCache(astNode.tree, astNode.ptr, 2, null);
+    }
+  } else if (
+    (astNode.type === "declaration" ||
+      astNode.type === "Declaration" ||
+      astNode.type === "connect_equation" ||
+      astNode.type === "ConnectEquation") &&
+    astNode.parent &&
+    typeof astNode.parent.ptr === "number" &&
+    astNode.parent.ptr > 0
+  ) {
+    targetAst = astNode.parent;
+  }
+
+  const ctx = ensureWasmAnnotationBuffer(targetAst);
+  if (!ctx) return undefined;
+  const { exports } = ctx;
+  if (typeof exports.annotation_scanPlacement !== "function") return undefined;
+
+  const status: number = exports.annotation_scanPlacement(targetAst.ptr!, targetAst.startIndex ?? 0);
+  if (status < 0) return setWasmAstCache(astNode.tree, astNode.ptr, 2, undefined);
+  if (status === 0) return setWasmAstCache(astNode.tree, astNode.ptr, 2, null);
+
+  const placement: WasmPlacement = { "@type": "Placement" };
+  const vis: number = exports.annotation_getPlacementVisible();
+  if (vis === 1) placement.visible = true;
+  else if (vis === 0) placement.visible = false;
+
+  const iconVis: number = exports.annotation_getPlacementIconVisible();
+  if (iconVis === 1) placement.iconVisible = true;
+  else if (iconVis === 0) placement.iconVisible = false;
+
+  if (exports.annotation_hasTransformation() !== 0) {
+    const trans: WasmTransformation = { "@type": "transformation" };
+    if (exports.annotation_transHasOrigin() !== 0) {
+      trans.origin = [exports.annotation_getTransOriginX(), exports.annotation_getTransOriginY()];
+    }
+    if (exports.annotation_transHasExtent() !== 0) {
+      trans.extent = [
+        [exports.annotation_getTransX1(), exports.annotation_getTransY1()],
+        [exports.annotation_getTransX2(), exports.annotation_getTransY2()],
+      ];
+    }
+    if (exports.annotation_transHasRotation() !== 0) {
+      trans.rotation = exports.annotation_getTransRotation();
+    }
+    placement.transformation = trans;
+  }
+
+  if (exports.annotation_hasIconTransformation() !== 0) {
+    const iconTrans: WasmTransformation = { "@type": "iconTransformation" };
+    if (exports.annotation_iconTransHasOrigin() !== 0) {
+      iconTrans.origin = [exports.annotation_getIconTransOriginX(), exports.annotation_getIconTransOriginY()];
+    }
+    if (exports.annotation_iconTransHasExtent() !== 0) {
+      iconTrans.extent = [
+        [exports.annotation_getIconTransX1(), exports.annotation_getIconTransY1()],
+        [exports.annotation_getIconTransX2(), exports.annotation_getIconTransY2()],
+      ];
+    }
+    if (exports.annotation_iconTransHasRotation() !== 0) {
+      iconTrans.rotation = exports.annotation_getIconTransRotation();
+    }
+    placement.iconTransformation = iconTrans;
+  }
+
+  return setWasmAstCache(astNode.tree, astNode.ptr, 2, placement);
+}
+
+/**
+ * Fast-path in-WASM Line annotation evaluator for connect(...) equations.
+ */
+export function evaluateConnectLineWasm(ast: unknown): unknown {
+  const astNode = ast as
+    | {
+        ptr?: number;
+        startIndex?: number;
+        endIndex?: number;
+        type?: string;
+        parent?: { ptr?: number; startIndex?: number; endIndex?: number };
+        tree?: { sourceCode?: string };
+      }
+    | null
+    | undefined;
+  if (!astNode || typeof astNode.ptr !== "number" || astNode.ptr <= 0) return undefined;
+  const cached = getWasmAstCache(astNode.tree, astNode.ptr, 3);
+  if (cached.hit) return cached.value;
+
+  let targetAst = astNode;
+  const src = targetAst.tree?.sourceCode;
+  if (typeof src === "string") {
+    let startIdx = targetAst.startIndex ?? 0;
+    let endIdx = targetAst.endIndex ?? src.length;
+    let pos = src.indexOf("Line", startIdx);
+    let lowerPos = pos === -1 || pos >= endIdx ? src.indexOf("line", startIdx) : pos;
+    if (
+      (lowerPos === -1 || lowerPos >= endIdx) &&
+      (astNode.type === "connect_equation" ||
+        astNode.type === "ConnectEquation" ||
+        astNode.type === "declaration" ||
+        astNode.type === "Declaration") &&
+      astNode.parent &&
+      typeof astNode.parent.ptr === "number" &&
+      astNode.parent.ptr > 0
+    ) {
+      targetAst = astNode.parent;
+      startIdx = targetAst.startIndex ?? 0;
+      endIdx = targetAst.endIndex ?? src.length;
+      pos = src.indexOf("Line", startIdx);
+      lowerPos = pos === -1 || pos >= endIdx ? src.indexOf("line", startIdx) : pos;
+    }
+    if (lowerPos === -1 || lowerPos >= endIdx) {
+      return setWasmAstCache(astNode.tree, astNode.ptr, 3, null);
+    }
+  } else if (
+    (astNode.type === "connect_equation" ||
+      astNode.type === "ConnectEquation" ||
+      astNode.type === "declaration" ||
+      astNode.type === "Declaration") &&
+    astNode.parent &&
+    typeof astNode.parent.ptr === "number" &&
+    astNode.parent.ptr > 0
+  ) {
+    targetAst = astNode.parent;
+  }
+
+  const ctx = ensureWasmAnnotationBuffer(targetAst);
+  if (!ctx) return undefined;
+  const { exports } = ctx;
+  if (typeof exports.annotation_scanConnectLine !== "function") return undefined;
+
+  const status: number = exports.annotation_scanConnectLine(targetAst.ptr!, targetAst.startIndex ?? 0);
+  if (status < 0) return setWasmAstCache(astNode.tree, astNode.ptr, 3, undefined);
+  if (status === 0) return setWasmAstCache(astNode.tree, astNode.ptr, 3, null);
+
+  return setWasmAstCache(astNode.tree, astNode.ptr, 3, readWasmGraphicSlot(exports, ctx.src, 0));
+}
+
+/**
+ * Renders a standalone class Icon directly to a UTF-8 SVG string inside WebAssembly linear memory.
+ * Returns `undefined` if the class has no standalone Icon or requires TypeScript fallback (e.g. Text macros, gradients).
+ */
+export function renderIconSvgWasm(ast: unknown, size = 16): string | undefined {
+  const astNode = ast as
+    | {
+        ptr?: number;
+        startIndex?: number;
+        tree?: { facade?: { wasmMemory?: { buffer: ArrayBuffer } } };
+      }
+    | null
+    | undefined;
+  if (!astNode || typeof astNode.ptr !== "number") return undefined;
+  const ctx = ensureWasmAnnotationBuffer(astNode);
+  if (!ctx) return undefined;
+  const { exports } = ctx;
+  if (!exports.annotation_renderIconSvg || !exports.annotation_getSvgBufferPtr) return undefined;
+  const svgLen: number = exports.annotation_renderIconSvg(astNode.ptr, astNode.startIndex ?? 0, size);
+  if (svgLen <= 0) return undefined;
+  const svgPtr: number = exports.annotation_getSvgBufferPtr();
+  const wasmMem = astNode.tree?.facade?.wasmMemory;
+  if (!wasmMem || svgPtr <= 0) return undefined;
+  const bytes = new Uint8Array(wasmMem.buffer, svgPtr, svgLen);
+  return new TextDecoder().decode(bytes);
+}
+
+export interface DynamicBindingItem {
+  property?: string | undefined;
+  staticExpr: unknown;
+  dynamicExpr: unknown;
+  variableName?: string | undefined;
+}
+
+interface CachedTsEvalVariant {
+  deps: Array<[string, unknown]>;
+  result: unknown;
+  dynamicBindings: DynamicBindingItem[];
+}
+
+const tsAstEvalCache = new WeakMap<object, Map<string, CachedTsEvalVariant[]>>();
+
+function depValuesMatch(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!depValuesMatch(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
 export class AnnotationEvaluator {
   private scope: any;
-  public dynamicBindings: {
-    property?: string | undefined;
-    staticExpr: any;
-    dynamicExpr: any;
-    variableName?: string | undefined;
-  }[] = [];
+  public dynamicBindings: DynamicBindingItem[] = [];
   public interactiveBindings: {
     action: "momentary" | "toggle" | "numeric" | "slider" | "selector" | "faceplate";
     variableName: string;
@@ -1280,6 +2074,56 @@ export class AnnotationEvaluator {
 
   public evaluate(ast: any, name: string): any {
     if (!ast) return null;
+    if (name === "Icon" || name === "icon") {
+      const wasmIcon = evaluateIconWasm(ast);
+      if (wasmIcon !== undefined) {
+        return wasmIcon;
+      }
+    } else if (name === "Diagram" || name === "diagram") {
+      const wasmDiag = evaluateDiagramWasm(ast);
+      if (wasmDiag !== undefined) {
+        return wasmDiag;
+      }
+    } else if (name === "Placement" || name === "placement") {
+      const wasmPlacement = evaluatePlacementWasm(ast);
+      if (wasmPlacement !== undefined) {
+        return wasmPlacement;
+      }
+    } else if (name === "Line" || name === "line") {
+      const wasmLine = evaluateConnectLineWasm(ast);
+      if (wasmLine !== undefined) {
+        return wasmLine;
+      }
+    }
+
+    const canCacheByPtr = Boolean(ast.tree && typeof ast.ptr === "number" && ast.ptr > 0);
+    let treeCacheMap: Map<string, CachedTsEvalVariant[]> | undefined;
+    const cacheKey = canCacheByPtr ? `${ast.ptr}:${name.toLowerCase()}` : "";
+    if (canCacheByPtr) {
+      treeCacheMap = tsAstEvalCache.get(ast.tree);
+      const variants = treeCacheMap?.get(cacheKey);
+      if (variants) {
+        for (let vIdx = 0; vIdx < variants.length; vIdx++) {
+          const variant = variants[vIdx]!;
+          let allMatch = true;
+          for (let dIdx = 0; dIdx < variant.deps.length; dIdx++) {
+            const [depName, expectedVal] = variant.deps[dIdx]!;
+            const actualVal = resolveAnnotationName(depName, this.scope);
+            if (!depValuesMatch(actualVal, expectedVal)) {
+              allMatch = false;
+              break;
+            }
+          }
+          if (allMatch) {
+            if (variant.dynamicBindings.length > 0) {
+              this.dynamicBindings.push(...variant.dynamicBindings);
+            }
+            return variant.result;
+          }
+        }
+      }
+    }
+
     if (typeof ast.text === "string") {
       const hasAnnotation =
         ast.text.includes("annotation") ||
@@ -1293,33 +2137,75 @@ export class AnnotationEvaluator {
           typeof ast.nextNamedSibling.text === "string" &&
           ast.nextNamedSibling.text.includes("annotation"));
       if (!hasAnnotation) {
+        if (canCacheByPtr) {
+          if (!treeCacheMap) {
+            treeCacheMap = new Map();
+            tsAstEvalCache.set(ast.tree, treeCacheMap);
+          }
+          treeCacheMap.set(cacheKey, [{ deps: [], result: null, dynamicBindings: [] }]);
+        }
         return null;
       }
     }
 
-    const classMods = this.extractAllClassModifications(ast);
-    if (classMods.length === 0) return null;
+    const prevDeps = activeScopeDeps;
+    const myDeps = canCacheByPtr ? new Map<string, unknown>() : null;
+    if (canCacheByPtr) activeScopeDeps = myDeps;
+    try {
+      const classMods = this.extractAllClassModifications(ast);
+      if (classMods.length === 0) {
+        if (canCacheByPtr && myDeps) {
+          if (!treeCacheMap) {
+            treeCacheMap = new Map();
+            tsAstEvalCache.set(ast.tree, treeCacheMap);
+          }
+          treeCacheMap.set(cacheKey, [{ deps: [], result: null, dynamicBindings: [] }]);
+        }
+        return null;
+      }
 
-    let mergedResult: any = null;
-    for (const classMod of classMods) {
-      const layerMod = this.findModByName(classMod, name);
-      if (layerMod) {
-        const parsed = this.parseMod(layerMod, name);
-        if (parsed) {
-          if (!mergedResult) {
-            mergedResult = parsed;
-          } else if (typeof parsed === "object" && typeof mergedResult === "object") {
-            Object.assign(mergedResult, parsed);
+      let mergedResult: Record<string, unknown> | null = null;
+      for (const classMod of classMods) {
+        const layerMod = this.findModByName(classMod, name);
+        if (layerMod) {
+          const parsed = this.parseMod(layerMod, name);
+          if (parsed) {
+            if (!mergedResult) {
+              mergedResult = parsed;
+            } else if (typeof parsed === "object" && typeof mergedResult === "object") {
+              Object.assign(mergedResult, parsed);
+            }
           }
         }
       }
-    }
 
-    if (mergedResult && typeof mergedResult === "object" && this.dynamicBindings.length > 0) {
-      mergedResult.dynamicBindings = [...this.dynamicBindings];
-    }
+      if (mergedResult && typeof mergedResult === "object" && this.dynamicBindings.length > 0) {
+        mergedResult["dynamicBindings"] = [...this.dynamicBindings];
+      }
 
-    return mergedResult;
+      if (canCacheByPtr && myDeps) {
+        if (!treeCacheMap) {
+          treeCacheMap = new Map();
+          tsAstEvalCache.set(ast.tree, treeCacheMap);
+        }
+        let variants = treeCacheMap.get(cacheKey);
+        if (!variants) {
+          variants = [];
+          treeCacheMap.set(cacheKey, variants);
+        }
+        if (variants.length < 8) {
+          variants.push({
+            deps: Array.from(myDeps.entries()),
+            result: mergedResult,
+            dynamicBindings: [...this.dynamicBindings],
+          });
+        }
+      }
+
+      return mergedResult;
+    } finally {
+      if (canCacheByPtr) activeScopeDeps = prevDeps;
+    }
   }
 
   /**
@@ -1328,20 +2214,34 @@ export class AnnotationEvaluator {
    */
   public extractAllClassModifications(ast: any): any[] {
     if (!ast) return [];
+    if (ast.type === "stored_definition" || ast.type === "StoredDefinition") {
+      const classDefs = (ast.children || []).filter(
+        (c: { type?: string }) => c.type === "class_definition" || c.type === "ClassDefinition",
+      );
+      if (classDefs.length === 1) {
+        ast = classDefs[0];
+      }
+    }
     const clauses: any[] = [];
-    this.findAllAnnotationClauses(ast, 0, clauses);
+    const isClassRoot =
+      ast.type === "class_definition" ||
+      ast.type === "ClassDefinition" ||
+      ast.type === "stored_definition" ||
+      ast.type === "StoredDefinition";
+    this.findAllAnnotationClauses(ast, 0, clauses, isClassRoot);
 
     // Fallbacks for inner declarations: check parent and next sibling
     if (
       clauses.length === 0 &&
+      !isClassRoot &&
       ast.parent &&
       ast.parent.type !== "class_definition" &&
       ast.parent.type !== "composition" &&
       ast.parent.type !== "stored_definition"
     ) {
-      this.findAllAnnotationClauses(ast.parent, 0, clauses);
+      this.findAllAnnotationClauses(ast.parent, 0, clauses, false);
     }
-    if (clauses.length === 0 && ast.nextNamedSibling) {
+    if (clauses.length === 0 && !isClassRoot && ast.nextNamedSibling) {
       const sib = ast.nextNamedSibling;
       if (Cst.AnnotationClause.is(sib)) {
         clauses.push(sib);
@@ -1371,7 +2271,13 @@ export class AnnotationEvaluator {
     return classMods;
   }
 
-  private findAllAnnotationClauses(node: any, depth = 0, collected: any[] = []): any[] {
+  private findAllAnnotationClauses(
+    node: any,
+    depth = 0,
+    collected: any[] = [],
+    isClassRoot = false,
+    seenClassDef = false,
+  ): any[] {
     if (!node || depth > 8) return collected;
     if (Cst.AnnotationClause.is(node)) {
       collected.push(node);
@@ -1382,8 +2288,40 @@ export class AnnotationEvaluator {
       for (const child of children) {
         if (Cst.AnnotationClause.is(child)) {
           collected.push(child);
+        } else if (isClassRoot) {
+          const ct = child.type;
+          const isChildClassDef =
+            Cst.ClassDefinition.is(child) || ct === "class_definition" || ct === "ClassDefinition";
+          if (isChildClassDef && seenClassDef) {
+            continue;
+          }
+          if (
+            ct === "component_clause" ||
+            ct === "ComponentClause" ||
+            ct === "component_declaration" ||
+            ct === "ComponentDeclaration" ||
+            ct === "some_equation" ||
+            ct === "SomeEquation" ||
+            ct === "statement" ||
+            ct === "Statement" ||
+            ct === "extends_clause" ||
+            ct === "ExtendsClause" ||
+            ct === "import_clause" ||
+            ct === "ImportClause" ||
+            ct === "short_class_definition" ||
+            ct === "ShortClassDefinition"
+          ) {
+            continue;
+          }
+          this.findAllAnnotationClauses(
+            child,
+            depth + 1,
+            collected,
+            true,
+            seenClassDef || isChildClassDef || node.type === "class_definition" || node.type === "ClassDefinition",
+          );
         } else {
-          this.findAllAnnotationClauses(child, depth + 1, collected);
+          this.findAllAnnotationClauses(child, depth + 1, collected, false, false);
         }
       }
     }

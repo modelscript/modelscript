@@ -4,7 +4,6 @@ import { simulateDroneReachability } from "@modelscript/runtime";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
 import { CalibrationPanel } from "../calibration-panel.js";
-import { CandidateTradeStudyPanel } from "../candidate-trade-study-panel.js";
 import type { FmuContentProvider } from "../fmu-document-provider.js";
 import { OptimizationPanel } from "../optimization-panel.js";
 import { decodeBase64ToArray } from "../services/virtual-fs-service.js";
@@ -637,10 +636,6 @@ export function registerSimulationCommands(
     vscode.commands.registerCommand("modelscript.openSurrogateEditor", (uri?: string) => {
       if (!client) return;
       SurrogatePanel.createOrShow(context.extensionUri, client, uri);
-    }),
-
-    vscode.commands.registerCommand("modelscript.openCandidateTradeStudy", (_uri?: string, entityName?: string) => {
-      CandidateTradeStudyPanel.createOrShow(context.extensionUri, client, entityName);
     }),
 
     vscode.commands.registerCommand(

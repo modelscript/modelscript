@@ -297,7 +297,10 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       });
     }
 
-    if (options?.features?.diagramEditor !== false && DIAGRAM_EDITOR_SUPPORTED_LANGS.has(lang.id)) {
+    const isSupportedDiagramLang =
+      DIAGRAM_EDITOR_SUPPORTED_LANGS.has(lang.id) ||
+      (options?.features?.diagramEditor === true && !(lang.id in DEFAULT_LANGUAGE_MATURITY) && lang.id !== "smv");
+    if (options?.features?.diagramEditor !== false && isSupportedDiagramLang) {
       customEditors.push({
         viewType: `${lang.id}.diagramEditor`,
         displayName: `${lang.displayName} 2D Diagram`,
@@ -473,13 +476,16 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       selector: [{ filenamePattern: "*.gcode" }, { filenamePattern: "*.nc" }],
       priority: "default",
     },
-    {
+  );
+
+  if (languages.some((l) => l.id === "pscad")) {
+    customEditors.push({
       viewType: "modelscript.psoutViewer",
       displayName: "PSCAD PSOUT Waveform Studio",
       selector: [{ filenamePattern: "*.psout" }],
       priority: "default",
-    },
-  );
+    });
+  }
 
   // Collect commands, menus, language model tools, and keybindings from language actions
   const commands: any[] = [
@@ -494,6 +500,36 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       title: "ModelScript: Configure Languages & Maturity Tiers...",
       category: "ModelScript",
       icon: "$(settings-gear)",
+    },
+    {
+      command: "modelscript.libraryView.addPackage",
+      title: "Add Package from Ansatz...",
+      category: "ModelScript",
+      icon: "$(add)",
+    },
+    {
+      command: "modelscript.libraryView.refresh",
+      title: "Refresh Standard Libraries",
+      category: "ModelScript",
+      icon: "$(refresh)",
+    },
+    {
+      command: "modelscript.libraryView.removePackage",
+      title: "Remove Package",
+      category: "ModelScript",
+      icon: "$(trash)",
+    },
+    {
+      command: "modelscript.experimentsView.refresh",
+      title: "Refresh Experiments",
+      category: "ModelScript",
+      icon: "$(refresh)",
+    },
+    {
+      command: "modelscript.registry.search",
+      title: "Search & Install Package from Ansatz...",
+      category: "ModelScript",
+      icon: "$(package)",
     },
     {
       command: "modelscript.openDiagram",
@@ -629,18 +665,6 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       icon: "$(graph)",
     },
     {
-      command: "modelscript.openSimulationView",
-      title: "ModelScript: Open Simulation View (RK4 / CVODE)",
-      category: "ModelScript Simulation",
-      icon: "$(play)",
-    },
-    {
-      command: "modelscript.openVrVisualization",
-      title: "ModelScript: Open VR Factory Visualization",
-      category: "ModelScript Visualization",
-      icon: "$(device-camera-video)",
-    },
-    {
       command: "modelscript.owl2.goToDeclaration",
       title: "ModelScript: Go to OWL2 Declaration",
       category: "ModelScript OWL2",
@@ -773,10 +797,6 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       when: "modelscript.feature.demos",
     },
     {
-      command: "modelscript.openVrVisualization",
-      when: "modelscript.feature.demos",
-    },
-    {
       command: "modelscript.syncDigitalThreadParams",
       when: "modelscript.feature.digitalThread",
     },
@@ -799,12 +819,16 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   ];
   const languageModelTools: any[] = [];
   const keybindings: any[] = [];
+  const hasKnownWorkspaceLang = languages.some((l) => l.id in DEFAULT_LANGUAGE_MATURITY);
 
   // Automatically contribute diagram open/source buttons to editor/title for supported diagram languages
   if (options?.features?.diagramEditor !== false) {
     const diagramLangIds = new Set<string>();
     for (const lang of languages) {
-      if (!DIAGRAM_EDITOR_SUPPORTED_LANGS.has(lang.id)) continue;
+      const isSupportedDiagramLang =
+        DIAGRAM_EDITOR_SUPPORTED_LANGS.has(lang.id) ||
+        (options?.features?.diagramEditor === true && !(lang.id in DEFAULT_LANGUAGE_MATURITY) && lang.id !== "smv");
+      if (!isSupportedDiagramLang) continue;
       // Check if language explicitly defined its own custom diagram action (Method 2)
       const hasCustomDiagramAction = (lang.options.actions || []).some(
         (a: any) => (a.id === "open_diagram" || a.id === "diagram" || a.id === "openDiagram") && a.ui?.editorTitle,
@@ -824,14 +848,22 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
 
       editorTitleMenus.push({
         command: "modelscript.openDiagram",
-        when: `(${editorWhen}) && config.modelscript.ui.editorTitleActions != 'none'`,
+        when: hasKnownWorkspaceLang
+          ? `(${editorWhen}) && config.modelscript.ui.editorTitleActions != 'none'`
+          : editorWhen,
         group: "navigation@0",
       });
     }
 
     const diagramViewTypes = [
       "modelscript.diagram",
-      ...languages.filter((l) => DIAGRAM_EDITOR_SUPPORTED_LANGS.has(l.id)).map((l) => `${l.id}.diagramEditor`),
+      ...languages
+        .filter(
+          (l) =>
+            DIAGRAM_EDITOR_SUPPORTED_LANGS.has(l.id) ||
+            (options?.features?.diagramEditor === true && !(l.id in DEFAULT_LANGUAGE_MATURITY) && l.id !== "smv"),
+        )
+        .map((l) => `${l.id}.diagramEditor`),
       ...(languages.some((l) => l.id === "sysml2") ? ["sysml.diagramEditor"] : []),
     ];
     if (options?.features?.cad3dViewer || languages.some((l) => l.id === "step")) {
@@ -919,8 +951,10 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         if (action === primaryTitleAction) {
           editorTitleMenus.push({
             command: commandId,
-            when: `(${baseWhen}) && config.modelscript.ui.editorTitleActions != 'none'`,
-            group: "navigation@1",
+            when: hasKnownWorkspaceLang
+              ? `(${baseWhen}) && config.modelscript.ui.editorTitleActions != 'none'`
+              : baseWhen,
+            group: action.ui.editorTitle.group || "navigation@1",
           });
         } else {
           moreActionsLangIds.add(lang.id);
@@ -1128,6 +1162,90 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         },
       },
     },
+    {
+      name: "validate_system_consistency",
+      displayName: "Validate Cross-Domain System Consistency",
+      modelDescription:
+        "Validates logical and dimensional consistency across SysML v2 requirements/architecture, Modelica equations, and OWL 2 ontologies.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          sysmlCode: { type: "string", description: "SysML v2 architecture source code" },
+          modelicaCode: { type: "string", description: "Modelica physics source code" },
+        },
+      },
+    },
+    {
+      name: "pscad_lint",
+      displayName: "Lint PSCAD Electromagnetic Transient Topology",
+      modelDescription:
+        "Runs electrical topology, floating terminal, and weak grid Short-Circuit Ratio (SCR) diagnostics on a PSCAD case.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "PSCAD case XML or netlist source" },
+          filePath: { type: "string", description: "Path to .pscx or .pslx file" },
+        },
+      },
+    },
+    {
+      name: "pscad_verify_ieee2800",
+      displayName: "Verify IEEE Std 2800-2022 Grid Code Compliance",
+      modelDescription:
+        "Executes IEEE 2800-2022 voltage/frequency ride-through and reactive current injection compliance checks on an IBR power plant model.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "PSCAD case source" },
+          faultResidualVoltagePu: { type: "number", description: "Retained terminal voltage during fault (pu)" },
+          faultDurationSec: { type: "number", description: "Fault clearing duration (s)" },
+        },
+      },
+    },
+    {
+      name: "cad_fea_closed_loop_size",
+      displayName: "Closed-Loop 3D CAD & Tetrahedral FEA Structural Sizing",
+      modelDescription:
+        "Runs parametric 3D CSG/STEP meshing, linear-elastic tetrahedral FEA stress evaluation, and BVH clearance verification.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          scadCode: { type: "string", description: "OpenSCAD parametric geometry source" },
+          material: { type: "string", description: "Isotropic material designation" },
+          appliedLoadN: { type: "number", description: "Applied structural load (N)" },
+          minSafetyFactor: { type: "number", description: "Minimum allowable yield safety factor" },
+        },
+      },
+    },
+    {
+      name: "polyglot_migrate_and_verify_b2b",
+      displayName: "Migrate Legacy Model & Certify ISO 26262 Back-to-Back Equivalence",
+      modelDescription:
+        "Translates a legacy Simulink, SPICE, or Adams model into Modelica + SysML v2 and verifies trajectory & C99 equivalence.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          sourceFormat: { type: "string", description: "Legacy source format (simulink, spice, adams)" },
+          sourceCode: { type: "string", description: "Legacy model source text" },
+          toleranceRmse: { type: "number", description: "Maximum allowable trajectory RMSE" },
+        },
+        required: ["sourceFormat"],
+      },
+    },
+    {
+      name: "formal_verify_safety_and_mcdc",
+      displayName: "Prove Safety Invariants (IC3/SOS) & Synthesize DO-178C MC/DC Vectors",
+      modelDescription:
+        "Proves unbounded safety properties using IC3/PDR and SOS barrier certificates and generates 100% MC/DC test vectors.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          code: { type: "string", description: "Modelica or synchronous controller source code" },
+          safetyProperty: { type: "string", description: "Invariant expression to prove" },
+        },
+        required: ["code"],
+      },
+    },
   ];
 
   for (const stdTool of standardLmTools) {
@@ -1168,6 +1286,23 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       "modelscript.editorTitle.moreActions": editorMoreActionsMenus,
       "editor/context": editorContextMenus,
       "explorer/context": explorerContextMenus,
+      "view/title": [
+        {
+          command: "modelscript.libraryView.addPackage",
+          when: "view == modelscript.libraryTree",
+          group: "navigation@1",
+        },
+        {
+          command: "modelscript.libraryView.refresh",
+          when: "view == modelscript.libraryTree",
+          group: "navigation@2",
+        },
+        {
+          command: "modelscript.experimentsView.refresh",
+          when: "view == modelscript.experimentsView",
+          group: "navigation@1",
+        },
+      ],
       "view/item/context": [
         {
           command: "modelscript.openModel",
@@ -1178,6 +1313,11 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
           command: "modelscript.addToDiagram",
           when: "view == modelscript.libraryTree",
           group: "navigation@2",
+        },
+        {
+          command: "modelscript.libraryView.removePackage",
+          when: "view == modelscript.libraryTree && viewItem == installedPackage",
+          group: "inline@1",
         },
       ],
       ...(commandPaletteMenus.length > 0 ? { commandPalette: commandPaletteMenus } : {}),
@@ -1293,27 +1433,22 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         when: "modelscript.feature.aiCopilot || config.modelscript.features.aiCopilot || config.modelscript.features.channel == 'experimental' || config.modelscript.features.channel == 'dev'",
       },
       {
-        id: "modelscript.registryView",
-        name: "Package Registry",
-        type: "webview",
-        when: "modelscript.feature.channel != 'stable' || config.modelscript.features.channel != 'stable'",
-      },
-      {
         id: "modelscript.cosimPanel",
         name: "Co-Simulation Orchestrator",
         type: "webview",
-        when: "modelscript.feature.coSimulation || config.modelscript.features.coSimulation || config.modelscript.features.channel != 'stable'",
+        when: "modelscript.feature.coSimulation || config.modelscript.features.coSimulation || config.modelscript.features.channel == 'experimental' || config.modelscript.features.channel == 'dev'",
       },
       {
         id: "modelscript.mqttTree",
         name: "MQTT Participants",
-        when: "modelscript.feature.coSimulation || config.modelscript.features.coSimulation || config.modelscript.features.channel != 'stable'",
+        when: "modelscript.feature.coSimulation || config.modelscript.features.coSimulation || config.modelscript.features.channel == 'experimental' || config.modelscript.features.channel == 'dev'",
       },
     ],
     scm: [
       {
         id: "modelscript.scmTreeView",
         name: "Model Structural Changes",
+        when: "modelscript.feature.digitalThread || config.modelscript.features.digitalThread || config.modelscript.features.channel == 'experimental' || config.modelscript.features.channel == 'dev'",
       },
     ],
   };
@@ -1371,9 +1506,9 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
           enum: ["stable", "preview", "experimental", "dev"],
           default: "stable",
           enumDescriptions: [
-            "🟢 Stable: Core LSP, 1-click Simulate CodeLens, 2D/3D viewers, Standard Libraries & Experiments views.",
-            "🟡 Preview: Adds Formal Verification, DAE structural proofs, CAE mesh/study workbench, and FMI Co-Simulation.",
-            "🧪 Experimental: Adds Cross-Domain Digital Thread, Polyglot Model Projection, Multi-Domain Scaffolding, and AI Copilot.",
+            "🟢 Stable: Core LSP, 1-click Simulate CodeLens, 2D/3D viewers, Standard Libraries (+ Ansatz search) & Experiments views.",
+            "🟡 Preview: Adds Formal Verification, DAE structural proofs, and CAE mesh/study workbench.",
+            "🧪 Experimental: Adds FMI Co-Simulation & MQTT, Cloud HPC, Cross-Domain Digital Thread, Polyglot Projection, Multi-Domain Scaffolding, and AI Copilot.",
             "🔬 Dev / Showcase: Enables all internal vertical demos, Trade Study Tier 1-3 CodeLenses, and medical/VR showcases.",
           ],
           markdownDescription:
@@ -1398,7 +1533,12 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         "modelscript.features.coSimulation": {
           type: "boolean",
           markdownDescription:
-            "**[🟡 Preview]** Enable FMI 2.0/3.0 Co-Simulation Orchestrator and live MQTT participants sidebar views.",
+            "**[🧪 Experimental]** Enable FMI 2.0/3.0 Co-Simulation Orchestrator and live MQTT participants sidebar views.",
+        },
+        "modelscript.features.cloudCompute": {
+          type: "boolean",
+          markdownDescription:
+            "**[🧪 Experimental]** Enable remote Cloud HPC simulation job execution, queue management, and status bar telemetry.",
         },
         "modelscript.features.digitalThread": {
           type: "boolean",
@@ -1421,8 +1561,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
         },
         "modelscript.features.demos": {
           type: "boolean",
-          markdownDescription:
-            "**[🔬 Dev]** Enable vertical showcase demos (Drone Reachability, Candidate Trade Study Tiers 1-3, Pacemaker, VR Factory).",
+          markdownDescription: "**[🔬 Dev]** Enable vertical showcase demos (Reachability Flowpipe Comparison).",
         },
       },
     },

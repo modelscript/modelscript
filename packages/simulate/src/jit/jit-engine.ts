@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/runtime";
-import { execSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -560,6 +559,11 @@ export class ArenaJitEngine {
     const binFile = path.join(this.cacheDir, `msx_sim_${hash}`);
     let cacheHit = false;
     let compilationTimeMs = 0;
+
+    if (typeof window !== "undefined") {
+      throw new Error("Native JIT simulation is not supported in browser environments.");
+    }
+    const { execSync, spawn } = await import(/* @vite-ignore */ "node:child_process");
 
     if (nativeBinaryCache.has(hash) && fs.existsSync(binFile)) {
       cacheHit = true;

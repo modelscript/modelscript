@@ -10,6 +10,7 @@ import { OWL2ClassHierarchyProvider } from "../owl2-class-hierarchy-provider.js"
 import { OWL2PropertyHierarchyProvider } from "../owl2-property-hierarchy-provider.js";
 import { registerRegistryView } from "../registry-tree-provider.js";
 import { registerScmTreeView } from "../scm-tree-view.js";
+import { isFeatureEnabled } from "../utils/config.js";
 
 export class TreeViewController implements vscode.Disposable {
   private _disposables: vscode.Disposable[] = [];
@@ -56,7 +57,7 @@ export class TreeViewController implements vscode.Disposable {
       console.warn("Could not register modelscript.libraryTree view:", e);
     }
 
-    // 2. MQTT Tree View
+    // 2. MQTT Tree View (Experimental — only poll when coSimulation is enabled and view is visible)
     try {
       this.mqttTreeProvider = new MqttTreeProvider(client, context);
       const mqttTreeView = vscode.window.createTreeView("modelscript.mqttTree", {
@@ -65,13 +66,13 @@ export class TreeViewController implements vscode.Disposable {
         canSelectMany: false,
       });
       this._disposables.push(mqttTreeView, this.mqttTreeProvider);
-      if (mqttTreeView.visible) {
+      if (mqttTreeView.visible && isFeatureEnabled("coSimulation")) {
         this.mqttTreeProvider.startPolling();
       }
       if (typeof mqttTreeView.onDidChangeVisibility === "function") {
         this._disposables.push(
           mqttTreeView.onDidChangeVisibility((e) => {
-            if (e.visible) {
+            if (e.visible && isFeatureEnabled("coSimulation")) {
               this.mqttTreeProvider?.startPolling();
             } else {
               this.mqttTreeProvider?.stopPolling();
@@ -90,12 +91,25 @@ export class TreeViewController implements vscode.Disposable {
         treeDataProvider: this.experimentsTreeProvider,
         canSelectMany: false,
       });
-      this._disposables.push(experimentsTreeView);
+      this._disposables.push(
+        experimentsTreeView,
+        vscode.commands.registerCommand("modelscript.experimentsView.refresh", () => {
+          this.experimentsTreeProvider?.refresh();
+        }),
+      );
+      if (client) {
+        this._disposables.push(
+          client.onNotification("modelscript/projectTreeChanged", () => {
+            this.experimentsTreeProvider?.refresh();
+          }),
+        );
+        this.experimentsTreeProvider.refresh();
+      }
     } catch (e) {
       console.warn("Could not register modelscript.experimentsView view:", e);
     }
 
-    // 4. Registry and SCM Views
+    // 4. Ansatz Package Commands (attached to Standard Libraries view) and SCM Views
     registerRegistryView(context, client);
     registerScmTreeView(context, client);
 

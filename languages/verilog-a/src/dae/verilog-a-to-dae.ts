@@ -163,7 +163,7 @@ export function lowerVerilogAToDae(module: VerilogAModule, arenaTitle?: string):
 
   // 8. Emit Accumulated Branch Constitutive Equations (1 equation per branch)
   const constrainedBranches = new Set<string>();
-  for (const [, bInfo] of branchContributions.entries()) {
+  for (const [bKey, bInfo] of branchContributions.entries()) {
     const firstExpr = bInfo.exprIds[0];
     if (firstExpr === undefined) continue;
     let sumRhs = firstExpr;

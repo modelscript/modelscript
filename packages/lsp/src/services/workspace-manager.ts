@@ -877,6 +877,7 @@ export class WorkspaceManager {
     }
 
     const annotationCache = new Map<number, Map<string, any>>();
+    const adapterByEntryId = new Map<number, unknown>();
 
     const getSourceText = (resourceId: string): string | null => this.getSourceText(resourceId);
 
@@ -927,6 +928,9 @@ export class WorkspaceManager {
     });
 
     const buildAdapter = (entry: any, db: any, compositeName: string): any => {
+      if (entry?.id != null && adapterByEntryId.has(entry.id)) {
+        return adapterByEntryId.get(entry.id);
+      }
       const children = db.childrenOf ? (db.childrenOf(entry.id) ?? []) : [];
       const components: any[] = [];
       const extendsClassInstances: any[] = [];
@@ -936,32 +940,64 @@ export class WorkspaceManager {
 
       for (const child of children) {
         if (child.kind === "Component" || child.kind === "Variable") {
-          let componentClassInstance = null;
-          if (!options?.iconOnly) {
-            const childClassId = db.query ? db.query("classInstance", child.id) : null;
+          let componentClassInstance: unknown = undefined;
+          let childCst: unknown = undefined;
+          const getChildCst = (): unknown => {
+            if (childCst === undefined) {
+              childCst = (db.cstNode ? db.cstNode(child.id) : null) ?? this.getCstNodeForSymbol(child) ?? null;
+            }
+            return childCst;
+          };
+          const getComponentClassInstance = (): unknown => {
+            if (componentClassInstance !== undefined) {
+              return componentClassInstance;
+            }
+            if (options?.iconOnly) {
+              componentClassInstance = null;
+              return null;
+            }
             let typeSpec: string | null = (child.metadata as any)?.typeSpecifier ?? null;
             if (!typeSpec && db.query) {
               try {
                 typeSpec = db.query("typeSpecifier", child.id);
               } catch {}
             }
+            if (
+              typeSpec === "Real" ||
+              typeSpec === "Integer" ||
+              typeSpec === "Boolean" ||
+              typeSpec === "String" ||
+              typeSpec === "StateSelect" ||
+              typeSpec === "ExternalObject" ||
+              typeSpec === "Clock" ||
+              (typeSpec &&
+                (typeSpec.startsWith("SI.") ||
+                  typeSpec.startsWith("Modelica.SIunits.") ||
+                  typeSpec.startsWith("Modelica.Units.")))
+            ) {
+              componentClassInstance = null;
+              return null;
+            }
+            const childClassId = db.query ? db.query("classInstance", child.id) : null;
             const childClassEntry = childClassId ? db.symbol(childClassId) : null;
             componentClassInstance = childClassEntry
               ? buildAdapter(childClassEntry, db, typeSpec || childClassEntry.name)
               : null;
             if (!componentClassInstance) {
               if (!typeSpec) {
-                const compCst = (child.cstNode || (db.cstNode ? db.cstNode(child.id) : null)) as any;
+                const compCst = (child.cstNode || getChildCst()) as {
+                  parent?: { type?: string; children?: Array<{ type?: string; text?: string }> };
+                } | null;
                 let p = compCst?.parent;
                 while (p) {
                   if (p.type === "component_clause" || p.type === "ComponentClause") {
-                    const ts = p.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+                    const ts = p.children?.find((c) => c.type === "type_specifier" || c.type === "TypeSpecifier");
                     if (ts) {
                       typeSpec = ts.text?.trim() ?? null;
                       break;
                     }
                   }
-                  p = p.parent;
+                  p = (p as { parent?: typeof p }).parent;
                 }
               }
               if (!typeSpec && entry.resourceId) {
@@ -981,36 +1017,71 @@ export class WorkspaceManager {
                   }
                 } catch {}
               }
-              if (typeSpec) {
+              if (
+                typeSpec &&
+                typeSpec !== "Real" &&
+                typeSpec !== "Integer" &&
+                typeSpec !== "Boolean" &&
+                typeSpec !== "String" &&
+                !typeSpec.startsWith("SI.") &&
+                !typeSpec.startsWith("Modelica.SIunits.") &&
+                !typeSpec.startsWith("Modelica.Units.")
+              ) {
                 componentClassInstance = this.resolveModelicaClassInstance(entry.resourceId, typeSpec, options);
               }
             }
-          }
-          const childCst = (db.cstNode ? db.cstNode(child.id) : null) ?? this.getCstNodeForSymbol(child);
-          components.push({
+            return componentClassInstance;
+          };
+          const compAnnCache = new Map<string, unknown>();
+          const compObj = {
             name: child.name,
-            classInstance: componentClassInstance,
             annotations: [],
             declaration: child,
-            cstNode: childCst,
-            abstractSyntaxNode: childCst,
+            get classInstance() {
+              return getComponentClassInstance();
+            },
+            set classInstance(v: unknown) {
+              componentClassInstance = v;
+            },
+            get cstNode() {
+              return getChildCst();
+            },
+            get abstractSyntaxNode() {
+              return getChildCst();
+            },
             annotation: (annName: string): any => {
+              if (compAnnCache.has(annName)) {
+                return compAnnCache.get(annName);
+              }
               try {
+                if ((annName === "Placement" || annName === "placement") && db.query && child.id != null) {
+                  try {
+                    const salsaPlacement = db.query("componentPlacement", child.id);
+                    if (salsaPlacement !== undefined) {
+                      compAnnCache.set(annName, salsaPlacement);
+                      return salsaPlacement;
+                    }
+                  } catch {}
+                }
                 let evaluatorClass = (globalThis as any).AnnotationEvaluator ?? AnnotationEvaluator;
                 if (!evaluatorClass && nodeRequire) {
                   try {
                     evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
                   } catch {}
                 }
-                const cst = (db.cstNode ? db.cstNode(child.id) : null) ?? this.getCstNodeForSymbol(child);
+                const cst = getChildCst();
                 if (cst && evaluatorClass) {
                   const evaluator = new evaluatorClass(classInstance);
-                  return evaluator.evaluate(cst, annName);
+                  const res = evaluator.evaluate(cst, annName);
+                  compAnnCache.set(annName, res);
+                  return res;
                 }
               } catch {}
+              compAnnCache.set(annName, null);
               return null;
             },
-          });
+          };
+          components.push(compObj);
         } else if (child.kind === "Extends" && child.name) {
           if (child.name !== entry.name && child.name !== compositeName) {
             let baseInstance = this.resolveModelicaClassInstance(entry.resourceId, child.name, options);
@@ -1101,6 +1172,7 @@ export class WorkspaceManager {
               connCst?.parent && (connCst.parent.type === "some_equation" || connCst.parent.type === "SomeEquation")
                 ? connCst.parent
                 : connCst;
+            const connAnnCache = new Map<string, unknown>();
             connectEquations.push({
               lhs: lhsStr,
               rhs: rhsStr,
@@ -1113,6 +1185,9 @@ export class WorkspaceManager {
               cstNode: targetEquationNode,
               ast: targetEquationNode,
               annotation: (annName: string): any => {
+                if (connAnnCache.has(annName)) {
+                  return connAnnCache.get(annName);
+                }
                 try {
                   let evaluatorClass = (globalThis as any).AnnotationEvaluator ?? AnnotationEvaluator;
                   if (!evaluatorClass && nodeRequire) {
@@ -1122,9 +1197,12 @@ export class WorkspaceManager {
                   }
                   if (targetEquationNode && evaluatorClass) {
                     const evaluator = new evaluatorClass(classInstance);
-                    return evaluator.evaluate(targetEquationNode, annName);
+                    const res = evaluator.evaluate(targetEquationNode, annName);
+                    connAnnCache.set(annName, res);
+                    return res;
                   }
                 } catch {}
+                connAnnCache.set(annName, null);
                 return null;
               },
             });
@@ -1161,79 +1239,105 @@ export class WorkspaceManager {
           }
           return null;
         },
-        annotation: (name: string, _ctx?: any): any => {
-          const ctxMod =
-            _ctx?.cstNode?.text ??
-            _ctx?.abstractSyntaxNode?.text ??
-            (_ctx?.modification
-              ? (() => {
-                  try {
-                    return JSON.stringify(_ctx.modification);
-                  } catch {
-                    return String(_ctx.modification);
-                  }
-                })()
-              : "");
-          const cacheKey = `${name}${_ctx?.ownOnly ? ":own" : ""}${ctxMod ? `:mod:${ctxMod}` : ""}`;
-          if (!annotationCache.has(entry.id)) {
-            annotationCache.set(entry.id, new Map());
-          }
-          const classAnnCache = annotationCache.get(entry.id)!;
-          if (classAnnCache.has(cacheKey)) {
-            return classAnnCache.get(cacheKey);
-          }
+        annotation: (() => {
+          const ctxAnnCache = new WeakMap<object, Map<string, unknown>>();
+          return (name: string, _ctx?: any): any => {
+            if (!annotationCache.has(entry.id)) {
+              annotationCache.set(entry.id, new Map());
+            }
+            const classAnnCache = annotationCache.get(entry.id)!;
 
-          const cstNode: any = (db.cstNode ? db.cstNode(entry.id) : null) ?? this.getCstNodeForSymbol(entry);
+            const hasCtxInstance = Boolean(
+              _ctx && (_ctx.classInstance !== undefined || _ctx.declaration || _ctx.modification || _ctx.cstNode),
+            );
+            let ctxMap: Map<string, unknown> | undefined;
+            if (hasCtxInstance && typeof _ctx === "object") {
+              ctxMap = ctxAnnCache.get(_ctx);
+              if (ctxMap && ctxMap.has(name)) {
+                return ctxMap.get(name);
+              }
+            }
 
-          try {
-            if (cstNode) {
-              let evaluatorClass =
-                (globalThis as any).AnnotationEvaluator ??
-                AnnotationEvaluator ??
-                (globalLanguageRegistry.getPluginForUri(entry.resourceId || "") as any)?.annotationEvaluator;
-              if (!evaluatorClass && nodeRequire) {
+            const cacheKey = `${name}${_ctx?.ownOnly ? ":own" : ""}`;
+            if (!hasCtxInstance && classAnnCache.has(cacheKey)) {
+              return classAnnCache.get(cacheKey);
+            }
+
+            const setCache = (val: unknown): unknown => {
+              if (hasCtxInstance && typeof _ctx === "object") {
+                if (!ctxMap) {
+                  ctxMap = new Map();
+                  ctxAnnCache.set(_ctx, ctxMap);
+                }
+                ctxMap.set(name, val);
+              } else {
+                classAnnCache.set(cacheKey, val);
+              }
+              return val;
+            };
+
+            const cstNode: any =
+              classCstNode ?? (db.cstNode ? db.cstNode(entry.id) : null) ?? this.getCstNodeForSymbol(entry);
+
+            try {
+              if ((name === "Icon" || name === "Diagram") && !hasCtxInstance && db.query) {
                 try {
-                  evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
+                  const qName = name === "Icon" ? "classIconGraphics" : "classDiagramGraphics";
+                  const salsaLayer = db.query(qName, entry.id);
+                  if (salsaLayer) {
+                    return setCache(salsaLayer);
+                  }
                 } catch {
-                  // ignore
+                  // fall through to evaluator
                 }
               }
-              if (evaluatorClass) {
-                const evalScope =
-                  _ctx && (_ctx.classInstance || _ctx.declaration || _ctx.modification || _ctx.cstNode)
-                    ? { componentInstance: _ctx, classInstance }
-                    : classInstance;
-                const evaluator = new evaluatorClass(evalScope);
-                const evaluated = evaluator.evaluate(cstNode, name);
-                if (evaluated) {
-                  classAnnCache.set(cacheKey, evaluated);
-                  return evaluated;
-                }
-              }
-            }
 
-            // Fall back to inherited annotations from extends clauses unless caller requested own annotations only
-            if (!_ctx?.ownOnly) {
-              for (const ext of extendsClassInstances) {
-                const inherited = ext.classInstance?.annotation?.(name, _ctx);
-                if (inherited) {
-                  classAnnCache.set(cacheKey, inherited);
-                  return inherited;
+              if (cstNode) {
+                let evaluatorClass =
+                  (globalThis as any).AnnotationEvaluator ??
+                  AnnotationEvaluator ??
+                  (globalLanguageRegistry.getPluginForUri(entry.resourceId || "") as any)?.annotationEvaluator;
+                if (!evaluatorClass && nodeRequire) {
+                  try {
+                    evaluatorClass = nodeRequire("@modelscript/modelica/diagram").AnnotationEvaluator;
+                  } catch {
+                    // ignore
+                  }
+                }
+                if (evaluatorClass) {
+                  const evalScope = hasCtxInstance ? { componentInstance: _ctx, classInstance } : classInstance;
+                  const evaluator = new evaluatorClass(evalScope);
+                  const evaluated = evaluator.evaluate(cstNode, name);
+                  if (evaluated) {
+                    return setCache(evaluated);
+                  }
                 }
               }
-            }
 
-            classAnnCache.set(cacheKey, null);
-            return null;
-          } catch {
-            classAnnCache.set(cacheKey, null);
-            return null;
-          }
-        },
+              // Fall back to inherited annotations from extends clauses unless caller requested own annotations only
+              if (!_ctx?.ownOnly) {
+                for (const ext of extendsClassInstances) {
+                  const inherited = ext.classInstance?.annotation?.(name, _ctx);
+                  if (inherited) {
+                    return setCache(inherited);
+                  }
+                }
+              }
+
+              return setCache(null);
+            } catch {
+              return setCache(null);
+            }
+          };
+        })(),
       };
 
       for (const comp of components) {
         comp.parent = classInstance;
+      }
+
+      if (entry?.id != null) {
+        adapterByEntryId.set(entry.id, classInstance);
       }
 
       return classInstance;

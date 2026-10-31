@@ -3,14 +3,13 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import * as vscode from "vscode";
-import { CandidateTradeStudyPanel } from "../src/candidate-trade-study-panel.js";
 import {
   generateMultiDomainScaffold,
   registerMultiDomainScaffolding,
   SysmlScaffoldCodeLensProvider,
 } from "../src/multi-domain-scaffolding.js";
 
-describe("Phase 5: One-Click Multi-Domain Scaffolding & Browser Physics Confirmation", () => {
+describe("Phase 5: One-Click Multi-Domain Scaffolding", () => {
   const sampleSysml = `
 package DroneAero {
   part def DroneArm {
@@ -118,94 +117,6 @@ package DroneAero {
       disposable.dispose();
     } finally {
       (vscode.commands as any).registerCommand = origRegisterCommand;
-    }
-  });
-
-  it("executes local WASM FEA stress solver, WebGPU LBM CFD, and confirms safe candidate", async () => {
-    const origCreateWebviewPanel = vscode.window.createWebviewPanel;
-    let postedMessage: any = null;
-
-    (vscode.window as any).createWebviewPanel = () => {
-      return {
-        webview: {
-          html: "",
-          onDidReceiveMessage: () => ({ dispose: () => {} }),
-          postMessage: async (msg: any) => {
-            postedMessage = msg;
-            return true;
-          },
-        },
-        onDidDispose: () => ({ dispose: () => {} }),
-        reveal: () => {},
-        dispose: () => {},
-      };
-    };
-
-    try {
-      CandidateTradeStudyPanel.createOrShow(vscode.Uri.file("/mock/ext"));
-      const panel = CandidateTradeStudyPanel.currentPanel;
-      assert.ok(panel, "CandidateTradeStudyPanel must be active");
-
-      // Verify initial candidate state
-      const cand1 = panel.getCandidate("cand_1");
-      assert.ok(cand1, "Candidate cand_1 must exist");
-      assert.strictEqual(cand1.tier3Status, "unverified");
-
-      // Launch local Tier-3 confirmation
-      const verifiedCand = await panel.launchLocalTier3("cand_1");
-      assert.ok(verifiedCand, "launchLocalTier3 should return verified candidate");
-      assert.strictEqual(verifiedCand.tier3Status, "confirmed");
-      assert.ok(
-        verifiedCand.maxStressMPa! <= verifiedCand.allowableStressMPa!,
-        "Computed max stress must be <= allowable stress",
-      );
-      assert.ok(verifiedCand.safetyMarginPct > 0, "Safety margin percentage must be positive for confirmed candidate");
-      assert.ok(verifiedCand.dragN > 0, "LBM CFD must compute non-zero aerodynamic drag force");
-
-      assert.ok(postedMessage, "Webview should receive updated candidates message");
-      assert.strictEqual(postedMessage.type, "update");
-    } finally {
-      (vscode.window as any).createWebviewPanel = origCreateWebviewPanel;
-      if (CandidateTradeStudyPanel.currentPanel) {
-        CandidateTradeStudyPanel.currentPanel.dispose();
-      }
-    }
-  });
-
-  it("detects overstressed candidate and refutes Tier 3 compliance", async () => {
-    const origCreateWebviewPanel = vscode.window.createWebviewPanel;
-
-    (vscode.window as any).createWebviewPanel = () => {
-      return {
-        webview: {
-          html: "",
-          onDidReceiveMessage: () => ({ dispose: () => {} }),
-          postMessage: async () => true,
-        },
-        onDidDispose: () => ({ dispose: () => {} }),
-        reveal: () => {},
-        dispose: () => {},
-      };
-    };
-
-    try {
-      CandidateTradeStudyPanel.createOrShow(vscode.Uri.file("/mock/ext"));
-      const panel = CandidateTradeStudyPanel.currentPanel;
-      assert.ok(panel, "CandidateTradeStudyPanel must be active");
-
-      // Candidate 4 has higher stress exceeding allowable limit
-      const cand4 = panel.getCandidate("cand_4")!;
-      cand4.allowableStressMPa = 10.0; // Enforce tight allowable stress limit to guarantee refutation
-      cand4.parameters["wallThickness"] = 0.5;
-
-      const verifiedCand = await panel.launchLocalTier3("cand_4");
-      assert.ok(verifiedCand, "launchLocalTier3 should return candidate");
-      assert.strictEqual(verifiedCand.tier3Status, "refuted");
-    } finally {
-      (vscode.window as any).createWebviewPanel = origCreateWebviewPanel;
-      if (CandidateTradeStudyPanel.currentPanel) {
-        CandidateTradeStudyPanel.currentPanel.dispose();
-      }
     }
   });
 });

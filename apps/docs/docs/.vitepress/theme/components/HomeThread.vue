@@ -14,6 +14,7 @@ interface ThreadStep {
   title: string;
   body: string;
   lines: { kind: "comment" | "cmd"; text: string }[];
+  artifactLabel?: string;
   artifacts: string[];
 }
 
@@ -30,6 +31,7 @@ const steps: ThreadStep[] = [
       { kind: "comment", text: "# Project AUTOSAR software components into SysML v2" },
       { kind: "cmd", text: "msx autosar to-sysml Steering.arxml --out=Steering.sysml" },
     ],
+    artifactLabel: "Sources",
     artifacts: [".slx", ".arxml", ".pscx", ".step", ".sysml"],
   },
   {
@@ -57,7 +59,7 @@ const steps: ThreadStep[] = [
         text: "msx simulate RLC_Circuit circuit.mo --stop-time 10.0 --solver rodas4p --jacobian sparse --format csv",
       },
       { kind: "comment", text: "# Monte Carlo uncertainty study" },
-      { kind: "cmd", text: "msx mc RLC_Filter filter.mo" },
+      { kind: "cmd", text: 'msx mc RLC_Filter filter.mo --params "R:gaussian:100:5,C:uniform:1e-6:1.2e-6"' },
     ],
     artifacts: ["CSV trajectories", "Surrogates", "Monte Carlo"],
   },
@@ -185,7 +187,7 @@ onBeforeUnmount(() => timer && clearInterval(timer));
             ><code><template v-for="(l, j) in s.lines" :key="j"><span v-if="l.kind === 'comment'" class="t-comment">{{ l.text }}</span><template v-else><span class="t-prompt">$ </span><span class="t-cmd">{{ l.text }}</span></template>
 </template></code></pre>
             <div class="term-artifacts">
-              <span class="art-label">Outputs</span>
+              <span class="art-label">{{ s.artifactLabel ?? "Outputs" }}</span>
               <span v-for="a in s.artifacts" :key="a" class="art">{{ a }}</span>
             </div>
           </div>

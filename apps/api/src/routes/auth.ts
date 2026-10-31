@@ -2265,7 +2265,7 @@ export function authRouter(database: LibraryDatabase): Router {
       const tokenPrefix = plaintextToken.slice(0, 14); // e.g. "ms_pat_7e9a2f1"
       const tokenHash = crypto.createHash("sha256").update(plaintextToken).digest("hex");
 
-      const tokenId = database.createApiKey({
+      const tokenId = database.insertApiTokenRecord({
         userId: req.user!.id,
         name: name.trim(),
         tokenPrefix,

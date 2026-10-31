@@ -94,26 +94,37 @@ function collectAllDiagramConnectEquations(
   return result;
 }
 
+const iconCoordSysCache = new WeakMap<ModelicaClassInstance, ICoordinateSystem | null>();
+
 export function resolveIconCoordinateSystem(
   classInstance?: ModelicaClassInstance | null,
-  componentInstance?: ModelicaComponentInstance,
+  _componentInstance?: ModelicaComponentInstance,
   visited = new Set<ModelicaClassInstance>(),
 ): ICoordinateSystem | undefined {
   if (!classInstance || visited.has(classInstance)) return undefined;
+  if (iconCoordSysCache.has(classInstance)) {
+    return iconCoordSysCache.get(classInstance) ?? undefined;
+  }
   visited.add(classInstance);
   const icon: IIcon | null =
-    typeof classInstance.annotation === "function"
-      ? (classInstance.annotation("Icon", componentInstance) as IIcon | null)
-      : null;
-  if (icon?.coordinateSystem?.extent) return icon.coordinateSystem;
+    typeof classInstance.annotation === "function" ? (classInstance.annotation("Icon") as IIcon | null) : null;
+  if (icon?.coordinateSystem?.extent) {
+    iconCoordSysCache.set(classInstance, icon.coordinateSystem);
+    return icon.coordinateSystem;
+  }
   for (const ext of classInstance.extendsClassInstances ?? []) {
     const base = ext?.["classInstance"];
     if (base) {
-      const cs = resolveIconCoordinateSystem(base, componentInstance, visited);
-      if (cs) return cs;
+      const cs = resolveIconCoordinateSystem(base, undefined, visited);
+      if (cs) {
+        iconCoordSysCache.set(classInstance, cs);
+        return cs;
+      }
     }
   }
-  return icon?.coordinateSystem;
+  const fallback = icon?.coordinateSystem;
+  iconCoordSysCache.set(classInstance, fallback ?? null);
+  return fallback;
 }
 
 export function resolveDiagramCoordinateSystem(
@@ -319,14 +330,14 @@ export function renderDiagram(classInstance: ModelicaClassInstance, svg?: Svg): 
   const group = svg.group();
   const allComponents = collectAllDiagramComponents(classInstance);
   for (const component of allComponents) {
-    const componentClassInstance = component.classInstance;
-    if (!componentClassInstance) continue;
+    const transform = computeIconPlacement(component);
+    if (!transform) continue;
 
     const condition = evaluateCondition(component, classInstance);
     if (condition === false) continue;
 
-    const transform = computeIconPlacement(component);
-    if (!transform) continue;
+    const componentClassInstance = component.classInstance;
+    if (!componentClassInstance) continue;
 
     const componentSvg = renderIcon(component["declaredType"] ?? componentClassInstance, component, true);
     if (componentSvg) {
@@ -450,6 +461,9 @@ export function renderIcon(
     const allComponents = collectAllDiagramComponents(classInstance);
     let portGroup: G | null = null;
     for (const component of allComponents) {
+      const compPlacement = typeof component?.annotation === "function" ? component.annotation("Placement") : null;
+      if (!compPlacement) continue;
+
       const compKind = component["classKind"] ?? component.classInstance?.["classKind"];
       if (compKind !== ModelicaClassKind.CONNECTOR && compKind !== ModelicaClassKind.EXPANDABLE_CONNECTOR) continue;
 
@@ -461,7 +475,7 @@ export function renderIcon(
 
       const componentClassInstance = component.classInstance;
       if (!componentClassInstance) continue;
-      const portTransform = computePortPlacement(component);
+      const portTransform = computePortPlacement(component, compPlacement);
       if (!portTransform) continue;
 
       const componentSvg = renderIcon(componentClassInstance, component, false, undefined, true);
@@ -968,23 +982,38 @@ export function computeHeight(extent?: IExtent, defaultValue = 200): number {
   return Math.abs((extent?.[1]?.[1] ?? 0) - (extent?.[0]?.[1] ?? 0));
 }
 
-export function computeIconPlacement(component: ModelicaComponentInstance): TransformData | null {
+export function computeIconPlacement(
+  component: ModelicaComponentInstance,
+  precomputedPlacement?: IPlacement | null,
+): TransformData | null {
   const placement: IPlacement | null =
-    typeof component?.annotation === "function" ? component.annotation("Placement") : null;
+    precomputedPlacement !== undefined
+      ? precomputedPlacement
+      : typeof component?.annotation === "function"
+        ? component.annotation("Placement")
+        : null;
   if (!placement) return null;
-  if (placement.visible === false) return null;
+  if (placement.visible === false || !placement.transformation) return null;
   const coordSys = resolveIconCoordinateSystem(component.classInstance, component);
   return computeTransform(placement.transformation, coordSys);
 }
 
-export function computePortPlacement(component: ModelicaComponentInstance): TransformData | null {
+export function computePortPlacement(
+  component: ModelicaComponentInstance,
+  precomputedPlacement?: IPlacement | null,
+): TransformData | null {
   const placement: IPlacement | null =
-    typeof component?.annotation === "function" ? component.annotation("Placement") : null;
+    precomputedPlacement !== undefined
+      ? precomputedPlacement
+      : typeof component?.annotation === "function"
+        ? component.annotation("Placement")
+        : null;
   if (!placement) return null;
   if (placement.iconVisible === false || (placement.iconVisible === undefined && placement.visible === false)) {
     return null;
   }
   const iconTransformation = placement.iconTransformation ?? placement.icon ?? placement.transformation;
+  if (!iconTransformation) return null;
   const coordSys = resolveIconCoordinateSystem(component.classInstance, component);
   return computeTransform(iconTransformation, coordSys);
 }

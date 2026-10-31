@@ -259,16 +259,24 @@ export function parseLinearAtom(rawAtom: string): LinearAtom | boolean {
   if (/^(?:true|1)$/i.test(trimmed)) return true;
   if (/^(?:false|0)$/i.test(trimmed)) return false;
 
-  const compMatch = /^(.*?)\s*(<=|>=|==|!=|<|>|=)\s*(.+)$/.exec(trimmed);
-  if (!compMatch) {
+  const opMatch = /(<=|>=|==|!=|<|>|=)/.exec(trimmed);
+  if (!opMatch || opMatch.index === undefined) {
     // Bare boolean variable `flag` -> `flag >= 1`
     const coeffs = new Map<string, number>([[trimmed, 1]]);
     return { coeffs, op: ">=", rhs: 1, rawText: trimmed };
   }
 
-  const lhsStr = (compMatch[1] ?? "").trim();
-  const rawOp = (compMatch[2] ?? "").trim();
-  const rhsStr = (compMatch[3] ?? "").trim();
+  const rawOp = opMatch[1] ?? "";
+  if (!rawOp) {
+    const coeffs = new Map<string, number>([[trimmed, 1]]);
+    return { coeffs, op: ">=", rhs: 1, rawText: trimmed };
+  }
+  const lhsStr = trimmed.slice(0, opMatch.index).trim();
+  const rhsStr = trimmed.slice(opMatch.index + rawOp.length).trim();
+  if (!lhsStr || !rhsStr) {
+    const coeffs = new Map<string, number>([[trimmed, 1]]);
+    return { coeffs, op: ">=", rhs: 1, rawText: trimmed };
+  }
   const op: LinearRelOp = rawOp === "=" ? "==" : (rawOp as LinearRelOp);
 
   const lhs = parseLinearArithmeticExpr(lhsStr);

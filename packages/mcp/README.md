@@ -3,21 +3,21 @@
 
 # @modelscript/mcp
 
-Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing **47 specialized engineering tools** across multi-physics compilation, arena simulation, LTI linearization & SIMC PID tuning, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, autonomous closed-loop model synthesis, PSCAD IEEE 2800 grid compliance, OLGA multiphase flow assurance, GENSYS railway EN 14363 homologation, SIMPACK multibody kinematics, and federated social engineering threads to AI coding agents.
+Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing **52 specialized engineering tools** across multi-physics compilation, arena simulation, LTI linearization & SIMC PID tuning, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, autonomous closed-loop model synthesis, PSCAD IEEE 2800 grid compliance, OLGA multiphase flow assurance, GENSYS railway EN 14363 homologation, SIMPACK multibody kinematics, 3D CAD/FEA sizing, ISO 26262 legacy migration, formal IC3/SOS verification, and federated social engineering threads to AI coding agents.
 
 ---
 
 ## Transports & Deployment Modes
 
-1. **`modelscript-mcp` Stdio Binary (`src/main.ts`)**: Standard MCP `StdioServerTransport` binary for local desktop AI assistants (Claude Desktop, Cursor, VS Code Copilot, Windsurf, Zed, Antigravity).
+1. **`modelscript-mcp` Stdio Binary (`src/main.ts`)**: Standard MCP `StdioServerTransport` binary for local desktop AI assistants (Claude Desktop, Claude Code, Cursor, VS Code Copilot, Windsurf, Zed, Antigravity).
 2. **`PolyglotMcpHost` In-WASM AOT Dispatch (`src/polyglot-server.ts`)**: Dynamically mounts declarative MCP manifests (`defineLanguage({ mcp })`) and dispatches tool calls directly into compiled WebAssembly linear memory (`mcpDispatchTool`) with zero JS object marshaling overhead, plus real-time `DigitalThreadHypergraph` conflict tracking.
 3. **HTTP / SSE Cloud Transport**: Integrates with the ModelScript API server (`/api/v1/mcp/sse` and `/api/v1/mcp/messages`) with built-in compute quota pre-flight checks (`ctx.checkQuota`).
 
 ---
 
-## All 47 Registered MCP Tools (Across 10 Categories)
+## All 52 Registered MCP Tools (Across 11 Categories)
 
-The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **47 specialized engineering tools** organized across 10 categories:
+The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **52 specialized engineering tools** organized across 11 categories:
 
 ### 1. Modelica Compilation, Inspection & Control Linearization (6 Tools)
 
@@ -116,6 +116,16 @@ The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **47 special
 | `social_read_thread` | Read the conversation thread history, parent post, and engineering artifact attachments for a given social post ID.            |
 | `social_post_reply`  | Post an engineering verification result or simulation response to a social discussion thread on behalf of an authorized agent. |
 
+### 11. 3D CAD/FEA Sizing, Legacy Migration, Co-Sim Stability, Formal Safety & Digital Twin Discovery (5 Tools)
+
+| Tool                              | Description                                                                                                                                                             |
+| :-------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cad_fea_closed_loop_size`        | Run closed-loop 3D CAD/OpenSCAD/STEP parametric sizing coupled with tetrahedral FEA von Mises stress analysis and 3D BVH collision clearance verification.              |
+| `polyglot_migrate_and_verify_b2b` | Migrate legacy Simulink (`.slx`), SPICE (`.cir`), or MSC Adams (`.adm`) models to Modelica & SysML v2 and certify ISO 26262 Back-to-Back (B2B) trajectory & C99 parity. |
+| `ssp_diagnose_cosim_stability`    | Analyze an FMI 2.0/3.0 & SSP multi-FMU co-simulation topology for algebraic feedthrough loops and ZOH spectral radius ($\rho(J_{\text{ZOH}})$) instability.             |
+| `formal_verify_safety_and_mcdc`   | Prove unbounded safety invariants via IC3/PDR and Sum-of-Squares (SOS) barrier certificates, and generate DO-178C / ISO 26262 MC/DC independence-pair test vectors.     |
+| `twin_discover_sindy_and_rom`     | Discover sparse nonlinear governing differential equations (SINDy STLSQ) from hardware telemetry residuals and calibrate a Reduced-Order Model (ROM) digital twin.      |
+
 ---
 
 ## MCP Resources (`src/resources.ts`)
@@ -132,9 +142,35 @@ _(When running `PolyglotMcpHost`, declarative language resources such as `modeli
 
 ---
 
-## Client Configuration (Claude Desktop / Cursor / VS Code)
+## Client Configuration (VS Code / Claude Code / Cursor / Claude Desktop)
 
-### Claude Desktop (`claude_desktop_config.json`) & Cursor (`.cursor/mcp.json`)
+### VS Code (`.vscode/mcp.json` & CLI)
+
+```json
+{
+  "servers": {
+    "modelscript": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelscript/mcp"]
+    }
+  }
+}
+```
+
+Or add via the VS Code CLI:
+
+```bash
+code --add-mcp '{"name":"modelscript","command":"npx","args":["-y","@modelscript/mcp"]}'
+```
+
+### Claude Code (`stdio`)
+
+```bash
+claude mcp add modelscript -- npx -y @modelscript/mcp
+```
+
+### Claude Desktop (`claude_desktop_config.json`), Cursor (`.cursor/mcp.json`) & Windsurf
 
 ```json
 {
@@ -145,20 +181,6 @@ _(When running `PolyglotMcpHost`, declarative language resources such as `modeli
       "env": {
         "MODELICAPATH": "/path/to/libraries"
       }
-    }
-  }
-}
-```
-
-### VS Code (`.vscode/mcp.json`)
-
-```json
-{
-  "servers": {
-    "modelscript": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["${workspaceFolder}/packages/mcp/dist/main.js"]
     }
   }
 }

@@ -7,5 +7,5 @@ runLanguageParserBuild({
   dir: import.meta.dirname,
   languageModule: "./src/language.js",
   languageExportName: "modelicaLanguage",
-  extraWatchFiles: ["assembly/flattener.ts", "src/lints"],
+  extraWatchFiles: ["assembly/flattener.ts", "assembly/annotation.ts", "src/lints"],
 });

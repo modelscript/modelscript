@@ -15,6 +15,30 @@ ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic 
 
 `@modelscript/mcp` supports three transport topologies: local `stdio`, remote HTTP Server-Sent Events (`SSE`), and in-browser WebAssembly (`PolyglotMcpHost`).
 
+### VS Code (`stdio` & `@modelscript` Copilot Participant)
+
+In VS Code (v1.99+), register `@modelscript/mcp` in `.vscode/mcp.json` using the `"servers"` root key:
+
+```json
+{
+  "servers": {
+    "modelscript": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelscript/mcp"]
+    }
+  }
+}
+```
+
+Or add it directly from your terminal via the VS Code CLI:
+
+```bash
+code --add-mcp '{"name":"modelscript","command":"npx","args":["-y","@modelscript/mcp"]}'
+```
+
+Installing the official **ModelScript VS Code Extension** (`ext install modelscript.modelscript`) also registers all 52 tools natively into `vscode.lm.registerTool`, unlocking the **`@modelscript`** GitHub Copilot Chat participant (`/explain`, `/fix`, `/simulate`, `/verify`, `/optimize`, `/diagram`) and the dedicated **ModelScript AI** sidebar panel.
+
 ### Claude Code (`stdio`)
 
 Register the MCP server directly in your project or user scope:
@@ -23,9 +47,9 @@ Register the MCP server directly in your project or user scope:
 claude mcp add modelscript -- npx -y @modelscript/mcp
 ```
 
-### Cursor, Windsurf, Claude Desktop & VS Code (`stdio`)
+### Cursor, Windsurf & Claude Desktop (`stdio`)
 
-Add `@modelscript/mcp` to `.cursor/mcp.json`, `.vscode/mcp.json`, or `claude_desktop_config.json`:
+Add `@modelscript/mcp` to `.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`, or `claude_desktop_config.json` using the `"mcpServers"` root key:
 
 ```json
 {

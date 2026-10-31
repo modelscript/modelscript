@@ -46,16 +46,26 @@ export function inspectModelicaSourceParameters(code: string): {
     const line = rawLine.trim();
     if (!line || line.startsWith("//")) continue;
 
-    // Match: parameter Real m(unit="kg") = 1.5 "Mass";
-    const paramMatch = line.match(
-      /^parameter\s+(Real|Integer|Boolean)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s*(?:=\s*([^";]+))?\s*(?:"([^"]*)")?\s*;/,
-    );
+    const semiIdx = line.indexOf(";");
+    if (semiIdx === -1) continue;
+    const stmt = line.slice(0, semiIdx).trim();
+
+    let desc: string | undefined;
+    let decl = stmt;
+    const descMatch = decl.match(/\s+"([^"]*)"$/);
+    if (descMatch) {
+      desc = descMatch[1];
+      decl = decl.slice(0, descMatch.index).trim();
+    }
+
+    // Match: parameter Real m(unit="kg") = 1.5
+    const paramMatch = decl.match(/^parameter\s+(Real|Integer|Boolean)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?/);
     if (paramMatch) {
       const type = paramMatch[1] as "Real" | "Integer" | "Boolean";
       const name = paramMatch[2]!;
       const modifiers = paramMatch[3] || "";
-      const rawVal = (paramMatch[4] || "1.0").trim();
-      const desc = paramMatch[5] || undefined;
+      const remainder = decl.slice(paramMatch[0].length).trim();
+      const rawVal = remainder.startsWith("=") ? remainder.slice(1).trim() : "1.0";
       const unitMatch = modifiers.match(/unit\s*=\s*"([^"]+)"/);
       const numVal = Number(rawVal);
       const defaultValue = !Number.isNaN(numVal) ? numVal : rawVal === "true" ? true : rawVal === "false" ? false : 1.0;
@@ -73,15 +83,14 @@ export function inspectModelicaSourceParameters(code: string): {
       continue;
     }
 
-    // Match state/algebraic Real variables: Real x(start = 1.0) "Position";
-    const obsMatch = line.match(
-      /^(?:output\s+|input\s+)?(Real|Integer|Boolean)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?\s*(?:=\s*([^";]+))?\s*(?:"([^"]*)")?\s*;/,
+    // Match state/algebraic Real variables: Real x(start = 1.0)
+    const obsMatch = decl.match(
+      /^(?:(?:output|input)\s+)?(Real|Integer|Boolean)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?/,
     );
     if (obsMatch) {
       const type = obsMatch[1] as "Real" | "Integer" | "Boolean";
       const name = obsMatch[2]!;
       const modifiers = obsMatch[3] || "";
-      const desc = obsMatch[5] || undefined;
       const unitMatch = modifiers.match(/unit\s*=\s*"([^"]+)"/);
       observables.push({
         name,
@@ -1390,7 +1399,11 @@ export function executeStudyRun(
   const logPath = path.join(resultDir, "study.log");
   const resultsJsonPath = path.join(resultDir, "study_results.json");
   const csvPath = path.join(resultDir, "result.csv");
-  const studyInstancePath = path.join(resultDir, studyInstance.filename);
+  const safeFilename = path.basename(studyInstance.filename).replace(/[^a-zA-Z0-9_.-]/g, "_") || "study_artifact";
+  const studyInstancePath = path.resolve(resultDir, safeFilename);
+  if (!studyInstancePath.startsWith(path.resolve(resultDir) + path.sep)) {
+    throw new Error("Invalid study instance path");
+  }
 
   // Write the concrete open-standard study instance file (.sedml, .ssv, or .dakota)
   fs.writeFileSync(studyInstancePath, studyInstance.sourceContent, "utf-8");

@@ -14,6 +14,7 @@ import type { FederatedQueryCacheStore } from "@modelscript/runtime/wasm_cache_s
 import { strFromU8, unzipSync } from "fflate";
 import { iconCache } from "../handlers/treeHandler.js";
 import type { Parser, Tree } from "../utils/cst-facade.js";
+import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
 import { ingestSalsaIndex } from "./salsa-index-ingester.js";
 
 export interface LoaderContext {
@@ -612,6 +613,11 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
       fileCount++;
     }
     ctx.logger.log(`MSL loaded: ${fileCount} files`);
+    try {
+      await loadPrebakedMslIcons(serverDistBase);
+    } catch {
+      // non-fatal
+    }
     ctx.connectionState.sendNotification("modelscript/status", {
       state: "loading",
       message: "Processing MSL classes...",

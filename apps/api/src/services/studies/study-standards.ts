@@ -691,7 +691,7 @@ export function parseStandardStudyDocument(rawContent: string, filename = "study
     const description = getTag("description", `Sandia Dakota ${kind} study specification.`);
 
     const boundInputs: Record<string, number | string | boolean> = {};
-    const inputMatches = trimmed.matchAll(/^#\s*@msx-input\s+([A-Za-z0-9_]+)\s*=\s*(.+)$/gm);
+    const inputMatches = trimmed.matchAll(/^#[ \t]*@msx-input[ \t]+([A-Za-z0-9_]+)[ \t]*=[ \t]*(\S[^\r\n]*)$/gm);
     for (const m of inputMatches) {
       const k = m[1]!;
       try {
@@ -819,17 +819,25 @@ export function parseStandardStudyDocument(rawContent: string, filename = "study
     const domain = getAttr("domain", "ssp") as StudyDomain;
     const modelId = getAttr("modelId", "");
     const modelName = getAttr("modelName", "");
-    const descMatch = trimmed.match(/<msx:description>([\s\S]*?)<\/msx:description>/);
-    const description = descMatch?.[1] ? unescapeXml(descMatch[1].trim()) : `ASAM SSP 2.0 Parameter Set (${name}).`;
+    const descStart = "<msx:description>";
+    const descEnd = "</msx:description>";
+    const dStartIdx = trimmed.indexOf(descStart);
+    const dEndIdx = dStartIdx !== -1 ? trimmed.indexOf(descEnd, dStartIdx + descStart.length) : -1;
+    const description =
+      dStartIdx !== -1 && dEndIdx !== -1
+        ? unescapeXml(trimmed.slice(dStartIdx + descStart.length, dEndIdx).trim())
+        : `ASAM SSP 2.0 Parameter Set (${name}).`;
 
     const boundParameters: StudyParameterBinding[] = [];
     const boundInputs: Record<string, number | string | boolean> = {};
-    const paramRegex =
-      /<ssv:Parameter\s+name="([^"]+)"[^>]*>[\s\S]*?<ssv:(Real|Integer|Boolean|String)\s+value="([^"]+)"/g;
-    for (const m of trimmed.matchAll(paramRegex)) {
-      const pName = unescapeXml(m[1]!);
-      const pType = m[2]!;
-      const rawVal = unescapeXml(m[3]!);
+    const paramBlocks = trimmed.split(/<ssv:Parameter\b/i).slice(1);
+    for (const block of paramBlocks) {
+      const nameMatch = block.match(/\bname="([^"]+)"/i);
+      const valMatch = block.match(/<ssv:(Real|Integer|Boolean|String)\b[^>]*\bvalue="([^"]+)"/i);
+      if (!nameMatch || !valMatch) continue;
+      const pName = unescapeXml(nameMatch[1]!);
+      const pType = valMatch[1]!;
+      const rawVal = unescapeXml(valMatch[2]!);
       if (pName.startsWith("study.")) {
         const key = pName.slice(6);
         boundInputs[key] = pType === "Boolean" ? rawVal === "true" : pType === "String" ? rawVal : Number(rawVal);
@@ -920,7 +928,7 @@ export function parseStandardStudyDocument(rawContent: string, filename = "study
 
   // 4. SED-ML L1V4 (.sedml)
   const getMetaAttr = (attr: string, fallback = ""): string => {
-    const metaBlock = trimmed.match(/<msx:studyMetadata([\s\S]*?)>/)?.[1] || trimmed;
+    const metaBlock = trimmed.match(/<msx:studyMetadata\b([^>]*)>/i)?.[1] || trimmed;
     const m = metaBlock.match(new RegExp(`${attr}="([^"]*)"`, "i"));
     return m?.[1] ? unescapeXml(m[1]) : fallback;
   };
@@ -937,14 +945,21 @@ export function parseStandardStudyDocument(rawContent: string, filename = "study
   ) as StudyKind;
   const category = getMetaAttr("category", hasRepeatedTask ? "sweep" : "simulation") as StudyDefinition["category"];
   const domain = getMetaAttr("domain", "modelica") as StudyDomain;
-  const descMatch = trimmed.match(/<msx:description>([\s\S]*?)<\/msx:description>/);
-  const description = descMatch?.[1]
-    ? unescapeXml(descMatch[1].trim())
-    : `SED-ML L1V4 simulation experiment (${name}).`;
+  const descStart = "<msx:description>";
+  const descEnd = "</msx:description>";
+  const sStartIdx = trimmed.indexOf(descStart);
+  const sEndIdx = sStartIdx !== -1 ? trimmed.indexOf(descEnd, sStartIdx + descStart.length) : -1;
+  const description =
+    sStartIdx !== -1 && sEndIdx !== -1
+      ? unescapeXml(trimmed.slice(sStartIdx + descStart.length, sEndIdx).trim())
+      : `SED-ML L1V4 simulation experiment (${name}).`;
 
-  const modelMatch = trimmed.match(/<model\s+[^>]*name="([^"]*)"[^>]*source="([^"]*)"/i);
-  const boundModelName = modelMatch?.[1] ? unescapeXml(modelMatch[1]) : undefined;
-  const boundModelId = modelMatch?.[2] ? unescapeXml(modelMatch[2]) : undefined;
+  const modelTagMatch = trimmed.match(/<model\b([^>]*)>/i);
+  const modelAttrs = modelTagMatch ? modelTagMatch[1]! : "";
+  const modelNameMatch = modelAttrs.match(/\bname="([^"]*)"/i);
+  const modelSourceMatch = modelAttrs.match(/\bsource="([^"]*)"/i);
+  const boundModelName = modelNameMatch?.[1] ? unescapeXml(modelNameMatch[1]) : undefined;
+  const boundModelId = modelSourceMatch?.[1] ? unescapeXml(modelSourceMatch[1]) : undefined;
 
   const boundInputs: Record<string, number | string | boolean> = {};
   for (const m of trimmed.matchAll(/<msx:input\s+key="([^"]+)"\s+value="([^"]*)"\s*\/>/g)) {
@@ -955,18 +970,28 @@ export function parseStandardStudyDocument(rawContent: string, filename = "study
     else boundInputs[k] = raw;
   }
 
-  const utcMatch = trimmed.match(/<uniformTimeCourse[^>]*outputEndTime="([^"]+)"[^>]*numberOfSteps="([^"]+)"/i);
-  if (utcMatch) {
-    if (boundInputs["stopTime"] === undefined) boundInputs["stopTime"] = Number(utcMatch[1]);
-    if (boundInputs["intervals"] === undefined) boundInputs["intervals"] = Number(utcMatch[2]);
+  const utcTagMatch = trimmed.match(/<uniformTimeCourse\b([^>]*)>/i);
+  if (utcTagMatch) {
+    const utcAttrs = utcTagMatch[1]!;
+    const endMatch = utcAttrs.match(/\boutputEndTime="([^"]+)"/i);
+    const stepsMatch = utcAttrs.match(/\bnumberOfSteps="([^"]+)"/i);
+    if (endMatch && boundInputs["stopTime"] === undefined) boundInputs["stopTime"] = Number(endMatch[1]);
+    if (stepsMatch && boundInputs["intervals"] === undefined) boundInputs["intervals"] = Number(stepsMatch[1]);
   }
 
   const boundParameters: StudyParameterBinding[] = [];
-  for (const m of trimmed.matchAll(/<changeAttribute\s+target="[^']*['"]([^'"]+)['"][^"]*"\s+newValue="([^"]+)"/g)) {
+  for (const m of trimmed.matchAll(/<changeAttribute\b([^>]*)>/gi)) {
+    const attrs = m[1]!;
+    const targetMatch = attrs.match(/\btarget="([^"]*)"/i);
+    const valMatch = attrs.match(/\bnewValue="([^"]*)"/i);
+    if (!targetMatch || !valMatch) continue;
+    const targetVal = targetMatch[1]!;
+    const nameMatch = targetVal.match(/['"]([^'"]+)['"]/);
+    const pName = nameMatch ? nameMatch[1]! : targetVal.split("/").pop() || targetVal;
     boundParameters.push({
-      parameterName: unescapeXml(m[1]!),
-      slotId: unescapeXml(m[1]!),
-      nominalValue: Number(m[2]) || 1.0,
+      parameterName: unescapeXml(pName),
+      slotId: unescapeXml(pName),
+      nominalValue: Number(valMatch[1]) || 1.0,
     });
   }
 

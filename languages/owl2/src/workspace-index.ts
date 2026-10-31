@@ -130,17 +130,22 @@ export class Owl2WorkspaceIndex implements IWorkspaceIndex {
     if (format === "ttl" || format === "owx") {
       // Extract prefixes from .ttl or .owx
       if (format === "ttl") {
-        const pfxRegex = /(?:@prefix|PREFIX)\s+([A-Za-z0-9_-]*:)\s*<([^>]*)>/gi;
+        const pfxRegex = /(?:@prefix|PREFIX)\s+([A-Za-z0-9_-]*:)\s*<([^>\s<]+)>/gi;
         let m: RegExpExecArray | null;
         while ((m = pfxRegex.exec(text)) !== null) {
           prefixes.set(m[1]!, m[2]!);
         }
       } else {
-        const pfxRegex = /<Prefix\s+[^>]*name="([^"]*)"\s+[^>]*IRI="([^"]*)"/gi;
+        const pfxRegex = /<Prefix\b([^>]*)>/gi;
         let m: RegExpExecArray | null;
         while ((m = pfxRegex.exec(text)) !== null) {
-          const p = m[1]!;
-          prefixes.set(p.endsWith(":") ? p : `${p}:`, m[2]!);
+          const attrs = m[1]!;
+          const nameMatch = attrs.match(/\bname="([^"]*)"/i);
+          const iriMatch = attrs.match(/\bIRI="([^"]*)"/i);
+          if (nameMatch && iriMatch) {
+            const p = nameMatch[1]!;
+            prefixes.set(p.endsWith(":") ? p : `${p}:`, iriMatch[1]!);
+          }
         }
       }
       const loweredAxioms = format === "ttl" ? parseTurtleToOwl2Axioms(text) : parseOwlXmlToAxioms(text);

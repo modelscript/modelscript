@@ -218,7 +218,13 @@ export function unwrapConstraintBody(rawText: string): string {
     )
     .filter(Boolean);
 
-  if (parts.length === 0) return text.replace(/;+$/, "").trim();
+  if (parts.length === 0) {
+    let s = text.trim();
+    while (s.endsWith(";")) {
+      s = s.slice(0, -1).trimEnd();
+    }
+    return s.trim();
+  }
   if (parts.length === 1) return parts[0]!;
   return parts.map((p) => `(${p})`).join(" and ");
 }

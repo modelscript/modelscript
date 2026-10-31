@@ -28,7 +28,7 @@ ModelScript VS Code Desktop & Web Extension Client (`@modelscript/ide-client`) �
 
 - **Tier 1 — In-Browser WebGPU (`@mlc-ai/web-llm`, `Qwen3-0.6B`)**: 100% local, zero-egress GPU inference inside the browser or desktop webview for air-gapped syntax assistance, equation explanation, and unit checks.
 - **Tier 2 — Local Workstation Inference (`Ollama` / `vLLM`)**: Connects to local OpenAI-compatible endpoints (`http://localhost:11434`) with tool-calling bound to the in-process `@modelscript/mcp` bridge (`registerMCPTools`).
-- **Tier 3 — Hosted MCP SSE Gateway**: Streams multi-step agentic tool calls over `/api/v1/mcp/sse`, invoking all **47 ModelScript MCP tools** (`modelscript_closed_loop_synthesize`, `modelica_diff_calibrate`, `tgg_reconcile_slot`, `pscad_verify_ieee2800`, `olga_verify`, `gensys_verify_en14363`, etc.).
+- **Tier 3 — Hosted MCP SSE Gateway**: Streams multi-step agentic tool calls over `/api/v1/mcp/sse`, invoking all **52 ModelScript MCP tools** (`modelscript_closed_loop_synthesize`, `modelica_diff_calibrate`, `tgg_reconcile_slot`, `pscad_verify_ieee2800`, `cad_fea_closed_loop_size`, `polyglot_migrate_and_verify_b2b`, `formal_verify_safety_and_mcdc`, `olga_verify`, `gensys_verify_en14363`, etc.).
 
 ### 4. Interactive `.monb` Engineering Notebooks (`src/notebook-serializer.ts`, `src/notebook-controller.ts`)
 

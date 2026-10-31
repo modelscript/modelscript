@@ -499,7 +499,7 @@ export function extractStepModel(
     modelName = fileMatch[1].replace(/\.(?:step|stp|p21)$/i, "");
   }
 
-  const entityRegex = /#(\d+)\s*=\s*([A-Z0-9_]+)\s*\(([\s\S]*?)\)\s*;/g;
+  const entityRegex = /#(\d+)\s*=\s*([A-Z0-9_]+)\s*\(([^;]*?)\)\s*;/g;
   let m: RegExpExecArray | null;
   while ((m = entityRegex.exec(sourceText)) !== null) {
     const id = `#${m[1]}`;
@@ -508,7 +508,7 @@ export function extractStepModel(
 
     const labelMatch = argsRaw.match(/^'([^']*)'/);
     const label = labelMatch?.[1] || id;
-    const nums = [...argsRaw.matchAll(/[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/g)]
+    const nums = [...argsRaw.matchAll(/[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/g)]
       .filter((nm) => !argsRaw.slice(0, nm.index).endsWith("#"))
       .map((nm) => parseFloat(nm[0]));
     const firstNum = nums[0];

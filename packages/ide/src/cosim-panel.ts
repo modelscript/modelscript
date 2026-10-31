@@ -16,6 +16,7 @@ import { BrowserHistorian } from "./browser-historian";
 import { FmuBrowserParticipant } from "./fmu-browser-participant";
 import { LspSimulatorParticipant } from "./lsp-simulator-participant";
 import { SimulationPanel } from "./simulation-panel";
+import { isFeatureEnabled } from "./utils/config.js";
 import { getNonce } from "./utils/nonce.js";
 
 /** Common interface for both Modelica (LSP) and FMU (browser) participants. */
@@ -138,16 +139,32 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       this.disposables = [];
     });
 
+    if (typeof webviewView.onDidChangeVisibility === "function") {
+      this.disposables.push(
+        webviewView.onDidChangeVisibility(() => {
+          if (webviewView.visible && isFeatureEnabled("coSimulation")) {
+            this.startHealthPoll();
+          } else {
+            this.stopHealthPoll();
+          }
+        }),
+      );
+    }
+
     // Detect co-simulation wrapper files in the active editor
     this.disposables.push(
       vscode.window.onDidChangeActiveTextEditor((editor) => {
-        this.detectCosimWrapper(editor);
+        if (isFeatureEnabled("coSimulation")) {
+          this.detectCosimWrapper(editor);
+        }
       }),
     );
-    this.detectCosimWrapper(vscode.window.activeTextEditor);
-
-    // Start health polling
-    this.startHealthPoll();
+    if (isFeatureEnabled("coSimulation")) {
+      this.detectCosimWrapper(vscode.window.activeTextEditor);
+      if (webviewView.visible) {
+        this.startHealthPoll();
+      }
+    }
   }
 
   /** Refresh the panel UI. */
@@ -159,8 +176,14 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
   // ── Health Polling ──
 
   private startHealthPoll(): void {
+    this.stopHealthPoll();
+    if (!isFeatureEnabled("coSimulation")) return;
     void this.checkHealth();
-    this.healthPollTimer = setInterval(() => void this.checkHealth(), 10_000);
+    this.healthPollTimer = setInterval(() => {
+      if (this.view?.visible && isFeatureEnabled("coSimulation")) {
+        void this.checkHealth();
+      }
+    }, 10_000);
   }
 
   private stopHealthPoll(): void {

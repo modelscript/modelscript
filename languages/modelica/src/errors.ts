@@ -1654,10 +1654,21 @@ export function getModelicaErrorCodeDef(codeOrRule: number | string): ErrorCodeD
  * @param sourceSlice - Substring of the Modelica source beginning at the unexpected token.
  * @returns A specialized Modelica error message if recognized, or `null` otherwise.
  */
-export function normalizeModelicaSyntaxDiagnostic(message: string, sourceSlice: string): string | null {
+export function normalizeModelicaSyntaxDiagnostic(
+  message: string,
+  sourceSlice: string,
+  fullSource?: string,
+  startOffset?: number,
+): string | null {
   if (!message.startsWith("Syntax Error: Unexpected")) return null;
-  if (/^\{\s*\}/.test(sourceSlice)) {
+  if (/^\{\s*\}/.test(sourceSlice) || /^\[\s*\]/.test(sourceSlice)) {
     return ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR.message();
+  }
+  if (fullSource && typeof startOffset === "number" && startOffset > 0 && /^[}\]]/.test(sourceSlice)) {
+    const before = fullSource.slice(0, startOffset);
+    if (/\{\s*$/.test(before) || /\[\s*$/.test(before)) {
+      return ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR.message();
+    }
   }
   if (/^(?:\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*)?\[[^\]]+\]\s*=/.test(sourceSlice)) {
     return ModelicaErrorCode.SUBSCRIPTED_MODIFIER.message();

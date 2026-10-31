@@ -12,9 +12,38 @@ The `@modelscript/mcp` package exposes ModelScript's compilation, simulation, fo
 
 ModelScript supports three MCP execution architectures:
 
-#### A. Local `stdio` Server (`modelscript-mcp`)
+#### A. Local `stdio` Server (`@modelscript/mcp`)
 
-For local desktop AI agents, run the `modelscript-mcp` binary over standard input/output (`StdioServerTransport`):
+For local desktop AI agents, run `@modelscript/mcp` over standard input/output (`StdioServerTransport`):
+
+**VS Code (`.vscode/mcp.json`):**
+
+```json
+{
+  "servers": {
+    "modelscript": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelscript/mcp"],
+      "env": {
+        "MODELICAPATH": "/path/to/ModelicaStandardLibrary"
+      }
+    }
+  }
+}
+```
+
+**VS Code CLI & Claude Code CLI:**
+
+```bash
+# VS Code (adds to user/workspace MCP configuration)
+code --add-mcp '{"name":"modelscript","command":"npx","args":["-y","@modelscript/mcp"]}'
+
+# Claude Code
+claude mcp add modelscript -- npx -y @modelscript/mcp
+```
+
+**Cursor (`.cursor/mcp.json`), Windsurf & Claude Desktop (`claude_desktop_config.json`):**
 
 ```json
 {
