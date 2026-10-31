@@ -80,7 +80,7 @@ services:
       - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
       - DEPLOYMENT_PRESET=${DEPLOYMENT_PRESET:-}
       - AUTO_SEED_ADMIN=${AUTO_SEED_ADMIN:-false}
-      - JWT_SECRET=${JWT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:-}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
@@ -177,7 +177,7 @@ services:
       - TRUST_PROXY=true
       - PUBLIC_URL=${PUBLIC_URL:-http://localhost:3000}
       - FEDERATION_MODE=${FEDERATION_MODE:-disabled}
-      - JWT_SECRET=${JWT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:-}
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=450}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -233,7 +233,7 @@ services:
       - PORT=8080
       - MSX_EDITION=${MSX_EDITION:-ee}
       - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-true}
-      - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:?Set MSX_LICENSE_KEY to your signed Enterprise Appliance license token}
+      - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:-}
       - ENTERPRISE_APPLIANCE=true
       - AIRGAP_ENFORCED=true
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
