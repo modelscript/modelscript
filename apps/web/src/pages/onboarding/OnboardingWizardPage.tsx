@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckCircleFillIcon, CheckIcon, KeyIcon, PersonAddIcon, PlayIcon, RocketIcon } from "@primer/octicons-react";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styledImport from "styled-components";
 import { followUser, getUserSuggestions, unfollowUser } from "../../api";
@@ -408,7 +408,7 @@ export const STARTER_MODELS: StarterModelItem[] = [
   },
 ];
 
-export function OnboardingWizardPage() {
+export const OnboardingWizardPage: React.FC = () => {
   usePageTitle("Welcome to Ansatz — Quickstart");
   const { user, refreshUser } = useAuth();
   const branding = useInstanceBranding();
@@ -686,6 +686,6 @@ export function OnboardingWizardPage() {
       </WizardCard>
     </PageContainer>
   );
-}
+};
 
 export default OnboardingWizardPage;
