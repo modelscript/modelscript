@@ -557,13 +557,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       },
       hpcBilling: {
         optionalAuthMiddleware: optionalAuth,
-        caeFeatureGuard: (req, res, next) => {
-          if (req.path === "/cluster/status" || req.path === "/cae/cluster/status") {
-            next();
-            return;
-          }
-          requireFeatureFlag(() => featureFlagService, "cae_cloud_solver")(req, res, next);
-        },
+        caeFeatureGuard: requireFeatureFlag(() => featureFlagService, "cae_cloud_solver"),
         billingFeatureGuard: requireFeatureFlag(() => featureFlagService, "billing_stripe_live"),
         caeRouter: caeRouter(jobQueue, database),
         cloudRouter: cloudRouter(libraryStorage, jobQueue, database),
@@ -572,6 +566,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       twins: {
         optionalAuthMiddleware: optionalAuth,
         cosimFeatureGuard: requireFeatureFlag(() => featureFlagService, "cosim_mqtt"),
+        historianFeatureGuard: requireFeatureFlag(() => featureFlagService, "timescaledb_historian"),
         twinsFeatureGuard: requireFeatureFlag(() => featureFlagService, "digital_twins"),
         historianRouter: historianRouter(dbPool, mqttClient),
         instancesRouter: instancesRouter(database, dbPool),

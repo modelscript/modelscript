@@ -117,7 +117,7 @@ export function sanitizeModelicaIdentifier(name?: string, fallback = "ArtifactMo
 export const LANGUAGE_GROUPS: LanguageGroupDescriptor[] = [
   { id: "core", label: "Core Systems & Architecture", tone: "teal" },
   { id: "geometry", label: "3D Geometry, FEA & CFD", tone: "indigo" },
-  { id: "integration", label: "Embedded, HPC & Telemetry", tone: "sky" },
+  { id: "integration", label: "Embedded & Telemetry", tone: "sky" },
   { id: "aerospace", label: "Aerospace & Space Systems", tone: "amber" },
   { id: "automotive", label: "Automotive & Autonomy", tone: "emerald" },
   { id: "rail", label: "Rail & Multibody Dynamics", tone: "rose" },
@@ -287,7 +287,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     defaultTemplateId: "fea-chassis",
   },
 
-  // 3. Embedded, HPC & Telemetry
+  // 3. Embedded & Telemetry
   {
     id: "csv",
     name: "CSV Telemetry",

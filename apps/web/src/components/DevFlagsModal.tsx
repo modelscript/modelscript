@@ -57,6 +57,11 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     category: "Simulation",
     description: "Enables distributed real-time co-simulation over MQTT broker websockets.",
   },
+  timescaledb_historian: {
+    title: "TimescaleDB Telemetry Historian",
+    category: "Simulation",
+    description: "Enables time-series telemetry capture, hypertable compression, and session replay.",
+  },
   cad_step_viewer: {
     title: "Interactive 3D CAD STEP Viewer",
     category: "Simulation",

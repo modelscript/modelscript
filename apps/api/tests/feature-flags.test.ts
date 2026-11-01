@@ -71,6 +71,7 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     assert.strictEqual(guestRes.body.billing_stripe_live, false);
     assert.strictEqual(guestRes.body.digital_twins, false);
     assert.strictEqual(guestRes.body.cosim_mqtt, false);
+    assert.strictEqual(guestRes.body.timescaledb_historian, false);
     assert.strictEqual(guestRes.body.activitypub_federation, false);
     assert.strictEqual(guestRes.body.sysml2_omg_api, false);
     assert.strictEqual(guestRes.body.experimental_viewers, false);
@@ -99,8 +100,14 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     // Digital twins endpoint
     await request(app).get("/api/v1/twins").set("Authorization", `Bearer ${regularToken}`).expect(404);
 
+    // Cluster status endpoint
+    await request(app).get("/api/v1/cluster/status").set("Authorization", `Bearer ${regularToken}`).expect(404);
+
     // Co-simulation endpoint
     await request(app).get("/api/v1/cosim/ssp/import").set("Authorization", `Bearer ${regularToken}`).expect(404);
+
+    // Historian endpoint
+    await request(app).get("/api/v1/historian/sessions").set("Authorization", `Bearer ${regularToken}`).expect(404);
   });
 
   await t.test("Admin can list and dynamically toggle flags via /api/v1/admin/flags", async () => {

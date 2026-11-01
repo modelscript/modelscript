@@ -164,7 +164,16 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
   cosim_mqtt: {
     key: "cosim_mqtt",
     name: "Co-Simulation & MQTT Orchestrator",
-    description: "Distributed multi-FMU orchestrator, MQTT discovery, and TimescaleDB historian.",
+    description: "Distributed multi-FMU orchestrator, MQTT participant discovery, and broker streaming.",
+    defaultValue: false,
+    category: "compute",
+    maturity: "alpha",
+    allowedRoles: ["admin"],
+  },
+  timescaledb_historian: {
+    key: "timescaledb_historian",
+    name: "TimescaleDB Telemetry Historian",
+    description: "Time-series simulation telemetry storage, hypertable compression, and session replay.",
     defaultValue: false,
     category: "compute",
     maturity: "alpha",

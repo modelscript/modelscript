@@ -34,6 +34,7 @@ export interface EnterpriseHostContext {
     | {
         optionalAuthMiddleware: RequestHandler;
         cosimFeatureGuard: RequestHandler;
+        historianFeatureGuard?: RequestHandler;
         twinsFeatureGuard: RequestHandler;
         historianRouter: Router;
         instancesRouter: Router;

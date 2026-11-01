@@ -22,6 +22,7 @@ import {
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { CaeCloudClient } from "./cae-cloud-client.js";
+import { isFeatureEnabled } from "./utils/config.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
 export type { InpMeshGeometry, InpMeshPayload };
@@ -78,7 +79,10 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
           boundaryNodes: new Map(),
         };
         currentMaterial = geom.material;
-        const payload = geom.payload;
+        const payload = {
+          ...geom.payload,
+          cloudHpcEnabled: isFeatureEnabled("cloudCompute"),
+        };
 
         if (!disposed) {
           webviewPanel.webview.postMessage({ type: "inpMeshData", data: payload });

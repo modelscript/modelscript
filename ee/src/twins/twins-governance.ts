@@ -6,6 +6,7 @@ import { requireEnterpriseFeature } from "../license/middleware.js";
 export interface EnterpriseTwinsRouters {
   optionalAuthMiddleware: RequestHandler;
   cosimFeatureGuard: RequestHandler;
+  historianFeatureGuard?: RequestHandler;
   twinsFeatureGuard: RequestHandler;
   historianRouter: Router;
   instancesRouter: Router;
@@ -45,7 +46,7 @@ export function mountEnterpriseTwinsAndHistorian(app: Express, routers: Enterpri
     "/api/v1/historian",
     requireEnterpriseFeature("digital_twins"),
     routers.optionalAuthMiddleware,
-    routers.cosimFeatureGuard,
+    routers.historianFeatureGuard ?? routers.cosimFeatureGuard,
     routers.historianRouter,
   );
 

@@ -21,6 +21,7 @@ import {
 } from "@primer/octicons-react";
 import { ActionList, ActionMenu, IconButton } from "@primer/react";
 import React from "react";
+import { useCapabilities } from "../../../CapabilitiesContext";
 import { getLanguageInfo, useVisibleMorselLanguages } from "../constants";
 import { MorselView } from "./types";
 export { MorselView };
@@ -96,6 +97,8 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
   isDark,
   toggleTheme,
 }) => {
+  const { hasCapability } = useCapabilities();
+  const isCaeComputeEnabled = hasCapability("caeCompute");
   const visibleMorselLanguages = useVisibleMorselLanguages();
   const activeLangInfo = getLanguageInfo(dialect);
   const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");
@@ -315,14 +318,16 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
             title={translations.simulateModel}
             onClick={onSimulate}
           />
-          <IconButton
-            icon={ServerIcon}
-            size="small"
-            variant="invisible"
-            aria-label="Run on Ansatz Cloud HPC"
-            title="Run on Ansatz Cloud HPC"
-            onClick={onOpenCloudModal}
-          />
+          {isCaeComputeEnabled && (
+            <IconButton
+              icon={ServerIcon}
+              size="small"
+              variant="invisible"
+              aria-label="Run on Ansatz Cloud HPC"
+              title="Run on Ansatz Cloud HPC"
+              onClick={onOpenCloudModal}
+            />
+          )}
           <IconButton
             icon={StackIcon}
             size="small"

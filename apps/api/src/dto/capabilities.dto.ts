@@ -14,6 +14,7 @@ export interface InstanceCapabilitiesDTO {
     activityPubFederation: boolean;
     caeCompute: boolean;
     cosimMqtt: boolean;
+    timescaleHistorian: boolean;
     billing: boolean;
     botAgents: boolean;
     digitalThreads: boolean;
@@ -56,8 +57,9 @@ export function buildInstanceCapabilities(
       onboardingWizard: settings.onboardingWizardEnabled ?? !isCorporate,
       academicFastTrack: settings.academicFastTrackEnabled ?? false,
       activityPubFederation: isFederationOpen,
-      caeCompute: isFlagActive("cae_cloud_solver", true),
-      cosimMqtt: isFlagActive("cosim_mqtt", true),
+      caeCompute: isFlagActive("cae_cloud_solver", false),
+      cosimMqtt: isFlagActive("cosim_mqtt", false),
+      timescaleHistorian: isFlagActive("timescaledb_historian", false),
       billing: isFlagActive("billing_stripe_live", false),
       botAgents: isFlagActive("social_llm_bots", false),
       digitalThreads: isFlagActive("digital_thread_explorer", true),

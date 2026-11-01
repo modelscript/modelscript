@@ -13,6 +13,7 @@
 import { LinkExternalIcon, PauseIcon, PlayIcon, PulseIcon, ServerIcon, SyncIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button, Flash, IconButton, Select } from "@primer/react";
 import { useCallback, useState } from "react";
+import { useCapabilities } from "../../CapabilitiesContext";
 import type { MqttConnectionState, MqttParticipantMeta } from "./util/mqtt-client";
 import type { SimulationDataSource } from "./util/use-mqtt-simulation";
 import { useMqttSimulation } from "./util/use-mqtt-simulation";
@@ -85,6 +86,9 @@ export function CosimPanel({
   onReplaySession,
   onPauseReplay,
 }: CosimPanelProps) {
+  const { hasCapability } = useCapabilities();
+  const isCosimMqttEnabled = hasCapability("cosimMqtt");
+  const isTimescaleEnabled = hasCapability("timescaleHistorian");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [replaySpeed, setReplaySpeed] = useState<number>(1);
@@ -135,23 +139,27 @@ export function CosimPanel({
                 Local Simulation
                 <ActionList.Description>Run models in-browser using the JS engine</ActionList.Description>
               </ActionList.Item>
-              <ActionList.Item selected={dataSource === "mqtt-live"} onSelect={() => onDataSourceChange("mqtt-live")}>
-                <ActionList.LeadingVisual>
-                  <ServerIcon />
-                </ActionList.LeadingVisual>
-                MQTT Live
-                <ActionList.Description>Stream data from connected MQTT participants</ActionList.Description>
-              </ActionList.Item>
-              <ActionList.Item
-                selected={dataSource === "historian-replay"}
-                onSelect={() => onDataSourceChange("historian-replay")}
-              >
-                <ActionList.LeadingVisual>
-                  <SyncIcon />
-                </ActionList.LeadingVisual>
-                Historian Replay
-                <ActionList.Description>Replay recorded sessions from TimescaleDB</ActionList.Description>
-              </ActionList.Item>
+              {isCosimMqttEnabled && (
+                <ActionList.Item selected={dataSource === "mqtt-live"} onSelect={() => onDataSourceChange("mqtt-live")}>
+                  <ActionList.LeadingVisual>
+                    <ServerIcon />
+                  </ActionList.LeadingVisual>
+                  MQTT Live
+                  <ActionList.Description>Stream data from connected MQTT participants</ActionList.Description>
+                </ActionList.Item>
+              )}
+              {isTimescaleEnabled && (
+                <ActionList.Item
+                  selected={dataSource === "historian-replay"}
+                  onSelect={() => onDataSourceChange("historian-replay")}
+                >
+                  <ActionList.LeadingVisual>
+                    <SyncIcon />
+                  </ActionList.LeadingVisual>
+                  Historian Replay
+                  <ActionList.Description>Replay recorded sessions from TimescaleDB</ActionList.Description>
+                </ActionList.Item>
+              )}
             </ActionList>
           </ActionMenu.Overlay>
         </ActionMenu>

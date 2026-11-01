@@ -21,7 +21,7 @@ services:
 
   mqtt:
     image: eclipse-mosquitto:2
-    profiles: ["internal", "federated", "flagship", "corporate-historian"]
+    profiles: ["internal", "historian", "cosim", "flagship-historian", "federated-historian", "corporate-historian"]
     ports:
       - "127.0.0.1:1883:1883"
       - "127.0.0.1:9001:9001"
@@ -37,7 +37,7 @@ services:
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
-    profiles: ["internal", "federated", "flagship", "corporate-historian"]
+    profiles: ["internal", "historian", "cosim", "flagship-historian", "federated-historian", "corporate-historian"]
     ports:
       - "127.0.0.1:5432:5432"
     environment:
@@ -116,6 +116,8 @@ services:
       - SLURM_JWT_TOKEN=${SLURM_JWT_TOKEN:-}
       - MQTT_BROKER_URL=${MQTT_BROKER_URL:-}
       - TIMESCALE_URL=${TIMESCALE_URL:-}
+      - ENABLE_MQTT=${ENABLE_MQTT:-false}
+      - ENABLE_TIMESCALE=${ENABLE_TIMESCALE:-false}
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
       - GEOLOCATION_DB_PATH=${GEOLOCATION_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=1024}

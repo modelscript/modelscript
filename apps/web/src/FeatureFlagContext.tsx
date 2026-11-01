@@ -87,6 +87,7 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   billing_stripe_live: false,
   digital_twins: false,
   cosim_mqtt: false,
+  timescaledb_historian: false,
   activitypub_federation: false,
   sysml2_omg_api: false,
   digital_thread_explorer: false,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as vscode from "vscode";
-import { getCloudApiUrl, getCloudPollIntervalMs, getStatusBarConfig } from "./utils/config.js";
+import { getCloudApiUrl, getCloudPollIntervalMs, getStatusBarConfig, isFeatureEnabled } from "./utils/config.js";
 
 export class CloudStatusBar implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
@@ -37,7 +37,7 @@ export class CloudStatusBar implements vscode.Disposable {
     }
 
     const { visibility, showCloudStatus } = getStatusBarConfig();
-    if (!showCloudStatus || visibility === "never") {
+    if (!showCloudStatus || visibility === "never" || !isFeatureEnabled("cloudCompute")) {
       this.statusBarItem.hide();
       return;
     }

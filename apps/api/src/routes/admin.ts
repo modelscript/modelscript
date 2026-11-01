@@ -238,12 +238,13 @@ export function adminRouter(
         onboardingWizard: settings.onboardingWizardEnabled ?? false,
         academicFastTrack: settings.academicFastTrackEnabled ?? false,
         activityPubFederation: settings.federationMode !== "disabled",
-        cloudSolvers: !isDown && !isReadOnly,
+        cloudSolvers: !isDown && !isReadOnly && Boolean(featureFlagService?.isEnabled("cae_cloud_solver")),
         offlineSandbox: true,
         airgapEnforced,
         billing: tier === "tier3_flagship",
-        caeCompute: true,
-        cosimMqtt: settings.federationMode !== "disabled" || !airgapEnforced,
+        caeCompute: Boolean(featureFlagService?.isEnabled("cae_cloud_solver")),
+        cosimMqtt: featureFlagService ? featureFlagService.isEnabled("cosim_mqtt") : false,
+        timescaleHistorian: featureFlagService ? featureFlagService.isEnabled("timescaledb_historian") : false,
         botAccounts: !airgapEnforced,
       };
 

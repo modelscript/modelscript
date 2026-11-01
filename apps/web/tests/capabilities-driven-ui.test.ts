@@ -2,9 +2,16 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { InstanceCapabilities } from "../src/CapabilitiesContext.js";
+import { DEFAULT_CAPABILITIES, type InstanceCapabilities } from "../src/CapabilitiesContext.js";
 
 test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
+  await t.test("defaults cloud HPC, solvers, MQTT, and Historian to disabled", () => {
+    assert.equal(DEFAULT_CAPABILITIES.cloudSolvers, false);
+    assert.equal(DEFAULT_CAPABILITIES.caeCompute, false);
+    assert.equal(DEFAULT_CAPABILITIES.cosimMqtt, false);
+    assert.equal(DEFAULT_CAPABILITIES.timescaleHistorian, false);
+  });
+
   await t.test("evaluates capability flags accurately across tiers", () => {
     const tier2Corporate: InstanceCapabilities = {
       userInvites: false,
@@ -16,8 +23,9 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
       offlineSandbox: true,
       airgapEnforced: true,
       billing: false,
-      caeCompute: true,
+      caeCompute: false,
       cosimMqtt: false,
+      timescaleHistorian: false,
       botAccounts: false,
     };
 
@@ -41,7 +49,8 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
       airgapEnforced: false,
       billing: true,
       caeCompute: true,
-      cosimMqtt: true,
+      cosimMqtt: false,
+      timescaleHistorian: false,
       botAccounts: true,
     };
 

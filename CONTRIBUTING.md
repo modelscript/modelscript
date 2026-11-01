@@ -299,13 +299,14 @@ If you are hosting a federated node from a home lab, university workstation, clo
 
 Choose the profile that matches your resource constraints and use case:
 
-| Profile              | Active Services                                             | Target Environment                                                  | Database Engine                     | RAM Footprint |
-| :------------------- | :---------------------------------------------------------- | :------------------------------------------------------------------ | :---------------------------------- | :------------ |
-| **`flagship`**       | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` cloud cluster                   | SQLite WAL + TimescaleDB            | ~4–8 GB       |
-| **`federated`**      | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live simulation telemetry streaming               | SQLite WAL + TimescaleDB            | ~4 GB         |
-| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel`                             | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS | **SQLite WAL only**                 | **~1–2 GB**   |
-| **`corporate`**      | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped enclave, SSO allowlist              | SQLite WAL (+ optional TimescaleDB) | ~2–4 GB       |
-| **`quick-tunnel`**   | `caddy`, `web`, `api`, `quick-tunnel`                       | Instant zero-config demo with ephemeral `trycloudflare.com` URL     | SQLite WAL only                     | ~1.5 GB       |
+| Profile                   | Active Services                                             | Target Environment                                                 | Database Engine                     | RAM Footprint |
+| :------------------------ | :---------------------------------------------------------- | :----------------------------------------------------------------- | :---------------------------------- | :------------ |
+| **`flagship`**            | `caddy`, `web`, `api` (EE), `tunnel`                        | `modelscript.org` + `ansatz.social` standard cloud cluster         | **SQLite WAL only**                 | **~1.5–2 GB** |
+| **`flagship-historian`**  | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | Flagship cluster with experimental co-sim & telemetry historian    | SQLite WAL + TimescaleDB            | ~4–8 GB       |
+| **`federated`**           | `caddy`, `web`, `api`, `tunnel`                             | Standard federated node (lightweight, zero telemetry dependencies) | **SQLite WAL only**                 | **~1–2 GB**   |
+| **`federated-historian`** | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live simulation telemetry streaming              | SQLite WAL + TimescaleDB            | ~4 GB         |
+| **`corporate`**           | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped enclave, SSO allowlist             | SQLite WAL (+ optional TimescaleDB) | ~2–4 GB       |
+| **`quick-tunnel`**        | `caddy`, `web`, `api`, `quick-tunnel`                       | Instant zero-config demo with ephemeral `trycloudflare.com` URL    | SQLite WAL only                     | ~1.5 GB       |
 
 ### 2. Production Token-Driven Tunnel (Zero Open Inbound Ports)
 
@@ -318,15 +319,16 @@ Choose the profile that matches your resource constraints and use case:
 4. Boot the node with your chosen profile:
 
    ```bash
-   # Lightweight homelab node (1-2 GB RAM, embedded SQLite only):
-   docker compose --profile federated-lite up -d
-
-   # Full research lab node with co-simulation telemetry historian:
-   docker compose --profile federated up -d
-
-   # Flagship production cluster (modelscript.org + ansatz.social):
+   # Standard lightweight flagship node (1.5–2 GB RAM, embedded SQLite only):
    docker compose -f docker-compose.yml -f docker-compose.prod.yml \
      --env-file .env.production --profile flagship up -d
+
+   # Full research lab node with experimental co-simulation telemetry historian:
+   docker compose --profile federated-historian up -d
+
+   # Flagship production cluster with co-simulation & telemetry historian:
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+     --env-file .env.production --profile flagship-historian up -d
    ```
 
    _Note:_ The `tunnel` service runs a smart entrypoint. If `CLOUDFLARE_TUNNEL_TOKEN` is present, it connects immediately; if unset, it idles in standby without crash-looping.

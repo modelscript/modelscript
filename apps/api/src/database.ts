@@ -13206,7 +13206,7 @@ export class LibraryDatabase {
 
   // ── Granular API Tokens ──────────────────────────────────────────
 
-  insertApiTokenRecord(params: {
+  storeApiTokenRow(params: {
     userId: number;
     name: string;
     tokenPrefix: string;
@@ -13234,6 +13234,18 @@ export class LibraryDatabase {
     return Number(result.lastInsertRowid);
   }
 
+  insertApiTokenRecord(params: {
+    userId: number;
+    name: string;
+    tokenPrefix: string;
+    tokenHash: string;
+    scopes: string[];
+    packagePattern?: string | undefined;
+    expiresAt?: string | null | undefined;
+  }): number {
+    return this.storeApiTokenRow(params);
+  }
+
   createApiKey(params: {
     userId: number;
     name: string;
@@ -13243,7 +13255,7 @@ export class LibraryDatabase {
     packagePattern?: string | undefined;
     expiresAt?: string | null | undefined;
   }): number {
-    return this.insertApiTokenRecord(params);
+    return this.storeApiTokenRow(params);
   }
 
   createApiToken(params: {
@@ -13255,7 +13267,7 @@ export class LibraryDatabase {
     packagePattern?: string | undefined;
     expiresAt?: string | null | undefined;
   }): number {
-    return this.insertApiTokenRecord(params);
+    return this.storeApiTokenRow(params);
   }
 
   getApiTokenByHash(tokenHash: string): ApiTokenRecord | null {

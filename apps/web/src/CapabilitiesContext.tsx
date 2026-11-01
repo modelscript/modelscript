@@ -15,6 +15,7 @@ export interface InstanceCapabilities {
   billing: boolean;
   caeCompute: boolean;
   cosimMqtt: boolean;
+  timescaleHistorian: boolean;
   botAccounts: boolean;
   [key: string]: boolean;
 }
@@ -36,18 +37,19 @@ export interface CapabilitiesContextValue {
   refreshCapabilities: () => Promise<void>;
 }
 
-const DEFAULT_CAPABILITIES: InstanceCapabilities = {
+export const DEFAULT_CAPABILITIES: InstanceCapabilities = {
   userInvites: true,
   waitlist: false,
   onboardingWizard: true,
   academicFastTrack: true,
   activityPubFederation: true,
-  cloudSolvers: true,
+  cloudSolvers: false,
   offlineSandbox: true,
   airgapEnforced: false,
   billing: false,
-  caeCompute: true,
-  cosimMqtt: true,
+  caeCompute: false,
+  cosimMqtt: false,
+  timescaleHistorian: false,
   botAccounts: true,
 };
 

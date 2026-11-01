@@ -2265,7 +2265,7 @@ export function authRouter(database: LibraryDatabase): Router {
       const tokenPrefix = plaintextToken.slice(0, 14); // e.g. "ms_pat_7e9a2f1"
       const tokenHash = crypto.createHash("sha256").update(plaintextToken).digest("hex");
 
-      const tokenId = database.insertApiTokenRecord({
+      const tokenRowId = database.storeApiTokenRow({
         userId: req.user!.id,
         name: name.trim(),
         tokenPrefix,
@@ -2274,12 +2274,14 @@ export function authRouter(database: LibraryDatabase): Router {
         packagePattern: typeof packagePattern === "string" ? packagePattern.trim() : "*",
         expiresAt,
       });
+      const tokenId = Number(tokenRowId);
+      const auditResourceId = String(Math.floor(tokenId) || 0);
 
       database.logAudit({
         actorId: req.user!.id,
         action: "auth_token_created",
         resourceType: "api_token",
-        resourceId: String(tokenId),
+        resourceId: auditResourceId,
         ipAddress: getClientIp(req),
         details: { name: name.trim(), scopes, packagePattern, expiresAt },
       });

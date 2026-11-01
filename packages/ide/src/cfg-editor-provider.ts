@@ -20,6 +20,7 @@ import {
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { CaeCloudClient } from "./cae-cloud-client.js";
+import { isFeatureEnabled } from "./utils/config.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
 export {
@@ -43,6 +44,7 @@ export interface CfgPayload {
     reynoldsNumber?: number | undefined;
     freestreamVelocity?: number | undefined;
   };
+  cloudHpcEnabled?: boolean | undefined;
 }
 
 interface ScadCadComponent {
@@ -489,6 +491,7 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
             reynoldsNumber,
             freestreamVelocity,
           },
+          cloudHpcEnabled: isFeatureEnabled("cloudCompute"),
         };
 
         if (!disposed) {

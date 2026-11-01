@@ -39,7 +39,7 @@ export interface LandingExampleTile {
 export const LANDING_LANGUAGE_GROUPS: LandingLanguageGroup[] = [
   { id: "core", label: "Core Systems & Architecture", tone: "teal" },
   { id: "geometry", label: "3D Geometry, FEA & CFD", tone: "indigo" },
-  { id: "integration", label: "Embedded, HPC & Telemetry", tone: "sky" },
+  { id: "integration", label: "Embedded & Telemetry", tone: "sky" },
   { id: "aerospace", label: "Aerospace & Space Systems", tone: "amber" },
   { id: "automotive", label: "Automotive & Autonomy", tone: "emerald" },
   { id: "rail", label: "Rail & Multibody Dynamics", tone: "rose" },

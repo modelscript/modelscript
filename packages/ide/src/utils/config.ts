@@ -101,7 +101,7 @@ export const FEATURE_MIN_CHANNEL: Record<keyof ModelScriptFeatureFlags, FeatureC
   formalVerification: "preview",
   caeWorkbench: "preview",
   coSimulation: "experimental",
-  cloudCompute: "experimental",
+  cloudCompute: "dev",
   digitalThread: "experimental",
   polyglotProjection: "experimental",
   scaffolding: "experimental",
@@ -193,9 +193,16 @@ export function isFeatureEnabled(featureKey: keyof ModelScriptFeatureFlags): boo
     if (typeof explicit === "boolean") {
       return explicit;
     }
+    // Cloud HPC is disabled by default unless explicitly enabled in configuration
+    if (featureKey === "cloudCompute") {
+      return false;
+    }
     const channel = getFeatureChannelSetting();
     return CHANNEL_RANK[channel] >= CHANNEL_RANK[FEATURE_MIN_CHANNEL[featureKey]];
   } catch {
+    if (featureKey === "cloudCompute") {
+      return false;
+    }
     return CHANNEL_RANK["stable"] >= CHANNEL_RANK[FEATURE_MIN_CHANNEL[featureKey]];
   }
 }

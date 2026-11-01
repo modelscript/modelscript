@@ -460,22 +460,24 @@ function App() {
           >
             ⚡ Local WASM
           </button>
-          <button
-            onClick={handleRunCloudFea}
-            disabled={isLoading || !meshData || meshData.stats.numElements === 0}
-            style={{
-              flex: 1,
-              padding: "8px 10px",
-              background: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
-              border: "none",
-              borderRadius: "6px",
-              color: "#ffffff",
-              fontWeight: 600,
-              cursor: isLoading ? "not-allowed" : "pointer",
-            }}
-          >
-            🚀 Cloud HPC
-          </button>
+          {Boolean(meshData?.cloudHpcEnabled) && (
+            <button
+              onClick={handleRunCloudFea}
+              disabled={isLoading || !meshData || meshData.stats.numElements === 0}
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                background: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
+                border: "none",
+                borderRadius: "6px",
+                color: "#ffffff",
+                fontWeight: 600,
+                cursor: isLoading ? "not-allowed" : "pointer",
+              }}
+            >
+              🚀 Cloud HPC
+            </button>
+          )}
         </div>
         <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
           <button

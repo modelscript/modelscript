@@ -3,6 +3,7 @@
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon, SearchIcon, ServerIcon, XIcon } from "@primer/octicons-react";
 import { Button, IconButton, Spinner, TextInput } from "@primer/react";
 import React, { useRef, useState } from "react";
+import { useCapabilities } from "../../../CapabilitiesContext";
 import ComponentList from "../ComponentList";
 import {
   SimulationExperimentSettings,
@@ -99,6 +100,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   onOpenCloud,
   isSimulating,
 }) => {
+  const { hasCapability } = useCapabilities();
+  const isCaeComputeEnabled = hasCapability("caeCompute");
   const isDraggingTree = useRef(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
 
@@ -281,14 +284,16 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 <Button variant="primary" block onClick={onSimulate} disabled={isSimulating}>
                   Simulate
                 </Button>
-                <Button
-                  variant="default"
-                  onClick={onOpenCloud}
-                  leadingVisual={ServerIcon}
-                  title="Run on Ansatz Cloud HPC"
-                >
-                  Cloud
-                </Button>
+                {isCaeComputeEnabled && (
+                  <Button
+                    variant="default"
+                    onClick={onOpenCloud}
+                    leadingVisual={ServerIcon}
+                    title="Run on Ansatz Cloud HPC"
+                  >
+                    Cloud
+                  </Button>
+                )}
               </div>
             </div>
           </>

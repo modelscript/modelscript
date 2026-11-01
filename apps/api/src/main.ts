@@ -22,11 +22,14 @@ const port = parseInt(process.env["PORT"] ?? "3000", 10);
 const mqttUrl = process.env["MQTT_BROKER_URL"];
 const timescaleUrl = process.env["TIMESCALE_URL"];
 
-// ── TimescaleDB pool (optional — only if TIMESCALE_URL is set) ──
+// ── TimescaleDB pool (optional — disabled by default, only if enabled) ──
 
 let dbPool: import("pg").Pool | null = null;
+const isTimescaleEnabled =
+  (process.env["ENABLE_TIMESCALE"] === "true" || process.env["FEATURE_FLAG_TIMESCALEDB_HISTORIAN"] === "true") &&
+  Boolean(timescaleUrl);
 
-if (timescaleUrl) {
+if (isTimescaleEnabled && timescaleUrl) {
   // Lazy-load pg to avoid hard dependency when TimescaleDB is unavailable
   try {
     const { Pool } = await import("pg");
@@ -39,13 +42,19 @@ if (timescaleUrl) {
     console.warn("Historian features will be unavailable.");
     dbPool = null;
   }
+} else if (timescaleUrl) {
+  console.log(
+    "TimescaleDB URL configured but disabled by default (enable with ENABLE_TIMESCALE=true or FEATURE_FLAG_TIMESCALEDB_HISTORIAN=true).",
+  );
 }
 
-// ── MQTT client (optional — only if MQTT_BROKER_URL is set) ──
+// ── MQTT client (optional — disabled by default, only if enabled) ──
 
 let mqttClient: CosimMqttClient | null = null;
+const isMqttEnabled =
+  (process.env["ENABLE_MQTT"] === "true" || process.env["FEATURE_FLAG_COSIM_MQTT"] === "true") && Boolean(mqttUrl);
 
-if (mqttUrl) {
+if (isMqttEnabled && mqttUrl) {
   mqttClient = new CosimMqttClient({
     brokerUrl: mqttUrl,
     clientId: `modelscript-api-${process.pid}`,
@@ -65,6 +74,10 @@ if (mqttUrl) {
     console.warn("Co-simulation features will be unavailable.");
     mqttClient = null;
   }
+} else if (mqttUrl) {
+  console.log(
+    "MQTT broker URL configured but disabled by default (enable with ENABLE_MQTT=true or FEATURE_FLAG_COSIM_MQTT=true).",
+  );
 }
 
 // ── Historian recorder (only when both MQTT and TimescaleDB are available) ──

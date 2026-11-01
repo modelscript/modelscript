@@ -20,6 +20,7 @@ import {
 import { Button, IconButton, SegmentedControl, Spinner } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useCapabilities } from "../../../CapabilitiesContext";
 import type { CadComponent } from "../cad-viewer";
 import type { AnimationController } from "../cad-viewer/animation-controller";
 import { getLanguageInfo } from "../constants";
@@ -367,6 +368,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   showAnalysisView: controlledShowAnalysisView,
   setShowAnalysisView: controlledSetShowAnalysisView,
 }) => {
+  const { hasCapability } = useCapabilities();
+  const isCosimMqttEnabled = hasCapability("cosimMqtt");
+  const isTimescaleEnabled = hasCapability("timescaleHistorian");
+  const isCaeComputeEnabled = hasCapability("caeCompute");
+  const showCosimSection = isCosimMqttEnabled || isTimescaleEnabled;
   const isDraggingProperties = useRef(false);
   const [internalShowAnalysisView, setInternalShowAnalysisView] = useState(false);
   const showAnalysisView = controlledShowAnalysisView ?? internalShowAnalysisView;
@@ -915,7 +921,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                         onClick={onSimulate}
                       />
                     )}
-                    {onOpenCloudModal && (
+                    {onOpenCloudModal && isCaeComputeEnabled && (
                       <IconButton
                         icon={ServerIcon}
                         size="small"
@@ -1338,7 +1344,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             backgroundColor: "var(--color-canvas-default)",
           }}
         >
-          {!hideCenterFloatingToolbar && (
+          {!hideCenterFloatingToolbar && showCosimSection && (
             <CosimPanel
               dataSource={cosimDataSource}
               onDataSourceChange={setCosimDataSource}

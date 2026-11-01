@@ -28,8 +28,8 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - MSX_EDITION=ee
-      - MSX_LICENSE_ENFORCE=true
-      - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:?MSX_LICENSE_KEY is required for ModelScript & Ansatz Enterprise Cloud}
+      - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-false}
+      - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:-}
       - TRUST_PROXY=true
       - PUBLIC_URL=${PUBLIC_URL:-https://ansatz.social}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://ansatz.social,https://modelscript.org,https://ide.ansatz.social,https://ide.modelscript.org}
@@ -72,6 +72,8 @@ services:
       - SLURM_JWT_TOKEN=${SLURM_JWT_TOKEN:-}
       - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://mqtt:1883}
       - TIMESCALE_URL=${TIMESCALE_URL:-postgres://modelscript:${TIMESCALE_PASSWORD:-modelscript}@timescaledb:5432/modelscript_historian}
+      - ENABLE_MQTT=${ENABLE_MQTT:-false}
+      - ENABLE_TIMESCALE=${ENABLE_TIMESCALE:-false}
       - GEOIP_DB_PATH=${GEOIP_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
       - GEOLOCATION_DB_PATH=${GEOLOCATION_DB_PATH:-/app/apps/api/data/GeoLite2-City.mmdb}
       - NODE_OPTIONS=${NODE_OPTIONS:---max-old-space-size=2048}

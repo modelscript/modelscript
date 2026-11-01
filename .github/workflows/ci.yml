@@ -527,6 +527,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
+      packages: read
     env:
       PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.PROD_DEPLOY_WEBHOOK_URL }}
       PROD_DEPLOY_TOKEN: ${{ secrets.PROD_DEPLOY_TOKEN }}
@@ -574,8 +575,9 @@ jobs:
             printf '%s\n' "$PROD_ENV_FILE" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cat > ${TARGET_DIR}/.env.production && chmod 600 ${TARGET_DIR}/.env.production"
           fi
 
-          # 5. Create pre-deploy SQLite hot backup (if API container is already running), pull SHA images, launch & verify health
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cd ${TARGET_DIR} && \
+          # 5. Authenticate droplet to GHCR, create pre-deploy SQLite hot backup, pull SHA images, launch & verify health
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin >/dev/null 2>&1 || true && \
+            cd ${TARGET_DIR} && \
             (docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production exec -T api node -e 'const fs=require(\"node:fs\"),D=require(\"better-sqlite3\");fs.mkdirSync(\"/app/apps/api/data/backups\",{recursive:true});const db=new D(\"/app/apps/api/data/modelscript.db\");db.exec(\"VACUUM INTO \\\"/app/apps/api/data/backups/pre-deploy-\"+Date.now()+\".db\\\"\");db.close();' >/dev/null 2>&1 || true) && \
             IMAGE_TAG=sha-${GITHUB_SHA} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated pull && \
             IMAGE_TAG=sha-${GITHUB_SHA} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated up -d --wait --remove-orphans && \

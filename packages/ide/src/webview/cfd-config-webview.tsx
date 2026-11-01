@@ -57,6 +57,7 @@ interface CfgPayload {
     reynoldsNumber?: number;
     freestreamVelocity?: number;
   };
+  cloudHpcEnabled?: boolean;
 }
 
 function resolvePartColor(color?: [number, number, number, number] | string): {
@@ -481,22 +482,24 @@ function App() {
           >
             ⚡ Local LBM
           </button>
-          <button
-            onClick={handleRunCloudCfd}
-            disabled={isLoading}
-            style={{
-              flex: 1,
-              padding: "8px 10px",
-              background: "linear-gradient(135deg, #0284c7 0%, #6366f1 100%)",
-              border: "none",
-              borderRadius: "6px",
-              color: "#ffffff",
-              fontWeight: 600,
-              cursor: isLoading ? "not-allowed" : "pointer",
-            }}
-          >
-            🚀 Cloud SU2
-          </button>
+          {Boolean(cfgData?.cloudHpcEnabled) && (
+            <button
+              onClick={handleRunCloudCfd}
+              disabled={isLoading}
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                background: "linear-gradient(135deg, #0284c7 0%, #6366f1 100%)",
+                border: "none",
+                borderRadius: "6px",
+                color: "#ffffff",
+                fontWeight: 600,
+                cursor: isLoading ? "not-allowed" : "pointer",
+              }}
+            >
+              🚀 Cloud SU2
+            </button>
+          )}
         </div>
         <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
           <button
