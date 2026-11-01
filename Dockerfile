@@ -138,7 +138,7 @@ FROM build-api-${PREBUILT} AS build-api
 FROM node:24-alpine AS api-ce
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
-RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
+RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
   && chown -R node:node /app
 COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
@@ -167,7 +167,7 @@ CMD ["node", "apps/api/dist/main.js"]
 FROM node:24-alpine AS api
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
-RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
+RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
   && chown -R node:node /app
 COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
@@ -279,7 +279,7 @@ RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 
 # Create unprivileged application user & directories
-RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/uploads /app/apps/api/public/thumbnails \
+RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/api/uploads /app/apps/api/public/thumbnails \
   && chown -R node:node /app
 
 COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./

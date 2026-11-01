@@ -46,6 +46,14 @@ echo "==> Pulling target Docker images (IMAGE_TAG=${IMAGE_TAG})..."
 IMAGE_TAG="${IMAGE_TAG}" ${COMPOSE_CMD} --profile federated pull
 
 # Step 4: Launch updated services with --wait
+echo "==> Normalizing volume permissions for unprivileged node user (uid 1000)..."
+for vol in api-data api-backups api-uploads api-thumbnails api-packages; do
+  vol_dir=$(docker volume inspect "modelscript_${vol}" --format '{{.Mountpoint}}' 2>/dev/null || docker volume inspect "${vol}" --format '{{.Mountpoint}}' 2>/dev/null || true)
+  if [ -n "${vol_dir}" ] && [ -d "${vol_dir}" ]; then
+    chown -R 1000:1000 "${vol_dir}" 2>/dev/null || true
+  fi
+done
+
 echo "==> Rolling out updated services..."
 ROLLOUT_FAILED=false
 if ! IMAGE_TAG="${IMAGE_TAG}" ${COMPOSE_CMD} --profile federated up -d --wait --remove-orphans; then
