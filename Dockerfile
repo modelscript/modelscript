@@ -106,7 +106,8 @@ COPY languages languages
 COPY apps/ide apps/ide
 RUN npx nx build @modelscript/ide
 
-FROM deps AS build-ide-true
+FROM alpine:latest AS build-ide-true
+WORKDIR /app
 COPY apps/ide/dist apps/ide/dist
 COPY apps/ide/vscode-web apps/ide/vscode-web
 COPY apps/ide/github-fs apps/ide/github-fs
@@ -206,7 +207,8 @@ COPY apps/web apps/web
 RUN npx nx run-many -t build --projects=@modelscript/web,@modelscript/docs
 
 
-FROM deps AS build-web-true
+FROM alpine:latest AS build-web-true
+WORKDIR /app
 COPY apps/web/dist apps/web/dist
 COPY apps/docs/docs/.vitepress/dist apps/docs/docs/.vitepress/dist
 

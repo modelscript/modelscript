@@ -430,7 +430,7 @@ jobs:
     needs: [build, lint]
     if: github.actor != 'nektos/act'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       packages: write
       contents: read
@@ -511,7 +511,6 @@ jobs:
           push: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
           set: |
             *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
             *.args.PREBUILT=true
             api.tags=ghcr.io/modelscript/api:latest
             api.tags=ghcr.io/modelscript/api:sha-${{ github.sha }}
@@ -564,12 +563,19 @@ jobs:
         if: env.PROD_SSH_HOST != ''
         run: |
           mkdir -p ~/.ssh
-          echo "$PROD_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          cat << 'EOF' > ~/.ssh/config
+          Host *
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking accept-new
+          EOF
+          chmod 600 ~/.ssh/config
           if [ -n "$PROD_SSH_KNOWN_HOSTS" ]; then
             printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
           else
-            ssh-keyscan -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts
+            ssh-keyscan -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
           fi
 
           TARGET_DIR="${PROD_DEPLOY_PATH:-/opt/modelscript}"
