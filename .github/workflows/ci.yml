@@ -419,7 +419,7 @@ jobs:
     needs: [build, test, lint, modelica_testsuite]
     if: github.actor != 'nektos/act'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     permissions:
       packages: write
       contents: read
