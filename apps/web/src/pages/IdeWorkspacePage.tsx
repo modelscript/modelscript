@@ -475,8 +475,21 @@ export const IdeWorkspacePage: React.FC = () => {
 
   const workbenchUrl = useMemo(() => `/vscode/workbench${folderHash}`, [folderHash]);
 
+  useEffect(() => {
+    try {
+      if (token) {
+        document.cookie = `modelscript_token=${encodeURIComponent(token)}; path=/; SameSite=Lax`;
+      }
+    } catch {
+      // ignore
+    }
+  }, [token]);
+
   const broadcastSyncState = useCallback(() => {
     try {
+      if (token) {
+        document.cookie = `modelscript_token=${encodeURIComponent(token)}; path=/; SameSite=Lax`;
+      }
       const bridge = new BroadcastChannel("modelscript:host-bridge");
       if (token && user) {
         bridge.postMessage({

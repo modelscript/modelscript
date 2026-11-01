@@ -81,9 +81,17 @@ export function collectExprVarNames(
       break;
     }
     case ExprKind.IfElse: {
-      collectExprVarNames(dae.getExprData1(exprId), dae, names, visited);
-      collectExprVarNames(dae.getExprLeft(exprId), dae, names, visited);
-      collectExprVarNames(dae.getExprRight(exprId), dae, names, visited);
+      const condId = dae.getExprData1(exprId);
+      collectExprVarNames(condId, dae, names, visited);
+      const condVal = evalStaticBool(condId, dae);
+      if (condVal === true) {
+        collectExprVarNames(dae.getExprLeft(exprId), dae, names, visited);
+      } else if (condVal === false) {
+        collectExprVarNames(dae.getExprRight(exprId), dae, names, visited);
+      } else {
+        collectExprVarNames(dae.getExprLeft(exprId), dae, names, visited);
+        collectExprVarNames(dae.getExprRight(exprId), dae, names, visited);
+      }
       break;
     }
     case ExprKind.Der:
@@ -92,6 +100,28 @@ export function collectExprVarNames(
       break;
     }
   }
+}
+
+function evalStaticBool(exprId: number, dae: DAEBuilder, depth = 0): boolean | null {
+  if (exprId < 0 || depth > 16) return null;
+  const kind = dae.getExprKind(exprId);
+  if (kind === ExprKind.BoolLiteral) {
+    return dae.getExprData1(exprId) !== 0;
+  }
+  if (kind === ExprKind.Name) {
+    const name = dae.interner.resolve(dae.getExprData1(exprId));
+    if (!name) return null;
+    if (name === "true") return true;
+    if (name === "false") return false;
+    const vIdx = dae.getVarIdxByName(name);
+    if (vIdx >= 0) {
+      const bindId = dae.getVarExpression(vIdx);
+      if (bindId !== undefined && bindId >= 0 && bindId !== exprId) {
+        return evalStaticBool(bindId, dae, depth + 1);
+      }
+    }
+  }
+  return null;
 }
 
 export function checkCyclicConstantsAndParameters(

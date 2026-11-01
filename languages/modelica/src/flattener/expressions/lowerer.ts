@@ -203,32 +203,123 @@ export function lowerCSTExpression(
     isAssignmentLhs,
   };
 
+  // Single-child unwrap for wrappers and parenthesized expressions "( expr )"
+  while (node) {
+    const t = node.type;
+    if (
+      (t === "expression" ||
+        t === "lhs_expression" ||
+        t === "lhs_primary" ||
+        t === "simple_expression" ||
+        t === "logical_expression" ||
+        t === "primary" ||
+        t === "expression_list" ||
+        t === "Expression" ||
+        t === "SimpleExpression" ||
+        t === "LogicalExpression" ||
+        t === "Primary" ||
+        t === "ExpressionList") &&
+      node.childCount === 1
+    ) {
+      node = node.child(0);
+      continue;
+    }
+    if (node.childCount === 3 && Cst.kind(node.child(0)) === "(" && Cst.kind(node.child(2)) === ")") {
+      node = node.child(1);
+      continue;
+    }
+    break;
+  }
+  if (!node) return -1;
+
   const state = getFlatteningState(dae, flattener);
+  const preRes = lowerPreBinaryCSTExpression(node, dae, ctx, state);
+  if (preRes !== null) return preRes;
+
+  // Binary expression: left op right
+  if (node.childCount === 3) {
+    const rawOp = node.child(1)?.text?.trim() ?? node.child(1)?.type ?? "";
+    const opToken = rawOp.replace(/^"|"$/g, "");
+    let binOp: BinOp | null = null;
+    switch (opToken) {
+      case "+":
+        binOp = BinOp.Add;
+        break;
+      case "-":
+        binOp = BinOp.Sub;
+        break;
+      case "*":
+        binOp = BinOp.Mul;
+        break;
+      case "/":
+        binOp = BinOp.Div;
+        break;
+      case "^":
+        binOp = BinOp.Pow;
+        break;
+      case ".+":
+        binOp = BinOp.ElemAdd;
+        break;
+      case ".-":
+        binOp = BinOp.ElemSub;
+        break;
+      case ".*":
+        binOp = BinOp.ElemMul;
+        break;
+      case "./":
+        binOp = BinOp.ElemDiv;
+        break;
+      case ".^":
+        binOp = BinOp.ElemPow;
+        break;
+      case "<":
+        binOp = BinOp.Lt;
+        break;
+      case "<=":
+        binOp = BinOp.Lte;
+        break;
+      case ">":
+        binOp = BinOp.Gt;
+        break;
+      case ">=":
+        binOp = BinOp.Gte;
+        break;
+      case "==":
+        binOp = BinOp.Eq;
+        break;
+      case "<>":
+        binOp = BinOp.Neq;
+        break;
+      case "and":
+        binOp = BinOp.And;
+        break;
+      case "or":
+        binOp = BinOp.Or;
+        break;
+      case ":":
+        binOp = BinOp.Colon;
+        break;
+    }
+    if (binOp !== null) {
+      const leftNode = node.childForFieldName?.("left") ?? node.child(0);
+      const rightNode = node.childForFieldName?.("right") ?? node.child(2);
+      const leftId = lowerCSTExpression(leftNode, dae, ctx);
+      const rightId = lowerCSTExpression(rightNode, dae, ctx);
+      return finishBinaryCSTExpression(node, binOp, opToken, leftNode, rightNode, leftId, rightId, dae, ctx);
+    }
+  }
+
+  return lowerPostBinaryCSTExpression(node, dae, ctx, state);
+}
+
+function lowerPreBinaryCSTExpression(
+  node: SyntaxNode,
+  dae: DAEBuilder,
+  ctx: LoweringContext,
+  state: any,
+): number | null {
+  const { prefix = "", substitutions, imports, db, flattener, tupleContext } = ctx;
   const type = node.type;
-
-  // Single-child unwrap for wrappers
-  if (
-    (type === "expression" ||
-      type === "lhs_expression" ||
-      type === "lhs_primary" ||
-      type === "simple_expression" ||
-      type === "logical_expression" ||
-      type === "primary" ||
-      type === "expression_list" ||
-      type === "Expression" ||
-      type === "SimpleExpression" ||
-      type === "LogicalExpression" ||
-      type === "Primary" ||
-      type === "ExpressionList") &&
-    node.childCount === 1
-  ) {
-    return lowerCSTExpression(node.child(0), dae, ctx);
-  }
-
-  // Parenthesized expression: "(" expr ")"
-  if (node.childCount === 3 && Cst.kind(node.child(0)) === "(" && Cst.kind(node.child(2)) === ")") {
-    return lowerCSTExpression(node.child(1), dae, ctx);
-  }
 
   // Real or Integer literal
   if (
@@ -698,16 +789,30 @@ export function lowerCSTExpression(
               vt !== VarType.String &&
               vt !== VarType.Clock
             ) {
-              let isWhenClause = false;
+              let isWhenCondition = false;
+              let seenBodyEqOrStmt = false;
               let cur: any = node;
               while (cur) {
+                if (
+                  cur.type === "simple_equation" ||
+                  cur.type === "some_equation" ||
+                  cur.type === "assignment_statement" ||
+                  cur.type === "statement" ||
+                  cur.type === "statement_or_procedure" ||
+                  cur.type === "if_equation" ||
+                  cur.type === "if_statement" ||
+                  cur.type === "for_equation" ||
+                  cur.type === "for_statement"
+                ) {
+                  seenBodyEqOrStmt = true;
+                }
                 if (cur.type === "when_equation" || cur.type === "when_statement") {
-                  isWhenClause = true;
+                  isWhenCondition = !seenBodyEqOrStmt;
                   break;
                 }
                 cur = cur.parent;
               }
-              if (isWhenClause) {
+              if (isWhenCondition) {
                 let isAssignedInWhen = false;
                 let root: any = node;
                 while (root && root.parent) {
@@ -5781,9 +5886,11 @@ export function lowerCSTExpression(
             const expectedType = fnDae.getVarType(i);
             const expectedCustomType = fnDae.getVarCustomType(i);
             const providedType = inferArenaExprVarType(dae, substVal);
+            const preDims = getExprDims(substVal, dae, flattener.db) ?? [];
             if (
               expectedType === VarType.Real &&
               !expectedCustomType &&
+              expectedShape.length === preDims.length &&
               (providedType === VarType.Integer || providedType === null)
             ) {
               substVal = castToRealExpr(substVal, dae);
@@ -5793,6 +5900,7 @@ export function lowerCSTExpression(
         }
       }
       let posIdx = 0;
+      let emitShapeMismatchDiag: (() => void) | null = null;
       for (let i = 0; i < fnDae.varCount; i++) {
         if (fnDae.getVarCausality(i) === Causality.Input) {
           const inputName = fnDae.getVarName(i);
@@ -5842,7 +5950,31 @@ export function lowerCSTExpression(
               aid = substVal;
             }
             inputSubstitutions.set(inputName, substVal);
-            const actualDims = getExprDims(aid, dae, flattener.db) ?? [];
+            let actualDims = getExprDims(aid, dae, flattener.db) ?? [];
+            if (
+              actualDims.length === 0 &&
+              expectedShape.length > 0 &&
+              dae.getExprKind(aid) === ExprKind.Name &&
+              flattener.db
+            ) {
+              const vName = dae.interner.resolve(dae.getExprData1(aid)) ?? "";
+              const simpleName = vName.includes(".") ? vName.split(".").pop()! : vName;
+              const scopeId = flattener.currentClassId ?? flattener.currentRootClassId;
+              const resolver = scopeId
+                ? (((flattener.db as any).query("resolveName", scopeId) ??
+                    (flattener.db as any).query("resolveSimpleName", scopeId)) as any)
+                : null;
+              const sym =
+                resolver?.(vName) ??
+                resolver?.(simpleName) ??
+                flattener.db.byName(simpleName)?.find((s: any) => s.kind === "Component");
+              if (sym && sym.kind === "Component") {
+                const rawDims = (flattener.db as any).query("arrayDimensions", sym.id);
+                if (Array.isArray(rawDims) && rawDims.length === expectedShape.length) {
+                  actualDims = rawDims.map(() => -1);
+                }
+              }
+            }
             const isColonDim = (d: number) => d === -1;
             const shapeMatches =
               expectedShape.length === actualDims.length &&
@@ -5850,84 +5982,87 @@ export function lowerCSTExpression(
                 (ed, idx) => isColonDim(ed) || isColonDim(actualDims[idx]!) || ed === actualDims[idx]!,
               );
             if (!shapeMatches) {
-              const printer = new ArenaDAEPrinter({ write: () => {} }, dae, true);
-              const callArgsStr = positionalArgs.map((paId) => printer.printExprToString(paId)).join(", ");
-              const callExpr = `${cleanFnName || fnName}(${callArgsStr})`;
+              if (!emitShapeMismatchDiag) {
+                emitShapeMismatchDiag = () => {
+                  const printer = new ArenaDAEPrinter({ write: () => {} }, dae, true);
+                  const callArgsStr = positionalArgs.map((paId) => printer.printExprToString(paId)).join(", ");
+                  const callExpr = `${cleanFnName || fnName}(${callArgsStr})`;
 
-              let retTypeStr = "Real";
-              for (let vi = 0; vi < fnDae.varCount; vi++) {
-                if (fnDae.getVarCausality(vi) === Causality.Output) {
-                  const vt = fnDae.getVarType(vi);
-                  retTypeStr =
-                    vt === VarType.Integer
-                      ? "Integer"
-                      : vt === VarType.Boolean
-                        ? "Boolean"
-                        : vt === VarType.String
-                          ? "String"
-                          : "Real";
-                  break;
-                }
-              }
-
-              const callArgSigParts: string[] = [];
-              const candArgSigParts: string[] = [];
-              let inP = 0;
-              for (let vi = 0; vi < fnDae.varCount; vi++) {
-                if (fnDae.getVarCausality(vi) === Causality.Input) {
-                  const pName = fnDae.getVarName(vi);
-                  const expType = fnDae.getVarType(vi);
-                  const expShape = fnDae.getVarShape(vi) ?? [];
-                  const expTypeName =
-                    expType === VarType.Integer
-                      ? "Integer"
-                      : expType === VarType.Boolean
-                        ? "Boolean"
-                        : expType === VarType.String
-                          ? "String"
-                          : "Real";
-                  const expShapeStr = expShape.length > 0 ? `[${expShape.join(", ")}]` : "";
-                  candArgSigParts.push(`${expTypeName}${expShapeStr} ${pName}`);
-
-                  const provId = positionalArgs[inP];
-                  if (provId !== undefined) {
-                    const provType = inferArenaExprVarType(dae, provId);
-                    const provDims = getExprDims(provId, dae, flattener.db) ?? [];
-                    const provTypeName =
-                      provType === VarType.Integer
-                        ? "Integer"
-                        : provType === VarType.Boolean
-                          ? "Boolean"
-                          : provType === VarType.String
-                            ? "String"
-                            : "Real";
-                    const provDimsStr = provDims.length > 0 ? `[${provDims.join(", ")}]` : "";
-                    callArgSigParts.push(`${provTypeName}${provDimsStr} ${pName}`);
+                  let retTypeStr = "Real";
+                  for (let vi = 0; vi < fnDae.varCount; vi++) {
+                    if (fnDae.getVarCausality(vi) === Causality.Output) {
+                      const vt = fnDae.getVarType(vi);
+                      retTypeStr =
+                        vt === VarType.Integer
+                          ? "Integer"
+                          : vt === VarType.Boolean
+                            ? "Boolean"
+                            : vt === VarType.String
+                              ? "String"
+                              : "Real";
+                      break;
+                    }
                   }
-                  inP++;
-                }
-              }
 
-              const callSig = `.${cleanFnName || fnName}<function>(${callArgSigParts.join(", ")}) => ${retTypeStr} in component <NO COMPONENT>`;
-              const candidateSig = `.${cleanFnName || fnName}<function>(${candArgSigParts.join(", ")}) => ${retTypeStr}`;
+                  const callArgSigParts: string[] = [];
+                  const candArgSigParts: string[] = [];
+                  let inP = 0;
+                  for (let vi = 0; vi < fnDae.varCount; vi++) {
+                    if (fnDae.getVarCausality(vi) === Causality.Input) {
+                      const pName = fnDae.getVarName(vi);
+                      const expType = fnDae.getVarType(vi);
+                      const expShape = fnDae.getVarShape(vi) ?? [];
+                      const expTypeName =
+                        expType === VarType.Integer
+                          ? "Integer"
+                          : expType === VarType.Boolean
+                            ? "Boolean"
+                            : expType === VarType.String
+                              ? "String"
+                              : "Real";
+                      const expShapeStr = expShape.length > 0 ? `[${expShape.join(", ")}]` : "";
+                      candArgSigParts.push(`${expTypeName}${expShapeStr} ${pName}`);
 
-              const startB = node.startIndex ?? node.startOffset;
-              const endB = node.endIndex ?? node.endOffset;
-              dae.diagnostics.push({
-                severity: "error",
-                code: ModelicaErrorCode.NO_MATCHING_FUNCTION.code,
-                message: ModelicaErrorCode.NO_MATCHING_FUNCTION.message(callExpr, callSig, candidateSig),
-                range:
-                  startB != null && endB != null
-                    ? {
-                        startOffset: startB,
-                        endOffset: endB,
-                        startPosition: node.startPosition,
-                        endPosition: node.endPosition,
+                      const provId = positionalArgs[inP];
+                      if (provId !== undefined) {
+                        const provType = inferArenaExprVarType(dae, provId);
+                        const provDims = getExprDims(provId, dae, flattener.db) ?? [];
+                        const provTypeName =
+                          provType === VarType.Integer
+                            ? "Integer"
+                            : provType === VarType.Boolean
+                              ? "Boolean"
+                              : provType === VarType.String
+                                ? "String"
+                                : "Real";
+                        const provDimsStr = provDims.length > 0 ? `[${provDims.join(", ")}]` : "";
+                        callArgSigParts.push(`${provTypeName}${provDimsStr} ${pName}`);
                       }
-                    : undefined,
-              });
-              return -1;
+                      inP++;
+                    }
+                  }
+
+                  const callSig = `.${cleanFnName || fnName}<function>(${callArgSigParts.join(", ")}) => ${retTypeStr} in component <NO COMPONENT>`;
+                  const candidateSig = `.${cleanFnName || fnName}<function>(${candArgSigParts.join(", ")}) => ${retTypeStr}`;
+
+                  const startB = node.startIndex ?? node.startOffset;
+                  const endB = node.endIndex ?? node.endOffset;
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: ModelicaErrorCode.NO_MATCHING_FUNCTION.code,
+                    message: ModelicaErrorCode.NO_MATCHING_FUNCTION.message(callExpr, callSig, candidateSig),
+                    range:
+                      startB != null && endB != null
+                        ? {
+                            startOffset: startB,
+                            endOffset: endB,
+                            startPosition: node.startPosition,
+                            endPosition: node.endPosition,
+                          }
+                        : undefined,
+                  });
+                };
+              }
             }
 
             const expectedType = fnDae.getVarType(i);
@@ -5935,6 +6070,7 @@ export function lowerCSTExpression(
             const providedType = inferArenaExprVarType(dae, aid);
             let finalType = providedType;
             if (
+              shapeMatches &&
               expectedType === VarType.Real &&
               !expectedCustomType &&
               (providedType === VarType.Integer || providedType === null)
@@ -5982,6 +6118,15 @@ export function lowerCSTExpression(
             newArgExprIds.push(aid);
           }
         }
+      }
+      if (emitShapeMismatchDiag) {
+        const vecId = vectorizeFunctionCall(cleanFnName || fnName, newArgExprIds, dae, flattener, db, fnDae);
+        if (vecId !== null) {
+          (fnDae as any).wasCalled = true;
+          return vecId;
+        }
+        (emitShapeMismatchDiag as () => void)();
+        return -1;
       }
       argExprIds = newArgExprIds;
     }
@@ -6180,11 +6325,32 @@ export function lowerCSTExpression(
             }
             const firstVal = Array.isArray(outVal) && outputCount > 1 ? outVal[0] : outVal;
             if (firstOutputCustomType && firstOutputIsScalar && Array.isArray(firstVal)) {
-              const ctorFn =
+              const leafCtor = firstOutputCustomType.includes(".")
+                ? firstOutputCustomType.split(".").pop()!
+                : firstOutputCustomType;
+              let ctorFn =
                 dae.getFunction(firstOutputCustomType) ??
-                (firstOutputCustomType.includes(".")
-                  ? dae.getFunction(firstOutputCustomType.split(".").pop()!)
-                  : undefined);
+                dae.getFunction(leafCtor) ??
+                fnDae.getFunction(firstOutputCustomType) ??
+                fnDae.getFunction(leafCtor);
+              if (!ctorFn) {
+                const suffix = `.${leafCtor}`;
+                for (const sDae of [fnDae, dae, (dae as any).parentDae]) {
+                  if (!sDae?.functions) continue;
+                  for (const candFn of sDae.functions.values()) {
+                    if (
+                      candFn.description?.includes("record constructor") &&
+                      (candFn.name === firstOutputCustomType ||
+                        candFn.name === leafCtor ||
+                        candFn.name.endsWith(suffix))
+                    ) {
+                      ctorFn = candFn;
+                      break;
+                    }
+                  }
+                  if (ctorFn) break;
+                }
+              }
               const fieldTypes: VarType[] = [];
               if (ctorFn) {
                 for (let vi = 0; vi < ctorFn.varCount; vi++) {
@@ -6195,7 +6361,7 @@ export function lowerCSTExpression(
               }
               const ctorElemIds = firstVal.map((v, idx) => addArenaValueAsExpr(dae, v, fieldTypes[idx]));
               if (ctorElemIds.every((id) => id >= 0)) {
-                return dae.addCallExpr(firstOutputCustomType, ctorElemIds);
+                return dae.addCallExpr(ctorFn?.name || firstOutputCustomType, ctorElemIds);
               }
             }
             const inlinedId = addArenaValueAsExpr(dae, firstVal, firstOutputType ?? undefined);
@@ -6839,6 +7005,7 @@ export function lowerCSTExpression(
                 if (!varName) continue;
                 const rangeNode = Cst.ForIndex.range(fi) || fi.children?.find?.((k: any) => k.type === "expression");
                 let values: (number | string)[] = [];
+                let rangeResolved = false;
                 const isImplicit = !rangeNode;
                 if (rangeNode) {
                   const evalScopeId =
@@ -6848,10 +7015,13 @@ export function lowerCSTExpression(
                   const rangeText = rangeNode.text?.trim() ?? "";
                   if (rangeText.startsWith("{") && rangeText.endsWith("}")) {
                     const items = getArrayLiteralItems(rangeNode);
+                    let allResolved = true;
                     for (const item of items) {
                       const v = evaluateCSTNumber(item, substitutions as any, evalScopeId, db, dae, prefix);
                       if (v !== null) values.push(v);
+                      else allResolved = false;
                     }
+                    if (allResolved) rangeResolved = true;
                   } else if (rangeText.includes(":")) {
                     const colonNodes = flattenColonNodes(rangeNode);
                     if (colonNodes.length >= 2) {
@@ -6866,6 +7036,7 @@ export function lowerCSTExpression(
                         e = evaluateCSTNumber(colonNodes[2], substitutions as any, evalScopeId, db, dae, prefix);
                       }
                       if (s !== null && e !== null) {
+                        rangeResolved = true;
                         if (step === 0 || Math.abs(step) < 1e-12) {
                           dae.diagnostics.push({
                             severity: "error",
@@ -6882,12 +7053,13 @@ export function lowerCSTExpression(
                       const s = parseInt(parts[0]!.trim(), 10);
                       const e = parseInt(parts[parts.length - 1]!.trim(), 10);
                       if (!isNaN(s) && !isNaN(e)) {
+                        rangeResolved = true;
                         for (let val = s; val <= e; val++) values.push(val);
                       }
                     }
                   }
                 }
-                if (values.length === 0 && rangeNode) {
+                if (values.length === 0 && !rangeResolved && rangeNode) {
                   const rangeText = rangeNode.text?.trim() ?? "";
                   const dimSize =
                     getDaeDimSize(prefix, rangeText, 0, dae, db) || getDaeDimSize("", rangeText, 0, dae, db);
@@ -6895,10 +7067,10 @@ export function lowerCSTExpression(
                     values = Array.from({ length: dimSize }, (_, idx) => `${rangeText}[${idx + 1}]`);
                   }
                 }
-                if (values.length === 0) {
+                if (values.length === 0 && !rangeResolved) {
                   values = findArraySubscriptsForIter(exprChild, varName, dae, db, prefix, isImplicit, fi);
                 }
-                if (values.length > 0) {
+                if (values.length > 0 || rangeResolved) {
                   iters.push({ name: varName, values });
                 }
               }
@@ -7524,78 +7696,26 @@ export function lowerCSTExpression(
     return currElseId;
   }
 
-  // ============================================================================
-  // Binary Expression Lowering (Arithmetic, Relational, Logical, Element-Wise)
-  // ============================================================================
-  // Binary expression: left op right
-  if (node.childCount === 3) {
-    const rawOp = node.child(1)?.text?.trim() ?? node.child(1)?.type ?? "";
-    const opToken = rawOp.replace(/^"|"$/g, "");
-    let binOp: BinOp | null = null;
-    switch (opToken) {
-      case "+":
-        binOp = BinOp.Add;
-        break;
-      case "-":
-        binOp = BinOp.Sub;
-        break;
-      case "*":
-        binOp = BinOp.Mul;
-        break;
-      case "/":
-        binOp = BinOp.Div;
-        break;
-      case "^":
-        binOp = BinOp.Pow;
-        break;
-      case ".+":
-        binOp = BinOp.ElemAdd;
-        break;
-      case ".-":
-        binOp = BinOp.ElemSub;
-        break;
-      case ".*":
-        binOp = BinOp.ElemMul;
-        break;
-      case "./":
-        binOp = BinOp.ElemDiv;
-        break;
-      case ".^":
-        binOp = BinOp.ElemPow;
-        break;
-      case "<":
-        binOp = BinOp.Lt;
-        break;
-      case "<=":
-        binOp = BinOp.Lte;
-        break;
-      case ">":
-        binOp = BinOp.Gt;
-        break;
-      case ">=":
-        binOp = BinOp.Gte;
-        break;
-      case "==":
-        binOp = BinOp.Eq;
-        break;
-      case "<>":
-        binOp = BinOp.Neq;
-        break;
-      case "and":
-        binOp = BinOp.And;
-        break;
-      case "or":
-        binOp = BinOp.Or;
-        break;
-      case ":":
-        binOp = BinOp.Colon;
-        break;
-    }
-    if (binOp !== null) {
-      const leftNode = node.childForFieldName?.("left") ?? node.child(0);
-      const rightNode = node.childForFieldName?.("right") ?? node.child(2);
-      let leftId = lowerCSTExpression(leftNode, dae, prefix, substitutions, imports, db, flattener);
-      let rightId = lowerCSTExpression(rightNode, dae, prefix, substitutions, imports, db, flattener);
+  return null;
+}
+
+// ============================================================================
+// Binary Expression Lowering (Arithmetic, Relational, Logical, Element-Wise)
+// ============================================================================
+function finishBinaryCSTExpression(
+  node: SyntaxNode,
+  binOp: BinOp,
+  opToken: string,
+  leftNode: any,
+  rightNode: any,
+  leftId: number,
+  rightId: number,
+  dae: DAEBuilder,
+  ctx: LoweringContext,
+): number {
+  const { prefix = "", db, flattener, tupleContext, isAssignmentLhs } = ctx;
+  {
+    {
       if (
         (binOp === BinOp.Eq ||
           binOp === BinOp.Neq ||
@@ -9139,6 +9259,11 @@ export function lowerCSTExpression(
       return dae.addBinaryExpr(binOp, leftId, rightId);
     }
   }
+}
+
+function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: LoweringContext, state: any): number {
+  const { prefix = "", substitutions, imports, db, flattener, noArrayExpand, isAssignmentLhs } = ctx;
+  const type = node.type;
 
   // Unary expression: -expr or +expr or not expr
   if (node.childCount === 2) {
@@ -10221,7 +10346,13 @@ export function lowerCSTExpression(
             }
           }
           let concreteName = concreteParts.join(".");
-          if (imports && imports.has(rawParts[0]!.ident)) {
+          const localConcreteCand = resolveScopedName(concreteName, prefix, dae, state.innerOuterComponents);
+          if (
+            imports &&
+            imports.has(rawParts[0]!.ident) &&
+            dae.getVarIdxByName(localConcreteCand) < 0 &&
+            !dae.hasArrayElements(localConcreteCand)
+          ) {
             concreteName = [imports.get(rawParts[0]!.ident)!, ...concreteParts.slice(1)].join(".");
           }
           const candidate = resolveScopedName(concreteName, prefix, dae, state.innerOuterComponents);
@@ -10331,6 +10462,19 @@ export function lowerCSTExpression(
         return buildSliceArray(0, []);
       }
 
+      if (
+        rawParts.length === 1 &&
+        !rawParts[0]!.hasSubscripts &&
+        substitutions &&
+        substitutions.has(rawParts[0]!.ident)
+      ) {
+        const sVal = substitutions.get(rawParts[0]!.ident)!;
+        if (typeof sVal === "number") return dae.addIntLiteral(sVal);
+        if (typeof sVal === "string" && sVal.startsWith("expr:")) return Number(sVal.slice(5));
+        if (sVal === "true" || sVal === "false") {
+          return dae.addExpression(ExprKind.BoolLiteral, sVal === "true" ? 1 : 0);
+        }
+      }
       const parts: string[] = [];
       for (const p of rawParts) {
         let pIdent = p.ident;
@@ -10349,7 +10493,13 @@ export function lowerCSTExpression(
       }
       if (parts.length > 0) {
         let joined = parts.join(".");
-        if (imports && imports.has(parts[0]!)) {
+        const localJoinedCand = resolveScopedName(joined, prefix, dae, state.innerOuterComponents, true);
+        if (
+          imports &&
+          imports.has(parts[0]!) &&
+          dae.getVarIdxByName(localJoinedCand) < 0 &&
+          !dae.hasArrayElements(localJoinedCand)
+        ) {
           joined = [imports.get(parts[0]!)!, ...parts.slice(1)].join(".");
         }
         let candidate = resolveScopedName(joined, prefix, dae, state.innerOuterComponents, true);
@@ -10748,6 +10898,7 @@ export function lowerCSTExpression(
                     const childCst = db.cstNode(child.id) as any;
                     const findBindingExpr = (n: any): any => {
                       if (!n) return null;
+                      if (n.type === "array_subscripts" || n.type === "class_modification") return null;
                       if (n.type === "expression") return n;
                       for (const c of n.children || []) {
                         const res = findBindingExpr(c);
@@ -10755,18 +10906,84 @@ export function lowerCSTExpression(
                       }
                       return null;
                     };
-                    const pkgMod = db.query<any>("effectiveModification", pkgOrClass.id);
-                    const modArg = pkgMod?.args?.find((a: any) => a.name === child.name);
-                    const exprNode =
-                      (modArg?.value ? (findBindingExpr(modArg.value) ?? modArg.value) : null) ??
-                      findBindingExpr(childCst);
+                    let modArg: any = null;
+                    let modOwnerId: SymbolId | undefined = pkgOrClass.id;
+                    let modFileSym: SymbolEntry | undefined;
+                    const modQueue: SymbolId[] = [pkgOrClass.id];
+                    const seenModClasses = new Set<SymbolId>();
+                    while (modQueue.length > 0 && !modArg) {
+                      const cid = modQueue.shift()!;
+                      if (seenModClasses.has(cid)) continue;
+                      seenModClasses.add(cid);
+                      const cMod = db.query<any>("effectiveModification", cid);
+                      const foundDirect = cMod?.args?.find(
+                        (a: any) => a.name === child.name && a.value && a.value.text?.trim() !== child.name,
+                      );
+                      if (foundDirect) {
+                        modArg = foundDirect;
+                        modOwnerId = cid;
+                        modFileSym = db.symbol(foundDirect.sourceSymbolId ?? cid);
+                        break;
+                      }
+                      for (const ch of db.childrenOf(cid)) {
+                        if (ch.kind === "Extends") {
+                          const extMod = db.query<any>("extendsModificationParsed", ch.id);
+                          const foundExt = extMod?.args?.find(
+                            (a: any) => a.name === child.name && a.value && a.value.text?.trim() !== child.name,
+                          );
+                          if (foundExt) {
+                            modArg = foundExt;
+                            modOwnerId = cid;
+                            modFileSym = ch;
+                            break;
+                          }
+                          const extBase = db.query<SymbolEntry | null>("resolvedBaseClass", ch.id);
+                          if (extBase && !seenModClasses.has(extBase.id)) {
+                            modQueue.push(extBase.id);
+                          }
+                        }
+                      }
+                      if (modArg) break;
+                      const shortBase = db.query<SymbolEntry | null>("resolvedBaseClass", cid);
+                      if (shortBase && !seenModClasses.has(shortBase.id)) {
+                        modQueue.push(shortBase.id);
+                      }
+                    }
+                    let modExprNode: any = null;
+                    if (modArg?.value) {
+                      modExprNode = findBindingExpr(modArg.value);
+                      if (!modExprNode && Array.isArray(modArg.value.cstBytes)) {
+                        const scopeSym =
+                          modFileSym ?? db.symbol(modArg.evaluationScopeId ?? modOwnerId ?? pkgOrClass.id);
+                        const rangeNode = db.cstNodeRange(
+                          modArg.value.cstBytes[0],
+                          modArg.value.cstBytes[1],
+                          scopeSym,
+                        ) as any;
+                        modExprNode = findBindingExpr(rangeNode) ?? rangeNode;
+                      }
+                    }
+                    const exprNode = modExprNode ?? findBindingExpr(childCst);
                     if (exprNode && flattener) {
-                      const prevClassId = flattener.currentClassId;
-                      flattener.currentClassId =
-                        modArg?.evaluationScopeId ?? pkgOrClass.id ?? child.parentId ?? flattener.currentClassId;
-                      const lowered = flattener.lowerExpr(exprNode, dae, "", substitutions);
-                      flattener.currentClassId = prevClassId;
-                      if (lowered >= 0) return lowered;
+                      const activeSet: Set<string> = ((flattener as any)._activeConstLowering ??= new Set<string>());
+                      const constKey = `${pkgOrClass.id}:${child.id}`;
+                      if (!activeSet.has(constKey)) {
+                        activeSet.add(constKey);
+                        const prevClassId = flattener.currentClassId;
+                        flattener.currentClassId =
+                          modArg?.evaluationScopeId ??
+                          modOwnerId ??
+                          pkgOrClass.id ??
+                          child.parentId ??
+                          flattener.currentClassId;
+                        try {
+                          const lowered = flattener.lowerExpr(exprNode, dae, "", substitutions);
+                          if (lowered >= 0) return lowered;
+                        } finally {
+                          flattener.currentClassId = prevClassId;
+                          activeSet.delete(constKey);
+                        }
+                      }
                     }
                   }
                 }

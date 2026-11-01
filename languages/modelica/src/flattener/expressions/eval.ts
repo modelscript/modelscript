@@ -952,7 +952,7 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
               }
               const fullName = db.query("symbolFullName", s.id) ?? s.name;
               const matchesScope = !currentScopeId || s === sym || s.parentId === currentScopeId;
-              if (fullName === vName || (s.name === vName && matchesScope)) {
+              if (s === sym || fullName === vName || (s.name === simpleName && matchesScope)) {
                 const rawDims = db.query("arrayDimensions", s.id);
                 const dims = normalizeDims(rawDims);
                 if (dims) return dims;
@@ -1162,6 +1162,57 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
       dae.getExprRight(exprId) >= 2
     ) {
       return getExprDims(dae.getExprLeft(exprId + 1), dae, db, flattener);
+    }
+    const cleanCallFn = fnName.includes(".") ? fnName.slice(fnName.lastIndexOf(".") + 1) : fnName;
+    // `promote(A, n)` pads shape of A with trailing 1s to rank n
+    if ((fnName === "promote" || cleanCallFn === "promote") && dae.getExprRight(exprId) >= 2) {
+      const aId = dae.getExprLeft(exprId);
+      const nId = dae.getExprLeft(exprId + 1);
+      const nVal = evalDaeExpr(nId, dae);
+      if (typeof nVal === "number" && Number.isInteger(nVal) && nVal >= 1) {
+        const subDims = getExprDims(aId, dae, db, flattener) ?? [];
+        const res = [...subDims];
+        while (res.length < nVal) res.push(1);
+        return res;
+      }
+      return null;
+    }
+    // `cat(k, A1, A2, ...)` sums dimension k (1-indexed) across concatenated array arguments
+    if ((fnName === "cat" || cleanCallFn === "cat") && dae.getExprRight(exprId) >= 2) {
+      const argCount = dae.getExprRight(exprId);
+      const kVal = evalDaeExpr(dae.getExprLeft(exprId), dae);
+      const firstDims = getExprDims(dae.getExprLeft(exprId + 1), dae, db, flattener);
+      if (
+        firstDims &&
+        firstDims.length > 0 &&
+        typeof kVal === "number" &&
+        Number.isInteger(kVal) &&
+        kVal >= 1 &&
+        kVal <= firstDims.length
+      ) {
+        const res = [...firstDims];
+        let sumDim = firstDims[kVal - 1]!;
+        for (let i = 2; i < argCount; i++) {
+          const di = getExprDims(dae.getExprLeft(exprId + i), dae, db, flattener);
+          if (!di || di.length !== firstDims.length) return null;
+          sumDim += di[kVal - 1]!;
+        }
+        res[kVal - 1] = sumDim;
+        return res;
+      }
+      return null;
+    }
+    // `transpose(A)` swaps the first two dimensions of A
+    if ((fnName === "transpose" || cleanCallFn === "transpose") && dae.getExprRight(exprId) >= 1) {
+      const subDims = getExprDims(dae.getExprLeft(exprId), dae, db, flattener);
+      if (subDims && subDims.length >= 2) {
+        return [subDims[1]!, subDims[0]!, ...subDims.slice(2)];
+      }
+      return null;
+    }
+    // `symmetric(A)` preserves the shape of A
+    if ((fnName === "symmetric" || cleanCallFn === "symmetric") && dae.getExprRight(exprId) >= 1) {
+      return getExprDims(dae.getExprLeft(exprId), dae, db, flattener);
     }
     if (fnName === "smooth" && dae.getExprRight(exprId) >= 2) {
       return getExprDims(dae.getExprLeft(exprId + 1), dae, db, flattener);
@@ -1589,6 +1640,10 @@ export function evalDaeExpr(
         // 3. Fallback to Salsa symbol table (`componentInstance` / `effectiveModification`)
         // for package constants or parameters not yet materialized in the local DAE arena
         {
+          const pendingVals = (dae as any).pendingModValues as Map<string, number | boolean> | undefined;
+          if (pendingVals?.has(name)) {
+            return pendingVals.get(name)!;
+          }
           const flat = state.flattener;
           const db = state.db ?? flat?.db;
           const scopeIds = [
@@ -1603,6 +1658,12 @@ export function evalDaeExpr(
           if (db) {
             const simpleName = name.includes(".") ? name.split(".").pop()! : name;
             const prefixPart = name.includes(".") ? name.split(".").slice(0, -1).join(".") : "";
+            const pendingExprs = (dae as any).pendingModExprs as Map<string, string> | undefined;
+            const pendingExprText = pendingExprs?.get(name);
+            if (pendingExprText && pendingExprText !== simpleName && pendingExprText !== name) {
+              const evalVal = evaluateCSTNumber(pendingExprText, undefined, scopeId ?? undefined, db, dae, prefixPart);
+              if (evalVal !== null) return evalVal;
+            }
             const candidates: any[] = [];
             for (const sId of scopeIds) {
               if (!sId) continue;
@@ -1712,10 +1773,7 @@ export function evalDaeExpr(
               const vIdx = dae.lookupVariable(n);
               if (vIdx >= 0) {
                 const v = dae.getVarVariability(vIdx);
-                if (
-                  (v === Variability.Constant || v === Variability.Parameter) &&
-                  dae.getVarType(vIdx) === VarType.Enumeration
-                ) {
+                if (v === Variability.Constant || v === Variability.Parameter) {
                   const bId = dae.getVarExpression(vIdx);
                   if (bId !== undefined && bId >= 0 && bId !== id) {
                     return resolveEnumName(bId, depth + 1);
@@ -1730,8 +1788,12 @@ export function evalDaeExpr(
             if (lEnum && rEnum) {
               const lPre = lEnum.slice(0, lEnum.lastIndexOf("."));
               const rPre = rEnum.slice(0, rEnum.lastIndexOf("."));
-              if (lPre && lPre === rPre) {
-                return op === BinOp.Eq ? lEnum === rEnum : lEnum !== rEnum;
+              const lLeafType = lPre.includes(".") ? lPre.slice(lPre.lastIndexOf(".") + 1) : lPre;
+              const rLeafType = rPre.includes(".") ? rPre.slice(rPre.lastIndexOf(".") + 1) : rPre;
+              if (lLeafType && lLeafType === rLeafType) {
+                const lLit = lEnum.slice(lEnum.lastIndexOf(".") + 1);
+                const rLit = rEnum.slice(rEnum.lastIndexOf(".") + 1);
+                return op === BinOp.Eq ? lLit === rLit : lLit !== rLit;
               }
             }
           }
@@ -2001,6 +2063,54 @@ export function evalDaeExpr(
             return buildFill(0);
           }
         }
+        if (cleanFn === "promote" && args.length === 2 && typeof args[1] === "number" && Number.isInteger(args[1])) {
+          const targetRank = args[1] as number;
+          let curRank = 0;
+          let probe = args[0];
+          while (Array.isArray(probe)) {
+            curRank++;
+            probe = probe[0];
+          }
+          const extraDims = targetRank - curRank;
+          if (extraDims <= 0) return args[0];
+          const wrapLeaves = (v: any, depth: number): any => {
+            if (depth > 0 && Array.isArray(v)) {
+              return v.map((elem) => wrapLeaves(elem, depth - 1));
+            }
+            let res = v;
+            for (let k = 0; k < extraDims; k++) {
+              res = [res];
+            }
+            return res;
+          };
+          return wrapLeaves(args[0], curRank);
+        }
+        if (cleanFn === "cat" && args.length >= 2 && typeof args[0] === "number" && Number.isInteger(args[0])) {
+          const kDim = args[0] as number;
+          const catArrs = args.slice(1);
+          if (kDim >= 1 && catArrs.every((a) => Array.isArray(a))) {
+            const catAlong = (dim: number, list: any[][]): any[] | null => {
+              if (dim === 1) {
+                const res: any[] = [];
+                for (const arr of list) res.push(...arr);
+                return res;
+              }
+              const firstLen = list[0]?.length ?? 0;
+              if (list.some((arr) => !Array.isArray(arr) || arr.length !== firstLen)) return null;
+              const out: any[] = [];
+              for (let idx = 0; idx < firstLen; idx++) {
+                const sub = catAlong(
+                  dim - 1,
+                  list.map((arr) => arr[idx]),
+                );
+                if (sub === null) return null;
+                out.push(sub);
+              }
+              return out;
+            };
+            return catAlong(kDim, catArrs);
+          }
+        }
         if (
           cleanFn === "length" &&
           args.length === 1 &&
@@ -2022,7 +2132,19 @@ export function evalDaeExpr(
         if (scalarBuiltin?.fold && args.every((a) => typeof a === "number")) {
           return scalarBuiltin.fold(...args);
         }
-        const fnObj = dae.getFunction(fnName) ?? dae.getFunction(cleanFn);
+        let fnObj = dae.getFunction(fnName) ?? dae.getFunction(cleanFn);
+        if (!fnObj) {
+          const suffix = `.${cleanFn}`;
+          for (const candFn of dae.functions.values()) {
+            if (
+              candFn.description?.includes("record constructor") &&
+              (candFn.name === fnName || candFn.name === cleanFn || candFn.name.endsWith(suffix))
+            ) {
+              fnObj = candFn;
+              break;
+            }
+          }
+        }
         if (fnObj?.description?.includes("record constructor")) {
           return args;
         }

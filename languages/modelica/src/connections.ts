@@ -2964,18 +2964,18 @@ export class ModelicaPortBalancer {
               flowSumEqs.every((eq) => !eq.str.includes("."));
             if (isTopLevelOnly) {
               potentialEqs.forEach((eq) => {
-                dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
+                dae.addEquation(eq.kind, eq.lhs, eq.rhs);
               });
-              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
-              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
             } else if (hasArrayOutside) {
-              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
-              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
             } else {
-              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
-              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+              flowSumEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+              zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
             }
-            compBusFlowEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999));
+            compBusFlowEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
 
             if (!isTopLevelOnly) {
               potentialEqs.forEach((eq) => {
@@ -2985,9 +2985,9 @@ export class ModelicaPortBalancer {
                   ((lhsName.startsWith("b.") || lhsName.startsWith("b1.")) && rhsName.startsWith("a1.")) ||
                   (lhsName.includes(".bout.") && rhsName.includes(".bin."))
                 ) {
-                  dae.addEquation(eq.kind, eq.rhs, eq.lhs, 9999);
+                  dae.addEquation(eq.kind, eq.rhs, eq.lhs);
                 } else {
-                  dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
+                  dae.addEquation(eq.kind, eq.lhs, eq.rhs);
                 }
               });
             }
@@ -3065,9 +3065,9 @@ export class ModelicaPortBalancer {
             ((lhsName.startsWith("b.") || lhsName.startsWith("b1.")) && rhsName.startsWith("a1.")) ||
             (lhsName.includes(".bout.") && rhsName.includes(".bin."))
           ) {
-            newEqIdx = dae.addEquation(eq.kind, eq.rhs, eq.lhs, 9999);
+            newEqIdx = dae.addEquation(eq.kind, eq.rhs, eq.lhs);
           } else {
-            newEqIdx = dae.addEquation(eq.kind, eq.lhs, eq.rhs, 9999);
+            newEqIdx = dae.addEquation(eq.kind, eq.lhs, eq.rhs);
           }
           if (newEqIdx >= 0 && eq.eqIdx < 99999) {
             dae.setEqOrder(newEqIdx, eq.eqIdx + (idx + 1) * 0.0001);
@@ -3148,7 +3148,7 @@ export class ModelicaPortBalancer {
           const callExpr = dae.addCallExpr(eqConstraintName, [uExpr, vExpr]);
           const zeros = Array.from({ length: residueLen }, () => dae.addRealLiteral(0.0));
           const rhsExpr = dae.addArrayCtorExpr(zeros);
-          dae.addEquation(EqKind.Simple, callExpr, rhsExpr, 9999);
+          dae.addEquation(EqKind.Simple, callExpr, rhsExpr);
         }
       }
     }

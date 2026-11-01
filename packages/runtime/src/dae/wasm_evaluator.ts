@@ -9,7 +9,11 @@
 import type { QueryDB, SymbolEntry, SymbolId } from "../runtime.js";
 import { evaluateMslCFunction, isMslCFunction } from "../util/msl_ffi.js";
 import { BinOp, DAEBuilder, ExprKind, UnaryOp, Variability } from "./wasm_dae.js";
-import { evaluateArenaFunctionCall, executeArenaFunction } from "./wasm_statement_executor.js";
+import {
+  evaluateArenaFunctionCall,
+  executeArenaFunction,
+  lookupRecordConstructorArena,
+} from "./wasm_statement_executor.js";
 import {
   type CachedTable1D,
   evalTable1DValue,
@@ -1482,8 +1486,26 @@ export function evaluateArenaRuntime(
       }
     }
 
-    // 6. Dynamic Subscript Resolution (`x[i]` / `x[i,j]` resolved via scalarized interned name)
+    // 6. Dynamic Subscript Resolution (`x[i]` / `x[i,j]` resolved via scalarized interned name, or `fn(...)[k]` output indexing)
     case ExprKind.Subscript: {
+      const baseId = arena.getExprData1(exprId);
+      if (baseId >= 0 && arena.getExprKind(baseId) === ExprKind.Call) {
+        const firstVal = evaluateArenaRuntime(arena, baseId, valuesByStringId, preValuesByStringId);
+        const idxExprId = arena.getExprLeft(exprId);
+        const idx =
+          idxExprId >= 0
+            ? Math.round(evaluateArenaRuntime(arena, idxExprId, valuesByStringId, preValuesByStringId))
+            : 1;
+        if (idx <= 1) return firstVal;
+        const rootArena = ((arena as any).parentDae as DAEBuilder | undefined) ?? arena;
+        const lastOuts = ((arena as any)._lastFunctionOutputs ?? (rootArena as any)._lastFunctionOutputs) as
+          | number[]
+          | undefined;
+        if (Array.isArray(lastOuts) && idx - 1 < lastOuts.length) {
+          return lastOuts[idx - 1] ?? firstVal;
+        }
+        return firstVal;
+      }
       const subName = resolveSubscriptNameRuntime(arena, exprId, valuesByStringId, preValuesByStringId);
       if (subName) {
         const subscriptedNameId = arena.interner.intern(subName);
@@ -1913,18 +1935,32 @@ export function evaluateArenaRuntime(
         if (typeof cRes === "boolean") return cRes ? 1 : 0;
       }
 
+      const rootArena = (arena as any).parentDae as DAEBuilder | undefined;
       const fnArena =
         arena.functions?.get(funcNameId) ??
         arena.getFunction?.(funcNameId) ??
         arena.getFunction?.(rawFuncName) ??
         arena.getFunction?.(cleanName) ??
         arena.getFunction?.(funcName) ??
-        arena.getFunction?.(shortName);
+        arena.getFunction?.(shortName) ??
+        rootArena?.functions?.get(funcNameId) ??
+        rootArena?.getFunction?.(funcNameId) ??
+        rootArena?.getFunction?.(rawFuncName) ??
+        rootArena?.getFunction?.(cleanName) ??
+        rootArena?.getFunction?.(funcName) ??
+        rootArena?.getFunction?.(shortName);
       if (fnArena) {
+        if (!(fnArena as any).parentDae) {
+          (fnArena as any).parentDae = rootArena ?? arena;
+        }
         const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
         const argVals = argIds.map((id) => evaluateArenaRuntime(arena, id, valuesByStringId, preValuesByStringId));
         const parentLookup = (calledId: number, calledArgs: number[]): number | null => {
-          const calledName = fnArena.interner.resolve(calledId) ?? arena.interner.resolve(calledId) ?? "";
+          const calledName =
+            fnArena.interner.resolve(calledId) ??
+            arena.interner.resolve(calledId) ??
+            rootArena?.interner.resolve(calledId) ??
+            "";
           const calledClean = calledName.replace(/^\.+/, "");
           const calledShort = calledClean.includes(".")
             ? calledClean.slice(calledClean.lastIndexOf(".") + 1)
@@ -1937,17 +1973,27 @@ export function evaluateArenaRuntime(
             arena.functions?.get(calledId) ??
             arena.getFunction?.(calledName) ??
             arena.getFunction?.(calledClean) ??
-            arena.getFunction?.(calledShort);
+            arena.getFunction?.(calledShort) ??
+            rootArena?.functions?.get(calledId) ??
+            rootArena?.getFunction?.(calledName) ??
+            rootArena?.getFunction?.(calledClean) ??
+            rootArena?.getFunction?.(calledShort);
           if (subArena) {
+            if (!(subArena as any).parentDae) {
+              (subArena as any).parentDae = rootArena ?? arena;
+            }
             return executeArenaFunction(subArena, calledArgs, parentLookup);
           }
           return null;
         };
         if (!fnArena.externalDecl) {
           const res = executeArenaFunction(fnArena, argVals, parentLookup);
+          if (Array.isArray((fnArena as any)._lastOutputs)) {
+            (arena as any)._lastFunctionOutputs = (fnArena as any)._lastOutputs;
+          }
           if (res !== null && Number.isFinite(res)) return res;
         }
-        const cevalRes = evaluateArenaFunctionCall(arena, funcNameId, argVals);
+        const cevalRes = evaluateArenaFunctionCall(rootArena ?? arena, funcNameId, argVals);
         if (typeof cevalRes === "number") return cevalRes;
         if (typeof cevalRes === "boolean") return cevalRes ? 1 : 0;
       }
@@ -2638,6 +2684,31 @@ export function evaluateArenaExpression(
           }
           return current ?? null;
         }
+        if (obj !== null && Array.isArray(obj) && !rest.includes(".")) {
+          const rootIdx = dae.getVarIdxByName(root);
+          let customType = rootIdx >= 0 ? dae.getVarCustomType(rootIdx) : undefined;
+          if (!customType && rootIdx >= 0) {
+            const rootExprId = dae.getVarExpression(rootIdx);
+            if (typeof rootExprId === "number" && rootExprId >= 0 && dae.getExprKind(rootExprId) === ExprKind.Call) {
+              const calledName = dae.interner.resolve(dae.getExprData1(rootExprId));
+              if (calledName) customType = calledName;
+            }
+          }
+          const ctorArena = customType
+            ? lookupRecordConstructorArena(dae, customType, callerDae ?? (dae as any).parentDae)
+            : undefined;
+          if (ctorArena) {
+            let fIdx = 0;
+            for (let vi = 0; vi < ctorArena.varCount; vi++) {
+              if (!ctorArena.isVarRemoved(vi) && ctorArena.getVarCausality(vi) === 1 /* Input */) {
+                if (ctorArena.getVarName(vi) === rest && fIdx < obj.length) {
+                  return obj[fIdx]!;
+                }
+                fIdx++;
+              }
+            }
+          }
+        }
       }
 
       // 2e. Locate the variable in `dae` or fallback to `callerDae` (with or without `instancePrefix`).
@@ -2670,42 +2741,39 @@ export function evaluateArenaExpression(
         const elements = targetDae.getArrayElementIndices(effectiveName);
         const result: any[] = [];
         for (const idx of elements) {
-          if (targetDae.isVarFixed(idx)) {
-            result.push(targetDae.getVarStartValue(idx));
-          } else {
-            const variability = targetDae.getVarVariability(idx);
-            if (variability === Variability.Constant || (!onlyConstants && variability === Variability.Parameter)) {
-              const bindingExprId = targetDae.getVarExpression(idx);
-              if (typeof bindingExprId === "number" && bindingExprId >= 0) {
-                if (!visitedVars.has(idx)) {
-                  visitedVars.add(idx);
-                  try {
-                    result.push(
-                      evaluateArenaExpression(
-                        targetDae,
-                        bindingExprId,
-                        parameters,
-                        db,
-                        scopeId,
-                        visitedVars,
-                        onlyConstants,
-                        functionLookup,
-                        callerDae,
-                        instancePrefix,
-                      ),
-                    );
-                  } finally {
-                    visitedVars.delete(idx);
-                  }
-                } else {
-                  result.push(null);
+          const variability = targetDae.getVarVariability(idx);
+          if (variability === Variability.Constant || (!onlyConstants && variability === Variability.Parameter)) {
+            const bindingExprId = targetDae.getVarExpression(idx);
+            if (typeof bindingExprId === "number" && bindingExprId >= 0) {
+              if (!visitedVars.has(idx)) {
+                visitedVars.add(idx);
+                try {
+                  const evalElem = evaluateArenaExpression(
+                    targetDae,
+                    bindingExprId,
+                    parameters,
+                    db,
+                    scopeId,
+                    visitedVars,
+                    onlyConstants,
+                    functionLookup,
+                    callerDae,
+                    instancePrefix,
+                  );
+                  result.push(evalElem !== null ? evalElem : targetDae.getVarStartValue(idx));
+                } finally {
+                  visitedVars.delete(idx);
                 }
               } else {
-                result.push(targetDae.getVarStartValue(idx));
+                result.push(null);
               }
             } else {
-              result.push(null);
+              result.push(targetDae.getVarStartValue(idx));
             }
+          } else if (targetDae.isVarFixed(idx)) {
+            result.push(targetDae.getVarStartValue(idx));
+          } else {
+            result.push(null);
           }
         }
         if (elements.length > 0) {
@@ -2739,9 +2807,6 @@ export function evaluateArenaExpression(
 
       // 2g. Evaluate scalar constant/parameter variable binding (guarded by `visitedVars` against cycles).
       if (vIdx >= 0) {
-        if (targetDae.isVarFixed(vIdx)) {
-          return targetDae.getVarStartValue(vIdx);
-        }
         const variability = targetDae.getVarVariability(vIdx);
         if (variability === Variability.Constant || (!onlyConstants && variability === Variability.Parameter)) {
           const bindingExprId = targetDae.getVarExpression(vIdx);
@@ -2749,7 +2814,7 @@ export function evaluateArenaExpression(
             if (visitedVars.has(vIdx)) return null;
             visitedVars.add(vIdx);
             try {
-              return evaluateArenaExpression(
+              const evalRes = evaluateArenaExpression(
                 targetDae,
                 bindingExprId,
                 parameters,
@@ -2761,10 +2826,14 @@ export function evaluateArenaExpression(
                 callerDae,
                 instancePrefix,
               );
+              if (evalRes !== null) return evalRes;
             } finally {
               visitedVars.delete(vIdx);
             }
           }
+          return targetDae.getVarStartValue(vIdx);
+        }
+        if (targetDae.isVarFixed(vIdx)) {
           return targetDae.getVarStartValue(vIdx);
         }
       }
@@ -2818,7 +2887,10 @@ export function evaluateArenaExpression(
       if (operand === null) return null;
 
       if (op === UnaryOp.Negate && typeof operand === "number") return -operand;
-      if (op === UnaryOp.Not && typeof operand === "boolean") return !operand;
+      if (op === UnaryOp.Not) {
+        if (typeof operand === "boolean") return !operand;
+        if (typeof operand === "number") return operand === 0;
+      }
       return null;
     }
 
@@ -2972,16 +3044,23 @@ export function evaluateArenaExpression(
         if (res !== null) return res;
       }
 
-      if (typeof left === "boolean" && typeof right === "boolean") {
+      if (
+        (typeof left === "boolean" || typeof left === "number") &&
+        (typeof right === "boolean" || typeof right === "number")
+      ) {
+        const lBool = typeof left === "boolean" ? left : left !== 0;
+        const rBool = typeof right === "boolean" ? right : right !== 0;
         switch (op) {
           case BinOp.And:
-            return left && right;
+            return lBool && rBool;
           case BinOp.Or:
-            return left || right;
+            return lBool || rBool;
           case BinOp.Eq:
-            return left === right;
+            if (typeof left === "boolean" || typeof right === "boolean") return lBool === rBool;
+            break;
           case BinOp.Neq:
-            return left !== right;
+            if (typeof left === "boolean" || typeof right === "boolean") return lBool !== rBool;
+            break;
         }
       }
       return null;
@@ -3001,8 +3080,9 @@ export function evaluateArenaExpression(
         callerDae,
         instancePrefix,
       );
-      if (typeof cond === "boolean") {
-        return cond
+      if (typeof cond === "boolean" || typeof cond === "number") {
+        const condBool = typeof cond === "boolean" ? cond : cond !== 0;
+        return condBool
           ? evaluateArenaExpression(
               dae,
               dae.getExprLeft(exprId),
@@ -3257,8 +3337,8 @@ export function evaluateArenaExpression(
       const arrayResult = evaluateArrayBuiltin(funcName, args as ArenaValue[]);
       if (arrayResult !== undefined) return arrayResult;
 
+      const funcNameId = dae.getExprData1(exprId);
       if (functionLookup) {
-        const funcNameId = dae.getExprData1(exprId);
         const userFuncResult = functionLookup(funcNameId, args as ArenaValue[]);
         if (userFuncResult !== null) {
           const fnDae = dae.functions.get(funcNameId);
@@ -3273,6 +3353,29 @@ export function evaluateArenaExpression(
           }
           return userFuncResult;
         }
+      }
+
+      const cleanName = funcName.replace(/^\.+/, "");
+      const shortName = cleanName.includes(".") ? cleanName.slice(cleanName.lastIndexOf(".") + 1) : cleanName;
+      const rootDae = callerDae ?? ((dae as any).parentDae as DAEBuilder | undefined);
+      const fnArena =
+        dae.functions?.get(funcNameId) ??
+        dae.getFunction?.(funcNameId) ??
+        dae.getFunction?.(funcName) ??
+        dae.getFunction?.(cleanName) ??
+        dae.getFunction?.(shortName) ??
+        rootDae?.functions?.get(funcNameId) ??
+        rootDae?.getFunction?.(funcNameId) ??
+        rootDae?.getFunction?.(funcName) ??
+        rootDae?.getFunction?.(cleanName) ??
+        rootDae?.getFunction?.(shortName);
+      if (fnArena && !fnArena.externalDecl && args.every((a) => typeof a === "number" || typeof a === "boolean")) {
+        if (!(fnArena as any).parentDae) {
+          (fnArena as any).parentDae = rootDae ?? dae;
+        }
+        const numArgs = args.map((a) => (typeof a === "boolean" ? (a ? 1 : 0) : (a as number)));
+        const res = executeArenaFunction(fnArena, numArgs);
+        if (res !== null && Number.isFinite(res)) return res;
       }
 
       return null;

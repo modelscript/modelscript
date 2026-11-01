@@ -12,6 +12,7 @@ import {
   Causality,
   DAEBuilder,
   evaluateArenaFunctionCall,
+  StmtKind,
   VarType,
   type QueryDB,
   type SymbolEntry,
@@ -20,6 +21,7 @@ import {
 import { isInnerQuery, isOuterQuery } from "../../queries.js";
 import { getFlatteningState } from "../support/state.js";
 import { getArrayCtorElements } from "./binary-ops.js";
+import { copyExprBetweenDaes } from "./cst-utils.js";
 import {
   addArenaValueAsExpr,
   castToRealExpr,
@@ -108,6 +110,7 @@ export function vectorizeFunctionCall(
   dae: DAEBuilder,
   flattener?: any,
   db?: any,
+  resolvedFnDae?: DAEBuilder,
 ): number | null {
   if (
     fnName === "subSample" ||
@@ -135,14 +138,14 @@ export function vectorizeFunctionCall(
   }
   const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(fnName);
   let isScalarFn = Boolean(scalarBuiltin);
-  let fnDae: DAEBuilder | undefined;
+  let fnDae: DAEBuilder | undefined = resolvedFnDae;
   let pendingSym: any = null;
   let pendingQualifiedFnName = "";
   let pendingFnBase = "";
   if (!isScalarFn) {
     const hasArrayArg = argExprIds.some((aid) => (getExprDims(aid, dae, db)?.length ?? 0) > 0);
     if (!hasArrayArg) return null;
-    fnDae = dae.getFunction(fnName);
+    if (!fnDae) fnDae = dae.getFunction(fnName);
     if (!fnDae && flattener && db) {
       const parts = fnName.split(".");
       const fnBase = parts[parts.length - 1]!;
@@ -422,7 +425,7 @@ export function vectorizeFunctionCall(
     }
 
     if (subHasExtra) {
-      const rec = vectorizeFunctionCall(fnName, subArgs, dae, flattener, db);
+      const rec = vectorizeFunctionCall(fnName, subArgs, dae, flattener, db, resolvedFnDae);
       if (rec !== null) {
         elemResults.push(rec);
         continue;
@@ -474,7 +477,8 @@ export function vectorizeFunctionCall(
       }
       if (!fnDae.isImpure && allConst && constVals.length === subArgs.length) {
         try {
-          const fnInternId = typeof fnName === "string" ? dae.interner.intern(fnName) : fnName;
+          const targetEvalName = resolvedFnDae?.name || fnName;
+          const fnInternId = typeof targetEvalName === "string" ? dae.interner.intern(targetEvalName) : targetEvalName;
           const outVal = evaluateArenaFunctionCall(
             dae,
             fnInternId,
@@ -538,7 +542,44 @@ export function vectorizeFunctionCall(
         }
       }
     }
-    elemResults.push(dae.addCallExpr(fnName, castedArgs));
+    if (
+      fnDae &&
+      !(fnDae as any).isExplicitImpure &&
+      !(fnDae as any).isBeingFlattened &&
+      !(fnDae as any).isRecursive &&
+      (!(fnDae as any).symId || !flattener?.activeFlatteningFunctionIds?.has((fnDae as any).symId)) &&
+      (fnDae as any).isEarlyInline &&
+      fnDae.stmtCount === 1 &&
+      fnDae.getStmtKind(0) === StmtKind.Assignment
+    ) {
+      const subs = new Map<string, number>();
+      let inputIdx = 0;
+      for (let vi = 0; vi < fnDae.varCount; vi++) {
+        if (fnDae.getVarCausality(vi) === Causality.Input) {
+          const inName = fnDae.getVarName(vi);
+          if (inputIdx < castedArgs.length) {
+            subs.set(inName, castedArgs[inputIdx]!);
+          }
+          inputIdx++;
+        }
+      }
+      const rhsExprId = fnDae.getStmtLeft(0);
+      if (rhsExprId >= 0) {
+        const inlinedId = copyExprBetweenDaes(fnDae, rhsExprId, dae, subs);
+        if (inlinedId >= 0) {
+          (fnDae as any).wasInlined = true;
+          elemResults.push(inlinedId);
+          continue;
+        }
+      }
+    }
+    const callFnName = resolvedFnDae
+      ? resolvedFnDae.externalDecl && resolvedFnDae.externalDecl.includes('"builtin"')
+        ? fnName
+        : resolvedFnDae.name || fnName
+      : fnName;
+    if (fnDae) (fnDae as any).wasCalled = true;
+    elemResults.push(dae.addCallExpr(callFnName, castedArgs));
   }
 
   return dae.addArrayCtorExpr(elemResults);

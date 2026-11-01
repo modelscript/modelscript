@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import express from "express";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, watch, type FSWatcher } from "node:fs";
 import path, { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { LibraryDatabase } from "../database.js";
+import { optionalAuth } from "../middleware/auth-middleware.js";
+import { ensureUserActivityRepo } from "../services/activity-git.js";
 
 const ROUTES_DIR = path.dirname(fileURLToPath(import.meta.url));
 const API_ROOT = path.resolve(ROUTES_DIR, "../..");
@@ -54,6 +58,34 @@ function escapeHtml(unsafe: string): string {
 }
 
 /**
+ * Patches VS Code Web's `out/vs/workbench/contrib/webview/browser/pre/index.html`
+ * so same-origin webview hosting (`location.origin === parentOrigin`, e.g. on
+ * `ansatz.social`, `modelscript.org`, `ide.modelscript.org`, or self-hosted domains)
+ * passes `HostMessaging.signalReady()` origin validation, and allows Cloudflare's
+ * injected analytics beacon script in the outer webview frame CSP.
+ */
+export function patchWebviewPreHtml(html: string): string {
+  let out = html.replace(
+    "script-src 'sha256-TaWGDzV7c9rUH2q/5ygOyYUHSyHIqBMYfucPh3lnKvU=' 'self'",
+    "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
+  );
+  out = out.replace(
+    /script-src 'sha256-[A-Za-z0-9+/=]+' 'self'/g,
+    "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
+  );
+  out = out.replace(
+    /script-src 'unsafe-inline' 'self'(?! https:\/\/static\.cloudflareinsights\.com)/g,
+    "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
+  );
+
+  out = out.replace(
+    /if \((?:hostname === "localhost" \|\| hostname === "127\.0\.0\.1" \|\| )?(?:location\.origin === parentOrigin \|\| )?hostname === parentOriginHash/g,
+    'if (hostname === "localhost" || hostname === "127.0.0.1" || location.origin === parentOrigin || hostname === parentOriginHash',
+  );
+  return out;
+}
+
+/**
  * Renders the VS Code Web workbench HTML document configured with the ModelScript IDE extension,
  * `github-fs` virtual filesystem provider, Open VSX gallery, and hash-based workspace routing.
  */
@@ -75,21 +107,28 @@ export function renderWorkbenchHtml(
   const relativeBaseUrl = "/vscode-static";
   const webEndpoint = `${protocol}://${host}/vscode-static`;
 
+  const galleryConfig = {
+    serviceUrl: "https://open-vsx.org/vscode/gallery",
+    itemUrl: "https://open-vsx.org/vscode/item",
+    resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
+    controlUrl: "",
+    mcpUrl: "",
+  };
+
   const productConfiguration: Record<string, unknown> = {
     enableTelemetry: false,
     nameShort: "Ansatz",
     nameLong: "Ansatz IDE (Powered by ModelScript)",
     webEndpointUrlTemplate: webEndpoint,
+    chatParticipantRegistry: "",
     extensionAllowedProposedApi: ["modelscript.modelscript", "vscode.mermaid-markdown-features"],
     extensionEnabledApiProposals: {
       "vscode.mermaid-markdown-features": ["chatParticipantPrivate", "chatOutputRenderer"],
+      "GitHub.vscode-pull-request-github": [],
+      "github.vscode-pull-request-github": [],
     },
-    extensionGallery: {
-      serviceUrl: "https://open-vsx.org/vscode/gallery",
-      itemUrl: "https://open-vsx.org/vscode/item",
-      resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
-      controlUrl: "",
-    },
+    extensionsGallery: galleryConfig,
+    extensionGallery: galleryConfig,
     webviewContentExternalBaseUrlTemplate: `${protocol}://${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`,
   };
 
@@ -164,7 +203,12 @@ export function renderWorkbenchHtml(
       if (typeof arguments[i] === 'string' && (
         arguments[i].includes('ENOPRO: No file system provider found for resource') ||
         arguments[i].includes('No search provider registered for scheme: memfs') ||
-        arguments[i].includes('Ignoring the error while validating workspace folder')
+        arguments[i].includes('Ignoring the error while validating workspace folder') ||
+        arguments[i].includes('Overwriting grammar scope name to file mapping') ||
+        arguments[i].includes('extensionEnabledApiProposals') ||
+        arguments[i].includes('[AgentHost:remote] No remote agent connection available') ||
+        arguments[i].includes("[CloudSandboxApi] No 'github' session with scopes") ||
+        arguments[i].includes('[LM] Failed to request chat control data')
       )) return;
     }
     originalWarn.apply(console, arguments);
@@ -247,6 +291,7 @@ export function renderWorkbenchHtml(
   config.productConfiguration = config.productConfiguration || {};
   config.productConfiguration.webEndpointUrlTemplate = location.origin + '/vscode-static';
   config.productConfiguration.webviewContentExternalBaseUrlTemplate = location.origin + '/vscode-static/out/vs/workbench/contrib/webview/browser/pre/';
+  config.productConfiguration.chatParticipantRegistry = '';
   
   el.setAttribute('data-settings', JSON.stringify(config));
 
@@ -403,7 +448,7 @@ function getUserLanguagesDir(): string {
  * Creates the Express router serving the integrated VS Code Web IDE workbench,
  * extension assets, WebLLM model weights, user language registry, and GitHub API proxy.
  */
-export function ideWorkbenchRouter(): express.Router {
+export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
   const router = express.Router();
   const ideRoot = getIdeRoot();
   const vscodeWebDir = resolve(ideRoot, "vscode-web");
@@ -418,6 +463,7 @@ export function ideWorkbenchRouter(): express.Router {
       req.path.startsWith("/vscode/") ||
       req.path.startsWith("/vscode-static/") ||
       req.path.startsWith("/static/devextensions") ||
+      req.path.startsWith("/lsp/") ||
       req.path.startsWith("/static/extensions/github-fs") ||
       req.path.startsWith("/api/models/");
 
@@ -429,6 +475,7 @@ export function ideWorkbenchRouter(): express.Router {
 
     const isWorkerOrStatic =
       req.path.startsWith("/static/devextensions") ||
+      req.path.startsWith("/lsp/") ||
       req.path.startsWith("/static/extensions/github-fs") ||
       req.path.startsWith("/vscode-static/") ||
       req.headers["sec-fetch-dest"] === "worker" ||
@@ -445,11 +492,35 @@ export function ideWorkbenchRouter(): express.Router {
     next();
   });
 
-  // Static mounts for VS Code Web, ModelScript Extension, GitHub FS, and WebLLM models
+  // Dynamically patch webview host pages so same-origin deployments (e.g. ansatz.social, modelscript.org)
+  // always pass HostMessaging.signalReady() even if vscode-web was cached before the patch
+  router.get(
+    [
+      "/vscode-static/out/vs/workbench/contrib/webview/browser/pre/index.html",
+      "/vscode-static/out/vs/workbench/contrib/webview/browser/pre/index-no-csp.html",
+    ],
+    (req, res, next) => {
+      const fileName = req.path.endsWith("index-no-csp.html") ? "index-no-csp.html" : "index.html";
+      const filePath = join(vscodeWebDir, "out", "vs", "workbench", "contrib", "webview", "browser", "pre", fileName);
+      if (!existsSync(filePath)) {
+        next();
+        return;
+      }
+      try {
+        const raw = readFileSync(filePath, "utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.type("text/html").send(patchWebviewPreHtml(raw));
+      } catch {
+        next();
+      }
+    },
+  );
+
+  // Static mounts for VS Code Web, ModelScript Extension, Morsel LSP, GitHub FS, and WebLLM models
   router.use("/vscode-static", express.static(vscodeWebDir, { dotfiles: "allow" }));
 
   router.use(
-    "/static/devextensions",
+    ["/static/devextensions", "/lsp"],
     (_req, res, next) => {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.setHeader("Pragma", "no-cache");
@@ -478,13 +549,155 @@ export function ideWorkbenchRouter(): express.Router {
     res.status(204).end();
   });
 
-  router.use("/api/github", async (req, res) => {
+  router.use("/api/github", optionalAuth, async (req, res) => {
     if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
       res.status(405).json({ error: "Method not allowed on GitHub read-only proxy" });
       return;
     }
     try {
       const cleanSubpath = "/" + (req.url || "/").replace(/^\/+/, "");
+      const [pathOnly] = cleanSubpath.split("?");
+
+      // Intercept Personal Activity Git Vault (/api/github/repos/:owner/activity/...) for VS Code Web IDE github-fs
+      const activityMatch = (pathOnly || "").match(/^\/repos\/([^/]+)\/(activity(?:\.git)?)\/(.+)$/i);
+      if (database && activityMatch) {
+        const ownerParam = decodeURIComponent(activityMatch[1] || "").trim();
+        const restPath = activityMatch[3] || "";
+
+        res.setHeader("Cache-Control", "private, no-store, max-age=0");
+
+        if (!req.user) {
+          res.status(401).json({
+            message: "Authentication required to access personal activity repository in Web IDE.",
+          });
+          return;
+        }
+
+        const targetUser = ownerParam.toLowerCase() === "me" ? req.user : database.getUserByUsername(ownerParam);
+        if (!targetUser) {
+          res.status(404).json({ message: `User '${ownerParam}' not found.` });
+          return;
+        }
+
+        if (req.user.id !== targetUser.id || Boolean(req.user.isBot)) {
+          res.status(403).json({
+            message: "Personal activity repositories are strictly private to the account owner.",
+          });
+          return;
+        }
+
+        if (req.tokenScopes) {
+          const hasScope =
+            req.tokenScopes.includes("*") ||
+            req.tokenScopes.includes("admin") ||
+            req.tokenScopes.includes("repos:read") ||
+            req.tokenScopes.includes("repos:write") ||
+            req.tokenScopes.includes("account:read");
+          const hasUnrestrictedPattern = !req.tokenPackagePattern || req.tokenPackagePattern === "*";
+          if (!hasScope || !hasUnrestrictedPattern) {
+            res.status(403).json({
+              message:
+                "Personal access token requires unrestricted 'repos:read' or 'account:read' scope to access activity.git.",
+            });
+            return;
+          }
+        }
+
+        const sync = ensureUserActivityRepo(database, targetUser.id);
+        const headSha = sync.fingerprint || "main";
+
+        if (restPath.startsWith("git/trees/")) {
+          const out = execFileSync("git", ["ls-tree", "-r", "-t", "-l", "HEAD"], {
+            cwd: sync.repoPath,
+            encoding: "utf-8",
+          });
+          const tree: Array<{
+            path: string;
+            mode: string;
+            type: "blob" | "tree";
+            sha: string;
+            size?: number;
+          }> = [];
+          for (const line of out.split("\n")) {
+            if (!line.trim()) continue;
+            const tabIdx = line.indexOf("\t");
+            if (tabIdx === -1) continue;
+            const meta = line.slice(0, tabIdx).trim().split(/\s+/);
+            const entryPath = line.slice(tabIdx + 1);
+            const mode = meta[0] || "100644";
+            const type = (meta[1] === "tree" ? "tree" : "blob") as "blob" | "tree";
+            const sha = meta[2] || "";
+            const sizeRaw = meta[3];
+            const size = sizeRaw && sizeRaw !== "-" ? Number.parseInt(sizeRaw, 10) : undefined;
+            tree.push({
+              path: entryPath,
+              mode,
+              type,
+              sha,
+              ...(size !== undefined && !Number.isNaN(size) ? { size } : {}),
+            });
+          }
+          res.json({
+            sha: headSha,
+            url: `${req.protocol}://${req.get("host") || "localhost"}/api/github/repos/${encodeURIComponent(targetUser.username)}/activity/git/trees/${headSha}`,
+            tree,
+            truncated: false,
+          });
+          return;
+        }
+
+        if (restPath.startsWith("contents/")) {
+          const rawFilePath = decodeURIComponent(restPath.slice("contents/".length)).replace(/^\/+/, "");
+          const normalizedPath = path.posix.normalize(rawFilePath);
+          if (!normalizedPath || normalizedPath.startsWith("..") || normalizedPath.includes("/../")) {
+            res.status(400).json({ message: "Invalid file path" });
+            return;
+          }
+          try {
+            const buf = execFileSync("git", ["show", `HEAD:${normalizedPath}`], {
+              cwd: sync.repoPath,
+            });
+            res.json({
+              name: path.posix.basename(normalizedPath),
+              path: normalizedPath,
+              sha: headSha,
+              size: buf.length,
+              type: "file",
+              encoding: "base64",
+              content: buf.toString("base64"),
+            });
+          } catch {
+            res.status(404).json({ message: `File '${normalizedPath}' not found in activity.git` });
+          }
+          return;
+        }
+
+        if (restPath.startsWith("git/blobs/")) {
+          const sha = restPath.slice("git/blobs/".length).trim();
+          if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
+            res.status(400).json({ message: "Invalid blob SHA" });
+            return;
+          }
+          try {
+            const buf = execFileSync("git", ["cat-file", "blob", sha], {
+              cwd: sync.repoPath,
+            });
+            res.json({
+              sha,
+              size: buf.length,
+              encoding: "base64",
+              content: buf.toString("base64"),
+            });
+          } catch {
+            res.status(404).json({ message: "Blob not found" });
+          }
+          return;
+        }
+
+        res.status(404).json({ message: "Unsupported activity repository GitHub API endpoint" });
+        return;
+      }
+
       const upstreamUrl = new URL(cleanSubpath, "https://api.github.com");
       if (upstreamUrl.origin !== "https://api.github.com" || cleanSubpath.includes("..")) {
         res.status(400).json({ error: "Invalid GitHub API path" });

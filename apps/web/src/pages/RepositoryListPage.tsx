@@ -8,6 +8,7 @@ import {
   FileDirectoryIcon,
   GitBranchIcon,
   LinkExternalIcon,
+  LockIcon,
   MarkGithubIcon,
   PlusIcon,
   RepoIcon,
@@ -827,6 +828,135 @@ const RepositoryListPage: React.FC = () => {
             </FilterPill>
           ))}
         </Box>
+
+        {/* Pinned Personal Activity Git Vault (My Repositories) */}
+        {token && user?.username && activeTab === "my" && (
+          <Box
+            mb={3}
+            style={{
+              border: "1px solid var(--ms-brand, #0f766e)",
+              borderRadius: "12px",
+              background: "rgba(15, 118, 110, 0.05)",
+              overflow: "hidden",
+            }}
+          >
+            <RepoCard style={{ borderBottom: "none" }}>
+              <Box display="flex" gap="14px" flex={1} style={{ minWidth: 0 }}>
+                <RepoAvatarBadge url={user.avatar_url} name="activity" />
+                <Box flex={1} style={{ minWidth: 0 }}>
+                  <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
+                    <Heading
+                      as="h4"
+                      style={{
+                        fontSize: "16px",
+                        fontWeight: 700,
+                        margin: 0,
+                        color: "var(--color-text-heading)",
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      <Link
+                        to={`/repos/local/${user.username}/activity`}
+                        style={{ textDecoration: "none", color: "inherit" }}
+                      >
+                        <span style={{ color: "var(--color-text-muted)", fontWeight: 500 }}>{user.username} / </span>
+                        activity
+                      </Link>
+                    </Heading>
+
+                    <MetaBadge
+                      style={{
+                        borderColor: "var(--ms-brand, #0f766e)",
+                        color: "var(--ms-brand, #0f766e)",
+                        background: "rgba(15, 118, 110, 0.12)",
+                      }}
+                      title="Strictly private to your account and read-only"
+                    >
+                      <LockIcon size={12} />
+                      Owner-Only • Read-Only
+                    </MetaBadge>
+
+                    <MetaBadge title="GDPR Art. 20 / CCPA Data Portability Git Vault">
+                      <RepoIcon size={12} />
+                      Personal Activity Vault
+                    </MetaBadge>
+
+                    <MetaBadge title="Default branch: main">
+                      <GitBranchIcon size={12} />
+                      main
+                    </MetaBadge>
+                  </Box>
+
+                  <Box display="flex" alignItems="center" gap="10px" mt={1} flexWrap="wrap">
+                    <span style={{ fontSize: "12.5px", color: "var(--color-text-muted)" }}>
+                      /git/{user.username}/activity.git
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${window.location.origin}/git/${user.username}/activity.git`;
+                        navigator.clipboard?.writeText(url).catch(() => {});
+                        setCopiedCloneId("activity-vault");
+                        setTimeout(() => {
+                          setCopiedCloneId((prev) => (prev === "activity-vault" ? null : prev));
+                        }, 1800);
+                      }}
+                      title="Copy Activity Vault Git clone URL"
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color:
+                          copiedCloneId === "activity-vault" ? "var(--ms-brand, #0f766e)" : "var(--color-text-muted)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        padding: "1px 4px",
+                      }}
+                    >
+                      {copiedCloneId === "activity-vault" ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                      {copiedCloneId === "activity-vault" ? "Copied URL" : "Clone URL"}
+                    </button>
+                  </Box>
+
+                  <Text
+                    as="p"
+                    style={{
+                      fontSize: "14px",
+                      margin: "8px 0 0 0",
+                      color: "var(--color-text-primary)",
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    Your personal account activity, authored posts, published libraries, and simulation studies packaged
+                    as an owner-authenticated, fast-forwarding Git repository (GDPR Art. 20).
+                  </Text>
+                </Box>
+              </Box>
+
+              <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap" style={{ flexShrink: 0 }}>
+                <ActionPillButton
+                  type="button"
+                  onClick={() => navigate(`/repos/local/${user.username}/activity`)}
+                  title="Browse Activity Vault files and commits"
+                >
+                  <FileDirectoryIcon size={14} />
+                  Browse
+                </ActionPillButton>
+                <ActionPillButton
+                  type="button"
+                  onClick={() => navigate(`/repos/local/${user.username}/activity/ide?ref=main`)}
+                  title="Open Activity Vault in Web IDE"
+                >
+                  <CodeIcon size={14} />
+                  IDE
+                </ActionPillButton>
+              </Box>
+            </RepoCard>
+          </Box>
+        )}
 
         {/* Content */}
         {loading && activeSourceRepos.length === 0 ? (

@@ -335,7 +335,41 @@ export class Context {
         const rangeKey = startOffset * 0x4000000 + endIdx;
         const cachedNode = rangeCache.get(rangeKey);
         if (cachedNode !== undefined) return cachedNode;
-        const node = tree.rootNode.descendantForIndex(startOffset, endIdx);
+        let node = tree.rootNode.descendantForIndex(startOffset, endIdx);
+        if (node && node.endIndex > endIdx && startOffset < endIdx) {
+          const srcText =
+            (entry?.resourceId ? this.#fileTexts.get(entry.resourceId) : undefined) ??
+            ((tree as any).sourceCode as string | undefined);
+          if (srcText) {
+            let adjStart = startOffset;
+            while (adjStart < endIdx) {
+              while (adjStart < endIdx && srcText.charCodeAt(adjStart) <= 32) adjStart++;
+              if (adjStart + 1 < endIdx && srcText.charCodeAt(adjStart) === 47) {
+                const nextCh = srcText.charCodeAt(adjStart + 1);
+                if (nextCh === 47) {
+                  adjStart += 2;
+                  while (adjStart < endIdx && srcText.charCodeAt(adjStart) !== 10) adjStart++;
+                  continue;
+                }
+                if (nextCh === 42) {
+                  adjStart += 2;
+                  while (
+                    adjStart + 1 < endIdx &&
+                    !(srcText.charCodeAt(adjStart) === 42 && srcText.charCodeAt(adjStart + 1) === 47)
+                  ) {
+                    adjStart++;
+                  }
+                  if (adjStart + 1 < endIdx) adjStart += 2;
+                  continue;
+                }
+              }
+              break;
+            }
+            if (adjStart > startOffset && adjStart < endIdx) {
+              node = tree.rootNode.descendantForIndex(adjStart, endIdx) ?? node;
+            }
+          }
+        }
         rangeCache.set(rangeKey, node);
         return node;
       },
@@ -479,7 +513,41 @@ export class Context {
         const rangeKey = startOffset * 0x4000000 + endIdx;
         const cachedNode = rangeCache.get(rangeKey);
         if (cachedNode !== undefined) return cachedNode;
-        const node = tree.rootNode.descendantForIndex(startOffset, endIdx);
+        let node = tree.rootNode.descendantForIndex(startOffset, endIdx);
+        if (node && node.endIndex > endIdx && startOffset < endIdx) {
+          const srcText =
+            (entry?.resourceId ? this.#fileTexts.get(entry.resourceId) : undefined) ??
+            ((tree as any).sourceCode as string | undefined);
+          if (srcText) {
+            let adjStart = startOffset;
+            while (adjStart < endIdx) {
+              while (adjStart < endIdx && srcText.charCodeAt(adjStart) <= 32) adjStart++;
+              if (adjStart + 1 < endIdx && srcText.charCodeAt(adjStart) === 47) {
+                const nextCh = srcText.charCodeAt(adjStart + 1);
+                if (nextCh === 47) {
+                  adjStart += 2;
+                  while (adjStart < endIdx && srcText.charCodeAt(adjStart) !== 10) adjStart++;
+                  continue;
+                }
+                if (nextCh === 42) {
+                  adjStart += 2;
+                  while (
+                    adjStart + 1 < endIdx &&
+                    !(srcText.charCodeAt(adjStart) === 42 && srcText.charCodeAt(adjStart + 1) === 47)
+                  ) {
+                    adjStart++;
+                  }
+                  if (adjStart + 1 < endIdx) adjStart += 2;
+                  continue;
+                }
+              }
+              break;
+            }
+            if (adjStart > startOffset && adjStart < endIdx) {
+              node = tree.rootNode.descendantForIndex(adjStart, endIdx) ?? node;
+            }
+          }
+        }
         rangeCache.set(rangeKey, node);
         return node;
       },
@@ -1017,9 +1085,14 @@ export class Context {
       }
     }
 
-    // Save snapshot of the body phase
+    // Save snapshot of the body phase (bounded LRU of 4 entries to avoid retaining all arenas in batch mode)
     if (!(this as any)._daeBodyCache) (this as any)._daeBodyCache = new Map();
-    (this as any)._daeBodyCache.set(cacheKey, {
+    const bodyCache = (this as any)._daeBodyCache as Map<string, any>;
+    if (!bodyCache.has(cacheKey) && bodyCache.size >= 4) {
+      const oldestKey = bodyCache.keys().next().value;
+      if (oldestKey !== undefined) bodyCache.delete(oldestKey);
+    }
+    bodyCache.set(cacheKey, {
       builder: flattener.bodySnapshot, // already cloned inside flatten()
       revision: currentFileRevision,
       depRevisions,

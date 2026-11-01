@@ -62,6 +62,7 @@ import { waitlistRouter } from "./routes/waitlist.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { seedScriptsAndTemplates } from "./seed-scripts.js";
 import { seedPolyglotSocialData, seedPolyglotUsers } from "./seed/index.js";
+import { cleanupExpiredActivityRepos } from "./services/activity-git.js";
 import { defaultArchiveQueue } from "./services/archive-queue.js";
 import { FeatureFlagService } from "./services/feature-flag-service.js";
 import { FederationWorker } from "./services/federation-worker.js";
@@ -262,6 +263,12 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         const { removedCount } = defaultArchiveQueue.cleanupExpiredArchives();
         if (removedCount > 0) {
           console.log(`[ArchiveRetentionWorker] Cleaned up ${removedCount} expired data archive files (> 24h TTL).`);
+        }
+        const { removedCount: removedActivityRepos } = cleanupExpiredActivityRepos(undefined, undefined, database);
+        if (removedActivityRepos > 0) {
+          console.log(
+            `[ActivityGitRetentionWorker] Cleaned up ${removedActivityRepos} expired activity Git repositories (> 24h TTL).`,
+          );
         }
       } catch (err) {
         console.error("[LogRetentionWorker] Error executing retention log purge:", err);
@@ -539,6 +546,35 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.locals["fmuStorage"] = fmuStorage;
   app.locals["fmuStorageDir"] = fmuStorageDir;
 
+  // ── Personal Activity Git Vault API (/api/v1/git/projects/:username%2Factivity) ──
+  // Available in all editions (GDPR Art. 20 / CCPA § 1798.100 right to data portability)
+  const sharedGitRouter = gitRouter(database);
+  app.use(["/api/v1/git", "/api/v1/gitlab"], (req, res, next) => {
+    const match = req.path.match(/^\/projects\/([^/]+)/);
+    if (match && match[1]) {
+      try {
+        const decoded = decodeURIComponent(match[1])
+          .trim()
+          .replace(/^\/+|\/+$/g, "");
+        const parts = decoded.split("/");
+        const proj = parts.length === 2 ? parts[1]?.toLowerCase() : "";
+        if (proj === "activity" || proj === "activity.git") {
+          optionalAuth(req, res, (err?: unknown) => {
+            if (err) {
+              next(err);
+              return;
+            }
+            sharedGitRouter(req, res, next);
+          });
+          return;
+        }
+      } catch {
+        // Fall through to edition routes
+      }
+    }
+    next();
+  });
+
   // ── Enterprise Edition (ee/) Subsystems (Batches A–I) ──
   const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
   mountEditionRoutes(
@@ -590,7 +626,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         optionalAuthMiddleware: optionalAuth,
         adminRouter: adminRouter(database, federationWorker, featureFlagService),
         webhooksRouter: webhooksRouter(database, jobQueue, libraryStorage),
-        gitRouter: gitRouter(),
+        gitRouter: sharedGitRouter,
         sparqlFeatureGuard: requireFeatureFlag(() => featureFlagService, "sparql_rdf_endpoints"),
         sparqlRouter: sparqlRouter(database),
       },
@@ -747,7 +783,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/npm", npmRegistryRouter(database, libraryStorage));
 
   // ── Integrated VS Code Web IDE Workbench, Extensions, Models & User Languages ──
-  app.use(ideWorkbenchRouter());
+  app.use(ideWorkbenchRouter(database));
 
   // ── Enterprise Intranet Appliance & Unified Static Web, Docs & IDE Serving ──
   const staticWebDir =

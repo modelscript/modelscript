@@ -69,6 +69,17 @@ export function reposRouter(database: LibraryDatabase): Router {
     }
   });
 
+  function isReservedActivityRepoName(value?: string | undefined): boolean {
+    if (!value || typeof value !== "string") return false;
+    const lastSegment = value
+      .trim()
+      .replace(/\.git$/i, "")
+      .split("/")
+      .pop()
+      ?.toLowerCase();
+    return lastSegment === "activity";
+  }
+
   /**
    * POST /api/v1/repos
    */
@@ -82,6 +93,11 @@ export function reposRouter(database: LibraryDatabase): Router {
 
     if (!provider || !external_repo_id || !repo_full_name) {
       res.status(400).json({ error: "Missing required fields" });
+      return;
+    }
+
+    if (isReservedActivityRepoName(String(repo_full_name)) || isReservedActivityRepoName(String(external_repo_id))) {
+      res.status(400).json({ error: "Repository name 'activity' is reserved for the personal activity vault" });
       return;
     }
 
@@ -122,6 +138,11 @@ export function reposRouter(database: LibraryDatabase): Router {
         socialPreviewUrl?: string | undefined;
         description?: string | undefined;
       };
+
+    if (isReservedActivityRepoName(name) || isReservedActivityRepoName(repo_full_name)) {
+      res.status(400).json({ error: "Repository name 'activity' is reserved for the personal activity vault" });
+      return;
+    }
 
     if (visibility === "private" || visibility === "internal") {
       const entitlement = checkPrivateVisibilityEntitlement();

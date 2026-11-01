@@ -49,7 +49,7 @@ export function detectCyclesInAdjacencyMap(adj) {
 /**
  * Validates architectural module boundaries across the Nx project dependency graph:
  *   1. Core engine (packages/*) and languages (languages/*) must NEVER depend on apps/* or ee.
- *   2. Open-core libraries must NEVER depend on the enterprise edition (@modelscript/ee).
+ *   2. Open-core libraries and apps (except the dynamic host apps/api) must NEVER depend on @modelscript/ee.
  * @param {any} graph
  * @returns {string[]}
  */
@@ -81,7 +81,7 @@ export function detectBoundaryViolations(graph) {
         }
       }
 
-      // 2. Open-core (anything outside ee) must NEVER depend on ee
+      // 2. Open-core (anything outside ee, except dynamic host apps/api) must NEVER depend on ee
       const isSourceOpenCore = sourceRoot !== "ee" && !sourceRoot.startsWith("ee/");
       const isTargetEe = targetRoot === "ee" || targetRoot.startsWith("ee/");
       if (isSourceOpenCore && isTargetEe) {

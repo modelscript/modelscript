@@ -1,10 +1,12 @@
 # ModelScript
 
-> Free, open-source computable digital thread for polyglot engineering and simulation. Imports 44 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+> Open-core computable digital thread for polyglot engineering and simulation. Imports 44 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
 
 ## Quick Links
 - [Official Website](https://modelscript.org/)
 - [GitHub Repository](https://github.com/modelscript/modelscript)
+- [Pricing & Commercial Licensing](https://modelscript.org/pricing): Open-Core (AGPLv3 Community Edition), Enterprise Intranet Appliance (`ee/`), and Commercial OEM SDK licensing.
+- [Trademark Policy](https://modelscript.org/trademark): Official trademark and brand usage guidelines for ModelScript and Ansatz.
 - [Full Documentation (Single File)](https://modelscript.org/llms-full.txt)
 
 ## Guides & Learning

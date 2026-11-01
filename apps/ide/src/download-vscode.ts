@@ -76,28 +76,35 @@ async function downloadAndExtract(url: string, dest: string): Promise<void> {
   });
 }
 
-async function main() {
-  if (existsSync(join(DEST, "package.json"))) {
-    console.log("VS Code Web already downloaded at", DEST);
-    return;
-  }
+function patchWebviewPreHtml(html: string): string {
+  let out = html.replace(
+    "script-src 'sha256-TaWGDzV7c9rUH2q/5ygOyYUHSyHIqBMYfucPh3lnKvU=' 'self'",
+    "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
+  );
+  out = out.replace(
+    /script-src 'sha256-[A-Za-z0-9+/=]+' 'self'/g,
+    "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
+  );
+  out = out.replace(
+    /script-src 'unsafe-inline' 'self'(?! https:\/\/static\.cloudflareinsights\.com)/g,
+    "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
+  );
 
-  console.log(`Fetching latest VS Code Web ${QUALITY} build info...`);
-  const info = await fetchJSON(`https://update.code.visualstudio.com/api/update/web-standalone/${QUALITY}/latest`);
-  console.log(`  Version: ${info.version}`);
-  console.log(`  URL: ${info.url}`);
+  // Allow same-origin webview hosting (e.g. ansatz.social, modelscript.org, localhost) in addition to wildcard hash subdomains
+  out = out.replace(
+    /if \((?:hostname === "localhost" \|\| hostname === "127\.0\.0\.1" \|\| )?(?:location\.origin === parentOrigin \|\| )?hostname === parentOriginHash/g,
+    'if (hostname === "localhost" || hostname === "127.0.0.1" || location.origin === parentOrigin || hostname === parentOriginHash',
+  );
+  return out;
+}
 
-  mkdirSync(DEST, { recursive: true });
-
-  console.log("Downloading and extracting...");
-  await downloadAndExtract(info.url, DEST);
-
+function applyPatches(dest: string): void {
   // The web-standalone build includes several extensions that are missing their JS code (dist folder).
   // If left as-is, VS Code throws "Not Found" activation errors.
   // Because VS Code's web workbench embeds extension metadata directly, patching package.json
   // does not prevent it from trying to load these missing files.
   // We fix this by creating stub entry points that export empty activate() functions.
-  const extsDir = join(DEST, "extensions");
+  const extsDir = join(dest, "extensions");
   if (existsSync(extsDir)) {
     const stub = `"use strict";\nObject.defineProperty(exports, "__esModule", { value: true });\nexports.activate = function() {};\nexports.deactivate = function() {};\n`;
     const exts = readdirSync(extsDir);
@@ -130,7 +137,7 @@ async function main() {
   // are different (e.g. localhost), the blob content changes and the hash fails, causing CSP violations.
   // We fix this by adding 'unsafe-inline' to the script-src.
   const iframeHtmlPath = join(
-    DEST,
+    dest,
     "out",
     "vs",
     "workbench",
@@ -149,26 +156,38 @@ async function main() {
     console.log("  Patched webWorkerExtensionHostIframe.html CSP");
   }
 
-  // Patch the webview index.html CSP
-  const webviewHtmlPath = join(DEST, "out", "vs", "workbench", "contrib", "webview", "browser", "pre", "index.html");
-  if (existsSync(webviewHtmlPath)) {
-    let html = readFileSync(webviewHtmlPath, "utf8");
-    html = html.replace(
-      "script-src 'sha256-TaWGDzV7c9rUH2q/5ygOyYUHSyHIqBMYfucPh3lnKvU=' 'self'",
-      "script-src 'unsafe-inline' 'self'",
-    );
-    // Also handle case where it's not exactly that hash but has a generic sha256
-    html = html.replace(/script-src 'sha256-[A-Za-z0-9+/=]+' 'self'/g, "script-src 'unsafe-inline' 'self'");
-
-    // Bypass hostname origin validation for local development
-    html = html.replace(
-      /if \(hostname === parentOriginHash/g,
-      'if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === parentOriginHash',
-    );
-
-    writeFileSync(webviewHtmlPath, html);
-    console.log("  Patched webview index.html CSP");
+  // Patch the webview index.html (and index-no-csp.html if present) CSP & same-origin validation
+  for (const fileName of ["index.html", "index-no-csp.html"]) {
+    const webviewHtmlPath = join(dest, "out", "vs", "workbench", "contrib", "webview", "browser", "pre", fileName);
+    if (existsSync(webviewHtmlPath)) {
+      const html = readFileSync(webviewHtmlPath, "utf8");
+      const patched = patchWebviewPreHtml(html);
+      if (patched !== html) {
+        writeFileSync(webviewHtmlPath, patched);
+        console.log(`  Patched webview ${fileName} CSP and origin validation`);
+      }
+    }
   }
+}
+
+async function main() {
+  if (existsSync(join(DEST, "package.json"))) {
+    console.log("VS Code Web already downloaded at", DEST);
+    applyPatches(DEST);
+    return;
+  }
+
+  console.log(`Fetching latest VS Code Web ${QUALITY} build info...`);
+  const info = await fetchJSON(`https://update.code.visualstudio.com/api/update/web-standalone/${QUALITY}/latest`);
+  console.log(`  Version: ${info.version}`);
+  console.log(`  URL: ${info.url}`);
+
+  mkdirSync(DEST, { recursive: true });
+
+  console.log("Downloading and extracting...");
+  await downloadAndExtract(info.url, DEST);
+
+  applyPatches(DEST);
 
   console.log("Done!");
 }

@@ -64,6 +64,42 @@ export const exportUserDataArchive = async (format: "zip" | "json" = "zip"): Pro
   return response.data;
 };
 
+export interface ActivityGitRepoStatus {
+  cached: boolean;
+  repoUrlPath: string;
+  aliasUrlPath: string;
+  webRepoPath: string;
+  webIdePath: string;
+  clonePaths: {
+    byUsername: string;
+    shorthand: string;
+  };
+  createdAt: string | null;
+  lastAccessedAt: string | null;
+  expiresAt: string | null;
+  ttlRemainingSeconds: number;
+  commitCount: number;
+  sizeBytes: number;
+  postCount: number;
+  libraryCount: number;
+  studyCount: number;
+  fingerprint: string;
+}
+
+export const getActivityGitRepoStatus = async (): Promise<ActivityGitRepoStatus> => {
+  const { data } = await api.get<ActivityGitRepoStatus>("/users/me/activity-repo");
+  return data;
+};
+
+export const purgeActivityGitRepoCache = async (): Promise<{
+  success: boolean;
+  purged: boolean;
+  message: string;
+}> => {
+  const { data } = await api.delete<{ success: boolean; purged: boolean; message: string }>("/users/me/activity-repo");
+  return data;
+};
+
 export const deleteAccount = async () => {
   const { data } = await api.delete("/users/me");
   return data;

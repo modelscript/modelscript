@@ -196,11 +196,13 @@ function buildLlmsTxt(): string {
   const lines: string[] = [
     "# ModelScript",
     "",
-    "> Free, open-source computable digital thread for polyglot engineering and simulation. Imports 44 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.",
+    "> Open-core computable digital thread for polyglot engineering and simulation. Imports 44 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.",
     "",
     "## Quick Links",
     "- [Official Website](https://modelscript.org/)",
     "- [GitHub Repository](https://github.com/modelscript/modelscript)",
+    "- [Pricing & Commercial Licensing](https://modelscript.org/pricing): Open-Core (AGPLv3 Community Edition), Enterprise Intranet Appliance (`ee/`), and Commercial OEM SDK licensing.",
+    "- [Trademark Policy](https://modelscript.org/trademark): Official trademark and brand usage guidelines for ModelScript and Ansatz.",
     "- [Full Documentation (Single File)](https://modelscript.org/llms-full.txt)",
     "",
     "## Guides & Learning",
@@ -420,15 +422,17 @@ function buildLlmsFullTxt(): string {
     });
   }
 
-  // 7. Reference
+  // 7. Reference & Licensing
   sections.push({ title: "Linter Rules Catalog", route: "reference/linter-rules", file: "reference/linter-rules.md" });
   sections.push({ title: "Export Formats", route: "reference/export-formats", file: "reference/export-formats.md" });
   sections.push({ title: "MCP & IDE Integration", route: "reference/mcp-and-ide", file: "reference/mcp-and-ide.md" });
+  sections.push({ title: "Pricing & Commercial Licensing", route: "pricing", file: "pricing.md" });
+  sections.push({ title: "Trademark Policy", route: "trademark", file: "trademark.md" });
 
   const out: string[] = [
     "# ModelScript Complete Documentation",
     "",
-    "ModelScript: Free, open-source computable digital thread for polyglot engineering and simulation.",
+    "ModelScript: Open-core computable digital thread for polyglot engineering and simulation.",
     "Generated from source for LLM context ingestion.",
     "Website: https://modelscript.org/",
     "Repository: https://github.com/modelscript/modelscript",

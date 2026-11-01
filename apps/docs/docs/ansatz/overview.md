@@ -26,7 +26,10 @@ The monorepo maintains a clear boundary between the engine and the platform:
 │   • apps/web: React 19 SPA (ansatz.social, /playground, /embed)       │
 │   • apps/api: Express, GraphQL, SPARQL, Git Smart HTTP, ActivityPub   │
 ├────────────────────────────────────────────────────────────────────────┤
-│                       ModelScript Engine (packages/)                    │
+│             Enterprise Edition (ee/ — LicenseRef-Enterprise)           │
+│   • @modelscript/ee: SSO/SAML, RBAC, Slurm HPC, NERC CIP, Historian   │
+├────────────────────────────────────────────────────────────────────────┤
+│            ModelScript Open-Core Engine (packages/, languages/)        │
 │   • packages/runtime: SoA DAE arena, BLT, Salsa query engine           │
 │   • packages/simulate: SUNDIALS CVODE/IDA, WebGPU solver               │
 │   • packages/dsl: WASM GLR parser compiler, TGG graph rewriting        │

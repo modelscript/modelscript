@@ -98,3 +98,4 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (`flatten`, `simulate`, `verify`, `align`, `polyglot`, `fmu`, `csg`, `surrogate`, `mc`, `hil`)                               |
 | `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, and WebSocket simulation backend server                                                                                              |
 | `@modelscript/web`        | `apps/web`          | Browser-native WebAssembly Polyglot Playground and visual modeling environment                                                                              |
+| `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL  |

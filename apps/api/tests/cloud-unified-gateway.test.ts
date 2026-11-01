@@ -12,6 +12,7 @@ process.env["NODE_ENV"] = "test";
 import { createApp } from "../src/app.js";
 import { LibraryDatabase } from "../src/database.js";
 import { JobQueue } from "../src/jobs.js";
+import { patchWebviewPreHtml, renderWorkbenchHtml } from "../src/routes/ide-workbench.js";
 import { LibraryStorage } from "../src/storage.js";
 
 test("Unified Cloud Gateway API Lifecycle", async (t) => {
@@ -109,5 +110,66 @@ test("Unified Cloud Gateway API Lifecycle", async (t) => {
     const cancelRes = await request(app).post(`/api/v1/cloud/jobs/${jobId}/cancel`);
     assert.equal(cancelRes.status, 200);
     assert.equal(cancelRes.body.success, true);
+  });
+
+  await t.test(
+    "IDE workbench and webview pre/index.html allow same-origin parentOrigin and suppress CDN CORS fetches",
+    async () => {
+      const sampleUnpatched = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-TaWGDzV7c9rUH2q/5ygOyYUHSyHIqBMYfucPh3lnKvU=' 'self';">\nif (hostname === parentOriginHash || hostname.startsWith(parentOriginHash + '.')) { return start(parentOrigin); }`;
+      const sampleLocalhostOnly = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'self';">\nif (hostname === "localhost" || hostname === "127.0.0.1" || hostname === parentOriginHash || hostname.startsWith(parentOriginHash + '.')) { return start(parentOrigin); }`;
+
+      for (const sample of [sampleUnpatched, sampleLocalhostOnly]) {
+        const patched = patchWebviewPreHtml(sample);
+        assert.ok(patched.includes("location.origin === parentOrigin"));
+        assert.ok(patched.includes("https://static.cloudflareinsights.com"));
+        assert.equal(patchWebviewPreHtml(patched), patched);
+      }
+
+      const { status, html } = renderWorkbenchHtml("https", "ansatz.social", null);
+      if (status === 200) {
+        assert.ok(html.includes("&quot;extensionsGallery&quot;"));
+        assert.ok(html.includes("&quot;chatParticipantRegistry&quot;:&quot;&quot;"));
+        assert.ok(html.includes("&quot;github.vscode-pull-request-github&quot;:[]"));
+      }
+
+      const preRes = await request(app).get("/vscode-static/out/vs/workbench/contrib/webview/browser/pre/index.html");
+      if (preRes.status === 200) {
+        assert.ok(preRes.text.includes("location.origin === parentOrigin"));
+        assert.ok(preRes.text.includes("https://static.cloudflareinsights.com"));
+        assert.ok(String(preRes.headers["cache-control"]).includes("no-store"));
+      }
+
+      const lspPkgRes = await request(app).get("/lsp/package.json");
+      if (lspPkgRes.status === 200) {
+        assert.equal(lspPkgRes.headers["cross-origin-opener-policy"], "same-origin");
+        assert.equal(lspPkgRes.headers["cross-origin-embedder-policy"], "credentialless");
+      }
+    },
+  );
+
+  await t.test("POST /api/v1/analytics/pageview succeeds without auth in NODE_ENV=production", async () => {
+    const prevEnv = process.env["NODE_ENV"];
+    process.env["NODE_ENV"] = "production";
+    try {
+      const pageviewRes = await request(app).post("/api/v1/analytics/pageview").send({
+        path: "/morsel",
+        referrer: "",
+      });
+      assert.equal(pageviewRes.status, 202);
+
+      const sysmlProjectRes = await request(app).post("/projects").send({
+        name: "UnauthorizedProject",
+      });
+      assert.ok(
+        sysmlProjectRes.status === 401 || sysmlProjectRes.status === 402,
+        `Expected 401 or 402 for unauthenticated POST /projects in production, got ${sysmlProjectRes.status}`,
+      );
+    } finally {
+      if (prevEnv === undefined) {
+        delete process.env["NODE_ENV"];
+      } else {
+        process.env["NODE_ENV"] = prevEnv;
+      }
+    }
   });
 });

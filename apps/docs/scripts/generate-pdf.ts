@@ -715,8 +715,8 @@ document.addEventListener("DOMContentLoaded", () => {
       WebAssembly (WASM) & Node.js ≥ 24
     </div>
     <div>
-      <strong>Open Source License</strong>
-      GNU AGPL v3.0<br>
+      <strong>Open-Core License</strong>
+      GNU AGPL v3.0 &amp; Enterprise (ee/)<br>
       github.com/modelscript/modelscript
     </div>
     <div>

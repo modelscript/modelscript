@@ -2890,6 +2890,37 @@ function getArrayElements(dae: DAEBuilder, exprId: number): number[] | null {
   return null;
 }
 
+function lookupRecordFunctionInDae(dae: DAEBuilder, rawFnName: string | undefined): DAEBuilder | null {
+  if (!rawFnName) return null;
+  const fnName = rawFnName.startsWith(".") ? rawFnName.slice(1) : rawFnName;
+  const parts = fnName.split(".");
+  const shortName = parts[parts.length - 1]!;
+  const lastTwo = parts.length >= 2 ? `${parts[parts.length - 2]}.${shortName}` : null;
+  const direct =
+    dae.functions.get(rawFnName) ||
+    dae.functions.get(fnName) ||
+    dae.functions.get(shortName) ||
+    (dae.name ? dae.functions.get(`${dae.name}.${fnName}`) : null) ||
+    (dae.name ? dae.functions.get(`${dae.name}.${shortName}`) : null);
+  if (direct) return direct;
+  let twoSegMatch: DAEBuilder | null = null;
+  let suffixMatch: DAEBuilder | null = null;
+  const shortSuffix = `.${shortName}`;
+  const twoSegSuffix = lastTwo ? `.${lastTwo}` : null;
+  for (const [k, v] of dae.functions.entries()) {
+    if (typeof k === "string") {
+      if (k.endsWith(`.${fnName}`)) return v;
+      if (twoSegSuffix && k.endsWith(twoSegSuffix) && !twoSegMatch) {
+        twoSegMatch = v;
+      }
+      if (k.endsWith(shortSuffix) && !suffixMatch) {
+        suffixMatch = v;
+      }
+    }
+  }
+  return twoSegMatch || suffixMatch;
+}
+
 function getRecordFields(dae: DAEBuilder, exprId: number): string[] | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
@@ -2907,6 +2938,16 @@ function getRecordFields(dae: DAEBuilder, exprId: number): string[] | null {
           fields.push(vName.slice(prefix.length));
         } else if (basePrefix !== prefix && vName.startsWith(basePrefix)) {
           fields.push(vName.slice(basePrefix.length));
+        } else if (vName.startsWith(baseName + "[")) {
+          let rest = vName.slice(baseName.length);
+          while (rest.startsWith("[")) {
+            const closeIdx = rest.indexOf("]");
+            if (closeIdx < 0) break;
+            rest = rest.slice(closeIdx + 1);
+          }
+          if (rest.startsWith(".") && rest.length > 1) {
+            fields.push(rest.slice(1));
+          }
         }
       }
       if (fields.length > 0) return Array.from(new Set(fields));
@@ -2924,15 +2965,7 @@ function getRecordFields(dae: DAEBuilder, exprId: number): string[] | null {
 function isRecordConstructorCall(dae: DAEBuilder, exprId: number): boolean {
   if (exprId < 0 || dae.getExprKind(exprId) !== ExprKind.Call) return false;
   const rawFnName = dae.interner.resolve(dae.getExprData1(exprId));
-  if (!rawFnName) return false;
-  const fnName = rawFnName.startsWith(".") ? rawFnName.slice(1) : rawFnName;
-  const shortName = fnName.split(".").pop()!;
-  const fn =
-    dae.functions.get(rawFnName) ||
-    dae.functions.get(fnName) ||
-    dae.functions.get(shortName) ||
-    (dae.name ? dae.functions.get(`${dae.name}.${fnName}`) : null) ||
-    (dae.name ? dae.functions.get(`${dae.name}.${shortName}`) : null);
+  const fn = lookupRecordFunctionInDae(dae, rawFnName);
   if (
     !dae.extensionMetadata?.["isOldFrontend"] &&
     fn &&
@@ -2962,15 +2995,7 @@ function getFieldExpr(
     }
     case ExprKind.Call: {
       const rawFnName = dae.interner.resolve(dae.getExprData1(exprId));
-      const fnName = rawFnName?.startsWith(".") ? rawFnName.slice(1) : rawFnName;
-      const shortName = fnName?.split(".").pop();
-      const fn = fnName
-        ? dae.functions.get(rawFnName!) ||
-          dae.functions.get(fnName) ||
-          (shortName ? dae.functions.get(shortName) : null) ||
-          (dae.name ? dae.functions.get(`${dae.name}.${fnName}`) : null) ||
-          (dae.name && shortName ? dae.functions.get(`${dae.name}.${shortName}`) : null)
-        : null;
+      const fn = lookupRecordFunctionInDae(dae, rawFnName);
       if (fn && cloneExpr) {
         const argCount = dae.getExprRight(exprId);
         let paramIdx = 0;
@@ -3045,13 +3070,28 @@ function getFieldExpr(
       return out.addUnaryExpr(op, inner);
     }
     case ExprKind.Subscript: {
-      const target = getFieldExpr(dae, out, dae.getExprData1(exprId), field, cloneExpr);
+      const baseId = dae.getExprData1(exprId);
       const subCount = dae.getExprRight(exprId);
       const subs: number[] = [];
       for (let i = 0; i < subCount; i++) {
         const rawSub = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
         subs.push(cloneExpr ? cloneExpr(rawSub, "", null) : rawSub);
       }
+      if (
+        dae.getExprKind(baseId) === ExprKind.Name &&
+        subs.length > 0 &&
+        subs.every((s) => out.getExprKind(s) === ExprKind.IntLiteral)
+      ) {
+        const baseName = dae.interner.resolve(dae.getExprData1(baseId));
+        if (baseName) {
+          const idxStr = subs.map((s) => out.getExprData1(s)).join(",");
+          const candidate = `${baseName}[${idxStr}].${field}`;
+          if (out.getVarIdxByName(candidate) >= 0 || dae.getVarIdxByName(candidate) >= 0) {
+            return out.addNameExpr(candidate);
+          }
+        }
+      }
+      const target = getFieldExpr(dae, out, baseId, field, cloneExpr);
       return out.addSubscriptExpr(target, subs);
     }
     default:
@@ -3874,6 +3914,10 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
             }
           }
         }
+        if (expandArrayEquations) {
+          const inlined = tryInlineSingleAssignCall(funcName, args, 0);
+          if (inlined !== null) return inlined;
+        }
         return out.addCallExpr(funcName, args);
       }
       case ExprKind.Tuple: {
@@ -3939,6 +3983,188 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
         return exprId;
     }
   };
+
+  function tryInlineSingleAssignCall(funcName: string, args: number[], depth: number): number | null {
+    if (!expandArrayEquations || depth > 16 || !funcName) return null;
+    const fn = lookupRecordFunctionInDae(dae, funcName);
+    if (!fn || fn.externalDecl) return null;
+    if (fn.description && fn.description.startsWith("Automatically generated record constructor")) return null;
+    if ((fn as any).isOperatorRecord || fn.extensionMetadata?.isOperatorRecord) return null;
+    if (fn.algorithmSections.length !== 1 || fn.algorithmSections[0]!.count !== 1) return null;
+    const stmtIdx = fn.algorithmSections[0]!.start;
+    if (fn.getStmtKind(stmtIdx) !== StmtKind.Assignment) return null;
+
+    const inputs: { name: string; varIdx: number }[] = [];
+    const outputs: string[] = [];
+    for (let v = 0; v < fn.varCount; v++) {
+      if (fn.isVarRemoved(v)) continue;
+      const c = fn.getVarCausality(v);
+      const varb = fn.getVarVariability(v);
+      if (c === Causality.Input) {
+        inputs.push({ name: fn.getVarName(v), varIdx: v });
+      } else if (c === Causality.Output) {
+        outputs.push(fn.getVarName(v));
+      } else if (varb !== Variability.Constant && varb !== Variability.Parameter) {
+        return null;
+      }
+    }
+    if (outputs.length !== 1) return null;
+    const targetExprId = fn.getStmtData1(stmtIdx);
+    const sourceExprId = fn.getStmtLeft(stmtIdx);
+    if (targetExprId < 0 || sourceExprId < 0 || fn.getExprKind(targetExprId) !== ExprKind.Name) return null;
+    const targetName = fn.interner.resolve(fn.getExprData1(targetExprId));
+    if (targetName !== outputs[0]) return null;
+
+    let failed = false;
+    const cloneFnExpr = (fnExprId: number, paramMap: Map<string, number>, d: number): number => {
+      if (failed || fnExprId < 0 || d > 32) {
+        failed = true;
+        return -1;
+      }
+      const k = fn.getExprKind(fnExprId);
+      switch (k) {
+        case ExprKind.Name: {
+          const name = fn.interner.resolve(fn.getExprData1(fnExprId)) || "";
+          if (paramMap.has(name)) return paramMap.get(name)!;
+          if (name.includes(".")) {
+            const dotIdx = name.indexOf(".");
+            const rootParam = name.slice(0, dotIdx);
+            const restField = name.slice(dotIdx + 1);
+            if (paramMap.has(rootParam)) {
+              const paramExprInOut = paramMap.get(rootParam)!;
+              return getFieldExpr(out, out, paramExprInOut, restField, (id) => id);
+            }
+          }
+          const vIdx = fn.getVarIdxByName(name);
+          if (vIdx >= 0) {
+            const bindId = fn.getVarExpression(vIdx);
+            if (bindId !== undefined && bindId >= 0) {
+              return cloneFnExpr(bindId, paramMap, d + 1);
+            }
+          }
+          return out.addNameExpr(name);
+        }
+        case ExprKind.IntLiteral:
+          return out.addIntLiteral(fn.getExprData1(fnExprId));
+        case ExprKind.RealLiteral:
+          return out.addRealLiteral(fn.getExprRealValue(fnExprId));
+        case ExprKind.BoolLiteral:
+          return out.addBoolLiteral(fn.getExprData1(fnExprId) !== 0);
+        case ExprKind.StringLiteral:
+          return out.addStringLiteral(fn.interner.resolve(fn.getExprData1(fnExprId)) || "");
+        case ExprKind.EnumLiteral: {
+          const ordinal = fn.getExprData1(fnExprId);
+          const pathStr = fn.interner.resolve(fn.getExprLeft(fnExprId)) || "";
+          return out.addEnumLiteral(ordinal, pathStr);
+        }
+        case ExprKind.Binary: {
+          const op = fn.getExprData1(fnExprId);
+          const l = cloneFnExpr(fn.getExprLeft(fnExprId), paramMap, d + 1);
+          const r = cloneFnExpr(fn.getExprRight(fnExprId), paramMap, d + 1);
+          if (failed) return -1;
+          return out.addBinaryExpr(op, l, r);
+        }
+        case ExprKind.Unary: {
+          const op = fn.getExprData1(fnExprId);
+          const operand = cloneFnExpr(fn.getExprLeft(fnExprId), paramMap, d + 1);
+          if (failed) return -1;
+          return out.addUnaryExpr(op, operand);
+        }
+        case ExprKind.Negate: {
+          const operand = cloneFnExpr(fn.getExprLeft(fnExprId), paramMap, d + 1);
+          if (failed) return -1;
+          return out.addExpression(ExprKind.Negate, 0, operand);
+        }
+        case ExprKind.IfElse: {
+          const cond = cloneFnExpr(fn.getExprData1(fnExprId), paramMap, d + 1);
+          const tBranch = cloneFnExpr(fn.getExprLeft(fnExprId), paramMap, d + 1);
+          const fBranch = cloneFnExpr(fn.getExprRight(fnExprId), paramMap, d + 1);
+          if (failed) return -1;
+          return out.addIfElseExpr(cond, tBranch, fBranch);
+        }
+        case ExprKind.ArrayCtor: {
+          const count = fn.getExprData1(fnExprId);
+          const elems: number[] = [];
+          for (let i = 0; i < count; i++) {
+            const elemId = i === 0 ? fn.getExprLeft(fnExprId) : fn.getExprLeft(fnExprId + i);
+            elems.push(cloneFnExpr(elemId, paramMap, d + 1));
+            if (failed) return -1;
+          }
+          return out.addArrayCtorExpr(elems);
+        }
+        case ExprKind.Subscript: {
+          const baseId = fn.getExprData1(fnExprId);
+          const subCount = fn.getExprRight(fnExprId);
+          const subIds: number[] = [];
+          for (let i = 0; i < subCount; i++) {
+            const sId = i === 0 ? fn.getExprLeft(fnExprId) : fn.getExprLeft(fnExprId + i);
+            subIds.push(cloneFnExpr(sId, paramMap, d + 1));
+            if (failed) return -1;
+          }
+          const clonedBase = cloneFnExpr(baseId, paramMap, d + 1);
+          if (failed) return -1;
+          if (subIds.length > 0 && subIds.every((s) => out.getExprKind(s) === ExprKind.IntLiteral)) {
+            const idx = subIds.map((s) => out.getExprData1(s));
+            if (out.getExprKind(clonedBase) === ExprKind.ArrayCtor) {
+              const elem = getArrayCtorElement(out, clonedBase, idx);
+              if (elem >= 0) return elem;
+            }
+            if (out.getExprKind(clonedBase) === ExprKind.Name) {
+              const baseName = out.interner.resolve(out.getExprData1(clonedBase));
+              if (baseName) {
+                const idxStr = idx.join(",");
+                const combinedName = baseName.endsWith("]")
+                  ? `${baseName.slice(0, -1)},${idxStr}]`
+                  : `${baseName}[${idxStr}]`;
+                if (out.getVarIdxByName(combinedName) >= 0 || dae.getVarIdxByName(combinedName) >= 0) {
+                  return out.addNameExpr(combinedName);
+                }
+              }
+            }
+          }
+          return out.addSubscriptExpr(clonedBase, subIds);
+        }
+        case ExprKind.Call: {
+          const subFnName = fn.interner.resolve(fn.getExprData1(fnExprId)) || "";
+          const subArgCount = fn.getExprRight(fnExprId);
+          const subArgs: number[] = [];
+          for (let i = 0; i < subArgCount; i++) {
+            const aId = i === 0 ? fn.getExprLeft(fnExprId) : fn.getExprLeft(fnExprId + i);
+            subArgs.push(cloneFnExpr(aId, paramMap, d + 1));
+            if (failed) return -1;
+          }
+          const inlinedSub = tryInlineSingleAssignCall(subFnName, subArgs, depth + 1);
+          if (inlinedSub !== null) return inlinedSub;
+          return out.addCallExpr(subFnName, subArgs);
+        }
+        default:
+          failed = true;
+          return -1;
+      }
+    };
+
+    const paramMap = new Map<string, number>();
+    for (let i = 0; i < inputs.length; i++) {
+      const inp = inputs[i]!;
+      if (i < args.length) {
+        let argId = args[i]!;
+        if (fn.getVarType(inp.varIdx) === VarType.Real && out.getExprKind(argId) === ExprKind.IntLiteral) {
+          argId = out.addRealLiteral(out.getExprData1(argId));
+        }
+        paramMap.set(inp.name, argId);
+      } else {
+        const defId = fn.getVarExpression(inp.varIdx);
+        if (defId !== undefined && defId >= 0) {
+          const defCloned = cloneFnExpr(defId, paramMap, 0);
+          if (failed) return null;
+          paramMap.set(inp.name, defCloned);
+        }
+      }
+    }
+
+    const res = cloneFnExpr(sourceExprId, paramMap, 0);
+    return failed || res < 0 ? null : res;
+  }
 
   // --- Step 3: Emit Scalarized Variables & Element-Sliced Attributes ---
   // Emit variables
@@ -4184,6 +4410,19 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     if (lhsRec && lhsRec.length > 0 && ((isRhsCall && !isRhsRecordCtor) || isRhsComprehension)) {
       const newLhs = cloneExpr(lhsId, "", null);
       const newRhs = cloneExpr(rhsId, "", null);
+      if (expandArrayEquations && isRecordConstructorCall(out, newRhs)) {
+        for (const field of lhsRec) {
+          const fieldLhs = getFieldExpr(dae, out, lhsId, field, cloneExpr);
+          const fieldRhs = getFieldExpr(out, out, newRhs, field, (id) => id);
+          if (targetList) {
+            targetList.push({ kind, lhsExprId: fieldLhs, rhsExprId: fieldRhs });
+          } else {
+            out.addEquation(kind, fieldLhs, fieldRhs, eqFlags);
+            recordEqMeta(out.eqCount - 1);
+          }
+        }
+        return;
+      }
       if (targetList) {
         targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
       } else {
@@ -4340,6 +4579,84 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     }
   };
 
+  const sameOutLhs = (a: number, b: number): boolean => {
+    if (a < 0 || b < 0) return false;
+    const ka = out.getExprKind(a);
+    const kb = out.getExprKind(b);
+    if (ka !== kb) return false;
+    if (ka === ExprKind.Name || ka === ExprKind.IntLiteral || ka === ExprKind.BoolLiteral) {
+      return out.getExprData1(a) === out.getExprData1(b);
+    }
+    if (ka === ExprKind.RealLiteral) {
+      return out.getExprRealValue(a) === out.getExprRealValue(b);
+    }
+    return false;
+  };
+
+  const tryEmitBalancedIfAsSimple = (
+    condId: number,
+    thenEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+    elseIfs: { conditionExprId: number; bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] }[],
+    elseEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+    eqFlags: number,
+    targetList?: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+    origEqIdx?: number,
+  ): boolean => {
+    if (!expandArrayEquations || thenEqs.length === 0 || elseEqs.length !== thenEqs.length) return false;
+    if (!elseIfs.every((c) => c.bodyEquations.length === thenEqs.length)) return false;
+    const isSimple = (e: { kind: EqKind }) => e.kind === EqKind.Simple || e.kind === EqKind.InitialSimple;
+    if (!thenEqs.every(isSimple) || !elseEqs.every(isSimple)) return false;
+    if (!elseIfs.every((c) => c.bodyEquations.every(isSimple))) return false;
+
+    const toResidual = (eq: { lhsExprId: number; rhsExprId: number }) =>
+      out.addBinaryExpr(BinOp.Sub, eq.lhsExprId, eq.rhsExprId);
+
+    for (let k = 0; k < thenEqs.length; k++) {
+      const tEq = thenEqs[k]!;
+      const eEq = elseEqs[k]!;
+      const allSameLhs =
+        sameOutLhs(tEq.lhsExprId, eEq.lhsExprId) &&
+        elseIfs.every((c) => sameOutLhs(tEq.lhsExprId, c.bodyEquations[k]!.lhsExprId));
+      let combinedLhs: number;
+      let combinedRhs: number;
+      if (allSameLhs) {
+        let rhsChain = eEq.rhsExprId;
+        for (let ci = elseIfs.length - 1; ci >= 0; ci--) {
+          rhsChain = out.addIfElseExpr(
+            elseIfs[ci]!.conditionExprId,
+            elseIfs[ci]!.bodyEquations[k]!.rhsExprId,
+            rhsChain,
+          );
+        }
+        combinedLhs = tEq.lhsExprId;
+        combinedRhs = out.addIfElseExpr(condId, tEq.rhsExprId, rhsChain);
+      } else {
+        let resChain = toResidual(eEq);
+        for (let ci = elseIfs.length - 1; ci >= 0; ci--) {
+          resChain = out.addIfElseExpr(
+            elseIfs[ci]!.conditionExprId,
+            toResidual(elseIfs[ci]!.bodyEquations[k]!),
+            resChain,
+          );
+        }
+        combinedLhs = out.addRealLiteral(0.0);
+        combinedRhs = out.addIfElseExpr(condId, toResidual(tEq), resChain);
+      }
+      if (targetList) {
+        targetList.push({ kind: tEq.kind, lhsExprId: combinedLhs, rhsExprId: combinedRhs });
+      } else {
+        out.addEquation(tEq.kind, combinedLhs, combinedRhs, eqFlags);
+        if (origEqIdx !== undefined) {
+          const desc = dae.getEqDescription?.(origEqIdx);
+          if (desc) out.setEqDescription(out.eqCount - 1, desc);
+          const range = dae.getEqSourceRange?.(origEqIdx);
+          if (range) out.setEqSourceRange(out.eqCount - 1, range.startOffset, range.endOffset);
+        }
+      }
+    }
+    return true;
+  };
+
   // --- Step 5: Emit & Unroll Equations (`If`, `When`, `For`/`InitialFor`, and Simple/Connect) ---
   // Emit equations
   for (let i = 0; i < dae.eqCount; i++) {
@@ -4374,6 +4691,9 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
               if (Array.isArray((eq as any).elseEquations)) {
                 cloneInlineEqList((eq as any).elseEquations, subElse);
               }
+              if (tryEmitBalancedIfAsSimple(subCond, subThen, subElseIf, subElse, eqFlags, dstList, i)) {
+                continue;
+              }
               dstList.push({
                 kind: EqKind.If,
                 lhsExprId: subCond,
@@ -4388,21 +4708,36 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
           }
         };
         const condId = cloneExpr(meta.conditionExprId, "", null);
+        const thenList: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+        cloneInlineEqList(meta.thenEquations, thenList);
+        const elseIfList: {
+          conditionExprId: number;
+          bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+          equations: any[];
+        }[] = [];
+        for (const clause of meta.elseIfClauses) {
+          const clauseCond = cloneExpr(clause.conditionExprId, "", null);
+          const clauseEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+          cloneInlineEqList(clause.bodyEquations, clauseEqs);
+          elseIfList.push({ conditionExprId: clauseCond, bodyEquations: clauseEqs, equations: [] });
+        }
+        const elseList: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+        if (meta.elseEquations) {
+          cloneInlineEqList(meta.elseEquations, elseList);
+        }
+        if (tryEmitBalancedIfAsSimple(condId, thenList, elseIfList, elseList, eqFlags, undefined, i)) {
+          continue;
+        }
         const ifIdx = out.addIfEquation(condId);
         const ifRange = dae.getEqSourceRange?.(i);
         if (ifRange) out.setEqSourceRange(ifIdx, ifRange.startOffset, ifRange.endOffset);
         const outMeta = out.getIfEquationMeta(ifIdx);
         if (outMeta) {
-          cloneInlineEqList(meta.thenEquations, outMeta.thenEquations);
-          for (const clause of meta.elseIfClauses) {
-            const clauseCond = cloneExpr(clause.conditionExprId, "", null);
-            const clauseEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
-            cloneInlineEqList(clause.bodyEquations, clauseEqs);
-            outMeta.elseIfClauses.push({ conditionExprId: clauseCond, bodyEquations: clauseEqs, equations: [] });
-          }
+          outMeta.thenEquations.push(...thenList);
+          outMeta.elseIfClauses.push(...elseIfList);
           if (meta.elseEquations) {
             outMeta.elseEquations ??= [];
-            cloneInlineEqList(meta.elseEquations, outMeta.elseEquations);
+            outMeta.elseEquations.push(...elseList);
           }
         }
         continue;
@@ -4555,27 +4890,43 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
                   }
                 } else {
                   const subCond = cloneExpr(bodyEq.lhsExprId, "", null);
+                  const thenList: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                  for (const sub of anyEq.thenEquations) {
+                    const subKind = isInit && sub.kind === EqKind.Simple ? EqKind.InitialSimple : sub.kind;
+                    emitEquation(subKind, sub.lhsExprId, sub.rhsExprId, 0, thenList, i);
+                  }
+                  const elseIfList: {
+                    conditionExprId: number;
+                    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+                    equations: any[];
+                  }[] = [];
+                  for (const c of anyEq.elseIfClauses || []) {
+                    const cCond = cloneExpr(c.conditionExprId, "", null);
+                    const cBody: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                    for (const sub of c.bodyEquations || []) {
+                      const subKind = isInit && sub.kind === EqKind.Simple ? EqKind.InitialSimple : sub.kind;
+                      emitEquation(subKind, sub.lhsExprId, sub.rhsExprId, 0, cBody, i);
+                    }
+                    elseIfList.push({ conditionExprId: cCond, bodyEquations: cBody, equations: [] });
+                  }
+                  const elseList: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+                  if (Array.isArray(anyEq.elseEquations)) {
+                    for (const sub of anyEq.elseEquations) {
+                      const subKind = isInit && sub.kind === EqKind.Simple ? EqKind.InitialSimple : sub.kind;
+                      emitEquation(subKind, sub.lhsExprId, sub.rhsExprId, 0, elseList, i);
+                    }
+                  }
+                  if (tryEmitBalancedIfAsSimple(subCond, thenList, elseIfList, elseList, eqFlags, targetList, i)) {
+                    continue;
+                  }
                   const ifIdx = out.addIfEquation(subCond);
                   const outIfMeta = out.getIfEquationMeta(ifIdx);
                   if (outIfMeta) {
-                    for (const sub of anyEq.thenEquations) {
-                      const subKind = isInit && sub.kind === EqKind.Simple ? EqKind.InitialSimple : sub.kind;
-                      emitEquation(subKind, sub.lhsExprId, sub.rhsExprId, 0, outIfMeta.thenEquations, i);
-                    }
-                    for (const c of anyEq.elseIfClauses || []) {
-                      const cCond = cloneExpr(c.conditionExprId, "", null);
-                      const cBody: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
-                      for (const sub of c.bodyEquations || []) {
-                        const subKind = isInit && sub.kind === EqKind.Simple ? EqKind.InitialSimple : sub.kind;
-                        emitEquation(subKind, sub.lhsExprId, sub.rhsExprId, 0, cBody, i);
-                      }
-                      outIfMeta.elseIfClauses.push({ conditionExprId: cCond, bodyEquations: cBody, equations: [] });
-                    }
+                    outIfMeta.thenEquations.push(...thenList);
+                    outIfMeta.elseIfClauses.push(...elseIfList);
                     if (Array.isArray(anyEq.elseEquations)) {
-                      for (const sub of anyEq.elseEquations) {
-                        const subKind = isInit && sub.kind === EqKind.Simple ? EqKind.InitialSimple : sub.kind;
-                        emitEquation(subKind, sub.lhsExprId, sub.rhsExprId, 0, outIfMeta.elseEquations, i);
-                      }
+                      outIfMeta.elseEquations ??= [];
+                      outIfMeta.elseEquations.push(...elseList);
                     }
                   }
                 }

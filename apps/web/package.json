@@ -23,6 +23,7 @@
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/embed": "*",
+    "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/reqif": "*",
     "@modelscript/sima": "*",

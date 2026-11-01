@@ -66,6 +66,18 @@ export interface UserArchiveBundle {
         created_at?: string | undefined;
       }[]
     | undefined;
+  studies?:
+    | {
+        id: number;
+        name: string;
+        status: string;
+        type: string;
+        started_at: string;
+        completed_at?: string | undefined;
+        format?: string | undefined;
+        source_code?: string | undefined;
+      }[]
+    | undefined;
   following?: string[] | undefined;
   followers?: string[] | undefined;
 }
@@ -83,6 +95,7 @@ export function gatherUserDataBundle(database: LibraryDatabase, userId: number):
   const billingHistory = archiveData.billingHistory;
   const auditHistory = archiveData.auditHistory;
   const bookmarks = archiveData.bookmarks;
+  const studies = archiveData.studies ?? [];
   const following = archiveData.following;
   const followers = archiveData.followers;
 
@@ -109,6 +122,7 @@ export function gatherUserDataBundle(database: LibraryDatabase, userId: number):
     billingHistory,
     auditHistory,
     bookmarks,
+    studies,
     following,
     followers,
   };

@@ -211,13 +211,22 @@ function assignArenaTargetRuntime(
 function lookupFunctionArenaRuntime(arena: DAEBuilder, funcNameId: number, funcName: string): DAEBuilder | undefined {
   const cleanName = funcName.replace(/^\.+/, "");
   const shortName = cleanName.includes(".") ? cleanName.slice(cleanName.lastIndexOf(".") + 1) : cleanName;
-  return (
+  const rootArena = (arena as any).parentDae as DAEBuilder | undefined;
+  const fn =
     arena.functions?.get(funcNameId) ??
     arena.getFunction?.(funcNameId) ??
     arena.getFunction?.(funcName) ??
     arena.getFunction?.(cleanName) ??
-    arena.getFunction?.(shortName)
-  );
+    arena.getFunction?.(shortName) ??
+    rootArena?.functions?.get(funcNameId) ??
+    rootArena?.getFunction?.(funcNameId) ??
+    rootArena?.getFunction?.(funcName) ??
+    rootArena?.getFunction?.(cleanName) ??
+    rootArena?.getFunction?.(shortName);
+  if (fn && !(fn as any).parentDae) {
+    (fn as any).parentDae = rootArena ?? arena;
+  }
+  return fn;
 }
 
 /**
@@ -647,6 +656,11 @@ export function executeArenaFunction(
 
     const outputs = outputIds.map((id) => valuesByStringId[id] ?? 0);
     (funcArena as any)._lastOutputs = outputs;
+    (funcArena as any)._lastFunctionOutputs = outputs;
+    const rootArena = (funcArena as any).parentDae;
+    if (rootArena) {
+      rootArena._lastFunctionOutputs = outputs;
+    }
 
     if (outputIds.length > 0) {
       return outputs[0] ?? null;
@@ -1349,6 +1363,26 @@ export function executeArenaCEvalStatements(
                   }
                 } else {
                   for (const k of existingFieldKeys) env.delete(k);
+                  const vIdx = arena.getVarIdxByName(name);
+                  let customType = vIdx >= 0 ? arena.getVarCustomType(vIdx) : undefined;
+                  if (!customType && arena.getExprKind(sourceExprId) === ExprKind.Call) {
+                    const calledName = arena.interner.resolve(arena.getExprData1(sourceExprId));
+                    if (calledName) customType = calledName;
+                  }
+                  const ctorArena = customType
+                    ? lookupRecordConstructorArena(arena, customType, (arena as any).parentDae)
+                    : undefined;
+                  if (ctorArena) {
+                    let fIdx = 0;
+                    for (let vi = 0; vi < ctorArena.varCount; vi++) {
+                      if (!ctorArena.isVarRemoved(vi) && ctorArena.getVarCausality(vi) === 1 /* Input */) {
+                        if (fIdx < value.length) {
+                          env.set(`${name}.${ctorArena.getVarName(vi)}`, value[fIdx]!);
+                        }
+                        fIdx++;
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -1787,6 +1821,106 @@ function collectExprVarNames(arena: DAEBuilder, exprId: number, names: Set<strin
 }
 
 /**
+ * Look up the synthesized record constructor DAEBuilder for a given record type name
+ * or function name across the current function arena and parent/caller DAE arenas.
+ */
+export function lookupRecordConstructorArena(
+  arena: DAEBuilder,
+  typeOrFnName: string,
+  callerDae?: DAEBuilder,
+  visited = new Set<string>(),
+): DAEBuilder | undefined {
+  const cleanName = typeOrFnName.replace(/^\.+/, "").replace(/\.'constructor'\..*$/, "");
+  if (!cleanName || visited.has(cleanName)) return undefined;
+  visited.add(cleanName);
+
+  const leafName = cleanName.includes(".") ? cleanName.split(".").pop()! : cleanName;
+  const searchDaes: DAEBuilder[] = [];
+  const addDae = (d: DAEBuilder | undefined) => {
+    if (d && !searchDaes.includes(d)) searchDaes.push(d);
+  };
+  addDae(arena);
+  addDae(callerDae);
+  addDae((arena as any).parentDae);
+  addDae((callerDae as any)?.parentDae);
+
+  const arenaName = (arena.name || "").replace(/^\.+/, "");
+  const pkgPrefix = arenaName.includes(".") ? arenaName.slice(0, arenaName.lastIndexOf(".")) : undefined;
+
+  const exactCandidates = [cleanName];
+  if (pkgPrefix) {
+    exactCandidates.push(`${pkgPrefix}.${cleanName}`);
+    if (leafName !== cleanName) exactCandidates.push(`${pkgPrefix}.${leafName}`);
+  }
+  if (leafName !== cleanName) exactCandidates.push(leafName);
+
+  const checkCandidateFn = (fn: DAEBuilder | undefined): DAEBuilder | undefined => {
+    if (!fn) return undefined;
+    if (fn.description?.includes("record constructor")) return fn;
+    for (let vi = 0; vi < fn.varCount; vi++) {
+      if (!fn.isVarRemoved(vi) && fn.getVarCausality(vi) === 2 /* Output */) {
+        const outCustom = fn.getVarCustomType(vi);
+        if (outCustom) {
+          const resolved = lookupRecordConstructorArena(fn, outCustom, callerDae ?? arena, visited);
+          if (resolved) return resolved;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  for (const cand of exactCandidates) {
+    for (const sDae of searchDaes) {
+      const found = checkCandidateFn(sDae.getFunction(cand));
+      if (found) return found;
+    }
+  }
+
+  if (pkgPrefix) {
+    for (const sDae of searchDaes) {
+      for (const fn of sDae.functions.values()) {
+        if (!fn.description?.includes("record constructor")) continue;
+        const fName = (fn.name || "").replace(/^\.+/, "");
+        if (
+          fName === `${pkgPrefix}.${leafName}` ||
+          (fName.startsWith(`${pkgPrefix}.`) && fName.endsWith(`.${leafName}`))
+        ) {
+          return fn;
+        }
+      }
+    }
+  }
+
+  for (const sDae of searchDaes) {
+    for (const fn of sDae.functions.values()) {
+      if (!fn.description?.includes("record constructor")) continue;
+      const fName = (fn.name || "").replace(/^\.+/, "");
+      if (
+        fName === cleanName ||
+        fName === leafName ||
+        (cleanName.includes(".") && fName.endsWith(`.${cleanName}`)) ||
+        fName.endsWith(`.${leafName}`)
+      ) {
+        return fn;
+      }
+    }
+  }
+
+  for (const sDae of searchDaes) {
+    for (const fn of sDae.functions.values()) {
+      if (fn.description?.includes("record constructor")) continue;
+      const fName = (fn.name || "").replace(/^\.+/, "");
+      if (fName === cleanName || (cleanName.includes(".") && fName.endsWith(`.${cleanName}`))) {
+        const found = checkCandidateFn(fn);
+        if (found) return found;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
  * Evaluate a user-defined function inside the compile-time context.
  */
 export function evaluateArenaFunctionCall(
@@ -2005,7 +2139,13 @@ export function evaluateArenaFunctionCall(
     }
 
     let inputIndex = 0;
-    const unprovidedInputs: { name: string; exprId: number; defaultVal: ArenaValue; deps: Set<string> }[] = [];
+    const unprovidedInputs: {
+      name: string;
+      varIdx: number;
+      exprId: number;
+      defaultVal: ArenaValue;
+      deps: Set<string>;
+    }[] = [];
 
     for (let i = 0; i < funcArena.varCount; i++) {
       if (funcArena.isVarRemoved(i)) continue;
@@ -2068,15 +2208,8 @@ export function evaluateArenaFunctionCall(
           env.set(name, val);
           const customType = funcArena.getVarCustomType(i);
           if (Array.isArray(val) && customType && (!shape || shape.length === 0)) {
-            const leafCustom = customType.includes(".") ? customType.split(".").pop()! : customType;
-            const ctorArena =
-              funcArena.getFunction(customType) ??
-              dae.getFunction(customType) ??
-              (dae as any).parentDae?.getFunction(customType) ??
-              funcArena.getFunction(leafCustom) ??
-              dae.getFunction(leafCustom) ??
-              (dae as any).parentDae?.getFunction(leafCustom);
-            if (ctorArena && ctorArena.description?.includes("record constructor")) {
+            const ctorArena = lookupRecordConstructorArena(funcArena, customType, dae);
+            if (ctorArena) {
               let fIdx = 0;
               for (let vi = 0; vi < ctorArena.varCount; vi++) {
                 if (!ctorArena.isVarRemoved(vi) && ctorArena.getVarCausality(vi) === 1 /* Input */) {
@@ -2091,12 +2224,26 @@ export function evaluateArenaFunctionCall(
         } else if (typeof startExprId === "number" && startExprId !== -1) {
           const deps = new Set<string>();
           collectExprVarNames(funcArena, startExprId, deps);
-          unprovidedInputs.push({ name, exprId: startExprId, defaultVal, deps });
+          unprovidedInputs.push({ name, varIdx: i, exprId: startExprId, defaultVal, deps });
         } else {
           env.set(name, defaultVal);
         }
       } else {
         if (causality === 2 /* Output */) outputs.push(name);
+        const varCustomType = funcArena.getVarCustomType(i);
+        const varCtorArena =
+          varCustomType && (!shape || shape.length === 0) && (!shapeExprs || shapeExprs.length === 0)
+            ? lookupRecordConstructorArena(funcArena, varCustomType, dae)
+            : undefined;
+        if (varCtorArena) {
+          for (let vi = 0; vi < varCtorArena.varCount; vi++) {
+            if (!varCtorArena.isVarRemoved(vi) && varCtorArena.getVarCausality(vi) === 1 /* Input */) {
+              const fType = varCtorArena.getVarType(vi);
+              const fDefault: ArenaValue = fType === VarType.Boolean ? false : fType === VarType.String ? "" : 0.0;
+              env.set(`${name}.${varCtorArena.getVarName(vi)}`, fDefault);
+            }
+          }
+        }
         if (typeof startExprId === "number" && startExprId !== -1) {
           const isSelfCall =
             funcArena.getExprKind(startExprId) === ExprKind.Call &&
@@ -2117,15 +2264,16 @@ export function evaluateArenaFunctionCall(
               );
           if (evaluatedVal !== null && evaluatedVal !== undefined) {
             env.set(name, evaluatedVal);
-            if (Array.isArray(evaluatedVal) && funcArena.getExprKind(startExprId) === ExprKind.Call) {
-              const calledId = funcArena.getExprData1(startExprId);
-              const calledName = funcArena.interner.resolve(calledId);
-              const ctorArena = calledName
-                ? (funcArena.getFunction(calledName) ??
-                  dae.getFunction(calledName) ??
-                  (dae as any).parentDae?.getFunction(calledName))
-                : undefined;
-              if (ctorArena && ctorArena.description?.includes("record constructor")) {
+            if (Array.isArray(evaluatedVal)) {
+              let ctorArena = varCtorArena;
+              if (!ctorArena && funcArena.getExprKind(startExprId) === ExprKind.Call) {
+                const calledId = funcArena.getExprData1(startExprId);
+                const calledName = funcArena.interner.resolve(calledId);
+                if (calledName) {
+                  ctorArena = lookupRecordConstructorArena(funcArena, calledName, dae);
+                }
+              }
+              if (ctorArena) {
                 let fIdx = 0;
                 for (let vi = 0; vi < ctorArena.varCount; vi++) {
                   if (!ctorArena.isVarRemoved(vi) && ctorArena.getVarCausality(vi) === 1 /* Input */) {
@@ -2155,7 +2303,10 @@ export function evaluateArenaFunctionCall(
     }
 
     if (unprovidedInputs.length > 0) {
-      const unprovidedMap = new Map<string, { exprId: number; defaultVal: ArenaValue; deps: Set<string> }>();
+      const unprovidedMap = new Map<
+        string,
+        { varIdx: number; exprId: number; defaultVal: ArenaValue; deps: Set<string> }
+      >();
       for (const item of unprovidedInputs) {
         unprovidedMap.set(item.name, item);
       }
@@ -2194,6 +2345,22 @@ export function evaluateArenaFunctionCall(
               instancePrefix,
             ) ?? info.defaultVal;
           env.set(inputName, val);
+          const customType = funcArena.getVarCustomType(info.varIdx);
+          const shape = funcArena.getVarShape(info.varIdx);
+          if (Array.isArray(val) && customType && (!shape || shape.length === 0)) {
+            const ctorArena = lookupRecordConstructorArena(funcArena, customType, dae);
+            if (ctorArena) {
+              let fIdx = 0;
+              for (let vi = 0; vi < ctorArena.varCount; vi++) {
+                if (!ctorArena.isVarRemoved(vi) && ctorArena.getVarCausality(vi) === 1 /* Input */) {
+                  if (fIdx < val.length) {
+                    env.set(`${inputName}.${ctorArena.getVarName(vi)}`, val[fIdx]!);
+                  }
+                  fIdx++;
+                }
+              }
+            }
+          }
         }
         visiting.delete(inputName);
         visited.add(inputName);

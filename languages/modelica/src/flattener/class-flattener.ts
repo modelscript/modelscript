@@ -392,9 +392,17 @@ export class ModelicaFlattener {
     const cst = this.db.cstNode(classId) as any;
     if (cst) {
       const pfxNode = Cst.ClassDefinition.classPrefixes(cst);
-      const text = (pfxNode?.text ?? cst.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      if (/\bpartial\b/.test(text.slice(0, 100)) || /^(?:(?:encapsulated|pure|impure)\s+)*partial\b/.test(text)) {
-        return true;
+      if (pfxNode) {
+        const pfxText = (pfxNode.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+        if (/\bpartial\b/.test(pfxText)) return true;
+      } else {
+        const text = (cst.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+        const headerMatch = text.match(
+          /^(?:(?:final|inner|outer|redeclare|replaceable|encapsulated|partial|expandable|pure|impure|operator)\s+)+/,
+        );
+        if (headerMatch && /\bpartial\b/.test(headerMatch[0])) {
+          return true;
+        }
       }
       const shortSpec = getShortClassSpecifierNode(cst);
       if (shortSpec && !(this.options as any)?.isOldFrontend) {
@@ -1598,6 +1606,7 @@ export class ModelicaFlattener {
     this.evaluatedConstantArrays.clear();
     this.varConditionDeps.clear();
     this.activeFlatteningFunctionIds.clear();
+    (this as any)._flattenedFunctionCache?.clear();
     this.currentFlatteningFunctionId = null;
     this.currentFunctionEnclosingScope = null;
     this.currentParentMods = undefined;
@@ -2470,6 +2479,21 @@ export class ModelicaFlattener {
                 const collectTokens = (n: CstNodeLike | null | undefined): void => {
                   if (!n) return;
                   if (isTrivialTrueCond(n)) return;
+                  if (
+                    !isOldFE &&
+                    (n.type === "comment" ||
+                      n.type === "Comment" ||
+                      n.type === "string_comment" ||
+                      n.type === "StringComment" ||
+                      n.type === "description" ||
+                      n.type === "Description" ||
+                      n.type === "description_string" ||
+                      n.type === "DescriptionString" ||
+                      n.type === "annotation" ||
+                      n.type === "Annotation")
+                  ) {
+                    return;
+                  }
                   if (Array.isArray(n.children) && n.children.length > 0) {
                     for (const ch of n.children) collectTokens(ch);
                     return;
@@ -2482,6 +2506,12 @@ export class ModelicaFlattener {
                   collectTokens(clauseNode);
                 } else {
                   let s = rawFallback.trim();
+                  if (!isOldFE) {
+                    s = s
+                      .replace(/\s*annotation\s*\([\s\S]*?\)\s*$/, "")
+                      .replace(/\s*"[^"]*"\s*$/, "")
+                      .trim();
+                  }
                   if (s.endsWith("if true")) s = s.slice(0, -7).trim();
                   tokens.push(...s.split(/\s+/).filter(Boolean));
                 }

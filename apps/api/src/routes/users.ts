@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import { defaultArchiveExportLimiter } from "../middleware/archive-limiter.js";
 import { JWT_SECRET, extractTokenFromRequest, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { getUserActivityRepoStatus, purgeUserActivityRepo } from "../services/activity-git.js";
 import { ArchiveQueue, defaultArchiveQueue } from "../services/archive-queue.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-archive.js";
@@ -707,6 +708,11 @@ export function usersRouter(
       return;
     }
 
+    try {
+      purgeUserActivityRepo(userId, undefined, database);
+      archiveQueue.purgeUserArchives(userId);
+    } catch {}
+
     if (actorUrl && worker && process.env["NODE_ENV"] !== "test") {
       try {
         const followers = database.getUserFollowers(userId);
@@ -733,6 +739,41 @@ export function usersRouter(
     }
 
     res.json({ success: true, message: "Account successfully deleted pursuant to GDPR Article 17 Right to Erasure." });
+  });
+
+  /**
+   * GET /api/v1/users/me/activity-repo
+   * Returns live cache status, TTL countdown, and content counts for the owner's virtual activity Git repository.
+   */
+  router.get("/me/activity-repo", requireAuth, (req: Request, res: Response) => {
+    try {
+      const status = getUserActivityRepoStatus(database, req.user!.id, undefined);
+      res.json(status);
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to inspect activity repository" });
+    }
+  });
+
+  /**
+   * DELETE /api/v1/users/me/activity-repo
+   * Purges the owner's warm 24-hour cached activity Git repository so the next fetch/clone
+   * rebuilds cleanly from current SQLite state without any deleted historical blobs.
+   */
+  router.delete("/me/activity-repo", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const purged = purgeUserActivityRepo(userId, undefined, database);
+    database.logAudit({
+      actorId: userId,
+      action: "gdpr_activity_git_cache_purged",
+      resourceType: "user",
+      resourceId: String(userId),
+      details: { purged },
+    });
+    res.json({
+      success: true,
+      purged,
+      message: "Activity Git cache purged. Next clone or fetch will rebuild from current database state.",
+    });
   });
 
   /**

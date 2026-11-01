@@ -481,6 +481,18 @@ export interface UserArchiveData {
     content?: string | undefined;
     created_at?: string | undefined;
   }[];
+  studies?:
+    | {
+        id: number;
+        name: string;
+        status: string;
+        type: string;
+        started_at: string;
+        completed_at?: string | undefined;
+        format?: string | undefined;
+        source_code?: string | undefined;
+      }[]
+    | undefined;
   following: string[];
   followers: string[];
 }

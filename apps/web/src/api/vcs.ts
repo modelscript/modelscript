@@ -538,7 +538,24 @@ export async function getAllRepoFilePaths(
   ref = "main",
   provider = "gitlab",
 ): Promise<GitlabTreeNode[]> {
-  const treeEntries = await getRepositoryTree(projectIdOrPath, ref, "", provider).catch(() => [] as GitlabTreeNode[]);
+  const isActivityRepo =
+    projectIdOrPath.toLowerCase().endsWith("/activity") || projectIdOrPath.toLowerCase().endsWith("/activity.git");
+  let treeEntries: GitlabTreeNode[] = [];
+  if (isActivityRepo || provider === "local") {
+    try {
+      const { data } = await api.get<GitlabTreeNode[]>(
+        `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/repository/tree`,
+        { params: { ref, recursive: "true" } },
+      );
+      if (Array.isArray(data)) {
+        treeEntries = data;
+      }
+    } catch {
+      treeEntries = await getRepositoryTree(projectIdOrPath, ref, "", provider).catch(() => [] as GitlabTreeNode[]);
+    }
+  } else {
+    treeEntries = await getRepositoryTree(projectIdOrPath, ref, "", provider).catch(() => [] as GitlabTreeNode[]);
+  }
   const savedFiles = readSavedFilesMap(projectIdOrPath);
   const fb = getSynthesizedFallbackSpec(projectIdOrPath);
 
@@ -551,8 +568,14 @@ export async function getAllRepoFilePaths(
   for (const savedPath of Object.keys(savedFiles)) {
     if (savedPath) combinedPaths.add(savedPath.replace(/^\/+/, ""));
   }
-  for (const fallbackPath of Object.keys(fb.files)) {
-    if (fallbackPath) combinedPaths.add(fallbackPath.replace(/^\/+/, ""));
+  if (!isActivityRepo && combinedPaths.size === 0) {
+    for (const fallbackPath of Object.keys(fb.files)) {
+      if (fallbackPath) combinedPaths.add(fallbackPath.replace(/^\/+/, ""));
+    }
+  } else if (!isActivityRepo && provider !== "local") {
+    for (const fallbackPath of Object.keys(fb.files)) {
+      if (fallbackPath) combinedPaths.add(fallbackPath.replace(/^\/+/, ""));
+    }
   }
 
   return Array.from(combinedPaths)
@@ -625,13 +648,31 @@ export const getGitlabTags = async (projectIdOrPath: string, provider: string = 
   return fallbackTags;
 };
 
+function isActivityVaultPath(projectIdOrPath: string): boolean {
+  const trimmed = projectIdOrPath.trim().replace(/^\/+|\/+$/g, "");
+  const parts = trimmed.split("/");
+  const proj = parts.length === 2 ? parts[1]?.toLowerCase() : "";
+  return proj === "activity" || proj === "activity.git";
+}
+
+function rethrowIfActivityOrAuthError(projectIdOrPath: string, err: unknown): void {
+  const status = (err as { response?: { status?: number } })?.response?.status;
+  if (isActivityVaultPath(projectIdOrPath) || status === 401 || status === 403) {
+    const msg =
+      (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message ||
+      (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.error ||
+      (err instanceof Error ? err.message : String(err));
+    throw new Error(msg);
+  }
+}
+
 export const getGitlabProject = async (
   projectIdOrPath: string,
   provider: string = "gitlab",
 ): Promise<GitlabProject> => {
   const fb = getSynthesizedFallbackSpec(projectIdOrPath);
   const breakdown = toLanguagesBreakdownArray(fb.languagesBreakdown);
-  if (provider === "github") {
+  if (provider === "github" && !isActivityVaultPath(projectIdOrPath)) {
     try {
       const { data } = await axios.get(`https://api.github.com/repos/${projectIdOrPath}`);
       return {
@@ -678,7 +719,7 @@ export const getGitlabProject = async (
     }
   }
 
-  if (provider === "gitlab") {
+  if (provider === "gitlab" && !isActivityVaultPath(projectIdOrPath)) {
     try {
       const { data } = await axios.get(`https://gitlab.com/api/v4/projects/${encodeURIComponent(projectIdOrPath)}`);
       return {
@@ -711,7 +752,8 @@ export const getGitlabProject = async (
       try {
         const { data } = await api.get<GitlabProject>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}`);
         return { ...data, languages_breakdown: data.languages_breakdown || breakdown };
-      } catch {
+      } catch (err) {
+        rethrowIfActivityOrAuthError(projectIdOrPath, err);
         const name = projectIdOrPath.split("/").pop() || projectIdOrPath;
         return {
           id: Math.abs(projectIdOrPath.split("").reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0)),
@@ -738,7 +780,8 @@ export const getGitlabProject = async (
   try {
     const { data } = await api.get<GitlabProject>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}`);
     return { ...data, languages_breakdown: data.languages_breakdown || breakdown };
-  } catch {
+  } catch (err) {
+    rethrowIfActivityOrAuthError(projectIdOrPath, err);
     const name = projectIdOrPath.split("/").pop() || projectIdOrPath;
     return {
       id: Math.abs(projectIdOrPath.split("").reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0)),
@@ -845,7 +888,7 @@ export const getGitlabTree = async (
   path = "",
   provider: string = "gitlab",
 ): Promise<GitlabTreeNode[]> => {
-  if (provider === "github") {
+  if (provider === "github" && !isActivityVaultPath(projectIdOrPath)) {
     try {
       const encodedPath = path ? path.split("/").map(encodeURIComponent).join("/") : "";
       const url = encodedPath
@@ -866,7 +909,7 @@ export const getGitlabTree = async (
     }
   }
 
-  if (provider === "gitlab") {
+  if (provider === "gitlab" && !isActivityVaultPath(projectIdOrPath)) {
     try {
       const { data } = await axios.get<GitlabTreeNode[]>(
         `https://gitlab.com/api/v4/projects/${encodeURIComponent(projectIdOrPath)}/repository/tree`,
@@ -880,7 +923,8 @@ export const getGitlabTree = async (
           { params: { ref, path } },
         );
         return data;
-      } catch {
+      } catch (err) {
+        rethrowIfActivityOrAuthError(projectIdOrPath, err);
         return getFallbackTree(projectIdOrPath, path);
       }
     }
@@ -894,7 +938,8 @@ export const getGitlabTree = async (
       },
     );
     return data;
-  } catch {
+  } catch (err) {
+    rethrowIfActivityOrAuthError(projectIdOrPath, err);
     return getFallbackTree(projectIdOrPath, path);
   }
 };
@@ -912,7 +957,7 @@ export const getGitlabFileRaw = async (
     return customFiles[filePath]!;
   }
 
-  if (provider === "github") {
+  if (provider === "github" && !isActivityVaultPath(projectIdOrPath)) {
     try {
       const encodedFilePath = filePath.split("/").map(encodeURIComponent).join("/");
       const { data } = await axios.get(
@@ -927,7 +972,7 @@ export const getGitlabFileRaw = async (
     }
   }
 
-  if (provider === "gitlab") {
+  if (provider === "gitlab" && !isActivityVaultPath(projectIdOrPath)) {
     try {
       const { data } = await axios.get(
         `https://gitlab.com/api/v4/projects/${encodeURIComponent(projectIdOrPath)}/repository/files/${encodeURIComponent(filePath)}/raw`,
@@ -941,10 +986,11 @@ export const getGitlabFileRaw = async (
           { params: { ref } },
         );
         return data;
-      } catch {
+      } catch (err) {
+        rethrowIfActivityOrAuthError(projectIdOrPath, err);
         const fb = getSynthesizedFallbackSpec(projectIdOrPath);
         if (fb.files[filePath]) return fb.files[filePath]!;
-        throw new Error(`File not found: ${filePath}`);
+        throw new Error(`File not found: ${filePath}`, { cause: err });
       }
     }
   }
@@ -955,10 +1001,11 @@ export const getGitlabFileRaw = async (
       { params: { ref } },
     );
     return data;
-  } catch {
+  } catch (err) {
+    rethrowIfActivityOrAuthError(projectIdOrPath, err);
     const fb = getSynthesizedFallbackSpec(projectIdOrPath);
     if (fb.files[filePath]) return fb.files[filePath]!;
-    throw new Error(`File not found: ${filePath}`);
+    throw new Error(`File not found: ${filePath}`, { cause: err });
   }
 };
 
@@ -1022,7 +1069,7 @@ export const getGitlabCommits = async (
     },
   ];
 
-  if (provider === "github") {
+  if (provider === "github" && !isActivityVaultPath(projectIdOrPath)) {
     try {
       const { data } = await axios.get(
         `https://api.github.com/repos/${projectIdOrPath}/commits?sha=${encodeURIComponent(refName)}&per_page=15`,
@@ -1043,7 +1090,7 @@ export const getGitlabCommits = async (
     }
   }
 
-  if (provider === "gitlab") {
+  if (provider === "gitlab" && !isActivityVaultPath(projectIdOrPath)) {
     try {
       const { data } = await axios.get<GitlabCommit[]>(
         `https://gitlab.com/api/v4/projects/${encodeURIComponent(projectIdOrPath)}/repository/commits`,
@@ -1057,7 +1104,8 @@ export const getGitlabCommits = async (
           { params: { ref_name: refName } },
         );
         return data;
-      } catch {
+      } catch (err) {
+        rethrowIfActivityOrAuthError(projectIdOrPath, err);
         return fallbackCommits;
       }
     }
@@ -1071,7 +1119,8 @@ export const getGitlabCommits = async (
       },
     );
     return data;
-  } catch {
+  } catch (err) {
+    rethrowIfActivityOrAuthError(projectIdOrPath, err);
     return fallbackCommits;
   }
 };

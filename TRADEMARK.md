@@ -9,7 +9,7 @@
 
 The ModelScript project develops an open-core computational modeling, simulation, and multi-domain engineering framework, alongside the Ansatz federated network platform.
 
-We are deeply committed to free and open-source software and open collaboration. The open-core software within this repository is published under free and open-source licenses (primarily the **GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`)**, and **MIT** for select client packages).
+We are deeply committed to free and open-source software and open collaboration. ModelScript follows an **Open-Core** licensing model: the core compiler, language parsers, simulation engine, and Community Edition applications (`packages/*`, `languages/*`, and open-core components of `apps/*`) are published under the **GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`)**, while the Enterprise Edition (`ee/`, `@modelscript/ee`) is governed by the proprietary **ModelScript Enterprise License (`LicenseRef-ModelScript-Enterprise`)** and commercial OEM dual-licensing agreements.
 
 Open-source copyright licenses grant broad freedoms to inspect, copy, compile, modify, and redistribute source code. However, **open-source copyright licenses do not grant rights under trademark law** (as explicitly noted in Section 7(e) of the GNU AGPL v3).
 

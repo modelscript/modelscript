@@ -8557,7 +8557,46 @@ export class LibraryDatabase {
       followers = rows.map((r) => r.username);
     } catch {}
 
-    return { posts, libraries, billingHistory, auditHistory, bookmarks, following, followers };
+    let studies: NonNullable<UserArchiveData["studies"]> = [];
+    try {
+      const jobRows = this.#db
+        .prepare(
+          `SELECT id, name, status, type, metadata, started_at, completed_at
+           FROM jobs WHERE user_id = ? ORDER BY id DESC LIMIT 200`,
+        )
+        .all(userId) as {
+        id: number;
+        name: string;
+        status: string;
+        type: string;
+        metadata: string | null;
+        started_at: string;
+        completed_at: string | null;
+      }[];
+      studies = jobRows.map((j) => {
+        let sourceCode: string | undefined;
+        let format: string | undefined;
+        try {
+          if (j.metadata) {
+            const parsed = JSON.parse(j.metadata);
+            sourceCode = parsed.studyInstanceSource || parsed.modelCode || parsed.code || undefined;
+            format = parsed.standardFormat || undefined;
+          }
+        } catch {}
+        return {
+          id: j.id,
+          name: j.name,
+          status: j.status,
+          type: j.type,
+          started_at: j.started_at,
+          completed_at: j.completed_at ?? undefined,
+          format,
+          source_code: sourceCode,
+        };
+      });
+    } catch {}
+
+    return { posts, libraries, billingHistory, auditHistory, bookmarks, studies, following, followers };
   }
 
   // ── Remote Packages (Federated Registry) ─────────────────────────

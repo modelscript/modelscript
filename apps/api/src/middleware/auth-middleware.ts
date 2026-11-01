@@ -26,6 +26,7 @@ export interface AuthUser {
   role?: string | undefined;
   accountType?: string | undefined;
   account_type?: string | undefined;
+  isBot?: boolean | undefined;
   tokenVersion?: number | undefined;
 }
 
@@ -54,6 +55,7 @@ declare module "express" {
   }
 }
 
+export type AuthenticatedRequest = Request;
 export { JWT_SECRET };
 
 export function isAccountBlocked(status?: string | null): boolean {

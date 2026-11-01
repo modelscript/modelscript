@@ -1,7 +1,7 @@
 # ModelScript Privacy Policy
 
 **Effective Date:** September 30, 2026  
-**License:** AGPL-3.0-or-later  
+**License:** Open-Core (`AGPL-3.0-or-later` / `LicenseRef-ModelScript-Enterprise` for `ee/`)  
 **Scope:** ModelScript Web Application, API, IDE, Documentation, and Published Packages
 
 ModelScript ("we", "us", or "our") is committed to protecting your privacy. This policy outlines our data processing practices in full compliance with the European Union General Data Protection Regulation (**GDPR**), the UK GDPR, and the California Consumer Privacy Act / California Privacy Rights Act (**CCPA/CPRA**).

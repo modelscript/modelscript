@@ -27,8 +27,6 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
     const { BrowserMessageReader, BrowserMessageWriter, createProtocolConnection } =
       await import("vscode-languageserver-protocol/browser");
 
-    // The LSP bundle is copied to /lsp/server/dist/browserServerMain.js
-    // by viteStaticCopy. We create a plain Worker pointing at that URL.
     const origin =
       (typeof globalThis.location !== "undefined" &&
         globalThis.location.origin &&
@@ -36,102 +34,139 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
         globalThis.location.origin) ||
       (typeof globalThis.location !== "undefined" && globalThis.location.href) ||
       "http://localhost";
-    worker = new Worker(new URL(`/lsp/server/dist/browserServerMain.js?v=${Date.now()}`, origin), {
-      name: "modelscript-lsp",
-    });
 
-    worker.onerror = (err) => {
-      console.error("[lsp-worker] Worker onerror:", err.message, err.filename, err.lineno, err);
-      connection = null;
-      initPromise = null;
-      worker = null;
-    };
-    worker.onmessageerror = (err) => {
-      console.error("[lsp-worker] Worker onmessageerror:", err);
-    };
-
-    const reader = new BrowserMessageReader(worker);
-    const writer = new BrowserMessageWriter(worker);
-    const conn = createProtocolConnection(reader, writer);
-    conn.onClose(() => {
-      console.warn("[lsp-worker] Connection closed. Resetting connection handle.");
-      connection = null;
-      initPromise = null;
-      worker = null;
-    });
-    conn.listen();
-
-    conn.onNotification("window/logMessage", (params: any) => {
-      console.log(`[LSP-server] [type=${params.type}] ${params.message}`);
-    });
-    conn.onNotification("modelscript/status", (params: any) => {
-      console.log(`[LSP-status] state=${params.state} message=${params.message}`);
-    });
-
-    console.log("[lsp-worker] Connection listening. Sending initialize request...");
-
-    // Send initialize — the extensionUri tells the server where to find
-    // WASM files and standard library zips (relative to the server/dist path).
-    const initResponse = await conn.sendRequest("initialize", {
-      processId: null,
-      rootUri: null,
-      capabilities: {
-        textDocument: {
-          publishDiagnostics: { relatedInformation: true },
-          completion: {
-            completionItem: {
-              snippetSupport: true,
-              documentationFormat: ["markdown", "plaintext"],
-            },
-          },
-          hover: {
-            contentFormat: ["markdown", "plaintext"],
-          },
-          semanticTokens: {
-            requests: { full: true },
-            tokenTypes: [],
-            tokenModifiers: [],
-            formats: ["relative"],
-          },
-          formatting: {},
-          colorProvider: {},
-          signatureHelp: {
-            signatureInformation: {
-              documentationFormat: ["markdown", "plaintext"],
-              parameterInformation: { labelOffsetSupport: true },
-            },
-          },
-          documentSymbol: { hierarchicalDocumentSymbolSupport: true },
-          codeLens: {},
-          documentHighlight: {},
-          codeAction: {},
-          definition: {},
-          typeDefinition: {},
-          references: {},
-          rename: { prepareSupport: true },
-          inlayHint: {},
-          foldingRange: {},
-          selectionRange: {},
+    const trySpawn = async (basePath: string): Promise<ProtocolConnection> => {
+      const candidateWorker = new Worker(
+        new URL(`${basePath}/server/dist/browserServerMain.js?v=${Date.now()}`, origin),
+        {
+          name: "modelscript-lsp",
         },
-      },
-      initializationOptions: {
-        extensionUri:
-          ((typeof globalThis.location !== "undefined" &&
-            globalThis.location.origin &&
-            globalThis.location.origin !== "null" &&
-            globalThis.location.origin) ||
-            (typeof globalThis.location !== "undefined" && globalThis.location.href) ||
-            "http://localhost") + "/lsp",
-        useLocalMsl: true,
-        lazyLoadParsers: true,
-        initialLanguageId: initialLanguageId ?? "modelica",
-      },
-    });
-    console.log("[lsp-worker] Initialize response received:", initResponse);
+      );
+      worker = candidateWorker;
 
-    conn.sendNotification("initialized", {});
-    connection = conn;
-    return conn;
+      let rejectStartup: ((reason: Error) => void) | null = null;
+      const startupErrorPromise = new Promise<never>((_resolve, reject) => {
+        rejectStartup = reject;
+      });
+
+      candidateWorker.onerror = (err) => {
+        if (rejectStartup) {
+          const msg = err.message || `Failed to load LSP worker from ${basePath}`;
+          rejectStartup(new Error(msg));
+          return;
+        }
+        console.error("[lsp-worker] Worker onerror:", err.message, err.filename, err.lineno, err);
+        connection = null;
+        initPromise = null;
+        worker = null;
+      };
+      candidateWorker.onmessageerror = (err) => {
+        console.error("[lsp-worker] Worker onmessageerror:", err);
+      };
+
+      const reader = new BrowserMessageReader(candidateWorker);
+      const writer = new BrowserMessageWriter(candidateWorker);
+      const conn = createProtocolConnection(reader, writer);
+      conn.onClose(() => {
+        console.warn("[lsp-worker] Connection closed. Resetting connection handle.");
+        connection = null;
+        initPromise = null;
+        worker = null;
+      });
+      conn.listen();
+
+      conn.onNotification("window/logMessage", (params: any) => {
+        console.log(`[LSP-server] [type=${params.type}] ${params.message}`);
+      });
+      conn.onNotification("modelscript/status", (params: any) => {
+        console.log(`[LSP-status] state=${params.state} message=${params.message}`);
+      });
+
+      console.log("[lsp-worker] Connection listening. Sending initialize request...");
+
+      try {
+        const initResponse = await Promise.race([
+          conn.sendRequest("initialize", {
+            processId: null,
+            rootUri: null,
+            capabilities: {
+              textDocument: {
+                publishDiagnostics: { relatedInformation: true },
+                completion: {
+                  completionItem: {
+                    snippetSupport: true,
+                    documentationFormat: ["markdown", "plaintext"],
+                  },
+                },
+                hover: {
+                  contentFormat: ["markdown", "plaintext"],
+                },
+                semanticTokens: {
+                  requests: { full: true },
+                  tokenTypes: [],
+                  tokenModifiers: [],
+                  formats: ["relative"],
+                },
+                formatting: {},
+                colorProvider: {},
+                signatureHelp: {
+                  signatureInformation: {
+                    documentationFormat: ["markdown", "plaintext"],
+                    parameterInformation: { labelOffsetSupport: true },
+                  },
+                },
+                documentSymbol: { hierarchicalDocumentSymbolSupport: true },
+                codeLens: {},
+                documentHighlight: {},
+                codeAction: {},
+                definition: {},
+                typeDefinition: {},
+                references: {},
+                rename: { prepareSupport: true },
+                inlayHint: {},
+                foldingRange: {},
+                selectionRange: {},
+              },
+            },
+            initializationOptions: {
+              extensionUri: origin.replace(/\/$/, "") + basePath,
+              useLocalMsl: true,
+              lazyLoadParsers: true,
+              initialLanguageId: initialLanguageId ?? "modelica",
+            },
+          }),
+          startupErrorPromise,
+        ]);
+        rejectStartup = null;
+        console.log("[lsp-worker] Initialize response received:", initResponse);
+
+        conn.sendNotification("initialized", {});
+        connection = conn;
+        return conn;
+      } catch (err) {
+        rejectStartup = null;
+        try {
+          conn.dispose();
+        } catch {
+          // ignore
+        }
+        try {
+          candidateWorker.terminate();
+        } catch {
+          // ignore
+        }
+        if (worker === candidateWorker) {
+          worker = null;
+        }
+        throw err;
+      }
+    };
+
+    try {
+      return await trySpawn("/lsp");
+    } catch {
+      return await trySpawn("/static/devextensions");
+    }
   })();
 
   try {

@@ -151,6 +151,7 @@ export function linkMslPackageHierarchy(
     if (
       sym.kind === "Class" &&
       sym.ruleName === "class_definition" &&
+      (sym.parentId === null || sym.parentId === undefined) &&
       sym.resourceId &&
       sym.resourceId.startsWith(mslDir)
     ) {
@@ -1390,6 +1391,11 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
     if (!omcValues || omcValues.length === 0) continue;
 
     matchedVars++;
+    let varScale = 1;
+    for (let k = 0; k < omcValues.length; k++) {
+      const av = Math.abs(omcValues[k]!);
+      if (Number.isFinite(av) && av > varScale) varScale = av;
+    }
     const numPoints = msRes.t ? msRes.t.length : Math.min(msRes.y.length, omcValues.length);
     for (let p = 0; p < numPoints; p++) {
       const msVal = msRes.y[p][sIdx];
@@ -1397,7 +1403,7 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
       const omcVal = t !== undefined && omcTimes ? getInterpolatedOmc(omcValues, t, msVal) : omcValues[p];
       if (omcVal !== undefined && Number.isFinite(msVal) && Number.isFinite(omcVal)) {
         const diff = Math.abs(msVal - omcVal);
-        const rel = diff / (1 + Math.abs(omcVal));
+        const rel = diff / Math.max(1 + Math.abs(omcVal), varScale);
         if (rel > maxRelErr) {
           maxRelErr = rel;
           maxVarName = `${varName}@t=${t?.toFixed(2)}`;

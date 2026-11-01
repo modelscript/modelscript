@@ -82,20 +82,24 @@ For air-gapped networks, classified labs, or hardware-in-the-loop (HIL) benches,
 
 The desktop studio embeds offline WebAssembly GLR parsers, local SQLite artifact caching, and native serial/UDP bridges for real-time HIL testing.
 
-### 6. Containerized Enterprise Hub & Simulation Server
+### 6. Containerized Hub & Simulation Server (Community & Enterprise Editions)
 
-Deploy the self-hosted ModelScript Hub, package registry, REST/GraphQL/SPARQL APIs, and multi-tenant MCP gateway via Docker:
+Deploy the self-hosted ModelScript Hub, package registry, REST/GraphQL/SPARQL APIs, and multi-tenant MCP gateway via Docker in either **Community Edition** (`MSX_EDITION=ce`, pure `AGPL-3.0-or-later` open-core) or **Enterprise Edition** (`MSX_EDITION=ee`, with SSO/SAML, RBAC, Slurm HPC, and NERC CIP / FERC CEII compliance):
 
 ```bash
-# Pull official multi-architecture containers
-docker pull ghcr.io/modelscript/api:latest
+# Option A: Community Edition (pure AGPL-3.0-or-later open-core, zero ee/ code)
+docker pull ghcr.io/modelscript/api-ce:latest
 docker pull ghcr.io/modelscript/web:latest
+
+# Option B: Enterprise Edition & Air-Gapped Intranet Appliance (requires MSX_LICENSE_KEY in production)
+docker pull ghcr.io/modelscript/api:latest
+docker pull ghcr.io/modelscript/appliance:latest
 
 # Launch backend simulation cluster and web IDE
 docker compose up -d
 ```
 
-See the [Platform Administration Guide](./administration.md) for Kubernetes Helm charts, Slurm HPC worker provisioning, and PostgreSQL audit-ledger setup.
+See the [Platform Administration Guide](./administration.md) for Kubernetes Helm charts, offline `MSX_LICENSE_KEY` provisioning, Slurm HPC worker setup, and PostgreSQL audit-ledger configuration.
 
 ---
 

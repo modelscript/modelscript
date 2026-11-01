@@ -520,8 +520,11 @@ export function extractEnumLiteralsFromCst(cstNode: any, targetMeta?: any): stri
     }
     if (lits.length > 0) return lits;
   }
-  const cstText = cstNode?.text ?? "";
-  const enumMatch = /enumeration\s*\(([^()]+)\)/.exec(cstText);
+  const cstText = (cstNode?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+  const enumMatch =
+    /^(?:(?:encapsulated|partial|final|replaceable|redeclare|inner|outer)\s+)*(?:type|class)\s+[A-Za-z_]\w*\s*=\s*enumeration\s*\(([^()]+)\)/.exec(
+      cstText,
+    );
   if (enumMatch) {
     return enumMatch[1]!
       .split(",")
@@ -1406,11 +1409,13 @@ function evaluateCSTNumberInner(
           if (bExpr !== undefined && bExpr >= 0) {
             const val = evalDaeExpr(bExpr, dae);
             if (typeof val === "number" && !isNaN(val)) return val;
+            if (typeof val === "boolean") return val ? 1 : 0;
           }
           const startAttrExpr = dae.getVarAttrExprId?.(vIdx, "start");
           if (startAttrExpr !== undefined && startAttrExpr >= 0) {
             const val = evalDaeExpr(startAttrExpr, dae);
             if (typeof val === "number" && !isNaN(val)) return val;
+            if (typeof val === "boolean") return val ? 1 : 0;
           }
           const startVal = dae.getVarStartValue(vIdx);
           if (
@@ -1420,6 +1425,21 @@ function evaluateCSTNumberInner(
           ) {
             return startVal;
           }
+        }
+      }
+      const pendingVals = (dae as any).pendingModValues as Map<string, number | boolean> | undefined;
+      const fullKey = prefix ? `${prefix}.${ident}` : ident;
+      if (pendingVals) {
+        const pv = pendingVals.get(resolved) ?? pendingVals.get(fullKey);
+        if (typeof pv === "number" && !isNaN(pv)) return pv;
+        if (typeof pv === "boolean") return pv ? 1 : 0;
+      }
+      const pendingExprs = (dae as any).pendingModExprs as Map<string, string> | undefined;
+      if (pendingExprs) {
+        const pe = pendingExprs.get(resolved) ?? pendingExprs.get(fullKey);
+        if (pe && pe !== ident && pe !== text) {
+          const evalVal = evaluateCSTNumber(pe, subs, scopeId, db, dae, prefix);
+          if (evalVal !== null) return evalVal;
         }
       }
     }
@@ -2024,7 +2044,10 @@ function evalKnownConstantExprText(exprText: string, db?: QueryDB, scopeId?: Sym
         const arg1 = parseExpr();
         if (arg1 === null) return null;
         skipWs();
-        const shortFn = ident.replace(/^(?:Modelica\.)?(?:Math|SIunits\.Conversions)\./, "");
+        const shortFn = ident.replace(
+          /^(?:(?:Modelica\.)?(?:Math|(?:SIunits|Units)\.Conversions)|Cv|Conversions)\./,
+          "",
+        );
         if (s[pos] === "," && shortFn === "atan2") {
           pos++;
           const arg2 = parseExpr();
@@ -2138,12 +2161,7 @@ function evaluateMediumPropertyConstant(
         }
       }
     }
-    const primaryScope = callPkgPrefix ? mediumScopeId : (evalScope ?? mediumScopeId);
-    return (
-      (primaryScope ? lookupDbConstant(constName, db, primaryScope) : null) ??
-      (mediumScopeId ? lookupDbConstant(constName, db, mediumScopeId) : null) ??
-      lookupDbConstant(constName, db, evalScope)
-    );
+    return null;
   };
   const cpRes = lookupScopedMediumConst("cp_const");
   const t0Res = lookupScopedMediumConst("T0");
@@ -2681,16 +2699,35 @@ export function lookupDbConstant(
               }
             }
             if (nextList.length === 0) {
-              let base = db.query<SymbolEntry | null>("resolvedBaseClass", p.id);
+              const baseQueue: SymbolId[] = [];
               const seenBases = new Set<SymbolId>([p.id]);
-              while (base && !seenBases.has(base.id) && nextList.length === 0) {
-                seenBases.add(base.id);
-                for (const ch of db.childrenOf(base.id)) {
+              const directBase = db.query<SymbolEntry | null>("resolvedBaseClass", p.id);
+              if (directBase && !seenBases.has(directBase.id)) baseQueue.push(directBase.id);
+              for (const ch of db.childrenOf(p.id)) {
+                if (ch.kind === "Extends") {
+                  const extBase = db.query<SymbolEntry | null>("resolvedBaseClass", ch.id);
+                  if (extBase && !seenBases.has(extBase.id)) baseQueue.push(extBase.id);
+                }
+              }
+              while (baseQueue.length > 0 && nextList.length === 0) {
+                const bid = baseQueue.shift()!;
+                if (seenBases.has(bid)) continue;
+                seenBases.add(bid);
+                for (const ch of db.childrenOf(bid)) {
                   if (ch.name === seg) {
                     nextList.push(ch);
                   }
                 }
-                base = db.query<SymbolEntry | null>("resolvedBaseClass", base.id);
+                if (nextList.length === 0) {
+                  const nextBase = db.query<SymbolEntry | null>("resolvedBaseClass", bid);
+                  if (nextBase && !seenBases.has(nextBase.id)) baseQueue.push(nextBase.id);
+                  for (const ch of db.childrenOf(bid)) {
+                    if (ch.kind === "Extends") {
+                      const extBase = db.query<SymbolEntry | null>("resolvedBaseClass", ch.id);
+                      if (extBase && !seenBases.has(extBase.id)) baseQueue.push(extBase.id);
+                    }
+                  }
+                }
               }
             }
           }

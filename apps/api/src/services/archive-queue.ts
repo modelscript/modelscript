@@ -201,6 +201,29 @@ export class ArchiveQueue {
 
     return { removedCount };
   }
+
+  /**
+   * Immediately purges all staged archive files and queue entries for a specific user (GDPR Art. 17).
+   */
+  public purgeUserArchives(userId: number): number {
+    let removedCount = 0;
+    for (const [id, job] of this.jobs.entries()) {
+      if (job.userId === userId) {
+        if (job.filePath && fs.existsSync(job.filePath)) {
+          try {
+            fs.unlinkSync(job.filePath);
+          } catch {}
+        }
+        this.jobs.delete(id);
+        const qIdx = this.queue.indexOf(id);
+        if (qIdx !== -1) {
+          this.queue.splice(qIdx, 1);
+        }
+        removedCount++;
+      }
+    }
+    return removedCount;
+  }
 }
 
 export const defaultArchiveQueue = new ArchiveQueue();

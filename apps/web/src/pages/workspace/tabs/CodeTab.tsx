@@ -69,11 +69,16 @@ export interface CodeTabProps {
   provider: string;
 }
 
+const KNOWN_FILE_EXT_RE =
+  /\.(mo|msx|sysml|kerml|py|jl|m|mlx|slx|c|cc|cpp|h|hpp|rs|go|ts|tsx|js|jsx|mjs|cjs|json|jsonl|yaml|yml|toml|xml|html|css|scss|md|markdown|rst|txt|csv|tsv|svg|png|jpg|jpeg|gif|webp|pdf|step|stp|iges|igs|stl|obj|gltf|glb|vtk|vtu|msh|cgns|su2|inp|bdf|dat|cas|scad|csg|ssp|ssd|ssv|ssm|fmu|pscx|pslx|inf|out|cfg|hdr|spck|sim|run|subst|owl|ofn|ttl|rdf|rq|sh|bash|zsh|bat|ps1|cmake|lock|gitignore|gitattributes|editorconfig)$/i;
+
 function isLikelyFilePath(pathStr: string): boolean {
   if (!pathStr) return false;
   const base = pathStr.split("/").pop() || "";
-  if (/^(readme|license|cmakelists\.txt|makefile|dockerfile)$/i.test(base)) return true;
-  return /\.[a-z0-9]{1,8}$/i.test(base);
+  if (/^(readme|license|copying|notice|authors|changelog|cmakelists\.txt|makefile|dockerfile)$/i.test(base)) {
+    return true;
+  }
+  return KNOWN_FILE_EXT_RE.test(base);
 }
 
 function matchCommitForTreeNode(
@@ -140,6 +145,7 @@ export const CodeTab: React.FC<CodeTabProps> = ({ projectId, repo, provider }) =
     : rawPathParam;
   const defaultBranch = repo.default_branch || "main";
   const activeRef = searchParams.get("ref") || defaultBranch;
+  const isActivityVault = /(?:^|\/)activity(?:\.git)?$/i.test(projectId.trim());
 
   const { showToast } = useToast();
   const hasCae = useFeatureFlag("cae_cloud_solver");
@@ -632,7 +638,7 @@ git push -u origin ${defaultBranch}`}
               Go to file
             </Button>
 
-            {!currentFile && (
+            {!currentFile && !isActivityVault && (
               <ActionMenu>
                 <ActionMenu.Button variant="default" size="small" leadingVisual={PlusIcon} style={{ height: "32px" }}>
                   Add file
@@ -905,24 +911,25 @@ git push -u origin ${defaultBranch}`}
                       Raw
                     </Button>
 
-                    {fileViewMode !== "edit" ? (
-                      <Button
-                        size="small"
-                        variant="default"
-                        leadingVisual={PencilIcon}
-                        onClick={() => {
-                          setEditBuffer(fileContent);
-                          setFileViewMode("edit");
-                        }}
-                        title="Edit file inline"
-                      >
-                        Edit
-                      </Button>
-                    ) : (
-                      <Button size="small" variant="default" onClick={() => setFileViewMode("code")}>
-                        Cancel Edit
-                      </Button>
-                    )}
+                    {!isActivityVault &&
+                      (fileViewMode !== "edit" ? (
+                        <Button
+                          size="small"
+                          variant="default"
+                          leadingVisual={PencilIcon}
+                          onClick={() => {
+                            setEditBuffer(fileContent);
+                            setFileViewMode("edit");
+                          }}
+                          title="Edit file inline"
+                        >
+                          Edit
+                        </Button>
+                      ) : (
+                        <Button size="small" variant="default" onClick={() => setFileViewMode("code")}>
+                          Cancel Edit
+                        </Button>
+                      ))}
 
                     <Button
                       size="small"

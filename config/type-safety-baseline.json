@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 637,
+      "explicitAny": 634,
       "tsComments": 0
     },
     "ee": {
@@ -106,7 +106,7 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3175,
+      "explicitAny": 3210,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -222,7 +222,7 @@
       "tsComments": 0
     },
     "packages/dsl": {
-      "explicitAny": 761,
+      "explicitAny": 747,
       "tsComments": 0
     },
     "packages/embed": {
@@ -246,7 +246,7 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 2040,
+      "explicitAny": 2037,
       "tsComments": 0
     },
     "packages/mcp": {
@@ -258,7 +258,7 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 715,
+      "explicitAny": 736,
       "tsComments": 0
     },
     "packages/simulate": {

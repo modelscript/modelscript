@@ -73,6 +73,7 @@ Source (.mo) → WASM GLR Parser → Linear Memory CST
 | `apps/api/`               | REST, GraphQL, SPARQL, and simulation backend API server                                                                                                                    |
 | `apps/ide/` & `apps/web/` | WebAssembly-powered web IDE and visual modeling environment                                                                                                                 |
 | `apps/docs/`              | Unified `modelscript.org` website and VitePress documentation portal (`@modelscript/docs`)                                                                                  |
+| `ee/`                     | Enterprise Edition (`@modelscript/ee`) — Ed25519 offline license verifier, NERC CIP / FERC CEII / FDA 21 CFR Part 11 compliance, SSO/SAML, RBAC, Slurm HPC, Digital Twin    |
 
 ### Polyglot Languages (`languages/`)
 
@@ -369,6 +370,18 @@ npm run test:msl:sim -- --report-html=reports/msl-sim.html --report-json=reports
 
 1. If a test fails only because components appear in a different order, **fix the flattener/DAE printer** to emit components in the correct order, matching the test's expected output.
 2. **Never** swap, reorder, or rearrange component declarations in test `// Result:` blocks to work around ordering bugs in the flattener.
+
+## Open-Core & Enterprise Edition (`ee/`) Licensing Rules
+
+ModelScript uses an **Open-Core** licensing model enforced by CI (`npm run lint:headers`, `npm run lint:manifests`, and `scripts/check-nx-cycles.js`):
+
+1. **SPDX License Headers:**
+   - Every source file outside `ee/` (`packages/*`, `languages/*`, `apps/*`, `scripts/*`) must begin with `// SPDX-License-Identifier: AGPL-3.0-or-later`.
+   - Every source file inside `ee/` (`@modelscript/ee`) must begin with `// SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise`.
+   - Run `npm run format:headers` (or `npm run lint:headers`) to normalize and verify headers across the monorepo.
+2. **One-Way Architectural Boundary:**
+   - Open-core packages (`packages/*`) and language definitions (`languages/*`) must **never** import from `ee/` (`@modelscript/ee`) or `apps/*`.
+   - Host applications (`apps/api`, `apps/cli`, `apps/desktop`) load `@modelscript/ee` dynamically at runtime when `MSX_EDITION=ee` and degrade cleanly to Community Edition (`MSX_EDITION=ce`) when `ee/` is absent or disabled.
 
 ## Git Commits
 

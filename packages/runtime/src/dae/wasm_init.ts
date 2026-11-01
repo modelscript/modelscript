@@ -279,9 +279,9 @@ function collectExprVarNames(exprId: number, arena: DAEBuilder, names: Set<strin
       const subName = resolveConstSubscriptName(exprId, arena);
       if (subName) {
         names.add(subName);
+      } else {
+        collectExprVarNames(baseExprId, arena, names);
       }
-
-      collectExprVarNames(baseExprId, arena, names);
       for (let i = 0; i < subCount; i++) {
         const subExprId = i === 0 ? firstSubId : arena.getExprLeft(exprId + i);
         collectExprVarNames(subExprId, arena, names);
@@ -525,10 +525,16 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
     const variability = dae.getVarVariability(i);
     const varType = dae.getVarType(i);
 
-    // Parameters and constants are always known
-    if (variability === Variability.Parameter || variability === Variability.Constant) {
+    if (variability === Variability.Constant) {
       knowns.add(varName);
       continue;
+    }
+    // Parameters are known unless they explicitly have fixed = false and no binding expression
+    if (variability === Variability.Parameter) {
+      if (dae.isVarFixed(i) || dae.hasExplicitVarExpression(i)) {
+        knowns.add(varName);
+        continue;
+      }
     }
     // Fixed=true variables are known (their start value is the solution)
     if (dae.isVarFixed(i)) {
@@ -608,7 +614,14 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
 
   const unknowns = new Set<string>();
   for (const name of allReferenced) {
-    if (!knowns.has(name)) unknowns.add(name);
+    if (knowns.has(name)) continue;
+    if (
+      name.startsWith("der(") ||
+      dae.getVarIdxByName(name) >= 0 ||
+      Boolean(dae.getNamedArrayShape && dae.getNamedArrayShape(name)?.length)
+    ) {
+      unknowns.add(name);
+    }
   }
 
   // Expand array unknowns (including multi-dimensional arrays)
@@ -624,6 +637,33 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
       }
     }
   }
+
+  // Filter out 0-unknown equations and duplicate simple Name=Name equations across initial/continuous sections
+  const seenSimplePairs = new Set<string>();
+  let writeIdx = 0;
+  for (let i = 0; i < initEquations.length; i++) {
+    const eq = initEquations[i]!;
+    const refs = new Set<string>();
+    collectExprVarNames(eq.lhs, dae, refs);
+    collectExprVarNames(eq.rhs, dae, refs);
+    let hasUnknown = false;
+    for (const r of refs) {
+      if (unknowns.has(r)) {
+        hasUnknown = true;
+        break;
+      }
+    }
+    if (!hasUnknown) continue;
+    if (dae.getExprKind(eq.lhs) === ExprKind.Name && dae.getExprKind(eq.rhs) === ExprKind.Name) {
+      const lName = dae.interner.resolve(dae.getExprData1(eq.lhs)) ?? "";
+      const rName = dae.interner.resolve(dae.getExprData1(eq.rhs)) ?? "";
+      const pairKey = lName < rName ? `${lName}==${rName}` : `${rName}==${lName}`;
+      if (seenSimplePairs.has(pairKey)) continue;
+      seenSimplePairs.add(pairKey);
+    }
+    initEquations[writeIdx++] = eq;
+  }
+  initEquations.length = writeIdx;
 
   // If there are more unknowns than initialization equations (e.g. states without explicit
   // `fixed = true` and without corresponding `initial equation`s), fix state variables at
@@ -1053,6 +1093,33 @@ function containsHomotopyCall(arena: DAEBuilder, exprId: number): boolean {
   return false;
 }
 
+function evaluateInitJacobianEntry(
+  arena: DAEBuilder,
+  resExprId: number,
+  jExprId: number,
+  zj: number,
+  rBase: number,
+  valuesByStringId: Float64Array,
+): number {
+  let val = jExprId !== -1 ? evaluateArenaRuntime(arena, jExprId, valuesByStringId) : 0;
+  if ((!Number.isFinite(val) || val === 0) && resExprId !== -1 && zj >= 0 && Number.isFinite(rBase)) {
+    const orig = valuesByStringId[zj] ?? 0;
+    const eps = 1.4901161193847656e-8 * Math.max(Math.abs(orig), 1.0);
+    valuesByStringId[zj] = orig + eps;
+    try {
+      const rPert = evaluateArenaRuntime(arena, resExprId, valuesByStringId);
+      if (Number.isFinite(rPert)) {
+        val = (rPert - rBase) / eps;
+      }
+    } catch {
+      // ignore domain errors during finite difference probe
+    } finally {
+      valuesByStringId[zj] = orig;
+    }
+  }
+  return Number.isFinite(val) ? val : 0;
+}
+
 function runOperatorHomotopy(
   arena: DAEBuilder,
   result: ArenaInitSolverResult,
@@ -1106,9 +1173,14 @@ function runOperatorHomotopy(
           if (jRow) {
             for (const j of pattern) {
               const jExprId = jRow[j] ?? -1;
-              if (jExprId !== -1) {
-                row[j] = evaluateArenaRuntime(arena, jExprId, result.valuesByStringId);
-              }
+              row[j] = evaluateInitJacobianEntry(
+                arena,
+                residualExprIds[i] ?? -1,
+                jExprId,
+                unknownList[j] ?? -1,
+                R[i] ?? 0,
+                result.valuesByStringId,
+              );
             }
           }
           J.push(row);
@@ -1601,6 +1673,7 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
 
   // Extract variable bounds and nominal values for numerical conditioning
   const varBounds = extractVariableBoundsAndNominal(arena, unknownList, result.valuesByStringId);
+  const postBltValues = new Float64Array(result.valuesByStringId);
 
   // 6. Tier 1: Newton-Raphson iteration with Armijo line search & nominal scaling
   const maxIter = 50;
@@ -1658,7 +1731,7 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
       unknownList,
       nSolve,
       tol,
-      initialValues,
+      postBltValues,
       varBounds,
     );
     converged = homotopyConverged;
@@ -1863,9 +1936,14 @@ function runNewton(
       if (jRow) {
         for (const j of pattern) {
           const jExprId = jRow[j] ?? -1;
-          if (jExprId !== -1) {
-            row[j] = evaluateArenaRuntime(arena, jExprId, result.valuesByStringId);
-          }
+          row[j] = evaluateInitJacobianEntry(
+            arena,
+            residualExprIds[i] ?? -1,
+            jExprId,
+            unknownList[j] ?? -1,
+            R[i] ?? 0,
+            result.valuesByStringId,
+          );
         }
       }
       J.push(row);
@@ -2085,9 +2163,15 @@ function runArcLengthHomotopy(
         if (jRow) {
           for (const j of pattern) {
             const jExprId = jRow[j] ?? -1;
-            if (jExprId !== -1) {
-              row[j] = (row[j] ?? 0) + lambdaCurr * evaluateArenaRuntime(arena, jExprId, result.valuesByStringId);
-            }
+            const dVal = evaluateInitJacobianEntry(
+              arena,
+              residualExprIds[i] ?? -1,
+              jExprId,
+              unknownList[j] ?? -1,
+              F[i] ?? 0,
+              result.valuesByStringId,
+            );
+            row[j] = (row[j] ?? 0) + lambdaCurr * dVal;
           }
         }
         // dH/dlambda = F_i(z) - (z_i - z0_i)
@@ -2246,9 +2330,14 @@ function runPseudoTransientRelaxation(
       if (jRow) {
         for (const j of pattern) {
           const jExprId = jRow[j] ?? -1;
-          if (jExprId !== -1) {
-            row[j] = evaluateArenaRuntime(arena, jExprId, result.valuesByStringId);
-          }
+          row[j] = evaluateInitJacobianEntry(
+            arena,
+            residualExprIds[i] ?? -1,
+            jExprId,
+            unknownList[j] ?? -1,
+            R[i] ?? 0,
+            result.valuesByStringId,
+          );
         }
       }
       J.push(row);

@@ -2225,6 +2225,9 @@ export function authRouter(database: LibraryDatabase): Router {
       "packages:publish",
       "packages:yank",
       "packages:manage",
+      "repos:read",
+      "repos:write",
+      "account:read",
     ]);
     const userRecord = database.getUserById(req.user!.id);
     const isAdminUser =

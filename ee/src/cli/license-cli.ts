@@ -76,11 +76,12 @@ export function runLicenseCli(argv: string[] = process.argv.slice(2)): number {
           ) as EnterpriseFeature[])
       : [...ALL_ENTERPRISE_FEATURES];
 
-    const privKeyFile = parseArg(argv, "private-key-file");
+    const privKeyFile = parseArg(argv, "private-key-file") ?? parseArg(argv, "private-key");
     const defaultVaultPrivKey = path.resolve(path.dirname(__filename), "../../../.keys/msx-license-private.pem");
     const privateKeyPem = privKeyFile
       ? fs.readFileSync(path.resolve(privKeyFile), "utf-8")
       : process.env["MSX_LICENSE_PRIVATE_KEY_PEM"] ||
+        process.env["MSX_LICENSE_PRIVATE_KEY"] ||
         (fs.existsSync(defaultVaultPrivKey) ? fs.readFileSync(defaultVaultPrivKey, "utf-8") : undefined);
 
     const nowSec = Math.floor(Date.now() / 1000);
@@ -99,23 +100,30 @@ export function runLicenseCli(argv: string[] = process.argv.slice(2)): number {
       privateKeyPem,
     );
 
+    const outPath = parseArg(argv, "out");
+    const jsonPayload = JSON.stringify(
+      {
+        token,
+        sub,
+        org,
+        tier,
+        seats,
+        features,
+        issuedAt: new Date(nowSec * 1000).toISOString(),
+        expiresAt: new Date(expSec * 1000).toISOString(),
+      },
+      null,
+      2,
+    );
+
+    if (outPath) {
+      const resolvedOut = path.resolve(outPath);
+      fs.mkdirSync(path.dirname(resolvedOut), { recursive: true });
+      fs.writeFileSync(resolvedOut, `${jsonPayload}\n`, "utf-8");
+    }
+
     if (argv.includes("--json")) {
-      console.log(
-        JSON.stringify(
-          {
-            token,
-            sub,
-            org,
-            tier,
-            seats,
-            features,
-            issuedAt: new Date(nowSec * 1000).toISOString(),
-            expiresAt: new Date(expSec * 1000).toISOString(),
-          },
-          null,
-          2,
-        ),
-      );
+      console.log(jsonPayload);
     } else {
       console.log(`Issued ModelScript Enterprise Edition License:`);
       console.log(`  Organization: ${org} (${sub})`);
@@ -123,6 +131,9 @@ export function runLicenseCli(argv: string[] = process.argv.slice(2)): number {
       console.log(`  Seats:        ${seats}`);
       console.log(`  Features:     ${features.join(", ")}`);
       console.log(`  Expires:      ${new Date(expSec * 1000).toISOString()} (${days} days)`);
+      if (outPath) {
+        console.log(`  Saved file:   ${path.resolve(outPath)}`);
+      }
       console.log(`\nMSX_LICENSE_KEY=${token}`);
     }
     return 0;
@@ -130,10 +141,10 @@ export function runLicenseCli(argv: string[] = process.argv.slice(2)): number {
 
   if (command === "verify") {
     const token = parseArg(argv, "key") ?? argv[1] ?? process.env["MSX_LICENSE_KEY"] ?? "";
-    const pubKeyFile = parseArg(argv, "public-key-file");
+    const pubKeyFile = parseArg(argv, "public-key-file") ?? parseArg(argv, "public-key");
     const publicKeyPem = pubKeyFile
       ? fs.readFileSync(path.resolve(pubKeyFile), "utf-8")
-      : process.env["MSX_LICENSE_PUBLIC_KEY_PEM"];
+      : process.env["MSX_LICENSE_PUBLIC_KEY_PEM"] || process.env["MSX_LICENSE_PUBLIC_KEY"];
 
     const res = verifyEnterpriseLicense(token, { publicKeyPem });
     console.log(JSON.stringify(res, null, 2));
@@ -147,7 +158,7 @@ export function runLicenseCli(argv: string[] = process.argv.slice(2)): number {
       "Commands:",
       "  keygen [--out-dir=./keys]               Generate an offline Ed25519 license signing keypair",
       "  issue  --org=<name> [--tier=appliance]  Mint a signed offline MSX_LICENSE_KEY token",
-      "         [--seats=25] [--days=365] [--features=a,b,c] [--private-key-file=path] [--json]",
+      "         [--seats=25] [--days=365] [--features=a,b,c] [--private-key=path] [--out=path] [--json]",
       "  verify <msx_lic_...>                    Verify an offline MSX_LICENSE_KEY token",
     ].join("\n"),
   );

@@ -2139,15 +2139,53 @@ function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): numbe
  */
 export function getShortClassSpecifierNode(cst: any): any {
   if (!cst) return null;
-  let spec = Cst.ClassDefinition.classSpecifier(cst);
-  if (!spec && (cst.type === "short_class_specifier" || cst.type === "ShortClassSpecifier")) return cst;
-  if (spec && (spec.type === "class_specifier" || spec.type === "ClassSpecifier")) {
-    const shortChild = spec.children?.find(
-      (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
-    );
-    if (shortChild) return shortChild;
+  if (cst.type === "short_class_specifier" || cst.type === "ShortClassSpecifier") return cst;
+  if (
+    cst.type === "long_class_specifier" ||
+    cst.type === "LongClassSpecifier" ||
+    cst.type === "composition" ||
+    cst.type === "Composition"
+  ) {
+    return null;
   }
-  if (spec && (spec.type === "short_class_specifier" || spec.type === "ShortClassSpecifier")) return spec;
+  const spec = Cst.ClassDefinition.classSpecifier(cst);
+  if (spec) {
+    if (spec.type === "short_class_specifier" || spec.type === "ShortClassSpecifier") return spec;
+    if (spec.type === "class_specifier" || spec.type === "ClassSpecifier") {
+      const shortChild = spec.children?.find(
+        (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+      );
+      if (shortChild) return shortChild;
+    }
+    return null;
+  }
+  for (const child of cst.children || []) {
+    if (
+      child.type === "long_class_specifier" ||
+      child.type === "LongClassSpecifier" ||
+      child.type === "composition" ||
+      child.type === "Composition"
+    ) {
+      return null;
+    }
+    if (
+      child.type === "short_class_specifier" ||
+      child.type === "ShortClassSpecifier" ||
+      child.type === "short_class_definition" ||
+      child.type === "ShortClassDefinition" ||
+      child.type === "class_definition" ||
+      child.type === "ClassDefinition" ||
+      child.type === "class_specifier" ||
+      child.type === "ClassSpecifier" ||
+      child.type === "element_replaceable" ||
+      child.type === "ElementReplaceable" ||
+      child.type === "element_redeclaration" ||
+      child.type === "ElementRedeclaration"
+    ) {
+      const found = getShortClassSpecifierNode(child);
+      if (found) return found;
+    }
+  }
   return null;
 }
 
@@ -2373,21 +2411,24 @@ export function isInnerQuery(db: QueryDB, self: SymbolEntry): boolean {
       current.type === "element_replaceable" ||
       current.type === "ElementReplaceable"
     ) {
-      if (current.children) {
+      if (current.children && current.children.length > 0) {
         for (const ch of current.children) {
           if (ch.type === "inner" || ch.type === '"inner"' || ch.text?.trim() === "inner") return true;
           if (ch.type === "component_clause" || ch.type === "class_definition") break;
         }
+        return false;
       }
-      return /\binner\b/.test(current.text ?? "");
+      const prefixText = (current.text ?? "").replace(/"[^"]*"/g, "").split(/[=(;]/)[0] ?? "";
+      return /\binner\b/.test(prefixText);
     }
     if (current.type === "class_prefixes" || current.type === "prefixes") {
-      if (current.children) {
+      if (current.children && current.children.length > 0) {
         for (const ch of current.children) {
           if (ch.type === "inner" || ch.type === '"inner"' || ch.text?.trim() === "inner") return true;
         }
+        return false;
       }
-      return /\binner\b/.test(current.text ?? "");
+      return /\binner\b/.test((current.text ?? "").replace(/"[^"]*"/g, ""));
     }
     if (current.children) {
       for (const ch of current.children) {
@@ -2428,21 +2469,24 @@ export function isOuterQuery(db: QueryDB, self: SymbolEntry): boolean {
       current.type === "element_replaceable" ||
       current.type === "ElementReplaceable"
     ) {
-      if (current.children) {
+      if (current.children && current.children.length > 0) {
         for (const ch of current.children) {
           if (ch.type === "outer" || ch.type === '"outer"' || ch.text?.trim() === "outer") return true;
           if (ch.type === "component_clause" || ch.type === "class_definition") break;
         }
+        return false;
       }
-      return /\bouter\b/.test(current.text ?? "");
+      const prefixText = (current.text ?? "").replace(/"[^"]*"/g, "").split(/[=(;]/)[0] ?? "";
+      return /\bouter\b/.test(prefixText);
     }
     if (current.type === "class_prefixes" || current.type === "prefixes") {
-      if (current.children) {
+      if (current.children && current.children.length > 0) {
         for (const ch of current.children) {
           if (ch.type === "outer" || ch.type === '"outer"' || ch.text?.trim() === "outer") return true;
         }
+        return false;
       }
-      return /\bouter\b/.test(current.text ?? "");
+      return /\bouter\b/.test((current.text ?? "").replace(/"[^"]*"/g, ""));
     }
     if (current.children) {
       for (const ch of current.children) {
@@ -2961,6 +3005,10 @@ export const classDefinitionQueries: Record<string, any> = {
             const resolved = parentResolver(typeName);
             if (resolved && resolved.id !== self.id) return resolved;
           }
+        }
+        if (typeName.includes(".")) {
+          const qRes = resolveQualified(db, typeName.startsWith(".") ? typeName.slice(1) : typeName);
+          if (qRes && qRes.id !== self.id) return qRes;
         }
         const matches = db.byName(typeName);
         return matches?.find((e) => (e.metadata as any)?.isPredefined || e.kind === "Class") ?? matches?.[0] ?? null;
@@ -4021,45 +4069,57 @@ export const extendsClauseQueries: Record<string, any> = {
     }
     // Use resolveName from the enclosing class for proper scope resolution
     if (self.parentId !== null) {
+      const parentSym = db.symbol(self.parentId);
+      const isRedeclareExtends = parentSym?.kind === "Class" && parentSym.name === baseName;
+      if (isRedeclareExtends) {
+        let resolved: SymbolEntry | null = null;
+        const grandParentId = parentSym?.parentId;
+        if (grandParentId !== null && grandParentId !== undefined) {
+          const gpQueue: SymbolId[] = [grandParentId];
+          const gpVisited = new Set<SymbolId>();
+          while (gpQueue.length > 0 && !resolved) {
+            const curGp = gpQueue.shift()!;
+            if (gpVisited.has(curGp)) continue;
+            gpVisited.add(curGp);
+            const candidateBases: SymbolEntry[] = [];
+            for (const pChild of db.childrenOf(curGp)) {
+              if (pChild.kind === "Extends") {
+                const pBase = db.query<SymbolEntry | null>("resolvedBaseClass", pChild.id);
+                if (pBase) candidateBases.push(pBase);
+              }
+            }
+            const directBase = db.query<SymbolEntry | null>("resolvedBaseClass", curGp);
+            if (directBase && directBase.id !== curGp) {
+              candidateBases.push(directBase);
+            }
+            for (const pBase of candidateBases) {
+              if (!gpVisited.has(pBase.id)) {
+                const directMatch = db
+                  .childrenOf(pBase.id)
+                  .find(
+                    (c) =>
+                      (c.kind === "Class" || c.kind === "Package") && c.name === baseName && c.id !== self.parentId,
+                  );
+                if (directMatch) {
+                  resolved = directMatch;
+                  break;
+                }
+                gpQueue.push(pBase.id);
+              }
+            }
+          }
+        }
+        return resolved;
+      }
+
       const resolveName = db.query<(n: string, skip?: boolean, allowMemImp?: boolean) => SymbolEntry | null>(
         "resolveName",
         self.parentId,
       );
       if (resolveName) {
         // Pass true for skipInherited to prevent cyclic lookup in extends clauses
-        let resolved = resolveName(baseName, true, true);
-        // console.error(`[DEBUG RESOLVE] resolveName("${baseName}") returned: ${resolved?.kind} (id=${resolved?.id})`);
-
-        // If it resolves to the exact class that contains this extends clause,
-        // this is a redeclared extends (e.g. `redeclare class extends BaseClass`).
-        // We must resolve it from the parent's base classes instead.
-        if (resolved && resolved.id === self.parentId) {
-          resolved = null;
-          const grandParentId = db.symbol(self.parentId)?.parentId;
-          if (grandParentId !== null && grandParentId !== undefined) {
-            const parentChildren = db.childrenOf(grandParentId);
-            for (const pChild of parentChildren) {
-              if (pChild.kind === "Extends") {
-                const pBase = db.query<SymbolEntry | null>("resolvedBaseClass", pChild.id);
-                if (pBase) {
-                  const pExtResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
-                    "resolveSimpleName",
-                    pBase.id,
-                  );
-                  if (pExtResolver) {
-                    const found = pExtResolver(baseName);
-                    if (found && found.id !== self.parentId) {
-                      resolved = found;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        if (resolved && resolved.kind !== "Reference") return resolved;
+        const resolved = resolveName(baseName, true, true);
+        if (resolved && resolved.id !== self.parentId && resolved.kind !== "Reference") return resolved;
       }
     }
     if (self.parentId !== null && isScopeEncapsulated(db, self.parentId)) {

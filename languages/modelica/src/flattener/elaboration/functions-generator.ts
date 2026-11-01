@@ -120,6 +120,40 @@ export function generateRecordConstructorFor(
       : undefined);
   if (existing) return existing;
 
+  const resTypeName = overrideResType ?? sym.name;
+  const ctorCacheKey = `${sym.id}:${fnName}:${resTypeName}`;
+  const cachedCtor = (flattener as any)._recordCtorCache?.get(ctorCacheKey) as DAEBuilder | undefined;
+  if (cachedCtor && cachedCtor.interner === dae.interner) {
+    dae.addFunction(fnName, cachedCtor);
+    if (resTypeName && resTypeName !== fnName && !overrideFnName?.includes("$") && !dae.getFunction(resTypeName)) {
+      dae.addFunction(resTypeName, cachedCtor);
+    }
+    if (!overrideFnName && qualName && qualName !== fnName && qualName !== sym.name)
+      dae.addFunction(qualName, cachedCtor);
+    const isSpeculativeFnDae = dae.classKind === "function" && !(dae as any).parentDae;
+    const rootModelResourceId = db.symbol(flattener.currentRootClassId ?? rootClassId)?.resourceId;
+    const isCrossFileFnLocalRecord =
+      dae.classKind === "function" &&
+      Boolean(rootModelResourceId && sym.resourceId && sym.resourceId !== rootModelResourceId) &&
+      !flattener.usedRecordSymIds?.has(sym.id);
+    if (!isSpeculativeFnDae && !isCrossFileFnLocalRecord) {
+      let rootDae: any = (flattener as any)?.currentRootDae ?? dae;
+      while (rootDae.parentDae) rootDae = rootDae.parentDae;
+      rootDae.addFunction(fnName, cachedCtor);
+      if (
+        resTypeName &&
+        resTypeName !== fnName &&
+        !overrideFnName?.includes("$") &&
+        !rootDae.getFunction(resTypeName)
+      ) {
+        rootDae.addFunction(resTypeName, cachedCtor);
+      }
+      if (!overrideFnName && qualName && qualName !== fnName && qualName !== sym.name)
+        rootDae.addFunction(qualName, cachedCtor);
+    }
+    return cachedCtor;
+  }
+
   const fn = new DAEBuilder(dae.interner, fnName, "");
   fn.classKind = "function";
   fn.description = `Automatically generated record constructor for ${fnName}`;
@@ -443,9 +477,9 @@ export function generateRecordConstructorFor(
       }
     }
   }
-  const resTypeName = overrideResType ?? sym.name;
   const resIdx = fn.addVariable("res", VarType.Real, Variability.Continuous, Causality.Output);
   fn.setVarCustomType(resIdx, resTypeName);
+  ((flattener as any)._recordCtorCache ??= new Map<string, DAEBuilder>()).set(ctorCacheKey, fn);
   dae.addFunction(fnName, fn);
   if (resTypeName && resTypeName !== fnName && !overrideFnName?.includes("$") && !dae.getFunction(resTypeName)) {
     dae.addFunction(resTypeName, fn);
@@ -453,7 +487,12 @@ export function generateRecordConstructorFor(
   if (!overrideFnName && qualName && qualName !== fnName && qualName !== sym.name) dae.addFunction(qualName, fn);
 
   const isSpeculativeFnDae = dae.classKind === "function" && !(dae as any).parentDae;
-  if (!isSpeculativeFnDae) {
+  const rootModelResourceId = db.symbol(flattener.currentRootClassId ?? rootClassId)?.resourceId;
+  const isCrossFileFnLocalRecord =
+    dae.classKind === "function" &&
+    Boolean(rootModelResourceId && sym.resourceId && sym.resourceId !== rootModelResourceId) &&
+    !flattener.usedRecordSymIds?.has(sym.id);
+  if (!isSpeculativeFnDae && !isCrossFileFnLocalRecord) {
     let rootDae: any = (flattener as any)?.currentRootDae ?? dae;
     while (rootDae.parentDae) rootDae = rootDae.parentDae;
     rootDae.addFunction(fnName, fn);
@@ -515,6 +554,7 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
       if (comp && comp.kind === "Component") rootComps.push(comp);
     }
   }
+  const directCompRecordIds = new Set<SymbolId>();
   for (const comp of rootComps) {
     const compInst = db.query<ComponentInstanceData>("componentInstance", comp.id);
     const cMeta = (comp.metadata as any) || {};
@@ -527,7 +567,25 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
       let compTarget: SymbolEntry | null =
         typeof rawTarget === "number" ? (db.symbol(rawTarget) ?? null) : (rawTarget ?? null);
       if (!compTarget) {
-        compTarget = db.byName(cleanType).find((t) => isRecordSym(t)) ?? null;
+        const resolver =
+          (comp.parentId ? db.query<any>("resolveName", comp.parentId) : null) ??
+          (comp.parentId ? db.query<any>("resolveSimpleName", comp.parentId) : null) ??
+          db.query<any>("resolveName", rootClassId);
+        const resolved = resolver?.(typeSpec) ?? resolver?.(cleanType);
+        if (resolved && isRecordSym(resolved)) {
+          compTarget = resolved;
+        } else {
+          compTarget = db.byName(cleanType).find((t) => isRecordSym(t)) ?? null;
+        }
+      }
+      if (compTarget && isRecordSym(compTarget)) {
+        directCompRecordIds.add(compTarget.id);
+        if (
+          (dae.classKind === "function" || compTarget.resourceId === rootSym?.resourceId) &&
+          !candidates.some((c) => c.id === compTarget!.id)
+        ) {
+          candidates.push(compTarget);
+        }
       }
       if (
         compTarget &&
@@ -592,6 +650,7 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
     }
     for (const fsym of fileSymbols) {
       if (fsym && fsym.kind === "Component" && fsym.parentId && fsym.parentId !== rootClassId) {
+        if (!fsym.name || !rootCst.text.includes(fsym.name)) continue;
         const qCompName = getSymbolQualifiedName(db, fsym.id);
         if (qCompName && new RegExp(`\\b${escapeRegExp(qCompName)}\\b`).test(rootCst.text)) {
           const compInst = db.query<ComponentInstanceData>("componentInstance", fsym.id);
@@ -670,6 +729,14 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
                 usedRecordNames.add(typeSpec);
                 changed = true;
               }
+              if (dae.classKind === "function") {
+                const subTarget = db.byName(cleanType).find((t) => isRecordSym(t)) ?? null;
+                if (subTarget && !candidates.some((c) => c.id === subTarget.id)) {
+                  candidates.push(subTarget);
+                  directCompRecordIds.add(subTarget.id);
+                  changed = true;
+                }
+              }
             }
           }
         }
@@ -693,7 +760,10 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
       effParentId = db.symbol(effParentId)?.parentId ?? null;
     }
     if (effParentId && effParentId !== rootClassId && flattener.isClassPartial?.(effParentId)) {
-      if ((dae as any).specializedPrefix && effParentId === (dae as any).enclosingScopeId) {
+      if (
+        (dae.classKind === "function" && directCompRecordIds.has(sym.id)) ||
+        ((dae as any).specializedPrefix && effParentId === (dae as any).enclosingScopeId)
+      ) {
         return usedRecordNames.has(name) || (Boolean(qName) && usedRecordNames.has(qName!));
       }
       return false;
@@ -809,6 +879,50 @@ export function flattenFunction(
   enclosingScopeId?: SymbolId,
 ): DAEBuilder {
   const db: QueryDB = flattener.db;
+  const cleanFnName = fnName.replace(/^\.+/, "");
+  const fnParentId = db.symbol(fnSymId)?.parentId;
+  const compModsArgs =
+    (
+      (parentDae as any)?.componentParentMods ??
+      (parentDae?.classKind !== "function" ? flattener.currentParentMods : undefined)
+    )?.args ?? [];
+  const redeclSig = compModsArgs
+    .filter((a: any) => a && !a.isBreak && (a.isRedeclaration || a.redeclaredTypeSpecifier))
+    .map((a: any) => `${a.name}=${a.redeclaredTypeSpecifier}`)
+    .join(",");
+  const canCache = !modifiers || modifiers.length === 0;
+  const fnCacheKey = canCache ? `${fnSymId}:${cleanFnName}:${enclosingScopeId ?? ""}:${redeclSig}` : "";
+  if (fnCacheKey) {
+    const cache = ((flattener as any)._flattenedFunctionCache ??= new Map<string, DAEBuilder>());
+    const cachedFn = cache.get(fnCacheKey);
+    if (cachedFn && !(cachedFn as any).isBeingFlattened) {
+      const parts = cleanFnName.split(".");
+      const baseName = parts[parts.length - 1]!;
+      if (parentDae) {
+        parentDae.addFunction(cleanFnName, cachedFn);
+        parentDae.addFunction(fnName, cachedFn);
+        const naturalParentId = fnParentId ?? db.symbol(fnSymId)?.parentId;
+        if (baseName && !cleanFnName.includes("$") && (!enclosingScopeId || enclosingScopeId === naturalParentId)) {
+          parentDae.addFunction(baseName, cachedFn);
+        }
+        let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
+        while (rootDae?.parentDae) rootDae = rootDae.parentDae;
+        if (rootDae && rootDae !== parentDae) {
+          rootDae.addFunction(cleanFnName, cachedFn);
+          rootDae.addFunction(fnName, cachedFn);
+        }
+        if (cachedFn.functions && cachedFn.functions.size > 0) {
+          for (const [nestedName, nestedFn] of cachedFn.functions.entries()) {
+            if (nestedFn === cachedFn) continue;
+            parentDae.addFunction(nestedName, nestedFn);
+            if (rootDae) rootDae.addFunction(nestedName, nestedFn);
+          }
+        }
+      }
+      return cachedFn;
+    }
+  }
+
   const prevFnId = flattener.currentFlatteningFunctionId;
   const prevClassId = flattener.currentClassId;
   const prevEnclosingScope = flattener.currentFunctionEnclosingScope;
@@ -817,7 +931,6 @@ export function flattenFunction(
   flattener.state.activeLoopVars = flattener.activeLoopVars;
   flattener.currentFlatteningFunctionId = fnSymId;
   flattener.activeFlatteningFunctionIds.add(fnSymId);
-  const fnParentId = db.symbol(fnSymId)?.parentId;
   if (enclosingScopeId !== undefined) {
     flattener.currentClassId = enclosingScopeId;
     if (fnParentId !== undefined && fnParentId !== enclosingScopeId) {
@@ -830,7 +943,6 @@ export function flattenFunction(
     flattener.currentFunctionEnclosingScope = null;
   }
 
-  const cleanFnName = fnName.replace(/^\.+/, "");
   const fn = new DAEBuilder(parentDae ? parentDae.interner : undefined, cleanFnName, "");
   (fn as any).parentDae = parentDae;
   (fn as any).db = db;
@@ -1535,18 +1647,30 @@ export function flattenFunction(
       if (hasInterfaceError) {
         flattener.invalidInterfaceFunctionIds.add(fnSymId);
       }
-    } else if (parentDae && fn.functions && fn.functions.size > 0) {
-      let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
-      while (rootDae?.parentDae) rootDae = rootDae.parentDae;
-      if (rootDae) {
-        for (const [nestedName, nestedFn] of fn.functions.entries()) {
-          if (nestedFn === fn) continue;
-          rootDae.addFunction(nestedName, nestedFn);
-        }
+    } else {
+      if (fnCacheKey && !(fn.externalDecl && fn.externalDecl.includes('"builtin"'))) {
+        const cache = ((flattener as any)._flattenedFunctionCache ??= new Map<string, DAEBuilder>());
+        cache.set(fnCacheKey, fn);
       }
-      for (const [nestedName, nestedFn] of fn.functions.entries()) {
-        if (nestedFn === fn) continue;
-        parentDae.addFunction(nestedName, nestedFn);
+      if (parentDae) {
+        let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
+        while (rootDae?.parentDae) rootDae = rootDae.parentDae;
+        if (rootDae && rootDae !== parentDae && !(fn.externalDecl && fn.externalDecl.includes('"builtin"'))) {
+          rootDae.addFunction(cleanFnName, fn);
+          rootDae.addFunction(fnName, fn);
+        }
+        if (fn.functions && fn.functions.size > 0) {
+          if (rootDae) {
+            for (const [nestedName, nestedFn] of fn.functions.entries()) {
+              if (nestedFn === fn) continue;
+              rootDae.addFunction(nestedName, nestedFn);
+            }
+          }
+          for (const [nestedName, nestedFn] of fn.functions.entries()) {
+            if (nestedFn === fn) continue;
+            parentDae.addFunction(nestedName, nestedFn);
+          }
+        }
       }
     }
 

@@ -28,9 +28,9 @@ function getParam(val: string | string[] | undefined): string {
 
 export function sysml2OmgRouter(service?: SysML2OmgService): Router {
   const router = createRouter();
-  router.use(defaultApiLimiter);
-  router.use(optionalAuth);
-  router.use((req: Request, res: Response, next) => {
+  router.use("/projects", defaultApiLimiter);
+  router.use("/projects", optionalAuth);
+  router.use("/projects", (req: Request, res: Response, next) => {
     if (
       process.env["NODE_ENV"] === "production" &&
       (req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE") &&

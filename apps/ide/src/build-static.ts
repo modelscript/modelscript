@@ -33,6 +33,37 @@ mkdirSync(OUT_DIR, { recursive: true });
 console.log("  Copying VS Code Web assets...");
 cpSync(VSCODE_WEB_DIR, join(OUT_DIR, "vscode-static"), { recursive: true });
 
+for (const fileName of ["index.html", "index-no-csp.html"]) {
+  const webviewPrePath = join(
+    OUT_DIR,
+    "vscode-static",
+    "out",
+    "vs",
+    "workbench",
+    "contrib",
+    "webview",
+    "browser",
+    "pre",
+    fileName,
+  );
+  if (existsSync(webviewPrePath)) {
+    let raw = readFileSync(webviewPrePath, "utf-8");
+    raw = raw.replace(
+      /script-src 'sha256-[A-Za-z0-9+/=]+' 'self'/g,
+      "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
+    );
+    raw = raw.replace(
+      /script-src 'unsafe-inline' 'self'(?! https:\/\/static\.cloudflareinsights\.com)/g,
+      "script-src 'unsafe-inline' 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com https://*.cloudflareinsights.com",
+    );
+    raw = raw.replace(
+      /if \((?:hostname === "localhost" \|\| hostname === "127\.0\.0\.1" \|\| )?(?:location\.origin === parentOrigin \|\| )?hostname === parentOriginHash/g,
+      'if (hostname === "localhost" || hostname === "127.0.0.1" || location.origin === parentOrigin || hostname === parentOriginHash',
+    );
+    writeFileSync(webviewPrePath, raw, "utf-8");
+  }
+}
+
 // 2. Copy ModelScript extension
 console.log("  Copying ModelScript extension...");
 const extDestDir = join(OUT_DIR, "static", "devextensions");
@@ -113,6 +144,14 @@ function escapeJSON(value: unknown): string {
 }
 
 function renderStaticWorkbench(): string {
+  const galleryConfig = {
+    serviceUrl: "https://open-vsx.org/vscode/gallery",
+    itemUrl: "https://open-vsx.org/vscode/item",
+    resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
+    controlUrl: "",
+    mcpUrl: "",
+  };
+
   const config = {
     folderUri: {
       scheme: "github",
@@ -128,16 +167,15 @@ function renderStaticWorkbench(): string {
       enableTelemetry: false,
       nameShort: "ModelScript",
       nameLong: "ModelScript IDE",
+      chatParticipantRegistry: "",
       extensionAllowedProposedApi: ["modelscript.modelscript", "vscode.mermaid-markdown-features"],
       extensionEnabledApiProposals: {
         "vscode.mermaid-markdown-features": ["chatParticipantPrivate", "chatOutputRenderer"],
+        "GitHub.vscode-pull-request-github": [],
+        "github.vscode-pull-request-github": [],
       },
-      extensionGallery: {
-        serviceUrl: "https://open-vsx.org/vscode/gallery",
-        itemUrl: "https://open-vsx.org/vscode/item",
-        resourceUrlTemplate: "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
-        controlUrl: "",
-      },
+      extensionsGallery: galleryConfig,
+      extensionGallery: galleryConfig,
     },
     configurationDefaults: {
       "editor.codeLens": true,
@@ -199,7 +237,12 @@ function renderStaticWorkbench(): string {
       if (typeof arguments[i] === 'string' && (
         arguments[i].includes('ENOPRO: No file system provider found for resource') ||
         arguments[i].includes('No search provider registered for scheme: memfs') ||
-        arguments[i].includes('Ignoring the error while validating workspace folder')
+        arguments[i].includes('Ignoring the error while validating workspace folder') ||
+        arguments[i].includes('Overwriting grammar scope name to file mapping') ||
+        arguments[i].includes('extensionEnabledApiProposals') ||
+        arguments[i].includes('[AgentHost:remote] No remote agent connection available') ||
+        arguments[i].includes("[CloudSandboxApi] No 'github' session with scopes") ||
+        arguments[i].includes('[LM] Failed to request chat control data')
       )) return;
     }
     originalWarn.apply(console, arguments);
@@ -258,6 +301,8 @@ function renderStaticWorkbench(): string {
   var endpoint = location.protocol + '//' + location.host + '/vscode-static';
   config.productConfiguration = config.productConfiguration || {};
   config.productConfiguration.webEndpointUrlTemplate = endpoint;
+  config.productConfiguration.webviewContentExternalBaseUrlTemplate = endpoint + '/out/vs/workbench/contrib/webview/browser/pre/';
+  config.productConfiguration.chatParticipantRegistry = '';
   
   el.setAttribute('data-settings', JSON.stringify(config));
 

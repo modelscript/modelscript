@@ -7,6 +7,7 @@ import {
   ExprKind,
   UnaryOp,
   VarAttrKind,
+  VarType,
   Variability,
   causalizeVectorArena,
   convertArenaToMicroModelica,
@@ -84,6 +85,9 @@ interface SimDAEBuilder extends DAEBuilder {
 type SystemExecutionBlock = Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }> & {
   _varNameIds?: Int32Array | undefined;
   _resExprIds?: Int32Array | undefined;
+  _isBoolVar?: Uint8Array | undefined;
+  _isBoolEq?: Uint8Array | undefined;
+  _hasBoolVars?: boolean | undefined;
   _compiledResiduals?: ((env: Float64Array, x: Float64Array, R: Float64Array) => number) | undefined;
   _compiledJacobian?: ((env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) => void) | undefined;
   _isLinearSystem?: boolean | undefined;
@@ -311,6 +315,7 @@ export class ArenaSimulator {
     this.resolveParameters(preOverrides);
     this.resolveKinematicVelocities();
     this.reduceAffineStateConstraints();
+    this.reduceBilinearVolumeStates();
     this.identifyDerivatives();
 
     // Arena-Native Pantelides Index Reduction
@@ -573,28 +578,64 @@ export class ArenaSimulator {
       let val: number | null = null;
       if (typeof exprId === "number" && exprId !== -1) {
         const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
-        if (typeof rawVal === "number" && isFinite(rawVal)) {
-          val = rawVal;
+        const numVal = typeof rawVal === "boolean" ? (rawVal ? 1 : 0) : rawVal;
+        if (typeof numVal === "number" && isFinite(numVal)) {
+          val = numVal;
         }
       }
       if (val === null || typeof val !== "number" || !isFinite(val)) {
         val = this.arena.getVarStartValue(i);
       }
       this.parameters.set(name, val);
+      this.arena.setVarStartValue(i, val);
     }
 
-    // Second pass to ensure dependent parameter expressions see parameters declared later or overridden
-    for (const i of this.parameterVars) {
-      if (this.arena.isVarRemoved(i)) continue;
-      const name = this.arena.getVarName(i);
-      if (preOverrides && preOverrides.has(name)) continue;
-      const exprId = typeof this.arena.getVarExpression === "function" ? this.arena.getVarExpression(i) : undefined;
-      if (typeof exprId === "number" && exprId !== -1) {
-        const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
-        if (typeof rawVal === "number" && isFinite(rawVal)) {
-          this.parameters.set(name, rawVal);
+    // Multi-pass resolution to ensure dependent parameter expressions and fixed=false InitialSimple parameter equations converge
+    for (let pass = 0; pass < 5; pass++) {
+      let changed = false;
+      for (const i of this.parameterVars) {
+        if (this.arena.isVarRemoved(i)) continue;
+        if (!this.arena.isVarFixed(i) && !simArena.hasExplicitVarExpression?.(i)) continue;
+        const name = this.arena.getVarName(i);
+        if (preOverrides && preOverrides.has(name)) continue;
+        const exprId = typeof this.arena.getVarExpression === "function" ? this.arena.getVarExpression(i) : undefined;
+        if (typeof exprId === "number" && exprId !== -1) {
+          const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
+          const numVal = typeof rawVal === "boolean" ? (rawVal ? 1 : 0) : rawVal;
+          if (typeof numVal === "number" && isFinite(numVal)) {
+            if (this.parameters.get(name) !== numVal) {
+              this.parameters.set(name, numVal);
+              this.arena.setVarStartValue(i, numVal);
+              changed = true;
+            }
+          }
         }
       }
+
+      for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+        const eqKind = this.arena.getEqKind(eqIdx);
+        if (eqKind !== EqKind.InitialSimple && eqKind !== EqKind.Simple) continue;
+        const lhs = this.arena.getEqLhs(eqIdx);
+        const rhs = this.arena.getEqRhs(eqIdx);
+        if (lhs < 0 || rhs < 0 || this.arena.getExprKind(lhs) !== ExprKind.Name) continue;
+        const lhsNameId = this.arena.getExprData1(lhs);
+        const vIdx = this.arena.lookupVariable(lhsNameId);
+        if (vIdx < 0 || !this.parameterVars.has(vIdx)) continue;
+        if (this.arena.isVarFixed(vIdx) || simArena.hasExplicitVarExpression?.(vIdx)) continue;
+        const vName = this.arena.getVarName(vIdx);
+        if (preOverrides && preOverrides.has(vName)) continue;
+        if (exprReferencesContinuous(rhs)) continue;
+        const rawVal = evaluateArenaExpression(this.arena, rhs, this.parameters);
+        const numVal = typeof rawVal === "boolean" ? (rawVal ? 1 : 0) : rawVal;
+        if (typeof numVal === "number" && isFinite(numVal)) {
+          if (this.parameters.get(vName) !== numVal) {
+            this.parameters.set(vName, numVal);
+            this.arena.setVarStartValue(vIdx, numVal);
+            changed = true;
+          }
+        }
+      }
+      if (!changed) break;
     }
   }
 
@@ -1667,6 +1708,167 @@ export class ArenaSimulator {
   }
 
   /**
+   * Transforms bilinear extensive-intensive state product constraints of the form `U = m * u`
+   * (where `U` and `m` both appear in `der(...)` and `u` is a continuous intensive property)
+   * using the product rule `der(U) = der(m) * u + m * der(u)`. This promotes `u` to the ODE state
+   * variable and avoids `0 / 0` division singularities in `u = U / m` when `m -> 0` (e.g. empty tanks).
+   */
+  private reduceBilinearVolumeStates(): void {
+    const currentDerVars = new Set<number>();
+    const scanDer = (exprId: number): void => {
+      if (exprId < 0) return;
+      const k = this.arena.getExprKind(exprId);
+      if (k === ExprKind.Der) {
+        const argId = this.arena.getExprData1(exprId);
+        if (this.arena.getExprKind(argId) === ExprKind.Name) {
+          const vIdx = this.arena.lookupVariable(this.arena.getExprData1(argId));
+          if (vIdx >= 0 && !this.eliminatedDerVars.has(vIdx)) {
+            currentDerVars.add(vIdx);
+          }
+        }
+        return;
+      }
+      if (k === ExprKind.Binary) {
+        scanDer(this.arena.getExprLeft(exprId));
+        scanDer(this.arena.getExprRight(exprId));
+      } else if (k === ExprKind.Unary || k === ExprKind.Negate) {
+        scanDer(this.arena.getExprLeft(exprId));
+      } else if (k === ExprKind.IfElse) {
+        scanDer(this.arena.getExprData1(exprId));
+        scanDer(this.arena.getExprLeft(exprId));
+        scanDer(this.arena.getExprRight(exprId));
+      }
+    };
+
+    for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+      scanDer(this.arena.getEqLhs(eqIdx));
+      scanDer(this.arena.getEqRhs(eqIdx));
+    }
+    if (currentDerVars.size < 2) return;
+
+    const replaceDerInExpr = (exprId: number, targetVarIdx: number, replacementExprId: number): number => {
+      if (exprId < 0) return exprId;
+      const kind = this.arena.getExprKind(exprId);
+      if (kind === ExprKind.Der) {
+        const argId = this.arena.getExprData1(exprId);
+        if (this.arena.getExprKind(argId) === ExprKind.Name) {
+          const vIdx = this.arena.lookupVariable(this.arena.getExprData1(argId));
+          if (vIdx === targetVarIdx) {
+            return replacementExprId;
+          }
+        }
+        return exprId;
+      }
+      switch (kind) {
+        case ExprKind.Binary: {
+          const l = this.arena.getExprLeft(exprId);
+          const r = this.arena.getExprRight(exprId);
+          const nl = replaceDerInExpr(l, targetVarIdx, replacementExprId);
+          const nr = replaceDerInExpr(r, targetVarIdx, replacementExprId);
+          if (nl !== l || nr !== r) {
+            return this.arena.addBinaryExpr(this.arena.getExprData1(exprId), nl, nr);
+          }
+          return exprId;
+        }
+        case ExprKind.Negate: {
+          const l = this.arena.getExprLeft(exprId);
+          const nl = replaceDerInExpr(l, targetVarIdx, replacementExprId);
+          return nl !== l ? this.arena.addNegateExpr(nl) : exprId;
+        }
+        case ExprKind.Unary: {
+          const l = this.arena.getExprLeft(exprId);
+          const nl = replaceDerInExpr(l, targetVarIdx, replacementExprId);
+          return nl !== l ? this.arena.addUnaryExpr(this.arena.getExprData1(exprId), nl) : exprId;
+        }
+        case ExprKind.IfElse: {
+          const cond = this.arena.getExprData1(exprId);
+          const l = this.arena.getExprLeft(exprId);
+          const r = this.arena.getExprRight(exprId);
+          const nCond = replaceDerInExpr(cond, targetVarIdx, replacementExprId);
+          const nl = replaceDerInExpr(l, targetVarIdx, replacementExprId);
+          const nr = replaceDerInExpr(r, targetVarIdx, replacementExprId);
+          if (nCond !== cond || nl !== l || nr !== r) {
+            return this.arena.addExpression(ExprKind.IfElse, nCond, nl, nr);
+          }
+          return exprId;
+        }
+        default:
+          return exprId;
+      }
+    };
+
+    const matchProductEq = (sideA: number, sideB: number): { U: number; m: number; u: number } | null => {
+      if (this.arena.getExprKind(sideA) !== ExprKind.Name) return null;
+      if (this.arena.getExprKind(sideB) !== ExprKind.Binary || this.arena.getExprData1(sideB) !== BinOp.Mul) {
+        return null;
+      }
+      const f1 = this.arena.getExprLeft(sideB);
+      const f2 = this.arena.getExprRight(sideB);
+      if (this.arena.getExprKind(f1) !== ExprKind.Name || this.arena.getExprKind(f2) !== ExprKind.Name) {
+        return null;
+      }
+      const U = this.arena.lookupVariable(this.arena.getExprData1(sideA));
+      const v1 = this.arena.lookupVariable(this.arena.getExprData1(f1));
+      const v2 = this.arena.lookupVariable(this.arena.getExprData1(f2));
+      if (U < 0 || v1 < 0 || v2 < 0) return null;
+      if (!currentDerVars.has(U) || this.arena.isVarFixed(U)) return null;
+      const v1IsState = currentDerVars.has(v1);
+      const v2IsState = currentDerVars.has(v2);
+      if (v1IsState === v2IsState) return null;
+      const m = v1IsState ? v1 : v2;
+      const u = v1IsState ? v2 : v1;
+      if (m === U || u === U) return null;
+      if (this.parameterVars.has(u) || this.arena.isVarFixed(u) || this.arena.getVarType(u) !== VarType.Real) {
+        return null;
+      }
+      return { U, m, u };
+    };
+
+    for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+      if (this.arena.isEqInitial(eqIdx)) continue;
+      const lhs = this.arena.getEqLhs(eqIdx);
+      const rhs = this.arena.getEqRhs(eqIdx);
+      const matched = matchProductEq(lhs, rhs) ?? matchProductEq(rhs, lhs);
+      if (!matched) continue;
+      const { U, m, u } = matched;
+
+      this.eliminatedDerVars.add(U);
+      currentDerVars.delete(U);
+      currentDerVars.add(u);
+
+      const mNameExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(m));
+      const uNameExpr = this.arena.addExpression(ExprKind.Name, this.arena.getVarNameId(u));
+      const derMExpr = this.arena.addDerExpr(mNameExpr);
+      const derUExpr = this.arena.addDerExpr(uNameExpr);
+      const term1 = this.arena.addBinaryExpr(BinOp.Mul, derMExpr, uNameExpr);
+
+      const absM = this.arena.addCallExpr("abs", [mNameExpr]);
+      const epsPos = this.arena.addRealLiteral(1e-2);
+      const epsNeg = this.arena.addRealLiteral(-1e-2);
+      const zeroLit = this.arena.addRealLiteral(0.0);
+      const isSmall = this.arena.addBinaryExpr(BinOp.Lt, absM, epsPos);
+      const isNonNeg = this.arena.addBinaryExpr(BinOp.Gte, mNameExpr, zeroLit);
+      const clampedSign = this.arena.addExpression(ExprKind.IfElse, isNonNeg, epsPos, epsNeg);
+      const mSafe = this.arena.addExpression(ExprKind.IfElse, isSmall, clampedSign, mNameExpr);
+
+      const term2 = this.arena.addBinaryExpr(BinOp.Mul, mSafe, derUExpr);
+      const prodRuleExpr = this.arena.addBinaryExpr(BinOp.Add, term1, term2);
+
+      for (let k = 0; k < this.arena.eqCount; k++) {
+        if (this.arena.getEqKind(k) !== EqKind.Simple) continue;
+        const kl = this.arena.getEqLhs(k);
+        const kr = this.arena.getEqRhs(k);
+        const nkl = replaceDerInExpr(kl, U, prodRuleExpr);
+        const nkr = replaceDerInExpr(kr, U, prodRuleExpr);
+        if (nkl !== kl) this.arena.setEqLhs(k, nkl);
+        if (nkr !== kr) this.arena.setEqRhs(k, nkr);
+      }
+    }
+  }
+
+  /**
    * Scans all DAE arena equations for `ExprKind.Der` nodes, registers their inner variables
    * in `stateVars` (excluding derivatives already eliminated by kinematic/affine reduction),
    * and ensures a corresponding `der(x)` variable exists in `derivativeVars`.
@@ -1953,7 +2155,7 @@ export class ArenaSimulator {
       const kind = this.arena.getExprKind(exprId);
       if (kind === ExprKind.Call) {
         const fnName = this.arena.interner.resolve(this.arena.getExprData1(exprId));
-        if (fnName === "noEvent") return;
+        if (fnName === "noEvent" || fnName === "smooth") return;
         const argc = this.arena.getExprRight(exprId);
         const firstArg = this.arena.getExprLeft(exprId);
         for (let a = 0; a < argc; a++) {
@@ -1975,11 +2177,23 @@ export class ArenaSimulator {
       }
     };
 
+    const boolVarNameIds = new Set<number>();
+    for (let v = 0; v < this.arena.varCount; v++) {
+      if (this.arena.getVarType(v) === VarType.Boolean) {
+        boolVarNameIds.add(this.arena.getVarNameId(v));
+      }
+    }
+
     for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
       const eqKind = this.arena.getEqKind(eqIdx);
       if (eqKind === EqKind.Simple) {
-        scanIfElseExpr(this.arena.getEqLhs(eqIdx));
-        scanIfElseExpr(this.arena.getEqRhs(eqIdx));
+        const lhsId = this.arena.getEqLhs(eqIdx);
+        const rhsId = this.arena.getEqRhs(eqIdx);
+        scanIfElseExpr(lhsId);
+        scanIfElseExpr(rhsId);
+        if (this.arena.getExprKind(lhsId) === ExprKind.Name && boolVarNameIds.has(this.arena.getExprData1(lhsId))) {
+          addIfIndicator(rhsId);
+        }
       } else if (eqKind === EqKind.If) {
         const meta = this.arena.getIfEquationMeta?.(eqIdx) as
           | { branches?: { conditionExprId?: number | undefined }[] | undefined }
@@ -2005,6 +2219,15 @@ export class ArenaSimulator {
    */
   private collectEventIndicators(condExprId: number, inverted = false): { exprId: number; direction: -1 | 0 | 1 }[] {
     const kind = this.arena.getExprKind(condExprId);
+    if (kind === ExprKind.Call) {
+      const fnName = this.arena.interner.resolve(this.arena.getExprData1(condExprId));
+      if (fnName === "noEvent" || fnName === "smooth") return [];
+    }
+    if (kind === ExprKind.IfElse) {
+      const tId = this.arena.getExprLeft(condExprId);
+      const eId = this.arena.getExprRight(condExprId);
+      return [...this.collectEventIndicators(tId, inverted), ...this.collectEventIndicators(eId, inverted)];
+    }
     if (kind === ExprKind.Binary) {
       const op = this.arena.getExprData1(condExprId) as BinOp;
       if (op === BinOp.And || op === BinOp.Or) {
@@ -2037,6 +2260,9 @@ export class ArenaSimulator {
         const argId = this.arena.getExprLeft(condExprId);
         return this.collectEventIndicators(argId, !inverted);
       }
+    }
+    if (kind === ExprKind.Name || kind === ExprKind.IntLiteral || kind === ExprKind.RealLiteral) {
+      return [];
     }
     return [{ exprId: condExprId, direction: 0 }];
   }
@@ -2312,8 +2538,43 @@ export class ArenaSimulator {
       sysBlock._resExprIds = cachedResIds;
     }
 
+    let cachedIsBoolVar: Uint8Array | undefined = sysBlock._isBoolVar;
+    let cachedIsBoolEq: Uint8Array | undefined = sysBlock._isBoolEq;
+    let hasBoolVars: boolean | undefined = sysBlock._hasBoolVars;
+    if (!cachedIsBoolVar || !cachedIsBoolEq || hasBoolVars === undefined) {
+      cachedIsBoolVar = new Uint8Array(m);
+      cachedIsBoolEq = new Uint8Array(m);
+      hasBoolVars = false;
+      const boolNameIds = new Set<number>();
+      for (let i = 0; i < m; i++) {
+        if (this.arena.getVarType(block.vars[i] as number) === VarType.Boolean) {
+          cachedIsBoolVar[i] = 1;
+          hasBoolVars = true;
+          boolNameIds.add(cachedVarIds[i] as number);
+        }
+      }
+      if (hasBoolVars) {
+        for (let i = 0; i < m; i++) {
+          const eqIdx = block.eqIdxs[i] as number;
+          const lhsId = this.arena.getEqLhs(eqIdx);
+          const rhsId = this.arena.getEqRhs(eqIdx);
+          const lhsIsBool =
+            this.arena.getExprKind(lhsId) === ExprKind.Name && boolNameIds.has(this.arena.getExprData1(lhsId));
+          const rhsIsBool =
+            this.arena.getExprKind(rhsId) === ExprKind.Name && boolNameIds.has(this.arena.getExprData1(rhsId));
+          if (lhsIsBool || rhsIsBool) {
+            cachedIsBoolEq[i] = 1;
+          }
+        }
+      }
+      sysBlock._isBoolVar = cachedIsBoolVar;
+      sysBlock._isBoolEq = cachedIsBoolEq;
+      sysBlock._hasBoolVars = hasBoolVars;
+    }
+
     const bestX = new Float64Array(m);
     let bestMaxR = Infinity;
+    let bestBoolConsistent = false;
 
     // Collect variable name StringIds
     for (let i = 0; i < m; i++) {
@@ -2327,7 +2588,7 @@ export class ArenaSimulator {
 
     const compiledRes = sysBlock._compiledResiduals;
     const compiledJac = sysBlock._compiledJacobian;
-    const isLinearSystem = sysBlock._isLinearSystem === true;
+    const isLinearSystem = sysBlock._isLinearSystem === true && !hasBoolVars;
 
     let converged = false;
 
@@ -2354,8 +2615,27 @@ export class ArenaSimulator {
         }
       }
 
-      if (Number.isFinite(maxR) && maxR < bestMaxR) {
+      let maxContR = maxR;
+      let maxBoolR = 0;
+      if (hasBoolVars) {
+        maxContR = 0;
+        for (let i = 0; i < m; i++) {
+          const absR = Math.abs(R[i] as number);
+          if (cachedIsBoolEq[i] === 1) {
+            if (absR > maxBoolR) maxBoolR = absR;
+          } else {
+            if (absR > maxContR) maxContR = absR;
+          }
+        }
+      }
+
+      const boolConsistent = !hasBoolVars || maxBoolR < 0.5;
+      if (
+        Number.isFinite(maxR) &&
+        ((boolConsistent && !bestBoolConsistent) || (boolConsistent === bestBoolConsistent && maxR < bestMaxR))
+      ) {
         bestMaxR = maxR;
+        bestBoolConsistent = boolConsistent;
         for (let i = 0; i < m; i++) bestX[i] = x[i] as number;
       }
 
@@ -2418,10 +2698,32 @@ export class ArenaSimulator {
           }
           break;
         }
-        for (let i = 0; i < m; i++) {
-          const nx = (x[i] as number) + (negR[i] as number);
-          x[i] = nx;
-          valuesByStringId[varNameIds[i] as number] = nx;
+        if (hasBoolVars) {
+          if (maxContR > NEWTON_TOL) {
+            for (let i = 0; i < m; i++) {
+              if (cachedIsBoolVar[i] === 0) {
+                let nx = (x[i] as number) + (negR[i] as number);
+                if (Math.abs(nx) < 1e-13) nx = 0;
+                x[i] = nx;
+                valuesByStringId[varNameIds[i] as number] = nx;
+              }
+            }
+          } else {
+            for (let i = 0; i < m; i++) {
+              if (cachedIsBoolVar[i] === 1) {
+                const raw = (x[i] as number) + (negR[i] as number);
+                const nx = Math.abs(raw) >= 0.5 ? 1 : 0;
+                x[i] = nx;
+                valuesByStringId[varNameIds[i] as number] = nx;
+              }
+            }
+          }
+        } else {
+          for (let i = 0; i < m; i++) {
+            const nx = (x[i] as number) + (negR[i] as number);
+            x[i] = nx;
+            valuesByStringId[varNameIds[i] as number] = nx;
+          }
         }
         if (isLinearSystem) {
           converged = true;
@@ -3685,7 +3987,72 @@ export class ArenaSimulator {
 
       // Integrate state variables
       if (solver === "rk4") {
-        this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+        const numEi = this.eventIndicators.length;
+        if (numEi > 0) {
+          const envStart = new Float64Array(valuesByStringId);
+          const warmStart = new Map(this.algWarmStart);
+          const eiStart = new Float64Array(numEi);
+          for (let k = 0; k < numEi; k++) {
+            eiStart[k] = evaluateArenaRuntime(this.arena, this.eventIndicators[k]!.exprId, valuesByStringId);
+          }
+
+          this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+          valuesByStringId[timeId] = currentTime + step;
+          this.evaluateBlocks(valuesByStringId);
+
+          let crossed = false;
+          for (let k = 0; k < numEi; k++) {
+            const v0 = eiStart[k]!;
+            const v1 = evaluateArenaRuntime(this.arena, this.eventIndicators[k]!.exprId, valuesByStringId);
+            if ((v0 > 0 && v1 < 0) || (v0 < 0 && v1 > 0)) {
+              crossed = true;
+              break;
+            }
+          }
+
+          if (crossed) {
+            let lo = 0;
+            let hi = step;
+            for (let b = 0; b < 16; b++) {
+              const mid = 0.5 * (lo + hi);
+              valuesByStringId.set(envStart);
+              this.algWarmStart = new Map(warmStart);
+              this.rk4Step(mid, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+              valuesByStringId[timeId] = currentTime + mid;
+              this.evaluateBlocks(valuesByStringId);
+              let midCrossed = false;
+              for (let k = 0; k < numEi; k++) {
+                const v0 = eiStart[k]!;
+                const vm = evaluateArenaRuntime(this.arena, this.eventIndicators[k]!.exprId, valuesByStringId);
+                if ((v0 > 0 && vm < 0) || (v0 < 0 && vm > 0)) {
+                  midCrossed = true;
+                  break;
+                }
+              }
+              if (midCrossed) {
+                hi = mid;
+              } else {
+                lo = mid;
+              }
+            }
+
+            // Advance to hi (just past the event crossing), re-evaluate blocks & derivatives, then step remaining time
+            valuesByStringId.set(envStart);
+            this.algWarmStart = new Map(warmStart);
+            this.rk4Step(hi, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+            valuesByStringId[timeId] = currentTime + hi;
+            this.evaluateBlocks(valuesByStringId);
+            this.evaluateDerivativeEquations(valuesByStringId);
+            this.processWhenClauses(valuesByStringId);
+
+            const remStep = step - hi;
+            if (remStep > 1e-15) {
+              this.rk4Step(remStep, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime + hi);
+            }
+          }
+        } else {
+          this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+        }
       } else {
         // Forward Euler
         const y0Euler = new Float64Array(n);
@@ -4719,7 +5086,72 @@ export class ArenaSimulator {
 
       // Integrate state variables
       if (solver === "rk4") {
-        this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+        const numEi = this.eventIndicators.length;
+        if (numEi > 0) {
+          const envStart = new Float64Array(valuesByStringId);
+          const warmStart = new Map(this.algWarmStart);
+          const eiStart = new Float64Array(numEi);
+          for (let k = 0; k < numEi; k++) {
+            eiStart[k] = evaluateArenaRuntime(this.arena, this.eventIndicators[k]!.exprId, valuesByStringId);
+          }
+
+          this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+          valuesByStringId[timeId] = currentTime + step;
+          this.evaluateBlocks(valuesByStringId);
+
+          let crossed = false;
+          for (let k = 0; k < numEi; k++) {
+            const v0 = eiStart[k]!;
+            const v1 = evaluateArenaRuntime(this.arena, this.eventIndicators[k]!.exprId, valuesByStringId);
+            if ((v0 > 0 && v1 < 0) || (v0 < 0 && v1 > 0)) {
+              crossed = true;
+              break;
+            }
+          }
+
+          if (crossed) {
+            let lo = 0;
+            let hi = step;
+            for (let b = 0; b < 16; b++) {
+              const mid = 0.5 * (lo + hi);
+              valuesByStringId.set(envStart);
+              this.algWarmStart = new Map(warmStart);
+              this.rk4Step(mid, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+              valuesByStringId[timeId] = currentTime + mid;
+              this.evaluateBlocks(valuesByStringId);
+              let midCrossed = false;
+              for (let k = 0; k < numEi; k++) {
+                const v0 = eiStart[k]!;
+                const vm = evaluateArenaRuntime(this.arena, this.eventIndicators[k]!.exprId, valuesByStringId);
+                if ((v0 > 0 && vm < 0) || (v0 < 0 && vm > 0)) {
+                  midCrossed = true;
+                  break;
+                }
+              }
+              if (midCrossed) {
+                hi = mid;
+              } else {
+                lo = mid;
+              }
+            }
+
+            // Advance to hi (just past the event crossing), re-evaluate blocks & derivatives, then step remaining time
+            valuesByStringId.set(envStart);
+            this.algWarmStart = new Map(warmStart);
+            this.rk4Step(hi, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+            valuesByStringId[timeId] = currentTime + hi;
+            this.evaluateBlocks(valuesByStringId);
+            this.evaluateDerivativeEquations(valuesByStringId);
+            this.processWhenClauses(valuesByStringId);
+
+            const remStep = step - hi;
+            if (remStep > 1e-15) {
+              this.rk4Step(remStep, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime + hi);
+            }
+          }
+        } else {
+          this.rk4Step(step, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
+        }
       } else {
         const y0Euler = new Float64Array(n);
         for (let i = 0; i < n; i++) y0Euler[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
