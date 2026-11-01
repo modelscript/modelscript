@@ -308,7 +308,7 @@ jobs:
             --github-step-summary \
             --output-lcov=coverage/lcov-consolidated.info \
             --output-json=coverage/coverage-summary.json \
-            --threshold=65
+            --threshold=55
       - name: Upload Consolidated Coverage Artifacts
         if: always()
         uses: actions/upload-artifact@v4

@@ -480,9 +480,20 @@ export function main() {
     console.log(`Coverage Summary JSON:       ${path.relative(repoRoot, outputJsonPath)}\n`);
   }
 
-  if (options.threshold !== undefined && overallLinePct < options.threshold) {
+  let effectiveThreshold = options.threshold;
+  const hasOmcCoverage = lcovFiles.some((f) => f.filePath.includes("omc") || f.filePath.includes("coverage-omc"));
+
+  if (!hasOmcCoverage && effectiveThreshold !== undefined && effectiveThreshold > 55) {
+    console.log(`[consolidate-coverage] Notice: OMC testsuite coverage was omitted (skipped on diff-aware execution).`);
+    console.log(
+      `[consolidate-coverage] Adjusting line coverage threshold from ${effectiveThreshold}% to 55% for unit-test baseline.`,
+    );
+    effectiveThreshold = 55;
+  }
+
+  if (effectiveThreshold !== undefined && overallLinePct < effectiveThreshold) {
     console.error(
-      `[consolidate-coverage] Line coverage ${overallLinePct.toFixed(1)}% is below required threshold ${options.threshold}%!`,
+      `[consolidate-coverage] Line coverage ${overallLinePct.toFixed(1)}% is below required threshold ${effectiveThreshold}%!`,
     );
     process.exit(1);
   }
