@@ -568,11 +568,7 @@ export async function getAllRepoFilePaths(
   for (const savedPath of Object.keys(savedFiles)) {
     if (savedPath) combinedPaths.add(savedPath.replace(/^\/+/, ""));
   }
-  if (!isActivityRepo && combinedPaths.size === 0) {
-    for (const fallbackPath of Object.keys(fb.files)) {
-      if (fallbackPath) combinedPaths.add(fallbackPath.replace(/^\/+/, ""));
-    }
-  } else if (!isActivityRepo && provider !== "local") {
+  if (!isActivityRepo) {
     for (const fallbackPath of Object.keys(fb.files)) {
       if (fallbackPath) combinedPaths.add(fallbackPath.replace(/^\/+/, ""));
     }
