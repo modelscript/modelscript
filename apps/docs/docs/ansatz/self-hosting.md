@@ -30,7 +30,7 @@ If you are hosting behind residential CGNAT, corporate firewalls, or on a develo
    ```
 4. Start the stack:
    ```bash
-   docker compose --profile federated-lite up -d
+   docker compose --profile federated-lite --profile tunnel up -d
    ```
 5. You can now close all inbound firewall ports (`sudo ufw default deny incoming`). The tunnel connects outbound to Cloudflare Edge over encrypted QUIC/HTTP2.
 
@@ -96,7 +96,7 @@ docker compose --profile federated up -d
 
 #### Option C: Flagship Cluster (`modelscript.org` + `ansatz.social`)
 
-Both `--profile flagship` and `--profile federated` activate the full production stack (`caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`):
+Both `--profile flagship` and `--profile federated` activate the production stack (`caddy`, `web`, `api`). Add `--profile tunnel` to enable Cloudflare Zero Trust Tunnel ingress:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml \

@@ -331,7 +331,7 @@ Choose the profile that matches your resource constraints and use case:
      --env-file .env.production --profile flagship-historian up -d
    ```
 
-   _Note:_ The `tunnel` service runs a smart entrypoint. If `CLOUDFLARE_TUNNEL_TOKEN` is present, it connects immediately; if unset, it idles in standby without crash-looping.
+   _Note:_ To enable Cloudflare Zero Trust Tunnel ingress, pass `--profile tunnel` (or use `--profile federated-tunnel` / `--profile flagship-tunnel`) alongside your primary profile when booting the stack.
 
 ### 3. Ephemeral Quick Tunnels (Local Dev & 1-Click ActivityPub Testing)
 

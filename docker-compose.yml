@@ -255,21 +255,11 @@ services:
 
   tunnel:
     image: cloudflare/cloudflared:latest
-    profiles: ["tunnel", "federated-tunnel", "flagship", "federated", "federated-lite"]
+    profiles: ["tunnel", "federated-tunnel", "flagship-tunnel"]
     restart: unless-stopped
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        if [ -n "$$TUNNEL_TOKEN" ]; then
-          echo "[Cloudflare Tunnel] Starting tunnel daemon..."
-          exec cloudflared tunnel --no-autoupdate run
-        else
-          echo "[Cloudflare Tunnel] No CLOUDFLARE_TUNNEL_TOKEN provided. Idling in standby mode."
-          exec tail -f /dev/null
-        fi
+    command: tunnel --no-autoupdate run
     environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-${TUNNEL_TOKEN:-}}
       - TUNNEL_METRICS=0.0.0.0:2000
     depends_on:
       - caddy
