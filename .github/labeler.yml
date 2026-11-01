@@ -1,0 +1,61 @@
+# .github/labeler.yml
+# Configuration for actions/labeler v5
+
+"area: web":
+  - changed-files:
+      - any-glob-to-any-file: "apps/web/**/*"
+
+"area: api":
+  - changed-files:
+      - any-glob-to-any-file: "apps/api/**/*"
+
+"area: ee":
+  - changed-files:
+      - any-glob-to-any-file: "ee/**/*"
+
+"area: cli":
+  - changed-files:
+      - any-glob-to-any-file: "apps/cli/**/*"
+
+"area: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/docs/**/*"
+          - "*.md"
+
+"area: modelica":
+  - changed-files:
+      - any-glob-to-any-file: "languages/modelica/**/*"
+
+"area: languages":
+  - changed-files:
+      - any-glob-to-any-file: "languages/**/*"
+
+"area: compiler":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/dsl/**/*"
+          - "packages/runtime/**/*"
+          - "packages/simulate/**/*"
+
+"area: cad":
+  - changed-files:
+      - any-glob-to-any-file: "packages/cad/**/*"
+
+"area: lsp":
+  - changed-files:
+      - any-glob-to-any-file: "packages/lsp/**/*"
+
+"area: ide":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/ide/**/*"
+          - "apps/ide/**/*"
+
+"area: ci-ops":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**/*"
+          - "scripts/ops/**/*"
+          - "docker*"
+          - "Dockerfile"

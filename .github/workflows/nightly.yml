@@ -1,0 +1,132 @@
+name: "Nightly Deep Conformance & Verification"
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # Daily at 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  omc_full_suite:
+    name: Full OMC Testsuite (All 2,734 Tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+      - name: Cache WASM Parsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/asc-tests
+            languages/*/.cache
+            languages/*/dist/*.wasm
+            packages/runtime/build/*.wasm
+            packages/simulate/src/wasm/*.wasm
+            packages/simulate/.cache/**
+            packages/dsl/.cache/**
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
+      - name: Build Prerequisites
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica
+      - name: Run Full Dual Backend Testsuite (WASM vs JS)
+        run: |
+          mkdir -p .v8-coverage languages/modelica/coverage/omc
+          NODE_V8_COVERAGE=$(pwd)/.v8-coverage npm run test:modelica:both:allow-wasm
+      - name: Upload CTRF Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-ctrf-omc-suite
+          path: languages/modelica/ctrf/*.json
+          retention-days: 14
+      - name: Upload HTML Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-omc-html-reports
+          path: languages/modelica/ctrf/*.html
+          retention-days: 14
+
+  msl_conformance:
+    name: MSL Parity Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+      - name: Cache MSL
+        uses: actions/cache@v4
+        with:
+          path: |
+            scripts/ModelicaStandardLibrary_v4.1.0.zip
+            data/libraries/Modelica/4.1.0/extracted
+          key: ${{ runner.os }}-msl-v4.1.0
+      - name: Download and Extract MSL
+        run: |
+          if [ ! -d "data/libraries/Modelica/4.1.0/extracted/Modelica" ]; then
+            node scripts/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
+          fi
+      - name: Build Core Compiler Chain
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica,@modelscript/simulate
+      - name: Run MSL Benchmarks Across All Stages
+        run: |
+          mkdir -p reports
+          npm run test:msl -- --report-html=reports/msl-benchmarks.html --report-json=reports/msl-benchmarks.json || true
+      - name: Upload MSL Benchmark Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-msl-reports
+          path: reports/msl-*
+          retention-days: 14
+
+  cross_platform_audit:
+    name: Cross-Platform Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci --ignore-scripts
+      - name: Build Core Chain
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica --parallel=2
+      - name: Verify Hygiene & Dist
+        run: |
+          npm run lint:filenames
+          npm run lint:manifests
+          npm run verify:dist
+          npm run verify:pack
+
+  security_audit:
+    name: Dependency Vulnerability Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+      - name: Run Audit
+        run: npm audit --omit=dev || true

@@ -134,6 +134,7 @@ jobs:
           name: ctrf-${{ matrix.shard }}
           path: "**/ctrf/*.json"
           if-no-files-found: ignore
+          retention-days: 7
         if: always()
       - name: Upload Coverage Artifacts
         uses: actions/upload-artifact@v4
@@ -141,6 +142,7 @@ jobs:
           name: coverage-${{ matrix.shard }}
           path: "**/coverage/*lcov*.info"
           if-no-files-found: ignore
+          retention-days: 7
         if: always()
 
   modelica_testsuite:
@@ -222,6 +224,7 @@ jobs:
             languages/modelica/ctrf/ctrf-testsuite-report-wasm.json
             languages/modelica/ctrf/ctrf-testsuite-report-js.json
           if-no-files-found: ignore
+          retention-days: 7
       - name: Upload HTML Test Reports
         if: always() && steps.check-affected.outputs.run_suite == 'true'
         uses: actions/upload-artifact@v4
@@ -230,6 +233,7 @@ jobs:
           path: |
             languages/modelica/ctrf/*.html
           if-no-files-found: ignore
+          retention-days: 7
       - name: Upload Coverage Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
         uses: actions/upload-artifact@v4
@@ -237,6 +241,7 @@ jobs:
           name: coverage-omc-testsuite
           path: "languages/modelica/coverage/omc/*lcov*.info"
           if-no-files-found: ignore
+          retention-days: 7
 
   publish_reports:
     needs: [test, modelica_testsuite]
@@ -252,9 +257,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
-          cache: "npm"
-      - name: Install Dependencies
-        run: npm ci
       - name: Download All CTRF Artifacts
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -265,7 +267,7 @@ jobs:
       - name: Generate Consolidated Hierarchical Test Summary
         if: always()
         run: |
-          npx tsx scripts/consolidate-test-reports.ts \
+          node --experimental-strip-types scripts/consolidate-test-reports.ts \
             --dir=ctrf-artifacts \
             --github-step-summary \
             --output-json=ctrf-artifacts/ctrf-consolidated.json \
@@ -279,6 +281,7 @@ jobs:
             ctrf-artifacts/ctrf-consolidated.json
             ctrf-artifacts/test-report-unified.html
           if-no-files-found: ignore
+          retention-days: 7
       - name: Publish Test Report & PR Insights
         if: always() && github.actor != 'nektos/act' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: ctrf-io/github-test-reporter@v1
@@ -300,7 +303,7 @@ jobs:
       - name: Consolidate Code Coverage Reports
         if: always()
         run: |
-          npx tsx scripts/consolidate-coverage.ts \
+          node --experimental-strip-types scripts/consolidate-coverage.ts \
             --dir=coverage-artifacts \
             --github-step-summary \
             --output-lcov=coverage/lcov-consolidated.info \
@@ -315,6 +318,7 @@ jobs:
             coverage/lcov-consolidated.info
             coverage/coverage-summary.json
           if-no-files-found: ignore
+          retention-days: 7
 
   build:
     runs-on: ubuntu-latest
@@ -378,6 +382,7 @@ jobs:
         with:
           name: modelscript-vsix
           path: dist/extension/*.vsix
+          retention-days: 14
 
   cross_os_smoke:
     name: Cross-OS Smoke (${{ matrix.os }})
