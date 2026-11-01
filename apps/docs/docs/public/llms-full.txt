@@ -4963,14 +4963,14 @@ The CLI parser (`apps/cli/src/main.ts`) intercepts global execution flags prior 
 
 ### Environment Variables
 
-| Variable                                     | Default                 | Description                                                                                                                                                                                  |
-| :------------------------------------------- | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NO_COLOR`                                   | Unset                   | When set to any non-empty value, disables ANSI color sequences in terminal diagnostics, tables, and diff output.                                                                             |
-| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000` | Base URL for the Ansatz Platform, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                |
-| `ANSATZ_API_TOKEN` / `MODELSCRIPT_API_TOKEN` | Unset                   | Bearer token (`JWT` or `ms_bot_*` service token) used for non-interactive authentication against the Registry, Cloud HPC, and Hub APIs (also accepts `ANSATZ_TOKEN` or `MODELSCRIPT_TOKEN`). |
-| `MSX_EDITION`                                | `ee`                    | Runtime edition selector (`ee` for Enterprise Edition, `ce` for pure `AGPL-3.0-or-later` Community Edition). Setting `MSX_EDITION=ce` disables all `@modelscript/ee` commands and subsystems. |
-| `MSX_LICENSE_KEY`                            | Unset                   | Offline Ed25519-signed Enterprise license token (`msx_lic_<payload>.<sig>`) unlocking Enterprise CLI commands (`cloud`, `hil`, `attest`, `digital-twin`, `compliance`, `oslc`, `sysmlv2-api`). |
-| `MSX_LICENSE_ENFORCE`                        | `false` (`true` in prod)| When `true`, strictly requires a valid `MSX_LICENSE_KEY` before executing Enterprise CLI commands (otherwise runs in 30-day local evaluation mode).                                          |
+| Variable                                     | Default                  | Description                                                                                                                                                                                    |
+| :------------------------------------------- | :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NO_COLOR`                                   | Unset                    | When set to any non-empty value, disables ANSI color sequences in terminal diagnostics, tables, and diff output.                                                                               |
+| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000`  | Base URL for the Ansatz Platform, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                  |
+| `ANSATZ_API_TOKEN` / `MODELSCRIPT_API_TOKEN` | Unset                    | Bearer token (`JWT` or `ms_bot_*` service token) used for non-interactive authentication against the Registry, Cloud HPC, and Hub APIs (also accepts `ANSATZ_TOKEN` or `MODELSCRIPT_TOKEN`).   |
+| `MSX_EDITION`                                | `ee`                     | Runtime edition selector (`ee` for Enterprise Edition, `ce` for pure `AGPL-3.0-or-later` Community Edition). Setting `MSX_EDITION=ce` disables all `@modelscript/ee` commands and subsystems.  |
+| `MSX_LICENSE_KEY`                            | Unset                    | Offline Ed25519-signed Enterprise license token (`msx_lic_<payload>.<sig>`) unlocking Enterprise CLI commands (`cloud`, `hil`, `attest`, `digital-twin`, `compliance`, `oslc`, `sysmlv2-api`). |
+| `MSX_LICENSE_ENFORCE`                        | `false` (`true` in prod) | When `true`, strictly requires a valid `MSX_LICENSE_KEY` before executing Enterprise CLI commands (otherwise runs in 30-day local evaluation mode).                                            |
 
 ## Persistent Compiler Daemon (`--daemon`)
 
