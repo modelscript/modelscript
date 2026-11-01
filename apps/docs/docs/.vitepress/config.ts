@@ -321,6 +321,7 @@ export default defineConfig({
             { text: "CI/CD & GitHub Actions", link: "/guide/ci-cd" },
             { text: "Embedding Artifacts", link: "/guide/embedding" },
             { text: "Enterprise Administration", link: "/guide/administration" },
+            { text: "Trademark Policy", link: "/trademark" },
           ],
         },
         {
@@ -362,6 +363,7 @@ export default defineConfig({
             { text: "Enterprise Administration", link: "/guide/administration" },
             { text: "Embedding Artifacts", link: "/guide/embedding" },
             { text: "CI/CD & GitHub Actions", link: "/guide/ci-cd" },
+            { text: "Trademark Policy", link: "/trademark" },
           ],
         },
       ];
@@ -420,7 +422,7 @@ export default defineConfig({
     ],
     footer: {
       message:
-        "Open-Core under the GNU AGPL v3 License; Enterprise Edition (ee/) under the ModelScript Enterprise License.",
+        'Open-Core under the GNU AGPL v3 License; Enterprise Edition (ee/) under the ModelScript Enterprise License. • <a href="/trademark">Trademark Policy</a>',
       copyright: "Copyright © 2026-present Mohamad Omar Nachawati and ModelScript Contributors.",
     },
   },
