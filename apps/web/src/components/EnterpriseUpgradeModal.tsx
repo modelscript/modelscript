@@ -113,6 +113,7 @@ export default function EnterpriseUpgradeModal(): React.ReactElement | null {
         justifyContent: "center",
         zIndex: 9999,
         padding: "16px",
+        overflowY: "auto",
       }}
     >
       <div
@@ -124,6 +125,8 @@ export default function EnterpriseUpgradeModal(): React.ReactElement | null {
           border: "1px solid var(--ms-border)",
           borderRadius: "12px",
           maxWidth: "540px",
+          maxHeight: "calc(100dvh - 32px)",
+          overflowY: "auto",
           width: "100%",
           padding: "24px",
           boxShadow: "0 20px 48px rgba(0, 0, 0, 0.45)",

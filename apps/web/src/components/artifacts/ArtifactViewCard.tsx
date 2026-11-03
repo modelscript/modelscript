@@ -5,6 +5,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useState } from "reac
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { getArtifactView } from "../../api";
+import { useFeatureFlag } from "../../FeatureFlagContext";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import { safeJsonParse } from "../../util/json";
 import { parseModelicaParameters } from "../../util/modelica-params";
@@ -14,6 +15,7 @@ import ArtifactPlaceholder from "./ArtifactPlaceholder";
 import {
   type ArtifactViewCardProps,
   CardFooter,
+  getViewerExpectedHeight,
   resolvePlaceholder,
   resolveThumbnailUrls,
   StudioHeader,
@@ -28,6 +30,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   artifactId,
   initialArtifactView,
   forkedFromId,
+  figureNumber,
+  caption,
   onPinCreated,
   onThreadNodeSelected,
 }) => {
@@ -39,6 +43,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const [isHpcModalOpen, setIsHpcModalOpen] = useState(false);
+  const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
   const { resolvedColorMode } = useTheme();
   const navigate = useNavigate();
 
@@ -214,9 +219,61 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   }, [paramDeltaCount, resolvedForkedFromId, viewConfig.code]);
 
   if (loading) {
+    const expectedViewerHeight = getViewerExpectedHeight(artifact?.view_type, viewConfig, false);
+    const loadingCaption = caption && caption.trim() !== "" ? caption.trim() : undefined;
     return (
-      <Box p={3} display="flex" justifyContent="center" borderRadius="12px" border="1px solid var(--color-border)">
-        <Spinner size="small" />
+      <Box
+        borderRadius="12px"
+        border="1px solid var(--color-accent-blue-border, var(--color-border-default))"
+        background="var(--ms-brand-soft)"
+        overflow="hidden"
+        position="relative"
+        style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
+      >
+        <Box
+          p={3}
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          height={expectedViewerHeight}
+          minHeight={expectedViewerHeight}
+        >
+          <Spinner size="small" />
+        </Box>
+        <Box
+          height="40px"
+          minHeight="40px"
+          borderTop="1px solid var(--color-accent-blue-border, var(--color-border-default))"
+          backgroundColor="var(--ms-brand-soft, var(--color-canvas-subtle))"
+        />
+        {loadingCaption && (
+          <div
+            style={{
+              padding: "6px 12px",
+              fontSize: "12px",
+              color: "var(--color-fg-muted)",
+              borderTop: "1px solid var(--color-accent-blue-border, var(--color-border-default))",
+              background: "var(--ms-brand-soft)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            {figureNumber !== undefined && (
+              <span
+                style={{
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontWeight: 700,
+                  color: "var(--ms-brand, #0e7490)",
+                  fontSize: "11px",
+                }}
+              >
+                Fig. {figureNumber}:
+              </span>
+            )}
+            <span>{loadingCaption}</span>
+          </div>
+        )}
       </Box>
     );
   }
@@ -269,6 +326,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   ].includes(normalizedViewType);
 
   const isSimulatableArtifact =
+    hasCloudSolverFlag &&
     !isNonSimulatableViewType &&
     (Boolean(viewConfig?.code) ||
       [
@@ -372,12 +430,16 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       </div>
     );
 
+    const resolvedTitle = String(artifact?.title || artifact?.name || viewConfig?.title || "").trim();
+    const distinctCaption =
+      caption && caption.trim() !== "" && caption.trim() !== resolvedTitle ? caption.trim() : undefined;
+
     return (
       <>
         <Box
-          mt={2}
           borderRadius="12px"
-          border="1px solid var(--color-border)"
+          border="1px solid var(--color-accent-blue-border, var(--color-border-default))"
+          background="var(--ms-brand-soft)"
           overflow="hidden"
           style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
           onClick={(e) => {
@@ -413,6 +475,34 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
             onOpenFullScreen={() => setIsFullScreen(true)}
             {...(isSimulatableArtifact ? { onRunOnHpc: () => setIsHpcModalOpen(true) } : {})}
           />
+          {distinctCaption && (
+            <div
+              style={{
+                padding: "6px 12px",
+                fontSize: "12px",
+                color: "var(--color-fg-muted)",
+                borderTop: "1px solid var(--color-accent-blue-border, var(--color-border-default))",
+                background: "var(--ms-brand-soft)",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              {figureNumber !== undefined && (
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontWeight: 700,
+                    color: "var(--ms-brand, #0e7490)",
+                    fontSize: "11px",
+                  }}
+                >
+                  Fig. {figureNumber}:
+                </span>
+              )}
+              <span>{distinctCaption}</span>
+            </div>
+          )}
         </Box>
 
         {typeof document !== "undefined" ? createPortal(fullScreenOverlay, document.body) : fullScreenOverlay}
@@ -431,11 +521,15 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     );
   }
 
+  const resolvedTitle = String(artifact?.title || artifact?.name || viewConfig?.title || "").trim();
+  const distinctCaption =
+    caption && caption.trim() !== "" && caption.trim() !== resolvedTitle ? caption.trim() : undefined;
+
   return (
     <Box
-      mt={2}
       borderRadius="12px"
-      border="1px solid var(--color-border)"
+      border="1px solid var(--color-accent-blue-border, var(--color-border-default))"
+      background="var(--ms-brand-soft)"
       overflow="hidden"
       position="relative"
       style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
@@ -452,6 +546,34 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         onOpenFullScreen={() => setIsFullScreen(true)}
         {...(isSimulatableArtifact ? { onRunOnHpc: () => setIsHpcModalOpen(true) } : {})}
       />
+      {distinctCaption && (
+        <div
+          style={{
+            padding: "6px 12px",
+            fontSize: "12px",
+            color: "var(--color-fg-muted)",
+            borderTop: "1px solid var(--color-accent-blue-border, var(--color-border-default))",
+            background: "var(--ms-brand-soft)",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+          }}
+        >
+          {figureNumber !== undefined && (
+            <span
+              style={{
+                fontFamily: "var(--font-mono, monospace)",
+                fontWeight: 700,
+                color: "var(--ms-brand, #0e7490)",
+                fontSize: "11px",
+              }}
+            >
+              Fig. {figureNumber}:
+            </span>
+          )}
+          <span>{distinctCaption}</span>
+        </div>
+      )}
       {hpcModalElement}
       {isDiffOpen && resolvedForkedFromId && (
         <Suspense fallback={null}>

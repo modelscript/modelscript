@@ -15,15 +15,89 @@ interface RegistryPackage {
   date: string;
 }
 
-/** Fetches packages from the ModelScript registry /-/v1/search endpoint. */
+const CURATED_STDLIB_PACKAGES: RegistryPackage[] = [
+  {
+    name: "Modelica",
+    version: "4.1.0",
+    description: "Modelica Standard Library — multi-domain physical modeling (Electrical, Mechanical, Fluid, Thermal)",
+    date: "2026-01-01",
+  },
+  {
+    name: "SysML",
+    version: "2026.3.0",
+    description: "OMG Systems Modeling Language (SysML v2) & KerML Standard Library",
+    date: "2026-03-01",
+  },
+];
+
+/** Fetches packages from the Ansatz registry (`/api/v1/packages`, `/api/v1/libraries`, or `/-/v1/search`). */
 async function searchRegistry(apiUrl: string, text: string): Promise<RegistryPackage[]> {
-  const url = `${apiUrl}/-/v1/search?text=${encodeURIComponent(text)}&size=20`;
-  const resp = await fetch(url);
-  if (!resp.ok) return [];
-  const data = (await resp.json()) as {
-    objects: { package: RegistryPackage }[];
-  };
-  return data.objects.map((o) => o.package);
+  const base = (apiUrl || "/api/v1").replace(/\/+$/, "");
+  const q = text.trim();
+  const encodedQ = q ? `?q=${encodeURIComponent(q)}` : "";
+  const results: RegistryPackage[] = [];
+  const seen = new Set<string>();
+
+  for (const endpoint of [`${base}/packages${encodedQ}`, `${base}/libraries${encodedQ}`]) {
+    try {
+      const resp = await fetch(endpoint);
+      if (resp.ok) {
+        const data = (await resp.json()) as {
+          packages?: { name: string; latestVersion?: string; versions?: string[]; description?: string }[];
+        };
+        if (Array.isArray(data.packages)) {
+          for (const pkg of data.packages) {
+            if (!seen.has(pkg.name.toLowerCase())) {
+              seen.add(pkg.name.toLowerCase());
+              results.push({
+                name: pkg.name,
+                version: pkg.latestVersion || pkg.versions?.[0] || "1.0.0",
+                description: pkg.description || null,
+                date: "",
+              });
+            }
+          }
+          break;
+        }
+      }
+    } catch {
+      // try next endpoint
+    }
+  }
+
+  if (results.length === 0) {
+    try {
+      const url = `${apiUrl}/-/v1/search?text=${encodeURIComponent(text)}&size=20`;
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const data = (await resp.json()) as {
+          objects: { package: RegistryPackage }[];
+        };
+        for (const o of data.objects || []) {
+          if (!seen.has(o.package.name.toLowerCase())) {
+            seen.add(o.package.name.toLowerCase());
+            results.push(o.package);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const lowerQ = q.toLowerCase();
+  for (const std of CURATED_STDLIB_PACKAGES) {
+    if (
+      !seen.has(std.name.toLowerCase()) &&
+      (!lowerQ ||
+        std.name.toLowerCase().includes(lowerQ) ||
+        (std.description && std.description.toLowerCase().includes(lowerQ)))
+    ) {
+      results.push(std);
+    }
+  }
+
+  return results;
 }
 
 interface AddLibraryModalProps {

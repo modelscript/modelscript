@@ -43,3 +43,8 @@ export const deleteBot = async (botId: number) => {
   const { data } = await api.delete(`/users/me/bots/${botId}`);
   return data;
 };
+
+export const rotateBotToken = async (botId: number): Promise<{ success: boolean; token: string }> => {
+  const { data } = await api.post<{ success: boolean; token: string }>(`/users/me/bots/${botId}/rotate-token`);
+  return data;
+};

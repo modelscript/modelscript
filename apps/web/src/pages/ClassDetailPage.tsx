@@ -4,6 +4,7 @@ import { AlertIcon, LinkExternalIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import type { ClassDetail, ClassSummary, JobStatus } from "../api";
 import { getClassDetail, getClasses, getJobStatus } from "../api";
 import { getLinkedPackageStudies, type LinkedStudyJobItemPayload, type StudyDefinitionPayload } from "../api/compute";
@@ -47,6 +48,7 @@ const ClassDetailPage: React.FC = () => {
   const { name, version, className } = resolvePackageParams(rawParams);
   const navigate = useNavigate();
   usePageTitle(className && name && version ? `${className} | ${name}@${version}` : "Class Details");
+  const hasCae = useFeatureFlag("cae_cloud_solver");
   const [cls, setCls] = useState<ClassDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -288,8 +290,12 @@ const ClassDetailPage: React.FC = () => {
           className={className!}
           cls={cls}
           jobStatus={jobStatus}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          activeTab={activeTab === "studies" && !hasCae ? "overview" : activeTab}
+          setActiveTab={(tab) => {
+            if (tab === "studies" && !hasCae) return;
+            setActiveTab(tab);
+          }}
+          hasCae={hasCae}
           equationsCount={equations.length}
           studiesCount={
             (linkedStudies.bundledStudies?.length || 0) +
@@ -345,7 +351,7 @@ const ClassDetailPage: React.FC = () => {
 
             {activeTab === "equations" && <ClassEquationsTab equations={equations} className={className!} />}
 
-            {activeTab === "studies" && (
+            {hasCae && activeTab === "studies" && (
               <PackageStudiesTab
                 name={name!}
                 version={version!}

@@ -112,7 +112,7 @@ const packageJsonPath = path.resolve(
   import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url)),
   "../package.json",
 );
-let pkgVersion = "0.0.18";
+let pkgVersion = "0.1.0";
 try {
   const pkgContent = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
   if (pkgContent.version) pkgVersion = pkgContent.version;
@@ -557,6 +557,14 @@ await yargs(rawArgs)
       "Create an offline distribution zip archive from a package",
       () => import("./commands/pack.js"),
       "Pack",
+    ),
+  )
+  .command(
+    lazy(
+      "stdlib [action] [pack]",
+      "Manage, list, and synchronize polyglot standard libraries across 44 languages",
+      () => import("./commands/stdlib.js"),
+      "Stdlib",
     ),
   )
   .command(

@@ -1,7 +1,7 @@
 {
   "name": "modelscript-github-fs",
   "displayName": "ModelScript GitHub FileSystem",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "Provides a file system provider for GitHub repositories in VS Code Web.",
   "categories": [
@@ -40,6 +40,8 @@
     ]
   },
   "activationEvents": [
+    "onFileSystem:github",
+    "onStartupFinished",
     "*"
   ],
   "devDependencies": {

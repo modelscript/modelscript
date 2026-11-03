@@ -439,6 +439,64 @@ test("Email, 2FA, Registration & Admin Governance Across Deployment Modes", asyn
 
       assert.strictEqual(db.getUserById(memberId)?.email_verified, 1);
       assert.strictEqual(db.getUser2FAState(memberId)?.totp_enabled, 0);
+
+      // 4. When registrationMode is 'closed', admin can directly create users via POST /api/v1/admin/users
+      //    and valid invite codes can still be redeemed on /api/v1/auth/register
+      db.updateInstanceSettings({ registrationMode: "closed" }, 1);
+      try {
+        const directCreateRes = await request(app)
+          .post("/api/v1/admin/users")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .set("x-admin-sudo-token", sudoToken)
+          .send({
+            username: "provisioned_researcher",
+            email: "researcher@ansatz.social",
+            password: "ProvisionedPassword123!",
+            displayName: "Dr. Provisioned",
+            role: "moderator",
+            initialCredits: 250,
+            emailVerified: true,
+          });
+        assert.strictEqual(directCreateRes.status, 201);
+        assert.strictEqual(directCreateRes.body.user.username, "provisioned_researcher");
+        assert.strictEqual(directCreateRes.body.user.account_type, "moderator");
+        assert.strictEqual(directCreateRes.body.user.email_verified, 1);
+        assert.strictEqual(directCreateRes.body.user.credit_balance, 250);
+
+        const inviteRes = await request(app)
+          .post("/api/v1/admin/invites")
+          .set("Authorization", `Bearer ${adminToken}`)
+          .send({
+            note: "Closed-mode VIP invite",
+            maxUses: 1,
+            initialCredits: 300,
+          });
+        assert.strictEqual(inviteRes.status, 201);
+        const closedInviteCode = inviteRes.body.invite.code as string;
+
+        const uninvitedReg = await request(app).post("/api/v1/auth/register").set("X-Forwarded-For", "10.10.0.8").send({
+          username: "uninvited_guest",
+          email: "uninvited@example.com",
+          password: "GuestPassword123!",
+          acceptTerms: true,
+          captchaToken: "mock-token",
+        });
+        assert.strictEqual(uninvitedReg.status, 403);
+
+        const invitedReg = await request(app).post("/api/v1/auth/register").set("X-Forwarded-For", "10.10.0.9").send({
+          username: "vip_guest",
+          email: "vip@example.com",
+          password: "VipPassword123!",
+          acceptTerms: true,
+          captchaToken: "mock-token",
+          inviteCode: closedInviteCode,
+        });
+        assert.strictEqual(invitedReg.status, 201);
+        assert.strictEqual(invitedReg.body.user.email_verified, 1);
+        assert.strictEqual(invitedReg.body.user.credit_balance, 300);
+      } finally {
+        db.updateInstanceSettings({ registrationMode: "open" }, 1);
+      }
     },
   );
 
@@ -509,6 +567,124 @@ test("Email, 2FA, Registration & Admin Governance Across Deployment Modes", asyn
       assert.ok(outbox.length >= 1);
       assert.strictEqual(outbox[0]!.to, "notif_engineer@example.com");
       assert.ok(outbox[0]!.text.includes("New Personal Access Token created on your account."));
+    },
+  );
+
+  await t.test(
+    "Phase 6: Enforces 2FA security alert emails, requireAdmin2FA policy guards, session rotation on disable, and 2FA endpoint rate limiting",
+    async () => {
+      const regRes = await request(app).post("/api/v1/auth/register").set("X-Forwarded-For", "10.10.0.42").send({
+        username: "mfa_hardened_user",
+        email: "mfa_hardened@example.com",
+        password: "Password123!",
+        acceptTerms: true,
+        captchaToken: "mock-token",
+      });
+      assert.strictEqual(regRes.status, 201);
+      const userId = regRes.body.user.id as number;
+      const userToken = regRes.body.token as string;
+      db.verifyUserEmail(userId);
+      defaultMailer.clearSentMails();
+
+      // 1. Enable 2FA and verify outbound security alert email is sent
+      const setupRes = await request(app)
+        .post("/api/v1/auth/2fa/setup")
+        .set("Authorization", `Bearer ${userToken}`)
+        .set("X-Forwarded-For", "10.10.0.42");
+      assert.strictEqual(setupRes.status, 200);
+      const secret = setupRes.body.secret as string;
+
+      const verifyRes = await request(app)
+        .post("/api/v1/auth/2fa/verify")
+        .set("Authorization", `Bearer ${userToken}`)
+        .set("X-Forwarded-For", "10.10.0.42")
+        .send({ code: generateTotpCode(secret) });
+      assert.strictEqual(verifyRes.status, 200);
+      await new Promise((r) => setTimeout(r, 20));
+      assert.strictEqual(
+        defaultMailer
+          .getSentMails()
+          .some((m) => m.to === "mfa_hardened@example.com" && m.subject.includes("Two-Factor Authentication Enabled")),
+        true,
+      );
+
+      // 2. Regenerate backup codes and verify outbound security alert email is sent
+      defaultMailer.clearSentMails();
+      const regenRes = await request(app)
+        .post("/api/v1/auth/2fa/backup-codes/regenerate")
+        .set("Authorization", `Bearer ${userToken}`)
+        .set("X-Forwarded-For", "10.10.0.42")
+        .send({ password: "Password123!", code: generateTotpCode(secret) });
+      assert.strictEqual(regenRes.status, 200);
+      await new Promise((r) => setTimeout(r, 20));
+      assert.strictEqual(
+        defaultMailer
+          .getSentMails()
+          .some((m) => m.to === "mfa_hardened@example.com" && m.subject.includes("2FA Backup Codes Regenerated")),
+        true,
+      );
+
+      // 3. Admin with requireAdmin2FA enabled cannot self-disable 2FA
+      db.updateInstanceSettings({ requireAdmin2FA: true }, 1);
+      const adminDisableAttempt = await request(app)
+        .post("/api/v1/auth/2fa/disable")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("X-Forwarded-For", "10.10.0.43")
+        .send({ password: "AdminPassword123!", code: generateTotpCode(adminSecret) });
+      assert.strictEqual(adminDisableAttempt.status, 403);
+      assert.strictEqual(adminDisableAttempt.body.code, "ADMIN_2FA_REQUIRED");
+
+      // 4. Disable 2FA on regular user with revokeOtherSessions=true rotates token_version and sends security email
+      defaultMailer.clearSentMails();
+      const disableRes = await request(app)
+        .post("/api/v1/auth/2fa/disable")
+        .set("Authorization", `Bearer ${userToken}`)
+        .set("X-Forwarded-For", "10.10.0.42")
+        .send({
+          password: "Password123!",
+          code: generateTotpCode(secret),
+          revokeOtherSessions: true,
+        });
+      assert.strictEqual(disableRes.status, 200);
+      assert.ok(disableRes.body.token);
+      await new Promise((r) => setTimeout(r, 20));
+      assert.strictEqual(
+        defaultMailer
+          .getSentMails()
+          .some((m) => m.to === "mfa_hardened@example.com" && m.subject.includes("Two-Factor Authentication Disabled")),
+        true,
+      );
+
+      // Old token should now be rejected because revokeOtherSessions rotated token_version
+      const oldTokenMe = await request(app).get("/api/v1/auth/me").set("Authorization", `Bearer ${userToken}`);
+      assert.strictEqual(oldTokenMe.status, 401);
+      const newTokenMe = await request(app)
+        .get("/api/v1/auth/me")
+        .set("Authorization", `Bearer ${disableRes.body.token as string}`);
+      assert.strictEqual(newTokenMe.status, 200);
+
+      // 5. Rate limiting on authenticated 2FA endpoints triggers 429 after 5 failed attempts
+      const newToken = disableRes.body.token as string;
+      const setup2 = await request(app)
+        .post("/api/v1/auth/2fa/setup")
+        .set("Authorization", `Bearer ${newToken}`)
+        .set("X-Forwarded-For", "10.10.0.99");
+      assert.strictEqual(setup2.status, 200);
+
+      for (let i = 0; i < 5; i++) {
+        const badVerify = await request(app)
+          .post("/api/v1/auth/2fa/verify")
+          .set("Authorization", `Bearer ${newToken}`)
+          .set("X-Forwarded-For", "10.10.0.99")
+          .send({ code: "000000" });
+        assert.strictEqual(badVerify.status, 400);
+      }
+      const rateLimitedVerify = await request(app)
+        .post("/api/v1/auth/2fa/verify")
+        .set("Authorization", `Bearer ${newToken}`)
+        .set("X-Forwarded-For", "10.10.0.99")
+        .send({ code: "000000" });
+      assert.strictEqual(rateLimitedVerify.status, 429);
     },
   );
 });

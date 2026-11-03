@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { CircleIconButton } from "./SharedStyles";
 
-const Root = styled.header<{ $divider: boolean }>`
+const Root = styled.header<{ $divider: boolean; $scrolled: boolean }>`
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 50;
@@ -14,10 +14,29 @@ const Root = styled.header<{ $divider: boolean }>`
   flex-direction: column;
   gap: 12px;
   padding: 0 16px;
-  background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
-  backdrop-filter: saturate(180%) blur(24px);
-  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
   border-bottom: ${(p) => (p.$divider ? "1px solid var(--color-border)" : "none")};
+  transition: background-color 0.25s ease;
+`;
+
+const ProgressBarTrack = styled.div`
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: transparent;
+  pointer-events: none;
+  overflow: hidden;
+`;
+
+const ProgressBarFill = styled.div<{ $progress: number }>`
+  height: 100%;
+  width: ${(p) => `${Math.min(100, Math.max(0, p.$progress))}%`};
+  background: var(--ms-gradient, var(--ms-brand));
+  transition: width 0.12s ease-out;
 `;
 
 const Row = styled.div`
@@ -89,6 +108,8 @@ export interface PageHeaderProps {
   children?: React.ReactNode | undefined;
   /** Draw the bottom divider (default true; turn off when tabs follow). */
   divider?: boolean | undefined;
+  /** Optional reading progress percentage (0..100) rendered along the bottom edge. */
+  progress?: number | undefined;
 }
 
 /**
@@ -105,12 +126,24 @@ const PageHeader: React.FC<PageHeaderProps> = ({
   actions,
   children,
   divider = true,
+  progress,
 }) => {
   const navigate = useNavigate();
   const onBack = typeof back === "function" ? back : () => navigate(-1);
+  const [isScrolled, setIsScrolled] = React.useState(() => typeof window !== "undefined" && window.scrollY > 4);
+
+  React.useEffect(() => {
+    const onScroll = () => {
+      const next = window.scrollY > 4;
+      setIsScrolled((prev) => (prev === next ? prev : next));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <Root $divider={divider}>
+    <Root $divider={divider} $scrolled={isScrolled}>
       <Row>
         {back && (
           <CircleIconButton type="button" onClick={onBack} aria-label="Go back">
@@ -128,6 +161,11 @@ const PageHeader: React.FC<PageHeaderProps> = ({
         {actions && <Actions>{actions}</Actions>}
       </Row>
       {children && <Extra>{children}</Extra>}
+      {typeof progress === "number" && progress > 0 && (
+        <ProgressBarTrack aria-hidden="true">
+          <ProgressBarFill $progress={progress} />
+        </ProgressBarTrack>
+      )}
     </Root>
   );
 };

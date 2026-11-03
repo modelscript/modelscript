@@ -297,5 +297,41 @@ describe("VS Code DAP Debugger & 3D Multibody Animation Panel", () => {
 
       MultiBodyAnimationPanel.currentPanel = undefined;
     });
+
+    it("should flatten and step actual Modelica .mo files on disk via WasmSimulationStepper", async () => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const { WasmSimulationStepper } = await import("../src/dap/simulation-debug-session.js");
+
+      const tmpMoPath = path.join(process.cwd(), "packages/ide/tests/.tmp-stepper-test.mo");
+      const moSource = [
+        "model TankLevel",
+        "  parameter Real c = 2.0;",
+        "  Real level(start = 5.0);",
+        "  Real outflow;",
+        "equation",
+        "  der(level) = -c * level;",
+        "  outflow = 3.0 * level;",
+        "end TankLevel;",
+      ].join("\n");
+
+      fs.writeFileSync(tmpMoPath, moSource, "utf8");
+      try {
+        const stepper = new WasmSimulationStepper(tmpMoPath, 0.05);
+        await stepper.init();
+
+        assert.equal(stepper.loadedFromSource, true);
+        assert.equal(stepper.modelName, "TankLevel");
+        assert.equal(stepper.stateValues.get("level"), 5.0);
+        assert.equal(stepper.algebraicValues.get("outflow"), 15.0);
+
+        const snap = stepper.step();
+        assert.equal(snap.step, 1);
+        assert.equal(snap.variables["level"]! < 5.0 && snap.variables["level"]! > 4.5, true);
+        assert.equal(Math.abs(snap.variables["outflow"]! - 3.0 * snap.variables["level"]!) < 1e-6, true);
+      } finally {
+        if (fs.existsSync(tmpMoPath)) fs.unlinkSync(tmpMoPath);
+      }
+    });
   });
 });

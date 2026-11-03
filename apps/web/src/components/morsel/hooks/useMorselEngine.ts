@@ -10,7 +10,7 @@ import { AnimationController } from "../cad-viewer/animation-controller";
 import { extractCadComponents, parseSourceCadVariables } from "../cad-viewer/parse-cad-annotations";
 import { type HistorianSession } from "../CosimPanel";
 import { type ExperimentOverrides, type ParameterInfo, type SweepState } from "../SimulationParameters";
-import { getCadComponents, simulate } from "../util/lsp-bridge";
+import { extractPrimaryModelicaClassName, getCadComponents, simulate } from "../util/lsp-bridge";
 import { getMorselMqttClient } from "../util/mqtt-client";
 import { useMqttSimulation } from "../util/use-mqtt-simulation";
 
@@ -23,6 +23,7 @@ export interface UseMorselEngineProps {
   editor: editor.ICodeEditor | null;
   showResultsView: boolean;
   setShowResultsView: (v: boolean) => void;
+  showCadView?: boolean | undefined;
   isNarrow: boolean;
   setMobileTab: (tab: any) => void;
   setTreeVisible: (v: boolean) => void;
@@ -940,6 +941,7 @@ export function useMorselEngine({
   editor,
   showResultsView,
   setShowResultsView,
+  showCadView = false,
   isNarrow,
   setMobileTab,
   setTreeVisible,
@@ -951,6 +953,9 @@ export function useMorselEngine({
   const prefIntervals = modelingPrefs.defaultNumberOfIntervals ?? 500;
   const prefTolerance = modelingPrefs.solverTolerance ?? modelingPrefs.defaultRelativeTolerance ?? 1e-4;
   const prefSolver = modelingPrefs.defaultSolver ?? "cvode";
+  const prefFlattenerBackend = modelingPrefs.flattenerBackend ?? "hybrid";
+  const prefDiagramAutoLayout = modelingPrefs.diagramAutoLayout ?? true;
+  const prefExperimentalFeatures = modelingPrefs.enableExperimentalFeatures ?? false;
 
   // ── Live Editor Value Tracking ──
   const [editorValue, setEditorValue] = useState<string>(content);
@@ -994,9 +999,21 @@ export function useMorselEngine({
         interval,
         numberOfIntervals,
         solver,
+        flattenerBackend: prefFlattenerBackend,
+        diagramAutoLayout: prefDiagramAutoLayout,
+        enableExperimentalFeatures: prefExperimentalFeatures,
       };
     },
-    [editorValue, prefStopTime, prefIntervals, prefTolerance, prefSolver],
+    [
+      editorValue,
+      prefStopTime,
+      prefIntervals,
+      prefTolerance,
+      prefSolver,
+      prefFlattenerBackend,
+      prefDiagramAutoLayout,
+      prefExperimentalFeatures,
+    ],
   );
 
   // ── Simulation State ──
@@ -1032,9 +1049,12 @@ export function useMorselEngine({
   }, [buildExperimentMeta]);
 
   // ── CAD & 3D Animation State ──
-  const [cadComponents, setCadComponents] = useState<CadComponent[]>([]);
+  const [cadComponents, setCadComponents] = useState<CadComponent[]>(() =>
+    content ? extractCadComponents(parseSourceCadVariables(content)) : [],
+  );
   const [vtkBuffer, setVtkBuffer] = useState<Uint8Array | null>(null);
   const animationControllerRef = useRef<AnimationController | null>(null);
+  const lastSimTrajectoryRef = useRef<{ t: number[]; y: number[][]; states: string[] } | null>(null);
   const [animationMode, setAnimationMode] = useState<"stopped" | "playing" | "paused" | "live">("stopped");
   const [cosimDataSource, setCosimDataSource] = useState<"local" | "mqtt-live" | "historian-replay">("local");
   const mqttSessionId = selectedTreeClassName ? `live-${dialect}-${selectedTreeClassName}` : `live-${dialect}-default`;
@@ -1238,14 +1258,16 @@ export function useMorselEngine({
     setVtkBuffer(null);
 
     if (!selectedTreeClassName) {
-      setCadComponents([]);
+      const fallback = extractCadComponents(parseSourceCadVariables(editorValue));
+      setCadComponents(fallback);
       return;
     }
 
-    (getCadComponents as any)(documentUri, selectedTreeClassName)
+    getCadComponents(documentUri, selectedTreeClassName)
       .then((components: any[]) => {
         if (cancelled) return;
-        let parsed: any[] = components;
+        let parsed: CadComponent[] =
+          Array.isArray(components) && components.length > 0 ? extractCadComponents(components) : [];
         if (!parsed || parsed.length === 0) {
           const sourceVars = parseSourceCadVariables(editorValue);
           parsed = extractCadComponents(sourceVars);
@@ -1255,7 +1277,7 @@ export function useMorselEngine({
           setVtkBuffer(null);
           parsed = stepComps;
         }
-        setCadComponents(parsed as CadComponent[]);
+        setCadComponents(parsed);
 
         let ctrl = animationControllerRef.current;
         if (!ctrl && parsed.length > 0) {
@@ -1267,23 +1289,36 @@ export function useMorselEngine({
         if (ctrl && parsed.length > 0) {
           ctrl.setBindings(
             parsed
-              .filter((c: any) => c.dynamicBindings && c.dynamicBindings.length > 0)
-              .map((c: any) => ({
+              .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
+              .map((c) => ({
                 componentName: c.name,
                 bindings: c.dynamicBindings!.map((b: any) => ({
-                  property: b.property as "position" | "rotation" | "scale",
+                  property: b.property,
                   index: b.index,
                   variable: b.variable,
+                  unit: b.unit,
+                  scaleFactor: b.scaleFactor ?? b.scale,
                 })),
               })),
           );
           for (const comp of parsed) {
-            const cadObj = typeof comp.cad === "object" && comp.cad ? comp.cad : {};
+            const cadObj = typeof comp.cad === "object" && comp.cad ? comp.cad : ({} as any);
             ctrl.setDefault(comp.name, {
               position: cadObj.position ?? [0, 0, 0],
               rotation: cadObj.rotation ?? [0, 0, 0],
               scale: cadObj.scale ?? [1, 1, 1],
+              ...(comp.defaults ?? {}),
             });
+          }
+          if (lastSimTrajectoryRef.current && !ctrl.hasData) {
+            ctrl.loadTimeseries(
+              lastSimTrajectoryRef.current.t,
+              lastSimTrajectoryRef.current.y,
+              lastSimTrajectoryRef.current.states,
+            );
+            if (parsed.some((c) => c.dynamicBindings && c.dynamicBindings.length > 0)) {
+              ctrl.play();
+            }
           }
         }
       })
@@ -1316,13 +1351,14 @@ export function useMorselEngine({
 
   // ── Lightweight re-simulate when parameter overrides change ──
   useEffect(() => {
-    if (!showResultsView || parameterOverrides.size === 0 || !selectedTreeClassName) return;
+    const targetClass = selectedTreeClassName || extractPrimaryModelicaClassName(editorValue || content) || undefined;
+    if ((!showResultsView && !showCadView) || parameterOverrides.size === 0 || !targetClass) return;
 
     const timer = setTimeout(async () => {
       try {
         const overrideObj = Object.fromEntries(parameterOverrides);
         const result = await simulate(documentUri, {
-          className: selectedTreeClassName,
+          className: targetClass,
           parameterOverrides: overrideObj,
           sweepConfig: sweepState ?? undefined,
           startTime: experimentOverrides.startTime ?? simExperiment.startTime,
@@ -1334,6 +1370,7 @@ export function useMorselEngine({
           atol: experimentOverrides.atol,
           equidistant: experimentOverrides.equidistant,
           steadyStateOnly: experimentOverrides.steadyStateOnly,
+          flattenerBackend: prefFlattenerBackend,
         });
 
         if (result.error) throw new Error(result.error);
@@ -1375,6 +1412,10 @@ export function useMorselEngine({
             return row;
           });
           setLocalSimulationData(chartData);
+          lastSimTrajectoryRef.current = { t: result.t, y: result.y, states };
+          if (animationControllerRef.current && cadComponents.length > 0) {
+            animationControllerRef.current.loadTimeseries(result.t, result.y, states);
+          }
         }
         setSimulationStatus({ status: "completed", error: null });
       } catch (e) {
@@ -1390,14 +1431,19 @@ export function useMorselEngine({
     parameterOverrides,
     sweepState,
     showResultsView,
+    showCadView,
+    cadComponents.length,
     experimentOverrides,
     simExperiment,
     prefSolver,
     prefIntervals,
     prefTolerance,
+    prefFlattenerBackend,
     buildExperimentMeta,
     selectedTreeClassName,
     documentUri,
+    editorValue,
+    content,
   ]);
 
   // ── Full Simulation Execution ──
@@ -1407,9 +1453,10 @@ export function useMorselEngine({
 
     try {
       const overrideObj = Object.fromEntries(parameterOverrides);
+      const targetClass = selectedTreeClassName || extractPrimaryModelicaClassName(editorValue || content) || undefined;
 
       const result = await simulate(documentUri, {
-        className: selectedTreeClassName ?? undefined,
+        className: targetClass,
         parameterOverrides: overrideObj,
         sweepConfig: sweepState ?? undefined,
         startTime: experimentOverrides.startTime ?? simExperiment.startTime,
@@ -1421,6 +1468,7 @@ export function useMorselEngine({
         atol: experimentOverrides.atol,
         equidistant: experimentOverrides.equidistant,
         steadyStateOnly: experimentOverrides.steadyStateOnly,
+        flattenerBackend: prefFlattenerBackend,
       });
 
       if (result.error) {
@@ -1468,13 +1516,16 @@ export function useMorselEngine({
           return row;
         });
         setLocalSimulationData(chartData);
+        lastSimTrajectoryRef.current = { t: result.t, y: result.y, states };
       }
       setSimulationStatus({ status: "completed" });
-      setShowResultsView(true);
-      if (isNarrow) {
-        setMobileTab("results");
-        setTreeVisible(false);
-        setView(viewDiagramEnum);
+      if (!showCadView) {
+        setShowResultsView(true);
+        if (isNarrow) {
+          setMobileTab("results");
+          setTreeVisible(false);
+          setView(viewDiagramEnum);
+        }
       }
 
       // ── Animation setup ──
@@ -1490,14 +1541,14 @@ export function useMorselEngine({
             .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
             .map((c) => ({
               componentName: c.name,
-              bindings: c.dynamicBindings!.map((b) => ({
-                property: b.property as "position" | "rotation" | "scale",
+              bindings: c.dynamicBindings!.map((b: any) => ({
+                property: b.property,
                 index: b.index,
                 variable: b.variable,
-                unit: (b as any).unit,
-                scale: (b as any).scale,
-                offset: (b as any).offset,
-                format: (b as any).format,
+                unit: b.unit,
+                scaleFactor: b.scaleFactor ?? b.scale,
+                offset: b.offset,
+                format: b.format,
               })),
             })),
         );
@@ -1506,6 +1557,7 @@ export function useMorselEngine({
             position: comp.cad.position ?? [0, 0, 0],
             rotation: comp.cad.rotation ?? [0, 0, 0],
             scale: comp.cad.scale ?? [1, 1, 1],
+            ...(comp.defaults ?? {}),
           });
         }
         controller.loadTimeseries(result.t, result.y, result.states);
@@ -1519,11 +1571,13 @@ export function useMorselEngine({
         return;
       }
       setSimulationStatus({ status: "failed", error: e instanceof Error ? e.message : String(e) });
-      setShowResultsView(true);
-      if (isNarrow) {
-        setMobileTab("results");
-        setTreeVisible(false);
-        setView(viewDiagramEnum);
+      if (!showCadView) {
+        setShowResultsView(true);
+        if (isNarrow) {
+          setMobileTab("results");
+          setTreeVisible(false);
+          setView(viewDiagramEnum);
+        }
       }
     }
   };

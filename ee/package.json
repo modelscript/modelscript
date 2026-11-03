@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/ee",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "private": true,
   "description": "ModelScript Enterprise Edition (Air-Gapped Compliance, Offline Ed25519 Licensing & Enterprise Control Plane)",
   "keywords": [

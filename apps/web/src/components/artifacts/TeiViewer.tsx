@@ -12,7 +12,9 @@ const TeiContainer = styled.div<{ $isFullScreen?: boolean | undefined }>`
   color: var(--color-fg-default);
   background-color: var(--color-canvas-default);
   padding: ${(props) => (props.$isFullScreen ? "40px 10%" : "20px")};
+  height: ${(props) => (props.$isFullScreen ? "100%" : "400px")};
   max-height: ${(props) => (props.$isFullScreen ? "100%" : "400px")};
+  box-sizing: border-box;
   overflow-y: auto;
   border-radius: 6px;
 
@@ -109,17 +111,21 @@ const TeiViewer: React.FC<TeiViewerProps> = ({ viewConfig, isFullScreen }) => {
 
   if (loading) {
     return (
-      <Box p={3} display="flex" justifyContent="center">
-        <Spinner size="small" />
-      </Box>
+      <TeiContainer $isFullScreen={isFullScreen}>
+        <Box height="100%" display="flex" justifyContent="center" alignItems="center">
+          <Spinner size="small" />
+        </Box>
+      </TeiContainer>
     );
   }
 
   if (error) {
     return (
-      <Box p={3} color="var(--color-danger-fg)">
-        <Text>{error}</Text>
-      </Box>
+      <TeiContainer $isFullScreen={isFullScreen}>
+        <Box p={3} color="var(--color-danger-fg)">
+          <Text>{error}</Text>
+        </Box>
+      </TeiContainer>
     );
   }
 

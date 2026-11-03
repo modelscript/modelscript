@@ -4,8 +4,9 @@ import { AlertIcon, ArrowLeftIcon } from "@primer/octicons-react";
 import { Heading, Label, Text } from "@primer/react";
 import React, { Suspense, useContext, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import styled, { keyframes } from "styled-components";
+import styledImport, { keyframes } from "styled-components";
 import { useAuth } from "../AuthContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
 import { TerminalLogViewer } from "../components/TerminalLogViewer";
@@ -25,6 +26,9 @@ import { PackageReadmeTab } from "./package/tabs/PackageReadmeTab";
 import { PackageStudiesTab } from "./package/tabs/PackageStudiesTab";
 import { PackageVersionsTab } from "./package/tabs/PackageVersionsTab";
 import { HeaderBar, TABS, TreeSidebar, type PolyglotDomain, type TabId } from "./package/types";
+
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 const PublishPackageModal = React.lazy(() => import("../components/PublishPackageModal"));
 
@@ -96,6 +100,13 @@ const TabBar = styled.div`
   padding: 0 40px;
   box-sizing: border-box;
   overflow-x: auto;
+  position: sticky;
+  top: var(--dev-header-height, 0px);
+  z-index: 45;
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  transition: background-color 0.25s ease;
 
   @media (max-width: 960px) {
     padding: 0 16px;
@@ -178,9 +189,22 @@ const PackageDetailPage: React.FC = () => {
   const { name, version } = resolvePackageParams(rawParams);
   const navigate = useNavigate();
   usePageTitle(name && version ? `${name}@${version}` : "Package Details");
+  const hasCae = useFeatureFlag("cae_cloud_solver");
+  const hasDigitalThread = useFeatureFlag("digital_thread_explorer");
+  const hasArtifactsTab = useFeatureFlag("package_artifacts_tab");
+  const hasCompareTab = useFeatureFlag("package_version_compare");
+  const visibleTabs = React.useMemo(() => {
+    return TABS.filter((t) => {
+      if (t.id === "studies" && !hasCae) return false;
+      if (t.id === "digital-thread" && !hasDigitalThread) return false;
+      if (t.id === "artifacts" && !hasArtifactsTab) return false;
+      if (t.id === "compare" && !hasCompareTab) return false;
+      return true;
+    });
+  }, [hasCae, hasDigitalThread, hasArtifactsTab, hasCompareTab]);
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab") as TabId | null;
-  const activeTab: TabId = rawTab && TABS.some((t) => t.id === rawTab) ? rawTab : "readme";
+  const activeTab: TabId = rawTab && visibleTabs.some((t) => t.id === rawTab) ? rawTab : "readme";
   const { openCompose } = useContext(ComposeContext);
   const { user } = useAuth();
 
@@ -207,6 +231,7 @@ const PackageDetailPage: React.FC = () => {
   });
 
   const handleOpenArtifact = (av: { id: string | number }) => {
+    if (!hasArtifactsTab) return;
     setTab("artifacts");
     setTimeout(() => {
       const el = document.getElementById(`artifact-${av.id}`);
@@ -266,27 +291,30 @@ const PackageDetailPage: React.FC = () => {
   return (
     <PageWrap>
       {/* ── Left Sidebar (Classes or Polyglot Artifacts) ── */}
-      {(pkg.tree.length > 0 || pkg.artifactViewers.length > 0) && (
+      {(pkg.tree.length > 0 || (hasArtifactsTab && pkg.artifactViewers.length > 0)) && (
         <PackageTreeSidebar
           name={name!}
           version={version!}
           rootClassName={pkg.rootClassName}
           mobileTreeOpen={mobileTreeOpen}
           setMobileTreeOpen={setMobileTreeOpen}
-          availableDomains={pkg.availableDomains}
-          selectedDomain={selectedDomain}
+          availableDomains={
+            hasArtifactsTab ? pkg.availableDomains : pkg.availableDomains.filter((d) => d.id === "modelica")
+          }
+          selectedDomain={hasArtifactsTab ? selectedDomain : "modelica"}
           setSelectedDomain={setSelectedDomain}
           treeSearchFilter={treeSearchFilter}
           setTreeSearchFilter={setTreeSearchFilter}
           filteredTree={pkg.filteredTree}
-          filteredSysml={pkg.filteredSysml}
-          filteredCad={pkg.filteredCad}
-          filteredDatasets={pkg.filteredDatasets}
-          filteredFmu={pkg.filteredFmu}
-          filteredOther={pkg.filteredOther}
+          filteredSysml={hasArtifactsTab ? pkg.filteredSysml : []}
+          filteredCad={hasArtifactsTab ? pkg.filteredCad : []}
+          filteredDatasets={hasArtifactsTab ? pkg.filteredDatasets : []}
+          filteredFmu={hasArtifactsTab ? pkg.filteredFmu : []}
+          filteredOther={hasArtifactsTab ? pkg.filteredOther : []}
           onOpenArtifact={handleOpenArtifact}
           collapsed={treeCollapsed}
           onToggleCollapse={() => setTreeCollapsed((p) => !p)}
+          totalClassesCount={pkg.classes.length}
         />
       )}
 
@@ -298,6 +326,8 @@ const PackageDetailPage: React.FC = () => {
           rootClassName={pkg.rootClassName}
           description={pkg.description}
           publishedAt={pkg.publishedAt}
+          license={pkg.libraryDetail?.license || pkg.packument?.license}
+          classCount={pkg.classes.length}
           canManage={pkg.canManage}
           isCurrentYanked={pkg.isCurrentYanked}
           currentYankReason={pkg.currentYankReason}
@@ -322,7 +352,7 @@ const PackageDetailPage: React.FC = () => {
 
         {/* ── Tab Bar ── */}
         <TabBar role="tablist">
-          {TABS.map((tab) => {
+          {visibleTabs.map((tab) => {
             const depCount = Object.keys(pkg.dependencies || {}).length;
             const studiesCount =
               (pkg.linkedStudies?.bundledStudies?.length || 0) +
@@ -399,7 +429,7 @@ const PackageDetailPage: React.FC = () => {
               />
             )}
 
-            {activeTab === "compare" && name && version && (
+            {hasCompareTab && activeTab === "compare" && name && version && (
               <PackageCompareTab
                 name={name}
                 version={version}
@@ -409,7 +439,7 @@ const PackageDetailPage: React.FC = () => {
               />
             )}
 
-            {activeTab === "digital-thread" && (
+            {hasDigitalThread && activeTab === "digital-thread" && (
               <PackageDigitalThreadTab
                 name={name!}
                 version={version!}
@@ -423,7 +453,7 @@ const PackageDetailPage: React.FC = () => {
               />
             )}
 
-            {activeTab === "artifacts" && (
+            {hasArtifactsTab && activeTab === "artifacts" && (
               <PackageArtifactsTab
                 name={name!}
                 version={version!}
@@ -433,13 +463,17 @@ const PackageDetailPage: React.FC = () => {
                 displayedArtifactViewers={pkg.displayedArtifactViewers}
                 fallbackArtifacts={pkg.artifacts}
                 linkedStudies={pkg.linkedStudies}
-                onViewArtifactStudies={(artifactPath) => {
-                  setSearchParams({ tab: "studies", artifact: artifactPath });
-                }}
+                onViewArtifactStudies={
+                  hasCae
+                    ? (artifactPath) => {
+                        setSearchParams({ tab: "studies", artifact: artifactPath });
+                      }
+                    : undefined
+                }
               />
             )}
 
-            {activeTab === "studies" && (
+            {hasCae && activeTab === "studies" && (
               <PackageStudiesTab
                 name={name!}
                 version={version!}

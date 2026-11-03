@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/dsl",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "ModelScript DSL syntax combinators, GLR parser generator, and term-rewriting engines",
   "keywords": [
     "modelscript",

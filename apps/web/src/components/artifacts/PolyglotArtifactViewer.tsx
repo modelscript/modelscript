@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseSimulinkTextToSystem, renderSimulinkSvg } from "@modelscript/diagram/simulink-diagram-builder";
 import { renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
 import {
   BeakerIcon,
@@ -58,8 +59,11 @@ export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions):
   });
   const maxH = options?.maxHeight ?? (options?.isFullScreen ? "none" : "360px");
   return sanitized.replace(/<svg\b([^>]*)>/i, (_match, attrs: string) => {
+    const existingStyle = /\sstyle=["']([^"']*)["']/i.exec(attrs)?.[1] ?? "";
+    const bgMatch = /\bbackground(?:-color)?\s*:\s*([^;]+)/i.exec(existingStyle);
+    const preservedBg = bgMatch ? `background-color:${bgMatch[1]!.trim()};border-radius:6px;` : "";
     const cleanedAttrs = attrs.replace(/\sstyle=["'][^"']*["']/i, "");
-    return `<svg${cleanedAttrs} style="width:100%;max-width:100%;height:auto;max-height:${maxH};display:block;margin:0 auto;">`;
+    return `<svg${cleanedAttrs} style="${preservedBg}width:100%;max-width:100%;height:auto;max-height:${maxH};display:block;margin:0 auto;">`;
   });
 }
 
@@ -73,6 +77,24 @@ export function renderSourceToDiagramSvg(
 ): { svg: string; nodeCount: number; edgeCount: number } {
   if (!content || !content.trim()) {
     return { svg: "", nodeCount: 0, edgeCount: 0 };
+  }
+
+  if (dslLang.toLowerCase() === "simulink") {
+    try {
+      const parsed = parseSimulinkTextToSystem(content, _fallbackTitle);
+      const blocksArr = Array.isArray(parsed.rootSystem.blocks) ? parsed.rootSystem.blocks : [];
+      const linesArr = parsed.rootSystem.lines ?? [];
+      if (blocksArr.length > 0) {
+        const rawSvg = renderSimulinkSvg(parsed);
+        return {
+          svg: sanitizeSvgMarkup(rawSvg, { isFullScreen }),
+          nodeCount: blocksArr.length,
+          edgeCount: linesArr.length,
+        };
+      }
+    } catch {
+      // Fall through to generic polyglot extractor if Simulink parse fails
+    }
   }
 
   const nodes: {
@@ -471,8 +493,9 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
       style={{
         position: "relative",
         width: "100%",
-        height: isFullScreen ? "100%" : "auto",
+        height: "100%",
         minHeight: minHeight ?? (isFullScreen ? "100%" : "340px"),
+        boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -509,9 +532,10 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
           gap: 2,
           padding: "2px 4px",
           borderRadius: 6,
-          background: "rgba(13, 17, 23, 0.82)",
-          border: "1px solid var(--color-border-muted)",
+          background: "rgba(15, 23, 42, 0.88)",
+          border: "1px solid rgba(148, 163, 184, 0.28)",
           backdropFilter: "blur(6px)",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.22)",
           zIndex: 5,
         }}
       >
@@ -522,7 +546,7 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
           style={{
             background: "transparent",
             border: "none",
-            color: "var(--color-fg-muted)",
+            color: "#cbd5e1",
             cursor: "pointer",
             padding: "2px 6px",
             fontSize: 12,
@@ -541,7 +565,7 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
           style={{
             background: "transparent",
             border: "none",
-            color: "var(--color-fg-default)",
+            color: "#f8fafc",
             cursor: "pointer",
             padding: "2px 6px",
             fontSize: 10,
@@ -558,7 +582,7 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
           style={{
             background: "transparent",
             border: "none",
-            color: "var(--color-fg-muted)",
+            color: "#cbd5e1",
             cursor: "pointer",
             padding: "2px 6px",
             fontSize: 12,
@@ -572,15 +596,15 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
   );
 };
 
-const Container = styled(Box)<{ $isFullScreen?: boolean | undefined }>`
+const Container = styled(Box)<{ $isFullScreen?: boolean | undefined; $standalone?: boolean | undefined }>`
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: ${(p) => (p.$isFullScreen ? "100%" : "auto")};
+  height: ${(p) => (p.$isFullScreen ? "100%" : "440px")};
   background-color: var(--color-canvas-subtle);
-  border-radius: ${(p) => (p.$isFullScreen ? "0" : "6px")};
+  border-radius: ${(p) => (p.$isFullScreen || !p.$standalone ? "0" : "6px")};
   overflow: hidden;
-  border: ${(p) => (p.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
+  border: ${(p) => (p.$isFullScreen || !p.$standalone ? "none" : "1px solid var(--color-border-default)")};
 `;
 
 const Toolbar = styled(Box)`
@@ -590,9 +614,10 @@ const Toolbar = styled(Box)`
   height: 36px;
   min-height: 36px;
   padding: 0 12px;
-  background-color: var(--color-canvas-default);
-  border-bottom: 1px solid var(--color-border-muted);
+  background-color: var(--ms-brand-soft, var(--color-canvas-subtle));
+  border-bottom: 1px solid var(--color-accent-blue-border, var(--color-border-default));
   gap: 8px;
+  overflow: hidden;
 `;
 
 const ToggleGroup = styled.div`
@@ -616,25 +641,25 @@ const ToggleBtn = styled.button<{ $active: boolean }>`
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  background: ${(p) => (p.$active ? "var(--color-accent-subtle)" : "transparent")};
-  color: ${(p) => (p.$active ? "var(--color-accent-fg)" : "var(--color-fg-muted)")};
+  background: ${(p) => (p.$active ? "var(--ms-brand, #0e7490)" : "transparent")};
+  color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default)")};
+  opacity: ${(p) => (p.$active ? 1 : 0.82)};
+  box-shadow: ${(p) => (p.$active ? "0 1px 2px rgba(0, 0, 0, 0.12)" : "none")};
   transition: all 0.15s ease;
 
   &:hover {
-    color: var(--color-fg-default);
+    opacity: 1;
+    color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default)")};
   }
 `;
 
-const ContentGrid = styled(Box)<{ $isFullScreen?: boolean | undefined; $hasSidebar?: boolean | undefined }>`
+const ContentGrid = styled(Box)<{ $isFullScreen?: boolean | undefined }>`
   display: grid;
   flex: 1;
-  grid-template-columns: ${(p) => (p.$isFullScreen || !p.$hasSidebar ? "1fr" : "1fr 220px")};
-  min-height: ${(p) => (p.$isFullScreen ? "0" : "360px")};
-  height: ${(p) => (p.$isFullScreen ? "calc(100% - 36px)" : "auto")};
-
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-  }
+  grid-template-columns: 1fr;
+  min-height: 0;
+  height: calc(100% - 36px);
+  overflow: hidden;
 `;
 
 const DiagramPane = styled(Box)<{ $isFullScreen?: boolean | undefined }>`
@@ -646,14 +671,18 @@ const DiagramPane = styled(Box)<{ $isFullScreen?: boolean | undefined }>`
   background: radial-gradient(circle at center, var(--color-canvas-default) 0%, var(--color-canvas-subtle) 100%);
   position: relative;
   overflow: auto;
-  min-height: ${(p) => (p.$isFullScreen ? "100%" : "340px")};
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
 `;
 
 const CodePane = styled.div<{ $isFullScreen?: boolean | undefined }>`
   background: var(--color-canvas-default);
   overflow: auto;
-  max-height: ${(p) => (p.$isFullScreen ? "100%" : "460px")};
-  min-height: ${(p) => (p.$isFullScreen ? "100%" : "340px")};
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
   font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
@@ -683,74 +712,53 @@ const LineText = styled.span`
   color: var(--color-fg-default);
 `;
 
-const Sidebar = styled(Box)`
-  padding: 16px;
-  background-color: var(--color-canvas-default);
-  border-left: 1px solid var(--color-border-muted);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-
-  @media (max-width: 768px) {
-    border-left: none;
-    border-top: 1px solid var(--color-border-muted);
-  }
-`;
-
-const StatBox = styled(Box)`
-  padding: 10px 12px;
-  background-color: var(--color-canvas-subtle);
-  border-radius: 6px;
-  border: 1px solid var(--color-border-muted);
-`;
-
 const DOMAIN_META: Record<string, { badge: string; accent: string; commentPrefix: RegExp; ext?: string }> = {
-  aspen: { badge: "ASPEN PLUS FLOWSHEET", accent: "#10b981", commentPrefix: /^\s*(;|\*)/, ext: ".bkp" },
-  swmm: { badge: "EPA SWMM HYDRAULICS", accent: "#0ea5e9", commentPrefix: /^\s*;/, ext: ".inp" },
-  touchstone: { badge: "TOUCHSTONE S-PARAMS", accent: "#8b5cf6", commentPrefix: /^\s*!/, ext: ".s2p" },
-  ibis: { badge: "IBIS I/O BUFFER", accent: "#ec4899", commentPrefix: /^\s*\|/, ext: ".ibs" },
-  opendss: { badge: "OPENDSS POWER GRID", accent: "#f59e0b", commentPrefix: /^\s*(!|\/\/)/, ext: ".dss" },
-  openscenario: { badge: "ASAM OPENSCENARIO", accent: "#3b82f6", commentPrefix: /^\s*<!--/, ext: ".xosc" },
-  relap5: { badge: "RELAP5 THERMAL-HYDRAULICS", accent: "#ef4444", commentPrefix: /^\s*(\*|=)/, ext: ".i" },
-  eclipse: { badge: "ECLIPSE RESERVOIR", accent: "#d97706", commentPrefix: /^\s*--/, ext: ".data" },
-  sbml: { badge: "SBML SYSTEMS BIOLOGY", accent: "#14b8a6", commentPrefix: /^\s*<!--/, ext: ".sbml" },
-  jsbsim: { badge: "JSBSIM FLIGHT DYNAMICS", accent: "#6366f1", commentPrefix: /^\s*<!--/, ext: ".xml" },
-  scad: { badge: "OPENSCAD CSG SOLID", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".scad" },
-  csg: { badge: "OPENSCAD CSG SOLID", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".scad" },
-  adams: { badge: "MSC ADAMS MULTIBODY", accent: "#f97316", commentPrefix: /^\s*!/, ext: ".adm" },
-  autosar: { badge: "AUTOSAR ARXML", accent: "#0284c7", commentPrefix: /^\s*<!--/, ext: ".arxml" },
-  ccsds: { badge: "CCSDS ORBIT DATA", accent: "#7c3aed", commentPrefix: /^\s*COMMENT\b/i, ext: ".oem" },
-  energyplus: { badge: "ENERGYPLUS IDF", accent: "#22c55e", commentPrefix: /^\s*!/, ext: ".idf" },
-  epanet: { badge: "EPANET WATER NETWORK", accent: "#06b6d4", commentPrefix: /^\s*;/, ext: ".inp" },
-  opendrive: { badge: "ASAM OPENDRIVE ROAD", accent: "#64748b", commentPrefix: /^\s*<!--/, ext: ".xodr" },
-  plcopen: { badge: "IEC 61131-3 PLCOPEN", accent: "#eab308", commentPrefix: /^\s*(\(\*|\/\/)/, ext: ".st" },
-  reqif: { badge: "OMG REQIF REQUIREMENTS", accent: "#a855f7", commentPrefix: /^\s*<!--/, ext: ".reqif" },
-  simulink: { badge: "SIMULINK BLOCK DIAGRAM", accent: "#f43f5e", commentPrefix: /^\s*(%|<!--)/, ext: ".slx" },
-  spice: { badge: "SPICE CIRCUIT NETLIST", accent: "#f59e0b", commentPrefix: /^\s*\*/, ext: ".cir" },
-  urdf: { badge: "ROS URDF KINEMATICS", accent: "#ec4899", commentPrefix: /^\s*<!--/, ext: ".urdf" },
-  "verilog-a": { badge: "VERILOG-A / AMS", accent: "#3b82f6", commentPrefix: /^\s*\/\//, ext: ".va" },
-  c: { badge: "C99 / EMBEDDED SOURCE", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".c" },
-  fortran: { badge: "FORTRAN 90 NUMERICAL", accent: "#818cf8", commentPrefix: /^\s*(!|c\s|C\s)/, ext: ".f90" },
-  csv: { badge: "TABULAR DATASET (CSV)", accent: "#10b981", commentPrefix: /^\s*#/, ext: ".csv" },
-  gcode: { badge: "CNC G-CODE TOOLPATH", accent: "#f97316", commentPrefix: /^\s*(;|\()/, ext: ".gcode" },
-  modelscript: { badge: "MODELSCRIPT (.MSX)", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".msx" },
-  msx: { badge: "MODELSCRIPT (.MSX)", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".msx" },
-  cfd: { badge: "SU2 / OPENFOAM CFD", accent: "#0ea5e9", commentPrefix: /^\s*(%|\/\/|#)/, ext: ".cfg" },
-  fea: { badge: "ABAQUS / CALCULIX FEA", accent: "#f97316", commentPrefix: /^\s*\*\*/, ext: ".inp" },
-  owl2: { badge: "OWL2 ONTOLOGY", accent: "#a855f7", commentPrefix: /^\s*#/, ext: ".owl" },
-  pscad: { badge: "PSCAD EMT POWER", accent: "#eab308", commentPrefix: /^\s*<!--/, ext: ".pscx" },
-  psse: { badge: "PSS/E POWER FLOW", accent: "#f59e0b", commentPrefix: /^\s*(@!|\/\*)/, ext: ".raw" },
-  rocets: { badge: "ROCETS PROPULSION", accent: "#ef4444", commentPrefix: /^\s*(\*|!|#)/, ext: ".inp" },
-  lps: { badge: "LPS LIQUID PROPULSION", accent: "#ec4899", commentPrefix: /^\s*(#|\/\/|!)/, ext: ".lps" },
-  gensys: { badge: "GENSYS RAIL DYNAMICS", accent: "#10b981", commentPrefix: /^\s*#/, ext: ".gen" },
-  simpack: { badge: "SIMPACK MULTIBODY", accent: "#3b82f6", commentPrefix: /^\s*(!|#)/, ext: ".spck" },
-  olga: { badge: "OLGA MULTIPHASE FLOW", accent: "#14b8a6", commentPrefix: /^\s*!/, ext: ".olga" },
-  sima: { badge: "SIMA MARINE OPERATIONS", accent: "#0284c7", commentPrefix: /^\s*(#|!|<!--)/, ext: ".sima" },
-  gtsuite: { badge: "GT-SUITE POWERTRAIN", accent: "#f43f5e", commentPrefix: /^\s*(#|!|<!--)/, ext: ".gtm" },
-  easy5: { badge: "MSC EASY5 CONTROLS", accent: "#6366f1", commentPrefix: /^\s*(\*|#)/, ext: ".ez5" },
-  ssp: { badge: "FMI SSP ARCHITECTURE", accent: "#8b5cf6", commentPrefix: /^\s*<!--/, ext: ".ssp" },
-  sysml: { badge: "OMG SYSML V2", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".sysml" },
-  sysml2: { badge: "OMG SYSML V2", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".sysml" },
+  aspen: { badge: "ASPEN PLUS", accent: "#10b981", commentPrefix: /^\s*(;|\*)/, ext: ".bkp" },
+  swmm: { badge: "EPA SWMM", accent: "#0ea5e9", commentPrefix: /^\s*;/, ext: ".inp" },
+  touchstone: { badge: "TOUCHSTONE", accent: "#8b5cf6", commentPrefix: /^\s*!/, ext: ".s2p" },
+  ibis: { badge: "IBIS", accent: "#ec4899", commentPrefix: /^\s*\|/, ext: ".ibs" },
+  opendss: { badge: "OPENDSS", accent: "#f59e0b", commentPrefix: /^\s*(!|\/\/)/, ext: ".dss" },
+  openscenario: { badge: "OPENSCENARIO", accent: "#3b82f6", commentPrefix: /^\s*<!--/, ext: ".xosc" },
+  relap5: { badge: "RELAP5", accent: "#ef4444", commentPrefix: /^\s*(\*|=)/, ext: ".i" },
+  eclipse: { badge: "ECLIPSE", accent: "#d97706", commentPrefix: /^\s*--/, ext: ".data" },
+  sbml: { badge: "SBML", accent: "#14b8a6", commentPrefix: /^\s*<!--/, ext: ".sbml" },
+  jsbsim: { badge: "JSBSIM", accent: "#6366f1", commentPrefix: /^\s*<!--/, ext: ".xml" },
+  scad: { badge: "OPENSCAD", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".scad" },
+  csg: { badge: "OPENSCAD", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".scad" },
+  adams: { badge: "MSC ADAMS", accent: "#f97316", commentPrefix: /^\s*!/, ext: ".adm" },
+  autosar: { badge: "AUTOSAR", accent: "#0284c7", commentPrefix: /^\s*<!--/, ext: ".arxml" },
+  ccsds: { badge: "CCSDS", accent: "#7c3aed", commentPrefix: /^\s*COMMENT\b/i, ext: ".oem" },
+  energyplus: { badge: "ENERGYPLUS", accent: "#22c55e", commentPrefix: /^\s*!/, ext: ".idf" },
+  epanet: { badge: "EPANET", accent: "#06b6d4", commentPrefix: /^\s*;/, ext: ".inp" },
+  opendrive: { badge: "OPENDRIVE", accent: "#64748b", commentPrefix: /^\s*<!--/, ext: ".xodr" },
+  plcopen: { badge: "PLCOPEN", accent: "#eab308", commentPrefix: /^\s*(\(\*|\/\/)/, ext: ".st" },
+  reqif: { badge: "REQIF", accent: "#a855f7", commentPrefix: /^\s*<!--/, ext: ".reqif" },
+  simulink: { badge: "SIMULINK", accent: "#f43f5e", commentPrefix: /^\s*(%|<!--)/, ext: ".slx" },
+  spice: { badge: "SPICE", accent: "#f59e0b", commentPrefix: /^\s*\*/, ext: ".cir" },
+  urdf: { badge: "ROS URDF", accent: "#ec4899", commentPrefix: /^\s*<!--/, ext: ".urdf" },
+  "verilog-a": { badge: "VERILOG-A", accent: "#3b82f6", commentPrefix: /^\s*\/\//, ext: ".va" },
+  c: { badge: "C99", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".c" },
+  fortran: { badge: "FORTRAN 90", accent: "#818cf8", commentPrefix: /^\s*(!|c\s|C\s)/, ext: ".f90" },
+  csv: { badge: "CSV", accent: "#10b981", commentPrefix: /^\s*#/, ext: ".csv" },
+  gcode: { badge: "G-CODE", accent: "#f97316", commentPrefix: /^\s*(;|\()/, ext: ".gcode" },
+  modelscript: { badge: "MODELSCRIPT", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".msx" },
+  msx: { badge: "MODELSCRIPT", accent: "#06b6d4", commentPrefix: /^\s*\/\//, ext: ".msx" },
+  cfd: { badge: "SU2 / CFD", accent: "#0ea5e9", commentPrefix: /^\s*(%|\/\/|#)/, ext: ".cfg" },
+  fea: { badge: "CALCULIX FEA", accent: "#f97316", commentPrefix: /^\s*\*\*/, ext: ".inp" },
+  owl2: { badge: "OWL2", accent: "#a855f7", commentPrefix: /^\s*#/, ext: ".owl" },
+  pscad: { badge: "PSCAD EMT", accent: "#eab308", commentPrefix: /^\s*<!--/, ext: ".pscx" },
+  psse: { badge: "PSS/E", accent: "#f59e0b", commentPrefix: /^\s*(@!|\/\*)/, ext: ".raw" },
+  rocets: { badge: "ROCETS", accent: "#ef4444", commentPrefix: /^\s*(\*|!|#)/, ext: ".inp" },
+  lps: { badge: "LPS", accent: "#ec4899", commentPrefix: /^\s*(#|\/\/|!)/, ext: ".lps" },
+  gensys: { badge: "GENSYS", accent: "#10b981", commentPrefix: /^\s*#/, ext: ".gen" },
+  simpack: { badge: "SIMPACK", accent: "#3b82f6", commentPrefix: /^\s*(!|#)/, ext: ".spck" },
+  olga: { badge: "OLGA", accent: "#14b8a6", commentPrefix: /^\s*!/, ext: ".olga" },
+  sima: { badge: "SIMA", accent: "#0284c7", commentPrefix: /^\s*(#|!|<!--)/, ext: ".sima" },
+  gtsuite: { badge: "GT-SUITE", accent: "#f43f5e", commentPrefix: /^\s*(#|!|<!--)/, ext: ".gtm" },
+  easy5: { badge: "EASY5", accent: "#6366f1", commentPrefix: /^\s*(\*|#)/, ext: ".ez5" },
+  ssp: { badge: "FMI SSP", accent: "#8b5cf6", commentPrefix: /^\s*<!--/, ext: ".ssp" },
+  sysml: { badge: "SYSML V2", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".sysml" },
+  sysml2: { badge: "SYSML V2", accent: "#38bdf8", commentPrefix: /^\s*(\/\/|\/\*)/, ext: ".sysml" },
 };
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -763,14 +771,14 @@ export function highlightPolyglotLine(line: string, dialect: string): React.Reac
   return tokens.map((tok, idx) => {
     if (/^["'].*["']$/.test(tok)) {
       return (
-        <span key={idx} style={{ color: "#a5d6ff" }}>
+        <span key={idx} style={{ color: "var(--color-prettylights-syntax-string, var(--ms-brand, #0e7490))" }}>
           {tok}
         </span>
       );
     }
     if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(tok)) {
       return (
-        <span key={idx} style={{ color: "#79c0ff" }}>
+        <span key={idx} style={{ color: "var(--color-prettylights-syntax-constant, var(--color-accent-fg, #0284c7))" }}>
           {tok}
         </span>
       );
@@ -781,7 +789,7 @@ export function highlightPolyglotLine(line: string, dialect: string): React.Reac
       )
     ) {
       return (
-        <span key={idx} style={{ color: "#ff7b72", fontWeight: 600 }}>
+        <span key={idx} style={{ color: "var(--color-prettylights-syntax-keyword, #e11d48)", fontWeight: 600 }}>
           {tok}
         </span>
       );
@@ -815,7 +823,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
   const dialect = (viewType || viewConfig?.dialect || "modelica").toLowerCase();
   const isCodeOnlyDialect = CODE_ONLY_DIALECTS.has(dialect);
   const meta = DOMAIN_META[dialect] || {
-    badge: `${dialect.toUpperCase()} ARTIFACT`,
+    badge: dialect.toUpperCase(),
     accent: "#06b6d4",
     commentPrefix: /^\s*(\/\/|#)/,
   };
@@ -852,63 +860,30 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
   const title = viewConfig?.title || viewConfig?.filename || `${dialect.toUpperCase()} Artifact`;
   const isMultiFile = Boolean(viewConfig?.files && Object.keys(viewConfig.files).length > 1);
 
-  const { svgMarkup, parsedStats } = useMemo(() => {
-    const stats: { label: string; value: string | number }[] = [];
-    const addStat = (label: string, val: unknown) => {
-      if (val !== undefined && val !== null && val !== "") {
-        stats.push({ label, value: typeof val === "boolean" ? (val ? "Yes" : "No") : String(val) });
-      }
-    };
-
-    addStat("Blocks", viewConfig?.blockCount);
-    addStat("Streams", viewConfig?.streamCount);
-    addStat("Junctions", viewConfig?.junctionCount);
-    addStat("Conduits", viewConfig?.conduitCount);
-    addStat("Ports", viewConfig?.portCount);
-    addStat("Inputs", viewConfig?.inputCount);
-    addStat("Outputs", viewConfig?.outputCount);
-    addStat("Branches", viewConfig?.branchCount);
-    addStat("Parameters", viewConfig?.parameterCount);
-    addStat("Runnables", viewConfig?.runnableCount);
-    addStat("Connectors", viewConfig?.connectorCount);
-    addStat("Passive", viewConfig?.isPassive);
-    addStat("Components", viewConfig?.componentCount);
-    addStat("Models", viewConfig?.modelCount);
-    addStat("Lines", viewConfig?.lineCount);
-    addStat("Loads", viewConfig?.loadCount);
-    addStat("Transformers", viewConfig?.transformerCount);
-    addStat("Entities", viewConfig?.entityCount);
-    addStat("Volumes", viewConfig?.volumeCount);
-    addStat("Wells", viewConfig?.wellCount);
-    addStat("Species", viewConfig?.speciesCount);
-    addStat("Reactions", viewConfig?.reactionCount);
-    addStat("Parts", viewConfig?.partCount);
-    addStat("Joints", viewConfig?.jointCount);
-    addStat("Forces", viewConfig?.forceCount);
-    addStat("Links", viewConfig?.linkCount);
-    addStat("Roads", viewConfig?.roadCount);
-    addStat("Elements", viewConfig?.elementCount);
-    addStat("Subcircuits", viewConfig?.subcircuitCount);
-
+  const svgMarkup = useMemo(() => {
     if (isCodeOnlyDialect) {
-      return { svgMarkup: "", parsedStats: stats };
+      return "";
+    }
+
+    // For Simulink, always prefer fresh topological layout rendering from rawCode if available
+    if (dialect === "simulink" && rawCode.trim()) {
+      const built = renderSourceToDiagramSvg(rawCode, dialect, title, isDark, isFullScreen);
+      if (built.svg) return built.svg;
     }
 
     if (viewConfig?.svg && typeof viewConfig.svg === "string") {
-      return { svgMarkup: sanitizeSvgMarkup(viewConfig.svg, { isFullScreen }), parsedStats: stats };
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
     }
 
     if (!rawCode.trim()) {
-      return { svgMarkup: "", parsedStats: stats };
+      return "";
     }
 
     const built = renderSourceToDiagramSvg(rawCode, dialect, title, isDark, isFullScreen);
-    return { svgMarkup: built.svg, parsedStats: stats };
+    return built.svg;
   }, [viewConfig, rawCode, dialect, title, isDark, isCodeOnlyDialect, isFullScreen]);
 
-  const [showSidebar, setShowSidebar] = useState(false);
   const codeLines = useMemo(() => (rawCode ? rawCode.split(/\r?\n/) : []), [rawCode]);
-  const hasSidebar = !isFullScreen && !isCodeOnlyDialect && parsedStats.length > 0 && showSidebar;
   const effectiveViewMode = isCodeOnlyDialect || !svgMarkup ? "code" : viewMode;
 
   if (dialect === "fortran" || dialect === "f90" || dialect === "f95" || dialect === "f08" || dialect === "f18") {
@@ -1037,9 +1012,9 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
   };
 
   return (
-    <Container $isFullScreen={isFullScreen}>
+    <Container $isFullScreen={isFullScreen} $standalone={Boolean(viewConfig?.standalone)}>
       <Toolbar>
-        <Box style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+        <Box style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1, overflow: "hidden" }}>
           {isCodeOnlyDialect ? (
             <CodeIcon size={14} fill={meta.accent} />
           ) : (
@@ -1075,9 +1050,9 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
               </ToggleBtn>
             </ToggleGroup>
           )}
-          {!isFullScreen && !isCodeOnlyDialect && parsedStats.length > 0 && (
-            <Button size="small" onClick={() => setShowSidebar((s) => !s)}>
-              {showSidebar ? "Hide Telemetry" : `Telemetry (${parsedStats.length})`}
+          {!isCodeOnlyDialect && svgMarkup && effectiveViewMode === "diagram" && (
+            <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadSvg} title="Download SVG">
+              SVG
             </Button>
           )}
           {rawCode && (
@@ -1085,25 +1060,20 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
               {copied ? "Copied" : "Copy"}
             </Button>
           )}
-          {!isCodeOnlyDialect && svgMarkup && effectiveViewMode === "diagram" && (
-            <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadSvg}>
-              SVG
-            </Button>
-          )}
-          {!isFullScreen && (
-            <Button size="small" leadingVisual={BeakerIcon} onClick={handleRunStudy}>
-              Run Study
-            </Button>
-          )}
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
-            <Button size="small" variant="primary" leadingVisual={PlayIcon} onClick={handleOpenAction}>
-              {isMultiFile ? "Open in VS Code" : "Open in Playground"}
-            </Button>
+            <>
+              <Button size="small" leadingVisual={BeakerIcon} onClick={handleRunStudy}>
+                Run Study
+              </Button>
+              <Button size="small" variant="primary" leadingVisual={PlayIcon} onClick={handleOpenAction}>
+                {isMultiFile ? "Open in VS Code" : "Open in Playground"}
+              </Button>
+            </>
           )}
         </Box>
       </Toolbar>
 
-      <ContentGrid $isFullScreen={isFullScreen} $hasSidebar={hasSidebar}>
+      <ContentGrid $isFullScreen={isFullScreen}>
         {loadingText ? (
           <DiagramPane $isFullScreen={isFullScreen}>
             <Spinner size="medium" />
@@ -1126,29 +1096,6 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
               </Box>
             )}
           </CodePane>
-        )}
-
-        {hasSidebar && (
-          <Sidebar>
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                color: "var(--color-fg-muted)",
-              }}
-            >
-              Artifact Telemetry
-            </Text>
-
-            {parsedStats.map((st, idx) => (
-              <StatBox key={idx}>
-                <Text style={{ fontSize: 11, color: "var(--color-fg-muted)", display: "block" }}>{st.label}</Text>
-                <Text style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{st.value}</Text>
-              </StatBox>
-            ))}
-          </Sidebar>
         )}
       </ContentGrid>
     </Container>

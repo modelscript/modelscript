@@ -23,6 +23,61 @@ export interface TokensTabProps {
   onBack: () => void;
 }
 
+const PAT_SCOPE_GROUPS = [
+  {
+    category: "Package Registry",
+    scopes: [
+      {
+        scope: "packages:read",
+        label: "packages:read",
+        desc: "Download private packages & read registry metadata",
+      },
+      {
+        scope: "packages:publish",
+        label: "packages:publish (packages:write)",
+        desc: "Publish new package versions (msx publish)",
+      },
+      {
+        scope: "packages:yank",
+        label: "packages:yank (packages:Delete)",
+        desc: "Yank or unpublish package versions",
+      },
+      {
+        scope: "packages:manage",
+        label: "packages:manage",
+        desc: "Manage collaborators and access policies",
+      },
+    ],
+  },
+  {
+    category: "Git Repositories",
+    scopes: [
+      {
+        scope: "repos:read",
+        label: "repos:read",
+        desc: "Clone and read private Git repositories",
+      },
+      {
+        scope: "repos:write",
+        label: "repos:write",
+        desc: "Push commits and branches to Git repositories",
+      },
+    ],
+  },
+  {
+    category: "Account",
+    scopes: [
+      {
+        scope: "account:read",
+        label: "account:read",
+        desc: "Read account profile and organization membership metadata",
+      },
+    ],
+  },
+];
+
+const ALL_PAT_SCOPES = PAT_SCOPE_GROUPS.flatMap((g) => g.scopes.map((s) => s.scope));
+
 export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
   const toast = useToast();
   const branding = useInstanceBranding();
@@ -31,7 +86,7 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
   const [confirmingRevokeTokenId, setConfirmingRevokeTokenId] = useState<number | null>(null);
   const [isLoadingTokens, setIsLoadingTokens] = useState(false);
   const [tokenName, setTokenName] = useState("");
-  const [tokenScopes, setTokenScopes] = useState<string[]>(["packages:publish"]);
+  const [tokenScopes, setTokenScopes] = useState<string[]>(["packages:read", "packages:publish"]);
   const [tokenPackagePattern, setTokenPackagePattern] = useState("*");
   const [tokenExpiresInDays, setTokenExpiresInDays] = useState<number>(90);
   const [createdTokenSecret, setCreatedTokenSecret] = useState<string | null>(null);
@@ -147,9 +202,9 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
             </Box>
           ) : (
             <Box display="flex" flexDirection="column" gap={2}>
-              {apiTokens.map((tok) => (
+              {apiTokens.map((t) => (
                 <Box
-                  key={tok.id}
+                  key={t.id}
                   p={3}
                   style={{
                     border: "1px solid var(--color-border-default)",
@@ -158,13 +213,15 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                     justifyContent: "space-between",
                     alignItems: "center",
                     background: "var(--color-canvas-subtle)",
+                    gap: "12px",
+                    flexWrap: "wrap",
                   }}
                 >
                   <Box display="flex" flexDirection="column" gap={1}>
                     <Box display="flex" alignItems="center" gap={2}>
                       <KeyIcon size={16} fill="var(--color-accent-purple)" />
                       <Text fontWeight="bold" fontSize="15px">
-                        {tok.name}
+                        {t.name}
                       </Text>
                       <span
                         style={{
@@ -173,25 +230,41 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                           color: "var(--color-fg-muted)",
                         }}
                       >
-                        {tok.token_prefix}...
+                        {(t.token_prefix || (t as any).prefix || "ms_pat_") + "..."}
                       </span>
                     </Box>
                     <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
                       <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Scopes: {Array.isArray(tok.scopes) ? tok.scopes.join(", ") : tok.scopes}
+                        Scopes: {Array.isArray(t.scopes) ? t.scopes.join(", ") : t.scopes}
                       </span>
                       <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
                       <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Pattern: <code>{tok.package_pattern}</code>
+                        Pattern: <code>{t.package_pattern || (t as any).packagePattern || "*"}</code>
                       </span>
                       <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
                       <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Expires: {tok.expires_at ? new Date(tok.expires_at).toLocaleDateString() : "Never"}
+                        Expires:{" "}
+                        {t.expires_at || (t as any).expiresAt
+                          ? new Date(t.expires_at || (t as any).expiresAt).toLocaleDateString()
+                          : "Never"}
+                      </span>
+                    </Box>
+                    <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                        Created: {t.created_at ? new Date(t.created_at).toLocaleDateString() : "Just now"}
+                      </span>
+                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
+                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                        Last used: {t.last_used_at ? new Date(t.last_used_at).toLocaleString() : "Never used"}
+                      </span>
+                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
+                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                        Last IP: <code>{t.last_used_ip || "—"}</code>
                       </span>
                     </Box>
                   </Box>
 
-                  {confirmingRevokeTokenId === tok.id ? (
+                  {confirmingRevokeTokenId === t.id ? (
                     <Box display="flex" alignItems="center" gap={2}>
                       <SecondaryButton
                         type="button"
@@ -206,19 +279,19 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                         onClick={async () => {
                           setConfirmingRevokeTokenId(null);
                           try {
-                            await revokeApiToken(tok.id);
-                            setApiTokens((prev) => prev.filter((t) => t.id !== tok.id));
+                            await revokeApiToken(t.id);
+                            setApiTokens((prev) => prev.filter((tok) => tok.id !== t.id));
                             toast.success("Token revoked successfully.");
                           } catch (err: any) {
                             toast.error(err.response?.data?.error || "Failed to revoke token.");
                           }
                         }}
                       >
-                        Confirm Revoke?
+                        Confirm Revoke
                       </DangerButton>
                     </Box>
                   ) : (
-                    <CircleIconButton title="Revoke Token" onClick={() => setConfirmingRevokeTokenId(tok.id)}>
+                    <CircleIconButton title="Revoke Token" onClick={() => setConfirmingRevokeTokenId(t.id)}>
                       <TrashIcon size={16} color="var(--color-danger-fg)" />
                     </CircleIconButton>
                   )}
@@ -325,66 +398,103 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
             </Box>
 
             <Box mb={4}>
-              <FormLabel style={{ marginBottom: "8px", display: "block" }}>Select Scopes</FormLabel>
-              <Box display="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "8px" }}>
-                {[
-                  {
-                    scope: "packages:publish",
-                    label: "packages:publish",
-                    desc: "Upload and publish new package versions",
-                  },
-                  {
-                    scope: "packages:read",
-                    label: "packages:read",
-                    desc: "Download private packages and packuments",
-                  },
-                  {
-                    scope: "packages:yank",
-                    label: "packages:yank",
-                    desc: "Yank or deprecate published releases",
-                  },
-                  {
-                    scope: "packages:manage",
-                    label: "packages:manage",
-                    desc: "Manage collaborators and access policies",
-                  },
-                ].map((s) => {
-                  const checked = tokenScopes.includes(s.scope);
-                  return (
-                    <label
-                      key={s.scope}
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <FormLabel style={{ marginBottom: 0 }}>Select Scopes</FormLabel>
+                <Box display="flex" gap={2} alignItems="center">
+                  <button
+                    type="button"
+                    onClick={() => setTokenScopes([...ALL_PAT_SCOPES])}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--color-accent-cyan, #06b6d4)",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    Select All
+                  </button>
+                  <span style={{ color: "var(--color-text-muted)", fontSize: "12px" }}>/</span>
+                  <button
+                    type="button"
+                    onClick={() => setTokenScopes([])}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--color-text-muted)",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    Clear
+                  </button>
+                </Box>
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={3}>
+                {PAT_SCOPE_GROUPS.map((group) => (
+                  <Box key={group.category}>
+                    <DetailSubtitle
                       style={{
-                        padding: "8px",
-                        border: "1px solid var(--color-border-subtle)",
-                        borderRadius: "6px",
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "8px",
-                        cursor: "pointer",
-                        background: checked ? "var(--color-accent-subtle, rgba(139,92,246,0.05))" : "transparent",
+                        display: "block",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        marginBottom: "8px",
+                        color: "var(--color-text-muted)",
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setTokenScopes([...tokenScopes, s.scope]);
-                          } else {
-                            setTokenScopes(tokenScopes.filter((sc) => sc !== s.scope));
-                          }
-                        }}
-                        style={{ marginTop: "3px", cursor: "pointer" }}
-                      />
-                      <Box>
-                        <Text fontWeight="600" fontSize="13px" display="block">
-                          {s.label}
-                        </Text>
-                        <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>{s.desc}</span>
-                      </Box>
-                    </label>
-                  );
-                })}
+                      {group.category}
+                    </DetailSubtitle>
+                    <Box
+                      display="grid"
+                      style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "8px" }}
+                    >
+                      {group.scopes.map((s) => {
+                        const checked = tokenScopes.includes(s.scope);
+                        return (
+                          <label
+                            key={s.scope}
+                            style={{
+                              padding: "8px",
+                              border: "1px solid var(--color-border-subtle)",
+                              borderRadius: "6px",
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: "8px",
+                              cursor: "pointer",
+                              background: checked ? "var(--color-accent-subtle, rgba(139,92,246,0.05))" : "transparent",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setTokenScopes([...tokenScopes, s.scope]);
+                                } else {
+                                  setTokenScopes(tokenScopes.filter((sc) => sc !== s.scope));
+                                }
+                              }}
+                              style={{ marginTop: "3px", cursor: "pointer" }}
+                            />
+                            <Box>
+                              <Text fontWeight="600" fontSize="13px" display="block">
+                                {s.label}
+                              </Text>
+                              <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>{s.desc}</span>
+                            </Box>
+                          </label>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+                ))}
               </Box>
             </Box>
 

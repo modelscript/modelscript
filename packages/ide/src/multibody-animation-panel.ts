@@ -291,12 +291,69 @@ export function createSphereMesh(
   };
 }
 
+export function createTorusMesh(
+  id: number,
+  name: string,
+  majorRadius: number = 0.5,
+  minorRadius: number = 0.1,
+  uSegments: number = 24,
+  vSegments: number = 12,
+  color?: [number, number, number],
+): MultibodyMeshPayload {
+  const vertices: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+
+  for (let i = 0; i <= uSegments; i++) {
+    const u = (i / uSegments) * Math.PI * 2;
+    const cosU = Math.cos(u);
+    const sinU = Math.sin(u);
+    for (let j = 0; j <= vSegments; j++) {
+      const v = (j / vSegments) * Math.PI * 2;
+      const cosV = Math.cos(v);
+      const sinV = Math.sin(v);
+
+      const x = (majorRadius + minorRadius * cosV) * sinU;
+      const y = minorRadius * sinV;
+      const z = (majorRadius + minorRadius * cosV) * cosU;
+
+      const nx = cosV * sinU;
+      const ny = sinV;
+      const nz = cosV * cosU;
+
+      vertices.push(x, y, z);
+      normals.push(nx, ny, nz);
+    }
+  }
+
+  for (let i = 0; i < uSegments; i++) {
+    for (let j = 0; j < vSegments; j++) {
+      const a = i * (vSegments + 1) + j;
+      const b = (i + 1) * (vSegments + 1) + j;
+      indices.push(a, b, a + 1);
+      indices.push(b, b + 1, a + 1);
+    }
+  }
+
+  return {
+    id,
+    name,
+    type: "surface",
+    color,
+    vertices: new Float32Array(vertices),
+    normals: new Float32Array(normals),
+    indices: new Uint32Array(indices),
+  };
+}
+
 export function generateProceduralMultibodyGeometry(
   sourceUri: string,
   content: string = "",
+  states: string[] = [],
 ): { meshes: MultibodyMeshPayload[]; components: MultibodyCadComponent[] } {
   const meshes: MultibodyMeshPayload[] = [];
   const components: MultibodyCadComponent[] = [];
+  const seenNames = new Set<string>();
   let nextId = 1;
 
   const isFbi =
@@ -386,19 +443,117 @@ export function generateProceduralMultibodyGeometry(
       });
     }
   } else {
-    // Generic Modelica Multibody or default assembly
-    const mbRegex = /(?:Modelica\.Mechanics\.MultiBody\.Parts\.Body\s+([a-zA-Z0-9_]+)|body\s+([a-zA-Z0-9_]+))/gim;
+    // 1. Extract all Modelica.Mechanics.MultiBody.Visualizers, Parts, Joints, Forces declarations from source
+    const mslRegex =
+      /\b(?:Modelica\.Mechanics\.MultiBody\.)?(?:(Visualizers(?:\.Advanced|\.Internal)?\.(?:FixedShape2?|FixedArrow|SignalArrow|FixedFrame|Torus|VoluminousWheel|Rectangle|PipeWithScalarField|Ground|Shape|Arrow|DoubleArrow|Vector|Surface|Lines|FixedLines))|(Parts\.(?:Body|BodyBox|BodyCylinder|BodyShape|FixedTranslation|FixedRotation|PointMass))|(Joints\.(?:Revolute|Prismatic|Universal|Spherical|Cylindrical|FreeMotion))|(Forces\.(?:Spring|Damper|SpringDamperParallel|WorldForce|FrameForce|WorldTorque|FrameTorque))|body)\s+([a-zA-Z0-9_]+)\s*(?:\(([^;]*)\))?/gim;
     let match;
-    while ((match = mbRegex.exec(content)) !== null) {
-      const name = (match[1] || match[2])!;
-      meshes.push(createBoxMesh(nextId++, name, 1.0, 0.4, 0.5, [0.4, 0.6, 0.9]));
+    while ((match = mslRegex.exec(content)) !== null) {
+      const visKind = match[1] || match[2] || match[3] || match[4] || "Parts.Body";
+      const name = match[5]!;
+      const modStr = match[6] || "";
+      if (seenNames.has(name)) continue;
+      seenNames.add(name);
+
+      const stMatch = modStr.match(/shapeType\s*=\s*"([^"]+)"/i);
+      const shapeType = (stMatch?.[1] || "").toLowerCase();
+      const shortKind = visKind.split(".").pop()!;
+
+      let mesh: MultibodyMeshPayload;
+      if (
+        shortKind === "Torus" ||
+        shortKind === "VoluminousWheel" ||
+        shapeType === "gearwheel" ||
+        shapeType === "pipe"
+      ) {
+        mesh = createTorusMesh(nextId++, name, 0.45, 0.12, 24, 12, [0.25, 0.6, 0.95]);
+      } else if (
+        shortKind === "BodyCylinder" ||
+        shortKind === "FixedTranslation" ||
+        shortKind === "Revolute" ||
+        shortKind === "Prismatic" ||
+        shortKind === "Spring" ||
+        shortKind === "PipeWithScalarField" ||
+        shortKind === "FixedArrow" ||
+        shortKind === "SignalArrow" ||
+        shortKind === "Arrow" ||
+        shortKind === "DoubleArrow" ||
+        shortKind === "Vector" ||
+        shapeType === "cylinder" ||
+        shapeType === "pipecylinder" ||
+        shapeType === "cone" ||
+        shapeType === "spring" ||
+        shapeType === "beam"
+      ) {
+        mesh = createCylinderMesh(nextId++, name, 0.15, 0.8, 16, [0.3, 0.7, 0.9]);
+      } else if (shortKind === "Body" || shortKind === "PointMass" || shapeType === "sphere") {
+        mesh = createSphereMesh(nextId++, name, 0.25, 14, [0.3, 0.65, 0.95]);
+      } else {
+        mesh = createBoxMesh(nextId++, name, 1.0, 0.4, 0.5, [0.4, 0.6, 0.9]);
+      }
+      meshes.push(mesh);
+
+      const posPrefix =
+        shortKind === "Shape" || shortKind === "Vector"
+          ? `${name}.r`
+          : shortKind === "Surface"
+            ? `${name}.r_0`
+            : `${name}.frame_a.r_0`;
+      const rotPrefix =
+        shortKind === "Shape" || shortKind === "Vector" || shortKind === "Surface"
+          ? `${name}.R.T`
+          : `${name}.frame_a.R.T`;
+
       components.push({
         name,
         cad: { feature: name },
         bindings: {
-          position: [`${name}.r_0[1]`, `${name}.r_0[2]`, `${name}.r_0[3]`],
+          position: [`${posPrefix}[1]`, `${posPrefix}[2]`, `${posPrefix}[3]`],
+          rotation: [
+            `${rotPrefix}[1,1]`,
+            `${rotPrefix}[1,2]`,
+            `${rotPrefix}[1,3]`,
+            `${rotPrefix}[2,1]`,
+            `${rotPrefix}[2,2]`,
+            `${rotPrefix}[2,3]`,
+            `${rotPrefix}[3,1]`,
+            `${rotPrefix}[3,2]`,
+            `${rotPrefix}[3,3]`,
+          ],
         },
       });
+    }
+
+    // 2. Also discover visualizer prefixes from simulation states if source regex didn't match
+    if (meshes.length === 0 && states.length > 0) {
+      for (const s of states) {
+        const m = s.match(/^(.+)\.(?:frame_a\.r_0|r_0|r)\[1\]$/);
+        if (!m || !m[1]) continue;
+        const prefix = m[1];
+        if (seenNames.has(prefix)) continue;
+        seenNames.add(prefix);
+
+        const posBase = s.slice(0, -"[1]".length);
+        const rotBase = posBase.endsWith(".frame_a.r_0") ? `${prefix}.frame_a.R.T` : `${prefix}.R.T`;
+        meshes.push(createBoxMesh(nextId++, prefix, 0.8, 0.3, 0.3, [0.35, 0.65, 0.95]));
+        components.push({
+          name: prefix,
+          cad: { feature: prefix },
+          bindings: {
+            position: [`${posBase}[1]`, `${posBase}[2]`, `${posBase}[3]`],
+            rotation: [
+              `${rotBase}[1,1]`,
+              `${rotBase}[1,2]`,
+              `${rotBase}[1,3]`,
+              `${rotBase}[2,1]`,
+              `${rotBase}[2,2]`,
+              `${rotBase}[2,3]`,
+              `${rotBase}[3,1]`,
+              `${rotBase}[3,2]`,
+              `${rotBase}[3,3]`,
+            ],
+          },
+        });
+      }
     }
   }
 
@@ -503,9 +658,47 @@ export class MultiBodyAnimationPanel extends BaseWebviewPanel {
       stepMeshes = [];
     }
 
-    // 2. If no CAD meshes found or if this is a native MBS deck, generate procedural geometry
+    // 2. If `getCadComponents` returned MSL visualizers with proceduralMesh, materialize them as stepMeshes
+    if (stepMeshes.length === 0 && cadComponents.length > 0) {
+      let meshId = 1;
+      interface CadComponentWithProceduralMesh {
+        name?: string;
+        shapeType?: string;
+        defaults?: { color?: [number, number, number] };
+        proceduralMesh?: {
+          vertices: ArrayLike<number>;
+          indices?: ArrayLike<number>;
+          normals?: ArrayLike<number>;
+          color?: number[];
+        };
+      }
+      for (const item of cadComponents) {
+        const comp = item as CadComponentWithProceduralMesh | null | undefined;
+        if (comp?.proceduralMesh?.vertices) {
+          const pm = comp.proceduralMesh;
+          const color: [number, number, number] | undefined = pm.color
+            ? [pm.color[0] ?? 0.5, pm.color[1] ?? 0.5, pm.color[2] ?? 0.5]
+            : comp.defaults?.color;
+          stepMeshes.push({
+            id: meshId++,
+            name: comp.name ?? "unnamed",
+            type: comp.shapeType || "visualizer",
+            color,
+            vertices: new Float32Array(pm.vertices),
+            normals: new Float32Array(pm.normals || []),
+            indices: new Uint32Array(pm.indices || []),
+          } satisfies MultibodyMeshPayload);
+        }
+      }
+    }
+
+    // 3. If no CAD meshes found or if this is a native MBS deck, generate procedural geometry
     if (stepMeshes.length === 0) {
-      const procedural = generateProceduralMultibodyGeometry(this.sourceUri, modelContent || "");
+      const procedural = generateProceduralMultibodyGeometry(
+        this.sourceUri,
+        modelContent || "",
+        simulationData?.states || [],
+      );
       stepMeshes = procedural.meshes;
       if (cadComponents.length === 0) {
         cadComponents = procedural.components;

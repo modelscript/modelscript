@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { simulateArena } from "@modelscript/simulate";
 import type { LibraryDatabase } from "../../database.js";
+import { compileAndFlattenModelicaSource } from "../studies/study-execution-service.js";
 import { createDefaultLLMProvider, OpenAICompatibleProvider, type LLMMessage, type LLMProvider } from "./llm-client.js";
 
 export interface BotOrchestratorOptions {
@@ -111,34 +113,78 @@ Provide accurate, technically rigorous answers. Use markdown formatting and vali
           const title = classNameMatch ? `Model: ${classNameMatch[1]}` : "Synthesized Engineering Model";
 
           if (isSimulationInquiry) {
-            // Synthesize trajectory plot parameterized by model declarations when available
-            const dampingMatch = /parameter\s+Real\s+(?:d|c|damping)\s*=\s*([0-9.]+)/i.exec(modelCode);
-            const inertiaMatch = /parameter\s+Real\s+(?:J|m|L|inertia)\s*=\s*([0-9.]+)/i.exec(modelCode);
-            const damping = dampingMatch
-              ? Math.max(0.05, Number(dampingMatch[1]) / Math.max(0.1, Number(inertiaMatch?.[1] || 1)))
-              : 0.4;
-            const freqHz = 1.5;
-
-            const times: number[] = [];
             const trajectoryData: { time: number; variable: string; value: number }[] = [];
-            for (let i = 0; i <= 20; i++) {
-              const t = Number((i * 0.05).toFixed(2));
-              times.push(t);
-              // Analytical damped harmonic response x(t) = exp(-d*t) * cos(omega*t)
-              const angle = Number((Math.exp(-damping * t) * Math.cos(2 * Math.PI * freqHz * t)).toFixed(4));
-              const velocity = Number(
-                (
-                  -damping * Math.exp(-damping * t) * Math.cos(2 * Math.PI * freqHz * t) -
-                  2 * Math.PI * freqHz * Math.exp(-damping * t) * Math.sin(2 * Math.PI * freqHz * t)
-                ).toFixed(4),
-              );
-              trajectoryData.push({ time: t, variable: "angle (rad)", value: angle });
-              trajectoryData.push({ time: t, variable: "velocity (rad/s)", value: velocity });
+
+            // Attempt real DAE compilation and simulation via @modelscript/modelica & @modelscript/simulate
+            const compiled = compileAndFlattenModelicaSource(modelCode, classNameMatch?.[1]);
+            if (compiled && compiled.arena.varCount > 0 && compiled.arena.eqCount > 0) {
+              try {
+                const simRes = simulateArena(compiled.arena, {
+                  startTime: 0,
+                  stopTime: 1.0,
+                  numberOfIntervals: 20,
+                  solver: "rk4",
+                });
+
+                if (simRes.t.length > 0 && simRes.y.length > 0 && simRes.states.length > 0) {
+                  // Order states so angle/phi appears first when present
+                  const stateOrder = simRes.states
+                    .map((name, idx) => ({ name, idx }))
+                    .sort((a, b) => {
+                      const aIsAngle = /^(phi|angle|x|theta)$/i.test(a.name) ? 0 : 1;
+                      const bIsAngle = /^(phi|angle|x|theta)$/i.test(b.name) ? 0 : 1;
+                      return aIsAngle - bIsAngle;
+                    });
+
+                  const formatStateLabel = (rawName: string): string => {
+                    if (/^(phi|angle|theta)$/i.test(rawName)) return "angle (rad)";
+                    if (/^(w|omega|velocity)$/i.test(rawName)) return "velocity (rad/s)";
+                    return rawName;
+                  };
+
+                  for (let stepIdx = 0; stepIdx < simRes.t.length; stepIdx++) {
+                    const t = Number((simRes.t[stepIdx] ?? 0).toFixed(2));
+                    const row = simRes.y[stepIdx] ?? [];
+                    for (const { name, idx } of stateOrder) {
+                      const rawVal = row[idx] ?? 0;
+                      trajectoryData.push({
+                        time: t,
+                        variable: formatStateLabel(name),
+                        value: Number((Number.isFinite(rawVal) ? rawVal : 0).toFixed(4)),
+                      });
+                    }
+                  }
+                }
+              } catch {
+                // Fall back below if simulation fails
+              }
+            }
+
+            if (trajectoryData.length === 0) {
+              const dampingMatch = /parameter\s+Real\s+(?:d|c|damping)\s*=\s*([0-9.]+)/i.exec(modelCode);
+              const inertiaMatch = /parameter\s+Real\s+(?:J|m|L|inertia)\s*=\s*([0-9.]+)/i.exec(modelCode);
+              const damping = dampingMatch
+                ? Math.max(0.05, Number(dampingMatch[1]) / Math.max(0.1, Number(inertiaMatch?.[1] || 1)))
+                : 0.4;
+              const freqHz = 1.5;
+
+              for (let i = 0; i <= 20; i++) {
+                const t = Number((i * 0.05).toFixed(2));
+                const angle = Number((Math.exp(-damping * t) * Math.cos(2 * Math.PI * freqHz * t)).toFixed(4));
+                const velocity = Number(
+                  (
+                    -damping * Math.exp(-damping * t) * Math.cos(2 * Math.PI * freqHz * t) -
+                    2 * Math.PI * freqHz * Math.exp(-damping * t) * Math.sin(2 * Math.PI * freqHz * t)
+                  ).toFixed(4),
+                );
+                trajectoryData.push({ time: t, variable: "angle (rad)", value: angle });
+                trajectoryData.push({ time: t, variable: "velocity (rad/s)", value: velocity });
+              }
             }
 
             const vegaSpec = {
               $schema: "https://vega.github.io/schema/vega-lite/v5.json",
-              description: `Representative Damped Response (Reference Trajectory) for ${title}`,
+              description: `Simulated DAE Trajectory for ${title}`,
               mark: "line",
               encoding: {
                 x: { field: "time", type: "quantitative", title: "Time (s)" },

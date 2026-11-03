@@ -16,7 +16,7 @@ import {
   PlayIcon,
   PulseIcon,
 } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
@@ -58,15 +58,15 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const Toolbar = styled.div`
   height: 40px;
   min-height: 40px;
-  background: var(--surface-hud, rgba(14, 20, 36, 0.7));
+  background: var(--color-canvas-subtle);
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  gap: 8px;
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
 `;
 
 const HeaderLeft = styled.div`
@@ -74,6 +74,8 @@ const HeaderLeft = styled.div`
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 `;
 
 const ModelTitle = styled.div`
@@ -95,6 +97,7 @@ const PillBadge = styled.span<{ $variant?: "olga" | "slug-low" | "slug-warn" }>`
   border-radius: 9999px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
 
   ${(props) => {
     switch (props.$variant) {
@@ -182,32 +185,6 @@ const LineNo = styled.span`
   user-select: none;
   text-align: right;
   padding-right: 16px;
-`;
-
-const InspectorSidebar = styled.div`
-  width: 240px;
-  border-left: 1px solid var(--color-border-default);
-  background: var(--color-canvas-subtle);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 14px;
-  gap: 12px;
-
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const StatItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--color-fg-muted);
-
-  strong {
-    color: var(--color-fg-default);
-  }
 `;
 
 function parseOlgaClient(code: string) {
@@ -329,7 +306,6 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
   const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
-  const [showInspector, setShowInspector] = useState(false);
   const title = viewConfig.title || viewConfig.pipelineName || "OLGA Flow Assurance (.opi)";
 
   useEffect(() => {
@@ -407,8 +383,6 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
   };
 
   const slugRisk = viewConfig.slugRisk;
-  const lengthKm = viewConfig.lengthKm ?? parsedClient?.lengthKm;
-  const diameterInches = viewConfig.diameterInches ?? parsedClient?.diameterInches;
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
@@ -416,8 +390,8 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
       <Toolbar>
         <HeaderLeft>
           <PulseIcon size={16} fill="var(--color-done-fg, currentColor)" />
-          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge>OLGA Multiphase</PillBadge>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           {slugRisk && (
             <PillBadge $variant={slugRisk === "low" ? "slug-low" : "slug-warn"}>
               {slugRisk === "low" ? <CheckCircleIcon size={12} /> : <AlertIcon size={12} />}
@@ -426,7 +400,7 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
           )}
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
           {sanitizedSvg && (
             <SegmentedControl>
               <SegmentBtn
@@ -440,11 +414,6 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
                 <CodeIcon size={12} /> Input Deck
               </SegmentBtn>
             </SegmentedControl>
-          )}
-          {!isFullScreen && (
-            <Button size="small" onClick={() => setShowInspector((s) => !s)}>
-              {showInspector ? "Hide Telemetry" : "Telemetry"}
-            </Button>
           )}
           {sanitizedSvg && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
@@ -484,38 +453,6 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
           </CodePre>
         ) : (
           <InteractiveSvgStage svgMarkup={sanitizedSvg} isFullScreen={isFullScreen} />
-        )}
-
-        {!isFullScreen && showInspector && (
-          <InspectorSidebar>
-            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-              Flow Assurance Telemetry
-            </Text>
-            <StatItem>
-              <span>Total Length</span>
-              <strong>{lengthKm !== undefined ? `${lengthKm} km` : "—"}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Nominal Diameter</span>
-              <strong>{diameterInches !== undefined ? `${diameterInches}"` : "—"}</strong>
-            </StatItem>
-            {parsedClient?.pipeCount !== undefined && (
-              <StatItem>
-                <span>Pipes / Branches</span>
-                <strong>{parsedClient.pipeCount}</strong>
-              </StatItem>
-            )}
-            <StatItem>
-              <span>Pressure Drop (ΔP)</span>
-              <strong>{viewConfig.pressureDropBar !== undefined ? `${viewConfig.pressureDropBar} bar` : "—"}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Avg Liquid Holdup</span>
-              <strong>
-                {viewConfig.liquidHoldupAvg !== undefined ? `${(viewConfig.liquidHoldupAvg * 100).toFixed(1)}%` : "—"}
-              </strong>
-            </StatItem>
-          </InspectorSidebar>
         )}
       </ContentArea>
     </CardWrapper>

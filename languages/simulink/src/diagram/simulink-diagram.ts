@@ -74,6 +74,34 @@ export interface SimulinkDiagramGraph {
   cells: SimulinkDiagramCell[];
 }
 
+function formatPolynomialInS(raw: string, fallback: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return fallback;
+  const inner = trimmed.replace(/^\[|\]$/g, "").trim();
+  if (!inner) return fallback;
+  const parts = inner.split(/[\s,]+/).filter(Boolean);
+  const nums = parts.map((p) => Number(p));
+  if (nums.some((n) => !Number.isFinite(n))) {
+    return trimmed;
+  }
+  const deg = nums.length - 1;
+  const terms: { sign: "+" | "-"; text: string }[] = [];
+  for (let i = 0; i < nums.length; i++) {
+    const val = nums[i]!;
+    if (Math.abs(val) < 1e-12) continue;
+    const p = deg - i;
+    const sign: "+" | "-" = val < 0 ? "-" : "+";
+    const absVal = Math.abs(val);
+    const sPart = p === 0 ? "" : p === 1 ? "s" : p === 2 ? "s²" : p === 3 ? "s³" : `s^${p}`;
+    const coeffPart = p > 0 && Math.abs(absVal - 1) < 1e-12 ? "" : String(absVal);
+    terms.push({ sign, text: `${coeffPart}${sPart}` });
+  }
+  if (terms.length === 0) return "0";
+  return terms
+    .map((t, idx) => (idx === 0 ? (t.sign === "-" ? `-${t.text}` : t.text) : `${t.sign} ${t.text}`))
+    .join(" ");
+}
+
 /**
  * Returns formatted symbol text or glyph icon indicator for standard Simulink blocks.
  */
@@ -105,8 +133,8 @@ function getBlockGlyph(
       return { symbol: ops, badge: "∏" };
     }
     case "TransferFcn": {
-      const num = getParam("Numerator") || "1";
-      const den = getParam("Denominator") || "s+1";
+      const num = formatPolynomialInS(getParam("Numerator"), "1");
+      const den = formatPolynomialInS(getParam("Denominator"), "s + 1");
       return { symbol: `${num}\n───\n${den}`, badge: "TF" };
     }
     case "StateSpace":
@@ -128,6 +156,15 @@ function getBlockGlyph(
   }
 }
 
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 /**
  * Builds an interactive AntV X6 diagram graph for a Simulink model or subsystem.
  */
@@ -146,33 +183,233 @@ export function buildSimulinkDiagram(modelOrSystem: SimulinkModelLike | Simulink
     for (const b of Object.values(sys.blocks)) blocks.push(b);
   }
 
-  // Auto-layout in grid if positions are not set
-  let autoX = 80;
-  let autoY = 80;
-  const blockCenters = new Map<string, { x: number; y: number; width: number; height: number }>();
+  const lines = sys.lines || [];
+
+  // Flatten all directed connections for topological layout and port counting
+  interface FlatConn {
+    src: string;
+    srcPort: number;
+    dst: string;
+    dstPort: number;
+  }
+  const flatConns: FlatConn[] = [];
+  for (const line of lines) {
+    if (line.dstBlock) {
+      flatConns.push({
+        src: line.srcBlock,
+        srcPort: line.srcPort || 1,
+        dst: line.dstBlock,
+        dstPort: line.dstPort ?? 1,
+      });
+    }
+    if (line.branches) {
+      for (const br of line.branches) {
+        flatConns.push({
+          src: line.srcBlock,
+          srcPort: line.srcPort || 1,
+          dst: br.dstBlock,
+          dstPort: br.dstPort || 1,
+        });
+      }
+    }
+  }
+
+  // Compute block dimensions
+  const blockIds: string[] = [];
+  const blockSizes = new Map<string, { width: number; height: number }>();
 
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i]!;
     const blockId = block.name || block.id || `block_${i}`;
-    const width = block.position?.width || (block.type === "Sum" ? 50 : block.type === "TransferFcn" ? 110 : 80);
-    const height = block.position?.height || (block.type === "Sum" ? 50 : 60);
+    blockIds.push(blockId);
+    const { symbol } = getBlockGlyph(block.type, block.parameters);
+    const maxSymbolLine = Math.max(...symbol.split("\n").map((l) => l.length), 4);
+    const defaultWidth =
+      block.type === "Sum" || block.type === "Product"
+        ? 52
+        : block.type === "TransferFcn" || block.type === "StateSpace"
+          ? Math.max(122, Math.min(168, maxSymbolLine * 7.5 + 26))
+          : Math.max(92, Math.min(130, maxSymbolLine * 7.5 + 28));
+    const defaultHeight =
+      block.type === "Sum" || block.type === "Product"
+        ? 52
+        : block.type === "TransferFcn" || block.type === "StateSpace"
+          ? 64
+          : 56;
+    blockSizes.set(blockId, {
+      width: block.position?.width || Math.round(defaultWidth),
+      height: block.position?.height || defaultHeight,
+    });
+  }
+
+  // Compute topological ranks for blocks without explicit coordinates
+  const outgoing = new Map<string, FlatConn[]>();
+  const incoming = new Map<string, FlatConn[]>();
+  for (const id of blockIds) {
+    outgoing.set(id, []);
+    incoming.set(id, []);
+  }
+  for (const c of flatConns) {
+    if (outgoing.has(c.src) && incoming.has(c.dst) && c.src !== c.dst) {
+      outgoing.get(c.src)!.push(c);
+      incoming.get(c.dst)!.push(c);
+    }
+  }
+
+  const ranks = new Map<string, number>();
+  for (const id of blockIds) ranks.set(id, 0);
+
+  const maxRankCap = Math.max(1, blockIds.length - 1);
+  for (let iter = 0; iter < blockIds.length; iter++) {
+    let changed = false;
+    for (const c of flatConns) {
+      if (!ranks.has(c.src) || !ranks.has(c.dst) || c.src === c.dst) continue;
+      const srcIdx = blockIds.indexOf(c.src);
+      const dstIdx = blockIds.indexOf(c.dst);
+      if (srcIdx > dstIdx && (ranks.get(c.src) ?? 0) >= (ranks.get(c.dst) ?? 0) && iter > 0) {
+        continue;
+      }
+      const nextRank = Math.min(maxRankCap, (ranks.get(c.src) ?? 0) + 1);
+      if (nextRank > (ranks.get(c.dst) ?? 0)) {
+        ranks.set(c.dst, nextRank);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+
+  // Pull source nodes (in-degree 0) forward so they sit directly in the column preceding their earliest consumer
+  for (const id of blockIds) {
+    const inc = incoming.get(id) ?? [];
+    const out = outgoing.get(id) ?? [];
+    if (inc.length === 0 && out.length > 0) {
+      const minSuccRank = Math.min(...out.map((e) => ranks.get(e.dst) ?? 1));
+      if (minSuccRank > 1) {
+        ranks.set(id, minSuccRank - 1);
+      }
+    }
+  }
+
+  // Group blocks by rank
+  const rankGroups = new Map<number, string[]>();
+  let maxRank = 0;
+  for (const id of blockIds) {
+    const r = ranks.get(id) ?? 0;
+    maxRank = Math.max(maxRank, r);
+    if (!rankGroups.has(r)) rankGroups.set(r, []);
+    rankGroups.get(r)!.push(id);
+  }
+
+  // Compute column X positions based on widest block in each rank
+  const rankX = new Map<number, number>();
+  let cursorX = 70;
+  for (let r = 0; r <= maxRank; r++) {
+    const group = rankGroups.get(r);
+    if (!group || group.length === 0) continue;
+    rankX.set(r, cursorX);
+    const maxW = Math.max(...group.map((id) => blockSizes.get(id)?.width ?? 96));
+    cursorX += maxW + 84;
+  }
+
+  // Compute row Y positions per rank with barycenter ordering & chain alignment
+  const autoCoords = new Map<string, { x: number; y: number }>();
+  const centerY = 165;
+  const rowStep = 116;
+
+  for (let r = 0; r <= maxRank; r++) {
+    const group = rankGroups.get(r);
+    if (!group || group.length === 0) continue;
+
+    group.sort((a, b) => {
+      const incA = incoming.get(a) ?? [];
+      const incB = incoming.get(b) ?? [];
+      const outA = outgoing.get(a) ?? [];
+      const outB = outgoing.get(b) ?? [];
+      const portScoreA = outA.length > 0 ? Math.min(...outA.map((e) => e.dstPort)) : 99;
+      const portScoreB = outB.length > 0 ? Math.min(...outB.map((e) => e.dstPort)) : 99;
+      const predYA =
+        incA.length > 0
+          ? incA.reduce((acc, e) => acc + (autoCoords.get(e.src)?.y ?? centerY), 0) / incA.length
+          : centerY + (portScoreA - 1.5) * 40;
+      const predYB =
+        incB.length > 0
+          ? incB.reduce((acc, e) => acc + (autoCoords.get(e.src)?.y ?? centerY), 0) / incB.length
+          : centerY + (portScoreB - 1.5) * 40;
+      if (Math.abs(predYA - predYB) > 4) return predYA - predYB;
+      return blockIds.indexOf(a) - blockIds.indexOf(b);
+    });
+
+    const colX = rankX.get(r) ?? 70;
+    if (group.length === 1) {
+      const id = group[0]!;
+      const h = blockSizes.get(id)?.height ?? 56;
+      const inc = incoming.get(id) ?? [];
+      let targetCenterY = centerY;
+      if (inc.length === 1) {
+        const predId = inc[0]!.src;
+        const predCoord = autoCoords.get(predId);
+        const predH = blockSizes.get(predId)?.height ?? 56;
+        const predGroup = rankGroups.get(ranks.get(predId) ?? -1) ?? [];
+        if (predCoord && predGroup.length > 1) {
+          targetCenterY = predCoord.y + predH / 2;
+        }
+      }
+      autoCoords.set(id, { x: colX, y: Math.round(targetCenterY - h / 2) });
+    } else {
+      const startCenterY = centerY - ((group.length - 1) * rowStep) / 2;
+      for (let idx = 0; idx < group.length; idx++) {
+        const id = group[idx]!;
+        const h = blockSizes.get(id)?.height ?? 56;
+        const rowCenterY = startCenterY + idx * rowStep;
+        autoCoords.set(id, { x: colX, y: Math.round(rowCenterY - h / 2) });
+      }
+    }
+  }
+
+  // Backward alignment pass: if a single-block earlier rank feeds a single block in the next rank, align its Y
+  for (let r = maxRank - 1; r >= 0; r--) {
+    const group = rankGroups.get(r);
+    if (!group || group.length !== 1) continue;
+    const id = group[0]!;
+    const inc = incoming.get(id) ?? [];
+    const out = outgoing.get(id) ?? [];
+    if (inc.length === 0 && out.length === 1) {
+      const succId = out[0]!.dst;
+      const succCoord = autoCoords.get(succId);
+      const succH = blockSizes.get(succId)?.height ?? 56;
+      const h = blockSizes.get(id)?.height ?? 56;
+      if (succCoord) {
+        autoCoords.set(id, {
+          x: autoCoords.get(id)!.x,
+          y: Math.round(succCoord.y + succH / 2 - h / 2),
+        });
+      }
+    }
+  }
+
+  // Track max input port count per block
+  const maxInPorts = new Map<string, number>();
+  for (const c of flatConns) {
+    maxInPorts.set(c.dst, Math.max(maxInPorts.get(c.dst) ?? 1, c.dstPort));
+  }
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i]!;
+    const blockId = blockIds[i]!;
+    const size = blockSizes.get(blockId) ?? { width: 96, height: 56 };
+    const width = size.width;
+    const height = size.height;
 
     let x = block.position?.x;
     let y = block.position?.y;
 
     if (x === undefined || y === undefined || (x === 0 && y === 0)) {
-      x = autoX;
-      y = autoY;
-      autoX += width + 70;
-      if (autoX > 900) {
-        autoX = 80;
-        autoY += height + 80;
-      }
+      const computed = autoCoords.get(blockId) ?? { x: 70 + i * 150, y: 120 };
+      x = computed.x;
+      y = computed.y;
     }
 
-    blockCenters.set(blockId, { x, y, width, height });
     const { symbol, badge } = getBlockGlyph(block.type, block.parameters);
-
     const isRound = block.type === "Sum" || block.type === "Product";
     const cellShape = isRound ? "circle" : "rect";
 
@@ -203,19 +440,19 @@ export function buildSimulinkDiagram(modelOrSystem: SimulinkModelLike | Simulink
         blockName: block.name,
         blockType: block.type,
         badge,
+        symbol,
+        inPortCount: maxInPorts.get(blockId) ?? 1,
         parameters: block.parameters instanceof Map ? Object.fromEntries(block.parameters) : block.parameters,
       },
     });
   }
 
   // Extract and draw lines/connections
-  const lines = sys.lines || [];
   let lineIdx = 1;
 
   for (const line of lines) {
     const srcId = `block_${line.srcBlock}`;
 
-    // Direct destination
     if (line.dstBlock) {
       const dstId = `block_${line.dstBlock}`;
       cells.push({
@@ -239,12 +476,11 @@ export function buildSimulinkDiagram(modelOrSystem: SimulinkModelLike | Simulink
           srcBlock: line.srcBlock,
           srcPort: line.srcPort,
           dstBlock: line.dstBlock,
-          dstPort: line.dstPort,
+          dstPort: line.dstPort ?? 1,
         },
       });
     }
 
-    // Branch destinations (signal fan-out)
     if (line.branches && line.branches.length > 0) {
       for (const branch of line.branches) {
         const dstId = `block_${branch.dstBlock}`;
@@ -285,7 +521,6 @@ export function buildSimulinkDiagram(modelOrSystem: SimulinkModelLike | Simulink
 export function renderSimulinkSvg(modelOrSystem: SimulinkModelLike | SimulinkSystemLike): string {
   const diag = buildSimulinkDiagram(modelOrSystem);
 
-  // Compute bounding box
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -293,10 +528,15 @@ export function renderSimulinkSvg(modelOrSystem: SimulinkModelLike | SimulinkSys
 
   for (const cell of diag.cells) {
     if (cell.x !== undefined && cell.y !== undefined) {
-      minX = Math.min(minX, cell.x);
+      const w = cell.width ?? 96;
+      const h = cell.height ?? 56;
+      const bName = (cell.data?.["blockName"] as string) || "";
+      const labelHalfW = Math.max(w / 2, bName.length * 3.1 + 8);
+      const cx = cell.x + w / 2;
+      minX = Math.min(minX, cx - labelHalfW);
       minY = Math.min(minY, cell.y);
-      maxX = Math.max(maxX, cell.x + (cell.width ?? 80));
-      maxY = Math.max(maxY, cell.y + (cell.height ?? 60));
+      maxX = Math.max(maxX, cx + labelHalfW);
+      maxY = Math.max(maxY, cell.y + h + 26);
     }
   }
 
@@ -304,18 +544,30 @@ export function renderSimulinkSvg(modelOrSystem: SimulinkModelLike | SimulinkSys
     minX = 0;
     minY = 0;
     maxX = 800;
-    maxY = 600;
+    maxY = 360;
   }
 
-  const padding = 60;
-  const width = Math.max(800, maxX - minX + padding * 2);
-  const height = Math.max(600, maxY - minY + padding * 2);
-  const viewBox = `${minX - padding} ${minY - padding} ${width} ${height}`;
+  const padX = 44;
+  const padTop = 54;
+  const padBottom = 28;
+  const vbX = Math.round(minX - padX);
+  const vbY = Math.round(minY - padTop);
+  const width = Math.round(Math.max(680, maxX - minX + padX * 2));
+  const height = Math.round(Math.max(260, maxY - minY + padTop + padBottom));
+  const viewBox = `${vbX} ${vbY} ${width} ${height}`;
 
   const nodeMap = new Map<string, SimulinkDiagramCell>();
   for (const cell of diag.cells) {
     if (cell.x !== undefined) nodeMap.set(cell.id, cell);
   }
+
+  const getPortY = (node: SimulinkDiagramCell, portNum: number, totalPorts: number): number => {
+    const ny = node.y ?? 0;
+    const nh = node.height ?? 56;
+    if (totalPorts <= 1) return ny + nh / 2;
+    const clampedPort = Math.max(1, Math.min(totalPorts, portNum));
+    return Math.round(ny + (nh * clampedPort) / (totalPorts + 1));
+  };
 
   let svg = `<?xml version="1.0" encoding="UTF-8"?>\n`;
   svg += `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${width}" height="${height}" style="background-color: #0b0f19; font-family: Inter, system-ui, -apple-system, sans-serif;">\n`;
@@ -324,12 +576,12 @@ export function renderSimulinkSvg(modelOrSystem: SimulinkModelLike | SimulinkSys
   svg += `      <path d="M 0 1 L 9 5 L 0 9 z" fill="#38bdf8" />\n`;
   svg += `    </marker>\n`;
   svg += `    <filter id="simulink-glow" x="-20%" y="-20%" width="140%" height="140%">\n`;
-  svg += `      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#38bdf8" flood-opacity="0.25" />\n`;
+  svg += `      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0284c7" flood-opacity="0.22" />\n`;
   svg += `    </filter>\n`;
   svg += `  </defs>\n\n`;
 
-  // Title header
-  svg += `  <text x="${minX}" y="${minY - 20}" fill="#f8fafc" font-size="16" font-weight="700">${diag.title} — Simulink Block Diagram</text>\n\n`;
+  svg += `  <rect x="${vbX}" y="${vbY}" width="${width}" height="${height}" rx="8" fill="#0b0f19" />\n`;
+  svg += `  <text x="${vbX + 24}" y="${vbY + 30}" fill="#f8fafc" font-size="14" font-weight="700" letter-spacing="0.2">${escapeXml(diag.title)} — Simulink Block Diagram</text>\n\n`;
 
   // Draw Edges Layer
   svg += `  <g id="simulink-lines-layer">\n`;
@@ -343,19 +595,26 @@ export function renderSimulinkSvg(modelOrSystem: SimulinkModelLike | SimulinkSys
       const tgtNode = nodeMap.get(tgtId);
       if (!srcNode || !tgtNode) continue;
 
-      const x1 = (srcNode.x ?? 0) + (srcNode.width ?? 80);
-      const y1 = (srcNode.y ?? 0) + (srcNode.height ?? 60) / 2;
+      const dstPort = Number(cell.data?.["dstPort"] ?? 1);
+      const totalIn = Number(tgtNode.data?.["inPortCount"] ?? 1);
+
+      const x1 = (srcNode.x ?? 0) + (srcNode.width ?? 96);
+      const y1 = Math.round((srcNode.y ?? 0) + (srcNode.height ?? 56) / 2);
       const x2 = tgtNode.x ?? 0;
-      const y2 = (tgtNode.y ?? 0) + (tgtNode.height ?? 60) / 2;
+      const y2 = getPortY(tgtNode, dstPort, totalIn);
 
-      const midX = (x1 + x2) / 2;
-      const pathD = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+      const dx = Math.max(28, Math.abs(x2 - x1) * 0.45);
+      const pathD =
+        Math.abs(y1 - y2) <= 2 && x2 > x1
+          ? `M ${x1} ${y1} L ${x2} ${y2}`
+          : `M ${x1} ${y1} C ${Math.round(x1 + dx)} ${y1}, ${Math.round(x2 - dx)} ${y2}, ${x2} ${y2}`;
       const isBranch = cell.id.startsWith("branch_");
-      const strokeDash = isBranch ? `stroke-dasharray="4 2"` : "";
+      const strokeDash = isBranch ? ` stroke-dasharray="5 3"` : "";
 
-      svg += `    <path id="${cell.id}" d="${pathD}" fill="none" stroke="#38bdf8" stroke-width="2" marker-end="url(#simulink-arrow)" ${strokeDash} opacity="0.85" />\n`;
+      svg += `    <path id="${escapeXml(cell.id)}" d="${pathD}" fill="none" stroke="#38bdf8" stroke-width="2" marker-end="url(#simulink-arrow)"${strokeDash} opacity="0.9" />\n`;
       if (cell.label) {
-        svg += `    <text x="${midX}" y="${(y1 + y2) / 2 - 6}" fill="#94a3b8" font-size="10" text-anchor="middle">${cell.label}</text>\n`;
+        const midX = Math.round((x1 + x2) / 2);
+        svg += `    <text x="${midX}" y="${Math.round((y1 + y2) / 2 - 6)}" fill="#94a3b8" font-size="10" text-anchor="middle">${escapeXml(cell.label)}</text>\n`;
       }
     }
   }
@@ -365,40 +624,68 @@ export function renderSimulinkSvg(modelOrSystem: SimulinkModelLike | SimulinkSys
   svg += `  <g id="simulink-blocks-layer">\n`;
   for (const cell of diag.cells) {
     if (cell.x !== undefined && cell.y !== undefined) {
-      const w = cell.width ?? 80;
-      const h = cell.height ?? 60;
-      const cx = cell.x + w / 2;
-      const cy = cell.y + h / 2;
+      const w = cell.width ?? 96;
+      const h = cell.height ?? 56;
+      const cx = Math.round(cell.x + w / 2);
+      const cy = Math.round(cell.y + h / 2);
       const bType = (cell.data?.["blockType"] as string) || "Block";
       const bName = (cell.data?.["blockName"] as string) || cell.label || "";
       const badge = (cell.data?.["badge"] as string) || "";
+      const symbol = (cell.data?.["symbol"] as string) || (cell.label ?? "").split("\n")[0] || bType;
+      const totalIn = Number(cell.data?.["inPortCount"] ?? 1);
 
-      svg += `    <g id="${cell.id}" filter="url(#simulink-glow)">\n`;
+      svg += `    <g id="${escapeXml(cell.id)}" filter="url(#simulink-glow)">\n`;
 
       if (cell.shape === "circle") {
-        svg += `      <circle cx="${cx}" cy="${cy}" r="${w / 2}" fill="#1e293b" stroke="#38bdf8" stroke-width="2" />\n`;
-        svg += `      <text x="${cx}" y="${cy + 4}" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">${badge}</text>\n`;
-        svg += `      <text x="${cx}" y="${cy + w / 2 + 14}" fill="#94a3b8" font-size="10" text-anchor="middle">${bName}</text>\n`;
+        const r = Math.round(w / 2);
+        svg += `      <circle cx="${cx}" cy="${cy}" r="${r}" fill="#1e293b" stroke="#38bdf8" stroke-width="2" />\n`;
+        svg += `      <text x="${cx}" y="${cy + 5}" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">${escapeXml(badge)}</text>\n`;
+        if (bType === "Sum" && symbol.length >= 2) {
+          for (let p = 1; p <= Math.min(totalIn, symbol.length); p++) {
+            const signChar = symbol[p - 1] === "-" ? "−" : "+";
+            const py = getPortY(cell, p, totalIn);
+            svg += `      <text x="${cell.x + 11}" y="${py + 3}" fill="#94a3b8" font-size="10" font-weight="700" text-anchor="middle">${signChar}</text>\n`;
+          }
+        }
       } else {
-        const strokeColor = bType === "SubSystem" ? "#a855f7" : bType === "Scope" ? "#eab308" : "#38bdf8";
+        const strokeColor =
+          bType === "SubSystem"
+            ? "#a855f7"
+            : bType === "Scope" || bType === "Outport"
+              ? "#eab308"
+              : bType === "Inport" || bType === "Constant"
+                ? "#10b981"
+                : "#38bdf8";
         svg += `      <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="6" fill="#1e293b" stroke="${strokeColor}" stroke-width="2" />\n`;
 
-        // Badge pill
-        svg += `      <rect x="${cell.x + 6}" y="${cell.y + 6}" width="28" height="14" rx="3" fill="${strokeColor}" fill-opacity="0.2" />\n`;
-        svg += `      <text x="${cell.x + 20}" y="${cell.y + 17}" fill="${strokeColor}" font-size="8" font-weight="700" text-anchor="middle">${badge}</text>\n`;
+        const badgeW = Math.max(24, badge.length * 5.5 + 8);
+        svg += `      <rect x="${cell.x + 6}" y="${cell.y + 5}" width="${Math.round(badgeW)}" height="13" rx="3" fill="${strokeColor}" fill-opacity="0.18" />\n`;
+        svg += `      <text x="${Math.round(cell.x + 6 + badgeW / 2)}" y="${cell.y + 14.5}" fill="${strokeColor}" font-size="8" font-weight="700" text-anchor="middle">${escapeXml(badge)}</text>\n`;
 
-        // Central math symbol or block body
-        const lines = (cell.label ?? "").split("\n");
-        const bodyText = lines[0] ?? bType;
-        svg += `      <text x="${cx}" y="${cy + 3}" fill="#f8fafc" font-size="12" font-weight="600" text-anchor="middle">${bodyText}</text>\n`;
-
-        // Label below or at bottom
-        svg += `      <text x="${cx}" y="${cell.y + h - 6}" fill="#94a3b8" font-size="9" text-anchor="middle">${bName}</text>\n`;
+        const symLines = symbol.split("\n");
+        if (bType === "TransferFcn" && symLines.length >= 3) {
+          const numText = symLines[0] ?? "1";
+          const denText = symLines[2] ?? "s+1";
+          svg += `      <text x="${cx}" y="${cy - 2}" fill="#f8fafc" font-size="10.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="600" text-anchor="middle">${escapeXml(numText)}</text>\n`;
+          svg += `      <line x1="${cell.x + 12}" y1="${cy + 3}" x2="${cell.x + w - 12}" y2="${cy + 3}" stroke="#64748b" stroke-width="1.25" />\n`;
+          svg += `      <text x="${cx}" y="${cy + 15}" fill="#cbd5e1" font-size="10.5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-weight="600" text-anchor="middle">${escapeXml(denText)}</text>\n`;
+        } else {
+          const bodyText = symLines[0] ?? bType;
+          svg += `      <text x="${cx}" y="${cy + 8}" fill="#f8fafc" font-size="12" font-weight="600" text-anchor="middle">${escapeXml(bodyText)}</text>\n`;
+        }
       }
 
-      // Small port pin markers
-      svg += `      <circle cx="${cell.x}" cy="${cy}" r="3" fill="#38bdf8" />\n`;
-      svg += `      <circle cx="${cell.x + w}" cy="${cy}" r="3" fill="#38bdf8" />\n`;
+      svg += `      <text x="${cx}" y="${cell.y + h + 15}" fill="#cbd5e1" font-size="10" font-weight="500" text-anchor="middle">${escapeXml(bName)}</text>\n`;
+
+      if (bType !== "Inport" && bType !== "Constant") {
+        for (let p = 1; p <= totalIn; p++) {
+          const py = getPortY(cell, p, totalIn);
+          svg += `      <circle cx="${cell.x}" cy="${py}" r="3" fill="#38bdf8" />\n`;
+        }
+      }
+      if (bType !== "Outport" && bType !== "Scope") {
+        svg += `      <circle cx="${cell.x + w}" cy="${cy}" r="3" fill="#38bdf8" />\n`;
+      }
       svg += `    </g>\n`;
     }
   }

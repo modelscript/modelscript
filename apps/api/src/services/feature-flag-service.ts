@@ -93,11 +93,8 @@ export class FeatureFlagService {
     const userRole = user?.role || user?.accountType || user?.account_type || (user?.id ? "user" : "guest");
     const isAdmin = userRole === "admin";
 
-    // If flag is globally disabled in DB, allow access ONLY if user is an admin and admin is in allowedRoles
+    // If flag is globally disabled in DB (or by default), it is disabled for everyone
     if (!isEnabledInDb) {
-      if (isAdmin && allowedRoles.includes("admin")) {
-        return true;
-      }
       return false;
     }
 

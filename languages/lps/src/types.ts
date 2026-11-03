@@ -98,6 +98,7 @@ export interface InlineValve {
   toNode: string;
   opening: number; // 0.0 (closed) to 1.0 (fully open)
   closingTimeSeconds: number; // time for full stroke (e.g. 15s for ESD valves)
+  cv?: number | undefined; // Flow coefficient
 }
 
 /** Gas composition specified as molar fractions (sum = 1.0). */

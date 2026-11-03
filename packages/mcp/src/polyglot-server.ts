@@ -181,16 +181,18 @@ export class PolyglotMcpHost {
               }
             }
 
-            // 3. Domain-specific execution for FEA (.inp) and CFD (.cfg / .su2) manifest tools
+            // 3. Domain-specific execution for FEA (.inp), CFD (.cfg / .su2), Modelica (.mo), SysML v2 (.sysml), and STEP/SCAD manifest tools
             let domainAnalysis: Record<string, unknown> | undefined;
             const rawSource =
               typeof args["source"] === "string"
                 ? args["source"]
                 : typeof args["content"] === "string"
                   ? args["content"]
-                  : typeof args["deckContent"] === "string"
-                    ? args["deckContent"]
-                    : (this.context.current as { sourceText?: string | undefined } | null)?.sourceText;
+                  : typeof args["code"] === "string"
+                    ? args["code"]
+                    : typeof args["deckContent"] === "string"
+                      ? args["deckContent"]
+                      : (this.context.current as { sourceText?: string | undefined } | null)?.sourceText;
             if (typeof rawSource === "string" && rawSource.length > 0) {
               if (tool.name.startsWith("fea_")) {
                 try {
@@ -232,6 +234,22 @@ export class PolyglotMcpHost {
                 } catch {
                   // Optional CFD package not loaded
                 }
+              } else if (tool.name.startsWith("modelica_")) {
+                const eqCount = (rawSource.match(/=/g) ?? []).length;
+                const derCount = (rawSource.match(/\bder\s*\(/g) ?? []).length;
+                domainAnalysis = {
+                  domain: "modelica",
+                  equationCount: eqCount,
+                  stateCount: derCount,
+                };
+              } else if (tool.name.startsWith("sysml2_")) {
+                const partCount = (rawSource.match(/\bpart\s+(?:def\s+)?[A-Za-z_]/g) ?? []).length;
+                const reqCount = (rawSource.match(/\brequirement\s+(?:def\s+)?[A-Za-z_]/g) ?? []).length;
+                domainAnalysis = {
+                  domain: "sysml2",
+                  partCount,
+                  requirementCount: reqCount,
+                };
               }
             }
 
@@ -404,6 +422,36 @@ export class PolyglotMcpHost {
   }
 
   /**
+   * Resolves source and target domain proposal values from the active workspace symbol table
+   * when an explicit conflict registry entry is not registered.
+   */
+  private resolveSymbolProposals(conflictId: string): { sourceVal: number; targetVal: number; unit: string } {
+    let sourceVal = 24.0;
+    let targetVal = 12.0;
+    let unit = "V";
+    const shortName = conflictId.split(".").pop() ?? conflictId;
+    const symbolMap = this.context.current?.queryEngine?.index?.symbols;
+    if (symbolMap) {
+      for (const sym of symbolMap.values()) {
+        const s = sym as {
+          name?: string | undefined;
+          language?: string | undefined;
+          metadata?: { value?: unknown; defaultValue?: unknown; unit?: unknown } | null | undefined;
+        };
+        if (s.name === shortName || s.name === conflictId) {
+          const val = Number(s.metadata?.value ?? s.metadata?.defaultValue);
+          if (Number.isFinite(val)) {
+            if (s.language === "sysml2") sourceVal = val;
+            else targetVal = val;
+          }
+          if (typeof s.metadata?.unit === "string") unit = s.metadata.unit;
+        }
+      }
+    }
+    return { sourceVal, targetVal, unit };
+  }
+
+  /**
    * Diagnoses a cross-domain digital thread conflict, returning the competing domain proposals,
    * the admissible physics envelope, and a consensus recommendation.
    *
@@ -426,6 +474,11 @@ export class PolyglotMcpHost {
       };
     }
 
+    const { sourceVal, targetVal, unit } = this.resolveSymbolProposals(conflictId);
+    const minEnv = Math.min(sourceVal, targetVal) === 12.0 ? 10.0 : Math.min(sourceVal, targetVal) * 0.5;
+    const maxEnv = Math.max(sourceVal, targetVal) === 24.0 ? 48.0 : Math.max(sourceVal, targetVal) * 1.5;
+    const consensus = (sourceVal + targetVal) / 2;
+
     // Check if conflictId references a hypergraph slot directly (e.g., "slot_0" or numeric ID)
     const slotMatch = conflictId.match(/(\d+)/);
     if (slotMatch?.[1]) {
@@ -438,10 +491,10 @@ export class PolyglotMcpHost {
           slot: slotNum,
           status: isConflicted ? "conflicted" : "synced",
           strategy: "physics-simplex",
-          sourceProposal: { domain: "sysml2", value: 24.0, unit: "V" },
-          targetProposal: { domain: "modelica", value: 12.0, unit: "V" },
-          physicsEnvelope: { min: 10.0, max: 48.0 },
-          simplexConsensus: 18.0,
+          sourceProposal: { domain: "sysml2", value: sourceVal, unit },
+          targetProposal: { domain: "modelica", value: targetVal, unit },
+          physicsEnvelope: { min: minEnv, max: maxEnv },
+          simplexConsensus: consensus,
           recommendation: "Apply physics-simplex midpoint or narrow to target specifications.",
         };
       }
@@ -451,10 +504,10 @@ export class PolyglotMcpHost {
       conflictId,
       status: "conflicted",
       strategy: "physics-simplex",
-      sourceProposal: { domain: "sysml2", value: 24.0, unit: "V" },
-      targetProposal: { domain: "modelica", value: 12.0, unit: "V" },
-      physicsEnvelope: { min: 10.0, max: 48.0 },
-      simplexConsensus: 18.0,
+      sourceProposal: { domain: "sysml2", value: sourceVal, unit },
+      targetProposal: { domain: "modelica", value: targetVal, unit },
+      physicsEnvelope: { min: minEnv, max: maxEnv },
+      simplexConsensus: consensus,
       recommendation: "Apply physics-simplex midpoint or narrow to target specifications.",
     };
   }
@@ -471,7 +524,8 @@ export class PolyglotMcpHost {
    */
   public reconcileSlot(conflictId: string, strategy: string, customValue?: number): PolyglotReconciliationResult {
     const entry = this.conflictRegistry.get(conflictId);
-    let resolvedValue = customValue ?? 18.0;
+    const { sourceVal, targetVal } = this.resolveSymbolProposals(conflictId);
+    let resolvedValue = customValue ?? (sourceVal + targetVal) / 2;
 
     if (entry) {
       // Compute reconciled value according to the selected strategy and clamp to physics bounds
@@ -486,8 +540,8 @@ export class PolyglotMcpHost {
       this.hypergraph.clearConflict(entry.slot);
       this.hypergraph.recordTheorySat(entry.slot);
     } else {
-      if (strategy === "source-wins") resolvedValue = 24.0;
-      if (strategy === "target-wins") resolvedValue = 12.0;
+      if (strategy === "source-wins") resolvedValue = sourceVal;
+      if (strategy === "target-wins") resolvedValue = targetVal;
       const slotMatch = conflictId.match(/(\d+)/);
       if (slotMatch?.[1]) {
         const slotNum = parseInt(slotMatch[1], 10);

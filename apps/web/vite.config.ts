@@ -397,6 +397,31 @@ export default defineConfig({
           src: "../../scripts/SysML-v2-Release-2026-03.zip",
           dest: "lsp/server/dist",
         },
+        // SUNDIALS CVODE WebAssembly solver binaries and ES module glue for browser simulation
+        {
+          src: "../../packages/simulate/src/wasm/sundials.js",
+          dest: "lsp/wasm",
+        },
+        {
+          src: "../../packages/simulate/src/wasm/sundials.wasm",
+          dest: "lsp/wasm",
+        },
+        {
+          src: "../../packages/simulate/src/wasm/sundials.js",
+          dest: "wasm",
+        },
+        {
+          src: "../../packages/simulate/src/wasm/sundials.wasm",
+          dest: "wasm",
+        },
+        {
+          src: "../../packages/simulate/src/wasm/sundials.js",
+          dest: "lsp/server/dist",
+        },
+        {
+          src: "../../packages/simulate/src/wasm/sundials.wasm",
+          dest: "lsp/server/dist",
+        },
       ].filter((t) => {
         if (t.content !== undefined) return true;
         if (!t.src) return false;
@@ -488,6 +513,7 @@ export default defineConfig({
     ],
   },
   server: {
+    host: "0.0.0.0",
     port: 3001,
     strictPort: true,
     proxy: {

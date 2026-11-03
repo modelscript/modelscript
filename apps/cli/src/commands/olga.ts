@@ -472,6 +472,53 @@ export const OlgaCommand: CommandModule<Record<string, unknown>, Record<string, 
       if (argv["out"]) {
         const outPath = path.resolve(process.cwd(), argv["out"] as string);
         const snaps = profileDatasetToSnapshots(dataset);
+        const x0 = snaps[0]?.x ?? [0, 1000];
+        const rawSnap0 = dataset.snapshots[0];
+
+        // Extract or derive elevation profile along the pipeline spatial sections
+        const rawElev =
+          rawSnap0?.variables["Z"] ??
+          rawSnap0?.variables["ELEV"] ??
+          rawSnap0?.variables["ELEVATION"] ??
+          rawSnap0?.variables["TVD"] ??
+          rawSnap0?.variables["DEPTH"];
+        const headerElevMatches = Array.from(
+          content.matchAll(/ELEVATION\s*=\s*\(([^)]+)\)|ELEVATION\s*=\s*([+-]?\d+(?:\.\d+)?)/gi),
+        );
+        const headerElevs: number[] = [];
+        for (const m of headerElevMatches) {
+          const listStr = m[1] ?? m[2] ?? "";
+          for (const tok of listStr.split(/[\s,]+/)) {
+            const v = parseFloat(tok);
+            if (Number.isFinite(v)) headerElevs.push(v);
+          }
+        }
+
+        const derivedElevations: number[] = [];
+        for (let i = 0; i < x0.length; i++) {
+          if (rawElev && Number.isFinite(rawElev[i])) {
+            derivedElevations.push(rawElev[i]!);
+          } else if (headerElevs.length > 0) {
+            derivedElevations.push(headerElevs[Math.min(i, headerElevs.length - 1)]!);
+          } else if (snaps[0]?.elevation && snaps[0].elevation[i] !== undefined && snaps[0].elevation[i] !== 0) {
+            derivedElevations.push(snaps[0].elevation[i]!);
+          } else {
+            // Estimate seabed/riser topography from spatial coordinate & hydrostatic head
+            const p0 = snaps[0]?.pressure[0] ?? 0;
+            const pi = snaps[0]?.pressure[i] ?? p0;
+            const holdup = snaps[0]?.liquidHoldup[i] ?? 0.25;
+            const rhoMix = holdup * 800 + (1 - holdup) * 50;
+            const dzHydro = rhoMix > 0 ? -(pi - p0) / (rhoMix * 9.81) : 0;
+            derivedElevations.push(Math.round(dzHydro * 100) / 100);
+          }
+        }
+
+        for (const snap of snaps) {
+          if (snap.elevation && snap.elevation.every((z) => z === 0) && derivedElevations.length === snap.x.length) {
+            snap.elevation = [...derivedElevations];
+          }
+        }
+
         const simResult: OlgaSimulationResult = {
           times: snaps.map((s) => s.time),
           profiles: snaps,
@@ -486,33 +533,81 @@ export const OlgaCommand: CommandModule<Record<string, unknown>, Record<string, 
             peakLiquidSurgeVolume: 0,
           },
         };
-        const dummyModel = {
-          title: dataset.title ?? path.basename(filePath),
-          startTime: snaps[0]?.time ?? 0,
-          endTime: snaps[snaps.length - 1]?.time ?? 100,
-          minDt: 0.1,
-          maxDt: 1.0,
-          flowpaths: [
-            {
-              name: dataset.branch,
-              pipes: [
-                {
-                  label: "LINE",
-                  length: snaps[0]?.x[snaps[0]?.x.length - 1] ?? 1000,
-                  diameter: 0.254,
-                  elevation: 0,
-                  roughness: 1e-5,
-                  discretization: 20,
-                },
-              ],
-              valves: [],
-              sources: [],
-              controllers: [],
-            },
-          ],
-          nodes: [],
-        };
-        const svg = renderOlgaElevationProfileSvg(dummyModel, simResult);
+
+        // Check for companion .opi / .genkey / .key input deck
+        const baseNoExt = filePath.replace(/\.[^.]+$/, "");
+        const companionCandidates = [
+          files[1] ? path.resolve(process.cwd(), files[1]) : null,
+          `${baseNoExt}.opi`,
+          `${baseNoExt}.genkey`,
+          `${baseNoExt}.key`,
+        ].filter((c): c is string => Boolean(c && c !== filePath && fs.existsSync(c)));
+
+        let profileModel: ReturnType<typeof parseOlga> | undefined;
+        if (companionCandidates.length > 0) {
+          try {
+            profileModel = parseOlga(fs.readFileSync(companionCandidates[0]!, "utf-8"));
+          } catch {
+            profileModel = undefined;
+          }
+        }
+
+        if (!profileModel) {
+          const diaVar = rawSnap0?.variables["DIA"] ?? rawSnap0?.variables["DIAMETER"] ?? rawSnap0?.variables["ID"];
+          const cliDiameter = argv["diameter"] as number | undefined;
+          const baseDiameter =
+            typeof cliDiameter === "number" && Number.isFinite(cliDiameter) && cliDiameter > 0
+              ? cliDiameter
+              : diaVar?.[0] && diaVar[0] > 0
+                ? diaVar[0]
+                : 0.254;
+
+          const pipes = [];
+          if (x0.length >= 2) {
+            for (let i = 1; i < x0.length; i++) {
+              const segLen = Math.max(1e-3, (x0[i] ?? 0) - (x0[i - 1] ?? 0));
+              const segElev = (derivedElevations[i] ?? 0) - (derivedElevations[i - 1] ?? 0);
+              const segDia = diaVar?.[i] && diaVar[i]! > 0 ? diaVar[i]! : baseDiameter;
+              pipes.push({
+                label: `SEC_${i}`,
+                length: segLen,
+                diameter: segDia,
+                elevation: segElev,
+                roughness: 1e-5,
+                discretization: 1,
+              });
+            }
+          } else {
+            pipes.push({
+              label: dataset.branch || "LINE",
+              length: x0[x0.length - 1] ?? 1000,
+              diameter: baseDiameter,
+              elevation: derivedElevations[derivedElevations.length - 1] ?? 0,
+              roughness: 1e-5,
+              discretization: Math.max(1, x0.length),
+            });
+          }
+
+          profileModel = {
+            title: dataset.title ?? path.basename(filePath),
+            startTime: snaps[0]?.time ?? 0,
+            endTime: snaps[snaps.length - 1]?.time ?? 100,
+            minDt: 0.1,
+            maxDt: 1.0,
+            flowpaths: [
+              {
+                name: dataset.branch,
+                pipes,
+                valves: [],
+                sources: [],
+                controllers: [],
+              },
+            ],
+            nodes: [],
+          };
+        }
+
+        const svg = renderOlgaElevationProfileSvg(profileModel, simResult);
         fs.writeFileSync(outPath, svg, "utf-8");
         console.log(`\n✔ Elevation profile SVG diagram saved: ${outPath}`);
       }

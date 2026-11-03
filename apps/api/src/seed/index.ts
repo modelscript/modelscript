@@ -24,8 +24,8 @@ export { SEED_FOLLOW_PAIRS, SEED_PERSONAS, type SeedPersona } from "./personas.j
 export type { SeedComment, SeedCommentReply, SeedPostSpec } from "./types.js";
 
 /**
- * Complete catalog of 44 flagship engineering posts and artifacts — one for every
- * language supported in `languages/*`.
+ * Complete catalog of 44 showcase polyglot engineering posts and artifacts — one for every
+ * language supported in `languages/*` (for local development & sandbox environments only).
  */
 export const ALL_44_LANGUAGE_SEED_POSTS: SeedPostSpec[] = [
   ...SYSTEMS_ONTOLOGICAL_POSTS,
@@ -43,8 +43,8 @@ function hoursAgoSqliteTimestamp(hoursAgo: number): string {
 }
 
 /**
- * Seeds the 20 engineering personas, their follow graph, and flagship linked repositories.
- * Idempotent: safe to run on every server startup or dev reset.
+ * Seeds the 20 engineering personas, their follow graph, and linked showcase repositories.
+ * Idempotent: safe to run on local dev server startup or dev reset.
  */
 export function seedPolyglotUsers(db: LibraryDatabase): Map<string, number> {
   let passwordHash: string | null = null;
@@ -99,7 +99,7 @@ export function seedPolyglotUsers(db: LibraryDatabase): Map<string, number> {
     }
   }
 
-  const flagshipRepos: {
+  const showcaseRepos: {
     owner: string;
     provider: string;
     externalId: string;
@@ -200,7 +200,7 @@ export function seedPolyglotUsers(db: LibraryDatabase): Map<string, number> {
     },
   ];
 
-  for (const repo of flagshipRepos) {
+  for (const repo of showcaseRepos) {
     const ownerId = userIds.get(repo.owner);
     if (ownerId) {
       db.linkRepo(

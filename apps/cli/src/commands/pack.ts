@@ -19,11 +19,12 @@ export interface PackArgs {
   out?: string | undefined;
   dryRun?: boolean | undefined;
   json?: boolean | undefined;
+  preIndex?: boolean | undefined;
 }
 
-export function formatArchiveFilename(name: string, version: string): string {
+export function formatArchiveFilename(name: string, version: string, isBundle = false): string {
   const cleanName = name.startsWith("@") ? name.slice(1).replace(/[/\\]/g, "-") : name;
-  return `${cleanName}-${version}.msx.zip`;
+  return isBundle ? `${cleanName}-${version}.lsp-bundle.zip` : `${cleanName}-${version}.msx.zip`;
 }
 
 export const Pack: CommandModule<{}, PackArgs> = {
@@ -44,6 +45,12 @@ export const Pack: CommandModule<{}, PackArgs> = {
       .option("dry-run", {
         alias: "d",
         description: "Inspect files and archive details without creating the file",
+        type: "boolean",
+        default: false,
+      })
+      .option("pre-index", {
+        description:
+          "Pre-index package symbols, metadata, and diagrams into an .lsp-bundle.zip for instant O(1) loading",
         type: "boolean",
         default: false,
       })
@@ -128,10 +135,137 @@ export const Pack: CommandModule<{}, PackArgs> = {
       process.exit(1);
     }
 
+    let preIndexedClassCount = 0;
+    if (args.preIndex) {
+      const symbolsArr: Array<
+        [number, { id: number; name: string; kind: string; resourceId: string; startOffset: number; endOffset: number }]
+      > = [];
+      const byNameMap = new Map<string, number[]>();
+      const classesArr: Array<{
+        className: string;
+        classKind: string;
+        description: string | null;
+        components: unknown[];
+      }> = [];
+      let symIdCounter = 1;
+
+      for (const file of files) {
+        try {
+          const content = readFileSync(file.fullPath, "utf-8");
+          // Mirror source under sources/ in bundle for linear VFS
+          zip.addFile(`sources/${file.relPath}`, Buffer.from(content, "utf-8"));
+
+          const ext = path.extname(file.relPath).toLowerCase();
+          if (ext === ".mo") {
+            const classRegex = /(?:class|model|record|block|connector|package|function)\s+([A-Za-z0-9_]+)/g;
+            let m: RegExpExecArray | null;
+            while ((m = classRegex.exec(content)) !== null) {
+              const shortName = m[1]!;
+              const fqName = shortName === name ? shortName : `${name}.${shortName}`;
+              const symId = symIdCounter++;
+              symbolsArr.push([
+                symId,
+                {
+                  id: symId,
+                  name: shortName,
+                  kind: "class",
+                  resourceId: `sources/${file.relPath}`,
+                  startOffset: m.index,
+                  endOffset: m.index + m[0].length,
+                },
+              ]);
+              if (!byNameMap.has(shortName)) {
+                byNameMap.set(shortName, []);
+              }
+              byNameMap.get(shortName)!.push(symId);
+              classesArr.push({
+                className: fqName,
+                classKind: "model",
+                description: `Pre-indexed declaration from ${file.relPath}`,
+                components: [],
+              });
+            }
+          } else if (ext === ".sysml" || ext === ".kerml") {
+            const sysmlRegex =
+              /(?:part|package|action|item|port|connection|calc|constraint)\s+(?:def\s+)?([A-Za-z0-9_]+)/g;
+            let m: RegExpExecArray | null;
+            while ((m = sysmlRegex.exec(content)) !== null) {
+              const shortName = m[1]!;
+              const fqName = shortName === name ? shortName : `${name}::${shortName}`;
+              const symId = symIdCounter++;
+              symbolsArr.push([
+                symId,
+                {
+                  id: symId,
+                  name: shortName,
+                  kind: "class",
+                  resourceId: `sources/${file.relPath}`,
+                  startOffset: m.index,
+                  endOffset: m.index + m[0].length,
+                },
+              ]);
+              if (!byNameMap.has(shortName)) {
+                byNameMap.set(shortName, []);
+              }
+              byNameMap.get(shortName)!.push(symId);
+              classesArr.push({
+                className: fqName,
+                classKind: "part",
+                description: `Pre-indexed SysML declaration from ${file.relPath}`,
+                components: [],
+              });
+            }
+          }
+        } catch {
+          // ignore read failure
+        }
+      }
+
+      preIndexedClassCount = classesArr.length;
+
+      const indexJson = JSON.stringify(
+        {
+          symbols: symbolsArr,
+          byName: Array.from(byNameMap.entries()),
+          childrenOf: [],
+        },
+        null,
+        2,
+      );
+
+      const metadataJson = JSON.stringify(
+        {
+          name: name!,
+          version: version!,
+          classes: classesArr,
+          fileCount: files.length,
+        },
+        null,
+        2,
+      );
+
+      const manifestJson = JSON.stringify(
+        {
+          name: name!,
+          version: version!,
+          preIndexed: true,
+          totalClasses: preIndexedClassCount,
+          createdAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      );
+
+      zip.addFile("index.json", Buffer.from(indexJson, "utf-8"));
+      zip.addFile("metadata.json", Buffer.from(metadataJson, "utf-8"));
+      zip.addFile("manifest.json", Buffer.from(manifestJson, "utf-8"));
+      zip.addFile("icons.json", Buffer.from(JSON.stringify({}), "utf-8"));
+    }
+
     const zipBuffer = zip.toBuffer();
     const contentHash = computePackageContentHash(zipBuffer);
     const totalUncompressedBytes = files.reduce((acc, f) => acc + f.size, 0);
-    const archiveFilename = formatArchiveFilename(name!, version!);
+    const archiveFilename = formatArchiveFilename(name!, version!, Boolean(args.preIndex));
     const outDir = path.resolve(args.out || process.cwd());
     const archivePath = path.join(outDir, archiveFilename);
 
@@ -143,6 +277,8 @@ export const Pack: CommandModule<{}, PackArgs> = {
         outDir,
         destination: archivePath,
         dryRun: Boolean(args.dryRun),
+        preIndexed: Boolean(args.preIndex),
+        classesIndexed: preIndexedClassCount,
         contentHash,
         fileCount: files.length,
         uncompressedSize: totalUncompressedBytes,
@@ -166,6 +302,7 @@ export const Pack: CommandModule<{}, PackArgs> = {
       console.log(`\nArchive Summary:`);
       console.log(`- Target File: ${archiveFilename}`);
       console.log(`- Total Files: ${files.length}`);
+      console.log(`- Pre-Indexed: ${Boolean(args.preIndex)} (${preIndexedClassCount} classes)`);
       console.log(`- Uncompressed Size: ${formatBytes(totalUncompressedBytes)}`);
       console.log(`- Archive Size: ${formatBytes(zipBuffer.length)}`);
       console.log(`- Content Hash (SHA-256): ${contentHash}`);
@@ -179,6 +316,9 @@ export const Pack: CommandModule<{}, PackArgs> = {
     console.log(`📦 Successfully created package archive:`);
     console.log(`- Archive: ${path.relative(process.cwd(), archivePath) || archiveFilename}`);
     console.log(`- Package: ${name}@${version}`);
+    if (args.preIndex) {
+      console.log(`- Pre-Indexed: true (${preIndexedClassCount} classes indexed into index.json & metadata.json)`);
+    }
     console.log(`- Total Files: ${files.length}`);
     console.log(`- Uncompressed Size: ${formatBytes(totalUncompressedBytes)}`);
     console.log(`- Archive Size: ${formatBytes(zipBuffer.length)}`);

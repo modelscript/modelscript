@@ -136,6 +136,35 @@ process.on(
         `[publish] ${name}@${version}: discovered files — ${modelicaFiles.length} Modelica, ${sysmlFiles.length} SysML2, ${stepFiles.length} STEP CAD`,
       );
 
+      // Extract declared cross-library dependencies from package.mo uses(...) and manifest before indexing
+      const rootDependencies: Record<string, string> = {};
+      const packageMoPath = path.join(libraryPath, "package.mo");
+      if (fs.existsSync(packageMoPath)) {
+        const content = fs.readFileSync(packageMoPath, "utf-8");
+        const depRegex = /([a-zA-Z0-9_]+)\s*\(\s*version\s*=\s*"([^"]+)"/g;
+        let match;
+        while ((match = depRegex.exec(content)) !== null) {
+          if (match[1] && match[2] && match[1] !== "conversion" && match[1] !== "from") {
+            rootDependencies[match[1]] = match[2];
+          }
+        }
+      }
+      for (const mName of ["package.json", "modelscript.json"]) {
+        const mPath = path.join(libraryPath, mName);
+        if (fs.existsSync(mPath)) {
+          try {
+            const parsed = JSON.parse(fs.readFileSync(mPath, "utf-8"));
+            if (parsed?.dependencies && typeof parsed.dependencies === "object") {
+              for (const [depKey, depVer] of Object.entries(parsed.dependencies)) {
+                if (typeof depVer === "string" && !rootDependencies[depKey]) {
+                  rootDependencies[depKey] = depVer;
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+
       const unifiedWs = new UnifiedWorkspace();
       unifiedWs.domainPartitioning = true;
 
@@ -144,6 +173,62 @@ process.on(
       // 1. Process Modelica (if present)
       if (hasModelica) {
         console.log(`[publish] ${name}@${version}: processing Modelica library...`);
+
+        // Resolve cross-library dependencies for hydration & boundary Merkle hashing
+        const resolvedDeps: NonNullable<Parameters<typeof processLibrary>[4]>["dependencies"] = [];
+        for (const [depName, requestedVer] of Object.entries(rootDependencies)) {
+          if (depName === name) continue;
+          const cleanReqVer = requestedVer.replace(/^[~^>=<\s]+/, "");
+          const availableVers = storage.versions(depName);
+          let resolvedVer: string | undefined = availableVers.includes(cleanReqVer) ? cleanReqVer : availableVers[0];
+          if (!resolvedVer) {
+            const depPkg = database.getPackage(depName);
+            if (depPkg) {
+              const verRow = database.getPackageVersion(depPkg.id, cleanReqVer);
+              if (verRow) resolvedVer = cleanReqVer;
+            }
+          }
+          if (!resolvedVer) continue;
+
+          const depExtracted = storage.getExtractedPath(depName, resolvedVer);
+          const depBundlePath = path.join(path.dirname(storage.getIndexPath(depName, resolvedVer)), "lsp-bundle.zip");
+          let bundleIndexJson:
+            | {
+                symbols: [number, unknown][];
+                byName: [string, number[]][];
+                childrenOf: [number | null, number[]][];
+              }
+            | undefined;
+          if (fs.existsSync(depBundlePath)) {
+            try {
+              const AdmZip = (await import("adm-zip")).default;
+              const zip = new AdmZip(depBundlePath);
+              const idxEntry = zip.getEntry("index.json");
+              if (idxEntry) {
+                bundleIndexJson = JSON.parse(idxEntry.getData().toString("utf-8"));
+              }
+            } catch {}
+          }
+          const depIconHashes = database.getClassIconHashes(depName, resolvedVer);
+          resolvedDeps.push({
+            name: depName,
+            version: resolvedVer,
+            extractedPath: fs.existsSync(depExtracted) ? depExtracted : undefined,
+            bundleIndexJson,
+            iconHashes: depIconHashes,
+          });
+        }
+
+        const prevVerInfo = database.getPreviousVersionClassHashes(name, version);
+        const previousVersion = prevVerInfo
+          ? {
+              version: prevVerInfo.version,
+              classes: prevVerInfo.classes,
+              readSvg: (clsName: string, type: "icon" | "diagram") =>
+                storage.readSvg(name, prevVerInfo.version, clsName, type),
+            }
+          : undefined;
+
         await processLibrary(
           libraryPath,
           processedClassNames,
@@ -171,6 +256,10 @@ process.on(
           },
           async (readyContext) => {
             queryEngineRef = readyContext.queryEngine;
+          },
+          {
+            dependencies: resolvedDeps,
+            previousVersion,
           },
         );
 
@@ -421,7 +510,7 @@ process.on(
       const indexPath = storage.getIndexPath(name, version);
 
       console.log(`[publish] ${name}@${version}: exporting polyglot salsa-index.db...`);
-      await exportSalsaIndex(polyglotEngine, indexPath);
+      await exportSalsaIndex(polyglotEngine, indexPath, libraryPath);
 
       console.log(`[publish] ${name}@${version}: exporting polyglot lsp-bundle.zip...`);
       const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
@@ -449,18 +538,6 @@ process.on(
       }
 
       // --- Update package metadata and dependencies from annotations or manifest ---
-      const rootDependencies: Record<string, string> = {};
-      const packageMoPath = path.join(libraryPath, "package.mo");
-      if (fs.existsSync(packageMoPath)) {
-        const content = fs.readFileSync(packageMoPath, "utf-8");
-        const depRegex = /([a-zA-Z0-9_]+)\s*\(\s*version\s*=\s*"([^"]+)"/g;
-        let match;
-        while ((match = depRegex.exec(content)) !== null) {
-          if (match[1] && match[2] && match[1] !== "conversion" && match[1] !== "from") {
-            rootDependencies[match[1]] = match[2];
-          }
-        }
-      }
 
       if (!rootMetadata) {
         const rootClassRow = database.getClass(name, version, name);

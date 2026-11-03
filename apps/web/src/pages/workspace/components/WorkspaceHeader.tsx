@@ -140,169 +140,186 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
         : `https://github.com/${namespace}/${project}`);
 
   return (
-    <Box style={{ borderBottom: "1px solid var(--color-border-default)", paddingTop: "16px" }}>
-      <Box maxWidth="1280px" mx="auto" px={4}>
-        <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={3} mb={3}>
-          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-            <BookIcon size={22} fill="var(--color-fg-muted)" />
-            <Heading
-              as="h1"
-              style={{ fontSize: "20px", fontWeight: "normal", color: "var(--color-fg-default)", margin: 0 }}
-            >
-              <PrimerLink
-                as={Link}
-                to={`/repos?q=${encodeURIComponent(namespace)}`}
-                style={{ color: "var(--color-accent-fg)" }}
+    <>
+      <Box style={{ paddingTop: "16px" }}>
+        <Box maxWidth="1280px" mx="auto" px={4}>
+          <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={3} mb={3}>
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+              <BookIcon size={22} fill="var(--color-fg-muted)" />
+              <Heading
+                as="h1"
+                style={{ fontSize: "20px", fontWeight: "normal", color: "var(--color-fg-default)", margin: 0 }}
               >
-                {namespace}
-              </PrimerLink>
-              <Text color="var(--color-fg-muted)" style={{ margin: "0 4px" }}>
-                /
-              </Text>
-              <PrimerLink as={Link} to={basePath} style={{ color: "var(--color-accent-fg)", fontWeight: "bold" }}>
-                {project}
-              </PrimerLink>
-            </Heading>
-            <Label variant="secondary" style={{ marginLeft: "4px" }}>
-              {repo?.visibility === "private" ? "Private" : "Public"}
-            </Label>
-            <Label variant="accent" style={{ textTransform: "capitalize" }}>
-              {provider === "gitlab" ? "GitLab" : provider === "local" ? `${brandName} Git` : "GitHub"}
-            </Label>
-            {externalUrl && (
-              <a
-                href={externalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`View on ${provider === "gitlab" ? "GitLab" : "GitHub"}`}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  fontSize: "12px",
-                  color: "var(--color-fg-muted)",
-                  textDecoration: "none",
-                  marginLeft: "4px",
-                }}
-              >
-                {provider === "github" && <MarkGithubIcon size={14} />}
-                <LinkExternalIcon size={13} />
-              </a>
-            )}
-          </Box>
+                <PrimerLink
+                  as={Link}
+                  to={`/repos?q=${encodeURIComponent(namespace)}`}
+                  style={{ color: "var(--color-accent-fg)" }}
+                >
+                  {namespace}
+                </PrimerLink>
+                <Text color="var(--color-fg-muted)" style={{ margin: "0 4px" }}>
+                  /
+                </Text>
+                <PrimerLink as={Link} to={basePath} style={{ color: "var(--color-accent-fg)", fontWeight: "bold" }}>
+                  {project}
+                </PrimerLink>
+              </Heading>
+              <Label variant="secondary" style={{ marginLeft: "4px" }}>
+                {repo?.visibility === "private" ? "Private" : "Public"}
+              </Label>
+              <Label variant="accent" style={{ textTransform: "capitalize" }}>
+                {provider === "gitlab" ? "GitLab" : provider === "local" ? `${brandName} Git` : "GitHub"}
+              </Label>
+              {externalUrl && (
+                <a
+                  href={externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`View on ${provider === "gitlab" ? "GitLab" : "GitHub"}`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontSize: "12px",
+                    color: "var(--color-fg-muted)",
+                    textDecoration: "none",
+                    marginLeft: "4px",
+                  }}
+                >
+                  {provider === "github" && <MarkGithubIcon size={14} />}
+                  <LinkExternalIcon size={13} />
+                </a>
+              )}
+            </Box>
 
-          <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
-            <Button
-              leadingVisual={CodeIcon}
-              size="small"
-              onClick={() => navigate(`${basePath}/ide?ref=${encodeURIComponent(repo?.default_branch || "main")}`)}
-              title={`Open repository in ${brandName} Web IDE`}
-            >
-              Web IDE
-            </Button>
-
-            {openCompose && project.toLowerCase() !== "activity" && project.toLowerCase() !== "activity.git" && (
+            <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
               <Button
-                leadingVisual={ShareIcon}
+                leadingVisual={CodeIcon}
                 size="small"
-                onClick={() =>
-                  openCompose({
-                    content: `Exploring **${namespace}/${project}** on ${brandName}! 🚀`,
-                    repoPayload: {
-                      namespace,
-                      project,
-                      provider: provider || "github",
-                      description: repo?.description || undefined,
-                    },
-                  })
-                }
-                title="Share repository to feed"
+                onClick={() => navigate(`${basePath}/ide?ref=${encodeURIComponent(repo?.default_branch || "main")}`)}
+                title={`Open repository in ${brandName} Web IDE`}
               >
-                Share
+                Web IDE
               </Button>
-            )}
 
-            <Button
-              leadingVisual={EyeIcon}
-              size="small"
-              variant={watching ? "primary" : "default"}
-              onClick={toggleWatch}
-              trailingVisual={() => <CounterLabel>{displayWatchers.toLocaleString()}</CounterLabel>}
-            >
-              {watching ? "Watching" : "Watch"}
-            </Button>
+              {openCompose && project.toLowerCase() !== "activity" && project.toLowerCase() !== "activity.git" && (
+                <Button
+                  leadingVisual={ShareIcon}
+                  size="small"
+                  onClick={() =>
+                    openCompose({
+                      content: `Exploring **${namespace}/${project}** on ${brandName}! 🚀`,
+                      repoPayload: {
+                        namespace,
+                        project,
+                        provider: provider || "github",
+                        description: repo?.description || undefined,
+                      },
+                    })
+                  }
+                  title="Share repository to feed"
+                >
+                  Share
+                </Button>
+              )}
 
-            {project.toLowerCase() !== "activity" && project.toLowerCase() !== "activity.git" && (
               <Button
-                leadingVisual={RepoForkedIcon}
+                leadingVisual={EyeIcon}
                 size="small"
-                variant={forked ? "primary" : "default"}
-                onClick={handleFork}
-                trailingVisual={() => <CounterLabel>{displayForks.toLocaleString()}</CounterLabel>}
+                variant={watching ? "primary" : "default"}
+                onClick={toggleWatch}
+                trailingVisual={() => <CounterLabel>{displayWatchers.toLocaleString()}</CounterLabel>}
               >
-                {forked ? "Forked" : "Fork"}
+                {watching ? "Watching" : "Watch"}
               </Button>
-            )}
 
-            <Button
-              leadingVisual={starred ? StarFillIcon : StarIcon}
-              size="small"
-              variant={starred ? "primary" : "default"}
-              onClick={toggleStar}
-              trailingVisual={() => <CounterLabel>{displayStars.toLocaleString()}</CounterLabel>}
-            >
-              {starred ? "Starred" : "Star"}
-            </Button>
+              {project.toLowerCase() !== "activity" && project.toLowerCase() !== "activity.git" && (
+                <Button
+                  leadingVisual={RepoForkedIcon}
+                  size="small"
+                  variant={forked ? "primary" : "default"}
+                  onClick={handleFork}
+                  trailingVisual={() => <CounterLabel>{displayForks.toLocaleString()}</CounterLabel>}
+                >
+                  {forked ? "Forked" : "Fork"}
+                </Button>
+              )}
+
+              <Button
+                leadingVisual={starred ? StarFillIcon : StarIcon}
+                size="small"
+                variant={starred ? "primary" : "default"}
+                onClick={toggleStar}
+                trailingVisual={() => <CounterLabel>{displayStars.toLocaleString()}</CounterLabel>}
+              >
+                {starred ? "Starred" : "Star"}
+              </Button>
+            </Box>
           </Box>
         </Box>
-
-        <UnderlineNav aria-label="Repository">
-          <UnderlineNav.Item
-            as={Link}
-            to={basePath}
-            aria-current={currentTab === "code" ? "page" : undefined}
-            icon={CodeIcon}
-          >
-            Code
-          </UnderlineNav.Item>
-          <UnderlineNav.Item
-            as={Link}
-            to={`${basePath}/issues`}
-            aria-current={currentTab === "issues" ? "page" : undefined}
-            icon={IssueOpenedIcon}
-            counter={issuesCount}
-          >
-            Issues
-          </UnderlineNav.Item>
-          <UnderlineNav.Item
-            as={Link}
-            to={`${basePath}/pulls`}
-            aria-current={currentTab === "pulls" ? "page" : undefined}
-            icon={GitPullRequestIcon}
-            counter={pullsCount}
-          >
-            Pull Requests
-          </UnderlineNav.Item>
-          <UnderlineNav.Item
-            as={Link}
-            to={`${basePath}/actions`}
-            aria-current={currentTab === "actions" ? "page" : undefined}
-            icon={PlayIcon}
-            counter={actionsCount}
-          >
-            Actions
-          </UnderlineNav.Item>
-          <UnderlineNav.Item
-            as={Link}
-            to={`${basePath}/settings`}
-            aria-current={currentTab === "settings" ? "page" : undefined}
-            icon={GearIcon}
-          >
-            Settings
-          </UnderlineNav.Item>
-        </UnderlineNav>
       </Box>
-    </Box>
+
+      <Box
+        style={{
+          position: "sticky",
+          top: "var(--dev-header-height, 0px)",
+          zIndex: 45,
+          background: "var(--surface-sticky)",
+          backdropFilter: "var(--backdrop-sticky)",
+          WebkitBackdropFilter: "var(--backdrop-sticky)",
+          transition: "background-color 0.25s ease",
+          borderBottom: "1px solid var(--color-border-default)",
+        }}
+      >
+        <Box maxWidth="1280px" mx="auto" px={4}>
+          <UnderlineNav aria-label="Repository" sx={{ borderBottom: "none" }}>
+            <UnderlineNav.Item
+              as={Link}
+              to={basePath}
+              aria-current={currentTab === "code" ? "page" : undefined}
+              icon={CodeIcon}
+            >
+              Code
+            </UnderlineNav.Item>
+            <UnderlineNav.Item
+              as={Link}
+              to={`${basePath}/issues`}
+              aria-current={currentTab === "issues" ? "page" : undefined}
+              icon={IssueOpenedIcon}
+              counter={issuesCount}
+            >
+              Issues
+            </UnderlineNav.Item>
+            <UnderlineNav.Item
+              as={Link}
+              to={`${basePath}/pulls`}
+              aria-current={currentTab === "pulls" ? "page" : undefined}
+              icon={GitPullRequestIcon}
+              counter={pullsCount}
+            >
+              Pull Requests
+            </UnderlineNav.Item>
+            <UnderlineNav.Item
+              as={Link}
+              to={`${basePath}/actions`}
+              aria-current={currentTab === "actions" ? "page" : undefined}
+              icon={PlayIcon}
+              counter={actionsCount}
+            >
+              Actions
+            </UnderlineNav.Item>
+            <UnderlineNav.Item
+              as={Link}
+              to={`${basePath}/settings`}
+              aria-current={currentTab === "settings" ? "page" : undefined}
+              icon={GearIcon}
+            >
+              Settings
+            </UnderlineNav.Item>
+          </UnderlineNav>
+        </Box>
+      </Box>
+    </>
   );
 };
 

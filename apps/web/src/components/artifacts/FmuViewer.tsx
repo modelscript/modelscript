@@ -46,9 +46,9 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
-  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default, #30363d)")};
+  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -58,28 +58,30 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const Toolbar = styled.div`
   height: 38px;
   min-height: 38px;
-  background: var(--surface-hud, rgba(14, 20, 36, 0.7));
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  background: var(--color-canvas-subtle);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  gap: 8px;
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
 `;
 
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 `;
 
 const ModelTitle = styled.div`
   font-size: 13.5px;
   font-weight: 700;
-  color: var(--color-text-heading, #f0f6fc);
+  color: var(--color-text-heading, var(--color-fg-default));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -95,33 +97,33 @@ const PillBadge = styled.span<{ $variant?: "fmi" | "wasm" | "native" | "causalit
   border-radius: 9999px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
 
   ${(props) => {
     switch (props.$variant) {
       case "fmi":
         return `
           background: rgba(139, 92, 246, 0.15);
-          color: var(--color-accent-purple, #a78bfa);
+          color: var(--color-done-fg, #a78bfa);
           border: 1px solid rgba(139, 92, 246, 0.4);
         `;
       case "wasm":
         return `
           background: rgba(6, 182, 212, 0.15);
-          color: var(--color-accent-cyan, #22d3ee);
+          color: var(--color-accent-fg, #22d3ee);
           border: 1px solid rgba(6, 182, 212, 0.4);
-          box-shadow: 0 0 8px rgba(6, 182, 212, 0.2);
         `;
       case "causality":
         return `
-          background: rgba(255, 255, 255, 0.06);
-          color: var(--color-text-secondary, #8b949e);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: var(--color-neutral-muted, rgba(148, 163, 184, 0.12));
+          color: var(--color-fg-muted);
+          border: 1px solid var(--color-border-default);
         `;
       default:
         return `
-          background: rgba(255, 255, 255, 0.05);
-          color: var(--color-text-muted, #8b949e);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: var(--color-neutral-muted, rgba(148, 163, 184, 0.12));
+          color: var(--color-fg-muted);
+          border: 1px solid var(--color-border-default);
         `;
     }
   }}
@@ -131,14 +133,15 @@ const ActionButtons = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 `;
 
 const TabNav = styled.div`
   display: flex;
   align-items: center;
   gap: 4px;
-  background: var(--color-canvas-subtle, #161b22);
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  background: var(--color-canvas-subtle);
+  border-bottom: 1px solid var(--color-border-default);
   padding: 0 12px;
 `;
 
@@ -148,7 +151,7 @@ const TabButton = styled.button<{ $active: boolean }>`
   padding: 6px 12px;
   font-size: 12px;
   font-weight: ${(props) => (props.$active ? "700" : "500")};
-  color: ${(props) => (props.$active ? "var(--color-text-primary, #ffffff)" : "var(--color-text-muted, #8b949e)")};
+  color: ${(props) => (props.$active ? "var(--color-fg-default)" : "var(--color-fg-muted)")};
   cursor: pointer;
   position: relative;
   outline: none;
@@ -170,7 +173,7 @@ const TabButton = styled.button<{ $active: boolean }>`
   `}
 
   &:hover {
-    color: var(--color-text-primary, #ffffff);
+    color: var(--color-fg-default);
   }
 `;
 
@@ -178,7 +181,7 @@ const ContentBody = styled.div`
   flex: 1;
   overflow: auto;
   padding: 12px;
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default);
 `;
 
 const VariableTable = styled.table`
@@ -190,32 +193,32 @@ const VariableTable = styled.table`
   th {
     position: sticky;
     top: 0;
-    background: var(--color-canvas-subtle, #161b22);
-    border-bottom: 1px solid var(--color-border-default, #30363d);
+    background: var(--color-canvas-subtle);
+    border-bottom: 1px solid var(--color-border-default);
     padding: 8px 10px;
     font-weight: 600;
-    color: var(--color-text-muted, #8b949e);
+    color: var(--color-fg-muted);
     white-space: nowrap;
     z-index: 2;
   }
 
   td {
     padding: 7px 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    color: var(--color-text-primary, #e6edf3);
+    border-bottom: 1px solid var(--color-border-muted, rgba(148, 163, 184, 0.15));
+    color: var(--color-fg-default);
     vertical-align: middle;
   }
 
   tr:hover td {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--color-canvas-subtle);
   }
 `;
 
 const VariableInput = styled.input`
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--color-canvas-inset, var(--color-canvas-default));
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
-  color: var(--color-text-primary, #ffffff);
+  color: var(--color-fg-default);
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   padding: 3px 6px;
@@ -223,7 +226,7 @@ const VariableInput = styled.input`
   outline: none;
 
   &:focus {
-    border-color: var(--color-accent-cyan, #06b6d4);
+    border-color: var(--color-accent-fg, #06b6d4);
     box-shadow: 0 0 6px rgba(6, 182, 212, 0.3);
   }
 `;

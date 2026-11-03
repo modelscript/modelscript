@@ -66,22 +66,25 @@ export const FeedFilterToolbar: React.FC<FeedFilterToolbarProps> = ({
               </FilterChipButton>
             );
           })}
-          {trendingTopics.slice(0, 5).map((topic) => {
-            const tagClean = (topic.displayName || topic.concept || "").replace(/^#/, "");
-            const isTagActive = activeTag?.toLowerCase() === tagClean.toLowerCase();
-            return (
-              <HashtagPill
-                key={topic.concept || topic.displayName}
-                $active={isTagActive}
-                onClick={() => setActiveTag(isTagActive ? null : tagClean)}
-                title={`${topic.postCount ?? 0} posts`}
-                aria-pressed={isTagActive}
-              >
-                <span className="hash">#</span>
-                <span>{tagClean}</span>
-              </HashtagPill>
-            );
-          })}
+          {trendingTopics
+            .filter((topic) => (topic.postCount ?? 0) > 0)
+            .slice(0, 5)
+            .map((topic) => {
+              const tagClean = (topic.displayName || topic.concept || "").replace(/^#/, "");
+              const isTagActive = activeTag?.toLowerCase() === tagClean.toLowerCase();
+              return (
+                <HashtagPill
+                  key={topic.concept || topic.displayName}
+                  $active={isTagActive}
+                  onClick={() => setActiveTag(isTagActive ? null : tagClean)}
+                  title={`${topic.postCount ?? 0} ${topic.postCount === 1 ? "post" : "posts"}`}
+                  aria-pressed={isTagActive}
+                >
+                  <span className="hash">#</span>
+                  <span>{tagClean}</span>
+                </HashtagPill>
+              );
+            })}
         </FilterChipsScroll>
       </FilterSection>
 

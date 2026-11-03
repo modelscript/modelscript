@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { Context } from "@modelscript/modelica";
+import { createWasmParserSync, type LspFacade, type TreeSitterParser } from "@modelscript/modelica/parser";
+import { VarType, Variability, evaluateArenaExpression, type DAEBuilder } from "@modelscript/runtime";
+import { simulateArena } from "@modelscript/simulate";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase, ScriptTemplateRow } from "../../database.js";
+import { NodeFileSystem } from "../../util/filesystem.js";
 import { BUILTIN_STUDY_DEFINITIONS, CURATED_COMPATIBLE_MODELS } from "./study-catalog.js";
 import { inferStudyStandard, standardExtension, synthesizeStudyInstanceArtifact } from "./study-standards.js";
 import type {
@@ -28,8 +34,68 @@ import type {
   StudySweepPoint,
 } from "./study-types.js";
 
+let syncWasmParserInstance: { facade: LspFacade; parser: TreeSitterParser } | null = null;
+
 /**
- * Extracts Modelica parameters and observables from raw `.mo` / `.msx` source text.
+ * Synchronously initializes and registers the native Modelica WASM GLR parser on `Context`.
+ */
+export function ensureSyncModelicaParser(): { facade: LspFacade; parser: TreeSitterParser } {
+  if (!syncWasmParserInstance) {
+    const require = createRequire(import.meta.url);
+    const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
+    syncWasmParserInstance = createWasmParserSync(modelicaWasmPath);
+    Context.registerParser(
+      ".mo",
+      syncWasmParserInstance.parser as unknown as Parameters<typeof Context.registerParser>[1],
+    );
+  }
+  return syncWasmParserInstance;
+}
+
+const compiledContextCache = new Map<string, { ctx: Context; modelName: string }>();
+
+/**
+ * Compiles and flattens a Modelica `.mo` source string into a fresh `DAEBuilder` arena.
+ */
+export function compileAndFlattenModelicaSource(
+  code: string,
+  preferredModelName?: string,
+): { arena: DAEBuilder; modelName: string } | null {
+  try {
+    ensureSyncModelicaParser();
+    let cached = compiledContextCache.get(code);
+    if (!cached) {
+      const ctx = Context.createBatch(new NodeFileSystem(), { loadStdlib: false });
+      const uri = "inline_study_model.mo";
+      const tree = ctx.load(code, uri);
+      const rootNode = tree?.rootNode as unknown as { hasError?: boolean | (() => boolean) } | undefined;
+      const hasErr = typeof rootNode?.hasError === "function" ? rootNode.hasError() : Boolean(rootNode?.hasError);
+      if (!tree || hasErr) {
+        return null;
+      }
+      const modelMatch = code.match(/\b(?:model|class|block)\s+([A-Za-z_][A-Za-z0-9_]*)/);
+      const modelName = preferredModelName || ctx.classes[0]?.name || modelMatch?.[1] || "CustomModel";
+      cached = { ctx, modelName };
+      if (compiledContextCache.size > 64) {
+        const firstKey = compiledContextCache.keys().next().value;
+        if (firstKey !== undefined) compiledContextCache.delete(firstKey);
+      }
+      compiledContextCache.set(code, cached);
+    }
+    const targetName = preferredModelName || cached.modelName;
+    const arena = cached.ctx.flattenArena(targetName);
+    if (!arena) return null;
+    // Mark as mutated so subsequent flattenArena calls produce a clean unmutated DAEBuilder
+    arena.isMutatedBySim = true;
+    return { arena, modelName: targetName };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extracts Modelica parameters and observables from raw `.mo` / `.msx` source text
+ * using the native Modelica WASM parser and DAE flattener (with source-modifier metadata enrichment).
  */
 export function inspectModelicaSourceParameters(code: string): {
   modelName: string;
@@ -37,11 +103,108 @@ export function inspectModelicaSourceParameters(code: string): {
   observables: ModelObservableInfo[];
 } {
   const modelMatch = code.match(/\b(?:model|class|block)\s+([A-Za-z_][A-Za-z0-9_]*)/);
-  const modelName = modelMatch?.[1] || "CustomModel";
+  let modelName = modelMatch?.[1] || "CustomModel";
+
+  // Extract source-level unit & description annotations for enrichment
+  const sourceUnits = new Map<string, string>();
+  const sourceDescs = new Map<string, string>();
+  const lines = code.split(/\r?\n/);
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("//")) continue;
+    const semiIdx = line.indexOf(";");
+    if (semiIdx === -1) continue;
+    let decl = line.slice(0, semiIdx).trim();
+    const descMatch = decl.match(/\s+"([^"]*)"$/);
+    let desc: string | undefined;
+    if (descMatch) {
+      desc = descMatch[1];
+      decl = decl.slice(0, descMatch.index).trim();
+    }
+    const varMatch = decl.match(
+      /^(?:(?:parameter|constant|input|output|discrete|flow|stream)\s+)*(Real|Integer|Boolean)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?/,
+    );
+    if (varMatch) {
+      const vName = varMatch[2]!;
+      const modifiers = varMatch[3] || "";
+      const unitMatch = modifiers.match(/unit\s*=\s*"([^"]+)"/);
+      if (unitMatch?.[1]) sourceUnits.set(vName, unitMatch[1]);
+      if (desc) sourceDescs.set(vName, desc);
+    }
+  }
+
+  // Primary path: compile and flatten via @modelscript/modelica into DAEBuilder
+  const compiled = compileAndFlattenModelicaSource(code, modelName);
+  if (compiled && compiled.arena.varCount > 0) {
+    const { arena } = compiled;
+    modelName = compiled.modelName;
+    const parameters: ModelParameterInfo[] = [];
+    const observables: ModelObservableInfo[] = [];
+    const paramEnv = new Map<string, number>();
+
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      const name = arena.getVarName(i);
+      if (!name || name.startsWith("der(") || name.startsWith("_")) continue;
+
+      const vType = arena.getVarType(i);
+      const typeStr: "Real" | "Integer" | "Boolean" =
+        vType === VarType.Integer ? "Integer" : vType === VarType.Boolean ? "Boolean" : "Real";
+      const variability = arena.getVarVariability(i);
+      const comment =
+        (arena as unknown as { getVarComment?: (idx: number) => string | undefined }).getVarComment?.(i) ||
+        sourceDescs.get(name);
+      const unit = sourceUnits.get(name);
+
+      if (variability === Variability.Parameter || variability === Variability.Constant) {
+        let evalVal: number | boolean = arena.getVarStartValue(i);
+        const exprId = arena.getVarExpression(i);
+        if (typeof exprId === "number" && exprId >= 0) {
+          const v = evaluateArenaExpression(arena, exprId, paramEnv);
+          if (typeof v === "number" && Number.isFinite(v)) {
+            evalVal = v;
+          } else if (typeof v === "boolean") {
+            evalVal = v;
+          }
+        }
+        if (typeof evalVal === "number") {
+          paramEnv.set(name, evalVal);
+        }
+        if (typeStr === "Boolean" && typeof evalVal === "number") {
+          evalVal = evalVal !== 0;
+        }
+        if (variability === Variability.Parameter) {
+          const baseNum = typeof evalVal === "number" ? Math.abs(evalVal) || 1 : 1;
+          parameters.push({
+            name,
+            type: typeStr,
+            defaultValue: evalVal,
+            unit,
+            min: typeof evalVal === "number" ? Number((evalVal - baseNum * 0.5).toPrecision(4)) : undefined,
+            max: typeof evalVal === "number" ? Number((evalVal + baseNum * 0.5).toPrecision(4)) : undefined,
+            description: comment,
+          });
+        }
+      } else {
+        observables.push({
+          name,
+          type: typeStr,
+          unit,
+          description: comment,
+        });
+      }
+    }
+
+    if (observables.length === 0) {
+      observables.push({ name: "y", type: "Real", description: "Primary system response" });
+    }
+    return { modelName, parameters, observables };
+  }
+
+  // Fallback for non-Modelica or partial source snippets
   const parameters: ModelParameterInfo[] = [];
   const observables: ModelObservableInfo[] = [];
 
-  const lines = code.split(/\r?\n/);
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line || line.startsWith("//")) continue;
@@ -658,14 +821,17 @@ function vanDerCorput(index: number, base: number): number {
 }
 
 /**
- * Integrates a parameterized 2nd-order damped dynamical system representing the bound Model
- * and returns time-series trajectories and scalar metrics.
+ * Compiles and integrates the bound Modelica DAE model via `@modelscript/modelica` and `@modelscript/simulate`
+ * when Modelica source code is available (falling back to a parameterized 2nd-order state-space realization
+ * for non-Modelica CAD/FEA/CFD artifacts), returning time-series trajectories and scalar metrics.
  */
 function evaluateModelRealization(
   paramValues: Record<string, number>,
   observableNames: string[],
   stopTime: number,
   intervals: number,
+  modelCode?: string,
+  preferredModelName?: string,
 ): {
   time: number[];
   series: Record<string, number[]>;
@@ -675,6 +841,123 @@ function evaluateModelRealization(
   settlingTime: number;
   secondaryCost: number;
 } {
+  const nPts = Math.min(Math.max(intervals, 60), 250);
+  const dt = stopTime / (nPts - 1);
+  const primaryObs = observableNames[0] || "x";
+  const secondaryObs = observableNames[1] || "v";
+
+  if (modelCode && modelCode.trim().length > 0) {
+    const compiled = compileAndFlattenModelicaSource(modelCode, preferredModelName);
+    if (compiled && compiled.arena.varCount > 0 && compiled.arena.eqCount > 0) {
+      try {
+        const { arena } = compiled;
+        const parameterOverrides = new Map<string, number>();
+        for (const [k, v] of Object.entries(paramValues)) {
+          if (typeof v === "number" && Number.isFinite(v)) {
+            parameterOverrides.set(k, v);
+          }
+        }
+
+        // Gather all continuous/discrete variables in the arena plus requested observables
+        const candidateNames: string[] = [];
+        for (const obs of observableNames) {
+          if (obs && !candidateNames.includes(obs) && arena.getVarIdxByName(obs) >= 0) {
+            candidateNames.push(obs);
+          }
+        }
+        for (let i = 0; i < arena.varCount; i++) {
+          if (arena.isVarRemoved(i)) continue;
+          const v = arena.getVarVariability(i);
+          if (v === Variability.Parameter || v === Variability.Constant) continue;
+          const vName = arena.getVarName(i);
+          if (vName && !vName.startsWith("der(") && !vName.startsWith("_") && !candidateNames.includes(vName)) {
+            candidateNames.push(vName);
+          }
+        }
+
+        const outputStringIds = candidateNames.map((n) => arena.interner.intern(n));
+        const simRes = simulateArena(arena, {
+          startTime: 0,
+          stopTime,
+          numberOfIntervals: nPts - 1,
+          parameterOverrides,
+          ...(outputStringIds.length > 0 ? { outputStringIds } : {}),
+          solver: "rk4",
+        });
+
+        if (simRes.t.length > 0 && simRes.y.length > 0 && simRes.states.length > 0) {
+          const time = simRes.t.map((tVal) => Number(tVal.toFixed(4)));
+          const series: Record<string, number[]> = {};
+          for (let colIdx = 0; colIdx < simRes.states.length; colIdx++) {
+            const stateName = simRes.states[colIdx]!;
+            series[stateName] = simRes.y.map((row) => {
+              const raw = row[colIdx] ?? 0;
+              return Number((Number.isFinite(raw) ? raw : 0).toFixed(5));
+            });
+          }
+
+          const firstStateKey = simRes.states[0]!;
+          if (!series[primaryObs]) {
+            series[primaryObs] = series[firstStateKey] ?? [];
+          }
+          if (!series[secondaryObs]) {
+            if (simRes.states.length > 1 && series[simRes.states[1]!]) {
+              series[secondaryObs] = series[simRes.states[1]!]!;
+            } else {
+              const primArr = series[primaryObs]!;
+              series[secondaryObs] = primArr.map((val, idx) => {
+                if (idx === 0) return 0;
+                const stepDt = Math.max(1e-6, (time[idx] ?? dt) - (time[idx - 1] ?? 0));
+                return Number(((val - (primArr[idx - 1] ?? val)) / stepDt).toFixed(5));
+              });
+            }
+          }
+
+          const primSeries = series[primaryObs]!;
+          const secSeries = series[secondaryObs]!;
+          const totalPts = primSeries.length;
+
+          let peak = -Infinity;
+          let sumSq = 0;
+          let controlEffort = 0;
+          for (let i = 0; i < totalPts; i++) {
+            const val1 = primSeries[i] ?? 0;
+            const val2 = secSeries[i] ?? 0;
+            if (Math.abs(val1) > peak) peak = Math.abs(val1);
+            sumSq += val1 * val1;
+            controlEffort += val2 * val2 * dt;
+          }
+          if (!Number.isFinite(peak)) peak = 0;
+
+          const finalVal = primSeries[totalPts - 1] ?? 0;
+          const rms = totalPts > 0 ? Math.sqrt(sumSq / totalPts) : 0;
+
+          let settlingTime = stopTime;
+          const band = Math.max(0.02 * Math.abs(finalVal), 1e-3);
+          for (let i = totalPts - 1; i >= 0; i--) {
+            if (Math.abs((primSeries[i] ?? 0) - finalVal) > band) {
+              settlingTime = time[Math.min(i + 1, totalPts - 1)] ?? stopTime;
+              break;
+            }
+            if (i === 0) settlingTime = 0;
+          }
+
+          return {
+            time,
+            series,
+            peak: Number(peak.toFixed(4)),
+            finalVal: Number(finalVal.toFixed(4)),
+            rms: Number(rms.toFixed(4)),
+            settlingTime: Number(settlingTime.toFixed(3)),
+            secondaryCost: Number(controlEffort.toFixed(4)),
+          };
+        }
+      } catch {
+        // Fall through to analytical state-space realization if DAE simulation fails
+      }
+    }
+  }
+
   const keys = Object.keys(paramValues);
   const p0 = keys[0] ? (paramValues[keys[0]] ?? 1.5) : 1.5;
   const p1 = keys[1] ? (paramValues[keys[1]] ?? 0.6) : 0.6;
@@ -694,11 +977,7 @@ function evaluateModelRealization(
   const zeta = Math.min(2.5, Math.max(0.04, damping / (2 * Math.sqrt(mass * stiffness))));
   const steadyState = drive / Math.max(0.5, stiffness * 0.25);
 
-  const nPts = Math.min(Math.max(intervals, 60), 250);
-  const dt = stopTime / (nPts - 1);
   const time: number[] = [];
-  const primaryObs = observableNames[0] || "x";
-  const secondaryObs = observableNames[1] || "v";
   const series: Record<string, number[]> = {
     [primaryObs]: [],
     [secondaryObs]: [],
@@ -803,6 +1082,8 @@ export function computeStudyResultsPayload(
     req.observables && req.observables.length > 0 ? req.observables : boundModel.observables.map((o) => o.name);
   const primaryObs = observableNames[0] || "x";
   const primaryUnit = boundModel.observables[0]?.unit || "";
+  const effectiveModelCode = req.modelCode || boundModel.code;
+  const effectiveModelName = boundModel.name;
 
   const sha256Lock = crypto
     .createHash("sha256")
@@ -851,7 +1132,14 @@ export function computeStudyResultsPayload(
         sampleParams[pName] = Number((base * (1 + covPct * centered)).toPrecision(5));
       });
 
-      const evalRes = evaluateModelRealization(sampleParams, observableNames, stopTime, 100);
+      const evalRes = evaluateModelRealization(
+        sampleParams,
+        observableNames,
+        stopTime,
+        100,
+        effectiveModelCode,
+        effectiveModelName,
+      );
       if (timeGrid.length === 0) timeGrid = evalRes.time;
       trajectories.push(evalRes.series[primaryObs]!);
 
@@ -1019,7 +1307,14 @@ export function computeStudyResultsPayload(
         trialParams[p2Name] = Number((nominalParams[p2Name]! * (1 + spanPct * u2)).toPrecision(4));
       }
 
-      const evalRes = evaluateModelRealization(trialParams, observableNames, stopTime, 100);
+      const evalRes = evaluateModelRealization(
+        trialParams,
+        observableNames,
+        stopTime,
+        100,
+        effectiveModelCode,
+        effectiveModelName,
+      );
       if (timeGrid.length === 0) timeGrid = evalRes.time;
       if (i === 0) lowSeries = evalRes.series[primaryObs]!;
       if (i === Math.floor(stepsCount / 2)) nomSeries = evalRes.series[primaryObs]!;
@@ -1138,79 +1433,143 @@ export function computeStudyResultsPayload(
 
   // ── Case 3: Standards Verification & Compliance Matrix ───────────
   if (studyDef.kind === "verification") {
-    const evalRes = evaluateModelRealization(nominalParams, observableNames, stopTime, intervals);
+    const evalRes = evaluateModelRealization(
+      nominalParams,
+      observableNames,
+      stopTime,
+      intervals,
+      effectiveModelCode,
+      effectiveModelName,
+    );
     const isRail =
       studyDef.slug.includes("en14363") || boundModel.domain === "gensys" || boundModel.domain === "simpack";
 
-    const complianceMatrix: StudyComplianceCase[] = isRail
-      ? [
-          {
-            caseId: "EN14363-5.3.1",
-            standardRef: "EN 14363 §5.3.2.1",
-            description: "Nadal flange-climb derailment quotient (Y/Q)₂ₘ sliding 2.0m window",
-            measuredValue: "0.42",
-            limitSpec: "≤ 0.80",
-            passed: true,
-          },
-          {
-            caseId: "EN14363-5.3.2",
-            standardRef: "EN 14363 §5.3.2.2",
-            description: "Prud'homme track shift lateral axle force ΣY₂ₘ",
-            measuredValue: "38.4 kN",
-            limitSpec: "≤ 66.7 kN",
-            passed: true,
-          },
-          {
-            caseId: "EN14363-5.3.3",
-            standardRef: "EN 14363 §5.3.2.3",
-            description: "Bogie frame lateral instability RMS acceleration (hunting check)",
-            measuredValue: "2.15 m/s²",
-            limitSpec: "≤ 5.0 m/s²",
-            passed: true,
-          },
-          {
-            caseId: "EN14363-5.4.1",
-            standardRef: "EN 14363 §5.4.1",
-            description: "Carbody Sperling ride comfort index W_z lateral",
-            measuredValue: "2.18",
-            limitSpec: "≤ 2.75",
-            passed: true,
-          },
-        ]
-      : [
-          {
-            caseId: "IEEE2800-7.2.2.1",
-            standardRef: "IEEE 2800-2022 §7.2.2.1",
-            description: "Low-Voltage Ride-Through (LVRT) immunity at 0.25 pu retained voltage (160 ms)",
-            measuredValue: "No Trip (Continuous)",
-            limitSpec: "Mandatory Ride-Through",
-            passed: true,
-          },
-          {
-            caseId: "IEEE2800-7.2.2.3",
-            standardRef: "IEEE 2800-2022 §7.2.2.3.4",
-            description: "Dynamic reactive current injection step response time (T_90%)",
-            measuredValue: "21.4 ms",
-            limitSpec: "≤ 30.0 ms",
-            passed: true,
-          },
-          {
-            caseId: "IEEE2800-7.2.2.6",
-            standardRef: "IEEE 2800-2022 §7.2.2.6",
-            description: "Post-fault active power recovery to 90% pre-disturbance level",
-            measuredValue: "0.48 s",
-            limitSpec: "≤ 1.00 s",
-            passed: true,
-          },
-          {
-            caseId: "IEEE2800-7.3.2",
-            standardRef: "IEEE 2800-2022 §7.3.2",
-            description: "Rate-of-Change-of-Frequency (RoCoF) withstand capability",
-            measuredValue: "4.0 Hz/s Stable",
-            limitSpec: "≥ 2.0 Hz/s",
-            passed: true,
-          },
-        ];
+    let complianceMatrix: StudyComplianceCase[];
+    if (isRail) {
+      const speedKmh = Number(inputs["operatingSpeedKmh"] ?? 300);
+      const speedFactor = Math.max(0.25, speedKmh / 300);
+      const nadalLimit = Number(inputs["nadalLimit"] ?? 0.8);
+      const rmsAccelLimit = Number(inputs["rmsAccelLimit"] ?? 5.0);
+      const kLat = Number(nominalParams["k_lat"] ?? 1250);
+      const cYaw = Number(nominalParams["c_yaw"] ?? 680);
+      const conicity = Number(nominalParams["conicity"] ?? 0.22);
+
+      const nadalSeries = evalRes.series["YQ_nadal"];
+      const rawMaxNadal =
+        nadalSeries && nadalSeries.length > 0
+          ? Math.max(...nadalSeries.map((v) => Math.abs(v)))
+          : 0.18 + 0.065 * Math.abs(evalRes.peak);
+      const measuredNadal = Number((rawMaxNadal * Math.sqrt(speedFactor)).toFixed(2));
+      const nadalPassed = measuredNadal <= nadalLimit;
+
+      const wheelsetSeries = evalRes.series["y_wheelset"];
+      const maxLatShiftMm =
+        wheelsetSeries && wheelsetSeries.length > 0
+          ? Math.max(...wheelsetSeries.map((v) => Math.abs(v)))
+          : Math.abs(evalRes.peak);
+      const prudhommeKn = Number((kLat * maxLatShiftMm * 0.0122 * speedFactor).toFixed(1));
+      const prudhommePassed = prudhommeKn <= 66.7;
+
+      const rmsAccel = Number(
+        (evalRes.rms * 0.85 * (conicity / 0.22) * (680 / Math.max(100, cYaw)) * speedFactor).toFixed(2),
+      );
+      const rmsPassed = rmsAccel <= rmsAccelLimit;
+
+      const sperlingWz = Number((1.65 + 0.24 * rmsAccel).toFixed(2));
+      const sperlingPassed = sperlingWz <= 2.75;
+
+      complianceMatrix = [
+        {
+          caseId: "EN14363-5.3.1",
+          standardRef: "EN 14363 §5.3.2.1",
+          description: "Nadal flange-climb derailment quotient (Y/Q)₂ₘ sliding 2.0m window",
+          measuredValue: measuredNadal.toFixed(2),
+          limitSpec: `≤ ${nadalLimit.toFixed(2)}`,
+          passed: nadalPassed,
+        },
+        {
+          caseId: "EN14363-5.3.2",
+          standardRef: "EN 14363 §5.3.2.2",
+          description: "Prud'homme track shift lateral axle force ΣY₂ₘ",
+          measuredValue: `${prudhommeKn.toFixed(1)} kN`,
+          limitSpec: "≤ 66.7 kN",
+          passed: prudhommePassed,
+        },
+        {
+          caseId: "EN14363-5.3.3",
+          standardRef: "EN 14363 §5.3.2.3",
+          description: "Bogie frame lateral instability RMS acceleration (hunting check)",
+          measuredValue: `${rmsAccel.toFixed(2)} m/s²`,
+          limitSpec: `≤ ${rmsAccelLimit.toFixed(1)} m/s²`,
+          passed: rmsPassed,
+        },
+        {
+          caseId: "EN14363-5.4.1",
+          standardRef: "EN 14363 §5.4.1",
+          description: "Carbody Sperling ride comfort index W_z lateral",
+          measuredValue: sperlingWz.toFixed(2),
+          limitSpec: "≤ 2.75",
+          passed: sperlingPassed,
+        },
+      ];
+    } else {
+      const retainedV = Number(inputs["retainedVoltagePu"] ?? 0.25);
+      const faultMs = Number(inputs["faultDurationMs"] ?? 160);
+      const reqRocof = Number(inputs["rocofHzPerSec"] ?? 2.0);
+      const hVsm = Number(nominalParams["H_vsm"] ?? 3.5);
+      const dP = Number(nominalParams["D_p"] ?? 25.0);
+      const kQv = Number(nominalParams["K_qv"] ?? 4.2);
+
+      const vpccSeries = evalRes.series["V_pcc"];
+      const minVpcc = vpccSeries && vpccSeries.length > 0 ? Math.min(...vpccSeries) : Math.max(0.25, evalRes.finalVal);
+      const lvrtPassed = minVpcc >= retainedV * 0.8 && faultMs <= 1200;
+
+      const t90Ms = Number((90.0 / Math.max(0.5, kQv)).toFixed(1));
+      const t90Passed = t90Ms <= 30.0;
+
+      const recoverySec = Number(Math.min(evalRes.settlingTime || 0.48, (hVsm / Math.max(1.0, dP)) * 3.42).toFixed(2));
+      const recoveryPassed = recoverySec <= 1.0;
+
+      const maxRocof = Number((2.0 + (dP / Math.max(0.5, hVsm)) * 0.28).toFixed(1));
+      const rocofPassed = maxRocof >= reqRocof;
+
+      complianceMatrix = [
+        {
+          caseId: "IEEE2800-7.2.2.1",
+          standardRef: "IEEE 2800-2022 §7.2.2.1",
+          description: `Low-Voltage Ride-Through (LVRT) immunity at ${retainedV.toFixed(2)} pu retained voltage (${faultMs} ms)`,
+          measuredValue: lvrtPassed
+            ? `No Trip (V_min = ${minVpcc.toFixed(2)} pu)`
+            : `Trip at V_min = ${minVpcc.toFixed(2)} pu`,
+          limitSpec: "Mandatory Ride-Through",
+          passed: lvrtPassed,
+        },
+        {
+          caseId: "IEEE2800-7.2.2.3",
+          standardRef: "IEEE 2800-2022 §7.2.2.3.4",
+          description: "Dynamic reactive current injection step response time (T_90%)",
+          measuredValue: `${t90Ms.toFixed(1)} ms`,
+          limitSpec: "≤ 30.0 ms",
+          passed: t90Passed,
+        },
+        {
+          caseId: "IEEE2800-7.2.2.6",
+          standardRef: "IEEE 2800-2022 §7.2.2.6",
+          description: "Post-fault active power recovery to 90% pre-disturbance level",
+          measuredValue: `${recoverySec.toFixed(2)} s`,
+          limitSpec: "≤ 1.00 s",
+          passed: recoveryPassed,
+        },
+        {
+          caseId: "IEEE2800-7.3.2",
+          standardRef: "IEEE 2800-2022 §7.3.2",
+          description: "Rate-of-Change-of-Frequency (RoCoF) withstand capability",
+          measuredValue: `${maxRocof.toFixed(1)} Hz/s ${rocofPassed ? "Stable" : "Unstable"}`,
+          limitSpec: `≥ ${reqRocof.toFixed(1)} Hz/s`,
+          passed: rocofPassed,
+        },
+      ];
+    }
 
     const kpis: StudyKpiValue[] = complianceMatrix.map((c) => ({
       id: c.caseId,
@@ -1240,61 +1599,97 @@ export function computeStudyResultsPayload(
   }
 
   // ── Case 4: Time-Course / Steady-State / Eigen-Frequency ─────────
-  const evalRes = evaluateModelRealization(nominalParams, observableNames, stopTime, intervals);
+  const evalRes = evaluateModelRealization(
+    nominalParams,
+    observableNames,
+    stopTime,
+    intervals,
+    effectiveModelCode,
+    effectiveModelName,
+  );
 
-  const kpis: StudyKpiValue[] =
-    studyDef.category === "fea"
-      ? [
-          {
-            id: "maxVonMisesMPa",
-            label: "Peak von Mises Stress",
-            value: Number((142.4 * (Number(inputs["appliedLoadN"] ?? 5000) / 5000)).toFixed(1)),
-            unit: "MPa",
-            status: "pass",
-          },
-          {
-            id: "maxDisplacementMm",
-            label: "Max Nodal Deflection",
-            value: Number((0.24 * (Number(inputs["appliedLoadN"] ?? 5000) / 5000)).toFixed(3)),
-            unit: "mm",
-            status: "info",
-          },
-          {
-            id: "safetyFactor",
-            label: "Yield Safety Factor",
-            value: Number(
-              (
-                Number(inputs["yieldStrengthMPa"] ?? 355) /
-                (142.4 * (Number(inputs["appliedLoadN"] ?? 5000) / 5000))
-              ).toFixed(2),
-            ),
-            status: "pass",
-          },
-        ]
-      : studyDef.category === "cfd"
-        ? [
-            { id: "liftCoeffCl", label: "Lift Coefficient (C_L)", value: 0.642, status: "pass" },
-            { id: "dragCoeffCd", label: "Drag Coefficient (C_D)", value: 0.0184, status: "info" },
-            { id: "liftToDrag", label: "Aerodynamic L/D Ratio", value: 34.89, status: "pass" },
-          ]
-        : [
-            { id: "peakValue", label: `Peak (${primaryObs})`, value: evalRes.peak, unit: primaryUnit, status: "info" },
-            {
-              id: "finalValue",
-              label: `Steady-State (${primaryObs})`,
-              value: evalRes.finalVal,
-              unit: primaryUnit,
-              status: "pass",
-            },
-            {
-              id: "rmsValue",
-              label: `Signal RMS (${primaryObs})`,
-              value: evalRes.rms,
-              unit: primaryUnit,
-              status: "info",
-            },
-            { id: "settlingTime", label: "2% Settling Time", value: evalRes.settlingTime, unit: "s", status: "pass" },
-          ];
+  let kpis: StudyKpiValue[];
+  if (studyDef.category === "fea") {
+    const appliedLoadN = Number(inputs["appliedLoadN"] ?? nominalParams["appliedLoadN"] ?? 5000);
+    const webThicknessMm = Number(nominalParams["webThicknessMm"] ?? 6.5);
+    const filletRadiusMm = Number(nominalParams["filletRadiusMm"] ?? 4.0);
+    const youngsModulusGPa = Number(inputs["youngsModulusGPa"] ?? nominalParams["youngsModulusGPa"] ?? 210);
+    const yieldStrengthMPa = Number(inputs["yieldStrengthMPa"] ?? nominalParams["yieldStrengthMPa"] ?? 355);
+
+    const thicknessFactor = Math.pow(6.5 / Math.max(1.0, webThicknessMm), 1.5);
+    const filletKtFactor = Math.pow(4.0 / Math.max(0.5, filletRadiusMm), 0.35);
+    const maxVonMisesMPa = Number((142.4 * (appliedLoadN / 5000) * thicknessFactor * filletKtFactor).toFixed(1));
+    const maxDisplacementMm = Number(
+      (
+        0.24 *
+        (appliedLoadN / 5000) *
+        (210 / Math.max(10, youngsModulusGPa)) *
+        Math.pow(6.5 / Math.max(1.0, webThicknessMm), 2.5)
+      ).toFixed(3),
+    );
+    const safetyFactor = Number((yieldStrengthMPa / Math.max(1e-3, maxVonMisesMPa)).toFixed(2));
+
+    kpis = [
+      {
+        id: "maxVonMisesMPa",
+        label: "Peak von Mises Stress",
+        value: maxVonMisesMPa,
+        unit: "MPa",
+        status: safetyFactor >= 1.0 ? "pass" : "fail",
+      },
+      {
+        id: "maxDisplacementMm",
+        label: "Max Nodal Deflection",
+        value: maxDisplacementMm,
+        unit: "mm",
+        status: "info",
+      },
+      {
+        id: "safetyFactor",
+        label: "Yield Safety Factor",
+        value: safetyFactor,
+        status: safetyFactor >= 1.2 ? "pass" : safetyFactor >= 1.0 ? "warn" : "fail",
+      },
+    ];
+  } else if (studyDef.category === "cfd") {
+    const mach = Number(inputs["machNumber"] ?? inputs["mach"] ?? nominalParams["mach"] ?? 0.8395);
+    const aoaDeg = Number(inputs["angleOfAttackDeg"] ?? inputs["aoaDeg"] ?? nominalParams["aoaDeg"] ?? 3.06);
+    const reynolds = Number(inputs["reynoldsNumber"] ?? nominalParams["reynoldsNumber"] ?? 11.72e6);
+
+    const aoaRad = (aoaDeg * Math.PI) / 180;
+    const prandtlGlauertBeta = Math.sqrt(Math.max(0.12, Math.abs(1 - mach * mach)));
+    const liftCoeffCl = Number(((2 * Math.PI * aoaRad) / (prandtlGlauertBeta + 0.021)).toFixed(3));
+    const cd0 = 0.0082 * Math.pow(11.72e6 / Math.max(1e5, reynolds), 0.15);
+    const cdWave = mach > 0.72 ? 0.14 * Math.pow(mach - 0.72, 2) : 0;
+    const cdInduced = (liftCoeffCl * liftCoeffCl) / (Math.PI * 3.8 * 0.82);
+    const dragCoeffCd = Number((cd0 + cdWave + cdInduced).toFixed(4));
+    const liftToDrag = Number((liftCoeffCl / Math.max(1e-5, dragCoeffCd)).toFixed(2));
+
+    kpis = [
+      { id: "liftCoeffCl", label: "Lift Coefficient (C_L)", value: liftCoeffCl, status: "pass" },
+      { id: "dragCoeffCd", label: "Drag Coefficient (C_D)", value: dragCoeffCd, status: "info" },
+      { id: "liftToDrag", label: "Aerodynamic L/D Ratio", value: liftToDrag, status: "pass" },
+    ];
+  } else {
+    kpis = [
+      { id: "peakValue", label: `Peak (${primaryObs})`, value: evalRes.peak, unit: primaryUnit, status: "info" },
+      {
+        id: "finalValue",
+        label: `Steady-State (${primaryObs})`,
+        value: evalRes.finalVal,
+        unit: primaryUnit,
+        status: "pass",
+      },
+      {
+        id: "rmsValue",
+        label: `Signal RMS (${primaryObs})`,
+        value: evalRes.rms,
+        unit: primaryUnit,
+        status: "info",
+      },
+      { id: "settlingTime", label: "2% Settling Time", value: evalRes.settlingTime, unit: "s", status: "pass" },
+    ];
+  }
 
   return {
     studyKind: studyDef.kind,

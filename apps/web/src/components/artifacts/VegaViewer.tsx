@@ -173,7 +173,7 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
         flexDirection="column"
         alignItems="center"
         justifyContent="center"
-        height={isFullScreen ? "100%" : "340px"}
+        height={isFullScreen ? "100%" : "440px"}
         gap={2}
       >
         <Spinner size="medium" />

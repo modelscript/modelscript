@@ -3,6 +3,7 @@
 import { XIcon } from "@primer/octicons-react";
 import React, { useRef } from "react";
 import styled from "styled-components";
+import { useFeatureFlag } from "../FeatureFlagContext.js";
 import { useFocusTrap } from "../hooks/useFocusTrap.js";
 import Box from "./Box";
 import { CircleIconButton } from "./SharedStyles";
@@ -110,7 +111,23 @@ interface KeyboardShortcutsModalProps {
 
 const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ isOpen, onClose }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  const hasCae = useFeatureFlag("cae_cloud_solver");
+  const hasFeedsPage = useFeatureFlag("feeds_page");
+  const hasRssFeeds = useFeatureFlag("rss_feeds");
+  const hasFeeds = hasFeedsPage || hasRssFeeds;
   useFocusTrap(modalRef, isOpen, { onEscape: onClose });
+
+  const filteredShortcuts = React.useMemo(() => {
+    return SHORTCUTS.map((category) => {
+      if (category.title !== "Global Navigation") return category;
+      return {
+        ...category,
+        items: category.items.filter(
+          (item) => (hasCae || !item.keys.includes("j")) && (hasFeeds || !item.keys.includes("f")),
+        ),
+      };
+    });
+  }, [hasCae, hasFeeds]);
 
   if (!isOpen) return null;
 
@@ -143,7 +160,7 @@ const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ isOpen,
         </Box>
 
         <Box p={4} display="flex" flexDirection="column" gap={4} style={{ overflowY: "auto" }}>
-          {SHORTCUTS.map((category) => (
+          {filteredShortcuts.map((category) => (
             <Box key={category.title}>
               <span
                 style={{

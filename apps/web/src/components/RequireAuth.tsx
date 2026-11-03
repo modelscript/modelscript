@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { LockIcon } from "@primer/octicons-react";
+import { LockIcon, TelescopeIcon } from "@primer/octicons-react";
 import React from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { EmptyState } from "./EmptyState";
@@ -14,17 +14,21 @@ export interface RequireAuthProps {
 }
 
 /**
- * Renders children for signed-in users; otherwise a consistent sign-in prompt
- * (instead of empty personal pages or account forms that can't work).
+ * Renders children for signed-in users; redirects to the full-page logout
+ * confirmation if the user just signed out; otherwise renders a consistent
+ * sign-in prompt.
  */
 export const RequireAuth: React.FC<RequireAuthProps> = ({ feature, children }) => {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, justLoggedOut } = useAuth();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const location = useLocation();
 
   if (isLoading) return null;
   if (user) return <>{children}</>;
+  if (justLoggedOut) {
+    return <Navigate to="/logout" replace />;
+  }
 
   const next = encodeURIComponent(location.pathname + location.search);
   return (
@@ -39,6 +43,10 @@ export const RequireAuth: React.FC<RequireAuthProps> = ({ feature, children }) =
           </Link>
           <Link className="ms-btn ms-btn-secondary" to="/signup">
             Create account
+          </Link>
+          <Link className="ms-btn ms-btn-quiet" to="/explore">
+            <TelescopeIcon size={14} />
+            Explore
           </Link>
         </>
       }

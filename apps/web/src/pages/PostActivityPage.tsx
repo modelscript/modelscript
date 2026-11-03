@@ -17,10 +17,11 @@ const TabBar = styled.div`
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: calc(var(--dev-header-height, 0px) + 53px);
-  background: var(--surface-hud, rgba(6, 8, 15, 0.85));
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  z-index: 9;
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  transition: background-color 0.25s ease;
+  z-index: 45;
 `;
 
 const Tab = styled.button<{ $active?: boolean | undefined }>`

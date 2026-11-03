@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/exchange",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "ModelScript Standards & Model Exchange engine — FMI 2.0/3.0 export, SSP packaging, and MQTT co-simulation orchestrator",
   "keywords": [
     "modelscript",
@@ -49,6 +49,10 @@
     "./variants": {
       "types": "./dist/variants/index.d.ts",
       "default": "./dist/variants/index.js"
+    },
+    "./catalog": {
+      "types": "./dist/catalog/index.d.ts",
+      "default": "./dist/catalog/index.js"
     },
     "./cosim": {
       "types": "./dist/cosim/index.d.ts",

@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/diagram",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "ModelScript diagramming engine — AntV X6 graph renderer, polyglot visual builder, sequence layout, and diagram RPC protocol",
   "keywords": [
     "modelscript",

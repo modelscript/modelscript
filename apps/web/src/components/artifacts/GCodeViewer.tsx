@@ -239,9 +239,9 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
         display="flex"
         justifyContent="center"
         alignItems="center"
-        height="300px"
+        height={isFullScreen ? "100%" : "450px"}
         bg="var(--color-canvas-subtle)"
-        borderRadius="8px"
+        borderRadius="0"
       >
         <Spinner size="medium" />
         <Text ml={3}>Parsing GCode...</Text>
@@ -256,9 +256,9 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
         display="flex"
         justifyContent="center"
         alignItems="center"
-        height="300px"
+        height={isFullScreen ? "100%" : "450px"}
         bg="var(--color-canvas-subtle)"
-        borderRadius="8px"
+        borderRadius="0"
       >
         <Text color="var(--color-fg-muted)">No G-Code toolpath provided</Text>
       </Box>
@@ -268,7 +268,7 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
   return (
     <Box
       width="100%"
-      height={isFullScreen ? "100%" : "400px"}
+      height={isFullScreen ? "100%" : "450px"}
       borderRadius="0"
       overflow="hidden"
       position="relative"

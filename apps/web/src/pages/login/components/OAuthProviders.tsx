@@ -20,10 +20,10 @@ export const OAuthProviders: React.FC<OAuthProvidersProps> = ({
     return null;
   }
 
-  const showGithub = !airgapEnforced && (!oauthProviders || oauthProviders.includes("github"));
-  const showGitlab = !airgapEnforced && (!oauthProviders || oauthProviders.includes("gitlab"));
-  const showTwitter = !airgapEnforced && (!oauthProviders || oauthProviders.includes("twitter"));
-  const showGoogle = !airgapEnforced && (!oauthProviders || oauthProviders.includes("google"));
+  const showGithub = !airgapEnforced && Boolean(oauthProviders?.includes("github"));
+  const showGitlab = !airgapEnforced && Boolean(oauthProviders?.includes("gitlab"));
+  const showTwitter = !airgapEnforced && Boolean(oauthProviders?.includes("twitter"));
+  const showGoogle = !airgapEnforced && Boolean(oauthProviders?.includes("google"));
 
   if (!showGithub && !showGitlab && !showTwitter && !showGoogle && !oidcEnabled) {
     return null;

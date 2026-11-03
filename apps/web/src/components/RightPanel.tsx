@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   getClusterStatus,
+  getLibraries,
   getPopularRepos,
   getTrending,
   getUnifiedUserJobs,
@@ -12,16 +13,21 @@ import {
   type UnifiedJob,
 } from "../api";
 import { useAuth } from "../AuthContext";
+import { ANSATZ_VERSION } from "../config";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
+import {
+  TutorialGuideDockPane,
+  type TutorialGuideDockPaneProps,
+} from "../pages/post-detail/components/TutorialGuideDockPane";
 import CloudSimulationModal from "./CloudSimulationModal";
 import {
   AiSearchHeader,
   AuthPromptCard,
   ClusterQueueCard,
-  EngineeringDomainsCard,
-  LegalModal,
   PanelContainer,
+  PanelFooter,
+  PopularPackagesCard,
   PopularReposCard,
   SuggestedUsersCard,
   TrendingTopicsCard,
@@ -33,43 +39,70 @@ export interface RightPanelProps {
   onOpenCommandPalette?: (() => void) | undefined;
 }
 
+interface ArticleInspectorDetail extends TutorialGuideDockPaneProps {
+  active: boolean;
+}
+
 export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propClusterInfo, onOpenCommandPalette }) => {
   const { token, user, creditBalance } = useAuth();
   const branding = useInstanceBranding();
+  const version = (branding.buildVersion || ANSATZ_VERSION).replace(/^v/i, "");
   const hasBilling = useFeatureFlag("billing_stripe_live");
   const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
+  const hasPackages = useFeatureFlag("package_browser");
+  const hasRepos = useFeatureFlag("git_repositories");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [trending, setTrending] = useState<any[]>([]);
+  const [popularPackages, setPopularPackages] = useState<any[]>([]);
   const [popularRepos, setPopularRepos] = useState<any[]>([]);
   const [hpcJobs, setHpcJobs] = useState<UnifiedJob[]>([]);
   const [isHpcLoading, setIsHpcLoading] = useState(false);
   const [fallbackClusterInfo, setFallbackClusterInfo] = useState<ClusterStatus | null>(null);
   const clusterInfo = propClusterInfo !== undefined ? propClusterInfo : fallbackClusterInfo;
   const [isSimModalOpen, setIsSimModalOpen] = useState(false);
-  const [legalModal, setLegalModal] = useState<"terms" | "privacy" | "cookies" | null>(null);
   const [activeTrendMenu, setActiveTrendMenu] = useState<number | null>(null);
+  const [articleInspector, setArticleInspector] = useState<ArticleInspectorDetail | null>(null);
   const location = useLocation();
   const isExplore = location.pathname.startsWith("/explore");
+  const isStatusRoute = location.pathname.includes("/status/");
+
+  useEffect(() => {
+    if (!isStatusRoute) {
+      setArticleInspector(null);
+    }
+  }, [isStatusRoute]);
+
+  useEffect(() => {
+    const handleInspector = (e: Event) => {
+      const detail = (e as CustomEvent<ArticleInspectorDetail | undefined>).detail;
+      if (detail?.active && detail.post && detail.notebookData) {
+        setArticleInspector(detail);
+      } else {
+        setArticleInspector(null);
+      }
+    };
+    window.addEventListener("modelscript:notebook-inspector", handleInspector);
+    return () => {
+      window.removeEventListener("modelscript:notebook-inspector", handleInspector);
+    };
+  }, []);
+
+  const showArticleSidebar = Boolean(isStatusRoute && articleInspector?.active);
 
   const panelRef = useRef<HTMLElement>(null);
-  const [panelTop, setPanelTop] = useState(0);
+  const [panelTop, setPanelTop] = useState<number | null>(null);
 
   useEffect(() => {
     if (!panelRef.current) return;
 
     const updateTop = () => {
       if (!panelRef.current) return;
-      const height = panelRef.current.getBoundingClientRect().height;
+      const height = Math.round(panelRef.current.getBoundingClientRect().height);
       const vh = window.innerHeight;
-      // If sidebar is taller than viewport, stick its bottom to viewport bottom
-      if (height > vh) {
-        setPanelTop(vh - height);
-      } else {
-        // Otherwise stick its top to viewport top (accounting for dev header if any)
-        setPanelTop(0);
-      }
+      setPanelTop(vh - height);
     };
 
+    updateTop();
     const observer = new ResizeObserver(() => updateTop());
     observer.observe(panelRef.current);
     window.addEventListener("resize", updateTop);
@@ -101,7 +134,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
   }, [token, propClusterInfo, hasCloudSolver]);
 
   useEffect(() => {
-    if (!hasCloudSolver) return;
+    if (!hasCloudSolver || showArticleSidebar) return;
     if (!token && propClusterInfo !== undefined) return;
     const poll = () => {
       if (document.visibilityState === "visible") {
@@ -111,7 +144,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
     poll();
     const interval = setInterval(poll, 15000);
     return () => clearInterval(interval);
-  }, [fetchJobsAndCluster, hasCloudSolver, token, propClusterInfo]);
+  }, [fetchJobsAndCluster, hasCloudSolver, token, propClusterInfo, showArticleSidebar]);
 
   useEffect(() => {
     async function fetchSuggestions() {
@@ -129,19 +162,34 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
   useEffect(() => {
     async function fetchTrending() {
       try {
-        const data = await getTrending(4);
+        const data = await getTrending(isExplore ? 8 : 4);
         setTrending(data.topics || []);
       } catch (err) {
         console.error(err);
       }
     }
     fetchTrending();
-  }, []);
+    window.addEventListener("modelscript:post-created", fetchTrending);
+    return () => window.removeEventListener("modelscript:post-created", fetchTrending);
+  }, [isExplore]);
+
+  useEffect(() => {
+    if (!hasPackages) return;
+    async function fetchPopularPackages() {
+      try {
+        const pkgs = await getLibraries(undefined, "recommended");
+        setPopularPackages((pkgs || []).slice(0, 7));
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    fetchPopularPackages();
+  }, [hasPackages]);
 
   useEffect(() => {
     async function fetchPopularRepos() {
       try {
-        const data = await getPopularRepos();
+        const data = await getPopularRepos(7);
         setPopularRepos(data.repos || []);
       } catch (err) {
         console.error(err);
@@ -154,99 +202,74 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
     <PanelContainer
       ref={panelRef}
       style={{
-        top: panelTop < 0 ? `calc(${panelTop}px + var(--dev-header-height, 0px))` : "var(--dev-header-height, 0px)",
+        top: panelTop !== null ? `min(var(--dev-header-height, 0px), ${panelTop}px)` : "var(--dev-header-height, 0px)",
       }}
     >
       {!isExplore && <AiSearchHeader onOpenCommandPalette={onOpenCommandPalette} />}
 
-      {!user && <AuthPromptCard />}
+      {showArticleSidebar && articleInspector ? (
+        <div style={{ marginTop: "8px" }}>
+          <TutorialGuideDockPane
+            post={articleInspector.post}
+            notebookData={articleInspector.notebookData}
+            notebookHeadings={articleInspector.notebookHeadings}
+            readTimeMinutes={articleInspector.readTimeMinutes}
+            activeHeadingSlug={articleInspector.activeHeadingSlug}
+            setActiveHeadingSlug={articleInspector.setActiveHeadingSlug}
+            readingProgress={articleInspector.readingProgress}
+          />
+        </div>
+      ) : (
+        <>
+          {!user && <AuthPromptCard />}
 
-      {user && hasBilling && <WalletCard creditBalance={creditBalance} />}
+          {user && hasBilling && <WalletCard creditBalance={creditBalance} />}
 
-      {user && hasCloudSolver && (
-        <ClusterQueueCard
-          clusterInfo={clusterInfo}
-          hpcJobs={hpcJobs}
-          isHpcLoading={isHpcLoading}
-          onRefresh={fetchJobsAndCluster}
-          onOpenSimModal={() => setIsSimModalOpen(true)}
-        />
+          {user && hasCloudSolver && (
+            <ClusterQueueCard
+              clusterInfo={clusterInfo}
+              hpcJobs={hpcJobs}
+              isHpcLoading={isHpcLoading}
+              onRefresh={fetchJobsAndCluster}
+              onOpenSimModal={() => setIsSimModalOpen(true)}
+            />
+          )}
+
+          <TrendingTopicsCard
+            trending={trending}
+            activeTrendMenu={activeTrendMenu}
+            setActiveTrendMenu={setActiveTrendMenu}
+          />
+
+          {(user || (isExplore && suggestions.length > 0)) && (
+            <SuggestedUsersCard suggestions={suggestions} currentUsername={user?.username} />
+          )}
+
+          {hasPackages &&
+            (location.pathname.startsWith("/packages") ||
+              location.pathname.startsWith("/libraries") ||
+              location.pathname.startsWith("/repos") ||
+              isExplore) && <PopularPackagesCard popularPackages={popularPackages} />}
+
+          {hasRepos &&
+            (location.pathname.startsWith("/repos") ||
+              location.pathname.startsWith("/packages") ||
+              location.pathname.startsWith("/libraries") ||
+              isExplore) && <PopularReposCard popularRepos={popularRepos} />}
+        </>
       )}
 
-      {isExplore && <EngineeringDomainsCard />}
-
-      <TrendingTopicsCard
-        trending={trending}
-        activeTrendMenu={activeTrendMenu}
-        setActiveTrendMenu={setActiveTrendMenu}
-      />
-
-      {(user || (isExplore && suggestions.length > 0)) && (
-        <SuggestedUsersCard suggestions={suggestions} currentUsername={user?.username} />
-      )}
-
-      {(location.pathname.startsWith("/repos") || isExplore) && <PopularReposCard popularRepos={popularRepos} />}
-
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: "6px",
-          padding: "4px 12px 12px",
-          fontSize: "12px",
-          color: "var(--color-text-muted)",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setLegalModal("terms")}
-          style={{
-            background: "none",
-            border: "none",
-            padding: 0,
-            color: "inherit",
-            fontSize: "inherit",
-            cursor: "pointer",
-          }}
-        >
-          Terms
-        </button>
+      <PanelFooter>
+        <Link to="/terms">Terms</Link>
         <span>·</span>
-        <button
-          type="button"
-          onClick={() => setLegalModal("privacy")}
-          style={{
-            background: "none",
-            border: "none",
-            padding: 0,
-            color: "inherit",
-            fontSize: "inherit",
-            cursor: "pointer",
-          }}
-        >
-          Privacy
-        </button>
+        <Link to="/privacy">Privacy</Link>
         <span>·</span>
-        <button
-          type="button"
-          onClick={() => setLegalModal("cookies")}
-          style={{
-            background: "none",
-            border: "none",
-            padding: 0,
-            color: "inherit",
-            fontSize: "inherit",
-            cursor: "pointer",
-          }}
-        >
-          Cookies
-        </button>
+        <Link to="/cookies">Cookies</Link>
         <span>·</span>
-        <span>© 2026 {branding.instanceName || "Ansatz"}</span>
-      </div>
-
-      {legalModal && <LegalModal legalModal={legalModal} onClose={() => setLegalModal(null)} />}
+        <a href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener noreferrer">
+          {branding.instanceName || "Ansatz"} v{version}
+        </a>
+      </PanelFooter>
 
       {isSimModalOpen && (
         <CloudSimulationModal

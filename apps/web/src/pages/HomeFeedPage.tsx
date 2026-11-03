@@ -3,7 +3,7 @@
 import { Spinner } from "@primer/react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { followUser, getTimeline, getTrending, unfollowUser } from "../api";
+import { followUser, getTimeline, unfollowUser } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ComposeBox from "../components/ComposeBox";
@@ -12,15 +12,8 @@ import Post from "../components/Post";
 import PostSkeleton from "../components/PostSkeleton";
 import { cacheTimelinePosts, getCachedTimelinePosts } from "../util/offline-storage";
 import { usePageTitle } from "../util/title";
-import type { FilterChip, TopicItem } from "./feed";
-import {
-  ComposePrompt,
-  DEFAULT_CURATED_HASHTAGS,
-  FeedEmptyState,
-  FeedFilterToolbar,
-  FeedTabBar,
-  SecondaryActionButton,
-} from "./feed";
+import type { FilterChip } from "./feed";
+import { ComposePrompt, FeedEmptyState, FeedTabBar, SecondaryActionButton } from "./feed";
 
 export type { FilterChip };
 
@@ -34,7 +27,6 @@ const HomeFeedPage: React.FC = () => {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [trendingTopics, setTrendingTopics] = useState<TopicItem[]>(DEFAULT_CURATED_HASHTAGS);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -97,34 +89,27 @@ const HomeFeedPage: React.FC = () => {
   });
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest(".sort-menu-container")) {
+    if (!showSortMenu) return;
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && !target.closest(".sort-menu-container")) {
         setShowSortMenu(false);
       }
     };
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    async function fetchTrending() {
-      try {
-        const data = await getTrending(10);
-        if (data?.topics && data.topics.length > 0) {
-          const mapped: TopicItem[] = data.topics.map((t: any) => ({
-            concept: t.concept,
-            displayName: t.display_name || t.concept,
-            postCount: t.post_count,
-          }));
-          setTrendingTopics(mapped);
-        }
-      } catch (err) {
-        console.error("Failed to fetch trending engineering topics", err);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowSortMenu(false);
       }
-    }
-    fetchTrending();
-  }, []);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showSortMenu]);
 
   useEffect(() => {
     if (!token) {
@@ -234,15 +219,6 @@ const HomeFeedPage: React.FC = () => {
         setShowSortMenu={setShowSortMenu}
       />
 
-      <FeedFilterToolbar
-        activeFilter={activeFilter}
-        setActiveFilter={setActiveFilter}
-        activeTag={activeTag}
-        setActiveTag={setActiveTag}
-        trendingTopics={trendingTopics}
-        postsCount={posts.length}
-      />
-
       <div
         style={{
           background: "var(--color-bg-primary)",
@@ -251,7 +227,7 @@ const HomeFeedPage: React.FC = () => {
           paddingBottom: "200px",
         }}
       >
-        <div ref={headerRef}>
+        <div ref={headerRef} data-tour-id="tour-timeline">
           {user && (
             <ComposePrompt>
               <ComposeBox

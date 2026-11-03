@@ -101,15 +101,16 @@ export class LibraryTreeItem extends vscode.TreeItem {
     this.id = info.id;
     this.tooltip = info.compositeName;
     this.description = info.description ?? info.classKind;
+    const isLoadingPkg = info.id.startsWith("__LOADING__:");
     const isInstalledPkg =
-      (info.id.startsWith("__LIB__:") &&
-        info.id !== "__LIB__:Modelica Standard Library" &&
-        !info.id.includes("SysML")) ||
+      info.id.startsWith("__LIB__:") ||
       Boolean(info.uri && info.uri.includes("/packages/") && !info.compositeName?.includes("."));
-    this.contextValue = isInstalledPkg ? "installedPackage" : info.classKind;
+    this.contextValue = isLoadingPkg ? "loadingPackage" : isInstalledPkg ? "installedPackage" : info.classKind;
 
-    // Use OWL2 themed icons for ontology items
-    if (info.language === "owl2") {
+    if (isLoadingPkg) {
+      this.iconPath = new vscode.ThemeIcon("loading~spin");
+    } else if (info.language === "owl2") {
+      // Use OWL2 themed icons for ontology items
       if (info.classKind === "owl2-defined-class") {
         this.iconPath = new vscode.ThemeIcon("symbol-class", new vscode.ThemeColor("charts.yellow"));
       } else if (info.classKind === "owl2-class") {
@@ -171,10 +172,15 @@ export class LibraryTreeItem extends vscode.TreeItem {
       };
     } else {
       // Models, blocks, and component definitions: double-click / click opens in editor
-      const nonOpenableKinds = new Set(["package", "import", "comment", "file", "folder", "ontology"]);
+      const nonOpenableKinds = new Set(["package", "import", "comment", "file", "folder", "ontology", "loading"]);
       const kind = (info.classKind || "").toLowerCase();
       const isOpenable = !nonOpenableKinds.has(kind);
-      if (isOpenable && !info.id.startsWith("__LIB__:") && !info.id.startsWith("__ONTOLOGY__:")) {
+      if (
+        isOpenable &&
+        !info.id.startsWith("__LIB__:") &&
+        !info.id.startsWith("__LOADING__:") &&
+        !info.id.startsWith("__ONTOLOGY__:")
+      ) {
         this.command = {
           command: "modelscript.openModel",
           title: "Open Model in Editor",
@@ -286,7 +292,7 @@ export class LibraryTreeProvider
       return this.itemMap.get(parentName);
     }
     if (element.info.language === "modelica") {
-      return this.itemMap.get("__LIB__:Modelica Standard Library");
+      return this.itemMap.get("__LIB__:Modelica") ?? this.itemMap.get("__LIB__:Modelica Standard Library");
     }
     return undefined;
   }

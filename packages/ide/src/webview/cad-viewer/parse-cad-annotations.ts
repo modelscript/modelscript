@@ -79,6 +79,8 @@ export interface RawDaeVariable {
   dynamicBindings?: CadComponent["dynamicBindings"] | undefined;
   sourceMetadata?: CadComponent["sourceMetadata"] | undefined;
   proceduralMesh?: CadComponent["proceduralMesh"] | undefined;
+  defaults?: Record<string, unknown> | undefined;
+  shapeType?: string | undefined;
   [key: string]: unknown;
 }
 
@@ -96,6 +98,8 @@ export function extractCadComponents(daeVariables: readonly (RawDaeVariable | nu
         dynamicBindings: v.dynamicBindings ?? undefined,
         sourceMetadata: v.sourceMetadata ?? undefined,
         proceduralMesh: v.proceduralMesh ?? undefined,
+        defaults: v.defaults ?? undefined,
+        shapeType: v.shapeType ?? undefined,
       });
       continue;
     }
@@ -111,6 +115,8 @@ export function extractCadComponents(daeVariables: readonly (RawDaeVariable | nu
         dynamicBindings: v.dynamicBindings ?? undefined,
         sourceMetadata: v.sourceMetadata ?? undefined,
         proceduralMesh: v.proceduralMesh ?? undefined,
+        defaults: v.defaults ?? undefined,
+        shapeType: v.shapeType ?? undefined,
       });
     } else if (cadStr.startsWith("CADPort(")) {
       // CADPort annotations are on leaf variables like "body.port1"

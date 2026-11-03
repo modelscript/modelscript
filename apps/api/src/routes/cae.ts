@@ -81,6 +81,10 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
   // 1. Upload Mesh or CAD Geometry with CAS deduplication
   router.post("/cae/upload", upload.single("file"), (req, res) => {
+    const userId = resolveRequestUserId(req, database);
+    if (process.env["NODE_ENV"] === "production" && !userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded." });
     }

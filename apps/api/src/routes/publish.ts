@@ -226,8 +226,21 @@ export function publishRouter(
 
         // Assign dist-tag (default "latest", or custom tag such as "beta")
         const { id: packageId } = database.getOrCreatePackage(name);
-        const tag = String(req.body?.tag || req.query?.["tag"] || "latest");
-        database.setDistTag(packageId, tag, version);
+        const explicitTag = req.body?.tag || req.query?.["tag"];
+        const tag = String(explicitTag || "latest");
+        if (explicitTag || tag !== "latest") {
+          database.setDistTag(packageId, tag, version);
+        } else {
+          const currentLatest = database.getDistTags(packageId)["latest"];
+          if (
+            !currentLatest ||
+            !semver.valid(currentLatest) ||
+            !semver.valid(version) ||
+            semver.gte(version, currentLatest)
+          ) {
+            database.setDistTag(packageId, "latest", version);
+          }
+        }
 
         // Record package version and metadata synchronously so packuments resolve immediately
         let initialManifestStr = JSON.stringify({ name, version });

@@ -93,6 +93,25 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         <BrandLink to={user ? "/home" : "/explore"}>
           <AnsatzMark size={24} logoUrl={customLogoSrc} alt={brandName} accentColor={branding.brandAccentColor} />
           <span className="nav-hide-sm">{brandName}</span>
+          <span
+            className="nav-hide-sm"
+            data-testid="playground-brand-badge"
+            style={{
+              fontSize: "9.5px",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              padding: "1px 5px",
+              borderRadius: "4px",
+              background: "var(--ms-brand-soft)",
+              border: "1px solid var(--color-accent-blue-border)",
+              color: "var(--ms-brand)",
+              lineHeight: 1.3,
+              flexShrink: 0,
+            }}
+          >
+            {branding.instanceBadge?.trim() || "Beta"}
+          </span>
         </BrandLink>
         <Badge>
           <PulseIcon size={12} /> Playground

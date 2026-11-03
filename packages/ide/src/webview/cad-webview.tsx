@@ -56,24 +56,28 @@ function App() {
         }
         if (ctrl && parsed.length > 0) {
           ctrl.setBindings(
-            parsed
-              .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
-              .map((c) => ({
-                componentName: c.name,
-                bindings: (c.dynamicBindings || []).map((b) => ({
-                  property: b.property as "position" | "rotation" | "scale",
-                  index: b.index,
-                  variable: b.variable,
-                })),
+            parsed.map((c) => ({
+              componentName: c.name,
+              bindings: (c.dynamicBindings || []).map((b) => ({
+                property: b.property as
+                  | "position"
+                  | "rotation"
+                  | "scale"
+                  | "shapeOffset"
+                  | "lengthDirection"
+                  | "widthDirection"
+                  | "vectorCoordinates"
+                  | "color",
+                index: b.index,
+                variable: b.variable,
               })),
+              defaults: (c.defaults as Record<string, unknown> | undefined) ?? {
+                position: c.cad.position ?? [0, 0, 0],
+                rotation: c.cad.rotation ?? [0, 0, 0],
+                scale: c.cad.scale ?? [1, 1, 1],
+              },
+            })),
           );
-          for (const comp of parsed) {
-            ctrl.setDefault(comp.name, {
-              position: comp.cad.position ?? [0, 0, 0],
-              rotation: comp.cad.rotation ?? [0, 0, 0],
-              scale: comp.cad.scale ?? [1, 1, 1],
-            });
-          }
         }
       } else if (message.type === "selectComponent") {
         setSelectedName(message.name);

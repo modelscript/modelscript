@@ -77,6 +77,15 @@
         reverse_proxy api:3000
     }
 
+    # Reject hidden dotfile probes (/.env, /.git/config, /live/.env, /.env.swp, etc.) and scanner scripts (/wp-login.php, etc.)
+    @blocked_probes {
+        not path /.well-known/*
+        path_regexp blocked_probe (?i)(?:^|/)\.(?:env|git|svn|hg|htaccess|htpasswd|DS_Store|npmrc|dockerenv)(?:$|[./])|\.(?:php|asp|aspx|jsp|cgi|swp|swo|bak)$|^/(?:wp-admin|wp-login\.php|wp-content|wp-includes|xmlrpc\.php|phpmyadmin|pma|adminer)(?:/|$)
+    }
+    handle @blocked_probes {
+        respond "Not Found" 404
+    }
+
     # Route Unified Web SPA, IDE Shell & Documentation Portal (all other requests)
     handle {
         reverse_proxy web:80

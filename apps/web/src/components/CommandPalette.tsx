@@ -18,11 +18,12 @@ import {
   SearchIcon,
   ShieldLockIcon,
   SignInIcon,
+  SignOutIcon,
   SunIcon,
   ZapIcon,
 } from "@primer/octicons-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -33,7 +34,7 @@ import { useTheme } from "../theme";
 
 interface CommandItem {
   id: string;
-  category: "AI Copilot" | "Navigation" | "Actions" | "Users" | "Packages" | "Repositories";
+  category: "Navigation" | "Actions" | "Users" | "Packages" | "Repositories";
   title: string;
   subtitle?: string | undefined;
   icon: React.ReactNode;
@@ -256,7 +257,8 @@ interface CommandPaletteProps {
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onOpenCompose }) => {
   const navigate = useNavigate();
-  const { isAdmin, user } = useAuth();
+  const location = useLocation();
+  const { isAdmin, user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
@@ -583,7 +585,101 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         ]
       : [];
 
+    const isEngineeringRoute =
+      location.pathname.startsWith("/playground") ||
+      location.pathname.startsWith("/morsel") ||
+      location.pathname.startsWith("/render-artifact");
+
+    const engineeringActionItems: CommandItem[] = isEngineeringRoute
+      ? [
+          {
+            id: "action-eng-simulate",
+            category: "Actions",
+            title: "Simulate Active Model",
+            subtitle: "Compile and run numerical DAE solver in WebAssembly",
+            icon: <PlayIcon size={16} />,
+            action: () => {
+              onClose();
+              window.dispatchEvent(new CustomEvent("modelscript:morsel-command", { detail: { action: "simulate" } }));
+            },
+          },
+          {
+            id: "action-eng-view-diagram",
+            category: "Actions",
+            title: "Switch View: Schematic Diagram",
+            subtitle: "Focus interactive block/connector canvas",
+            icon: <ZapIcon size={16} />,
+            action: () => {
+              onClose();
+              window.dispatchEvent(
+                new CustomEvent("modelscript:morsel-command", { detail: { action: "view:diagram" } }),
+              );
+            },
+          },
+          {
+            id: "action-eng-view-3d",
+            category: "Actions",
+            title: "Switch View: 3D CAD Viewport",
+            subtitle: "Inspect B-Rep geometry, section planes, and multibody kinematics",
+            icon: <CpuIcon size={16} />,
+            action: () => {
+              onClose();
+              window.dispatchEvent(new CustomEvent("modelscript:morsel-command", { detail: { action: "view:3d" } }));
+            },
+          },
+          {
+            id: "action-eng-view-plot",
+            category: "Actions",
+            title: "Switch View: Simulation Oscilloscope",
+            subtitle: "Open time-series trajectories, measurement cursors, and FFT",
+            icon: <PlayIcon size={16} />,
+            action: () => {
+              onClose();
+              window.dispatchEvent(
+                new CustomEvent("modelscript:morsel-command", { detail: { action: "view:simulation" } }),
+              );
+            },
+          },
+          {
+            id: "action-eng-view-inspector",
+            category: "Actions",
+            title: "Switch View: Model Inspector & Verification",
+            subtitle: "Inspect flattened equations, causality, and formal verification",
+            icon: <SearchIcon size={16} />,
+            action: () => {
+              onClose();
+              window.dispatchEvent(
+                new CustomEvent("modelscript:morsel-command", { detail: { action: "view:inspector" } }),
+              );
+            },
+          },
+          {
+            id: "action-eng-view-split",
+            category: "Actions",
+            title: "Switch View: Split Canvas & Code",
+            subtitle: "Side-by-side schematic canvas and Monaco source editor",
+            icon: <CodeIcon size={16} />,
+            action: () => {
+              onClose();
+              window.dispatchEvent(new CustomEvent("modelscript:morsel-command", { detail: { action: "view:split" } }));
+            },
+          },
+          {
+            id: "action-eng-share",
+            category: "Actions",
+            title: "Share Stateful Permalink / Embed",
+            subtitle: "Copy compressed #m=... URL with active view and parameter overrides",
+            icon: <GlobeIcon size={16} />,
+            action: () => {
+              onClose();
+              window.dispatchEvent(new CustomEvent("modelscript:open-share-modal"));
+            },
+          },
+        ]
+      : [];
+
     const defaultActionItems: CommandItem[] = [
+      ...engineeringActionItems,
       ...(user
         ? [
             {
@@ -599,6 +695,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                 } else {
                   window.dispatchEvent(new CustomEvent("modelscript:open-compose"));
                 }
+              },
+            },
+            {
+              id: "action-logout",
+              category: "Actions" as const,
+              title: `Log out (@${user.username})`,
+              subtitle: "Sign out of your account and clear local credentials",
+              icon: <SignOutIcon size={16} />,
+              action: () => {
+                onClose();
+                logout();
+                navigate("/logout", { replace: true });
               },
             },
           ]
@@ -626,6 +734,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
               },
             },
           ]),
+      {
+        id: "action-replay-product-tour",
+        category: "Actions" as const,
+        title: "Replay Product Tour",
+        subtitle: `Interactive spotlight walkthrough of ${brandName}'s timeline, discovery, and modeling workspace`,
+        icon: <ZapIcon size={16} />,
+        action: () => {
+          onClose();
+          window.dispatchEvent(new CustomEvent("modelscript:start-product-tour"));
+        },
+      },
       {
         id: "action-toggle-theme",
         category: "Actions" as const,
@@ -694,58 +813,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       },
     }));
 
-    const aiItems: CommandItem[] = [
-      {
-        id: `ai-ask-${query}`,
-        category: "AI Copilot",
-        title: `Ask Copilot: "${query}"`,
-        subtitle: "Mention @dynamics_bot to analyze equations and simulation dynamics",
-        icon: <ZapIcon size={16} />,
-        action: () => {
-          onClose();
-          if (onOpenCompose) {
-            onOpenCompose({
-              content: `@dynamics_bot ${query}`,
-            });
-          } else {
-            window.dispatchEvent(
-              new CustomEvent("modelscript:open-compose", { detail: { content: `@dynamics_bot ${query}` } }),
-            );
-          }
-        },
-      },
-      {
-        id: `ai-synth-${query}`,
-        category: "AI Copilot",
-        title: `Synthesize: /synthesize ${query}`,
-        subtitle: "Generate Modelica code and DAE architecture from specification",
-        icon: <CodeIcon size={16} />,
-        action: () => {
-          onClose();
-          if (onOpenCompose) {
-            onOpenCompose({
-              content: `@dynamics_bot /synthesize ${query}`,
-            });
-          } else {
-            window.dispatchEvent(
-              new CustomEvent("modelscript:open-compose", {
-                detail: { content: `@dynamics_bot /synthesize ${query}` },
-              }),
-            );
-          }
-        },
-      },
-    ];
-
-    return [...matchingNav, ...actionItems, ...userItems, ...packageItems, ...repoItems, ...aiItems];
+    return [...matchingNav, ...actionItems, ...userItems, ...packageItems, ...repoItems];
   }, [
     query,
     completions,
+    location.pathname,
     navigate,
     onClose,
     onOpenCompose,
     isAdmin,
     user,
+    logout,
     hasIde,
     hasCae,
     brandName,

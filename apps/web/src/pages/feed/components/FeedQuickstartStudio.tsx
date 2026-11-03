@@ -98,7 +98,7 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
   return (
     <QuickstartContainer>
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <RocketIcon size={20} fill="var(--color-accent-emphasis, #8b5cf6)" />
+        <RocketIcon size={20} fill="var(--ms-brand)" />
         <div>
           <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--color-text-heading)" }}>
             Quickstart Cyber-Physical Studio
@@ -196,8 +196,8 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
                           fontSize: "10px",
                           padding: "1px 5px",
                           borderRadius: "4px",
-                          background: "rgba(139, 92, 246, 0.15)",
-                          color: "var(--color-accent-emphasis, #8b5cf6)",
+                          background: "var(--ms-brand-soft)",
+                          color: "var(--ms-brand)",
                           fontWeight: 600,
                         }}
                       >
@@ -233,7 +233,7 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
                     alignItems: "center",
                     gap: "4px",
                     transition: "all 0.2s ease",
-                    background: "var(--color-accent-emphasis, #8b5cf6)",
+                    background: "var(--ms-brand)",
                     color: "#ffffff",
                     border: "none",
                   }}
@@ -315,7 +315,7 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
                       gap: "4px",
                       background: followedHandles[u.username]
                         ? "var(--color-canvas-subtle, rgba(255, 255, 255, 0.08))"
-                        : "var(--color-accent-emphasis, #8b5cf6)",
+                        : "var(--ms-brand)",
                       color: followedHandles[u.username] ? "var(--color-text-primary, #ffffff)" : "#ffffff",
                       border: followedHandles[u.username]
                         ? "1px solid var(--color-border-default, rgba(255, 255, 255, 0.2))"

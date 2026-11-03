@@ -97,19 +97,41 @@ test("Phase 1 Security & Hardening Integration Suite", async (t) => {
   });
 
   await t.test("OAuth login prevents pre-account takeover on password-protected accounts", async () => {
-    // 1. Create a legitimate user who set a password with the same email as mock gitlab
+    // 1. Create a legitimate user who set a password with the same email as the GitLab OAuth user
     const passwordHash = await bcrypt.hash("VictimPassword123!", 10);
-    db.createUser("victim_dev", "mockuser@gitlab.com", passwordHash, {
+    db.createUser("victim_dev", "victim@gitlab.com", passwordHash, {
       emailVerified: true,
       initialCredits: 50.0,
     });
 
-    // 2. Mock OAuth callback returning gitlab user with matching email
-    const res = await request(app).get("/api/v1/auth/callback/gitlab").query({ code: "mock_code_from_gitlab" });
+    process.env["GITLAB_CLIENT_ID"] = "gl_test_client_id";
+    process.env["GITLAB_CLIENT_SECRET"] = "gl_test_client_secret";
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/oauth/token")) {
+        return new Response(JSON.stringify({ access_token: "gl_live_token_123" }), { status: 200 });
+      }
+      if (url.endsWith("/api/v4/user")) {
+        return new Response(JSON.stringify({ id: 98765, username: "victim_gitlab", email: "victim@gitlab.com" }), {
+          status: 200,
+        });
+      }
+      return origFetch(input);
+    }) as typeof fetch;
 
-    // Expect redirect to login with error=AccountExistsWithPassword instead of logging in
-    assert.strictEqual(res.status, 302);
-    assert.ok(res.header.location.includes("AccountExistsWithPassword"));
+    try {
+      // 2. OAuth callback returning GitLab user with matching email
+      const res = await request(app).get("/api/v1/auth/callback/gitlab").query({ code: "live_auth_code_gitlab" });
+
+      // Expect redirect to login with error=AccountExistsWithPassword instead of logging in
+      assert.strictEqual(res.status, 302);
+      assert.ok(res.header.location.includes("AccountExistsWithPassword"));
+    } finally {
+      globalThis.fetch = origFetch;
+      delete process.env["GITLAB_CLIENT_ID"];
+      delete process.env["GITLAB_CLIENT_SECRET"];
+    }
   });
 
   await t.test("Mailer bounded queue does not grow past 100 items", async () => {

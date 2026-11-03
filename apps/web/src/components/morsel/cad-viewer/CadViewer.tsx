@@ -35,6 +35,13 @@ export interface CadPortAnnotation {
   offsetScale?: [number, number, number] | undefined;
 }
 
+export interface ProceduralMeshData {
+  vertices: number[];
+  indices: number[];
+  normals: number[];
+  color?: [number, number, number, number] | undefined;
+}
+
 export interface CadComponent {
   /** Qualified Modelica variable name, e.g. "body1" */
   name: string;
@@ -44,6 +51,12 @@ export interface CadComponent {
   ports?: { name: string; port: CadPortAnnotation }[] | undefined;
   /** Dynamic animation bindings (from DynamicSelect in CAD annotations) */
   dynamicBindings?: { property: string; index: number; variable: string }[] | undefined;
+  /** Procedural triangle mesh for inline CSG/OpenSCAD or MSL Visualizer solids */
+  proceduralMesh?: ProceduralMeshData | undefined;
+  /** Baseline transform defaults for MSL Visualizers and CAD components */
+  defaults?: Record<string, unknown> | undefined;
+  /** MSL Visualizer shapeType identifier (e.g., "box", "cylinder", "spring", "torus") */
+  shapeType?: string | undefined;
 }
 
 interface CadViewerProps {
@@ -120,7 +133,54 @@ function PortIndicator({
   );
 }
 
-/** A single GLTF-based component in the scene. */
+/** Procedural triangle mesh built directly from MSL Visualizer or CSG evaluation arrays. */
+function ProceduralMeshObject({ mesh }: { mesh: ProceduralMeshData }) {
+  const geometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3));
+    if (mesh.normals && mesh.normals.length === mesh.vertices.length) {
+      geo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(mesh.normals), 3));
+    }
+    if (mesh.indices && mesh.indices.length > 0) {
+      geo.setIndex(mesh.indices);
+    }
+    if (!mesh.normals || mesh.normals.length !== mesh.vertices.length) {
+      geo.computeVertexNormals();
+    }
+    return geo;
+  }, [mesh]);
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
+
+  const rgba = mesh.color ?? [0.27, 0.51, 0.71, 1.0];
+  const color = useMemo(() => new THREE.Color(rgba[0], rgba[1], rgba[2]), [rgba]);
+
+  return (
+    <mesh geometry={geometry} castShadow receiveShadow>
+      <meshStandardMaterial
+        color={color}
+        metalness={0.25}
+        roughness={0.45}
+        transparent={rgba[3] < 1.0}
+        opacity={rgba[3]}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
+/** GLTF-loaded 3D mesh object. */
+function GltfMeshObject({ url }: { url: string }) {
+  const { scene } = useGLTF(url);
+  const cloned = useMemo(() => scene.clone(true), [scene]);
+  return <primitive object={cloned} />;
+}
+
+/** A single GLTF or procedural visualizer component in the scene. */
 function CadModel({
   component,
   assetBaseUrl,
@@ -135,8 +195,6 @@ function CadModel({
   animationController?: AnimationController | null | undefined;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
-  const { scene } = useGLTF(url);
-  const cloned = useMemo(() => scene.clone(true), [scene]);
   const groupRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
   const [inspectorValues, setInspectorValues] = useState<
@@ -175,7 +233,7 @@ function CadModel({
   useEffect(() => {
     if (!groupRef.current) return;
     groupRef.current.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.material) {
+      if (child instanceof THREE.Mesh && child.material && !child.name.startsWith("port:")) {
         const mat = child.material as THREE.MeshStandardMaterial;
         if (selected) {
           mat.emissive = new THREE.Color("#06b6d4");
@@ -188,14 +246,17 @@ function CadModel({
     });
   }, [selected]);
 
-  const pos = component.cad.position ?? [0, 0, 0];
-  const rot = component.cad.rotation ?? [0, 0, 0];
-  const scl = component.cad.scale ?? [1, 1, 1];
+  const isBakedCsgMesh = Boolean(
+    component.proceduralMesh && !component.defaults && !component.cad.uri?.startsWith("procedural://msl"),
+  );
+  const pos: [number, number, number] = component.cad.position ?? [0, 0, 0];
+  const rot: [number, number, number] = isBakedCsgMesh ? [0, 0, 0] : (component.cad.rotation ?? [0, 0, 0]);
+  const scl: [number, number, number] = isBakedCsgMesh ? [1, 1, 1] : (component.cad.scale ?? [1, 1, 1]);
 
-  // Drive transforms from animation controller when animating
+  // Drive transforms from animation controller when animating or when local MSL frame defaults are present
   useFrame(() => {
     if (!groupRef.current || !animationController) return;
-    if (animationController.mode === "stopped") return;
+    if (animationController.mode === "stopped" && !component.defaults) return;
 
     const tf = animationController.getTransform(component.name);
     groupRef.current.position.set(tf.position[0], tf.position[1], tf.position[2]);
@@ -209,6 +270,15 @@ function CadModel({
       );
     }
     groupRef.current.scale.set(tf.scale[0], tf.scale[1], tf.scale[2]);
+
+    if (tf.color && !selected) {
+      groupRef.current.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material && !child.name.startsWith("port:")) {
+          const mat = child.material as THREE.MeshStandardMaterial;
+          mat.color.setRGB(tf.color![0], tf.color![1], tf.color![2]);
+        }
+      });
+    }
 
     // Update ghost trail if selected and animating
     if (selected && (animationController.mode === "playing" || animationController.mode === "live")) {
@@ -257,7 +327,11 @@ function CadModel({
         }}
         onPointerOut={() => setHovered(false)}
       >
-        <primitive object={cloned} />
+        {component.proceduralMesh ? (
+          <ProceduralMeshObject mesh={component.proceduralMesh} />
+        ) : !component.cad.uri.startsWith("procedural://") ? (
+          <GltfMeshObject url={url} />
+        ) : null}
 
         {showInspector && (
           <Html position={[0, 0, 0]} center style={{ pointerEvents: "none", zIndex: 10 }}>
@@ -327,6 +401,7 @@ function SceneContents({
   animationController,
   vtkBuffer,
   touchScrollPassThrough,
+  clippingPlanes,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
@@ -336,9 +411,83 @@ function SceneContents({
   animationController?: AnimationController | null | undefined;
   vtkBuffer?: Uint8Array | null | undefined;
   touchScrollPassThrough?: boolean | undefined;
+  clippingPlanes?: THREE.Plane[] | undefined;
 }) {
-  const { gl } = useThree();
+  const { gl, camera } = useThree();
   const controlsRef = useRef<any>(null);
+  const framedSignatureRef = useRef<string>("");
+
+  const sceneBounds = useMemo(() => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+    let hasPoints = false;
+
+    for (const comp of components) {
+      const p = comp.cad.position ?? [0, 0, 0];
+      const s = comp.cad.scale ?? [1, 1, 1];
+      if (comp.proceduralMesh && comp.proceduralMesh.vertices.length >= 3) {
+        const verts = comp.proceduralMesh.vertices;
+        for (let i = 0; i < verts.length; i += 3) {
+          const vx = verts[i]! * s[0] + p[0];
+          const vy = verts[i + 1]! * s[1] + p[1];
+          const vz = verts[i + 2]! * s[2] + p[2];
+          if (vx < minX) minX = vx;
+          if (vy < minY) minY = vy;
+          if (vz < minZ) minZ = vz;
+          if (vx > maxX) maxX = vx;
+          if (vy > maxY) maxY = vy;
+          if (vz > maxZ) maxZ = vz;
+          hasPoints = true;
+        }
+      } else {
+        if (p[0] - 1 < minX) minX = p[0] - 1;
+        if (p[1] - 1 < minY) minY = p[1] - 1;
+        if (p[2] - 1 < minZ) minZ = p[2] - 1;
+        if (p[0] + 1 > maxX) maxX = p[0] + 1;
+        if (p[1] + 1 > maxY) maxY = p[1] + 1;
+        if (p[2] + 1 > maxZ) maxZ = p[2] + 1;
+        hasPoints = true;
+      }
+    }
+
+    if (!hasPoints) {
+      return { center: [0, 0, 0] as [number, number, number], radius: 2, minY: 0 };
+    }
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const radius = Math.max(0.5, Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2);
+    return { center: [cx, cy, cz] as [number, number, number], radius, minY };
+  }, [components]);
+
+  useEffect(() => {
+    if (components.length === 0) return;
+    const sig = `${components.length}:${Math.round(Math.log10(Math.max(0.1, sceneBounds.radius)))}`;
+    if (framedSignatureRef.current === sig) return;
+    framedSignatureRef.current = sig;
+
+    const [cx, cy, cz] = sceneBounds.center;
+    const r = sceneBounds.radius;
+    camera.near = Math.max(0.01, r * 0.002);
+    camera.far = Math.max(1000, r * 30);
+    camera.position.set(cx + r * 1.4, cy + r * 1.15, cz + r * 1.4);
+    camera.lookAt(cx, cy, cz);
+    camera.updateProjectionMatrix();
+
+    if (controlsRef.current?.target) {
+      controlsRef.current.target.set(cx, cy, cz);
+      controlsRef.current.update();
+    }
+  }, [components.length, sceneBounds, camera]);
+
+  useEffect(() => {
+    gl.localClippingEnabled = Boolean(clippingPlanes && clippingPlanes.length > 0);
+    gl.clippingPlanes = clippingPlanes && clippingPlanes.length > 0 ? clippingPlanes : [];
+  }, [gl, clippingPlanes]);
 
   // WebGL context loss interception and resource cleanup on unmount
   useEffect(() => {
@@ -491,6 +640,55 @@ export default function CadViewer({
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
+  const [clipAxis, setClipAxis] = useState<"none" | "x" | "y" | "z">("none");
+  const [clipOffset, setClipOffset] = useState<number>(0);
+  const [explosionFactor, setExplosionFactor] = useState<number>(0);
+
+  const activeClippingPlanes = useMemo(() => {
+    if (clipAxis === "none") return [];
+    const d = clipOffset * 6;
+    if (clipAxis === "x") return [new THREE.Plane(new THREE.Vector3(-1, 0, 0), d)];
+    if (clipAxis === "y") return [new THREE.Plane(new THREE.Vector3(0, -1, 0), d)];
+    return [new THREE.Plane(new THREE.Vector3(0, 0, -1), d)];
+  }, [clipAxis, clipOffset]);
+
+  const effectiveComponents = useMemo(() => {
+    if (explosionFactor <= 0 || components.length <= 1) return components;
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+    for (const c of components) {
+      const p = c.cad?.position ?? [0, 0, 0];
+      cx += p[0];
+      cy += p[1];
+      cz += p[2];
+    }
+    cx /= components.length;
+    cy /= components.length;
+    cz /= components.length;
+    return components.map((c, idx) => {
+      const p = c.cad?.position ?? [0, 0, 0];
+      let dx = p[0] - cx;
+      let dy = p[1] - cy;
+      let dz = p[2] - cz;
+      if (Math.hypot(dx, dy, dz) < 1e-4) {
+        const angle = (idx / components.length) * Math.PI * 2;
+        dx = Math.cos(angle);
+        dz = Math.sin(angle);
+      }
+      return {
+        ...c,
+        cad: {
+          ...c.cad,
+          position: [p[0] + dx * explosionFactor, p[1] + dy * explosionFactor, p[2] + dz * explosionFactor] as [
+            number,
+            number,
+            number,
+          ],
+        },
+      };
+    });
+  }, [components, explosionFactor]);
 
   const selectedComponent = useMemo(
     () => components.find((c) => c.name === selectedName) || null,
@@ -545,6 +743,81 @@ export default function CadViewer({
 
   return (
     <div style={{ height: "100%", position: "relative" }}>
+      {/* Floating 3D Section Plane & Explode Controls Pill */}
+      <div
+        style={{
+          position: "absolute",
+          top: 14,
+          right: 14,
+          zIndex: 10,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "5px 10px",
+          background: dark ? "rgba(15, 23, 42, 0.82)" : "rgba(255, 255, 255, 0.9)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+          borderRadius: 20,
+          border: `1px solid ${dark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.12)"}`,
+          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
+          fontFamily: "var(--font-mono, monospace)",
+          fontSize: 10,
+          color: dark ? "#e2e8f0" : "#1f2328",
+        }}
+      >
+        {(["x", "y", "z"] as const).map((axis) => {
+          const active = clipAxis === axis;
+          return (
+            <button
+              key={axis}
+              type="button"
+              onClick={() => setClipAxis(active ? "none" : axis)}
+              title={`Toggle ${axis.toUpperCase()}-axis section cutting plane`}
+              style={{
+                background: active ? "rgba(6, 182, 212, 0.22)" : "transparent",
+                color: active ? "#06b6d4" : "inherit",
+                border: active ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+                borderRadius: 12,
+                padding: "2px 7px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              CUT {axis.toUpperCase()}
+            </button>
+          );
+        })}
+        {clipAxis !== "none" && (
+          <input
+            type="range"
+            min="-1"
+            max="1"
+            step="0.02"
+            value={clipOffset}
+            onChange={(e) => setClipOffset(parseFloat(e.target.value))}
+            aria-label="Section cutting plane offset"
+            style={{ width: 64, accentColor: "#06b6d4", cursor: "pointer" }}
+          />
+        )}
+        {components.length > 1 && (
+          <>
+            <span style={{ opacity: 0.4 }}>|</span>
+            <span style={{ fontWeight: 600 }}>Explode</span>
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              value={explosionFactor}
+              onChange={(e) => setExplosionFactor(parseFloat(e.target.value))}
+              aria-label="Assembly explode factor"
+              style={{ width: 64, accentColor: "#06b6d4", cursor: "pointer" }}
+            />
+          </>
+        )}
+      </div>
+
       {/* Floating Selected Component HUD */}
       {selectedComponent && (
         <div
@@ -625,12 +898,12 @@ export default function CadViewer({
       <Canvas
         shadows
         camera={{ position: [3, 2.5, 3], fov: 50 }}
-        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
+        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, localClippingEnabled: true }}
         style={{ background: dark ? "#1a1a2e" : "#f0f4f8" }}
         onError={(e) => setError(String(e))}
       >
         <SceneContents
-          components={components}
+          components={effectiveComponents}
           assetBaseUrl={assetBaseUrl}
           selectedName={selectedName}
           onSelect={onSelect}
@@ -638,6 +911,7 @@ export default function CadViewer({
           animationController={animationController}
           vtkBuffer={vtkBuffer}
           touchScrollPassThrough={touchScrollPassThrough}
+          clippingPlanes={activeClippingPlanes}
         />
       </Canvas>
 

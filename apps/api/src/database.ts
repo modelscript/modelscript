@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import semver from "semver";
 import {
   BillingRepository,
   PackageRepository,
@@ -65,6 +66,7 @@ import {
 } from "./services/mailer.js";
 import { S3StorageDriver } from "./storage/s3-driver.js";
 import { canonicalizeEmail, hashCanonicalEmail, ipMatchesCidr, redactEmailHint } from "./util/email-filter.js";
+import { PERSONA_SEED_TOPICS, extractHashtags } from "./util/extract-topics.js";
 import {
   decryptSecretAtRest,
   decryptTotpSecret,
@@ -126,6 +128,8 @@ export interface ClassRow {
   class_kind: string;
   description: string | null;
   documentation: string | null;
+  icon_hash?: string | null | undefined;
+  diagram_hash?: string | null | undefined;
 }
 
 export interface ExtendsRow {
@@ -158,6 +162,8 @@ export interface ClassMetadata {
   documentation: string | null;
   baseClasses: string[];
   components: ComponentMetadata[];
+  iconHash?: string | null | undefined;
+  diagramHash?: string | null | undefined;
 }
 
 export interface ComponentMetadata {
@@ -172,6 +178,7 @@ export interface ComponentMetadata {
 export interface TrendingTopicRow {
   id: number;
   concept: string;
+  location?: string | null | undefined;
   display_name: string;
   current_score: number;
   last_updated_at: string;
@@ -310,7 +317,10 @@ export interface OrganizationRecord {
   id: number;
   slug: string;
   name: string;
+  display_name?: string | null | undefined;
   description: string | null;
+  website?: string | null | undefined;
+  billing_email?: string | null | undefined;
   avatar_url: string | null;
   created_by: number;
   created_at: string;
@@ -439,6 +449,7 @@ export class LibraryDatabase {
     this.packages = new PackageRepository(this.#db, this);
     this.billing = new BillingRepository(this.#db, this);
     this.analyticsBuffer = new AnalyticsBuffer(this);
+    this.syncMailerFromDatabase();
   }
 
   get db(): Database.Database {
@@ -476,808 +487,6 @@ export class LibraryDatabase {
   }
 
   #initialize(): void {
-    this.#db.exec(`
-      CREATE TABLE IF NOT EXISTS classes (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        library_name    TEXT NOT NULL,
-        library_version TEXT NOT NULL,
-        class_name      TEXT NOT NULL,
-        class_kind      TEXT NOT NULL,
-        description     TEXT,
-        documentation   TEXT,
-        UNIQUE(library_name, library_version, class_name)
-      );
-
-      CREATE TABLE IF NOT EXISTS library_releases (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        library_name    TEXT NOT NULL,
-        library_version TEXT NOT NULL,
-        content_hash    TEXT NOT NULL,
-        signature       TEXT,
-        published_by    INTEGER REFERENCES users(id),
-        published_at    TEXT DEFAULT (datetime('now')),
-        UNIQUE(library_name, library_version)
-      );
-
-      CREATE TABLE IF NOT EXISTS extends (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        class_id        INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
-        base_class      TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS components (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        class_id        INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
-        component_name  TEXT NOT NULL,
-        type_name       TEXT NOT NULL,
-        description     TEXT,
-        causality       TEXT,
-        variability     TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS modifiers (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        component_id    INTEGER NOT NULL REFERENCES components(id) ON DELETE CASCADE,
-        modifier_name   TEXT NOT NULL,
-        modifier_value  TEXT
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_classes_library ON classes(library_name, library_version);
-      CREATE INDEX IF NOT EXISTS idx_extends_class ON extends(class_id);
-      CREATE INDEX IF NOT EXISTS idx_components_class ON components(class_id);
-      CREATE INDEX IF NOT EXISTS idx_modifiers_component ON modifiers(component_id);
-
-      CREATE TABLE IF NOT EXISTS users (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        username      TEXT NOT NULL UNIQUE,
-        email         TEXT NOT NULL UNIQUE,
-        password_hash TEXT,
-        display_name  TEXT,
-        bio           TEXT,
-        avatar_url    TEXT DEFAULT '/default-avatar.svg',
-        banner_url    TEXT DEFAULT '',
-        location      TEXT,
-        website       TEXT,
-        notification_settings TEXT DEFAULT '{}',
-        account_type  TEXT DEFAULT 'user',
-        rsa_private_key TEXT,
-        rsa_public_key  TEXT,
-        actor_url       TEXT,
-        inbox_url       TEXT,
-        outbox_url      TEXT,
-        remote_domain   TEXT,
-        owner_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        bot_token_hash  TEXT,
-        credit_balance  REAL DEFAULT 100.0,
-        email_verified  INTEGER DEFAULT 0,
-        status          TEXT DEFAULT 'pending_verification',
-        terms_accepted_at TEXT,
-        registration_ip TEXT,
-        token_version   INTEGER DEFAULT 1,
-        totp_secret     TEXT,
-        totp_enabled    INTEGER DEFAULT 0,
-        backup_codes    TEXT DEFAULT '[]',
-        onboarding_completed INTEGER DEFAULT 0,
-        engineering_persona TEXT,
-        invites_remaining INTEGER DEFAULT 5,
-        created_at      TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS oauth_accounts (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        provider          TEXT NOT NULL,
-        provider_user_id  TEXT NOT NULL,
-        access_token      TEXT,
-        refresh_token     TEXT,
-        expires_at        TEXT,
-        UNIQUE(provider, provider_user_id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_oauth_accounts_user ON oauth_accounts(user_id);
-
-      CREATE TABLE IF NOT EXISTS follows (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        follower_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        following_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        created_at   TEXT DEFAULT (datetime('now')),
-        UNIQUE(follower_id, following_id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_id);
-      CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id);
-
-      CREATE TABLE IF NOT EXISTS rss_feeds (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        url             TEXT NOT NULL UNIQUE,
-        user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        title           TEXT,
-        description     TEXT,
-        site_url        TEXT,
-        last_fetched_at TEXT,
-        last_guid       TEXT,
-        created_at      TEXT DEFAULT (datetime('now')),
-        etag            TEXT,
-        last_modified   TEXT,
-        poll_interval_mins INTEGER DEFAULT 15,
-        last_polled_at  TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS user_rss_subscriptions (
-        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        rss_feed_id INTEGER NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
-        created_at  TEXT DEFAULT (datetime('now')),
-        PRIMARY KEY(user_id, rss_feed_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS artifact_views (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        creator_id      INTEGER NOT NULL REFERENCES users(id),
-        view_type       TEXT NOT NULL,
-        source_type     TEXT NOT NULL,
-        source_ref      TEXT,
-        title           TEXT,
-        view_config     TEXT NOT NULL,
-        thumbnail_url   TEXT,
-        created_at      TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS posts (
-        id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        author_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        content          TEXT,
-        artifact_view_id INTEGER REFERENCES artifact_views(id),
-        reply_to_id      INTEGER REFERENCES posts(id),
-        quote_post_id    INTEGER REFERENCES posts(id),
-        repost_of_id     INTEGER REFERENCES posts(id),
-        view_count       INTEGER DEFAULT 0,
-        ap_id            TEXT UNIQUE,
-        url              TEXT,
-        metadata         TEXT,
-        reply_visibility TEXT DEFAULT 'everyone',
-        created_at       TEXT DEFAULT (datetime('now')),
-        updated_at       TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
-      CREATE INDEX IF NOT EXISTS idx_posts_reply ON posts(reply_to_id);
-      CREATE INDEX IF NOT EXISTS idx_posts_repost ON posts(repost_of_id);
-      CREATE INDEX IF NOT EXISTS idx_posts_quote ON posts(quote_post_id);
-      CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id, state);
-
-      CREATE TABLE IF NOT EXISTS user_public_keys (
-        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        key_id_string  TEXT NOT NULL UNIQUE,
-        public_key_pem TEXT NOT NULL,
-        device_name    TEXT,
-        created_at     TEXT DEFAULT (datetime('now')),
-        expires_at     TEXT,
-        is_active      INTEGER DEFAULT 1
-      );
-      CREATE INDEX IF NOT EXISTS idx_user_public_keys_user ON user_public_keys(user_id);
-
-      CREATE TABLE IF NOT EXISTS post_syndications (
-        id               INTEGER PRIMARY KEY AUTOINCREMENT,
-        post_id          INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-        target           TEXT NOT NULL,
-        external_id      TEXT NOT NULL,
-        url              TEXT,
-        created_at       TEXT DEFAULT (datetime('now')),
-        UNIQUE(post_id, target)
-      );
-      CREATE INDEX IF NOT EXISTS idx_post_syndications_post ON post_syndications(post_id);
-
-      CREATE TABLE IF NOT EXISTS likes (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-        created_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(user_id, post_id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_likes_post ON likes(post_id);
-      CREATE INDEX IF NOT EXISTS idx_likes_user ON likes(user_id);
-
-      CREATE TABLE IF NOT EXISTS bookmarks (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-        created_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(user_id, post_id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON bookmarks(user_id);
-
-      CREATE TABLE IF NOT EXISTS notifications (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        actor_id    INTEGER NOT NULL REFERENCES users(id),
-        type        TEXT NOT NULL,
-        post_id     INTEGER REFERENCES posts(id),
-        metadata    TEXT,
-        read        INTEGER DEFAULT 0,
-        created_at  TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_notifs_user ON notifications(user_id, read);
-      CREATE INDEX IF NOT EXISTS idx_notifs_type_user ON notifications(user_id, type, read);
-      CREATE INDEX IF NOT EXISTS idx_notifs_post ON notifications(post_id);
-
-      CREATE TABLE IF NOT EXISTS linked_repos (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        provider    TEXT NOT NULL,
-        namespace   TEXT NOT NULL,
-        project     TEXT NOT NULL,
-        external_id TEXT,
-        description TEXT,
-        avatar_url  TEXT,
-        pinned      INTEGER DEFAULT 0,
-        created_at  TEXT DEFAULT (datetime('now')),
-        UNIQUE(user_id, provider, namespace, project)
-      );
-      CREATE INDEX IF NOT EXISTS idx_linked_repos_user ON linked_repos(user_id);
-
-      CREATE TABLE IF NOT EXISTS user_blocks (
-        blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        created_at TEXT DEFAULT (datetime('now')),
-        PRIMARY KEY (blocker_id, blocked_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS user_mutes (
-        muter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        muted_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        created_at TEXT DEFAULT (datetime('now')),
-        PRIMARY KEY (muter_id, muted_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS user_topics (
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        concept TEXT NOT NULL,
-        is_active INTEGER DEFAULT 1,
-        UNIQUE(user_id, concept)
-      );
-
-      CREATE TABLE IF NOT EXISTS trending_topics (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        concept         TEXT NOT NULL,
-        location        TEXT,
-        display_name    TEXT NOT NULL,
-        current_score   REAL DEFAULT 0.0,
-        last_updated_at TEXT DEFAULT (datetime('now')),
-        UNIQUE(concept, location)
-      );
-      CREATE INDEX IF NOT EXISTS idx_trending_score ON trending_topics(current_score DESC);
-
-      CREATE TABLE IF NOT EXISTS post_topics (
-        post_id  INTEGER REFERENCES posts(id) ON DELETE CASCADE,
-        topic_id INTEGER REFERENCES trending_topics(id) ON DELETE CASCADE,
-        UNIQUE(post_id, topic_id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_post_topics_topic ON post_topics(topic_id);
-
-      CREATE TABLE IF NOT EXISTS post_location_stats (
-        post_id      INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-        country_code TEXT NOT NULL,
-        region_code  TEXT,
-        view_count   INTEGER DEFAULT 1
-      );
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_post_location_stats ON post_location_stats(post_id, country_code, COALESCE(region_code, ''));
-
-      CREATE TABLE IF NOT EXISTS page_views_daily (
-        view_date       TEXT NOT NULL,
-        surface         TEXT NOT NULL DEFAULT 'web',
-        path            TEXT NOT NULL,
-        views_count     INTEGER NOT NULL DEFAULT 0,
-        unique_visitors INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (view_date, surface, path)
-      );
-      CREATE INDEX IF NOT EXISTS idx_page_views_daily_date ON page_views_daily(view_date, surface);
-      CREATE INDEX IF NOT EXISTS idx_page_views_daily_path ON page_views_daily(path);
-
-      CREATE TABLE IF NOT EXISTS page_location_stats_daily (
-        view_date    TEXT NOT NULL,
-        surface      TEXT NOT NULL DEFAULT 'web',
-        country_code TEXT NOT NULL,
-        region_code  TEXT NOT NULL DEFAULT '',
-        views_count  INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (view_date, surface, country_code, region_code)
-      );
-      CREATE INDEX IF NOT EXISTS idx_page_loc_daily_date ON page_location_stats_daily(view_date, surface);
-
-      -- ── npm registry tables ──────────────────────────────────────
-
-      CREATE TABLE IF NOT EXISTS packages (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        name            TEXT NOT NULL UNIQUE,
-        description     TEXT,
-        readme          TEXT,
-        readme_filename TEXT,
-        license         TEXT,
-        homepage        TEXT,
-        repository_type TEXT,
-        repository_url  TEXT,
-        created_at      TEXT DEFAULT (datetime('now')),
-        modified_at     TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS package_versions (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        package_id      INTEGER NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
-        version         TEXT NOT NULL,
-        tarball_path    TEXT NOT NULL,
-        tarball_shasum  TEXT NOT NULL,
-        tarball_integrity TEXT,
-        tarball_size    INTEGER NOT NULL,
-        manifest        TEXT NOT NULL,
-        modelscript_meta TEXT,
-        published_by    INTEGER REFERENCES users(id),
-        published_at    TEXT DEFAULT (datetime('now')),
-        UNIQUE(package_id, version)
-      );
-
-      CREATE TABLE IF NOT EXISTS dist_tags (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        package_id      INTEGER NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
-        tag             TEXT NOT NULL,
-        version         TEXT NOT NULL,
-        UNIQUE(package_id, tag)
-      );
-
-      CREATE TABLE IF NOT EXISTS artifacts (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        version_id      INTEGER NOT NULL REFERENCES package_versions(id) ON DELETE CASCADE,
-        type            TEXT NOT NULL,
-        path            TEXT NOT NULL,
-        metadata        TEXT,
-        UNIQUE(version_id, path)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_packages_name ON packages(name);
-      CREATE INDEX IF NOT EXISTS idx_package_versions_pkg ON package_versions(package_id);
-      CREATE INDEX IF NOT EXISTS idx_dist_tags_pkg ON dist_tags(package_id);
-      CREATE INDEX IF NOT EXISTS idx_artifacts_version ON artifacts(version_id);
-
-      CREATE TABLE IF NOT EXISTS instances (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        serial_number   TEXT NOT NULL UNIQUE,
-        package_id      INTEGER NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
-        version         TEXT NOT NULL,
-        commit_sha      TEXT,
-        variant         TEXT,
-        birth_data      TEXT,
-        created_at      TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_instances_serial ON instances(serial_number);
-      CREATE INDEX IF NOT EXISTS idx_instances_pkg ON instances(package_id);
-
-      -- Active Twin Deployments
-      CREATE TABLE IF NOT EXISTS twins (
-        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-        instance_id         INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
-        name                TEXT NOT NULL,
-        modelica_class      TEXT NOT NULL,
-        status              TEXT DEFAULT 'active', -- 'active' | 'degraded' | 'calibrating' | 'archived'
-        health_score        REAL DEFAULT 100.0,
-        config              TEXT NOT NULL,         -- JSON: telemetry channels, UDE spec, MHE window
-        current_parameters  TEXT NOT NULL,         -- JSON: latest calibrated parameter dictionary
-        current_weights     TEXT,                  -- Base64 / JSON: ArenaNeuralBlock weights
-        created_at          TEXT DEFAULT (datetime('now')),
-        last_telemetry_at   TEXT,
-        last_adapted_at     TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_twins_instance ON twins(instance_id);
-
-      -- Parameter & UDE Adaptation Ledger
-      CREATE TABLE IF NOT EXISTS twin_adaptations (
-        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-        twin_id             INTEGER NOT NULL REFERENCES twins(id) ON DELETE CASCADE,
-        trigger_reason      TEXT NOT NULL,         -- 'cusum_drift' | 'manual' | 'scheduled'
-        prior_parameters    TEXT NOT NULL,         -- JSON
-        updated_parameters  TEXT NOT NULL,         -- JSON
-        residual_before     REAL NOT NULL,
-        residual_after      REAL NOT NULL,
-        iterations          INTEGER NOT NULL,
-        created_at          TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_twin_adaptations_twin ON twin_adaptations(twin_id);
-
-      -- Physics Pull Requests (Human-in-the-Loop Review for Model Changes)
-      CREATE TABLE IF NOT EXISTS twin_proposals (
-        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-        twin_id             INTEGER NOT NULL REFERENCES twins(id) ON DELETE CASCADE,
-        post_id             INTEGER REFERENCES posts(id) ON DELETE SET NULL,
-        adaptation_id       INTEGER REFERENCES twin_adaptations(id) ON DELETE CASCADE,
-        status              TEXT DEFAULT 'open',   -- 'open' | 'approved' | 'rejected'
-        reviewer_id         INTEGER REFERENCES users(id),
-        review_notes        TEXT,
-        reviewed_at         TEXT,
-        created_at          TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_twin_proposals_twin ON twin_proposals(twin_id);
-
-      
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS cad_cache (
-        url TEXT PRIMARY KEY,
-        geometry_json TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS jobs (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        name            TEXT NOT NULL,
-        status          TEXT NOT NULL,
-        type            TEXT NOT NULL,
-        repository_id   INTEGER REFERENCES linked_repos(id) ON DELETE CASCADE,
-        user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        trigger_source  TEXT,
-        metadata        TEXT,
-        started_at      TEXT DEFAULT (datetime('now')),
-        completed_at    TEXT,
-        compute_profile TEXT DEFAULT 'standard',
-        cpu_seconds     REAL DEFAULT 0,
-        peak_memory_mb  REAL DEFAULT 0,
-        gpu_seconds     REAL DEFAULT 0,
-        cost_credits    REAL DEFAULT 0
-      );
-
-      CREATE TABLE IF NOT EXISTS credit_transactions (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        job_id          INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
-        amount          REAL NOT NULL,
-        balance_after   REAL NOT NULL,
-        type            TEXT NOT NULL,
-        description     TEXT NOT NULL,
-        metadata        TEXT DEFAULT '{}',
-        created_at      TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_credit_tx_user ON credit_transactions(user_id);
-      CREATE INDEX IF NOT EXISTS idx_credit_tx_job ON credit_transactions(job_id);
-
-      CREATE TABLE IF NOT EXISTS credit_escrow_holds (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        job_id          INTEGER REFERENCES jobs(id) ON DELETE SET NULL,
-        amount          REAL NOT NULL,
-        status          TEXT DEFAULT 'held',
-        description     TEXT NOT NULL,
-        metadata        TEXT DEFAULT '{}',
-        created_at      TEXT DEFAULT (datetime('now')),
-        settled_at      TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_credit_escrow_user ON credit_escrow_holds(user_id, status);
-      CREATE INDEX IF NOT EXISTS idx_credit_escrow_job ON credit_escrow_holds(job_id);
-
-      CREATE TABLE IF NOT EXISTS stripe_processed_events (
-        event_id          TEXT PRIMARY KEY,
-        payment_intent_id TEXT UNIQUE,
-        user_id           INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        amount_credits    REAL NOT NULL DEFAULT 0,
-        processed_at      TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_stripe_processed_pi ON stripe_processed_events(payment_intent_id);
-
-      CREATE TABLE IF NOT EXISTS morsel_snippets (
-        id           TEXT PRIMARY KEY,
-        payload_json TEXT NOT NULL,
-        dialect      TEXT NOT NULL DEFAULT 'modelica',
-        title        TEXT,
-        creator_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        created_at   TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_morsel_snippets_created ON morsel_snippets(created_at);
-
-      CREATE TABLE IF NOT EXISTS job_steps (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-        name            TEXT NOT NULL,
-        status          TEXT NOT NULL,
-        started_at      TEXT DEFAULT (datetime('now')),
-        completed_at    TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS script_templates (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        name            TEXT NOT NULL,
-        slug            TEXT NOT NULL UNIQUE,
-        description     TEXT NOT NULL DEFAULT '',
-        category        TEXT NOT NULL DEFAULT 'general',
-        icon            TEXT NOT NULL DEFAULT 'terminal',
-        config          TEXT NOT NULL DEFAULT '{}',
-        created_at      TEXT DEFAULT (datetime('now')),
-        updated_at      TEXT DEFAULT (datetime('now'))
-      );
-
-      -- OMG SysML v2 Persistence
-      CREATE TABLE IF NOT EXISTS sysml2_projects (
-        id              TEXT PRIMARY KEY,
-        name            TEXT NOT NULL,
-        description     TEXT,
-        created         TEXT NOT NULL,
-        default_branch  TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS sysml2_commits (
-        id              TEXT PRIMARY KEY,
-        project_id      TEXT NOT NULL REFERENCES sysml2_projects(id) ON DELETE CASCADE,
-        description     TEXT NOT NULL,
-        created         TEXT NOT NULL,
-        previous_commit TEXT,
-        merged_commit   TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS sysml2_elements (
-        id              TEXT PRIMARY KEY,
-        commit_id       TEXT NOT NULL REFERENCES sysml2_commits(id) ON DELETE CASCADE,
-        name            TEXT NOT NULL,
-        qualified_name  TEXT NOT NULL,
-        owner_id        TEXT,
-        is_abstract     INTEGER DEFAULT 0,
-        element_json    TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS sysml2_relationships (
-        id              TEXT PRIMARY KEY,
-        commit_id       TEXT NOT NULL REFERENCES sysml2_commits(id) ON DELETE CASCADE,
-        source_id       TEXT NOT NULL,
-        target_id       TEXT NOT NULL,
-        rel_type        TEXT NOT NULL,
-        rel_json        TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_sysml2_commits_project ON sysml2_commits(project_id);
-      CREATE INDEX IF NOT EXISTS idx_sysml2_elements_commit ON sysml2_elements(commit_id);
-      CREATE INDEX IF NOT EXISTS idx_sysml2_relationships_commit ON sysml2_relationships(commit_id);
-
-      CREATE TABLE IF NOT EXISTS federation_domains (
-        domain          TEXT PRIMARY KEY,
-        tier            TEXT NOT NULL DEFAULT 'allow',
-        reason          TEXT,
-        created_at      TEXT DEFAULT (datetime('now')),
-        updated_at      TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS federation_delivery_queue (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        activity_type   TEXT NOT NULL,
-        activity_id     TEXT NOT NULL,
-        payload         TEXT NOT NULL,
-        target_inbox_url TEXT NOT NULL,
-        target_domain   TEXT NOT NULL,
-        attempts        INTEGER NOT NULL DEFAULT 0,
-        max_attempts    INTEGER NOT NULL DEFAULT 5,
-        next_retry_at   TEXT NOT NULL DEFAULT (datetime('now')),
-        last_error      TEXT,
-        status          TEXT NOT NULL DEFAULT 'pending',
-        created_at      TEXT DEFAULT (datetime('now')),
-        updated_at      TEXT DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_fed_queue_status_retry ON federation_delivery_queue (status, next_retry_at);
-
-      CREATE TABLE IF NOT EXISTS content_reports (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        reporter_id     INTEGER NOT NULL,
-        post_id         INTEGER,
-        target_user_id  INTEGER,
-        target_type     TEXT,
-        target_resource_id TEXT,
-        reason          TEXT NOT NULL,
-        details         TEXT,
-        status          TEXT NOT NULL DEFAULT 'pending',
-        resolution_notes TEXT,
-        action_taken    TEXT,
-        content_snapshot TEXT,
-        created_at      TEXT DEFAULT (datetime('now')),
-        resolved_at     TEXT,
-        FOREIGN KEY (reporter_id) REFERENCES users(id),
-        FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL,
-        FOREIGN KEY (target_user_id) REFERENCES users(id)
-      );
-
-      CREATE TABLE IF NOT EXISTS dmca_notices (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        claimant_name   TEXT NOT NULL,
-        claimant_email  TEXT NOT NULL,
-        copyright_owner TEXT NOT NULL,
-        work_description TEXT NOT NULL,
-        infringing_url  TEXT NOT NULL,
-        resource_type   TEXT NOT NULL DEFAULT 'package',
-        resource_id     TEXT,
-        status          TEXT NOT NULL DEFAULT 'pending',
-        action_taken    TEXT,
-        created_at      TEXT DEFAULT (datetime('now')),
-        resolved_at     TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS audit_logs (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        actor_id        INTEGER,
-        action          TEXT NOT NULL,
-        resource_type   TEXT NOT NULL,
-        resource_id     TEXT,
-        ip_address      TEXT,
-        details         TEXT,
-        prev_hash       TEXT,
-        entry_hash      TEXT,
-        created_at      TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status);
-      CREATE INDEX IF NOT EXISTS idx_dmca_notices_status ON dmca_notices(status);
-      CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id);
-      CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
-
-      CREATE TABLE IF NOT EXISTS pending_totp_secrets (
-        user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-        secret     TEXT NOT NULL,
-        expires_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS instance_settings (
-        key        TEXT PRIMARY KEY,
-        value      TEXT NOT NULL,
-        updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-
-      CREATE TABLE IF NOT EXISTS instance_invites (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        code            TEXT NOT NULL UNIQUE,
-        created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        max_uses        INTEGER NOT NULL DEFAULT 1,
-        used_count      INTEGER NOT NULL DEFAULT 0,
-        initial_credits REAL NOT NULL DEFAULT 100.0,
-        assigned_role   TEXT NOT NULL DEFAULT 'user',
-        note            TEXT,
-        expires_at      TEXT,
-        revoked_at      TEXT,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_instance_invites_code ON instance_invites(code);
-
-      CREATE TABLE IF NOT EXISTS quarantined_resources (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        resource_type   TEXT NOT NULL,
-        resource_id     TEXT NOT NULL,
-        reason          TEXT NOT NULL,
-        dmca_notice_id  INTEGER REFERENCES dmca_notices(id) ON DELETE SET NULL,
-        quarantined_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        status          TEXT NOT NULL DEFAULT 'quarantined',
-        counter_notice  TEXT,
-        restore_after   TEXT,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-        restored_at     TEXT,
-        UNIQUE(resource_type, resource_id)
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_quarantined_resources_status ON quarantined_resources(status);
-
-      CREATE TABLE IF NOT EXISTS user_referrals (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        referrer_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        referee_id      INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-        invite_id       INTEGER REFERENCES instance_invites(id) ON DELETE SET NULL,
-        reward_granted  INTEGER NOT NULL DEFAULT 0,
-        reward_amount   REAL NOT NULL DEFAULT 0.0,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_user_referrals_referrer ON user_referrals(referrer_id);
-      CREATE INDEX IF NOT EXISTS idx_user_referrals_referee ON user_referrals(referee_id);
-
-      CREATE TABLE IF NOT EXISTS waitlist_submissions (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        email           TEXT NOT NULL UNIQUE,
-        full_name       TEXT,
-        organization    TEXT,
-        discipline      TEXT,
-        portfolio_url   TEXT,
-        statement       TEXT,
-        status          TEXT NOT NULL DEFAULT 'pending',
-        approved_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        invite_code_id  INTEGER REFERENCES instance_invites(id) ON DELETE SET NULL,
-        ip_address      TEXT,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-        reviewed_at     TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_waitlist_status ON waitlist_submissions(status);
-      CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist_submissions(email);
-    `);
-
-    // Migrations
-    try {
-      this.#db.exec(`ALTER TABLE notifications ADD COLUMN metadata TEXT`);
-    } catch {
-      // Column already exists
-    }
-
-    try {
-      this.#db.exec(`ALTER TABLE users ADD COLUMN notification_settings TEXT DEFAULT '{}'`);
-    } catch {
-      // Column already exists
-    }
-
-    try {
-      this.#db.exec(`ALTER TABLE users ADD COLUMN credit_balance REAL DEFAULT 100.0`);
-    } catch {
-      // Column already exists
-    }
-
-    const userColumns = [
-      "ALTER TABLE rss_feeds ADD COLUMN description TEXT",
-      "ALTER TABLE rss_feeds ADD COLUMN etag TEXT",
-      "ALTER TABLE rss_feeds ADD COLUMN last_modified TEXT",
-      "ALTER TABLE rss_feeds ADD COLUMN poll_interval_mins INTEGER DEFAULT 15",
-      "ALTER TABLE rss_feeds ADD COLUMN last_polled_at TEXT",
-      "ALTER TABLE users ADD COLUMN rsa_private_key TEXT",
-      "ALTER TABLE users ADD COLUMN rsa_public_key TEXT",
-      "ALTER TABLE users ADD COLUMN actor_url TEXT",
-      "ALTER TABLE users ADD COLUMN inbox_url TEXT",
-      "ALTER TABLE users ADD COLUMN outbox_url TEXT",
-      "ALTER TABLE users ADD COLUMN remote_domain TEXT",
-      "ALTER TABLE users ADD COLUMN shared_inbox_url TEXT",
-      "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
-      "ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'pending_verification'",
-      "ALTER TABLE users ADD COLUMN terms_accepted_at TEXT",
-      "ALTER TABLE users ADD COLUMN registration_ip TEXT",
-      "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 1",
-      "ALTER TABLE users ADD COLUMN totp_secret TEXT",
-      "ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0",
-      "ALTER TABLE users ADD COLUMN backup_codes TEXT DEFAULT '[]'",
-      "ALTER TABLE users ADD COLUMN bot_token_hash TEXT",
-      "ALTER TABLE follows ADD COLUMN state TEXT DEFAULT 'accepted'",
-      "ALTER TABLE linked_repos ADD COLUMN visibility TEXT DEFAULT 'public'",
-      "ALTER TABLE linked_repos ADD COLUMN default_branch TEXT DEFAULT 'main'",
-      "ALTER TABLE linked_repos ADD COLUMN social_preview_url TEXT",
-      "ALTER TABLE content_reports ADD COLUMN action_taken TEXT",
-      "ALTER TABLE content_reports ADD COLUMN content_snapshot TEXT",
-      "ALTER TABLE content_reports ADD COLUMN target_type TEXT",
-      "ALTER TABLE content_reports ADD COLUMN target_resource_id TEXT",
-      "ALTER TABLE posts ADD COLUMN is_sensitive INTEGER DEFAULT 0",
-      "ALTER TABLE posts ADD COLUMN content_warning TEXT",
-      "ALTER TABLE audit_logs ADD COLUMN prev_hash TEXT",
-      "ALTER TABLE audit_logs ADD COLUMN entry_hash TEXT",
-    ];
-    for (const sql of userColumns) {
-      try {
-        this.#db.exec(sql);
-      } catch {
-        // Column already exists
-      }
-    }
-
-    const jobColumns = [
-      "ALTER TABLE jobs ADD COLUMN compute_profile TEXT DEFAULT 'standard'",
-      "ALTER TABLE jobs ADD COLUMN cpu_seconds REAL DEFAULT 0",
-      "ALTER TABLE jobs ADD COLUMN peak_memory_mb REAL DEFAULT 0",
-      "ALTER TABLE jobs ADD COLUMN gpu_seconds REAL DEFAULT 0",
-      "ALTER TABLE jobs ADD COLUMN cost_credits REAL DEFAULT 0",
-      "ALTER TABLE jobs ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
-    ];
-    for (const sql of jobColumns) {
-      try {
-        this.#db.exec(sql);
-      } catch {
-        // Column already exists
-      }
-    }
-
-    const packageVersionColumns = [
-      "ALTER TABLE package_versions ADD COLUMN tarball_integrity TEXT",
-      "ALTER TABLE package_versions ADD COLUMN modelscript_meta TEXT",
-    ];
-    for (const sql of packageVersionColumns) {
-      try {
-        this.#db.exec(sql);
-      } catch {
-        // Column already exists
-      }
-    }
-
     try {
       const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
       const usersWithoutActorUrl = this.#db.prepare(`SELECT id, username FROM users WHERE actor_url IS NULL`).all() as {
@@ -1312,98 +521,6 @@ export class LibraryDatabase {
     } catch {}
 
     try {
-      this.#db.exec(`ALTER TABLE users ADD COLUMN account_type TEXT DEFAULT 'user'`);
-    } catch {
-      // Column already exists
-    }
-
-    try {
-      this.#db.exec(`
-        UPDATE users 
-        SET avatar_url = 'https://ui-avatars.com/api/?name=' || username || '&background=random&color=fff' 
-        WHERE avatar_url IS NULL;
-        
-        UPDATE users 
-        SET banner_url = '/banners/omar.png' 
-        WHERE banner_url IS NULL OR banner_url = '';
-      `);
-    } catch {
-      // Ignore migration errors
-    }
-
-    try {
-      this.#db.exec(`ALTER TABLE posts ADD COLUMN view_count INTEGER DEFAULT 0`);
-    } catch {
-      // Column already exists
-    }
-
-    try {
-      this.#db.exec(`ALTER TABLE posts ADD COLUMN ap_id TEXT UNIQUE`);
-      this.#db.exec(`ALTER TABLE posts ADD COLUMN url TEXT`);
-    } catch {}
-
-    try {
-      this.#db.exec(`ALTER TABLE posts ADD COLUMN metadata TEXT`);
-    } catch {}
-
-    try {
-      this.#db.exec(`ALTER TABLE posts ADD COLUMN reply_visibility TEXT DEFAULT 'everyone'`);
-    } catch {}
-
-    try {
-      this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN access_token TEXT`);
-      this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN refresh_token TEXT`);
-      this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN expires_at TEXT`);
-    } catch {}
-
-    try {
-      this.#db.exec(`ALTER TABLE jobs ADD COLUMN metadata TEXT`);
-    } catch {}
-
-    try {
-      this.#db.exec(`ALTER TABLE posts ADD COLUMN is_silenced INTEGER DEFAULT 0`);
-    } catch {}
-
-    try {
-      this.#db.exec(`ALTER TABLE packages ADD COLUMN quarantine_status TEXT DEFAULT 'clean'`);
-      this.#db.exec(`ALTER TABLE packages ADD COLUMN is_quarantined INTEGER DEFAULT 0`);
-    } catch {}
-
-    try {
-      this.#db.exec(`ALTER TABLE users ADD COLUMN ed25519_public_key TEXT`);
-      this.#db.exec(`ALTER TABLE users ADD COLUMN ed25519_private_key TEXT`);
-    } catch {}
-
-    try {
-      this.#db.exec(`ALTER TABLE artifact_views ADD COLUMN remote_origin_url TEXT`);
-    } catch {}
-
-    try {
-      this.#db.exec(`
-        CREATE TABLE IF NOT EXISTS remote_packages (
-          id              INTEGER PRIMARY KEY AUTOINCREMENT,
-          name            TEXT NOT NULL,
-          version         TEXT NOT NULL,
-          actor_url       TEXT NOT NULL,
-          download_url    TEXT NOT NULL,
-          checksum        TEXT NOT NULL,
-          license         TEXT,
-          description     TEXT,
-          metadata        TEXT,
-          is_deleted      INTEGER DEFAULT 0,
-          created_at      TEXT DEFAULT (datetime('now')),
-          updated_at      TEXT DEFAULT (datetime('now')),
-          UNIQUE(name, version, actor_url)
-        );
-        CREATE INDEX IF NOT EXISTS idx_remote_packages_name ON remote_packages(name);
-      `);
-    } catch {}
-
-    try {
-      this.#db.exec(`ALTER TABLE sysml2_commits ADD COLUMN merged_commit TEXT`);
-    } catch {}
-
-    try {
       const usersWithoutEd = this.#db
         .prepare(`SELECT id FROM users WHERE ed25519_private_key IS NULL LIMIT 10`)
         .all() as {
@@ -1421,30 +538,6 @@ export class LibraryDatabase {
     } catch {}
 
     try {
-      this.#db.exec(`ALTER TABLE organizations ADD COLUMN credit_balance REAL NOT NULL DEFAULT 0.0`);
-    } catch {}
-    try {
-      this.#db.exec(`ALTER TABLE organizations ADD COLUMN total_spent REAL NOT NULL DEFAULT 0.0`);
-    } catch {}
-    try {
-      this.#db.exec(`ALTER TABLE waitlist_submissions ADD COLUMN rejection_reason TEXT`);
-    } catch {}
-    try {
-      this.#db.exec(`ALTER TABLE instance_invites ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0`);
-    } catch {}
-    try {
-      this.#db.exec(`ALTER TABLE instance_invites ADD COLUMN uses_count INTEGER NOT NULL DEFAULT 0`);
-    } catch {}
-    try {
-      this.#db.exec(`ALTER TABLE instance_invites ADD COLUMN revoked_at TEXT`);
-    } catch {}
-    try {
-      this.#db.exec(`
-        UPDATE instance_invites SET used_count = uses_count WHERE used_count = 0 AND uses_count > 0;
-        UPDATE instance_invites SET uses_count = used_count WHERE uses_count = 0 AND used_count > 0;
-      `);
-    } catch {}
-    try {
       this.#db.exec(`
         CREATE TEMP TRIGGER IF NOT EXISTS _msx_audit_update_trg
         AFTER UPDATE ON audit_logs
@@ -1456,51 +549,6 @@ export class LibraryDatabase {
         BEGIN
           SELECT _msx_invalidate_audit_cache();
         END;
-      `);
-    } catch {}
-
-    // Sanitize any previously indexed class/component descriptions that leaked raw Modelica annotation(...) clauses
-    // or annotation-internal modifier rows (Placement, Dialog, Icon, Documentation, etc.).
-    try {
-      const stripAnno = (raw: string): string | null => {
-        const cleaned = raw
-          .replace(/\s*\bannotation\s*\([\s\S]*$/i, "")
-          .trim()
-          .replace(/^"|"$/g, "")
-          .trim();
-        return cleaned.length > 0 ? cleaned : null;
-      };
-      const dirtyClasses = this.#db
-        .prepare(
-          `SELECT id, description FROM classes WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
-        )
-        .all() as Array<{ id: number; description: string }>;
-      const dirtyComps = this.#db
-        .prepare(
-          `SELECT id, description FROM components WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
-        )
-        .all() as Array<{ id: number; description: string }>;
-      if (dirtyClasses.length > 0 || dirtyComps.length > 0) {
-        const updClass = this.#db.prepare(`UPDATE classes SET description = ? WHERE id = ?`);
-        const updComp = this.#db.prepare(`UPDATE components SET description = ? WHERE id = ?`);
-        this.#db.transaction(() => {
-          for (const row of dirtyClasses) {
-            updClass.run(stripAnno(row.description), row.id);
-          }
-          for (const row of dirtyComps) {
-            updComp.run(stripAnno(row.description), row.id);
-          }
-        })();
-      }
-      this.#db.exec(`
-        DELETE FROM modifiers
-        WHERE modifier_name IN (
-          'Placement', 'Dialog', 'Icon', 'Diagram', 'Documentation',
-          'Evaluate', 'HideResult', 'choices', 'DynamicSelect',
-          'Line', 'Text', 'Rectangle', 'Ellipse', 'Polygon', 'Bitmap',
-          'coordinateSystem', 'graphics', 'smoothOrder', 'version'
-        );
-        UPDATE components SET causality = NULL WHERE type_name = 'import' AND causality = 'connector';
       `);
     } catch {}
   }
@@ -1515,28 +563,53 @@ export class LibraryDatabase {
   }
 
   updateUserTopic(userId: number, concept: string, isActive: boolean) {
+    const cleanConcept = concept.replace(/^#/, "").trim().toLowerCase();
+    if (!cleanConcept) return;
     this.#db
       .prepare(
         `INSERT INTO user_topics (user_id, concept, is_active) VALUES (?, ?, ?) ON CONFLICT(user_id, concept) DO UPDATE SET is_active = excluded.is_active`,
       )
-      .run(userId, concept, isActive ? 1 : 0);
+      .run(userId, cleanConcept, isActive ? 1 : 0);
   }
 
   deriveUserTopics(userId: number): void {
-    // Derive topics from liked/bookmarked posts and insert as active (if not explicitly inactive)
+    // Derive topics from liked, bookmarked, and authored/reposted posts (if not explicitly inactive)
     this.#db
       .prepare(
         `
       INSERT INTO user_topics (user_id, concept, is_active)
-      SELECT DISTINCT ?, t.concept, 1
-      FROM likes l
-      JOIN post_topics pt ON l.post_id = pt.post_id
+      SELECT DISTINCT ?, LOWER(t.concept), 1
+      FROM (
+        SELECT post_id FROM likes WHERE user_id = ?
+        UNION
+        SELECT post_id FROM bookmarks WHERE user_id = ?
+        UNION
+        SELECT id AS post_id FROM posts WHERE author_id = ?
+        UNION
+        SELECT repost_of_id AS post_id FROM posts WHERE author_id = ? AND repost_of_id IS NOT NULL
+      ) engaged
+      JOIN post_topics pt ON engaged.post_id = pt.post_id
       JOIN trending_topics t ON pt.topic_id = t.id
-      WHERE l.user_id = ?
       ON CONFLICT(user_id, concept) DO NOTHING
     `,
       )
-      .run(userId, userId);
+      .run(userId, userId, userId, userId, userId);
+
+    // Seed from user's selected onboarding engineering_persona if present
+    try {
+      const userRow = this.#db.prepare(`SELECT engineering_persona FROM users WHERE id = ?`).get(userId) as
+        | { engineering_persona?: string | null }
+        | undefined;
+      const persona = userRow?.engineering_persona?.trim();
+      if (persona && PERSONA_SEED_TOPICS[persona]) {
+        const insertStmt = this.#db.prepare(
+          `INSERT INTO user_topics (user_id, concept, is_active) VALUES (?, ?, 1) ON CONFLICT(user_id, concept) DO NOTHING`,
+        );
+        for (const t of PERSONA_SEED_TOPICS[persona]) {
+          insertStmt.run(userId, t.concept.toLowerCase());
+        }
+      }
+    } catch {}
   }
 
   // ── User management ─────────────────────────────────────────────
@@ -1749,6 +822,7 @@ export class LibraryDatabase {
     email: string;
     account_type?: string | undefined;
     email_verified?: number | undefined;
+    credit_balance?: number | undefined;
     status?: string | undefined;
     token_version?: number | undefined;
   } {
@@ -1812,6 +886,7 @@ export class LibraryDatabase {
       email,
       account_type: accountType,
       email_verified: emailVerified,
+      credit_balance: initialCredits,
       status,
       token_version: 1,
     };
@@ -2252,6 +1327,13 @@ export class LibraryDatabase {
 
   deleteBot(ownerId: number, botId: number): void {
     this.#db.prepare(`DELETE FROM users WHERE id = ? AND owner_id = ? AND account_type = 'bot'`).run(botId, ownerId);
+  }
+
+  rotateBotToken(ownerId: number, botId: number, tokenHash: string): boolean {
+    const res = this.#db
+      .prepare(`UPDATE users SET bot_token_hash = ? WHERE id = ? AND owner_id = ? AND account_type = 'bot'`)
+      .run(tokenHash, botId, ownerId);
+    return res.changes > 0;
   }
 
   getUserByBotTokenHash(tokenHash: string): {
@@ -2887,30 +1969,222 @@ export class LibraryDatabase {
       : (this.#db.prepare(query).all(userId) as UserRow[]);
   }
 
-  getUserSuggestions(userId?: number, limit: number = 3): UserRow[] {
+  getBlockedUsersDetailed(userId: number): {
+    id: number;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    remote_domain: string | null;
+    created_at: string;
+  }[] {
+    return this.#db
+      .prepare(
+        `SELECT u.id, u.username, u.display_name, u.avatar_url, u.remote_domain, b.created_at
+         FROM user_blocks b
+         JOIN users u ON b.blocked_id = u.id
+         WHERE b.blocker_id = ?
+         ORDER BY b.created_at DESC`,
+      )
+      .all(userId) as {
+      id: number;
+      username: string;
+      display_name: string | null;
+      avatar_url: string | null;
+      remote_domain: string | null;
+      created_at: string;
+    }[];
+  }
+
+  getMutedUsersDetailed(userId: number): {
+    id: number;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    remote_domain: string | null;
+    created_at: string;
+  }[] {
+    return this.#db
+      .prepare(
+        `SELECT u.id, u.username, u.display_name, u.avatar_url, u.remote_domain, m.created_at
+         FROM user_mutes m
+         JOIN users u ON m.muted_id = u.id
+         WHERE m.muter_id = ?
+         ORDER BY m.created_at DESC`,
+      )
+      .all(userId) as {
+      id: number;
+      username: string;
+      display_name: string | null;
+      avatar_url: string | null;
+      remote_domain: string | null;
+      created_at: string;
+    }[];
+  }
+
+  getUserSuggestions(
+    userId?: number,
+    limit: number = 3,
+  ): (UserRow & {
+    recommendation_reason?: string | null | undefined;
+    mutual_followers_count?: number | undefined;
+    shared_topics_count?: number | undefined;
+  })[] {
     if (userId) {
-      return this.#db
+      try {
+        this.deriveUserTopics(userId);
+      } catch {}
+
+      const rows = this.#db
         .prepare(
           `
-        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio
+        SELECT
+          u.id,
+          u.username,
+          u.display_name,
+          u.avatar_url,
+          u.bio,
+          u.engineering_persona,
+          (
+            SELECT COUNT(DISTINCT f1.following_id)
+            FROM follows f1
+            JOIN follows f2 ON f1.following_id = f2.follower_id
+            WHERE f1.follower_id = ?
+              AND f2.following_id = u.id
+              AND (f1.state = 'accepted' OR f1.state IS NULL)
+              AND (f2.state = 'accepted' OR f2.state IS NULL)
+          ) as mutual_followers_count,
+          (
+            SELECT u_m.username
+            FROM follows f1
+            JOIN follows f2 ON f1.following_id = f2.follower_id
+            JOIN users u_m ON u_m.id = f1.following_id
+            WHERE f1.follower_id = ?
+              AND f2.following_id = u.id
+              AND (f1.state = 'accepted' OR f1.state IS NULL)
+              AND (f2.state = 'accepted' OR f2.state IS NULL)
+            LIMIT 1
+          ) as first_mutual_username,
+          (
+            SELECT COUNT(DISTINCT LOWER(ut.concept))
+            FROM user_topics ut
+            WHERE ut.user_id = ?
+              AND ut.is_active = 1
+              AND (
+                EXISTS (
+                  SELECT 1 FROM user_topics ut2
+                  WHERE ut2.user_id = u.id AND ut2.is_active = 1 AND LOWER(ut2.concept) = LOWER(ut.concept)
+                )
+                OR EXISTS (
+                  SELECT 1 FROM posts p
+                  JOIN post_topics pt ON pt.post_id = p.id
+                  JOIN trending_topics t ON t.id = pt.topic_id
+                  WHERE p.author_id = u.id AND LOWER(t.concept) = LOWER(ut.concept)
+                )
+              )
+          ) as shared_topics_count,
+          (
+            SELECT ut.concept
+            FROM user_topics ut
+            WHERE ut.user_id = ?
+              AND ut.is_active = 1
+              AND (
+                EXISTS (
+                  SELECT 1 FROM user_topics ut2
+                  WHERE ut2.user_id = u.id AND ut2.is_active = 1 AND LOWER(ut2.concept) = LOWER(ut.concept)
+                )
+                OR EXISTS (
+                  SELECT 1 FROM posts p
+                  JOIN post_topics pt ON pt.post_id = p.id
+                  JOIN trending_topics t ON t.id = pt.topic_id
+                  WHERE p.author_id = u.id AND LOWER(t.concept) = LOWER(ut.concept)
+                )
+              )
+            LIMIT 1
+          ) as top_shared_topic,
+          CASE
+            WHEN u.engineering_persona IS NOT NULL
+              AND u.engineering_persona = (SELECT engineering_persona FROM users WHERE id = ?)
+            THEN 1
+            ELSE 0
+          END as persona_match,
+          (SELECT COUNT(*) FROM follows WHERE following_id = u.id AND (state = 'accepted' OR state IS NULL)) as follower_count,
+          (SELECT COUNT(*) FROM posts WHERE author_id = u.id AND reply_to_id IS NULL AND COALESCE(visibility, 'public') = 'public') as post_count
         FROM users u
         WHERE u.id != ?
           AND COALESCE(u.discoverable, 1) = 1
           AND COALESCE(u.status, 'active') = 'active'
+          AND COALESCE(u.account_type, 'user') != 'rss'
           AND u.id NOT IN (SELECT following_id FROM follows WHERE follower_id = ?)
-        ORDER BY RANDOM() LIMIT ?
+          AND u.id NOT IN (SELECT muted_id FROM user_mutes WHERE muter_id = ?)
+          AND u.id NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id = ?)
+          AND u.id NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id = ?)
+        ORDER BY
+          (
+            mutual_followers_count * 18 +
+            shared_topics_count * 10 +
+            persona_match * 14 +
+            MIN(follower_count, 50) * 2 +
+            MIN(post_count, 20) * 1
+          ) DESC,
+          follower_count DESC,
+          u.id ASC
+        LIMIT ?
       `,
         )
-        .all(userId, userId, limit) as UserRow[];
+        .all(userId, userId, userId, userId, userId, userId, userId, userId, userId, userId, limit) as (UserRow & {
+        engineering_persona?: string | null;
+        mutual_followers_count: number;
+        first_mutual_username?: string | null;
+        shared_topics_count: number;
+        top_shared_topic?: string | null;
+        persona_match: number;
+        follower_count: number;
+        post_count: number;
+      })[];
+
+      const personaLabels: Record<string, string> = {
+        physical_systems: "Physical Systems",
+        systems_engineering: "Systems Engineering",
+        computational_cad: "CAD & CAE",
+        scientific_research: "Scientific Computing",
+      };
+
+      return rows.map((r) => {
+        let reason: string | null = null;
+        if (r.mutual_followers_count > 1 && r.first_mutual_username) {
+          reason = `Followed by @${r.first_mutual_username} + ${r.mutual_followers_count - 1} more`;
+        } else if (r.mutual_followers_count === 1 && r.first_mutual_username) {
+          reason = `Followed by @${r.first_mutual_username}`;
+        } else if (r.shared_topics_count > 0 && r.top_shared_topic) {
+          reason = `Active in #${r.top_shared_topic}`;
+        } else if (r.persona_match && r.engineering_persona) {
+          reason = `${personaLabels[r.engineering_persona] || "Engineering"} peer`;
+        } else if (r.follower_count > 0) {
+          reason = `${r.follower_count} ${r.follower_count === 1 ? "follower" : "followers"}`;
+        }
+        return {
+          ...r,
+          recommendation_reason: reason,
+        };
+      });
     } else {
       return this.#db
         .prepare(
           `
-        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio
+        SELECT
+          u.id,
+          u.username,
+          u.display_name,
+          u.avatar_url,
+          u.bio,
+          (SELECT COUNT(*) FROM follows WHERE following_id = u.id AND (state = 'accepted' OR state IS NULL)) as follower_count,
+          (SELECT COUNT(*) FROM posts WHERE author_id = u.id AND reply_to_id IS NULL AND COALESCE(visibility, 'public') = 'public') as post_count
         FROM users u
         WHERE COALESCE(u.discoverable, 1) = 1
           AND COALESCE(u.status, 'active') = 'active'
-        ORDER BY RANDOM() LIMIT ?
+          AND COALESCE(u.account_type, 'user') != 'rss'
+        ORDER BY (MIN(follower_count, 50) * 3 + MIN(post_count, 20) * 2) DESC, u.id ASC
+        LIMIT ?
       `,
         )
         .all(limit) as UserRow[];
@@ -3098,6 +2372,11 @@ export class LibraryDatabase {
       } catch {
         // Non-fatal if settings table not initialized in isolated unit test
       }
+      try {
+        this.syncPostTopics(postId);
+      } catch {
+        // Non-fatal
+      }
     }
 
     return { id: postId, visibility: effectiveVisibility };
@@ -3147,6 +2426,14 @@ export class LibraryDatabase {
          WHERE id = ?`,
       )
       .run(nextContent ?? null, nextArtifactViewId ?? null, nextMetadata ?? null, nextReplyVisibility, postId);
+
+    if (updates.content !== undefined) {
+      try {
+        this.syncPostTopics(postId);
+      } catch {
+        // Non-fatal
+      }
+    }
   }
 
   flushAnalyticsBatch(batch: BatchAnalyticsPayload): void {
@@ -3565,6 +2852,12 @@ export class LibraryDatabase {
       p.artifact_views = viewsMap;
     }
     p.visibility = ((p as { visibility?: string }).visibility as PostVisibility) || "public";
+    if (p.bookmark_count === undefined) {
+      const bmRow = this.#db.prepare(`SELECT COUNT(*) as cnt FROM bookmarks WHERE post_id = ?`).get(p.id) as
+        | { cnt: number }
+        | undefined;
+      p.bookmark_count = bmRow?.cnt ?? 0;
+    }
     const poll = this.getPostPoll(p.id, currentUserId);
     if (poll) {
       p.poll = poll;
@@ -3592,6 +2885,7 @@ export class LibraryDatabase {
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id) as bookmark_count,
         EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
@@ -3831,10 +3125,7 @@ export class LibraryDatabase {
     tag?: string,
   ): PostRow[] {
     try {
-      const hasTopics = this.#db.prepare(`SELECT 1 FROM user_topics WHERE user_id = ? LIMIT 1`).get(userId);
-      if (!hasTopics) {
-        this.deriveUserTopics(userId);
-      }
+      this.deriveUserTopics(userId);
     } catch (e) {
       console.error("Failed to derive user topics", e);
     }
@@ -3843,9 +3134,8 @@ export class LibraryDatabase {
     const tagFilter = this.buildTagFilter(tag);
     const modFilter = this.buildMuteBlockFilter(userId);
     const visFilter = this.buildVisibilityFilter(userId, "home");
-    const baseParams = [userId, userId, userId, userId, userId, userId, userId, userId, userId, userId];
     const allParams = [
-      ...baseParams,
+      userId,
       ...artFilter.params,
       ...tagFilter.params,
       ...visFilter.params,
@@ -3857,41 +3147,109 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
+      WITH viewer AS (SELECT ? AS uid)
       SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
-        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
-        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
-        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked,
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=(SELECT uid FROM viewer)) as liked,
+        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=(SELECT uid FROM viewer)) as reposted,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=(SELECT uid FROM viewer)) as bookmarked,
         (
-          SELECT COALESCE(SUM(CASE WHEN ut.is_active = 1 THEN 20 ELSE -100 END), 0)
-          FROM post_topics pt 
-          JOIN trending_topics t ON pt.topic_id = t.id
-          JOIN user_topics ut ON ut.concept = t.concept AND ut.user_id = ?
-          WHERE pt.post_id = p.id
-        ) + 
-        (
-          (SELECT COUNT(*) FROM likes WHERE post_id = p.id AND user_id = ?) * 3
-        ) +
-        (
-          (SELECT COUNT(*) FROM likes l JOIN follows f ON l.user_id = f.following_id WHERE l.post_id = p.id AND f.follower_id = ?) * 3
+          (
+            (CASE
+              WHEN p.author_id = (SELECT uid FROM viewer)
+                OR p.author_id IN (SELECT following_id FROM follows WHERE follower_id = (SELECT uid FROM viewer))
+                OR p.author_id IN (SELECT f.user_id FROM user_rss_subscriptions s JOIN rss_feeds f ON s.rss_feed_id = f.id WHERE s.user_id = (SELECT uid FROM viewer))
+              THEN 25
+              ELSE 0
+            END) +
+            (CASE
+              WHEN u.engineering_persona IS NOT NULL
+                AND u.engineering_persona = (SELECT engineering_persona FROM users WHERE id = (SELECT uid FROM viewer))
+              THEN 10
+              ELSE 0
+            END) +
+            (CASE
+              WHEN EXISTS (
+                SELECT 1 FROM likes l2
+                JOIN posts p2 ON l2.post_id = p2.id
+                WHERE l2.user_id = (SELECT uid FROM viewer)
+                  AND p2.author_id = p.author_id
+                  AND p2.id != p.id
+              )
+              THEN 12
+              ELSE 0
+            END) +
+            (
+              SELECT COALESCE(SUM(CASE WHEN ut.is_active = 1 THEN 20 ELSE -100 END), 0)
+              FROM post_topics pt
+              JOIN trending_topics t ON pt.topic_id = t.id
+              JOIN user_topics ut ON LOWER(ut.concept) = LOWER(t.concept) AND ut.user_id = (SELECT uid FROM viewer)
+              WHERE pt.post_id = p.id
+            ) +
+            (
+              (SELECT COUNT(*) FROM likes l JOIN follows f ON l.user_id = f.following_id WHERE l.post_id = p.id AND f.follower_id = (SELECT uid FROM viewer)) * 8
+            ) +
+            ((SELECT COUNT(*) FROM likes WHERE post_id = p.id) * 3) +
+            ((SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) * 5) +
+            ((SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) * 6) +
+            ((SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id) * 7) +
+            MIN(10.0, COALESCE(p.view_count, 0) * 0.1) +
+            (CASE WHEN p.artifact_view_id IS NOT NULL THEN 12 ELSE 0 END) -
+            (CASE
+              WHEN p.author_id != (SELECT uid FROM viewer)
+                AND EXISTS(SELECT 1 FROM likes WHERE post_id = p.id AND user_id = (SELECT uid FROM viewer))
+              THEN 15
+              ELSE 0
+            END)
+          ) / (
+            (MAX(0.0, CAST((julianday('now') - julianday(p.created_at)) * 24.0 AS REAL)) + 2.0) *
+            (1.0 + 0.15 * MAX(0.0, CAST((julianday('now') - julianday(p.created_at)) * 24.0 AS REAL)))
+          )
         ) as total_score
       FROM posts p
       JOIN users u ON p.author_id = u.id
       LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
-      WHERE 
+      WHERE
         (
-          p.author_id = ? OR 
-          p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR
-          p.author_id IN (SELECT f.user_id FROM user_rss_subscriptions s JOIN rss_feeds f ON s.rss_feed_id = f.id WHERE s.user_id = ?) OR
+          p.reply_to_id IS NULL
+          OR p.author_id = (SELECT uid FROM viewer)
+          OR p.author_id IN (SELECT following_id FROM follows WHERE follower_id = (SELECT uid FROM viewer))
+        )
+        AND (
+          p.author_id = (SELECT uid FROM viewer)
+          OR NOT EXISTS (
+            SELECT 1 FROM post_topics pt
+            JOIN trending_topics t ON pt.topic_id = t.id
+            JOIN user_topics ut ON LOWER(ut.concept) = LOWER(t.concept)
+            WHERE pt.post_id = p.id AND ut.user_id = (SELECT uid FROM viewer) AND ut.is_active = 0
+          )
+        )
+        AND (
+          p.author_id = (SELECT uid FROM viewer) OR
+          p.author_id IN (SELECT following_id FROM follows WHERE follower_id = (SELECT uid FROM viewer)) OR
+          p.author_id IN (SELECT f.user_id FROM user_rss_subscriptions s JOIN rss_feeds f ON s.rss_feed_id = f.id WHERE s.user_id = (SELECT uid FROM viewer)) OR
           (
             COALESCE(p.visibility, 'public') = 'public' AND
-            EXISTS (
-              SELECT 1 FROM post_topics pt
-              JOIN trending_topics t ON pt.topic_id = t.id
-              JOIN user_topics ut ON ut.concept = t.concept AND ut.user_id = ? AND ut.is_active = 1
-              WHERE pt.post_id = p.id
+            (p.is_silenced IS NULL OR p.is_silenced = 0) AND
+            (
+              EXISTS (
+                SELECT 1 FROM post_topics pt
+                JOIN trending_topics t ON pt.topic_id = t.id
+                JOIN user_topics ut ON LOWER(ut.concept) = LOWER(t.concept) AND ut.user_id = (SELECT uid FROM viewer) AND ut.is_active = 1
+                WHERE pt.post_id = p.id
+              ) OR
+              (
+                u.engineering_persona IS NOT NULL AND
+                u.engineering_persona = (SELECT engineering_persona FROM users WHERE id = (SELECT uid FROM viewer))
+              ) OR
+              p.author_id IN (
+                SELECT f2.following_id
+                FROM follows f1
+                JOIN follows f2 ON f1.following_id = f2.follower_id
+                WHERE f1.follower_id = (SELECT uid FROM viewer)
+              )
             )
           )
         )
@@ -3918,7 +3276,10 @@ export class LibraryDatabase {
     artifactType?: string,
     tag?: string,
   ): PostRow[] {
-    const orderBy = sort === "popular" ? "like_count DESC, diversity_score DESC" : "diversity_score DESC";
+    const orderBy =
+      sort === "popular"
+        ? "((like_count * 10 + reply_count * 15 + repost_count * 20 + MIN(50, COALESCE(p.view_count, 0))) / ((MAX(0.0, CAST((julianday('now') - julianday(p.created_at)) * 24.0 AS REAL)) + 2.0) * (1.0 + 0.1 * MAX(0.0, CAST((julianday('now') - julianday(p.created_at)) * 24.0 AS REAL))))) DESC, diversity_score DESC"
+        : "diversity_score DESC";
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
     const modFilter = this.buildMuteBlockFilter(userId);
@@ -3950,8 +3311,9 @@ export class LibraryDatabase {
             SELECT COUNT(*) FROM posts p2 
             WHERE p2.author_id = p.author_id 
               AND p2.id > p.id 
-              AND p2.created_at > datetime(p.created_at, '-24 hours')
-          ) * 14400 -- 4 hours penalty for each newer post in the same 24h window
+              AND p2.created_at >= p.created_at
+              AND p2.created_at <= datetime(p.created_at, '+24 hours')
+          ) * 14400 -- 4 hours penalty for each newer post by the same author within 24h after p
         ) as diversity_score
       FROM posts p
       JOIN users u ON p.author_id = u.id
@@ -3976,24 +3338,61 @@ export class LibraryDatabase {
     return this.applyContentFiltersToPosts(hydrated, "home", userId);
   }
 
+  private buildSearchFilter(searchQuery?: string): { sql: string; params: (string | number)[] } {
+    if (!searchQuery) return { sql: "", params: [] };
+    const tokens = searchQuery
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .map((t) => t.replace(/^#/, ""))
+      .filter(Boolean)
+      .slice(0, 10);
+    if (tokens.length === 0) return { sql: "", params: [] };
+
+    const clauses: string[] = [];
+    const params: (string | number)[] = [];
+    for (const token of tokens) {
+      const like = `%${token}%`;
+      clauses.push(`(
+        LOWER(COALESCE(p.content, '')) LIKE ?
+        OR LOWER(COALESCE(u.username, '')) LIKE ?
+        OR LOWER(COALESCE(u.display_name, '')) LIKE ?
+        OR LOWER(COALESCE(a.title, '')) LIKE ?
+        OR LOWER(COALESCE(a.view_type, '')) LIKE ?
+        OR LOWER(COALESCE(p.metadata, '')) LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM post_topics pt
+          JOIN trending_topics t ON pt.topic_id = t.id
+          WHERE pt.post_id = p.id AND (LOWER(t.concept) LIKE ? OR LOWER(t.display_name) LIKE ?)
+        )
+      )`);
+      params.push(like, like, like, like, like, like, like, like);
+    }
+    return {
+      sql: ` AND ${clauses.join(" AND ")}`,
+      params,
+    };
+  }
+
   getExploreTimeline(
     currentUserId?: number,
     limit: number = 20,
     offset: number = 0,
     artifactType?: string,
     tag?: string,
+    searchQuery?: string,
   ): PostRow[] {
     const uid = currentUserId || -1;
     const artFilter = this.buildArtifactFilter(artifactType);
     const tagFilter = this.buildTagFilter(tag);
+    const searchFilter = this.buildSearchFilter(searchQuery);
     const modFilter = this.buildMuteBlockFilter(currentUserId);
     const visFilter = this.buildVisibilityFilter(currentUserId, "public");
     const allParams = [
       uid,
-      uid,
-      uid,
       ...artFilter.params,
       ...tagFilter.params,
+      ...searchFilter.params,
       ...visFilter.params,
       ...modFilter.params,
       limit,
@@ -4003,28 +3402,51 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
+      WITH viewer AS (SELECT ? AS uid)
       SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
-        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
-        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
-        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked,
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=(SELECT uid FROM viewer)) as liked,
+        EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=(SELECT uid FROM viewer)) as reposted,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=(SELECT uid FROM viewer)) as bookmarked,
         (
-          p.view_count * 1 +
+          MIN(50, COALESCE(p.view_count, 0)) * 1 +
+          COALESCE(p.view_count, 0) * 0.1 +
           (SELECT COUNT(*) FROM likes WHERE post_id = p.id) * 10 +
           (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) * 15 +
-          (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) * 20
+          (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) * 20 +
+          (SELECT COUNT(*) FROM bookmarks WHERE post_id = p.id) * 25 +
+          (CASE WHEN p.artifact_view_id IS NOT NULL THEN 15 ELSE 0 END) +
+          (
+            SELECT COALESCE(SUM(CASE WHEN ut.is_active = 1 THEN 15 ELSE -100 END), 0)
+            FROM post_topics pt
+            JOIN trending_topics t ON pt.topic_id = t.id
+            JOIN user_topics ut ON LOWER(ut.concept) = LOWER(t.concept) AND ut.user_id = (SELECT uid FROM viewer)
+            WHERE pt.post_id = p.id
+          )
         ) as engagement_score
       FROM posts p
       JOIN users u ON p.author_id = u.id
       LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
       WHERE p.reply_to_id IS NULL AND (p.is_silenced IS NULL OR p.is_silenced = 0)
+        AND NOT EXISTS (
+          SELECT 1 FROM post_topics pt
+          JOIN trending_topics t ON pt.topic_id = t.id
+          JOIN user_topics ut ON LOWER(ut.concept) = LOWER(t.concept)
+          WHERE pt.post_id = p.id AND ut.user_id = (SELECT uid FROM viewer) AND ut.is_active = 0
+        )
         ${artFilter.sql}
         ${tagFilter.sql}
+        ${searchFilter.sql}
         ${visFilter.sql}
         ${modFilter.sql}
-      ORDER BY (engagement_score / (CAST((julianday('now') - julianday(p.created_at)) * 24 as REAL) + 2)) DESC, p.created_at DESC
+      ORDER BY (
+        engagement_score / (
+          (MAX(0.0, CAST((julianday('now') - julianday(p.created_at)) * 24.0 as REAL)) + 2.0) *
+          (1.0 + 0.12 * MAX(0.0, CAST((julianday('now') - julianday(p.created_at)) * 24.0 as REAL)))
+        )
+      ) DESC, p.created_at DESC
       LIMIT ? OFFSET ?
     `,
       )
@@ -4163,17 +3585,23 @@ export class LibraryDatabase {
     const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
     if (existing) {
       this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
+      this.#db
+        .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'like'`)
+        .run(userId, postId);
       return false; // unliked
     } else {
       this.#db.prepare(`INSERT INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
       try {
         this.deriveUserTopics(userId);
       } catch {}
-      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as
-        | { author_id: number }
+      const post = this.#db.prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
+        | { author_id: number; visibility?: string | null; is_silenced?: number | null }
         | undefined;
       if (post && post.author_id !== userId) {
         this.createNotification(post.author_id, userId, "like", postId);
+        if ((post.visibility ?? "public") === "public" && !post.is_silenced) {
+          this.boostPostTopics(postId, 0.25);
+        }
       }
       return true; // liked
     }
@@ -4186,11 +3614,14 @@ export class LibraryDatabase {
       try {
         this.deriveUserTopics(userId);
       } catch {}
-      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as
-        | { author_id: number }
+      const post = this.#db.prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
+        | { author_id: number; visibility?: string | null; is_silenced?: number | null }
         | undefined;
       if (post && post.author_id !== userId) {
         this.createNotification(post.author_id, userId, "like", postId);
+        if ((post.visibility ?? "public") === "public" && !post.is_silenced) {
+          this.boostPostTopics(postId, 0.25);
+        }
       }
       return true;
     }
@@ -4199,7 +3630,13 @@ export class LibraryDatabase {
 
   unlikePost(userId: number, postId: number): boolean {
     const res = this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
-    return res.changes > 0;
+    if (res.changes > 0) {
+      this.#db
+        .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'like'`)
+        .run(userId, postId);
+      return true;
+    }
+    return false;
   }
 
   toggleBookmark(userId: number, postId: number): boolean {
@@ -4209,6 +3646,15 @@ export class LibraryDatabase {
       return false;
     } else {
       this.#db.prepare(`INSERT INTO bookmarks (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
+      try {
+        this.deriveUserTopics(userId);
+      } catch {}
+      const post = this.#db.prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
+        | { author_id: number; visibility?: string | null; is_silenced?: number | null }
+        | undefined;
+      if (post && post.author_id !== userId && (post.visibility ?? "public") === "public" && !post.is_silenced) {
+        this.boostPostTopics(postId, 0.35);
+      }
       return true;
     }
   }
@@ -4219,14 +3665,23 @@ export class LibraryDatabase {
       .get(userId, postId) as { id: number } | undefined;
     if (existing) {
       this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(existing.id);
+      this.#db
+        .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'repost'`)
+        .run(userId, postId);
       return false; // un-reposted
     } else {
       this.createPost(userId, null, undefined, undefined, undefined, postId);
-      const post = this.#db.prepare(`SELECT author_id FROM posts WHERE id = ?`).get(postId) as
-        | { author_id: number }
+      try {
+        this.deriveUserTopics(userId);
+      } catch {}
+      const post = this.#db.prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
+        | { author_id: number; visibility?: string | null; is_silenced?: number | null }
         | undefined;
       if (post && post.author_id !== userId) {
         this.createNotification(post.author_id, userId, "repost", postId);
+        if ((post.visibility ?? "public") === "public" && !post.is_silenced) {
+          this.boostPostTopics(postId, 0.5);
+        }
       }
       return true; // reposted
     }
@@ -4313,6 +3768,8 @@ export class LibraryDatabase {
         };
         engineering?: {
           packageUpdates?: boolean;
+          starredRepoCommits?: boolean;
+          federatedMentions?: boolean;
         };
         computeHpc?: {
           jobCompleted?: boolean;
@@ -4325,18 +3782,34 @@ export class LibraryDatabase {
         if (type === "mention" && ev.social?.mentions === false) return;
         if (type === "reply" && ev.social?.replies === false) return;
         if (type === "follow" && ev.social?.follows === false) return;
-        if (type === "repost" && ev.social?.reposts === false) return;
+        if ((type === "repost" || type === "like") && ev.social?.reposts === false) return;
         if (
           (type === "package" || type === "package_published" || type === "package_yanked") &&
           ev.engineering?.packageUpdates === false
         ) {
           return;
         }
+        if (
+          (type === "commit" || type === "repo_commit" || type === "star") &&
+          ev.engineering?.starredRepoCommits === false
+        ) {
+          return;
+        }
+        if (type === "mention" && ev.engineering?.federatedMentions === false && actorId !== userId) {
+          const actorFed = this.getUserFederationInfo(actorId);
+          if (actorFed?.remote_domain) return;
+        }
         if ((type === "simulation" || type === "simulation_completed") && ev.computeHpc?.jobCompleted === false) {
           return;
         }
         if (type === "simulation_failed" && ev.computeHpc?.jobFailed === false) return;
         if (type === "credit_warning" && ev.computeHpc?.quotaThresholdAlert === false) return;
+      }
+      if (parsedSettings["qualityFilter"] === true && actorId !== userId && type !== "security_alert") {
+        const actorRow = this.#db.prepare(`SELECT status, account_type FROM users WHERE id = ?`).get(actorId) as
+          | { status?: string | null; account_type?: string | null }
+          | undefined;
+        if (actorRow?.status === "suspended" || actorRow?.status === "frozen") return;
       }
     }
 
@@ -4354,37 +3827,58 @@ export class LibraryDatabase {
       }
     }
 
+    const channels = parsedSettings?.["channels"] as
+      | { email?: boolean; browserPush?: boolean; inApp?: boolean }
+      | undefined;
     const deliveryChannels = parsedSettings?.["deliveryChannels"] as
       | { inApp?: boolean; emailNotifications?: boolean }
       | undefined;
-    const inAppEnabled = type === "security_alert" || deliveryChannels?.inApp !== false;
+    const inAppEnabled = type === "security_alert" || (channels?.inApp !== false && deliveryChannels?.inApp !== false);
     if (inAppEnabled) {
-      try {
+      const isIdempotentSocial = ["like", "repost", "follow", "follow_request"].includes(type);
+      const existingNotif = isIdempotentSocial
+        ? (this.#db
+            .prepare(
+              `SELECT id FROM notifications
+               WHERE user_id = ? AND actor_id = ? AND type = ? AND (post_id = ? OR (post_id IS NULL AND ? IS NULL))
+               LIMIT 1`,
+            )
+            .get(userId, actorId, type, postId ?? null, postId ?? null) as { id: number } | undefined)
+        : undefined;
+
+      if (existingNotif) {
         this.#db
-          .prepare(
-            `
-          INSERT INTO notifications (user_id, actor_id, type, post_id, metadata)
-          VALUES (?, ?, ?, ?, ?)
-        `,
-          )
-          .run(userId, actorId, type, postId ?? null, metadataStr);
-      } catch {
-        this.#db
-          .prepare(
-            `
-          INSERT INTO notifications (user_id, actor_id, type, post_id)
-          VALUES (?, ?, ?, ?)
-        `,
-          )
-          .run(userId, actorId, type, postId ?? null);
+          .prepare(`UPDATE notifications SET read = 0, created_at = CURRENT_TIMESTAMP WHERE id = ?`)
+          .run(existingNotif.id);
+      } else {
+        try {
+          this.#db
+            .prepare(
+              `
+            INSERT INTO notifications (user_id, actor_id, type, post_id, metadata)
+            VALUES (?, ?, ?, ?, ?)
+          `,
+            )
+            .run(userId, actorId, type, postId ?? null, metadataStr);
+        } catch {
+          this.#db
+            .prepare(
+              `
+            INSERT INTO notifications (user_id, actor_id, type, post_id)
+            VALUES (?, ?, ?, ?)
+          `,
+            )
+            .run(userId, actorId, type, postId ?? null);
+        }
       }
     }
 
     // Dispatch instant email notification when opted in (or for security_alert unless skipEmail is set)
     try {
+      const emailChannelEnabled =
+        channels?.email !== undefined ? channels.email === true : deliveryChannels?.emailNotifications === true;
       const emailNotificationsOptIn =
-        deliveryChannels?.emailNotifications === true &&
-        (parsedSettings?.["emailDigestFrequency"] ?? "instant") === "instant";
+        emailChannelEnabled && (parsedSettings?.["emailDigestFrequency"] ?? "instant") === "instant";
       const shouldEmail =
         (type === "security_alert" && metadataObj?.["skipEmail"] !== true && emailNotificationsOptIn) ||
         (type !== "security_alert" && emailNotificationsOptIn);
@@ -4568,8 +4062,11 @@ export class LibraryDatabase {
       } catch {
         continue;
       }
+      const channels = parsed?.["channels"] as { email?: boolean } | undefined;
       const deliveryChannels = parsed?.["deliveryChannels"] as { emailNotifications?: boolean } | undefined;
-      if (deliveryChannels?.emailNotifications !== true) continue;
+      const emailEnabled =
+        channels?.email !== undefined ? channels.email === true : deliveryChannels?.emailNotifications === true;
+      if (!emailEnabled) continue;
       const freq = parsed?.["emailDigestFrequency"];
       if (freq !== "daily" && freq !== "weekly") continue;
       if (frequencyFilter && freq !== frequencyFilter) continue;
@@ -4643,7 +4140,8 @@ export class LibraryDatabase {
     } else if (category === "packages") {
       typeClause = "AND n.type IN ('package', 'package_published', 'package_yanked')";
     } else if (category === "social" || category === "mentions") {
-      typeClause = "AND n.type IN ('mention', 'reply', 'like', 'repost', 'follow')";
+      typeClause =
+        "AND n.type IN ('mention', 'reply', 'quote', 'like', 'repost', 'follow', 'follow_request', 'follow_accepted')";
     } else if (category === "system") {
       typeClause = "AND n.type IN ('security_alert', 'credit_warning')";
     }
@@ -4656,11 +4154,13 @@ export class LibraryDatabase {
              u.display_name as actor_display_name, 
              u.avatar_url as actor_avatar_url,
              p.content as post_content,
+             pu.username as post_author,
              a.view_config as post_artifact_config,
              a.view_type as post_artifact_type
       FROM notifications n
       JOIN users u ON n.actor_id = u.id
       LEFT JOIN posts p ON n.post_id = p.id
+      LEFT JOIN users pu ON p.author_id = pu.id
       LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
       WHERE n.user_id = ? ${typeClause}
       ORDER BY n.created_at DESC
@@ -4681,14 +4181,40 @@ export class LibraryDatabase {
     });
   }
 
-  markNotificationsRead(userId: number, category?: string): void {
+  markNotificationsRead(userId: number, category?: string, ids?: number[]): void {
+    if (ids && ids.length > 0) {
+      const validIds = ids.filter((id) => Number.isFinite(id));
+      if (validIds.length > 0) {
+        const placeholders = validIds.map(() => "?").join(", ");
+        this.#db
+          .prepare(
+            `UPDATE notifications
+             SET read = 1
+             WHERE user_id = ? AND read = 0 AND (
+               id IN (${placeholders})
+               OR EXISTS (
+                 SELECT 1 FROM notifications target
+                 WHERE target.id IN (${placeholders})
+                   AND target.user_id = notifications.user_id
+                   AND target.post_id IS NOT NULL
+                   AND target.type IN ('like', 'repost')
+                   AND target.type = notifications.type
+                   AND target.post_id = notifications.post_id
+               )
+             )`,
+          )
+          .run(userId, ...validIds, ...validIds);
+        return;
+      }
+    }
     let typeClause = "";
     if (category === "engineering") {
       typeClause = "AND type IN ('simulation', 'simulation_completed', 'simulation_failed')";
     } else if (category === "packages") {
       typeClause = "AND type IN ('package', 'package_published', 'package_yanked')";
     } else if (category === "social" || category === "mentions") {
-      typeClause = "AND type IN ('mention', 'reply', 'like', 'repost', 'follow')";
+      typeClause =
+        "AND type IN ('mention', 'reply', 'quote', 'like', 'repost', 'follow', 'follow_request', 'follow_accepted')";
     } else if (category === "system") {
       typeClause = "AND type IN ('security_alert', 'credit_warning')";
     }
@@ -4697,7 +4223,15 @@ export class LibraryDatabase {
 
   getUnreadNotificationCount(userId: number): number {
     const row = this.#db
-      .prepare(`SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0`)
+      .prepare(
+        `SELECT COUNT(DISTINCT CASE
+          WHEN post_id IS NOT NULL AND type IN ('like', 'repost')
+          THEN type || '-' || CAST(post_id AS TEXT)
+          ELSE 'id-' || CAST(id AS TEXT)
+        END) as count
+        FROM notifications
+        WHERE user_id = ? AND read = 0`,
+      )
       .get(userId) as { count: number };
     return row.count;
   }
@@ -5799,12 +5333,18 @@ export class LibraryDatabase {
          WHERE post_id = ?`,
       )
       .run(post.author_id, fallbackSnapshot, postId);
+    const affectedTopics = this.#db.prepare(`SELECT topic_id FROM post_topics WHERE post_id = ?`).all(postId) as {
+      topic_id: number;
+    }[];
     this.#db.prepare(`DELETE FROM notifications WHERE post_id = ?`).run(postId);
     this.#db.prepare(`DELETE FROM likes WHERE post_id = ?`).run(postId);
     this.#db.prepare(`DELETE FROM bookmarks WHERE post_id = ?`).run(postId);
     this.#db.prepare(`DELETE FROM post_topics WHERE post_id = ?`).run(postId);
     this.#db.prepare(`DELETE FROM post_location_stats WHERE post_id = ?`).run(postId);
     this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(postId);
+    if (affectedTopics.length > 0) {
+      this.cleanupOrphanedTopics(affectedTopics.map((r) => r.topic_id));
+    }
     return { success: true, apId: post.ap_id ?? undefined, authorId: post.author_id };
   }
 
@@ -6516,6 +6056,10 @@ export class LibraryDatabase {
     autoFilterAction: "cw" | "silence" | "quarantine";
     customTermsMarkdown: string;
     customPrivacyMarkdown: string;
+    customCookiesMarkdown: string;
+    legalPolicyMode: "append" | "override";
+    legalJurisdiction: string;
+    legalEffectiveDate: string;
     requireAdmin2FA: boolean;
     waitlistEnabled: boolean;
     userInvitesEnabled: boolean;
@@ -6533,6 +6077,13 @@ export class LibraryDatabase {
     remoteMediaCacheRetentionDays: number;
     autoCircuitBreakThreshold: number;
     artifactCdnHost: string;
+    githubClientId: string;
+    githubClientSecretConfigured: boolean;
+    githubClientSecretMasked: string;
+    gitlabClientId: string;
+    gitlabClientSecretConfigured: boolean;
+    gitlabClientSecretMasked: string;
+    gitlabUrl: string;
     lockedByEnv: string[];
   } {
     const rows = this.#db.prepare(`SELECT key, value FROM instance_settings`).all() as { key: string; value: string }[];
@@ -6573,6 +6124,15 @@ export class LibraryDatabase {
     if (process.env["MSX_AUTHORIZED_FETCH"] !== undefined || process.env["AUTHORIZED_FETCH"] !== undefined) {
       lockedByEnv.push("authorizedFetchEnabled");
     }
+    if (process.env["GITHUB_CLIENT_ID"] || process.env["OAUTH_GITHUB_CLIENT_ID"]) lockedByEnv.push("githubClientId");
+    if (process.env["GITHUB_CLIENT_SECRET"] || process.env["OAUTH_GITHUB_CLIENT_SECRET"]) {
+      lockedByEnv.push("githubClientSecret");
+    }
+    if (process.env["GITLAB_CLIENT_ID"] || process.env["OAUTH_GITLAB_CLIENT_ID"]) lockedByEnv.push("gitlabClientId");
+    if (process.env["GITLAB_CLIENT_SECRET"] || process.env["OAUTH_GITLAB_CLIENT_SECRET"]) {
+      lockedByEnv.push("gitlabClientSecret");
+    }
+    if (process.env["GITLAB_URL"]) lockedByEnv.push("gitlabUrl");
 
     const storedTunnelToken = (map.get("cloudflare_tunnel_token") || map.get("tunnelToken") || "").trim();
     const envTunnelToken = (process.env["CLOUDFLARE_TUNNEL_TOKEN"] || "").trim();
@@ -6762,6 +6322,32 @@ export class LibraryDatabase {
     );
     const artifactCdnHost = (process.env["MSX_ARTIFACT_CDN_HOST"] || map.get("artifactCdnHost") || "").trim();
 
+    const githubClientId = (
+      process.env["GITHUB_CLIENT_ID"] ||
+      process.env["OAUTH_GITHUB_CLIENT_ID"] ||
+      map.get("githubClientId") ||
+      ""
+    ).trim();
+    const githubClientSecretRaw =
+      process.env["GITHUB_CLIENT_SECRET"] ||
+      process.env["OAUTH_GITHUB_CLIENT_SECRET"] ||
+      decryptSecretAtRest(map.get("githubClientSecretEncrypted") || "") ||
+      "";
+    const gitlabClientId = (
+      process.env["GITLAB_CLIENT_ID"] ||
+      process.env["OAUTH_GITLAB_CLIENT_ID"] ||
+      map.get("gitlabClientId") ||
+      ""
+    ).trim();
+    const gitlabClientSecretRaw =
+      process.env["GITLAB_CLIENT_SECRET"] ||
+      process.env["OAUTH_GITLAB_CLIENT_SECRET"] ||
+      decryptSecretAtRest(map.get("gitlabClientSecretEncrypted") || "") ||
+      "";
+    const gitlabUrl = (process.env["GITLAB_URL"] || map.get("gitlabUrl") || "https://gitlab.com")
+      .trim()
+      .replace(/\/$/, "");
+
     return {
       instanceName:
         process.env["ANSATZ_INSTANCE_NAME"] || process.env["MSX_INSTANCE_NAME"] || map.get("instanceName") || "Ansatz",
@@ -6818,6 +6404,10 @@ export class LibraryDatabase {
       autoFilterAction,
       customTermsMarkdown: map.get("customTermsMarkdown") || "",
       customPrivacyMarkdown: map.get("customPrivacyMarkdown") || "",
+      customCookiesMarkdown: map.get("customCookiesMarkdown") || "",
+      legalPolicyMode: map.get("legalPolicyMode") === "override" ? "override" : "append",
+      legalJurisdiction: map.get("legalJurisdiction") || "",
+      legalEffectiveDate: map.get("legalEffectiveDate") || "",
       requireAdmin2FA:
         process.env["MSX_REQUIRE_ADMIN_2FA"] !== undefined
           ? process.env["MSX_REQUIRE_ADMIN_2FA"] === "true"
@@ -6838,7 +6428,71 @@ export class LibraryDatabase {
       remoteMediaCacheRetentionDays,
       autoCircuitBreakThreshold,
       artifactCdnHost,
+      githubClientId,
+      githubClientSecretConfigured: Boolean(githubClientSecretRaw),
+      githubClientSecretMasked: maskSecretPreview(githubClientSecretRaw),
+      gitlabClientId,
+      gitlabClientSecretConfigured: Boolean(gitlabClientSecretRaw),
+      gitlabClientSecretMasked: maskSecretPreview(gitlabClientSecretRaw),
+      gitlabUrl,
       lockedByEnv,
+    };
+  }
+
+  getOAuthCredentials(provider: string): {
+    clientId: string;
+    clientSecret: string;
+    baseUrl: string;
+  } {
+    const rows = this.#db
+      .prepare(
+        `SELECT key, value FROM instance_settings WHERE key IN ('githubClientId', 'githubClientSecretEncrypted', 'gitlabClientId', 'gitlabClientSecretEncrypted', 'gitlabUrl')`,
+      )
+      .all() as { key: string; value: string }[];
+    const map = new Map<string, string>(rows.map((r) => [r.key, r.value]));
+    const normalized = provider.trim().toLowerCase();
+
+    if (normalized === "github") {
+      return {
+        clientId: (
+          process.env["GITHUB_CLIENT_ID"] ||
+          process.env["OAUTH_GITHUB_CLIENT_ID"] ||
+          map.get("githubClientId") ||
+          ""
+        ).trim(),
+        clientSecret: (
+          process.env["GITHUB_CLIENT_SECRET"] ||
+          process.env["OAUTH_GITHUB_CLIENT_SECRET"] ||
+          decryptSecretAtRest(map.get("githubClientSecretEncrypted") || "") ||
+          ""
+        ).trim(),
+        baseUrl: "https://github.com",
+      };
+    }
+
+    if (normalized === "gitlab") {
+      return {
+        clientId: (
+          process.env["GITLAB_CLIENT_ID"] ||
+          process.env["OAUTH_GITLAB_CLIENT_ID"] ||
+          map.get("gitlabClientId") ||
+          ""
+        ).trim(),
+        clientSecret: (
+          process.env["GITLAB_CLIENT_SECRET"] ||
+          process.env["OAUTH_GITLAB_CLIENT_SECRET"] ||
+          decryptSecretAtRest(map.get("gitlabClientSecretEncrypted") || "") ||
+          ""
+        ).trim(),
+        baseUrl: (process.env["GITLAB_URL"] || map.get("gitlabUrl") || "https://gitlab.com").trim().replace(/\/$/, ""),
+      };
+    }
+
+    const envPrefix = normalized.toUpperCase();
+    return {
+      clientId: (process.env[`${envPrefix}_CLIENT_ID`] || "").trim(),
+      clientSecret: (process.env[`${envPrefix}_CLIENT_SECRET`] || "").trim(),
+      baseUrl: "",
     };
   }
 
@@ -6940,6 +6594,10 @@ export class LibraryDatabase {
       "autoFilterAction",
       "customTermsMarkdown",
       "customPrivacyMarkdown",
+      "customCookiesMarkdown",
+      "legalPolicyMode",
+      "legalJurisdiction",
+      "legalEffectiveDate",
       "requireAdmin2FA",
       "waitlistEnabled",
       "userInvitesEnabled",
@@ -6958,6 +6616,9 @@ export class LibraryDatabase {
       "remoteMediaCacheRetentionDays",
       "autoCircuitBreakThreshold",
       "artifactCdnHost",
+      "githubClientId",
+      "gitlabClientId",
+      "gitlabUrl",
     ];
     const upsertStmt = this.#db.prepare(
       `INSERT INTO instance_settings (key, value, updated_by, updated_at)
@@ -6967,6 +6628,7 @@ export class LibraryDatabase {
          updated_by = excluded.updated_by,
          updated_at = datetime('now')`,
     );
+    const deleteStmt = this.#db.prepare(`DELETE FROM instance_settings WHERE key = ?`);
 
     const tx = this.#db.transaction(() => {
       for (const key of allowedKeys) {
@@ -6974,6 +6636,30 @@ export class LibraryDatabase {
         const val = normalizedPatch[key];
         const serialized = typeof val === "object" && val !== null ? JSON.stringify(val) : String(val);
         upsertStmt.run(key, serialized, actorId);
+      }
+      if (normalizedPatch["clearGithubClientSecret"] === true) {
+        deleteStmt.run("githubClientSecretEncrypted");
+      } else if (
+        typeof normalizedPatch["githubClientSecret"] === "string" &&
+        normalizedPatch["githubClientSecret"].trim().length > 0
+      ) {
+        upsertStmt.run(
+          "githubClientSecretEncrypted",
+          encryptSecretAtRest(normalizedPatch["githubClientSecret"].trim()),
+          actorId,
+        );
+      }
+      if (normalizedPatch["clearGitlabClientSecret"] === true) {
+        deleteStmt.run("gitlabClientSecretEncrypted");
+      } else if (
+        typeof normalizedPatch["gitlabClientSecret"] === "string" &&
+        normalizedPatch["gitlabClientSecret"].trim().length > 0
+      ) {
+        upsertStmt.run(
+          "gitlabClientSecretEncrypted",
+          encryptSecretAtRest(normalizedPatch["gitlabClientSecret"].trim()),
+          actorId,
+        );
       }
     });
     tx();
@@ -6990,7 +6676,7 @@ export class LibraryDatabase {
       const map = new Map<string, string>(rows.map((r) => [r.key, r.value]));
       const instanceSettings = this.getInstanceSettings();
 
-      const rawDriver = (map.get("emailDriver") || "auto").trim().toLowerCase();
+      const rawDriver = (process.env["EMAIL_DRIVER"] || map.get("emailDriver") || "auto").trim().toLowerCase();
       const driver: MailerDriverPreference =
         rawDriver === "console" || rawDriver === "smtp" || rawDriver === "sendgrid" || rawDriver === "resend"
           ? rawDriver
@@ -7097,6 +6783,7 @@ export class LibraryDatabase {
     const instanceSettings = this.getInstanceSettings();
 
     const lockedByEnv: string[] = [];
+    if (process.env["EMAIL_DRIVER"]) lockedByEnv.push("driver");
     if (process.env["EMAIL_FROM"]) lockedByEnv.push("fromEmail", "fromName");
     if (process.env["EMAIL_REPLY_TO"]) lockedByEnv.push("replyTo");
     if (process.env["SMTP_HOST"]) lockedByEnv.push("smtpHost");
@@ -7109,7 +6796,7 @@ export class LibraryDatabase {
     if (process.env["SENDGRID_API_KEY"]) lockedByEnv.push("sendgridApiKey");
     if (process.env["RESEND_API_KEY"]) lockedByEnv.push("resendApiKey");
 
-    const rawDriver = (map.get("emailDriver") || "auto").trim().toLowerCase();
+    const rawDriver = (process.env["EMAIL_DRIVER"] || map.get("emailDriver") || "auto").trim().toLowerCase();
     const driver: MailerDriverPreference =
       rawDriver === "console" || rawDriver === "smtp" || rawDriver === "sendgrid" || rawDriver === "resend"
         ? rawDriver
@@ -7464,6 +7151,11 @@ export class LibraryDatabase {
       `SMTP_HOST=${process.env["SMTP_HOST"] || "smtp.example.org"}`,
       `SMTP_PORT=${process.env["SMTP_PORT"] || "587"}`,
       `EMAIL_FROM="${escapeEnvValue(s.instanceName)} <${s.contactEmail}>"`,
+      `GITHUB_CLIENT_ID="${escapeEnvValue(s.githubClientId)}"`,
+      `GITHUB_CLIENT_SECRET=${s.githubClientSecretConfigured ? "<REDACTED_GITHUB_CLIENT_SECRET>" : ""}`,
+      `GITLAB_CLIENT_ID="${escapeEnvValue(s.gitlabClientId)}"`,
+      `GITLAB_CLIENT_SECRET=${s.gitlabClientSecretConfigured ? "<REDACTED_GITLAB_CLIENT_SECRET>" : ""}`,
+      `GITLAB_URL="${escapeEnvValue(s.gitlabUrl)}"`,
     ];
 
     const dockerComposeLines = [
@@ -7490,6 +7182,13 @@ export class LibraryDatabase {
     ];
     if (tunnelTokenVal) {
       dockerComposeLines.push(`      CLOUDFLARE_TUNNEL_TOKEN: "${escapeEnvValue(tunnelTokenVal)}"`);
+    }
+    if (s.githubClientId) {
+      dockerComposeLines.push(`      GITHUB_CLIENT_ID: "${escapeEnvValue(s.githubClientId)}"`);
+    }
+    if (s.gitlabClientId) {
+      dockerComposeLines.push(`      GITLAB_CLIENT_ID: "${escapeEnvValue(s.gitlabClientId)}"`);
+      dockerComposeLines.push(`      GITLAB_URL: "${escapeEnvValue(s.gitlabUrl)}"`);
     }
 
     const envStr = envLines.join("\n");
@@ -8727,11 +8426,145 @@ export class LibraryDatabase {
     }
   }
 
+  cleanupOrphanedTopics(topicIds?: number[]): void {
+    if (topicIds && topicIds.length > 0) {
+      const uniqueIds = Array.from(new Set(topicIds));
+      const checkStmt = this.#db.prepare(
+        `SELECT COUNT(*) as c
+         FROM post_topics pt
+         JOIN posts p ON p.id = pt.post_id
+         WHERE pt.topic_id = ?
+           AND COALESCE(p.visibility, 'public') = 'public'
+           AND COALESCE(p.is_silenced, 0) = 0`,
+      );
+      const delStmt = this.#db.prepare(`DELETE FROM trending_topics WHERE id = ?`);
+      for (const tid of uniqueIds) {
+        const row = checkStmt.get(tid) as { c: number } | undefined;
+        if (!row || row.c === 0) {
+          delStmt.run(tid);
+        }
+      }
+      return;
+    }
+
+    this.#db
+      .prepare(
+        `DELETE FROM trending_topics
+         WHERE COALESCE(review_status, 'approved') != 'pending'
+           AND NOT EXISTS (
+             SELECT 1 FROM post_topics pt
+             JOIN posts p ON p.id = pt.post_id
+             WHERE pt.topic_id = trending_topics.id
+               AND COALESCE(p.visibility, 'public') = 'public'
+               AND COALESCE(p.is_silenced, 0) = 0
+           )`,
+      )
+      .run();
+  }
+
+  boostPostTopics(postId: number, weight: number): void {
+    if (weight <= 0) return;
+    const linked = this.#db
+      .prepare(
+        `SELECT t.concept, t.display_name, t.location
+         FROM post_topics pt
+         JOIN trending_topics t ON t.id = pt.topic_id
+         WHERE pt.post_id = ?`,
+      )
+      .all(postId) as { concept: string; display_name: string; location: string | null }[];
+    for (const item of linked) {
+      this.updateTopicScore(item.concept, item.display_name, weight, 24, item.location);
+    }
+  }
+
+  syncPostTopics(postId: number): void {
+    const post = this.#db
+      .prepare(`SELECT id, author_id, content, visibility, is_silenced FROM posts WHERE id = ?`)
+      .get(postId) as
+      | {
+          id: number;
+          author_id: number;
+          content: string | null;
+          visibility: string | null;
+          is_silenced: number | null;
+        }
+      | undefined;
+
+    const existingLinks = this.#db
+      .prepare(
+        `SELECT pt.topic_id, t.concept
+         FROM post_topics pt
+         JOIN trending_topics t ON t.id = pt.topic_id
+         WHERE pt.post_id = ?`,
+      )
+      .all(postId) as { topic_id: number; concept: string }[];
+
+    if (!post || (post.visibility ?? "public") !== "public" || post.is_silenced) {
+      if (existingLinks.length > 0) {
+        this.#db.prepare(`DELETE FROM post_topics WHERE post_id = ?`).run(postId);
+        this.cleanupOrphanedTopics(existingLinks.map((l) => l.topic_id));
+      }
+      return;
+    }
+
+    const hashtags = extractHashtags(post.content || "");
+    const nextByConcept = new Map<string, { concept: string; displayName: string }>();
+    for (const h of hashtags) {
+      nextByConcept.set(h.concept.toLowerCase(), h);
+    }
+
+    const existingConcepts = new Set<string>();
+    const removedTopicIds: number[] = [];
+    for (const link of existingLinks) {
+      const lower = link.concept.toLowerCase();
+      if (!nextByConcept.has(lower)) {
+        this.#db.prepare(`DELETE FROM post_topics WHERE post_id = ? AND topic_id = ?`).run(postId, link.topic_id);
+        removedTopicIds.push(link.topic_id);
+      } else {
+        existingConcepts.add(lower);
+      }
+    }
+    if (removedTopicIds.length > 0) {
+      this.cleanupOrphanedTopics(removedTopicIds);
+    }
+
+    const toAdd = hashtags.filter((h) => !existingConcepts.has(h.concept.toLowerCase()));
+    if (toAdd.length === 0) return;
+
+    const author = this.getUserById(post.author_id);
+    const profile = author ? this.getFullProfileByUsername(author.username) : undefined;
+    const followerCount = profile?.follower_count || 0;
+    const location = profile?.location || null;
+    const basePostWeight = 1.0 + Math.log10(followerCount + 1) * 0.5;
+
+    const recentAuthorTopicStmt = this.#db.prepare(
+      `SELECT COUNT(DISTINCT p.id) as cnt
+       FROM posts p
+       JOIN post_topics pt ON pt.post_id = p.id
+       JOIN trending_topics t ON t.id = pt.topic_id
+       WHERE p.author_id = ?
+         AND p.id != ?
+         AND LOWER(t.concept) = LOWER(?)
+         AND p.created_at >= datetime('now', '-24 hours')`,
+    );
+
+    for (const topic of toAdd) {
+      const recentRow = recentAuthorTopicStmt.get(post.author_id, postId, topic.concept) as { cnt: number } | undefined;
+      const priorAuthorPosts24h = Number(recentRow?.cnt || 0);
+      // Harmonic diminishing returns per author per 24h window to prevent single-user hashtag spam
+      const effectiveWeight = basePostWeight / (1 + priorAuthorPosts24h);
+      const topicId = this.updateTopicScore(topic.concept, topic.displayName, effectiveWeight, 24, location);
+      this.linkPostToTopic(postId, topicId);
+    }
+  }
+
   /**
    * Worker function: Decays older topics and writes back to DB to prevent
    * permanent index clogging. Intended to be run periodically.
    */
   decayTrendingTopics(halfLifeHours: number = 24): void {
+    this.cleanupOrphanedTopics();
+
     const topicsToDecay = this.#db
       .prepare(
         `
@@ -8759,8 +8592,13 @@ export class LibraryDatabase {
     });
 
     const updates = topicsToDecay.map((t) => {
-      const lastUpdatedMs = new Date(t.last_updated_at.replace(" ", "T") + "Z").getTime();
-      const deltaHours = Math.max(0, currentMs - lastUpdatedMs) / (1000 * 60 * 60);
+      const isoStr = t.last_updated_at.includes("T")
+        ? t.last_updated_at.endsWith("Z")
+          ? t.last_updated_at
+          : `${t.last_updated_at}Z`
+        : `${t.last_updated_at.replace(" ", "T")}Z`;
+      const lastUpdatedMs = new Date(isoStr).getTime();
+      const deltaHours = Number.isFinite(lastUpdatedMs) ? Math.max(0, currentMs - lastUpdatedMs) / (1000 * 60 * 60) : 0;
       const newScore = t.current_score * Math.pow(0.5, deltaHours / halfLifeHours);
       return { id: t.id, score: newScore };
     });
@@ -8772,7 +8610,7 @@ export class LibraryDatabase {
     limit: number = 10,
     halfLifeHours: number = 24,
     location: string | null = null,
-  ): (TrendingTopicRow & { real_score: number; post_count: number })[] {
+  ): (TrendingTopicRow & { real_score: number; post_count: number; unique_authors?: number })[] {
     let requiresApproval = false;
     try {
       requiresApproval = this.getInstanceSettings().trendingRequiresApproval;
@@ -8780,110 +8618,180 @@ export class LibraryDatabase {
     const reviewClause = requiresApproval
       ? `AND COALESCE(t.review_status, 'approved') = 'approved'`
       : `AND COALESCE(t.review_status, 'approved') != 'rejected'`;
+    const postCountSubquery = `(
+      SELECT COUNT(DISTINCT pt.post_id)
+      FROM post_topics pt
+      JOIN posts p ON p.id = pt.post_id
+      WHERE pt.topic_id = t.id
+        AND COALESCE(p.visibility, 'public') = 'public'
+        AND COALESCE(p.is_silenced, 0) = 0
+    )`;
+    const uniqueAuthorsSubquery = `(
+      SELECT COUNT(DISTINCT p.author_id)
+      FROM post_topics pt
+      JOIN posts p ON p.id = pt.post_id
+      WHERE pt.topic_id = t.id
+        AND COALESCE(p.visibility, 'public') = 'public'
+        AND COALESCE(p.is_silenced, 0) = 0
+    )`;
+    const recent24hSubquery = `(
+      SELECT COUNT(DISTINCT pt.post_id)
+      FROM post_topics pt
+      JOIN posts p ON p.id = pt.post_id
+      WHERE pt.topic_id = t.id
+        AND COALESCE(p.visibility, 'public') = 'public'
+        AND COALESCE(p.is_silenced, 0) = 0
+        AND p.created_at >= datetime('now', '-24 hours')
+    )`;
     const query = location
-      ? `SELECT t.*, (SELECT COUNT(*) FROM post_topics pt WHERE pt.topic_id = t.id) as post_count FROM trending_topics t WHERE t.current_score > 0.001 ${reviewClause} AND t.location = ? ORDER BY t.current_score DESC LIMIT ?`
-      : `SELECT t.*, (SELECT COUNT(*) FROM post_topics pt WHERE pt.topic_id = t.id) as post_count FROM trending_topics t WHERE t.current_score > 0.001 ${reviewClause} ORDER BY t.current_score DESC LIMIT ?`;
-    const params = location ? [location, limit * 5] : [limit * 5];
+      ? `SELECT t.*, ${postCountSubquery} as post_count, ${uniqueAuthorsSubquery} as unique_authors, ${recent24hSubquery} as recent_24h FROM trending_topics t WHERE t.current_score > 0.001 ${reviewClause} AND t.location = ? ORDER BY t.current_score DESC LIMIT ?`
+      : `SELECT t.*, ${postCountSubquery} as post_count, ${uniqueAuthorsSubquery} as unique_authors, ${recent24hSubquery} as recent_24h FROM trending_topics t WHERE t.current_score > 0.001 ${reviewClause} ORDER BY t.current_score DESC LIMIT ?`;
+    const params = location ? [location, limit * 10] : [limit * 10];
 
-    const topics = this.#db.prepare(query).all(...params) as (TrendingTopicRow & { post_count?: number | undefined })[];
+    const topics = this.#db.prepare(query).all(...params) as (TrendingTopicRow & {
+      post_count?: number | undefined;
+      unique_authors?: number | undefined;
+      recent_24h?: number | undefined;
+    })[];
 
     const currentMs = Date.now();
-    const scoredTopics = topics.map((t) => {
-      const lastUpdatedMs = new Date(t.last_updated_at.replace(" ", "T") + "Z").getTime();
-      const deltaHours = Math.max(0, currentMs - lastUpdatedMs) / (1000 * 60 * 60);
-      const real_score = t.current_score * Math.pow(0.5, deltaHours / halfLifeHours);
-      return { ...t, real_score, post_count: Number(t.post_count || 0) };
-    });
+    const byConcept = new Map<
+      string,
+      TrendingTopicRow & { real_score: number; post_count: number; unique_authors: number }
+    >();
 
-    const CURATED_ENGINEERING_TOPICS: { concept: string; display_name: string; score: number }[] = [
-      { concept: "aerodynamics", display_name: "Aerodynamics", score: 50 },
-      { concept: "thermodynamics", display_name: "Thermodynamics", score: 45 },
-      { concept: "robotics", display_name: "Robotics", score: 42 },
-      { concept: "additivemfg", display_name: "AdditiveMfg", score: 38 },
-      { concept: "digitaltwin", display_name: "DigitalTwin", score: 35 },
-      { concept: "controlsystems", display_name: "ControlSystems", score: 32 },
-      { concept: "multibody", display_name: "Multibody", score: 28 },
-      { concept: "fluiddynamics", display_name: "FluidDynamics", score: 25 },
-      { concept: "cad", display_name: "CAD", score: 22 },
-      { concept: "modelica", display_name: "Modelica", score: 20 },
-    ];
+    for (const t of topics) {
+      const postCount = Number(t.post_count || 0);
+      if (postCount <= 0) continue;
+      const uniqueAuthors = Math.max(1, Number(t.unique_authors || 1));
+      const recent24h = Number(t.recent_24h || 0);
 
-    const existingConcepts = new Map<string, TrendingTopicRow & { real_score: number; post_count: number }>();
-    for (const t of scoredTopics) {
-      existingConcepts.set(t.concept.toLowerCase(), t);
-    }
+      const isoStr = t.last_updated_at.includes("T")
+        ? t.last_updated_at.endsWith("Z")
+          ? t.last_updated_at
+          : `${t.last_updated_at}Z`
+        : `${t.last_updated_at.replace(" ", "T")}Z`;
+      const lastUpdatedMs = new Date(isoStr).getTime();
+      const deltaHours = Number.isFinite(lastUpdatedMs) ? Math.max(0, currentMs - lastUpdatedMs) / (1000 * 60 * 60) : 0;
+      const decayedScore = t.current_score * Math.pow(0.5, deltaHours / halfLifeHours);
+      // Author diversity entropy multiplier + 24h velocity burst multiplier
+      const authorDiversityFactor = 1.0 + 0.35 * Math.log2(uniqueAuthors);
+      const velocityFactor = 1.0 + 0.12 * Math.min(20, recent24h);
+      const real_score = decayedScore * authorDiversityFactor * velocityFactor;
+      if (real_score <= 0.001) continue;
 
-    const missingCurated = CURATED_ENGINEERING_TOPICS.filter((cur) => !existingConcepts.has(cur.concept.toLowerCase()));
-    const curatedPostCounts = new Map<string, number>();
-
-    if (missingCurated.length > 0) {
-      try {
-        const placeholders = missingCurated.map(() => "?").join(", ");
-        const indexedRows = this.#db
-          .prepare(
-            `SELECT LOWER(t.concept) as concept, COUNT(pt.post_id) as count
-             FROM trending_topics t
-             JOIN post_topics pt ON pt.topic_id = t.id
-             WHERE LOWER(t.concept) IN (${placeholders})
-             GROUP BY LOWER(t.concept)`,
-          )
-          .all(...missingCurated.map((c) => c.concept.toLowerCase())) as { concept: string; count: number }[];
-        for (const r of indexedRows) {
-          curatedPostCounts.set(r.concept, Number(r.count || 0));
+      const key = t.concept.toLowerCase();
+      const existing = byConcept.get(key);
+      if (!existing) {
+        byConcept.set(key, {
+          ...t,
+          real_score,
+          post_count: postCount,
+          unique_authors: uniqueAuthors,
+        });
+      } else {
+        existing.real_score += real_score;
+        existing.current_score += t.current_score;
+        existing.post_count += postCount;
+        existing.unique_authors = Math.max(existing.unique_authors, uniqueAuthors);
+        if (existing.location !== t.location) {
+          existing.location = null;
         }
-
-        const unindexedCurated = missingCurated.filter((c) => !curatedPostCounts.has(c.concept.toLowerCase()));
-        if (unindexedCurated.length > 0) {
-          const sumExprs = unindexedCurated
-            .map((_, idx) => `COALESCE(SUM(CASE WHEN lower(content) LIKE ? THEN 1 ELSE 0 END), 0) as c_${idx}`)
-            .join(", ");
-          const sumRow = this.#db
-            .prepare(`SELECT ${sumExprs} FROM posts`)
-            .get(...unindexedCurated.map((c) => `%#${c.concept.toLowerCase()}%`)) as Record<string, number> | undefined;
-          if (sumRow) {
-            for (const [idx, c] of unindexedCurated.entries()) {
-              curatedPostCounts.set(c.concept.toLowerCase(), Number(sumRow[`c_${idx}`] || 0));
-            }
-          }
-        }
-      } catch {
-        // Fallback to 0 counts on error
-      }
-    }
-
-    if (!requiresApproval) {
-      for (const [i, cur] of CURATED_ENGINEERING_TOPICS.entries()) {
-        const key = cur.concept.toLowerCase();
-        const match = existingConcepts.get(key);
-        if (match) {
-          match.real_score += cur.score;
-          match.current_score += cur.score;
-        } else {
-          const hashtagPostCount = curatedPostCounts.get(key) || 0;
-          const newTopic = {
-            id: -(i + 1),
-            concept: cur.concept,
-            display_name: cur.display_name,
-            current_score: cur.score,
-            real_score: cur.score,
-            post_count: hashtagPostCount,
-            last_updated_at: new Date().toISOString(),
-          };
-          scoredTopics.push(newTopic);
-          existingConcepts.set(key, newTopic);
+        if (t.last_updated_at > existing.last_updated_at) {
+          existing.last_updated_at = t.last_updated_at;
         }
       }
     }
 
-    scoredTopics.sort((a, b) => b.real_score - a.real_score);
+    const scoredTopics = Array.from(byConcept.values());
+    scoredTopics.sort((a, b) => b.real_score - a.real_score || b.post_count - a.post_count);
     return scoredTopics.slice(0, limit);
   }
 
-  getTopicPosts(concept: string, currentUserId?: number, limit = 20, offset = 0, artifactType?: string): PostRow[] {
+  getRelatedTopics(
+    concept: string,
+    limit: number = 8,
+  ): { concept: string; display_name: string; co_occurrence_count: number; post_count: number }[] {
+    const cleanConcept = concept.replace(/^#/, "").trim().toLowerCase();
+    if (!cleanConcept) return [];
+
+    const coOccurring = this.#db
+      .prepare(
+        `
+      SELECT
+        LOWER(t2.concept) as concept,
+        t2.display_name as display_name,
+        COUNT(DISTINCT pt1.post_id) as co_occurrence_count,
+        (
+          SELECT COUNT(DISTINCT pt3.post_id)
+          FROM post_topics pt3
+          JOIN posts p3 ON p3.id = pt3.post_id
+          WHERE pt3.topic_id = t2.id
+            AND COALESCE(p3.visibility, 'public') = 'public'
+            AND COALESCE(p3.is_silenced, 0) = 0
+        ) as post_count,
+        MAX(t2.current_score) as current_score
+      FROM trending_topics t1
+      JOIN post_topics pt1 ON pt1.topic_id = t1.id
+      JOIN posts p ON p.id = pt1.post_id
+      JOIN post_topics pt2 ON pt2.post_id = pt1.post_id AND pt2.topic_id != pt1.topic_id
+      JOIN trending_topics t2 ON t2.id = pt2.topic_id
+      WHERE (LOWER(t1.concept) = ? OR LOWER(t1.display_name) = ?)
+        AND LOWER(t2.concept) != ?
+        AND COALESCE(p.visibility, 'public') = 'public'
+        AND COALESCE(p.is_silenced, 0) = 0
+        AND COALESCE(t2.review_status, 'approved') != 'rejected'
+      GROUP BY LOWER(t2.concept)
+      ORDER BY (CAST(COUNT(DISTINCT pt1.post_id) AS REAL) * 10.0 + MAX(t2.current_score)) DESC
+      LIMIT ?
+    `,
+      )
+      .all(cleanConcept, cleanConcept, cleanConcept, limit) as {
+      concept: string;
+      display_name: string;
+      co_occurrence_count: number;
+      post_count: number;
+    }[];
+
+    if (coOccurring.length >= limit) {
+      return coOccurring;
+    }
+
+    const seen = new Set(coOccurring.map((c) => c.concept.toLowerCase()));
+    seen.add(cleanConcept);
+    const fallbackTrending = this.getTopTrendingTopics(limit * 2);
+    for (const t of fallbackTrending) {
+      const cLower = t.concept.toLowerCase();
+      if (seen.has(cLower)) continue;
+      seen.add(cLower);
+      coOccurring.push({
+        concept: t.concept,
+        display_name: t.display_name,
+        co_occurrence_count: 0,
+        post_count: t.post_count,
+      });
+      if (coOccurring.length >= limit) break;
+    }
+    return coOccurring;
+  }
+
+  getTopicPosts(
+    concept: string,
+    currentUserId?: number,
+    limit = 20,
+    offset = 0,
+    artifactType?: string,
+    sort: string = "recent",
+  ): PostRow[] {
     const cleanConcept = concept.replace(/^#/, "").trim().toLowerCase();
     const artifactFilter = this.buildArtifactFilter(artifactType);
     const visFilter = this.buildVisibilityFilter(currentUserId, "public");
+    const modFilter = this.buildMuteBlockFilter(currentUserId);
     const uid = currentUserId || -1;
+    const orderBy =
+      sort === "top"
+        ? "((like_count * 10 + reply_count * 15 + repost_count * 20 + MIN(50, COALESCE(p.view_count, 0))) / ((MAX(0.0, CAST((julianday('now') - julianday(p.created_at)) * 24.0 AS REAL)) + 2.0) * (1.0 + 0.1 * MAX(0.0, CAST((julianday('now') - julianday(p.created_at)) * 24.0 AS REAL))))) DESC, p.created_at DESC"
+        : "p.created_at DESC";
 
     const query = `
       SELECT DISTINCT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
@@ -8899,9 +8807,11 @@ export class LibraryDatabase {
       LEFT JOIN post_topics pt ON pt.post_id = p.id
       LEFT JOIN trending_topics t ON t.id = pt.topic_id
       WHERE (lower(t.concept) = ? OR lower(t.display_name) = ? OR lower(p.content) LIKE ?)
+        AND (p.is_silenced IS NULL OR p.is_silenced = 0)
         ${visFilter.sql}
         ${artifactFilter.sql}
-      ORDER BY p.created_at DESC
+        ${modFilter.sql}
+      ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `;
 
@@ -8914,6 +8824,7 @@ export class LibraryDatabase {
       `%#${cleanConcept}%`,
       ...visFilter.params,
       ...artifactFilter.params,
+      ...modFilter.params,
       limit,
       offset,
     ];
@@ -8949,12 +8860,30 @@ export class LibraryDatabase {
     return this.#db
       .prepare(
         `
-        SELECT r.*, u.username, u.display_name, COALESCE(r.avatar_url, u.avatar_url) as avatar_url
+        SELECT
+          r.*,
+          u.username,
+          u.display_name,
+          COALESCE(r.avatar_url, u.avatar_url) as avatar_url,
+          (
+            COUNT(DISTINCT r.user_id) * 15 +
+            MAX(COALESCE(r.pinned, 0)) * 8 +
+            (SELECT COUNT(*) FROM repo_webhooks rw WHERE rw.repo_id = r.id AND rw.is_active = 1) * 10 +
+            (SELECT COUNT(*) FROM repo_bot_reviews br WHERE br.repo_id = r.id) * 8 +
+            (SELECT COUNT(*) FROM follows f WHERE f.following_id = r.user_id AND (f.state = 'accepted' OR f.state IS NULL)) * 3 +
+            (
+              SELECT COUNT(*) FROM posts p
+              WHERE p.reply_to_id IS NULL
+                AND COALESCE(p.visibility, 'public') = 'public'
+                AND LOWER(COALESCE(p.content, '')) LIKE '%' || LOWER(r.namespace || '/' || r.project) || '%'
+            ) * 12
+          ) as popularity_score
         FROM linked_repos r
         JOIN users u ON r.user_id = u.id
         WHERE COALESCE(r.visibility, 'public') = 'public'
+          AND COALESCE(u.status, 'active') = 'active'
         GROUP BY r.provider, r.namespace, r.project
-        ORDER BY r.pinned DESC, r.id ASC
+        ORDER BY popularity_score DESC, MAX(COALESCE(r.pinned, 0)) DESC, MIN(r.id) ASC
         LIMIT ?
       `,
       )
@@ -9348,57 +9277,144 @@ export class LibraryDatabase {
   // ── Global Search ───────────────────────────────────────────────
 
   globalSearch(query: string, limitPerCategory: number = 3) {
-    const safeQuery = query.trim();
-    if (!safeQuery) {
+    const tokens = query
+      .trim()
+      .split(/\s+/)
+      .map((t) => t.replace(/^#/, ""))
+      .filter(Boolean)
+      .slice(0, 10);
+    if (tokens.length === 0) {
       return { topics: [], users: [], packages: [], repositories: [] };
     }
-    const likeQuery = `%${safeQuery}%`;
+
+    const primaryToken = tokens[0]!.toLowerCase();
+    const prefixPattern = `${primaryToken}%`;
+
+    const topicClauses = tokens
+      .map(() => `(t.display_name LIKE ? COLLATE NOCASE OR t.concept LIKE ? COLLATE NOCASE)`)
+      .join(" AND ");
+    const topicParams = tokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`]);
 
     const topics = this.#db
       .prepare(
         `
-      SELECT id, display_name, current_score 
-      FROM trending_topics 
-      WHERE display_name LIKE ? COLLATE NOCASE
-      ORDER BY current_score DESC LIMIT ?
+      SELECT t.id, t.display_name, MAX(t.current_score) as current_score
+      FROM trending_topics t
+      WHERE (${topicClauses})
+        AND COALESCE(t.review_status, 'approved') != 'rejected'
+        AND EXISTS (
+          SELECT 1 FROM post_topics pt
+          JOIN posts p ON p.id = pt.post_id
+          WHERE pt.topic_id = t.id
+            AND COALESCE(p.visibility, 'public') = 'public'
+            AND COALESCE(p.is_silenced, 0) = 0
+        )
+      GROUP BY LOWER(t.display_name)
+      ORDER BY
+        CASE
+          WHEN LOWER(t.concept) = ? OR LOWER(t.display_name) = ? THEN 2
+          WHEN LOWER(t.concept) LIKE ? OR LOWER(t.display_name) LIKE ? THEN 1
+          ELSE 0
+        END DESC,
+        current_score DESC
+      LIMIT ?
     `,
       )
-      .all(likeQuery, limitPerCategory);
+      .all(...topicParams, primaryToken, primaryToken, prefixPattern, prefixPattern, limitPerCategory);
+
+    const userClauses = tokens
+      .map(
+        () =>
+          `(username LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE OR COALESCE(bio, '') LIKE ? COLLATE NOCASE)`,
+      )
+      .join(" AND ");
+    const userParams = tokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`, `%${tok}%`]);
 
     const users = this.#db
       .prepare(
         `
       SELECT id, username, display_name, avatar_url, bio 
       FROM users 
-      WHERE (username LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE)
+      WHERE (${userClauses})
         AND COALESCE(indexable, 1) = 1
-      ORDER BY id DESC LIMIT ?
+        AND COALESCE(status, 'active') = 'active'
+      ORDER BY
+        CASE
+          WHEN LOWER(username) = ? OR LOWER(COALESCE(display_name, '')) = ? THEN 3
+          WHEN LOWER(username) LIKE ? OR LOWER(COALESCE(display_name, '')) LIKE ? THEN 2
+          WHEN LOWER(username) LIKE ? THEN 1
+          ELSE 0
+        END DESC,
+        (SELECT COUNT(*) FROM follows f WHERE f.following_id = users.id AND (f.state = 'accepted' OR f.state IS NULL)) DESC,
+        id DESC
+      LIMIT ?
     `,
       )
-      .all(likeQuery, likeQuery, limitPerCategory);
+      .all(
+        ...userParams,
+        primaryToken,
+        primaryToken,
+        prefixPattern,
+        prefixPattern,
+        `%${primaryToken}%`,
+        limitPerCategory,
+      );
+
+    const pkgClauses = tokens
+      .map(() => `(name LIKE ? COLLATE NOCASE OR COALESCE(description, '') LIKE ? COLLATE NOCASE)`)
+      .join(" AND ");
+    const pkgParams = tokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`]);
 
     const packages = this.#db
       .prepare(
         `
       SELECT id, name, description
       FROM packages 
-      WHERE name LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE
-      ORDER BY id DESC LIMIT ?
+      WHERE (${pkgClauses})
+      ORDER BY
+        CASE
+          WHEN LOWER(name) = ? THEN 3
+          WHEN LOWER(name) LIKE ? THEN 2
+          WHEN LOWER(name) LIKE ? THEN 1
+          ELSE 0
+        END DESC,
+        (SELECT COUNT(*) FROM package_versions pv WHERE pv.package_id = packages.id) DESC,
+        id DESC
+      LIMIT ?
     `,
       )
-      .all(likeQuery, likeQuery, limitPerCategory);
+      .all(...pkgParams, primaryToken, prefixPattern, `%${primaryToken}%`, limitPerCategory);
+
+    const repoClauses = tokens
+      .map(
+        () =>
+          `(namespace LIKE ? COLLATE NOCASE OR project LIKE ? COLLATE NOCASE OR COALESCE(description, '') LIKE ? COLLATE NOCASE)`,
+      )
+      .join(" AND ");
+    const repoParams = tokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`, `%${tok}%`]);
 
     const repositories = this.#db
       .prepare(
         `
       SELECT id, provider, namespace, project, description, avatar_url
       FROM linked_repos 
-      WHERE namespace LIKE ? COLLATE NOCASE OR project LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE
+      WHERE (${repoClauses})
+        AND COALESCE(visibility, 'public') = 'public'
       GROUP BY provider, namespace, project
-      ORDER BY id DESC LIMIT ?
+      ORDER BY
+        CASE
+          WHEN LOWER(project) = ? THEN 3
+          WHEN LOWER(project) LIKE ? OR LOWER(namespace) LIKE ? THEN 2
+          WHEN LOWER(project) LIKE ? THEN 1
+          ELSE 0
+        END DESC,
+        MAX(COALESCE(pinned, 0)) DESC,
+        COUNT(DISTINCT user_id) DESC,
+        id DESC
+      LIMIT ?
     `,
       )
-      .all(likeQuery, likeQuery, likeQuery, limitPerCategory);
+      .all(...repoParams, primaryToken, prefixPattern, prefixPattern, `%${primaryToken}%`, limitPerCategory);
 
     return { topics, users, packages, repositories };
   }
@@ -9423,10 +9439,19 @@ export class LibraryDatabase {
   storeClassMetadata(libraryName: string, libraryVersion: string, cls: ClassMetadata): void {
     const result = this.#db
       .prepare(
-        `INSERT OR REPLACE INTO classes (library_name, library_version, class_name, class_kind, description, documentation)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO classes (library_name, library_version, class_name, class_kind, description, documentation, icon_hash, diagram_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(libraryName, libraryVersion, cls.className, cls.classKind, cls.description, cls.documentation);
+      .run(
+        libraryName,
+        libraryVersion,
+        cls.className,
+        cls.classKind,
+        cls.description,
+        cls.documentation,
+        cls.iconHash ?? null,
+        cls.diagramHash ?? null,
+      );
 
     const classId = result.lastInsertRowid;
 
@@ -9497,7 +9522,7 @@ export class LibraryDatabase {
     libraryVersion: string,
     opts?: { kind?: string | undefined; q?: string | undefined },
   ): Omit<ClassRow, "id">[] {
-    let sql = `SELECT class_name, class_kind, description, documentation FROM classes
+    let sql = `SELECT class_name, class_kind, description, documentation, icon_hash, diagram_hash FROM classes
                WHERE library_name = ? AND library_version = ?`;
     const params: (string | number)[] = [libraryName, libraryVersion];
 
@@ -9514,6 +9539,74 @@ export class LibraryDatabase {
     sql += ` ORDER BY class_name`;
 
     return this.#db.prepare(sql).all(...params) as Omit<ClassRow, "id">[];
+  }
+
+  /**
+   * Retrieve the boundary icon_hash map (className -> iconHash) for a library version.
+   * Used for O(1) cross-library Merkle dependency hashing.
+   */
+  getClassIconHashes(libraryName: string, libraryVersion: string): Map<string, string> {
+    const rows = this.#db
+      .prepare(
+        `SELECT class_name, icon_hash FROM classes
+         WHERE library_name = ? AND library_version = ? AND icon_hash IS NOT NULL`,
+      )
+      .all(libraryName, libraryVersion) as { class_name: string; icon_hash: string }[];
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      map.set(row.class_name, row.icon_hash);
+    }
+    return map;
+  }
+
+  /**
+   * Find the closest already-indexed version of `libraryName` (excluding `excludeVersion`)
+   * and return its full ClassMetadata + Merkle hashes keyed by className for incremental reuse.
+   */
+  getPreviousVersionClassHashes(
+    libraryName: string,
+    excludeVersion?: string,
+  ): {
+    version: string;
+    classes: Map<string, ClassMetadata & { iconHash: string | null; diagramHash: string | null }>;
+  } | null {
+    const versionRows = this.#db
+      .prepare(
+        `SELECT library_version, COUNT(*) AS cnt FROM classes
+         WHERE library_name = ? AND (? IS NULL OR library_version != ?)
+         GROUP BY library_version
+         HAVING cnt > 0`,
+      )
+      .all(libraryName, excludeVersion ?? null, excludeVersion ?? null) as {
+      library_version: string;
+      cnt: number;
+    }[];
+
+    if (versionRows.length === 0) return null;
+
+    versionRows.sort((a, b) => {
+      const va = semver.valid(a.library_version);
+      const vb = semver.valid(b.library_version);
+      if (va && vb) return semver.rcompare(va, vb);
+      return b.cnt - a.cnt;
+    });
+
+    const chosenVersion = versionRows[0]!.library_version;
+    const allClasses = this.getAllClasses(libraryName, chosenVersion);
+    const map = new Map<string, ClassMetadata & { iconHash: string | null; diagramHash: string | null }>();
+    for (const cls of allClasses) {
+      map.set(cls.className, {
+        className: cls.className,
+        classKind: cls.classKind,
+        description: cls.description,
+        documentation: cls.documentation,
+        baseClasses: cls.extends,
+        components: cls.components,
+        iconHash: cls.iconHash ?? null,
+        diagramHash: cls.diagramHash ?? null,
+      });
+    }
+    return { version: chosenVersion, classes: map };
   }
 
   /**
@@ -9547,16 +9640,25 @@ export class LibraryDatabase {
     classKind: string;
     description: string | null;
     documentation: string | null;
+    iconHash: string | null;
+    diagramHash: string | null;
     extends: string[];
     components: (Omit<ComponentRow, "id" | "class_id"> & { modifiers: Omit<ModifierRow, "id" | "component_id">[] })[];
   } | null {
     const cls = this.#db
       .prepare(
-        `SELECT id, class_kind, description, documentation FROM classes
+        `SELECT id, class_kind, description, documentation, icon_hash, diagram_hash FROM classes
          WHERE library_name = ? AND library_version = ? AND class_name = ?`,
       )
       .get(libraryName, libraryVersion, className) as
-      | { id: number; class_kind: string; description: string | null; documentation: string | null }
+      | {
+          id: number;
+          class_kind: string;
+          description: string | null;
+          documentation: string | null;
+          icon_hash: string | null;
+          diagram_hash: string | null;
+        }
       | undefined;
 
     if (!cls) return null;
@@ -9593,6 +9695,8 @@ export class LibraryDatabase {
       classKind: cls.class_kind,
       description: cls.description,
       documentation: cls.documentation,
+      iconHash: cls.icon_hash ?? null,
+      diagramHash: cls.diagram_hash ?? null,
       extends: extendsRows.map((r) => r.base_class),
       components,
     };
@@ -9609,6 +9713,8 @@ export class LibraryDatabase {
     classKind: string;
     description: string | null;
     documentation: string | null;
+    iconHash: string | null;
+    diagramHash: string | null;
     extends: string[];
     components: {
       name: string;
@@ -9621,7 +9727,7 @@ export class LibraryDatabase {
   }[] {
     const classRows = this.#db
       .prepare(
-        `SELECT id, class_name, class_kind, description, documentation FROM classes
+        `SELECT id, class_name, class_kind, description, documentation, icon_hash, diagram_hash FROM classes
          WHERE library_name = ? AND library_version = ? ORDER BY class_name`,
       )
       .all(libraryName, libraryVersion) as {
@@ -9630,6 +9736,8 @@ export class LibraryDatabase {
       class_kind: string;
       description: string | null;
       documentation: string | null;
+      icon_hash: string | null;
+      diagram_hash: string | null;
     }[];
 
     const getExtends = this.#db.prepare(`SELECT base_class FROM extends WHERE class_id = ?`);
@@ -9660,6 +9768,8 @@ export class LibraryDatabase {
         classKind: cls.class_kind,
         description: cls.description,
         documentation: cls.documentation,
+        iconHash: cls.icon_hash ?? null,
+        diagramHash: cls.diagram_hash ?? null,
         extends: extendsRows.map((r) => r.base_class),
         components,
       };
@@ -10176,6 +10286,52 @@ export class LibraryDatabase {
     return row ?? null;
   }
 
+  updateOrganization(
+    orgId: number,
+    updates: {
+      name?: string | undefined;
+      display_name?: string | null | undefined;
+      description?: string | null | undefined;
+      website?: string | null | undefined;
+      billing_email?: string | null | undefined;
+      avatar_url?: string | null | undefined;
+    },
+  ): OrganizationRecord | null {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+
+    if (updates.name !== undefined) {
+      fields.push("name = ?");
+      values.push(updates.name);
+    }
+    if (updates.display_name !== undefined) {
+      fields.push("display_name = ?");
+      values.push(updates.display_name);
+    }
+    if (updates.description !== undefined) {
+      fields.push("description = ?");
+      values.push(updates.description);
+    }
+    if (updates.website !== undefined) {
+      fields.push("website = ?");
+      values.push(updates.website);
+    }
+    if (updates.billing_email !== undefined) {
+      fields.push("billing_email = ?");
+      values.push(updates.billing_email);
+    }
+    if (updates.avatar_url !== undefined) {
+      fields.push("avatar_url = ?");
+      values.push(updates.avatar_url);
+    }
+
+    if (fields.length > 0) {
+      values.push(orgId);
+      this.#db.prepare(`UPDATE organizations SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    }
+    return this.getOrganizationById(orgId);
+  }
+
   getUserOrganizations(userId: number): (OrganizationRecord & { role: OrgRole })[] {
     return this.#db
       .prepare(
@@ -10648,6 +10804,248 @@ export class LibraryDatabase {
       latest_version: string | null;
       modified_at: string;
     }[];
+  }
+
+  /**
+   * Batch snapshot for /api/v1/libraries discovery and ranking.
+   * Replaces 10*N synchronous per-package SQLite queries with a constant number of bulk queries.
+   */
+  getLibraryDiscoverySnapshot(currentUserId?: number) {
+    this.analyticsBuffer?.flushSync();
+
+    if (currentUserId) {
+      this.deriveUserTopics(currentUserId);
+    }
+
+    const pkgRows = this.#db.prepare(`SELECT id, name, description, license, modified_at FROM packages`).all() as {
+      id: number;
+      name: string;
+      description: string | null;
+      license: string | null;
+      modified_at: string;
+    }[];
+
+    const packagesByName = new Map<
+      string,
+      { id: number; name: string; description: string | null; license: string | null; modified_at: string }
+    >();
+    const canonicalNameByLower = new Map<string, string>();
+    for (const row of pkgRows) {
+      packagesByName.set(row.name, row);
+      canonicalNameByLower.set(row.name.toLowerCase(), row.name);
+    }
+
+    const versionRows = this.#db
+      .prepare(
+        `SELECT id, package_id, version, manifest, published_at FROM package_versions ORDER BY published_at DESC`,
+      )
+      .all() as {
+      id: number;
+      package_id: number;
+      version: string;
+      manifest: string;
+      published_at: string;
+    }[];
+
+    const versionsByPackageId = new Map<
+      number,
+      { id: number; version: string; manifest: string; published_at: string }[]
+    >();
+    const versionByPkgAndVer = new Map<
+      string,
+      { id: number; version: string; manifest: string; published_at: string }
+    >();
+
+    for (const v of versionRows) {
+      let list = versionsByPackageId.get(v.package_id);
+      if (!list) {
+        list = [];
+        versionsByPackageId.set(v.package_id, list);
+      }
+      list.push(v);
+      versionByPkgAndVer.set(`${v.package_id}@${v.version}`, v);
+    }
+
+    const latestTagRows = this.#db.prepare(`SELECT package_id, version FROM dist_tags WHERE tag = 'latest'`).all() as {
+      package_id: number;
+      version: string;
+    }[];
+    const latestTagByPackageId = new Map<number, string>();
+    for (const dt of latestTagRows) {
+      latestTagByPackageId.set(dt.package_id, dt.version);
+    }
+
+    // Compute reverse dependency counts in O(N) over latest manifests
+    const dependentsCountByName = new Map<string, number>();
+    for (const pkg of pkgRows) {
+      const latestVerStr = latestTagByPackageId.get(pkg.id) ?? versionsByPackageId.get(pkg.id)?.[0]?.version;
+      const latestVerRow = latestVerStr ? versionByPkgAndVer.get(`${pkg.id}@${latestVerStr}`) : undefined;
+      if (!latestVerRow?.manifest) continue;
+      try {
+        const parsed = JSON.parse(latestVerRow.manifest) as Record<string, unknown>;
+        const msx =
+          parsed["modelscript"] && typeof parsed["modelscript"] === "object"
+            ? (parsed["modelscript"] as Record<string, unknown>)
+            : undefined;
+        const depsObj = {
+          ...(parsed["dependencies"] && typeof parsed["dependencies"] === "object"
+            ? (parsed["dependencies"] as Record<string, unknown>)
+            : {}),
+          ...(msx?.["dependencies"] && typeof msx["dependencies"] === "object"
+            ? (msx["dependencies"] as Record<string, unknown>)
+            : {}),
+        };
+        const seenDeps = new Set<string>();
+        for (const rawDep of Object.keys(depsObj)) {
+          const depLower = rawDep.toLowerCase();
+          if (depLower === pkg.name.toLowerCase() || seenDeps.has(depLower)) continue;
+          seenDeps.add(depLower);
+          const targetName = canonicalNameByLower.get(depLower) ?? rawDep;
+          dependentsCountByName.set(targetName, (dependentsCountByName.get(targetName) ?? 0) + 1);
+        }
+      } catch {
+        // ignore invalid manifest JSON
+      }
+    }
+
+    const releaseRows = this.#db
+      .prepare(
+        `SELECT lr.library_name, lr.library_version, lr.published_at, lr.published_by,
+                lr.is_deprecated, lr.deprecation_reason, lr.is_yanked,
+                u.username AS publisher_username
+         FROM library_releases lr
+         LEFT JOIN users u ON u.id = lr.published_by`,
+      )
+      .all() as {
+      library_name: string;
+      library_version: string;
+      published_at: string;
+      published_by: number | null;
+      is_deprecated: number;
+      deprecation_reason: string | null;
+      is_yanked: number;
+      publisher_username: string | null;
+    }[];
+
+    const releasesByKey = new Map<
+      string,
+      {
+        published_at: string;
+        published_by: number | null;
+        is_deprecated: number;
+        deprecation_reason: string | null;
+        is_yanked: number;
+        publisher_username: string | null;
+      }
+    >();
+    for (const r of releaseRows) {
+      releasesByKey.set(`${r.library_name}@${r.library_version}`, r);
+    }
+
+    const start30d = new Date(Date.now() - 30 * 86400 * 1000).toISOString().slice(0, 10);
+    const start7d = new Date(Date.now() - 7 * 86400 * 1000).toISOString().slice(0, 10);
+    const downloadRows = this.#db
+      .prepare(
+        `SELECT
+           library_name,
+           COALESCE(SUM(downloads_count), 0) AS total_downloads,
+           COALESCE(SUM(CASE WHEN download_date >= ? THEN downloads_count ELSE 0 END), 0) AS downloads_30d,
+           COALESCE(SUM(CASE WHEN download_date >= ? THEN downloads_count ELSE 0 END), 0) AS downloads_7d
+         FROM package_downloads_daily
+         GROUP BY library_name`,
+      )
+      .all(start30d, start7d) as {
+      library_name: string;
+      total_downloads: number;
+      downloads_30d: number;
+      downloads_7d: number;
+    }[];
+
+    const downloadsByName = new Map<string, { totalDownloads: number; downloads30d: number; downloads7d: number }>();
+    for (const d of downloadRows) {
+      downloadsByName.set(d.library_name, {
+        totalDownloads: d.total_downloads,
+        downloads30d: d.downloads_30d,
+        downloads7d: d.downloads_7d,
+      });
+    }
+
+    const classSummaryRows = this.#db
+      .prepare(
+        `SELECT
+           library_name,
+           library_version,
+           COUNT(*) AS class_count,
+           MAX(CASE WHEN LOWER(class_kind) LIKE '%sysml%' THEN 1 ELSE 0 END) AS has_sysml
+         FROM classes
+         GROUP BY library_name, library_version`,
+      )
+      .all() as {
+      library_name: string;
+      library_version: string;
+      class_count: number;
+      has_sysml: number;
+    }[];
+
+    const classSummaryByKey = new Map<string, { classCount: number; hasSysml: boolean }>();
+    for (const c of classSummaryRows) {
+      classSummaryByKey.set(`${c.library_name}@${c.library_version}`, {
+        classCount: c.class_count,
+        hasSysml: c.has_sysml === 1,
+      });
+    }
+
+    const artifactRows = this.#db
+      .prepare(
+        `SELECT version_id, LOWER(type) AS type, COUNT(*) AS cnt
+         FROM artifacts
+         GROUP BY version_id, LOWER(type)`,
+      )
+      .all() as { version_id: number; type: string; cnt: number }[];
+
+    const artifactsByVersionId = new Map<number, { type: string; count: number }[]>();
+    for (const a of artifactRows) {
+      let list = artifactsByVersionId.get(a.version_id);
+      if (!list) {
+        list = [];
+        artifactsByVersionId.set(a.version_id, list);
+      }
+      list.push({ type: a.type, count: a.cnt });
+    }
+
+    let viewerPersona: string | null = null;
+    const activeTopics = new Set<string>();
+    const dismissedTopics = new Set<string>();
+
+    if (currentUserId) {
+      const uRow = this.#db.prepare(`SELECT engineering_persona FROM users WHERE id = ?`).get(currentUserId) as
+        | { engineering_persona?: string | null }
+        | undefined;
+      viewerPersona = uRow?.engineering_persona ?? null;
+
+      const tRows = this.#db
+        .prepare(`SELECT concept AS topic, is_active FROM user_topics WHERE user_id = ?`)
+        .all(currentUserId) as { topic: string; is_active: number }[];
+      for (const t of tRows) {
+        const clean = t.topic.replace(/^#+/, "").toLowerCase();
+        if (t.is_active === 1) activeTopics.add(clean);
+        else dismissedTopics.add(clean);
+      }
+    }
+
+    return {
+      packagesByName,
+      versionsByPackageId,
+      versionByPkgAndVer,
+      releasesByKey,
+      downloadsByName,
+      classSummaryByKey,
+      artifactsByVersionId,
+      dependentsCountByName,
+      viewerPersona,
+      activeTopics,
+      dismissedTopics,
+    };
   }
 
   /**

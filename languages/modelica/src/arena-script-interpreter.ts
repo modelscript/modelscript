@@ -678,7 +678,9 @@ export class ArenaScriptInterpreter {
     // The calibration template stores CSV content in the workspace.
     // We'll attempt to parse it from the scope's class definitions.
     // For the scripted flow, we generate synthetic measurement data inline.
-    if (measurementFile) {
+    const isSyntheticRequest = !measurementFile || measurementFile === "synthetic" || measurementFile === "auto";
+
+    if (!isSyntheticRequest) {
       this.print(`Loading measurement data from: ${measurementFile}`);
       let loadedFromDisk = false;
       try {
@@ -725,16 +727,16 @@ export class ArenaScriptInterpreter {
           }
         }
       } catch {
-        // Fallback to synthetic measurements if disk read fails
+        loadedFromDisk = false;
       }
       if (!loadedFromDisk) {
-        if (measurementFile && measurementFile !== "synthetic") {
-          this.print(`Warning: Could not load measurement data from '${measurementFile}'; using synthetic fallback.`);
-        }
-        const measData = this.generateSyntheticMeasurements(arena, stopTime, paramNames);
-        for (const [varName, data] of measData) {
-          measurements.set(varName, data);
-        }
+        this.print(`Error: Measurement file '${measurementFile}' not found or could not be loaded.`);
+        return;
+      }
+    } else {
+      const measData = this.generateSyntheticMeasurements(arena, stopTime, paramNames);
+      for (const [varName, data] of measData) {
+        measurements.set(varName, data);
       }
     }
 

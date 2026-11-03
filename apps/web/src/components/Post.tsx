@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { SyncIcon } from "@primer/octicons-react";
+import { PinIcon, SyncIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -35,11 +35,21 @@ export type { PostProps } from "./post/styles";
 
 const ComposeModal = React.lazy(() => import("./ComposeModal"));
 
-const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
+const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinnedProp }) => {
   const navigate = useNavigate();
   const { token, user } = useAuth();
   const toast = useToast();
   const basePost = post.repost_post || post;
+  const isPinned =
+    isPinnedProp ??
+    Boolean(
+      post.is_pinned ||
+      post.pinned ||
+      basePost.is_pinned ||
+      basePost.pinned ||
+      post.metadata?.is_pinned ||
+      post.metadata?.pinned,
+    );
   const [editedOverrides, setEditedOverrides] = useState<Record<string, any>>({});
   useEffect(() => {
     setEditedOverrides({});
@@ -342,6 +352,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     },
     token,
     remoteOriginUrl,
+    isPinned,
   };
 
   const bodyContentProps = {
@@ -359,6 +370,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     },
     showAiDetails,
     setShowAiDetails,
+    authorHeaderProps,
   };
 
   const actionsBarProps = {
@@ -368,6 +380,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     liked,
     likeCount,
     bookmarked,
+    bookmarkCount,
     impressions,
     hasAttachment,
     token,
@@ -437,6 +450,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 ...updatedPost,
                 content: updatedPost.content ?? prev.content ?? displayPost.content,
               }));
+              window.dispatchEvent(new CustomEvent("modelscript:post-updated", { detail: updatedPost }));
             }
           }}
         />
@@ -492,10 +506,25 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
   ) : null;
 
   if (isDetail) {
+    const isEditorialDetail = Boolean(isNotebook && notebookData && notebookData.cells.length > 0);
     return (
       <>
-        <PostWrapper $isDetail={true} $isThread={isThread}>
-          <PostAuthorHeader {...authorHeaderProps} />
+        <PostWrapper $isDetail={true} $isThread={isThread} data-pinned-post={isPinned ? "true" : undefined}>
+          {isPinned && (
+            <Box
+              display="flex"
+              alignItems="center"
+              gap={2}
+              style={{ color: "var(--color-fg-muted)", lineHeight: "16px", fontWeight: 700 }}
+              fontSize="13px"
+              mb={1}
+              aria-label="Pinned Post"
+            >
+              <PinIcon size={14} />
+              <span>Pinned</span>
+            </Box>
+          )}
+          {!isEditorialDetail && <PostAuthorHeader {...authorHeaderProps} />}
           <PostBodyContent {...bodyContentProps} />
           {displayPost.quote_post && (
             <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor as any} />
@@ -514,11 +543,12 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
         ref={postContainerRef}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("a, button")) return;
+          if (showPostMenu) return;
           navigate(`/${displayPost.username}/status/${displayPost.id}`);
         }}
         style={{ textDecoration: "none", color: "inherit", display: "block" }}
       >
-        <PostWrapper $isDetail={false} $isThread={isThread}>
+        <PostWrapper $isDetail={false} $isThread={isThread} data-pinned-post={isPinned ? "true" : undefined}>
           <Box
             display="flex"
             flexDirection="column"
@@ -526,6 +556,29 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             flex={1}
             style={{ minWidth: 0, maxWidth: "100%", width: "100%" }}
           >
+            {isPinned && (
+              <Box
+                display="flex"
+                alignItems="center"
+                gap={3}
+                style={{ color: "var(--color-fg-muted)", lineHeight: "16px", fontWeight: 700 }}
+                fontSize="13px"
+                mb={0.5}
+                aria-label="Pinned Post"
+              >
+                <Box
+                  display="flex"
+                  justifyContent="flex-end"
+                  alignItems="center"
+                  style={{ width: "40px", flexShrink: 0 }}
+                >
+                  <PinIcon size={14} />
+                </Box>
+                <Box flex={1} style={{ minWidth: 0 }}>
+                  <span>Pinned</span>
+                </Box>
+              </Box>
+            )}
             {post.repost_post && (
               <Box
                 display="flex"

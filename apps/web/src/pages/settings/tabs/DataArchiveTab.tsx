@@ -229,6 +229,27 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
     return hrs > 0 ? `${hrs}h ${mins}m TTL` : `${mins}m TTL`;
   };
 
+  const formatDate = (iso?: string | null): string => {
+    if (!iso) return "—";
+    const normalized = iso.includes("T") ? iso : iso.replace(" ", "T") + (iso.endsWith("Z") ? "" : "Z");
+    const d = new Date(normalized);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString();
+  };
+
+  const isPollingJob = Boolean(archiveJob && (archiveJob.status === "queued" || archiveJob.status === "processing"));
+
+  const handleRefreshJobStatus = async () => {
+    try {
+      const updated = await getUserDataArchiveStatus(archiveJob?.id);
+      if (updated) {
+        setArchiveJob(updated);
+      }
+    } catch {
+      // Ignore refresh error
+    }
+  };
+
   return (
     <>
       <Header>
@@ -340,7 +361,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
             <Box display="flex" gap={2} flexWrap="wrap">
               <SecondaryButton
                 type="button"
-                onClick={() => navigate(`/repos/local/${username}/activity`)}
+                onClick={() => navigate(repoStatus?.webRepoPath || `/${username}/activity`)}
                 style={{ padding: "5px 10px", fontSize: "12px" }}
               >
                 <FileDirectoryIcon size={14} />
@@ -348,7 +369,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
               </SecondaryButton>
               <SecondaryButton
                 type="button"
-                onClick={() => navigate(`/repos/local/${username}/activity/ide?ref=main`)}
+                onClick={() => navigate(repoStatus?.webIdePath || `/${username}/activity?ide=1`)}
                 style={{ padding: "5px 10px", fontSize: "12px" }}
               >
                 <CodeIcon size={14} />
@@ -668,7 +689,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
                 <span>
                   Concurrency Limit: <strong>{archiveJob.concurrency || 2} jobs</strong>
                 </span>
-                <span>Enqueued: {new Date(archiveJob.createdAt).toLocaleTimeString()}</span>
+                <span>Enqueued: {formatDate(archiveJob.createdAt)}</span>
               </Box>
             </Box>
           </Box>
@@ -693,7 +714,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
             </Box>
             <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.5", display: "block", marginBottom: "16px" }}>
               Your {archiveJob.format.toUpperCase()} data archive was generated successfully on{" "}
-              {new Date(archiveJob.completedAt || "").toLocaleString()}
+              {formatDate(archiveJob.completedAt || archiveJob.createdAt)}
               {archiveJob.fileSizeBytes ? ` (${(archiveJob.fileSizeBytes / 1024).toFixed(1)} KB)` : ""}. Staged securely
               on our server for 24 hours.
             </DetailSubtitle>
@@ -739,10 +760,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
             <PrimaryButton
               type="button"
               onClick={() => handleRequestArchiveJob("zip")}
-              disabled={
-                isSubmittingArchiveJob ||
-                (archiveJob !== null && (archiveJob.status === "queued" || archiveJob.status === "processing"))
-              }
+              disabled={isSubmittingArchiveJob || isPollingJob}
             >
               <DownloadIcon size={16} />
               {isSubmittingArchiveJob ? "Queueing..." : "Queue Complete Archive (.ZIP with HTML Viewer)"}
@@ -751,14 +769,18 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
             <SecondaryButton
               type="button"
               onClick={() => handleRequestArchiveJob("json")}
-              disabled={
-                isSubmittingArchiveJob ||
-                (archiveJob !== null && (archiveJob.status === "queued" || archiveJob.status === "processing"))
-              }
+              disabled={isSubmittingArchiveJob || isPollingJob}
             >
               <FileCodeIcon size={16} />
               Queue Raw Data (.JSON)
             </SecondaryButton>
+
+            {!isPollingJob && (
+              <SecondaryButton type="button" onClick={() => void handleRefreshJobStatus()}>
+                <SyncIcon size={14} />
+                Refresh Job Status
+              </SecondaryButton>
+            )}
 
             <SecondaryButton
               type="button"

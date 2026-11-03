@@ -2,6 +2,7 @@
 
 import { CheckIcon, ChevronDownIcon, GlobeIcon } from "@primer/octicons-react";
 import React from "react";
+import { scrollToTop } from "../../../components/ScrollToTop";
 import { SortMenu, Tab, TabBar, TabText } from "../styles";
 
 export interface FeedTabBarProps {
@@ -40,11 +41,13 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
       e.preventDefault();
       const nextTab = tabs[(idx + 1) % tabs.length]!;
       setActiveTab(nextTab);
+      scrollToTop({ smooth: false });
       document.getElementById(`feed-tab-${nextTab}`)?.focus();
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       const prevTab = tabs[(idx - 1 + tabs.length) % tabs.length]!;
       setActiveTab(prevTab);
+      scrollToTop({ smooth: false });
       document.getElementById(`feed-tab-${prevTab}`)?.focus();
     }
   };
@@ -58,7 +61,14 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
         aria-controls="feed-tabpanel"
         tabIndex={activeTab === "forYou" ? 0 : -1}
         $active={activeTab === "forYou"}
-        onClick={() => setActiveTab("forYou")}
+        onClick={() => {
+          if (activeTab === "forYou") {
+            scrollToTop({ smooth: true });
+          } else {
+            setActiveTab("forYou");
+            scrollToTop({ smooth: false });
+          }
+        }}
         onKeyDown={(e) => handleKeyDownTab(e, "forYou")}
       >
         <TabText $active={activeTab === "forYou"}>For you</TabText>
@@ -76,6 +86,7 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
               setShowSortMenu(!showSortMenu);
             } else {
               setActiveTab("following");
+              scrollToTop({ smooth: false });
             }
           }}
           onKeyDown={(e) => handleKeyDownTab(e, "following")}
@@ -99,6 +110,7 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
                 e.stopPropagation();
                 setFollowingSort("popular");
                 setShowSortMenu(false);
+                scrollToTop({ smooth: true });
               }}
             >
               Popular {followingSort === "popular" && <CheckIcon size={16} fill="var(--color-accent-cyan)" />}
@@ -110,6 +122,7 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
                 e.stopPropagation();
                 setFollowingSort("recent");
                 setShowSortMenu(false);
+                scrollToTop({ smooth: true });
               }}
             >
               Recent {followingSort === "recent" && <CheckIcon size={16} fill="var(--color-accent-cyan)" />}
@@ -124,7 +137,14 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
         aria-controls="feed-tabpanel"
         tabIndex={activeTab === "federated" ? 0 : -1}
         $active={activeTab === "federated"}
-        onClick={() => setActiveTab("federated")}
+        onClick={() => {
+          if (activeTab === "federated") {
+            scrollToTop({ smooth: true });
+          } else {
+            setActiveTab("federated");
+            scrollToTop({ smooth: false });
+          }
+        }}
         onKeyDown={(e) => handleKeyDownTab(e, "federated")}
       >
         <TabText $active={activeTab === "federated"} style={{ display: "flex", alignItems: "center", gap: "6px" }}>

@@ -140,6 +140,12 @@ function normalizeModelicaSvg(svg: string, instanceId: string): string {
     }
   }
 
+  // 3. Pad standard [-100, 100] Modelica icon viewBox slightly so centered border strokes at ±100 are not clipped
+  out = out.replace(
+    /\bviewBox="-100(?:\.0+)?\s+-100(?:\.0+)?\s+200(?:\.0+)?\s+200(?:\.0+)?"/i,
+    'viewBox="-103 -103 206 206"',
+  );
+
   return out;
 }
 
@@ -151,7 +157,6 @@ const SvgContainer = styled.div<{ $w: number | string; $h: number | string; $thi
   height: ${(p) => (typeof p.$h === "number" ? `${p.$h}px` : p.$h)};
   flex-shrink: 0;
   line-height: 0;
-  border-radius: 4px;
 
   & > svg {
     width: 100%;
@@ -159,8 +164,7 @@ const SvgContainer = styled.div<{ $w: number | string; $h: number | string; $thi
     display: block;
     max-width: 100%;
     max-height: 100%;
-    border-radius: inherit;
-    overflow: hidden;
+    overflow: visible;
   }
 
   & svg path:not([fill]),

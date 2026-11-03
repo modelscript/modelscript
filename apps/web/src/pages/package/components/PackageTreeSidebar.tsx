@@ -15,11 +15,10 @@ import {
 } from "@primer/octicons-react";
 import { Button, Label, Text, TextInput } from "@primer/react";
 import React from "react";
-import { getIconUrl, type ArtifactViewerInfo } from "../../../api";
+import type { ArtifactViewerInfo } from "../../../api";
 import Box from "../../../components/Box";
 import { ClassTreeNode } from "../../../components/ClassTree";
 import type { TreeNode } from "../../../components/classTreeUtils";
-import InvertedSvg from "../../../components/InvertedSvg";
 import {
   ArtifactSidebarItem,
   DomainNavWrap,
@@ -58,6 +57,7 @@ export interface PackageTreeSidebarProps {
   onOpenArtifact: (av: ArtifactViewerInfo) => void;
   collapsed?: boolean | undefined;
   onToggleCollapse?: (() => void) | undefined;
+  totalClassesCount?: number | undefined;
 }
 
 function countTreeNodes(nodes: TreeNode[]): number {
@@ -71,7 +71,6 @@ function countTreeNodes(nodes: TreeNode[]): number {
 export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
   name,
   version,
-  rootClassName,
   mobileTreeOpen,
   setMobileTreeOpen,
   availableDomains,
@@ -88,20 +87,28 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
   onOpenArtifact,
   collapsed,
   onToggleCollapse,
+  totalClassesCount,
 }) => {
   const totalClassCount = countTreeNodes(filteredTree);
+  const displayClassCount = !treeSearchFilter.trim() && totalClassesCount ? totalClassesCount : totalClassCount;
+  const modelingDomainsCount = availableDomains.filter((d) =>
+    ["modelica", "sysml2", "cad", "fmu"].includes(d.id),
+  ).length;
+  const isMultiDomain = availableDomains.length > 2 && modelingDomainsCount > 1;
 
   return (
     <>
       <MobileTreeToggle type="button" onClick={() => setMobileTreeOpen((prev) => !prev)}>
         <span>
-          Browse Components &amp; Artifacts (
-          {totalClassCount +
+          Browse Symbols &amp; Components (
+          {(
+            displayClassCount +
             filteredSysml.length +
             filteredCad.length +
             filteredDatasets.length +
             filteredFmu.length +
-            filteredOther.length}
+            filteredOther.length
+          ).toLocaleString()}
           )
         </span>
         {mobileTreeOpen ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
@@ -110,44 +117,41 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
       <TreeSidebar $mobileOpen={mobileTreeOpen} $collapsed={collapsed}>
         <Box
           style={{
-            height: "72px",
-            minHeight: "72px",
+            height: "52px",
+            minHeight: "52px",
             display: "flex",
             alignItems: "center",
-            gap: "12px",
-            padding: "0 16px",
+            justifyContent: "space-between",
+            gap: "8px",
+            padding: "0 12px 0 14px",
             boxSizing: "border-box",
+            borderBottom: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.06))",
           }}
         >
-          <InvertedSvg
-            src={getIconUrl(name, version, rootClassName || name.replace(/^@[^/]+\//, ""))}
-            alt=""
-            width={32}
-            height={32}
-            style={{ flexShrink: 0 }}
-          />
-          <Box display="flex" flexDirection="column" style={{ minWidth: 0, flex: 1 }}>
-            <Box display="flex" alignItems="center" gap={1}>
-              <Text
-                style={{
-                  fontWeight: 600,
-                  fontSize: 14,
-                  color: "var(--color-text-primary)",
-                  lineHeight: 1.2,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {name}
-              </Text>
-              {availableDomains.length > 2 && (
-                <Label variant="accent" style={{ fontSize: 9, padding: "0 4px", lineHeight: "14px" }}>
-                  Polyglot
-                </Label>
-              )}
-            </Box>
-            <Text style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: "2px" }}>v{version}</Text>
+          <Box display="flex" alignItems="center" gap="8px" style={{ minWidth: 0, flex: 1 }}>
+            <FileCodeIcon size={15} fill="var(--color-text-muted)" />
+            <Text
+              style={{
+                fontWeight: 600,
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                color: "var(--color-text-muted)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Symbol Explorer
+            </Text>
+            <Label variant="secondary" style={{ fontSize: 10, padding: "0 6px", lineHeight: "16px" }}>
+              {displayClassCount.toLocaleString()}
+            </Label>
+            {isMultiDomain && (
+              <Label variant="accent" style={{ fontSize: 9, padding: "0 4px", lineHeight: "14px" }}>
+                Polyglot
+              </Label>
+            )}
           </Box>
           {onToggleCollapse && (
             <button
@@ -183,7 +187,7 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
 
         {/* Polyglot Domain Navigation Pills */}
         {availableDomains.length > 2 && (
-          <DomainNavWrap>
+          <DomainNavWrap style={{ paddingTop: 10 }}>
             {availableDomains.map((d) => {
               const IconComp = d.icon;
               return (
@@ -204,19 +208,19 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
         )}
 
         {/* Search Input */}
-        <Box style={{ padding: "0 12px 10px 12px" }}>
+        <Box style={{ padding: availableDomains.length > 2 ? "0 12px 10px 12px" : "10px 12px" }}>
           <TextInput
             leadingVisual={SearchIcon}
             placeholder={
-              selectedDomain === "modelica"
-                ? "Filter classes..."
+              selectedDomain === "modelica" || availableDomains.length <= 2
+                ? "Filter classes & symbols..."
                 : selectedDomain === "cad"
                   ? "Filter CAD parts..."
                   : selectedDomain === "sysml2"
                     ? "Filter SysML definitions..."
                     : selectedDomain === "dataset"
                       ? "Filter datasets..."
-                      : "Filter polyglot symbols..."
+                      : "Filter symbols..."
             }
             value={treeSearchFilter}
             onChange={(e) => setTreeSearchFilter(e.target.value)}
@@ -239,7 +243,7 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                     <FileCodeIcon size={13} /> Modelica Classes
                   </span>
-                  <span>{filteredTree.length}</span>
+                  <span>{displayClassCount.toLocaleString()}</span>
                 </DomainSectionHeader>
               )}
               {filteredTree.map((node) => (

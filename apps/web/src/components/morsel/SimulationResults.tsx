@@ -31,7 +31,8 @@ export function SimulationResults({
   onVariablesLoaded,
   colorMode: propColorMode,
   modelName,
-}: SimulationResultsProps & { modelName?: string | null | undefined }) {
+  onRetry,
+}: SimulationResultsProps & { modelName?: string | null | undefined; onRetry?: (() => void) | undefined }) {
   const { theme } = useTheme();
   const colorMode = propColorMode || (theme === "dark" ? "dark" : "light");
   const [data, setData] = useState<Record<string, number | string>[]>(localData || []);
@@ -571,20 +572,79 @@ export function SimulationResults({
           justifyContent: "center",
           padding: 24,
           height: "100%",
+          gap: 12,
         }}
       >
-        <div style={{ color: "var(--color-danger-fg)", fontWeight: "bold", marginBottom: 8, fontSize: 16 }}>
-          Simulation Failed
-        </div>
-        <div style={{ color: colorMode === "dark" ? "#8b949e" : "#57606a", fontSize: 14, textAlign: "center" }}>
+        <div style={{ color: "var(--color-danger-fg)", fontWeight: 700, fontSize: 15 }}>Simulation Failed</div>
+        <div
+          style={{
+            color: colorMode === "dark" ? "#8b949e" : "#57606a",
+            fontSize: 13,
+            textAlign: "center",
+            maxWidth: 480,
+            fontFamily: "var(--font-mono, monospace)",
+          }}
+        >
           {error}
         </div>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            style={{
+              marginTop: 4,
+              background: "var(--ms-brand, #0e7490)",
+              color: "#ffffff",
+              border: "1px solid var(--ms-brand, #0e7490)",
+              borderRadius: 6,
+              padding: "6px 14px",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            ↻ Retry Simulation
+          </button>
+        )}
       </div>
     );
   }
 
   if (data.length === 0) {
-    return <div style={{ padding: "32px", color: "var(--color-fg-muted)" }}>No data available to plot.</div>;
+    return (
+      <div
+        style={{
+          padding: "32px",
+          color: "var(--color-fg-muted)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100%",
+          gap: 12,
+        }}
+      >
+        <div>No data available to plot.</div>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            style={{
+              background: "var(--ms-brand, #0e7490)",
+              color: "#ffffff",
+              border: "1px solid var(--ms-brand, #0e7490)",
+              borderRadius: 6,
+              padding: "6px 14px",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            ▶ Run Simulation
+          </button>
+        )}
+      </div>
+    );
   }
 
   const allVars = simulationVariables || Object.keys(data[0] || {}).filter((k) => k !== "time");

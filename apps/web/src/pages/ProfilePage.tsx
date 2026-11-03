@@ -13,7 +13,8 @@ import { usePageTitle } from "../util/title";
 import { ProfileHeader, ReportModal, Tab, TabBar, UnblockModal, type LinkedAccount, type ProfileData } from "./profile";
 
 const ProfilePage: React.FC = () => {
-  const { username } = useParams();
+  const { username: rawUsername } = useParams();
+  const username = rawUsername?.startsWith("@") ? rawUsername.slice(1) : rawUsername;
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);

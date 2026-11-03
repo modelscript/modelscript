@@ -626,12 +626,18 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   }, [xmlText, viewConfig?.specId]);
 
   const handleOpenInPlayground = useCallback(() => {
+    const title = (viewConfig?.title as string) || diagramData.model.title || "Specification.reqif";
     const encoded = compressMorselPayload({
+      v: 1,
+      lang: "reqif" as any,
       code: xmlText,
-      dialect: "reqif",
+      title,
     });
-    navigate(`/morsel?m=${encoded}`);
-  }, [xmlText, navigate]);
+    const fromParam = viewConfig?.artifactId
+      ? `?fromArtifact=${encodeURIComponent(String(viewConfig.artifactId))}`
+      : "";
+    navigate(`/playground${fromParam}#m=${encoded}`);
+  }, [xmlText, viewConfig, diagramData.model.title, navigate]);
 
   const renderCellContent = (row: TabularRow, col: SerializedTabularColumn) => {
     const rawVal = row.cells[col.id];
@@ -1416,7 +1422,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
               </PillButton>
             )}
 
-            {!isFullScreen && (
+            {Boolean(viewConfig?.standalone) && !isFullScreen && (
               <PillButton
                 $isDark={isDark}
                 onClick={handleOpenInPlayground}

@@ -34,6 +34,10 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
   const localUser = db.createUser("bob", "bob@modelscript.test", "hashed_pwd", { emailVerified: true });
 
   await t.test("Post with local and federated mentions creates correct ActivityPub tags", async () => {
+    const emptyTrendingRes = await request(app).get("/api/v1/social/trending");
+    assert.strictEqual(emptyTrendingRes.status, 200);
+    assert.deepStrictEqual(emptyTrendingRes.body.topics, []);
+
     // Seed a remote actor in the database using getOrCreateRemoteUser
     const remoteActorUrl = "https://mastodon.energy/users/charlie";
     const remoteInbox = "https://mastodon.energy/users/charlie/inbox";
@@ -141,10 +145,15 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
     assert.strictEqual(postRes.body.post.artifact_view_id, artifactRes.body.id);
   });
 
-  await t.test("Trending Topics and Search: Has hashtags and search completions", async () => {
+  await t.test("Trending Topics and Search: Only reflects posted hashtags", async () => {
     const trendingRes = await request(app).get("/api/v1/social/trending");
     assert.strictEqual(trendingRes.status, 200);
     assert.ok(Array.isArray(trendingRes.body.topics));
+    assert.strictEqual(trendingRes.body.topics.length, 2);
+    const thermalTopic = trendingRes.body.topics.find((t: any) => t.concept === "thermal");
+    const modelicaTopic = trendingRes.body.topics.find((t: any) => t.concept === "modelica");
+    assert.strictEqual(thermalTopic?.post_count, 2);
+    assert.strictEqual(modelicaTopic?.post_count, 1);
   });
 
   await t.test("Thumbnail Upload: PUT /api/v1/social/artifact-views/:id/thumbnail", async () => {
@@ -249,12 +258,48 @@ test("Social Composer Posting Enhancements: Mentions, Federation Tags, and Packa
     assert.ok(topicPostsRes.body.posts.length >= 1);
     assert.ok(topicPostsRes.body.posts.some((p: any) => p.id === cadPostRes.body.post.id));
 
-    // 7. Test curated trending topics
+    // 7. Test trending topics only reflect real posted hashtags with post_count > 0
     const trendingRes = await request(app).get("/api/v1/social/trending?limit=10");
     assert.strictEqual(trendingRes.status, 200);
-    assert.ok(trendingRes.body.topics.length >= 8);
+    assert.strictEqual(trendingRes.body.topics.length, 6);
+    for (const t of trendingRes.body.topics) {
+      assert.ok(t.post_count >= 1, `Expected trending topic ${t.concept} to have post_count >= 1`);
+    }
     const concepts = trendingRes.body.topics.map((t: any) => t.concept.toLowerCase());
-    assert.ok(concepts.includes("aerodynamics") || concepts.includes("robotics"));
+    assert.ok(concepts.includes("aerodynamics"));
+    assert.ok(concepts.includes("cad"));
+    assert.ok(concepts.includes("robotics"));
+    assert.ok(concepts.includes("controlsystems"));
+    assert.ok(!concepts.includes("additivemfg"), "Unposted default topics must not appear in trending");
+    assert.ok(!concepts.includes("superson"), "Non-hashtag words must not be stemmed into trending topics");
+
+    // 8. Test post edit updates trending topics and post deletion removes orphaned topics
+    const tempPostRes = await request(app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({ content: "Testing transient topic #TransientTagAlpha" });
+    assert.strictEqual(tempPostRes.status, 201);
+
+    const afterCreateTrend = await request(app).get("/api/v1/social/trending?limit=10");
+    assert.ok(afterCreateTrend.body.topics.some((t: any) => t.concept === "transienttagalpha"));
+
+    const editRes = await request(app)
+      .put(`/api/v1/social/posts/${tempPostRes.body.post.id}`)
+      .set("Authorization", `Bearer ${authorToken}`)
+      .send({ content: "Edited transient topic #TransientTagBeta" });
+    assert.strictEqual(editRes.status, 200);
+
+    const afterEditTrend = await request(app).get("/api/v1/social/trending?limit=10");
+    assert.ok(!afterEditTrend.body.topics.some((t: any) => t.concept === "transienttagalpha"));
+    assert.ok(afterEditTrend.body.topics.some((t: any) => t.concept === "transienttagbeta"));
+
+    const delRes = await request(app)
+      .delete(`/api/v1/social/posts/${tempPostRes.body.post.id}`)
+      .set("Authorization", `Bearer ${authorToken}`);
+    assert.strictEqual(delRes.status, 200);
+
+    const afterDelTrend = await request(app).get("/api/v1/social/trending?limit=10");
+    assert.ok(!afterDelTrend.body.topics.some((t: any) => t.concept === "transienttagbeta"));
   });
 
   await t.test("Polyglot Artifact Viewers: FMU and SysML artifact views and timeline filtering", async () => {

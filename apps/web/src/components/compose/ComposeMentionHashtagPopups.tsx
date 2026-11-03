@@ -141,7 +141,7 @@ export const ComposeMentionHashtagPopups: React.FC<ComposeMentionHashtagPopupsPr
                 }}
               >
                 <Box display="flex" alignItems="center" gap={2}>
-                  <span style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: "bold" }}>#</span>
+                  <span style={{ color: "var(--color-accent-cyan)", fontWeight: "bold" }}>#</span>
                   <span style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-fg-default)" }}>{tag}</span>
                 </Box>
                 {t.score !== undefined && (

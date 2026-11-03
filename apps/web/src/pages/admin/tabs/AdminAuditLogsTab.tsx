@@ -4,7 +4,7 @@ import { CheckCircleIcon, DownloadIcon, ShieldCheckIcon } from "@primer/octicons
 import React, { useState } from "react";
 import type { AdminAuditChainVerification } from "../../../api";
 import Box from "../../../components/Box";
-import { ActionButton, Badge, Card, FilterPill, Input, Table } from "../styles";
+import { ActionButton, Badge, Card, FilterPill, Input, Table, TableWrapper } from "../styles";
 import type { AdminAuditLog } from "../types";
 
 export interface AdminAuditLogsTabProps {
@@ -136,98 +136,103 @@ export const AdminAuditLogsTab: React.FC<AdminAuditLogsTabProps> = ({
         </Card>
       )}
 
-      <Table>
-        <thead>
-          <tr>
-            <th>Timestamp</th>
-            <th>Action</th>
-            <th>Actor</th>
-            <th>Resource</th>
-            <th>IP Address</th>
-            <th>SHA-256 Chain</th>
-            <th>Forensic Details</th>
-          </tr>
-        </thead>
-        <tbody>
-          {auditLogs.length === 0 ? (
+      <TableWrapper>
+        <Table style={{ minWidth: "820px" }}>
+          <thead>
             <tr>
-              <td colSpan={7} style={{ textAlign: "center", color: "var(--color-text-muted)", padding: "24px" }}>
-                No audit records found.
-              </td>
+              <th>Timestamp</th>
+              <th>Action</th>
+              <th>Actor</th>
+              <th>Resource</th>
+              <th>IP Address</th>
+              <th>SHA-256 Chain</th>
+              <th>Forensic Details</th>
             </tr>
-          ) : (
-            auditLogs.map((log) => {
-              const isExpanded = expandedLogId === log.id;
-              return (
-                <React.Fragment key={log.id}>
-                  <tr>
-                    <td style={{ whiteSpace: "nowrap", fontSize: "12px", color: "var(--color-text-muted)" }}>
-                      {new Date(log.created_at).toLocaleString()}
-                    </td>
-                    <td>
-                      <Badge $variant="neutral">{log.action}</Badge>
-                    </td>
-                    <td>
-                      {log.actor_id ? (
-                        <span>
-                          {log.actor_username ? <strong>@{log.actor_username} </strong> : null}
-                          <span style={{ color: "var(--color-text-muted)" }}>#{log.actor_id}</span>
-                        </span>
-                      ) : (
-                        "System / Anonymous"
-                      )}
-                    </td>
-                    <td>{log.resource_type ? `${log.resource_type}:${log.resource_id || ""}` : "—"}</td>
-                    <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{log.ip_address || "—"}</td>
-                    <td style={{ fontFamily: "monospace", fontSize: "11px" }}>
-                      {log.entry_hash ? (
-                        <span title={`entry: ${log.entry_hash}\nprev: ${log.prev_hash || "GENESIS"}`}>
-                          #{log.entry_hash.slice(0, 10)}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>
-                      {log.details ? (
-                        <ActionButton $variant="secondary" onClick={() => setExpandedLogId(isExpanded ? null : log.id)}>
-                          {isExpanded ? "Hide JSON" : "Inspect JSON"}
-                        </ActionButton>
-                      ) : (
-                        <span style={{ color: "var(--color-text-muted)", fontSize: "12px" }}>—</span>
-                      )}
-                    </td>
-                  </tr>
-                  {isExpanded && log.details && (
+          </thead>
+          <tbody>
+            {auditLogs.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ textAlign: "center", color: "var(--color-text-muted)", padding: "24px" }}>
+                  No audit records found.
+                </td>
+              </tr>
+            ) : (
+              auditLogs.map((log) => {
+                const isExpanded = expandedLogId === log.id;
+                return (
+                  <React.Fragment key={log.id}>
                     <tr>
-                      <td colSpan={7} style={{ background: "var(--color-bg-primary)" }}>
-                        <pre
-                          style={{
-                            margin: 0,
-                            padding: "10px",
-                            fontSize: "11px",
-                            fontFamily: "monospace",
-                            whiteSpace: "pre-wrap",
-                            color: "var(--color-text-primary)",
-                          }}
-                        >
-                          {(() => {
-                            try {
-                              return JSON.stringify(JSON.parse(log.details), null, 2);
-                            } catch {
-                              return log.details;
-                            }
-                          })()}
-                        </pre>
+                      <td style={{ whiteSpace: "nowrap", fontSize: "12px", color: "var(--color-text-muted)" }}>
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+                      <td>
+                        <Badge $variant="neutral">{log.action}</Badge>
+                      </td>
+                      <td>
+                        {log.actor_id ? (
+                          <span>
+                            {log.actor_username ? <strong>@{log.actor_username} </strong> : null}
+                            <span style={{ color: "var(--color-text-muted)" }}>#{log.actor_id}</span>
+                          </span>
+                        ) : (
+                          "System / Anonymous"
+                        )}
+                      </td>
+                      <td>{log.resource_type ? `${log.resource_type}:${log.resource_id || ""}` : "—"}</td>
+                      <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{log.ip_address || "—"}</td>
+                      <td style={{ fontFamily: "monospace", fontSize: "11px" }}>
+                        {log.entry_hash ? (
+                          <span title={`entry: ${log.entry_hash}\nprev: ${log.prev_hash || "GENESIS"}`}>
+                            #{log.entry_hash.slice(0, 10)}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td>
+                        {log.details ? (
+                          <ActionButton
+                            $variant="secondary"
+                            onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                          >
+                            {isExpanded ? "Hide JSON" : "Inspect JSON"}
+                          </ActionButton>
+                        ) : (
+                          <span style={{ color: "var(--color-text-muted)", fontSize: "12px" }}>—</span>
+                        )}
                       </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              );
-            })
-          )}
-        </tbody>
-      </Table>
+                    {isExpanded && log.details && (
+                      <tr>
+                        <td colSpan={7} style={{ background: "var(--color-bg-primary)" }}>
+                          <pre
+                            style={{
+                              margin: 0,
+                              padding: "10px",
+                              fontSize: "11px",
+                              fontFamily: "monospace",
+                              whiteSpace: "pre-wrap",
+                              color: "var(--color-text-primary)",
+                            }}
+                          >
+                            {(() => {
+                              try {
+                                return JSON.stringify(JSON.parse(log.details), null, 2);
+                              } catch {
+                                return log.details;
+                              }
+                            })()}
+                          </pre>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
+            )}
+          </tbody>
+        </Table>
+      </TableWrapper>
 
       {setAuditPageOffset && (
         <Box display="flex" justifyContent="space-between" alignItems="center" mt={3}>

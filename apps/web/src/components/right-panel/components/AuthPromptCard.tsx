@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { MarkGithubIcon } from "@primer/octicons-react";
-import { Heading, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import Box from "../../Box";
-import { Card, ProviderButton } from "../styles";
+import { Card, CardHeader, CardTitle, ProviderButton } from "../styles";
 
 export const AuthPromptCard: React.FC = () => {
   const navigate = useNavigate();
+  const branding = useInstanceBranding();
 
   return (
     <Card>
-      <Heading as="h2" style={{ fontSize: "15px", lineHeight: "20px", marginBottom: "6px", fontWeight: 700 }}>
-        Engineering Platform
-      </Heading>
+      <CardHeader>
+        <CardTitle>Join {branding.instanceName || "Ansatz"}</CardTitle>
+      </CardHeader>
       <Text
         as="p"
         color="var(--color-text-muted)"
-        style={{ fontSize: "12.5px", marginBottom: "12px", lineHeight: 1.4 }}
+        style={{ fontSize: "12.5px", margin: "0 0 12px 0", lineHeight: 1.4 }}
       >
         Simulate physical systems, export FMUs, and collaborate with engineers worldwide.
       </Text>
@@ -39,7 +41,7 @@ export const AuthPromptCard: React.FC = () => {
             fontWeight: 600,
             cursor: "pointer",
             width: "100%",
-            boxShadow: "0 0 10px rgba(139, 92, 246, 0.25)",
+            boxShadow: "var(--ms-brand-shadow)",
           }}
         >
           Create Free Account

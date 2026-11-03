@@ -38,32 +38,17 @@ const Spinner = styled.div`
   margin: 20px 0;
 `;
 
-const SuccessBadge = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #22c55e;
-  padding: 8px 16px;
-  border-radius: 9999px;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 20px;
-`;
-
 export default function VerifyEmailPage() {
   usePageTitle("Verify Email");
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
   const navigate = useNavigate();
-  const { refreshWallet } = useAuth();
+  const { refreshWallet, refreshUser } = useAuth();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
 
   const [status, setStatus] = useState<"loading" | "success" | "error">(token ? "loading" : "error");
   const [message, setMessage] = useState<string>(token ? "" : "No verification token provided in URL.");
-  const [creditsGranted, setCreditsGranted] = useState<number>(0);
 
   // Resend state
   const [resendEmail, setResendEmail] = useState("");
@@ -80,9 +65,9 @@ export default function VerifyEmailPage() {
         if (!isMounted) return;
         setStatus("success");
         setMessage(res.message || "Email address verified successfully!");
-        setCreditsGranted(res.creditsGranted || 50.0);
         window.dispatchEvent(new CustomEvent("modelscript:wallet-update"));
         void refreshWallet();
+        void refreshUser();
       })
       .catch((err) => {
         if (!isMounted) return;
@@ -96,7 +81,7 @@ export default function VerifyEmailPage() {
     return () => {
       isMounted = false;
     };
-  }, [token, refreshWallet]);
+  }, [token, refreshWallet, refreshUser]);
 
   const handleResend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,7 +115,7 @@ export default function VerifyEmailPage() {
           <>
             <Title style={{ fontSize: "22px", marginBottom: "10px" }}>Verifying Your Email…</Title>
             <Subtitle style={{ fontSize: "14px", lineHeight: 1.5 }}>
-              Please wait while we validate your security token and activate compute credits.
+              Please wait while we validate your security token and activate your account.
             </Subtitle>
             <Spinner />
           </>
@@ -142,9 +127,6 @@ export default function VerifyEmailPage() {
               <CheckCircleIcon size={48} />
             </div>
             <Title style={{ fontSize: "22px", marginBottom: "10px" }}>Email Verified!</Title>
-            <SuccessBadge>
-              +{creditsGranted > 0 ? creditsGranted.toFixed(1) : "50.0"} Free Compute Credits Unlocked
-            </SuccessBadge>
             <Subtitle style={{ fontSize: "14px", lineHeight: 1.5 }}>
               {message} Your account is fully active. You can now publish packages, submit HPC simulation jobs, and
               access cloud engineering workflows.

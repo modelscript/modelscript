@@ -642,4 +642,5 @@ export interface TreeNodeInfo {
   language?: string | undefined;
   description?: string | null | undefined;
   children?: TreeNodeInfo[] | undefined;
+  pendingIcon?: boolean | undefined;
 }

@@ -9,6 +9,7 @@ import {
   bulkResolveAdminModerationReports,
   createAdminHotBackup,
   createAdminInstanceInvite,
+  createAdminUser,
   deleteAdminBackup,
   deleteAdminFederationDomainTier,
   deleteAdminPost,
@@ -152,6 +153,7 @@ export const AdminPage: React.FC = () => {
     resolvers: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }>;
   } | null>(null);
   const [sudoPassword, setSudoPassword] = useState("");
+  const [sudoTotpCode, setSudoTotpCode] = useState("");
   const [sudoError, setSudoError] = useState<string | null>(null);
   const [sudoSubmitting, setSudoSubmitting] = useState(false);
 
@@ -175,20 +177,21 @@ export const AdminPage: React.FC = () => {
 
   const handleConfirmSudo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sudoPrompt || !sudoPassword) return;
+    if (!sudoPrompt || (!sudoPassword && !sudoTotpCode.trim())) return;
     setSudoSubmitting(true);
     setSudoError(null);
     try {
-      const res = await verifyAdminSudo(sudoPassword);
+      const res = await verifyAdminSudo(sudoPassword, sudoTotpCode.trim() || undefined);
       setAdminSudoToken(res.sudoToken);
       const resolvers = sudoPrompt.resolvers;
       setSudoPrompt(null);
       setSudoPassword("");
+      setSudoTotpCode("");
       for (const r of resolvers) {
         r.resolve(res.sudoToken);
       }
     } catch (err: unknown) {
-      setSudoError(getErrorMessage(err, "Invalid administrator password."));
+      setSudoError(getErrorMessage(err, "Invalid administrator password or 2FA code."));
     } finally {
       setSudoSubmitting(false);
     }
@@ -202,6 +205,7 @@ export const AdminPage: React.FC = () => {
     }
     setSudoPrompt(null);
     setSudoPassword("");
+    setSudoTotpCode("");
     setSudoError(null);
   };
 
@@ -727,6 +731,28 @@ export const AdminPage: React.FC = () => {
     }
   };
 
+  const handleCreateUser = async (payload: {
+    username: string;
+    email: string;
+    password: string;
+    displayName?: string | undefined;
+    role?: "user" | "moderator" | "auditor" | "admin" | undefined;
+    initialCredits?: number | undefined;
+    emailVerified?: boolean | undefined;
+  }) => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const res = await createAdminUser(payload);
+      setSuccess(`Created account @${res.user.username} (#${res.user.id}).`);
+      void loadUsers();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to create user account"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleApproveWaitlist = async (id: number) => {
     const res = await approveWaitlistSubmission(id);
     return { inviteCode: res.inviteCode };
@@ -1075,12 +1101,17 @@ export const AdminPage: React.FC = () => {
     expiresInDays?: number | undefined;
     assignedRole?: string | undefined;
     initialCredits?: number | undefined;
+    recipientEmail?: string | undefined;
   }) => {
     setLoading(true);
     clearMessages();
     try {
       const res = await createAdminInstanceInvite(payload);
-      setSuccess(`Generated invite code: ${res.invite.code}`);
+      setSuccess(
+        res.emailDispatched && payload.recipientEmail
+          ? `Generated invite code ${res.invite.code} and emailed invite link to ${payload.recipientEmail}.`
+          : `Generated invite code: ${res.invite.code}`,
+      );
       void loadSettingsAndInvites();
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Failed to generate invite code"));
@@ -1242,6 +1273,7 @@ export const AdminPage: React.FC = () => {
               setUserPageOffset={setUserPageOffset}
               onModerateUser={handleModerateUser}
               onAdjustUserCredits={handleAdjustUserCredits}
+              onCreateUser={handleCreateUser}
               loading={loading}
             />
           )}
@@ -1452,7 +1484,15 @@ export const AdminPage: React.FC = () => {
                 value={sudoPassword}
                 onChange={(e) => setSudoPassword(e.target.value)}
                 autoFocus
-                required
+              />
+              <Input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                aria-label="2FA Authenticator or Backup Code"
+                placeholder="6-digit 2FA code or backup code (if 2FA enabled)…"
+                value={sudoTotpCode}
+                onChange={(e) => setSudoTotpCode(e.target.value)}
               />
               {sudoError && (
                 <Box fontSize="12px" color="var(--ms-danger)">
@@ -1463,7 +1503,11 @@ export const AdminPage: React.FC = () => {
                 <ActionButton type="button" $variant="secondary" onClick={handleCancelSudo} disabled={sudoSubmitting}>
                   Cancel
                 </ActionButton>
-                <ActionButton type="submit" $variant="primary" disabled={sudoSubmitting || !sudoPassword}>
+                <ActionButton
+                  type="submit"
+                  $variant="primary"
+                  disabled={sudoSubmitting || (!sudoPassword && !sudoTotpCode.trim())}
+                >
                   {sudoSubmitting ? "Verifying…" : "Verify & Continue"}
                 </ActionButton>
               </Box>

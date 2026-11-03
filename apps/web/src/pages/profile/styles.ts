@@ -8,9 +8,10 @@ export const TabBar = styled.div`
   margin-top: 24px;
   position: sticky;
   top: calc(var(--dev-header-height, 0px) + 53px);
-  background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
-  backdrop-filter: saturate(180%) blur(24px);
-  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  transition: background-color 0.25s ease;
   z-index: 45;
 `;
 

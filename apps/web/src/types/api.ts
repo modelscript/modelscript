@@ -83,6 +83,9 @@ export interface RepositoryDTO {
   avatar_url?: string | undefined;
   default_branch?: string | undefined;
   is_private?: boolean | undefined;
+  star_count?: number | undefined;
+  stars_count?: number | undefined;
+  stargazers_count?: number | undefined;
   created_at?: string | undefined;
   updated_at?: string | undefined;
 }

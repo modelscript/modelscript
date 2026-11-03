@@ -18,18 +18,32 @@
 import {
   composeTransformMatrix,
   getUnitScaleFactor,
+  quaternionFromDirections,
   quaternionFromEuler,
   quaternionFromMatrix3x3,
+  quaternionMultiply,
   quaternionToEuler,
+  rotateVectorByQuaternion,
   type Quat,
 } from "./kinematics.js";
 import type { Mat4 } from "./types.js";
 
 // ── Public Types ─────────────────────────────────────────────────────────────
 
+export type CadDynamicProperty =
+  | "position"
+  | "rotation"
+  | "scale"
+  | "deformation"
+  | "color"
+  | "shapeOffset"
+  | "lengthDirection"
+  | "widthDirection"
+  | "vectorCoordinates";
+
 export interface CadDynamicBinding {
-  /** Property being animated: position, rotation, scale, or deformation */
-  property: "position" | "rotation" | "scale" | "deformation" | "color";
+  /** Property being animated: position, rotation, scale, deformation, color, or MSL shape local frame attributes */
+  property: CadDynamicProperty;
   /** Index within property array (0=x, 1=y, 2=z, or 0..8 for 3×3 matrix) */
   index?: number | undefined;
   /** Variable name in DAE simulation result (e.g. "body1.frame_a.r_0[1]") */
@@ -38,6 +52,19 @@ export interface CadDynamicBinding {
   unit?: string | undefined;
   /** Scale factor applied to variable before setting transform */
   scaleFactor?: number | undefined;
+}
+
+export interface ComponentDefaultTransform {
+  position?: [number, number, number] | undefined;
+  rotation?: [number, number, number] | undefined; // in degrees
+  quaternion?: Quat | undefined;
+  scale?: [number, number, number] | undefined;
+  shapeOffset?: [number, number, number] | undefined;
+  lengthDirection?: [number, number, number] | undefined;
+  widthDirection?: [number, number, number] | undefined;
+  vectorCoordinates?: [number, number, number] | undefined;
+  headAtOrigin?: boolean | undefined;
+  color?: [number, number, number] | undefined;
 }
 
 /** Dynamic deformation configuration for compliant soft-tissue structures or modal elastodynamics. */
@@ -67,6 +94,8 @@ export interface AnimationBinding {
   componentName: string;
   /** Dynamic variable bindings */
   bindings: CadDynamicBinding[];
+  /** Optional baseline transform and MSL local frame defaults */
+  defaults?: ComponentDefaultTransform | undefined;
   /** Optional deformation parameters */
   deformationConfig?: DynamicDeformationConfig | undefined;
   /** Alias for deformationConfig */
@@ -80,6 +109,7 @@ export interface ComponentTransform {
   rotation: [number, number, number]; // Euler angles in degrees
   quaternion: [number, number, number, number]; // [x, y, z, w]
   scale: [number, number, number];
+  color?: [number, number, number] | undefined;
   matrix: Mat4;
 }
 
@@ -123,6 +153,12 @@ export class AnimationController {
       rotation: [number, number, number];
       quaternion: Quat;
       scale: [number, number, number];
+      shapeOffset?: [number, number, number] | undefined;
+      lengthDirection?: [number, number, number] | undefined;
+      widthDirection?: [number, number, number] | undefined;
+      vectorCoordinates?: [number, number, number] | undefined;
+      headAtOrigin?: boolean | undefined;
+      color?: [number, number, number] | undefined;
     }
   >();
 
@@ -207,6 +243,9 @@ export class AnimationController {
 
     for (const b of bindings) {
       this.bindings.set(b.componentName, b.bindings);
+      if (b.defaults) {
+        this.setDefault(b.componentName, b.defaults);
+      }
       const def = b.deformationConfig || b.deformation;
       if (def) {
         this.deformationConfigs.set(b.componentName, def);
@@ -217,15 +256,7 @@ export class AnimationController {
   /**
    * Set default baseline transform for a component.
    */
-  setDefault(
-    componentName: string,
-    transform: {
-      position?: [number, number, number] | undefined;
-      rotation?: [number, number, number] | undefined; // in degrees
-      quaternion?: Quat | undefined;
-      scale?: [number, number, number] | undefined;
-    },
-  ): void {
+  setDefault(componentName: string, transform: ComponentDefaultTransform): void {
     const pos: [number, number, number] = transform.position ? [...transform.position] : [0, 0, 0];
     const rot: [number, number, number] = transform.rotation ? [...transform.rotation] : [0, 0, 0];
     const quat: Quat = transform.quaternion
@@ -238,6 +269,12 @@ export class AnimationController {
       rotation: rot,
       quaternion: quat,
       scale: scl,
+      shapeOffset: transform.shapeOffset ? [...transform.shapeOffset] : undefined,
+      lengthDirection: transform.lengthDirection ? [...transform.lengthDirection] : undefined,
+      widthDirection: transform.widthDirection ? [...transform.widthDirection] : undefined,
+      vectorCoordinates: transform.vectorCoordinates ? [...transform.vectorCoordinates] : undefined,
+      headAtOrigin: transform.headAtOrigin,
+      color: transform.color ? [...transform.color] : undefined,
     });
   }
 
@@ -340,13 +377,17 @@ export class AnimationController {
 
     const componentBindings = this.bindings.get(componentName);
     const defConfig = this.deformationConfigs.get(componentName);
+    const hasLocalFrameDefaults = Boolean(
+      def.shapeOffset || def.lengthDirection || def.widthDirection || def.vectorCoordinates,
+    );
 
-    if ((!componentBindings || componentBindings.length === 0) && !defConfig) {
+    if ((!componentBindings || componentBindings.length === 0) && !defConfig && !hasLocalFrameDefaults) {
       return {
         position: [...def.position],
         rotation: [...def.rotation],
         quaternion: [...def.quaternion],
         scale: [...def.scale],
+        color: def.color ? [...def.color] : undefined,
         matrix: composeTransformMatrix(def.position, def.quaternion, def.scale),
       };
     }
@@ -354,6 +395,14 @@ export class AnimationController {
     const pos: [number, number, number] = [...def.position];
     let quat: Quat = [...def.quaternion];
     const scl: [number, number, number] = [...def.scale];
+    const shapeOffset: [number, number, number] = def.shapeOffset ? [...def.shapeOffset] : [0, 0, 0];
+    let hasShapeOffset = Boolean(def.shapeOffset);
+    const lengthDir: [number, number, number] = def.lengthDirection ? [...def.lengthDirection] : [1, 0, 0];
+    const widthDir: [number, number, number] = def.widthDirection ? [...def.widthDirection] : [0, 1, 0];
+    let hasLocalDirections = Boolean(def.lengthDirection || def.widthDirection);
+    const vecCoords: [number, number, number] = def.vectorCoordinates ? [...def.vectorCoordinates] : [0, 0, 0];
+    let hasVectorCoords = Boolean(def.vectorCoordinates);
+    let color: [number, number, number] | undefined = def.color ? [...def.color] : undefined;
 
     // Check for 3×3 rotation matrix bindings
     const rotMatrixBindings = (componentBindings || []).filter(
@@ -362,6 +411,7 @@ export class AnimationController {
 
     const hasFullMatrix = rotMatrixBindings.length >= 9;
     const rMatrix = hasFullMatrix ? new Array<number>(9) : null;
+    let matrixValsFound = 0;
 
     // Check for 3-axis Euler angle bindings
     const eulerAngles: [number, number, number] = [...def.rotation];
@@ -386,6 +436,7 @@ export class AnimationController {
           const idx = b.index ?? 0;
           if (rMatrix && idx >= 0 && idx < 9) {
             rMatrix[idx] = val; // direction cosine elements are dimensionless
+            matrixValsFound++;
           } else if (idx >= 0 && idx < 3) {
             eulerAngles[idx] = scaledVal;
             hasEuler = true;
@@ -399,15 +450,80 @@ export class AnimationController {
             scl[1] = scaledVal;
             scl[2] = scaledVal;
           }
+        } else if (b.property === "shapeOffset") {
+          const idx = b.index ?? 0;
+          if (idx >= 0 && idx < 3) {
+            shapeOffset[idx] = scaledVal;
+            hasShapeOffset = true;
+          }
+        } else if (b.property === "lengthDirection") {
+          const idx = b.index ?? 0;
+          if (idx >= 0 && idx < 3) {
+            lengthDir[idx] = val;
+            hasLocalDirections = true;
+          }
+        } else if (b.property === "widthDirection") {
+          const idx = b.index ?? 0;
+          if (idx >= 0 && idx < 3) {
+            widthDir[idx] = val;
+            hasLocalDirections = true;
+          }
+        } else if (b.property === "vectorCoordinates") {
+          const idx = b.index ?? 0;
+          if (idx >= 0 && idx < 3) {
+            vecCoords[idx] = scaledVal;
+            hasVectorCoords = true;
+          }
+        } else if (b.property === "color") {
+          const idx = b.index ?? 0;
+          if (idx >= 0 && idx < 3) {
+            if (!color) color = [0.7, 0.7, 0.7];
+            color[idx] = val > 1.0 ? Math.min(1, Math.max(0, val / 255)) : Math.min(1, Math.max(0, val));
+          }
         }
       }
     }
 
-    // Resolve orientation
-    if (rMatrix) {
+    // Resolve reference frame orientation (R.T or Euler)
+    if (rMatrix && matrixValsFound >= 9) {
       quat = quaternionFromMatrix3x3(rMatrix, true);
     } else if (hasEuler) {
       quat = quaternionFromEuler(eulerAngles[0], eulerAngles[1], eulerAngles[2], "XYZ", true);
+    }
+
+    // Resolve MSL PartialVector (coordinates[1..3] -> length and lengthDirection)
+    if (hasVectorCoords) {
+      const vx = vecCoords[0];
+      const vy = vecCoords[1];
+      const vz = vecCoords[2];
+      const vLen = Math.hypot(vx, vy, vz);
+      scl[0] = vLen;
+      if (vLen > 1e-9) {
+        lengthDir[0] = vx / vLen;
+        lengthDir[1] = vy / vLen;
+        lengthDir[2] = vz / vLen;
+        hasLocalDirections = true;
+      }
+      if (def.headAtOrigin) {
+        shapeOffset[0] -= vx;
+        shapeOffset[1] -= vy;
+        shapeOffset[2] -= vz;
+        hasShapeOffset = true;
+      }
+    }
+
+    // Apply MSL local shape offset: r_world = r + Frames.resolve1(R, r_shape)
+    if (hasShapeOffset && (shapeOffset[0] !== 0 || shapeOffset[1] !== 0 || shapeOffset[2] !== 0)) {
+      const worldOffset = rotateVectorByQuaternion(shapeOffset, quat);
+      pos[0] += worldOffset[0];
+      pos[1] += worldOffset[1];
+      pos[2] += worldOffset[2];
+    }
+
+    // Apply MSL local shape basis orientation (lengthDirection & widthDirection)
+    if (hasLocalDirections) {
+      const qShape = quaternionFromDirections(lengthDir, widthDir);
+      quat = quaternionMultiply(quat, qShape);
     }
 
     // Handle volumetric deformation
@@ -429,6 +545,7 @@ export class AnimationController {
       rotation: rotDeg,
       quaternion: quat,
       scale: scl,
+      color,
       matrix: composeTransformMatrix(pos, quat, scl),
     };
   }

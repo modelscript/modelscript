@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { PERSONA_SEED_TOPICS } from "../../util/extract-topics.js";
 import type { UserReferralRow, WaitlistSubmissionRow } from "../types.js";
 import { BaseRepository } from "./base.js";
 
@@ -22,11 +23,23 @@ export class ReferralRepository extends BaseRepository {
   }
 
   completeUserOnboarding(userId: number, persona?: string): boolean {
+    const normalizedPersona = persona ? persona.trim() : null;
     const res = this.run(
       `UPDATE users SET onboarding_completed = 1, engineering_persona = COALESCE(?, engineering_persona) WHERE id = ?`,
-      persona || null,
+      normalizedPersona,
       userId,
     );
+    if (normalizedPersona && PERSONA_SEED_TOPICS[normalizedPersona]) {
+      for (const topic of PERSONA_SEED_TOPICS[normalizedPersona]) {
+        try {
+          this.run(
+            `INSERT INTO user_topics (user_id, concept, is_active) VALUES (?, ?, 1) ON CONFLICT(user_id, concept) DO NOTHING`,
+            userId,
+            topic.concept,
+          );
+        } catch {}
+      }
+    }
     return res.changes > 0;
   }
 

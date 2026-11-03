@@ -35,7 +35,7 @@ export const CommitRow = styled(Box)`
 
 export const MarkdownBody = styled.div`
   color: var(--color-text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  font-family: var(--ms-font-sans);
   font-size: 16px;
   line-height: 1.5;
   word-wrap: break-word;

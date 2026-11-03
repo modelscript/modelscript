@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PinIcon } from "@primer/octicons-react";
 import { Spinner, Text } from "@primer/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../AuthContext";
@@ -230,99 +229,7 @@ export default function ProfilePosts({
         const pinned = type === "posts" && isPostPinned(post);
         return (
           <Box key={post.id} position="relative" data-pinned-post={pinned ? "true" : undefined}>
-            {pinned && (
-              <Box
-                display="flex"
-                alignItems="center"
-                justifyContent="space-between"
-                px={3}
-                pt={2}
-                pb={1}
-                style={{
-                  color: "var(--color-fg-muted)",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  backgroundColor: "rgba(6, 182, 212, 0.04)",
-                  borderBottom: "1px solid var(--color-border-subtle, rgba(255,255,255,0.06))",
-                }}
-              >
-                <Box display="flex" alignItems="center" gap={1.5} aria-label="Pinned Post">
-                  <PinIcon size={13} />
-                  <span>Pinned Post</span>
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      padding: "1px 6px",
-                      borderRadius: "999px",
-                      backgroundColor: "rgba(6, 182, 212, 0.14)",
-                      color: "var(--color-accent-cyan, #06b6d4)",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Pinned
-                  </span>
-                </Box>
-                {canManagePins && (
-                  <button
-                    type="button"
-                    aria-label="Unpin post"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      void handleTogglePin(post);
-                    }}
-                    style={{
-                      background: "transparent",
-                      border: "1px solid var(--color-border-default, rgba(255,255,255,0.15))",
-                      borderRadius: "999px",
-                      padding: "2px 8px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: "var(--color-fg-muted)",
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    <PinIcon size={11} />
-                    <span>Unpin</span>
-                  </button>
-                )}
-              </Box>
-            )}
-            {!pinned && type === "posts" && canManagePins && (
-              <Box display="flex" justifyContent="flex-end" px={3} pt={1.5} style={{ marginBottom: "-4px" }}>
-                <button
-                  type="button"
-                  aria-label="Pin post to profile"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    void handleTogglePin(post);
-                  }}
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    padding: "2px 6px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    color: "var(--color-fg-muted)",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    opacity: 0.75,
-                  }}
-                >
-                  <PinIcon size={11} />
-                  <span>Pin</span>
-                </button>
-              </Box>
-            )}
-            <Post post={post} />
+            <Post post={post} isPinned={pinned} />
           </Box>
         );
       })}

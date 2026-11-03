@@ -166,7 +166,7 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<EmailTemplateId, EmailTemplateDefin
     availableVariables: ["username", "instanceName", "actionUrl", "token", "expiresIn"],
     subject: "Verify your {{instanceName}} account",
     heading: "Verify your email address",
-    body: "Welcome to {{instanceName}}! Please verify your email address to unlock your free tier compute credits and access full engineering simulation services.",
+    body: "Welcome to {{instanceName}}! Please verify your email address to access full engineering simulation services.",
     ctaLabel: "Verify Email Address",
     enabled: true,
   },
@@ -351,7 +351,12 @@ export class MailerService {
 
   private resolveDefaultFrom(): string {
     if (process.env["EMAIL_FROM"]) {
-      return process.env["EMAIL_FROM"];
+      const envFrom = process.env["EMAIL_FROM"].trim();
+      const fromName = this.runtimeConfig.fromName?.trim();
+      if (fromName && !envFrom.includes("<")) {
+        return `${fromName} <${envFrom}>`;
+      }
+      return envFrom;
     }
     const fromEmail = this.runtimeConfig.fromEmail?.trim();
     const fromName = this.runtimeConfig.fromName?.trim();
@@ -368,12 +373,26 @@ export class MailerService {
     return process.env["EMAIL_REPLY_TO"] || this.runtimeConfig.replyTo?.trim() || undefined;
   }
 
+  private parseMailboxAddress(raw: string): { email: string; name?: string } {
+    const trimmed = raw.replace(/[\r\n]/g, "").trim();
+    const match = trimmed.match(/^(?:"?([^"<]*)"?\s*)?<([^>]+)>$/);
+    if (match) {
+      const name = match[1]?.trim();
+      const email = match[2]!.trim();
+      return name ? { email, name } : { email };
+    }
+    return { email: trimmed };
+  }
+
   public getDriver(): MailerDriver {
     const airgap = process.env["AIRGAP_ENFORCED"] === "true";
+    const envDriver = (process.env["EMAIL_DRIVER"] || "").trim().toLowerCase();
 
     let candidate: MailerDriver;
     if (this.explicitDriver) {
       candidate = this.explicitDriver;
+    } else if (envDriver === "console" || envDriver === "smtp" || envDriver === "sendgrid" || envDriver === "resend") {
+      candidate = envDriver;
     } else if (this.runtimeConfig.driver && this.runtimeConfig.driver !== "auto") {
       candidate = this.runtimeConfig.driver;
     } else if (this.resolveSendgridApiKey()) {
@@ -493,6 +512,8 @@ export class MailerService {
         return finalize(false, "SENDGRID_API_KEY is not configured");
       }
       try {
+        const parsedFrom = this.parseMailboxAddress(effectiveFrom);
+        const parsedReplyTo = effectiveReplyTo ? this.parseMailboxAddress(effectiveReplyTo) : undefined;
         const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
           method: "POST",
           headers: {
@@ -500,9 +521,9 @@ export class MailerService {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            personalizations: [{ to: [{ email: opts.to }] }],
-            from: { email: effectiveFrom },
-            ...(effectiveReplyTo ? { reply_to: { email: effectiveReplyTo } } : {}),
+            personalizations: [{ to: [this.parseMailboxAddress(opts.to)] }],
+            from: parsedFrom,
+            ...(parsedReplyTo ? { reply_to: parsedReplyTo } : {}),
             subject: opts.subject,
             content: [
               { type: "text/plain", value: opts.text },
@@ -1110,6 +1131,7 @@ export class MailerService {
       const ehloDomain = this.getEhloDomain();
 
       const boundary = `ms_boundary_${record.id}`;
+      const dotStuff = (body: string): string => body.replace(/\r?\n/g, "\r\n").replace(/^\./gm, "..");
       const mimeBody = [
         `From: ${(record.from || this.resolveDefaultFrom()).replace(/[\r\n]/g, "")}`,
         `To: ${record.to.replace(/[\r\n]/g, "")}`,
@@ -1123,8 +1145,10 @@ export class MailerService {
         `--${boundary}`,
         `Content-Type: text/plain; charset="utf-8"`,
         ``,
-        record.text,
-        ...(record.html ? [``, `--${boundary}`, `Content-Type: text/html; charset="utf-8"`, ``, record.html] : []),
+        dotStuff(record.text),
+        ...(record.html
+          ? [``, `--${boundary}`, `Content-Type: text/html; charset="utf-8"`, ``, dotStuff(record.html)]
+          : []),
         ``,
         `--${boundary}--`,
         `.`,
@@ -1145,6 +1169,7 @@ export class MailerService {
       let isTlsActive = useImplicitTls;
       let serverSupportsStartTls = false;
       let cmdIndex = 0;
+      let dataAccepted = false;
       let buffer = "";
       let settled = false;
 
@@ -1182,8 +1207,27 @@ export class MailerService {
 
       const bindSocketHandlers = (sock: net.Socket | tls.TLSSocket) => {
         sock.setTimeout(10000);
-        sock.on("timeout", () => fail(new Error("SMTP connection timed out")));
-        sock.on("error", (err) => fail(err instanceof Error ? err : new Error(String(err))));
+        sock.on("timeout", () => {
+          if (dataAccepted) {
+            succeed();
+          } else {
+            fail(new Error("SMTP connection timed out"));
+          }
+        });
+        sock.on("error", (err) => {
+          if (dataAccepted) {
+            succeed();
+          } else {
+            fail(err instanceof Error ? err : new Error(String(err)));
+          }
+        });
+        sock.on("close", () => {
+          if (dataAccepted) {
+            succeed();
+          } else if (!settled) {
+            fail(new Error("SMTP connection closed unexpectedly before message acceptance"));
+          }
+        });
         sock.on("data", (chunk: Buffer) => {
           buffer += chunk.toString("utf-8");
           const lines = buffer.split("\r\n");
@@ -1198,6 +1242,10 @@ export class MailerService {
             if (line[3] === "-") continue;
 
             if (code >= 400) {
+              if (dataAccepted) {
+                succeed();
+                return;
+              }
               fail(new Error(`SMTP error (${code}): ${line}`));
               return;
             }
@@ -1224,6 +1272,7 @@ export class MailerService {
               sock.removeAllListeners("data");
               sock.removeAllListeners("timeout");
               sock.removeAllListeners("error");
+              sock.removeAllListeners("close");
               buffer = "";
               const upgraded = tls.connect({
                 socket: sock as net.Socket,
@@ -1245,6 +1294,9 @@ export class MailerService {
             }
 
             if (phase === "COMMANDS") {
+              if (cmdIndex === postHandshakeCommands.length - 1) {
+                dataAccepted = true;
+              }
               if (cmdIndex < postHandshakeCommands.length) {
                 sendCommand(postHandshakeCommands[cmdIndex++]!);
               } else {

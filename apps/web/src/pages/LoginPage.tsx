@@ -24,7 +24,11 @@ export default function LoginPage() {
   usePageTitle("Sign In");
   const branding = useInstanceBranding();
   const [mode, setMode] = useState<LoginMode>("login");
-  const [email, setEmail] = useState(import.meta.env.DEV ? "dev@modelscript.org" : "");
+  const { login, complete2FALogin } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const emailParam = searchParams.get("email");
+  const [email, setEmail] = useState(emailParam || (import.meta.env.DEV ? "dev@modelscript.org" : ""));
   const [password, setPassword] = useState(import.meta.env.DEV ? "password" : "");
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
@@ -40,12 +44,29 @@ export default function LoginPage() {
     airgapEnforced?: boolean | undefined;
     oauthProviders?: string[] | undefined;
   } | null>(null);
-  const { login, complete2FALogin } = useAuth();
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   // Only same-origin relative paths ("/x", not "//evil.com") to avoid open redirects.
   const nextParam = searchParams.get("next");
   const redirectTo = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+
+  useEffect(() => {
+    const errParam = searchParams.get("error");
+    if (errParam) {
+      if (errParam === "OAuthExchangeFailed") {
+        setError("OAuth sign-in failed during token exchange. Verify your Client ID, Client Secret, and Callback URL.");
+      } else if (errParam === "OAuthNotConfigured") {
+        const prov = searchParams.get("provider") || "OAuth";
+        setError(
+          `Sign-in with ${prov} is not configured on this instance. Configure the OAuth Client ID and Client Secret in Admin Settings first.`,
+        );
+      } else if (errParam === "InvalidState") {
+        setError("OAuth session state expired or was invalid. Please try signing in again.");
+      } else if (errParam === "MissingOAuthCode") {
+        setError("OAuth authorization was cancelled or did not return an authorization code.");
+      } else {
+        setError(searchParams.get("message") || `Authentication error: ${errParam}`);
+      }
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -123,6 +144,10 @@ export default function LoginPage() {
   };
 
   const brandName = branding.instanceName || "Ansatz";
+  const hasOAuthButtons = Boolean(
+    authConfig?.oidcEnabled ||
+    (!authConfig?.airgapEnforced && authConfig?.oauthProviders && authConfig.oauthProviders.length > 0),
+  );
 
   return (
     <PageWrapper>
@@ -159,7 +184,7 @@ export default function LoginPage() {
               airgapEnforced={authConfig?.airgapEnforced}
               oauthProviders={authConfig?.oauthProviders}
             />
-            {(!authConfig?.airgapEnforced || authConfig?.oidcEnabled) && <Divider>or</Divider>}
+            {hasOAuthButtons && <Divider>or</Divider>}
             <LoginForm
               email={email}
               setEmail={setEmail}

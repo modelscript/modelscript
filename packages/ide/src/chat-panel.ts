@@ -87,18 +87,48 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           const className = String(msg.input["className"] ?? msg.input["name"] ?? "ActiveModel");
           const flattened = await this.client.sendRequest("modelscript/flatten", { name: className });
           const flatStr = typeof flattened === "string" ? flattened : JSON.stringify(flattened);
-          const stateCount = (flatStr.match(/\bder\s*\(/g) ?? []).length || 3;
-          const eqCount = (flatStr.match(/;/g) ?? []).length || 6;
+          const flatObj =
+            typeof flattened === "object" && flattened !== null ? (flattened as Record<string, unknown>) : null;
+          const flatError = flatObj && typeof flatObj["error"] === "string" ? flatObj["error"] : undefined;
+          const explicitBalanced =
+            flatObj && typeof flatObj["isBalanced"] === "boolean" ? flatObj["isBalanced"] : undefined;
+          const explicitPassed = flatObj && typeof flatObj["passed"] === "boolean" ? flatObj["passed"] : undefined;
+          const hasFailure =
+            Boolean(flatError) ||
+            explicitBalanced === false ||
+            explicitPassed === false ||
+            /\b(?:error|unbalanced|singular)\b/i.test(flatStr);
+
+          const stateCount = (flatStr.match(/\bder\s*\(/g) ?? []).length || (hasFailure ? 0 : 3);
+          const eqCount = (flatStr.match(/;/g) ?? []).length || (hasFailure ? 0 : 6);
           const algCount = Math.max(0, eqCount - stateCount);
+          const isBalanced = !hasFailure && (explicitBalanced ?? true);
           result = {
+            ...(flatObj ?? {}),
             className,
             flattenedDae: flatStr,
-            isBalanced: true,
-            resultTitle: `DAE Balanced (${stateCount} states, ${algCount} algebraic, ${eqCount} equations)`,
+            passed: !hasFailure,
+            isBalanced,
+            ...(flatError ? { error: flatError } : {}),
+            resultTitle: hasFailure
+              ? `DAE Flattening Failed (${flatError ?? "Structurally Unbalanced"})`
+              : `DAE Balanced (${stateCount} states, ${algCount} algebraic, ${eqCount} equations)`,
             metrics: [
-              { label: "Pantelides Index", value: "DAE Index 1", status: "pass" },
-              { label: "Tarjan BLT Blocks", value: `${Math.max(1, stateCount)}x1 + ${algCount}x1`, status: "pass" },
-              { label: "Structural Check", value: "0 unmatched vars", status: "pass" },
+              {
+                label: "Pantelides Index",
+                value: hasFailure ? "Reduction Failed" : "DAE Index 1",
+                status: hasFailure ? "fail" : "pass",
+              },
+              {
+                label: "Tarjan BLT Blocks",
+                value: hasFailure ? "Singular / Unmatched" : `${Math.max(1, stateCount)}x1 + ${algCount}x1`,
+                status: hasFailure ? "fail" : "pass",
+              },
+              {
+                label: "Structural Check",
+                value: hasFailure ? (flatError ?? "Unmatched variables") : "0 unmatched vars",
+                status: hasFailure ? "fail" : "pass",
+              },
             ],
           };
           break;
@@ -106,12 +136,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case "modelscript_simulate":
         case "modelica_simulate": {
           const simRes = await this.client.sendRequest("modelscript/simulate", msg.input);
+          const simObj = typeof simRes === "object" && simRes !== null ? (simRes as Record<string, unknown>) : null;
+          const simError = simObj && typeof simObj["error"] === "string" ? simObj["error"] : undefined;
+          const simPassed =
+            !simError &&
+            simObj?.["passed"] !== false &&
+            simObj?.["success"] !== false &&
+            simObj?.["converged"] !== false;
           result = {
-            ...(typeof simRes === "object" && simRes ? simRes : { data: simRes }),
-            resultTitle: `WASM DAE Simulation (${msg.input["name"] ?? "Model"})`,
+            ...(simObj ?? { data: simRes }),
+            passed: simPassed,
+            resultTitle: simPassed
+              ? `WASM DAE Simulation (${msg.input["name"] ?? "Model"})`
+              : `WASM DAE Simulation Failed (${msg.input["name"] ?? "Model"})`,
             metrics: [
               { label: "Integrator", value: "BDF / DOPRI5", status: "info" },
-              { label: "Status", value: "Converged", status: "pass" },
+              {
+                label: "Status",
+                value: simPassed ? "Converged" : (simError ?? "Solver Failed"),
+                status: simPassed ? "pass" : "fail",
+              },
             ],
           };
           break;
@@ -120,15 +164,45 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           const synthRes = (await this.client.sendRequest("modelscript/closedLoopSynthesize", msg.input)) as Record<
             string,
             unknown
-          >;
+          > | null;
+          const synthError = synthRes && typeof synthRes["error"] === "string" ? synthRes["error"] : undefined;
+          const gatesArr = Array.isArray(synthRes?.["gates"])
+            ? (synthRes["gates"] as Record<string, unknown>[])
+            : undefined;
+          const failedGates = gatesArr ? gatesArr.filter((g) => g && g["passed"] === false) : [];
+          const synthPassed =
+            !synthError &&
+            synthRes?.["passed"] !== false &&
+            synthRes?.["allPassed"] !== false &&
+            synthRes?.["success"] !== false &&
+            failedGates.length === 0;
+          const stlPassed = synthRes?.["stlPassed"] !== false && synthPassed;
           result = {
-            ...synthRes,
-            resultTitle: `Closed-Loop Compiler Synthesis & STL Certification`,
+            ...(synthRes ?? {}),
+            passed: synthPassed,
+            allPassed: synthPassed,
+            resultTitle: synthPassed
+              ? `Closed-Loop Compiler Synthesis & STL Certification`
+              : `Closed-Loop Compiler Synthesis Failed`,
             metrics: [
-              { label: "Gate 1–4 Compiler", value: "Syntax · QUDV · SMT · DAE PASS", status: "pass" },
-              { label: "Gate 5 STL ρ", value: "+0.042 (SAT)", status: "pass" },
+              {
+                label: "Gate 1–4 Compiler",
+                value: synthPassed
+                  ? "Syntax · QUDV · SMT · DAE PASS"
+                  : synthError
+                    ? `ERROR: ${synthError}`
+                    : `${failedGates.length || 1} Gate(s) FAILED`,
+                status: synthPassed ? "pass" : "fail",
+              },
+              {
+                label: "Gate 5 STL ρ",
+                value: stlPassed ? "+0.042 (SAT)" : "UNSAT (ρ < 0)",
+                status: stlPassed ? "pass" : "fail",
+              },
             ],
-            verdict: `All verification gates satisfied (Syntax · QUDV Units · DAE Balance · STL Robustness ρ >= 0).`,
+            verdict: synthPassed
+              ? `All verification gates satisfied (Syntax · QUDV Units · DAE Balance · STL Robustness ρ >= 0).`
+              : `Verification failed: ${synthError ?? (failedGates.map((g) => String(g["gateName"] ?? `Gate ${g["gate"]}`)).join(", ") || "one or more compiler gates did not pass")}.`,
           };
           break;
         }
@@ -574,9 +648,60 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
       // 3. Deterministic In-WASM Compiler / MCP Planner Fallback
       const lastMsg = msg.messages[msg.messages.length - 1]?.content ?? "";
-      if (lastMsg.startsWith("Tool result for ")) {
+      if (lastMsg.startsWith("Tool result for ") || lastMsg.startsWith("Tool error for ")) {
+        const failureReasons: string[] = [];
+        for (let i = msg.messages.length - 1; i >= 0; i--) {
+          const content = msg.messages[i]?.content ?? "";
+          if (!content.startsWith("Tool result for ") && !content.startsWith("Tool error for ")) break;
+          if (content.startsWith("Tool error for ")) {
+            failureReasons.push(content);
+            continue;
+          }
+          const colonIdx = content.indexOf(":");
+          const jsonPart = colonIdx >= 0 ? content.slice(colonIdx + 1).trim() : "";
+          if (jsonPart) {
+            try {
+              const parsed = JSON.parse(jsonPart) as Record<string, unknown>;
+              if (typeof parsed["error"] === "string" && parsed["error"].length > 0) {
+                failureReasons.push(parsed["error"]);
+              } else if (
+                parsed["passed"] === false ||
+                parsed["allPassed"] === false ||
+                parsed["success"] === false ||
+                parsed["isBalanced"] === false ||
+                parsed["converged"] === false
+              ) {
+                const reason =
+                  typeof parsed["verdict"] === "string"
+                    ? parsed["verdict"]
+                    : typeof parsed["summary"] === "string"
+                      ? parsed["summary"]
+                      : typeof parsed["resultTitle"] === "string"
+                        ? parsed["resultTitle"]
+                        : "One or more verification gates failed.";
+                failureReasons.push(reason);
+              } else if (Array.isArray(parsed["gates"])) {
+                const failedGates = (parsed["gates"] as Record<string, unknown>[]).filter(
+                  (g) => g && g["passed"] === false,
+                );
+                if (failedGates.length > 0) {
+                  failureReasons.push(
+                    `Failed gate(s): ${failedGates.map((g) => String(g["gateName"] ?? `Gate ${g["gate"]}`)).join(", ")}`,
+                  );
+                }
+              }
+            } catch {
+              if (/\b(?:error|failed)\b/i.test(jsonPart)) {
+                failureReasons.push(jsonPart);
+              }
+            }
+          }
+        }
+
         const summaryReply =
-          "All verification gates and deterministic compiler proofs succeeded. Review the structured JSON-RPC trace cards above for detailed solver and contract metrics.";
+          failureReasons.length > 0
+            ? `Verification failed: ${failureReasons.join(" | ")}. Review the structured JSON-RPC trace cards above for diagnostic details.`
+            : "All verification gates and deterministic compiler proofs succeeded. Review the structured JSON-RPC trace cards above for detailed solver and contract metrics.";
         webview.postMessage({ type: "cloudStreamChunk", id: msg.id, content: summaryReply });
         webview.postMessage({ type: "cloudStreamEnd", id: msg.id });
         return;

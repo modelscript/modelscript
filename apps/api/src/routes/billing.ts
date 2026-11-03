@@ -165,7 +165,10 @@ export function billingRouter(database: LibraryDatabase): Router {
         }
       }
 
-      const origin = req.headers.origin || process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
+      const origin =
+        req.headers.origin ||
+        process.env["PUBLIC_URL"] ||
+        `${req.protocol || "http"}://${req.get("host") || "localhost:3001"}`;
       const resolveSafeRedirectUrl = (candidate: unknown, fallbackPath: string): string => {
         const defaultUrl = `${origin}${fallbackPath}`;
         if (typeof candidate !== "string" || !candidate.trim()) return defaultUrl;
@@ -595,7 +598,9 @@ export function billingRouter(database: LibraryDatabase): Router {
       }
 
       // If simulated payment failure is requested for testing
-      if (req.body.simulatePaymentFailure === true) {
+      const allowSimulation =
+        process.env["NODE_ENV"] !== "production" || process.env["ALLOW_BILLING_SIMULATION"] === "true";
+      if (allowSimulation && req.body.simulatePaymentFailure === true) {
         const failure = defaultPaymentGuard.recordFailure(`user:${userId}`);
         defaultPaymentGuard.recordFailure(`ip:${clientIp}`);
         return res.status(402).json({

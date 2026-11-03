@@ -1,12 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlusIcon, SearchIcon, XCircleFillIcon } from "@primer/octicons-react";
-import { Button, Heading, Select, Text, TextInput } from "@primer/react";
-import React from "react";
-import Box from "../../../components/Box";
+import { ChevronDownIcon, GlobeIcon, PlusIcon, SearchIcon, SortAscIcon, XCircleFillIcon } from "@primer/octicons-react";
+import { Button, Label } from "@primer/react";
+import React, { useEffect, useRef } from "react";
+import { scrollToTop } from "../../../components/ScrollToTop";
 import type { SortOption } from "../../../util/package-helpers";
 import { DOMAIN_OPTIONS } from "../constants";
-import { FilterPill, FilterPillBar, ResultCount } from "../styles";
+import {
+  HeaderActionsGroup,
+  HeaderControlsRow,
+  HeaderTitle,
+  HeaderTitleGroup,
+  HeaderTopRow,
+  PackagesHeader,
+  ResultCount,
+  ScopeSegmentButton,
+  ScopeSegmentedControl,
+  SearchClearButton,
+  SearchFieldWrapper,
+  SearchKbdHint,
+  ToolbarSelectWrapper,
+} from "../styles";
 
 export interface LibraryFilterBarProps {
   displayedCount: number;
@@ -19,6 +33,10 @@ export interface LibraryFilterBarProps {
   onSortChange: (sort: SortOption) => void;
   domainFilter: string;
   onDomainFilterChange: (domain: string) => void;
+  activeTab?: "all" | "my" | undefined;
+  onTabChange?: ((tab: "all" | "my") => void) | undefined;
+  showScopeTabs?: boolean | undefined;
+  pendingTransfersCount?: number | undefined;
 }
 
 export const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
@@ -32,83 +50,175 @@ export const LibraryFilterBar: React.FC<LibraryFilterBarProps> = ({
   onSortChange,
   domainFilter,
   onDomainFilterChange,
+  activeTab = "all",
+  onTabChange,
+  showScopeTabs = false,
+  pendingTransfersCount = 0,
 }) => {
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const active = document.activeElement;
+        const tag = active?.tagName.toLowerCase();
+        if (
+          tag === "input" ||
+          tag === "textarea" ||
+          tag === "select" ||
+          (active as HTMLElement | null)?.isContentEditable
+        ) {
+          return;
+        }
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const activeDomainObj = DOMAIN_OPTIONS.find((d) => d.id === domainFilter) ?? DOMAIN_OPTIONS[0];
+  const ActiveDomainIcon = activeDomainObj?.icon ?? GlobeIcon;
+
   return (
-    <Box display="flex" flexDirection="column" gap={3} mb={4}>
-      <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
-        <Box display="flex" alignItems="baseline" gap="8px">
-          <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 800, fontSize: 24, margin: 0 }}>
-            Packages
-          </Heading>
+    <PackagesHeader>
+      <HeaderTopRow>
+        <HeaderTitleGroup>
+          <HeaderTitle>Packages</HeaderTitle>
           {!loading && (
-            <ResultCount>
-              {displayedCount} package{displayedCount !== 1 ? "s" : ""}
+            <ResultCount title={`${displayedCount} package${displayedCount !== 1 ? "s" : ""}`}>
+              {displayedCount}
             </ResultCount>
           )}
-        </Box>
+        </HeaderTitleGroup>
 
-        <Button variant="primary" leadingVisual={PlusIcon} onClick={onOpenPublishModal}>
-          Publish Package
-        </Button>
-      </Box>
+        <HeaderActionsGroup>
+          {showScopeTabs && onTabChange && (
+            <ScopeSegmentedControl role="tablist" aria-label="Package scope">
+              <ScopeSegmentButton
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "all"}
+                $active={activeTab === "all"}
+                onClick={() => {
+                  if (activeTab === "all") {
+                    scrollToTop({ smooth: true });
+                  } else {
+                    onTabChange("all");
+                    scrollToTop({ smooth: false });
+                  }
+                }}
+              >
+                All
+              </ScopeSegmentButton>
+              <ScopeSegmentButton
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "my"}
+                $active={activeTab === "my"}
+                onClick={() => {
+                  if (activeTab === "my") {
+                    scrollToTop({ smooth: true });
+                  } else {
+                    onTabChange("my");
+                    scrollToTop({ smooth: false });
+                  }
+                }}
+              >
+                My Packages
+                {pendingTransfersCount > 0 && (
+                  <Label variant="attention" style={{ fontSize: 10, padding: "0 5px", lineHeight: "16px" }}>
+                    {pendingTransfersCount}
+                  </Label>
+                )}
+              </ScopeSegmentButton>
+            </ScopeSegmentedControl>
+          )}
 
-      <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={3}>
-        <Box
-          display="flex"
-          alignItems="center"
-          style={{
-            maxWidth: "460px",
-            width: "100%",
-            flex: "1 1 280px",
-          }}
-        >
-          <TextInput
-            leadingVisual={SearchIcon}
+          <Button
+            size="small"
+            variant="primary"
+            leadingVisual={PlusIcon}
+            onClick={onOpenPublishModal}
+            style={{ height: 32, borderRadius: 8, padding: "0 12px", fontWeight: 600 }}
+          >
+            Publish Package
+          </Button>
+        </HeaderActionsGroup>
+      </HeaderTopRow>
+
+      <HeaderControlsRow>
+        <SearchFieldWrapper>
+          <SearchIcon size={15} />
+          <input
+            ref={searchInputRef}
+            type="text"
             placeholder="Search packages by name, scope, or keyword..."
+            aria-label="Search packages"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            trailingAction={
-              searchInput ? (
-                <TextInput.Action icon={XCircleFillIcon} aria-label="Clear search" onClick={onClearSearch} />
-              ) : undefined
-            }
-            sx={{ width: "100%" }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                if (searchInput) {
+                  onClearSearch();
+                } else {
+                  searchInputRef.current?.blur();
+                }
+              }
+            }}
           />
-        </Box>
+          {searchInput ? (
+            <SearchClearButton type="button" aria-label="Clear search" onClick={onClearSearch}>
+              <XCircleFillIcon size={14} />
+            </SearchClearButton>
+          ) : (
+            <SearchKbdHint className="search-kbd-hint" aria-hidden="true">
+              /
+            </SearchKbdHint>
+          )}
+        </SearchFieldWrapper>
 
-        <Box display="flex" alignItems="center" gap={2}>
-          <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontWeight: 600 }}>Sort by:</Text>
-          <Select
-            size="small"
+        <ToolbarSelectWrapper $active={domainFilter !== "all"}>
+          <span className="select-leading" aria-hidden="true">
+            <ActiveDomainIcon size={14} />
+          </span>
+          <select
+            value={domainFilter}
+            onChange={(e) => onDomainFilterChange(e.target.value)}
+            aria-label="Filter packages by domain"
+          >
+            {DOMAIN_OPTIONS.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+          <span className="select-trailing" aria-hidden="true">
+            <ChevronDownIcon size={13} />
+          </span>
+        </ToolbarSelectWrapper>
+
+        <ToolbarSelectWrapper $active={sortBy !== "recommended"}>
+          <span className="select-leading" aria-hidden="true">
+            <SortAscIcon size={14} />
+          </span>
+          <select
             value={sortBy}
             onChange={(e) => onSortChange(e.target.value as SortOption)}
             aria-label="Sort packages"
           >
-            <Select.Option value="downloads">Most Downloaded</Select.Option>
-            <Select.Option value="recent">Recently Updated</Select.Option>
-            <Select.Option value="name">Alphabetical (A–Z)</Select.Option>
-          </Select>
-        </Box>
-      </Box>
-
-      {/* Polyglot Domain Filter Pills */}
-      <FilterPillBar>
-        {DOMAIN_OPTIONS.map((d) => {
-          const IconComp = d.icon;
-          return (
-            <FilterPill
-              key={d.id}
-              $active={domainFilter === d.id}
-              $color={d.color}
-              aria-pressed={domainFilter === d.id}
-              onClick={() => onDomainFilterChange(d.id)}
-            >
-              <IconComp size={13} />
-              <span>{d.label}</span>
-            </FilterPill>
-          );
-        })}
-      </FilterPillBar>
-    </Box>
+            <option value="recommended">Recommended</option>
+            <option value="downloads">Most Downloaded</option>
+            <option value="dependents">Most Dependents</option>
+            <option value="recent">Recently Updated</option>
+            <option value="name">Alphabetical (A–Z)</option>
+          </select>
+          <span className="select-trailing" aria-hidden="true">
+            <ChevronDownIcon size={13} />
+          </span>
+        </ToolbarSelectWrapper>
+      </HeaderControlsRow>
+    </PackagesHeader>
   );
 };

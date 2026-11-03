@@ -74,6 +74,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const editorLineNumbers = modelingPrefs.editorLineNumbers ?? modelingPrefs.lineNumbers ?? "on";
   const editorMinimap = modelingPrefs.editorMinimap ?? modelingPrefs.minimapEnabled ?? true;
   const bracketPairColorization = modelingPrefs.bracketPairColorization ?? true;
+  const lintOnType = modelingPrefs.lintOnType ?? true;
 
   const editorRef = useRef<editor.ICodeEditor>(null);
   const adapterDisposableRef = useRef<IDisposable | null>(null);
@@ -81,8 +82,10 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const lastValueRef = useRef<string | undefined>(undefined);
   const uriRef = useRef(props.uri);
   const languageIdRef = useRef(props.languageId ?? "modelica");
+  const lintOnTypeRef = useRef(lintOnType);
   uriRef.current = props.uri;
   languageIdRef.current = props.languageId ?? "modelica";
+  lintOnTypeRef.current = lintOnType;
 
   // ── Sync Monaco editor options when user preferences change ──
   useEffect(() => {
@@ -183,6 +186,12 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     }, 150);
 
     ed.onDidScrollChange(sendVisibleRanges);
+    ed.onDidBlurEditorText(() => {
+      if (!lintOnTypeRef.current && lastValueRef.current !== undefined) {
+        didChange(uriRef.current, lastValueRef.current);
+        props.onParsed?.();
+      }
+    });
     sendVisibleRanges();
   };
 
@@ -217,7 +226,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     if (value === undefined) return;
     lastValueRef.current = value;
     props.onChange?.(value);
-    sendDidChange(value);
+    if (lintOnTypeRef.current) {
+      sendDidChange(value);
+    }
   };
 
   // ── Imperative handle ──

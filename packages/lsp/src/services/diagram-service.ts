@@ -297,7 +297,7 @@ export class DiagramService {
             const normUri = uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
             const indexedText =
               this.validationService.lastIndexedText.get(uri) ?? this.validationService.lastIndexedText.get(normUri);
-            if (indexedText !== undefined && indexedText !== doc.getText()) {
+            if (indexedText === undefined || indexedText !== doc.getText()) {
               return true;
             }
           }

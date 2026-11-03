@@ -87,6 +87,19 @@ interface OpenCascadeInstance {
   BRep_Tool: {
     Triangulation(face: TopoDS_Shape, location: OpenCascadeLocation): OpenCascadeHandleTriangulation;
   };
+  gp_Vec_4?: new (x: number, y: number, z: number) => { delete?(): void };
+  gp_Trsf_1?: new () => {
+    SetTranslation_1?(vec: unknown): void;
+    delete?(): void;
+  };
+  BRepBuilderAPI_Transform_2?: new (
+    shape: TopoDS_Shape,
+    trsf: unknown,
+    copy: boolean,
+  ) => {
+    Shape(): TopoDS_Shape;
+    delete?(): void;
+  };
 }
 
 export interface CSGExecutionGraph {
@@ -97,6 +110,7 @@ export interface CSGNode {
   type: string;
   uuid: string;
   parameters: Record<string, number>;
+  inputs?: string[] | undefined;
 }
 
 export class CSGWorker {
@@ -170,15 +184,35 @@ export class CSGWorker {
         console.log(`[CSG] Interpreting MillingOperation (UUID: ${node.uuid})...`);
         const { tool_diameter, depth_of_cut } = node.parameters; // feed_rate used in physics, not geometry
 
-        // Find workpiece input geometry (simplified: assuming the latest node)
-        // In reality, this would look up node.inputs[0] in shapeDictionary
-        const workpieceShape = Array.from(shapeDictionary.values()).pop();
+        // Look up node.inputs?.[0] in shapeDictionary, falling back to the latest shape only if inputs is empty
+        const inputId = node.inputs && node.inputs.length > 0 ? node.inputs[0] : undefined;
+        const workpieceShape = inputId ? shapeDictionary.get(inputId) : Array.from(shapeDictionary.values()).pop();
         if (!workpieceShape) continue;
 
         // 1. Tool Definition (Cylinder)
-        // Assuming a simple end-mill dropping in Z
         const makeTool = new this.oc.BRepPrimAPI_MakeCylinder_1(tool_diameter! / 2, depth_of_cut);
-        const toolShape = makeTool.Solid();
+        let toolShape = makeTool.Solid();
+
+        // Apply tool position/offset parameters if provided
+        const offsetX = node.parameters["x"] ?? node.parameters["offset_x"] ?? node.parameters["position_x"] ?? 0;
+        const offsetY = node.parameters["y"] ?? node.parameters["offset_y"] ?? node.parameters["position_y"] ?? 0;
+        const offsetZ = node.parameters["z"] ?? node.parameters["offset_z"] ?? node.parameters["position_z"] ?? 0;
+
+        let toolTransform: { Shape(): TopoDS_Shape; delete?(): void } | undefined;
+        let trsf: { SetTranslation_1?(vec: unknown): void; delete?(): void } | undefined;
+        let vec: { delete?(): void } | undefined;
+
+        if (offsetX !== 0 || offsetY !== 0 || offsetZ !== 0) {
+          if (this.oc.gp_Vec_4 && this.oc.gp_Trsf_1 && this.oc.BRepBuilderAPI_Transform_2) {
+            vec = new this.oc.gp_Vec_4(offsetX, offsetY, offsetZ);
+            trsf = new this.oc.gp_Trsf_1();
+            trsf.SetTranslation_1?.(vec);
+            toolTransform = new this.oc.BRepBuilderAPI_Transform_2(toolShape, trsf, true);
+            toolShape = toolTransform.Shape();
+          } else if (typeof toolShape === "object" && toolShape !== null) {
+            (toolShape as Record<string, unknown>)["offset"] = { x: offsetX, y: offsetY, z: offsetZ };
+          }
+        }
 
         // 2. Boolean Cut
         const cutAlgo = new this.oc.BRepAlgoAPI_Cut_3(workpieceShape, toolShape);
@@ -190,6 +224,9 @@ export class CSGWorker {
           this.exportMesh(cutShape, path.join(outputDir, `${node.uuid}.stl`), fs);
         }
 
+        toolTransform?.delete?.();
+        trsf?.delete?.();
+        vec?.delete?.();
         makeTool.delete();
         cutAlgo.delete();
       }

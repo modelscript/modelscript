@@ -85,7 +85,7 @@ export function evaluateRegistrationPolicy(
 
   const instanceSettings = database.getInstanceSettings();
 
-  if (instanceSettings.registrationMode === "closed") {
+  if (instanceSettings.registrationMode === "closed" && !inviteCode) {
     return {
       allowed: false,
       status: 403,

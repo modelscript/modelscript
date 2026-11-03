@@ -231,6 +231,21 @@ end RCFilter;`;
     assert.ok(foundUser, "Search should return seeded user");
   });
 
+  await t.test("Search: GET /api/v1/social/explore?q=... filters posts by tokenized query", async () => {
+    const userRow = db.getUserByUsername("cad_dev");
+    assert.ok(userRow);
+    db.createPost(userRow.id, "Simulating eVTOL tilt-rotor transition corridor controller dynamics");
+
+    const emptyRes = await request(app).get("/api/v1/social/explore?q=aaaasdas+dasdasd");
+    assert.strictEqual(emptyRes.status, 200);
+    assert.deepStrictEqual(emptyRes.body.posts, []);
+
+    const matchRes = await request(app).get("/api/v1/social/explore?q=eVTOL+controller");
+    assert.strictEqual(matchRes.status, 200);
+    assert.strictEqual(matchRes.body.posts.length, 1);
+    assert.ok(matchRes.body.posts[0].content.includes("eVTOL"));
+  });
+
   await t.test("RDF: GET /api/v1/libraries/:name/:version/rdf returns 404 for missing package", async () => {
     const res = await request(app).get("/api/v1/libraries/MissingPackage/1.0.0/rdf");
     assert.strictEqual(res.status, 404);

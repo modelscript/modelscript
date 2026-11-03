@@ -8,6 +8,8 @@ import {
   GearIcon,
   HomeIcon,
   KebabHorizontalIcon,
+  LinkExternalIcon,
+  MarkGithubIcon,
   MoonIcon,
   PackageIcon,
   PersonIcon,
@@ -26,27 +28,39 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { useClickOutside } from "../hooks/useClickOutside";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { useTheme } from "../theme";
 import { safeCssImageUrl } from "../util/url";
 import AnsatzMark from "./AnsatzLogo";
 import Box from "./Box";
+import { scrollToTop } from "./ScrollToTop";
 
 const SidebarContainer = styled.header`
-  width: 275px;
+  width: 272px;
   display: flex;
   flex-direction: column;
   position: sticky;
   top: var(--dev-header-height, 0px);
-  height: calc(100vh - var(--dev-header-height, 0px));
+  height: calc(100vh - var(--dev-header-height, 0px) - var(--guest-banner-height, 0px));
   overflow-y: auto;
-  padding: 16px 12px 12px 12px;
+  padding: 14px 12px 12px 12px;
   box-sizing: border-box;
+  gap: 4px;
+  font-family: var(--ms-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  isolation: isolate;
+  z-index: 20;
 
   @media (max-width: 1280px) {
-    width: 80px;
+    width: 76px;
     align-items: center;
-    padding: 12px 4px;
+    padding: 12px 6px;
   }
 
   @media (max-width: 500px) {
@@ -65,30 +79,26 @@ const SidebarContainer = styled.header`
     }
   }
 
-  .sidebar-section-header {
-    @media (max-width: 1280px) {
-      display: none;
-    }
-  }
-
   .post-btn-container {
     @media (max-width: 1280px) {
       padding: 0;
-      width: 50px;
-      height: 50px;
+      width: 44px;
+      height: 44px;
       display: flex;
       justify-content: center;
     }
   }
 
   .post-btn {
-    font-size: 17px;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 650;
+    border-radius: 10px;
+    height: 40px;
 
     @media (max-width: 1280px) {
-      width: 50px !important;
-      height: 50px !important;
-      border-radius: 50% !important;
+      width: 44px !important;
+      height: 44px !important;
+      border-radius: 12px !important;
       padding: 0 !important;
       display: flex !important;
       align-items: center !important;
@@ -117,52 +127,79 @@ const SidebarContainer = styled.header`
   .profile-footer {
     @media (max-width: 1280px) {
       padding: 0;
-      width: 50px;
-      height: 50px;
+      width: 44px;
+      height: 44px;
       justify-content: center;
-      border-radius: 50%;
+      border-radius: 12px;
     }
   }
 `;
 
-const NavItem = styled(Link)<{ $active?: boolean | undefined }>`
+const NavItem = styled(Link)<{ $active?: boolean | undefined; $compact?: boolean | undefined }>`
   display: flex;
   align-items: center;
   text-decoration: none;
-  color: var(--color-text-heading, #0f1419);
-  font-size: 17px;
-  line-height: 22px;
-  font-weight: ${(props) => (props.$active ? "700" : "500")};
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-primary)")};
+  font-family: var(--ms-font-sans);
+  font-size: ${(props) => (props.$compact ? "14.5px" : "16.5px")};
+  line-height: ${(props) => (props.$compact ? "20px" : "22px")};
+  font-weight: ${(props) => (props.$active ? "650" : "500")};
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
   width: 100%;
   box-sizing: border-box;
 
   .nav-label {
-    font-size: 17px;
-    line-height: 22px;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
     font-weight: inherit;
     color: inherit;
+    letter-spacing: -0.01em;
   }
 
-  svg {
-    color: ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-text-heading, #0f1419)")};
+  .nav-leading-icon {
+    color: ${(props) =>
+      props.$active ? "var(--ms-brand)" : props.$compact ? "var(--color-text-muted)" : "var(--color-text-secondary)"};
     transition:
-      transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-      color 0.2s ease;
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      color 0.18s ease;
+  }
+
+  .nav-external-icon {
+    margin-left: auto;
+    color: var(--color-text-tertiary, var(--color-text-muted));
+    opacity: 0.55;
+    transition:
+      transform 0.18s ease,
+      opacity 0.18s ease,
+      color 0.18s ease;
+
+    @media (max-width: 1280px) {
+      display: none;
+    }
   }
 
   &:hover {
     text-decoration: none;
-    color: var(--color-text-heading, #0f1419);
+    color: var(--color-text-heading);
   }
 
-  &:hover svg {
-    color: var(--color-accent-cyan);
-    transform: scale(1.08);
+  &:hover .nav-leading-icon {
+    color: var(--ms-brand);
+  }
+
+  &:hover .nav-external-icon {
+    opacity: 0.95;
+    color: var(--color-text-secondary);
+    transform: translate(1px, -1px);
   }
 
   &:hover > div {
-    background-color: var(--surface-row-hover);
-    border-color: var(--color-border-default);
+    background-color: ${(props) => (props.$active ? "var(--surface-selected)" : "var(--surface-row-hover)")};
+    border-color: ${(props) =>
+      props.$active ? "var(--color-accent-blue-border)" : "var(--color-border-subtle, transparent)"};
   }
 
   @media (max-width: 1280px) {
@@ -172,30 +209,32 @@ const NavItem = styled(Link)<{ $active?: boolean | undefined }>`
 
 const SectionDivider = styled.div`
   height: 1px;
-  background-color: var(--color-border-default);
-  margin: 8px 10px;
+  background-color: var(--color-border);
+  margin: 6px 10px;
 
   @media (max-width: 1280px) {
-    margin: 6px 2px;
+    width: 28px;
+    margin: 6px auto;
   }
 `;
 
-const NavPill = styled.div<{ $active?: boolean | undefined }>`
+const NavPill = styled.div<{ $active?: boolean | undefined; $compact?: boolean | undefined }>`
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 16px;
-  padding: 9px 14px;
+  gap: ${(props) => (props.$compact ? "10px" : "12px")};
+  padding: ${(props) => (props.$compact ? "6px 12px" : "8px 12px")};
   border-radius: 10px;
   width: 100%;
   border: 1px solid ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "transparent")};
   background: ${(props) => (props.$active ? "var(--surface-selected)" : "transparent")};
-  box-shadow: ${(props) => (props.$active ? "0 1px 3px rgba(0, 0, 0, 0.04)" : "none")};
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease;
 
   @media (max-width: 1280px) {
-    width: 44px;
-    height: 44px;
+    width: 42px;
+    height: 42px;
     padding: 0;
     justify-content: center;
     border-radius: 10px;
@@ -206,10 +245,11 @@ const AdminNavBadge = styled.span`
   margin-left: auto;
   font-size: 11px;
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background: rgba(210, 153, 34, 0.2);
-  color: #d29922;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-attention-subtle);
+  color: var(--color-attention-fg);
+  border: 1px solid var(--color-attention-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -217,16 +257,17 @@ const AdminNavBadge = styled.span`
 
   @media (max-width: 1280px) {
     position: absolute;
-    top: 4px;
+    top: 3px;
     right: 2px;
     margin-left: 0;
-    min-width: 18px;
-    height: 18px;
+    min-width: 17px;
+    height: 17px;
     padding: 0 4px;
     font-size: 10px;
     border-radius: 999px;
-    background: #d29922;
+    background: var(--ms-warning);
     color: #ffffff;
+    border: none;
     box-shadow: 0 0 0 2px var(--color-bg-primary);
   }
 `;
@@ -234,42 +275,57 @@ const AdminNavBadge = styled.span`
 const BrandHeader = styled(Link)`
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
+  gap: 11px;
+  padding: 6px;
   border-radius: 12px;
   text-decoration: none;
-  margin-bottom: 10px;
-  border: 1px solid var(--color-border-default);
-  background-color: var(--surface-card, rgba(255, 255, 255, 0.02));
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-bottom: 6px;
   color: var(--color-text-heading);
+  outline: none;
+  transition: background-color 0.16s ease;
 
   &:hover {
     text-decoration: none;
     background-color: var(--surface-row-hover);
-    border-color: rgba(56, 189, 248, 0.45);
   }
 
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--ms-brand);
+  }
+
+  /* No transform on hover: scaling a ~34px tile by a few percent is a
+     sub-pixel change that only blurs/shifts the glyph. Instead the tile
+     glows and the accent facet brightens, with zero layout movement. */
   .brand-icon-wrap {
-    transition: transform 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
-  &:hover .brand-icon-wrap {
-    transform: scale(1.05);
+  &:hover .ansatz-mark:not(.ansatz-mark--custom),
+  &:focus-visible .ansatz-mark:not(.ansatz-mark--custom) {
+    box-shadow:
+      inset 0 1px 0 var(--ansatz-tile-highlight),
+      inset 0 0 0 1px var(--ansatz-tile-ring),
+      var(--ansatz-tile-shadow-hover);
+  }
+
+  &:hover .ansatz-facet-accent {
+    filter: brightness(1.12) saturate(1.1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    .ansatz-mark,
+    .ansatz-facet-accent {
+      transition: none;
+    }
   }
 
   @media (max-width: 1280px) {
     justify-content: center;
-    padding: 6px;
-    margin-bottom: 8px;
-    border-color: transparent;
-    background-color: transparent;
-    box-shadow: none;
+    padding: 4px;
+    margin-bottom: 6px;
   }
 `;
 
@@ -277,22 +333,48 @@ const BrandTitle = styled.div`
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 3px;
   min-width: 0;
   color: var(--color-text-heading);
+  font-family: var(--ms-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
   white-space: nowrap;
 
   .brand-top-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    line-height: 1.05;
+    line-height: 1.15;
   }
 
   .brand-name {
-    font-size: 17.5px;
-    font-weight: 800;
-    letter-spacing: -0.035em;
+    font-family: var(--ms-font-sans);
+    font-size: 16px;
+    font-weight: 680;
+    letter-spacing: -0.02em;
     color: var(--color-text-heading);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .brand-domain-sub {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--ms-font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .brand-domain-sub > span:last-child {
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -301,33 +383,23 @@ const BrandTitle = styled.div`
     width: 6px;
     height: 6px;
     border-radius: 999px;
-    background-color: var(--color-accent-cyan, #22d3ee);
-    box-shadow: 0 0 6px rgba(34, 211, 238, 0.55);
+    background-color: var(--ms-success);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ms-success) 18%, transparent);
     flex-shrink: 0;
   }
 
-  .brand-domain-sub {
-    margin-top: 3px;
-    font-family: var(--ms-font-mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace);
-    font-size: 11.5px;
-    font-weight: 500;
-    line-height: 1.1;
-    letter-spacing: -0.01em;
-    color: var(--color-text-muted, #64748b);
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
   .brand-badge {
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 700;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
-    padding: 1.5px 5px;
-    border-radius: 5px;
-    background: rgba(6, 182, 212, 0.14);
-    border: 1px solid rgba(6, 182, 212, 0.35);
-    color: var(--color-accent-cyan);
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--ms-brand-soft);
+    border: 1px solid var(--color-accent-blue-border);
+    color: var(--ms-brand);
+    line-height: 1.3;
+    flex-shrink: 0;
   }
 
   @media (max-width: 1280px) {
@@ -335,45 +407,237 @@ const BrandTitle = styled.div`
   }
 `;
 
-const BrandKbdButton = styled.button`
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-family: var(--ms-font-mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--color-text-muted, #64748b);
-  background: var(--surface-row-hover, rgba(148, 163, 184, 0.12));
-  border: 1px solid var(--color-border-default);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.15s ease;
+const WorkbenchSection = styled.div`
+  margin-top: auto;
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
 
-  &:hover {
-    color: var(--color-text-heading);
-    border-color: var(--color-accent-cyan);
+  @media (max-width: 1280px) {
+    align-items: center;
+  }
+`;
+
+const FooterSection = styled.div`
+  padding-top: 10px;
+  margin-top: 6px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+
+  @media (max-width: 1280px) {
+    padding-top: 8px;
+    align-items: center;
+    gap: 8px;
+  }
+`;
+
+const GuestAuthActions = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+
+  .guest-auth-expanded {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .guest-auth-btn {
+    flex: 1;
+    height: 36px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 0 12px;
   }
 
   @media (max-width: 1280px) {
-    display: none;
+    .guest-auth-expanded {
+      display: none;
+    }
+  }
+`;
+
+const GuestRailAuthButton = styled.button<{ $active?: boolean | undefined }>`
+  display: none;
+
+  @media (max-width: 1280px) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 10px;
+    border: 1px solid ${(props) => (props.$active ? "var(--ms-brand)" : "var(--color-accent-blue-border)")};
+    background: ${(props) => (props.$active ? "var(--ms-brand)" : "var(--ms-brand-soft)")};
+    color: ${(props) => (props.$active ? "var(--ms-brand-contrast, #ffffff)" : "var(--ms-brand)")};
+    cursor: pointer;
+    transition:
+      background-color 0.16s ease,
+      border-color 0.16s ease,
+      color 0.16s ease,
+      box-shadow 0.16s ease,
+      transform 0.12s ease;
+
+    &:hover {
+      background: var(--ms-brand);
+      border-color: var(--ms-brand);
+      color: var(--ms-brand-contrast, #ffffff);
+      box-shadow: var(--ms-brand-shadow);
+    }
+
+    &:active {
+      transform: scale(0.96);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--ms-brand);
+    }
+  }
+`;
+
+const GuestAuthPopover = styled.div<{ $left: number; $bottom: number }>`
+  position: fixed;
+  left: ${(props) => props.$left}px;
+  bottom: ${(props) => props.$bottom}px;
+  width: 248px;
+  background-color: var(--surface-overlay);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--color-border-default);
+  border-radius: 14px;
+  box-shadow: var(--ms-shadow-pop);
+  padding: 14px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+
+  .popover-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .popover-title {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-text-heading);
+    letter-spacing: -0.01em;
+  }
+
+  .popover-subtitle {
+    font-size: 12px;
+    line-height: 1.38;
+    color: var(--color-text-muted);
+    margin: 0;
+  }
+
+  .popover-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .popover-btn {
+    width: 100%;
+    height: 34px;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    justify-content: center;
+    text-decoration: none;
+    box-sizing: border-box;
+  }
+
+  .popover-github-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    height: 34px;
+    border-radius: 9px;
+    border: 1px solid var(--color-border-default);
+    background: var(--color-canvas-subtle);
+    color: var(--color-text-primary);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+
+    &:hover {
+      background: var(--surface-row-hover);
+      border-color: var(--color-accent-blue-border);
+    }
+  }
+`;
+
+const UtilityFooterRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 0 4px;
+  min-height: 28px;
+  width: 100%;
+  box-sizing: border-box;
+
+  @media (max-width: 1280px) {
+    justify-content: center;
+    padding: 0;
   }
 `;
 
 const PoweredByFooter = styled.a`
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px 2px 14px;
-  font-size: 11px;
+  font-size: 11.5px;
+  line-height: 1;
   color: var(--color-text-muted);
   text-decoration: none;
-  opacity: 0.78;
-  transition: opacity 0.15s ease;
+  transition: color 0.15s ease;
+  min-width: 0;
+  white-space: nowrap;
+
+  .powered-by-icon {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    object-fit: cover;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+
+  .powered-by-brand {
+    font-weight: 600;
+    color: var(--color-text-primary);
+    transition: color 0.15s ease;
+  }
 
   &:hover {
-    opacity: 1;
-    color: var(--color-accent-cyan);
+    color: var(--color-text-primary);
     text-decoration: none;
+
+    .powered-by-brand {
+      color: var(--ms-brand);
+    }
   }
 
   @media (max-width: 1280px) {
@@ -381,11 +645,70 @@ const PoweredByFooter = styled.a`
   }
 `;
 
+const ThemeToggleSwitch = styled.button<{ $dragging?: boolean | undefined }>`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--color-canvas-subtle);
+  border: 1px solid var(--color-border-default);
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+  cursor: ${(props) => (props.$dragging ? "grabbing" : "pointer")};
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  outline: none;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--ms-brand);
+  }
+
+  @media (max-width: 1280px) {
+    margin-left: 0;
+  }
+`;
+
+const ThemeToggleThumb = styled.span<{ $offsetPx: number; $dragging?: boolean | undefined }>`
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  transform: translate3d(${(props) => props.$offsetPx}px, 0, 0);
+  transition: ${(props) => (props.$dragging ? "none" : "transform 0.18s cubic-bezier(0.16, 1, 0.3, 1)")};
+  pointer-events: none;
+  z-index: 0;
+`;
+
+const ThemeToggleIconSlot = styled.span<{ $active?: boolean | undefined }>`
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border-radius: 6px;
+  color: ${(props) => (props.$active ? "var(--ms-brand)" : "var(--color-text-muted)")};
+  transition: color 0.15s ease;
+  pointer-events: none;
+
+  ${ThemeToggleSwitch}:hover & {
+    color: ${(props) => (props.$active ? "var(--ms-brand)" : "var(--color-text-heading)")};
+  }
+`;
+
 const SidebarAvatar = styled.div<{ $url?: string | undefined }>`
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
-  min-height: 40px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
   border-radius: 50%;
   background: var(--gradient-ai);
   box-shadow: var(--glow-ai-sm);
@@ -396,6 +719,7 @@ const SidebarAvatar = styled.div<{ $url?: string | undefined }>`
   justify-content: center;
   color: white;
   font-weight: bold;
+  font-size: 14px;
   flex-shrink: 0;
 `;
 
@@ -407,10 +731,10 @@ const LogoutMenu = styled.div`
   background-color: var(--surface-overlay);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--color-border-glass);
-  border-radius: 16px;
-  box-shadow: var(--glow-card);
-  padding: 12px 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: 12px;
+  box-shadow: var(--ms-shadow-pop);
+  padding: 8px 0;
   z-index: 50;
 
   @media (max-width: 1280px) {
@@ -422,12 +746,12 @@ const LogoutMenu = styled.div`
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 10px 16px;
+    padding: 9px 14px;
     background: none;
     border: none;
     text-align: left;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 600;
     color: var(--color-text-primary);
     cursor: pointer;
@@ -438,7 +762,7 @@ const LogoutMenu = styled.div`
   }
 
   hr {
-    margin: 6px 0;
+    margin: 4px 0;
     border: none;
     border-top: 1px solid var(--ms-divider);
   }
@@ -448,86 +772,125 @@ const ProfileFooterContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px;
-  margin: 12px 0;
-  border-radius: 9999px;
+  padding: 8px 10px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.16s ease;
 
   &:hover {
     background-color: var(--surface-row-hover);
   }
 `;
 
-const GuestFooter = styled.div`
-  margin-top: auto;
-  padding: 14px 8px 8px 8px;
-  border-top: 1px solid var(--color-border-default);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  box-sizing: border-box;
-
-  @media (max-width: 1280px) {
-    padding: 10px 4px 4px 4px;
-    align-items: center;
-    gap: 6px;
-
-    .guest-theme-label {
-      display: none;
-    }
-
-    .guest-auth-actions {
-      flex-direction: column;
-      width: 100%;
-      gap: 6px;
-    }
-
-    .guest-auth-actions a {
-      padding: 6px 4px;
-      font-size: 11px;
-      text-align: center;
-      justify-content: center;
-    }
-  }
-
-  @media (max-width: 899px) {
-    display: none;
-  }
-`;
-
-const GuestThemeToggle = styled.button`
-  align-self: flex-start;
-
-  @media (max-width: 1280px) {
-    align-self: center;
-  }
-`;
+interface SidebarLinkItem {
+  to: string;
+  icon: any;
+  label: string;
+  reloadDocument?: boolean | undefined;
+  isExternalSurface?: boolean | undefined;
+}
 
 interface SidebarProps {
   onPostClick?: (() => void) | undefined;
 }
 
+const THEME_THUMB_TRAVEL_PX = 26;
+const THEME_DRAG_THRESHOLD_PX = 3;
+
 const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   const { user, isAdmin, logout, unreadCount, setUnreadCount, adminPendingCount } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, setTheme } = useTheme();
   const ThemeIcon = theme === "dark" ? SunIcon : MoonIcon;
   const themeLabel = theme === "dark" ? "Light theme" : "Dark theme";
   const location = useLocation();
   const navigate = useNavigate();
   const [showLogoutMenu, setShowLogoutMenu] = React.useState(false);
+  const [showGuestAuthMenu, setShowGuestAuthMenu] = React.useState(false);
+  const [guestPopoverPos, setGuestPopoverPos] = React.useState<{ left: number; bottom: number }>({
+    left: 84,
+    bottom: 52,
+  });
+  const guestAuthTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+  const guestAuthPopoverRef = React.useRef<HTMLDivElement | null>(null);
+  const [themeDragOffset, setThemeDragOffset] = React.useState<number | null>(null);
+  const themeDragRef = React.useRef<{
+    pointerId: number;
+    startX: number;
+    baseOffset: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressThemeClickRef = React.useRef(false);
+
+  const effectiveThumbOffset =
+    themeDragOffset !== null ? themeDragOffset : theme === "dark" ? THEME_THUMB_TRAVEL_PX : 0;
+  const activeVisualTheme =
+    themeDragOffset !== null ? (themeDragOffset >= THEME_THUMB_TRAVEL_PX / 2 ? "dark" : "light") : theme;
+
+  const updateGuestPopoverPosition = React.useCallback(() => {
+    const trigger = guestAuthTriggerRef.current;
+    if (!trigger || typeof window === "undefined") return;
+    const rect = trigger.getBoundingClientRect();
+    const left = Math.max(12, Math.round(rect.right + 10));
+    const bottom = Math.max(12, Math.round(window.innerHeight - rect.bottom));
+    setGuestPopoverPos({ left, bottom });
+  }, []);
+
+  useClickOutside(
+    guestAuthPopoverRef,
+    () => {
+      setShowGuestAuthMenu(false);
+    },
+    showGuestAuthMenu,
+    {
+      ignoreRefs: [guestAuthTriggerRef],
+      closeOnEscape: true,
+    },
+  );
 
   React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest(".profile-footer-container")) {
+    setShowGuestAuthMenu(false);
+  }, [location.pathname]);
+
+  React.useEffect(() => {
+    if (!showGuestAuthMenu) return;
+    updateGuestPopoverPosition();
+    const handleViewportChange = () => {
+      if (window.innerWidth > 1280) {
+        setShowGuestAuthMenu(false);
+        return;
+      }
+      updateGuestPopoverPosition();
+    };
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", updateGuestPopoverPosition, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", updateGuestPopoverPosition, true);
+    };
+  }, [showGuestAuthMenu, updateGuestPopoverPosition]);
+
+  React.useEffect(() => {
+    if (!showLogoutMenu) return;
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && !target.closest(".profile-footer-container")) {
         setShowLogoutMenu(false);
       }
     };
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowLogoutMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showLogoutMenu]);
 
   React.useEffect(() => {
     if (location.pathname === "/notifications") {
@@ -537,6 +900,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
+  const hasPackages = useFeatureFlag("package_browser");
+  const hasRepos = useFeatureFlag("git_repositories");
+  const hasFeedsPage = useFeatureFlag("feeds_page");
+  const hasRssFeeds = useFeatureFlag("rss_feeds");
+  const hasFeeds = hasFeedsPage || hasRssFeeds;
   const branding = useInstanceBranding();
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
   const docsBase = (branding.docsBaseUrl || "").trim().replace(/\/+$/, "");
@@ -549,73 +917,94 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     return "ansatz.social";
   }, []);
 
-  const communityLinks = [];
+  // 1. Primary in-shell social / community links
+  const communityLinks: SidebarLinkItem[] = [];
   if (user) communityLinks.push({ to: "/home", icon: HomeIcon, label: "Home" });
   communityLinks.push({ to: "/explore", icon: SearchIcon, label: "Explore" });
   if (user) {
     communityLinks.push({ to: "/notifications", icon: BellIcon, label: "Notifications" });
     communityLinks.push({ to: "/bookmarks", icon: BookmarkIcon, label: "Bookmarks" });
-    communityLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
+    if (hasFeeds) {
+      communityLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
+    }
     communityLinks.push({ to: `/${user.username}`, icon: PersonIcon, label: "Profile" });
   }
 
-  const studioLinks: {
-    to: string;
-    icon: any;
-    label: string;
-    reloadDocument?: boolean;
-  }[] = [
-    { to: "/playground", icon: PlayIcon, label: "Playground" },
-    { to: "/packages", icon: PackageIcon, label: "Packages" },
-    { to: "/repos", icon: RepoIcon, label: "Repositories" },
-    { to: docsHref, icon: BookIcon, label: "Docs", reloadDocument: true },
-  ];
-  if (hasIde) {
-    studioLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE" });
+  // 2. Primary in-shell registry & engineering hub links
+  const registryLinks: SidebarLinkItem[] = [];
+  if (hasPackages) {
+    registryLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
+  }
+  if (hasRepos) {
+    registryLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
   }
   if (hasCae) {
-    studioLinks.push({ to: "/jobs", icon: ServerIcon, label: "Jobs" });
+    registryLinks.push({ to: "/jobs", icon: ServerIcon, label: "Jobs" });
   }
-
-  const systemLinks = [];
   if (user && isAdmin) {
-    systemLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
+    registryLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
   }
 
-  const renderLinkItem = (link: { to: string; icon: any; label: string; reloadDocument?: boolean | undefined }) => {
+  // 3. Standalone workbenches & external documentation (leave or launch outside the feed shell)
+  const workbenchLinks: SidebarLinkItem[] = [
+    { to: "/playground", icon: PlayIcon, label: "Playground", isExternalSurface: true },
+  ];
+  if (hasIde) {
+    workbenchLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE Workbench", isExternalSurface: true });
+  }
+  workbenchLinks.push({
+    to: docsHref,
+    icon: BookIcon,
+    label: "Documentation",
+    reloadDocument: true,
+    isExternalSurface: true,
+  });
+
+  const renderLinkItem = (link: SidebarLinkItem, compact = false) => {
     const isActive = location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
     return (
       <NavItem
         key={link.to}
         to={link.to}
+        data-tour-id={link.to === "/explore" ? "tour-explore" : undefined}
         reloadDocument={Boolean(link.reloadDocument)}
         title={link.label}
         aria-label={link.label}
         $active={isActive}
+        $compact={compact}
+        onClick={() => {
+          if (location.pathname === link.to) {
+            scrollToTop({ smooth: true });
+          } else {
+            scrollToTop({ smooth: false });
+          }
+        }}
       >
-        <NavPill $active={isActive}>
+        <NavPill $active={isActive} $compact={compact}>
           <div
+            className="nav-leading-icon"
             style={{
               position: "relative",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 24,
-              height: 24,
+              width: compact ? 18 : 22,
+              height: compact ? 18 : 22,
+              flexShrink: 0,
             }}
           >
-            <link.icon size={20} />
+            <link.icon size={compact ? 16 : 19} />
             {link.to === "/notifications" && unreadCount > 0 && (
               <div
                 style={{
                   position: "absolute",
                   top: -4,
                   right: -6,
-                  backgroundColor: "var(--color-accent-cyan)",
+                  backgroundColor: "var(--ms-brand)",
                   color: "white",
-                  borderRadius: "50%",
-                  minWidth: "18px",
-                  height: "18px",
+                  borderRadius: "999px",
+                  minWidth: "17px",
+                  height: "17px",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -625,11 +1014,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                   boxShadow: "0 0 0 2px var(--color-bg-primary)",
                 }}
               >
-                {unreadCount > 9 ? "9+" : unreadCount}
+                {unreadCount > 99 ? "99+" : unreadCount}
               </div>
             )}
           </div>
           <Text className="nav-label">{link.label}</Text>
+          {link.isExternalSurface && <LinkExternalIcon size={12} className="nav-external-icon" />}
           {link.to === "/admin" && adminPendingCount > 0 && (
             <AdminNavBadge data-testid="admin-nav-badge" aria-label={`${adminPendingCount} pending admin events`}>
               {adminPendingCount > 99 ? "99+" : adminPendingCount}
@@ -642,46 +1032,38 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
   return (
     <SidebarContainer>
-      <BrandHeader to={user ? "/home" : "/explore"} title={branding.instanceTagline || branding.instanceName}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
-          <div className="brand-icon-wrap">
-            <AnsatzMark
-              size={36}
-              logoUrl={customLogoSrc}
-              alt={branding.instanceName || "Ansatz"}
-              accentColor={branding.brandAccentColor}
-            />
-          </div>
-          <BrandTitle className="nav-label" data-testid="sidebar-brand-title">
-            <div className="brand-top-row">
-              <span className="brand-name">{branding.instanceName || "Ansatz"}</span>
-              <span className="brand-status-dot" aria-hidden="true" />
-              {branding.instanceBadge && (
-                <span className="brand-badge" data-testid="sidebar-brand-badge">
-                  {branding.instanceBadge}
-                </span>
-              )}
-            </div>
-            <div className="brand-domain-sub" data-testid="sidebar-brand-domain">
-              {nodeDomainLabel}
-            </div>
-          </BrandTitle>
+      <BrandHeader
+        to={user ? "/home" : "/explore"}
+        title={branding.instanceTagline || branding.instanceName}
+        onClick={() => {
+          const homeTarget = user ? "/home" : "/explore";
+          if (location.pathname === homeTarget) {
+            scrollToTop({ smooth: true });
+          } else {
+            scrollToTop({ smooth: false });
+          }
+        }}
+      >
+        <div className="brand-icon-wrap">
+          <AnsatzMark
+            size={34}
+            logoUrl={customLogoSrc}
+            alt={branding.instanceName || "Ansatz"}
+            accentColor={branding.brandAccentColor}
+          />
         </div>
-        <BrandKbdButton
-          type="button"
-          className="nav-label"
-          title="Open Command Palette (⌘K / Ctrl+K)"
-          aria-label="Open Command Palette"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"));
-            }
-          }}
-        >
-          ⌘K
-        </BrandKbdButton>
+        <BrandTitle className="nav-label" data-testid="sidebar-brand-title">
+          <div className="brand-top-row">
+            <span className="brand-name">{branding.instanceName || "Ansatz"}</span>
+            <span className="brand-badge" data-testid="sidebar-brand-badge">
+              {branding.instanceBadge?.trim() || "Beta"}
+            </span>
+          </div>
+          <div className="brand-domain-sub" data-testid="sidebar-brand-domain">
+            <span className="brand-status-dot" aria-hidden="true" />
+            <span>{nodeDomainLabel}</span>
+          </div>
+        </BrandTitle>
       </BrandHeader>
 
       <Box
@@ -689,133 +1071,356 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
         flexDirection="column"
         gap={1}
         flex={1}
-        style={{ position: "relative", zIndex: 1, marginTop: "4px" }}
+        style={{ position: "relative", zIndex: 1, marginTop: "2px" }}
       >
-        {communityLinks.map(renderLinkItem)}
+        {communityLinks.map((link) => renderLinkItem(link, false))}
 
-        <SectionDivider />
-        {studioLinks.map(renderLinkItem)}
+        {/* Only show divider between social & registry sections when logged in (multiple community items) */}
+        {user && <SectionDivider />}
 
-        {systemLinks.length > 0 && (
-          <>
-            <SectionDivider />
-            {systemLinks.map(renderLinkItem)}
-          </>
-        )}
+        <div
+          data-tour-id="tour-registry"
+          style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}
+        >
+          {registryLinks.map((link) => renderLinkItem(link, false))}
+        </div>
 
         {user && (
-          <>
-            <Box mt={3} width="100%" px={2} className="post-btn-container">
-              <button
-                type="button"
-                onClick={onPostClick}
-                className="ms-btn ms-btn-primary ms-btn-lg ms-btn-block post-btn"
-                aria-label="New post"
-              >
-                <span className="post-text">Post</span>
-                <span className="post-icon" style={{ display: "none" }}>
-                  <PlusIcon size={20} />
-                </span>
-              </button>
-            </Box>
-          </>
+          <Box mt={2} width="100%" px={1} className="post-btn-container">
+            <button
+              type="button"
+              onClick={onPostClick}
+              className="ms-btn ms-btn-primary ms-btn-block post-btn"
+              aria-label="New post"
+            >
+              <span className="post-text">Post</span>
+              <span className="post-icon" style={{ display: "none" }}>
+                <PlusIcon size={20} />
+              </span>
+            </button>
+          </Box>
         )}
+
+        <WorkbenchSection data-tour-id="tour-workbenches">
+          <SectionDivider />
+          {workbenchLinks.map((link) => renderLinkItem(link, true))}
+        </WorkbenchSection>
       </Box>
 
-      {user && (
-        <Box className="profile-footer-container" position="relative" zIndex={20}>
-          {showLogoutMenu && (
-            <LogoutMenu>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleTheme();
+      <FooterSection>
+        {user ? (
+          <Box className="profile-footer-container" position="relative" zIndex={20}>
+            {showLogoutMenu && (
+              <LogoutMenu>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleTheme();
+                  }}
+                >
+                  <ThemeIcon size={16} /> {themeLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowLogoutMenu(false);
+                    if (location.pathname === "/settings") {
+                      scrollToTop({ smooth: true });
+                    } else {
+                      scrollToTop({ smooth: false });
+                      navigate("/settings");
+                    }
+                  }}
+                >
+                  <GearIcon size={16} /> Settings
+                </button>
+                <hr />
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowLogoutMenu(false);
+                    logout();
+                    navigate("/logout", { replace: true });
+                  }}
+                >
+                  Log out @{user.username}
+                </button>
+              </LogoutMenu>
+            )}
+            <ProfileFooterContainer
+              className="profile-footer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowLogoutMenu(!showLogoutMenu);
+              }}
+            >
+              <Box display="flex" alignItems="center" gap={2.5} style={{ minWidth: 0 }}>
+                <SidebarAvatar $url={user.avatar_url}>
+                  {user.avatar_url ? null : user.username.charAt(0).toUpperCase()}
+                </SidebarAvatar>
+                <Box display="flex" flexDirection="column" className="profile-details" style={{ minWidth: 0 }}>
+                  <Text
+                    style={{
+                      fontWeight: 700,
+                      fontSize: "13.5px",
+                      lineHeight: "18px",
+                      display: "block",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {user.display_name || (user.username === "dev" ? "Dev User" : user.username)}
+                  </Text>
+                  <Text
+                    className="handle-text"
+                    style={{
+                      fontSize: "12px",
+                      lineHeight: "15px",
+                      display: "block",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    @{user.username}
+                  </Text>
+                </Box>
+              </Box>
+              <Box className="profile-details" color="var(--color-text-muted)">
+                <KebabHorizontalIcon size={16} />
+              </Box>
+            </ProfileFooterContainer>
+          </Box>
+        ) : (
+          <GuestAuthActions className="guest-auth-actions">
+            <div className="guest-auth-expanded">
+              <Link
+                to="/login"
+                className="ms-btn ms-btn-secondary guest-auth-btn"
+                onClick={() => {
+                  if (location.pathname === "/login") {
+                    scrollToTop({ smooth: true });
+                  } else {
+                    scrollToTop({ smooth: false });
+                  }
                 }}
               >
-                <ThemeIcon size={16} /> {themeLabel}
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowLogoutMenu(false);
-                  navigate("/settings");
+                Log in
+              </Link>
+              <Link
+                to="/signup"
+                className="ms-btn ms-btn-primary guest-auth-btn"
+                onClick={() => {
+                  if (location.pathname === "/signup") {
+                    scrollToTop({ smooth: true });
+                  } else {
+                    scrollToTop({ smooth: false });
+                  }
                 }}
               >
-                <GearIcon size={16} /> Settings
-              </button>
-              <hr />
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  logout();
-                  setShowLogoutMenu(false);
-                }}
+                Sign up
+              </Link>
+            </div>
+
+            <GuestRailAuthButton
+              ref={guestAuthTriggerRef}
+              type="button"
+              $active={showGuestAuthMenu || location.pathname === "/login" || location.pathname === "/signup"}
+              aria-label="Log in or sign up"
+              aria-expanded={showGuestAuthMenu}
+              title="Log in or sign up"
+              data-testid="sidebar-guest-auth-trigger"
+              onClick={() => {
+                setShowGuestAuthMenu((prev) => {
+                  const next = !prev;
+                  if (next) {
+                    updateGuestPopoverPosition();
+                  }
+                  return next;
+                });
+              }}
+            >
+              <PersonIcon size={19} />
+            </GuestRailAuthButton>
+
+            {showGuestAuthMenu && (
+              <GuestAuthPopover
+                ref={guestAuthPopoverRef}
+                role="dialog"
+                aria-label="Account sign in or sign up"
+                data-testid="sidebar-guest-auth-popover"
+                $left={guestPopoverPos.left}
+                $bottom={guestPopoverPos.bottom}
               >
-                Log out @{user.username}
-              </button>
-            </LogoutMenu>
+                <div className="popover-header">
+                  <AnsatzMark
+                    size={26}
+                    logoUrl={customLogoSrc}
+                    alt={branding.instanceName || "Ansatz"}
+                    accentColor={branding.brandAccentColor}
+                  />
+                  <span className="popover-title">Join {branding.instanceName || "Ansatz"}</span>
+                </div>
+                <p className="popover-subtitle">
+                  Simulate physical systems, publish packages, and collaborate with engineers.
+                </p>
+                <div className="popover-actions">
+                  <Link
+                    to="/signup"
+                    className="ms-btn ms-btn-primary popover-btn"
+                    onClick={() => {
+                      setShowGuestAuthMenu(false);
+                      if (location.pathname === "/signup") {
+                        scrollToTop({ smooth: true });
+                      } else {
+                        scrollToTop({ smooth: false });
+                      }
+                    }}
+                  >
+                    Sign up
+                  </Link>
+                  <Link
+                    to="/login"
+                    className="ms-btn ms-btn-secondary popover-btn"
+                    onClick={() => {
+                      setShowGuestAuthMenu(false);
+                      if (location.pathname === "/login") {
+                        scrollToTop({ smooth: true });
+                      } else {
+                        scrollToTop({ smooth: false });
+                      }
+                    }}
+                  >
+                    Log in
+                  </Link>
+                  <button
+                    type="button"
+                    className="popover-github-btn"
+                    onClick={() => {
+                      setShowGuestAuthMenu(false);
+                      window.location.href = "/api/v1/auth/login/github";
+                    }}
+                  >
+                    <MarkGithubIcon size={15} />
+                    Continue with GitHub
+                  </button>
+                </div>
+              </GuestAuthPopover>
+            )}
+          </GuestAuthActions>
+        )}
+
+        <UtilityFooterRow>
+          {branding.showPoweredBy && (
+            <PoweredByFooter
+              href={docsBase || "https://modelscript.org"}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="sidebar-powered-by"
+              title="Powered by the ModelScript Polyglot Compiler & Simulation Engine"
+            >
+              <img
+                src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
+                alt=""
+                className="powered-by-icon"
+                width={14}
+                height={14}
+                aria-hidden="true"
+              />
+              <span>
+                Powered by <span className="powered-by-brand">ModelScript</span>
+              </span>
+            </PoweredByFooter>
           )}
-          <ProfileFooterContainer
-            className="profile-footer"
+
+          <ThemeToggleSwitch
+            type="button"
+            role="switch"
+            aria-checked={theme === "dark"}
+            aria-label="Toggle color theme"
+            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            data-testid="sidebar-theme-toggle"
+            $dragging={themeDragOffset !== null}
+            onPointerDown={(e) => {
+              if (e.pointerType === "mouse" && e.button !== 0) return;
+              suppressThemeClickRef.current = false;
+              const baseOffset = theme === "dark" ? THEME_THUMB_TRAVEL_PX : 0;
+              themeDragRef.current = {
+                pointerId: e.pointerId,
+                startX: e.clientX,
+                baseOffset,
+                moved: false,
+              };
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch {
+                // Ignore pointer capture errors in headless/synthetic environments
+              }
+            }}
+            onPointerMove={(e) => {
+              const drag = themeDragRef.current;
+              if (!drag || drag.pointerId !== e.pointerId) return;
+              const deltaX = e.clientX - drag.startX;
+              if (!drag.moved && Math.abs(deltaX) >= THEME_DRAG_THRESHOLD_PX) {
+                drag.moved = true;
+              }
+              if (drag.moved) {
+                const nextOffset = Math.max(0, Math.min(THEME_THUMB_TRAVEL_PX, drag.baseOffset + deltaX));
+                setThemeDragOffset(nextOffset);
+              }
+            }}
+            onPointerUp={(e) => {
+              const drag = themeDragRef.current;
+              if (!drag || drag.pointerId !== e.pointerId) return;
+              themeDragRef.current = null;
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              } catch {
+                // Ignore pointer capture errors
+              }
+              if (drag.moved) {
+                const deltaX = e.clientX - drag.startX;
+                const finalOffset = Math.max(0, Math.min(THEME_THUMB_TRAVEL_PX, drag.baseOffset + deltaX));
+                const targetTheme = finalOffset >= THEME_THUMB_TRAVEL_PX / 2 ? "dark" : "light";
+                setTheme(targetTheme);
+                suppressThemeClickRef.current = true;
+              }
+              setThemeDragOffset(null);
+            }}
+            onPointerCancel={(e) => {
+              const drag = themeDragRef.current;
+              if (!drag || drag.pointerId !== e.pointerId) return;
+              themeDragRef.current = null;
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              } catch {
+                // Ignore pointer capture errors
+              }
+              setThemeDragOffset(null);
+            }}
             onClick={(e) => {
-              e.stopPropagation();
-              setShowLogoutMenu(!showLogoutMenu);
+              if (suppressThemeClickRef.current) {
+                suppressThemeClickRef.current = false;
+                e.preventDefault();
+                return;
+              }
+              toggleTheme();
             }}
           >
-            <Box display="flex" alignItems="center" gap={3}>
-              <SidebarAvatar $url={user.avatar_url}>
-                {user.avatar_url ? null : user.username.charAt(0).toUpperCase()}
-              </SidebarAvatar>
-              <Box display="flex" flexDirection="column" className="profile-details">
-                <Text style={{ fontWeight: 700, fontSize: "13.5px", lineHeight: "18px", display: "block" }}>
-                  {user.display_name || (user.username === "dev" ? "Dev User" : user.username)}
-                </Text>
-                <Text className="handle-text" style={{ fontSize: "12.5px", lineHeight: "16px", display: "block" }}>
-                  @{user.username}
-                </Text>
-              </Box>
-            </Box>
-            <Box className="profile-details" color="var(--color-text-muted)">
-              <KebabHorizontalIcon size={16} />
-            </Box>
-          </ProfileFooterContainer>
-        </Box>
-      )}
-
-      {!user && (
-        <GuestFooter>
-          <GuestThemeToggle
-            type="button"
-            className="ms-btn ms-btn-quiet ms-btn-sm"
-            onClick={toggleTheme}
-            title={themeLabel}
-            aria-label={themeLabel}
-          >
-            <ThemeIcon size={14} /> <span className="guest-theme-label">{themeLabel}</span>
-          </GuestThemeToggle>
-          <Box display="flex" gap={2} className="guest-auth-actions">
-            <Link to="/login" className="ms-btn ms-btn-secondary" style={{ flex: 1 }}>
-              Log in
-            </Link>
-            <Link to="/signup" className="ms-btn ms-btn-primary" style={{ flex: 1 }}>
-              Sign up
-            </Link>
-          </Box>
-        </GuestFooter>
-      )}
-      {branding.showPoweredBy && (
-        <PoweredByFooter
-          href={docsBase || "https://modelscript.org"}
-          target="_blank"
-          rel="noopener noreferrer"
-          data-testid="sidebar-powered-by"
-        >
-          Powered by ModelScript
-        </PoweredByFooter>
-      )}
+            <ThemeToggleThumb $offsetPx={effectiveThumbOffset} $dragging={themeDragOffset !== null} />
+            <ThemeToggleIconSlot $active={activeVisualTheme === "light"} aria-hidden="true">
+              <SunIcon size={13} />
+            </ThemeToggleIconSlot>
+            <ThemeToggleIconSlot $active={activeVisualTheme === "dark"} aria-hidden="true">
+              <MoonIcon size={13} />
+            </ThemeToggleIconSlot>
+          </ThemeToggleSwitch>
+        </UtilityFooterRow>
+      </FooterSection>
     </SidebarContainer>
   );
 };

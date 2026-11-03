@@ -284,9 +284,7 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
           id: `org.couchdb.user:${effectiveUsername}`,
           token,
           verificationRequired: !preVerified,
-          message: preVerified
-            ? "Account created and verified."
-            : "Account created. Please verify your email address to unlock free compute credits.",
+          message: preVerified ? "Account created and verified." : "Account created. Please verify your email address.",
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Authentication failed";

@@ -15,18 +15,35 @@ export interface ConnectedAccountsTabProps {
 export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBack }) => {
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
-  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [confirmingDisconnectId, setConfirmingDisconnectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && window.location.search) {
+      const params = new URLSearchParams(window.location.search);
+      const successParam = params.get("success");
+      const errorParam = params.get("error");
+      if (successParam) {
+        if (successParam.startsWith("Linked")) {
+          const linkedProvider = successParam.replace(/^Linked/i, "");
+          setSuccess(`Successfully linked your ${linkedProvider} account.`);
+        } else {
+          setSuccess(successParam);
+        }
+      }
+      if (errorParam) {
+        setError(`Account linking failed: ${errorParam}`);
+      }
+    }
+
     setIsLoading(true);
     getConnectedAccounts()
       .then((res) => {
         if (res && Array.isArray(res.providers)) {
-          setConnectedAccounts(res.providers);
+          setAccounts(res.providers);
         }
       })
       .catch(() => {})
@@ -95,7 +112,7 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
 
         <Box display="flex" flexDirection="column" gap={3}>
           {providers.map((prov) => {
-            const account = connectedAccounts.find((a) => a.provider.toLowerCase() === prov.id);
+            const account = accounts.find((a) => a.provider.toLowerCase() === prov.id.toLowerCase());
             const isConnected = Boolean(account?.connected);
             const Icon = prov.icon;
 
@@ -168,14 +185,18 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
                         style={{ padding: "6px 14px", fontSize: "13px" }}
                         onClick={async () => {
                           setConfirmingDisconnectId(null);
+                          setError(null);
+                          setSuccess(null);
                           try {
                             await unlinkConnectedAccount(prov.id);
-                            setConnectedAccounts((prev) =>
-                              prev.map((a) => (a.provider === prov.id ? { ...a, connected: false } : a)),
+                            setAccounts((prev) =>
+                              prev.map((a) =>
+                                a.provider.toLowerCase() === prov.id.toLowerCase() ? { ...a, connected: false } : a,
+                              ),
                             );
                             setSuccess(`Unlinked ${prov.name} successfully.`);
-                          } catch {
-                            setError(`Failed to unlink ${prov.name}.`);
+                          } catch (err: any) {
+                            setError(err?.response?.data?.error || `Failed to unlink ${prov.name}.`);
                           }
                         }}
                       >
@@ -196,15 +217,16 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
                     type="button"
                     disabled={isLoading}
                     onClick={async () => {
-                      if (prov.id === "oidc") {
-                        window.location.href = "/api/v1/auth/oidc/login";
-                        return;
-                      }
+                      setError(null);
+                      setSuccess(null);
                       try {
                         const redirectUrl = await initiateOAuthLink(prov.id);
                         window.location.href = redirectUrl;
-                      } catch {
-                        setError(`Failed to initiate ${prov.name} linking. Please try again.`);
+                      } catch (err: any) {
+                        setError(
+                          err?.response?.data?.error ||
+                            `Failed to initiate ${prov.name} linking. Ensure ${prov.name} is configured on this instance.`,
+                        );
                       }
                     }}
                   >

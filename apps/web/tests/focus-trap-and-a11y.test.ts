@@ -132,4 +132,25 @@ describe("WCAG 2.1 AA Accessibility & Focus Trapping", () => {
     handleKeyDown(escEvent);
     assert.equal(escapeFired, true, "Escape key should trigger onEscape callback");
   });
+
+  it("displays full-page logout confirmation with Explore CTA instead of RequireAuth wall on logout", () => {
+    const appSrc = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf-8");
+    const requireAuthSrc = fs.readFileSync(path.resolve(__dirname, "../src/components/RequireAuth.tsx"), "utf-8");
+    const logoutPageSrc = fs.readFileSync(path.resolve(__dirname, "../src/pages/LogoutPage.tsx"), "utf-8");
+
+    assert.ok(
+      appSrc.includes('path="/logout" element={<LogoutPage />}'),
+      "App.tsx must register a top-level full-page /logout route",
+    );
+    assert.ok(
+      requireAuthSrc.includes("if (justLoggedOut)") && requireAuthSrc.includes('<Navigate to="/logout" replace />'),
+      "RequireAuth must redirect to /logout when justLoggedOut is true rather than flashing Sign in to continue",
+    );
+    assert.ok(
+      logoutPageSrc.includes("You&apos;ve been signed out") &&
+        logoutPageSrc.includes('data-testid="logout-explore-button"') &&
+        logoutPageSrc.includes('to="/explore"'),
+      "LogoutPage must render full-page sign-out confirmation with prominent Explore CTA",
+    );
+  });
 });

@@ -404,7 +404,15 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
 
   if (error) {
     return (
-      <Box p={3} backgroundColor="var(--color-danger-subtle)" borderRadius="6px">
+      <Box
+        p={3}
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height={isFullScreen ? "100%" : "450px"}
+        backgroundColor="var(--color-danger-subtle)"
+        borderRadius="0"
+      >
         <Text color="var(--color-danger-fg)">{error}</Text>
       </Box>
     );
@@ -417,9 +425,9 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
         display="flex"
         justifyContent="center"
         alignItems="center"
-        height="300px"
+        height={isFullScreen ? "100%" : "450px"}
         bg="var(--color-canvas-subtle)"
-        borderRadius="8px"
+        borderRadius="0"
       >
         <Spinner size="medium" />
         <Text ml={3}>Loading CFD animation...</Text>

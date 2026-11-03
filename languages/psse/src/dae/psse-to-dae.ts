@@ -110,6 +110,16 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
     // Optional EXST1 exciter state: Efd_${genId}
     let efdExpr = dae.addRealLiteral(1.05);
     const vrBusExpr = bus ? dae.addNameExpr(`V_${gen.i}_r`) : dae.addRealLiteral(1.0);
+    const viBusExpr = bus ? dae.addNameExpr(`V_${gen.i}_i`) : dae.addRealLiteral(0.0);
+    const vtBusExpr = bus
+      ? dae.addCallExpr("sqrt", [
+          dae.addBinaryExpr(
+            BinOp.Add,
+            dae.addBinaryExpr(BinOp.Mul, vrBusExpr, vrBusExpr),
+            dae.addBinaryExpr(BinOp.Mul, viBusExpr, viBusExpr),
+          ),
+        ])
+      : dae.addRealLiteral(1.0);
     if (dyrExc) {
       const efd0 = 1.05;
       const efdVar = dae.addVariable(`Efd_${genId}`, VarType.Real, Variability.Continuous, Causality.Local, efd0);
@@ -118,7 +128,7 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
       const vRef = (bus?.vm ?? 1.0) + efd0 / kaExc;
       const derEfd = dae.addDer(efdVar);
       const lhsExc = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(taExc), derEfd);
-      const vErr = dae.addBinaryExpr(BinOp.Sub, dae.addRealLiteral(vRef), vrBusExpr);
+      const vErr = dae.addBinaryExpr(BinOp.Sub, dae.addRealLiteral(vRef), vtBusExpr);
       const kaVerr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kaExc), vErr);
       const efdNameExpr = dae.addNameExpr(`Efd_${genId}`);
       const rhsExc = dae.addBinaryExpr(BinOp.Sub, kaVerr, efdNameExpr);
@@ -140,14 +150,14 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
       const xqSync = Math.max(xd, dyrGen.namedParams["Xq"] ?? dyrGen.con[6] ?? 1.7);
       const xqp = Math.max(0.05, dyrGen.namedParams["Xqp"] ?? dyrGen.con[8] ?? 0.55);
 
-      // Td0' * der(Eqp) = Efd - Eqp - ((Xd - Xd') / Xd') * (Eqp - V_r)
+      // Td0' * der(Eqp) = Efd - Eqp - ((Xd - Xd') / Xd') * (Eqp - Vt)
       const derEqp = dae.addDer(eqpVar);
       const lhsEqp = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(td0p), derEqp);
       const eqpNameExpr = dae.addNameExpr(`Eqp_${genId}`);
       const idDrop = dae.addBinaryExpr(
         BinOp.Mul,
         dae.addRealLiteral((xdSync - xd) / xd),
-        dae.addBinaryExpr(BinOp.Sub, eqpNameExpr, vrBusExpr),
+        dae.addBinaryExpr(BinOp.Sub, eqpNameExpr, vtBusExpr),
       );
       const rhsEqp = dae.addBinaryExpr(BinOp.Sub, dae.addBinaryExpr(BinOp.Sub, efdExpr, eqpNameExpr), idDrop);
       dae.addEquation(EqKind.Simple, lhsEqp, rhsEqp);
@@ -179,12 +189,13 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
     const rhsSwing = dae.addBinaryExpr(BinOp.Sub, pAccel, dampTerm);
     dae.addEquation(EqKind.Simple, lhsSwing, rhsSwing);
 
-    // Eq 3: Air-gap electrical power coupled to rotor angle, internal flux Eqp (if GENROU), & terminal bus voltage
-    // Pe = Pg0 + (Sbase / xd) * Eqp * (delta - delta0) * V_i_r
+    // Eq 3: Air-gap electrical power coupled to rotor angle, internal flux Eqp (if GENROU), & terminal bus voltage magnitude Vt
+    // Pe = Pg0 + (Sbase / xd) * Eqp * sin(delta - delta0) * Vt
     const deltaExpr = dae.addNameExpr(`delta_${genId}`);
     const deltaDev = dae.addBinaryExpr(BinOp.Sub, deltaExpr, dae.addRealLiteral(delta0));
+    const sinDeltaDev = dae.addCallExpr("sin", [deltaDev]);
     const kSync = dae.addRealLiteral(sbase / xd);
-    const baseSyncTerm = dae.addBinaryExpr(BinOp.Mul, dae.addBinaryExpr(BinOp.Mul, kSync, deltaDev), vrBusExpr);
+    const baseSyncTerm = dae.addBinaryExpr(BinOp.Mul, dae.addBinaryExpr(BinOp.Mul, kSync, sinDeltaDev), vtBusExpr);
     const syncPower = eqpExpr !== null ? dae.addBinaryExpr(BinOp.Mul, eqpExpr, baseSyncTerm) : baseSyncTerm;
     const peRhs = dae.addBinaryExpr(BinOp.Add, dae.addRealLiteral(gen.pg), syncPower);
     dae.addEquation(EqKind.Simple, peExpr, peRhs);
@@ -260,11 +271,16 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
     if (irSumExpr === null) irSumExpr = vrExpr;
     if (iiSumExpr === null) iiSumExpr = viExpr;
 
-    // Bus Eq 3: Active nodal network balance sum_k(G_ik V_kr - B_ik V_ki) = P_inj / Sbase
+    // Bus Eq 3: Nonlinear rectangular AC active power balance: V_r * I_r + V_i * I_i = P_inj / Sbase
+    const pCalcPu = dae.addBinaryExpr(
+      BinOp.Add,
+      dae.addBinaryExpr(BinOp.Mul, vrExpr, irSumExpr),
+      dae.addBinaryExpr(BinOp.Mul, viExpr, iiSumExpr),
+    );
     const pInjPu = dae.addBinaryExpr(BinOp.Div, pInj, dae.addRealLiteral(sbase));
-    dae.addEquation(EqKind.Simple, irSumExpr, pInjPu);
+    dae.addEquation(EqKind.Simple, pCalcPu, pInjPu);
 
-    // Bus Eq 4: PV/Slack voltage magnitude regulation or PQ reactive nodal network balance
+    // Bus Eq 4: PV/Slack voltage magnitude regulation or nonlinear rectangular AC reactive power balance: V_i * I_r - V_r * I_i = Q_inj / Sbase
     if (bus.ide === 2 || bus.ide === 3) {
       const vSet = bus.vm > 0 ? bus.vm : 1.0;
       const vr2 = dae.addBinaryExpr(BinOp.Mul, vrExpr, vrExpr);
@@ -272,8 +288,13 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
       const vMag2 = dae.addBinaryExpr(BinOp.Add, vr2, vi2);
       dae.addEquation(EqKind.Simple, vMag2, dae.addRealLiteral(vSet * vSet));
     } else {
-      const negQInjPu = dae.addBinaryExpr(BinOp.Div, qInj, dae.addRealLiteral(-sbase));
-      dae.addEquation(EqKind.Simple, iiSumExpr, negQInjPu);
+      const qCalcPu = dae.addBinaryExpr(
+        BinOp.Sub,
+        dae.addBinaryExpr(BinOp.Mul, viExpr, irSumExpr),
+        dae.addBinaryExpr(BinOp.Mul, vrExpr, iiSumExpr),
+      );
+      const qInjPu = dae.addBinaryExpr(BinOp.Div, qInj, dae.addRealLiteral(sbase));
+      dae.addEquation(EqKind.Simple, qCalcPu, qInjPu);
     }
   }
 

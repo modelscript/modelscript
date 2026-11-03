@@ -18,7 +18,7 @@ let outDir = path.join(__dirname, "msl");
 for (const arg of process.argv.slice(2)) {
   if (arg.startsWith("--version=")) {
     version = arg.split("=")[1].trim();
-  } else if (arg === "4.0.0" || arg === "4.1.0") {
+  } else if (/^\d+\.\d+\.\d+$/.test(arg)) {
     version = arg;
   } else if (arg === "--extract" || arg === "-x") {
     extract = true;

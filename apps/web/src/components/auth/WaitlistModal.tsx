@@ -23,6 +23,7 @@ const Overlay = styled.div`
   justify-content: center;
   z-index: 9999;
   padding: 16px;
+  overflow-y: auto;
 `;
 
 const ModalCard = styled.div`
@@ -31,7 +32,7 @@ const ModalCard = styled.div`
   border-radius: var(--radius-xl, 16px);
   width: 100%;
   max-width: 540px;
-  max-height: 90vh;
+  max-height: calc(100dvh - 32px);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
@@ -56,6 +57,7 @@ const ModalHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 `;
 
 const ModalTitle = styled.h2`
@@ -88,6 +90,8 @@ const CloseButton = styled.button`
 
 const ModalBody = styled.div`
   padding: 24px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -173,6 +177,7 @@ const ModalFooter = styled.div`
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  flex-shrink: 0;
 `;
 
 const CancelButton = styled.button`
@@ -331,7 +336,16 @@ export default function WaitlistModal({
             </SuccessCard>
           </ModalBody>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              flex: 1,
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+          >
             <ModalBody>
               <HelperCallout>
                 <strong>Early Access Cohort:</strong> {brandName} is onboarding simulation engineers, computational

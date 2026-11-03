@@ -4,17 +4,26 @@ import styled from "styled-components";
 import { safeCssImageUrl } from "../../util/url";
 
 export const NotificationWrapper = styled.div<{ $unread: boolean }>`
+  position: relative;
   display: flex;
   gap: 14px;
   padding: 16px 20px;
   border-bottom: 1px solid var(--color-border-default);
-  border-left: ${(props) => (props.$unread ? "3px solid var(--color-accent-cyan)" : "3px solid transparent")};
-  background-color: ${(props) => (props.$unread ? "var(--color-canvas-subtle)" : "transparent")};
+  border-left: 3px solid
+    ${(props) => (props.$unread ? "var(--color-accent-cyan, var(--color-accent-fg))" : "transparent")};
+  background-color: ${(props) =>
+    props.$unread ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.075))" : "transparent"};
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition:
+    background-color 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+    border-left-color 0.65s cubic-bezier(0.16, 1, 0.3, 1);
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: ${(props) =>
+      props.$unread ? "var(--surface-selected, rgba(56, 139, 253, 0.12))" : "var(--color-canvas-subtle)"};
+    transition:
+      background-color 0.15s ease,
+      border-left-color 0.65s cubic-bezier(0.16, 1, 0.3, 1);
   }
 `;
 
@@ -92,8 +101,72 @@ export const Avatar = styled.div<{ $url?: string | undefined; $letter?: string |
 
 export const AvatarsRow = styled.div`
   display: flex;
+  align-items: center;
   gap: 4px;
   flex-wrap: wrap;
+`;
+
+export const AvatarOverflowPill = styled.span`
+  height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+  border-radius: 18px;
+  background: var(--color-canvas-subtle);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+export const UnreadDotButton = styled.button`
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+
+  &::after {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-accent-fg);
+    transition: transform 0.15s ease;
+  }
+
+  &:hover {
+    background: var(--color-neutral-muted, rgba(175, 184, 193, 0.2));
+    &::after {
+      transform: scale(1.25);
+    }
+  }
+`;
+
+export const TabBar = styled.div`
+  display: flex;
+  overflow-x: auto;
+  position: sticky;
+  top: calc(var(--dev-header-height, 0px) + 53px);
+  z-index: 45;
+  border-bottom: 1px solid var(--color-border-default);
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  transition: background-color 0.25s ease;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 `;
 
 export const TabButton = styled.button<{ $active: boolean }>`
@@ -130,4 +203,60 @@ export const UnreadPill = styled.span`
   padding: 1px 6px;
   border-radius: 10px;
   line-height: 1.2;
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s ease;
+`;
+
+export const NotificationSectionDivider = styled.div<{ $variant: "new" | "earlier"; $hasActiveUnread?: boolean }>`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--color-border-default);
+  background: ${(props) =>
+    props.$variant === "new"
+      ? props.$hasActiveUnread
+        ? "var(--color-accent-subtle, rgba(56, 139, 253, 0.09))"
+        : "var(--color-canvas-subtle)"
+      : "var(--color-canvas-subtle)"};
+  font-size: 12px;
+  line-height: 16px;
+  user-select: none;
+  transition: background-color 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+`;
+
+export const SectionDividerBadge = styled.span<{ $variant: "new" | "earlier"; $hasActiveUnread?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: ${(props) =>
+    props.$variant === "new" && props.$hasActiveUnread ? "var(--color-accent-fg)" : "var(--color-fg-muted)"};
+  transition: color 0.5s ease;
+`;
+
+export const SectionDividerDot = styled.span<{ $active?: boolean }>`
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: ${(props) =>
+    props.$active ? "var(--color-accent-cyan, var(--color-accent-fg))" : "var(--color-fg-muted)"};
+  box-shadow: ${(props) => (props.$active ? "0 0 0 3px rgba(56, 139, 253, 0.2)" : "none")};
+  opacity: ${(props) => (props.$active ? 1 : 0.45)};
+  transition:
+    background-color 0.5s ease,
+    box-shadow 0.5s ease,
+    opacity 0.5s ease;
+`;
+
+export const SectionDividerMeta = styled.span`
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-fg-muted);
+  transition: opacity 0.4s ease;
 `;

@@ -24,6 +24,7 @@ import FederatedDomainPill from "../../../components/FederatedDomainPill";
 import FollowButton from "../../../components/FollowButton";
 import { CircleIconButton, StickyHeader } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
+import { useClickOutside } from "../../../hooks/useClickOutside";
 import { getAvatarUrl, getBannerUrl } from "../../../util/avatar";
 import { parseFederatedHandle } from "../../../util/federation";
 import { safeCssImageUrl, sanitizeHttpUrl } from "../../../util/url";
@@ -73,6 +74,17 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   const [confirmingBlock, setConfirmingBlock] = React.useState(false);
   const [showAvatarModal, setShowAvatarModal] = React.useState(false);
   const avatarBgImage = safeCssImageUrl(getAvatarUrl(profile.username, profile.avatar_url || undefined));
+
+  const blockMenuContainerRef = React.useRef<HTMLDivElement>(null);
+
+  useClickOutside(
+    blockMenuContainerRef,
+    () => {
+      setConfirmingBlock(false);
+      setShowBlockMenu(false);
+    },
+    showBlockMenu,
+  );
 
   React.useEffect(() => {
     if (!showBlockMenu) {
@@ -180,7 +192,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               </Button>
             ) : (
               <>
-                <Box position="relative">
+                <Box ref={blockMenuContainerRef} position="relative">
                   <button
                     onClick={() => setShowBlockMenu(!showBlockMenu)}
                     style={{
@@ -200,175 +212,166 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                     <KebabHorizontalIcon size={16} />
                   </button>
                   {showBlockMenu && (
-                    <>
-                      <div
-                        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
+                    <Box
+                      position="absolute"
+                      top="100%"
+                      right="0"
+                      mt={1}
+                      style={{
+                        backgroundColor: "var(--surface-overlay, rgba(14, 20, 36, 0.95))",
+                        backdropFilter: "blur(16px)",
+                        WebkitBackdropFilter: "blur(16px)",
+                        border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
+                        borderRadius: "12px",
+                        boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                        padding: "8px 0",
+                        zIndex: 100,
+                        minWidth: "280px",
+                      }}
+                    >
+                      <button
                         onClick={() => {
-                          setConfirmingBlock(false);
+                          const joinedText = profile.created_at
+                            ? ` • Joined ${new Date(profile.created_at).toLocaleDateString()}`
+                            : "";
+                          showToast(
+                            `@${profile.username} (${profile.account_type || "standard"} account)${joinedText}`,
+                            "info",
+                          );
                           setShowBlockMenu(false);
                         }}
-                      />
-                      <Box
-                        position="absolute"
-                        top="100%"
-                        right="0"
-                        mt={1}
                         style={{
-                          backgroundColor: "var(--surface-overlay, rgba(14, 20, 36, 0.95))",
-                          backdropFilter: "blur(16px)",
-                          WebkitBackdropFilter: "blur(16px)",
-                          border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
-                          borderRadius: "12px",
-                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
-                          padding: "8px 0",
-                          zIndex: 100,
-                          minWidth: "280px",
+                          width: "100%",
+                          padding: "12px 16px",
+                          background: "none",
+                          border: "none",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: "15px",
+                          lineHeight: "20px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          color: "var(--color-fg-default)",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        <InfoIcon size={20} /> About this account
+                      </button>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard?.writeText(window.location.href);
+                          showToast("Profile link copied to clipboard", "success");
+                          setShowBlockMenu(false);
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "12px 16px",
+                          background: "none",
+                          border: "none",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: "15px",
+                          lineHeight: "20px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          color: "var(--color-fg-default)",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        <LinkIcon size={20} /> Copy link to profile
+                      </button>
+                      <button
+                        onClick={onMuteToggle}
+                        style={{
+                          width: "100%",
+                          padding: "12px 16px",
+                          background: "none",
+                          border: "none",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: "15px",
+                          lineHeight: "20px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          color: "var(--color-fg-default)",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        <MuteIcon size={20} /> {isMuted ? "Unmute" : "Mute"} @{profile.username}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!confirmingBlock) {
+                            setConfirmingBlock(true);
+                            return;
+                          }
+                          setConfirmingBlock(false);
+                          onBlock();
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "12px 16px",
+                          background: confirmingBlock ? "var(--color-danger-emphasis, #da3633)" : "none",
+                          border: "none",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: "15px",
+                          lineHeight: "20px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          color: confirmingBlock ? "#ffffff" : "var(--color-danger-fg)",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!confirmingBlock) {
+                            e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!confirmingBlock) {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                          }
                         }}
                       >
-                        <button
-                          onClick={() => {
-                            const joinedText = profile.created_at
-                              ? ` • Joined ${new Date(profile.created_at).toLocaleDateString()}`
-                              : "";
-                            showToast(
-                              `@${profile.username} (${profile.account_type || "standard"} account)${joinedText}`,
-                              "info",
-                            );
-                            setShowBlockMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontSize: "15px",
-                            lineHeight: "20px",
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <InfoIcon size={20} /> About this account
-                        </button>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard?.writeText(window.location.href);
-                            showToast("Profile link copied to clipboard", "success");
-                            setShowBlockMenu(false);
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontSize: "15px",
-                            lineHeight: "20px",
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <LinkIcon size={20} /> Copy link to profile
-                        </button>
-                        <button
-                          onClick={onMuteToggle}
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontSize: "15px",
-                            lineHeight: "20px",
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <MuteIcon size={20} /> {isMuted ? "Unmute" : "Mute"} @{profile.username}
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (!confirmingBlock) {
-                              setConfirmingBlock(true);
-                              return;
-                            }
-                            setConfirmingBlock(false);
-                            onBlock();
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: confirmingBlock ? "var(--color-danger-emphasis, #da3633)" : "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontSize: "15px",
-                            lineHeight: "20px",
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: confirmingBlock ? "#ffffff" : "var(--color-danger-fg)",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!confirmingBlock) {
-                              e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)";
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!confirmingBlock) {
-                              e.currentTarget.style.backgroundColor = "transparent";
-                            }
-                          }}
-                        >
-                          <NoEntryIcon size={20} />{" "}
-                          {confirmingBlock ? `Confirm block @${profile.username}?` : `Block @${profile.username}`}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowBlockMenu(false);
-                            onOpenReportModal();
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: "12px 16px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontSize: "15px",
-                            lineHeight: "20px",
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "12px",
-                            color: "var(--color-fg-default)",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <ReportIcon size={20} /> Report @{profile.username}
-                        </button>
-                      </Box>
-                    </>
+                        <NoEntryIcon size={20} />{" "}
+                        {confirmingBlock ? `Confirm block @${profile.username}?` : `Block @${profile.username}`}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowBlockMenu(false);
+                          onOpenReportModal();
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "12px 16px",
+                          background: "none",
+                          border: "none",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          fontSize: "15px",
+                          lineHeight: "20px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          color: "var(--color-fg-default)",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        <ReportIcon size={20} /> Report @{profile.username}
+                      </button>
+                    </Box>
                   )}
                 </Box>
                 {isBlocked ? (

@@ -9,7 +9,7 @@ import {
   type PsseTransformerLike,
 } from "@modelscript/diagram";
 import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, PlayIcon, ZapIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
@@ -57,15 +57,15 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const Toolbar = styled.div`
   height: 40px;
   min-height: 40px;
-  background: var(--surface-hud, rgba(14, 20, 36, 0.7));
+  background: var(--color-canvas-subtle);
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  gap: 8px;
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
 `;
 
 const HeaderLeft = styled.div`
@@ -73,6 +73,8 @@ const HeaderLeft = styled.div`
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 `;
 
 const ModelTitle = styled.div`
@@ -94,6 +96,7 @@ const PillBadge = styled.span`
   border-radius: 9999px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
   background: rgba(16, 185, 129, 0.15);
   color: var(--color-success-fg, var(--color-fg-default));
   border: 1px solid rgba(16, 185, 129, 0.35);
@@ -161,32 +164,6 @@ const LineNo = styled.span`
   user-select: none;
   text-align: right;
   padding-right: 16px;
-`;
-
-const InspectorSidebar = styled.div`
-  width: 240px;
-  border-left: 1px solid var(--color-border-default);
-  background: var(--color-canvas-subtle);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 14px;
-  gap: 12px;
-
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const StatItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--color-fg-muted);
-
-  strong {
-    color: var(--color-fg-default);
-  }
 `;
 
 function parsePsseRawClient(code: string) {
@@ -277,7 +254,6 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
   const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
-  const [showInspector, setShowInspector] = useState(false);
   const title = viewConfig.title || "PSS/E Power Flow Case (.raw)";
 
   useEffect(() => {
@@ -368,15 +344,6 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
     navigate(`/playground${fromParam}#m=${hash}`);
   };
 
-  const metrics = viewConfig.metrics;
-  const busCount = metrics?.busCount ?? viewConfig.buses?.length ?? parsedClient?.busCount;
-  const totalGenMw = metrics?.totalGenMw ?? parsedClient?.totalGenMw;
-  const totalLoadMw = metrics?.totalLoadMw ?? parsedClient?.totalLoadMw;
-  const lossesMw =
-    metrics?.lossesMw ??
-    (totalGenMw !== undefined && totalLoadMw !== undefined && totalGenMw >= totalLoadMw
-      ? Number((totalGenMw - totalLoadMw).toFixed(2))
-      : undefined);
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
@@ -384,11 +351,11 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
       <Toolbar>
         <HeaderLeft>
           <ZapIcon size={16} fill="var(--color-success-fg, currentColor)" />
-          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge>PSS/E RAW SLD</PillBadge>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
           {sanitizedSvg && (
             <SegmentedControl>
               <SegmentBtn
@@ -402,11 +369,6 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
                 <CodeIcon size={12} /> Raw Data
               </SegmentBtn>
             </SegmentedControl>
-          )}
-          {!isFullScreen && (
-            <Button size="small" onClick={() => setShowInspector((s) => !s)}>
-              {showInspector ? "Hide Telemetry" : "Telemetry"}
-            </Button>
           )}
           {sanitizedSvg && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
@@ -446,38 +408,6 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           </CodePre>
         ) : (
           <InteractiveSvgStage svgMarkup={sanitizedSvg} isFullScreen={isFullScreen} />
-        )}
-
-        {!isFullScreen && showInspector && (
-          <InspectorSidebar>
-            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-              Power Flow Case Overview
-            </Text>
-            <StatItem>
-              <span>Total Buses</span>
-              <strong>{busCount ?? "—"}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Total Generation</span>
-              <strong>{totalGenMw !== undefined ? `${totalGenMw} MW` : "—"}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Total Load</span>
-              <strong>{totalLoadMw !== undefined ? `${totalLoadMw} MW` : "—"}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Losses (I²R)</span>
-              <strong>{lossesMw !== undefined ? `${lossesMw} MW` : "—"}</strong>
-            </StatItem>
-            {parsedClient?.minVm !== undefined && parsedClient?.maxVm !== undefined && (
-              <StatItem>
-                <span>Voltage Profile</span>
-                <strong style={{ color: "#34d399" }}>
-                  {parsedClient.minVm.toFixed(3)} – {parsedClient.maxVm.toFixed(3)} pu
-                </strong>
-              </StatItem>
-            )}
-          </InspectorSidebar>
         )}
       </ContentArea>
     </CardWrapper>

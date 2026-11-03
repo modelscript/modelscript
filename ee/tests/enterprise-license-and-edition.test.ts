@@ -102,6 +102,21 @@ describe("Enterprise Edition (ee/) Subsystems (Batches A–I) & CE/EE Isolation"
     const expiredRes = verifyEnterpriseLicense(expiredToken);
     assert.equal(expiredRes.valid, false);
     assert.equal(expiredRes.mode, "expired");
+
+    // Revoked license JTI check (previously committed example key)
+    const revokedToken = signEnterpriseLicense({
+      jti: "lic_c78c809d5618433c",
+      sub: "modelscript-cloud-prod",
+      org: "ModelScript Cloud Production",
+      tier: "cloud-enterprise",
+      seats: 1,
+      features: [...ALL_ENTERPRISE_FEATURES],
+      exp: nowSec + 86400,
+    });
+    const revokedRes = verifyEnterpriseLicense(revokedToken);
+    assert.equal(revokedRes.valid, false);
+    assert.equal(revokedRes.mode, "invalid");
+    assert.match(revokedRes.reason ?? "", /revoked/i);
   });
 
   it("2. enforces MSX_LICENSE_KEY and per-feature entitlements across Batches A–I", async () => {

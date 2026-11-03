@@ -2,6 +2,8 @@
 
 import { Context } from "@modelscript/modelica/context";
 import { registerWindow } from "@svgdotjs/svg.js";
+import crypto from "node:crypto";
+import fs from "node:fs";
 import v8 from "node:v8";
 import { createSVGWindow } from "svgdom";
 import xmlFormat from "xml-formatter";
@@ -43,6 +45,31 @@ export interface ClassRenderResult {
   metadata: ClassMetadata;
   iconSvg: string | null;
   diagramSvg: string | null;
+}
+
+export interface DependencyLibrarySpec {
+  name: string;
+  version: string;
+  extractedPath?: string | undefined;
+  bundleIndexJson?:
+    | {
+        symbols: [number, unknown][];
+        byName: [string, number[]][];
+        childrenOf: [number | null, number[]][];
+      }
+    | undefined;
+  iconHashes?: Map<string, string> | undefined;
+}
+
+export interface PreviousVersionCache {
+  version: string;
+  classes: Map<string, ClassMetadata & { iconHash: string | null; diagramHash: string | null }>;
+  readSvg: (className: string, type: "icon" | "diagram") => string | null;
+}
+
+export interface ProcessLibraryOptions {
+  dependencies?: DependencyLibrarySpec[] | undefined;
+  previousVersion?: PreviousVersionCache | undefined;
 }
 
 interface CstNodeLike {
@@ -353,6 +380,159 @@ function resolveSymbolId(context: Context, name: string): number | null {
   return typeof curr === "number" ? curr : null;
 }
 
+function getSymbolFqn(context: Context, symbolId: number): string {
+  const db = context.queryEngine.toQueryDB();
+  const parts: string[] = [];
+  let currId: number | null | undefined = symbolId;
+  const seen = new Set<number>();
+  while (typeof currId === "number" && currId > 0 && !seen.has(currId)) {
+    seen.add(currId);
+    const sym = db.symbol(currId);
+    if (!sym) break;
+    if (sym.name) parts.unshift(sym.name);
+    if (sym.parentId === currId || sym.parentId === null || sym.parentId === undefined) break;
+    currId = sym.parentId;
+  }
+  return parts.join(".");
+}
+
+function getOwnSourceExcludingNestedClasses(context: Context, symbolId: number): string {
+  const db = context.queryEngine.toQueryDB();
+  const sym = db.symbol(symbolId);
+  if (!sym) return "";
+  const cstNode = db.cstNode(symbolId) as CstNodeLike | null;
+  const fullText = cstNode?.text ?? "";
+  if (!fullText) return `${sym.name}:${classKindFromEntry(sym)}:${String(sym.metadata?.["description"] ?? "")}`;
+
+  const children = db.childrenOf(symbolId) || [];
+  const baseStart = sym.startOffset ?? 0;
+  const baseEnd = sym.endOffset ?? baseStart + fullText.length;
+
+  const nestedClassSpans = children
+    .filter(
+      (c) =>
+        c.kind === "Class" &&
+        c.resourceId === sym.resourceId &&
+        typeof c.startOffset === "number" &&
+        typeof c.endOffset === "number" &&
+        c.startOffset >= baseStart &&
+        c.endOffset <= baseEnd &&
+        c.endOffset > c.startOffset,
+    )
+    .sort((a, b) => (a.startOffset ?? 0) - (b.startOffset ?? 0));
+
+  if (nestedClassSpans.length === 0) {
+    return fullText;
+  }
+
+  let out = "";
+  let cursor = 0;
+  for (const ch of nestedClassSpans) {
+    const relStart = Math.max(cursor, (ch.startOffset ?? baseStart) - baseStart);
+    const relEnd = Math.min(fullText.length, (ch.endOffset ?? baseStart) - baseStart);
+    if (relStart > cursor) {
+      out += fullText.slice(cursor, relStart);
+    }
+    out += `<class:${ch.name}>`;
+    cursor = Math.max(cursor, relEnd);
+  }
+  if (cursor < fullText.length) {
+    out += fullText.slice(cursor);
+  }
+  return out;
+}
+
+interface ParsedImportClause {
+  raw: string;
+  alias?: string | undefined;
+  target: string;
+  wildcard: boolean;
+}
+
+function extractScopeImports(ownSource: string): ParsedImportClause[] {
+  const imports: ParsedImportClause[] = [];
+  const importRegex =
+    /\bimport\s+(?:([A-Za-z_]\w*)\s*=\s*)?([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)(\.\*)?\s*(?:["'][^"']*["']\s*)?;/g;
+  let match: RegExpExecArray | null;
+  while ((match = importRegex.exec(ownSource)) !== null) {
+    const alias = match[1];
+    const target = match[2] ?? "";
+    const wildcard = Boolean(match[3]);
+    if (target) {
+      imports.push({
+        raw: match[0].trim(),
+        alias: alias ?? (wildcard ? undefined : target.split(".").pop()),
+        target,
+        wildcard,
+      });
+    }
+  }
+  return imports;
+}
+
+function resolveSymbolIdInScope(
+  context: Context,
+  scopeSymbolId: number,
+  rawName: string,
+  ownSourceCache?: Map<number, string>,
+): number | null {
+  const name = rawName.replace(/^\./, "").trim();
+  if (!name) return null;
+  const isGlobalRooted = rawName.trim().startsWith(".");
+  if (isGlobalRooted) {
+    return resolveSymbolId(context, name);
+  }
+
+  const db = context.queryEngine.toQueryDB();
+  const scopeIds: number[] = [];
+  const scopeNames: string[] = [];
+  let currId: number | null | undefined = scopeSymbolId;
+  const seen = new Set<number>();
+  while (typeof currId === "number" && currId > 0 && !seen.has(currId)) {
+    seen.add(currId);
+    const s = db.symbol(currId);
+    if (!s) break;
+    scopeIds.push(currId);
+    if (s.name) scopeNames.unshift(s.name);
+    if (s.parentId === currId || s.parentId === null || s.parentId === undefined) break;
+    currId = s.parentId;
+  }
+
+  const parts = name.split(".");
+  const firstPart = parts[0]!;
+  const restSuffix = parts.length > 1 ? "." + parts.slice(1).join(".") : "";
+
+  // 1. Check imports and lexical scopes from innermost scope to outermost package
+  for (let i = 0; i < scopeIds.length; i++) {
+    const sId = scopeIds[i]!;
+    let ownSrc = ownSourceCache?.get(sId);
+    if (ownSrc === undefined) {
+      ownSrc = getOwnSourceExcludingNestedClasses(context, sId);
+      ownSourceCache?.set(sId, ownSrc);
+    }
+    const imports = extractScopeImports(ownSrc);
+    for (const imp of imports) {
+      if (!imp.wildcard && imp.alias === firstPart) {
+        const mappedId = resolveSymbolId(context, `${imp.target}${restSuffix}`);
+        if (mappedId !== null) return mappedId;
+      } else if (imp.wildcard) {
+        const mappedId = resolveSymbolId(context, `${imp.target}.${name}`);
+        if (mappedId !== null) return mappedId;
+      }
+    }
+
+    const prefixLen = scopeNames.length - i;
+    if (prefixLen >= 1) {
+      const prefix = scopeNames.slice(0, prefixLen).join(".");
+      const scopedId = resolveSymbolId(context, `${prefix}.${name}`);
+      if (scopedId !== null) return scopedId;
+    }
+  }
+
+  // 2. Fallback to global root resolution
+  return resolveSymbolId(context, name);
+}
+
 function buildClassAdapter(
   context: Context,
   symbolId: number,
@@ -375,7 +555,13 @@ function buildClassAdapter(
     if (child.kind === "Component" || child.kind === "Variable") {
       const _childCst = queryDB.cstNode(child.id) as CstNodeLike | null;
       void _childCst;
-      const childClassId = queryDB.query("classInstance", child.id) as number | undefined;
+      let childClassId = queryDB.query("classInstance", child.id) as number | undefined;
+      if (typeof childClassId !== "number") {
+        const compTypeName = (child.metadata?.["typeSpecifier"] as string | undefined) || "";
+        if (compTypeName) {
+          childClassId = resolveSymbolIdInScope(context, symbolId, compTypeName) ?? undefined;
+        }
+      }
       const compCls =
         typeof childClassId === "number"
           ? buildClassAdapter(context, childClassId, AnnotationEvaluatorClass, new Set(visited))
@@ -442,22 +628,7 @@ function buildClassAdapter(
       let baseSym = queryDB.query("resolvedBaseClass", child.id) as { id?: number | undefined } | null | undefined;
       const baseName = (child.metadata?.["typeSpecifier"] as string | undefined) || child.name;
       if (!baseSym && baseName) {
-        let baseId = resolveSymbolId(context, baseName);
-        if (!baseId) {
-          const scopeNames: string[] = [];
-          let currParentId: number | null | undefined = entry.parentId;
-          while (typeof currParentId === "number" && currParentId > 0) {
-            const parentSym = queryDB.symbol(currParentId);
-            if (!parentSym || (parentSym.id === currParentId && parentSym.parentId === currParentId)) break;
-            if (parentSym.name) scopeNames.unshift(parentSym.name);
-            if (parentSym.parentId === currParentId) break;
-            currParentId = parentSym.parentId;
-          }
-          for (let len = scopeNames.length; len >= 1 && !baseId; len--) {
-            const prefix = scopeNames.slice(0, len).join(".");
-            baseId = resolveSymbolId(context, `${prefix}.${baseName}`);
-          }
-        }
+        const baseId = resolveSymbolIdInScope(context, symbolId, baseName);
         if (baseId) baseSym = queryDB.symbol(baseId);
       }
       if (baseSym && typeof baseSym.id === "number" && !visited.has(baseSym.id)) {
@@ -534,12 +705,15 @@ function hasVisualContent(svg: string): boolean {
 
 /**
  * Render SVGs and extract metadata for all classes in an extracted library directory.
+ * Supports hydrating cross-library dependencies and sound Merkle-hash incremental reuse
+ * from a previous version of the library.
  */
 export async function processLibrary(
   libraryPath: string,
   processedClassNames: Set<string>,
   onClass: (className: string, metadata: ClassMetadata, svgs: SvgResult) => Promise<void>,
   onReady?: (context: Context) => Promise<void>,
+  options?: ProcessLibraryOptions,
 ): Promise<Context> {
   ensureSvgWindow();
   await ensureParser();
@@ -551,6 +725,38 @@ export async function processLibrary(
     });
 
   const context = new Context(new NodeFileSystem());
+
+  // 1. Hydrate cross-library dependencies before indexing the target library
+  const externalIconHashes = new Map<string, string>();
+  if (options?.dependencies && options.dependencies.length > 0) {
+    for (const dep of options.dependencies) {
+      if (dep.iconHashes) {
+        for (const [clsName, hash] of dep.iconHashes.entries()) {
+          externalIconHashes.set(clsName, `${dep.name}:${hash}`);
+        }
+      }
+      if (dep.bundleIndexJson) {
+        const depPrefix = dep.extractedPath ? dep.extractedPath.replace(/\\/g, "/").replace(/\/?$/, "/") : "";
+        context.workspaceIndex.hydrate(
+          `dep-bundle:/${dep.name}@${dep.version}`,
+          {
+            symbols: new Map(dep.bundleIndexJson.symbols as [number, unknown][]),
+            byName: new Map(dep.bundleIndexJson.byName),
+            childrenOf: new Map(dep.bundleIndexJson.childrenOf),
+          },
+          undefined,
+          (origPath: string) => {
+            const rel = origPath.startsWith("sources/") ? origPath.substring("sources/".length) : origPath;
+            return depPrefix ? `${depPrefix}${rel}` : `dep-bundle:/${dep.name}@${dep.version}/${rel}`;
+          },
+        );
+        console.log(`[publish] Hydrated dependency index for ${dep.name}@${dep.version}`);
+      } else if (dep.extractedPath && fs.existsSync(dep.extractedPath)) {
+        await context.addLibrary(dep.extractedPath, { skipIndex: true });
+        console.log(`[publish] Registered dependency library path for ${dep.name}@${dep.version}`);
+      }
+    }
+  }
 
   const memBefore = process.memoryUsage();
   console.log(`[publish] Memory before addLibrary: ${Math.round(memBefore.heapUsed / 1024 / 1024)}MB heap`);
@@ -581,6 +787,7 @@ export async function processLibrary(
   const v8Limit = v8.getHeapStatistics().heap_size_limit;
   const HEAP_LIMIT = Math.min(5 * 1024 * 1024 * 1024, Math.floor(v8Limit * 0.75));
   let classesProcessed = 0;
+  let classesReused = 0;
 
   function isMemoryTight(): boolean {
     return process.memoryUsage().heapUsed > HEAP_LIMIT;
@@ -594,154 +801,362 @@ export async function processLibrary(
 
   const queryDB = context.queryEngine.toQueryDB();
   const symIndex = context.queryEngine.index;
+  const normLibPrefix = libraryPath.replace(/\\/g, "/").replace(/\/?$/, "/");
+
+  // 2. Memoized Sound Merkle Dependency Hashers over the resolved QueryEngine graph
+  const ownSourceCache = new Map<number, string>();
+  const iconHashMemo = new Map<number, string>();
+  const diagramHashMemo = new Map<number, string>();
+
+  function getOwnSource(symbolId: number): string {
+    let cached = ownSourceCache.get(symbolId);
+    if (cached === undefined) {
+      cached = getOwnSourceExcludingNestedClasses(context, symbolId);
+      ownSourceCache.set(symbolId, cached);
+    }
+    return cached;
+  }
+
+  function isExternalSymbol(sym: { resourceId?: string | undefined } | null | undefined): boolean {
+    if (!sym?.resourceId) return false;
+    const cleanRes = sym.resourceId.replace(/\\/g, "/").replace(/^[a-z0-9+-]+:\/\//i, "");
+    return !cleanRes.startsWith(normLibPrefix);
+  }
+
+  function computeIconHash(classId: number, visiting = new Set<number>()): string {
+    const existing = iconHashMemo.get(classId);
+    if (existing !== undefined) return existing;
+
+    const sym = queryDB.symbol(classId);
+    if (!sym) return "null";
+
+    const fqn = getSymbolFqn(context, classId);
+    if (isExternalSymbol(sym) && externalIconHashes.has(fqn)) {
+      const extHash = externalIconHashes.get(fqn)!;
+      iconHashMemo.set(classId, extHash);
+      return extHash;
+    }
+
+    if (visiting.has(classId)) {
+      return `cycle:${fqn}`;
+    }
+    visiting.add(classId);
+
+    const h = crypto.createHash("sha256");
+    const ownSource = getOwnSource(classId);
+    h.update(`self:${fqn}:${classKindFromEntry(sym)}:${ownSource}\n`);
+
+    // Include enclosing scope imports & constants so lexical import rebinding invalidates downstream classes
+    let currParentId: number | null | undefined = sym.parentId;
+    const seenParents = new Set<number>();
+    while (typeof currParentId === "number" && currParentId > 0 && !seenParents.has(currParentId)) {
+      seenParents.add(currParentId);
+      const pSym = queryDB.symbol(currParentId);
+      if (!pSym) break;
+      const pOwnSrc = getOwnSource(currParentId);
+      const pImports = extractScopeImports(pOwnSrc);
+      for (const imp of pImports) {
+        const targetId = resolveSymbolId(context, imp.target);
+        const targetFqn = targetId ? getSymbolFqn(context, targetId) : "unresolved";
+        h.update(`scope-import:${currParentId}:${imp.raw}->${targetFqn}\n`);
+      }
+      const pChildren = queryDB.childrenOf(currParentId) || [];
+      for (const pch of pChildren) {
+        if (pch.kind === "Component" || pch.kind === "Variable") {
+          const pchCst = queryDB.cstNode(pch.id) as CstNodeLike | null;
+          h.update(`scope-const:${pch.name}:${pchCst?.text ?? String(pch.metadata?.["typeSpecifier"] ?? "")}\n`);
+        }
+      }
+      if (pSym.parentId === currParentId || pSym.parentId === null || pSym.parentId === undefined) break;
+      currParentId = pSym.parentId;
+    }
+
+    // Include own imports and resolved targets
+    for (const imp of extractScopeImports(ownSource)) {
+      const targetId = resolveSymbolId(context, imp.target);
+      const targetFqn = targetId ? getSymbolFqn(context, targetId) : "unresolved";
+      h.update(`own-import:${imp.raw}->${targetFqn}\n`);
+    }
+
+    // Include transitive extends base classes and connector types
+    const children = queryDB.childrenOf(classId) || [];
+    for (const child of children) {
+      if (child.kind === "Extends" || child.ruleName?.includes("extends")) {
+        let baseSym = queryDB.query("resolvedBaseClass", child.id) as { id?: number | undefined } | null | undefined;
+        const baseName = (child.metadata?.["typeSpecifier"] as string | undefined) || child.name;
+        if (!baseSym && baseName) {
+          const baseId = resolveSymbolIdInScope(context, classId, baseName, ownSourceCache);
+          if (baseId) baseSym = queryDB.symbol(baseId);
+        }
+        if (baseSym && typeof baseSym.id === "number") {
+          const baseFqn = getSymbolFqn(context, baseSym.id);
+          const baseHash = computeIconHash(baseSym.id, new Set(visiting));
+          h.update(`extends:${baseName}->${baseFqn}:${baseHash}\n`);
+        } else {
+          h.update(`extends:${baseName}->unresolved\n`);
+        }
+      } else if (child.kind === "Component" || child.kind === "Variable") {
+        const compTypeName = (child.metadata?.["typeSpecifier"] as string | undefined) || "";
+        let compClassId = queryDB.query("classInstance", child.id) as number | undefined;
+        if (typeof compClassId !== "number" && compTypeName) {
+          compClassId = resolveSymbolIdInScope(context, classId, compTypeName, ownSourceCache) ?? undefined;
+        }
+        if (typeof compClassId === "number") {
+          const compSym = queryDB.symbol(compClassId);
+          const compKind = classKindFromEntry(compSym);
+          const compFqn = getSymbolFqn(context, compClassId);
+          if (compKind === "connector" || child.metadata?.["causality"] === "connector") {
+            const connHash = computeIconHash(compClassId, new Set(visiting));
+            h.update(`connector:${child.name}:${compTypeName}->${compFqn}:${connHash}\n`);
+          } else {
+            h.update(`comp-decl:${child.name}:${compTypeName}->${compFqn}\n`);
+          }
+        } else {
+          h.update(`comp-decl:${child.name}:${compTypeName}->builtin\n`);
+        }
+      }
+    }
+
+    const digest = h.digest("hex");
+    iconHashMemo.set(classId, digest);
+    return digest;
+  }
+
+  function computeDiagramHash(classId: number, visiting = new Set<number>()): string {
+    const existing = diagramHashMemo.get(classId);
+    if (existing !== undefined) return existing;
+
+    const sym = queryDB.symbol(classId);
+    if (!sym) return "null";
+
+    const fqn = getSymbolFqn(context, classId);
+    if (visiting.has(classId)) {
+      return `cycle:${fqn}`;
+    }
+    visiting.add(classId);
+
+    const h = crypto.createHash("sha256");
+    h.update(`icon:${computeIconHash(classId)}\n`);
+
+    const children = queryDB.childrenOf(classId) || [];
+    for (const child of children) {
+      if (child.kind === "Extends" || child.ruleName?.includes("extends")) {
+        let baseSym = queryDB.query("resolvedBaseClass", child.id) as { id?: number | undefined } | null | undefined;
+        const baseName = (child.metadata?.["typeSpecifier"] as string | undefined) || child.name;
+        if (!baseSym && baseName) {
+          const baseId = resolveSymbolIdInScope(context, classId, baseName, ownSourceCache);
+          if (baseId) baseSym = queryDB.symbol(baseId);
+        }
+        if (baseSym && typeof baseSym.id === "number") {
+          const baseDiagHash = computeDiagramHash(baseSym.id, new Set(visiting));
+          h.update(`ext-diagram:${baseName}->${baseDiagHash}\n`);
+        }
+      } else if (child.kind === "Component" || child.kind === "Variable") {
+        const compTypeName = (child.metadata?.["typeSpecifier"] as string | undefined) || "";
+        let compClassId = queryDB.query("classInstance", child.id) as number | undefined;
+        if (typeof compClassId !== "number" && compTypeName) {
+          compClassId = resolveSymbolIdInScope(context, classId, compTypeName, ownSourceCache) ?? undefined;
+        }
+        if (typeof compClassId === "number") {
+          const compIconHash = computeIconHash(compClassId);
+          h.update(`comp-icon:${child.name}:${compTypeName}->${compIconHash}\n`);
+        }
+      }
+    }
+
+    const digest = h.digest("hex");
+    diagramHashMemo.set(classId, digest);
+    return digest;
+  }
 
   async function visitClass(classId: number, fqn: string) {
     const sym = queryDB.symbol(classId);
     if (!sym) return;
 
     const className = fqn;
-    const cstNode = queryDB.cstNode(classId) as CstNodeLike | null;
     const children = queryDB.childrenOf(classId) || [];
 
     if (!processedClassNames.has(className)) {
       try {
-        const classKind = classKindFromEntry(sym);
-        const baseClasses: string[] = [];
-        const components: ComponentMetadata[] = [];
+        const iconHash = computeIconHash(classId);
+        const diagramHash = computeDiagramHash(classId);
+        const prev = options?.previousVersion?.classes.get(className);
 
-        for (const child of children) {
-          if (child.kind === "Extends") {
-            const baseName = (child.metadata?.["typeSpecifier"] as string) || child.name;
-            if (baseName) baseClasses.push(baseName);
-          } else if (child.kind === "Component" || child.kind === "Variable") {
-            const compCst = queryDB.cstNode(child.id) as CstNodeLike | null;
-            let compDesc: string | null = cleanModelicaDescription((child.metadata?.["description"] as string) ?? null);
-            if (!compDesc && compCst?.children) {
-              const descChild = compCst.children.find(
-                (c: CstNodeLike) => c.type === "description" || c.type === "comment" || c.type === "description_string",
-              );
-              const descStrNode =
-                descChild?.children?.find(
-                  (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
-                ) ?? descChild;
-              if (descStrNode?.text) {
-                compDesc = cleanModelicaDescription(descStrNode.text);
-              }
-            }
-
-            let causality: string | null = null;
-            try {
-              causality = queryDB.query("causality", child.id)?.toString() ?? null;
-            } catch {}
-
-            let variability: string | null = null;
-            try {
-              variability = queryDB.query("variability", child.id)?.toString() ?? null;
-            } catch {}
-
-            const modifiers = extractModifiers(null, compCst);
-
-            components.push({
-              name: child.name ?? "",
-              typeName: (child.metadata?.["typeSpecifier"] as string) ?? "unknown",
-              description: compDesc,
-              causality,
-              variability,
-              modifiers,
-            });
-          }
-        }
-
-        let description: string | null = cleanModelicaDescription((sym.metadata?.["description"] as string) ?? null);
-        if (!description && cstNode?.children) {
-          // Check for description_string in long_class_specifier or children
-          const walkForDesc = (n: CstNodeLike | null | undefined): string | null => {
-            if (!n) return null;
-            if (n.type === "annotation_clause" || n.type === "AnnotationClause" || n.type === "composition") {
-              return null;
-            }
-            if (n.type === "description_string" || n.type === "string_comment") {
-              return cleanModelicaDescription(n.text);
-            }
-            if (n.type === "description" || n.type === "comment") {
-              const strNode = n.children?.find(
-                (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
-              );
-              if (strNode?.text) return cleanModelicaDescription(strNode.text);
-              return cleanModelicaDescription(n.text);
-            }
-            for (const ch of n.children || []) {
-              if (ch.type === "composition" || ch.type === "annotation_clause") continue;
-              const d = walkForDesc(ch);
-              if (d) return d;
-            }
-            return null;
+        // Fast-path: 100% transitive Merkle match (both icon and diagram + metadata unchanged)
+        if (
+          prev &&
+          prev.iconHash &&
+          prev.diagramHash &&
+          prev.iconHash === iconHash &&
+          prev.diagramHash === diagramHash
+        ) {
+          const reusedIcon = options?.previousVersion?.readSvg(className, "icon") ?? null;
+          const reusedDiagram = options?.previousVersion?.readSvg(className, "diagram") ?? null;
+          const reusedMeta: ClassMetadata = {
+            className,
+            classKind: prev.classKind,
+            description: prev.description,
+            documentation: prev.documentation,
+            baseClasses: prev.baseClasses,
+            components: prev.components,
+            iconHash,
+            diagramHash,
           };
-          description = walkForDesc(cstNode);
-        }
+          await onClass(className, reusedMeta, { icon: reusedIcon, diagram: reusedDiagram });
+          classesProcessed++;
+          classesReused++;
+        } else {
+          const cstNode = queryDB.cstNode(classId) as CstNodeLike | null;
+          const classKind = classKindFromEntry(sym);
+          const baseClasses: string[] = [];
+          const components: ComponentMetadata[] = [];
 
-        let documentation: string | null = null;
-        if (cstNode) {
-          try {
-            const evaluator = new (AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor)();
-            const doc = evaluator.evaluate(cstNode, "Documentation");
-            if (doc?.info) {
-              documentation = doc.info;
-            }
-          } catch {}
-        }
-
-        const metadata: ClassMetadata = {
-          className,
-          classKind,
-          description,
-          documentation,
-          baseClasses,
-          components,
-        };
-
-        const memoryTight = isMemoryTight();
-        let iconSvg: string | null = null;
-        let diagramSvg: string | null = null;
-        const skipRendering = memoryTight || children.length > 300;
-
-        if (!skipRendering) {
-          try {
-            const adapter = buildClassAdapter(
-              context,
-              classId,
-              AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor,
-            );
-            if (adapter) {
-              const icon = renderIcon(adapter as unknown as Parameters<typeof renderIcon>[0]);
-              if (icon) {
-                const svgStr = formatXml(icon.svg());
-                if (hasVisualContent(svgStr)) iconSvg = svgStr;
-                icon.remove();
-                icon.clear();
+          for (const child of children) {
+            if (child.kind === "Extends") {
+              const baseName = (child.metadata?.["typeSpecifier"] as string) || child.name;
+              if (baseName) baseClasses.push(baseName);
+            } else if (child.kind === "Component" || child.kind === "Variable") {
+              const compCst = queryDB.cstNode(child.id) as CstNodeLike | null;
+              let compDesc: string | null = cleanModelicaDescription(
+                (child.metadata?.["description"] as string) ?? null,
+              );
+              if (!compDesc && compCst?.children) {
+                const descChild = compCst.children.find(
+                  (c: CstNodeLike) =>
+                    c.type === "description" || c.type === "comment" || c.type === "description_string",
+                );
+                const descStrNode =
+                  descChild?.children?.find(
+                    (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
+                  ) ?? descChild;
+                if (descStrNode?.text) {
+                  compDesc = cleanModelicaDescription(descStrNode.text);
+                }
               }
-              const diagram = renderDiagram(adapter as unknown as Parameters<typeof renderDiagram>[0]);
-              if (diagram) {
-                const svgStr = formatXml(diagram.svg());
-                if (hasVisualContent(svgStr)) diagramSvg = svgStr;
-                diagram.remove();
-                diagram.clear();
-              }
-            }
-          } catch {}
 
-          const win = (
-            globalThis as {
-              window?: { document?: { body?: { innerHTML: string } | undefined } | undefined } | undefined;
+              let causality: string | null = null;
+              try {
+                causality = queryDB.query("causality", child.id)?.toString() ?? null;
+              } catch {}
+
+              let variability: string | null = null;
+              try {
+                variability = queryDB.query("variability", child.id)?.toString() ?? null;
+              } catch {}
+
+              const modifiers = extractModifiers(null, compCst);
+
+              components.push({
+                name: child.name ?? "",
+                typeName: (child.metadata?.["typeSpecifier"] as string) ?? "unknown",
+                description: compDesc,
+                causality,
+                variability,
+                modifiers,
+              });
             }
-          ).window;
-          if (win?.document?.body) {
-            win.document.body.innerHTML = "";
           }
-        }
 
-        await onClass(className, metadata, { icon: iconSvg, diagram: diagramSvg });
-        classesProcessed++;
+          let description: string | null = cleanModelicaDescription((sym.metadata?.["description"] as string) ?? null);
+          if (!description && cstNode?.children) {
+            // Check for description_string in long_class_specifier or children
+            const walkForDesc = (n: CstNodeLike | null | undefined): string | null => {
+              if (!n) return null;
+              if (n.type === "annotation_clause" || n.type === "AnnotationClause" || n.type === "composition") {
+                return null;
+              }
+              if (n.type === "description_string" || n.type === "string_comment") {
+                return cleanModelicaDescription(n.text);
+              }
+              if (n.type === "description" || n.type === "comment") {
+                const strNode = n.children?.find(
+                  (c: CstNodeLike) => c.type === "description_string" || c.type === "string_comment",
+                );
+                if (strNode?.text) return cleanModelicaDescription(strNode.text);
+                return cleanModelicaDescription(n.text);
+              }
+              for (const ch of n.children || []) {
+                if (ch.type === "composition" || ch.type === "annotation_clause") continue;
+                const d = walkForDesc(ch);
+                if (d) return d;
+              }
+              return null;
+            };
+            description = walkForDesc(cstNode);
+          }
+
+          let documentation: string | null = null;
+          if (cstNode) {
+            try {
+              const evaluator = new (AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor)();
+              const doc = evaluator.evaluate(cstNode, "Documentation");
+              if (doc?.info) {
+                documentation = doc.info;
+              }
+            } catch {}
+          }
+
+          const memoryTight = isMemoryTight();
+          let iconSvg: string | null = null;
+          let diagramSvg: string | null = null;
+          const skipRendering = memoryTight || children.length > 300;
+
+          if (!skipRendering) {
+            try {
+              const canReuseIcon = Boolean(prev && prev.iconHash && prev.iconHash === iconHash);
+              if (canReuseIcon) {
+                iconSvg = options?.previousVersion?.readSvg(className, "icon") ?? null;
+              }
+
+              const adapter = buildClassAdapter(
+                context,
+                classId,
+                AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor,
+              );
+              if (adapter) {
+                if (!canReuseIcon) {
+                  const icon = renderIcon(adapter as unknown as Parameters<typeof renderIcon>[0]);
+                  if (icon) {
+                    const svgStr = formatXml(icon.svg());
+                    if (hasVisualContent(svgStr)) iconSvg = svgStr;
+                    icon.remove();
+                    icon.clear();
+                  }
+                }
+                const diagram = renderDiagram(adapter as unknown as Parameters<typeof renderDiagram>[0]);
+                if (diagram) {
+                  const svgStr = formatXml(diagram.svg());
+                  if (hasVisualContent(svgStr)) diagramSvg = svgStr;
+                  diagram.remove();
+                  diagram.clear();
+                }
+              }
+            } catch {}
+
+            const win = (
+              globalThis as {
+                window?: { document?: { body?: { innerHTML: string } | undefined } | undefined } | undefined;
+              }
+            ).window;
+            if (win?.document?.body) {
+              win.document.body.innerHTML = "";
+            }
+          }
+
+          const metadata: ClassMetadata = {
+            className,
+            classKind,
+            description,
+            documentation,
+            baseClasses,
+            components,
+            iconHash: skipRendering ? null : iconHash,
+            diagramHash: skipRendering ? null : diagramHash,
+          };
+
+          await onClass(className, metadata, { icon: iconSvg, diagram: diagramSvg });
+          classesProcessed++;
+        }
 
         if (classesProcessed % 50 === 0) {
           tryGC();
@@ -750,7 +1165,7 @@ export async function processLibrary(
         if (classesProcessed % 100 === 0) {
           const mem = process.memoryUsage();
           console.log(
-            `[publish] ${classesProcessed} classes — heap: ${Math.round(mem.heapUsed / 1024 / 1024)}MB / ${Math.round(mem.heapTotal / 1024 / 1024)}MB, rss: ${Math.round(mem.rss / 1024 / 1024)}MB${memoryTight ? " [MEMORY TIGHT - SKIPPING SVGS]" : ""}`,
+            `[publish] ${classesProcessed} classes (${classesReused} reused) — heap: ${Math.round(mem.heapUsed / 1024 / 1024)}MB / ${Math.round(mem.heapTotal / 1024 / 1024)}MB, rss: ${Math.round(mem.rss / 1024 / 1024)}MB${isMemoryTight() ? " [MEMORY TIGHT - SKIPPING SVGS]" : ""}`,
           );
         }
       } catch (err) {

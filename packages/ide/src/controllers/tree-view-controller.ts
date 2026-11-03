@@ -109,7 +109,7 @@ export class TreeViewController implements vscode.Disposable {
       console.warn("Could not register modelscript.experimentsView view:", e);
     }
 
-    // 4. Ansatz Package Commands (attached to Standard Libraries view) and SCM Views
+    // 4. Ansatz Package Commands (attached to Libraries view) and SCM Views
     registerRegistryView(context, client);
     registerScmTreeView(context, client);
 

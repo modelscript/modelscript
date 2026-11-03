@@ -1,47 +1,48 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  AlertFillIcon,
-  AlertIcon,
-  CheckIcon,
-  CodeIcon,
-  CopyIcon,
-  DesktopDownloadIcon,
-  DownloadIcon,
-  HourglassIcon,
-  LawIcon,
-  SyncIcon,
-  TerminalIcon,
-} from "@primer/octicons-react";
-import { ActionList, ActionMenu, Button, Heading, Label, Text } from "@primer/react";
+import { AlertFillIcon, AlertIcon, DownloadIcon, HourglassIcon, LawIcon, SyncIcon } from "@primer/octicons-react";
+import { Heading, Label, Text } from "@primer/react";
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { LibraryListItem } from "../../../api";
 import Box from "../../../components/Box";
-import { formatDomainLabel, formatTimeAgo } from "../constants";
+import { formatDomainLabel, formatTimeAgo, inferPackageDomains, splitScopedPackageName } from "../constants";
 import { DomainBadge } from "../styles";
 import { PackageIcon } from "./PackageIcon";
 
 export interface PackageCardItemProps {
   lib: LibraryListItem;
-  copiedPkg: string | null;
-  onCopyInstall: (pkgName: string) => void;
+  copiedPkg?: string | null | undefined;
+  onCopyInstall?: ((pkgName: string) => void) | undefined;
 }
 
-export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib, copiedPkg, onCopyInstall }) => {
-  const navigate = useNavigate();
-  const displayHandle = lib.name.startsWith("@")
-    ? lib.name.split("/")[0] || `@${lib.author || lib.name}`
-    : `@${lib.author || lib.name}`;
-  const domains = lib.domains && lib.domains.length > 0 ? lib.domains : ["modelica"];
+export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib }) => {
+  const { scope, baseName } = splitScopedPackageName(lib.name);
+  const rawScope = scope ? scope.slice(1) : lib.scope;
+  const distinctAuthor =
+    lib.author &&
+    lib.author.toLowerCase() !== lib.name.toLowerCase() &&
+    lib.author.toLowerCase() !== (rawScope || "").toLowerCase()
+      ? `@${lib.author.replace(/^@/, "")}`
+      : null;
+  const domains = inferPackageDomains(lib);
   const timeAgoText = formatTimeAgo(lib.publishedAt);
+  const hasFooterMeta = Boolean(
+    distinctAuthor ||
+    lib.license ||
+    (typeof lib.totalDownloads === "number" && lib.totalDownloads > 0) ||
+    (typeof lib.dependentsCount === "number" && lib.dependentsCount > 0) ||
+    lib.recommendationReason ||
+    timeAgoText,
+  );
 
   return (
     <Box
       display="flex"
       alignItems="flex-start"
       justifyContent="space-between"
-      p={3}
+      px="20px"
+      py="16px"
       borderBottom="1px solid var(--color-border)"
       sx={{
         gap: "16px",
@@ -53,24 +54,31 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib, copiedPkg
     >
       <Link
         to={lib.latestVersion ? `/packages/${lib.name}/${lib.latestVersion}` : `/packages/${lib.name}`}
-        style={{ textDecoration: "none", color: "inherit", display: "flex", gap: "12px", flex: 1 }}
+        style={{ textDecoration: "none", color: "inherit", display: "flex", gap: "12px", flex: 1, minWidth: 0 }}
       >
-        <PackageIcon name={lib.name} version={lib.latestVersion || "1.0.0"} />
-        <Box flex={1}>
+        <PackageIcon
+          name={lib.name}
+          version={lib.latestVersion || "1.0.0"}
+          domains={domains}
+          description={lib.description}
+        />
+        <Box flex={1} minWidth={0}>
           <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
             <Heading
               as="h4"
               style={{
                 fontSize: "15px",
-                fontWeight: "bold",
+                fontWeight: 700,
                 margin: 0,
                 color: "var(--color-text-heading)",
+                lineHeight: 1.3,
               }}
             >
-              {lib.name}
+              {scope && <span style={{ color: "var(--color-text-muted)", fontWeight: 500 }}>{scope}/</span>}
+              {baseName}
             </Heading>
             {lib.latestVersion && (
-              <Label variant="secondary" style={{ fontSize: 11 }}>
+              <Label variant="secondary" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>
                 v{lib.latestVersion}
               </Label>
             )}
@@ -95,7 +103,7 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib, copiedPkg
             as="p"
             style={{
               fontSize: "14px",
-              margin: "6px 0 8px 0",
+              margin: hasFooterMeta ? "6px 0 8px 0" : "6px 0 0 0",
               color: "var(--color-text-primary)",
               lineHeight: 1.4,
             }}
@@ -104,36 +112,50 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib, copiedPkg
           </Text>
 
           {/* Metadata Footer Row */}
-          <Box display="flex" alignItems="center" gap="14px" flexWrap="wrap">
-            <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>{displayHandle}</Text>
-            {lib.license && (
-              <Text
-                style={{
-                  fontSize: "12px",
-                  color: "var(--color-text-muted)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <LawIcon size={12} /> {lib.license}
-              </Text>
-            )}
-            {typeof lib.totalDownloads === "number" && (
-              <Text
-                style={{
-                  fontSize: "12px",
-                  color: "var(--color-text-muted)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <DownloadIcon size={12} /> {lib.totalDownloads.toLocaleString()} downloads
-              </Text>
-            )}
-            {timeAgoText && <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>{timeAgoText}</Text>}
-          </Box>
+          {hasFooterMeta && (
+            <Box display="flex" alignItems="center" gap="14px" flexWrap="wrap">
+              {distinctAuthor && (
+                <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>{distinctAuthor}</Text>
+              )}
+              {lib.license && (
+                <Text
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--color-text-muted)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <LawIcon size={12} /> {lib.license}
+                </Text>
+              )}
+              {typeof lib.totalDownloads === "number" && lib.totalDownloads > 0 && (
+                <Text
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--color-text-muted)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <DownloadIcon size={12} /> {lib.totalDownloads.toLocaleString()} downloads
+                </Text>
+              )}
+              {typeof lib.dependentsCount === "number" && lib.dependentsCount > 0 && (
+                <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                  Used by {lib.dependentsCount} {lib.dependentsCount === 1 ? "package" : "packages"}
+                </Text>
+              )}
+              {lib.recommendationReason && (
+                <Text style={{ fontSize: "11px", color: "var(--color-accent-cyan)", fontWeight: 600 }}>
+                  {lib.recommendationReason}
+                </Text>
+              )}
+              {timeAgoText && <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>{timeAgoText}</Text>}
+            </Box>
+          )}
 
           {lib.jobStatus && (lib.jobStatus.status === "pending" || lib.jobStatus.status === "processing") && (
             <Box display="flex" alignItems="center" gap="8px" mt="8px">
@@ -159,52 +181,6 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib, copiedPkg
           )}
         </Box>
       </Link>
-
-      {/* Install / Open Action Menu */}
-      <Box display="flex" alignItems="center" gap={1} style={{ flexShrink: 0 }}>
-        <Button
-          size="small"
-          leadingVisual={copiedPkg === lib.name ? CheckIcon : CopyIcon}
-          onClick={(e) => {
-            e.preventDefault();
-            onCopyInstall(lib.name);
-          }}
-          title={`Copy: msx install ${lib.name}`}
-        >
-          {copiedPkg === lib.name ? "Copied" : "msx install"}
-        </Button>
-        <ActionMenu>
-          <ActionMenu.Button size="small" aria-label={`Install options for ${lib.name}`}>
-            Open
-          </ActionMenu.Button>
-          <ActionMenu.Overlay align="end">
-            <ActionList>
-              <ActionList.Item onSelect={() => navigate(`/ide#memfs:package-${lib.name}`)}>
-                <ActionList.LeadingVisual>
-                  <CodeIcon size={14} />
-                </ActionList.LeadingVisual>
-                Open in Web IDE
-              </ActionList.Item>
-              <ActionList.Item onSelect={() => onCopyInstall(lib.name)}>
-                <ActionList.LeadingVisual>
-                  <TerminalIcon size={14} />
-                </ActionList.LeadingVisual>
-                Copy CLI Command (msx install)
-              </ActionList.Item>
-              <ActionList.Item
-                onSelect={() => {
-                  window.location.href = `vscode://modelscript.modelscript/install?package=${encodeURIComponent(lib.name)}`;
-                }}
-              >
-                <ActionList.LeadingVisual>
-                  <DesktopDownloadIcon size={14} />
-                </ActionList.LeadingVisual>
-                Install in VS Code Desktop
-              </ActionList.Item>
-            </ActionList>
-          </ActionMenu.Overlay>
-        </ActionMenu>
-      </Box>
     </Box>
   );
 };

@@ -131,24 +131,34 @@ class LocationService {
 
   // Helper to extract IP from an Express request
   public extractIp(req: Request): string {
-    // 1. Prefer explicit Cloudflare / CDN eyeball IP headers when present
-    const cfConnectingIp = req.headers["cf-connecting-ip"] || req.headers["true-client-ip"];
-    if (typeof cfConnectingIp === "string" && cfConnectingIp.trim()) {
-      return cfConnectingIp.trim();
-    }
+    const trustProxyHeaders =
+      process.env["NODE_ENV"] !== "production" ||
+      process.env["TRUST_PROXY"] === "true" ||
+      process.env["TRUST_CLOUDFLARE_HEADERS"] === "true" ||
+      process.env["MSX_INGRESS_MODE"] === "cloudflare" ||
+      Boolean(process.env["CLOUDFLARE_TUNNEL_TOKEN"]) ||
+      Boolean(req.app?.get("trust proxy"));
 
-    // 2. Look for X-Forwarded-For if behind a reverse proxy
-    const forwarded = req.headers["x-forwarded-for"];
-    if (forwarded) {
-      const parts = forwarded.toString().split(",");
-      const firstPart = parts[0];
-      if (firstPart) {
-        return firstPart.trim();
+    if (trustProxyHeaders) {
+      // 1. Prefer explicit Cloudflare / CDN eyeball IP headers when present
+      const cfConnectingIp = req.headers["cf-connecting-ip"] || req.headers["true-client-ip"];
+      if (typeof cfConnectingIp === "string" && cfConnectingIp.trim()) {
+        return cfConnectingIp.trim();
       }
-    }
-    const realIp = req.headers["x-real-ip"];
-    if (typeof realIp === "string" && realIp.trim()) {
-      return realIp.trim();
+
+      // 2. Look for X-Forwarded-For if behind a reverse proxy
+      const forwarded = req.headers["x-forwarded-for"];
+      if (forwarded) {
+        const parts = forwarded.toString().split(",");
+        const firstPart = parts[0];
+        if (firstPart) {
+          return firstPart.trim();
+        }
+      }
+      const realIp = req.headers["x-real-ip"];
+      if (typeof realIp === "string" && realIp.trim()) {
+        return realIp.trim();
+      }
     }
     return req.ip || req.socket?.remoteAddress || "127.0.0.1";
   }

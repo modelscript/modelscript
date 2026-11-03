@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/embed",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "ModelScript & Ansatz embed client SDK — iframe bridge, Web Component custom elements, and permalink codec",
   "keywords": [
     "modelscript",

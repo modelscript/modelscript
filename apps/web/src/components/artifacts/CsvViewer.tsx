@@ -365,17 +365,21 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({ viewConfig, isFullScreen }
 
   if (loading) {
     return (
-      <Box p={4} display="flex" justifyContent="center" alignItems="center">
-        <Spinner size="small" />
-      </Box>
+      <TableWrapper $isFullScreen={isFullScreen}>
+        <Box p={4} flex={1} display="flex" justifyContent="center" alignItems="center">
+          <Spinner size="small" />
+        </Box>
+      </TableWrapper>
     );
   }
 
   if (error) {
     return (
-      <Box p={4} color="var(--color-danger-fg)">
-        <Text>{error}</Text>
-      </Box>
+      <TableWrapper $isFullScreen={isFullScreen}>
+        <Box p={4} flex={1} display="flex" justifyContent="center" alignItems="center" color="var(--color-danger-fg)">
+          <Text>{error}</Text>
+        </Box>
+      </TableWrapper>
     );
   }
 

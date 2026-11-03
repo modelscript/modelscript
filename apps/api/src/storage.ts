@@ -110,7 +110,7 @@ export class LibraryStorage {
 
     let names = fs
       .readdirSync(this.#dataDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
+      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
       .map((d) => {
         if (d.name.startsWith("@") && d.name.includes("__")) {
           return "@" + d.name.slice(1).replace(/__/g, "/");
@@ -203,7 +203,60 @@ export class LibraryStorage {
   }
 
   /**
-   * Store SVGs for a single class.
+   * Writes an SVG string into the content-addressable store (`.cas/svg/<prefix>/<sha256>.svg`)
+   * and links `targetPath` to the CAS blob so identical SVGs across versions take zero extra disk space.
+   */
+  #writeCasSvg(targetPath: string, svgContent: string): void {
+    const hash = crypto.createHash("sha256").update(svgContent, "utf-8").digest("hex");
+    const casFile = path.join(this.#dataDir, ".cas", "svg", hash.slice(0, 2), `${hash}.svg`);
+    if (!fs.existsSync(casFile)) {
+      fs.mkdirSync(path.dirname(casFile), { recursive: true });
+      fs.writeFileSync(casFile, svgContent, "utf-8");
+    }
+    try {
+      if (fs.existsSync(targetPath)) {
+        fs.unlinkSync(targetPath);
+      }
+      fs.linkSync(casFile, targetPath);
+    } catch {
+      fs.writeFileSync(targetPath, svgContent, "utf-8");
+    }
+  }
+
+  /**
+   * Copies an extracted directory tree into `destDir` while deduplicating regular files
+   * through `<dataDir>/.cas/files/<prefix>/<sha256>` hardlinks.
+   */
+  #copyTreeViaCas(srcDir: string, destDir: string): void {
+    fs.mkdirSync(destDir, { recursive: true });
+    const entries = fs.readdirSync(srcDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(srcDir, entry.name);
+      const destPath = path.join(destDir, entry.name);
+      if (entry.isDirectory()) {
+        this.#copyTreeViaCas(srcPath, destPath);
+      } else if (entry.isFile()) {
+        const buf = fs.readFileSync(srcPath);
+        const hash = crypto.createHash("sha256").update(buf).digest("hex");
+        const casFile = path.join(this.#dataDir, ".cas", "files", hash.slice(0, 2), hash);
+        if (!fs.existsSync(casFile)) {
+          fs.mkdirSync(path.dirname(casFile), { recursive: true });
+          fs.writeFileSync(casFile, buf);
+        }
+        try {
+          if (fs.existsSync(destPath)) {
+            fs.unlinkSync(destPath);
+          }
+          fs.linkSync(casFile, destPath);
+        } catch {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      }
+    }
+  }
+
+  /**
+   * Store SVGs for a single class (deduplicated via Content-Addressable Storage).
    */
   storeSvg(name: string, version: string, className: string, icon: string | null, diagram: string | null): void {
     const dir = this.#svgDir(name, version, className);
@@ -213,7 +266,7 @@ export class LibraryStorage {
     const safeClass = this.#safe(className);
 
     if (icon) {
-      fs.writeFileSync(path.join(dir, "icon.svg"), icon, "utf-8");
+      this.#writeCasSvg(path.join(dir, "icon.svg"), icon);
       if (this.#driver.driverName === "s3") {
         void this.#driver
           .write(`${safeName}/${safeVersion}/svgs/${safeClass}/icon.svg`, Buffer.from(icon, "utf-8"), {
@@ -223,7 +276,7 @@ export class LibraryStorage {
       }
     }
     if (diagram) {
-      fs.writeFileSync(path.join(dir, "diagram.svg"), diagram, "utf-8");
+      this.#writeCasSvg(path.join(dir, "diagram.svg"), diagram);
       if (this.#driver.driverName === "s3") {
         void this.#driver
           .write(`${safeName}/${safeVersion}/svgs/${safeClass}/diagram.svg`, Buffer.from(diagram, "utf-8"), {
@@ -318,8 +371,7 @@ export class LibraryStorage {
         }
       }
 
-      fs.mkdirSync(path.dirname(extPath), { recursive: true });
-      fs.cpSync(libraryRoot, extPath, { recursive: true });
+      this.#copyTreeViaCas(libraryRoot, extPath);
 
       return extPath;
     } finally {

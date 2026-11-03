@@ -182,24 +182,83 @@ const STOP_WORDS = new Set([
   "like",
 ]);
 
+export const PERSONA_SEED_TOPICS: Record<string, { concept: string; displayName: string }[]> = {
+  physical_systems: [
+    { concept: "modelica", displayName: "Modelica" },
+    { concept: "thermofluid", displayName: "Thermofluid" },
+    { concept: "power_systems", displayName: "PowerSystems" },
+    { concept: "multibody", displayName: "Multibody" },
+    { concept: "control", displayName: "Control" },
+    { concept: "fmi", displayName: "FMI" },
+  ],
+  systems_engineering: [
+    { concept: "sysmlv2", displayName: "SysMLv2" },
+    { concept: "mbse", displayName: "MBSE" },
+    { concept: "fmi", displayName: "FMI" },
+    { concept: "ssp", displayName: "SSP" },
+    { concept: "requirements", displayName: "Requirements" },
+    { concept: "architecture", displayName: "Architecture" },
+  ],
+  computational_cad: [
+    { concept: "cad", displayName: "CAD" },
+    { concept: "step", displayName: "STEP" },
+    { concept: "fea", displayName: "FEA" },
+    { concept: "cfd", displayName: "CFD" },
+    { concept: "openscad", displayName: "OpenSCAD" },
+    { concept: "geometry", displayName: "Geometry" },
+  ],
+  scientific_research: [
+    { concept: "pde", displayName: "PDE" },
+    { concept: "optimization", displayName: "Optimization" },
+    { concept: "surrogate", displayName: "Surrogate" },
+    { concept: "montecarlo", displayName: "MonteCarlo" },
+    { concept: "aerospace", displayName: "Aerospace" },
+    { concept: "simulation", displayName: "Simulation" },
+  ],
+};
+
+function sanitizePostContentForTopics(content: string): string {
+  return content
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`\n]+`/g, " ")
+    .replace(/::artifact\{[^}]*\}/g, " ")
+    .replace(/https?:\/\/[^\s)]+/g, " ");
+}
+
+/**
+ * Extracts explicit `#hashtags` from post text, ignoring URL fragments, inline code, and fenced code blocks.
+ */
+export function extractHashtags(content: string): { concept: string; displayName: string }[] {
+  if (!content) return [];
+
+  const sanitized = sanitizePostContentForTopics(content);
+
+  const regex = /(?:^|[^\w&/])#([a-zA-Z][a-zA-Z0-9_]{1,49})/g;
+  const uniqueTopics = new Map<string, { concept: string; displayName: string }>();
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(sanitized)) !== null) {
+    const raw = match[1]!;
+    const concept = raw.toLowerCase();
+    if (!uniqueTopics.has(concept)) {
+      uniqueTopics.set(concept, { concept, displayName: raw });
+    }
+  }
+
+  return Array.from(uniqueTopics.values());
+}
+
 /**
  * Extracts key topics (keywords/hashtags) from a text content using NLP stemming.
  */
 export function extractTopics(content: string): { concept: string; displayName: string }[] {
   if (!content) return [];
 
-  // Extract hashtags explicitly
-  const hashtagMatches = content.match(/#[\w]+/g) || [];
-  const hashtags = hashtagMatches.map((tag) => {
-    const raw = tag.slice(1);
-    return {
-      concept: raw.toLowerCase(),
-      displayName: raw,
-    };
-  });
+  const hashtags = extractHashtags(content);
+  const sanitized = sanitizePostContentForTopics(content);
 
   // Extract standard words
-  const words = content.replace(/[^\w\s]/g, " ").split(/\s+/);
+  const words = sanitized.replace(/[^\w\s]/g, " ").split(/\s+/);
 
   const keywords = words
     .filter((word) => word.length > 3) // Ignore very short words

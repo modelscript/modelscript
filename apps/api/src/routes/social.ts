@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Request, Response, Router } from "express";
+import type { NextFunction, Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import fs from "fs";
 import { fileURLToPath } from "node:url";
@@ -10,9 +10,9 @@ import type { LibraryDatabase, PostVisibility } from "../database.js";
 import { optionalAuth, requireAuth, requireTokenScope } from "../middleware/auth-middleware.js";
 import { ComposerAIService, type ComposerDraftTone, type ComposerPolishMode } from "../services/ai/composer-ai.js";
 import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
+import type { FeatureFlagService } from "../services/feature-flag-service.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { locationService } from "../services/location.js";
-import { extractTopics } from "../util/extract-topics.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { isCorporateOrAirgapTier, isFederationDisabled } from "../util/tier-presets.js";
 import { generateThumbnail } from "../workers/thumbnailWorker.js";
@@ -223,8 +223,27 @@ function parseNotebookPayload(
   return { effectiveContent: rawContent, notebookMeta: null };
 }
 
-export function socialRouter(database: LibraryDatabase, worker?: FederationWorker): Router {
+export function socialRouter(
+  database: LibraryDatabase,
+  worker?: FederationWorker,
+  featureFlagService?: FeatureFlagService,
+): Router {
   const router = createRouter();
+
+  const feedsGuard = (req: Request, res: Response, next: NextFunction): void => {
+    if (
+      featureFlagService &&
+      !featureFlagService.isEnabled("feeds_page", req.user) &&
+      !featureFlagService.isEnabled("rss_feeds", req.user)
+    ) {
+      res.status(404).json({
+        error: "Not Found",
+        message: "The RSS feeds feature is currently disabled or unavailable in this environment.",
+      });
+      return;
+    }
+    next();
+  };
 
   /**
    * POST /api/v1/social/posts
@@ -567,16 +586,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
           if (content) {
             const author = database.getUserById(authorId);
             if (author) {
-              const profile = database.getFullProfileByUsername(author.username);
-              const followerCount = profile?.follower_count || 0;
-              const location = profile?.location || null;
-              const postWeight = 1.0 + Math.log10(followerCount + 1) * 0.5;
-
-              const topics = extractTopics(content);
-              for (const topic of topics) {
-                const topicId = database.updateTopicScore(topic.concept, topic.displayName, postWeight, 24, location);
-                database.linkPostToTopic(id, topicId);
-              }
+              database.syncPostTopics(id);
 
               // Extract URLs for link previews (if no artifact exists)
               if (!artifact_view_id) {
@@ -1069,8 +1079,9 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     const offset = Number(req.query["offset"]) || 0;
     const artifactType = (req.query["artifactType"] as string) || undefined;
     const tag = (req.query["tag"] as string) || undefined;
+    const q = (req.query["q"] as string) || undefined;
     try {
-      const posts = database.getExploreTimeline(currentUserId, limit, offset, artifactType, tag);
+      const posts = database.getExploreTimeline(currentUserId, limit, offset, artifactType, tag, q);
       res.json({ posts });
     } catch {
       res.status(500).json({ error: "Failed to get explore timeline" });
@@ -1639,7 +1650,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
    */
   router.get("/notifications", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const limit = Number(req.query["limit"]) || 20;
+    const limit = Number(req.query["limit"]) || 50;
     const category = typeof req.query["category"] === "string" ? req.query["category"] : undefined;
     try {
       const notifications = database.getNotifications(userId, limit, category);
@@ -1656,8 +1667,19 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   router.post("/notifications/read", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const category = typeof req.body?.category === "string" ? req.body.category : undefined;
+    const rawIds =
+      req.body?.ids ??
+      req.body?.notification_ids ??
+      (req.body?.id !== undefined
+        ? [req.body.id]
+        : req.body?.notification_id !== undefined
+          ? [req.body.notification_id]
+          : undefined);
+    const ids = Array.isArray(rawIds)
+      ? rawIds.map((v: unknown) => Number(v)).filter((n: number) => Number.isFinite(n))
+      : undefined;
     try {
-      database.markNotificationsRead(userId, category);
+      database.markNotificationsRead(userId, category, ids);
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: "Failed to mark notifications read" });
@@ -1686,9 +1708,10 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
     const limit = Number(req.query["limit"]) || 20;
     const offset = Number(req.query["offset"]) || 0;
     const artifactType = (req.query["artifactType"] as string) || undefined;
+    const sort = (req.query["sort"] as string) || "recent";
 
     try {
-      const posts = database.getTopicPosts(concept, currentUserId, limit, offset, artifactType);
+      const posts = database.getTopicPosts(concept, currentUserId, limit, offset, artifactType, sort);
       res.json({ posts });
     } catch {
       res.status(500).json({ error: "Failed to get topic posts" });
@@ -1696,9 +1719,23 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   });
 
   /**
+   * GET /api/v1/social/topics/:concept/related
+   */
+  router.get("/topics/:concept/related", optionalAuth, (req: Request, res: Response) => {
+    const concept = req.params["concept"] as string;
+    const limit = Math.min(Math.max(1, Number(req.query["limit"]) || 8), 25);
+    try {
+      const topics = database.getRelatedTopics(concept, limit);
+      res.json({ topics });
+    } catch {
+      res.status(500).json({ error: "Failed to get related topics" });
+    }
+  });
+
+  /**
    * POST /api/v1/social/feeds/subscribe
    */
-  router.post("/feeds/subscribe", requireAuth, async (req: Request, res: Response) => {
+  router.post("/feeds/subscribe", requireAuth, feedsGuard, async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const { url } = req.body;
 
@@ -1825,7 +1862,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   /**
    * GET /api/v1/social/feeds
    */
-  router.get("/feeds", requireAuth, (req: Request, res: Response) => {
+  router.get("/feeds", requireAuth, feedsGuard, (req: Request, res: Response) => {
     const userId = req.user!.id;
     try {
       const feeds = database.getUserRssSubscriptions(userId);
@@ -1838,7 +1875,7 @@ export function socialRouter(database: LibraryDatabase, worker?: FederationWorke
   /**
    * DELETE /api/v1/social/feeds/:id/unsubscribe
    */
-  router.delete("/feeds/:id/unsubscribe", requireAuth, (req: Request, res: Response) => {
+  router.delete("/feeds/:id/unsubscribe", requireAuth, feedsGuard, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const feedId = Number(req.params["id"]);
     try {

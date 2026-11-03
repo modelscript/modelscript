@@ -176,7 +176,6 @@ export function CadBindingPickerModal({
         border: "1px solid var(--color-border-default)",
         borderRadius: "12px",
         boxShadow: dark ? "0 16px 32px rgba(0,0,0,0.6)" : "0 16px 32px rgba(0,0,0,0.15)",
-        overflow: "hidden",
       }}
     >
       <Dialog.Header
@@ -211,11 +210,12 @@ export function CadBindingPickerModal({
         </div>
       </Dialog.Header>
 
-      <div
+      <Dialog.Body
         style={{
           padding: "20px",
           overflowY: "auto",
           flex: 1,
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
           gap: "16px",
@@ -444,7 +444,7 @@ export function CadBindingPickerModal({
             </Button>
           )}
         </div>
-      </div>
+      </Dialog.Body>
 
       <Dialog.Footer
         style={{

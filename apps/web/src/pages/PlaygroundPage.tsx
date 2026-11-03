@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { XIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Spinner } from "@primer/react";
 import React, { useContext, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { getArtifactView } from "../api";
-import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
-import { compressMorselPayload, decompressMorselPayload } from "../components/morsel/util/permalink";
+import {
+  compressMorselPayload,
+  decompressMorselPayload,
+  resolveMorselShortlink,
+} from "../components/morsel/util/permalink";
 import { useToast } from "../components/ToastContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import {
@@ -59,19 +61,19 @@ const TEMPLATE_ALIASES: Record<string, string> = {
 };
 
 export const PlaygroundPage: React.FC = () => {
-  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const { openCompose } = useContext(ComposeContext);
   const toast = useToast();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
-  const [ctaDismissed, setCtaDismissed] = useState(false);
 
   const modelParam = searchParams.get("model");
   const templateParam = searchParams.get("template");
   const sourceParam = searchParams.get("source");
   const fromArtifactParam = searchParams.get("fromArtifact");
+  const morselParam = searchParams.get("morsel");
+  const viewParam = searchParams.get("view");
   const langParam = searchParams.get("lang") || searchParams.get("dialect") || searchParams.get("language");
   const titleParam = searchParams.get("title");
   const editPostIdParam = searchParams.get("editPostId");
@@ -82,11 +84,14 @@ export const PlaygroundPage: React.FC = () => {
 
   const hasInitialArtifactTarget = Boolean(
     fromArtifactParam ||
+    morselParam ||
     (location.hash && (location.hash.startsWith("#memfs:artifact-") || location.hash.startsWith("#m=artifact-"))),
   );
 
   const [isLoadingArtifact, setIsLoadingArtifact] = useState<boolean>(hasInitialArtifactTarget);
   const [currentCode, setCurrentCode] = useState<string>(hasInitialArtifactTarget ? "" : HERO_EXAMPLES[0]!.code);
+  const [projectFiles, setProjectFiles] = useState<Record<string, string> | null>(null);
+  const [activeFile, setActiveFile] = useState<string | null>(null);
   const [currentTitle, setCurrentTitle] = useState<string>(
     titleParam || (hasInitialArtifactTarget ? "Loading Artifact…" : HERO_EXAMPLES[0]!.title),
   );
@@ -108,7 +113,7 @@ export const PlaygroundPage: React.FC = () => {
     }
   }, [fromArtifactParam]);
 
-  // Initialize from URL hash, query params, location.state, or ?fromArtifact=<id>
+  // Initialize from URL hash, query params, location.state, ?morsel=<id>, or ?fromArtifact=<id>
   useEffect(() => {
     let cancelled = false;
 
@@ -125,7 +130,52 @@ export const PlaygroundPage: React.FC = () => {
       return `/ide${qs ? `?${qs}` : ""}#memfs:artifact-${artifactId}`;
     };
 
-    // 0. Check #memfs:... hash when redirected from /ide
+    // 0a. Check ?morsel=<id> server-side short-link
+    if (morselParam) {
+      setIsLoadingArtifact(true);
+      (async () => {
+        try {
+          const resolved = await resolveMorselShortlink(morselParam, {
+            fallbackDialect: langParam,
+            fallbackTitle: titleParam,
+            fallbackView: viewParam,
+          });
+          if (cancelled || !resolved) {
+            if (!cancelled) {
+              setIsLoadingArtifact(false);
+            }
+            return;
+          }
+          const detectedLang = resolved.lang || langParam || "modelica";
+          const resolvedTitle = resolved.title || titleParam || "Shared Engineering Model";
+          baselineCodeRef.current = resolved.code;
+          setIsDirty(false);
+          setIsLoadingArtifact(false);
+          setCurrentCode(resolved.code);
+          setCurrentTitle(resolvedTitle);
+          setCurrentLang(detectedLang);
+          if (resolved.files && Object.keys(resolved.files).length > 1) {
+            setProjectFiles(resolved.files);
+            setActiveFile(resolved.activeFile || Object.keys(resolved.files)[0]!);
+          } else {
+            setProjectFiles(null);
+            setActiveFile(null);
+          }
+          setPayload({
+            ...resolved,
+            lang: detectedLang,
+            title: resolvedTitle,
+          });
+        } catch {
+          if (!cancelled) setIsLoadingArtifact(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // 0b. Check #memfs:... hash when redirected from /ide
     let memfsArtifactId: string | null = null;
     let memfsTemplateId: string | null = null;
     let hashArtifactId: string | null = null;
@@ -161,10 +211,18 @@ export const PlaygroundPage: React.FC = () => {
               setCurrentCode(fileCode);
               setCurrentTitle(resolvedTitle);
               setCurrentLang(detectedLang);
+              if (entries.length > 1) {
+                setProjectFiles(files);
+                setActiveFile(fileName);
+              } else {
+                setProjectFiles(null);
+                setActiveFile(null);
+              }
               setPayload({
                 v: 1,
                 lang: detectedLang,
                 code: fileCode,
+                ...(entries.length > 1 ? { files, activeFile: fileName, isMultiFile: true } : {}),
                 title: resolvedTitle,
               });
               return;
@@ -185,13 +243,16 @@ export const PlaygroundPage: React.FC = () => {
               code?: string;
               files?: Record<string, string>;
             };
-            const firstFile =
-              scratch.code ||
-              (scratch.files && typeof scratch.files === "object" ? Object.values(scratch.files)[0] : undefined);
+            const scratchFiles =
+              scratch.files && typeof scratch.files === "object" && !Array.isArray(scratch.files)
+                ? scratch.files
+                : undefined;
+            const firstFileName = scratchFiles ? Object.keys(scratchFiles)[0] : undefined;
+            const firstFile = scratch.code || (firstFileName && scratchFiles ? scratchFiles[firstFileName] : undefined);
             if (firstFile && (!scratch.id || String(scratch.id) === memfsArtifactId)) {
               const resolvedTitle = titleParam || scratch.title || `Artifact #${memfsArtifactId}`;
               const detectedLang =
-                langParam || scratch.language || inferDialectFromFilename(resolvedTitle) || "modelica";
+                langParam || scratch.language || inferDialectFromFilename(firstFileName || resolvedTitle) || "modelica";
               setResolvedFromArtifact(memfsArtifactId);
               baselineCodeRef.current = firstFile;
               setIsDirty(false);
@@ -199,10 +260,20 @@ export const PlaygroundPage: React.FC = () => {
               setCurrentCode(firstFile);
               setCurrentTitle(resolvedTitle);
               setCurrentLang(detectedLang);
+              if (scratchFiles && Object.keys(scratchFiles).length > 1) {
+                setProjectFiles(scratchFiles);
+                setActiveFile(firstFileName!);
+              } else {
+                setProjectFiles(null);
+                setActiveFile(null);
+              }
               setPayload({
                 v: 1,
                 lang: detectedLang,
                 code: firstFile,
+                ...(scratchFiles && Object.keys(scratchFiles).length > 1
+                  ? { files: scratchFiles, activeFile: firstFileName, isMultiFile: true }
+                  : {}),
                 title: resolvedTitle,
               });
               return;
@@ -225,6 +296,8 @@ export const PlaygroundPage: React.FC = () => {
     ) {
       const p = decompressMorselPayload(location.hash) as
         | (MorselDecodedPayload & {
+            files?: Record<string, string>;
+            activeFile?: string;
             isMultiFile?: boolean;
             artifactId?: string | number;
           })
@@ -239,11 +312,19 @@ export const PlaygroundPage: React.FC = () => {
           setResolvedFromArtifact(String(p.artifactId));
         }
         if (p.code) {
-          const detectedLang = p.lang || langParam || inferDialectFromFilename(p.title || titleParam) || "modelica";
+          const detectedLang =
+            p.lang || langParam || inferDialectFromFilename(p.activeFile || p.title || titleParam) || "modelica";
           baselineCodeRef.current = p.code;
           setIsDirty(false);
           setIsLoadingArtifact(false);
-          setPayload({ ...p, lang: detectedLang });
+          if (p.files && typeof p.files === "object" && Object.keys(p.files).length > 1) {
+            setProjectFiles(p.files);
+            setActiveFile(p.activeFile || Object.keys(p.files)[0]!);
+          } else {
+            setProjectFiles(null);
+            setActiveFile(null);
+          }
+          setPayload({ ...p, lang: detectedLang, ...(viewParam && !p.view ? { view: viewParam } : {}) });
           setCurrentCode(p.code);
           setCurrentLang(detectedLang);
           if (p.title || titleParam) {
@@ -343,11 +424,22 @@ export const PlaygroundPage: React.FC = () => {
           const cfg = typeof art.view_config === "string" ? safeJsonParse(art.view_config, {}) : art.view_config || {};
 
           let code: string = cfg.code || cfg.modelicaCode || cfg.source || cfg.content || "";
+          const filesMap =
+            cfg.files && typeof cfg.files === "object" && !Array.isArray(cfg.files)
+              ? (cfg.files as Record<string, string>)
+              : null;
+          let resolvedActiveFile: string | null = null;
 
-          if (!code && cfg.files && typeof cfg.files === "object" && !Array.isArray(cfg.files)) {
-            const firstContent = Object.values(cfg.files)[0];
-            if (typeof firstContent === "string") {
-              code = firstContent;
+          if (filesMap && Object.keys(filesMap).length > 0) {
+            const entries = Object.entries(filesMap);
+            const preferred =
+              entries.find(
+                ([k]) =>
+                  /\.(mo|msx|sysml|scad|spck|gen|pscx|fea|cfd|step|stp|inp|cfg)$/i.test(k) && !/package\.mo$/i.test(k),
+              ) || entries[0]!;
+            resolvedActiveFile = preferred[0];
+            if (!code && typeof preferred[1] === "string") {
+              code = preferred[1];
             }
           }
 
@@ -371,24 +463,43 @@ export const PlaygroundPage: React.FC = () => {
             cfg.modelName ||
             cfg.projectTitle ||
             `Artifact #${effectiveArtifactId}`;
-          const detectedLang = langParam || inferDialectFromArtifact(art, resolvedTitle);
+          const detectedLang =
+            langParam ||
+            (resolvedActiveFile ? inferDialectFromFilename(resolvedActiveFile) : null) ||
+            inferDialectFromArtifact(art, resolvedTitle);
 
           setCurrentTitle(resolvedTitle);
           setCurrentLang(detectedLang);
+          if (filesMap && Object.keys(filesMap).length > 1) {
+            setProjectFiles(filesMap);
+            setActiveFile(resolvedActiveFile || Object.keys(filesMap)[0]!);
+          } else {
+            setProjectFiles(null);
+            setActiveFile(null);
+          }
           if (code) {
             baselineCodeRef.current = code;
             setIsDirty(false);
             setCurrentCode(code);
+            const isMulti = Boolean(filesMap && Object.keys(filesMap).length > 1);
             setPayload({
               v: 1,
               lang: detectedLang,
               code,
+              ...(isMulti && filesMap
+                ? { files: filesMap, activeFile: resolvedActiveFile || undefined, isMultiFile: true }
+                : {}),
+              ...(viewParam ? { view: viewParam } : {}),
               title: resolvedTitle,
             });
             const hash = compressMorselPayload({
               v: 1,
               lang: detectedLang,
               code,
+              ...(isMulti && filesMap
+                ? { files: filesMap, activeFile: resolvedActiveFile || undefined, isMultiFile: true }
+                : {}),
+              ...(viewParam ? { view: viewParam } : {}),
               title: resolvedTitle,
               artifactId: String(effectiveArtifactId),
             });
@@ -438,6 +549,8 @@ export const PlaygroundPage: React.FC = () => {
       if (match) {
         baselineCodeRef.current = match.code;
         setIsDirty(false);
+        setProjectFiles(null);
+        setActiveFile(null);
         setCurrentCode(match.code);
         setCurrentTitle(match.title);
         setCurrentLang(match.lang);
@@ -469,6 +582,8 @@ export const PlaygroundPage: React.FC = () => {
       if (nextCode) {
         baselineCodeRef.current = nextCode;
         setIsDirty(false);
+        setProjectFiles(null);
+        setActiveFile(null);
         setCurrentCode(nextCode);
         if (nextTitle) setCurrentTitle(nextTitle);
         setPayload({
@@ -496,6 +611,8 @@ export const PlaygroundPage: React.FC = () => {
     templateParam,
     sourceParam,
     fromArtifactParam,
+    morselParam,
+    viewParam,
     langParam,
     titleParam,
     editPostId,
@@ -514,6 +631,8 @@ export const PlaygroundPage: React.FC = () => {
   const applySelectedExample = (ex: HeroExample) => {
     baselineCodeRef.current = ex.code;
     setIsDirty(false);
+    setProjectFiles(null);
+    setActiveFile(null);
     setCurrentCode(ex.code);
     setCurrentTitle(ex.title);
     setCurrentLang(ex.lang);
@@ -550,6 +669,8 @@ export const PlaygroundPage: React.FC = () => {
       return;
     }
     setCurrentLang(nextLang);
+    setProjectFiles(null);
+    setActiveFile(null);
     const nextStarter = HERO_EXAMPLES.find((ex) => ex.lang === nextLang);
     const langInfo = getLanguageInfo(nextLang);
     const langOpt = PLAYGROUND_LANGUAGES.find((l) => l.id === nextLang);
@@ -596,10 +717,16 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const getShareUrl = () => {
+    const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
+    const hasParams = Boolean(payload?.params && Object.keys(payload.params).length > 0);
     const hash = compressMorselPayload({
       v: 1,
       lang: currentLang,
       code: currentCode,
+      ...(isMulti && projectFiles
+        ? { files: projectFiles, activeFile: activeFile || undefined, isMultiFile: true }
+        : {}),
+      ...(hasParams && payload?.params ? { params: payload.params } : {}),
       title: currentTitle,
       view: payload?.view,
       anchor: payload?.anchor,
@@ -609,10 +736,16 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const getEmbedCode = (format: "iframe" | "custom-tag" | "morsel-tag" = "iframe") => {
+    const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
+    const hasParams = Boolean(payload?.params && Object.keys(payload.params).length > 0);
     const hash = compressMorselPayload({
       v: 1,
       lang: currentLang,
       code: currentCode,
+      ...(isMulti && projectFiles
+        ? { files: projectFiles, activeFile: activeFile || undefined, isMultiFile: true }
+        : {}),
+      ...(hasParams && payload?.params ? { params: payload.params } : {}),
       title: currentTitle,
       view: payload?.view,
       anchor: payload?.anchor,
@@ -657,13 +790,15 @@ export const PlaygroundPage: React.FC = () => {
           ? `Forked and modified **${currentTitle}** (from Artifact #${numericArtifactId})! 🚀`
           : `Check out my simulation model: **${currentTitle}**! 🚀`;
 
+    const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
     const composePayload: any = {
       ...(defaultContent !== undefined ? { content: defaultContent } : {}),
       morselPayload: {
         code: currentCode,
         title: currentTitle,
         dialect: currentLang,
-        isMultiFile: false,
+        isMultiFile: isMulti,
+        ...(isMulti && projectFiles ? { files: projectFiles } : {}),
         ...(numericArtifactId ? { forkedFromArtifactId: numericArtifactId } : {}),
       },
       forkedFromArtifactId: numericArtifactId,
@@ -694,17 +829,26 @@ export const PlaygroundPage: React.FC = () => {
 
   const handleTitleChange = (nextTitle: string) => {
     setCurrentTitle(nextTitle);
+    const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
     setPayload((prev) => ({
       ...(prev || { v: 1 }),
       lang: currentLang,
       code: currentCode,
+      ...(isMulti && projectFiles
+        ? { files: projectFiles, activeFile: activeFile || undefined, isMultiFile: true }
+        : {}),
       title: nextTitle,
     }));
     const hash = compressMorselPayload({
       v: 1,
       lang: currentLang,
       code: currentCode,
+      ...(isMulti && projectFiles
+        ? { files: projectFiles, activeFile: activeFile || undefined, isMultiFile: true }
+        : {}),
       title: nextTitle,
+      view: payload?.view,
+      anchor: payload?.anchor,
       ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
     });
     window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
@@ -717,6 +861,47 @@ export const PlaygroundPage: React.FC = () => {
       setIsDirty(false);
     }
     setCurrentCode(nextCode);
+    if (projectFiles && activeFile) {
+      setProjectFiles((prev) => (prev ? { ...prev, [activeFile]: nextCode } : prev));
+    }
+  };
+
+  const handleSwitchProjectFile = (fileName: string) => {
+    if (!projectFiles || fileName === activeFile || !(fileName in projectFiles)) return;
+    const updatedFiles = activeFile ? { ...projectFiles, [activeFile]: currentCode } : projectFiles;
+    const nextCode = updatedFiles[fileName] || "";
+    const nextDialect = inferDialectFromFilename(fileName) || currentLang;
+    setProjectFiles(updatedFiles);
+    setActiveFile(fileName);
+    setCurrentCode(nextCode);
+    setCurrentLang(nextDialect);
+  };
+
+  const handleActiveViewChange = (nextView: "diagram" | "simulation" | "3d" | "inspector" | "code") => {
+    setPayload((prev) => {
+      if (prev?.view === nextView) return prev;
+      return {
+        ...(prev || { v: 1 }),
+        lang: currentLang,
+        code: currentCode,
+        title: currentTitle,
+        view: nextView,
+      };
+    });
+  };
+
+  const handleParametersChange = (nextParams: Record<string, number>) => {
+    setPayload((prev) => {
+      const normalized = Object.keys(nextParams).length > 0 ? nextParams : undefined;
+      if (JSON.stringify(prev?.params) === JSON.stringify(normalized)) return prev;
+      return {
+        ...(prev || { v: 1 }),
+        lang: currentLang,
+        code: currentCode,
+        title: currentTitle,
+        ...(normalized ? { params: normalized } : { params: undefined }),
+      };
+    });
   };
 
   const publishLabel = editPostId
@@ -745,6 +930,63 @@ export const PlaygroundPage: React.FC = () => {
         onPublishToFeed={handlePublishToFeed}
       />
 
+      {projectFiles && Object.keys(projectFiles).length > 1 && (
+        <div
+          role="tablist"
+          aria-label="Project files"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 12px",
+            backgroundColor: "var(--color-canvas-subtle, #161b22)",
+            borderBottom: "1px solid var(--color-border-default, #30363d)",
+            overflowX: "auto",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--color-fg-muted)",
+              marginRight: 6,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Files ({Object.keys(projectFiles).length})
+          </span>
+          {Object.keys(projectFiles).map((fileName) => {
+            const isSelected = fileName === activeFile;
+            return (
+              <button
+                key={fileName}
+                role="tab"
+                type="button"
+                aria-selected={isSelected}
+                onClick={() => handleSwitchProjectFile(fileName)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  border: isSelected ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+                  backgroundColor: isSelected ? "rgba(6, 182, 212, 0.14)" : "transparent",
+                  color: isSelected ? "var(--ms-accent-cyan, #06b6d4)" : "var(--color-fg-muted)",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: 12,
+                  fontWeight: isSelected ? 600 : 500,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {fileName}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <EditorArea>
         {isLoadingArtifact ? (
           <div
@@ -770,9 +1012,12 @@ export const PlaygroundPage: React.FC = () => {
             initialCode={currentCode}
             embed={false}
             initialDialect={currentLang}
-            initialView={payload?.view}
+            initialView={payload?.view || viewParam || undefined}
             initialAnchor={payload?.anchor}
+            externalParams={payload?.params}
             onCodeChange={handleCodeChange}
+            onActiveViewChange={handleActiveViewChange}
+            onParametersChange={handleParametersChange}
             onDialectChange={(dialect: string) => {
               setCurrentLang(dialect);
             }}
@@ -833,75 +1078,6 @@ export const PlaygroundPage: React.FC = () => {
                 Discard & Load
               </Button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {!user && !ctaDismissed && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "24px",
-            right: "24px",
-            maxWidth: "380px",
-            padding: "16px 20px",
-            background: "rgba(15, 23, 42, 0.95)",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            border: "1px solid rgba(168, 85, 247, 0.4)",
-            borderRadius: "14px",
-            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(168, 85, 247, 0.15)",
-            zIndex: 1000,
-            display: "flex",
-            flexDirection: "column",
-            gap: "10px",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                fontWeight: 700,
-                fontSize: "14px",
-                color: "#fff",
-              }}
-            >
-              <ZapIcon size={16} fill="var(--color-accent-purple, #c084fc)" />
-              Save Model to Workspace
-            </div>
-            <button
-              onClick={() => setCtaDismissed(true)}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#64748b",
-                cursor: "pointer",
-                padding: "2px",
-                display: "flex",
-                alignItems: "center",
-              }}
-              aria-label="Dismiss banner"
-            >
-              <XIcon size={14} />
-            </button>
-          </div>
-          <div style={{ fontSize: "12px", color: "#94a3b8", lineHeight: "1.4" }}>
-            Create a free account or sign in with your Access Key to run cloud simulations, fork models to your
-            engineering repo, and collaborate.
-          </div>
-          <div style={{ display: "flex", gap: "8px", marginTop: "2px" }}>
-            <Link to="/signup" style={{ flex: 1, textDecoration: "none" }}>
-              <Button size="small" variant="primary" style={{ width: "100%", justifyContent: "center" }}>
-                Claim Access Key
-              </Button>
-            </Link>
-            <Link to="/login" style={{ textDecoration: "none" }}>
-              <Button size="small" variant="default">
-                Sign In
-              </Button>
-            </Link>
           </div>
         </div>
       )}

@@ -1,7 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  HubotIcon,
+  KebabHorizontalIcon,
+  ListUnorderedIcon,
+  PencilIcon,
+  RssIcon,
+  ShieldCheckIcon,
+} from "@primer/octicons-react";
+import { Tooltip } from "@primer/react";
 import React, { useState } from "react";
-import { formatRelativeTime } from "./styles";
+import { Link } from "react-router-dom";
+import { safeJsonParse } from "../../util/json";
+import FederatedDomainPill from "../FederatedDomainPill";
+import ProfileHoverCard from "../ProfileHoverCard";
+import { PostActionMenu } from "./PostActionMenu";
+import type { PostAuthorHeaderProps } from "./PostAuthorHeader";
+import { ActionButton, AiBadge, HoverAvatar, ProfileNameLink, SignatureBadge, formatRelativeTime } from "./styles";
 
 export interface PostNotebookHeaderProps {
   notebookData: {
@@ -20,6 +37,18 @@ export interface PostNotebookHeaderProps {
   isDetailView: boolean;
   notebookHeadings: { slug: string; level: number; text: string }[];
   onHeadingClick: (slug: string) => void;
+  authorHeaderProps?: PostAuthorHeaderProps | undefined;
+}
+
+function formatEditorialDate(dateString: string | undefined): string {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
@@ -32,184 +61,435 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
   isDetailView,
   notebookHeadings,
   onHeadingClick,
+  authorHeaderProps,
 }) => {
   const [showInlineToc, setShowInlineToc] = useState(false);
 
-  const diffStyle = (() => {
+  const diffColor = (() => {
     switch (notebookData.difficulty?.toLowerCase()) {
       case "beginner":
-        return {
-          bg: "rgba(16, 185, 129, 0.15)",
-          fg: "var(--color-status-verified, #10b981)",
-          border: "rgba(16, 185, 129, 0.35)",
-        };
+        return "var(--color-status-verified, #10b981)";
       case "intermediate":
-        return {
-          bg: "rgba(245, 158, 11, 0.15)",
-          fg: "var(--color-accent-amber, #f59e0b)",
-          border: "rgba(245, 158, 11, 0.35)",
-        };
+        return "var(--color-accent-amber, #f59e0b)";
       case "advanced":
-        return {
-          bg: "rgba(239, 68, 68, 0.15)",
-          fg: "var(--color-error, #ef4444)",
-          border: "rgba(239, 68, 68, 0.35)",
-        };
+        return "var(--color-error, #ef4444)";
       default:
         return undefined;
     }
   })();
 
-  return (
-    <div
+  const hasSeries = Boolean(notebookData.series?.trim());
+  const hasDifficulty = Boolean(notebookData.difficulty?.trim() && diffColor);
+  const hasDialect = Boolean(notebookData.dialect?.trim());
+  const hasEyebrowBadges = hasSeries || hasDifficulty || hasDialect;
+
+  const displayPost = authorHeaderProps?.displayPost;
+  const postMeta =
+    typeof displayPost?.metadata === "string"
+      ? safeJsonParse<Record<string, any>>(displayPost.metadata, {})
+      : displayPost?.metadata || {};
+
+  const editArticleButton = canEditPost ? (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onOpenEditModal();
+      }}
       style={{
-        marginTop: "6px",
-        padding: isDetailView ? "16px 18px" : "12px 14px",
-        borderRadius: "12px",
-        background: "linear-gradient(135deg, rgba(6, 182, 212, 0.07), rgba(139, 92, 246, 0.06))",
-        border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
+        background: "var(--color-canvas-subtle)",
+        border: "1px solid var(--color-border-default)",
+        borderRadius: "999px",
+        padding: isDetailView ? "5px 12px" : "3px 9px",
+        fontSize: "12px",
+        fontWeight: 600,
+        color: "var(--color-text-secondary)",
+        cursor: "pointer",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "5px",
+        fontFamily: "inherit",
+        whiteSpace: "nowrap",
+        transition: "background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "6px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
-          {notebookData.series && (
-            <span
-              style={{
-                fontSize: "10.5px",
-                fontWeight: 700,
-                fontFamily: "var(--font-mono, monospace)",
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                padding: "2px 8px",
-                borderRadius: "9999px",
-                background: "rgba(6, 182, 212, 0.15)",
-                color: "var(--color-accent-cyan)",
-                border: "1px solid rgba(6, 182, 212, 0.32)",
-              }}
-            >
-              📚 {notebookData.series}
-              {notebookData.seriesPart ? ` · Part ${notebookData.seriesPart}` : ""}
-            </span>
-          )}
-          {notebookData.difficulty && diffStyle && (
-            <span
-              style={{
-                fontSize: "10.5px",
-                fontWeight: 700,
-                fontFamily: "var(--font-mono, monospace)",
-                padding: "2px 8px",
-                borderRadius: "9999px",
-                background: diffStyle.bg,
-                color: diffStyle.fg,
-                border: `1px solid ${diffStyle.border}`,
-              }}
-            >
-              ● {notebookData.difficulty}
-            </span>
-          )}
-          {notebookData.dialect && (
-            <span
-              style={{
-                fontSize: "10.5px",
-                fontWeight: 600,
-                fontFamily: "var(--font-mono, monospace)",
-                padding: "2px 8px",
-                borderRadius: "9999px",
-                background: "rgba(255, 255, 255, 0.05)",
-                color: "var(--color-text-secondary)",
-                border: "1px solid var(--color-border-subtle)",
-              }}
-            >
-              ⚙️ {notebookData.dialect}
-            </span>
-          )}
-          <span
-            style={{
-              fontSize: "11px",
-              fontFamily: "var(--font-mono, monospace)",
-              color: "var(--color-text-muted)",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "4px",
-            }}
-          >
-            ⏱ {readTimeMinutes} min read
-          </span>
-          {wasUpdated && (
-            <span
-              style={{
-                fontSize: "11px",
-                fontFamily: "var(--font-mono, monospace)",
-                color: "var(--color-accent-cyan)",
-              }}
-            >
-              · Updated {formatRelativeTime(updatedAt)}
-            </span>
-          )}
-        </div>
+      <PencilIcon size={12} />
+      <span>Edit article</span>
+    </button>
+  ) : null;
 
-        {canEditPost && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              onOpenEditModal();
-            }}
-            style={{
-              background: "rgba(255, 255, 255, 0.06)",
-              border: "1px solid var(--color-border-default)",
-              borderRadius: "6px",
-              padding: "2px 8px",
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "var(--color-text-secondary)",
-              cursor: "pointer",
-            }}
-          >
-            ✏️ Edit Tutorial
-          </button>
-        )}
-      </div>
-
-      {notebookData.title && (
+  return (
+    <header
+      style={{
+        marginTop: isDetailView ? "4px" : "4px",
+        paddingBottom: isDetailView ? "18px" : "4px",
+        marginBottom: isDetailView ? "6px" : "0",
+        borderBottom: isDetailView ? "1px solid var(--color-border-subtle)" : "none",
+        display: "flex",
+        flexDirection: "column",
+        gap: isDetailView ? "12px" : "6px",
+      }}
+    >
+      {/* Eyebrow Row: On Detail View, only render when taxonomy badges exist; on Feed View, include read time & Edit action */}
+      {(!isDetailView || hasEyebrowBadges || (!authorHeaderProps && canEditPost)) && (
         <div
           style={{
-            fontSize: isDetailView ? "23px" : "18.5px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "8px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "6px",
+              fontSize: "12px",
+              color: "var(--color-text-muted)",
+            }}
+          >
+            {hasSeries && (
+              <span
+                style={{
+                  fontSize: "11.5px",
+                  fontWeight: 600,
+                  padding: isDetailView ? "3px 10px" : "2px 8px",
+                  borderRadius: isDetailView ? "999px" : "6px",
+                  background: "var(--ms-brand-soft)",
+                  color: "var(--ms-brand)",
+                }}
+              >
+                {notebookData.series}
+                {notebookData.seriesPart ? ` · Part ${notebookData.seriesPart}` : ""}
+              </span>
+            )}
+
+            {hasDifficulty && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "11.5px",
+                  fontWeight: 600,
+                  padding: isDetailView ? "3px 10px" : "2px 8px",
+                  borderRadius: isDetailView ? "999px" : "6px",
+                  background: "var(--color-canvas-subtle)",
+                  border: isDetailView ? "1px solid var(--color-border-subtle)" : "none",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: diffColor,
+                    flexShrink: 0,
+                  }}
+                />
+                <span>{notebookData.difficulty}</span>
+              </span>
+            )}
+
+            {hasDialect && (
+              <span
+                style={{
+                  fontSize: "11.5px",
+                  fontWeight: 500,
+                  fontFamily: "var(--font-mono, monospace)",
+                  padding: isDetailView ? "3px 10px" : "2px 8px",
+                  borderRadius: isDetailView ? "999px" : "6px",
+                  background: "var(--color-canvas-subtle)",
+                  border: isDetailView ? "1px solid var(--color-border-subtle)" : "none",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                {notebookData.dialect}
+              </span>
+            )}
+
+            {(!isDetailView || !authorHeaderProps) && (
+              <>
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--color-text-muted)",
+                    fontWeight: 500,
+                  }}
+                >
+                  {readTimeMinutes} min read
+                </span>
+
+                {wasUpdated && (
+                  <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                    · Updated {formatRelativeTime(updatedAt)}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+
+          {(!isDetailView || !authorHeaderProps) && editArticleButton}
+        </div>
+      )}
+
+      {/* Editorial Title */}
+      {notebookData.title && (
+        <h1
+          style={{
+            margin: 0,
+            fontSize: isDetailView ? "clamp(28px, 3.6vw, 36px)" : "20px",
             fontWeight: 800,
             color: "var(--color-text-heading, var(--color-fg-default))",
-            lineHeight: 1.28,
-            letterSpacing: "-0.015em",
+            lineHeight: isDetailView ? 1.16 : 1.22,
+            letterSpacing: isDetailView ? "-0.028em" : "-0.022em",
+            textWrap: "balance",
           }}
         >
           {notebookData.title}
-        </div>
+        </h1>
       )}
 
+      {/* Optional Subtitle / Standfirst Summary */}
       {notebookData.summary && (
-        <div
+        <p
           style={{
-            fontSize: isDetailView ? "14.5px" : "13.5px",
+            margin: 0,
+            fontSize: isDetailView ? "18px" : "14.5px",
             color: "var(--color-text-secondary)",
-            lineHeight: 1.5,
+            lineHeight: isDetailView ? 1.55 : 1.5,
+            textWrap: "pretty",
           }}
         >
           {notebookData.summary}
+        </p>
+      )}
+
+      {/* Editorial Author & Publication Byline (Detail View) */}
+      {isDetailView && authorHeaderProps && displayPost && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            marginTop: "6px",
+            paddingTop: "4px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: 1 }}>
+            <ProfileHoverCard username={displayPost.username}>
+              <ProfileNameLink to={`/${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
+                <HoverAvatar $url={displayPost.avatar_url} style={{ width: "40px", height: "40px", fontSize: "16px" }}>
+                  {!displayPost.avatar_url && displayPost.username.charAt(0).toUpperCase()}
+                </HoverAvatar>
+              </ProfileNameLink>
+            </ProfileHoverCard>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, flex: 1 }}>
+              {/* Line 1: Author Display Name, Handle & Verification Badges */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  flexWrap: "wrap",
+                  minWidth: 0,
+                  lineHeight: "20px",
+                }}
+              >
+                <ProfileHoverCard username={displayPost.username}>
+                  <ProfileNameLink
+                    to={`/${displayPost.username}`}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      fontWeight: 700,
+                      fontSize: "15px",
+                      color: "var(--color-text-heading, var(--color-fg-default))",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      minWidth: 0,
+                      maxWidth: "100%",
+                    }}
+                  >
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {displayPost.display_name || displayPost.username}
+                    </span>
+                    {displayPost.account_type === "rss" && (
+                      <span style={{ flexShrink: 0, display: "inline-flex", color: "var(--color-fg-muted)" }}>
+                        <RssIcon size={14} />
+                      </span>
+                    )}
+                    {displayPost.account_type === "bot" && (
+                      <span style={{ flexShrink: 0, display: "inline-flex", color: "var(--color-fg-muted)" }}>
+                        <HubotIcon size={14} />
+                      </span>
+                    )}
+                  </ProfileNameLink>
+                </ProfileHoverCard>
+
+                <Link
+                  to={`/${displayPost.username}`}
+                  className="handle-text"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    fontSize: "13.5px",
+                    color: "var(--color-text-muted)",
+                    textDecoration: "none",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  @{authorHeaderProps.parsedAuthor.localUsername}
+                </Link>
+
+                {authorHeaderProps.parsedAuthor.isFederated && authorHeaderProps.parsedAuthor.remoteDomain && (
+                  <FederatedDomainPill domain={authorHeaderProps.parsedAuthor.remoteDomain} />
+                )}
+
+                {authorHeaderProps.hasSignature && (
+                  <Tooltip text="Cryptographically signed by author device key (Click to verify proof)" direction="s">
+                    <SignatureBadge
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        authorHeaderProps.onOpenSignatureModal();
+                      }}
+                    >
+                      <ShieldCheckIcon size={12} />
+                      <span>Signed</span>
+                    </SignatureBadge>
+                  </Tooltip>
+                )}
+
+                {postMeta?.["aiVerified"] === true && <AiBadge $variant="verified">✨ AI Verified</AiBadge>}
+                {displayPost.account_type === "bot" && <AiBadge $variant="generated">🤖 AI Agent</AiBadge>}
+              </div>
+
+              {/* Line 2: Publication Date · Read Time · Updated */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "6px",
+                  fontSize: "13px",
+                  lineHeight: "18px",
+                  color: "var(--color-text-muted)",
+                }}
+              >
+                {displayPost.created_at && (
+                  <>
+                    <Tooltip
+                      text={`${new Date(displayPost.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${new Date(displayPost.created_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`}
+                      direction="s"
+                    >
+                      <button
+                        type="button"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          font: "inherit",
+                          color: "inherit",
+                          cursor: "default",
+                          display: "inline-flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <time dateTime={displayPost.created_at} style={{ whiteSpace: "nowrap" }}>
+                          {formatEditorialDate(displayPost.created_at)}
+                        </time>
+                      </button>
+                    </Tooltip>
+                    <span aria-hidden="true">·</span>
+                  </>
+                )}
+
+                <span style={{ fontWeight: 500, whiteSpace: "nowrap" }}>{readTimeMinutes} min read</span>
+
+                {wasUpdated && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <Tooltip
+                      text={`Last updated ${new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${new Date(updatedAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`}
+                      direction="s"
+                    >
+                      <button
+                        type="button"
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          font: "inherit",
+                          color: "inherit",
+                          cursor: "default",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Updated {formatRelativeTime(updatedAt)}
+                      </button>
+                    </Tooltip>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right-aligned Article Controls: Edit Article + More Menu */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+            {editArticleButton}
+            <div
+              style={{
+                position: "relative",
+                zIndex: authorHeaderProps.showPostMenu ? 200 : undefined,
+              }}
+            >
+              <Tooltip text="More" direction="s">
+                <ActionButton
+                  aria-label="More"
+                  $noHoverColor
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    authorHeaderProps.setShowPostMenu(!authorHeaderProps.showPostMenu);
+                  }}
+                  style={{ marginLeft: 0 }}
+                >
+                  <div className="icon-wrapper">
+                    <KebabHorizontalIcon size={16} />
+                  </div>
+                </ActionButton>
+              </Tooltip>
+              <PostActionMenu
+                isOpen={authorHeaderProps.showPostMenu}
+                onClose={() => authorHeaderProps.setShowPostMenu(false)}
+                canEditPost={authorHeaderProps.canEditPost}
+                isNotebook={authorHeaderProps.isNotebook}
+                onOpenEditModal={authorHeaderProps.onOpenEditModal}
+                onPostDeleted={authorHeaderProps.onPostDeleted}
+                displayPost={displayPost}
+                token={authorHeaderProps.token}
+                onOpenLoginModal={authorHeaderProps.onOpenLoginModal}
+                remoteOriginUrl={authorHeaderProps.remoteOriginUrl}
+                isPinned={authorHeaderProps.isPinned}
+              />
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Collapsible In-Article Table of Contents (Feed View only; Detail View uses TutorialGuideDockPane) */}
+      {/* Collapsible In-Article Table of Contents (Feed View only; Detail View uses RightPanel outline) */}
       {!isDetailView && notebookHeadings.length > 0 && (
         <div style={{ marginTop: "2px" }}>
           <button
@@ -220,30 +500,31 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
               setShowInlineToc(!showInlineToc);
             }}
             style={{
-              background: "rgba(0, 0, 0, 0.2)",
+              background: "var(--color-canvas-subtle)",
               border: "1px solid var(--color-border-subtle)",
               borderRadius: "8px",
-              padding: "5px 10px",
-              fontSize: "11.5px",
-              fontFamily: "var(--font-mono, monospace)",
+              padding: "4px 10px",
+              fontSize: "12px",
               fontWeight: 600,
-              color: "var(--color-accent-cyan)",
+              color: "var(--color-text-secondary)",
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
               gap: "6px",
+              fontFamily: "inherit",
             }}
           >
-            <span>📑 Table of Contents ({notebookHeadings.length} sections)</span>
-            <span>{showInlineToc ? "▲" : "▼"}</span>
+            <ListUnorderedIcon size={12} />
+            <span>On this page ({notebookHeadings.length})</span>
+            {showInlineToc ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />}
           </button>
           {showInlineToc && (
             <div
               style={{
-                marginTop: "8px",
-                padding: "10px 12px",
+                marginTop: "6px",
+                padding: "8px 12px",
                 borderRadius: "8px",
-                background: "rgba(0, 0, 0, 0.25)",
+                background: "var(--color-canvas-subtle)",
                 border: "1px solid var(--color-border-subtle)",
                 display: "flex",
                 flexDirection: "column",
@@ -261,8 +542,8 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
                   }}
                   style={{
                     paddingLeft: h.level === 3 ? "14px" : "0px",
-                    fontSize: h.level === 3 ? "12px" : "12.5px",
-                    fontWeight: h.level === 3 ? 500 : 600,
+                    fontSize: h.level === 3 ? "12.5px" : "13px",
+                    fontWeight: h.level === 3 ? 450 : 600,
                     color: h.level === 3 ? "var(--color-text-muted)" : "var(--color-text-primary)",
                     textDecoration: "none",
                   }}
@@ -274,6 +555,6 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
           )}
         </div>
       )}
-    </div>
+    </header>
   );
 };

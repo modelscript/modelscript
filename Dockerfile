@@ -127,6 +127,7 @@ RUN npx nx run-many -t build --projects=@modelscript/ee,@modelscript/api
 
 
 FROM deps AS build-api-true
+COPY scripts scripts
 COPY packages packages
 COPY languages languages
 COPY ee ee
@@ -142,6 +143,7 @@ RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/a
   && chown -R node:node /app
 COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build-api --chown=node:node /app/scripts scripts
 COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
@@ -171,6 +173,7 @@ RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/a
   && chown -R node:node /app
 COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build-api --chown=node:node /app/scripts scripts
 COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/ee ee
@@ -286,6 +289,7 @@ COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 
 # Copy built API backend & Enterprise Edition (ee/)
+COPY --from=build-api --chown=node:node /app/scripts scripts
 COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/ee ee

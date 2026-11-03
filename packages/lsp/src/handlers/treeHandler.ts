@@ -2,7 +2,12 @@
 
 import type { TreeNodeInfo } from "@modelscript/runtime";
 import { LspContext } from "../lsp-context.js";
-import { fqnCacheState, getTreeChildrenFast } from "../utils/hierarchy-utils.js";
+import {
+  fqnCacheState,
+  getTreeChildrenFast,
+  mountedLibraryMetadata,
+  normalizeLibraryName,
+} from "../utils/hierarchy-utils.js";
 import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
 
 export interface ProjectTreeNodeInfo {
@@ -19,6 +24,24 @@ export interface ProjectTreeNodeInfo {
 
 export const iconCache = new Map<string, string | null>();
 
+export function getCachedClassIcon(className: string): string | null | undefined {
+  const rootSeg = className.split(".")[0];
+  if (rootSeg) {
+    const normRoot = normalizeLibraryName(rootSeg);
+    const activeVer = mountedLibraryMetadata.get(normRoot)?.version;
+    if (activeVer) {
+      const versionedKey = `${normRoot}@${activeVer}:${className}`;
+      if (iconCache.has(versionedKey)) {
+        return iconCache.get(versionedKey);
+      }
+    }
+  }
+  if (iconCache.has(className)) {
+    return iconCache.get(className);
+  }
+  return undefined;
+}
+
 export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getLibraryTree",
@@ -30,22 +53,22 @@ export function registerTreeHandlers(context: LspContext) {
         // Root level: only workspace files and top-level library nodes are shown.
         // No lazy loading needed.
       } else if (params.parentId.startsWith("__LIB__:")) {
-        const libName = params.parentId.substring("__LIB__:".length);
-        if (libName === "Modelica Standard Library") {
-          const mws = context.workspaceManager.getWorkspaceIndex("modelica");
-          if (typeof (mws as any)?.ensureChildrenIndexed === "function") {
-            (mws as any).ensureChildrenIndexed("");
-          }
+        const libName = normalizeLibraryName(params.parentId.substring("__LIB__:".length));
+        type IndexWithChildren = { ensureChildrenIndexed?(parent: string): void };
+        if (libName === "Modelica") {
+          const mws = context.workspaceManager.getWorkspaceIndex("modelica") as IndexWithChildren | undefined;
+          mws?.ensureChildrenIndexed?.("");
         } else if (libName.includes("SysML")) {
-          const sws = context.workspaceManager.getWorkspaceIndex("sysml2");
-          if (typeof (sws as any)?.ensureChildrenIndexed === "function") {
-            (sws as any).ensureChildrenIndexed("");
-          }
+          const sws = context.workspaceManager.getWorkspaceIndex("sysml2") as IndexWithChildren | undefined;
+          sws?.ensureChildrenIndexed?.("");
+        } else {
+          const mws = context.workspaceManager.getWorkspaceIndex("modelica") as IndexWithChildren | undefined;
+          mws?.ensureChildrenIndexed?.("");
+          (uw as IndexWithChildren | undefined)?.ensureChildrenIndexed?.("");
         }
       } else {
-        if (typeof (uw as any)?.ensureChildrenIndexed === "function") {
-          (uw as any).ensureChildrenIndexed(params.parentId);
-        }
+        type IndexWithChildren = { ensureChildrenIndexed?(parent: string): void };
+        (uw as IndexWithChildren | undefined)?.ensureChildrenIndexed?.(params.parentId);
       }
 
       const unifiedIndex =
@@ -69,12 +92,12 @@ export function registerTreeHandlers(context: LspContext) {
       const nodes = await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
       for (const node of nodes) {
         if (!node.iconSvg && node.compositeName) {
-          if (iconCache.has(node.compositeName)) {
-            const cached = iconCache.get(node.compositeName);
-            if (cached) node.iconSvg = cached;
+          const direct = getCachedClassIcon(node.compositeName);
+          if (direct) {
+            node.iconSvg = direct;
           } else {
             for (const [key, svg] of iconCache) {
-              if (svg && (key === node.compositeName || key.endsWith("." + node.compositeName))) {
+              if (svg && !key.includes(":") && (key === node.compositeName || key.endsWith("." + node.compositeName))) {
                 node.iconSvg = svg;
                 break;
               }
@@ -214,14 +237,16 @@ export function registerTreeHandlers(context: LspContext) {
     if (!className || className.startsWith("__LIB__:") || className.startsWith("__ONTOLOGY__:")) {
       return null;
     }
-    if (iconCache.has(className)) {
-      return iconCache.get(className) || null;
+    const existingCached = getCachedClassIcon(className);
+    if (existingCached !== undefined) {
+      return existingCached || null;
     }
 
     if (className.startsWith("Modelica.") || className === "Modelica") {
       await loadPrebakedMslIcons(uri);
-      if (iconCache.has(className)) {
-        return iconCache.get(className) || null;
+      const afterMsl = getCachedClassIcon(className);
+      if (afterMsl !== undefined) {
+        return afterMsl || null;
       }
     }
 

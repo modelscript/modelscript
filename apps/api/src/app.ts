@@ -9,6 +9,7 @@ import type { Pool } from "pg";
 
 const API_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+import { getStdlibsByPack, type StdlibPackId } from "@modelscript/exchange";
 import { initializeArtifactSystem } from "./artifacts/index.js";
 import { LibraryDatabase } from "./database.js";
 import {
@@ -73,7 +74,7 @@ import { LibraryStorage } from "./storage.js";
 import { SANCTIONED_COUNTRIES, SANCTIONED_REGIONS } from "./util/compliance.js";
 import { seedInitialAdmin } from "./util/seed-admin.js";
 import { seedExamplePackages, seedPrepackagedLibraries } from "./util/seed-examples.js";
-import { isFederationDisabled, isStrictAirgapEnv } from "./util/tier-presets.js";
+import { isFederationDisabled, isStrictAirgapEnv, resolveTierPreset } from "./util/tier-presets.js";
 
 /** Options for creating the Express application. */
 export interface AppOptions {
@@ -167,36 +168,88 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       });
   }
 
-  // Pre-seed bundled standard libraries (MSL, SysML v2 KerML) in airgapped production appliances
-  if (isStartupAirgap && process.env["NODE_ENV"] === "production" && process.env["SEED_STDLIB_ON_BOOT"] !== "false") {
+  const activePreset = resolveTierPreset(
+    process.env["ANSATZ_TIER"] || process.env["DEPLOYMENT_PRESET"] || process.env["MSX_SETUP_PRESET"],
+  );
+  const isFlagship = activePreset?.id === "tier3_flagship";
+  const isProductionPreset =
+    activePreset?.id === "tier3_flagship" ||
+    activePreset?.id === "tier1_federated" ||
+    activePreset?.id === "tier2_corporate";
+  const isProductionEnv = process.env["NODE_ENV"] === "production" || isProductionPreset;
+  const isTestEnv = process.env["NODE_ENV"] === "test";
+
+  // Pre-seed bundled standard libraries (MSL, SysML v2 KerML, and polyglot domain libraries) in:
+  // 1. DigitalOcean flagship deployment (isFlagship) ALWAYS — ensures flagship never has missing packages even after a database reset
+  // 2. Airgapped production appliances
+  // 3. Any production/staging node when SEED_STDLIB_ON_BOOT=true, when target standard libraries are missing, or when database has 0 packages
+  const requestedStdlibPacks = (process.env["STDLIB_PACKS"] || "all")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const targetStdlibs = requestedStdlibPacks.flatMap((p) => getStdlibsByPack(p as StdlibPackId | "all"));
+  const hasMissingStdlibs = targetStdlibs.some((lib) => {
+    const pkg = database.getPackage(lib.packageName);
+    if (!pkg) return true;
+    const ver = database.getPackageVersion(pkg.id, lib.version);
+    return !ver || database.getClassCount(lib.packageName, lib.version) === 0;
+  });
+
+  const shouldSeedStdlibs =
+    process.env["SEED_STDLIB_ON_BOOT"] === "true" ||
+    (!isTestEnv &&
+      (isFlagship ||
+        (isStartupAirgap && process.env["SEED_STDLIB_ON_BOOT"] !== "false") ||
+        hasMissingStdlibs ||
+        (isProductionEnv && database.listPackages().length === 0)));
+
+  if (shouldSeedStdlibs) {
     void seedPrepackagedLibraries(libraryStorage, database, jobQueue).catch((err) => {
-      console.error("[AirgapSeed] Failed to pre-seed bundled standard libraries:", err);
+      console.error("[StdlibSeed] Failed to pre-seed bundled standard libraries:", err);
     });
   }
 
-  if (
-    (process.env["NODE_ENV"] !== "production" && process.env["NODE_ENV"] !== "test") ||
-    process.env["SEED_EXAMPLES"] === "true"
-  ) {
+  // Dev auto-seeding (mock personas, sample posts, synthetic repos, example jobs) MUST NEVER run on
+  // the flagship node or production tiers. It only runs in local development/sandbox environments,
+  // unless explicitly requested in non-production environments (e.g. dev:flagship with ALLOW_DEV_SEEDING=true).
+  const isExplicitDevOverride =
+    process.env["NODE_ENV"] !== "production" &&
+    (process.env["ALLOW_DEV_SEEDING"] === "true" || process.env["FORCE_DEV_SEED"] === "true");
+
+  const allowDevSeeding =
+    (!isProductionEnv && !isTestEnv && process.env["SEED_DATA"] !== "false") ||
+    (isExplicitDevOverride && process.env["SEED_DATA"] !== "false");
+
+  const isExplicitDevSeed =
+    (process.env["SEED_EXAMPLES"] === "true" && !isProductionEnv && !isFlagship) ||
+    (isExplicitDevOverride && process.env["SEED_EXAMPLES"] !== "false");
+
+  if (allowDevSeeding || isExplicitDevSeed) {
     console.log("[DevServer] Development mode detected. Running auto-seeding...");
 
     seedScriptsAndTemplates(database);
     seedPolyglotUsers(database);
 
     // Run asynchronously in the background after the HTTP listener binds
-    setImmediate(() => {
-      void seedPolyglotSocialData(database).catch((err) => {
-        console.error("[DevServer] Failed to seed 44-language polyglot social catalog:", err);
-      });
-      void seedExamplePackages(libraryStorage, database, jobQueue).catch((err) => {
-        console.error("[DevServer] Failed to seed example packages:", err);
-      });
-      void seedPrepackagedLibraries(libraryStorage, database, jobQueue).catch((err) => {
-        console.error("[DevServer] Failed to seed prepackaged libraries:", err);
-      });
-    });
+    const devSeedPromise = (async () => {
+      try {
+        await seedPolyglotSocialData(database);
+        if (isExplicitDevSeed) {
+          await seedExamplePackages(libraryStorage, database, jobQueue);
+          if (!isTestEnv) {
+            await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("database connection is not open")) {
+          console.error("[DevServer] Failed to seed dev catalog:", err);
+        }
+      }
+    })();
+    app.locals["devSeedPromise"] = devSeedPromise;
 
-    if (process.env["NODE_ENV"] !== "production") {
+    if (!isProductionEnv || isExplicitDevOverride) {
       app.post("/api/v1/dev/reset", async (_req, res) => {
         console.log("[DevServer] Resetting database and re-seeding...");
         try {
@@ -538,7 +591,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/users", mountedUsersRouter);
   app.use("/api/v1/user", mountedUsersRouter);
   app.use("/api/v1/solutions", solutionsRouter(database));
-  app.use("/api/v1/social", socialRouter(database, federationWorker));
+  app.use("/api/v1/social", socialRouter(database, federationWorker, featureFlagService));
 
   // FMU storage & open-standard FMU registry routes
   const fmuStorageDir = path.resolve(database.dbDir, "fmus");
@@ -686,7 +739,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/banners", express.static(path.resolve(API_ROOT, "public/banners")));
   app.use("/uploads", express.static(path.resolve(API_ROOT, "uploads")));
 
-  if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {
+  if (!isProductionEnv || isExplicitDevOverride) {
     app.use("/static-examples", express.static(path.resolve(API_ROOT, "../../packages/examples")));
   }
 
@@ -721,6 +774,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       enterpriseLicense: "LicenseRef-ModelScript-Enterprise",
       termsOfService: "https://ansatz.social/terms",
       privacyPolicy: "https://ansatz.social/privacy",
+      cookiesPolicy: "https://ansatz.social/cookies",
       exportPolicy: "https://ansatz.social/export-compliance",
       securityPolicy: "https://modelscript.org/.well-known/security.txt",
       sourceCode: "https://github.com/modelscript/modelscript",
@@ -872,8 +926,36 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     });
   }
 
+  // Block automated credential/dotfile/PHP scanner probes (/.env, /.git/config, /live/.env, /.env.swp, /wp-login.php)
+  // on non-API/non-Git routes so they receive an immediate 404 rather than falling through to SPA index.html (200 OK).
+  const blockedScannerProbePattern =
+    /(?:^|\/)\.(?!well-known(?:\/|$))[^/]*|\.(?:php|asp|aspx|jsp|cgi|env|swp|swo|bak)(?:\/|$)|^\/(?:wp-admin|wp-login(?:\.php)?|wp-content|wp-includes|xmlrpc\.php|phpmyadmin|pma|adminer)(?:\/|$)/i;
+  app.use((req, res, next) => {
+    if (
+      req.path.startsWith("/api/") ||
+      req.path.startsWith("/git/") ||
+      req.path.startsWith("/.well-known/") ||
+      req.path.startsWith("/-/")
+    ) {
+      next();
+      return;
+    }
+    let decodedPath = req.path;
+    try {
+      decodedPath = decodeURIComponent(req.path);
+    } catch {
+      res.status(400).json({ error: "Malformed request URI" });
+      return;
+    }
+    if (blockedScannerProbePattern.test(decodedPath)) {
+      res.status(404).end();
+      return;
+    }
+    next();
+  });
+
   if (staticWebDir && fs.existsSync(staticWebDir)) {
-    app.use(express.static(staticWebDir));
+    app.use(express.static(staticWebDir, { dotfiles: "deny" }));
 
     // Client-side SPA routing fallback for unmatched non-API routes
     app.use((req, res, next) => {
@@ -881,7 +963,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         next();
         return;
       }
-      if (req.path.startsWith("/assets/") || req.path.startsWith("/vp-icons/")) {
+      if (
+        req.path.startsWith("/assets/") ||
+        req.path.startsWith("/vp-icons/") ||
+        blockedScannerProbePattern.test(req.path)
+      ) {
         res.status(404).end();
         return;
       }

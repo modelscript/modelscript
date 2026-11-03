@@ -7,7 +7,7 @@ import styled from "styled-components";
 import { getArtifactView } from "../api";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
-import { decompressMorselPayload } from "../components/morsel/util/permalink";
+import { decompressMorselPayload, resolveMorselShortlink } from "../components/morsel/util/permalink";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import {
   buildEditorUrlForArtifact,
@@ -264,29 +264,18 @@ export const EmbedPlaygroundPage: React.FC = () => {
     // 0. Check ?morsel=<id> server-side short-link snippet storage
     if (morselId) {
       (async () => {
-        try {
-          const res = await fetch(`/api/v1/morsels/${encodeURIComponent(morselId)}`);
-          if (!res.ok || cancelled) return;
-          const data = await res.json();
-          if (cancelled || !data?.code) return;
-          const detectedLang = data.dialect || langParam || "modelica";
-          const resolvedTitle = data.title || titleParam || "Shared Engineering Model";
-          setCurrentCode(data.code);
-          setPayload({
-            ...(data.payload || {}),
-            v: 1,
-            lang: detectedLang,
-            code: data.code,
-            title: resolvedTitle,
-            view: data.view || params.get("view") || "diagram",
-          });
-          setTargetInfo({
-            target: "playground",
-            url: `/playground?morsel=${encodeURIComponent(morselId)}`,
-          });
-        } catch {
-          // Ignore fetch failure in offline fallback
-        }
+        const resolved = await resolveMorselShortlink(morselId, {
+          fallbackDialect: langParam,
+          fallbackTitle: titleParam,
+          fallbackView: params.get("view"),
+        });
+        if (cancelled || !resolved) return;
+        setCurrentCode(resolved.code);
+        setPayload(resolved);
+        setTargetInfo({
+          target: "playground",
+          url: `/playground?morsel=${encodeURIComponent(morselId)}`,
+        });
       })();
       return () => {
         cancelled = true;
@@ -447,7 +436,7 @@ export const EmbedPlaygroundPage: React.FC = () => {
         initialView={payload?.view || (searchParams.get("view") as any) || "diagram"}
         initialAnchor={payload?.anchor}
         simulateTriggerCount={simulateTriggerCount}
-        externalParams={externalParams}
+        externalParams={externalParams ?? payload?.params}
         onCodeChange={handleCodeChange}
         onAnchorClick={handleAnchorClick}
         onSimulationStatus={handleSimulationStatus}

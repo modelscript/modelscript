@@ -14,8 +14,9 @@ import {
 } from "../api";
 import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { usePageTitle } from "../util/title";
-import type { PackageData, PersonData, PostData, RepoData, TopicData } from "./explore";
+import type { ExploreLandingTab, PackageData, PersonData, PostData, RepoData, TopicData } from "./explore";
 import { ExploreLandingView, ExploreSearchResultsView, ExploreTopicView } from "./explore";
 
 const ExplorePage: React.FC = () => {
@@ -23,11 +24,14 @@ const ExplorePage: React.FC = () => {
   const query = searchParams.get("q") || "";
   const rawTopic = searchParams.get("topic") || searchParams.get("tag") || "";
   const topic = rawTopic || (query.startsWith("#") ? query.slice(1) : "");
+  const tabParam = (searchParams.get("tab") || "").toLowerCase();
   usePageTitle(query && !query.startsWith("#") ? `Search: ${query}` : topic ? `Topic: #${topic}` : "Explore");
 
   const navigate = useNavigate();
   const { token } = useAuth();
   const { openCompose } = React.useContext(ComposeContext);
+  const hasPackages = useFeatureFlag("package_browser");
+  const hasRepos = useFeatureFlag("git_repositories");
 
   const [topicFilter, setTopicFilter] = useState<string>("all");
   const [copiedTopicLink, setCopiedTopicLink] = useState(false);
@@ -38,6 +42,12 @@ const ExplorePage: React.FC = () => {
   const [trending, setTrending] = useState<TopicData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Top");
+  const [landingTab, setLandingTabState] = useState<ExploreLandingTab>(() => {
+    if (tabParam === "trending" || tabParam === "packages" || tabParam === "repositories") {
+      return tabParam;
+    }
+    return "explore";
+  });
   const [localQuery, setLocalQuery] = useState("");
 
   const [packages, setPackages] = useState<PackageData[]>([]);
@@ -48,6 +58,25 @@ const ExplorePage: React.FC = () => {
 
   const [matchedPeople, setMatchedPeople] = useState<PersonData[]>([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
+
+  useEffect(() => {
+    if (tabParam === "trending" || tabParam === "packages" || tabParam === "repositories" || tabParam === "explore") {
+      setLandingTabState(tabParam);
+    } else if (!tabParam) {
+      setLandingTabState("explore");
+    }
+  }, [tabParam]);
+
+  const setLandingTab = (nextTab: ExploreLandingTab) => {
+    setLandingTabState(nextTab);
+    const next = new URLSearchParams(searchParams);
+    if (nextTab === "explore") {
+      next.delete("tab");
+    } else {
+      next.set("tab", nextTab);
+    }
+    setSearchParams(next, { replace: true });
+  };
 
   const scrollTemplates = (direction: "left" | "right") => {
     if (templatesScrollRef.current) {
@@ -85,7 +114,7 @@ const ExplorePage: React.FC = () => {
   useEffect(() => {
     async function fetchExplore() {
       try {
-        const [postsData, trendingData] = await Promise.all([getExplore(), getTrending(5)]);
+        const [postsData, trendingData] = await Promise.all([getExplore(), getTrending(10)]);
         setPosts(postsData.posts || []);
         setTrending(trendingData.topics || []);
       } catch (err) {
@@ -98,13 +127,16 @@ const ExplorePage: React.FC = () => {
   }, []);
 
   const [backendMatchedIds, setBackendMatchedIds] = useState<Set<string>>(new Set());
+  const [searchLoading, setSearchLoading] = useState(false);
 
   useEffect(() => {
+    setBackendMatchedIds(new Set());
     if (!query || topic) {
-      setBackendMatchedIds(new Set());
+      setSearchLoading(false);
       return;
     }
     let active = true;
+    setSearchLoading(true);
     searchPosts(query, 40)
       .then((res) => {
         if (!active || !Array.isArray(res?.posts)) return;
@@ -127,67 +159,85 @@ const ExplorePage: React.FC = () => {
           return Array.from(byId.values());
         });
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (active) setSearchLoading(false);
+      });
     return () => {
       active = false;
     };
   }, [query, topic]);
 
-  useEffect(() => {
-    if (!query) return;
-    if (activeTab === "Artifacts") {
-      async function fetchPackages() {
-        setPackagesLoading(true);
-        try {
-          const pkgs = await getLibraries(query);
-          setPackages(pkgs || []);
-        } catch (err) {
-          console.error(err);
-        } finally {
-          setPackagesLoading(false);
-        }
-      }
-      fetchPackages();
-    }
-  }, [query, activeTab]);
+  const shouldFetchPackages = hasPackages && !topic && (query ? activeTab === "Artifacts" : landingTab === "packages");
 
   useEffect(() => {
-    if (!query) return;
-    if (activeTab === "Repositories") {
-      async function fetchRepos() {
-        setReposLoading(true);
-        try {
-          const [popularRes, userRes] = await Promise.all([
-            getPopularRepos(50).catch(() => ({ repos: [] })),
-            token ? getRepos().catch(() => ({ repos: [] })) : Promise.resolve({ repos: [] }),
-          ]);
-          const allRepos: RepoData[] = [...(popularRes.repos || []), ...(userRes.repos || [])];
-
-          const qLower = query.toLowerCase();
-          const filtered = allRepos.filter(
-            (r: RepoData) =>
-              (r.project && r.project.toLowerCase().includes(qLower)) ||
-              (r.namespace && r.namespace.toLowerCase().includes(qLower)) ||
-              (r.description && r.description.toLowerCase().includes(qLower)),
-          );
-
-          const seen = new Set<string>();
-          const combined = filtered.filter((r: RepoData) => {
-            const key = `${r.namespace}/${r.project}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          setRepos(combined);
-        } catch (err) {
-          console.error(err);
-        } finally {
-          setReposLoading(false);
-        }
+    if (!shouldFetchPackages) return;
+    let active = true;
+    async function fetchPackages() {
+      setPackagesLoading(true);
+      try {
+        const pkgs = await getLibraries(query);
+        if (active) setPackages(pkgs || []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (active) setPackagesLoading(false);
       }
-      fetchRepos();
     }
-  }, [query, activeTab, token]);
+    fetchPackages();
+    return () => {
+      active = false;
+    };
+  }, [shouldFetchPackages, query]);
+
+  const shouldFetchRepos = hasRepos && !topic && (query ? activeTab === "Repositories" : landingTab === "repositories");
+
+  useEffect(() => {
+    if (!shouldFetchRepos) return;
+    let active = true;
+    async function fetchRepos() {
+      setReposLoading(true);
+      try {
+        const [popularRes, userRes] = await Promise.all([
+          getPopularRepos(50).catch(() => ({ repos: [] })),
+          token ? getRepos().catch(() => ({ repos: [] })) : Promise.resolve({ repos: [] }),
+        ]);
+        if (!active) return;
+        const allRepos: RepoData[] = [...(popularRes.repos || []), ...(userRes.repos || [])];
+
+        const qTokens = query
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .map((t) => t.replace(/^#/, ""))
+          .filter(Boolean);
+        const filtered =
+          qTokens.length > 0
+            ? allRepos.filter((r: RepoData) => {
+                const hay = [r.namespace, r.project, r.description, r.provider].filter(Boolean).join(" ").toLowerCase();
+                return qTokens.every((tok) => hay.includes(tok));
+              })
+            : allRepos;
+
+        const seen = new Set<string>();
+        const combined = filtered.filter((r: RepoData) => {
+          const key = `${r.namespace}/${r.project}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setRepos(combined);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (active) setReposLoading(false);
+      }
+    }
+    fetchRepos();
+    return () => {
+      active = false;
+    };
+  }, [shouldFetchRepos, query, token]);
 
   useEffect(() => {
     if (!query) return;
@@ -238,21 +288,25 @@ const ExplorePage: React.FC = () => {
   const matchesQuery = (p: PostData) => {
     if (!query) return true;
     if (p.id !== undefined && backendMatchedIds.has(String(p.id))) return true;
-    const q = query.toLowerCase();
-    return (
-      String(p.content || "")
-        .toLowerCase()
-        .includes(q) ||
-      String(p.username || "")
-        .toLowerCase()
-        .includes(q) ||
-      String((p as any).display_name || "")
-        .toLowerCase()
-        .includes(q) ||
-      String((p as any).title || "")
-        .toLowerCase()
-        .includes(q)
-    );
+    const tokens = query
+      .toLowerCase()
+      .trim()
+      .split(/\s+/)
+      .map((t) => t.replace(/^#/, ""))
+      .filter(Boolean);
+    if (tokens.length === 0) return true;
+    const haystack = [
+      p.content,
+      p.username,
+      (p as any).display_name,
+      (p as any).title,
+      (p as any).artifact_title,
+      (p as any).view_type,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return tokens.every((tok) => haystack.includes(tok));
   };
 
   const topPosts = posts
@@ -282,6 +336,7 @@ const ExplorePage: React.FC = () => {
         setTopicFilter={setTopicFilter}
         loading={loading}
         topicPosts={topicPosts}
+        trending={trending}
         copiedTopicLink={copiedTopicLink}
         handleCopyTopic={handleCopyTopic}
         openCompose={openCompose}
@@ -299,7 +354,7 @@ const ExplorePage: React.FC = () => {
         clearSearch={clearSearch}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        loading={loading}
+        loading={loading || searchLoading}
         topPosts={topPosts}
         latestPosts={latestPosts}
         artifactPosts={artifactPosts}
@@ -309,6 +364,8 @@ const ExplorePage: React.FC = () => {
         packagesLoading={packagesLoading}
         repos={repos}
         reposLoading={reposLoading}
+        hasPackages={hasPackages}
+        hasRepos={hasRepos}
       />
     );
   }
@@ -317,7 +374,16 @@ const ExplorePage: React.FC = () => {
     <ExploreLandingView
       loading={loading}
       posts={posts}
+      topPosts={topPosts}
       trending={trending}
+      activeTab={landingTab}
+      setActiveTab={setLandingTab}
+      hasPackages={hasPackages}
+      hasRepos={hasRepos}
+      packages={packages}
+      packagesLoading={packagesLoading}
+      repos={repos}
+      reposLoading={reposLoading}
       scrollTemplates={scrollTemplates}
       templatesScrollRef={templatesScrollRef}
       localQuery={localQuery}

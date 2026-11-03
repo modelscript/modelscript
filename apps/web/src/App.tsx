@@ -16,9 +16,10 @@ import MaintenanceExperienceHost from "./components/MaintenanceExperienceHost";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { RealtimeNotificationListener } from "./components/RealtimeNotificationListener";
 import RequireAuth from "./components/RequireAuth";
+import ScrollToTop, { scrollToTop } from "./components/ScrollToTop";
 import { ToastProvider } from "./components/ToastContext";
 import { FeatureFlagProvider, useFeatureFlag, useFeatureFlags } from "./FeatureFlagContext";
-import { InstanceBrandingProvider, useInstanceBranding } from "./InstanceBrandingContext";
+import { InstanceBrandingProvider } from "./InstanceBrandingContext";
 import { ModelingPreferencesProvider } from "./ModelingPreferencesContext";
 import { ThemeContextProvider, useTheme } from "./theme";
 
@@ -84,6 +85,7 @@ const IdeWorkspacePage = lazyWithRetry(() => import("./pages/IdeWorkspacePage"))
 const LibraryListPage = lazyWithRetry(() => import("./pages/LibraryListPage"));
 const LibraryVersionPage = lazyWithRetry(() => import("./pages/LibraryVersionPage"));
 const LoginPage = lazyWithRetry(() => import("./pages/LoginPage"));
+const LogoutPage = lazyWithRetry(() => import("./pages/LogoutPage"));
 const NotFoundPage = lazyWithRetry(() => import("./pages/NotFoundPage"));
 const NotificationsPage = lazyWithRetry(() => import("./pages/NotificationsPage"));
 const OAuthCallbackPage = lazyWithRetry(() => import("./pages/OAuthCallbackPage"));
@@ -98,6 +100,7 @@ const ScriptDetailPage = lazyWithRetry(() => import("./pages/ScriptDetailPage"))
 const ScriptsListPage = lazyWithRetry(() => import("./pages/ScriptsListPage"));
 const SolutionPage = lazyWithRetry(() => import("./pages/SolutionPage"));
 const PrivacyPage = lazyWithRetry(() => import("./pages/PrivacyPage"));
+const CookiesPage = lazyWithRetry(() => import("./pages/CookiesPage"));
 const ResetPasswordPage = lazyWithRetry(() => import("./pages/ResetPasswordPage"));
 const SettingsPage = lazyWithRetry(() => import("./pages/SettingsPage"));
 const SetupWizardPage = lazyWithRetry(() => import("./pages/SetupWizardPage"));
@@ -106,7 +109,6 @@ const TermsPage = lazyWithRetry(() => import("./pages/TermsPage"));
 const VerifyEmailPage = lazyWithRetry(() => import("./pages/VerifyEmailPage"));
 const TemplateDetailPage = lazyWithRetry(() => import("./pages/TemplateDetailPage"));
 const WorkspacePage = lazyWithRetry(() => import("./pages/WorkspacePage"));
-const OnboardingWizardPage = lazyWithRetry(() => import("./pages/onboarding/OnboardingWizardPage"));
 
 /**
  * Disambiguates two-segment package routes `/packages/:first/:second`:
@@ -153,6 +155,11 @@ function GlobalModals() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = React.useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = React.useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const hasCae = useFeatureFlag("cae_cloud_solver");
+  const hasFeedsPage = useFeatureFlag("feeds_page");
+  const hasRssFeeds = useFeatureFlag("rss_feeds");
+  const hasFeeds = hasFeedsPage || hasRssFeeds;
 
   React.useEffect(() => {
     let pendingG = false;
@@ -205,39 +212,51 @@ function GlobalModals() {
         pendingG = false;
         if (pendingGTimer) clearTimeout(pendingGTimer);
         const k = e.key.toLowerCase();
+        const navWithScroll = (target: string) => {
+          if (location.pathname === target) {
+            scrollToTop({ smooth: true });
+          } else {
+            scrollToTop({ smooth: false });
+            navigate(target);
+          }
+        };
         if (k === "h") {
           e.preventDefault();
-          navigate("/home");
+          navWithScroll("/home");
         } else if (k === "e") {
           e.preventDefault();
-          navigate("/explore");
+          navWithScroll("/explore");
         } else if (k === "n") {
           e.preventDefault();
-          navigate("/notifications");
+          navWithScroll("/notifications");
         } else if (k === "b") {
           e.preventDefault();
-          navigate("/bookmarks");
+          navWithScroll("/bookmarks");
         } else if (k === "f") {
-          e.preventDefault();
-          navigate("/feeds");
+          if (hasFeeds) {
+            e.preventDefault();
+            navWithScroll("/feeds");
+          }
         } else if (k === "p") {
           e.preventDefault();
-          navigate("/playground");
+          navWithScroll("/playground");
         } else if (k === "k") {
           e.preventDefault();
-          navigate("/packages");
+          navWithScroll("/packages");
         } else if (k === "r") {
           e.preventDefault();
-          navigate("/repos");
+          navWithScroll("/repos");
         } else if (k === "i") {
           e.preventDefault();
-          navigate("/ide");
+          navWithScroll("/ide");
         } else if (k === "j") {
-          e.preventDefault();
-          navigate("/jobs");
+          if (hasCae) {
+            e.preventDefault();
+            navWithScroll("/jobs");
+          }
         } else if (k === "s") {
           e.preventDefault();
-          navigate("/settings");
+          navWithScroll("/settings");
         }
       }
     };
@@ -263,7 +282,7 @@ function GlobalModals() {
       window.removeEventListener("modelscript:close-shortcuts-modal", handleCloseShortcuts);
       if (pendingGTimer) clearTimeout(pendingGTimer);
     };
-  }, [navigate]);
+  }, [navigate, hasCae]);
 
   return (
     <>
@@ -306,15 +325,38 @@ function IdeFallbackNavigate() {
 
 function PageViewTracker() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { justLoggedOut, clearJustLoggedOut } = useAuth();
   const lastPathRef = React.useRef<string>("");
+  const visitedLogoutPageRef = React.useRef<boolean>(false);
+
+  React.useEffect(() => {
+    const handleLoggedOut = () => {
+      visitedLogoutPageRef.current = false;
+      navigate("/logout", { replace: true });
+    };
+    window.addEventListener("modelscript:logged-out", handleLoggedOut);
+    return () => {
+      window.removeEventListener("modelscript:logged-out", handleLoggedOut);
+    };
+  }, [navigate]);
 
   React.useEffect(() => {
     const pathname = location.pathname || "/";
-    // Skip root redirect path `/` since it immediately replaces with `/home` or `/explore`
-    if (pathname === "/" || pathname === lastPathRef.current) return;
+    if (pathname === "/logout") {
+      visitedLogoutPageRef.current = true;
+    } else if (visitedLogoutPageRef.current && justLoggedOut) {
+      visitedLogoutPageRef.current = false;
+      clearJustLoggedOut();
+    }
+
+    // Skip root redirect path `/`, maintenance fallback, and automated scanner probe paths
+    const scannerProbeRe =
+      /(?:^|\/)\.[^/]*|\.(?:php|asp|aspx|jsp|cgi|env|swp|swo|bak)(?:\/|$)|^\/(?:maintenance\.html|wp-admin|wp-login(?:\.php)?|wp-content|wp-includes|xmlrpc\.php|phpmyadmin|pma|adminer)(?:\/|$)/i;
+    if (pathname === "/" || pathname === lastPathRef.current || scannerProbeRe.test(pathname)) return;
     lastPathRef.current = pathname;
     recordPageViewBeacon(pathname, "web");
-  }, [location.pathname]);
+  }, [location.pathname, justLoggedOut, clearJustLoggedOut]);
 
   return null;
 }
@@ -492,13 +534,15 @@ export function InstanceAnnouncementBanner({
  */
 function App() {
   const { theme } = useTheme();
-  const { user, isLoading, setSession } = useAuth();
-  const branding = useInstanceBranding();
+  const { user, isLoading, setSession, justLoggedOut } = useAuth();
   const { isLoading: isFlagsLoading } = useFeatureFlags();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
+  const hasFeedsPage = useFeatureFlag("feeds_page");
+  const hasRssFeeds = useFeatureFlag("rss_feeds");
+  const hasFeeds = hasFeedsPage || hasRssFeeds;
 
-  if (isLoading || isFlagsLoading || (user && !user.onboarding_completed && !branding.loaded)) {
+  if (isLoading || isFlagsLoading) {
     return (
       <div style={{ minHeight: "100vh", backgroundColor: "transparent" }}>
         <PageLoadingFallback />
@@ -519,6 +563,7 @@ function App() {
         <div id="portal-root" />
         <ToastProvider>
           <BrowserRouter>
+            <ScrollToTop />
             <PageViewTracker />
             <OfflineBanner />
             <InstanceAnnouncementBanner />
@@ -530,32 +575,16 @@ function App() {
                 <Routes>
                   <Route
                     path="/"
-                    element={
-                      <Navigate
-                        to={
-                          user
-                            ? branding.onboardingWizardEnabled && !user.onboarding_completed
-                              ? "/onboarding"
-                              : "/home"
-                            : "/explore"
-                        }
-                        replace
-                      />
-                    }
+                    element={<Navigate to={user ? "/home" : justLoggedOut ? "/logout" : "/explore"} replace />}
                   />
                   <Route path="/setup" element={<SetupWizardPage onLoginSuccess={setSession} />} />
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/logout" element={<LogoutPage />} />
                   <Route path="/signup" element={<SignupPage />} />
-                  <Route
-                    path="/onboarding"
-                    element={
-                      <RequireAuth feature="guided onboarding">
-                        <OnboardingWizardPage />
-                      </RequireAuth>
-                    }
-                  />
+                  <Route path="/onboarding" element={<Navigate to="/home?tour=1" replace />} />
                   <Route path="/terms" element={<TermsPage />} />
                   <Route path="/privacy" element={<PrivacyPage />} />
+                  <Route path="/cookies" element={<CookiesPage />} />
                   <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
                   <Route path="/verify-email" element={<VerifyEmailPage />} />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -568,7 +597,12 @@ function App() {
                   {/* Social shell routes */}
                   <Route element={<AppShell />}>
                     <Route path="/playground" element={<PlaygroundPage />} />
-                    <Route path="/home" element={user ? <HomeFeedPage /> : <Navigate to="/explore" replace />} />
+                    <Route
+                      path="/home"
+                      element={
+                        user ? <HomeFeedPage /> : <Navigate to={justLoggedOut ? "/logout" : "/explore"} replace />
+                      }
+                    />
                     <Route path="/feed" element={<Navigate to="/home" replace />} />
                     <Route path="/explore" element={<ExplorePage />} />
                     <Route
@@ -590,9 +624,13 @@ function App() {
                     <Route
                       path="/feeds"
                       element={
-                        <RequireAuth feature="your RSS feeds">
-                          <FeedsPage />
-                        </RequireAuth>
+                        hasFeeds ? (
+                          <RequireAuth feature="your RSS feeds">
+                            <FeedsPage />
+                          </RequireAuth>
+                        ) : (
+                          <Navigate to={user ? "/home" : "/explore"} replace />
+                        )
                       }
                     />
 
@@ -628,7 +666,10 @@ function App() {
                     />
 
                     {/* Legacy /scripts alias routes */}
-                    <Route path="/scripts" element={<Navigate to="/jobs" replace />} />
+                    <Route
+                      path="/scripts"
+                      element={hasCae ? <Navigate to="/jobs" replace /> : <Navigate to="/packages" replace />}
+                    />
                     <Route
                       path="/scripts/templates/:id"
                       element={hasCae ? <TemplateDetailPage /> : <Navigate to="/packages" replace />}
@@ -672,6 +713,11 @@ function App() {
                         </RequireAuth>
                       }
                     />
+                    <Route path="/users/:username" element={<ProfilePage />} />
+                    <Route path="/users/:username/status/:id" element={<PostDetailPage />} />
+                    <Route path="/users/:username/status/:id/activity" element={<PostActivityPage />} />
+                    <Route path="/users/:username/followers" element={<FollowersPage />} />
+                    <Route path="/users/:username/following" element={<FollowingPage />} />
                     <Route path="/:username" element={<ProfilePage />} />
                     <Route path="/:username/status/:id" element={<PostDetailPage />} />
                     <Route path="/:username/status/:id/activity" element={<PostActivityPage />} />

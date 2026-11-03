@@ -16,7 +16,7 @@ describe("FMI Model Description & Terminals Parser Unit Tests", () => {
   guid="{12345678-abcd-ef01-2345-6789abcdef01}"
   description="Inverted pendulum benchmark model"
   author="Antigravity Test Engineer"
-  generationTool="ModelScript 0.0.18"
+  generationTool="ModelScript 0.1.0"
   numberOfEventIndicators="3">
   <CoSimulation modelIdentifier="PendulumModel_cs" />
   <ModelExchange modelIdentifier="PendulumModel_me" />
@@ -53,7 +53,7 @@ describe("FMI Model Description & Terminals Parser Unit Tests", () => {
       assert.strictEqual(desc.guid, "{12345678-abcd-ef01-2345-6789abcdef01}");
       assert.strictEqual(desc.description, "Inverted pendulum benchmark model");
       assert.strictEqual(desc.author, "Antigravity Test Engineer");
-      assert.strictEqual(desc.generationTool, "ModelScript 0.0.18");
+      assert.strictEqual(desc.generationTool, "ModelScript 0.1.0");
       assert.strictEqual(desc.numberOfEventIndicators, 3);
       assert.strictEqual(desc.supportsCoSimulation, true);
       assert.strictEqual(desc.coSimulationModelIdentifier, "PendulumModel_cs");

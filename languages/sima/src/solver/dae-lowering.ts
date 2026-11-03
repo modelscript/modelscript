@@ -39,11 +39,18 @@ export function lowerSimaToDae(model: SimaModel): DAEBuilder {
 
   const env = model.environment;
 
-  // 1. Register Parameters
-  dae.addVariable("water_depth", VarType.Real, Variability.Parameter, Causality.Local, env.waterDepth);
-  dae.addVariable("water_density", VarType.Real, Variability.Parameter, Causality.Local, env.waterDensity);
-  dae.addVariable("wave_hs", VarType.Real, Variability.Parameter, Causality.Local, env.wave.hs);
-  dae.addVariable("wave_tp", VarType.Real, Variability.Parameter, Causality.Local, env.wave.tp);
+  // 1. Register Parameters and their defining equations
+  const addParamWithBinding = (name: string, val: number) => {
+    const varIdx = dae.addVariable(name, VarType.Real, Variability.Parameter, Causality.Local, val);
+    const litId = dae.addRealLiteral(val);
+    dae.setVarExpression(varIdx, litId);
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(name), litId);
+  };
+
+  addParamWithBinding("water_depth", env.waterDepth);
+  addParamWithBinding("water_density", env.waterDensity);
+  addParamWithBinding("wave_hs", env.wave.hs);
+  addParamWithBinding("wave_tp", env.wave.tp);
 
   // Mooring horizontal restoring stiffness
   let totalSpreadStiffness = 0;
@@ -52,7 +59,7 @@ export function lowerSimaToDae(model: SimaModel): DAEBuilder {
     totalSpreadStiffness += (avgEa / Math.max(10, line.totalLength)) * 0.05;
   }
   totalSpreadStiffness = Math.max(30000, totalSpreadStiffness);
-  dae.addVariable("k_mooring_h", VarType.Real, Variability.Parameter, Causality.Local, totalSpreadStiffness);
+  addParamWithBinding("k_mooring_h", totalSpreadStiffness);
 
   // 2. Register 6-DOF Floater Motion Variables & Equations
   for (let dofIdx = 0; dofIdx < 6; dofIdx++) {
@@ -85,10 +92,16 @@ export function lowerSimaToDae(model: SimaModel): DAEBuilder {
     dae.addVariable(z1Var, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
     dae.addVariable(z2Var, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
 
-    // der(z1) = A[0][1] * z2 + B[0] * velVar
+    // der(z1) = A[0][0] * z1 + A[0][1] * z2 + B[0] * velVar
     const derZ1 = dae.addDerExpr(dae.addNameExpr(z1Var));
-    const z2Name = dae.addNameExpr(z2Var);
-    dae.addEquation(EqKind.Simple, derZ1, z2Name);
+    const a00 = realization.A[0]?.[0] ?? 0;
+    const a01 = realization.A[0]?.[1] ?? 1;
+    const b0 = realization.B[0] ?? 0;
+    const a00_z1 = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(a00), dae.addNameExpr(z1Var));
+    const a01_z2 = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(a01), dae.addNameExpr(z2Var));
+    const b0_vel = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(b0), dae.addNameExpr(velVar));
+    const rhsZ1 = dae.addBinaryExpr(BinOp.Add, dae.addBinaryExpr(BinOp.Add, a00_z1, a01_z2), b0_vel);
+    dae.addEquation(EqKind.Simple, derZ1, rhsZ1);
 
     // der(z2) = A[1][0] * z1 + A[1][1] * z2 + B[1] * velVar
     const derZ2 = dae.addDerExpr(dae.addNameExpr(z2Var));
@@ -108,18 +121,37 @@ export function lowerSimaToDae(model: SimaModel): DAEBuilder {
     const totalInertia = massVal + addedMassVal;
 
     // C matrix restoring stiffness
-    let cRestoring = 0;
-    if (dofIdx === 2) {
-      cRestoring = env.waterDensity * 9.81 * (vessel.displacement / 20.0);
-    } else if (dofIdx === 3) {
-      cRestoring = vessel.mass * 9.81 * Math.max(0.5, vessel.gmTransverse);
-    } else if (dofIdx === 4) {
-      cRestoring = vessel.mass * 9.81 * Math.max(0.5, vessel.gmLongitudinal);
+    let cRestoring = vessel.hydrostaticMatrix?.[dofIdx]?.[dofIdx] ?? 0;
+    if (cRestoring === 0) {
+      if (dofIdx === 2) {
+        cRestoring = env.waterDensity * 9.81 * (vessel.displacement / 20.0);
+      } else if (dofIdx === 3) {
+        cRestoring = vessel.mass * 9.81 * Math.max(0.5, vessel.gmTransverse);
+      } else if (dofIdx === 4) {
+        cRestoring = vessel.mass * 9.81 * Math.max(0.5, vessel.gmLongitudinal);
+      }
     }
 
-    // Radiation force mu = C_r[0] * z1 + C_r[1] * z2
+    // Radiation force mu = C_r[0] * z1 + C_r[1] * z2 + D_r * velVar
     const c0 = realization.C[0] ?? 0;
-    const muExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(c0), dae.addNameExpr(z1Var));
+    const c1 = realization.C[1] ?? 0;
+    const d0 = realization.D ?? 0;
+    const c0_z1 = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(c0), dae.addNameExpr(z1Var));
+    const c1_z2 = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(c1), dae.addNameExpr(z2Var));
+    const d0_vel = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(d0), dae.addNameExpr(velVar));
+    const muExpr = dae.addBinaryExpr(BinOp.Add, dae.addBinaryExpr(BinOp.Add, c0_z1, c1_z2), d0_vel);
+
+    // Vessel linear and quadratic viscous/eddy damping: F_damp = B_lin * v + B_quad * v * |v|
+    const bLin = vessel.linearDamping?.[dofIdx]?.[dofIdx] ?? (dofIdx < 3 ? 2.5e4 : 1.0e6);
+    const bQuad = vessel.quadraticDamping?.[dofIdx]?.[dofIdx] ?? (dofIdx < 3 ? 1.0e4 : 5.0e5);
+    const linDampExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(bLin), dae.addNameExpr(velVar));
+    const absVelExpr = dae.addCallExpr("abs", [dae.addNameExpr(velVar)]);
+    const quadDampExpr = dae.addBinaryExpr(
+      BinOp.Mul,
+      dae.addRealLiteral(bQuad),
+      dae.addBinaryExpr(BinOp.Mul, dae.addNameExpr(velVar), absVelExpr),
+    );
+    const dampingExpr = dae.addBinaryExpr(BinOp.Add, linDampExpr, quadDampExpr);
 
     // Restoring force term
     let restoringExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(cRestoring), dae.addNameExpr(posVar));
@@ -129,9 +161,9 @@ export function lowerSimaToDae(model: SimaModel): DAEBuilder {
       restoringExpr = dae.addBinaryExpr(BinOp.Add, restoringExpr, mooringTerm);
     }
 
-    // Dynamic equation: accVar = (-restoringExpr - muExpr) / totalInertia
+    // Dynamic equation: accVar = (-restoringExpr - muExpr - dampingExpr) / totalInertia
     const negRestoring = dae.addUnaryExpr(UnaryOp.Negate, restoringExpr);
-    const netForce = dae.addBinaryExpr(BinOp.Sub, negRestoring, muExpr);
+    const netForce = dae.addBinaryExpr(BinOp.Sub, dae.addBinaryExpr(BinOp.Sub, negRestoring, muExpr), dampingExpr);
     const rhsAcc = dae.addBinaryExpr(BinOp.Div, netForce, dae.addRealLiteral(totalInertia));
 
     dae.addEquation(EqKind.Simple, dae.addNameExpr(accVar), rhsAcc);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { AlertIcon, PlusIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
-import { Button, Heading, Label, Text } from "@primer/react";
+import { Button, Heading, Text } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { LibraryListItem, PendingPackageTransfer } from "../api";
@@ -11,7 +11,7 @@ import Box from "../components/Box";
 import PublishPackageModal from "../components/PublishPackageModal";
 import { filterAndSortLibraries, type SortOption } from "../util/package-helpers";
 import { usePageTitle } from "../util/title";
-import { CardList, LibraryFilterBar, PackageCardItem, PendingTransfersBanner, Tab, TabBar } from "./libraries";
+import { CardList, LibraryFilterBar, PackageCardItem, PendingTransfersBanner } from "./libraries";
 
 const LibraryListPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -24,7 +24,7 @@ const LibraryListPage: React.FC = () => {
   const [searchInput, setSearchInput] = useState(query);
   const [activeTab, setActiveTab] = useState<"all" | "my">("all");
   const [domainFilter, setDomainFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<SortOption>("downloads");
+  const [sortBy, setSortBy] = useState<SortOption>("recommended");
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [copiedPkg, setCopiedPkg] = useState<string | null>(null);
 
@@ -176,152 +176,153 @@ const LibraryListPage: React.FC = () => {
 
   return (
     <Box>
-      <TabBar>
-        <Tab $active={activeTab === "all"} onClick={() => setActiveTab("all")}>
-          All Packages
-        </Tab>
-        {user && (
-          <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
-            My Packages
-            {pendingTransfers.length > 0 && (
-              <Label variant="attention" style={{ marginLeft: 8, fontSize: 11 }}>
-                {pendingTransfers.length}
-              </Label>
-            )}
-          </Tab>
-        )}
-      </TabBar>
+      <LibraryFilterBar
+        displayedCount={displayedLibraries.length}
+        loading={loading}
+        onOpenPublishModal={() => {
+          if (!user) {
+            navigate("/login");
+          } else {
+            setPublishModalOpen(true);
+          }
+        }}
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
+        onClearSearch={() => {
+          setSearchInput("");
+          setSearchParams({});
+        }}
+        sortBy={sortBy}
+        onSortChange={setSortBy}
+        domainFilter={domainFilter}
+        onDomainFilterChange={setDomainFilter}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        showScopeTabs={Boolean(user)}
+        pendingTransfersCount={pendingTransfers.length}
+      />
 
-      <Box p={4}>
-        <PendingTransfersBanner
-          pendingTransfers={pendingTransfers}
-          transferBusyId={transferBusyId}
-          transferFeedback={transferFeedback}
-          onDismissFeedback={() => setTransferFeedback(null)}
-          onAcceptTransfer={handleAcceptTransfer}
-          onCancelTransfer={handleCancelTransfer}
-          currentUserId={user?.id}
-          currentUsername={user?.username}
-        />
+      {(pendingTransfers.length > 0 || transferFeedback) && (
+        <Box px="20px" pt={3}>
+          <PendingTransfersBanner
+            pendingTransfers={pendingTransfers}
+            transferBusyId={transferBusyId}
+            transferFeedback={transferFeedback}
+            onDismissFeedback={() => setTransferFeedback(null)}
+            onAcceptTransfer={handleAcceptTransfer}
+            onCancelTransfer={handleCancelTransfer}
+            currentUserId={user?.id}
+            currentUsername={user?.username}
+          />
+        </Box>
+      )}
 
-        <LibraryFilterBar
-          displayedCount={displayedLibraries.length}
-          loading={loading}
-          onOpenPublishModal={() => {
-            if (!user) {
-              navigate("/login");
-            } else {
-              setPublishModalOpen(true);
-            }
+      {/* Content */}
+      {loading && libraries.length === 0 ? (
+        <Box display="flex" justifyContent="center" p={12}>
+          <SyncIcon size={32} className="spinner-spin" fill="var(--color-text-muted)" />
+        </Box>
+      ) : error ? (
+        <Box
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+            padding: 60,
+            textAlign: "center",
           }}
-          searchInput={searchInput}
-          setSearchInput={setSearchInput}
-          onClearSearch={() => {
-            setSearchInput("");
-            setSearchParams({});
-          }}
-          sortBy={sortBy}
-          onSortChange={setSortBy}
-          domainFilter={domainFilter}
-          onDomainFilterChange={setDomainFilter}
-        />
-
-        {/* Content */}
-        {loading && libraries.length === 0 ? (
-          <Box display="flex" justifyContent="center" p={12}>
-            <SyncIcon size={32} className="spinner-spin" fill="var(--color-text-muted)" />
-          </Box>
-        ) : error ? (
-          <Box
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 16,
-              padding: 60,
-              textAlign: "center",
+        >
+          <AlertIcon size={48} fill="var(--color-error)" />
+          <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 20, margin: 0 }}>
+            Failed to load libraries
+          </Heading>
+          <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
+            The server may be unavailable. Please try again later.
+          </Text>
+          <Button
+            leadingVisual={SyncIcon}
+            onClick={() => {
+              setLoading(true);
+              setError(null);
+              fetchLibraries()
+                .catch((err) => {
+                  setError("Failed to load libraries");
+                  console.error(err);
+                })
+                .finally(() => setLoading(false));
             }}
           >
-            <AlertIcon size={48} fill="var(--color-error)" />
-            <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 20, margin: 0 }}>
-              Failed to load libraries
-            </Heading>
-            <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
-              The server may be unavailable. Please try again later.
-            </Text>
+            Retry
+          </Button>
+        </Box>
+      ) : activeTab === "my" && !user ? (
+        <Box
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+            padding: 60,
+            textAlign: "center",
+          }}
+        >
+          <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 20, margin: 0 }}>
+            Sign in to view your packages
+          </Heading>
+          <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
+            Sign in to view and manage packages published under your username.
+          </Text>
+          <Button variant="primary" onClick={() => navigate("/login")}>
+            Sign In
+          </Button>
+        </Box>
+      ) : displayedLibraries.length === 0 ? (
+        <Box
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+            padding: 60,
+            textAlign: "center",
+          }}
+        >
+          <SearchIcon size={48} fill="var(--color-text-muted)" />
+          <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 20, margin: 0 }}>
+            No packages found
+          </Heading>
+          <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
+            {activeTab === "my"
+              ? "You haven't published any matching packages yet."
+              : query || domainFilter !== "all"
+                ? "No results matching your filter criteria."
+                : "No libraries have been published yet."}
+          </Text>
+          {activeTab === "my" && user ? (
+            <Button variant="primary" leadingVisual={PlusIcon} onClick={() => setPublishModalOpen(true)}>
+              Publish Your First Package
+            </Button>
+          ) : query || domainFilter !== "all" ? (
             <Button
-              leadingVisual={SyncIcon}
+              size="small"
               onClick={() => {
-                setLoading(true);
-                setError(null);
-                fetchLibraries()
-                  .catch((err) => {
-                    setError("Failed to load libraries");
-                    console.error(err);
-                  })
-                  .finally(() => setLoading(false));
+                setSearchInput("");
+                setSearchParams({});
+                setDomainFilter("all");
               }}
             >
-              Retry
+              Reset filters
             </Button>
-          </Box>
-        ) : activeTab === "my" && !user ? (
-          <Box
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 16,
-              padding: 60,
-              textAlign: "center",
-            }}
-          >
-            <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 20, margin: 0 }}>
-              Sign in to view your packages
-            </Heading>
-            <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
-              Sign in to view and manage packages published under your username.
-            </Text>
-            <Button variant="primary" onClick={() => navigate("/login")}>
-              Sign In
-            </Button>
-          </Box>
-        ) : displayedLibraries.length === 0 ? (
-          <Box
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 16,
-              padding: 60,
-              textAlign: "center",
-            }}
-          >
-            <SearchIcon size={48} fill="var(--color-text-muted)" />
-            <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 20, margin: 0 }}>
-              No packages found
-            </Heading>
-            <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: 0 }}>
-              {activeTab === "my"
-                ? "You haven't published any matching packages yet."
-                : query || domainFilter !== "all"
-                  ? "No results matching your filter criteria."
-                  : "No libraries have been published yet."}
-            </Text>
-            {activeTab === "my" && user && (
-              <Button variant="primary" leadingVisual={PlusIcon} onClick={() => setPublishModalOpen(true)}>
-                Publish Your First Package
-              </Button>
-            )}
-          </Box>
-        ) : (
-          <CardList>
-            {displayedLibraries.map((lib) => (
-              <PackageCardItem key={lib.name} lib={lib} copiedPkg={copiedPkg} onCopyInstall={handleCopyInstall} />
-            ))}
-          </CardList>
-        )}
-      </Box>
+          ) : null}
+        </Box>
+      ) : (
+        <CardList>
+          {displayedLibraries.map((lib) => (
+            <PackageCardItem key={lib.name} lib={lib} copiedPkg={copiedPkg} onCopyInstall={handleCopyInstall} />
+          ))}
+        </CardList>
+      )}
 
       <PublishPackageModal
         isOpen={publishModalOpen}

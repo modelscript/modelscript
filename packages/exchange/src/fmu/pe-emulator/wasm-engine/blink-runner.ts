@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { WasmFmuRunner } from "../../wasm-compiler-worker.js";
 import type { BatchSimulationOptions, BatchSimulationResult } from "../types.js";
-import { type UniversalFmuRunnerOptions } from "../universal-runner.js";
+import { UniversalBinaryRunner, type UniversalFmuRunnerOptions } from "../universal-runner.js";
 
 export interface BlinkWasmRunnerOptions extends UniversalFmuRunnerOptions {
   wasmPath?: string | undefined;
@@ -42,6 +42,7 @@ export class BlinkWasmRunner implements WasmFmuRunner {
   private isTerminated = false;
   private wasmModule: WebAssembly.Module | null = null;
   private wasmInstance: WebAssembly.Instance | null = null;
+  private universalRunner: UniversalBinaryRunner | null = null;
 
   constructor(
     private readonly binaryBuffer: Uint8Array,
@@ -60,6 +61,14 @@ export class BlinkWasmRunner implements WasmFmuRunner {
         } else if (v.causality === "input") {
           this.inputVrs.push(v.valueReference);
         }
+      }
+    }
+
+    if (options.delegateToUniversal !== false && binaryBuffer.length >= 4) {
+      try {
+        this.universalRunner = new UniversalBinaryRunner(binaryBuffer, options);
+      } catch {
+        this.universalRunner = null;
       }
     }
   }
@@ -100,19 +109,59 @@ export class BlinkWasmRunner implements WasmFmuRunner {
         this.wasmModule = new WebAssembly.Module(bytes);
       }
     }
+
+    if (this.wasmModule) {
+      try {
+        this.wasmInstance = new WebAssembly.Instance(this.wasmModule, {});
+      } catch {
+        this.wasmInstance = null;
+      }
+    }
+
+    if (this.universalRunner) {
+      this.universalRunner.init(startTime);
+    }
   }
 
   setVar(nameOrVr: string | number, value: number): void {
     const vr = typeof nameOrVr === "number" ? nameOrVr : (this.varMap.get(nameOrVr) ?? 0);
     this.shadowVars.set(vr, value);
+    if (this.universalRunner) {
+      this.universalRunner.setVar(nameOrVr, value);
+    }
   }
 
   getVar(nameOrVr: string | number): number {
     const vr = typeof nameOrVr === "number" ? nameOrVr : (this.varMap.get(nameOrVr) ?? 0);
+    if (this.universalRunner) {
+      const val = this.universalRunner.getVar(nameOrVr);
+      this.shadowVars.set(vr, val);
+      return val;
+    }
     return this.shadowVars.get(vr) ?? 0.0;
   }
 
   step(currentTime: number, dt: number, inputs?: Record<string, number>): Record<string, number> {
+    if (this.universalRunner) {
+      const res = this.universalRunner.step(currentTime, dt, inputs);
+      this.currentTime = this.universalRunner.getTime();
+      for (const [name, val] of Object.entries(res)) {
+        const vr = this.varMap.get(name);
+        if (vr !== undefined) {
+          this.shadowVars.set(vr, val);
+        }
+      }
+      if (inputs) {
+        for (const [name, val] of Object.entries(inputs)) {
+          const vr = this.varMap.get(name);
+          if (vr !== undefined) {
+            this.shadowVars.set(vr, val);
+          }
+        }
+      }
+      return res;
+    }
+
     this.currentTime = Math.round((currentTime + dt) * 1e9) / 1e9;
 
     if (inputs) {
@@ -140,6 +189,18 @@ export class BlinkWasmRunner implements WasmFmuRunner {
    * Zero-copy in-Wasm batch stepping simulation across time horizon.
    */
   stepBatch(options: BatchSimulationOptions = {}): BatchSimulationResult {
+    if (this.universalRunner) {
+      const res = this.universalRunner.stepBatch(options);
+      this.currentTime = res.finalTime;
+      for (const [name, col] of res.outputMap) {
+        const vr = this.varMap.get(name);
+        if (vr !== undefined && col.length > 0) {
+          this.shadowVars.set(vr, col[col.length - 1]!);
+        }
+      }
+      return res;
+    }
+
     const tStart = performance.now();
     const startTime = options.startTime ?? this.currentTime;
     const dt = options.stepSize ?? 0.01;
@@ -244,9 +305,17 @@ export class BlinkWasmRunner implements WasmFmuRunner {
     return this.wasmInstance;
   }
 
+  getUniversalRunner(): UniversalBinaryRunner | null {
+    return this.universalRunner;
+  }
+
   terminate(): void {
     if (this.isTerminated) return;
     this.isTerminated = true;
+    if (this.universalRunner) {
+      this.universalRunner.terminate();
+      this.universalRunner = null;
+    }
     this.wasmInstance = null;
     this.wasmModule = null;
   }

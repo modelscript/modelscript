@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/design-tokens",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "ModelScript & Ansatz design system — shared CSS tokens and primitive component styles for the docs site, web app, and IDE webviews",
   "keywords": [
     "modelscript",

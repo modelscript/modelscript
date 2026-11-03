@@ -988,7 +988,8 @@ export const IdeWorkspacePage: React.FC = () => {
         <Box display="flex" flexDirection="column">
           {repos.map((repo) => {
             const fullPath = `${repo.namespace}/${repo.project}`;
-            const wsUrl = `/vscode/workbench#${fullPath}@main`;
+            const branch = repo.default_branch || "main";
+            const wsUrl = `/vscode/workbench#${fullPath}@${branch}`;
             return (
               <RepoRow key={`${repo.provider}-${fullPath}`}>
                 <Box display="flex" flexDirection="column" gap={0.5} style={{ minWidth: 0 }}>

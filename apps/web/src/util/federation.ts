@@ -41,8 +41,29 @@ export function parseFederatedHandle(rawHandle: string | undefined | null): Pars
 /**
  * Builds the canonical WebFinger / ActivityPub resource handle (acct:user@domain).
  */
-export function getAcctUri(username: string, localDomain = "ansatz.social"): string {
+export function getAcctUri(
+  username: string,
+  localDomain = typeof window !== "undefined" && window.location?.host ? window.location.host : "localhost:3001",
+): string {
   const parsed = parseFederatedHandle(username);
   const domain = parsed.remoteDomain || localDomain;
   return `acct:${parsed.localUsername}@${domain}`;
+}
+
+/**
+ * Resolves a local user's ActivityPub actor URL dynamically based on the running instance origin,
+ * replacing legacy hardcoded hub.modelscript.org URLs when running on another host.
+ */
+export function resolveLocalActorUrl(username: string, rawActorUrl?: string | null, currentOrigin?: string): string {
+  const origin = (
+    currentOrigin || (typeof window !== "undefined" ? window.location.origin : "http://localhost:3001")
+  ).replace(/\/+$/, "");
+  const cleanUser = (username || "username").replace(/^@/, "");
+  if (!rawActorUrl || !rawActorUrl.trim()) {
+    return `${origin}/users/${cleanUser}`;
+  }
+  if (rawActorUrl.includes("://hub.modelscript.org") && !origin.includes("://hub.modelscript.org")) {
+    return `${origin}/users/${cleanUser}`;
+  }
+  return rawActorUrl;
 }

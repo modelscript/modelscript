@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { ArrowRightIcon, PlusIcon, ZapIcon } from "@primer/octicons-react";
-import { Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
 import Box from "../../Box";
-import { WalletCard as StyledWalletCard, TopUpButton } from "../styles";
+import { CardHeader, CardTitle, WalletCard as StyledWalletCard, TopUpButton } from "../styles";
 
 export interface WalletCardProps {
   creditBalance: number;
@@ -14,20 +13,10 @@ export interface WalletCardProps {
 export const WalletCard: React.FC<WalletCardProps> = ({ creditBalance }) => {
   return (
     <StyledWalletCard>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Box display="flex" alignItems="center" gap={2}>
+      <CardHeader>
+        <Box display="flex" alignItems="center" gap="6px">
           <ZapIcon size={14} fill="var(--color-accent-purple)" />
-          <Text
-            style={{
-              fontSize: "12px",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--color-text-muted)",
-            }}
-          >
-            Compute Wallet
-          </Text>
+          <CardTitle>Compute Wallet</CardTitle>
         </Box>
         <span
           style={{
@@ -44,7 +33,7 @@ export const WalletCard: React.FC<WalletCardProps> = ({ creditBalance }) => {
         >
           RESEARCH TIER
         </span>
-      </Box>
+      </CardHeader>
 
       <Box display="flex" justifyContent="space-between" alignItems="baseline" mb={2}>
         <div>

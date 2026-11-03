@@ -6,6 +6,7 @@ import React from "react";
 import Box from "../../../components/Box";
 import Breadcrumbs from "../../../components/Breadcrumbs";
 import { formatFormalSignature } from "../../../components/classTreeUtils";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { HeaderBar, TabBar, TabButton, TabCountBadge } from "../styles";
 import type { ClassDetail, ClassTabId, JobStatus } from "../types";
 
@@ -19,6 +20,7 @@ export interface ClassDetailHeaderProps {
   setActiveTab: (tab: ClassTabId) => void;
   equationsCount: number;
   studiesCount?: number | undefined;
+  hasCae?: boolean | undefined;
 }
 
 export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
@@ -31,7 +33,10 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   setActiveTab,
   equationsCount,
   studiesCount = 0,
+  hasCae,
 }) => {
+  const flagCae = useFeatureFlag("cae_cloud_solver");
+  const showStudies = hasCae ?? flagCae;
   const signature = formatFormalSignature({
     className,
     classKind: cls.classKind,
@@ -45,76 +50,78 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   const prefix = hasRootPrefix ? `${rootPkgName}.` : "";
 
   return (
-    <HeaderBar>
-      <Box mb={3}>
-        <Breadcrumbs
-          items={[
-            { label: "Packages", href: "/packages" },
-            { label: libraryName, href: `/packages/${libraryName}` },
-            { label: `v${version}`, href: `/packages/${libraryName}/${version}` },
-            ...classSegments.map((segment, i, parts) => {
-              const fullName = prefix + parts.slice(0, i + 1).join(".");
-              const isLast = i === parts.length - 1;
-              return {
-                label: segment,
-                href: isLast ? undefined : `/packages/${libraryName}/${version}/classes/${fullName}`,
-              };
-            }),
-          ]}
-        />
-      </Box>
-      <Box display="flex" alignItems="center" justifyContent="space-between" gap="16px" flexWrap="wrap">
-        <Box style={{ width: "100%" }}>
-          <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
-            <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
-              {className}
-            </Heading>
-            <Label
-              variant="accent"
+    <>
+      <HeaderBar>
+        <Box mb={3}>
+          <Breadcrumbs
+            items={[
+              { label: "Packages", href: "/packages" },
+              { label: libraryName, href: `/packages/${libraryName}` },
+              { label: `v${version}`, href: `/packages/${libraryName}/${version}` },
+              ...classSegments.map((segment, i, parts) => {
+                const fullName = prefix + parts.slice(0, i + 1).join(".");
+                const isLast = i === parts.length - 1;
+                return {
+                  label: segment,
+                  href: isLast ? undefined : `/packages/${libraryName}/${version}/classes/${fullName}`,
+                };
+              }),
+            ]}
+          />
+        </Box>
+        <Box display="flex" alignItems="center" justifyContent="space-between" gap="16px" flexWrap="wrap">
+          <Box style={{ width: "100%" }}>
+            <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
+              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
+                {className}
+              </Heading>
+              <Label
+                variant="accent"
+                style={{
+                  fontSize: 13,
+                  padding: "2px 10px",
+                  background: "var(--color-accent-blue-bg)",
+                  color: "var(--color-accent-blue)",
+                  border: "1px solid var(--color-accent-blue-border)",
+                }}
+              >
+                {cls.classKind}
+              </Label>
+              {cls.sourceFile && (
+                <Label
+                  variant="secondary"
+                  style={{ fontSize: 11, fontFamily: "var(--font-mono, monospace)", opacity: 0.85 }}
+                >
+                  {cls.sourceFile}
+                </Label>
+              )}
+              {jobStatus && jobStatus !== "completed" && (
+                <Label variant="attention">{jobStatus === "processing" ? "Processing…" : "Pending"}</Label>
+              )}
+            </Box>
+            {cls.description && (
+              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "6px 0 0" }}>
+                {cls.description}
+              </Text>
+            )}
+            <div
               style={{
-                fontSize: 13,
-                padding: "2px 10px",
-                background: "var(--color-accent-blue-bg)",
-                color: "var(--color-accent-blue)",
-                border: "1px solid var(--color-accent-blue-border)",
+                marginTop: 10,
+                padding: "8px 12px",
+                borderRadius: 8,
+                background: "var(--color-glass-bg)",
+                border: "1px solid var(--color-border)",
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 12.5,
+                color: "var(--color-text-primary)",
+                overflowX: "auto",
               }}
             >
-              {cls.classKind}
-            </Label>
-            {cls.sourceFile && (
-              <Label
-                variant="secondary"
-                style={{ fontSize: 11, fontFamily: "var(--font-mono, monospace)", opacity: 0.85 }}
-              >
-                {cls.sourceFile}
-              </Label>
-            )}
-            {jobStatus && jobStatus !== "completed" && (
-              <Label variant="attention">{jobStatus === "processing" ? "Processing…" : "Pending"}</Label>
-            )}
+              {signature}
+            </div>
           </Box>
-          {cls.description && (
-            <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "6px 0 0" }}>
-              {cls.description}
-            </Text>
-          )}
-          <div
-            style={{
-              marginTop: 10,
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: "var(--color-glass-bg)",
-              border: "1px solid var(--color-border)",
-              fontFamily: "var(--font-mono, monospace)",
-              fontSize: 12.5,
-              color: "var(--color-text-primary)",
-              overflowX: "auto",
-            }}
-          >
-            {signature}
-          </div>
         </Box>
-      </Box>
+      </HeaderBar>
 
       {/* ── Javadoc Navigation Tabs ── */}
       <TabBar role="tablist" aria-label="Class Documentation Sections">
@@ -149,16 +156,18 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
             <TabCountBadge $active={activeTab === "equations"}>{equationsCount}</TabCountBadge>
           </TabButton>
         )}
-        <TabButton
-          role="tab"
-          aria-selected={activeTab === "studies"}
-          $active={activeTab === "studies"}
-          onClick={() => setActiveTab("studies")}
-        >
-          <BeakerIcon size={15} />
-          Studies &amp; Jobs
-          {studiesCount > 0 && <TabCountBadge $active={activeTab === "studies"}>{studiesCount}</TabCountBadge>}
-        </TabButton>
+        {showStudies && (
+          <TabButton
+            role="tab"
+            aria-selected={activeTab === "studies"}
+            $active={activeTab === "studies"}
+            onClick={() => setActiveTab("studies")}
+          >
+            <BeakerIcon size={15} />
+            Studies &amp; Jobs
+            {studiesCount > 0 && <TabCountBadge $active={activeTab === "studies"}>{studiesCount}</TabCountBadge>}
+          </TabButton>
+        )}
         {cls.sourceCode && (
           <TabButton
             role="tab"
@@ -171,6 +180,6 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
           </TabButton>
         )}
       </TabBar>
-    </HeaderBar>
+    </>
   );
 };

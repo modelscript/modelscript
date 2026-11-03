@@ -31,16 +31,18 @@ import { useTheme } from "../theme";
 import DevModeBar from "./DevModeBar";
 import ErrorBoundary from "./ErrorBoundary";
 import RightPanel from "./RightPanel";
+import { scrollToTop } from "./ScrollToTop";
 import Sidebar from "./Sidebar";
 
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { ComposeContext, type ComposeInitialState } from "./ComposeContext";
+import ProductTourOverlay from "./ProductTourOverlay";
 
 const ComposeModal = React.lazy(() => import("./ComposeModal"));
 const DevFlagsModal = React.lazy(() => import("./DevFlagsModal").then((m) => ({ default: m.DevFlagsModal })));
 
-const ShellContainer = styled.div`
+const ShellContainer = styled.div<{ $hasGuestBanner?: boolean | undefined }>`
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -49,18 +51,27 @@ const ShellContainer = styled.div`
   color: var(--color-text-primary);
   padding-top: var(--dev-header-height, 0px);
   box-sizing: border-box;
+  --guest-banner-height: 0px;
+
+  @media (max-width: 899px) {
+    --guest-banner-height: ${(props) => (props.$hasGuestBanner ? "var(--measured-guest-banner-height, 74px)" : "0px")};
+  }
+
+  @media (max-width: 500px) {
+    --guest-banner-height: 0px;
+  }
 `;
 
 const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean | undefined }>`
   display: flex;
   width: 100%;
-  max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : "1380px")};
+  max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : "1410px")};
   justify-content: center;
 `;
 
 /* Fixed basis (not flex: 1) so the sidebar sits at the same x-position on every
-   route, regardless of how wide the main column is. Sidebar itself is 275px
-   (80px rail at <=1280px), right-aligned in this column. */
+   route, regardless of how wide the main column is. Sidebar itself is 272px
+   (76px rail at <=1280px), right-aligned in this column. */
 const SidebarWrapper = styled.div`
   flex: 0 0 320px;
   display: flex;
@@ -76,9 +87,12 @@ const SidebarWrapper = styled.div`
 `;
 
 const RightPanelWrapper = styled.div`
-  flex: 1;
+  flex: 0 1 350px;
+  width: 100%;
+  min-width: 0;
   display: flex;
   justify-content: flex-start;
+  align-items: flex-start;
   max-width: 350px;
 
   @media (max-width: 1000px) {
@@ -95,18 +109,13 @@ const MainColumn = styled.main<{
     props.$isWideLayout || props.$isFullScreenLayout || props.$isInspectorLayout ? "1" : "0 1 740px"};
   width: 100%;
   max-width: ${(props) =>
-    props.$isFullScreenLayout
-      ? "100%"
-      : props.$isInspectorLayout
-        ? "1140px"
-        : props.$isWideLayout
-          ? "1150px"
-          : "740px"};
+    props.$isFullScreenLayout ? "100%" : props.$isInspectorLayout || props.$isWideLayout ? "1090px" : "740px"};
   min-width: 0;
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
   min-height: calc(100vh - var(--dev-header-height, 0px));
-  padding-bottom: ${(props) => (props.$isFullScreenLayout ? "0px" : "80px")};
+  padding-bottom: ${(props) =>
+    props.$isFullScreenLayout ? "var(--guest-banner-height, 0px)" : "calc(80px + var(--guest-banner-height, 0px))"};
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -283,6 +292,10 @@ const BannerContent = styled.div`
   width: 100%;
   padding: 0 40px;
 
+  @media (max-width: 899px) {
+    padding: 0 8px;
+  }
+
   @media (max-width: 500px) {
     padding: 0;
   }
@@ -347,6 +360,10 @@ const AppShell: React.FC = () => {
   const [isMoreOpen, setIsMoreOpen] = React.useState(false);
   const hasCaeJobs = useFeatureFlag("cae_cloud_solver");
   const hasIde = useFeatureFlag("heavy_vscode_ide");
+  const hasPackages = useFeatureFlag("package_browser");
+  const hasFeedsPage = useFeatureFlag("feeds_page");
+  const hasRssFeeds = useFeatureFlag("rss_feeds");
+  const hasFeeds = hasFeedsPage || hasRssFeeds;
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
 
@@ -365,6 +382,30 @@ const AppShell: React.FC = () => {
   React.useEffect(() => {
     setIsMoreOpen(false);
   }, [location.pathname]);
+
+  const handleNavWithScroll = React.useCallback(
+    (target: string) => {
+      if (location.pathname === target) {
+        scrollToTop({ smooth: true });
+      } else {
+        scrollToTop({ smooth: false });
+        navigate(target);
+      }
+    },
+    [location.pathname, navigate],
+  );
+
+  const handleMoreLinkClick = React.useCallback(
+    (target: string) => {
+      setIsMoreOpen(false);
+      if (location.pathname === target) {
+        scrollToTop({ smooth: true });
+      } else {
+        scrollToTop({ smooth: false });
+      }
+    },
+    [location.pathname],
+  );
 
   const isDev = import.meta.env.DEV;
 
@@ -405,7 +446,7 @@ const AppShell: React.FC = () => {
 
   React.useEffect(() => {
     const devBarActive = isDev && isDevHeaderVisible;
-    if (!user || (!hasCaeJobs && !devBarActive) || (!showsRightPanel && !devBarActive)) return;
+    if (!user || !hasCaeJobs || (!showsRightPanel && !devBarActive)) return;
     let mounted = true;
     const fetchCluster = () => {
       if (document.visibilityState !== "visible") return;
@@ -511,12 +552,38 @@ const AppShell: React.FC = () => {
     };
   }, [handleToggleDevHeader]);
 
+  const hasGuestBanner = !loading && !user;
+  const bannerRef = React.useRef<HTMLDivElement | null>(null);
+  const [guestBannerHeight, setGuestBannerHeight] = React.useState<number>(0);
+
+  React.useEffect(() => {
+    const el = bannerRef.current;
+    if (!el || !hasGuestBanner) {
+      setGuestBannerHeight(0);
+      return;
+    }
+    const updateHeight = () => {
+      if (!bannerRef.current) return;
+      const h = Math.round(bannerRef.current.getBoundingClientRect().height);
+      setGuestBannerHeight(h);
+    };
+    updateHeight();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateHeight) : null;
+    ro?.observe(el);
+    window.addEventListener("resize", updateHeight);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", updateHeight);
+    };
+  }, [hasGuestBanner]);
+
   return (
     <ComposeContext.Provider value={{ openCompose: handleOpenComposeContext }}>
       <div
         style={
           {
             "--dev-header-height": !isStandaloneRoute && isDev && isDevHeaderVisible ? "40px" : "0px",
+            ...(guestBannerHeight > 0 ? { "--measured-guest-banner-height": `${guestBannerHeight}px` } : {}),
           } as React.CSSProperties
         }
       >
@@ -540,22 +607,18 @@ const AppShell: React.FC = () => {
           </ErrorBoundary>
         ) : (
           <>
-            <ShellContainer>
+            <ShellContainer $hasGuestBanner={hasGuestBanner}>
               <ContentWrapper $isFullScreenLayout={isFullScreenLayout}>
                 <SidebarWrapper>
                   <Sidebar onPostClick={() => setIsComposeOpen(true)} />
                 </SidebarWrapper>
-                <MainColumn
-                  $isWideLayout={isWideLayout}
-                  $isFullScreenLayout={isFullScreenLayout}
-                  $isInspectorLayout={isInspectorLayout}
-                >
+                <MainColumn $isWideLayout={isWideLayout} $isFullScreenLayout={isFullScreenLayout}>
                   <ErrorBoundary>
                     <Outlet context={{ openCompose: handleOpenComposeContext }} />
                   </ErrorBoundary>
                 </MainColumn>
-                {!isWideLayout && !isFullScreenLayout && !isInspectorLayout && (
-                  <RightPanelWrapper>
+                {!isWideLayout && !isFullScreenLayout && (
+                  <RightPanelWrapper data-tour-id="tour-right-panel">
                     <RightPanel
                       clusterInfo={clusterStatus}
                       onOpenCommandPalette={() => {
@@ -567,18 +630,18 @@ const AppShell: React.FC = () => {
               </ContentWrapper>
             </ShellContainer>
 
-            {!loading && !user && (
-              <Banner>
+            {hasGuestBanner && (
+              <Banner ref={bannerRef} data-testid="guest-bottom-banner">
                 <BannerContent>
                   <Box display="flex" flexDirection="column" style={{ minWidth: 0 }}>
                     <BannerTitle>Join the {brandName} community</BannerTitle>
                     <BannerSubtitle>Share models, simulations, and results with engineers worldwide.</BannerSubtitle>
                   </Box>
                   <BannerActions>
-                    <button className="ms-btn ms-btn-secondary ms-btn-sm" onClick={() => navigate("/login")}>
+                    <button className="ms-btn ms-btn-secondary ms-btn-sm" onClick={() => handleNavWithScroll("/login")}>
                       Log in
                     </button>
-                    <button className="ms-btn ms-btn-primary ms-btn-sm" onClick={() => navigate("/signup")}>
+                    <button className="ms-btn ms-btn-primary ms-btn-sm" onClick={() => handleNavWithScroll("/signup")}>
                       Sign up
                     </button>
                   </BannerActions>
@@ -590,15 +653,16 @@ const AppShell: React.FC = () => {
               {user && (
                 <BottomBarButton
                   $active={location.pathname === "/home"}
-                  onClick={() => navigate("/home")}
+                  onClick={() => handleNavWithScroll("/home")}
                   aria-label="Home"
                 >
                   <HomeIcon size={24} />
                 </BottomBarButton>
               )}
               <BottomBarButton
+                data-tour-id="tour-mobile-explore"
                 $active={location.pathname === "/explore"}
-                onClick={() => navigate("/explore")}
+                onClick={() => handleNavWithScroll("/explore")}
                 aria-label="Explore"
               >
                 <SearchIcon size={24} />
@@ -609,7 +673,7 @@ const AppShell: React.FC = () => {
                   if (user) {
                     setIsComposeOpen(true);
                   } else {
-                    navigate("/login");
+                    handleNavWithScroll("/login");
                   }
                 }}
               >
@@ -617,7 +681,7 @@ const AppShell: React.FC = () => {
               </CenterPostButton>
               <BottomBarButton
                 $active={location.pathname === "/notifications"}
-                onClick={() => navigate(user ? "/notifications" : "/login")}
+                onClick={() => handleNavWithScroll(user ? "/notifications" : "/login")}
                 style={{ position: "relative" }}
                 aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
               >
@@ -630,7 +694,7 @@ const AppShell: React.FC = () => {
                       right: 4,
                       backgroundColor: "var(--color-accent-cyan)",
                       color: "white",
-                      borderRadius: "50%",
+                      borderRadius: "999px",
                       minWidth: "16px",
                       height: "16px",
                       display: "flex",
@@ -642,13 +706,13 @@ const AppShell: React.FC = () => {
                       boxShadow: "0 0 0 2px var(--color-bg-primary)",
                     }}
                   >
-                    {unreadCount > 9 ? "9+" : unreadCount}
+                    {unreadCount > 99 ? "99+" : unreadCount}
                   </div>
                 )}
               </BottomBarButton>
               <BottomBarButton
                 $active={Boolean(user && location.pathname === `/${user.username}`)}
-                onClick={() => navigate(user ? `/${user.username}` : "/login")}
+                onClick={() => handleNavWithScroll(user ? `/${user.username}` : "/login")}
                 aria-label="Profile"
               >
                 <PersonIcon size={24} />
@@ -668,24 +732,30 @@ const AppShell: React.FC = () => {
                 <MoreSheet role="dialog" aria-label="More" onClick={(e) => e.stopPropagation()}>
                   {user && (
                     <>
-                      <Link to="/bookmarks">
+                      <Link to="/bookmarks" onClick={() => handleMoreLinkClick("/bookmarks")}>
                         <BookmarkIcon size={20} /> Bookmarks
                       </Link>
-                      <Link to="/feeds">
-                        <RssIcon size={20} /> Feeds
-                      </Link>
+                      {hasFeeds && (
+                        <Link to="/feeds" onClick={() => handleMoreLinkClick("/feeds")}>
+                          <RssIcon size={20} /> Feeds
+                        </Link>
+                      )}
                       <hr />
                     </>
                   )}
-                  <Link to="/playground">
+                  <Link to="/playground" onClick={() => handleMoreLinkClick("/playground")}>
                     <PlayIcon size={20} /> Playground
                   </Link>
-                  <Link to="/packages">
-                    <PackageIcon size={20} /> Packages
-                  </Link>
-                  <Link to="/repos">
-                    <RepoIcon size={20} /> Repositories
-                  </Link>
+                  {hasPackages && (
+                    <Link to="/packages" onClick={() => handleMoreLinkClick("/packages")}>
+                      <PackageIcon size={20} /> Packages
+                    </Link>
+                  )}
+                  {hasRepos && (
+                    <Link to="/repos" onClick={() => handleMoreLinkClick("/repos")}>
+                      <RepoIcon size={20} /> Repositories
+                    </Link>
+                  )}
                   <Link
                     to={
                       branding.docsBaseUrl && !branding.docsBaseUrl.trim().startsWith("/")
@@ -697,18 +767,18 @@ const AppShell: React.FC = () => {
                     <BookIcon size={20} /> Docs
                   </Link>
                   {hasIde && (
-                    <Link to="/ide">
+                    <Link to="/ide" onClick={() => handleMoreLinkClick("/ide")}>
                       <CodeIcon size={20} /> IDE
                     </Link>
                   )}
                   {hasCaeJobs && (
-                    <Link to="/jobs">
+                    <Link to="/jobs" onClick={() => handleMoreLinkClick("/jobs")}>
                       <GearIcon size={20} /> Jobs
                     </Link>
                   )}
                   <hr />
                   {user && isAdmin && (
-                    <Link to="/admin">
+                    <Link to="/admin" onClick={() => handleMoreLinkClick("/admin")}>
                       <ShieldLockIcon size={20} />
                       <span style={{ flex: 1 }}>Admin</span>
                       {adminPendingCount > 0 && (
@@ -728,7 +798,7 @@ const AppShell: React.FC = () => {
                     </Link>
                   )}
                   {user && (
-                    <Link to="/settings">
+                    <Link to="/settings" onClick={() => handleMoreLinkClick("/settings")}>
                       <GearIcon size={20} /> Settings
                     </Link>
                   )}
@@ -738,10 +808,18 @@ const AppShell: React.FC = () => {
                   </button>
                   {!user && (
                     <div className="more-auth">
-                      <Link to="/login" className="ms-btn ms-btn-secondary ms-btn-lg">
+                      <Link
+                        to="/login"
+                        className="ms-btn ms-btn-secondary ms-btn-lg"
+                        onClick={() => handleMoreLinkClick("/login")}
+                      >
                         Log in
                       </Link>
-                      <Link to="/signup" className="ms-btn ms-btn-primary ms-btn-lg">
+                      <Link
+                        to="/signup"
+                        className="ms-btn ms-btn-primary ms-btn-lg"
+                        onClick={() => handleMoreLinkClick("/signup")}
+                      >
                         Sign up
                       </Link>
                     </div>
@@ -797,7 +875,7 @@ const AppShell: React.FC = () => {
                     setResetError(null);
                     try {
                       await resetDevDb();
-                      logout();
+                      logout({ redirect: false });
                       setTimeout(() => {
                         window.location.reload();
                       }, 100);
@@ -964,6 +1042,8 @@ const AppShell: React.FC = () => {
             <DevFlagsModal isOpen={isDevFlagsModalOpen} onClose={() => setIsDevFlagsModalOpen(false)} />
           </React.Suspense>
         )}
+
+        <ProductTourOverlay />
       </div>
     </ComposeContext.Provider>
   );

@@ -3,8 +3,11 @@
 import { scaleLinear } from "d3-scale";
 import React, { useMemo, useState } from "react";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
-import styled from "styled-components";
+import styledImport from "styled-components";
 import Box from "./Box";
+
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 const MapContainer = styled(Box)`
   width: 100%;
@@ -36,24 +39,9 @@ const HeaderTitle = styled.div`
   color: var(--color-fg-default);
 `;
 
-const PrivacyBadge = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background-color: rgba(6, 182, 212, 0.12);
-  color: var(--color-accent-cyan);
-  border: 1px solid rgba(6, 182, 212, 0.3);
-`;
-
 const LegendContainer = styled(Box)`
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 0 18px 8px;
   gap: 8px;
   font-size: 11px;
   color: var(--color-fg-muted);
@@ -68,12 +56,15 @@ const LegendGradient = styled.div`
 `;
 
 const BreakdownContainer = styled(Box)`
-  padding: 12px 18px 16px;
+  padding: 12px 18px 14px;
   border-top: 1px solid var(--color-border);
   background-color: var(--color-canvas-subtle, rgba(148, 163, 184, 0.04));
 `;
 
 const BreakdownTitle = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
@@ -86,8 +77,13 @@ const LocationRow = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  gap: 12px;
+  margin-bottom: 6px;
   font-size: 13px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 `;
 
 const LocationName = styled.div`
@@ -96,6 +92,11 @@ const LocationName = styled.div`
   gap: 8px;
   color: var(--color-fg-default);
   font-weight: 500;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 `;
 
 const RegionPill = styled.span`
@@ -177,6 +178,8 @@ const Tooltip = styled.div<{ $show: boolean; $x: number; $y: number; $flipX: boo
 
 const geoUrl = "/features.json";
 
+export const DEFAULT_MAX_TOP_LOCATIONS = 5;
+
 export interface LocationStat {
   country: string; // ISO 3166-1 alpha-2 or alpha-3 or numeric
   views: number;
@@ -192,6 +195,7 @@ interface WorldMapProps {
   data: LocationStat[];
   regionData?: RegionStat[] | undefined;
   totalViews?: number | undefined;
+  maxLocations?: number | undefined;
 }
 
 // Comprehensive ISO 3166-1 alpha-2 to UN M.49 3-digit numeric code map
@@ -418,6 +422,7 @@ const countryNames: Record<string, string> = {
   AR: "Argentina",
   CL: "Chile",
   CO: "Colombia",
+  AQ: "Antarctica",
 };
 
 const regionDisplayNames =
@@ -492,7 +497,12 @@ function resolveCountryDisplayName(code: string): string {
   return upper;
 }
 
-const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalViews }) => {
+const WorldMap: React.FC<WorldMapProps> = ({
+  data = [],
+  regionData = [],
+  totalViews,
+  maxLocations = DEFAULT_MAX_TOP_LOCATIONS,
+}) => {
   const [tooltipContent, setTooltipContent] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, flipX: false, flipY: false });
 
@@ -568,13 +578,17 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
     }
   };
 
-  // Top countries sorted by views
-  const topCountries = useMemo(() => {
-    return [...normalizedData]
-      .filter((d) => d.views > 0)
-      .sort((a, b) => b.views - a.views)
-      .slice(0, 6);
+  // Top countries sorted by views, capped to maxLocations so the analytics modal stays compact
+  const sortedCountries = useMemo(() => {
+    return [...normalizedData].filter((d) => d.views > 0).sort((a, b) => b.views - a.views);
   }, [normalizedData]);
+
+  const topCountries = useMemo(() => {
+    const limit = Math.max(1, maxLocations);
+    return sortedCountries.slice(0, limit);
+  }, [sortedCountries, maxLocations]);
+
+  const otherCountriesCount = Math.max(0, sortedCountries.length - topCountries.length);
 
   return (
     <MapContainer>
@@ -585,78 +599,94 @@ const WorldMap: React.FC<WorldMapProps> = ({ data = [], regionData = [], totalVi
             ({normalizedData.length} {normalizedData.length === 1 ? "country" : "countries"})
           </span>
         </HeaderTitle>
-        <PrivacyBadge title="Privacy-Preserving Analytics — Zero Raw IP Storage">
-          <span>🛡️</span>
-          <span>Scrubbed Geo-Metrics</span>
-        </PrivacyBadge>
+        <LegendContainer>
+          <span>Low</span>
+          <LegendGradient />
+          <span>High</span>
+        </LegendContainer>
       </MapHeader>
 
-      <LegendContainer>
-        <span>Low</span>
-        <LegendGradient />
-        <span>High</span>
-      </LegendContainer>
-
       <ComposableMap
-        projection="geoMercator"
-        projectionConfig={{ scale: 100, center: [0, 20] }}
-        viewBox="0 0 800 420"
+        projection="geoNaturalEarth1"
+        width={800}
+        height={340}
+        projectionConfig={{ scale: 138, center: [0, 0] }}
+        viewBox="0 0 800 340"
         style={{ width: "100%", height: "auto" }}
       >
-        <Geographies geography={geoUrl}>
-          {({ geographies }) =>
-            geographies.map((geo) => {
-              const countryId = geo.id ? String(geo.id).padStart(3, "0") : geo.properties.ISO_A3 || geo.properties.name;
-              const views = dataMap.get(countryId) || 0;
-              const hasViews = views > 0;
+        <g transform="translate(0, 21.5) scale(1, 0.85)">
+          <Geographies geography={geoUrl}>
+            {({ geographies }) =>
+              geographies.map((geo) => {
+                const countryId = geo.id
+                  ? String(geo.id).padStart(3, "0")
+                  : geo.properties.ISO_A3 || geo.properties.name;
+                const views = dataMap.get(countryId) || 0;
+                const hasViews = views > 0;
 
-              return (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={hasViews ? colorScale(views) : "var(--color-map-land, rgba(148, 163, 184, 0.16))"}
-                  stroke="var(--color-map-stroke, rgba(148, 163, 184, 0.25))"
-                  strokeWidth={0.5}
-                  style={{
-                    default: {
-                      outline: "none",
-                      transition: "fill 0.2s ease",
-                    },
-                    hover: {
-                      fill: hasViews
-                        ? "var(--color-accent-cyan)"
-                        : "var(--color-map-land-hover, rgba(148, 163, 184, 0.28))",
-                      stroke: hasViews ? "var(--color-accent-cyan)" : "var(--color-border-strong)",
-                      strokeWidth: 1,
-                      outline: "none",
-                      cursor: "pointer",
-                    },
-                    pressed: { outline: "none" },
-                  }}
-                  onMouseEnter={(e) => {
-                    const countryName = geo.properties.name || "Unknown";
-                    const pct = totalCalculatedViews > 0 ? Math.round((views / totalCalculatedViews) * 100) : 0;
-                    setTooltipContent(
-                      `${countryName}: ${views} view${views !== 1 ? "s" : ""}${hasViews ? ` (${pct}%)` : ""}`,
-                    );
-                    updateTooltipPosition(e);
-                  }}
-                  onMouseMove={(e) => {
-                    updateTooltipPosition(e);
-                  }}
-                  onMouseLeave={() => {
-                    setTooltipContent(null);
-                  }}
-                />
-              );
-            })
-          }
-        </Geographies>
+                return (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill={hasViews ? colorScale(views) : "var(--color-map-land, rgba(148, 163, 184, 0.16))"}
+                    stroke="var(--color-map-stroke, rgba(148, 163, 184, 0.25))"
+                    strokeWidth={0.5}
+                    style={{
+                      default: {
+                        outline: "none",
+                        transition: "fill 0.2s ease",
+                      },
+                      hover: {
+                        fill: hasViews
+                          ? "var(--color-accent-cyan)"
+                          : "var(--color-map-land-hover, rgba(148, 163, 184, 0.28))",
+                        stroke: hasViews ? "var(--color-accent-cyan)" : "var(--color-border-strong)",
+                        strokeWidth: 1,
+                        outline: "none",
+                        cursor: "pointer",
+                      },
+                      pressed: { outline: "none" },
+                    }}
+                    onMouseEnter={(e) => {
+                      const countryName = geo.properties.name || "Unknown";
+                      const pct = totalCalculatedViews > 0 ? Math.round((views / totalCalculatedViews) * 100) : 0;
+                      setTooltipContent(
+                        `${countryName}: ${views} view${views !== 1 ? "s" : ""}${hasViews ? ` (${pct}%)` : ""}`,
+                      );
+                      updateTooltipPosition(e);
+                    }}
+                    onMouseMove={(e) => {
+                      updateTooltipPosition(e);
+                    }}
+                    onMouseLeave={() => {
+                      setTooltipContent(null);
+                    }}
+                  />
+                );
+              })
+            }
+          </Geographies>
+        </g>
       </ComposableMap>
 
       {(topCountries.length > 0 || unresolvedViews > 0) && (
         <BreakdownContainer>
-          <BreakdownTitle>Top Viewer Locations</BreakdownTitle>
+          <BreakdownTitle>
+            <span>Top Viewer Locations</span>
+            {otherCountriesCount > 0 && (
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  textTransform: "none",
+                  letterSpacing: 0,
+                  color: "var(--color-fg-muted)",
+                }}
+              >
+                +{otherCountriesCount} other {otherCountriesCount === 1 ? "country" : "countries"}
+              </span>
+            )}
+          </BreakdownTitle>
           {topCountries.map((c) => {
             const code = c.country.toUpperCase();
             const name = resolveCountryDisplayName(code);

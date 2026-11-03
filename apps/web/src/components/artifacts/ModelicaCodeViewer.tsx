@@ -1,25 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import Editor from "@monaco-editor/react";
-import { CheckIcon, CodeIcon, CopyIcon, PlayIcon, WorkflowIcon } from "@primer/octicons-react";
-import { Button, Text, useTheme } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import { CheckIcon, CodeIcon, CopyIcon, GraphIcon, PlayIcon, StackIcon, WorkflowIcon } from "@primer/octicons-react";
+import { Button, Spinner, Text, useTheme } from "@primer/react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
+const MorselEditor = React.lazy(() => import("../morsel/Morsel"));
+
 interface ModelicaCodeViewerProps {
   viewConfig: any;
   isFullScreen?: boolean | undefined;
 }
 
+type CodeViewerTab = "code" | "diagram" | "simulate" | "3d" | "split";
+
 const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "360px")};
   background: var(--color-canvas-default);
-  border: 1px solid var(--color-border-default);
+  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
   display: flex;
   flex-direction: column;
@@ -41,7 +45,8 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
   const navigate = useNavigate();
   const { resolvedColorMode } = useTheme();
   const [copied, setCopied] = useState(false);
-  const [viewMode, setViewMode] = useState<"code" | "diagram">("code");
+  const [viewMode, setViewMode] = useState<CodeViewerTab>("code");
+  const [isInteractiveDiagram, setIsInteractiveDiagram] = useState(false);
   const [fetchedCode, setFetchedCode] = useState<string | null>(null);
 
   const inlineCode = viewConfig?.code || viewConfig?.content || "";
@@ -72,74 +77,165 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
     return "";
   }, [pregenSvg]);
 
-  const effectiveViewMode: "code" | "diagram" = viewMode === "diagram" && svgMarkup ? "diagram" : "code";
-
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const usesMorselRuntime =
+    viewMode === "simulate" ||
+    viewMode === "3d" ||
+    viewMode === "split" ||
+    (viewMode === "diagram" && (!svgMarkup || isInteractiveDiagram || isFullScreen));
+
+  const morselInitialView =
+    viewMode === "simulate"
+      ? "simulation"
+      : viewMode === "3d"
+        ? "3d"
+        : viewMode === "split"
+          ? "split-columns"
+          : "diagram";
+
   return (
     <Wrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <Box display="flex" alignItems="center" gap={2}>
-          <CodeIcon size={16} fill="var(--color-accent-fg)" />
-          <Text style={{ fontWeight: "bold", fontSize: "13px", color: "var(--color-text-primary)" }}>{title}</Text>
+          {!isFullScreen && (
+            <>
+              <CodeIcon size={16} fill="var(--color-accent-fg)" />
+              <Text style={{ fontWeight: "bold", fontSize: "13px", color: "var(--color-text-primary)" }}>{title}</Text>
+            </>
+          )}
+          <Box
+            display="flex"
+            bg="rgba(0,0,0,0.2)"
+            borderRadius="6px"
+            p="2px"
+            border="1px solid var(--color-border-default)"
+            role="tablist"
+            aria-label="Modelica viewer mode"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "code"}
+              onClick={() => setViewMode("code")}
+              style={{
+                background: viewMode === "code" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                color: viewMode === "code" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <CodeIcon size={12} /> Code
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "diagram"}
+              onClick={() => setViewMode("diagram")}
+              style={{
+                background: viewMode === "diagram" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                color: viewMode === "diagram" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <WorkflowIcon size={12} /> Diagram
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "simulate"}
+              onClick={() => setViewMode("simulate")}
+              style={{
+                background: viewMode === "simulate" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                color: viewMode === "simulate" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <GraphIcon size={12} /> Simulate
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "3d"}
+              onClick={() => setViewMode("3d")}
+              style={{
+                background: viewMode === "3d" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                color: viewMode === "3d" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <StackIcon size={12} /> 3D
+            </button>
+            {isFullScreen && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === "split"}
+                onClick={() => setViewMode("split")}
+                style={{
+                  background: viewMode === "split" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                  color: viewMode === "split" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                Split
+              </button>
+            )}
+          </Box>
         </Box>
         <Box display="flex" alignItems="center" gap={2}>
-          {svgMarkup && (
-            <Box
-              display="flex"
-              bg="rgba(0,0,0,0.2)"
-              borderRadius="6px"
-              p="2px"
-              border="1px solid var(--color-border-default)"
-            >
-              <button
-                type="button"
-                onClick={() => setViewMode("diagram")}
-                style={{
-                  background: effectiveViewMode === "diagram" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                  color: effectiveViewMode === "diagram" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "2px 8px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <WorkflowIcon size={12} /> Diagram
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("code")}
-                style={{
-                  background: effectiveViewMode === "code" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                  color: effectiveViewMode === "code" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "2px 8px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <CodeIcon size={12} /> Code
-              </button>
-            </Box>
+          {viewMode === "diagram" && svgMarkup && !isInteractiveDiagram && !isFullScreen && (
+            <Button size="small" onClick={() => setIsInteractiveDiagram(true)}>
+              Interactive Canvas
+            </Button>
           )}
           <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
             {copied ? "Copied" : "Copy"}
           </Button>
-          {Boolean(viewConfig?.standalone) && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
               variant="primary"
@@ -161,8 +257,30 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
         </Box>
       </Toolbar>
 
-      <Box flex={1} style={{ minHeight: "220px", height: "100%", overflow: "auto" }}>
-        {effectiveViewMode === "diagram" && svgMarkup ? (
+      <Box flex={1} style={{ minHeight: "220px", height: "100%", overflow: "auto", position: "relative" }}>
+        {usesMorselRuntime ? (
+          <Suspense
+            fallback={
+              <Box display="flex" alignItems="center" justifyContent="center" height="100%" gap={2}>
+                <Spinner size="small" />
+                <Text fontSize="12px" color="var(--color-fg-muted)">
+                  Initializing interactive runtime…
+                </Text>
+              </Box>
+            }
+          >
+            <MorselEditor
+              dataUrl={null}
+              initialCode={code}
+              embed={true}
+              initialDialect={dialect}
+              initialView={morselInitialView}
+              simulateTriggerCount={viewMode === "simulate" || viewMode === "3d" ? 1 : undefined}
+              showParameterRibbon={true}
+              hideFloatingDock={true}
+            />
+          </Suspense>
+        ) : viewMode === "diagram" && svgMarkup ? (
           <Box
             p={3}
             display="flex"

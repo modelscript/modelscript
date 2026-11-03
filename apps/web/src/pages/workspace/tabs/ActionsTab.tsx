@@ -130,29 +130,13 @@ export const ActionsTab: React.FC<ActionsTabProps> = ({ projectId, provider, def
       if (res?.review) {
         setBotReviews((prev) => [res.review, ...prev]);
         showToast("Completed AI Engineering Audit", "success");
-        return;
       }
-    } catch {
-      // Fallback for unauthenticated or unlinked repos
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to run AI Engineering Audit.";
+      showToast(msg, "error");
     } finally {
       setIsRunningAudit(false);
     }
-
-    const fallbackAudit: RepoBotReviewRecord = {
-      id: `audit-${Date.now()}`,
-      repo_id: projectId,
-      commit_sha: pipelines[0]?.sha?.slice(0, 7) || "a1b2c3d",
-      author: "modelscript-bot",
-      status: "approved",
-      created_at: new Date().toISOString(),
-      summary: `### 🤖 Automated Engineering Verification Audit — \`${projectId}\`
-
-- **Structural DAE Check:** All top-level simulation models in \`${defaultBranch}\` exhibit balanced equations and variables (Pantelides index $\\le 1$).
-- **SI Unit Consistency:** Verified physical connectors and parameter bindings against ISO 80000-1 units.
-- **FMI Co-Simulation Readiness:** Exported FMU descriptors pass causality and variability constraints.`,
-    };
-    setBotReviews((prev) => [fallbackAudit, ...prev]);
-    showToast("Completed AI Engineering Audit", "success");
   };
 
   if (loading) {

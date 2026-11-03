@@ -71,6 +71,17 @@ describe("Admin Email & SMTP Studio, Template Engine, Rich Social Emails & Diges
     assert.equal(rawSettings.smtpPassConfigured, true);
     assert.equal(defaultMailer.getDriver(), "smtp");
     assert.equal(defaultMailer.isConfiguredForLiveDelivery(), true);
+
+    // Simulate server restart: reset defaultMailer to console, then open a fresh LibraryDatabase on the same SQLite path
+    defaultMailer.configure({ driver: "console", smtpHost: "" });
+    assert.equal(defaultMailer.getDriver(), "console");
+    const restartedDb = new LibraryDatabase(path.join(tmpDir, "db"));
+    try {
+      assert.equal(defaultMailer.getDriver(), "smtp");
+      assert.equal(defaultMailer.isConfiguredForLiveDelivery(), true);
+    } finally {
+      restartedDb.db.close();
+    }
   });
 
   it("2. Runs interactive SMTP handshake diagnostics step-by-step via POST /api/v1/admin/email/test-connection", async () => {

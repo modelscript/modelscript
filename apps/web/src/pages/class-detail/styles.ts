@@ -2,7 +2,9 @@
 
 import { Heading } from "@primer/react";
 import { Link } from "react-router-dom";
-import styled, { css, keyframes } from "styled-components";
+import styledImport, { css, keyframes } from "styled-components";
+
+const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
 
 export const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(8px); }
@@ -128,20 +130,33 @@ export const HeaderBar = styled.div`
   max-width: none;
   width: 100%;
   margin: 0 auto;
-  padding: 28px 40px 0;
+  padding: 28px 40px 20px;
   box-sizing: border-box;
-  border-bottom: 1px solid var(--color-border);
 
   @media (max-width: 768px) {
-    padding: 20px 20px 0;
+    padding: 20px 20px 16px;
   }
 `;
 
 export const TabBar = styled.div`
   display: flex;
   gap: 4px;
-  margin-top: 20px;
+  width: 100%;
+  padding: 0 40px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-border);
   overflow-x: auto;
+  position: sticky;
+  top: var(--dev-header-height, 0px);
+  z-index: 45;
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  transition: background-color 0.25s ease;
+
+  @media (max-width: 768px) {
+    padding: 0 20px;
+  }
 `;
 
 export const TabButton = styled.button<{ $active: boolean }>`

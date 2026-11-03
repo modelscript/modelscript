@@ -177,6 +177,19 @@ api.interceptors.response.use(
       } catch {
         // Ignore in non-DOM environments
       }
+    } else if (
+      error.response &&
+      (error.response.status === 502 || error.response.status === 504) &&
+      error.config &&
+      (error.config.method?.toUpperCase() === "GET" || error.config.method?.toUpperCase() === "HEAD")
+    ) {
+      const retryConfig = error.config as InternalAxiosRequestConfig & { _gatewayRetryCount?: number };
+      const currentRetries = retryConfig._gatewayRetryCount ?? 0;
+      if (currentRetries < 3) {
+        retryConfig._gatewayRetryCount = currentRetries + 1;
+        const delayMs = 600 * Math.pow(1.5, currentRetries);
+        return new Promise((resolve) => setTimeout(resolve, delayMs)).then(() => api.request(retryConfig));
+      }
     }
     return Promise.reject(error);
   },

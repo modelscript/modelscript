@@ -191,9 +191,20 @@ export function simulateThreeFluidDAE(
   const profiles = [{ time: 0, cells: JSON.parse(JSON.stringify(cells)) }];
 
   let currentTime = 0;
-  const numSteps = Math.min(100, Math.ceil(duration / dt));
+  const numSteps = Math.max(1, Math.min(100000, Math.ceil(duration / Math.max(1e-4, dt))));
   let peakInletPressurePa = cells[0]?.pressurePa ?? pInlet;
   let peakArrivalPressurePa = cells[numCells - 1]?.pressurePa ?? pOutlet;
+
+  const fpHeat = model.flowpaths[0]?.heatTransfer;
+  const tAmbient = fpHeat?.ambientTemperature ?? 277.15;
+  let uWall = 15.0;
+  if (fpHeat && fpHeat.layers.length > 0) {
+    let rWall = 1.0 / Math.max(0.1, fpHeat.ambientHeatTransferCoeff);
+    for (const layer of fpHeat.layers) {
+      rWall += layer.thickness / Math.max(0.01, layer.conductivity);
+    }
+    uWall = 1.0 / rWall;
+  }
 
   // Time integration loop
   for (let step = 1; step <= numSteps; step++) {
@@ -420,10 +431,23 @@ export function simulateThreeFluidDAE(
         const emulsion = evaluateEmulsionViscosity(localWc, 0.008, 0.001);
         const filmThick = dPipe * 0.5 * (1.0 - Math.sqrt(Math.max(0.01, 1.0 - (nextAFo + nextAFw))));
 
+        // Mixture thermal energy equation: enthalpy advection + ambient wall heat loss
+        const rhoG = Math.max(5.0, (c.pressurePa / 1e5) * 0.82);
+        const rhoMix = nextAGas * rhoG + (nextAFo + nextADo) * rhoO + (nextAFw + nextADw) * rhoW;
+        const cpMix =
+          (nextAGas * rhoG * 2200.0 + (nextAFo + nextADo) * rhoO * 2100.0 + (nextAFw + nextADw) * rhoW * 4184.0) /
+          Math.max(1.0, rhoMix);
+        const uMix =
+          nextAGas * c.velocityGas + (nextAFo + nextAFw) * c.velocityFilm + (nextADo + nextADw) * c.velocityDroplet;
+        const tUp = i === 0 ? tInlet : cells[i - 1]!.temperatureK;
+        const dTAdv = -(Math.max(0.0, uMix) / dxi) * (c.temperatureK - tUp);
+        const dTWall = -((4.0 * uWall) / Math.max(1.0, rhoMix * cpMix * dPipe)) * (c.temperatureK - tAmbient);
+        const nextTempK = Math.max(250.0, Math.min(450.0, c.temperatureK + (dTAdv + dTWall) * dtSub));
+
         nextCells[i] = {
           x: c.x,
           pressurePa: c.pressurePa,
-          temperatureK: c.temperatureK,
+          temperatureK: nextTempK,
           alphaGas: nextAGas,
           alphaFilmOil: nextAFo,
           alphaFilmWater: nextAFw,

@@ -4,6 +4,7 @@ import { PlayIcon, ScreenFullIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import {
   buildEditorUrlForArtifact,
   isMultiFileArtifact,
@@ -30,6 +31,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
   onRunOnHpc,
 }) => {
   const navigate = useNavigate();
+  const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
 
   const isMultiFile = isMultiFileArtifact({
     view_type: artifact?.view_type,
@@ -98,12 +100,12 @@ export const CardFooter: React.FC<CardFooterProps> = ({
     <Box
       px={3}
       py={1}
-      borderTop="1px solid var(--color-border)"
-      backgroundColor="var(--color-canvas-subtle)"
+      borderTop="1px solid var(--color-accent-blue-border, var(--color-border-default))"
+      backgroundColor="var(--ms-brand-soft, var(--color-canvas-subtle))"
       display="flex"
       justifyContent="space-between"
       alignItems="center"
-      style={{ gap: "10px", minHeight: "38px" }}
+      style={{ gap: "10px", minHeight: "40px" }}
     >
       <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0, flex: 1 }}>
         {isUntitledMediaOr3dViewer ? (
@@ -112,7 +114,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
               fontSize: "12.5px",
               lineHeight: "18px",
               fontWeight: 600,
-              color: "var(--color-fg-muted)",
+              color: "var(--color-fg-default)",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -126,16 +128,16 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             style={{
               fontSize: "10.5px",
               lineHeight: "14px",
-              background: "rgba(148, 163, 184, 0.12)",
-              color: "var(--color-fg-muted)",
+              background: "var(--color-canvas-default)",
+              color: "var(--color-fg-default)",
               border: "1px solid var(--color-border-default)",
-              padding: "2px 7px",
+              padding: "2px 8px",
               borderRadius: "9999px",
-              fontWeight: 600,
+              fontWeight: 700,
               fontFamily: "var(--font-mono, monospace)",
               whiteSpace: "nowrap",
               textTransform: "uppercase",
-              letterSpacing: "0.03em",
+              letterSpacing: "0.04em",
             }}
           >
             {rawViewType || "ARTIFACT"}
@@ -146,10 +148,10 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             style={{
               fontSize: "11px",
               lineHeight: "14px",
-              background: "rgba(6, 182, 212, 0.15)",
-              color: "var(--color-accent-cyan)",
-              border: "1px solid rgba(6, 182, 212, 0.3)",
-              padding: "2px 6px",
+              background: "var(--ms-brand-soft)",
+              color: "var(--ms-brand)",
+              border: "1px solid var(--color-border-default)",
+              padding: "2px 7px",
               borderRadius: "6px",
               fontWeight: 600,
               fontFamily: "var(--font-mono)",
@@ -174,9 +176,9 @@ export const CardFooter: React.FC<CardFooterProps> = ({
               );
             }}
             style={{
-              background: "linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.2))",
-              color: "var(--color-text-primary)",
-              border: "1px solid var(--color-border-glass)",
+              background: "var(--color-canvas-default)",
+              color: "var(--color-fg-default)",
+              border: "1px solid var(--color-border-default)",
               borderRadius: "6px",
               height: "28px",
               padding: "0 10px",
@@ -194,7 +196,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             ⚡ Fork &amp; Reproduce
           </button>
         )}
-        {onRunOnHpc && (
+        {hasCloudSolverFlag && onRunOnHpc && (
           <button
             type="button"
             onClick={(e) => {
@@ -202,9 +204,9 @@ export const CardFooter: React.FC<CardFooterProps> = ({
               onRunOnHpc();
             }}
             style={{
-              background: "linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(6, 182, 212, 0.16))",
-              color: "#10b981",
-              border: "1px solid rgba(16, 185, 129, 0.38)",
+              background: "var(--color-canvas-default)",
+              color: "var(--color-success-fg, #059669)",
+              border: "1px solid var(--color-border-default)",
               borderRadius: "6px",
               height: "28px",
               padding: "0 10px",
@@ -219,7 +221,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             }}
             title="Dispatch simulation job against this model artifact on Cloud HPC"
           >
-            ☁️ Run on HPC
+            Run on HPC
           </button>
         )}
         {!isMultiFile && (
@@ -227,12 +229,12 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             type="button"
             onClick={handleOpenEditor}
             style={{
-              background: "linear-gradient(135deg, rgba(6, 182, 212, 0.16), rgba(139, 92, 246, 0.16))",
-              color: "var(--color-accent-cyan)",
-              border: "1px solid rgba(6, 182, 212, 0.35)",
+              background: "var(--ms-brand, #0e7490)",
+              color: "#ffffff",
+              border: "1px solid var(--ms-brand, #0e7490)",
               borderRadius: "6px",
               height: "28px",
-              padding: "0 10px",
+              padding: "0 11px",
               fontSize: "12px",
               lineHeight: "16px",
               fontWeight: 600,
@@ -241,6 +243,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
               alignItems: "center",
               gap: "5px",
               whiteSpace: "nowrap",
+              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.08)",
             }}
             title="Open model in interactive Playground"
           >
@@ -251,7 +254,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
           type="button"
           onClick={handleOpenVsCode}
           style={{
-            background: "rgba(56, 189, 248, 0.1)",
+            background: "var(--color-canvas-default)",
             color: "var(--color-fg-default)",
             border: "1px solid var(--color-border-default)",
             borderRadius: "6px",
@@ -268,7 +271,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
           }}
           title="Open in VS Code (New Window)"
         >
-          <VsCodeIcon size={12} color="#38bdf8" /> VS Code ↗
+          <VsCodeIcon size={12} color="#0284c7" /> VS Code ↗
         </button>
         {isLoaded && (
           <button
@@ -278,7 +281,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
               onOpenFullScreen();
             }}
             style={{
-              background: "rgba(255, 255, 255, 0.04)",
+              background: "var(--color-canvas-default)",
               color: "var(--color-fg-default)",
               border: "1px solid var(--color-border-default)",
               borderRadius: "6px",

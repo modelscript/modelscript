@@ -370,14 +370,17 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
       if (args.archive) {
         try {
           const fsMod = await import("node:fs");
+          const pathMod = await import("node:path");
+          const osMod = await import("node:os");
           if (fsMod.existsSync(args.archive)) {
+            const startValues: Record<string, number | boolean | string> = {};
+            for (let i = 0; i < dim; i++) {
+              startValues[paramRanges[i]!.name] = x[i]!;
+            }
+
             if (args.archive.endsWith(".fmu")) {
               const { extractFileFromZip, parseModelDescription, simulateFmuArchive } =
                 await import("@modelscript/exchange/fmu");
-              const startValues: Record<string, number | boolean | string> = {};
-              for (let i = 0; i < dim; i++) {
-                startValues[paramRanges[i]!.name] = x[i]!;
-              }
               try {
                 const simRes = await simulateFmuArchive(args.archive, {
                   stopTime: 1.0,
@@ -407,7 +410,8 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
                 }
               }
             } else if (args.archive.endsWith(".ssp")) {
-              const { extractFileFromZip } = await import("@modelscript/exchange/fmu");
+              const { extractFileFromZip, simulateFmuArchive } = await import("@modelscript/exchange/fmu");
+              const { parseSsd } = await import("@modelscript/exchange/ssp");
               const zipBuf = fsMod.readFileSync(args.archive);
               const ssdXml = extractFileFromZip(zipBuf, "SystemStructure.ssd") ?? zipBuf.toString("utf-8");
               for (const p of paramRanges) {
@@ -416,6 +420,51 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
                   const val = parseFloat(m[1]);
                   if (!Number.isNaN(val)) archiveTargets.set(p.name, val);
                 }
+              }
+
+              // Execute embedded FMUs inside the SSP container when present
+              try {
+                const sspSystem = parseSsd(ssdXml);
+                const AdmZipMod = (await import("adm-zip")).default;
+                const zip = new AdmZipMod(zipBuf);
+                let simScoreSum = 0;
+                let simFmuCount = 0;
+                for (const comp of sspSystem.components) {
+                  const entry = zip.getEntry(comp.source);
+                  if (entry && comp.source.endsWith(".fmu")) {
+                    const tmpFmu = pathMod.join(osMod.tmpdir(), `msx_ssp_${process.pid}_${comp.name}.fmu`);
+                    fsMod.writeFileSync(tmpFmu, entry.getData());
+                    try {
+                      const compStart: Record<string, number | boolean | string> = { ...startValues };
+                      const simRes = await simulateFmuArchive(tmpFmu, {
+                        stopTime: sspSystem.defaultExperiment?.stopTime ?? 1.0,
+                        stepSize: 0.05,
+                        startValues: compStart,
+                      });
+                      const objIdx =
+                        simRes.varNames.indexOf(args.objective) >= 0 ? simRes.varNames.indexOf(args.objective) : 0;
+                      if (simRes.values.length > 0) {
+                        const lastRow = simRes.values[simRes.values.length - 1] ?? [];
+                        const val = Number(lastRow[objIdx]);
+                        if (Number.isFinite(val)) {
+                          simScoreSum += val * val;
+                          simFmuCount++;
+                        }
+                      }
+                    } finally {
+                      try {
+                        fsMod.unlinkSync(tmpFmu);
+                      } catch {
+                        // Ignore cleanup error
+                      }
+                    }
+                  }
+                }
+                if (simFmuCount > 0) {
+                  return simScoreSum / simFmuCount;
+                }
+              } catch {
+                // Fall back to SSD parameter bindings if SSP is an XML-only fixture
               }
             } else {
               const raw = fsMod.readFileSync(args.archive, "utf-8");
@@ -426,6 +475,56 @@ export const optimizeCosim: CommandModule<{}, CosimOptimizeArgs> = {
                 if (m?.[1] !== undefined) {
                   const val = parseFloat(m[1]);
                   if (!Number.isNaN(val)) archiveTargets.set(p.name, val);
+                }
+              }
+
+              // If the archive is a compilable Modelica (.mo) model, run real local DAE simulation
+              if (args.archive.endsWith(".mo") && /\b(model|class|block)\s+([A-Za-z_]\w*)/.test(raw)) {
+                try {
+                  const { createRequire } = await import("node:module");
+                  const req = createRequire(import.meta.url);
+                  const { createWasmParser } = await import("@modelscript/modelica/parser");
+                  const { Context } = await import("@modelscript/modelica/context");
+                  const { simulateArenaAsync } = await import("@modelscript/simulate");
+                  const { NodeFileSystem } = await import("../util/filesystem.js");
+                  const wasmPath = req.resolve("@modelscript/modelica/parser.wasm");
+                  const { parser } = await createWasmParser(wasmPath);
+                  Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
+
+                  let modifiedSource = raw;
+                  for (let i = 0; i < dim; i++) {
+                    const pName = paramRanges[i]?.name;
+                    const pVal = x[i];
+                    if (pName !== undefined && pVal !== undefined) {
+                      modifiedSource = modifiedSource.replace(
+                        new RegExp(`(\\b${pName}\\b[^=\\n]*=\\s*)[+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?`),
+                        `$1${pVal}`,
+                      );
+                    }
+                  }
+                  const modelMatch = /\b(?:model|class|block)\s+([A-Za-z_]\w*)/.exec(modifiedSource);
+                  if (modelMatch?.[1]) {
+                    const ctx = Context.createBatch(new NodeFileSystem());
+                    ctx.load(modifiedSource, args.archive);
+                    const dae = ctx.flattenArena(modelMatch[1]);
+                    if (dae && dae.eqCount > 0) {
+                      const simRes = await simulateArenaAsync(dae, {
+                        startTime: 0,
+                        stopTime: 1.0,
+                        step: 0.05,
+                      });
+                      const objIdx = simRes.states.indexOf(args.objective);
+                      if (objIdx >= 0 && simRes.y.length > 0) {
+                        const lastRow = simRes.y[simRes.y.length - 1];
+                        const lastVal = lastRow?.[objIdx];
+                        if (lastVal !== undefined && Number.isFinite(lastVal)) {
+                          return Math.abs(lastVal);
+                        }
+                      }
+                    }
+                  }
+                } catch {
+                  // Fall back to parameter target MSE if .mo snippet is not a standalone dynamic system
                 }
               }
             }

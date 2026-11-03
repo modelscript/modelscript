@@ -26,6 +26,8 @@ export interface PackageHeaderProps {
   rootClassName?: string | null;
   description?: string | null;
   publishedAt?: string | null;
+  license?: string | null | undefined;
+  classCount?: number | undefined;
   canManage: boolean;
   isCurrentYanked: boolean;
   currentYankReason?: string | null;
@@ -54,6 +56,8 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
   rootClassName,
   description,
   publishedAt,
+  license,
+  classCount,
   canManage,
   isCurrentYanked,
   currentYankReason,
@@ -76,6 +80,7 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
   onToggleTreeCollapse,
 }) => {
   const navigate = useNavigate();
+  const isLatestVersion = Boolean(versionList && versionList.length > 0 && versionList[0] === version);
 
   return (
     <>
@@ -101,72 +106,138 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
             </Button>
           )}
         </Box>
-        <Box display="flex" alignItems="center" gap="16px" mb={3}>
-          <InvertedSvg
-            src={getIconUrl(name, version, rootClassName || name)}
-            alt=""
-            width={48}
-            height={48}
-            style={{ flexShrink: 0 }}
-          />
-          <Box>
-            <Box display="flex" alignItems="center" gap="8px">
-              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
-                {name}
-              </Heading>
-              {versionList && versionList.length > 1 ? (
-                <ActionMenu>
-                  <ActionMenu.Button
-                    size="small"
-                    style={{
-                      fontSize: 13,
-                      padding: "2px 8px",
-                      fontWeight: 600,
-                      borderRadius: 6,
-                      background: "var(--color-glass-bg, rgba(255,255,255,0.06))",
-                      border: "1px solid var(--color-border)",
-                      color: "var(--color-text-primary)",
-                      cursor: "pointer",
-                    }}
+        <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap="16px" mb={3} flexWrap="wrap">
+          <Box display="flex" alignItems="center" gap="16px" style={{ minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 12,
+                background: "var(--color-canvas-subtle, rgba(255,255,255,0.04))",
+                border: "1px solid var(--color-border)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <InvertedSvg
+                src={getIconUrl(name, version, rootClassName || name)}
+                alt=""
+                width={38}
+                height={38}
+                style={{ flexShrink: 0 }}
+              />
+            </div>
+            <Box style={{ minWidth: 0 }}>
+              <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
+                <Heading
+                  as="h1"
+                  style={{
+                    color: "var(--color-text-heading)",
+                    fontWeight: 700,
+                    fontSize: 26,
+                    lineHeight: 1.2,
+                    margin: 0,
+                  }}
+                >
+                  {name}
+                </Heading>
+                {versionList && versionList.length > 1 ? (
+                  <ActionMenu>
+                    <ActionMenu.Button
+                      size="small"
+                      style={{
+                        fontSize: 12,
+                        padding: "2px 8px",
+                        fontWeight: 600,
+                        fontFamily: "var(--font-mono, monospace)",
+                        borderRadius: 6,
+                        background: "var(--color-canvas-subtle)",
+                        border: "1px solid var(--color-border)",
+                        color: "var(--color-text-primary)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      v{version}
+                    </ActionMenu.Button>
+                    <ActionMenu.Overlay align="start">
+                      <ActionList style={{ maxHeight: 260, overflowY: "auto" }}>
+                        <ActionList.Group title="Release Versions">
+                          {versionList.map((v) => (
+                            <ActionList.Item
+                              key={v}
+                              selected={v === version}
+                              onSelect={() => {
+                                if (v !== version) {
+                                  navigate(`/packages/${name}/${v}`);
+                                }
+                              }}
+                            >
+                              v{v}
+                              {v === versionList[0] && (
+                                <ActionList.TrailingVisual>
+                                  <Label variant="accent" style={{ fontSize: 10 }}>
+                                    latest
+                                  </Label>
+                                </ActionList.TrailingVisual>
+                              )}
+                            </ActionList.Item>
+                          ))}
+                        </ActionList.Group>
+                      </ActionList>
+                    </ActionMenu.Overlay>
+                  </ActionMenu>
+                ) : (
+                  <Label
+                    variant="secondary"
+                    style={{ fontSize: 12, padding: "2px 8px", fontFamily: "var(--font-mono, monospace)" }}
                   >
                     v{version}
-                  </ActionMenu.Button>
-                  <ActionMenu.Overlay align="start">
-                    <ActionList style={{ maxHeight: 260, overflowY: "auto" }}>
-                      <ActionList.Group title="Release Versions">
-                        {versionList.map((v) => (
-                          <ActionList.Item
-                            key={v}
-                            selected={v === version}
-                            onSelect={() => {
-                              if (v !== version) {
-                                navigate(`/packages/${name}/${v}`);
-                              }
-                            }}
-                          >
-                            v{v}
-                            {v === versionList[0] && (
-                              <ActionList.TrailingVisual>
-                                <Label variant="accent" style={{ fontSize: 10 }}>
-                                  latest
-                                </Label>
-                              </ActionList.TrailingVisual>
-                            )}
-                          </ActionList.Item>
-                        ))}
-                      </ActionList.Group>
-                    </ActionList>
-                  </ActionMenu.Overlay>
-                </ActionMenu>
-              ) : (
-                <Label variant="secondary" style={{ fontSize: 13, padding: "2px 8px" }}>
-                  v{version}
-                </Label>
+                  </Label>
+                )}
+                {isLatestVersion && (
+                  <Label variant="success" style={{ fontSize: 11, padding: "0 6px" }}>
+                    latest
+                  </Label>
+                )}
+              </Box>
+              {description && (
+                <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 14, margin: "4px 0 0" }}>
+                  {description}
+                </Text>
               )}
+              <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap" style={{ marginTop: 4 }}>
+                {publishedAt && (
+                  <Text as="span" style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
+                    Published {timeAgo(publishedAt)}
+                  </Text>
+                )}
+                {license && (
+                  <>
+                    <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>·</span>
+                    <Text as="span" style={{ color: "var(--color-text-tertiary)", fontSize: 12, fontWeight: 500 }}>
+                      {license}
+                    </Text>
+                  </>
+                )}
+                {typeof classCount === "number" && classCount > 0 && (
+                  <>
+                    <span style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>·</span>
+                    <Text as="span" style={{ color: "var(--color-text-tertiary)", fontSize: 12 }}>
+                      {classCount.toLocaleString()} {classCount === 1 ? "symbol" : "symbols"}
+                    </Text>
+                  </>
+                )}
+              </Box>
+            </Box>
+          </Box>
+
+          {(openCompose || canManage) && (
+            <Box display="flex" alignItems="center" gap="8px" style={{ alignSelf: "center" }}>
               {openCompose && (
                 <Button
                   size="small"
-                  variant="primary"
                   leadingVisual={PlusIcon}
                   onClick={() =>
                     openCompose({
@@ -175,117 +246,104 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
                       companionRepo: name || "",
                     })
                   }
-                  style={{ marginLeft: 8 }}
                 >
-                  Post / Notebook
+                  New Post / Notebook
                 </Button>
               )}
               {canManage && (
-                <Box style={{ marginLeft: openCompose ? 8 : "auto" }}>
-                  <ActionMenu>
-                    <ActionMenu.Button size="small" leadingVisual={GearIcon}>
-                      Manage Release
-                    </ActionMenu.Button>
-                    <ActionMenu.Overlay align="end">
-                      <ActionList>
-                        <ActionList.Item
-                          onSelect={() => {
-                            setActionError(null);
-                            setPublishModalOpen(true);
-                          }}
-                        >
-                          <ActionList.LeadingVisual>
-                            <PlusIcon size={14} />
-                          </ActionList.LeadingVisual>
-                          Publish New Version
-                        </ActionList.Item>
+                <ActionMenu>
+                  <ActionMenu.Button size="small" leadingVisual={GearIcon}>
+                    Manage Release
+                  </ActionMenu.Button>
+                  <ActionMenu.Overlay align="end">
+                    <ActionList>
+                      <ActionList.Item
+                        onSelect={() => {
+                          setActionError(null);
+                          setPublishModalOpen(true);
+                        }}
+                      >
+                        <ActionList.LeadingVisual>
+                          <PlusIcon size={14} />
+                        </ActionList.LeadingVisual>
+                        Publish New Version
+                      </ActionList.Item>
 
-                        <ActionList.Item
-                          onSelect={() => {
-                            setActionError(null);
-                            setManageModal("collaborators");
-                          }}
-                        >
-                          <ActionList.LeadingVisual>
-                            <PeopleIcon size={14} />
-                          </ActionList.LeadingVisual>
-                          Manage Collaborators ({collaborators.length})
-                        </ActionList.Item>
+                      <ActionList.Item
+                        onSelect={() => {
+                          setActionError(null);
+                          setManageModal("collaborators");
+                        }}
+                      >
+                        <ActionList.LeadingVisual>
+                          <PeopleIcon size={14} />
+                        </ActionList.LeadingVisual>
+                        Manage Collaborators ({collaborators.length})
+                      </ActionList.Item>
 
-                        <ActionList.Divider />
+                      <ActionList.Divider />
 
-                        <ActionList.Item
-                          onSelect={() => {
-                            setActionError(null);
-                            setManageModal("yank");
-                          }}
-                        >
-                          <ActionList.LeadingVisual>
-                            <AlertFillIcon
-                              size={14}
-                              fill={
-                                isCurrentYanked ? "var(--color-success-fg, #2da44e)" : "var(--color-danger-fg, #cf222e)"
-                              }
-                            />
-                          </ActionList.LeadingVisual>
-                          {isCurrentYanked ? "Restore (Unyank) Release" : "Yank Release"}
-                        </ActionList.Item>
+                      <ActionList.Item
+                        onSelect={() => {
+                          setActionError(null);
+                          setManageModal("yank");
+                        }}
+                      >
+                        <ActionList.LeadingVisual>
+                          <AlertFillIcon
+                            size={14}
+                            fill={
+                              isCurrentYanked ? "var(--color-success-fg, #2da44e)" : "var(--color-danger-fg, #cf222e)"
+                            }
+                          />
+                        </ActionList.LeadingVisual>
+                        {isCurrentYanked ? "Restore (Unyank) Release" : "Yank Release"}
+                      </ActionList.Item>
 
-                        <ActionList.Item
-                          onSelect={() => {
-                            setActionError(null);
-                            setManageModal("deprecate");
-                          }}
-                        >
-                          <ActionList.LeadingVisual>
-                            <AlertIcon size={14} fill="#d97706" />
-                          </ActionList.LeadingVisual>
-                          {isCurrentDeprecated ? "Remove Deprecation" : "Deprecate Release"}
-                        </ActionList.Item>
+                      <ActionList.Item
+                        onSelect={() => {
+                          setActionError(null);
+                          setManageModal("deprecate");
+                        }}
+                      >
+                        <ActionList.LeadingVisual>
+                          <AlertIcon size={14} fill="#d97706" />
+                        </ActionList.LeadingVisual>
+                        {isCurrentDeprecated ? "Remove Deprecation" : "Deprecate Release"}
+                      </ActionList.Item>
 
-                        <ActionList.Divider />
+                      <ActionList.Divider />
 
-                        <ActionList.Item
-                          onSelect={() => {
-                            setActionError(null);
-                            setManageModal("transfer");
-                          }}
-                        >
-                          <ActionList.LeadingVisual>
-                            <SyncIcon size={14} />
-                          </ActionList.LeadingVisual>
-                          Transfer Ownership
-                        </ActionList.Item>
+                      <ActionList.Item
+                        onSelect={() => {
+                          setActionError(null);
+                          setManageModal("transfer");
+                        }}
+                      >
+                        <ActionList.LeadingVisual>
+                          <SyncIcon size={14} />
+                        </ActionList.LeadingVisual>
+                        Transfer Ownership
+                      </ActionList.Item>
 
-                        <ActionList.Item
-                          variant="danger"
-                          onSelect={() => {
-                            setActionError(null);
-                            setManageModal("unpublish");
-                          }}
-                        >
-                          <ActionList.LeadingVisual>
-                            <TrashIcon size={14} />
-                          </ActionList.LeadingVisual>
-                          Unpublish Release (v{version})
-                        </ActionList.Item>
-                      </ActionList>
-                    </ActionMenu.Overlay>
-                  </ActionMenu>
-                </Box>
+                      <ActionList.Item
+                        variant="danger"
+                        onSelect={() => {
+                          setActionError(null);
+                          setManageModal("unpublish");
+                        }}
+                      >
+                        <ActionList.LeadingVisual>
+                          <TrashIcon size={14} />
+                        </ActionList.LeadingVisual>
+                        Unpublish Release (v{version})
+                      </ActionList.Item>
+                    </ActionList>
+                  </ActionMenu.Overlay>
+                </ActionMenu>
               )}
             </Box>
-            {description && (
-              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
-                {description}
-              </Text>
-            )}
-            {publishedAt && (
-              <Text as="p" style={{ color: "var(--color-text-tertiary)", fontSize: 12, margin: "2px 0 0" }}>
-                Published {timeAgo(publishedAt)}
-              </Text>
-            )}
-          </Box>
+          )}
         </Box>
       </HeaderBar>
 

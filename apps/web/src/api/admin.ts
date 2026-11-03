@@ -236,6 +236,26 @@ export interface AdminInstanceSettings {
   autoFilterAction?: "cw" | "silence" | "quarantine" | undefined;
   customTermsMarkdown?: string | undefined;
   customPrivacyMarkdown?: string | undefined;
+  customCookiesMarkdown?: string | undefined;
+  legalPolicyMode?: "append" | "override" | undefined;
+  legalJurisdiction?: string | undefined;
+  legalEffectiveDate?: string | undefined;
+  authorizedFetchEnabled?: boolean | undefined;
+  federatedTimelinePublic?: boolean | undefined;
+  domainBlocksPublic?: boolean | undefined;
+  remoteContentRetentionDays?: number | undefined;
+  remoteMediaCacheRetentionDays?: number | undefined;
+  githubClientId?: string | undefined;
+  githubClientSecret?: string | undefined;
+  clearGithubClientSecret?: boolean | undefined;
+  githubClientSecretConfigured?: boolean | undefined;
+  githubClientSecretMasked?: string | undefined;
+  gitlabClientId?: string | undefined;
+  gitlabClientSecret?: string | undefined;
+  clearGitlabClientSecret?: boolean | undefined;
+  gitlabClientSecretConfigured?: boolean | undefined;
+  gitlabClientSecretMasked?: string | undefined;
+  gitlabUrl?: string | undefined;
   lockedByEnv: string[];
 }
 
@@ -439,6 +459,23 @@ export const getAdminUsers = async (options?: {
   statusBreakdown?: AdminUsersStatusBreakdown | undefined;
 }> => {
   const { data } = await api.get("/admin/users", { params: options });
+  return data;
+};
+
+export const createAdminUser = async (payload: {
+  username: string;
+  email: string;
+  password: string;
+  displayName?: string | undefined;
+  role?: "user" | "moderator" | "auditor" | "admin" | undefined;
+  initialCredits?: number | undefined;
+  emailVerified?: boolean | undefined;
+}): Promise<{
+  success: boolean;
+  user: AdminUserSummary;
+}> => {
+  const { data } = await api.post("/admin/users", payload);
+  notifyAdminOverviewUpdated();
   return data;
 };
 
@@ -786,7 +823,8 @@ export const createAdminInvite = async (payload: {
   assignedRole?: string | undefined;
   note?: string | undefined;
   expiresInDays?: number | undefined;
-}): Promise<{ success: boolean; invite: AdminInstanceInvite }> => {
+  recipientEmail?: string | undefined;
+}): Promise<{ success: boolean; invite: AdminInstanceInvite; emailDispatched?: boolean | undefined }> => {
   const { data } = await api.post("/admin/invites", payload);
   return data;
 };
@@ -1038,6 +1076,20 @@ export interface PublicInstanceBannerResponse {
   onboardingWizardEnabled?: boolean;
   customTermsMarkdown?: string;
   customPrivacyMarkdown?: string;
+  customCookiesMarkdown?: string;
+  legalPolicyMode?: "append" | "override";
+  legalJurisdiction?: string;
+  legalEffectiveDate?: string;
+  ingressMode?: "direct" | "cloudflare";
+  cloudflareTunnelConfigured?: boolean;
+  authorizedFetchEnabled?: boolean;
+  federatedTimelinePublic?: boolean;
+  domainBlocksPublic?: boolean;
+  remoteContentRetentionDays?: number;
+  remoteMediaCacheRetentionDays?: number;
+  autoFilterAction?: "cw" | "silence" | "quarantine";
+  autoQuarantineReportThreshold?: number;
+  rules?: AdminInstanceRule[];
   needsSetup?: boolean;
   setupCompleted?: boolean;
   buildVersion?: string | undefined;
@@ -1052,6 +1104,22 @@ export interface PublicInstanceBannerResponse {
 
 export const getPublicInstanceBanner = async (): Promise<PublicInstanceBannerResponse> => {
   const { data } = await api.get("/instance/banner");
+  return data;
+};
+
+export interface PublicDomainBlockItem {
+  domain: string;
+  severity: "silence" | "suspend";
+  comment: string | null;
+}
+
+export const getPublicDomainBlocks = async (): Promise<{ domainBlocks: PublicDomainBlockItem[] }> => {
+  const { data } = await api.get("/instance/domain-blocks");
+  return data;
+};
+
+export const getPublicInstanceRules = async (): Promise<{ rules: AdminInstanceRule[] }> => {
+  const { data } = await api.get("/instance/rules");
   return data;
 };
 
@@ -1310,13 +1378,18 @@ export const exportInstanceEnvConfig = async (): Promise<{
 
 export const verifyAdminSudo = async (
   password: string,
+  totpCode?: string,
 ): Promise<{
   success: boolean;
   verifiedAt: string;
   expiresAt: string;
   sudoToken: string;
+  mfaVerified?: boolean | undefined;
 }> => {
-  const { data } = await api.post("/admin/sudo/verify", { password });
+  const payload: Record<string, string> = {};
+  if (password) payload["password"] = password;
+  if (totpCode && totpCode.trim()) payload["totpCode"] = totpCode.trim();
+  const { data } = await api.post("/admin/sudo/verify", payload);
   return data;
 };
 
@@ -1617,7 +1690,8 @@ export interface AdminInstanceRule {
   id: number;
   text: string;
   hint: string | null;
-  position: number;
+  priority?: number | undefined;
+  position?: number | undefined;
   created_at: string;
   updated_at: string;
 }
@@ -1631,6 +1705,7 @@ export const createAdminInstanceRule = async (payload: {
   text: string;
   hint?: string | null | undefined;
   position?: number | undefined;
+  priority?: number | undefined;
 }): Promise<{ rule: AdminInstanceRule }> => {
   const { data } = await api.post("/admin/rules", payload);
   return data;
@@ -1638,7 +1713,12 @@ export const createAdminInstanceRule = async (payload: {
 
 export const updateAdminInstanceRule = async (
   id: number,
-  payload: { text?: string | undefined; hint?: string | null | undefined; position?: number | undefined },
+  payload: {
+    text?: string | undefined;
+    hint?: string | null | undefined;
+    position?: number | undefined;
+    priority?: number | undefined;
+  },
 ): Promise<{ rule: AdminInstanceRule }> => {
   const { data } = await api.put(`/admin/rules/${id}`, payload);
   return data;

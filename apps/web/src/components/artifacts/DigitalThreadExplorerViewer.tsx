@@ -243,7 +243,14 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
 
   if (loading && !resolvedGraphData && effectiveTwins === undefined) {
     return (
-      <Box p={4} display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+      <Box
+        p={4}
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height={isFullScreen ? "100%" : "440px"}
+        minHeight={isFullScreen ? "100%" : "440px"}
+      >
         <Spinner size="medium" />
         <Text ml={3}>Loading Digital Thread Hypergraph...</Text>
       </Box>

@@ -414,3 +414,8 @@ ci: add gpg commit signing to release workflow for verified commits
 chore: use wildcard dependency ranges for internal workspace packages
 docs: add security policy and vulnerability reporting guidelines
 ```
+
+## Versioning & Changelog Rules
+
+1. **Clean Numeric SemVer (`major.minor.patch`):** Always use clean numeric versions (e.g., `0.1.0`, `0.2.0`) synchronized across all manifests via `npm run version:bump -- <version>`. Never use hyphenated pre-release suffixes (`-alpha`, `-beta`, `-rc`), which are rejected by the VS Code Marketplace (`@vscode/vsce`) and Tauri desktop bundlers.
+2. **No `❤️ Thank You` or Author Blocks in `CHANGELOG.md`:** Never add `### ❤️ Thank You` or author attribution lists (e.g., `- Mohamad Omar Nachawati @nachawati`) to `CHANGELOG.md` (enforced via `"authors": false` in `nx.json` and `scripts/ci-release-version.ts`).

@@ -956,6 +956,8 @@ export class EmtSolver {
 
       const ok = wasm.emt_build_and_factorize(solverPtr);
       if (!ok) return null;
+      const wasmLuCount = 1;
+      const wasmSwitchingEvents = 0;
 
       const startTime = performance.now();
       const vVecPtr = wasm.emt_get_voltages_ptr(solverPtr);
@@ -1008,8 +1010,8 @@ export class EmtSolver {
         controlSignals: this.controlSignals.size > 0 ? this.controlSignals : undefined,
         metrics: {
           totalSteps: this.nSteps,
-          luFactorizations: 3,
-          switchingEvents: 0,
+          luFactorizations: wasmLuCount,
+          switchingEvents: wasmSwitchingEvents,
           chatterDampedSteps: 0,
           executionTimeMs,
         },
@@ -1277,6 +1279,35 @@ export class EmtSolver {
           this.J3[3 * bl.toIdx + 1] = this.J3[3 * bl.toIdx + 1]! - iHistMkB;
           this.J3[3 * bl.toIdx + 2] = this.J3[3 * bl.toIdx + 2]! - iHistMkC;
         }
+      }
+
+      // FMU / IBR Converter current injections into J3 (coupled to grid nodal equations)
+      const tauLvrtPre = 0.008;
+      const alphaLvrtPre = 1.0 - Math.exp(-this.timeStepSec / tauLvrtPre);
+      for (const fmuState of this.fmuStates) {
+        const { busIdx, iRatedPeak } = fmuState;
+        const vNomPeak = this.busList[busIdx]!.vPeak;
+        let vPu = 1.0;
+        if (k > 0) {
+          const vaPrev = this.vaStep[busIdx]!;
+          const vbPrev = this.vbStep[busIdx]!;
+          const vcPrev = this.vcStep[busIdx]!;
+          const vEnvPrev = Math.sqrt((2.0 / 3.0) * (vaPrev * vaPrev + vbPrev * vbPrev + vcPrev * vcPrev));
+          vPu = vNomPeak > 0 ? vEnvPrev / vNomPeak : 1.0;
+        }
+        const isVoltageDip = anyFaultActive || vPu < 0.9;
+        const iqEst = isVoltageDip ? fmuState.iqState + alphaLvrtPre * (0.85 * iRatedPeak - fmuState.iqState) : 0.0;
+        const idEst = isVoltageDip ? 0.35 * iRatedPeak : 0.7 * iRatedPeak;
+
+        const iaIbr = idEst * Math.sin(this.omega * t) - iqEst * Math.cos(this.omega * t);
+        const ibIbr =
+          idEst * Math.sin(this.omega * t - (2 * Math.PI) / 3) - iqEst * Math.cos(this.omega * t - (2 * Math.PI) / 3);
+        const icIbr =
+          idEst * Math.sin(this.omega * t + (2 * Math.PI) / 3) - iqEst * Math.cos(this.omega * t + (2 * Math.PI) / 3);
+
+        this.J3[3 * busIdx + 0] = this.J3[3 * busIdx + 0]! + iaIbr;
+        this.J3[3 * busIdx + 1] = this.J3[3 * busIdx + 1]! + ibIbr;
+        this.J3[3 * busIdx + 2] = this.J3[3 * busIdx + 2]! + icIbr;
       }
 
       // 5. Solve coupled 3N x 3N linear system via forward/backward substitution

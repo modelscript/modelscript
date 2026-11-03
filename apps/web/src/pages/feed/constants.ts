@@ -16,11 +16,11 @@ export const FILTER_CHIPS: FilterChip[] = [
   { id: "all", label: "All", icon: GlobeIcon, emoji: "🌐", description: "All engineering updates" },
   {
     id: "notebook",
-    label: "Tutorials",
+    label: "Articles",
     icon: BookIcon,
     emoji: "📓",
     artifactType: "notebook",
-    description: "Interactive tutorials, articles & engineering notebooks",
+    description: "Long-form articles, tutorials & interactive engineering notebooks",
   },
   { id: "cad", label: "CAD 3D", icon: PackageIcon, emoji: "📐", artifactType: "cad", description: "STEP & CAD models" },
   {

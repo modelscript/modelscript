@@ -38,10 +38,13 @@ interface ContentResponse {
 interface CachedTree {
   entries: Map<string, TreeEntry>;
   timestamp: number;
+  resolvedRef: string;
 }
 
 const TREE_CACHE = new Map<string, CachedTree>();
+const INFLIGHT_TREES = new Map<string, Promise<CachedTree>>();
 const FILE_CACHE = new Map<string, Uint8Array>();
+const INFLIGHT_FILES = new Map<string, Promise<Uint8Array>>();
 const TREE_TTL = 5 * 60 * 1000; // 5 minutes
 const MAX_FILE_CACHE_SIZE = 100 * 1024 * 1024; // 100 MB
 let fileCacheSize = 0;
@@ -112,28 +115,65 @@ function treeKey(owner: string, repo: string, ref: string): string {
 
 // ── Fetch and cache the full recursive tree ──
 
-async function getTree(owner: string, repo: string, ref: string): Promise<Map<string, TreeEntry>> {
+async function fetchTreeWithFallback(owner: string, repo: string, ref: string): Promise<CachedTree> {
   const key = treeKey(owner, repo, ref);
-  const cached = TREE_CACHE.get(key);
-  if (cached && Date.now() - cached.timestamp < TREE_TTL) {
-    return cached.entries;
+  let resolvedRef = ref;
+  let response: Response;
+  try {
+    console.log(`[github-fs] Fetching tree: ${owner}/${repo}@${ref}`);
+    response = await githubFetch(`/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
+  } catch (err) {
+    const fallbackRef = ref === "main" ? "master" : ref === "master" ? "main" : null;
+    if (fallbackRef && err instanceof vscode.FileSystemError) {
+      console.log(`[github-fs] Branch '${ref}' not found for ${owner}/${repo}, falling back to '${fallbackRef}'`);
+      resolvedRef = fallbackRef;
+      response = await githubFetch(`/repos/${owner}/${repo}/git/trees/${encodeURIComponent(fallbackRef)}?recursive=1`);
+    } else {
+      throw err;
+    }
   }
 
-  console.log(`[github-fs] Fetching tree: ${owner}/${repo}@${ref}`);
-  const response = await githubFetch(`/repos/${owner}/${repo}/git/trees/${ref}?recursive=1`);
   const data: TreeResponse = await response.json();
   if (data.truncated) {
-    console.warn(`[github-fs] Repository tree for ${owner}/${repo}@${ref} was truncated by the GitHub API.`);
+    console.warn(`[github-fs] Repository tree for ${owner}/${repo}@${resolvedRef} was truncated by the GitHub API.`);
   }
 
   const entries = new Map<string, TreeEntry>();
-  for (const entry of data.tree) {
+  for (const entry of data.tree || []) {
     entries.set("/" + entry.path, entry);
   }
 
-  console.log(`[github-fs] Tree loaded: ${entries.size} entries`);
-  TREE_CACHE.set(key, { entries, timestamp: Date.now() });
-  return entries;
+  console.log(`[github-fs] Tree loaded: ${entries.size} entries (${owner}/${repo}@${resolvedRef})`);
+  const cached: CachedTree = { entries, timestamp: Date.now(), resolvedRef };
+  TREE_CACHE.set(key, cached);
+  if (resolvedRef !== ref) {
+    TREE_CACHE.set(treeKey(owner, repo, resolvedRef), cached);
+  }
+  return cached;
+}
+
+async function getTreeWithMeta(owner: string, repo: string, ref: string): Promise<CachedTree> {
+  const key = treeKey(owner, repo, ref);
+  const cached = TREE_CACHE.get(key);
+  if (cached && Date.now() - cached.timestamp < TREE_TTL) {
+    return cached;
+  }
+
+  const inflight = INFLIGHT_TREES.get(key);
+  if (inflight) {
+    return inflight;
+  }
+
+  const promise = fetchTreeWithFallback(owner, repo, ref).finally(() => {
+    INFLIGHT_TREES.delete(key);
+  });
+  INFLIGHT_TREES.set(key, promise);
+  return promise;
+}
+
+async function getTree(owner: string, repo: string, ref: string): Promise<Map<string, TreeEntry>> {
+  const cached = await getTreeWithMeta(owner, repo, ref);
+  return cached.entries;
 }
 
 // ── FileSystemProvider implementation ──
@@ -232,53 +272,77 @@ export class GitHubFileSystemProvider implements vscode.FileSystemProvider {
     const cached = FILE_CACHE.get(cacheKey);
     if (cached) return cached;
 
-    const cachedTree = TREE_CACHE.get(treeKey(owner, repo, ref))?.entries;
-    const treeEntry = cachedTree?.get(filePath);
+    const inflight = INFLIGHT_FILES.get(cacheKey);
+    if (inflight) return inflight;
 
-    let data: ContentResponse;
-    if (treeEntry?.sha && (treeEntry.size ?? 0) > 1000000) {
-      const blobResp = await githubFetch(`/repos/${owner}/${repo}/git/blobs/${treeEntry.sha}`);
-      data = await blobResp.json();
-    } else {
-      // Use the Contents API to get file content, falling back to Git Blobs API for >1MB files
-      const response = await githubFetch(`/repos/${owner}/${repo}/contents${filePath}?ref=${ref}`);
-      data = await response.json();
-      if ((!data.content || data.content.length === 0) && data.sha && data.size > 0) {
-        const blobResp = await githubFetch(`/repos/${owner}/${repo}/git/blobs/${data.sha}`);
+    const promise = (async () => {
+      const treeMeta = await getTreeWithMeta(owner, repo, ref);
+      const treeEntry = treeMeta.entries.get(filePath);
+      if (!treeEntry) {
+        const prefix = filePath.endsWith("/") ? filePath : filePath + "/";
+        const isDir = Array.from(treeMeta.entries.keys()).some((k) => k.startsWith(prefix));
+        if (isDir) {
+          throw vscode.FileSystemError.FileIsADirectory(uri);
+        }
+        throw vscode.FileSystemError.FileNotFound(uri);
+      }
+      if (treeEntry.type === "tree") {
+        throw vscode.FileSystemError.FileIsADirectory(uri);
+      }
+
+      const effectiveRef = treeMeta.resolvedRef || ref;
+      let data: ContentResponse;
+      if (treeEntry.sha && (treeEntry.size ?? 0) > 1000000) {
+        const blobResp = await githubFetch(`/repos/${owner}/${repo}/git/blobs/${treeEntry.sha}`);
         data = await blobResp.json();
+      } else {
+        // Use the Contents API to get file content, falling back to Git Blobs API for >1MB files
+        const response = await githubFetch(
+          `/repos/${owner}/${repo}/contents${filePath}?ref=${encodeURIComponent(effectiveRef)}`,
+        );
+        data = await response.json();
+        if ((!data.content || data.content.length === 0) && data.sha && data.size > 0) {
+          const blobResp = await githubFetch(`/repos/${owner}/${repo}/git/blobs/${data.sha}`);
+          data = await blobResp.json();
+        }
       }
-    }
 
-    let content: Uint8Array;
-    if (data.encoding === "base64") {
-      // Decode base64
-      const binary = atob(data.content.replace(/\s+/g, ""));
-      content = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        content[i] = binary.charCodeAt(i);
+      let content: Uint8Array;
+      if (data.encoding === "base64") {
+        // Decode base64
+        const binary = atob(data.content.replace(/\s+/g, ""));
+        content = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          content[i] = binary.charCodeAt(i);
+        }
+      } else {
+        // Plain text
+        const encoder = new TextEncoder();
+        content = encoder.encode(data.content ?? "");
       }
-    } else {
-      // Plain text
-      const encoder = new TextEncoder();
-      content = encoder.encode(data.content ?? "");
-    }
 
-    // Cache with LRU eviction
-    if (fileCacheSize + content.length > MAX_FILE_CACHE_SIZE) {
-      // Evict oldest entries
-      const entries = Array.from(FILE_CACHE.entries());
-      while (fileCacheSize + content.length > MAX_FILE_CACHE_SIZE && entries.length > 0) {
-        const oldest = entries.shift();
-        if (!oldest) break;
-        const [key, val] = oldest;
-        fileCacheSize -= val.length;
-        FILE_CACHE.delete(key);
+      // Cache with LRU eviction
+      if (fileCacheSize + content.length > MAX_FILE_CACHE_SIZE) {
+        // Evict oldest entries
+        const entries = Array.from(FILE_CACHE.entries());
+        while (fileCacheSize + content.length > MAX_FILE_CACHE_SIZE && entries.length > 0) {
+          const oldest = entries.shift();
+          if (!oldest) break;
+          const [key, val] = oldest;
+          fileCacheSize -= val.length;
+          FILE_CACHE.delete(key);
+        }
       }
-    }
-    FILE_CACHE.set(cacheKey, content);
-    fileCacheSize += content.length;
+      FILE_CACHE.set(cacheKey, content);
+      fileCacheSize += content.length;
 
-    return content;
+      return content;
+    })().finally(() => {
+      INFLIGHT_FILES.delete(cacheKey);
+    });
+
+    INFLIGHT_FILES.set(cacheKey, promise);
+    return promise;
   }
 
   // ── Read-only: all write operations throw ──

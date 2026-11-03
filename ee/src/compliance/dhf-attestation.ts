@@ -78,8 +78,18 @@ export function signComplianceAttestation(
     artifactSha256: string;
     auditLedgerHeadHash?: string | undefined;
   },
-  privateKeyPem: string = getDefaultAttestationPrivateKeyPem(),
+  privateKeyPem?: string,
 ): SignedComplianceAttestation {
+  const isStrictProdEnforce = process.env["NODE_ENV"] === "production" && process.env["MSX_LICENSE_ENFORCE"] === "true";
+  const resolvedPrivateKey =
+    privateKeyPem || process.env["MSX_ATTESTATION_PRIVATE_KEY"] || process.env["MSX_LICENSE_PRIVATE_KEY"];
+  if (!resolvedPrivateKey && isStrictProdEnforce) {
+    throw new Error(
+      "Explicit privateKeyPem or MSX_ATTESTATION_PRIVATE_KEY is required when NODE_ENV=production and MSX_LICENSE_ENFORCE=true.",
+    );
+  }
+  const signingKeyPem = resolvedPrivateKey || getDefaultAttestationPrivateKeyPem();
+
   const payload: ComplianceAttestationPayload = {
     v: 1,
     attestationId: `att_${crypto.randomBytes(8).toString("hex")}`,
@@ -92,7 +102,7 @@ export function signComplianceAttestation(
   };
 
   const payloadBase64Url = Buffer.from(JSON.stringify(payload), "utf-8").toString("base64url");
-  const sigBytes = crypto.sign(null, Buffer.from(payloadBase64Url, "utf-8"), privateKeyPem);
+  const sigBytes = crypto.sign(null, Buffer.from(payloadBase64Url, "utf-8"), signingKeyPem);
   const signatureBase64Url = sigBytes.toString("base64url");
 
   return {
@@ -121,10 +131,21 @@ export function verifyComplianceAttestation(
     return { valid: false, reason: "Malformed attestation token." };
   }
 
+  const isStrictProdEnforce = process.env["NODE_ENV"] === "production" && process.env["MSX_LICENSE_ENFORCE"] === "true";
+  const explicitPublicKey =
+    publicKeyPem || process.env["MSX_ATTESTATION_PUBLIC_KEY"] || process.env["MSX_LICENSE_PUBLIC_KEY"];
+  if (!explicitPublicKey && isStrictProdEnforce) {
+    return {
+      valid: false,
+      reason:
+        "Explicit publicKeyPem or MSX_ATTESTATION_PUBLIC_KEY is required when NODE_ENV=production and MSX_LICENSE_ENFORCE=true.",
+    };
+  }
+
   const payloadB64 = body.slice(0, dotIdx);
   const sigB64 = body.slice(dotIdx + 1);
-  const candidateKeys = publicKeyPem
-    ? [publicKeyPem]
+  const candidateKeys = explicitPublicKey
+    ? [explicitPublicKey]
     : [DEFAULT_ENTERPRISE_PUBLIC_KEY_PEM, getDefaultAttestationPublicKeyPem()];
 
   try {

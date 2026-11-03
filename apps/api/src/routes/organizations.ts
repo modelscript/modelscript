@@ -10,6 +10,16 @@ function isValidSlug(slug: string): boolean {
   return /^[a-zA-Z0-9_-]{2,50}$/.test(slug);
 }
 
+function normalizeOrgRole(raw: unknown): OrgRole | null {
+  const s = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (s === "owner") return "owner";
+  if (s === "maintainer" || s === "admin") return "maintainer";
+  if (s === "contributor" || s === "member") return "contributor";
+  return null;
+}
+
 export function organizationsRouter(database: LibraryDatabase): Router {
   const router = createRouter();
   router.use(defaultApiLimiter);
@@ -96,6 +106,73 @@ export function organizationsRouter(database: LibraryDatabase): Router {
   });
 
   /**
+   * PATCH /api/v1/organizations/:slug
+   * PUT /api/v1/organizations/:slug
+   *
+   * Update organization profile settings.
+   * Requires caller to be an 'owner' or 'maintainer' in the organization.
+   */
+  const handleUpdateOrg = (req: Request, res: Response): void => {
+    const slug = String(req.params["slug"] ?? "")
+      .trim()
+      .toLowerCase();
+    const org = database.getOrganizationBySlug(slug);
+    if (!org) {
+      res.status(404).json({ error: `Organization '${slug}' not found` });
+      return;
+    }
+
+    const callerRole = database.getOrganizationMemberRole(org.id, req.user!.id);
+    const isAdmin =
+      req.user!.account_type === "admin" || req.user!.accountType === "admin" || req.user!.role === "admin";
+    if (!isAdmin && callerRole !== "owner" && callerRole !== "maintainer") {
+      res.status(403).json({ error: "Only organization owners or maintainers can update organization settings" });
+      return;
+    }
+
+    const body = req.body ?? {};
+    const displayNameRaw =
+      body.display_name !== undefined
+        ? body.display_name
+        : body.displayName !== undefined
+          ? body.displayName
+          : undefined;
+    const nameRaw = body.name !== undefined ? body.name : displayNameRaw !== undefined ? displayNameRaw : undefined;
+    const descriptionRaw = body.description !== undefined ? body.description : undefined;
+    const websiteRaw = body.website !== undefined ? body.website : undefined;
+    const billingEmailRaw =
+      body.billing_email !== undefined
+        ? body.billing_email
+        : body.billingEmail !== undefined
+          ? body.billingEmail
+          : undefined;
+    const avatarUrlRaw =
+      body.avatar_url !== undefined ? body.avatar_url : body.avatarUrl !== undefined ? body.avatarUrl : undefined;
+
+    try {
+      const updated = database.updateOrganization(org.id, {
+        name: typeof nameRaw === "string" && nameRaw.trim() ? nameRaw.trim() : undefined,
+        display_name:
+          displayNameRaw !== undefined ? (displayNameRaw ? String(displayNameRaw).trim() : null) : undefined,
+        description: descriptionRaw !== undefined ? (descriptionRaw ? String(descriptionRaw).trim() : null) : undefined,
+        website: websiteRaw !== undefined ? (websiteRaw ? String(websiteRaw).trim() : null) : undefined,
+        billing_email:
+          billingEmailRaw !== undefined ? (billingEmailRaw ? String(billingEmailRaw).trim() : null) : undefined,
+        avatar_url: avatarUrlRaw !== undefined ? (avatarUrlRaw ? String(avatarUrlRaw).trim() : null) : undefined,
+      });
+
+      res.json({ success: true, organization: updated });
+    } catch (err: unknown) {
+      res
+        .status(500)
+        .json({ error: (err instanceof Error ? err.message : String(err)) || "Failed to update organization" });
+    }
+  };
+
+  router.patch("/:slug", requireAuth, handleUpdateOrg);
+  router.put("/:slug", requireAuth, handleUpdateOrg);
+
+  /**
    * GET /api/v1/organizations/:slug/members
    *
    * List members of an organization.
@@ -114,13 +191,7 @@ export function organizationsRouter(database: LibraryDatabase): Router {
     res.json({ members });
   });
 
-  /**
-   * POST /api/v1/organizations/:slug/members
-   *
-   * Add or update an organization member's role.
-   * Requires caller to be an 'owner' or 'maintainer' in the organization.
-   */
-  router.post("/:slug/members", requireAuth, (req: Request, res: Response): void => {
+  const handleUpsertMemberRole = (req: Request, res: Response, targetParam?: string): void => {
     const slug = String(req.params["slug"] ?? "")
       .trim()
       .toLowerCase();
@@ -138,19 +209,22 @@ export function organizationsRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    const role = String(req.body?.role ?? "contributor") as OrgRole;
-    if (!["owner", "maintainer", "contributor"].includes(role)) {
+    const role = normalizeOrgRole(req.body?.role ?? "contributor");
+    if (!role) {
       res.status(400).json({ error: "Role must be 'owner', 'maintainer', or 'contributor'" });
       return;
     }
 
-    let targetUserId = Number(req.body?.userId);
-    if (!targetUserId && req.body?.username) {
-      const targetUser = database.getUserByUsername(String(req.body.username).trim());
-      if (targetUser) targetUserId = targetUser.id;
+    let targetUserId = Number(targetParam ?? req.body?.userId);
+    if (!targetUserId || Number.isNaN(targetUserId)) {
+      const usernameCandidate = String(targetParam ?? req.body?.username ?? "").trim();
+      if (usernameCandidate) {
+        const targetUser = database.getUserByUsername(usernameCandidate);
+        if (targetUser) targetUserId = targetUser.id;
+      }
     }
 
-    if (!targetUserId || !database.getUserById(targetUserId)) {
+    if (!targetUserId || Number.isNaN(targetUserId) || !database.getUserById(targetUserId)) {
       res.status(400).json({ error: "Valid userId or username is required" });
       return;
     }
@@ -178,10 +252,33 @@ export function organizationsRouter(database: LibraryDatabase): Router {
 
     try {
       database.addOrganizationMember(org.id, targetUserId, role);
-      res.json({ success: true, message: `Member role set to '${role}'` });
+      res.json({ success: true, role, message: `Member role set to '${role}'` });
     } catch {
       res.status(500).json({ error: "Failed to update organization member" });
     }
+  };
+
+  /**
+   * POST /api/v1/organizations/:slug/members
+   *
+   * Add or update an organization member's role.
+   * Requires caller to be an 'owner' or 'maintainer' in the organization.
+   */
+  router.post("/:slug/members", requireAuth, (req: Request, res: Response): void => {
+    handleUpsertMemberRole(req, res);
+  });
+
+  /**
+   * PATCH /api/v1/organizations/:slug/members/:userOrId
+   * PUT /api/v1/organizations/:slug/members/:userOrId
+   *
+   * Update an existing member's role by username or userId.
+   */
+  router.patch("/:slug/members/:userOrId", requireAuth, (req: Request, res: Response): void => {
+    handleUpsertMemberRole(req, res, String(req.params["userOrId"] ?? ""));
+  });
+  router.put("/:slug/members/:userOrId", requireAuth, (req: Request, res: Response): void => {
+    handleUpsertMemberRole(req, res, String(req.params["userOrId"] ?? ""));
   });
 
   /**
@@ -194,7 +291,12 @@ export function organizationsRouter(database: LibraryDatabase): Router {
     const slug = String(req.params["slug"] ?? "")
       .trim()
       .toLowerCase();
-    const targetUserId = Number(req.params["userId"]);
+    const rawUserParam = String(req.params["userId"] ?? "").trim();
+    let targetUserId = Number(rawUserParam);
+    if (!targetUserId || Number.isNaN(targetUserId)) {
+      const targetUser = database.getUserByUsername(rawUserParam);
+      if (targetUser) targetUserId = targetUser.id;
+    }
 
     const org = database.getOrganizationBySlug(slug);
     if (!org) {

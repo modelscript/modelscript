@@ -6,7 +6,7 @@ import Box from "../../../components/Box";
 import ProfileHoverCard from "../../../components/ProfileHoverCard";
 import { safeJsonParse } from "../../../util/json";
 import { formatPostContent, formatRelativeTime, getIconForType, getMessageForType } from "../formatters";
-import { Avatar, AvatarsRow, NotificationWrapper } from "../styles";
+import { Avatar, AvatarOverflowPill, AvatarsRow, NotificationWrapper, UnreadDotButton } from "../styles";
 import type { NotificationItem } from "../types";
 
 export interface SocialNotificationRowProps {
@@ -14,6 +14,8 @@ export interface SocialNotificationRowProps {
   currentUsername?: string | undefined;
   onMarkRead?: ((id: string | number) => void) | undefined;
 }
+
+const MAX_VISIBLE_AVATARS = 8;
 
 export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ notif, currentUsername, onMarkRead }) => {
   const navigate = useNavigate();
@@ -33,14 +35,16 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
     avatar_url: notif.actor_avatar_url,
   };
 
+  const isFollowEvent = notif.type === "follow" || notif.type === "follow_request" || notif.type === "follow_accepted";
+
   const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest("a, button, .interactive-element")) return;
     if (!notif.read) {
       onMarkRead?.(notif.id);
     }
-    const postAuthor = notif.post_author || notif.author_username || primaryActor.username || currentUsername;
+    const postAuthor = notif.post_author || notif.author_username || currentUsername || primaryActor.username;
     const url =
-      notif.type === "follow"
+      isFollowEvent || !notif.post_id
         ? primaryActor.username
           ? `/${primaryActor.username}`
           : "/home"
@@ -48,44 +52,74 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
     navigate(url);
   };
 
+  const relativeTime = formatRelativeTime(notif.created_at || new Date().toISOString());
+  const visibleActors = notif.actors?.slice(0, MAX_VISIBLE_AVATARS) || [];
+  const overflowCount = Math.max(0, (notif.actors?.length || 0) - MAX_VISIBLE_AVATARS);
+
   return (
-    <NotificationWrapper key={notif.id} $unread={!notif.read} onClick={handleRowClick}>
+    <NotificationWrapper
+      key={notif.id}
+      $unread={!notif.read}
+      data-notification-id={String(notif.id)}
+      data-unread={!notif.read ? "true" : "false"}
+      onClick={handleRowClick}
+    >
       {notif.type === "mention" || notif.type === "reply" ? (
         <>
           <Box width={36} display="flex" justifyContent="flex-end" pt={1}>
-            <Avatar
-              $url={primaryActor.avatar_url}
-              $letter={((primaryActor?.display_name || primaryActor?.username || "?")[0] || "?").toUpperCase()}
-              style={{ width: 36, height: 36 }}
-            />
+            <ProfileHoverCard username={primaryActor.username || ""}>
+              <Link
+                to={primaryActor.username ? `/${primaryActor.username}` : "/home"}
+                style={{ textDecoration: "none" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Avatar
+                  $url={primaryActor.avatar_url}
+                  $letter={((primaryActor?.display_name || primaryActor?.username || "?")[0] || "?").toUpperCase()}
+                  style={{ width: 36, height: 36 }}
+                />
+              </Link>
+            </ProfileHoverCard>
           </Box>
           <Box flex={1} display="flex" flexDirection="row">
             <Box flex={1}>
               <Box
                 display="flex"
                 alignItems="center"
-                gap="4px"
+                justifyContent="space-between"
+                gap="8px"
                 mb="4px"
                 style={{ fontSize: "15px", lineHeight: "20px" }}
               >
-                <ProfileHoverCard username={primaryActor.username || ""}>
-                  <Link
-                    to={`/${primaryActor.username}`}
-                    style={{
-                      fontWeight: 700,
-                      color: "var(--color-fg-default)",
-                      textDecoration: "none",
+                <Box display="flex" alignItems="center" gap="4px" flexWrap="wrap">
+                  <ProfileHoverCard username={primaryActor.username || ""}>
+                    <Link
+                      to={`/${primaryActor.username}`}
+                      style={{
+                        fontWeight: 700,
+                        color: "var(--color-fg-default)",
+                        textDecoration: "none",
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {primaryActor.display_name || primaryActor.username}
+                    </Link>
+                  </ProfileHoverCard>
+                  <span style={{ color: "var(--color-fg-muted)" }}>@{primaryActor.username}</span>
+                  <span style={{ color: "var(--color-fg-muted)" }}>·</span>
+                  <span style={{ color: "var(--color-fg-muted)" }}>{relativeTime}</span>
+                </Box>
+                {!notif.read && (
+                  <UnreadDotButton
+                    type="button"
+                    title="Mark as read"
+                    aria-label="Mark notification as read"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMarkRead?.(notif.id);
                     }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {primaryActor.display_name || primaryActor.username}
-                  </Link>
-                </ProfileHoverCard>
-                <span style={{ color: "var(--color-fg-muted)" }}>@{primaryActor.username}</span>
-                <span style={{ color: "var(--color-fg-muted)" }}>·</span>
-                <span style={{ color: "var(--color-fg-muted)" }}>
-                  {formatRelativeTime(notif.created_at || new Date().toISOString())}
-                </span>
+                  />
+                )}
               </Box>
               {notif.post_content && (
                 <Box style={{ fontSize: "15px", lineHeight: "20px" }} color="var(--color-fg-muted)">
@@ -110,15 +144,49 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
             {getIconForType(notif.type)}
           </Box>
           <Box flex={1}>
-            <AvatarsRow>
-              {notif.actors?.slice(0, 10).map((a) => (
-                <Avatar
-                  key={a.username}
-                  $url={a.avatar_url}
-                  $letter={((a?.display_name || a?.username || "?")[0] || "?").toUpperCase()}
-                />
-              ))}
-            </AvatarsRow>
+            <Box display="flex" alignItems="center" justifyContent="space-between" gap="8px">
+              <AvatarsRow>
+                {visibleActors.map((a) => {
+                  const avatarEl = (
+                    <Avatar
+                      key={a.username || a.display_name}
+                      $url={a.avatar_url}
+                      $letter={((a?.display_name || a?.username || "?")[0] || "?").toUpperCase()}
+                      title={a.display_name || a.username || ""}
+                    />
+                  );
+                  if (!a.username) return avatarEl;
+                  return (
+                    <ProfileHoverCard key={a.username} username={a.username}>
+                      <Link
+                        to={`/${a.username}`}
+                        style={{ textDecoration: "none" }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {avatarEl}
+                      </Link>
+                    </ProfileHoverCard>
+                  );
+                })}
+                {overflowCount > 0 && <AvatarOverflowPill>+{overflowCount}</AvatarOverflowPill>}
+              </AvatarsRow>
+              <Box display="flex" alignItems="center" gap="6px" flexShrink={0}>
+                <span style={{ fontSize: "13px", lineHeight: "16px", color: "var(--color-fg-muted)" }}>
+                  {relativeTime}
+                </span>
+                {!notif.read && (
+                  <UnreadDotButton
+                    type="button"
+                    title="Mark as read"
+                    aria-label="Mark notification as read"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMarkRead?.(notif.id);
+                    }}
+                  />
+                )}
+              </Box>
+            </Box>
             <Box mt={1} style={{ fontSize: "15px", lineHeight: "20px" }}>
               {getMessageForType(notif.type, notif.actors, currentUsername)}
             </Box>

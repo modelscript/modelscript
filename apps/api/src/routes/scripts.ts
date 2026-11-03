@@ -669,6 +669,7 @@ export function scriptsRouter(db: LibraryDatabase) {
         modelDomain: (req.body?.modelDomain || meta["modelDomain"] || storedInstance?.["modelDomain"]) as
           | StudyDomain
           | undefined,
+        modelCode: req.body?.modelCode || (meta["modelCode"] as string | undefined),
         packageName: (req.body?.packageName || meta["packageName"] || storedInstance?.["packageName"]) as
           | string
           | undefined,
@@ -814,7 +815,11 @@ export function scriptsRouter(db: LibraryDatabase) {
       if (!studyInstance) {
         const tplSlug = String(meta["templateSlug"] || "modelica-sundials-dae");
         const studyDef = resolveStudyTemplate(db, tplSlug) || BUILTIN_STUDY_DEFINITIONS[0]!;
-        const model = CURATED_COMPATIBLE_MODELS[0]!;
+        const compatModels = findCompatibleModels(db, { templateSlug: studyDef.slug, limit: 10 });
+        const model =
+          compatModels.find((m) => m.qualifiedName === meta["modelName"] || m.name === meta["modelName"]) ||
+          compatModels[0] ||
+          CURATED_COMPATIBLE_MODELS[0]!;
         studyInstance = synthesizeStudyInstanceArtifact({
           study: studyDef,
           model,
@@ -864,11 +869,18 @@ export function scriptsRouter(db: LibraryDatabase) {
               // Synthesize rich studyResults on-the-fly for any job so the Study Run Inspector always has charts & KPIs
               const tplSlug = String(meta["templateSlug"] || "modelica-sundials-dae");
               const studyDef = resolveStudyTemplate(db, tplSlug) || BUILTIN_STUDY_DEFINITIONS[0]!;
-              const model = CURATED_COMPATIBLE_MODELS[0]!;
+              const compatModels = findCompatibleModels(db, { templateSlug: studyDef.slug, limit: 10 });
+              const model =
+                compatModels.find((m) => m.qualifiedName === meta["modelName"] || m.name === meta["modelName"]) ||
+                compatModels[0] ||
+                CURATED_COMPATIBLE_MODELS[0]!;
               const fallbackReq: StudyRunRequest = {
                 templateIdOrSlug: studyDef.slug,
                 modelName: String(meta["modelName"] || meta["geometry"] || job.name),
+                modelCode: (meta["modelCode"] as string | undefined) || model.code,
                 computeProfile: job.compute_profile || "standard",
+                inputs: (meta["inputs"] as Record<string, string | number | boolean> | undefined) || undefined,
+                parameterBindings: (meta["parameterBindings"] as StudyParameterBinding[] | undefined) || undefined,
               };
               studyResults = computeStudyResultsPayload(studyDef, fallbackReq, model);
               const synthesizedInst = synthesizeStudyInstanceArtifact({
@@ -896,7 +908,11 @@ export function scriptsRouter(db: LibraryDatabase) {
             if (studyResults && !studyResults.studyInstance) {
               const tplSlug = String(meta["templateSlug"] || studyResults.templateSlug || "modelica-sundials-dae");
               const studyDef = resolveStudyTemplate(db, tplSlug) || BUILTIN_STUDY_DEFINITIONS[0]!;
-              const model = CURATED_COMPATIBLE_MODELS[0]!;
+              const compatModels = findCompatibleModels(db, { templateSlug: studyDef.slug, limit: 10 });
+              const model =
+                compatModels.find((m) => m.qualifiedName === meta["modelName"] || m.name === meta["modelName"]) ||
+                compatModels[0] ||
+                CURATED_COMPATIBLE_MODELS[0]!;
               const synthesizedInst = synthesizeStudyInstanceArtifact({
                 study: studyDef,
                 model,
@@ -922,14 +938,17 @@ export function scriptsRouter(db: LibraryDatabase) {
         }
         const studyDef =
           BUILTIN_STUDY_DEFINITIONS.find((b) => b.slug.includes(cloudJob.domain)) || BUILTIN_STUDY_DEFINITIONS[0]!;
+        const compatModels = findCompatibleModels(db, { templateSlug: studyDef.slug, limit: 10 });
+        const model = compatModels[0] || CURATED_COMPATIBLE_MODELS[0]!;
         const studyResults = computeStudyResultsPayload(
           studyDef,
           {
             templateIdOrSlug: studyDef.slug,
             modelName: cloudJob.name,
+            modelCode: model.code,
             computeProfile: cloudJob.profile,
           },
-          CURATED_COMPATIBLE_MODELS[0]!,
+          model,
         );
         return res.json({
           job: {

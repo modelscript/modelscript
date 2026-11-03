@@ -39,9 +39,9 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
-  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default, #30363d)")};
+  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -51,15 +51,15 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const Toolbar = styled.div`
   height: 40px;
   min-height: 40px;
-  background: var(--surface-hud, rgba(14, 20, 36, 0.7));
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  background: var(--color-canvas-subtle);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  gap: 8px;
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
 `;
 
 const HeaderLeft = styled.div`
@@ -67,12 +67,14 @@ const HeaderLeft = styled.div`
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 `;
 
 const Title = styled.span`
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-fg-default, #e6edf3);
+  color: var(--color-fg-default);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -83,6 +85,8 @@ const Badge = styled.span<{ $variant?: "success" | "warning" | "info" }>`
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
   background: ${(p) =>
     p.$variant === "success"
       ? "rgba(46, 160, 67, 0.15)"
@@ -104,42 +108,14 @@ const Badge = styled.span<{ $variant?: "success" | "warning" | "info" }>`
           : "rgba(56, 139, 253, 0.3)"};
 `;
 
-const ContentArea = styled.div`
+const ContentArea = styled.div<{ $padded?: boolean }>`
   flex: 1;
   position: relative;
-  overflow: auto;
-  padding: 14px;
-  background: var(--color-canvas-subtle, #161b22);
-`;
-
-const MetricGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-`;
-
-const MetricCard = styled.div`
-  background: var(--color-canvas-default, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
-  border-radius: 6px;
-  padding: 10px 12px;
+  overflow: ${(p) => (p.$padded ? "auto" : "hidden")};
+  padding: ${(p) => (p.$padded ? "14px" : "0")};
   display: flex;
   flex-direction: column;
-  gap: 2px;
-`;
-
-const MetricLabel = styled.span`
-  font-size: 10.5px;
-  color: var(--color-fg-muted, #8b949e);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-`;
-
-const MetricValue = styled.span`
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-fg-default, #e6edf3);
+  background: var(--color-canvas-subtle);
 `;
 
 function parseSimpackClient(deck: string) {
@@ -222,21 +198,6 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
   const resolvedBodies = viewConfig.bodies?.length ? viewConfig.bodies : parsed.bodies;
   const resolvedJoints = viewConfig.joints?.length ? viewConfig.joints : parsed.joints;
   const resolvedForces = viewConfig.forces?.length ? viewConfig.forces : parsed.forces;
-
-  const bodyCount = useMemo(() => {
-    if (typeof viewConfig.bodyCount === "number") return viewConfig.bodyCount;
-    return resolvedBodies.length;
-  }, [viewConfig.bodyCount, resolvedBodies.length]);
-
-  const jointCount = useMemo(() => {
-    if (typeof viewConfig.jointCount === "number") return viewConfig.jointCount;
-    return resolvedJoints.length;
-  }, [viewConfig.jointCount, resolvedJoints.length]);
-
-  const forceCount = useMemo(() => {
-    if (typeof viewConfig.forceCount === "number") return viewConfig.forceCount;
-    return resolvedForces.length;
-  }, [viewConfig.forceCount, resolvedForces.length]);
 
   const mobilityDof = viewConfig.calculatedMobility;
   const isOverconstrained = viewConfig.isOverconstrained ?? (mobilityDof !== undefined ? mobilityDof < 0 : false);
@@ -351,8 +312,8 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          {!isFullScreen && <Title title={modelName}>{modelName}</Title>}
           <Badge $variant="info">SIMPACK MBS</Badge>
+          {!isFullScreen && <Title title={modelName}>{modelName}</Title>}
           {mobilityDof !== undefined && !isOverconstrained && (
             <Badge $variant="success">
               <span style={{ verticalAlign: "middle", marginRight: 4, display: "inline-flex" }}>
@@ -363,7 +324,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
           )}
           {isOverconstrained && <Badge $variant="warning">OVERCONSTRAINED (M &lt; 0)</Badge>}
         </HeaderLeft>
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
           <SegmentedControl size="small" aria-label="SIMPACK Views">
             <SegmentedControl.Button selected={tabIndex === 0} onClick={() => setTabIndex(0)}>
               Mechanism
@@ -389,48 +350,27 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
         </Box>
       </Toolbar>
 
-      <ContentArea>
+      <ContentArea $padded={tabIndex !== 0 || !svgMarkup}>
         {isLoading ? (
           <Box display="flex" justifyContent="center" alignItems="center" height="100%">
             <Spinner size="large" />
           </Box>
         ) : tabIndex === 0 ? (
-          <div>
-            <MetricGrid>
-              <MetricCard>
-                <MetricLabel>Moving Bodies</MetricLabel>
-                <MetricValue>{bodyCount}</MetricValue>
-              </MetricCard>
-              <MetricCard>
-                <MetricLabel>Joint Constraints</MetricLabel>
-                <MetricValue>{jointCount}</MetricValue>
-              </MetricCard>
-              <MetricCard>
-                <MetricLabel>Force Elements</MetricLabel>
-                <MetricValue>{forceCount}</MetricValue>
-              </MetricCard>
-              <MetricCard>
-                <MetricLabel>Calculated Mobility</MetricLabel>
-                <MetricValue>{mobilityDof !== undefined ? `${mobilityDof} DOF` : "—"}</MetricValue>
-              </MetricCard>
-            </MetricGrid>
-
-            {svgMarkup ? (
-              <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} minHeight="240px" />
-            ) : (
-              <Box
-                p={4}
-                bg="var(--color-canvas-default, #0d1117)"
-                border="1px solid var(--color-border-default, #30363d)"
-                borderRadius="6px"
-                textAlign="center"
-              >
-                <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
-                  No SIMPACK kinematic diagram elements found. Switch to Model Source to inspect the file.
-                </Text>
-              </Box>
-            )}
-          </div>
+          svgMarkup ? (
+            <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} />
+          ) : (
+            <Box
+              p={4}
+              bg="var(--color-canvas-default)"
+              border="1px solid var(--color-border-default)"
+              borderRadius="6px"
+              textAlign="center"
+            >
+              <Text style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
+                No SIMPACK kinematic diagram elements found. Switch to Model Source to inspect the file.
+              </Text>
+            </Box>
+          )
         ) : tabIndex === 1 ? (
           <div>
             <Box mb={2} display="flex" justifyContent="space-between" alignItems="center">

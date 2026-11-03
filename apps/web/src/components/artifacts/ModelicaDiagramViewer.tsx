@@ -6,6 +6,7 @@ import {
   CopyIcon,
   DownloadIcon,
   PulseIcon,
+  StackIcon,
   TableIcon,
   WorkflowIcon,
   ZapIcon,
@@ -19,8 +20,8 @@ import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactView
 
 const MorselEditorLazy = React.lazy(() => import("../morsel/Morsel"));
 
-export type ModelicaPreviewMode = "diagram" | "icon" | "simulation" | "code";
-type CardTabMode = "diagram" | "simulation" | "inspector" | "code";
+export type ModelicaPreviewMode = "diagram" | "icon" | "simulation" | "3d" | "code";
+type CardTabMode = "diagram" | "simulation" | "3d" | "inspector" | "code";
 
 interface ModelicaDiagramViewerProps {
   viewConfig: {
@@ -40,13 +41,14 @@ interface ModelicaDiagramViewerProps {
   isFullScreen?: boolean | undefined;
 }
 
-const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
+const CardWrapper = styled.div<{ $isFullScreen: boolean; $standalone?: boolean | undefined }>`
   position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "380px")};
   background: var(--color-canvas-default, #0d1117);
-  border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
-  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default, #30363d)")};
+  border-radius: ${(props) => (props.$isFullScreen || !props.$standalone ? "0" : "8px")};
+  border: ${(props) =>
+    props.$isFullScreen || !props.$standalone ? "none" : "1px solid var(--color-border-default, #30363d)"};
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -55,8 +57,8 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const CardToolbar = styled.div`
   height: 36px;
   min-height: 36px;
-  background: var(--color-canvas-subtle, #161b22);
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  background: var(--ms-brand-soft, var(--color-canvas-subtle, #161b22));
+  border-bottom: 1px solid var(--color-accent-blue-border, var(--color-border-default, #30363d));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -87,12 +89,12 @@ const Badge = styled.span`
   font-size: 11px;
   line-height: 16px;
   font-family: var(--font-mono, monospace);
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(6, 182, 212, 0.12);
-  color: var(--color-accent-cyan, #06b6d4);
-  border: 1px solid rgba(6, 182, 212, 0.25);
-  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--color-canvas-default);
+  color: var(--ms-brand, #0e7490);
+  border: 1px solid var(--color-accent-blue-border, color-mix(in srgb, var(--ms-brand, #0e7490) 35%, transparent));
+  font-weight: 700;
   white-space: nowrap;
   flex-shrink: 0;
 `;
@@ -106,8 +108,8 @@ const IconActionButton = styled.button`
   padding: 0 8px;
   border-radius: 5px;
   border: 1px solid var(--color-border-default, #30363d);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--color-fg-muted, #8b949e);
+  background: var(--color-canvas-default, #0d1117);
+  color: var(--color-fg-default, #e6edf3);
   font-size: 11px;
   line-height: 16px;
   font-weight: 600;
@@ -119,7 +121,7 @@ const IconActionButton = styled.button`
     border-color 0.15s ease;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.09);
+    background: var(--color-canvas-inset, rgba(148, 163, 184, 0.14));
     color: var(--color-fg-default, #e6edf3);
     border-color: var(--color-border-muted, #484f58);
   }
@@ -133,6 +135,15 @@ const EditorContainer = styled.div<{ $isFullScreen: boolean }>`
   overflow: hidden;
 `;
 
+export function hasModelica3dVisualizers(code: string): boolean {
+  if (!code || typeof code !== "string") return false;
+  return (
+    /\b(?:Modelica\.Mechanics\.MultiBody\.)?Visualizers\./.test(code) ||
+    /\bModelica\.Mechanics\.MultiBody\.(?:Parts|Joints|Forces|World)\b/.test(code) ||
+    /\bannotation\s*\([\s\S]*?\b(?:CAD|cad|CADPort)\s*\(/.test(code)
+  );
+}
+
 export function inferModelicaPreviewMode(
   code: string,
   explicitMode?: string | undefined,
@@ -143,30 +154,38 @@ export function inferModelicaPreviewMode(
     explicitMode === "diagram" ||
     explicitMode === "icon" ||
     explicitMode === "simulation" ||
+    explicitMode === "3d" ||
     explicitMode === "code"
   ) {
     return explicitMode;
   }
+  if (explicitMode === "cad" || explicitMode === "animation" || explicitMode === "3d-animation") {
+    return "3d";
+  }
   if (svg) {
-    const modeMatch = svg.match(/data-preview-mode=["'](diagram|icon|simulation|code)["']/i);
+    const modeMatch = svg.match(/data-preview-mode=["'](diagram|icon|simulation|3d|code)["']/i);
     if (modeMatch && modeMatch[1]) {
       return modeMatch[1].toLowerCase() as ModelicaPreviewMode;
     }
   }
   if (thumbUrl) {
-    const thumbMatch = thumbUrl.match(/[._-](diagram|icon|simulation|code)(?:\.thumb)?\.svg/i);
+    const thumbMatch = thumbUrl.match(/[._-](diagram|icon|simulation|3d|code)(?:\.thumb)?\.svg/i);
     if (thumbMatch && thumbMatch[1]) {
       return thumbMatch[1].toLowerCase() as ModelicaPreviewMode;
     }
   }
+  const has3d = hasModelica3dVisualizers(code);
   const hasDiagram =
     /\bPlacement\s*\(/i.test(code) || /\bDiagram\s*\(\s*(?:coordinateSystem[\s\S]*?)?graphics\s*=/i.test(code);
+  if (has3d && !hasDiagram) return "3d";
   if (hasDiagram) return "diagram";
 
   const hasIcon =
     /\bIcon\s*\(\s*(?:coordinateSystem[\s\S]*?)?graphics\s*=/i.test(code) ||
     /\bextends\s+[A-Za-z0-9_.]*(?:Icon|OnePort|TwoPin|TwoPort|SISO|SO|MI|MO|Interfaces\.)/i.test(code);
   if (hasIcon) return "icon";
+
+  if (has3d) return "3d";
 
   const isPartial =
     /\bpartial\s+(?:encapsulated\s+|expandable\s+)*(?:model|class|block|connector|record|function|package|type|operator)\b/.test(
@@ -189,8 +208,9 @@ export function inferModelicaPreviewMode(
   return "code";
 }
 
-function isLegacyBogusModelicaSvg(svg: string, inferredMode: ModelicaPreviewMode): boolean {
+export function isLegacyBogusModelicaSvg(svg: string, inferredMode: ModelicaPreviewMode): boolean {
   if (!svg) return false;
+  if (svg.includes("RC Step Response") && svg.includes("V_c(t)")) return true;
   if (svg.includes("data-preview-mode=")) return false;
   if (svg.includes("<!-- Procedural 3D Shaders")) {
     if (inferredMode !== "diagram") return true;
@@ -292,9 +312,11 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
 
   const [interactive, setInteractive] = useState(isFullScreen || !hasPreviewThumbnail);
   const [viewMode, setViewMode] = useState<CardTabMode>(() =>
-    previewMode === "simulation" ? "simulation" : "diagram",
+    previewMode === "simulation" ? "simulation" : previewMode === "3d" ? "3d" : "diagram",
   );
-  const [simTriggerCount, setSimTriggerCount] = useState<number>(() => (previewMode === "simulation" ? 1 : 0));
+  const [simTriggerCount, setSimTriggerCount] = useState<number>(() =>
+    previewMode === "simulation" || previewMode === "3d" ? 1 : 0,
+  );
   const [copied, setCopied] = useState(false);
   const [copiedSvg, setCopiedSvg] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -308,6 +330,8 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
   const handleActiveViewChange = useCallback((nextView: "diagram" | "simulation" | "3d" | "inspector" | "code") => {
     if (nextView === "simulation") {
       setViewMode("simulation");
+    } else if (nextView === "3d") {
+      setViewMode("3d");
     } else if (nextView === "inspector") {
       setViewMode("inspector");
     } else if (nextView === "code") {
@@ -381,32 +405,37 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
   const schematicTabLabel = previewMode === "icon" ? "Icon" : "Schematic";
 
   const ctaLabel =
-    previewMode === "simulation"
-      ? "▶ Interactive Simulation"
-      : previewMode === "icon"
-        ? "▶ Inspect Component"
-        : previewMode === "code"
-          ? "▶ Interactive Editor"
-          : "▶ Interactive Schematic";
+    previewMode === "3d"
+      ? "▶ Interactive 3D Animation"
+      : previewMode === "simulation"
+        ? "▶ Interactive Simulation"
+        : previewMode === "icon"
+          ? "▶ Inspect Component"
+          : previewMode === "code"
+            ? "▶ Interactive Editor"
+            : "▶ Interactive Schematic";
 
   const activeMorselView =
     viewMode === "simulation"
       ? "plot"
-      : viewMode === "inspector"
-        ? "inspector"
-        : viewMode === "code"
-          ? "code"
-          : "diagram";
+      : viewMode === "3d"
+        ? "3d"
+        : viewMode === "inspector"
+          ? "inspector"
+          : viewMode === "code"
+            ? "code"
+            : "diagram";
 
   const navTabs: Array<{ id: CardTabMode; label: string; icon: React.ReactNode }> = [
     { id: "diagram", label: schematicTabLabel, icon: <WorkflowIcon size={12} /> },
     { id: "simulation", label: "Simulate", icon: <PulseIcon size={12} /> },
+    { id: "3d", label: "3D", icon: <StackIcon size={12} /> },
     { id: "inspector", label: "Inspector", icon: <TableIcon size={12} /> },
     { id: "code", label: "Code", icon: <CodeIcon size={12} /> },
   ];
 
   return (
-    <CardWrapper $isFullScreen={isFullScreen}>
+    <CardWrapper $isFullScreen={isFullScreen} $standalone={Boolean(viewConfig?.standalone)}>
       {!isFullScreen && (
         <CardToolbar>
           <ToolbarLeft>
@@ -430,7 +459,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
           <ToolbarRight>
             <Box
               display="flex"
-              bg="rgba(0,0,0,0.25)"
+              bg="var(--color-canvas-default)"
               borderRadius="6px"
               p="2px"
               border="1px solid var(--color-border-default)"
@@ -444,16 +473,19 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
                     type="button"
                     onClick={() => {
                       setViewMode(tab.id);
-                      if (tab.id === "simulation") {
+                      if (tab.id === "simulation" || tab.id === "3d") {
                         setInteractive(true);
                         setSimTriggerCount((c) => Math.max(1, c));
                       } else if (tab.id === "inspector") {
                         setInteractive(true);
+                      } else if (tab.id === "diagram" && previewMode !== "diagram" && previewMode !== "icon") {
+                        setInteractive(true);
                       }
                     }}
                     style={{
-                      background: isActive ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                      color: isActive ? "#06b6d4" : "var(--color-fg-muted)",
+                      background: isActive ? "var(--ms-brand, #0e7490)" : "transparent",
+                      color: isActive ? "#ffffff" : "var(--color-fg-default)",
+                      opacity: isActive ? 1 : 0.82,
                       border: "none",
                       borderRadius: "4px",
                       padding: "2px 8px",
@@ -465,6 +497,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "4px",
+                      boxShadow: isActive ? "0 1px 2px rgba(0, 0, 0, 0.12)" : "none",
                       transition: "all 0.15s ease",
                     }}
                   >
@@ -550,7 +583,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
                 initialDialect={dialect}
                 initialView={activeMorselView}
                 hideCenterFloatingToolbar={!isFullScreen}
-                defaultRibbonExpanded={Boolean(isFullScreen && viewMode === "simulation")}
+                defaultRibbonExpanded={Boolean(isFullScreen && (viewMode === "simulation" || viewMode === "3d"))}
                 simulateTriggerCount={simTriggerCount > 0 ? simTriggerCount : undefined}
                 onActiveViewChange={handleActiveViewChange}
                 onCodeChange={setEditedCode}
@@ -573,7 +606,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
             }}
             onClick={() => {
               setInteractive(true);
-              if (previewMode === "simulation") {
+              if (previewMode === "simulation" || previewMode === "3d") {
                 setSimTriggerCount((c) => Math.max(1, c));
               }
             }}
@@ -597,18 +630,17 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
                 position: "absolute",
                 bottom: "12px",
                 right: "12px",
-                background: "rgba(13, 17, 23, 0.88)",
-                padding: "5px 12px",
+                background: "var(--ms-brand, #0e7490)",
+                padding: "6px 14px",
                 borderRadius: "9999px",
-                border: "1px solid rgba(6, 182, 212, 0.35)",
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.45)",
-                backdropFilter: "blur(6px)",
+                border: "1px solid rgba(255, 255, 255, 0.25)",
+                boxShadow: "0 4px 14px rgba(0, 0, 0, 0.45)",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "6px",
               }}
             >
-              <Text style={{ fontSize: "12px", lineHeight: "16px", color: "#f0f6fc", fontWeight: 600 }}>
+              <Text style={{ fontSize: "12px", lineHeight: "16px", color: "#ffffff", fontWeight: 600 }}>
                 {ctaLabel}
               </Text>
             </div>

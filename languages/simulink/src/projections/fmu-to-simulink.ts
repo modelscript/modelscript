@@ -58,6 +58,7 @@ export function fmuToSimulink(model: FmuModelStub): SimulinkProjectionResult {
     `#define S_FUNCTION_LEVEL 2`,
     ``,
     `#include "simstruc.h"`,
+    `#include "fmi2Functions.h"`,
     ``,
     `static void mdlInitializeSizes(SimStruct *S) {`,
     `    ssSetNumSFcnParams(S, ${numParams});`,
@@ -79,6 +80,7 @@ export function fmuToSimulink(model: FmuModelStub): SimulinkProjectionResult {
 
   cLines.push(
     `    ssSetNumSampleTimes(S, 1);`,
+    `    ssSetNumPWork(S, 1);`,
     `    ssSetOptions(S, SS_OPTION_EXCEPTION_FREE_CODE);`,
     `}`,
     ``,
@@ -87,8 +89,32 @@ export function fmuToSimulink(model: FmuModelStub): SimulinkProjectionResult {
     `    ssSetOffsetTime(S, 0, 0.0);`,
     `}`,
     ``,
+    `#define MDL_START`,
+    `static void mdlStart(SimStruct *S) {`,
+    `    fmi2CallbackFunctions callbacks = { NULL, calloc, free, NULL, NULL };`,
+    `    fmi2Component comp = fmi2Instantiate(`,
+    `        "${model.modelName}",`,
+    `        fmi2CoSimulation,`,
+    `        "${model.guid ?? "{00000000-0000-0000-0000-000000000000}"}",`,
+    `        "",`,
+    `        &callbacks,`,
+    `        fmi2False,`,
+    `        fmi2False`,
+    `    );`,
+    `    if (comp != NULL) {`,
+    `        fmi2SetupExperiment(comp, fmi2False, 0.0, ssGetTStart(S), fmi2False, 0.0);`,
+    `        fmi2EnterInitializationMode(comp);`,
+    `        fmi2ExitInitializationMode(comp);`,
+    `    }`,
+    `    ssSetPWorkValue(S, 0, (void *)comp);`,
+    `}`,
+    ``,
     `static void mdlOutputs(SimStruct *S, int_T tid) {`,
+    `    (void)tid;`,
+    `    fmi2Component comp = (fmi2Component)ssGetPWorkValue(S, 0);`,
     `    time_T t = ssGetT(S);`,
+    `    time_T h = ssGetSampleTime(S, 0);`,
+    `    if (h <= 0.0) h = 0.001;`,
     `    /* Set Inputs to FMU */`,
   );
 
@@ -97,16 +123,42 @@ export function fmuToSimulink(model: FmuModelStub): SimulinkProjectionResult {
     cLines.push(`    real_T u_${idx} = *uPtr_${idx}[0];`);
   });
 
+  if (inputs.length > 0) {
+    const inVrs = inputs.map((v) => v.valueReference).join(", ");
+    const inVals = inputs.map((_, idx) => `(fmi2Real)u_${idx}`).join(", ");
+    cLines.push(
+      `    const fmi2ValueReference in_vr[${inputs.length}] = { ${inVrs} };`,
+      `    const fmi2Real in_val[${inputs.length}] = { ${inVals} };`,
+      `    if (comp != NULL) {`,
+      `        fmi2SetReal(comp, in_vr, ${inputs.length}, in_val);`,
+      `    }`,
+    );
+  }
+
   cLines.push(
     `    /* Step FMU (Co-Simulation step call) */`,
-    `    /* fmi2DoStep(...) */`,
+    `    if (comp != NULL) {`,
+    `        fmi2DoStep(comp, (fmi2Real)t, (fmi2Real)h, fmi2True);`,
+    `    }`,
     ``,
     `    /* Fetch Outputs from FMU */`,
   );
 
+  if (outputs.length > 0) {
+    const outVrs = outputs.map((v) => v.valueReference).join(", ");
+    const outInit = outputs.map((v) => Number(v.start ?? 0.0)).join(", ");
+    cLines.push(
+      `    const fmi2ValueReference out_vr[${outputs.length}] = { ${outVrs} };`,
+      `    fmi2Real out_val[${outputs.length}] = { ${outInit} };`,
+      `    if (comp != NULL) {`,
+      `        fmi2GetReal(comp, out_vr, ${outputs.length}, out_val);`,
+      `    }`,
+    );
+  }
+
   outputs.forEach((out, idx) => {
     cLines.push(`    real_T *y_${idx} = ssGetOutputPortRealSignal(S, ${idx});`);
-    cLines.push(`    *y_${idx} = 0.0; /* Populated from FMU output VR ${out.valueReference} */`);
+    cLines.push(`    *y_${idx} = (real_T)out_val[${idx}]; /* Populated from FMU output VR ${out.valueReference} */`);
   });
 
   cLines.push(
@@ -114,6 +166,12 @@ export function fmuToSimulink(model: FmuModelStub): SimulinkProjectionResult {
     ``,
     `static void mdlTerminate(SimStruct *S) {`,
     `    /* Terminate and free FMU instance */`,
+    `    fmi2Component comp = (fmi2Component)ssGetPWorkValue(S, 0);`,
+    `    if (comp != NULL) {`,
+    `        fmi2Terminate(comp);`,
+    `        fmi2FreeInstance(comp);`,
+    `        ssSetPWorkValue(S, 0, NULL);`,
+    `    }`,
     `}`,
     ``,
     `#ifdef MATLAB_MEX_FILE`,

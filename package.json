@@ -1,6 +1,6 @@
 {
   "name": "modelscript",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "private": true,
   "description": "ModelScript",
   "keywords": [
@@ -56,6 +56,8 @@
     "dev:compiler": "nx watch --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica -- tsc -w",
     "dev:desktop": "npm run dev --workspace=@modelscript/desktop",
     "dev:docs": "npm run dev --workspace=@modelscript/docs",
+    "dev:flagship": "nx run-many --target=dev:flagship --projects=@modelscript/api,@modelscript/web --parallel=2",
+    "dev:flagship:api": "npm run dev:flagship --workspace=@modelscript/api",
     "dev:platform": "npm run dev",
     "dev:vscode": "npx tsx apps/cli/src/main.ts sandbox languages/modelica/src/language.ts languages/sysml2/src/language.ts languages/step/src/language.ts languages/owl2/src/language.ts languages/csv/src/language.ts languages/modelscript/src/language.ts",
     "dev:web": "npm run dev --workspace=@modelscript/web",
@@ -84,8 +86,8 @@
     "package:ide:extension": "npm run build-extension --workspace=@modelscript/ide && (cd apps/ide/dist/extension && npx --yes @vscode/vsce package --no-dependencies --allow-star-activation --out ../)",
     "prepare": "husky",
     "preview:ide": "npx tsx apps/ide/src/preview-static.ts",
-    "release": "nx release",
-    "release:dry-run": "nx release --dry-run",
+    "release": "NODE_OPTIONS='--require ./scripts/nx-minimatch-shim.cjs' nx release",
+    "release:dry-run": "npx tsx scripts/ci-release-version.ts --dry-run",
     "sync:versions": "npx tsx scripts/sync-versions.ts",
     "test": "node scripts/test-coordinator.js affected",
     "test:all": "node scripts/test-coordinator.js run-many",
@@ -112,7 +114,8 @@
     "verify:all": "nx run-many -t lint,typecheck,build --skip-nx-cache --parallel=4",
     "verify:dist": "npx tsx scripts/verify-dist-integrity.ts",
     "verify:fresh": "nx affected -t lint,typecheck,build --uncommitted --skip-nx-cache --parallel=4",
-    "verify:pack": "npx tsx scripts/verify-pack-install.ts"
+    "verify:pack": "npx tsx scripts/verify-pack-install.ts",
+    "version:bump": "npx tsx scripts/sync-versions.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

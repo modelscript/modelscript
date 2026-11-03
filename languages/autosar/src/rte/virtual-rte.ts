@@ -212,12 +212,17 @@ export class VirtualRte {
     if (impl) {
       impl(ctx);
     } else {
-      // Default pass-through behavior: read inputs, echo to outputs
+      // Default pass-through behavior: read inputs, echo actual values to outputs
+      const readValues: (number | string)[] = [];
       for (const r of task.runnable.dataReadAccess) {
-        ctx.read(r.port, r.dataElement);
+        readValues.push(ctx.read(r.port, r.dataElement));
       }
-      for (const w of task.runnable.dataWriteAccess) {
-        ctx.write(w.port, w.dataElement, 1.0);
+      for (let i = 0; i < task.runnable.dataWriteAccess.length; i++) {
+        const w = task.runnable.dataWriteAccess[i];
+        if (!w) continue;
+        const existingOut = this.getSignal(w.port, w.dataElement, task.swcName);
+        const passthroughVal = readValues[i] ?? readValues[0] ?? existingOut ?? 0.0;
+        ctx.write(w.port, w.dataElement, passthroughVal);
       }
     }
 

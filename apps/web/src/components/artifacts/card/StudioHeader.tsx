@@ -13,6 +13,7 @@ import {
 import { Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import {
   buildEditorUrlForArtifact,
   isMultiFileArtifact,
@@ -56,6 +57,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   onRunOnHpc,
 }) => {
   const navigate = useNavigate();
+  const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
 
   const isMultiFile = isMultiFileArtifact({
     view_type: artifact?.view_type,
@@ -305,7 +307,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 ⚡ Fork &amp; Reproduce
               </button>
             )}
-            {onRunOnHpc && (
+            {hasCloudSolverFlag && onRunOnHpc && (
               <button
                 type="button"
                 onClick={(e) => {

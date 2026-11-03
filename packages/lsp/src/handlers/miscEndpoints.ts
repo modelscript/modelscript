@@ -11,7 +11,13 @@ import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getTraceabilityMatrix } from "../requirements.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
-import { loadDependencyFromRegistry, type RegistryPackageInfo } from "../vfs/library-loader.js";
+import {
+  ensureLibraryVersionMounted,
+  importLibraryZip,
+  loadRegistryPackages,
+  unloadLibraryPackage,
+  type RegistryPackageInfo,
+} from "../vfs/library-loader.js";
 
 export interface FlatSemanticEdit {
   action: "insert" | "delete" | "update" | "none" | "move";
@@ -143,6 +149,7 @@ export function registerMiscEndpoints(context: LspContext) {
         for (const doc of context.documents.all()) {
           context.validationService.validateTextDocument(doc);
         }
+        context.connection.sendNotification("modelscript/projectTreeChanged");
       } else {
         context.connection.console.warn("[lsp] Received registry packages but loader context is not ready.");
       }
@@ -163,7 +170,7 @@ export function registerMiscEndpoints(context: LspContext) {
         message: `Loading ${params.name}@${params.version}...`,
       });
       try {
-        await loadDependencyFromRegistry(params, savedLoaderCtx);
+        await ensureLibraryVersionMounted(params, savedLoaderCtx, (globalThis as any).serverDistBase);
         context.connection.console.info(`[lsp] Successfully loaded ${params.name}@${params.version}`);
 
         context.connection.sendNotification("modelscript/status", {
@@ -195,6 +202,59 @@ export function registerMiscEndpoints(context: LspContext) {
         context.connection.sendNotification("modelscript/status", {
           state: "error",
           message: `Failed to load ${params.name}`,
+        });
+      }
+    },
+  );
+
+  // Handler for uninstalling/unmounting a library package (standard or custom) from the workspace
+  context.connection.onNotification("modelscript/uninstallDependency", (params: { name: string }) => {
+    if (!savedLoaderCtx) {
+      context.connection.console.warn("[lsp] uninstallDependency: loader context not ready.");
+      return;
+    }
+    try {
+      const evicted = unloadLibraryPackage(params.name, savedLoaderCtx);
+      context.connection.console.info(`[lsp] Uninstalled dependency ${params.name} (${evicted} URIs evicted)`);
+      for (const doc of context.documents.all()) {
+        context.validationService.validateTextDocument(doc);
+      }
+      context.connection.sendNotification("modelscript/projectTreeChanged");
+      context.connection.sendNotification("modelscript/status", {
+        state: "ready",
+        message: `Removed ${params.name}`,
+      });
+    } catch (e) {
+      context.connection.console.error(`[lsp] Failed to uninstall ${params.name}: ${e}`);
+    }
+  });
+
+  // Handler for importing a library from a .zip archive (base64 or URL)
+  context.connection.onNotification(
+    "modelscript/importLibraryZip",
+    async (params: { name?: string; version?: string; zipBase64?: string; url?: string }) => {
+      if (!savedLoaderCtx) {
+        context.connection.console.warn("[lsp] importLibraryZip: loader context not ready.");
+        return;
+      }
+      try {
+        const result = await importLibraryZip(params, savedLoaderCtx);
+        context.connection.console.info(
+          `[lsp] Imported .zip library ${result.name}@${result.version} (${result.fileCount} files)`,
+        );
+        for (const doc of context.documents.all()) {
+          context.validationService.validateTextDocument(doc);
+        }
+        context.connection.sendNotification("modelscript/projectTreeChanged");
+        context.connection.sendNotification("modelscript/status", {
+          state: "ready",
+          message: `Mounted ${result.name}@${result.version}`,
+        });
+      } catch (e) {
+        context.connection.console.error(`[lsp] Failed to import library zip: ${e}`);
+        context.connection.sendNotification("modelscript/status", {
+          state: "error",
+          message: `Failed to import .zip library`,
         });
       }
     },

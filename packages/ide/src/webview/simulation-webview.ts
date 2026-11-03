@@ -767,8 +767,15 @@ window.addEventListener("message", (event) => {
       selectedXVar = selectXAxis.value;
     }
 
-    // Detect Multi-Body simulation
-    const isMultiBody = msg.data.states.some((s: string) => /\.frame_[ab]\.r_0\[1\]$/.test(s));
+    // Detect Multi-Body or 3D Visualizer simulation
+    const isMultiBody = msg.data.states.some(
+      (s: string) =>
+        /\.(?:frame_[ab]\.r_0\[1\]|R\.T\[1,1\]|(?:r|r_0|r_shape|lengthDirection|widthDirection|coordinates)\[1\]|(?:shape|cylinder|sphere|box|arrow|arrowLine|arrowHead|cone|pipe|beam|gearwheel|spring|torus|surface|wheel|rim|tire|line)\.(?:r|r_0|coordinates|length)\b)/.test(
+          s,
+        ) ||
+        /^(?:r|r_0|r_shape|coordinates)\[1\]$/.test(s) ||
+        /^R\.T\[1,1\]$/.test(s),
+    );
     if (isMultiBody) {
       btn3dAnimation.style.display = "inline-block";
     } else {

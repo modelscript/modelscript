@@ -10,7 +10,7 @@ import {
   ShieldCheckIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
@@ -59,15 +59,15 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const Toolbar = styled.div`
   height: 40px;
   min-height: 40px;
-  background: var(--surface-hud, rgba(14, 20, 36, 0.7));
+  background: var(--color-canvas-subtle);
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  gap: 8px;
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
 `;
 
 const HeaderLeft = styled.div`
@@ -75,6 +75,8 @@ const HeaderLeft = styled.div`
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 `;
 
 const ModelTitle = styled.div`
@@ -96,6 +98,7 @@ const PillBadge = styled.span<{ $variant?: "pscad" | "ieee" | "warning" }>`
   border-radius: 9999px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
 
   ${(props) => {
     switch (props.$variant) {
@@ -185,32 +188,6 @@ const LineNo = styled.span`
   padding-right: 16px;
 `;
 
-const InspectorSidebar = styled.div`
-  width: 240px;
-  border-left: 1px solid var(--color-border-default);
-  background: var(--color-canvas-subtle);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 14px;
-  gap: 12px;
-
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const StatItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--color-fg-muted);
-
-  strong {
-    color: var(--color-fg-default);
-  }
-`;
-
 function parsePscadClient(code: string) {
   const userTagRe = /<User\b([^>]*)>([\s\S]*?)<\/User>|<User\b([^>]*)\/>/gi;
   const components: PscadComponentLike[] = [];
@@ -290,7 +267,6 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
   const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
-  const [showInspector, setShowInspector] = useState(false);
 
   const title = viewConfig.title || viewConfig.projectTitle || viewConfig.definitionName || "PSCAD Case";
 
@@ -388,13 +364,6 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
     navigate(`/playground${fromParam}#m=${hash}`);
   };
 
-  const netlist = viewConfig.netlist;
-  const busCount = netlist?.buses?.length ?? parsedClient?.busCount;
-  const componentCount = netlist?.components?.length ?? parsedClient?.componentCount;
-  const ibrCount =
-    netlist?.components?.filter((c) => /inverter|ibr|vsc/i.test(c.definition)).length ?? parsedClient?.ibrCount;
-  const transformerCount = netlist?.transformers?.length ?? parsedClient?.transformerCount;
-  const timeStepUs = viewConfig.timeStepUs ?? parsedClient?.timeStepUs;
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
   return (
@@ -402,15 +371,15 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
       <Toolbar>
         <HeaderLeft>
           <ZapIcon size={16} fill="var(--color-accent-fg, currentColor)" />
-          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge $variant="pscad">PSCAD / EMT</PillBadge>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           {viewConfig.ieee2800Compliant === true && (
             <PillBadge $variant="ieee">
-              <ShieldCheckIcon size={12} /> IEEE 2800 Verified
+              <ShieldCheckIcon size={12} /> IEEE 2800
             </PillBadge>
           )}
         </HeaderLeft>
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
           {sanitizedSvg && (
             <SegmentedControl>
               <SegmentBtn
@@ -424,11 +393,6 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
                 <CodeIcon size={12} /> Source
               </SegmentBtn>
             </SegmentedControl>
-          )}
-          {!isFullScreen && (
-            <Button size="small" onClick={() => setShowInspector((s) => !s)}>
-              {showInspector ? "Hide Telemetry" : "Telemetry"}
-            </Button>
           )}
           {sanitizedSvg && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
@@ -468,36 +432,6 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
           </CodePre>
         ) : (
           <InteractiveSvgStage svgMarkup={sanitizedSvg} isFullScreen={isFullScreen} />
-        )}
-
-        {!isFullScreen && showInspector && (
-          <InspectorSidebar>
-            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-              Circuit Telemetry
-            </Text>
-            {timeStepUs !== undefined && !Number.isNaN(timeStepUs) && (
-              <StatItem>
-                <span>Time-Step (Δt)</span>
-                <strong>{timeStepUs} µs</strong>
-              </StatItem>
-            )}
-            <StatItem>
-              <span>Components</span>
-              <strong>{componentCount ?? "—"}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Buses / Wires</span>
-              <strong>{busCount ?? "—"}</strong>
-            </StatItem>
-            <StatItem>
-              <span>IBR / Converters</span>
-              <strong>{ibrCount ?? "—"}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Transformers</span>
-              <strong>{transformerCount ?? "—"}</strong>
-            </StatItem>
-          </InspectorSidebar>
         )}
       </ContentArea>
     </CardWrapper>

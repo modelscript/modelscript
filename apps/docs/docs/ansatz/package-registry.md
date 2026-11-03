@@ -29,7 +29,7 @@ Packages include metadata declaring dependencies, license, and maturity:
   "license": "Apache-2.0",
   "dependencies": {
     "@modelscript/modelica": "^4.1.0",
-    "@modelscript/pscad": "^0.0.18"
+    "@modelscript/pscad": "^0.1.0"
   }
 }
 ```

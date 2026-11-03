@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BellIcon, FilterIcon, MentionIcon, PackageIcon, RocketIcon, ShieldIcon } from "@primer/octicons-react";
+import {
+  BellIcon,
+  CheckIcon,
+  FilterIcon,
+  GearIcon,
+  MentionIcon,
+  PackageIcon,
+  RocketIcon,
+  ShieldIcon,
+} from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React from "react";
-import Box from "../../../components/Box";
+import { useNavigate } from "react-router-dom";
 import PageHeader from "../../../components/PageHeader";
-import { TabButton, UnreadPill } from "../styles";
+import { scrollToTop } from "../../../components/ScrollToTop";
+import { TabBar, TabButton, UnreadPill } from "../styles";
 import type { NotificationCategory } from "../types";
 
 export interface NotificationsHeaderProps {
@@ -27,10 +37,22 @@ export const NotificationsHeader: React.FC<NotificationsHeaderProps> = ({
   hasUnread,
   onMarkAllRead,
 }) => {
+  const navigate = useNavigate();
+
+  const handleTabClick = (tab: NotificationCategory) => {
+    if (activeTab === tab) {
+      scrollToTop({ smooth: true });
+    } else {
+      setActiveTab(tab);
+      scrollToTop({ smooth: false });
+    }
+  };
+
   return (
     <>
       <PageHeader
         title="Notifications"
+        divider={false}
         badge={unreadCounts.all > 0 ? <UnreadPill>{unreadCounts.all} unread</UnreadPill> : undefined}
         actions={
           <>
@@ -43,39 +65,69 @@ export const NotificationsHeader: React.FC<NotificationsHeaderProps> = ({
               {unreadOnly ? "Unread Only" : "Filter Unread"}
             </Button>
             {hasUnread && (
-              <Button size="small" variant="invisible" onClick={onMarkAllRead}>
-                Mark read
+              <Button size="small" variant="invisible" leadingVisual={CheckIcon} onClick={onMarkAllRead}>
+                {activeTab === "all" ? "Mark all read" : "Mark tab read"}
               </Button>
             )}
+            <Button
+              size="small"
+              variant="invisible"
+              aria-label="Notification settings"
+              title="Notification settings"
+              onClick={() => navigate("/settings?tab=notifications")}
+            >
+              <GearIcon size={16} />
+            </Button>
           </>
         }
       />
 
       {/* ── Category Filter Bar ── */}
-      <Box
-        display="flex"
-        borderBottom="1px solid var(--color-border-default)"
-        style={{ overflowX: "auto", scrollbarWidth: "none" }}
-      >
-        <TabButton $active={activeTab === "all"} onClick={() => setActiveTab("all")}>
+      <TabBar role="tablist" aria-label="Notification categories">
+        <TabButton
+          role="tab"
+          aria-selected={activeTab === "all"}
+          $active={activeTab === "all"}
+          onClick={() => handleTabClick("all")}
+        >
           <BellIcon size={14} /> All {unreadCounts.all > 0 && <UnreadPill>{unreadCounts.all}</UnreadPill>}
         </TabButton>
-        <TabButton $active={activeTab === "engineering"} onClick={() => setActiveTab("engineering")}>
+        <TabButton
+          role="tab"
+          aria-selected={activeTab === "engineering"}
+          $active={activeTab === "engineering"}
+          onClick={() => handleTabClick("engineering")}
+        >
           <RocketIcon size={14} /> Engineering{" "}
           {unreadCounts.engineering > 0 && <UnreadPill>{unreadCounts.engineering}</UnreadPill>}
         </TabButton>
-        <TabButton $active={activeTab === "packages"} onClick={() => setActiveTab("packages")}>
+        <TabButton
+          role="tab"
+          aria-selected={activeTab === "packages"}
+          $active={activeTab === "packages"}
+          onClick={() => handleTabClick("packages")}
+        >
           <PackageIcon size={14} /> Packages{" "}
           {unreadCounts.packages > 0 && <UnreadPill>{unreadCounts.packages}</UnreadPill>}
         </TabButton>
-        <TabButton $active={activeTab === "mentions"} onClick={() => setActiveTab("mentions")}>
-          <MentionIcon size={14} /> Mentions{" "}
+        <TabButton
+          role="tab"
+          aria-selected={activeTab === "mentions"}
+          $active={activeTab === "mentions"}
+          onClick={() => handleTabClick("mentions")}
+        >
+          <MentionIcon size={14} /> Social{" "}
           {unreadCounts.mentions > 0 && <UnreadPill>{unreadCounts.mentions}</UnreadPill>}
         </TabButton>
-        <TabButton $active={activeTab === "system"} onClick={() => setActiveTab("system")}>
+        <TabButton
+          role="tab"
+          aria-selected={activeTab === "system"}
+          $active={activeTab === "system"}
+          onClick={() => handleTabClick("system")}
+        >
           <ShieldIcon size={14} /> System {unreadCounts.system > 0 && <UnreadPill>{unreadCounts.system}</UnreadPill>}
         </TabButton>
-      </Box>
+      </TabBar>
     </>
   );
 };

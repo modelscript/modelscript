@@ -298,6 +298,19 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
             try {
               await installDependency(packageName, version);
               setContextVersion((v) => v + 1);
+              try {
+                const channel = new BroadcastChannel("modelscript:host-bridge");
+                channel.postMessage({
+                  type: "MODELSCRIPT_INSTALL_PACKAGE",
+                  name: packageName,
+                  version: version || "latest",
+                  requestId: `morsel-${Date.now()}`,
+                });
+                channel.close();
+              } catch {
+                // ignore if BroadcastChannel unsupported
+              }
+              toast.success(`Added '${packageName}@${version}' to Libraries.`);
             } catch (e) {
               console.error("Failed to install package:", e);
               toast.error("Failed to install package: " + (e instanceof Error ? e.message : String(e)));

@@ -42,35 +42,76 @@ function nextVersion(uri: string): number {
   return v;
 }
 
+/**
+ * Synchronously extracts the primary simulatable class name from Modelica source code.
+ * Prefers a `model`/`block`/`class` with an `experiment(...)` annotation, otherwise the last
+ * `model`/`block`/`class` definition in the snippet (since helper components/connectors precede the system model).
+ */
+export function extractPrimaryModelicaClassName(code: string): string | null {
+  if (!code || typeof code !== "string") return null;
+  const cleaned = code.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+
+  const classRegex =
+    /\b(?:partial\s+|expandable\s+|encapsulated\s+)*(model|block|class|connector|record|package|function|type)\s+([A-Za-z_]\w*)\b/g;
+  const matches: { kind: string; name: string; index: number }[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = classRegex.exec(cleaned)) !== null) {
+    const kind = match[1]!.toLowerCase();
+    const name = match[2]!;
+    matches.push({ kind, name, index: match.index });
+  }
+  if (matches.length === 0) return null;
+
+  // Check if any model/block/class has an experiment(...) annotation before its `end <Name>;`
+  for (const m of matches) {
+    if (m.kind === "model" || m.kind === "block" || m.kind === "class") {
+      const endRegex = new RegExp(`\\bend\\s+${m.name}\\s*;`);
+      const rest = cleaned.slice(m.index);
+      const endMatch = endRegex.exec(rest);
+      const body = endMatch ? rest.slice(0, endMatch.index) : rest;
+      if (/\bexperiment\s*\(/i.test(body)) {
+        return m.name;
+      }
+    }
+  }
+
+  const simulatable = matches.filter((m) => m.kind === "model" || m.kind === "block" || m.kind === "class");
+  if (simulatable.length > 0) {
+    return simulatable[simulatable.length - 1]!.name;
+  }
+
+  return matches[0]!.name;
+}
+
 // ────────────────────────────────────────────────────────────────────
 // Document synchronisation
 // ────────────────────────────────────────────────────────────────────
 
 /** Notify the LSP that a document was opened. */
-export function didOpen(uri: string, text: string, languageId = "modelica"): void {
+export async function didOpen(uri: string, text: string, languageId = "modelica"): Promise<void> {
   const existing = openedDocuments.get(uri);
   if (existing && existing.text === text && existing.languageId === languageId) {
     return;
   }
   openedDocuments.set(uri, { text, languageId });
-  lsp(languageId).then((c) => {
-    c.sendNotification("textDocument/didOpen", {
-      textDocument: { uri, languageId, version: nextVersion(uri), text },
-    });
+  const c = await lsp(languageId);
+  c.sendNotification("textDocument/didOpen", {
+    textDocument: { uri, languageId, version: nextVersion(uri), text },
   });
 }
 
 /** Notify the LSP that the full content of a document changed. */
-export function didChange(uri: string, text: string): void {
+export async function didChange(uri: string, text: string): Promise<void> {
   const existing = openedDocuments.get(uri);
   if (existing) {
     openedDocuments.set(uri, { ...existing, text });
+  } else {
+    openedDocuments.set(uri, { text, languageId: "modelica" });
   }
-  lsp().then((c) => {
-    c.sendNotification("textDocument/didChange", {
-      textDocument: { uri, version: nextVersion(uri) },
-      contentChanges: [{ text }],
-    });
+  const c = await lsp();
+  c.sendNotification("textDocument/didChange", {
+    textDocument: { uri, version: nextVersion(uri) },
+    contentChanges: [{ text }],
   });
 }
 
@@ -118,6 +159,7 @@ export interface SimulateParams {
   format?: string | undefined;
   parameterOverrides?: Record<string, number> | undefined;
   sweepConfig?: { parameterName: string; start: number; end: number; steps: number } | undefined;
+  flattenerBackend?: "hybrid" | "wasm" | "ts" | "diff" | undefined;
 }
 
 export interface SimulateResult {
@@ -196,7 +238,24 @@ export async function getComponentProperties(
 // ────────────────────────────────────────────────────────────────────
 
 export async function simulate(uri: string, params: SimulateParams = {}): Promise<SimulateResult> {
-  return (await lsp()).sendRequest("modelscript/simulate", { uri, ...params });
+  const conn = await lsp();
+  const opened = openedDocuments.get(uri);
+  const effectiveClassName =
+    params.className || (opened?.text ? (extractPrimaryModelicaClassName(opened.text) ?? undefined) : undefined);
+  const reqParams = { uri, ...params, className: effectiveClassName };
+
+  let res: SimulateResult = await conn.sendRequest("modelscript/simulate", reqParams);
+  for (let attempt = 0; attempt < 4 && res?.error?.includes("No class definition found"); attempt++) {
+    if (opened?.text) {
+      conn.sendNotification("textDocument/didChange", {
+        textDocument: { uri, version: nextVersion(uri) },
+        contentChanges: [{ text: opened.text }],
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    res = await conn.sendRequest("modelscript/simulate", reqParams);
+  }
+  return res;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -246,8 +305,25 @@ export async function searchClasses(query: string, limit = 50): Promise<{ result
 
 export async function getCadComponents(
   uri: string,
-): Promise<{ name: string; cad: string; dynamicBindings: { property: string; index: number; variable: string }[] }[]> {
-  return (await lsp()).sendRequest("modelscript/getCadComponents", { uri });
+  className?: string,
+): Promise<
+  {
+    name: string;
+    cad: string;
+    dynamicBindings: { property: string; index: number; variable: string }[];
+    shapeType?: string | undefined;
+    defaults?: Record<string, unknown> | undefined;
+    proceduralMesh?:
+      | {
+          vertices: number[];
+          normals: number[];
+          indices: number[];
+          color?: [number, number, number, number] | undefined;
+        }
+      | undefined;
+  }[]
+> {
+  return (await lsp()).sendRequest("modelscript/getCadComponents", { uri, className });
 }
 
 // ────────────────────────────────────────────────────────────────────

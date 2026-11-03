@@ -9,7 +9,15 @@ import { renderKinematicDiagramSvg } from "@modelscript/diagram/kinematic-diagra
 import { renderOlgaSchematicSvg } from "@modelscript/diagram/olga-diagram-builder";
 import { renderPscadSvg } from "@modelscript/diagram/pscad-diagram-builder";
 import { renderPsseSldSvg } from "@modelscript/diagram/psse-diagram-builder";
-import { renderSimulinkSvg } from "@modelscript/diagram/simulink-diagram-builder";
+import {
+  buildSimulinkDiagram,
+  parseSimulinkTextToSystem,
+  renderSimulinkSvg,
+} from "@modelscript/diagram/simulink-diagram-builder";
+import {
+  extractCadComponents,
+  parseSourceCadVariables,
+} from "../src/components/morsel/cad-viewer/parse-cad-annotations.js";
 import { applyLspTextEditsToString } from "../src/components/morsel/util/text-edits.js";
 
 describe("Embedded Artifact Viewers UX/UI & Diagram Editing Regression Suite", () => {
@@ -155,16 +163,55 @@ describe("Embedded Artifact Viewers UX/UI & Diagram Editing Regression Suite", (
       assert.ok(mbdSvg.includes("<svg"), "Must produce SIMPACK/GENSYS kinematic SVG");
     });
 
-    it("synthesizes Easy5 / Simulink control block schematics", () => {
-      const easy5Svg = renderSimulinkSvg({
-        name: "Flight Actuator Loop",
-        blocks: [
-          { name: "CMD", type: "Inport", position: { x: 60, y: 80, width: 100, height: 50 } },
-          { name: "SERVO", type: "TransferFcn", position: { x: 240, y: 80, width: 120, height: 54 } },
-        ],
-        lines: [{ id: "L1", srcBlock: "CMD", srcPort: 1, dstBlock: "SERVO", dstPort: 1 }],
-      });
-      assert.ok(easy5Svg.includes("<svg"), "Must produce Simulink/Easy5 SVG");
+    it("synthesizes Easy5 / Simulink control block schematics with explicit dark background rect and topological ranks", () => {
+      const mdlText = `
+Model {
+  Name "CAT3b_Autoland_Flare_Decrab"
+  System {
+    Name "CAT3b_Autoland_Flare_Decrab"
+    Block { BlockType Inport Name "Radio_Altimeter_h" }
+    Block { BlockType Gain Name "Flare_Law_Gain" Gain "-0.18" }
+    Block { BlockType Sum Name "Summing_Junction" Inputs "+-" }
+    Block { BlockType TransferFcn Name "Elevator_Servo" Numerator "[25]" Denominator "[1 25]" }
+    Block { BlockType TransferFcn Name "Pitch_Rate_Dynamics" Numerator "[1.4 0.8]" Denominator "[1 2.1 4.5]" }
+    Block { BlockType Outport Name "Pitch_Command_deg" }
+    Block { BlockType Step Name "Autoland_Mode_Engage" }
+    Line { SrcBlock "Radio_Altimeter_h" SrcPort 1 DstBlock "Flare_Law_Gain" DstPort 1 }
+    Line { SrcBlock "Flare_Law_Gain" SrcPort 1 DstBlock "Summing_Junction" DstPort 1 }
+    Line { SrcBlock "Autoland_Mode_Engage" SrcPort 1 DstBlock "Summing_Junction" DstPort 2 }
+    Line { SrcBlock "Summing_Junction" SrcPort 1 DstBlock "Elevator_Servo" DstPort 1 }
+    Line { SrcBlock "Elevator_Servo" SrcPort 1 DstBlock "Pitch_Rate_Dynamics" DstPort 1 }
+    Line { SrcBlock "Pitch_Rate_Dynamics" SrcPort 1 DstBlock "Pitch_Command_deg" DstPort 1 }
+  }
+}
+`;
+      const parsed = parseSimulinkTextToSystem(mdlText, "CAT3b_Autoland_Flare_Decrab");
+      assert.ok(parsed, "Must parse ASCII .mdl text into SimulinkModelLike");
+      assert.strictEqual(parsed.rootSystem.blocks.length, 7);
+      assert.strictEqual(parsed.rootSystem.lines.length, 6);
+
+      const layout = buildSimulinkDiagram(parsed);
+      const flareCell = layout.cells.find((c) => c.id === "block_Flare_Law_Gain");
+      const engageCell = layout.cells.find((c) => c.id === "block_Autoland_Mode_Engage");
+      const sumCell = layout.cells.find((c) => c.id === "block_Summing_Junction");
+      assert.ok(flareCell && engageCell && sumCell, "Must lay out all blocks");
+      assert.strictEqual(
+        engageCell.x,
+        flareCell.x,
+        "Source block feeding Summing_Junction must be pulled forward to the column immediately preceding Summing_Junction",
+      );
+      assert.ok(
+        (sumCell.x ?? 0) > (flareCell.x ?? 0),
+        "Summing_Junction must be in the column to the right of its inputs",
+      );
+
+      const svg = renderSimulinkSvg(parsed);
+      assert.ok(
+        svg.includes('fill="#0b0f19"'),
+        "Must include explicit dark background <rect> so DOMPurify cannot strip it",
+      );
+      assert.ok(svg.includes("1.4s + 0.8"), "Must render multi-line TransferFcn numerator");
+      assert.ok(svg.includes("s² + 2.1s + 4.5"), "Must render multi-line TransferFcn denominator");
     });
   });
 
@@ -220,6 +267,572 @@ describe("Embedded Artifact Viewers UX/UI & Diagram Editing Regression Suite", (
       assert.ok(
         footerSrc.includes("isUntitledMediaOr3dViewer"),
         "CardFooter must distinguish untitled media/3D viewers from self-titled engineering viewers",
+      );
+    });
+
+    it("forces standalone: false in ViewerDispatcher and removes cluttered right-side telemetry panels", () => {
+      const dispatcherSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        dispatcherSrc.includes("standalone: false"),
+        "ViewerDispatcher must force standalone: false so embedded viewers do not duplicate CardFooter's Open in Playground button",
+      );
+
+      const viewersWithoutTelemetrySidebar = [
+        "PolyglotArtifactViewer.tsx",
+        "RocetsViewer.tsx",
+        "PipelineLpsViewer.tsx",
+        "FeaDeckViewer.tsx",
+        "CfdConfigViewer.tsx",
+        "PscadViewer.tsx",
+        "PsseSldViewer.tsx",
+        "OlgaFlowViewer.tsx",
+        "Easy5Viewer.tsx",
+        "GtSuiteViewer.tsx",
+      ];
+      for (const file of viewersWithoutTelemetrySidebar) {
+        const src = fs.readFileSync(path.resolve(import.meta.dirname, "../src/components/artifacts", file), "utf8");
+        assert.ok(
+          !src.includes("Hide Telemetry"),
+          `${file} must not include a cluttered right-side Telemetry sidebar toggle`,
+        );
+      }
+
+      const reqifSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ReqifViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        !reqifSrc.includes("/morsel?m="),
+        "ReqifViewer must route to /playground#m= rather than legacy /morsel?m=",
+      );
+    });
+
+    it("extracts primary simulatable Modelica class and ensures LSP parser readiness before simulation", async () => {
+      const { extractPrimaryModelicaClassName } = await import("../src/components/morsel/util/lsp-bridge.js");
+      const multiClassSnippet = [
+        "connector Pin",
+        "  Real v;",
+        "  flow Real i;",
+        "end Pin;",
+        "model Resistor",
+        "  Pin p, n;",
+        "  parameter Real R = 100;",
+        "equation",
+        "  p.v - n.v = R * p.i;",
+        "  p.i + n.i = 0;",
+        "end Resistor;",
+        "model Capacitor",
+        "  Pin p, n;",
+        "  parameter Real C = 1e-3;",
+        "equation",
+        "  C * der(p.v - n.v) = p.i;",
+        "  p.i + n.i = 0;",
+        "end Capacitor;",
+        "model MySystem",
+        "  Resistor R1(R=100);",
+        "  Capacitor C1(C=1e-3);",
+        "equation",
+        "  connect(R1.n, C1.p);",
+        "  annotation(experiment(StopTime=1.0));",
+        "end MySystem;",
+      ].join("\n");
+
+      assert.strictEqual(
+        extractPrimaryModelicaClassName(multiClassSnippet),
+        "MySystem",
+        "Must select MySystem (with experiment annotation / system model) over preceding connector/component classes",
+      );
+
+      const simEndpointsSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../../packages/lsp/src/handlers/simulationEndpoints.ts"),
+        "utf8",
+      );
+      assert.ok(
+        simEndpointsSrc.includes("ensureLanguageParserLoaded") && simEndpointsSrc.includes("flushValidation"),
+        "modelscript/simulate handler must ensure WASM parser is loaded and flush validation before resolving target class",
+      );
+
+      const parserServiceSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../../packages/lsp/src/services/parser-service.ts"),
+        "utf8",
+      );
+      assert.ok(
+        parserServiceSrc.includes("ensureSharedContext()"),
+        "ParserService must initialize sharedContext immediately so early didOpen validations index symbols",
+      );
+    });
+
+    it("gates Run on HPC behind cae_cloud_solver feature flag and enforces high-contrast light/dark mode tokens", () => {
+      const gatedFiles = [
+        "../src/components/artifacts/ArtifactViewCard.tsx",
+        "../src/components/artifacts/card/CardFooter.tsx",
+        "../src/components/artifacts/card/StudioHeader.tsx",
+        "../src/components/morsel/panels/MorselFloatingDock.tsx",
+        "../src/components/morsel/panels/MorselVisualizerPane.tsx",
+      ];
+      for (const relPath of gatedFiles) {
+        const src = fs.readFileSync(path.resolve(import.meta.dirname, relPath), "utf8");
+        assert.ok(
+          src.includes('useFeatureFlag("cae_cloud_solver")'),
+          `${relPath} must gate Cloud HPC actions behind useFeatureFlag("cae_cloud_solver")`,
+        );
+      }
+
+      const modelicaViewerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ModelicaDiagramViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        !modelicaViewerSrc.includes('bg="rgba(0,0,0,0.25)"'),
+        "ModelicaDiagramViewer must not use low-contrast muddy rgba(0,0,0,0.25) tab bar background in light mode",
+      );
+      assert.ok(
+        modelicaViewerSrc.includes('svg.includes("RC Step Response")'),
+        "ModelicaDiagramViewer must reject legacy hardcoded RC Step Response placeholder SVGs",
+      );
+
+      const postBodySrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/post/PostBodyContent.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        !postBodySrc.includes('background: "rgba(0, 0, 0, 0.18)"'),
+        "PostBodyContent must not use muddy rgba(0, 0, 0, 0.18) figure caption background",
+      );
+      assert.ok(
+        postBodySrc.includes('cell.caption.trim() !== (cell.title || "").trim()'),
+        "PostBodyContent must omit redundant Fig. N caption when caption is empty or identical to card title",
+      );
+    });
+
+    it("unifies RenderArtifactPage with Full-Screen Studio shell while preserving chromeless thumbnail mode", () => {
+      const renderArtifactSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/pages/RenderArtifactPage.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        renderArtifactSrc.includes("StudioHeader") && renderArtifactSrc.includes("StudioInspectorSidebar"),
+        "RenderArtifactPage must render StudioHeader and StudioInspectorSidebar for full-screen Studio parity",
+      );
+      assert.ok(
+        renderArtifactSrc.includes("isChromeless") &&
+          renderArtifactSrc.includes('searchParams.get("thumbnail")') &&
+          renderArtifactSrc.includes("__ARTIFACT_READY"),
+        "RenderArtifactPage must preserve chromeless rendering and __ARTIFACT_READY for headless thumbnail capture",
+      );
+      assert.ok(
+        renderArtifactSrc.includes('useFeatureFlag("cae_cloud_solver")'),
+        "RenderArtifactPage must gate Cloud HPC actions behind cae_cloud_solver feature flag",
+      );
+    });
+
+    it("supports multi-file maps, stateful view permalinks, and ?morsel=<id> parity across Playground and Embed", async () => {
+      const { compressMorselPayload, decompressMorselPayload, resolveMorselShortlink } =
+        await import("../src/components/morsel/util/permalink");
+      assert.strictEqual(typeof resolveMorselShortlink, "function");
+
+      const multiFilePayload = {
+        v: 1,
+        lang: "modelica",
+        code: "model Main\n  Real x;\nend Main;",
+        files: {
+          "Main.mo": "model Main\n  Real x;\nend Main;",
+          "Sub.mo": "model Sub\n  Real y;\nend Sub;",
+        },
+        activeFile: "Main.mo",
+        isMultiFile: true,
+        title: "Multi-File System",
+        view: "simulation",
+      };
+      const token = compressMorselPayload(multiFilePayload);
+      const decoded = decompressMorselPayload(`#m=${token}`);
+      assert.ok(decoded, "Must decompress multi-file morsel payload");
+      assert.strictEqual(decoded?.activeFile, "Main.mo");
+      assert.strictEqual(decoded?.view, "simulation");
+      assert.deepStrictEqual(decoded?.files, multiFilePayload.files);
+
+      const playgroundSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx"),
+        "utf8",
+      );
+      const embedSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/pages/EmbedPlaygroundPage.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        playgroundSrc.includes("resolveMorselShortlink") && embedSrc.includes("resolveMorselShortlink"),
+        "Both PlaygroundPage and EmbedPlaygroundPage must share resolveMorselShortlink for ?morsel=<id> parity",
+      );
+      assert.ok(
+        playgroundSrc.includes('aria-label="Project files"') && playgroundSrc.includes("onActiveViewChange"),
+        "PlaygroundPage must render multi-file project tabs and synchronize active view changes",
+      );
+    });
+
+    it("provides interactive Diagram/Simulate modes in ModelicaCodeViewer and dual cursors/stats in SimulationPlotViewer", () => {
+      const codeViewerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ModelicaCodeViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        codeViewerSrc.includes("MorselEditor") &&
+          codeViewerSrc.includes('"simulate"') &&
+          codeViewerSrc.includes('"split"'),
+        "ModelicaCodeViewer must support interactive Diagram, Simulate, and Split modes backed by MorselEditor",
+      );
+
+      const simPlotSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/SimulationPlotViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        simPlotSrc.includes("cursorReadout") &&
+          simPlotSrc.includes("ReferenceLine") &&
+          simPlotSrc.includes("Norm [0,1]") &&
+          simPlotSrc.includes("variableStats"),
+        "SimulationPlotViewer must support dual measurement cursors (C1/C2), [0,1] normalization, and variable statistics drawer",
+      );
+    });
+
+    it("uses a single bluish container without duplicate inner grey rounded borders or top/bottom margin gaps", () => {
+      const cardSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ArtifactViewCard.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        cardSrc.includes('background="var(--ms-brand-soft)"') &&
+          cardSrc.includes("var(--color-accent-blue-border") &&
+          !cardSrc.includes("mt={2}"),
+        "ArtifactViewCard must be the single canonical bluish container without mt={2} top gaps",
+      );
+
+      const postBodySrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/post/PostBodyContent.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        postBodySrc.includes("figureNumber={currentFigNum}") && postBodySrc.includes("caption={distinctCaption}"),
+        "PostBodyContent must delegate figure caption rendering to ArtifactViewCard without double-wrapping in a second bordered box",
+      );
+
+      const dispatcherSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        dispatcherSrc.includes("EmbeddedViewerSlot") && dispatcherSrc.includes("border-radius: 0 !important"),
+        "ViewerDispatcher must strip inner borders and border-radius from embedded viewer root nodes",
+      );
+
+      const modelicaDiagramSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ModelicaDiagramViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        modelicaDiagramSrc.includes("props.$isFullScreen || !props.$standalone") &&
+          modelicaDiagramSrc.includes("background: var(--ms-brand-soft"),
+        "ModelicaDiagramViewer must omit inner rounded borders when embedded and use the bluish container background on CardToolbar",
+      );
+
+      const footerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/CardFooter.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        footerSrc.includes('backgroundColor="var(--ms-brand-soft, var(--color-canvas-subtle))"'),
+        "CardFooter must use the bluish container background seamlessly with the outer ArtifactViewCard",
+      );
+    });
+
+    it("maintains deterministic viewer height before, during, and after loading spinners disappear", () => {
+      const dispatcherSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        dispatcherSrc.includes("export function getViewerExpectedHeight") &&
+          dispatcherSrc.includes("height={expectedHeight}") &&
+          !dispatcherSrc.includes('minHeight="120px"'),
+        "ViewerDispatcher Suspense fallback must match the target viewer's exact height instead of collapsing to 120px",
+      );
+
+      const cardSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ArtifactViewCard.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        cardSrc.includes("getViewerExpectedHeight") && cardSrc.includes("height={expectedViewerHeight}"),
+        "ArtifactViewCard loading state must reserve the expected viewer height plus 40px footer bar",
+      );
+
+      const lazyHeavySrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/LazyHeavyViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        lazyHeavySrc.includes("<Suspense"),
+        "LazyHeavyViewer must wrap lazy 3D children in a local Suspense boundary to preserve its 450px container",
+      );
+
+      const polyglotSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/PolyglotArtifactViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        polyglotSrc.includes('height: ${(p) => (p.$isFullScreen ? "100%" : "440px")}'),
+        "PolyglotArtifactViewer must use a fixed 440px non-fullscreen height so loadingText spinner completion does not shift height",
+      );
+
+      const fortranSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/FortranViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        fortranSrc.includes('height: ${(p) => (p.$isFullScreen ? "100%" : "440px")}'),
+        "FortranViewer must use a fixed 440px non-fullscreen height across loading and loaded states",
+      );
+
+      const vegaSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/VegaViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        !vegaSrc.includes('"340px"'),
+        "VegaViewer loading state must match its 440px loaded Wrapper height instead of 340px",
+      );
+
+      const gcodeSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/GCodeViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        !gcodeSrc.includes('height="300px"') &&
+          !gcodeSrc.includes('height={isFullScreen ? "100%" : "400px"}') &&
+          gcodeSrc.includes('height={isFullScreen ? "100%" : "450px"}'),
+        "GCodeViewer loading, empty, and loaded states must match LazyHeavyViewer's 450px height",
+      );
+    });
+
+    it("provides 3D section cutting planes, surface point probing, context-aware Command Palette actions, and stateful parameter permalinks", () => {
+      const camControlsSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ViewportCameraControls.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        camControlsSrc.includes("export type ClipAxis") &&
+          camControlsSrc.includes("onClipAxisChange") &&
+          camControlsSrc.includes("Section cutting plane offset"),
+        "ViewportCameraControls must support X/Y/Z section cutting plane controls and offset slider",
+      );
+
+      const cadStepSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/CadStepViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        cadStepSrc.includes("localClippingEnabled: true") &&
+          cadStepSrc.includes("activeClippingPlanes") &&
+          cadStepSrc.includes("probedPoint"),
+        "CadStepViewer must support localClippingEnabled section planes and 3D surface point coordinate probing",
+      );
+
+      const morselCadSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/morsel/cad-viewer/CadViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        morselCadSrc.includes("clipAxis") &&
+          morselCadSrc.includes("explosionFactor") &&
+          morselCadSrc.includes("Assembly explode factor"),
+        "Morsel CadViewer must include interactive section cutting planes and assembly explosion slider",
+      );
+
+      const cmdPaletteSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/CommandPalette.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        cmdPaletteSrc.includes("action-eng-simulate") &&
+          cmdPaletteSrc.includes("modelscript:morsel-command") &&
+          cmdPaletteSrc.includes("Switch View: Simulation Oscilloscope"),
+        "CommandPalette must expose context-aware Engineering & Simulation actions on /playground and /render-artifact routes",
+      );
+
+      const playgroundSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        playgroundSrc.includes("handleParametersChange") && playgroundSrc.includes("externalParams={payload?.params}"),
+        "PlaygroundPage must synchronize parameter overrides into compressed #m=... permalinks",
+      );
+    });
+  });
+
+  describe("4. Modelica.Mechanics.MultiBody.Visualizers 3D Animation & Post-Artifact Viewer Support", () => {
+    it("extracts procedural 3D meshes, MSL frame defaults, and dynamic bindings from MultiBody Visualizers source", () => {
+      const code = `
+model DoublePendulum3D
+  Modelica.Mechanics.MultiBody.Visualizers.FixedShape arm(
+    shapeType="cylinder",
+    length=0.8,
+    width=0.06,
+    height=0.06,
+    lengthDirection={0, 1, 0},
+    widthDirection={1, 0, 0},
+    r_shape={0.1, 0.2, 0.3},
+    color={255, 60, 60}
+  );
+  Modelica.Mechanics.MultiBody.Visualizers.SignalArrow forceVec(
+    diameter=0.03,
+    color={0, 180, 255}
+  );
+  Modelica.Mechanics.MultiBody.Visualizers.Torus wheel(
+    ri=0.35,
+    ro=0.05,
+    color={40, 40, 40}
+  );
+  Modelica.Mechanics.MultiBody.Visualizers.PipeWithScalarField pipe(
+    length=1.2,
+    outerRadius=0.08,
+    n_s=10,
+    n_phi=12
+  );
+  Modelica.Mechanics.MultiBody.Parts.BodyCylinder link1(
+    r={0.5, 0, 0},
+    diameter=0.05,
+    color={0, 128, 255}
+  );
+  Modelica.Mechanics.MultiBody.Forces.Spring damperSpring(
+    width=0.08,
+    coilWidth=0.015,
+    numberOfWindings=6
+  );
+  Modelica.Mechanics.MultiBody.Joints.Revolute rev(n={0, 0, 1});
+end DoublePendulum3D;
+`;
+      const rawVars = parseSourceCadVariables(code);
+      const cadComponents = extractCadComponents(rawVars);
+
+      assert.strictEqual(cadComponents.length, 7, "Must extract all 7 MultiBody 3D components");
+
+      const arm = cadComponents.find((c) => c.name === "arm");
+      assert.ok(arm, "Must extract FixedShape 'arm'");
+      assert.strictEqual(arm.cad.uri, "procedural://msl/cylinder");
+      assert.ok(
+        arm.proceduralMesh && arm.proceduralMesh.vertices.length > 0 && arm.proceduralMesh.indices.length > 0,
+        "FixedShape must include proceduralMesh vertices and indices",
+      );
+      assert.deepStrictEqual(arm.defaults?.lengthDirection, [0, 1, 0]);
+      assert.deepStrictEqual(arm.defaults?.widthDirection, [1, 0, 0]);
+      assert.deepStrictEqual(arm.defaults?.shapeOffset, [0.1, 0.2, 0.3]);
+      assert.ok(
+        arm.dynamicBindings?.some((b) => b.property === "position" && b.variable === "arm.frame_a.r_0[1]"),
+        "FixedShape must bind frame_a.r_0[1] to position",
+      );
+
+      const forceVec = cadComponents.find((c) => c.name === "forceVec");
+      assert.ok(forceVec, "Must extract SignalArrow 'forceVec'");
+      assert.strictEqual(forceVec.cad.uri, "procedural://msl/arrow");
+      assert.strictEqual(forceVec.defaults?.vectorCoordinates, true);
+      assert.ok(
+        forceVec.dynamicBindings?.some((b) => b.property === "position" && b.variable === "forceVec.frame_a.r_0[1]"),
+      );
+      assert.ok(
+        forceVec.dynamicBindings?.some(
+          (b) => b.property === "vectorCoordinates" && b.variable === "forceVec.r_head[1]",
+        ),
+      );
+
+      const wheel = cadComponents.find((c) => c.name === "wheel");
+      assert.ok(wheel && wheel.proceduralMesh, "Must extract Torus 'wheel' with procedural mesh");
+      assert.strictEqual(wheel.cad.uri, "procedural://msl-surface/torus");
+
+      const pipe = cadComponents.find((c) => c.name === "pipe");
+      assert.ok(pipe && pipe.proceduralMesh, "Must extract PipeWithScalarField 'pipe' with procedural mesh");
+      assert.strictEqual(pipe.cad.uri, "procedural://msl-surface/pipe");
+
+      const link1 = cadComponents.find((c) => c.name === "link1");
+      assert.ok(link1 && link1.proceduralMesh, "Must extract Parts.BodyCylinder 'link1'");
+      assert.deepStrictEqual(link1.defaults?.lengthDirection, [1, 0, 0]);
+
+      const spring = cadComponents.find((c) => c.name === "damperSpring");
+      assert.ok(spring && spring.proceduralMesh, "Must extract Forces.Spring 'damperSpring'");
+      assert.strictEqual(spring.cad.uri, "procedural://msl/spring");
+      assert.strictEqual(spring.defaults?.vectorCoordinates, true);
+
+      const rev = cadComponents.find((c) => c.name === "rev");
+      assert.ok(rev && rev.proceduralMesh, "Must extract Joints.Revolute 'rev'");
+      assert.ok(
+        rev.dynamicBindings?.some((b) => b.property === "rotation" && b.variable === "rev.phi"),
+        "Joints.Revolute must bind rev.phi to rotation",
+      );
+    });
+
+    it("wires procedural meshes, quaternion transforms, and 3D preview tabs across CadViewer, Morsel, and Post-Artifact Viewers", () => {
+      const cadViewerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/morsel/cad-viewer/CadViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        cadViewerSrc.includes("ProceduralMeshObject") &&
+          cadViewerSrc.includes("tf.quaternion") &&
+          cadViewerSrc.includes("tf.color"),
+        "CadViewer must render ProceduralMeshObject without calling useGLTF on procedural:// URIs and apply MSL quaternion and dynamic color transforms",
+      );
+
+      const instancedSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/morsel/cad-viewer/InstancedCadAssembly.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        instancedSrc.includes("!c.proceduralMesh") && instancedSrc.includes('!c.cad.uri?.startsWith("procedural://")'),
+        "InstancedCadAssembly must bypass useGLTF instancing for procedural visualizer meshes",
+      );
+
+      const engineSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/morsel/hooks/useMorselEngine.ts"),
+        "utf8",
+      );
+      assert.ok(
+        engineSrc.includes("parseSourceCadVariables") &&
+          engineSrc.includes("...(comp.defaults ?? {})") &&
+          engineSrc.includes("lastSimTrajectoryRef"),
+        "useMorselEngine must synchronously extract source 3D visualizers, pass MSL defaults to AnimationController, and retain simulation trajectory across async CAD resolution",
+      );
+
+      const diagramViewerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ModelicaDiagramViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        diagramViewerSrc.includes("export function hasModelica3dVisualizers") &&
+          diagramViewerSrc.includes('{ id: "3d", label: "3D"') &&
+          diagramViewerSrc.includes('viewMode === "3d"'),
+        "ModelicaDiagramViewer must detect 3D MultiBody visualizers and expose a first-class 3D tab mode",
+      );
+
+      const codeViewerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ModelicaCodeViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        codeViewerSrc.includes('viewMode === "3d"') && codeViewerSrc.includes("initialView={morselInitialView}"),
+        "ModelicaCodeViewer must include a 3D animation tab wired to Morsel initialView={morselInitialView}",
+      );
+
+      const visualizerPaneSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        visualizerPaneSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.FixedShape") &&
+          visualizerPaneSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.SignalArrow") &&
+          visualizerPaneSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.Torus"),
+        "MorselVisualizerPane must provide 3D MultiBody Visualizer drag-and-drop stencils",
       );
     });
   });

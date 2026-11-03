@@ -24,12 +24,12 @@ import {
   getInvoiceDownloadUrl,
   getOrgWallet,
   getUserBillingSummary,
-  listUserOrganizations,
-  type Organization,
   topUpCredits,
   topUpOrgCredits,
   type UserBillingSummary,
 } from "../../../api";
+import { getMyOrganizations, type Organization } from "../../../api/organizations";
+import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useFeatureFlags } from "../../../FeatureFlagContext";
@@ -93,6 +93,53 @@ const CommercialPillar = styled.div`
   display: flex;
   flex-direction: column;
   gap: 6px;
+`;
+
+const TiersGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+`;
+
+const TierCard = styled.div<{ $highlighted?: boolean }>`
+  background: ${(props) =>
+    props.$highlighted
+      ? "linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(6, 182, 212, 0.08) 100%)"
+      : "var(--color-canvas-subtle)"};
+  border: 1px solid ${(props) => (props.$highlighted ? "rgba(139, 92, 246, 0.4)" : "var(--color-border-default)")};
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+`;
+
+const TierActionButton = styled.button<{ $primary?: boolean }>`
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: ${(props) => (props.$primary ? "none" : "1px solid var(--color-border-default)")};
+  background: ${(props) =>
+    props.$primary
+      ? "var(--gradient-cta, linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%))"
+      : "var(--color-canvas-default)"};
+  color: ${(props) => (props.$primary ? "#ffffff" : "var(--color-text-primary)")};
+  transition: all 0.15s ease-in-out;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.25);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 `;
 
 const BillingWalletCard = styled.div`
@@ -303,7 +350,9 @@ function normalizeBillingSummary(raw: unknown): BillingSummaryView {
     ? (rawObj["recent_transactions"] as Record<string, unknown>[])
     : Array.isArray(rawObj["recentTransactions"])
       ? (rawObj["recentTransactions"] as Record<string, unknown>[])
-      : [];
+      : Array.isArray(rawObj["transactions"])
+        ? (rawObj["transactions"] as Record<string, unknown>[])
+        : [];
 
   const normalizedTxs = rawTxs.map((tx: Record<string, unknown>, idx: number) => ({
     id: (tx["id"] as number | string | undefined) ?? idx,
@@ -336,25 +385,70 @@ function normalizeBillingSummary(raw: unknown): BillingSummaryView {
 }
 
 export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
+  const { user } = useAuth();
   const { isEnabled, setFlagOverride } = useFeatureFlags();
   const isStripeFeatureEnabled = isEnabled("billing_stripe_live");
-  const branding = useInstanceBranding();
-  const brandName = branding.instanceName || "Ansatz";
+  const { instanceName, brandName: brandingBrandName } = useInstanceBranding() as {
+    instanceName: string;
+    brandName?: string;
+  };
+  const brandName = brandingBrandName || instanceName || "Ansatz";
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [selectedOrgId, setSelectedOrgId] = useState<number | null>(null);
+  const [selectedOrgId, setSelectedOrgId] = useState<number | null>(() => {
+    if (typeof sessionStorage !== "undefined") {
+      try {
+        const stored = sessionStorage.getItem("ms_billing_org_id");
+        if (stored) {
+          const parsed = Number(stored);
+          if (Number.isFinite(parsed) && parsed > 0) return parsed;
+        }
+      } catch {
+        // ignore storage errors
+      }
+    }
+    return null;
+  });
   const [billingSummary, setBillingSummary] = useState<BillingSummaryView | null>(null);
-  const [isLiveActive, setIsLiveActive] = useState<boolean>(false);
+  const [billingStatus, setBillingStatus] = useState<{
+    stripeConfigured: boolean;
+    activeTier: "free" | "pro" | "team";
+  }>({
+    stripeConfigured: Boolean(isStripeFeatureEnabled),
+    activeTier: "free",
+  });
+  const [sandboxToggle, setSandboxToggle] = useState<boolean>(() => !isStripeFeatureEnabled);
+  const [billingInterval, setBillingInterval] = useState<"monthly" | "annual">("monthly");
   const [isTopUpLoading, setIsTopUpLoading] = useState(false);
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setBillingStatus((prev) => ({ ...prev, stripeConfigured: Boolean(isStripeFeatureEnabled) }));
+    if (!isStripeFeatureEnabled) {
+      setSandboxToggle(true);
+    }
+  }, [isStripeFeatureEnabled]);
+
+  useEffect(() => {
     let cancelled = false;
-    listUserOrganizations()
+    const storedOrgId = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("ms_billing_org_id") : null;
+    if (storedOrgId) {
+      const parsed = Number(storedOrgId);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        setSelectedOrgId(parsed);
+      }
+    }
+    getMyOrganizations()
       .then((orgs) => {
         if (!cancelled && Array.isArray(orgs)) {
           setOrganizations(orgs);
+          if (storedOrgId) {
+            const parsed = Number(storedOrgId);
+            if (orgs.some((o) => o.id === parsed)) {
+              setSelectedOrgId(parsed);
+            }
+          }
         }
       })
       .catch(() => {
@@ -366,52 +460,52 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
   }, []);
 
   const selectedOrg = organizations.find((o) => o.id === selectedOrgId) ?? null;
+  const isStripeLiveMode = Boolean(billingStatus?.stripeConfigured) && !sandboxToggle;
+  const isLocalSimulationMode = !isStripeLiveMode;
+  const isLiveActive = isStripeLiveMode || isLocalSimulationMode;
 
   const fetchSummary = useCallback(async () => {
     try {
       const data = selectedOrgId !== null ? await getOrgWallet(selectedOrgId) : await getUserBillingSummary();
       setBillingSummary(normalizeBillingSummary(data));
-      setIsLiveActive(true);
       setError(null);
     } catch {
-      // If billing service is unconfigured or gated, gracefully fall back to Community mode
       setBillingSummary(DEFAULT_COMMUNITY_VIEW);
-      setIsLiveActive(Boolean(isStripeFeatureEnabled));
     }
-  }, [isStripeFeatureEnabled, selectedOrgId]);
+  }, [selectedOrgId]);
 
   useEffect(() => {
-    fetchSummary();
+    void fetchSummary();
   }, [fetchSummary]);
 
   const toggleSandboxBilling = () => {
-    const nextState = !isStripeFeatureEnabled;
-    setFlagOverride("billing_stripe_live", nextState);
-    if (!nextState) {
-      setIsLiveActive(false);
-      setTopUpSuccess(null);
-      setError(null);
+    if (billingStatus?.stripeConfigured) {
+      setSandboxToggle((prev) => !prev);
+    } else {
+      const nextStripe = !isStripeFeatureEnabled;
+      setFlagOverride("billing_stripe_live", nextStripe);
+      setBillingStatus((prev) => ({ ...prev, stripeConfigured: nextStripe }));
+      setSandboxToggle(!nextStripe);
     }
+    setTopUpSuccess(null);
+    setError(null);
   };
 
-  const handleTopUp = async (amount: number) => {
+  const handleTopUp = async (amount: number, overrideOrgId?: number) => {
+    const targetOrgId = overrideOrgId !== undefined ? overrideOrgId : (selectedOrgId ?? undefined);
     setIsTopUpLoading(true);
     setError(null);
     setTopUpSuccess(null);
     try {
       let paymentIntentId: string | undefined;
-      if (isLiveActive) {
-        try {
-          const pi = await createPaymentIntent(amount);
-          paymentIntentId = pi.id;
-        } catch {
-          // Fallback if payment-intent endpoint is not needed in sandbox
-        }
+      if (isStripeLiveMode) {
+        const pi = await createPaymentIntent(amount);
+        paymentIntentId = pi.id;
       }
       const updatedWallet =
-        selectedOrgId !== null
-          ? await topUpOrgCredits(selectedOrgId, amount, paymentIntentId)
-          : await topUpCredits(amount, isLiveActive ? "credit_card" : "sandbox_card", paymentIntentId);
+        targetOrgId !== undefined
+          ? await topUpOrgCredits(targetOrgId, amount, paymentIntentId)
+          : await topUpCredits(amount, isStripeLiveMode ? "credit_card" : "sandbox_card", paymentIntentId);
       setBillingSummary((prev) => {
         if (!prev) return null;
         const uw = updatedWallet as { newBalance?: number; balance?: number } | null | undefined;
@@ -426,21 +520,94 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
           },
         };
       });
-      fetchSummary();
+      await fetchSummary();
       window.dispatchEvent(new CustomEvent("modelscript:wallet-update"));
-      const targetLabel = selectedOrg ? `@${selectedOrg.slug} organization wallet` : "your personal wallet";
+      const targetOrg =
+        targetOrgId !== undefined ? (organizations.find((o) => o.id === targetOrgId) ?? selectedOrg) : null;
+      const targetLabel = targetOrg ? `@${targetOrg.slug} organization wallet` : "your personal wallet";
       setTopUpSuccess(
         `Successfully credited +${amount.toFixed(2)} compute credits to ${targetLabel} (${
-          isLiveActive ? "Live Top-Up" : "Developer Sandbox"
+          isStripeLiveMode ? "Stripe Live Mode" : "Local Simulation Billing Mode"
         }).`,
       );
-    } catch {
+    } catch (err: any) {
       setError(
-        "Top-up request failed. In standalone Community mode, enable Developer Sandbox or connect a live Stripe account.",
+        err?.response?.data?.error ||
+          err?.message ||
+          "Top-up request failed. Please verify your permissions or billing configuration.",
       );
     } finally {
       setIsTopUpLoading(false);
     }
+  };
+
+  const createCreditCheckout = async (packId: string, orgId?: number) => {
+    const packAmounts: Record<string, number> = {
+      pack_50: 50,
+      pack_200: 200,
+      pack_500: 500,
+    };
+    const amount = packAmounts[packId] ?? (Number(packId) || 200);
+    if (isStripeLiveMode) {
+      setIsTopUpLoading(true);
+      setError(null);
+      try {
+        const session = await createCheckoutSession(amount, orgId);
+        if (session.checkoutUrl) {
+          window.open(session.checkoutUrl, "_blank", "noopener,noreferrer");
+          return;
+        }
+      } catch {
+        // Fall back to direct credit top-up
+      } finally {
+        setIsTopUpLoading(false);
+      }
+    }
+    await handleTopUp(amount, orgId);
+  };
+
+  const createSubscriptionCheckout = async (
+    tierId: "free" | "pro" | "team",
+    interval: "monthly" | "annual",
+    orgId?: number,
+  ) => {
+    setError(null);
+    setTopUpSuccess(null);
+    const targetOrg = orgId !== undefined ? (organizations.find((o) => o.id === orgId) ?? selectedOrg) : null;
+    const scopeLabel = targetOrg ? `@${targetOrg.slug}` : `@${user?.username || "personal"}`;
+
+    if (tierId === "free") {
+      setBillingStatus((prev) => ({ ...prev, activeTier: "free" }));
+      setTopUpSuccess(`Activated Community Free tier for ${scopeLabel}.`);
+      return;
+    }
+
+    const monthlyCredits = tierId === "pro" ? 200 : 600;
+    const grantCredits = interval === "annual" ? monthlyCredits * 12 : monthlyCredits;
+
+    if (isStripeLiveMode) {
+      setIsTopUpLoading(true);
+      try {
+        const session = await createCheckoutSession(grantCredits, orgId);
+        if (session.checkoutUrl) {
+          window.open(session.checkoutUrl, "_blank", "noopener,noreferrer");
+          setBillingStatus((prev) => ({ ...prev, activeTier: tierId }));
+          return;
+        }
+      } catch {
+        // Fall through to local simulation activation
+      } finally {
+        setIsTopUpLoading(false);
+      }
+    }
+
+    setBillingStatus((prev) => ({ ...prev, activeTier: tierId }));
+    await handleTopUp(grantCredits, orgId);
+    setTopUpSuccess(
+      `Upgraded ${scopeLabel} to ${tierId === "pro" ? "Pro" : "Team"} (${interval}) and credited +${grantCredits.toFixed(
+        2,
+      )} compute credits (${isStripeLiveMode ? "Stripe Live Mode" : "Local Simulation Billing Mode"}).`,
+    );
   };
 
   return (
@@ -457,63 +624,74 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
           SLURM and local solver clusters.
         </DetailSubtitle>
 
-        {organizations.length > 0 && (
-          <Box
-            mb={3}
-            p={3}
+        {/* Billing Scope Selector */}
+        <Box
+          mb={3}
+          p={3}
+          style={{
+            background: "var(--color-canvas-subtle)",
+            border: "1px solid var(--color-border-default)",
+            borderRadius: "10px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
+        >
+          <Box display="flex" alignItems="center" gap={2}>
+            <OrganizationIcon size={16} style={{ color: "var(--color-accent-cyan, #06b6d4)" }} />
+            <div>
+              <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                Billing Scope Selector
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                {selectedOrg
+                  ? `Managing shared subscription and compute credit ledger for ${selectedOrg.display_name || selectedOrg.name} (@${selectedOrg.slug}).`
+                  : `Managing personal compute credit balance and subscription for Personal Account (@${user?.username || "me"}).`}
+              </div>
+            </div>
+          </Box>
+          <select
+            aria-label="Billing Scope"
+            value={selectedOrgId === null ? "personal" : String(selectedOrgId)}
+            onChange={(e) => {
+              const val = e.target.value;
+              const nextOrgId = val === "personal" ? null : Number(val);
+              setSelectedOrgId(nextOrgId);
+              if (typeof sessionStorage !== "undefined") {
+                try {
+                  if (nextOrgId === null) {
+                    sessionStorage.removeItem("ms_billing_org_id");
+                  } else {
+                    sessionStorage.setItem("ms_billing_org_id", String(nextOrgId));
+                  }
+                } catch {
+                  // ignore storage errors
+                }
+              }
+              setTopUpSuccess(null);
+              setError(null);
+            }}
             style={{
-              background: "var(--color-canvas-subtle)",
+              padding: "8px 12px",
+              borderRadius: "8px",
               border: "1px solid var(--color-border-default)",
-              borderRadius: "10px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "12px",
+              background: "var(--color-canvas-default)",
+              color: "var(--color-text-primary)",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
             }}
           >
-            <Box display="flex" alignItems="center" gap={2}>
-              <OrganizationIcon size={16} style={{ color: "var(--color-accent-cyan, #06b6d4)" }} />
-              <div>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                  Billing Context: Personal Wallet vs. Organization
-                </div>
-                <div style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                  {selectedOrg
-                    ? `Viewing shared compute quota and credit ledger for ${selectedOrg.display_name || selectedOrg.name} (@${selectedOrg.slug}).`
-                    : "Viewing your personal compute credit balance and individual job ledger."}
-                </div>
-              </div>
-            </Box>
-            <select
-              aria-label="Billing context"
-              value={selectedOrgId === null ? "personal" : String(selectedOrgId)}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSelectedOrgId(val === "personal" ? null : Number(val));
-                setTopUpSuccess(null);
-                setError(null);
-              }}
-              style={{
-                padding: "8px 12px",
-                borderRadius: "8px",
-                border: "1px solid var(--color-border-default)",
-                background: "var(--color-canvas-default)",
-                color: "var(--color-text-primary)",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              <option value="personal">Personal Wallet</option>
-              {organizations.map((org) => (
-                <option key={org.id} value={String(org.id)}>
-                  {org.display_name || org.name} (@{org.slug})
-                </option>
-              ))}
-            </select>
-          </Box>
-        )}
+            <option value="personal">Personal Account (@{user?.username || "me"})</option>
+            {organizations.map((org) => (
+              <option key={org.id} value={String(org.id)}>
+                {org.display_name || org.name} (@{org.slug})
+              </option>
+            ))}
+          </select>
+        </Box>
 
         {error && (
           <Box
@@ -566,90 +744,219 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
         {/* Plan Header Card */}
         <PlanHeaderCard>
           <Box display="flex" flexDirection="column" gap={1}>
-            <Box display="flex" alignItems="center" gap={2}>
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
               <Text style={{ fontSize: "16px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                {isLiveActive ? `${brandName} Pro Cloud` : `${brandName} Community Edition`}
+                {billingStatus.activeTier === "team"
+                  ? `${brandName} Team HPC`
+                  : billingStatus.activeTier === "pro"
+                    ? `${brandName} Pro Cloud`
+                    : `${brandName} Community Edition`}
               </Text>
-              <PlanBadge $variant={isLiveActive ? "pro" : "community"}>
+              <PlanBadge $variant={isStripeLiveMode ? "pro" : "community"}>
                 <ShieldCheckIcon size={12} />
-                {isLiveActive ? "Active · Cloud HPC" : "Active · AGPL-3.0 Core"}
+                {isStripeLiveMode ? "Stripe Live Mode" : "Local Simulation Billing Mode"}
               </PlanBadge>
             </Box>
             <Text style={{ fontSize: "13px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
-              {isLiveActive
-                ? "High-performance Slurm cluster job dispatch, batched SUNDIALS sweeps, and A100 GPU surrogate training active."
-                : "Local WebAssembly ODE/DAE execution (powered by ModelScript), compiler passes, and core engineering formats included under the AGPL-3.0 open-core license."}
+              {isStripeLiveMode
+                ? "Connected to Stripe Live billing for cloud Slurm cluster job dispatch, batched SUNDIALS sweeps, and GPU surrogate training."
+                : `Local Simulation Billing Mode active on ${brandName} — test subscription upgrades, organization credit top-ups, and ledger auditing without live card charges.`}
             </Text>
           </Box>
 
-          <Box display="flex" alignItems="center" gap={2}>
-            <SecondaryButton onClick={toggleSandboxBilling}>
+          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+            <SecondaryButton type="button" onClick={toggleSandboxBilling}>
               <SyncIcon size={13} />
-              {isStripeFeatureEnabled ? "Disable Sandbox Mode" : "Enable Developer Sandbox"}
+              {sandboxToggle ? "Sandbox Mode Active" : "Simulate Sandbox Mode"}
             </SecondaryButton>
-            <ActionLinkButton href="/pricing" target="_blank" rel="noopener noreferrer">
+            <SecondaryButton
+              type="button"
+              onClick={() => {
+                document.getElementById("subscription-tiers")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
               <span>View Plans &amp; Pricing</span>
-              <LinkExternalIcon size={12} />
-            </ActionLinkButton>
+            </SecondaryButton>
           </Box>
         </PlanHeaderCard>
 
-        {/* Commercial & Enterprise Info Banner (shown in Community mode) */}
-        {!isLiveActive && (
-          <CommercialPromoCard>
-            <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
-              <Box>
-                <div
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    color: "var(--color-text-primary)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <RocketIcon size={15} style={{ color: "var(--color-accent-purple, #a855f7)" }} />
-                  Commercial Licensing &amp; Enterprise Utility Appliances
-                </div>
-                <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginTop: "2px" }}>
-                  Need to embed {brandName} / ModelScript without AGPL copyleft obligations, or deploy a hardened,
-                  air-gapped NERC CIP appliance inside your utility firewall?
-                </div>
-              </Box>
-              <ActionLinkButton
-                href="mailto:licensing@ansatz.social?subject=Ansatz%20Commercial%20License%20%2F%20Enterprise%20Inquiry&body=Hi%20Ansatz%20Team%2C%0A%0AWe%20are%20interested%20in%20evaluating%20the%20Ansatz%20%2F%20ModelScript%20Commercial%20SDK%20%2F%20Enterprise%20Appliance%20for%20our%20engineering%20team.%0A%0ACompany%2FOrganization%3A%20%0ATeam%20Size%3A%20%0APrimary%20Engineering%20Formats%20(e.g.%20Modelica%2C%20SysML%2C%20STEP)%3A%20%0A%0ABest%20regards%2C"
-                target="_blank"
-                rel="noopener noreferrer"
+        {/* Subscription Tiers Section (#subscription-tiers) */}
+        <Box id="subscription-tiers" mb={4}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
+            <div>
+              <DetailTitle style={{ fontWeight: 700, display: "block" }}>{brandName} Subscription Tiers</DetailTitle>
+              <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                Select a plan for{" "}
+                {selectedOrg
+                  ? `${selectedOrg.display_name || selectedOrg.name} (@${selectedOrg.slug})`
+                  : `Personal Account (@${user?.username || "me"})`}
+              </Text>
+            </div>
+            <Box
+              display="inline-flex"
+              gap={1}
+              style={{
+                background: "var(--color-canvas-subtle)",
+                padding: 4,
+                borderRadius: 8,
+                border: "1px solid var(--color-border-default)",
+              }}
+            >
+              <SecondaryButton
+                type="button"
+                onClick={() => setBillingInterval("monthly")}
+                style={{
+                  padding: "4px 12px",
+                  fontSize: "12px",
+                  border: "none",
+                  background: billingInterval === "monthly" ? "var(--color-canvas-default)" : "transparent",
+                }}
               >
-                <span>Inquire About Enterprise</span>
-                <LinkExternalIcon size={12} />
-              </ActionLinkButton>
+                Monthly
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                onClick={() => setBillingInterval("annual")}
+                style={{
+                  padding: "4px 12px",
+                  fontSize: "12px",
+                  border: "none",
+                  background: billingInterval === "annual" ? "var(--color-canvas-default)" : "transparent",
+                }}
+              >
+                Annual (2 Months Free)
+              </SecondaryButton>
             </Box>
+          </Box>
 
-            <CommercialPillarsGrid>
-              <CommercialPillar>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                  Commercial SDK ($12k/yr)
+          <TiersGrid>
+            <TierCard $highlighted={billingStatus.activeTier === "free"}>
+              <div>
+                <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                  Community Free
                 </div>
-                <div style={{ fontSize: "11px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
-                  Dual-license exemption from AGPL §13 network copyleft for proprietary SaaS or closed desktop software,
-                  with private Slack support and guaranteed SLA.
+                <div style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-text-primary)", margin: "6px 0" }}>
+                  $0{" "}
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-text-muted)" }}>/ forever</span>
                 </div>
-              </CommercialPillar>
+                <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
+                  Unlimited in-browser WebAssembly ODE/DAE simulation, public repositories, and open-source package
+                  publishing.
+                </div>
+              </div>
+              <TierActionButton
+                type="button"
+                disabled={isTopUpLoading}
+                onClick={() => void createSubscriptionCheckout("free", billingInterval, selectedOrgId || undefined)}
+              >
+                Activate Free
+              </TierActionButton>
+            </TierCard>
 
-              <CommercialPillar>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                  Enterprise Appliance ($18k/yr)
+            <TierCard $highlighted={billingStatus.activeTier === "pro"}>
+              <div>
+                <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                  {brandName} Pro
                 </div>
-                <div style={{ fontSize: "11px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
-                  Pre-hardened, zero-internet on-premise container deployment meeting FERC CEII and NERC CIP-005/007/010
-                  standards with enterprise SAML SSO.
+                <div style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-text-primary)", margin: "6px 0" }}>
+                  {billingInterval === "annual" ? "$24" : "$29"}{" "}
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-text-muted)" }}>/ month</span>
                 </div>
-              </CommercialPillar>
-            </CommercialPillarsGrid>
-          </CommercialPromoCard>
-        )}
+                <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
+                  Includes 200 monthly cloud HPC credits, priority Slurm queue dispatch, and GPU surrogate model
+                  training.
+                </div>
+              </div>
+              <TierActionButton
+                type="button"
+                $primary
+                disabled={isTopUpLoading}
+                onClick={() => void createSubscriptionCheckout("pro", billingInterval, selectedOrgId || undefined)}
+              >
+                Upgrade to Pro
+              </TierActionButton>
+            </TierCard>
+
+            <TierCard $highlighted={billingStatus.activeTier === "team"}>
+              <div>
+                <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                  {brandName} Team
+                </div>
+                <div style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-text-primary)", margin: "6px 0" }}>
+                  {billingInterval === "annual" ? "$79" : "$99"}{" "}
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-text-muted)" }}>/ month</span>
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
+                  Includes 600 shared organization HPC credits, scoped private registries, RBAC governance, and MPI
+                  cluster access.
+                </div>
+              </div>
+              <TierActionButton
+                type="button"
+                $primary
+                disabled={isTopUpLoading}
+                onClick={() => void createSubscriptionCheckout("team", billingInterval, selectedOrgId || undefined)}
+              >
+                Upgrade to Team
+              </TierActionButton>
+            </TierCard>
+          </TiersGrid>
+        </Box>
+
+        {/* Commercial & Enterprise Info Banner */}
+        <CommercialPromoCard>
+          <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
+            <Box>
+              <div
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  color: "var(--color-text-primary)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <RocketIcon size={15} style={{ color: "var(--color-accent-purple, #a855f7)" }} />
+                Commercial Licensing &amp; Enterprise Utility Appliances
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginTop: "2px" }}>
+                Need to embed {brandName} / ModelScript without AGPL copyleft obligations, or deploy a hardened,
+                air-gapped NERC CIP appliance inside your utility firewall?
+              </div>
+            </Box>
+            <ActionLinkButton
+              href="mailto:licensing@ansatz.social?subject=Ansatz%20Commercial%20License%20%2F%20Enterprise%20Inquiry&body=Hi%20Ansatz%20Team%2C%0A%0AWe%20are%20interested%20in%20evaluating%20the%20Ansatz%20%2F%20ModelScript%20Commercial%20SDK%20%2F%20Enterprise%20Appliance%20for%20our%20engineering%20team.%0A%0ACompany%2FOrganization%3A%20%0ATeam%20Size%3A%20%0APrimary%20Engineering%20Formats%20(e.g.%20Modelica%2C%20SysML%2C%20STEP)%3A%20%0A%0ABest%20regards%2C"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span>Inquire About Enterprise</span>
+              <LinkExternalIcon size={12} />
+            </ActionLinkButton>
+          </Box>
+
+          <CommercialPillarsGrid>
+            <CommercialPillar>
+              <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                Commercial SDK ($12k/yr)
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
+                Dual-license exemption from AGPL §13 network copyleft for proprietary SaaS or closed desktop software,
+                with private Slack support and guaranteed SLA.
+              </div>
+            </CommercialPillar>
+
+            <CommercialPillar>
+              <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                Enterprise Appliance ($18k/yr)
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
+                Pre-hardened, zero-internet on-premise container deployment meeting FERC CEII and NERC CIP-005/007/010
+                standards with enterprise SAML SSO.
+              </div>
+            </CommercialPillar>
+          </CommercialPillarsGrid>
+        </CommercialPromoCard>
 
         {/* Wallet Card */}
         <BillingWalletCard>
@@ -664,7 +971,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                   color: "var(--color-text-muted)",
                 }}
               >
-                {isLiveActive ? "Current Credit Balance" : "Local Compute Engine"}
+                {selectedOrg ? `@${selectedOrg.slug} Shared Credit Balance` : "Current Credit Balance"}
               </span>
               <div
                 style={{
@@ -687,24 +994,33 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                 }}
               >
                 <CheckCircleIcon size={12} />
-                {isLiveActive
+                {isStripeLiveMode
                   ? "Pre-Flight Authorized for Cloud Slurm Offload"
-                  : "Active & Pre-flight Authorized for In-Browser WebAssembly"}
+                  : "Active in Local Simulation Billing Mode & In-Browser WebAssembly"}
               </span>
             </Box>
 
             <Box display="flex" flexDirection="column" alignItems="flex-end" gap={2}>
               <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-                {isLiveActive ? "Quick Top-Up (Credits)" : "Developer Sandbox Reload"}
+                {isStripeLiveMode ? "Quick Top-Up (Credits)" : "Local Simulation Credit Top-Up"}
               </span>
               <Box display="flex" gap={2} flexWrap="wrap">
-                <TopUpPillButton disabled={isTopUpLoading} onClick={() => handleTopUp(50)}>
+                <TopUpPillButton
+                  disabled={isTopUpLoading}
+                  onClick={() => void createCreditCheckout("pack_50", selectedOrgId || undefined)}
+                >
                   <PlusIcon size={14} /> +50 cr
                 </TopUpPillButton>
-                <TopUpPillButton disabled={isTopUpLoading} onClick={() => handleTopUp(200)}>
+                <TopUpPillButton
+                  disabled={isTopUpLoading}
+                  onClick={() => void createCreditCheckout("pack_200", selectedOrgId || undefined)}
+                >
                   <PlusIcon size={14} /> +200 cr
                 </TopUpPillButton>
-                <TopUpPillButton disabled={isTopUpLoading} onClick={() => handleTopUp(500)}>
+                <TopUpPillButton
+                  disabled={isTopUpLoading}
+                  onClick={() => void createCreditCheckout("pack_500", selectedOrgId || undefined)}
+                >
                   <ZapIcon size={14} /> +500 cr
                 </TopUpPillButton>
                 <TopUpPillButton
@@ -712,7 +1028,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                   onClick={async () => {
                     try {
                       setIsTopUpLoading(true);
-                      const session = await createCheckoutSession(200);
+                      const session = await createCheckoutSession(200, selectedOrgId || undefined);
                       if (session.checkoutUrl) {
                         window.open(session.checkoutUrl, "_blank", "noopener,noreferrer");
                       }

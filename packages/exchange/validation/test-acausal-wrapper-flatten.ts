@@ -52,7 +52,7 @@ const desc: FmiModelDescription = {
   guid: "{a1b2c3d4-e5f6-7890-1234-56789abcdef0}",
   description: "Acausal cooling module with electrical pin and thermal port",
   author: "ModelScript",
-  generationTool: "ModelScript 0.0.18",
+  generationTool: "ModelScript 0.1.0",
   supportsCoSimulation: true,
   supportsModelExchange: true,
   coSimulationModelIdentifier: "CoolingModule_cs",

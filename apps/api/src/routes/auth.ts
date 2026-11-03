@@ -73,10 +73,12 @@ export function authRouter(database: LibraryDatabase): Router {
       const mailerConfigured = defaultMailer.isConfiguredForLiveDelivery();
       const oauthProviders: ("github" | "gitlab")[] = [];
       if (!airgapEnforced) {
-        if (process.env["GITHUB_CLIENT_ID"] || process.env["NODE_ENV"] !== "production") {
+        const githubCreds = database.getOAuthCredentials("github");
+        const gitlabCreds = database.getOAuthCredentials("gitlab");
+        if (githubCreds.clientId) {
           oauthProviders.push("github");
         }
-        if (process.env["GITLAB_CLIENT_ID"] || process.env["NODE_ENV"] !== "production") {
+        if (gitlabCreds.clientId) {
           oauthProviders.push("gitlab");
         }
       }
@@ -314,7 +316,7 @@ export function authRouter(database: LibraryDatabase): Router {
           verificationRequired: !preVerified,
           message: preVerified
             ? "Account created and verified."
-            : "Account created successfully. Please verify your email address to unlock your free tier compute credits.",
+            : "Account created successfully. Please verify your email address.",
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Registration failed";
@@ -369,7 +371,7 @@ export function authRouter(database: LibraryDatabase): Router {
   /**
    * GET/POST /api/v1/auth/verify-email
    *
-   * Verifies email address using signed HMAC token and unlocks 50 free compute credits.
+   * Verifies email address using signed HMAC token.
    */
   const handleVerifyEmail = async (req: Request, res: Response): Promise<void> => {
     const token = ((req.body?.token || req.query["token"]) as string) || "";
@@ -399,7 +401,7 @@ export function authRouter(database: LibraryDatabase): Router {
 
     res.status(200).json({
       success: true,
-      message: "Email address verified successfully. Free tier compute credits unlocked!",
+      message: "Email address verified successfully.",
       creditsGranted: result.creditsGranted,
       user: {
         id: result.user.id,
@@ -583,6 +585,7 @@ export function authRouter(database: LibraryDatabase): Router {
           credit_balance: user.credit_balance ?? 0,
           has_password: Boolean(password_hash),
           totp_enabled: Boolean(user.totp_enabled),
+          email_verified: user.email_verified ?? 1,
         },
       });
     } catch (err) {
@@ -764,6 +767,7 @@ export function authRouter(database: LibraryDatabase): Router {
           credit_balance: user.credit_balance ?? 0,
           has_password: Boolean(password_hash),
           totp_enabled: Boolean(user.totp_enabled),
+          email_verified: user.email_verified ?? 1,
           backup_codes_remaining: backupCodesRemaining,
         },
         usedBackupCode,
@@ -817,8 +821,26 @@ export function authRouter(database: LibraryDatabase): Router {
   router.post("/2fa/verify", requireAuth, express.json(), (req: Request, res: Response): void => {
     const { secret, code } = req.body || {};
     const clientIp = getClientIp(req);
-    const pendingSecret = database.getPendingTotpSecret(req.user!.id) ?? pendingTotpSecrets.get(req.user!.id);
+    const userId = req.user!.id;
+    const userEmail = req.user!.email;
+    const bypassRateLimit = process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true";
+
+    if (!bypassRateLimit) {
+      const rateCheck = defaultLoginLimiter.check(clientIp, userEmail);
+      if (!rateCheck.allowed) {
+        res.status(429).json({
+          error: "Too many failed 2FA verification attempts. Please try again in 15 minutes.",
+          retryAfterSeconds: Math.ceil(rateCheck.resetInMs / 1000),
+        });
+        return;
+      }
+    }
+
+    const pendingSecret = database.getPendingTotpSecret(userId) ?? pendingTotpSecrets.get(userId);
     if (pendingSecret && typeof secret === "string" && secret.trim() && secret.trim() !== pendingSecret) {
+      if (!bypassRateLimit) {
+        defaultLoginLimiter.recordFailure(clientIp, userEmail);
+      }
       res.status(400).json({ error: "Provided secret does not match active 2FA setup session" });
       return;
     }
@@ -842,30 +864,50 @@ export function authRouter(database: LibraryDatabase): Router {
       preventReplay: process.env["NODE_ENV"] === "production",
     });
     if (!valid) {
+      if (!bypassRateLimit) {
+        defaultLoginLimiter.recordFailure(clientIp, userEmail);
+      }
       res.status(400).json({ error: "Invalid 6-digit code. Please verify your authenticator app time and try again." });
       return;
     }
 
+    if (!bypassRateLimit) {
+      defaultLoginLimiter.recordSuccess(clientIp, userEmail);
+    }
+
     try {
       const { plainCodes, hashedCodes } = generateBackupCodes(10);
-      database.enableUser2FA(req.user!.id, resolvedSecret, hashedCodes);
-      database.deletePendingTotpSecret(req.user!.id);
-      pendingTotpSecrets.delete(req.user!.id);
+      database.enableUser2FA(userId, resolvedSecret, hashedCodes);
+      database.deletePendingTotpSecret(userId);
+      pendingTotpSecrets.delete(userId);
 
       database.logAudit({
-        actorId: req.user!.id,
+        actorId: userId,
         action: "auth_2fa_enabled",
         resourceType: "auth",
-        resourceId: String(req.user!.id),
+        resourceId: String(userId),
         ipAddress: clientIp,
         details: { backupCodesCount: 10 },
       });
 
-      database.createNotification(req.user!.id, req.user!.id, "security_alert", null, {
+      database.createNotification(userId, userId, "security_alert", null, {
         title: "Two-Factor Authentication Enabled",
         description: "TOTP two-factor authentication has been activated on your account.",
         skipEmail: true,
       });
+
+      const userRecord = database.getUserById(userId);
+      if (userRecord && userRecord.email_verified === 1) {
+        void defaultMailer
+          .sendSecurityAlertEmail(userRecord.email, {
+            username: userRecord.username,
+            eventTitle: "Two-Factor Authentication Enabled",
+            description: "TOTP two-factor authentication has been activated on your account.",
+            ipAddress: clientIp,
+            instanceName: resolveBrandInstanceName(database),
+          })
+          .catch(() => {});
+      }
 
       res.json({
         success: true,
@@ -885,11 +927,34 @@ export function authRouter(database: LibraryDatabase): Router {
    * and current TOTP code or backup code confirmation.
    */
   router.post("/2fa/disable", requireAuth, express.json(), async (req: Request, res: Response): Promise<void> => {
-    const { password, code } = req.body || {};
+    const { password, code, revokeOtherSessions } = req.body || {};
     const clientIp = getClientIp(req);
     const userId = req.user!.id;
+    const userEmail = req.user!.email;
+    const bypassRateLimit = process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true";
+
+    if (!bypassRateLimit) {
+      const rateCheck = defaultLoginLimiter.check(clientIp, userEmail);
+      if (!rateCheck.allowed) {
+        res.status(429).json({
+          error: "Too many failed 2FA attempts. Please try again in 15 minutes.",
+          retryAfterSeconds: Math.ceil(rateCheck.resetInMs / 1000),
+        });
+        return;
+      }
+    }
 
     try {
+      const userRecord = database.getUserById(userId);
+      if (userRecord?.account_type === "admin" && database.getInstanceSettings().requireAdmin2FA) {
+        res.status(403).json({
+          error:
+            "Administrator accounts cannot disable two-factor authentication while the requireAdmin2FA instance policy is active.",
+          code: "ADMIN_2FA_REQUIRED",
+        });
+        return;
+      }
+
       const hash = database.getPasswordHash(userId);
       if (hash) {
         if (!password) {
@@ -898,6 +963,9 @@ export function authRouter(database: LibraryDatabase): Router {
         }
         const validPassword = await bcrypt.compare(password, hash);
         if (!validPassword) {
+          if (!bypassRateLimit) {
+            defaultLoginLimiter.recordFailure(clientIp, userEmail);
+          }
           res.status(401).json({ error: "Incorrect password" });
           return;
         }
@@ -926,11 +994,29 @@ export function authRouter(database: LibraryDatabase): Router {
         codeValid = backupResult.valid;
       }
       if (!codeValid) {
+        if (!bypassRateLimit) {
+          defaultLoginLimiter.recordFailure(clientIp, userEmail);
+        }
         res.status(400).json({ error: "Invalid authentication code or backup recovery code" });
         return;
       }
 
+      if (!bypassRateLimit) {
+        defaultLoginLimiter.recordSuccess(clientIp, userEmail);
+      }
+
       database.disableUser2FA(userId);
+
+      let refreshedToken: string | undefined;
+      if (revokeOtherSessions && userRecord) {
+        const newVersion = database.incrementTokenVersion(userId);
+        refreshedToken = jwt.sign(
+          { id: userRecord.id, username: userRecord.username, email: userRecord.email, tokenVersion: newVersion },
+          JWT_SECRET,
+          { expiresIn: "7d" },
+        );
+        setSessionCookie(res, refreshedToken);
+      }
 
       database.logAudit({
         actorId: userId,
@@ -946,9 +1032,22 @@ export function authRouter(database: LibraryDatabase): Router {
         skipEmail: true,
       });
 
+      if (userRecord && userRecord.email_verified === 1) {
+        void defaultMailer
+          .sendSecurityAlertEmail(userRecord.email, {
+            username: userRecord.username,
+            eventTitle: "Two-Factor Authentication Disabled",
+            description: "Two-factor authentication was disabled on your account.",
+            ipAddress: clientIp,
+            instanceName: resolveBrandInstanceName(database),
+          })
+          .catch(() => {});
+      }
+
       res.json({
         success: true,
         message: "Two-factor authentication has been disabled.",
+        ...(refreshedToken ? { token: refreshedToken } : {}),
       });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to disable 2FA" });
@@ -969,6 +1068,19 @@ export function authRouter(database: LibraryDatabase): Router {
       const { password, code } = req.body || {};
       const clientIp = getClientIp(req);
       const userId = req.user!.id;
+      const userEmail = req.user!.email;
+      const bypassRateLimit = process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true";
+
+      if (!bypassRateLimit) {
+        const rateCheck = defaultLoginLimiter.check(clientIp, userEmail);
+        if (!rateCheck.allowed) {
+          res.status(429).json({
+            error: "Too many failed 2FA attempts. Please try again in 15 minutes.",
+            retryAfterSeconds: Math.ceil(rateCheck.resetInMs / 1000),
+          });
+          return;
+        }
+      }
 
       try {
         const hash = database.getPasswordHash(userId);
@@ -979,6 +1091,9 @@ export function authRouter(database: LibraryDatabase): Router {
           }
           const validPassword = await bcrypt.compare(password, hash);
           if (!validPassword) {
+            if (!bypassRateLimit) {
+              defaultLoginLimiter.recordFailure(clientIp, userEmail);
+            }
             res.status(401).json({ error: "Incorrect password" });
             return;
           }
@@ -999,8 +1114,15 @@ export function authRouter(database: LibraryDatabase): Router {
           preventReplay: process.env["NODE_ENV"] === "production",
         });
         if (!validTotp) {
+          if (!bypassRateLimit) {
+            defaultLoginLimiter.recordFailure(clientIp, userEmail);
+          }
           res.status(400).json({ error: "Invalid 6-digit authenticator code" });
           return;
+        }
+
+        if (!bypassRateLimit) {
+          defaultLoginLimiter.recordSuccess(clientIp, userEmail);
         }
 
         const { plainCodes, hashedCodes } = generateBackupCodes(10);
@@ -1020,6 +1142,20 @@ export function authRouter(database: LibraryDatabase): Router {
           description: "A new set of 10 emergency recovery codes was generated; previous codes were invalidated.",
           skipEmail: true,
         });
+
+        const userRecord = database.getUserById(userId);
+        if (userRecord && userRecord.email_verified === 1) {
+          void defaultMailer
+            .sendSecurityAlertEmail(userRecord.email, {
+              username: userRecord.username,
+              eventTitle: "2FA Backup Codes Regenerated",
+              description:
+                "A new set of 10 emergency recovery codes was generated for your account; all previous recovery codes were invalidated.",
+              ipAddress: clientIp,
+              instanceName: resolveBrandInstanceName(database),
+            })
+            .catch(() => {});
+        }
 
         res.json({
           success: true,
@@ -1178,13 +1314,29 @@ export function authRouter(database: LibraryDatabase): Router {
     }
   });
 
+  const resolvePublicBaseUrl = (req: Request): string => {
+    const envPublicUrl = (process.env["PUBLIC_URL"] || "").trim().replace(/\/$/, "");
+    const forwardedHost = typeof req.headers["x-forwarded-host"] === "string" ? req.headers["x-forwarded-host"] : "";
+    const reqHost = (forwardedHost.split(",")[0]?.trim() || req.get("host") || "").trim();
+    const forwardedProto = typeof req.headers["x-forwarded-proto"] === "string" ? req.headers["x-forwarded-proto"] : "";
+    const reqProto = (forwardedProto.split(",")[0]?.trim() || req.protocol || "http").trim();
+    if (envPublicUrl && envPublicUrl !== "http://localhost:3000") {
+      return envPublicUrl;
+    }
+    if (reqHost && !reqHost.startsWith("localhost") && !reqHost.startsWith("127.0.0.1")) {
+      return `${reqProto}://${reqHost}`;
+    }
+    return envPublicUrl || (reqHost ? `${reqProto}://${reqHost}` : "http://localhost:3000");
+  };
+
   const buildOAuthAuthorizeUrl = (
     req: Request,
     provider: string,
     clientId: string,
     signedState: string,
+    gitlabBaseUrl = "https://gitlab.com",
   ): string | null => {
-    const publicBase = process.env["PUBLIC_URL"] || `${req.protocol}://${req.get("host")}`;
+    const publicBase = resolvePublicBaseUrl(req);
     const redirectUri = `${publicBase.replace(/\/$/, "")}/api/v1/auth/callback/${provider}`;
     if (provider === "github") {
       const params = new URLSearchParams({
@@ -1203,7 +1355,7 @@ export function authRouter(database: LibraryDatabase): Router {
         scope: "read_user",
         state: signedState,
       });
-      return `https://gitlab.com/oauth/authorize?${params.toString()}`;
+      return `${gitlabBaseUrl.replace(/\/$/, "")}/oauth/authorize?${params.toString()}`;
     }
     return null;
   };
@@ -1214,9 +1366,15 @@ export function authRouter(database: LibraryDatabase): Router {
   router.get("/login/:provider", (req: Request, res: Response) => {
     const provider =
       typeof req.params["provider"] === "string" ? req.params["provider"] : String(req.params["provider"] ?? "");
-    const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
-    if (process.env["NODE_ENV"] === "production" && !clientId) {
-      res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+    const frontendUrl = resolvePublicBaseUrl(req);
+    const oauthCreds = database.getOAuthCredentials(provider);
+    const clientId = oauthCreds.clientId;
+    if (!clientId) {
+      if (process.env["NODE_ENV"] === "production") {
+        res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+        return;
+      }
+      res.redirect(`${frontendUrl}/login?error=OAuthNotConfigured&provider=${encodeURIComponent(provider)}`);
       return;
     }
     const signedState = jwt.sign({ action: "login", provider }, JWT_SECRET, { expiresIn: "10m" });
@@ -1227,25 +1385,16 @@ export function authRouter(database: LibraryDatabase): Router {
       maxAge: 10 * 60 * 1000,
       path: "/",
     });
-    if (clientId) {
-      const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
-      if (authorizeUrl) {
-        res.redirect(authorizeUrl);
-        return;
-      }
-      if (process.env["NODE_ENV"] === "production") {
-        res.status(501).json({ error: `Unsupported OAuth provider '${provider}'.` });
-        return;
-      }
-    }
-    if (process.env["NODE_ENV"] === "production") {
-      res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+    const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState, oauthCreds.baseUrl);
+    if (authorizeUrl) {
+      res.redirect(authorizeUrl);
       return;
     }
-    // Dev/test mock OAuth flow when provider client credentials are not configured
-    res.redirect(
-      `/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${encodeURIComponent(signedState)}`,
-    );
+    if (process.env["NODE_ENV"] === "production") {
+      res.status(501).json({ error: `Unsupported OAuth provider '${provider}'.` });
+      return;
+    }
+    res.redirect(`${frontendUrl}/login?error=OAuthNotConfigured&provider=${encodeURIComponent(provider)}`);
   });
 
   /**
@@ -1268,16 +1417,21 @@ export function authRouter(database: LibraryDatabase): Router {
     const authHeader = req.headers.authorization || "";
     const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
     const token = (req.query["token"] as string) || cookieToken || bearerToken;
-    const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
+    const frontendUrl = resolvePublicBaseUrl(req);
 
     if (!token) {
       res.redirect(`${frontendUrl}/settings?error=MissingToken`);
       return;
     }
 
-    const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
-    if (process.env["NODE_ENV"] === "production" && !clientId) {
-      res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+    const oauthCreds = database.getOAuthCredentials(provider);
+    const clientId = oauthCreds.clientId;
+    if (!clientId) {
+      if (process.env["NODE_ENV"] === "production") {
+        res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+        return;
+      }
+      res.redirect(`${frontendUrl}/settings?error=OAuthNotConfigured&provider=${encodeURIComponent(provider)}`);
       return;
     }
 
@@ -1305,20 +1459,16 @@ export function authRouter(database: LibraryDatabase): Router {
         maxAge: 10 * 60 * 1000,
         path: "/",
       });
-      if (clientId) {
-        const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
-        if (authorizeUrl) {
-          res.redirect(authorizeUrl);
-          return;
-        }
+      const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState, oauthCreds.baseUrl);
+      if (authorizeUrl) {
+        res.redirect(authorizeUrl);
+        return;
       }
       if (process.env["NODE_ENV"] === "production") {
         res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
         return;
       }
-      res.redirect(
-        `/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${encodeURIComponent(signedState)}`,
-      );
+      res.redirect(`${frontendUrl}/settings?error=OAuthNotConfigured&provider=${encodeURIComponent(provider)}`);
     } catch {
       res.redirect(`${frontendUrl}/settings?error=InvalidToken`);
     }
@@ -1352,8 +1502,9 @@ export function authRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
-    if (process.env["NODE_ENV"] === "production" && !clientId) {
+    const oauthCreds = database.getOAuthCredentials(provider);
+    const clientId = oauthCreds.clientId;
+    if (!clientId) {
       res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
       return;
     }
@@ -1382,20 +1533,12 @@ export function authRouter(database: LibraryDatabase): Router {
         maxAge: 10 * 60 * 1000,
         path: "/",
       });
-      if (clientId) {
-        const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState);
-        if (authorizeUrl) {
-          res.json({ redirectUrl: authorizeUrl });
-          return;
-        }
-      }
-      if (process.env["NODE_ENV"] === "production") {
-        res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
+      const authorizeUrl = buildOAuthAuthorizeUrl(req, provider, clientId, signedState, oauthCreds.baseUrl);
+      if (authorizeUrl) {
+        res.json({ redirectUrl: authorizeUrl });
         return;
       }
-      res.json({
-        redirectUrl: `/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${encodeURIComponent(signedState)}`,
-      });
+      res.status(501).json({ error: `OAuth provider '${provider}' is not configured.` });
     } catch {
       res.status(401).json({ error: "Invalid or expired authentication token" });
     }
@@ -1408,25 +1551,17 @@ export function authRouter(database: LibraryDatabase): Router {
     const provider = req.params["provider"] as string;
     const stateParam = req.query["state"] as string;
     const code = req.query["code"] as string | undefined;
-    const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
+    const frontendUrl = resolvePublicBaseUrl(req);
     const isProductionEnv = process.env["NODE_ENV"] === "production";
 
-    let email = isProductionEnv ? "" : `mockuser@${provider}.com`;
-    let username = isProductionEnv ? "" : `mockuser_${provider}`;
-    let providerUserId = isProductionEnv ? "" : `12345_${provider}`;
-    let accessToken = isProductionEnv ? "" : `mock_access_token_${provider}`;
-    let refreshToken: string | null = isProductionEnv ? null : `mock_refresh_token_${provider}`;
+    let email = "";
+    let username = "";
+    let providerUserId = "";
+    let accessToken = "";
+    let refreshToken: string | null = null;
     const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
 
-    const clientId = process.env[`${provider.toUpperCase()}_CLIENT_ID`];
-    const clientSecret = process.env[`${provider.toUpperCase()}_CLIENT_SECRET`];
-
-    if (isProductionEnv && (!clientId || !clientSecret)) {
-      res.status(501).json({ error: `OAuth provider '${provider}' is not configured in production.` });
-      return;
-    }
-
-    // Validate OAuth state cookie when present
+    // Validate OAuth state cookie and JWT signature first before making upstream requests
     const cookieHeader = req.headers.cookie || "";
     const oauthCookieMatch = cookieHeader.match(/(?:^|;\s*)oauth_state=([^;]+)/);
     const cookieState =
@@ -1441,116 +1576,151 @@ export function authRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    // Real OAuth2 token exchange if credentials configured
-    if (clientId && clientSecret) {
-      if (!code) {
-        res.redirect(`${frontendUrl}/login?error=MissingOAuthCode`);
-        return;
-      }
+    let stateData: {
+      action?: string | undefined;
+      userId?: number | undefined;
+      provider?: string | undefined;
+    } | null = null;
+    if (stateParam) {
       try {
-        let verifiedLiveProfile = false;
-        if (provider === "github") {
-          const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
-          });
-          const tokenData = (await tokenRes.json()) as { access_token?: string | undefined };
-          if (tokenData.access_token) {
-            accessToken = tokenData.access_token;
-            const userRes = await fetch("https://api.github.com/user", {
-              headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "ModelScript" },
-            });
-            const userData = (await userRes.json()) as {
-              id?: number | undefined;
-              login?: string | undefined;
-              email?: string | undefined;
-            };
-            if (userData.id && userData.login) {
-              providerUserId = String(userData.id);
-              username = userData.login;
-              email = userData.email || `${userData.login}@users.noreply.github.com`;
-              verifiedLiveProfile = true;
-            }
-          }
-        } else if (provider === "gitlab") {
-          const publicBase = process.env["PUBLIC_URL"] || `${req.protocol}://${req.get("host")}`;
-          const tokenRes = await fetch("https://gitlab.com/oauth/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              client_id: clientId,
-              client_secret: clientSecret,
-              code,
-              grant_type: "authorization_code",
-              redirect_uri: `${publicBase.replace(/\/$/, "")}/api/v1/auth/callback/gitlab`,
-            }),
-          });
-          const tokenData = (await tokenRes.json()) as {
-            access_token?: string | undefined;
-            refresh_token?: string | undefined;
-          };
-          if (tokenData.access_token) {
-            accessToken = tokenData.access_token;
-            if (tokenData.refresh_token) refreshToken = tokenData.refresh_token;
-            const userRes = await fetch("https://gitlab.com/api/v4/user", {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            });
-            const userData = (await userRes.json()) as {
-              id?: number | undefined;
-              username?: string | undefined;
-              email?: string | undefined;
-            };
-            if (userData.id && userData.username) {
-              providerUserId = String(userData.id);
-              username = userData.username;
-              email = userData.email || `${userData.username}@gitlab.com`;
-              verifiedLiveProfile = true;
-            }
-          }
-        }
-        if (!verifiedLiveProfile && isProductionEnv) {
-          res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+        stateData = jwt.verify(decodeURIComponent(stateParam), JWT_SECRET) as {
+          action?: string | undefined;
+          userId?: number | undefined;
+          provider?: string | undefined;
+        };
+        if (stateData.provider && stateData.provider !== provider) {
+          res.redirect(`${frontendUrl}/settings?error=InvalidState`);
           return;
         }
-      } catch (oauthErr) {
-        if (isProductionEnv) {
-          console.error(`[OAuth] Live provider exchange failed in production:`, oauthErr);
-          res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
-          return;
-        }
-        console.warn(`[OAuth] Live provider exchange failed, falling back to mock profile:`, oauthErr);
+      } catch {
+        res.redirect(`${frontendUrl}/settings?error=InvalidState`);
+        return;
       }
     }
 
-    if (isProductionEnv && (!email || !username || !providerUserId || !accessToken)) {
+    const oauthCreds = database.getOAuthCredentials(provider);
+    const clientId = oauthCreds.clientId;
+    const clientSecret = oauthCreds.clientSecret;
+
+    if (!clientId || !clientSecret) {
+      if (isProductionEnv) {
+        res.status(501).json({ error: `OAuth provider '${provider}' is not configured in production.` });
+        return;
+      }
+      res.redirect(`${frontendUrl}/login?error=OAuthNotConfigured&provider=${encodeURIComponent(provider)}`);
+      return;
+    }
+
+    if (!code) {
+      res.redirect(`${frontendUrl}/login?error=MissingOAuthCode`);
+      return;
+    }
+
+    try {
+      let verifiedLiveProfile = false;
+      if (provider === "github") {
+        const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
+        });
+        const tokenData = (await tokenRes.json()) as {
+          access_token?: string | undefined;
+          refresh_token?: string | undefined;
+        };
+        if (tokenData.access_token) {
+          accessToken = tokenData.access_token;
+          if (tokenData.refresh_token) refreshToken = tokenData.refresh_token;
+          const userRes = await fetch("https://api.github.com/user", {
+            headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "ModelScript" },
+          });
+          const userData = (await userRes.json()) as {
+            id?: number | undefined;
+            login?: string | undefined;
+            email?: string | null | undefined;
+          };
+          if (userData.id && userData.login) {
+            providerUserId = String(userData.id);
+            username = userData.login;
+            let resolvedGithubEmail = userData.email || "";
+            if (!resolvedGithubEmail) {
+              try {
+                const emailsRes = await fetch("https://api.github.com/user/emails", {
+                  headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "ModelScript" },
+                });
+                if (emailsRes.ok) {
+                  const emailsList = (await emailsRes.json()) as Array<{
+                    email?: string;
+                    primary?: boolean;
+                    verified?: boolean;
+                  }>;
+                  if (Array.isArray(emailsList)) {
+                    const primaryVerified = emailsList.find((e) => e.primary && e.verified && e.email);
+                    const anyVerified = emailsList.find((e) => e.verified && e.email);
+                    resolvedGithubEmail = primaryVerified?.email || anyVerified?.email || "";
+                  }
+                }
+              } catch {
+                // Fallback to noreply email below
+              }
+            }
+            email = resolvedGithubEmail || `${userData.login}@users.noreply.github.com`;
+            verifiedLiveProfile = true;
+          }
+        }
+      } else if (provider === "gitlab") {
+        const publicBase = resolvePublicBaseUrl(req);
+        const gitlabBase = (oauthCreds.baseUrl || "https://gitlab.com").replace(/\/$/, "");
+        const tokenRes = await fetch(`${gitlabBase}/oauth/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: clientId,
+            client_secret: clientSecret,
+            code,
+            grant_type: "authorization_code",
+            redirect_uri: `${publicBase.replace(/\/$/, "")}/api/v1/auth/callback/gitlab`,
+          }),
+        });
+        const tokenData = (await tokenRes.json()) as {
+          access_token?: string | undefined;
+          refresh_token?: string | undefined;
+        };
+        if (tokenData.access_token) {
+          accessToken = tokenData.access_token;
+          if (tokenData.refresh_token) refreshToken = tokenData.refresh_token;
+          const userRes = await fetch(`${gitlabBase}/api/v4/user`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          const userData = (await userRes.json()) as {
+            id?: number | undefined;
+            username?: string | undefined;
+            email?: string | undefined;
+          };
+          if (userData.id && userData.username) {
+            providerUserId = String(userData.id);
+            username = userData.username;
+            email = userData.email || `${userData.username}@gitlab.com`;
+            verifiedLiveProfile = true;
+          }
+        }
+      }
+      if (!verifiedLiveProfile) {
+        res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+        return;
+      }
+    } catch (oauthErr) {
+      console.error(`[OAuth] Live provider exchange failed:`, oauthErr);
+      res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+      return;
+    }
+
+    if (!email || !username || !providerUserId || !accessToken) {
       res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
       return;
     }
 
     try {
-      let stateData: {
-        action?: string | undefined;
-        userId?: number | undefined;
-        provider?: string | undefined;
-      } | null = null;
-      if (stateParam) {
-        try {
-          stateData = jwt.verify(decodeURIComponent(stateParam), JWT_SECRET) as {
-            action?: string | undefined;
-            userId?: number | undefined;
-            provider?: string | undefined;
-          };
-          if (stateData.provider && stateData.provider !== provider) {
-            res.redirect(`${frontendUrl}/settings?error=InvalidState`);
-            return;
-          }
-        } catch {
-          res.redirect(`${frontendUrl}/settings?error=InvalidState`);
-          return;
-        }
-      }
-
       if (stateData?.action === "link" && stateData.userId) {
         // Handle Account Linking
         const userId = stateData.userId;
@@ -1742,7 +1912,7 @@ export function authRouter(database: LibraryDatabase): Router {
           claims = defaultOidcService.extractClaims(tokenData.idToken);
         }
       }
-      const result = await defaultOidcService.handleOidcLogin(database, claims);
+      const result = await defaultOidcService.handleOidcLogin(database, claims, tokenData);
 
       const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
       if (result.requires2FA) {
@@ -1810,9 +1980,30 @@ export function authRouter(database: LibraryDatabase): Router {
       const requireAdmin2FASetup = Boolean(
         user.account_type === "admin" && !totpEnabled && instanceSettings.requireAdmin2FA,
       );
+      const reqOrigin =
+        process.env["PUBLIC_URL"] ||
+        (typeof req.headers.origin === "string" && /^https?:\/\//i.test(req.headers.origin)
+          ? req.headers.origin
+          : `${
+              typeof req.headers["x-forwarded-proto"] === "string"
+                ? req.headers["x-forwarded-proto"].split(",")[0]!.trim()
+                : req.protocol || "http"
+            }://${
+              typeof req.headers["x-forwarded-host"] === "string"
+                ? req.headers["x-forwarded-host"].split(",")[0]!.trim()
+                : req.get("host") || "localhost:3001"
+            }`);
+      const cleanBaseUrl = reqOrigin.replace(/\/+$/, "");
+      const dynamicActorUrl =
+        !user.remote_domain && (!user.actor_url || user.actor_url.includes("://hub.modelscript.org"))
+          ? `${cleanBaseUrl}/users/${user.username}`
+          : user.actor_url;
+
       res.json({
         user: {
           ...safeUser,
+          actor_url: dynamicActorUrl ?? null,
+          default_post_visibility: user.default_post_visibility || "public",
           banner_url: user.banner_url ?? null,
           credit_balance: user.credit_balance ?? 0,
           has_password: Boolean(password_hash),
@@ -1861,13 +2052,15 @@ export function authRouter(database: LibraryDatabase): Router {
         }
       }
 
+      let emailChanged = false;
+      let verificationRequired = false;
       if (username || email) {
         const currentUser = database.getUserById(userId);
         const currentUsername = currentUser?.username ?? req.user!.username;
         const currentEmail = currentUser?.email ?? req.user!.email;
         const u = username || currentUsername;
         const e = email ? String(email).toLowerCase().trim() : currentEmail;
-        const emailChanged = Boolean(email && e.toLowerCase() !== currentEmail.toLowerCase());
+        emailChanged = Boolean(email && e.toLowerCase() !== currentEmail.toLowerCase());
 
         // check uniqueness if changed
         if (u !== currentUsername) {
@@ -1908,6 +2101,7 @@ export function authRouter(database: LibraryDatabase): Router {
           const instanceName = resolveBrandInstanceName(database);
           const autoVerifiedByAirgap =
             process.env["AIRGAP_ENFORCED"] === "true" && !defaultMailer.isConfiguredForLiveDelivery();
+          verificationRequired = !autoVerifiedByAirgap;
           database.setUserEmailVerified(userId, autoVerifiedByAirgap);
           const verificationToken = signEmailVerificationToken(userId, e);
           void defaultMailer.sendVerificationEmail(e, u, verificationToken, { instanceName }).catch((err) => {
@@ -1939,7 +2133,7 @@ export function authRouter(database: LibraryDatabase): Router {
         banner_url,
       });
 
-      res.json({ success: true });
+      res.json({ success: true, emailChanged, verificationRequired });
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Update failed" });
     }

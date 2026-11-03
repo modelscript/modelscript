@@ -200,7 +200,15 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
 
   if (error) {
     return (
-      <Box p={3} backgroundColor="var(--color-danger-subtle)" borderRadius="6px">
+      <Box
+        p={3}
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height={isFullScreen ? "100%" : "450px"}
+        backgroundColor="var(--color-danger-subtle)"
+        borderRadius="0"
+      >
         <Text color="var(--color-danger-fg)">{error}</Text>
       </Box>
     );
@@ -213,7 +221,7 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
         display="flex"
         justifyContent="center"
         alignItems="center"
-        height="300px"
+        height={isFullScreen ? "100%" : "450px"}
         bg="var(--color-canvas-subtle)"
         borderRadius="0"
       >

@@ -136,28 +136,12 @@ export const TutorialPreview: React.FC<TutorialPreviewProps> = ({
                 <RenderContent text={cell.content || "*Empty block*"} isLongForm={true} />
               </div>
             ) : (
-              <div
-                key={cell.id}
-                style={{
-                  borderRadius: "10px",
-                  border: "1px solid var(--ms-divider)",
-                  overflow: "hidden",
-                }}
-              >
-                <ArtifactViewCard artifactId={cell.artifactId} />
-                {(cell.caption || cell.title) && (
-                  <div
-                    style={{
-                      padding: "8px 12px",
-                      fontSize: "12.5px",
-                      color: "var(--ms-text-2)",
-                      borderTop: "1px solid var(--ms-divider)",
-                      background: "var(--ms-surface-hover)",
-                    }}
-                  >
-                    <strong>Fig. {idx + 1}:</strong> {cell.caption || cell.title}
-                  </div>
-                )}
+              <div key={cell.id}>
+                <ArtifactViewCard
+                  artifactId={cell.artifactId}
+                  figureNumber={idx + 1}
+                  caption={cell.caption && cell.caption.trim() !== (cell.title || "").trim() ? cell.caption : undefined}
+                />
               </div>
             ),
           )}

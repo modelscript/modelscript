@@ -2,7 +2,7 @@
 
 import { renderSimulinkSvg, type SimulinkBlockLike, type SimulinkLineLike } from "@modelscript/diagram";
 import { FlameIcon, PlayIcon } from "@primer/octicons-react";
-import { Button, SegmentedControl, Spinner, Text } from "@primer/react";
+import { Button, SegmentedControl, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -52,15 +52,15 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const Toolbar = styled.div`
   height: 40px;
   min-height: 40px;
-  background: var(--surface-hud, rgba(14, 20, 36, 0.7));
+  background: var(--color-canvas-subtle);
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  gap: 8px;
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
 `;
 
 const HeaderLeft = styled.div`
@@ -68,6 +68,8 @@ const HeaderLeft = styled.div`
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 `;
 
 const ModelTitle = styled.div`
@@ -89,6 +91,7 @@ const PillBadge = styled.span`
   border-radius: 9999px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
   background: rgba(249, 115, 22, 0.15);
   color: var(--color-attention-fg, var(--color-fg-default));
   border: 1px solid rgba(249, 115, 22, 0.35);
@@ -107,36 +110,9 @@ const ChartCanvas = styled.div`
   background: var(--color-canvas-inset, var(--color-canvas-default));
 `;
 
-const InspectorSidebar = styled.div`
-  width: 240px;
-  border-left: 1px solid var(--color-border-default);
-  background: var(--color-canvas-subtle);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 14px;
-  gap: 12px;
-
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const StatItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--color-fg-muted);
-
-  strong {
-    color: var(--color-fg-default);
-  }
-`;
-
 export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [showInspector, setShowInspector] = useState(false);
   const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
   const [rawText, setRawText] = useState(initialSource);
   const [viewMode, setViewMode] = useState<"schematic" | "pv" | "code">("schematic");
@@ -264,11 +240,11 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
       <Toolbar>
         <HeaderLeft>
           <FlameIcon size={16} fill="var(--color-attention-fg, currentColor)" />
+          <PillBadge>GT-SUITE</PillBadge>
           {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
-          <PillBadge>GT-SUITE Powertrain</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
           {(sanitizedSvg || pvData.length > 0) && (
             <SegmentedControl size="small" aria-label="GT-SUITE View Selector">
               {sanitizedSvg && (
@@ -288,12 +264,6 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
                 Source
               </SegmentedControl.Button>
             </SegmentedControl>
-          )}
-
-          {!isFullScreen && (
-            <Button size="small" onClick={() => setShowInspector((s) => !s)}>
-              {showInspector ? "Hide Telemetry" : "Telemetry"}
-            </Button>
           )}
 
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
@@ -365,7 +335,7 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
             flex={1}
             py={2}
             overflow="auto"
-            bg="var(--color-canvas-inset, #010409)"
+            bg="var(--color-canvas-inset, var(--color-canvas-default))"
             style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
           >
             {codeLines.length > 0 ? (
@@ -395,46 +365,6 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
               </Box>
             )}
           </Box>
-        )}
-
-        {!isFullScreen && showInspector && (
-          <InspectorSidebar>
-            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-              Engine Calibration Telemetry
-            </Text>
-            <StatItem>
-              <span>Components</span>
-              <strong>{parsedEngine.componentCount}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Cylinder Count</span>
-              <strong>{parsedEngine.cylinderCount}</strong>
-            </StatItem>
-            {parsedEngine.displacementLiters !== undefined && (
-              <StatItem>
-                <span>Displacement</span>
-                <strong>{parsedEngine.displacementLiters} L</strong>
-              </StatItem>
-            )}
-            {viewConfig.peakPressureBar !== undefined && (
-              <StatItem>
-                <span>Peak Pressure (P_max)</span>
-                <strong style={{ color: "#f87171" }}>{viewConfig.peakPressureBar} bar</strong>
-              </StatItem>
-            )}
-            {viewConfig.imepBar !== undefined && (
-              <StatItem>
-                <span>IMEP</span>
-                <strong>{viewConfig.imepBar} bar</strong>
-              </StatItem>
-            )}
-            {viewConfig.thermalEfficiencyPct !== undefined && (
-              <StatItem>
-                <span>Brake Thermal Eff</span>
-                <strong style={{ color: "#34d399" }}>{viewConfig.thermalEfficiencyPct}%</strong>
-              </StatItem>
-            )}
-          </InspectorSidebar>
         )}
       </ContentArea>
     </CardWrapper>

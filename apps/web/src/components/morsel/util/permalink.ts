@@ -8,6 +8,8 @@ export interface CompressedMorselPayload {
   lang?: string | undefined;
   dialect?: string | undefined;
   code: string;
+  files?: Record<string, string> | undefined;
+  activeFile?: string | undefined;
   title?: string | undefined;
   view?: string | undefined;
   anchor?:
@@ -34,6 +36,44 @@ export interface CompressedMorselPayload {
     | undefined;
   isMultiFile?: boolean | undefined;
   artifactId?: string | number | undefined;
+}
+
+/**
+ * Resolves a server-side short-link morsel ID (?morsel=<id>) from /api/v1/morsels/:id.
+ */
+export async function resolveMorselShortlink(
+  morselId: string,
+  options?: { fallbackDialect?: string | null; fallbackTitle?: string | null; fallbackView?: string | null },
+): Promise<CompressedMorselPayload | null> {
+  if (!morselId) return null;
+  try {
+    const res = await fetch(`/api/v1/morsels/${encodeURIComponent(morselId)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const filesMap =
+      data?.files && typeof data.files === "object" && !Array.isArray(data.files)
+        ? (data.files as Record<string, string>)
+        : data?.payload?.files && typeof data.payload.files === "object" && !Array.isArray(data.payload.files)
+          ? (data.payload.files as Record<string, string>)
+          : undefined;
+    const firstFileCode = filesMap ? Object.values(filesMap)[0] : undefined;
+    const code = typeof data?.code === "string" ? data.code : typeof firstFileCode === "string" ? firstFileCode : "";
+    if (!code) return null;
+    const detectedLang = data.dialect || data?.payload?.lang || options?.fallbackDialect || "modelica";
+    const resolvedTitle = data.title || data?.payload?.title || options?.fallbackTitle || "Shared Engineering Model";
+    return {
+      ...(data.payload || {}),
+      v: 1,
+      lang: detectedLang,
+      dialect: detectedLang,
+      code,
+      ...(filesMap ? { files: filesMap, isMultiFile: Object.keys(filesMap).length > 1 } : {}),
+      title: resolvedTitle,
+      view: data.view || data?.payload?.view || options?.fallbackView || "diagram",
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -80,13 +120,30 @@ export function decompressMorselPayload(rawHash: string): CompressedMorselPayloa
       }
       const decompressed = pako.inflate(bytes, { to: "string" });
       const parsed = JSON.parse(decompressed);
-      if (parsed && typeof parsed.code === "string") {
-        const resolvedDialect = parsed.dialect ?? parsed.lang ?? "modelica";
-        return {
-          ...parsed,
-          lang: parsed.lang ?? resolvedDialect,
-          dialect: resolvedDialect,
-        } as CompressedMorselPayload;
+      if (parsed && typeof parsed === "object") {
+        const filesMap =
+          parsed.files && typeof parsed.files === "object" && !Array.isArray(parsed.files)
+            ? (parsed.files as Record<string, string>)
+            : undefined;
+        const activeFile =
+          typeof parsed.activeFile === "string" && filesMap && parsed.activeFile in filesMap
+            ? parsed.activeFile
+            : filesMap
+              ? Object.keys(filesMap)[0]
+              : undefined;
+        const resolvedCode =
+          typeof parsed.code === "string" ? parsed.code : activeFile && filesMap ? filesMap[activeFile] : undefined;
+        if (typeof resolvedCode === "string") {
+          const resolvedDialect = parsed.dialect ?? parsed.lang ?? "modelica";
+          return {
+            ...parsed,
+            code: resolvedCode,
+            ...(filesMap ? { files: filesMap } : {}),
+            ...(activeFile ? { activeFile } : {}),
+            lang: parsed.lang ?? resolvedDialect,
+            dialect: resolvedDialect,
+          } as CompressedMorselPayload;
+        }
       }
     } catch (err) {
       console.warn("Failed to decompress Morsel payload:", err);

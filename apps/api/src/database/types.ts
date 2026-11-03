@@ -210,6 +210,7 @@ export interface PostRow {
   like_count?: number | undefined;
   reply_count?: number | undefined;
   repost_count?: number | undefined;
+  bookmark_count?: number | undefined;
   liked?: number | boolean | undefined;
   reposted?: number | boolean | undefined;
   bookmarked?: number | boolean | undefined;

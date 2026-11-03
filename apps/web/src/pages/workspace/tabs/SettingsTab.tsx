@@ -160,14 +160,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
 
   const saveRepoUpdates = async (updates: Record<string, unknown>, successText?: string) => {
     setSaveError(null);
-    persistLocalSettings(updates);
-    onRepoUpdated?.(updates);
     try {
       await ensureLinkedAndUpdate(updates);
+      persistLocalSettings(updates);
+      onRepoUpdated?.(updates);
       showSuccess(successText);
-    } catch {
-      // Even when offline or unauthenticated, local workspace settings are persisted
-      showSuccess(successText);
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
+      setSaveError(
+        apiErr?.response?.data?.error ||
+          apiErr?.response?.data?.message ||
+          apiErr?.message ||
+          "Failed to save repository settings.",
+      );
     }
   };
 

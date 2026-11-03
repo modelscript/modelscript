@@ -1,0 +1,259 @@
+{
+  "version": "1.0.0",
+  "libraries": [
+    {
+      "id": "modelica-msl-4.1.0",
+      "language": "modelica",
+      "packageName": "Modelica",
+      "version": "4.1.0",
+      "description": "Modelica Standard Library v4.1.0 (MSL)",
+      "license": "BSD-3-Clause",
+      "tier": "tier1_core",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaStandardLibrary_v4.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaStandardLibrary_v4.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 6000
+    },
+    {
+      "id": "modelica-msl-4.0.0",
+      "language": "modelica",
+      "packageName": "Modelica",
+      "version": "4.0.0",
+      "description": "Modelica Standard Library v4.0.0 (MSL)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaStandardLibrary_v4.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.0.0/ModelicaStandardLibrary_v4.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaStandardLibrary_v4.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 6000
+    },
+    {
+      "id": "modelica-msl-3.2.3",
+      "language": "modelica",
+      "packageName": "Modelica",
+      "version": "3.2.3",
+      "description": "Modelica Standard Library v3.2.3 (MSL)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaStandardLibrary_v3.2.3.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v3.2.3%2Bbuild.4/Modelica%203.2.3.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaStandardLibrary_v3.2.3.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 5000
+    },
+    {
+      "id": "sysml-v2-2026-03",
+      "language": "sysml2",
+      "packageName": "SysML",
+      "version": "2026.3.0",
+      "description": "OMG SysML v2 & KerML Standard Library",
+      "license": "OMG-SysML-2.0",
+      "tier": "tier1_core",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "SysML-v2-Release-2026-03.zip",
+      "localSourcePath": "languages/sysml2/stdlib",
+      "upstream": {
+        "url": "https://github.com/Systems-Modeling/SysML-v2-Release/archive/refs/tags/2026-03.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/SysML-v2-Release-2026-03.zip",
+        "archiveType": "zip",
+        "repack": "sysml-library-only"
+      },
+      "minExpectedClasses": 40
+    },
+    {
+      "id": "spice-standard-1.0.0",
+      "language": "spice",
+      "packageName": "SPICE-Standard",
+      "version": "1.0.0",
+      "description": "Standard discrete semiconductor & op-amp behavioral SPICE models",
+      "license": "BSD-3-Clause",
+      "tier": "tier2_domain",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "SPICE-Standard-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/SPICE-Standard-1.0.0.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/ngspice/ngspice-models/master/models.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 50
+    },
+    {
+      "id": "opendss-ieee-feeders-1.0.0",
+      "language": "opendss",
+      "packageName": "IEEE-Test-Feeders",
+      "version": "1.0.0",
+      "description": "IEEE 13-Bus, 34-Bus, 123-Bus & 8500-Node Distribution Test Feeders",
+      "license": "Apache-2.0",
+      "tier": "tier2_domain",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "IEEE-Test-Feeders-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/IEEE-Test-Feeders-1.0.0.zip",
+        "fallbackUrl": "https://github.com/electric-power/OpenDSS-TestFeeders/archive/refs/tags/v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "psse-dynamics-1.0.0",
+      "language": "psse",
+      "packageName": "PSSE-Standard-Dynamics",
+      "version": "1.0.0",
+      "description": "Standard IEEE/WECC generator, exciter, governor and stabilizer dynamic models",
+      "license": "Apache-2.0",
+      "tier": "tier2_domain",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "PSSE-Standard-Dynamics-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/PSSE-Standard-Dynamics-1.0.0.zip",
+        "fallbackUrl": "https://github.com/GRIDAPPSD/Powergrid-Models/archive/refs/tags/v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 30
+    },
+    {
+      "id": "autosar-schemas-4.4.0",
+      "language": "autosar",
+      "packageName": "AUTOSAR-Metamodels",
+      "version": "4.4.0",
+      "description": "AUTOSAR Classic & Adaptive standard schema definitions and interface templates",
+      "license": "AUTOSAR-Standard",
+      "tier": "tier2_domain",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "AUTOSAR-Metamodels-4.4.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/AUTOSAR-Metamodels-4.4.0.zip",
+        "fallbackUrl": "https://www.autosar.org/fileadmin/standards/R4-4/CP/AUTOSAR_CP_EXP_XMLSchema.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 25
+    },
+    {
+      "id": "urdf-robots-1.0.0",
+      "language": "urdf",
+      "packageName": "Standard-Robots",
+      "version": "1.0.0",
+      "description": "Standard industrial & collaborative robot kinematic URDF models (UR5, Panda, KUKA)",
+      "license": "BSD-3-Clause",
+      "tier": "tier2_domain",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "Standard-Robots-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/Standard-Robots-1.0.0.zip",
+        "fallbackUrl": "https://github.com/ros-industrial/universal_robot/archive/refs/tags/1.3.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 15
+    },
+    {
+      "id": "gensys-wheel-rail-1.0.0",
+      "language": "gensys",
+      "packageName": "GENSYS-Profiles",
+      "version": "1.0.0",
+      "description": "UIC60 rail profiles, S1002 wheel profiles and standard track irregularity PSDs",
+      "license": "BSD-3-Clause",
+      "tier": "tier2_domain",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "GENSYS-Profiles-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/GENSYS-Profiles-1.0.0.zip",
+        "fallbackUrl": "https://github.com/AB-GENSYS/gensys-profiles/archive/refs/tags/v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "epanet-networks-1.0.0",
+      "language": "epanet",
+      "packageName": "EPANET-Benchmark-Networks",
+      "version": "1.0.0",
+      "description": "Standard municipal water distribution networks (Net1, Net2, Net3, Hanoi)",
+      "license": "Public-Domain",
+      "tier": "tier2_domain",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "EPANET-Benchmark-Networks-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/EPANET-Benchmark-Networks-1.0.0.zip",
+        "fallbackUrl": "https://github.com/OpenWaterAnalytics/EPANET/archive/refs/tags/v2.2.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 10
+    },
+    {
+      "id": "swmm-sewers-1.0.0",
+      "language": "swmm",
+      "packageName": "SWMM-Reference-Networks",
+      "version": "1.0.0",
+      "description": "EPA SWMM standard stormwater sewer and retention basin networks",
+      "license": "Public-Domain",
+      "tier": "tier2_domain",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "SWMM-Reference-Networks-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/SWMM-Reference-Networks-1.0.0.zip",
+        "fallbackUrl": "https://github.com/OpenWaterAnalytics/Stormwater-Management-Model/archive/refs/tags/v5.2.4.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 10
+    },
+    {
+      "id": "step-mechanical-primitives-1.0.0",
+      "language": "step",
+      "packageName": "STEP-Fasteners",
+      "version": "1.0.0",
+      "description": "ISO 4014 bolts, DIN 912 socket head screws and standard fastener CAD definitions",
+      "license": "Apache-2.0",
+      "tier": "tier2_domain",
+      "domain": "cad-structures",
+      "pack": "cad-structures",
+      "filename": "STEP-Fasteners-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/STEP-Fasteners-1.0.0.zip",
+        "fallbackUrl": "https://github.com/stepcode/stepcode-data/archive/refs/tags/v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 40
+    },
+    {
+      "id": "sbml-biomodels-curated-1.0.0",
+      "language": "sbml",
+      "packageName": "BioModels-Curated-Core",
+      "version": "1.0.0",
+      "description": "Curated core biochemical reaction network models from the BioModels database",
+      "license": "CC0-1.0",
+      "tier": "tier2_domain",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "BioModels-Curated-Core-1.0.0.zip",
+      "upstream": {
+        "url": "https://ansatz.social/lsp/server/dist/BioModels-Curated-Core-1.0.0.zip",
+        "fallbackUrl": "https://www.ebi.ac.uk/biomodels/model/download/curated_core.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 30
+    }
+  ]
+}

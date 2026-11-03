@@ -39,7 +39,7 @@ export function useComposeNotebookState({
   const notebookSummary = props.notebookSummary !== undefined ? props.notebookSummary : internalNotebookSummary;
   const setNotebookSummary = props.setNotebookSummary || setInternalNotebookSummary;
 
-  const [internalNotebookDifficulty, setInternalNotebookDifficulty] = useState<any>("Intermediate");
+  const [internalNotebookDifficulty, setInternalNotebookDifficulty] = useState<any>(undefined);
   const notebookDifficulty =
     props.notebookDifficulty !== undefined ? props.notebookDifficulty : internalNotebookDifficulty;
   const setNotebookDifficulty = props.setNotebookDifficulty || setInternalNotebookDifficulty;

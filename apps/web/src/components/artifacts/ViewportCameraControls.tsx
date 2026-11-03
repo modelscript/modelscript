@@ -5,6 +5,7 @@ import styled from "styled-components";
 
 export type CameraPreset = "iso" | "top" | "front" | "right" | "reset";
 export type RenderMode = "shaded" | "wireframe" | "xray";
+export type ClipAxis = "none" | "x" | "y" | "z";
 
 interface ViewportCameraControlsProps {
   onPresetSelect: (preset: CameraPreset) => void;
@@ -14,6 +15,10 @@ interface ViewportCameraControlsProps {
   onTogglePinMode?: (() => void) | undefined;
   isWireframe?: boolean | undefined;
   onToggleWireframe?: ((wireframe: boolean) => void) | undefined;
+  clipAxis?: ClipAxis | undefined;
+  onClipAxisChange?: ((axis: ClipAxis) => void) | undefined;
+  clipOffset?: number | undefined;
+  onClipOffsetChange?: ((offset: number) => void) | undefined;
   topOffset?: string | number | undefined;
 }
 
@@ -29,6 +34,7 @@ const ControlsContainer = styled.div<{ $topOffset?: string | number | undefined 
   z-index: 10;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   background: rgba(15, 23, 42, 0.75);
   backdrop-filter: blur(10px);
@@ -73,6 +79,10 @@ export const ViewportCameraControls: React.FC<ViewportCameraControlsProps> = ({
   onTogglePinMode,
   isWireframe,
   onToggleWireframe,
+  clipAxis,
+  onClipAxisChange,
+  clipOffset = 0,
+  onClipOffsetChange,
   topOffset,
 }) => {
   return (
@@ -130,6 +140,38 @@ export const ViewportCameraControls: React.FC<ViewportCameraControlsProps> = ({
           >
             MESH
           </PresetButton>
+        </>
+      )}
+
+      {onClipAxisChange && clipAxis !== undefined && (
+        <>
+          <Divider />
+          {(["x", "y", "z"] as const).map((axis) => {
+            const active = clipAxis === axis;
+            return (
+              <PresetButton
+                key={axis}
+                $active={active}
+                onClick={() => onClipAxisChange(active ? "none" : axis)}
+                title={`Toggle ${axis.toUpperCase()}-axis section cutting plane`}
+              >
+                CUT {axis.toUpperCase()}
+              </PresetButton>
+            );
+          })}
+          {clipAxis !== "none" && onClipOffsetChange && (
+            <input
+              type="range"
+              min="-1"
+              max="1"
+              step="0.02"
+              value={clipOffset}
+              onChange={(e) => onClipOffsetChange(parseFloat(e.target.value))}
+              aria-label="Section cutting plane offset"
+              title={`Section plane offset: ${clipOffset.toFixed(2)}`}
+              style={{ width: "68px", accentColor: "#06b6d4", cursor: "pointer" }}
+            />
+          )}
         </>
       )}
 

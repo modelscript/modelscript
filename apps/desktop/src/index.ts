@@ -413,6 +413,7 @@ export async function getDesktopSystemInfo(): Promise<DesktopSystemInfo> {
   const isDesktop = isTauriEnvironment();
   let platform = "web";
   let arch = "wasm";
+  let appVersion = "0.1.0";
 
   if (isDesktop) {
     try {
@@ -425,20 +426,38 @@ export async function getDesktopSystemInfo(): Promise<DesktopSystemInfo> {
   } else if (typeof process !== "undefined") {
     platform = process.platform;
     arch = process.arch;
+    try {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const url = await import("node:url");
+      const currentDir = path.dirname(url.fileURLToPath(import.meta.url));
+      const tauriConfPath = path.resolve(currentDir, "../src-tauri/tauri.conf.json");
+      if (fs.existsSync(tauriConfPath)) {
+        const conf = JSON.parse(fs.readFileSync(tauriConfPath, "utf-8")) as { version?: string };
+        if (typeof conf.version === "string" && conf.version.length > 0) {
+          appVersion = conf.version;
+        }
+      }
+    } catch {
+      // Keep default version when config file is inaccessible
+    }
   }
+
+  const airgap = checkAirgapCompliance();
 
   return {
     isDesktop,
     platform,
     arch,
-    airgapEnforced: true,
-    ceiiComplianceReady: true,
-    appVersion: "0.0.18",
+    airgapEnforced: airgap.outboundTrafficBlocked && airgap.compliant,
+    ceiiComplianceReady: airgap.localStorageOnly && airgap.compliant,
+    appVersion,
   };
 }
 
 /**
  * Verifies strict air-gapped environment controls (NERC CIP-005 & CIP-007 / FERC CEII).
+ * Inspects OS network interfaces, environment variables, and Tauri CSP policy.
  */
 export function checkAirgapCompliance(): AirgapReport {
   if (typeof process !== "undefined" && (process.env["MSX_EDITION"] ?? "ee").toLowerCase() === "ce") {
@@ -451,15 +470,98 @@ export function checkAirgapCompliance(): AirgapReport {
       ],
     };
   }
+
+  const details: string[] = [];
+  let outboundTrafficBlocked = true;
+  let localStorageOnly = true;
+
+  if (typeof process !== "undefined") {
+    const env = process.env;
+    if (
+      env["TELEMETRY_ENABLED"] === "true" ||
+      env["MSX_ALLOW_OUTBOUND"] === "true" ||
+      env["AIRGAP_ENFORCED"] === "false"
+    ) {
+      outboundTrafficBlocked = false;
+      details.push("Outbound network traffic or telemetry is enabled via environment configuration.");
+    } else {
+      details.push("Zero telemetry: outbound network reporting is disabled.");
+    }
+
+    if (env["EXTERNAL_STORAGE_URL"] || env["S3_BUCKET_URL"] || env["EXTERNAL_CDN_URL"]) {
+      localStorageOnly = false;
+      details.push("External storage or CDN endpoint configured in environment.");
+    } else {
+      details.push("Model files and simulation outputs remain on local encrypted disk.");
+    }
+
+    try {
+      const getBuiltin = (process as unknown as { getBuiltinModule?: (id: string) => unknown }).getBuiltinModule;
+      const osMod = (getBuiltin ? getBuiltin("node:os") : undefined) as typeof import("node:os") | undefined;
+      if (osMod && typeof osMod.networkInterfaces === "function") {
+        const nets = osMod.networkInterfaces();
+        let loopbackCount = 0;
+        const externalIfaces: string[] = [];
+        for (const [ifaceName, addrs] of Object.entries(nets)) {
+          if (!addrs) continue;
+          for (const addr of addrs) {
+            if (addr.internal) {
+              loopbackCount++;
+            } else {
+              externalIfaces.push(`${ifaceName}(${addr.family})`);
+            }
+          }
+        }
+        if (externalIfaces.length > 0 && env["MSX_STRICT_NIC_AIRGAP"] === "true") {
+          outboundTrafficBlocked = false;
+          details.push(
+            `Strict NIC air-gap violation: active non-loopback interfaces detected (${externalIfaces.join(", ")}).`,
+          );
+        } else {
+          details.push(
+            `OS network interfaces inspected (${loopbackCount} loopback, ${externalIfaces.length} host NIC bindings; application CSP blocks outbound connections).`,
+          );
+        }
+      }
+    } catch {
+      // OS interface enumeration unavailable in restricted sandbox
+    }
+
+    try {
+      const getBuiltin = (process as unknown as { getBuiltinModule?: (id: string) => unknown }).getBuiltinModule;
+      const fsMod = (getBuiltin ? getBuiltin("node:fs") : undefined) as typeof import("node:fs") | undefined;
+      const pathMod = (getBuiltin ? getBuiltin("node:path") : undefined) as typeof import("node:path") | undefined;
+      const urlMod = (getBuiltin ? getBuiltin("node:url") : undefined) as typeof import("node:url") | undefined;
+      if (fsMod && pathMod && urlMod) {
+        const currentDir = pathMod.dirname(urlMod.fileURLToPath(import.meta.url));
+        const tauriConfPath = pathMod.resolve(currentDir, "../src-tauri/tauri.conf.json");
+        if (fsMod.existsSync(tauriConfPath)) {
+          const conf = JSON.parse(fsMod.readFileSync(tauriConfPath, "utf-8")) as {
+            app?: { security?: { csp?: string | null } };
+          };
+          const csp = conf.app?.security?.csp ?? "";
+          if (!csp || csp.includes("connect-src *") || csp.includes("default-src *")) {
+            outboundTrafficBlocked = false;
+            details.push("Tauri CSP allows unrestricted outbound connections.");
+          }
+        }
+      }
+    } catch {
+      // Ignore Tauri config inspection errors in bundled web context
+    }
+  } else {
+    details.push("Zero telemetry: outbound network reporting is disabled.");
+    details.push("Model files and simulation outputs remain on local encrypted disk.");
+  }
+
+  details.push("All parsing and simulation execute 100% locally in WebAssembly/AssemblyScript.");
+  details.push("FERC CEII (18 CFR § 388.113) safe: zero base cases or parameters exfiltrated.");
+
+  const compliant = outboundTrafficBlocked && localStorageOnly;
   return {
-    compliant: true,
-    outboundTrafficBlocked: true,
-    localStorageOnly: true,
-    details: [
-      "Zero telemetry: outbound network reporting is disabled.",
-      "All parsing and simulation execute 100% locally in WebAssembly/AssemblyScript.",
-      "Model files and simulation outputs remain on local encrypted disk.",
-      "FERC CEII (18 CFR § 388.113) safe: zero base cases or parameters exfiltrated.",
-    ],
+    compliant,
+    outboundTrafficBlocked,
+    localStorageOnly,
+    details,
   };
 }

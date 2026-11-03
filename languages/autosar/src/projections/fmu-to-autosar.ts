@@ -55,15 +55,37 @@ export function fmuToAutosar(model: FmuModelStub, periodSec = 0.01): AutosarProj
     `    <AR-PACKAGE>`,
     `      <SHORT-NAME>Components</SHORT-NAME>`,
     `      <ELEMENTS>`,
+  ];
+
+  // Sender-Receiver Interfaces for R-Ports and P-Ports
+  for (const pName of [...rPorts, ...pPorts]) {
+    xmlLines.push(
+      `        <SENDER-RECEIVER-INTERFACE>`,
+      `          <SHORT-NAME>${pName}_If</SHORT-NAME>`,
+      `          <IS-SERVICE>false</IS-SERVICE>`,
+      `          <DATA-ELEMENTS>`,
+      `            <VARIABLE-DATA-PROTOTYPE>`,
+      `              <SHORT-NAME>val</SHORT-NAME>`,
+      `              <TYPE-TREF DEST="IMPLEMENTATION-DATA-TYPE">/DataTypes/float64</TYPE-TREF>`,
+      `            </VARIABLE-DATA-PROTOTYPE>`,
+      `          </DATA-ELEMENTS>`,
+      `        </SENDER-RECEIVER-INTERFACE>`,
+    );
+  }
+
+  xmlLines.push(
     `        <APPLICATION-SW-COMPONENT-TYPE>`,
     `          <SHORT-NAME>${swcName}</SHORT-NAME>`,
     `          <PORTS>`,
-  ];
+  );
 
   // R-Ports (Inputs)
   rPorts.forEach((pName) => {
     xmlLines.push(`            <R-PORT-PROTOTYPE>`);
     xmlLines.push(`              <SHORT-NAME>${pName}</SHORT-NAME>`);
+    xmlLines.push(
+      `              <REQUIRED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/Components/${pName}_If</REQUIRED-INTERFACE-TREF>`,
+    );
     xmlLines.push(`            </R-PORT-PROTOTYPE>`);
   });
 
@@ -71,6 +93,9 @@ export function fmuToAutosar(model: FmuModelStub, periodSec = 0.01): AutosarProj
   pPorts.forEach((pName) => {
     xmlLines.push(`            <P-PORT-PROTOTYPE>`);
     xmlLines.push(`              <SHORT-NAME>${pName}</SHORT-NAME>`);
+    xmlLines.push(
+      `              <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/Components/${pName}_If</PROVIDED-INTERFACE-TREF>`,
+    );
     xmlLines.push(`            </P-PORT-PROTOTYPE>`);
   });
 
@@ -90,6 +115,35 @@ export function fmuToAutosar(model: FmuModelStub, periodSec = 0.01): AutosarProj
     `                <RUNNABLE-ENTITY>`,
     `                  <SHORT-NAME>${runnableName}</SHORT-NAME>`,
     `                  <CAN-BE-INVOKED-CONCURRENTLY>false</CAN-BE-INVOKED-CONCURRENTLY>`,
+  );
+
+  if (rPorts.length > 0) {
+    xmlLines.push(`                  <DATA-READ-ACCESSS>`);
+    rPorts.forEach((pName) => {
+      xmlLines.push(
+        `                    <VARIABLE-ACCESS>`,
+        `                      <PORT-PROTOTYPE-REF>${pName}</PORT-PROTOTYPE-REF>`,
+        `                      <TARGET-DATA-PROTOTYPE-REF>val</TARGET-DATA-PROTOTYPE-REF>`,
+        `                    </VARIABLE-ACCESS>`,
+      );
+    });
+    xmlLines.push(`                  </DATA-READ-ACCESSS>`);
+  }
+
+  if (pPorts.length > 0) {
+    xmlLines.push(`                  <DATA-WRITE-ACCESSS>`);
+    pPorts.forEach((pName) => {
+      xmlLines.push(
+        `                    <VARIABLE-ACCESS>`,
+        `                      <PORT-PROTOTYPE-REF>${pName}</PORT-PROTOTYPE-REF>`,
+        `                      <TARGET-DATA-PROTOTYPE-REF>val</TARGET-DATA-PROTOTYPE-REF>`,
+        `                    </VARIABLE-ACCESS>`,
+      );
+    });
+    xmlLines.push(`                  </DATA-WRITE-ACCESSS>`);
+  }
+
+  xmlLines.push(
     `                </RUNNABLE-ENTITY>`,
     `              </RUNNABLES>`,
     `            </SWC-INTERNAL-BEHAVIOR>`,
@@ -102,6 +156,16 @@ export function fmuToAutosar(model: FmuModelStub, periodSec = 0.01): AutosarProj
   );
 
   // 2. Generate Virtual RTE Registration Snippet
+  const inVrs = inputs.map((v) => v.valueReference).join(", ");
+  const inVars = inputs.map((v) => sanitizeAutosarIdent(v.name)).join(", ");
+  const outVrs = outputs.map((v) => v.valueReference).join(", ");
+  const outDefaults = outputs
+    .map((v, idx) => {
+      const fallbackIn = inputs[idx] ?? inputs[0];
+      return fallbackIn ? sanitizeAutosarIdent(fallbackIn.name) : Number(v.start ?? 0.0);
+    })
+    .join(", ");
+
   const rteLines: string[] = [
     `// Virtual RTE Runnable Registration for ${swcName}`,
     `virtualRte.registerRunnable("${swcName}", "${runnableName}", (ctx) => {`,
@@ -115,13 +179,23 @@ export function fmuToAutosar(model: FmuModelStub, periodSec = 0.01): AutosarProj
 
   rteLines.push(
     `  // 2. Call FMU C API or SHM bridge`,
-    `  // fmi2DoStep(time, ${periodSec});`,
+    `  if (typeof fmi2SetReal === "function") {`,
+    `    fmi2SetReal(fmuInstance, [${inVrs}], [${inVars}]);`,
+    `  }`,
+    `  if (typeof fmi2DoStep === "function") {`,
+    `    fmi2DoStep(fmuInstance, ctx.time, ${periodSec}, true);`,
+    `  }`,
+    `  const fmuOutputs = typeof fmi2GetReal === "function"`,
+    `    ? fmi2GetReal(fmuInstance, [${outVrs}])`,
+    `    : [${outDefaults}];`,
     `  // 3. Write output signals back to RTE ports`,
   );
 
   outputs.forEach((out, idx) => {
     const port = pPorts[idx] ?? "";
-    rteLines.push(`  ctx.write("${port}", "val", 0.0 /* output from FMU VR ${out.valueReference} */);`);
+    rteLines.push(
+      `  ctx.write("${port}", "val", fmuOutputs[${idx}] ?? ${Number(out.start ?? 0.0)} /* output from FMU VR ${out.valueReference} */);`,
+    );
   });
 
   rteLines.push(`});`);

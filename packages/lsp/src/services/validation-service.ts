@@ -626,11 +626,25 @@ export class ValidationService {
       clearTimeout(timer);
       this.activeValidationTimers.delete(uri);
       const doc = this.documentManager.documents.get(uri);
-      if (doc) await this.validateTextDocument(doc);
+      if (doc) {
+        await this.parserService.ensureLanguageParserLoaded(doc.languageId || uri);
+        await this.validateTextDocument(doc);
+      }
     }
     const pending = this.activeValidationPromises.get(uri);
     if (pending) {
       await pending;
+    }
+    const doc = this.documentManager.documents.get(uri);
+    if (doc) {
+      const normUri = uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+      const indexedText = this.lastIndexedText.get(uri) ?? this.lastIndexedText.get(normUri);
+      if (indexedText !== doc.getText()) {
+        await this.parserService.ensureLanguageParserLoaded(doc.languageId || uri);
+        await this.validateTextDocument(doc);
+        const inflight = this.activeValidationPromises.get(uri);
+        if (inflight) await inflight;
+      }
     }
   }
 
@@ -654,6 +668,12 @@ export class ValidationService {
     }
 
     const text = textDocument.getText();
+    if (
+      (uri.endsWith(".mo") && text.includes("uses")) ||
+      ((uri.endsWith("/package.json") || uri.endsWith("/modelscript.json")) && text.includes("dependencies"))
+    ) {
+      void this.parserService.syncDocumentLibraryVersions?.(uri, text);
+    }
     const plugin = globalLanguageRegistry.getPluginForLanguageIdOrUri(textDocument.languageId, uri, text);
     if (plugin && !globalLanguageRegistry.isLanguageEnabled(plugin.id)) {
       this.connection.sendDiagnostics({ uri, diagnostics: [] });

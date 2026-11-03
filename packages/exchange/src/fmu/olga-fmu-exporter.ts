@@ -274,14 +274,66 @@ export function generateOlgaFmi3ModelDescription(
 }
 
 /**
- * Builds standard FMI 2.0 Co-Simulation C source code embedding the drift-flux solver.
+ * Builds standard FMI 2.0 / 3.0 Co-Simulation C source code embedding the multi-segment drift-flux solver.
  */
 export function generateOlgaCosimCSource(modelIdentifier: string, model: OlgaModel): string {
-  const pipeLength = model.flowpaths[0]?.pipes.reduce((acc, p) => acc + p.length, 0) ?? 5000.0;
-  const pipeDiameter = model.flowpaths[0]?.pipes[0]?.diameter ?? 0.254;
+  const allPipes = model.flowpaths.flatMap((fp) =>
+    fp.pipes.map((pipe) => ({
+      pipe,
+      uHeat: fp.heatTransfer?.ambientHeatTransferCoeff ?? 15.0,
+    })),
+  );
+  const pipeLength = allPipes.length > 0 ? allPipes.reduce((acc, p) => acc + p.pipe.length, 0) : 5000.0;
+  const pipeDiameter = allPipes[0]?.pipe.diameter ?? 0.254;
+
+  // Discretize model.flowpaths pipes into finite-volume segments
+  const segments: { length: number; diameter: number; elevation: number; roughness: number; uHeat: number }[] = [];
+  if (allPipes.length > 0) {
+    for (const { pipe, uHeat } of allPipes) {
+      const nSeg = Math.max(1, Math.min(16, pipe.discretization || 4));
+      const segLen = Math.max(1.0, pipe.length / nSeg);
+      const segElev = (pipe.elevation ?? 0.0) / nSeg;
+      const segDiam = Math.max(0.02, pipe.diameter || pipeDiameter);
+      const segRough = Math.max(1e-6, pipe.roughness ?? 4.5e-5);
+      const segU = Math.max(0.5, uHeat);
+      for (let i = 0; i < nSeg; i++) {
+        segments.push({
+          length: segLen,
+          diameter: segDiam,
+          elevation: segElev,
+          roughness: segRough,
+          uHeat: segU,
+        });
+      }
+    }
+  } else {
+    for (let i = 0; i < 8; i++) {
+      segments.push({
+        length: pipeLength / 8.0,
+        diameter: pipeDiameter,
+        elevation: i >= 6 ? 50.0 : -15.0,
+        roughness: 4.5e-5,
+        uHeat: 15.0,
+      });
+    }
+  }
+
+  const nSegments = segments.length;
+  const segLenInit = segments.map((s) => s.length.toFixed(2)).join(", ");
+  const segDiamInit = segments.map((s) => s.diameter.toFixed(4)).join(", ");
+  const segElevInit = segments.map((s) => s.elevation.toFixed(2)).join(", ");
+  const segRoughInit = segments.map((s) => s.roughness.toExponential(3)).join(", ");
+  const segUInit = segments.map((s) => s.uHeat.toFixed(2)).join(", ");
+
+  const source = model.flowpaths[0]?.sources[0];
+  const initMassRate = source?.totalMassRate ?? 35.0;
+  const initPressure = source?.pressure ?? 12000000.0;
+  const initTemp = source?.temperature ?? 335.15;
+  const initGasFrac = source?.gasMassFraction ?? 0.25;
+  const initChoke = model.flowpaths[0]?.valves[0]?.opening ?? 1.0;
 
   return `/* SPDX-License-Identifier: AGPL-3.0-or-later */
-/* ModelScript OLGA FMI 2.0 Co-Simulation Solver Implementation */
+/* ModelScript OLGA FMI 2.0 / 3.0 Co-Simulation Multi-Segment Drift-Flux Solver */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -290,6 +342,7 @@ export function generateOlgaCosimCSource(modelIdentifier: string, model: OlgaMod
 
 #define FMI2_FUNCTION_PREFIX ${modelIdentifier}_
 #define MODEL_IDENTIFIER "${modelIdentifier}"
+#define N_SEGMENTS ${nSegments}
 
 typedef void* fmi2Component;
 typedef void* fmi2ComponentEnvironment;
@@ -301,13 +354,24 @@ typedef int fmi2Boolean;
 typedef const char* fmi2String;
 
 typedef enum {
-    fmi2OK,
-    fmi2Warning,
-    fmi2Discard,
-    fmi2Error,
-    fmi2Fatal,
-    fmi2Pending
+    fmi2OK = 0,
+    fmi2Warning = 1,
+    fmi2Discard = 2,
+    fmi2Error = 3,
+    fmi2Fatal = 4,
+    fmi2Pending = 5
 } fmi2Status;
+
+typedef void* fmi3Instance;
+typedef unsigned int fmi3ValueReference;
+typedef double fmi3Float64;
+typedef int fmi3Status;
+
+static const fmi2Real SEG_LENGTH[N_SEGMENTS]    = { ${segLenInit} };
+static const fmi2Real SEG_DIAMETER[N_SEGMENTS]  = { ${segDiamInit} };
+static const fmi2Real SEG_ELEVATION[N_SEGMENTS] = { ${segElevInit} };
+static const fmi2Real SEG_ROUGHNESS[N_SEGMENTS] = { ${segRoughInit} };
+static const fmi2Real SEG_U_HEAT[N_SEGMENTS]    = { ${segUInit} };
 
 typedef struct {
     /* Inputs */
@@ -329,11 +393,51 @@ typedef struct {
     fmi2Real pipe_length;
     fmi2Real pipe_diameter;
     fmi2Real step_size;
+    fmi2Real gas_fraction;
 
-    /* State */
+    /* Multi-segment finite-volume states */
+    fmi2Real seg_p[N_SEGMENTS];
+    fmi2Real seg_holdup[N_SEGMENTS];
+    fmi2Real seg_temp[N_SEGMENTS];
+
+    /* Auxiliary integer/boolean/string variables */
+    fmi2Integer active_slugs;
+    fmi2Boolean initialized;
     fmi2Real current_time;
+    fmi2Real start_time;
     fmi2Real accumulated_surge;
 } OlgaModelInstance;
+
+static void olga_reset_instance(OlgaModelInstance* inst) {
+    memset(inst, 0, sizeof(OlgaModelInstance));
+    inst->choke_opening = ${initChoke.toFixed(4)};
+    inst->inlet_mass_rate = ${initMassRate.toFixed(4)};
+    inst->inlet_pressure = ${initPressure.toFixed(2)};
+    inst->inlet_temperature = ${initTemp.toFixed(2)};
+    inst->gas_fraction = ${initGasFrac.toFixed(4)};
+
+    inst->pipe_length = ${pipeLength.toFixed(2)};
+    inst->pipe_diameter = ${pipeDiameter.toFixed(4)};
+    inst->step_size = 1.0;
+
+    for (int i = 0; i < N_SEGMENTS; i++) {
+        fmi2Real frac = (fmi2Real)(i + 1) / (fmi2Real)N_SEGMENTS;
+        inst->seg_p[i] = inst->inlet_pressure * (1.0 - 0.65 * frac);
+        inst->seg_holdup[i] = 0.22 + 0.08 * (SEG_ELEVATION[i] > 0.0 ? 1.0 : -0.3);
+        if (inst->seg_holdup[i] < 0.05) inst->seg_holdup[i] = 0.05;
+        if (inst->seg_holdup[i] > 0.90) inst->seg_holdup[i] = 0.90;
+        inst->seg_temp[i] = 277.15 + (inst->inlet_temperature - 277.15) * exp(-0.12 * frac);
+    }
+
+    inst->p_inlet = inst->inlet_pressure;
+    inst->p_arrival = inst->seg_p[N_SEGMENTS - 1];
+    inst->t_arrival = inst->seg_temp[N_SEGMENTS - 1];
+    inst->holdup_arrival = inst->seg_holdup[N_SEGMENTS - 1];
+    inst->surge_vol = 0.0;
+    inst->mean_slug_length = 25.0;
+    inst->slug_frequency = 0.02;
+    inst->active_slugs = 1;
+}
 
 fmi2Component ${modelIdentifier}_fmi2Instantiate(
     fmi2String instanceName,
@@ -349,24 +453,7 @@ fmi2Component ${modelIdentifier}_fmi2Instantiate(
 
     OlgaModelInstance* inst = (OlgaModelInstance*)calloc(1, sizeof(OlgaModelInstance));
     if (!inst) return NULL;
-
-    inst->choke_opening = 1.0;
-    inst->inlet_mass_rate = 35.0;
-    inst->inlet_pressure = 12000000.0;
-    inst->inlet_temperature = 335.15;
-
-    inst->pipe_length = ${pipeLength.toFixed(2)};
-    inst->pipe_diameter = ${pipeDiameter.toFixed(4)};
-    inst->step_size = 1.0;
-
-    inst->p_inlet = inst->inlet_pressure;
-    inst->p_arrival = 3500000.0;
-    inst->t_arrival = 295.15;
-    inst->holdup_arrival = 0.15;
-    inst->surge_vol = 0.0;
-    inst->mean_slug_length = 25.0;
-    inst->slug_frequency = 0.02;
-
+    olga_reset_instance(inst);
     return (fmi2Component)inst;
 }
 
@@ -385,17 +472,35 @@ fmi2Status ${modelIdentifier}_fmi2SetupExperiment(
     (void)toleranceDefined; (void)tolerance; (void)stopTimeDefined; (void)stopTime;
     OlgaModelInstance* inst = (OlgaModelInstance*)c;
     if (!inst) return fmi2Error;
+    inst->start_time = startTime;
     inst->current_time = startTime;
     return fmi2OK;
 }
 
 fmi2Status ${modelIdentifier}_fmi2EnterInitializationMode(fmi2Component c) {
-    (void)c;
+    OlgaModelInstance* inst = (OlgaModelInstance*)c;
+    if (!inst) return fmi2Error;
     return fmi2OK;
 }
 
 fmi2Status ${modelIdentifier}_fmi2ExitInitializationMode(fmi2Component c) {
-    (void)c;
+    OlgaModelInstance* inst = (OlgaModelInstance*)c;
+    if (!inst) return fmi2Error;
+    inst->initialized = 1;
+    return fmi2OK;
+}
+
+fmi2Status ${modelIdentifier}_fmi2Terminate(fmi2Component c) {
+    OlgaModelInstance* inst = (OlgaModelInstance*)c;
+    if (!inst) return fmi2Error;
+    inst->initialized = 0;
+    return fmi2OK;
+}
+
+fmi2Status ${modelIdentifier}_fmi2Reset(fmi2Component c) {
+    OlgaModelInstance* inst = (OlgaModelInstance*)c;
+    if (!inst) return fmi2Error;
+    olga_reset_instance(inst);
     return fmi2OK;
 }
 
@@ -409,37 +514,106 @@ fmi2Status ${modelIdentifier}_fmi2DoStep(
     OlgaModelInstance* inst = (OlgaModelInstance*)c;
     if (!inst) return fmi2Error;
 
+    int nSub = (int)ceil(communicationStepSize / 0.5);
+    if (nSub < 1) nSub = 1;
+    if (nSub > 50) nSub = 50;
+    fmi2Real dt = communicationStepSize / (fmi2Real)nSub;
+
+    const fmi2Real rho_l = 840.0;
+    const fmi2Real rho_g = 68.0;
+    const fmi2Real cp_mix = 2150.0;
+    const fmi2Real t_seabed = 277.15;
+    const fmi2Real g_acc = 9.81;
+
+    fmi2Real choke_eff = fmax(0.01, fmin(1.0, inst->choke_opening));
+    fmi2Real w_in = inst->inlet_mass_rate * (0.25 + 0.75 * choke_eff);
+    fmi2Real w_liq_in = w_in * (1.0 - inst->gas_fraction);
+    fmi2Real w_gas_in = w_in * inst->gas_fraction;
+
+    for (int sub = 0; sub < nSub; sub++) {
+        fmi2Real prev_q_liq = w_liq_in / rho_l;
+        fmi2Real prev_temp = inst->inlet_temperature;
+        fmi2Real cum_dp = 0.0;
+
+        for (int i = 0; i < N_SEGMENTS; i++) {
+            fmi2Real L_i = SEG_LENGTH[i];
+            fmi2Real D_i = SEG_DIAMETER[i];
+            fmi2Real dZ_i = SEG_ELEVATION[i];
+            fmi2Real eps_i = SEG_ROUGHNESS[i];
+            fmi2Real U_i = SEG_U_HEAT[i];
+            fmi2Real area_i = 3.141592653589793 * D_i * D_i * 0.25;
+            fmi2Real vol_i = area_i * L_i;
+
+            fmi2Real alpha_l = fmax(0.02, fmin(0.95, inst->seg_holdup[i]));
+            fmi2Real rho_m = alpha_l * rho_l + (1.0 - alpha_l) * rho_g;
+            fmi2Real j_l = prev_q_liq / area_i;
+            fmi2Real j_g = (w_gas_in / rho_g) / area_i;
+            fmi2Real j_m = j_l + j_g;
+
+            /* Zuber-Findlay drift-flux slip closure */
+            fmi2Real sin_theta = dZ_i / fmax(1.0, L_i);
+            fmi2Real v_drift = 0.35 * sqrt(g_acc * D_i * (rho_l - rho_g) / rho_l) +
+                               0.54 * sqrt(g_acc * D_i) * sin_theta;
+            fmi2Real v_g = 1.18 * j_m + v_drift;
+            fmi2Real alpha_g_eq = (v_g > 1e-3) ? fmax(0.05, fmin(0.95, j_g / v_g)) : (1.0 - alpha_l);
+            fmi2Real alpha_l_eq = 1.0 - alpha_g_eq;
+            fmi2Real v_l = fmax(0.05, j_m * (1.0 - 0.15 * sin_theta));
+            fmi2Real q_liq_out = alpha_l * v_l * area_i;
+
+            /* 1. Liquid holdup conservation PDE */
+            fmi2Real d_alpha_dt = (prev_q_liq - q_liq_out) / fmax(1.0, vol_i) +
+                                  (alpha_l_eq - alpha_l) / fmax(5.0, L_i / fmax(0.2, j_m));
+            inst->seg_holdup[i] = fmax(0.03, fmin(0.95, alpha_l + dt * d_alpha_dt));
+
+            /* 2. Momentum Darcy-Weisbach + hydrostatic pressure drop */
+            fmi2Real re = fmax(2500.0, rho_m * fabs(j_m) * D_i / 0.0025);
+            fmi2Real f_darcy = 0.25 / pow(log10((eps_i / (3.7 * D_i)) + (5.74 / pow(re, 0.9))), 2.0);
+            fmi2Real dp_fric = f_darcy * (L_i / D_i) * 0.5 * rho_m * j_m * j_m;
+            fmi2Real dp_grav = rho_m * g_acc * dZ_i;
+            cum_dp += (dp_fric + dp_grav);
+
+            fmi2Real p_target = fmax(100000.0, inst->inlet_pressure - cum_dp);
+            fmi2Real tau_p = fmax(2.0, L_i / 350.0);
+            inst->seg_p[i] += fmin(1.0, dt / tau_p) * (p_target - inst->seg_p[i]);
+
+            /* 3. Advective-convective thermal energy PDE */
+            fmi2Real perim_i = 3.141592653589793 * D_i;
+            fmi2Real d_temp_dt = ( fabs(j_m) * (prev_temp - inst->seg_temp[i]) / L_i ) -
+                                 ( U_i * perim_i * (inst->seg_temp[i] - t_seabed) / fmax(1.0, rho_m * area_i * cp_mix) );
+            inst->seg_temp[i] = fmax(t_seabed, fmin(450.0, inst->seg_temp[i] + dt * d_temp_dt));
+
+            prev_q_liq = q_liq_out;
+            prev_temp = inst->seg_temp[i];
+        }
+    }
+
     inst->current_time = currentCommunicationPoint + communicationStepSize;
 
-    /* 1D Drift-Flux Multiphase Hydraulic Step */
-    fmi2Real area = 3.141592653589793 * (inst->pipe_diameter * inst->pipe_diameter) * 0.25;
-    fmi2Real rho_l = 850.0;
-    fmi2Real rho_g = 65.0;
-    fmi2Real j_m = inst->inlet_mass_rate / (area * (rho_l * inst->holdup_arrival + rho_g * (1.0 - inst->holdup_arrival)));
+    /* Choke throttling & topside arrival state */
+    fmi2Real d_last = SEG_DIAMETER[N_SEGMENTS - 1];
+    fmi2Real area_last = 3.141592653589793 * d_last * d_last * 0.25;
+    fmi2Real alpha_arr = inst->seg_holdup[N_SEGMENTS - 1];
+    fmi2Real rho_arr = alpha_arr * rho_l + (1.0 - alpha_arr) * rho_g;
+    fmi2Real j_arr = inst->inlet_mass_rate / fmax(1e-3, area_last * rho_arr);
+    fmi2Real choke_dp = (1.0 - choke_eff) * (rho_arr * j_arr * j_arr * 5.0);
 
-    /* Choke pressure throttling */
-    fmi2Real choke_eff = fmax(0.01, fmin(1.0, inst->choke_opening));
-    fmi2Real choke_dp = (1.0 - choke_eff) * (rho_l * j_m * j_m * 0.5 * 10.0);
-
-    /* Arrival pressure and cooldown */
-    fmi2Real friction_dp = 0.02 * (inst->pipe_length / inst->pipe_diameter) * 0.5 * rho_l * j_m * j_m;
-    inst->p_arrival = fmax(100000.0, inst->inlet_pressure - friction_dp - choke_dp);
     inst->p_inlet = inst->inlet_pressure;
+    inst->p_arrival = fmax(100000.0, inst->seg_p[N_SEGMENTS - 1] - choke_dp);
+    inst->t_arrival = inst->seg_temp[N_SEGMENTS - 1];
+    inst->holdup_arrival = alpha_arr;
 
-    /* Thermal cooling along subsea seabed */
-    fmi2Real t_seabed = 277.15; /* 4 C */
-    fmi2Real cooling_factor = exp(-0.0003 * inst->pipe_length);
-    inst->t_arrival = t_seabed + (inst->inlet_temperature - t_seabed) * cooling_factor;
+    /* Hydrodynamic + terrain slugging correlations across riser/dip segments */
+    fmi2Real max_holdup = 0.0;
+    for (int i = 0; i < N_SEGMENTS; i++) {
+        if (inst->seg_holdup[i] > max_holdup) max_holdup = inst->seg_holdup[i];
+    }
+    inst->mean_slug_length = fmax(5.0, 28.0 * d_last * pow(fmax(0.1, j_arr), 0.38) * (1.0 + max_holdup));
+    inst->slug_frequency = (j_arr > 0.3) ? (0.022 * j_arr / d_last) * alpha_arr : 0.0;
+    inst->active_slugs = (max_holdup > 0.45) ? 2 : 1;
 
-    /* Hydrodynamic slug dynamics */
-    fmi2Real slug_v = 1.2 * j_m + 0.35 * sqrt(9.81 * inst->pipe_diameter);
-    inst->mean_slug_length = fmax(5.0, 32.0 * inst->pipe_diameter * pow(fmax(0.1, j_m), 0.4));
-    inst->slug_frequency = (j_m > 0.5) ? (0.025 * j_m / inst->pipe_diameter) : 0.0;
-
-    /* Liquid surge volume into catcher */
-    fmi2Real liquid_rate = inst->inlet_mass_rate * 0.65 / rho_l; /* m3/s */
-    fmi2Real surge_increment = liquid_rate * (1.0 + 0.35 * sin(inst->current_time * inst->slug_frequency * 6.28318));
-    inst->accumulated_surge += surge_increment * communicationStepSize;
+    /* Liquid surge volume accumulation */
+    fmi2Real liq_vol_rate = (inst->inlet_mass_rate * (1.0 - inst->gas_fraction) / rho_l) * choke_eff;
+    inst->accumulated_surge += liq_vol_rate * communicationStepSize;
     inst->surge_vol = fmax(0.0, inst->accumulated_surge);
 
     return fmi2OK;
@@ -491,9 +665,97 @@ fmi2Status ${modelIdentifier}_fmi2SetReal(
             case 2: inst->inlet_mass_rate = fmax(0.0, value[i]); break;
             case 3: inst->inlet_pressure = fmax(100000.0, value[i]); break;
             case 4: inst->inlet_temperature = fmax(200.0, value[i]); break;
+            case 100: inst->pipe_length = fmax(1.0, value[i]); break;
+            case 101: inst->pipe_diameter = fmax(0.01, value[i]); break;
+            case 102: inst->step_size = fmax(0.001, value[i]); break;
             default: return fmi2Discard;
         }
     }
+    return fmi2OK;
+}
+
+fmi2Status ${modelIdentifier}_fmi2GetInteger(
+    fmi2Component c,
+    const fmi2ValueReference vr[],
+    size_t nvr,
+    fmi2Integer value[])
+{
+    OlgaModelInstance* inst = (OlgaModelInstance*)c;
+    if (!inst) return fmi2Error;
+    for (size_t i = 0; i < nvr; i++) {
+        (void)vr;
+        value[i] = inst->active_slugs;
+    }
+    return fmi2OK;
+}
+
+fmi2Status ${modelIdentifier}_fmi2SetInteger(
+    fmi2Component c,
+    const fmi2ValueReference vr[],
+    size_t nvr,
+    const fmi2Integer value[])
+{
+    OlgaModelInstance* inst = (OlgaModelInstance*)c;
+    if (!inst) return fmi2Error;
+    for (size_t i = 0; i < nvr; i++) {
+        (void)vr;
+        inst->active_slugs = value[i];
+    }
+    return fmi2OK;
+}
+
+fmi2Status ${modelIdentifier}_fmi2GetBoolean(
+    fmi2Component c,
+    const fmi2ValueReference vr[],
+    size_t nvr,
+    fmi2Boolean value[])
+{
+    OlgaModelInstance* inst = (OlgaModelInstance*)c;
+    if (!inst) return fmi2Error;
+    for (size_t i = 0; i < nvr; i++) {
+        (void)vr;
+        value[i] = inst->initialized;
+    }
+    return fmi2OK;
+}
+
+fmi2Status ${modelIdentifier}_fmi2SetBoolean(
+    fmi2Component c,
+    const fmi2ValueReference vr[],
+    size_t nvr,
+    const fmi2Boolean value[])
+{
+    OlgaModelInstance* inst = (OlgaModelInstance*)c;
+    if (!inst) return fmi2Error;
+    for (size_t i = 0; i < nvr; i++) {
+        (void)vr;
+        inst->initialized = value[i];
+    }
+    return fmi2OK;
+}
+
+fmi2Status ${modelIdentifier}_fmi2GetString(
+    fmi2Component c,
+    const fmi2ValueReference vr[],
+    size_t nvr,
+    fmi2String value[])
+{
+    (void)vr;
+    if (!c) return fmi2Error;
+    for (size_t i = 0; i < nvr; i++) {
+        value[i] = MODEL_IDENTIFIER;
+    }
+    return fmi2OK;
+}
+
+fmi2Status ${modelIdentifier}_fmi2SetString(
+    fmi2Component c,
+    const fmi2ValueReference vr[],
+    size_t nvr,
+    const fmi2String value[])
+{
+    (void)vr; (void)nvr; (void)value;
+    if (!c) return fmi2Error;
     return fmi2OK;
 }
 
@@ -503,6 +765,96 @@ const char* ${modelIdentifier}_fmi2GetVersion(void) {
 
 const char* ${modelIdentifier}_fmi2GetTypesPlatform(void) {
     return "default";
+}
+
+/* FMI 3.0 Co-Simulation Lifecycle & Accessor Wrappers */
+fmi3Instance ${modelIdentifier}_fmi3InstantiateCoSimulation(
+    const char* instanceName,
+    const char* instantiationToken,
+    const char* resourcePath,
+    int visible,
+    int loggingOn,
+    int eventModeUsed,
+    int earlyReturnAllowed,
+    const fmi3ValueReference requiredIntermediateVariables[],
+    size_t nRequiredIntermediateVariables,
+    void* instanceEnvironment,
+    void* logMessage,
+    void* intermediateUpdate)
+{
+    (void)eventModeUsed; (void)earlyReturnAllowed; (void)requiredIntermediateVariables;
+    (void)nRequiredIntermediateVariables; (void)instanceEnvironment; (void)logMessage; (void)intermediateUpdate;
+    return ${modelIdentifier}_fmi2Instantiate(instanceName, 1, instantiationToken, resourcePath, NULL, visible, loggingOn);
+}
+
+void ${modelIdentifier}_fmi3FreeInstance(fmi3Instance instance) {
+    ${modelIdentifier}_fmi2FreeInstance(instance);
+}
+
+fmi3Status ${modelIdentifier}_fmi3EnterInitializationMode(
+    fmi3Instance instance,
+    int toleranceDefined,
+    fmi3Float64 tolerance,
+    fmi3Float64 startTime,
+    int stopTimeDefined,
+    fmi3Float64 stopTime)
+{
+    ${modelIdentifier}_fmi2SetupExperiment(instance, toleranceDefined, tolerance, startTime, stopTimeDefined, stopTime);
+    return (fmi3Status)${modelIdentifier}_fmi2EnterInitializationMode(instance);
+}
+
+fmi3Status ${modelIdentifier}_fmi3ExitInitializationMode(fmi3Instance instance) {
+    return (fmi3Status)${modelIdentifier}_fmi2ExitInitializationMode(instance);
+}
+
+fmi3Status ${modelIdentifier}_fmi3Terminate(fmi3Instance instance) {
+    return (fmi3Status)${modelIdentifier}_fmi2Terminate(instance);
+}
+
+fmi3Status ${modelIdentifier}_fmi3Reset(fmi3Instance instance) {
+    return (fmi3Status)${modelIdentifier}_fmi2Reset(instance);
+}
+
+fmi3Status ${modelIdentifier}_fmi3GetFloat64(
+    fmi3Instance instance,
+    const fmi3ValueReference valueReferences[],
+    size_t nValueReferences,
+    fmi3Float64 values[],
+    size_t nValues)
+{
+    (void)nValues;
+    return (fmi3Status)${modelIdentifier}_fmi2GetReal(instance, valueReferences, nValueReferences, values);
+}
+
+fmi3Status ${modelIdentifier}_fmi3SetFloat64(
+    fmi3Instance instance,
+    const fmi3ValueReference valueReferences[],
+    size_t nValueReferences,
+    const fmi3Float64 values[],
+    size_t nValues)
+{
+    (void)nValues;
+    return (fmi3Status)${modelIdentifier}_fmi2SetReal(instance, valueReferences, nValueReferences, values);
+}
+
+fmi3Status ${modelIdentifier}_fmi3DoStep(
+    fmi3Instance instance,
+    fmi3Float64 currentCommunicationPoint,
+    fmi3Float64 communicationStepSize,
+    int noSetFMUStatePriorToCurrentPoint,
+    int* eventHandlingNeeded,
+    int* terminateSimulation,
+    int* earlyReturn,
+    fmi3Float64* lastSuccessfulTime)
+{
+    fmi3Status st = (fmi3Status)${modelIdentifier}_fmi2DoStep(
+        instance, currentCommunicationPoint, communicationStepSize, noSetFMUStatePriorToCurrentPoint
+    );
+    if (eventHandlingNeeded) *eventHandlingNeeded = 0;
+    if (terminateSimulation) *terminateSimulation = 0;
+    if (earlyReturn) *earlyReturn = 0;
+    if (lastSuccessfulTime) *lastSuccessfulTime = currentCommunicationPoint + communicationStepSize;
+    return st;
 }
 `;
 }

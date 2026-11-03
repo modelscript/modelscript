@@ -12,7 +12,7 @@ const mockDesc: FmiModelDescription = {
   guid: "{9d4e1124-7c38-4f81-a7b2-10f8a923bc11}",
   description: "Acausal Model Exchange wrapper for HeatExchangerUnit",
   author: "ModelScript Engineering",
-  generationTool: "ModelScript 0.0.18",
+  generationTool: "ModelScript 0.1.0",
   coSimulationModelIdentifier: "HeatExchangerUnit_cs",
   modelExchangeModelIdentifier: "HeatExchangerUnit_me",
   supportsCoSimulation: true,

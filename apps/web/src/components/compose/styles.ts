@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import styled from "styled-components";
+import styledImport from "styled-components";
+
+const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
 
 export const TweetButton = styled.button`
   display: inline-flex;
@@ -152,8 +154,9 @@ export const Backdrop = styled.div`
 
 export const ComposeInput = styled.textarea`
   width: 100%;
-  border: none;
-  outline: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   font-size: var(--text-xl, 20px);
   line-height: var(--leading-xl, 24px);
   font-weight: 400;
@@ -176,6 +179,12 @@ export const ComposeInput = styled.textarea`
   margin-bottom: 12px;
   position: relative;
   z-index: 1;
+  &:focus,
+  &:focus-visible {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
   &::selection {
     background: rgba(6, 182, 212, 0.24);
     color: transparent;
@@ -269,12 +278,20 @@ export const NotebookTitleInput = styled.textarea`
   letter-spacing: -0.028em;
   color: var(--ms-text-heading, var(--ms-text-1));
   background: transparent;
-  border: none;
-  outline: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   resize: none;
   overflow: hidden;
   box-sizing: border-box;
   font-family: inherit;
+
+  &:focus,
+  &:focus-visible {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
 
   &::placeholder {
     color: var(--ms-text-3, #94a3b8);
@@ -296,12 +313,20 @@ export const NotebookSubtitleInput = styled.textarea`
   font-weight: 400;
   color: var(--ms-text-2);
   background: transparent;
-  border: none;
-  outline: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   resize: none;
   overflow: hidden;
   box-sizing: border-box;
   font-family: inherit;
+
+  &:focus,
+  &:focus-visible {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
 
   &::placeholder {
     color: var(--ms-text-3, #94a3b8);
@@ -534,6 +559,12 @@ export const NotebookCellTextarea = styled.textarea<{
   font-family: inherit;
   box-sizing: border-box;
 
+  &:focus,
+  &:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
   &::placeholder {
     color: var(--ms-text-3, #94a3b8);
     opacity: 0.6;
@@ -543,14 +574,22 @@ export const NotebookCellTextarea = styled.textarea<{
 
 export const ArtifactCaptionInput = styled.input`
   width: 100%;
-  border: none;
-  outline: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
   font-size: 13px;
   padding: 6px 2px;
   background: transparent;
   color: var(--ms-text-2);
   font-family: inherit;
   box-sizing: border-box;
+
+  &:focus,
+  &:focus-visible {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
 
   &::placeholder {
     color: var(--ms-text-3, #94a3b8);

@@ -199,4 +199,83 @@ describe("Platform Engineering & Notifications Hub", () => {
     const playgroundUrl = `/playground?model=${encodeURIComponent(sim.metadata?.name)}`;
     assert.strictEqual(playgroundUrl, "/playground?model=Modelica.Electrical.Analog.Examples.ChuaCircuit");
   });
+
+  it("counts multiple likes on the same post as 1 unread notification when grouped", async () => {
+    const { groupNotifications } = await import("../src/pages/notifications/types.ts");
+    const rawLikes: NotificationItem[] = [
+      {
+        id: 10,
+        type: "like",
+        read: 0,
+        created_at: new Date().toISOString(),
+        actor_username: "alice",
+        post_id: 999,
+      },
+      {
+        id: 11,
+        type: "like",
+        read: 0,
+        created_at: new Date().toISOString(),
+        actor_username: "bob",
+        post_id: 999,
+      },
+      {
+        id: 12,
+        type: "like",
+        read: 0,
+        created_at: new Date().toISOString(),
+        actor_username: "charlie",
+        post_id: 999,
+      },
+    ];
+    const grouped = groupNotifications(rawLikes as any);
+    assert.strictEqual(grouped.length, 1);
+    assert.deepStrictEqual(grouped[0]!.groupedIds, [10, 11, 12]);
+    const counts = computeCategoryUnreadCounts(grouped as unknown as NotificationItem[]);
+    assert.strictEqual(counts.all, 1);
+    assert.strictEqual(counts.mentions, 1);
+  });
+
+  it("extracts all constituent notification IDs when marking a grouped notification as read", async () => {
+    const { groupNotifications, getNotificationIdsToMark } = await import("../src/pages/notifications/types.ts");
+    const rawItems = [
+      { id: 21, type: "repost", read: 1, actor_username: "alice", post_id: 500 },
+      { id: 22, type: "repost", read: 0, actor_username: "bob", post_id: 500 },
+      { id: 23, type: "mention", read: 0, actor_username: "carol", post_id: 501 },
+    ];
+    const grouped = groupNotifications(rawItems);
+    assert.strictEqual(grouped.length, 2);
+    // Even though the first repost (21) was read=1, the second repost (22) was read=0, so group is unread and tracks both IDs
+    assert.strictEqual(grouped[0]!.read, 0);
+    assert.deepStrictEqual(getNotificationIdsToMark(grouped[0]!), [21, 22]);
+    assert.deepStrictEqual(getNotificationIdsToMark(grouped[1]!), [23]);
+  });
+
+  it("partitions freshly arrived notifications into 'New' and historical items into 'Earlier' without layout jump after dwell read", async () => {
+    const { partitionNotificationsBySession, computeCategoryUnreadCounts: computeCounts } =
+      await import("../src/pages/notifications/types.ts");
+
+    const sessionNewIds = new Set<string | number>(mockNotifications.filter((n) => !n.read).map((n) => n.id));
+    assert.deepStrictEqual(Array.from(sessionNewIds), [1, 2, 4, 5]);
+
+    // Before 1.5s viewport dwell: 4 items in New (all unread), 2 items in Earlier (already read)
+    const initialPartition = partitionNotificationsBySession(mockNotifications as any, sessionNewIds);
+    assert.strictEqual(initialPartition.newNotifications.length, 4);
+    assert.strictEqual(initialPartition.earlierNotifications.length, 2);
+    assert.deepStrictEqual(
+      initialPartition.earlierNotifications.map((n) => n.id),
+      [3, 6],
+    );
+
+    // After 1.5s viewport dwell: items transition to read=1, highlights/counts clear to 0,
+    // while New/Earlier section partitioning remains stable for the current visit
+    const afterDwell = mockNotifications.map((n) => ({ ...n, read: 1 }));
+    const postDwellCounts = computeCounts(afterDwell as any);
+    assert.strictEqual(postDwellCounts.all, 0);
+
+    const postDwellPartition = partitionNotificationsBySession(afterDwell as any, sessionNewIds);
+    assert.strictEqual(postDwellPartition.newNotifications.length, 4);
+    assert.strictEqual(postDwellPartition.newNotifications.filter((n) => !n.read).length, 0);
+    assert.strictEqual(postDwellPartition.earlierNotifications.length, 2);
+  });
 });

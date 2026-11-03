@@ -173,9 +173,26 @@ const MembersTable = styled.table`
 export interface OrganizationTabProps {
   onBack: () => void;
   onNavigateTab?: (tab: string) => void;
+  setActiveTab?: (tab: string) => void;
 }
 
-export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavigateTab }) => {
+const ROLE_LABELS: Record<string, string> = {
+  owner: "Owner",
+  maintainer: "Maintainer",
+  contributor: "Contributor",
+};
+
+function formatRoleLabel(role?: string | null): string {
+  if (!role) return "Contributor";
+  return ROLE_LABELS[role.toLowerCase()] || role;
+}
+
+export const OrganizationTab: React.FC<OrganizationTabProps> = ({
+  onBack,
+  onNavigateTab,
+  setActiveTab: setActiveTabProp,
+}) => {
+  const setActiveTab = setActiveTabProp ?? onNavigateTab;
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
@@ -201,7 +218,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [confirmingRemoveUserId, setConfirmingRemoveUserId] = useState<number | null>(null);
+  const [confirmRemoveUserId, setConfirmRemoveUserId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -233,6 +250,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
       setEditDescription(selectedOrg.description || "");
       setEditWebsite(selectedOrg.website || "");
       setEditBillingEmail(selectedOrg.billing_email || "");
+      setConfirmRemoveUserId(null);
       getOrganizationMembers(selectedOrg.slug)
         .then(setMembers)
         .catch(() => setMembers([]));
@@ -241,7 +259,10 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
     }
   }, [selectedOrg]);
 
-  const canManageOrg = !selectedOrg?.role || selectedOrg.role === "owner" || selectedOrg.role === "admin";
+  const canManageOrg =
+    selectedOrg?.role === "owner" || selectedOrg?.role === "maintainer" || (selectedOrg?.role as string) === "admin";
+  const isOrgOwner = selectedOrg?.role === "owner";
+  const ownerCount = members.filter((m) => m.role === "owner").length;
 
   const handleUpdateOrgProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,6 +283,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
       const merged: Organization = {
         ...selectedOrg,
         ...updated,
+        role: updated?.role || selectedOrg.role,
         name: updated?.name || updated?.display_name || editDisplayName.trim(),
         display_name: updated?.display_name || editDisplayName.trim(),
         description: updated?.description !== undefined ? updated.description : editDescription.trim() || null,
@@ -272,29 +294,29 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
       setOrganizations((prev) => prev.map((o) => (o.slug === selectedOrg.slug ? merged : o)));
       setIsEditingProfile(false);
       setFeedback({ type: "success", text: `Updated profile for '${merged.name}'.` });
-    } catch (err: unknown) {
+    } catch (err: any) {
       setFeedback({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to update organization profile.",
+        text: err?.response?.data?.error || err?.message || "Failed to update organization profile.",
       });
     } finally {
       setIsSavingProfile(false);
     }
   };
 
-  const handleChangeMemberRole = async (username: string, newRole: OrgRole) => {
+  const handleUpdateMemberRole = async (username: string, newRole: OrgRole) => {
     if (!selectedOrg) return;
     try {
       await updateOrgMemberRole(selectedOrg.slug, username, newRole);
       setMembers((prev) => prev.map((m) => (m.username === username ? { ...m, role: newRole } : m)));
       setFeedback({
         type: "success",
-        text: `Updated ${username}'s role to ${newRole}.`,
+        text: `Updated ${username}'s role to ${formatRoleLabel(newRole)}.`,
       });
-    } catch (err: unknown) {
+    } catch (err: any) {
       setFeedback({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to update member role.",
+        text: err?.response?.data?.error || err?.message || "Failed to update member role.",
       });
     }
   };
@@ -311,23 +333,27 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
         slug: newOrgSlug.trim().toLowerCase(),
         description: newOrgDesc.trim() || undefined,
       });
-      setOrganizations((prev) => [...prev, created]);
-      setSelectedOrg(created);
+      const createdWithRole: Organization = {
+        ...created,
+        role: created.role || "owner",
+      };
+      setOrganizations((prev) => [...prev, createdWithRole]);
+      setSelectedOrg(createdWithRole);
       setIsCreating(false);
       setNewOrgName("");
       setNewOrgSlug("");
       setSlugManuallyEdited(false);
       setNewOrgDesc("");
-      setFeedback({ type: "success", text: `Successfully created organization '${created.name}'.` });
-    } catch (err: unknown) {
+      setFeedback({ type: "success", text: `Successfully created organization '${createdWithRole.name}'.` });
+    } catch (err: any) {
       setFeedback({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to create organization. Slug may be taken.",
+        text: err?.response?.data?.error || err?.message || "Failed to create organization. Slug may be taken.",
       });
     }
   };
 
-  const handleInviteMember = async (e: React.FormEvent) => {
+  const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrg || !inviteUsername.trim()) return;
     try {
@@ -337,27 +363,27 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
       setMembers(updated);
       setFeedback({
         type: "success",
-        text: `Successfully added ${inviteUsername.trim()} as ${inviteRole}.`,
+        text: `Successfully added ${inviteUsername.trim()} as ${formatRoleLabel(inviteRole)}.`,
       });
-    } catch (err: unknown) {
+    } catch (err: any) {
       setFeedback({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to add member. Check username and permissions.",
+        text: err?.response?.data?.error || err?.message || "Failed to add member. Check username and permissions.",
       });
     }
   };
 
   const handleRemoveMember = async (userId: number, username: string) => {
     if (!selectedOrg) return;
-    setConfirmingRemoveUserId(null);
+    setConfirmRemoveUserId(null);
     try {
       await removeOrganizationMember(selectedOrg.slug, userId);
       setMembers((prev) => prev.filter((m) => (m.userId || m.user_id) !== userId));
       setFeedback({ type: "success", text: `Removed ${username} from the organization.` });
-    } catch (err: unknown) {
+    } catch (err: any) {
       setFeedback({
         type: "error",
-        text: err instanceof Error ? err.message : "Failed to remove member.",
+        text: err?.response?.data?.error || err?.message || "Failed to remove member.",
       });
     }
   };
@@ -533,7 +559,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                     </Text>
                     <RoleBadge $role={(selectedOrg.role as OrgRole) || "owner"}>
                       <ShieldCheckIcon size={12} />
-                      {selectedOrg.role || "Owner"}
+                      {formatRoleLabel(selectedOrg.role || "owner")}
                     </RoleBadge>
                   </Box>
                   <Text
@@ -587,10 +613,14 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                       </SecondaryButton>
                     )}
                     <SecondaryButton
+                      type="button"
                       style={{ fontSize: "12px", padding: "4px 10px" }}
-                      onClick={() => onNavigateTab?.("billing")}
+                      onClick={() => {
+                        sessionStorage.setItem("ms_billing_org_id", String(selectedOrg.id));
+                        setActiveTab?.("billing");
+                      }}
                     >
-                      Manage Compute Quotas
+                      Manage Org Billing &amp; Credits
                     </SecondaryButton>
                   </Box>
                 </Box>
@@ -672,37 +702,39 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
             </OrgCard>
 
             {/* Invite Form */}
-            <Box mb={4}>
-              <DetailTitle style={{ fontWeight: 700, display: "block", marginBottom: "12px" }}>
-                Add Team Member
-              </DetailTitle>
-              <form onSubmit={handleInviteMember}>
-                <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
-                  <StyledInput
-                    placeholder="Enter teammate username"
-                    value={inviteUsername}
-                    onChange={(e) => setInviteUsername(e.target.value)}
-                    style={{ minWidth: 220, flex: 1 }}
-                    required
-                  />
-                  <StyledSelect
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as OrgRole)}
-                    style={{ minWidth: 140 }}
-                  >
-                    <option value="member">Member (Read/Use)</option>
-                    <option value="contributor">Contributor (Modeling)</option>
-                    <option value="maintainer">Maintainer (Publishing)</option>
-                    <option value="admin">Admin (Team Management)</option>
-                    <option value="owner">Owner (Full Admin)</option>
-                  </StyledSelect>
-                  <PrimaryButton type="submit">
-                    <PlusIcon size={14} />
-                    <span>Add Member</span>
-                  </PrimaryButton>
-                </Box>
-              </form>
-            </Box>
+            {canManageOrg && (
+              <Box mb={4}>
+                <DetailTitle style={{ fontWeight: 700, display: "block", marginBottom: "12px" }}>
+                  Add Team Member
+                </DetailTitle>
+                <form onSubmit={handleAddMember}>
+                  <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
+                    <StyledInput
+                      placeholder="Enter teammate username"
+                      value={inviteUsername}
+                      onChange={(e) => setInviteUsername(e.target.value)}
+                      style={{ minWidth: 220, flex: 1 }}
+                      required
+                    />
+                    <StyledSelect
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as OrgRole)}
+                      style={{ minWidth: 140 }}
+                    >
+                      <option value="contributor">Contributor</option>
+                      <option value="maintainer">Maintainer</option>
+                      <option value="owner" disabled={!isOrgOwner}>
+                        Owner
+                      </option>
+                    </StyledSelect>
+                    <PrimaryButton type="submit">
+                      <PlusIcon size={14} />
+                      <span>Add Member</span>
+                    </PrimaryButton>
+                  </Box>
+                </form>
+              </Box>
+            )}
 
             {/* Members Table */}
             <Box mb={4}>
@@ -739,6 +771,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                     ) : (
                       members.map((member) => {
                         const mId = member.userId || member.user_id;
+                        const isLastOwner = member.role === "owner" && ownerCount <= 1;
                         return (
                           <tr key={mId}>
                             <td>
@@ -757,35 +790,36 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                             <td>
                               {canManageOrg ? (
                                 <Box display="inline-flex" alignItems="center" gap={2}>
-                                  <RoleBadge $role={member.role}>{member.role}</RoleBadge>
+                                  <RoleBadge $role={member.role}>{formatRoleLabel(member.role)}</RoleBadge>
                                   <StyledSelect
                                     aria-label={`Change role for ${member.username}`}
                                     value={member.role}
-                                    onChange={(e) => handleChangeMemberRole(member.username, e.target.value as OrgRole)}
+                                    disabled={isLastOwner || (!isOrgOwner && member.role === "owner")}
+                                    onChange={(e) => handleUpdateMemberRole(member.username, e.target.value as OrgRole)}
                                     style={{ padding: "4px 8px", fontSize: "12px" }}
                                   >
-                                    <option value="owner">owner</option>
-                                    <option value="admin">admin</option>
-                                    <option value="maintainer">maintainer</option>
-                                    <option value="contributor">contributor</option>
-                                    <option value="member">member</option>
+                                    <option value="owner" disabled={!isOrgOwner}>
+                                      Owner
+                                    </option>
+                                    <option value="maintainer">Maintainer</option>
+                                    <option value="contributor">Contributor</option>
                                   </StyledSelect>
                                 </Box>
                               ) : (
-                                <RoleBadge $role={member.role}>{member.role}</RoleBadge>
+                                <RoleBadge $role={member.role}>{formatRoleLabel(member.role)}</RoleBadge>
                               )}
                             </td>
                             <td style={{ color: "var(--color-text-muted)", fontSize: "12px" }}>
                               {member.created_at ? new Date(member.created_at).toLocaleDateString() : "Active"}
                             </td>
                             <td style={{ textAlign: "right" }}>
-                              {member.role !== "owner" &&
-                                (confirmingRemoveUserId === mId ? (
+                              {isOrgOwner &&
+                                (confirmRemoveUserId === mId ? (
                                   <Box display="inline-flex" alignItems="center" gap={2}>
                                     <SecondaryButton
                                       type="button"
                                       style={{ padding: "4px 10px", fontSize: "12px" }}
-                                      onClick={() => setConfirmingRemoveUserId(null)}
+                                      onClick={() => setConfirmRemoveUserId(null)}
                                     >
                                       Cancel
                                     </SecondaryButton>
@@ -809,13 +843,15 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({ onBack, onNavi
                                 ) : (
                                   <button
                                     type="button"
-                                    onClick={() => setConfirmingRemoveUserId(mId)}
-                                    title="Remove member"
+                                    disabled={isLastOwner}
+                                    onClick={() => setConfirmRemoveUserId(mId)}
+                                    title={isLastOwner ? "Cannot remove the last remaining owner" : "Remove member"}
                                     style={{
                                       background: "transparent",
                                       border: "none",
                                       color: "var(--color-danger-fg, #f87171)",
-                                      cursor: "pointer",
+                                      cursor: isLastOwner ? "not-allowed" : "pointer",
+                                      opacity: isLastOwner ? 0.4 : 1,
                                       padding: "4px",
                                       borderRadius: "4px",
                                     }}

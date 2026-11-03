@@ -9,10 +9,14 @@ interface AdminRouteProps {
 }
 
 export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
-  const { user, isAdmin, isLoading } = useAuth();
+  const { user, isAdmin, isLoading, justLoggedOut } = useAuth();
 
   if (isLoading) {
     return <div style={{ minHeight: "100vh", backgroundColor: "transparent" }} />;
+  }
+
+  if (!user && justLoggedOut) {
+    return <Navigate to="/logout" replace />;
   }
 
   const isStaff = Boolean(

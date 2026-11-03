@@ -12,6 +12,9 @@ import {
   shouldShowMaturityBadges,
 } from "../utils/config.js";
 
+import { parseLibrarySpecsFromQuery } from "../utils/library-query.js";
+export { parseLibrarySpecsFromQuery };
+
 export async function getProjectDependencies(
   workspaceFolders: readonly vscode.WorkspaceFolder[] | undefined = workspace.workspaceFolders,
 ): Promise<{ name: string; version: string }[]> {
@@ -20,35 +23,77 @@ export async function getProjectDependencies(
     { name: "SysML", version: "2026.3.0" },
   ];
 
-  if (!workspaceFolders || workspaceFolders.length === 0) {
-    return defaultDeps;
+  const merged = new Map<string, { name: string; version: string }>();
+  const addDep = (name: string, version: string) => {
+    if (!name) return;
+    merged.set(name.toLowerCase(), { name, version: String(version || "latest") });
+  };
+
+  // 1. Check URL query parameters from workspace folder URI or browser location
+  let hasExplicitUrlQuery = false;
+  const rootUri = workspaceFolders?.[0]?.uri;
+  if (rootUri?.query) {
+    const parsed = parseLibrarySpecsFromQuery(rootUri.query);
+    if (parsed.explicit) {
+      hasExplicitUrlQuery = true;
+      for (const d of parsed.deps) addDep(d.name, d.version);
+    }
+  }
+  try {
+    if (typeof location !== "undefined") {
+      for (const source of [location.hash, location.search]) {
+        if (source) {
+          const parsed = parseLibrarySpecsFromQuery(source);
+          if (parsed.explicit) {
+            hasExplicitUrlQuery = true;
+            for (const d of parsed.deps) addDep(d.name, d.version);
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore in non-browser environment
   }
 
-  const rootUri = workspaceFolders[0]!.uri;
+  if (!workspaceFolders || workspaceFolders.length === 0 || !rootUri) {
+    return hasExplicitUrlQuery ? [...merged.values()] : defaultDeps;
+  }
 
+  // 2. Check modelscript.json
   try {
     const msJsonUri = vscode.Uri.joinPath(rootUri, "modelscript.json");
     const content = await workspace.fs.readFile(msJsonUri);
     const json = JSON.parse(new TextDecoder().decode(content));
-    if (json.dependencies) {
-      return Object.entries(json.dependencies).map(([name, version]) => ({ name, version: String(version) }));
+    if (json.dependencies && typeof json.dependencies === "object") {
+      for (const [name, version] of Object.entries(json.dependencies)) {
+        addDep(name, String(version));
+      }
     }
   } catch {
     // ignore
   }
 
+  // 3. Check package.json (both top-level `dependencies` and `modelscript.dependencies`)
   try {
     const pkgJsonUri = vscode.Uri.joinPath(rootUri, "package.json");
     const content = await workspace.fs.readFile(pkgJsonUri);
     const json = JSON.parse(new TextDecoder().decode(content));
-    if (json.modelscript?.dependencies) {
-      return Object.entries(json.modelscript.dependencies).map(([name, version]) => ({
-        name,
-        version: String(version),
-      }));
+    if (json.dependencies && typeof json.dependencies === "object") {
+      for (const [name, version] of Object.entries(json.dependencies)) {
+        addDep(name, String(version));
+      }
+    }
+    if (json.modelscript?.dependencies && typeof json.modelscript.dependencies === "object") {
+      for (const [name, version] of Object.entries(json.modelscript.dependencies)) {
+        addDep(name, String(version));
+      }
     }
   } catch {
     // ignore
+  }
+
+  if (merged.size > 0 || hasExplicitUrlQuery) {
+    return [...merged.values()];
   }
 
   return defaultDeps;

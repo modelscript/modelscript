@@ -9,11 +9,12 @@ export const StickyHeader = styled.div`
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: var(--dev-header-height, 0px);
-  z-index: 10;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  z-index: 50;
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
   align-items: center;
-  background: var(--surface-hud, rgba(6, 8, 15, 0.85));
+  background: var(--surface-sticky);
+  transition: background-color 0.25s ease;
   color: var(--color-text-heading);
 `;
 
@@ -57,10 +58,11 @@ export const PageTabBar = styled.div`
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: var(--dev-header-height, 0px);
-  z-index: 10;
-  backdrop-filter: saturate(160%) blur(14px);
-  -webkit-backdrop-filter: saturate(160%) blur(14px);
-  background: var(--surface-hud);
+  z-index: 50;
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  background: var(--surface-sticky);
+  transition: background-color 0.25s ease;
 `;
 
 export const PageTab = styled.button<{ $active?: boolean | undefined }>`

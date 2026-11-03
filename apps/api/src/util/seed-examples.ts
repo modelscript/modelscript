@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import semver from "semver";
 import yazl from "yazl";
 
 import type { LibraryDatabase } from "../database.js";
@@ -186,7 +187,15 @@ export async function seedExamplePackages(
         null,
       );
     }
-    database.setDistTag(packageId, "latest", version);
+    const currentExampleLatest = database.getDistTags(packageId)["latest"];
+    if (
+      !currentExampleLatest ||
+      !semver.valid(currentExampleLatest) ||
+      !semver.valid(version) ||
+      semver.gte(version, currentExampleLatest)
+    ) {
+      database.setDistTag(packageId, "latest", version);
+    }
     database.saveLibraryRelease({
       libraryName: name,
       libraryVersion: version,
@@ -209,27 +218,37 @@ export async function seedExamplePackages(
   }
 }
 
+import { getStdlibsByPack, type StdlibEntry, type StdlibPackId } from "@modelscript/exchange";
+
 export async function seedPrepackagedLibraries(
   storage: LibraryStorage,
   database: LibraryDatabase,
   jobQueue: JobQueue,
 ): Promise<void> {
-  const prepackaged = [
-    {
-      name: "Modelica",
-      version: "4.1.0",
-      filename: "ModelicaStandardLibrary_v4.1.0.zip",
-      description: "Modelica Standard Library",
-      license: "BSD-3-Clause",
-    },
-    {
-      name: "SysML",
-      version: "2026.3.0",
-      filename: "SysML-v2-Release-2026-03.zip",
-      description: "OMG SysML v2 & KerML Standard Library",
-      license: "OMG-SysML-2.0",
-    },
-  ];
+  const requestedPacks = (process.env["STDLIB_PACKS"] || "all")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const targetsMap = new Map<string, StdlibEntry>();
+  for (const pack of requestedPacks) {
+    const libs = getStdlibsByPack(pack as StdlibPackId | "all");
+    for (const lib of libs) {
+      targetsMap.set(lib.id, lib);
+    }
+  }
+
+  const prepackaged = Array.from(targetsMap.values()).map((lib) => ({
+    name: lib.packageName,
+    version: lib.version,
+    filename: lib.filename,
+    description: lib.description,
+    license: lib.license,
+    domain: lib.domain,
+    tier: lib.tier,
+    minExpectedClasses: lib.minExpectedClasses ?? (lib.packageName === "Modelica" ? 6000 : 40),
+    upstream: lib.upstream,
+  }));
 
   const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
   const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
@@ -262,7 +281,7 @@ export async function seedPrepackagedLibraries(
         }
 
         const classCount = database.getClassCount(pkg.name, pkg.version);
-        const minExpectedClasses = pkg.name === "Modelica" ? 6000 : 40;
+        const minExpectedClasses = pkg.minExpectedClasses;
         const hasSysmlRoot =
           pkg.name !== "SysML" ||
           (database.hasClass(pkg.name, pkg.version, "SysML") &&
@@ -338,31 +357,92 @@ export async function seedPrepackagedLibraries(
       }
     }
 
-    const zipPath = path.resolve(repoRoot, "scripts", pkg.filename);
+    const candidateZipPaths = [
+      path.resolve(storage.dataDir, pkg.name, `${pkg.version}.zip`),
+      path.resolve(repoRoot, "scripts", pkg.filename),
+      path.resolve(repoRoot, "apps/api/data/libraries", pkg.name, `${pkg.version}.zip`),
+      path.resolve(repoRoot, "apps/api/data/libraries", pkg.filename),
+      path.resolve(repoRoot, "modelscript_libraries", pkg.filename),
+      path.resolve(repoRoot, "scripts", `${pkg.name}-${pkg.version}.lsp-bundle.zip`),
+      process.env["STDLIB_STORAGE_DIR"] ? path.resolve(process.env["STDLIB_STORAGE_DIR"], pkg.filename) : null,
+      process.env["STDLIB_STORAGE_DIR"]
+        ? path.resolve(process.env["STDLIB_STORAGE_DIR"], pkg.name, `${pkg.version}.zip`)
+        : null,
+    ].filter(Boolean) as string[];
+
+    let resolvedZipPath: string | null = null;
     let zipBuffer: Buffer | null = null;
+
     const stdlibDir = path.resolve(repoRoot, "languages/sysml2/stdlib");
-    if (pkg.name === "SysML" && fs.existsSync(stdlibDir)) {
+    const existingStorageZip = path.resolve(storage.dataDir, pkg.name, `${pkg.version}.zip`);
+    if (pkg.name === "SysML" && fs.existsSync(stdlibDir) && !fs.existsSync(existingStorageZip)) {
       zipBuffer = await zipSysmlStdlibToBuffer(stdlibDir, pkg.version);
-    } else if (fs.existsSync(zipPath)) {
-      zipBuffer = fs.readFileSync(zipPath);
+      resolvedZipPath = path.resolve(repoRoot, "scripts", pkg.filename);
+    } else {
+      for (const cand of candidateZipPaths) {
+        if (fs.existsSync(cand)) {
+          resolvedZipPath = cand;
+          zipBuffer = fs.readFileSync(cand);
+          break;
+        }
+      }
     }
 
-    if (!zipBuffer) {
-      console.warn(`[Seed] Prepackaged library zip not found: ${zipPath}`);
+    if (!zipBuffer || !resolvedZipPath) {
+      if (pkg.upstream?.url) {
+        console.log(
+          `[Seed] Archive for ${pkg.name}@${pkg.version} not found locally on disk. Attempting on-the-fly download...`,
+        );
+        const candidateUrls = [pkg.upstream.url, pkg.upstream.fallbackUrl, ...(pkg.upstream.mirrorUrls || [])].filter(
+          Boolean,
+        ) as string[];
+
+        for (const url of candidateUrls) {
+          try {
+            console.log(`[Seed] Fetching ${pkg.name} from ${url}...`);
+            const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(60000) });
+            if (res.ok) {
+              const buf = Buffer.from(await res.arrayBuffer());
+              if (buf.length > 100) {
+                zipBuffer = buf;
+                resolvedZipPath = path.resolve(storage.dataDir, pkg.name, `${pkg.version}.zip`);
+                fs.mkdirSync(path.dirname(resolvedZipPath), { recursive: true });
+                fs.writeFileSync(resolvedZipPath, zipBuffer);
+                console.log(
+                  `[Seed] Successfully downloaded and cached ${pkg.name}@${pkg.version} (${(zipBuffer.length / 1024 / 1024).toFixed(2)} MB).`,
+                );
+                break;
+              }
+            }
+          } catch (fetchErr) {
+            console.warn(`[Seed] Download failed from ${url}:`, fetchErr);
+          }
+        }
+      }
+    }
+
+    if (!zipBuffer || !resolvedZipPath) {
+      console.warn(`[Seed] Prepackaged library zip not found for ${pkg.name}@${pkg.version}`);
       continue;
     }
 
-    console.log(`[Seed] Loading prepackaged library: ${pkg.name}@${pkg.version}`);
+    console.log(`[Seed] Loading prepackaged library: ${pkg.name}@${pkg.version} from ${resolvedZipPath}`);
 
     if (pkg.name === "SysML") {
-      // Ensure stale extracted directory without SysML.sysml is replaced
+      // Ensure stale extracted directory without SysML.sysml or metadata.json is replaced
       const existingExtracted = storage.getExtractedPath(pkg.name, pkg.version);
-      if (fs.existsSync(existingExtracted) && !fs.existsSync(path.join(existingExtracted, "SysML.sysml"))) {
+      if (
+        fs.existsSync(existingExtracted) &&
+        !fs.existsSync(path.join(existingExtracted, "SysML.sysml")) &&
+        !fs.existsSync(path.join(existingExtracted, "metadata.json"))
+      ) {
         fs.rmSync(existingExtracted, { recursive: true, force: true });
       }
       const targetZipPath = path.join(storage.dataDir, "SysML", `${pkg.version}.zip`);
-      fs.mkdirSync(path.dirname(targetZipPath), { recursive: true });
-      fs.writeFileSync(targetZipPath, zipBuffer);
+      if (resolvedZipPath !== targetZipPath) {
+        fs.mkdirSync(path.dirname(targetZipPath), { recursive: true });
+        fs.writeFileSync(targetZipPath, zipBuffer);
+      }
     } else {
       try {
         await storage.store(pkg.name, pkg.version, zipBuffer);
@@ -384,7 +464,43 @@ export async function seedPrepackagedLibraries(
       license: pkg.license,
     });
 
-    if (pkg.name === "SysML") {
+    let isPreIndexed = false;
+    const metadataCandidate = path.join(libraryPath, "metadata.json");
+    const iconsCandidate = path.join(libraryPath, "icons.json");
+    const indexCandidate = path.join(libraryPath, "index.json");
+
+    if (fs.existsSync(metadataCandidate)) {
+      try {
+        const metaStr = fs.readFileSync(metadataCandidate, "utf-8");
+        const parsed = JSON.parse(metaStr);
+        const classes = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.classes) ? parsed.classes : [];
+        if (classes.length > 0) {
+          database.storeClassBatch(pkg.name, pkg.version, classes);
+          isPreIndexed = true;
+          console.log(
+            `[Seed] Fast-ingested ${classes.length} pre-indexed classes for ${pkg.name}@${pkg.version} in O(1) time.`,
+          );
+        }
+      } catch (metaErr) {
+        console.warn(`[Seed] Warning parsing metadata.json for ${pkg.name}@${pkg.version}:`, metaErr);
+      }
+    }
+
+    if (fs.existsSync(iconsCandidate)) {
+      try {
+        const iconsStr = fs.readFileSync(iconsCandidate, "utf-8");
+        const icons = JSON.parse(iconsStr) as Record<string, string>;
+        for (const [clsName, svg] of Object.entries(icons)) {
+          if (typeof svg === "string") {
+            storage.storeSvg(pkg.name, pkg.version, clsName, svg, null);
+          }
+        }
+      } catch (iconErr) {
+        console.warn(`[Seed] Warning parsing icons.json for ${pkg.name}@${pkg.version}:`, iconErr);
+      }
+    }
+
+    if (pkg.name === "SysML" && !isPreIndexed) {
       try {
         const indexed = await indexSysmlFiles({
           extractedDir: libraryPath,
@@ -408,20 +524,38 @@ export async function seedPrepackagedLibraries(
 
     const shasum = crypto.createHash("sha1").update(zipBuffer).digest("hex");
     const sha256 = crypto.createHash("sha256").update(zipBuffer).digest("hex");
+    const manifestObj = {
+      name: pkg.name,
+      version: pkg.version,
+      description: pkg.description,
+      license: pkg.license,
+      modelscript: {
+        domains: pkg.domain ? [pkg.domain] : [],
+        tier: pkg.tier,
+      },
+    };
     if (!database.getPackageVersion(packageId, pkg.version)) {
       database.storePackageVersion(
         packageId,
         pkg.version,
-        `file://${zipPath}`,
+        `file://${resolvedZipPath}`,
         shasum,
         null,
         zipBuffer.length,
-        JSON.stringify({ name: pkg.name, version: pkg.version, description: pkg.description, license: pkg.license }),
+        JSON.stringify(manifestObj),
         null,
         null,
       );
     }
-    database.setDistTag(packageId, "latest", pkg.version);
+    const currentLatest = database.getDistTags(packageId)["latest"];
+    if (
+      !currentLatest ||
+      !semver.valid(currentLatest) ||
+      !semver.valid(pkg.version) ||
+      semver.gte(pkg.version, currentLatest)
+    ) {
+      database.setDistTag(packageId, "latest", pkg.version);
+    }
     database.saveLibraryRelease({
       libraryName: pkg.name,
       libraryVersion: pkg.version,
@@ -430,13 +564,17 @@ export async function seedPrepackagedLibraries(
       publishedBy: null,
     });
 
-    const jobKey = `${pkg.name}@${pkg.version}`;
-    jobQueue.enqueueProcess(jobKey, workerScript, {
-      name: pkg.name,
-      version: pkg.version,
-      libraryPath,
-      storageDir: storage.dataDir,
-      dbDir: database.dbDir,
-    });
+    if (!isPreIndexed && !fs.existsSync(indexCandidate)) {
+      const jobKey = `${pkg.name}@${pkg.version}`;
+      jobQueue.enqueueProcess(jobKey, workerScript, {
+        name: pkg.name,
+        version: pkg.version,
+        libraryPath,
+        storageDir: storage.dataDir,
+        dbDir: database.dbDir,
+      });
+    } else {
+      console.log(`[Seed] Skipped background worker queue for ${pkg.name}@${pkg.version} (already pre-indexed).`);
+    }
   }
 }

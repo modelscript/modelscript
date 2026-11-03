@@ -15,7 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { submitModerationAppeal } from "../../../api";
 import Box from "../../../components/Box";
 import { formatRelativeTime, getIconForType } from "../formatters";
-import { EngineeringCard, MetricChip, ModelBadge, NotificationWrapper } from "../styles";
+import { EngineeringCard, MetricChip, ModelBadge, NotificationWrapper, UnreadDotButton } from "../styles";
 import type { NotificationItem } from "../types";
 
 export interface EngineeringNotificationCardProps {
@@ -28,7 +28,8 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
   const meta = notif.metadata || {};
   const isSimulation = notif.type === "simulation_completed" || notif.type === "simulation";
   const isSimFailed = notif.type === "simulation_failed";
-  const isPackage = notif.type === "package" || notif.type === "package_published";
+  const isPackageYanked = notif.type === "package_yanked";
+  const isPackage = notif.type === "package" || notif.type === "package_published" || isPackageYanked;
   const isSecurity = notif.type === "security_alert";
   const isCredit = notif.type === "credit_warning";
   const isModerationNotice = isSecurity && Boolean(meta["moderationAction"]);
@@ -41,7 +42,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
 
   const cardStatus = isSimulation
     ? "completed"
-    : isSimFailed
+    : isSimFailed || isPackageYanked
       ? "failed"
       : isSecurity
         ? "security"
@@ -93,7 +94,12 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
   };
 
   return (
-    <NotificationWrapper $unread={!notif.read} onClick={handleCardClick}>
+    <NotificationWrapper
+      $unread={!notif.read}
+      data-notification-id={String(notif.id)}
+      data-unread={!notif.read ? "true" : "false"}
+      onClick={handleCardClick}
+    >
       <Box width={36} display="flex" justifyContent="center" pt={1}>
         {getIconForType(notif.type)}
       </Box>
@@ -103,7 +109,8 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
             <Box display="flex" alignItems="center" gap={2}>
               {isSimulation && <Label variant="success">Simulation Completed</Label>}
               {isSimFailed && <Label variant="danger">Simulation Failed</Label>}
-              {isPackage && <Label variant="accent">Package Release</Label>}
+              {isPackage && !isPackageYanked && <Label variant="accent">Package Release</Label>}
+              {isPackageYanked && <Label variant="danger">Package Yanked</Label>}
               {isSecurity && (
                 <Label variant={meta["moderationAction"] === "restore_user" ? "success" : "danger"}>
                   {isModerationNotice
@@ -125,9 +132,22 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                 </MetricChip>
               )}
             </Box>
-            <Text style={{ fontSize: "13px", lineHeight: "16px" }} color="var(--color-fg-muted)">
-              {formatRelativeTime(notif.created_at || new Date().toISOString())}
-            </Text>
+            <Box display="flex" alignItems="center" gap="6px" flexShrink={0}>
+              <Text style={{ fontSize: "13px", lineHeight: "16px" }} color="var(--color-fg-muted)">
+                {formatRelativeTime(notif.created_at || new Date().toISOString())}
+              </Text>
+              {!notif.read && (
+                <UnreadDotButton
+                  type="button"
+                  title="Mark as read"
+                  aria-label="Mark notification as read"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMarkRead?.(notif.id);
+                  }}
+                />
+              )}
+            </Box>
           </Box>
 
           {/* Title & Body */}
@@ -194,6 +214,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                   leadingVisual={PlayIcon}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (!notif.read) onMarkRead?.(notif.id);
                     navigate(meta.name ? `/playground?model=${encodeURIComponent(meta.name)}` : "/playground");
                   }}
                 >
@@ -205,6 +226,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                     leadingVisual={FileCodeIcon}
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (!notif.read) onMarkRead?.(notif.id);
                       navigate(`/jobs/${meta.jobId}`);
                     }}
                   >
@@ -222,6 +244,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                     leadingVisual={FileCodeIcon}
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (!notif.read) onMarkRead?.(notif.id);
                       navigate(`/jobs/${meta.jobId}`);
                     }}
                   >
@@ -233,6 +256,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                   leadingVisual={PlayIcon}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (!notif.read) onMarkRead?.(notif.id);
                     navigate(meta.name ? `/playground?model=${encodeURIComponent(meta.name)}` : "/playground");
                   }}
                 >
@@ -247,6 +271,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                 leadingVisual={PackageIcon}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!notif.read) onMarkRead?.(notif.id);
                   navigate(`/packages/${meta.packageName || notif.package_name}`);
                 }}
               >
@@ -289,6 +314,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                 leadingVisual={CreditCardIcon}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (!notif.read) onMarkRead?.(notif.id);
                   navigate("/settings/billing");
                 }}
               >

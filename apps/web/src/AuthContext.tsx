@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import api, { getTotalAdminBadgeCount, type AdminOverviewCounts } from "./api";
+import { groupNotifications } from "./pages/notifications/types";
 import { clearOfflineCache } from "./util/offline-storage";
 
 export interface User {
@@ -17,9 +18,20 @@ export interface User {
   has_password?: boolean | undefined;
   token_version?: number | undefined;
   totp_enabled?: boolean | undefined;
+  email_verified?: boolean | number | undefined;
   onboarding_completed?: boolean | number | undefined;
   engineering_persona?: string | null | undefined;
   credit_balance?: number | undefined;
+  default_post_visibility?: "public" | "unlisted" | "followers" | "direct" | string | undefined;
+  actor_url?: string | null | undefined;
+}
+
+export interface LoggedOutUserSnapshot {
+  username: string;
+  display_name?: string | undefined;
+  avatar_url?: string | undefined;
+  email?: string | undefined;
+  signedOutAt: number;
 }
 
 interface AuthContextType {
@@ -28,6 +40,9 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   isLoading: boolean;
+  justLoggedOut: boolean;
+  lastLoggedOutUser: LoggedOutUserSnapshot | null;
+  clearJustLoggedOut: () => void;
   login: (
     email: string,
     password: string,
@@ -47,7 +62,7 @@ interface AuthContextType {
   }>;
   updateToken: (newToken: string | null) => void;
   setSession: (newToken: string, newUser?: User | null) => void;
-  logout: () => void;
+  logout: (options?: { redirect?: boolean | undefined }) => void;
   unreadCount: number;
   setUnreadCount: (c: number) => void;
   refreshUnreadCount: () => void;
@@ -59,6 +74,22 @@ interface AuthContextType {
 }
 
 const TOKEN_KEY = "modelscript-auth-token";
+const LAST_LOGGED_OUT_USER_KEY = "modelscript:last-logged-out-user";
+
+function readLastLoggedOutUser(): LoggedOutUserSnapshot | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(LAST_LOGGED_OUT_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LoggedOutUserSnapshot;
+    if (parsed && typeof parsed.username === "string") {
+      return parsed;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return null;
+}
 
 function getFallbackAuthContext(): AuthContextType {
   let cachedUser: User | null = null;
@@ -78,6 +109,9 @@ function getFallbackAuthContext(): AuthContextType {
     isAuthenticated: Boolean(cachedToken || cachedUser),
     isAdmin: Boolean(cachedUser && (cachedUser.account_type === "admin" || cachedUser.role === "admin")),
     isLoading: false,
+    justLoggedOut: false,
+    lastLoggedOutUser: readLastLoggedOutUser(),
+    clearJustLoggedOut: () => {},
     login: async () => ({}),
     complete2FALogin: async () => {},
     register: async () => ({}),
@@ -109,12 +143,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     typeof localStorage !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null,
   );
   const [isLoading, setIsLoading] = useState(!!token);
+  const [justLoggedOut, setJustLoggedOut] = useState(false);
+  const [lastLoggedOutUser, setLastLoggedOutUser] = useState<LoggedOutUserSnapshot | null>(() =>
+    readLastLoggedOutUser(),
+  );
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [adminPendingCount, setAdminPendingCount] = useState(0);
   const [creditBalance, setCreditBalance] = useState<number>(0);
 
   const isAdmin = Boolean(user && (user.account_type === "admin" || user.role === "admin"));
+
+  const clearJustLoggedOut = useCallback(() => {
+    setJustLoggedOut(false);
+  }, []);
+
+  const clearLoggedOutState = useCallback(() => {
+    setJustLoggedOut(false);
+    setLastLoggedOutUser(null);
+    if (typeof sessionStorage !== "undefined") {
+      try {
+        sessionStorage.removeItem(LAST_LOGGED_OUT_USER_KEY);
+      } catch {
+        // ignore storage errors
+      }
+    }
+  }, []);
 
   // Set/clear the axios default header whenever token changes
   useEffect(() => {
@@ -132,7 +186,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     api
       .get("/social/notifications")
       .then((res) => {
-        setUnreadCount(res.data.unreadCount || 0);
+        if (typeof window !== "undefined" && window.location?.pathname === "/notifications") {
+          setUnreadCount(0);
+          return;
+        }
+        if (typeof res.data?.unreadCount === "number") {
+          setUnreadCount(res.data.unreadCount);
+        } else if (Array.isArray(res.data?.notifications)) {
+          setUnreadCount(groupNotifications(res.data.notifications).filter((n) => !n.read).length);
+        } else {
+          setUnreadCount(0);
+        }
       })
       .catch(() => {});
   }, [token]);
@@ -268,35 +332,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [token]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { data } = await api.post("/auth/login", { email, password });
-    if (data.requires2FA) {
-      return { requires2FA: true, tempToken: data.tempToken };
-    }
-    if (data.token) {
-      localStorage.setItem(TOKEN_KEY, data.token);
-      api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
-    }
-    setToken(data.token);
-    setUser(data.user);
-    if (typeof data.user?.credit_balance === "number") {
-      setCreditBalance(data.user.credit_balance);
-    }
-    return { requires2FA: false, user: data.user };
-  }, []);
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const { data } = await api.post("/auth/login", { email, password });
+      if (data.requires2FA) {
+        return { requires2FA: true, tempToken: data.tempToken };
+      }
+      clearLoggedOutState();
+      if (data.token) {
+        localStorage.setItem(TOKEN_KEY, data.token);
+        api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
+      }
+      setToken(data.token);
+      setUser(data.user);
+      if (typeof data.user?.credit_balance === "number") {
+        setCreditBalance(data.user.credit_balance);
+      }
+      return { requires2FA: false, user: data.user };
+    },
+    [clearLoggedOutState],
+  );
 
-  const complete2FALogin = useCallback(async (tempToken: string, code: string) => {
-    const { data } = await api.post("/auth/2fa/challenge", { tempToken, code });
-    if (data.token) {
-      localStorage.setItem(TOKEN_KEY, data.token);
-      api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
-    }
-    setToken(data.token);
-    setUser(data.user);
-    if (typeof data.user?.credit_balance === "number") {
-      setCreditBalance(data.user.credit_balance);
-    }
-  }, []);
+  const complete2FALogin = useCallback(
+    async (tempToken: string, code: string) => {
+      const { data } = await api.post("/auth/2fa/challenge", { tempToken, code });
+      clearLoggedOutState();
+      if (data.token) {
+        localStorage.setItem(TOKEN_KEY, data.token);
+        api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
+      }
+      setToken(data.token);
+      setUser(data.user);
+      if (typeof data.user?.credit_balance === "number") {
+        setCreditBalance(data.user.credit_balance);
+      }
+    },
+    [clearLoggedOutState],
+  );
 
   const register = useCallback(
     async (
@@ -304,7 +376,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: string,
       password: string,
       acceptTerms: boolean = true,
-      captchaToken: string = import.meta.env.VITE_TURNSTILE_SITE_KEY ? "" : "mock-token",
+      captchaToken: string = (typeof window !== "undefined" && (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__) || "",
       inviteCode?: string,
     ) => {
       const { data } = await api.post("/auth/register", {
@@ -316,6 +388,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...(inviteCode ? { inviteCode } : {}),
       });
       if (data.token) {
+        clearLoggedOutState();
         localStorage.setItem(TOKEN_KEY, data.token);
         api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
         setToken(data.token);
@@ -326,64 +399,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return data;
     },
-    [],
+    [clearLoggedOutState],
   );
 
-  const updateToken = useCallback((newToken: string | null) => {
-    if (newToken) {
-      localStorage.setItem(TOKEN_KEY, newToken);
-      api.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
-      setToken(newToken);
-      api
-        .get("/auth/me")
-        .then((res) => {
-          if (res.data?.user) {
-            setUser(res.data.user);
-            if (typeof res.data.user.credit_balance === "number") {
-              setCreditBalance(res.data.user.credit_balance);
+  const updateToken = useCallback(
+    (newToken: string | null) => {
+      if (newToken) {
+        clearLoggedOutState();
+        localStorage.setItem(TOKEN_KEY, newToken);
+        api.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
+        setToken(newToken);
+        api
+          .get("/auth/me")
+          .then((res) => {
+            if (res.data?.user) {
+              setUser(res.data.user);
+              if (typeof res.data.user.credit_balance === "number") {
+                setCreditBalance(res.data.user.credit_balance);
+              }
             }
+          })
+          .catch(() => {});
+      } else {
+        localStorage.removeItem(TOKEN_KEY);
+        delete api.defaults.headers.common["Authorization"];
+        setToken(null);
+        setUser(null);
+        setAdminPendingCount(0);
+      }
+    },
+    [clearLoggedOutState],
+  );
+
+  const setSession = useCallback(
+    (newToken: string, newUser?: User | null) => {
+      clearLoggedOutState();
+      if (newToken) {
+        localStorage.setItem(TOKEN_KEY, newToken);
+        localStorage.setItem("token", newToken);
+        api.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
+      }
+      setToken(newToken);
+      if (newUser) {
+        setUser(newUser);
+        const bal = (newUser as User & { credit_balance?: number }).credit_balance;
+        if (typeof bal === "number") {
+          setCreditBalance(bal);
+        }
+      }
+    },
+    [clearLoggedOutState],
+  );
+
+  const logout = useCallback(
+    (options?: { redirect?: boolean | undefined }) => {
+      const snapshot: LoggedOutUserSnapshot | null = user
+        ? {
+            username: user.username,
+            display_name: user.display_name,
+            avatar_url: user.avatar_url,
+            email: user.email,
+            signedOutAt: Date.now(),
           }
-        })
-        .catch(() => {});
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-      delete api.defaults.headers.common["Authorization"];
+        : readLastLoggedOutUser();
+
+      if (snapshot && typeof sessionStorage !== "undefined") {
+        try {
+          sessionStorage.setItem(LAST_LOGGED_OUT_USER_KEY, JSON.stringify(snapshot));
+        } catch {
+          // ignore storage errors
+        }
+      }
+      setLastLoggedOutUser(snapshot);
+      setJustLoggedOut(options?.redirect !== false);
+
+      api.post("/auth/logout").catch(() => {});
+      void clearOfflineCache();
+      try {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+      } catch {
+        // ignore storage errors
+      }
       setToken(null);
       setUser(null);
+      setUnreadCount(0);
       setAdminPendingCount(0);
-    }
-  }, []);
 
-  const setSession = useCallback((newToken: string, newUser?: User | null) => {
-    if (newToken) {
-      localStorage.setItem(TOKEN_KEY, newToken);
-      localStorage.setItem("token", newToken);
-      api.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
-    }
-    setToken(newToken);
-    if (newUser) {
-      setUser(newUser);
-      const bal = (newUser as User & { credit_balance?: number }).credit_balance;
-      if (typeof bal === "number") {
-        setCreditBalance(bal);
+      if (options?.redirect !== false && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("modelscript:logged-out", { detail: { user: snapshot } }));
       }
-    }
-  }, []);
-
-  const logout = useCallback(() => {
-    api.post("/auth/logout").catch(() => {});
-    void clearOfflineCache();
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-    } catch {
-      // ignore storage errors
-    }
-    setToken(null);
-    setUser(null);
-    setAdminPendingCount(0);
-  }, []);
+    },
+    [user],
+  );
 
   return (
     <AuthContext.Provider
@@ -393,6 +502,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user,
         isAdmin,
         isLoading,
+        justLoggedOut,
+        lastLoggedOutUser,
+        clearJustLoggedOut,
         login,
         complete2FALogin,
         register,

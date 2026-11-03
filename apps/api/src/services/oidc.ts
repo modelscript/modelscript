@@ -23,13 +23,19 @@ export interface OidcServiceOptions {
 interface EeOidcInstance {
   isConfigured(): boolean;
   getAuthorizationUrl(state: string, nonce: string): string;
-  exchangeCode(code: string): Promise<{ idToken: string; accessToken: string }>;
+  exchangeCode(code: string): Promise<{
+    idToken: string;
+    accessToken: string;
+    refreshToken?: string | undefined;
+    expiresIn?: number | undefined;
+  }>;
   getSigningKey(kid?: string): Promise<string>;
   verifyIdToken(idToken: string): Promise<OidcClaims>;
   extractClaims(idToken: string): OidcClaims;
   handleOidcLogin(
     database: LibraryDatabase,
     claims: OidcClaims,
+    tokens?: { accessToken?: string | undefined; refreshToken?: string | undefined; expiresIn?: number | undefined },
   ): Promise<{
     token: string;
     tempToken?: string | undefined;
@@ -77,7 +83,12 @@ export class OidcService implements EeOidcInstance {
     return this.requireDelegate().getAuthorizationUrl(state, nonce);
   }
 
-  public async exchangeCode(code: string): Promise<{ idToken: string; accessToken: string }> {
+  public async exchangeCode(code: string): Promise<{
+    idToken: string;
+    accessToken: string;
+    refreshToken?: string | undefined;
+    expiresIn?: number | undefined;
+  }> {
     return this.requireDelegate().exchangeCode(code);
   }
 
@@ -96,6 +107,7 @@ export class OidcService implements EeOidcInstance {
   public async handleOidcLogin(
     database: LibraryDatabase,
     claims: OidcClaims,
+    tokens?: { accessToken?: string | undefined; refreshToken?: string | undefined; expiresIn?: number | undefined },
   ): Promise<{
     token: string;
     tempToken?: string | undefined;
@@ -103,7 +115,7 @@ export class OidcService implements EeOidcInstance {
     user: NonNullable<ReturnType<LibraryDatabase["getUserById"]>>;
     isNewUser: boolean;
   }> {
-    return this.requireDelegate().handleOidcLogin(database, claims);
+    return this.requireDelegate().handleOidcLogin(database, claims, tokens);
   }
 }
 

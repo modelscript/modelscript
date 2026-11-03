@@ -247,7 +247,13 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   const contributesLanguages: any[] = [];
   const contributesGrammars: any[] = [];
   const customEditors: any[] = [];
-  const activationEvents: string[] = ["*", "onStartupFinished", "onFileSystem:memfs"];
+  const activationEvents: string[] = [
+    "*",
+    "onStartupFinished",
+    "onFileSystem:memfs",
+    "onFileSystem:modelica",
+    "onFileSystem:github",
+  ];
 
   for (const lang of languages) {
     activationEvents.push(`onLanguage:${lang.id}`);
@@ -508,14 +514,32 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       icon: "$(add)",
     },
     {
+      command: "modelscript.libraryView.importZip",
+      title: "Import Library from .zip Archive...",
+      category: "ModelScript",
+      icon: "$(file-zip)",
+    },
+    {
       command: "modelscript.libraryView.refresh",
-      title: "Refresh Standard Libraries",
+      title: "Refresh Libraries",
       category: "ModelScript",
       icon: "$(refresh)",
     },
     {
+      command: "modelscript.libraryView.switchVersion",
+      title: "Switch Library Version...",
+      category: "ModelScript",
+      icon: "$(versions)",
+    },
+    {
+      command: "modelscript.libraryView.openPackageDetails",
+      title: "View Library in Ansatz Registry",
+      category: "ModelScript",
+      icon: "$(globe)",
+    },
+    {
       command: "modelscript.libraryView.removePackage",
-      title: "Remove Package",
+      title: "Remove Library from Workspace",
       category: "ModelScript",
       icon: "$(trash)",
     },
@@ -1293,9 +1317,14 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
           group: "navigation@1",
         },
         {
-          command: "modelscript.libraryView.refresh",
+          command: "modelscript.libraryView.importZip",
           when: "view == modelscript.libraryTree",
           group: "navigation@2",
+        },
+        {
+          command: "modelscript.libraryView.refresh",
+          when: "view == modelscript.libraryTree",
+          group: "navigation@3",
         },
         {
           command: "modelscript.experimentsView.refresh",
@@ -1315,9 +1344,29 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
           group: "navigation@2",
         },
         {
-          command: "modelscript.libraryView.removePackage",
+          command: "modelscript.libraryView.switchVersion",
           when: "view == modelscript.libraryTree && viewItem == installedPackage",
           group: "inline@1",
+        },
+        {
+          command: "modelscript.libraryView.removePackage",
+          when: "view == modelscript.libraryTree && viewItem == installedPackage",
+          group: "inline@2",
+        },
+        {
+          command: "modelscript.libraryView.openPackageDetails",
+          when: "view == modelscript.libraryTree && viewItem == installedPackage",
+          group: "1_package@1",
+        },
+        {
+          command: "modelscript.libraryView.switchVersion",
+          when: "view == modelscript.libraryTree && viewItem == installedPackage",
+          group: "1_package@2",
+        },
+        {
+          command: "modelscript.libraryView.removePackage",
+          when: "view == modelscript.libraryTree && viewItem == installedPackage",
+          group: "1_package@3",
         },
       ],
       ...(commandPaletteMenus.length > 0 ? { commandPalette: commandPaletteMenus } : {}),
@@ -1420,7 +1469,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     "modelscript-sidebar": [
       {
         id: "modelscript.libraryTree",
-        name: "Standard Libraries",
+        name: "Libraries",
       },
       {
         id: "modelscript.experimentsView",
@@ -1452,6 +1501,14 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       },
     ],
   };
+
+  contributes["viewsWelcome"] = [
+    {
+      view: "modelscript.libraryTree",
+      contents:
+        "No libraries are mounted in this workspace yet.\n[$(add) Add Package from Ansatz](command:modelscript.libraryView.addPackage)\n[$(file-zip) Import Library (.zip)](command:modelscript.libraryView.importZip)\n[$(cloud-download) Import Library from URL](command:modelscript.libraryView.importUrl)",
+    },
+  ];
 
   // Build per-language enable/disable settings with maturity badges
   const languageToggleProperties: Record<string, any> = {
@@ -1506,7 +1563,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
           enum: ["stable", "preview", "experimental", "dev"],
           default: "stable",
           enumDescriptions: [
-            "🟢 Stable: Core LSP, 1-click Simulate CodeLens, 2D/3D viewers, Standard Libraries (+ Ansatz search) & Experiments views.",
+            "🟢 Stable: Core LSP, 1-click Simulate CodeLens, 2D/3D viewers, Libraries (+ Ansatz search) & Experiments views.",
             "🟡 Preview: Adds Formal Verification, DAE structural proofs, and CAE mesh/study workbench.",
             "🧪 Experimental: Adds FMI Co-Simulation & MQTT, Cloud HPC, Cross-Domain Digital Thread, Polyglot Projection, Multi-Domain Scaffolding, and AI Copilot.",
             "🔬 Dev / Showcase: Enables all internal vertical demos, Trade Study Tier 1-3 CodeLenses, and medical/VR showcases.",
@@ -2301,7 +2358,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   // 1. Locate repository root and discover workspace languages
   const currentDir = path.dirname(new URL(import.meta.url).pathname);
   let repoRoot = currentDir;
-  let workspaceVersion = "0.0.18";
+  let workspaceVersion = "0.1.0";
   while (repoRoot !== path.dirname(repoRoot)) {
     if (fs.existsSync(path.join(repoRoot, "package.json"))) {
       try {
@@ -2523,6 +2580,10 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
 
   const candidateAssets = [
     [path.join(repoRoot, "packages/runtime/build/release.wasm"), "server/dist/release.wasm"],
+    [path.join(repoRoot, "packages/simulate/src/wasm/sundials.wasm"), "server/dist/sundials.wasm"],
+    [path.join(repoRoot, "packages/simulate/src/wasm/sundials.js"), "server/dist/sundials.js"],
+    [path.join(repoRoot, "packages/simulate/src/wasm/sundials.wasm"), "wasm/sundials.wasm"],
+    [path.join(repoRoot, "packages/simulate/src/wasm/sundials.js"), "wasm/sundials.js"],
     [path.join(repoRoot, "node_modules/occt-import-js/dist/occt-import-js.wasm"), "server/dist/occt-import-js.wasm"],
     [
       path.join(repoRoot, "scripts/ModelicaStandardLibrary_v4.1.0.zip"),

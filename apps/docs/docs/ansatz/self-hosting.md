@@ -215,5 +215,5 @@ If a deployment needs to be rolled back to a previous release:
    ```
 2. **Pin the Previous Container Image Tag** (`IMAGE_TAG=sha-<previous>` or `IMAGE_TAG=<previous-version>`) and restart:
    ```bash
-   IMAGE_TAG=0.0.17 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env --profile flagship up -d --wait
+   IMAGE_TAG=0.1.0 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env --profile flagship up -d --wait
    ```

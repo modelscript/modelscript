@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/lsp",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "Multi-language Language Server Protocol server and services for ModelScript",
   "keywords": [
     "modelscript",

@@ -553,6 +553,20 @@ endTime         0.01;
 deltaT          0.001;
 writeControl    timeStep;
 writeInterval   10;
+functions
+{
+    forces
+    {
+        type            forces;
+        libs            ("libforces.so");
+        writeControl    timeStep;
+        writeInterval   1;
+        patches         (walls);
+        rho             rhoInf;
+        rhoInf          1000;
+        CofR            (0 0 0);
+    }
+}
 `;
     const fvSchemes = `FoamFile { version 2.0; format ascii; class dictionary; object fvSchemes; }
 ddtSchemes { default Euler; }
@@ -580,6 +594,67 @@ nu              [0 2 -1 0 0 0 0] 0.001;
     await fs.writeFile(path.join(constantDir, "transportProperties"), transportProperties);
   }
 
+  /**
+   * Parses OpenFOAM `postProcessing/forces/<time>/forces.dat` (or `force.dat`) when present on disk.
+   */
+  public async parseForcesDat(): Promise<{ fx: number; fy: number; fz: number } | null> {
+    if (!this.caseDir) return null;
+    const forcesRoot = path.join(this.caseDir, "postProcessing", "forces");
+    const timeDirs = await fs.readdir(forcesRoot).catch(() => [] as string[]);
+    if (timeDirs.length === 0) return null;
+
+    // Sort time directories numerically so we read the latest time folder
+    timeDirs.sort((a, b) => parseFloat(b) - parseFloat(a));
+    for (const tDir of timeDirs) {
+      for (const fileName of ["forces.dat", "force.dat"]) {
+        const datPath = path.join(forcesRoot, tDir, fileName);
+        const content = await fs.readFile(datPath, "utf-8").catch(() => null);
+        if (!content) continue;
+        const lines = content
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0 && !l.startsWith("#"));
+        if (lines.length === 0) continue;
+        const lastLine = lines[lines.length - 1]!;
+
+        // Format A: parenthesized vectors: Time ((fx_p fy_p fz_p) (fx_v fy_v fz_v) ...)
+        const vecMatches = Array.from(
+          lastLine.matchAll(
+            /\(\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s+([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s+([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*\)/g,
+          ),
+        );
+        if (vecMatches.length >= 2) {
+          const fxp = parseFloat(vecMatches[0]![1]!);
+          const fyp = parseFloat(vecMatches[0]![2]!);
+          const fzp = parseFloat(vecMatches[0]![3]!);
+          const fxv = parseFloat(vecMatches[1]![1]!);
+          const fyv = parseFloat(vecMatches[1]![2]!);
+          const fzv = parseFloat(vecMatches[1]![3]!);
+          return { fx: fxp + fxv, fy: fyp + fyv, fz: fzp + fzv };
+        }
+        if (vecMatches.length === 1) {
+          return {
+            fx: parseFloat(vecMatches[0]![1]!),
+            fy: parseFloat(vecMatches[0]![2]!),
+            fz: parseFloat(vecMatches[0]![3]!),
+          };
+        }
+
+        // Format B: whitespace-separated columns: Time total_x total_y total_z ...
+        const nums = lastLine
+          .replace(/[()]/g, " ")
+          .trim()
+          .split(/\s+/)
+          .map((s) => parseFloat(s))
+          .filter((n) => Number.isFinite(n));
+        if (nums.length >= 4) {
+          return { fx: nums[1]!, fy: nums[2]!, fz: nums[3]! };
+        }
+      }
+    }
+    return null;
+  }
+
   public async doStep(currentTime: number, stepSize: number): Promise<void> {
     this.currentTime += stepSize;
     await this.fallbackSolver.doStep(currentTime, stepSize);
@@ -605,17 +680,33 @@ nu              [0 2 -1 0 0 0 0] 0.001;
   }
 
   public async getOutputs(): Promise<Map<string, CosimValue>> {
+    const parsedForces = await this.parseForcesDat();
     if (!this.hasNativeOpenFoam) {
-      return this.fallbackSolver.getOutputs();
+      const fallbackOut = await this.fallbackSolver.getOutputs();
+      if (parsedForces) {
+        fallbackOut.set("dragForceX", parsedForces.fx);
+        fallbackOut.set("dragForceY", parsedForces.fy);
+        fallbackOut.set("dragForceZ", parsedForces.fz);
+      }
+      return fallbackOut;
     }
     const outputs = new Map<string, CosimValue>();
     const rho = 1000;
     const area = 0.01;
+    const fallbackOut = await this.fallbackSolver.getOutputs();
     const mFlow =
       Math.abs(this.lastVelocityX) > 1e-9
         ? -rho * area * this.lastVelocityX
-        : ((await this.fallbackSolver.getOutputs()).get("gateInlet.m_flow") ?? -0.05);
+        : (fallbackOut.get("gateInlet.m_flow") ?? -0.05);
     outputs.set("gateInlet.m_flow", mFlow);
+    if (parsedForces) {
+      outputs.set("dragForceX", parsedForces.fx);
+      outputs.set("dragForceY", parsedForces.fy);
+      outputs.set("dragForceZ", parsedForces.fz);
+    } else {
+      outputs.set("dragForceX", fallbackOut.get("dragForceX") ?? 0);
+      outputs.set("dragForceY", fallbackOut.get("dragForceY") ?? 0);
+    }
     return outputs;
   }
 

@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CopyIcon, DatabaseIcon, DownloadIcon, ShieldCheckIcon, VerifiedIcon } from "@primer/octicons-react";
+import {
+  ArrowRightIcon,
+  CopyIcon,
+  DatabaseIcon,
+  DependabotIcon,
+  DownloadIcon,
+  PackageIcon,
+  ShieldCheckIcon,
+  VerifiedIcon,
+} from "@primer/octicons-react";
 import { Button, Label, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -11,6 +20,8 @@ import {
   type DataPackageLockJsonSummary,
   type DataPackageResourceSummary,
 } from "../../../api";
+import Box from "../../../components/Box";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { DepRow, GlassCard, SectionTitle } from "../types";
 
 export interface PackageDependenciesTabProps {
@@ -21,6 +32,86 @@ export interface PackageDependenciesTabProps {
   resources?: DataPackageResourceSummary[] | undefined;
 }
 
+function renderDepRow(dep: string, range: string, kindLabel: string) {
+  const isScoped = dep.startsWith("@") && dep.includes("/");
+  const [scope, baseName] = isScoped ? dep.split("/", 2) : [null, dep];
+
+  return (
+    <DepRow key={dep} style={{ padding: "12px 0", gap: 12 }}>
+      <Box display="flex" alignItems="center" gap="12px" style={{ minWidth: 0, flex: 1 }}>
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            background: "var(--color-canvas-subtle, rgba(6, 182, 212, 0.08))",
+            border: "1px solid var(--color-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            color: "var(--color-accent-cyan, #06b6d4)",
+          }}
+        >
+          <PackageIcon size={16} />
+        </div>
+        <Box style={{ minWidth: 0 }}>
+          <Link
+            to={`/packages/${dep}`}
+            style={{
+              color: "var(--color-link)",
+              textDecoration: "none",
+              fontSize: 14,
+              fontWeight: 600,
+              fontFamily: "var(--font-mono, monospace)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 2,
+            }}
+          >
+            {scope && <span style={{ color: "var(--color-text-muted)", fontWeight: 500 }}>{scope}/</span>}
+            <span>{baseName}</span>
+          </Link>
+          <Text as="p" style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "2px 0 0" }}>
+            {kindLabel}
+          </Text>
+        </Box>
+      </Box>
+
+      <Box display="flex" alignItems="center" gap="12px">
+        <span
+          style={{
+            padding: "3px 10px",
+            borderRadius: 6,
+            background: "var(--color-canvas-subtle)",
+            border: "1px solid var(--color-border)",
+            color: "var(--color-text-primary)",
+            fontSize: 12,
+            fontWeight: 600,
+            fontFamily: "var(--font-mono, monospace)",
+          }}
+        >
+          {range}
+        </span>
+        <Link
+          to={`/packages/${dep}`}
+          title={`Inspect ${dep}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 12,
+            color: "var(--color-text-muted)",
+            textDecoration: "none",
+          }}
+        >
+          <ArrowRightIcon size={14} />
+        </Link>
+      </Box>
+    </DepRow>
+  );
+}
+
 export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
   name,
   version,
@@ -28,11 +119,12 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
   devDependencies,
   resources,
 }) => {
+  const hasAdvancedExports = useFeatureFlag("package_advanced_exports");
   const [lockfile, setLockfile] = useState<DataPackageLockJsonSummary | null>(null);
   const [copiedLockfile, setCopiedLockfile] = useState(false);
 
   useEffect(() => {
-    if (!name || !version) return;
+    if (!hasAdvancedExports || !name || !version) return;
     let cancelled = false;
     getPackageLockfile(name, version).then((res) => {
       if (!cancelled) setLockfile(res);
@@ -40,7 +132,7 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [name, version]);
+  }, [hasAdvancedExports, name, version]);
 
   const handleCopyLockfile = () => {
     if (!lockfile) return;
@@ -49,51 +141,72 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
     setTimeout(() => setCopiedLockfile(false), 2000);
   };
 
+  const depEntries = Object.entries(dependencies);
+  const devDepEntries = Object.entries(devDependencies || {});
+
   return (
     <>
-      <SectionTitle as="h3">Dependencies</SectionTitle>
-      <GlassCard>
-        {Object.keys(dependencies).length > 0 ? (
-          Object.entries(dependencies).map(([dep, range]) => (
-            <DepRow key={dep}>
-              <Link
-                to={`/packages/${dep}`}
-                style={{ color: "var(--color-link)", textDecoration: "none", fontSize: 14 }}
-              >
-                {dep}
-              </Link>
-              <Text style={{ color: "var(--color-text-muted)", fontSize: 13, fontFamily: "monospace" }}>{range}</Text>
-            </DepRow>
-          ))
+      <Box display="flex" alignItems="center" justifyContent="space-between" mb={3} flexWrap="wrap" gap={2}>
+        <Box display="flex" alignItems="center" gap="8px">
+          <DependabotIcon size={16} fill="var(--color-text-muted)" />
+          <SectionTitle as="h3" style={{ margin: 0 }}>
+            Runtime Dependencies
+          </SectionTitle>
+          <Label variant="secondary" style={{ fontSize: 11, padding: "0 6px" }}>
+            {depEntries.length}
+          </Label>
+        </Box>
+      </Box>
+
+      <GlassCard style={{ padding: depEntries.length > 0 ? "6px 20px" : "24px 20px" }}>
+        {depEntries.length > 0 ? (
+          depEntries.map(([dep, range]) => renderDepRow(dep, range, "Required package dependency"))
         ) : (
-          <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
-            No dependencies.
-          </Text>
+          <Box display="flex" alignItems="center" gap="12px">
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: "rgba(45, 164, 78, 0.1)",
+                border: "1px solid rgba(45, 164, 78, 0.25)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <ShieldCheckIcon size={18} fill="var(--color-success-fg, #2da44e)" />
+            </div>
+            <Box>
+              <Text style={{ fontWeight: 600, fontSize: 14, color: "var(--color-text-heading)", display: "block" }}>
+                Zero Runtime Dependencies
+              </Text>
+              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 13, margin: "2px 0 0" }}>
+                This package is self-contained and requires no external libraries.
+              </Text>
+            </Box>
+          </Box>
         )}
       </GlassCard>
 
-      {devDependencies && Object.keys(devDependencies).length > 0 && (
+      {devDepEntries.length > 0 && (
         <>
-          <SectionTitle as="h3" style={{ marginTop: 24 }}>
-            Dev Dependencies
-          </SectionTitle>
-          <GlassCard>
-            {Object.entries(devDependencies).map(([dep, range]) => (
-              <DepRow key={dep}>
-                <Link
-                  to={`/packages/${dep}`}
-                  style={{ color: "var(--color-link)", textDecoration: "none", fontSize: 14 }}
-                >
-                  {dep}
-                </Link>
-                <Text style={{ color: "var(--color-text-muted)", fontSize: 13, fontFamily: "monospace" }}>{range}</Text>
-              </DepRow>
-            ))}
+          <Box display="flex" alignItems="center" gap="8px" mt={4} mb={3}>
+            <SectionTitle as="h3" style={{ margin: 0 }}>
+              Development Dependencies
+            </SectionTitle>
+            <Label variant="secondary" style={{ fontSize: 11, padding: "0 6px" }}>
+              {devDepEntries.length}
+            </Label>
+          </Box>
+          <GlassCard style={{ padding: "6px 20px" }}>
+            {devDepEntries.map(([dep, range]) => renderDepRow(dep, range, "Development & verification dependency"))}
           </GlassCard>
         </>
       )}
 
-      {resources && resources.length > 0 && (
+      {hasAdvancedExports && resources && resources.length > 0 && (
         <>
           <div
             style={{
@@ -171,8 +284,8 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
                           fontSize: 11,
                           padding: "2px 6px",
                           borderRadius: 4,
-                          background: "rgba(255,255,255,0.04)",
-                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: "var(--color-canvas-subtle)",
+                          border: "1px solid var(--color-border)",
                           fontFamily: "var(--font-mono, monospace)",
                         }}
                       >
@@ -193,7 +306,7 @@ export const PackageDependenciesTab: React.FC<PackageDependenciesTabProps> = ({
         </>
       )}
 
-      {lockfile && (
+      {hasAdvancedExports && lockfile && (
         <>
           <div
             style={{

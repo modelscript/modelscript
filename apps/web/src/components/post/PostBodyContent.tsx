@@ -7,6 +7,7 @@ import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../util/edito
 import { safeJsonParse } from "../../util/json";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
 import Box from "../Box";
+import type { PostAuthorHeaderProps } from "./PostAuthorHeader";
 import { PostMarkdownContent } from "./PostMarkdownContent";
 import { PostNotebookHeader } from "./PostNotebookHeader";
 import { ContentWarningBox } from "./styles";
@@ -23,6 +24,7 @@ export interface PostBodyContentProps {
   onPinCreated: (pin: any) => void;
   showAiDetails?: boolean | undefined;
   setShowAiDetails?: ((show: boolean) => void) | undefined;
+  authorHeaderProps?: PostAuthorHeaderProps | undefined;
 }
 
 export const PostBodyContent: React.FC<PostBodyContentProps> = ({
@@ -35,6 +37,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   canEditPost,
   onOpenEditModal,
   onPinCreated,
+  authorHeaderProps,
 }) => {
   const navigate = useNavigate();
   const [isNotebookExpanded, setIsNotebookExpanded] = useState(false);
@@ -81,10 +84,6 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
     </ContentWarningBox>
   ) : null;
 
-  if (contentWarning && !cwRevealed) {
-    return cwBanner;
-  }
-
   if (isNotebook && notebookData && notebookData.cells.length > 0) {
     let previewEndIdx = notebookData.cells.length;
     if (!isDetailView && !isNotebookExpanded) {
@@ -119,8 +118,12 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
     );
 
     return (
-      <Box display="flex" flexDirection="column" gap={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-        {cwBanner}
+      <Box
+        display="flex"
+        flexDirection="column"
+        gap={isDetailView ? 2.5 : 2}
+        style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}
+      >
         {/* Tutorial Hero Banner */}
         <PostNotebookHeader
           notebookData={notebookData}
@@ -130,6 +133,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
           canEditPost={canEditPost}
           onOpenEditModal={onOpenEditModal}
           isDetailView={isDetailView}
+          authorHeaderProps={isDetailView ? authorHeaderProps : undefined}
           notebookHeadings={notebookHeadings.map((h) => ({ slug: h.slug || h.id || "", level: h.level, text: h.text }))}
           onHeadingClick={(slug) => {
             if (!isDetailView) {
@@ -142,85 +146,64 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
             }
           }}
         />
+        {cwBanner}
 
-        {cellsWithFig.map(({ cell, figureNum }: { cell: any; figureNum: number }) => {
-          if (cell.type === "markdown") {
-            const shouldTruncateMd =
-              !isDetailView && !isNotebookExpanded && cell.content.length > 520 && notebookData.cells.length === 1;
-            const mdText = shouldTruncateMd ? `${cell.content.slice(0, 520)}…` : cell.content;
+        {(!contentWarning || cwRevealed) &&
+          cellsWithFig.map(({ cell, figureNum }: { cell: any; figureNum: number }) => {
+            if (cell.type === "markdown") {
+              const shouldTruncateMd =
+                !isDetailView && !isNotebookExpanded && cell.content.length > 520 && notebookData.cells.length === 1;
+              const mdText = shouldTruncateMd ? `${cell.content.slice(0, 520)}…` : cell.content;
+              return (
+                <Box
+                  key={cell.id}
+                  style={{
+                    fontSize: isDetailView ? "17px" : "15px",
+                    lineHeight: isDetailView ? "1.75" : "20px",
+                    letterSpacing: isDetailView ? "-0.005em" : "normal",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  <PostMarkdownContent text={mdText} isLongForm={true} />
+                </Box>
+              );
+            }
+
+            const currentFigNum = figureNum;
+            const initialView =
+              displayPost.artifact_views?.[cell.artifactId] ||
+              (cell.artifactId === displayPost.artifact_view_id ? displayPost.artifact_view : undefined);
+            const distinctCaption =
+              cell.caption && cell.caption.trim() !== "" && cell.caption.trim() !== (cell.title || "").trim()
+                ? cell.caption.trim()
+                : undefined;
+
             return (
               <Box
                 key={cell.id}
+                id={`fig-${currentFigNum}`}
+                my={1}
                 style={{
-                  fontSize: isDetailView ? "17px" : "15px",
-                  lineHeight: isDetailView ? "24px" : "20px",
-                  wordBreak: "break-word",
+                  width: "100%",
+                  maxWidth: "100%",
+                  minWidth: 0,
                 }}
               >
-                <PostMarkdownContent text={mdText} isLongForm={true} />
+                <ArtifactViewCard
+                  artifactId={cell.artifactId}
+                  initialArtifactView={initialView}
+                  figureNumber={currentFigNum}
+                  caption={distinctCaption}
+                  forkedFromId={
+                    (displayPost as any)?.forked_from_post_id ||
+                    (displayPost as any)?.forked_from_artifact_id ||
+                    safeJsonParse<Record<string, any>>((displayPost as any)?.metadata, {})?.["forkedFromArtifactId"]
+                  }
+                  onPinCreated={onPinCreated}
+                />
               </Box>
             );
-          }
-
-          const currentFigNum = figureNum;
-          const initialView =
-            displayPost.artifact_views?.[cell.artifactId] ||
-            (cell.artifactId === displayPost.artifact_view_id ? displayPost.artifact_view : undefined);
-
-          return (
-            <Box
-              key={cell.id}
-              id={`fig-${currentFigNum}`}
-              my={1}
-              style={{
-                width: "100%",
-                maxWidth: "100%",
-                minWidth: 0,
-                borderRadius: "12px",
-                border: "1px solid rgba(139, 92, 246, 0.22)",
-                background: "rgba(139, 92, 246, 0.03)",
-                overflow: "hidden",
-              }}
-            >
-              <ArtifactViewCard
-                artifactId={cell.artifactId}
-                initialArtifactView={initialView}
-                forkedFromId={
-                  (displayPost as any)?.forked_from_post_id ||
-                  (displayPost as any)?.forked_from_artifact_id ||
-                  safeJsonParse<Record<string, any>>((displayPost as any)?.metadata, {})?.["forkedFromArtifactId"]
-                }
-                onPinCreated={onPinCreated}
-              />
-              {(cell.caption || cell.title) && (
-                <div
-                  style={{
-                    padding: "6px 12px",
-                    fontSize: "12px",
-                    color: "var(--color-text-muted)",
-                    borderTop: "1px solid rgba(139, 92, 246, 0.15)",
-                    background: "rgba(0, 0, 0, 0.18)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono, monospace)",
-                      fontWeight: 700,
-                      color: "var(--color-accent-cyan)",
-                      fontSize: "11px",
-                    }}
-                  >
-                    Fig. {currentFigNum}:
-                  </span>
-                  <span>{cell.caption || cell.title}</span>
-                </div>
-              )}
-            </Box>
-          );
-        })}
+          })}
 
         {!isDetailView && hiddenCount > 0 && !isNotebookExpanded && (
           <Box display="flex" gap={2} flexWrap="wrap" mt={1}>
@@ -234,18 +217,18 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               style={{
                 flex: 1,
                 minWidth: "220px",
-                padding: "9px 14px",
-                borderRadius: "10px",
-                border: "1px solid rgba(6, 182, 212, 0.32)",
-                background: "linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(139, 92, 216, 0.1))",
-                color: "var(--color-accent-cyan)",
-                fontFamily: "var(--font-mono, monospace)",
-                fontSize: "12px",
-                fontWeight: 700,
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--color-border-default)",
+                background: "var(--color-canvas-subtle)",
+                color: "var(--color-text-secondary)",
+                fontSize: "12.5px",
+                fontWeight: 600,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
+                fontFamily: "inherit",
               }}
             >
               <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -265,22 +248,22 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                 navigate(`/${displayPost.username}/status/${displayPost.id}`);
               }}
               style={{
-                padding: "9px 14px",
-                borderRadius: "10px",
-                border: "1px solid rgba(139, 92, 246, 0.38)",
-                background: "rgba(139, 92, 246, 0.14)",
-                color: "var(--color-text-heading)",
-                fontFamily: "var(--font-mono, monospace)",
-                fontSize: "12px",
-                fontWeight: 700,
+                padding: "8px 14px",
+                borderRadius: "8px",
+                border: "1px solid var(--color-accent-blue-border)",
+                background: "var(--ms-brand-soft)",
+                color: "var(--ms-brand)",
+                fontSize: "12.5px",
+                fontWeight: 600,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "6px",
+                fontFamily: "inherit",
               }}
             >
-              <BookIcon size={13} /> Read Tutorial View →
+              <BookIcon size={13} /> Read article →
             </button>
           </Box>
         )}
@@ -298,128 +281,137 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               padding: "5px 12px",
               borderRadius: "8px",
               border: "1px solid var(--color-border)",
-              background: "rgba(255, 255, 255, 0.04)",
+              background: "var(--color-canvas-subtle)",
               color: "var(--color-text-muted)",
-              fontFamily: "var(--font-mono, monospace)",
-              fontSize: "11.5px",
+              fontSize: "12px",
               fontWeight: 600,
               cursor: "pointer",
+              fontFamily: "inherit",
             }}
           >
-            ▲ Collapse notebook
+            ▲ Collapse article
           </button>
         )}
 
-        {/* Companion Code & Web IDE Footer on Detail View */}
-        {isDetailView && (
-          <div
-            style={{
-              marginTop: "8px",
-              padding: "14px 16px",
-              borderRadius: "12px",
-              background: "rgba(6, 182, 212, 0.06)",
-              border: "1px solid rgba(6, 182, 212, 0.25)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "10px",
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              <span
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: "var(--color-text-heading)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <CodeIcon size={14} /> Companion Code & Interactive Sandbox
-              </span>
-              <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
-                {notebookData.companionRepo
-                  ? `Full source available in ${notebookData.companionRepo} — or launch directly in the WebAssembly Playground / IDE.`
-                  : "All code snippets and equations in this tutorial can be compiled and simulated directly in the Playground (powered by ModelScript)."}
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              {notebookData.companionRepo && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    const repo = notebookData.companionRepo!;
-                    if (repo.startsWith("http://") || repo.startsWith("https://")) {
-                      window.open(repo, "_blank", "noopener,noreferrer");
-                    } else {
-                      navigate(`/explore?q=${encodeURIComponent(repo)}`);
-                    }
-                  }}
+        {/* Companion Code & Web IDE Footer on Detail View (only when article has code blocks, artifacts, or companionRepo) */}
+        {isDetailView &&
+          Boolean(
+            notebookData.companionRepo?.trim() ||
+            primaryArtifactId ||
+            /```[a-zA-Z0-9_-]*\n[\s\S]*?```/.test(String(displayPost.content || "")),
+          ) && (
+            <div
+              style={{
+                marginTop: "10px",
+                padding: "12px 14px",
+                borderRadius: "10px",
+                background: "var(--color-canvas-subtle)",
+                border: "1px solid var(--color-border-subtle)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "10px",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                <span
                   style={{
-                    padding: "6px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--color-border-default)",
-                    background: "rgba(255, 255, 255, 0.06)",
-                    color: "var(--color-text-primary)",
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: "11.5px",
-                    fontWeight: 600,
-                    cursor: "pointer",
+                    fontSize: "13px",
+                    fontWeight: 650,
+                    color: "var(--color-text-heading)",
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "6px",
                   }}
                 >
-                  <PackageIcon size={13} /> {notebookData.companionRepo}
+                  <CodeIcon size={14} /> Companion Code & Interactive Sandbox
+                </span>
+                <span style={{ fontSize: "12.5px", color: "var(--color-text-secondary)" }}>
+                  {notebookData.companionRepo
+                    ? `Full source available in ${notebookData.companionRepo} — or launch directly in the Playground.`
+                    : "All code snippets and equations in this article can be compiled and simulated directly in the Playground."}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                {notebookData.companionRepo && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      const repo = notebookData.companionRepo!;
+                      if (repo.startsWith("http://") || repo.startsWith("https://")) {
+                        window.open(repo, "_blank", "noopener,noreferrer");
+                      } else {
+                        navigate(`/explore?q=${encodeURIComponent(repo)}`);
+                      }
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--color-border-default)",
+                      background: "var(--color-btn-secondary-bg)",
+                      color: "var(--color-text-primary)",
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: "11.5px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <PackageIcon size={13} /> {notebookData.companionRepo}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const matches = Array.from(
+                      String(displayPost.content || "").matchAll(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g),
+                    );
+                    const firstFenceLang = matches[0]?.[1]?.trim();
+                    const codeBlocks = matches.map((m) => m[2]?.trim()).filter(Boolean);
+                    const combinedSource = codeBlocks.join("\n\n");
+                    const targetUrl = buildEditorUrlForArtifact({
+                      artifactId: primaryArtifactId,
+                      viewType:
+                        primaryArtifactView?.view_type ||
+                        primaryArtifactView?.artifact_type ||
+                        (displayPost as any).artifact_type,
+                      viewConfig: primaryArtifactView?.view_config || (displayPost as any).artifact_config,
+                      code: combinedSource || (!primaryArtifactId ? displayPost.content || "" : undefined),
+                      title: notebookData.title || `Article-${displayPost.id}`,
+                      dialect: notebookData.dialect || firstFenceLang || undefined,
+                    });
+                    navigate(targetUrl);
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--color-accent-blue-border)",
+                    background: "var(--ms-brand-soft)",
+                    color: "var(--ms-brand)",
+                    fontSize: "12px",
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {isMultiFileTutorial ? "▶ Open in Web IDE" : "▶ Open in Playground"}
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  const matches = Array.from(
-                    String(displayPost.content || "").matchAll(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g),
-                  );
-                  const firstFenceLang = matches[0]?.[1]?.trim();
-                  const codeBlocks = matches.map((m) => m[2]?.trim()).filter(Boolean);
-                  const combinedSource = codeBlocks.join("\n\n");
-                  const targetUrl = buildEditorUrlForArtifact({
-                    artifactId: primaryArtifactId,
-                    viewType:
-                      primaryArtifactView?.view_type ||
-                      primaryArtifactView?.artifact_type ||
-                      (displayPost as any).artifact_type,
-                    viewConfig: primaryArtifactView?.view_config || (displayPost as any).artifact_config,
-                    code: combinedSource || (!primaryArtifactId ? displayPost.content || "" : undefined),
-                    title: notebookData.title || `Tutorial-${displayPost.id}`,
-                    dialect: notebookData.dialect || firstFenceLang || undefined,
-                  });
-                  navigate(targetUrl);
-                }}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid rgba(139, 92, 246, 0.45)",
-                  background: "rgba(139, 92, 246, 0.18)",
-                  color: "var(--color-text-heading)",
-                  fontFamily: "var(--font-mono, monospace)",
-                  fontSize: "11.5px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {isMultiFileTutorial ? "▶ Open Tutorial in Web IDE" : "▶ Open Tutorial in Playground"}
-              </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
       </Box>
     );
+  }
+
+  if (contentWarning && !cwRevealed) {
+    return cwBanner;
   }
 
   // Standard Post Body
@@ -471,7 +463,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
       )}
 
       {displayPost.artifact_view_id && (
-        <Box style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
+        <Box mt={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
           <ArtifactViewCard
             artifactId={displayPost.artifact_view_id}
             initialArtifactView={displayPost.artifact_view}

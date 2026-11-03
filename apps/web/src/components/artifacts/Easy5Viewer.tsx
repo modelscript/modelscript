@@ -2,7 +2,7 @@
 
 import { renderSimulinkSvg, type SimulinkBlockLike, type SimulinkLineLike } from "@modelscript/diagram";
 import { PlayIcon, PulseIcon } from "@primer/octicons-react";
-import { Button, SegmentedControl, Spinner, Text } from "@primer/react";
+import { Button, SegmentedControl, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -53,15 +53,15 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const Toolbar = styled.div`
   height: 40px;
   min-height: 40px;
-  background: var(--surface-hud, rgba(14, 20, 36, 0.7));
+  background: var(--color-canvas-subtle);
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  gap: 8px;
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
 `;
 
 const HeaderLeft = styled.div`
@@ -69,6 +69,8 @@ const HeaderLeft = styled.div`
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 `;
 
 const ModelTitle = styled.div`
@@ -90,6 +92,7 @@ const PillBadge = styled.span`
   border-radius: 9999px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
   background: rgba(245, 158, 11, 0.15);
   color: var(--color-attention-fg, var(--color-fg-default));
   border: 1px solid rgba(245, 158, 11, 0.35);
@@ -108,36 +111,9 @@ const ChartCanvas = styled.div`
   background: var(--color-canvas-inset, var(--color-canvas-default));
 `;
 
-const InspectorSidebar = styled.div`
-  width: 240px;
-  border-left: 1px solid var(--color-border-default);
-  background: var(--color-canvas-subtle);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 14px;
-  gap: 12px;
-
-  @media (max-width: 768px) {
-    display: none;
-  }
-`;
-
-const StatItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--color-fg-muted);
-
-  strong {
-    color: var(--color-fg-default);
-  }
-`;
-
 export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [showInspector, setShowInspector] = useState(false);
   const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
   const [rawText, setRawText] = useState(initialSource);
   const [viewMode, setViewMode] = useState<"diagram" | "bode" | "code">("diagram");
@@ -261,11 +237,11 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
       <Toolbar>
         <HeaderLeft>
           <PulseIcon size={16} fill="var(--color-attention-fg, currentColor)" />
+          <PillBadge>EASY5</PillBadge>
           {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
-          <PillBadge>EASY5 Dynamic Control</PillBadge>
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
           {(sanitizedSvg || bodeData.length > 0) && (
             <SegmentedControl size="small" aria-label="Easy5 View Selector">
               {sanitizedSvg && (
@@ -285,12 +261,6 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
                 Source
               </SegmentedControl.Button>
             </SegmentedControl>
-          )}
-
-          {!isFullScreen && (
-            <Button size="small" onClick={() => setShowInspector((s) => !s)}>
-              {showInspector ? "Hide Telemetry" : "Telemetry"}
-            </Button>
           )}
 
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
@@ -364,7 +334,7 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
             flex={1}
             py={2}
             overflow="auto"
-            bg="var(--color-canvas-inset, #010409)"
+            bg="var(--color-canvas-inset, var(--color-canvas-default))"
             style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
           >
             {codeLines.length > 0 ? (
@@ -394,50 +364,6 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
               </Box>
             )}
           </Box>
-        )}
-
-        {!isFullScreen && showInspector && (
-          <InspectorSidebar>
-            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-              Control System Telemetry
-            </Text>
-            <StatItem>
-              <span>Components</span>
-              <strong>{parsedModel.componentCount}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Connections</span>
-              <strong>{parsedModel.connectionCount}</strong>
-            </StatItem>
-            <StatItem>
-              <span>States (n)</span>
-              <strong>{parsedModel.stateCount}</strong>
-            </StatItem>
-            {parsedModel.inputCount !== undefined && (
-              <StatItem>
-                <span>Inputs (m)</span>
-                <strong>{parsedModel.inputCount}</strong>
-              </StatItem>
-            )}
-            {parsedModel.outputCount !== undefined && (
-              <StatItem>
-                <span>Outputs (p)</span>
-                <strong>{parsedModel.outputCount}</strong>
-              </StatItem>
-            )}
-            {viewConfig.gainMarginDb !== undefined && (
-              <StatItem>
-                <span>Gain Margin</span>
-                <strong style={{ color: "#34d399" }}>{viewConfig.gainMarginDb} dB</strong>
-              </StatItem>
-            )}
-            {viewConfig.phaseMarginDeg !== undefined && (
-              <StatItem>
-                <span>Phase Margin</span>
-                <strong style={{ color: "#34d399" }}>{viewConfig.phaseMarginDeg}°</strong>
-              </StatItem>
-            )}
-          </InspectorSidebar>
         )}
       </ContentArea>
     </CardWrapper>

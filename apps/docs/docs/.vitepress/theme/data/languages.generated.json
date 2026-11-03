@@ -7,7 +7,7 @@
     "role": "Native systems modeling & query language",
     "group": "core",
     "pkgName": "@modelscript/modelscript",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx compile",
     "actions": [],
@@ -28,7 +28,7 @@
     "role": "Acausal multi-domain physics",
     "group": "core",
     "pkgName": "@modelscript/modelica",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx simulate",
     "actions": [],
@@ -53,7 +53,7 @@
     "role": "Systems architecture & requirements",
     "group": "core",
     "pkgName": "@modelscript/sysml2",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx sysml",
     "actions": [
@@ -83,7 +83,7 @@
     "role": "Requirements interchange & contract entailment",
     "group": "core",
     "pkgName": "@modelscript/reqif",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx reqif",
     "actions": [
@@ -114,7 +114,7 @@
     "role": "FMU system structure & parameterization",
     "group": "core",
     "pkgName": "@modelscript/ssp",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx fmu",
     "actions": [],
@@ -138,7 +138,7 @@
     "role": "Ontologies & description-logic reasoning",
     "group": "core",
     "pkgName": "@modelscript/owl2",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": null,
     "actions": [],
@@ -162,7 +162,7 @@
     "role": "B-Rep CAD assemblies & AP242 PMI",
     "group": "geometry",
     "pkgName": "@modelscript/step",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx csg",
     "actions": [],
@@ -186,7 +186,7 @@
     "role": "Parametric constructive solid geometry",
     "group": "geometry",
     "pkgName": "@modelscript/scad",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx csg",
     "actions": [],
@@ -210,7 +210,7 @@
     "role": "Computational fluid dynamics meshes",
     "group": "geometry",
     "pkgName": "@modelscript/cfd",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx cfd",
     "actions": [
@@ -241,7 +241,7 @@
     "role": "Finite-element structural analysis",
     "group": "geometry",
     "pkgName": "@modelscript/fea",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx fea",
     "actions": [
@@ -272,7 +272,7 @@
     "role": "Time-series & sensor logs",
     "group": "integration",
     "pkgName": "@modelscript/csv",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": null,
     "actions": [],
@@ -296,7 +296,7 @@
     "role": "Numerical & embedded C integration",
     "group": "integration",
     "pkgName": "@modelscript/c",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx c",
     "actions": [
@@ -326,7 +326,7 @@
     "role": "Legacy scientific subroutines",
     "group": "integration",
     "pkgName": "@modelscript/fortran",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": null,
     "actions": [],
@@ -347,7 +347,7 @@
     "role": "6-DOF flight dynamics",
     "group": "aerospace",
     "pkgName": "@modelscript/jsbsim",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx jsbsim",
     "actions": [
@@ -377,7 +377,7 @@
     "role": "Liquid rocket engine transients",
     "group": "aerospace",
     "pkgName": "@modelscript/rocets",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx rocets",
     "actions": [
@@ -411,7 +411,7 @@
     "role": "Astrodynamics & spacecraft telemetry",
     "group": "aerospace",
     "pkgName": "@modelscript/ccsds",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx ccsds",
     "actions": [
@@ -444,7 +444,7 @@
     "role": "Dynamic simulation & linear control",
     "group": "aerospace",
     "pkgName": "@modelscript/easy5",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx easy5",
     "actions": [
@@ -480,7 +480,7 @@
     "role": "Classic & Adaptive software architecture",
     "group": "automotive",
     "pkgName": "@modelscript/autosar",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx autosar",
     "actions": [
@@ -511,7 +511,7 @@
     "role": "Block diagrams & control systems",
     "group": "automotive",
     "pkgName": "@modelscript/simulink",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx simulink",
     "actions": [
@@ -541,7 +541,7 @@
     "role": "Engine, powertrain & thermal flow",
     "group": "automotive",
     "pkgName": "@modelscript/gtsuite",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx gtsuite",
     "actions": [
@@ -577,7 +577,7 @@
     "role": "Road network geometry",
     "group": "automotive",
     "pkgName": "@modelscript/opendrive",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx opendrive",
     "actions": [
@@ -607,7 +607,7 @@
     "role": "Driving scenarios & RSS safety margins",
     "group": "automotive",
     "pkgName": "@modelscript/openscenario",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx openscenario",
     "actions": [
@@ -637,7 +637,7 @@
     "role": "Railway vehicle dynamics & track",
     "group": "rail",
     "pkgName": "@modelscript/gensys",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx gensys",
     "actions": [
@@ -671,7 +671,7 @@
     "role": "Spatial multibody dynamics",
     "group": "rail",
     "pkgName": "@modelscript/simpack",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx simpack",
     "actions": [
@@ -705,7 +705,7 @@
     "role": "Electromagnetic transients (EMT)",
     "group": "power",
     "pkgName": "@modelscript/pscad",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx pscad",
     "actions": [
@@ -744,7 +744,7 @@
     "role": "Transmission power flow",
     "group": "power",
     "pkgName": "@modelscript/psse",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx psse",
     "actions": [
@@ -776,7 +776,7 @@
     "role": "Unbalanced distribution & DER hosting",
     "group": "power",
     "pkgName": "@modelscript/opendss",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx opendss",
     "actions": [
@@ -806,7 +806,7 @@
     "role": "Transient multiphase flow assurance",
     "group": "oil-gas",
     "pkgName": "@modelscript/olga",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx olga",
     "actions": [
@@ -847,7 +847,7 @@
     "role": "Gas & liquid pipeline hydraulics",
     "group": "oil-gas",
     "pkgName": "@modelscript/lps",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx lps",
     "actions": [
@@ -883,7 +883,7 @@
     "role": "Reservoir engineering",
     "group": "oil-gas",
     "pkgName": "@modelscript/eclipse",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx eclipse",
     "actions": [
@@ -913,7 +913,7 @@
     "role": "Reactor thermal-hydraulics & kinetics",
     "group": "nuclear",
     "pkgName": "@modelscript/relap5",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx relap5",
     "actions": [
@@ -943,7 +943,7 @@
     "role": "Marine operations & riser dynamics",
     "group": "marine",
     "pkgName": "@modelscript/sima",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx sima",
     "actions": [
@@ -978,7 +978,7 @@
     "role": "Analog circuit simulation",
     "group": "electronics",
     "pkgName": "@modelscript/spice",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "stable",
     "cliCommand": "msx spice",
     "actions": [
@@ -1011,7 +1011,7 @@
     "role": "Analog compact device models",
     "group": "electronics",
     "pkgName": "@modelscript/verilog-a",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx verilog-a",
     "actions": [
@@ -1041,7 +1041,7 @@
     "role": "I/O buffer behavioral models",
     "group": "electronics",
     "pkgName": "@modelscript/ibis",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx ibis",
     "actions": [
@@ -1071,7 +1071,7 @@
     "role": "RF & signal-integrity S-parameters",
     "group": "electronics",
     "pkgName": "@modelscript/touchstone",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx touchstone",
     "actions": [
@@ -1102,7 +1102,7 @@
     "role": "Robot kinematics & dynamics",
     "group": "robotics",
     "pkgName": "@modelscript/urdf",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx urdf",
     "actions": [
@@ -1136,7 +1136,7 @@
     "role": "PLC control software",
     "group": "robotics",
     "pkgName": "@modelscript/plcopen",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx plcopen",
     "actions": [
@@ -1167,7 +1167,7 @@
     "role": "Mechanical system dynamics",
     "group": "robotics",
     "pkgName": "@modelscript/adams",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx adams",
     "actions": [
@@ -1200,7 +1200,7 @@
     "role": "Building energy & HVAC",
     "group": "buildings",
     "pkgName": "@modelscript/energyplus",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx energyplus",
     "actions": [
@@ -1231,7 +1231,7 @@
     "role": "Pressurized water distribution",
     "group": "buildings",
     "pkgName": "@modelscript/epanet",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "beta",
     "cliCommand": "msx epanet",
     "actions": [
@@ -1260,7 +1260,7 @@
     "role": "Stormwater & urban drainage",
     "group": "buildings",
     "pkgName": "@modelscript/swmm",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx swmm",
     "actions": [
@@ -1290,7 +1290,7 @@
     "role": "Chemical process flowsheets",
     "group": "process",
     "pkgName": "@modelscript/aspen",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx aspen",
     "actions": [
@@ -1320,7 +1320,7 @@
     "role": "Biochemical reaction networks",
     "group": "life-sciences",
     "pkgName": "@modelscript/sbml",
-    "version": "0.0.18",
+    "version": "0.1.0",
     "tier": "preview",
     "cliCommand": "msx sbml",
     "actions": [

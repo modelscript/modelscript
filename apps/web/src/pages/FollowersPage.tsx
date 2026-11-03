@@ -53,9 +53,11 @@ const TabBar = styled.div`
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: calc(var(--dev-header-height, 0px) + 53px);
-  background: var(--surface-hud, rgba(6, 8, 15, 0.85));
-  backdrop-filter: blur(12px);
-  z-index: 9;
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  transition: background-color 0.25s ease;
+  z-index: 45;
 `;
 
 const TabButton = styled(Link)<{ $active?: boolean | undefined }>`
@@ -210,7 +212,8 @@ export const FollowListPageLayout: React.FC<FollowListPageLayoutProps> = ({
 };
 
 const FollowersPage: React.FC = () => {
-  const { username } = useParams();
+  const { username: rawUsername } = useParams();
+  const username = rawUsername?.startsWith("@") ? rawUsername.slice(1) : rawUsername;
   usePageTitle(username ? `@${username}'s Followers` : "Followers");
   const { token } = useAuth();
   const [users, setUsers] = useState<FollowUser[]>([]);

@@ -65,12 +65,21 @@ function AnimatedBody({
     return geo;
   }, [mesh]);
 
+  useEffect(() => {
+    if (!groupRef.current || !bindingName) return;
+    const tf = animationController.getTransform(bindingName);
+    groupRef.current.position.set(tf.position[0], tf.position[1], tf.position[2]);
+    groupRef.current.scale.set(tf.scale[0], tf.scale[1], tf.scale[2]);
+    if (tf.quaternion && tf.quaternion.length === 4) {
+      groupRef.current.quaternion.set(tf.quaternion[0], tf.quaternion[1], tf.quaternion[2], tf.quaternion[3]);
+    }
+  }, [bindingName, animationController]);
+
   useFrame(() => {
     if (!groupRef.current || !bindingName) return;
     if (animationController.mode === "stopped") return;
 
     // Apply Dynamic Modal Mesh Morphing
-
     const modalDisp = (
       animationController as AnimationController & {
         getModalDisplacements?: (name: string, vertexCount: number) => Float32Array | number[] | undefined;
@@ -85,51 +94,17 @@ function AnimatedBody({
       posAttr.needsUpdate = true;
     }
 
-    // Get the transform components (position is easy, rotation needs special handling)
     const tf = animationController.getTransform(bindingName);
 
     // Apply Position
     groupRef.current.position.set(tf.position[0], tf.position[1], tf.position[2]);
 
-    // Apply Dynamic Scaling (Workstream 1: Soft-tissue mesh morphing & volume deformation)
+    // Apply Dynamic Scaling
     groupRef.current.scale.set(tf.scale[0], tf.scale[1], tf.scale[2]);
 
-    // Apply Rotation
-    // In our App bindings setup, we mapped the 9 R.T matrix components to tf.rotation array indices 0..8!
-    // Since tf.rotation is typed as [number, number, number], the array has been expanded but TypeScript doesn't know.
-    // Let's read them safely.
-    const rot = tf.rotation as unknown as number[];
-    if (rot.length >= 9) {
-      // rot contains the 9 elements of Modelica's R.T matrix
-      // Modelica's R.T is the TRANSPOSE of the rotation matrix.
-      // Three.js Matrix4 takes elements in column-major order if using .set(row1, row2, row3, row4),
-      // wait, Matrix4.set(n11, n12, n13, n14, n21, n22, n23, n24, n31, n32, n33, n34...)
-      // The arguments to .set are row-major!
-      // So if rot = [T11, T12, T13, T21, T22, T23, T31, T32, T33], and it's the transpose,
-      // the actual rotation matrix rows are the columns of R.T.
-      // Row 1: T11, T21, T31
-      // Row 2: T12, T22, T32
-      // Row 3: T13, T23, T33
-      const mat = new THREE.Matrix4().set(
-        rot[0],
-        rot[3],
-        rot[6],
-        0,
-        rot[1],
-        rot[4],
-        rot[7],
-        0,
-        rot[2],
-        rot[5],
-        rot[8],
-        0,
-        0,
-        0,
-        0,
-        1,
-      );
-      const quat = new THREE.Quaternion().setFromRotationMatrix(mat);
-      groupRef.current.quaternion.copy(quat);
+    // Apply Orientation Quaternion (from 3x3 R.T + local lengthDirection/widthDirection or Euler angles)
+    if (tf.quaternion && tf.quaternion.length === 4) {
+      groupRef.current.quaternion.set(tf.quaternion[0], tf.quaternion[1], tf.quaternion[2], tf.quaternion[3]);
     }
   });
 
@@ -359,13 +334,29 @@ function App() {
         const { stepMeshes, cadComponents, simulationData } = message.data;
 
         // 1. Load Meshes
-
         const rawMeshes: StepMeshPayload[] = ((stepMeshes as RawStepMesh[]) || []).map((m) => ({
           ...m,
           vertices: m.vertices instanceof Float32Array ? m.vertices : new Float32Array(Object.values(m.vertices || {})),
           normals: m.normals instanceof Float32Array ? m.normals : new Float32Array(Object.values(m.normals || {})),
           indices: m.indices instanceof Uint32Array ? m.indices : new Uint32Array(Object.values(m.indices || {})),
         }));
+
+        const parsedCad = extractCadComponents(cadComponents || []);
+        if (rawMeshes.length === 0 && parsedCad.length > 0) {
+          for (const comp of parsedCad) {
+            if (comp.proceduralMesh && comp.proceduralMesh.vertices.length > 0) {
+              rawMeshes.push({
+                name: comp.cad?.feature || comp.name,
+                vertices: new Float32Array(comp.proceduralMesh.vertices),
+                normals: new Float32Array(comp.proceduralMesh.normals),
+                indices: new Uint32Array(comp.proceduralMesh.indices),
+                color: comp.proceduralMesh.color
+                  ? [comp.proceduralMesh.color[0], comp.proceduralMesh.color[1], comp.proceduralMesh.color[2]]
+                  : [0.4, 0.65, 0.9],
+              });
+            }
+          }
+        }
         setMeshes(rawMeshes);
 
         // 2. Setup AnimationController
@@ -380,15 +371,63 @@ function App() {
           ctrl.loadTimeseries(simulationData.t, simulationData.y, simulationData.states);
         }
 
-        // 4. Setup Bindings from CAD Components
-        const parsedCad = extractCadComponents(cadComponents || []);
-
-        // We map dynamicPosition, dynamicRotation, dynamicScale, and dynamicDeformation to AnimationController bindings.
+        // 4. Setup Bindings from CAD & MSL Visualizer Components
+        const rawCompByName = new Map<string, Record<string, unknown>>();
+        for (const raw of (cadComponents as Record<string, unknown>[]) || []) {
+          if (raw && typeof raw.name === "string") {
+            rawCompByName.set(raw.name, raw);
+          }
+        }
 
         const bindings = parsedCad.map((c: CadComponent & { deformation?: DynamicDeformationConfig | undefined }) => {
-          const compBindings: { property: "position" | "rotation" | "scale"; index: number; variable: string }[] = [];
+          const compBindings: {
+            property:
+              | "position"
+              | "rotation"
+              | "scale"
+              | "shapeOffset"
+              | "lengthDirection"
+              | "widthDirection"
+              | "vectorCoordinates"
+              | "color";
+            index: number;
+            variable: string;
+          }[] = [];
 
-          if (c.cad.dynamicPosition) {
+          // Include pre-extracted dynamicBindings (e.g. from extractArenaVisualizers / extractModelicaCadComponents)
+          if (Array.isArray(c.dynamicBindings)) {
+            for (const b of c.dynamicBindings) {
+              compBindings.push({
+                property: b.property as
+                  | "position"
+                  | "rotation"
+                  | "scale"
+                  | "shapeOffset"
+                  | "lengthDirection"
+                  | "widthDirection"
+                  | "vectorCoordinates"
+                  | "color",
+                index: b.index,
+                variable: b.variable,
+              });
+            }
+          }
+
+          // Include procedural fallback bindings ({ bindings: { position: [...], rotation: [...] } })
+          const rawEntry = rawCompByName.get(c.name);
+          const rawBindings = rawEntry?.bindings as { position?: string[]; rotation?: string[] } | undefined;
+          if (rawBindings?.position && compBindings.every((b) => b.property !== "position")) {
+            rawBindings.position.forEach((v, idx) => {
+              compBindings.push({ property: "position", index: idx, variable: v });
+            });
+          }
+          if (rawBindings?.rotation && compBindings.every((b) => b.property !== "rotation")) {
+            rawBindings.rotation.forEach((v, idx) => {
+              compBindings.push({ property: "rotation", index: idx, variable: v });
+            });
+          }
+
+          if (c.cad.dynamicPosition && compBindings.every((b) => b.property !== "position")) {
             // dynamicPosition is something like "{body1.frame_a.r_0[1], body1.frame_a.r_0[2], body1.frame_a.r_0[3]}"
             const match = c.cad.dynamicPosition.match(/\{([^,]+),\s*([^,]+),\s*([^}]+)\}/);
             if (match && match[1] && match[2] && match[3]) {
@@ -398,7 +437,7 @@ function App() {
             }
           }
 
-          if (c.cad.dynamicRotation) {
+          if (c.cad.dynamicRotation && compBindings.every((b) => b.property !== "rotation")) {
             // dynamicRotation is "body1.frame_a.R.T"
             const prefix = c.cad.dynamicRotation;
             compBindings.push({ property: "rotation", index: 0, variable: `${prefix}[1,1]` });
@@ -412,7 +451,7 @@ function App() {
             compBindings.push({ property: "rotation", index: 8, variable: `${prefix}[3,3]` });
           }
 
-          if (c.cad.dynamicScale) {
+          if (c.cad.dynamicScale && compBindings.every((b) => b.property !== "scale")) {
             const match = c.cad.dynamicScale.match(/\{([^,]+),\s*([^,]+),\s*([^}]+)\}/);
             if (match && match[1] && match[2] && match[3]) {
               compBindings.push({ property: "scale", index: 0, variable: match[1].trim() });
@@ -425,7 +464,8 @@ function App() {
             }
           }
 
-          let deformationConfig: DynamicDeformationConfig | undefined = c.deformation;
+          let deformationConfig: DynamicDeformationConfig | undefined =
+            c.deformation ?? (rawEntry?.deformation as DynamicDeformationConfig | undefined);
           if (!deformationConfig && c.cad?.dynamicDeformation) {
             const volMatch = c.cad.dynamicDeformation.match(/V=([a-zA-Z0-9_.]+)/);
             const v0Match = c.cad.dynamicDeformation.match(/V0=([0-9.eE+-]+)/);
@@ -441,6 +481,11 @@ function App() {
             componentName: c.cad?.feature || c.name,
             bindings: compBindings,
             deformation: deformationConfig,
+            defaults: (c.defaults as Record<string, unknown> | undefined) ?? {
+              position: c.cad.position ?? [0, 0, 0],
+              rotation: c.cad.rotation ?? [0, 0, 0],
+              scale: c.cad.scale ?? [1, 1, 1],
+            },
           };
         });
 

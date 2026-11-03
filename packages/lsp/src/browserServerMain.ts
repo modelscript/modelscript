@@ -3621,6 +3621,10 @@ export interface TreeNodeInfo {
   iconSvg?: string | undefined;
   /** Source modeling language identifier. */
   language?: string | undefined;
+  /** Optional descriptive text or status. */
+  description?: string | null | undefined;
+  /** True when the icon is pending. */
+  pendingIcon?: boolean | undefined;
 }
 
 // ── Fast library tree: works directly from SymbolIndex metadata ──

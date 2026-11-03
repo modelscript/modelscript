@@ -44,14 +44,14 @@ export interface OidcDatabaseAdapter {
     providerAccountId: string,
     accessToken: string,
     refreshToken?: string,
-    expiresAt?: number,
+    expiresAt?: string | number,
   ): void;
   updateOAuthTokens(
     userId: number,
     provider: string,
     accessToken: string,
     refreshToken?: string,
-    expiresAt?: number,
+    expiresAt?: string | number,
   ): void;
   getUserById<T extends OidcUserRecord = OidcUserRecord>(id: number): T | undefined;
   getUserByEmail<T extends OidcUserRecord = OidcUserRecord>(email: string): T | undefined;
@@ -109,6 +109,14 @@ export class OidcService {
   private clientSecret: string;
   private redirectUri: string;
   private adminGroup: string;
+  private customAuthorizationEndpoint?: string | undefined;
+  private customTokenEndpoint?: string | undefined;
+  private discoveryCache: {
+    authorizationEndpoint?: string | undefined;
+    tokenEndpoint?: string | undefined;
+    jwksUri?: string | undefined;
+    expiresAt: number;
+  } | null = null;
 
   constructor(options?: {
     issuerUrl?: string | undefined;
@@ -116,6 +124,8 @@ export class OidcService {
     clientSecret?: string | undefined;
     redirectUri?: string | undefined;
     adminGroup?: string | undefined;
+    authorizationEndpoint?: string | undefined;
+    tokenEndpoint?: string | undefined;
   }) {
     let rawIssuer = (options?.issuerUrl || process.env["OIDC_ISSUER_URL"] || "").trim();
     while (rawIssuer.endsWith("/")) {
@@ -129,14 +139,76 @@ export class OidcService {
       process.env["OIDC_REDIRECT_URI"] ||
       `${process.env["PUBLIC_URL"] || "http://localhost:3000"}/api/v1/auth/oidc/callback`;
     this.adminGroup = options?.adminGroup || process.env["OIDC_ADMIN_GROUP"] || "Engineering-Admins";
+    this.customAuthorizationEndpoint =
+      options?.authorizationEndpoint || process.env["OIDC_AUTHORIZATION_ENDPOINT"] || undefined;
+    this.customTokenEndpoint = options?.tokenEndpoint || process.env["OIDC_TOKEN_ENDPOINT"] || undefined;
   }
 
   public isConfigured(): boolean {
     return Boolean(this.issuerUrl && this.clientId && this.clientSecret);
   }
 
+  /**
+   * Resolves OIDC endpoints (`authorization_endpoint`, `token_endpoint`, `jwks_uri`)
+   * from `${issuerUrl}/.well-known/openid-configuration`, falling back to standard
+   * `/protocol/openid-connect/{auth,token}` paths when offline or unreachable.
+   */
+  public async discoverEndpoints(): Promise<{
+    authorizationEndpoint: string;
+    tokenEndpoint: string;
+    jwksUri?: string | undefined;
+  }> {
+    const fallbackAuth = this.customAuthorizationEndpoint || `${this.issuerUrl}/protocol/openid-connect/auth`;
+    const fallbackToken = this.customTokenEndpoint || `${this.issuerUrl}/protocol/openid-connect/token`;
+
+    if (!this.issuerUrl) {
+      return { authorizationEndpoint: fallbackAuth, tokenEndpoint: fallbackToken };
+    }
+
+    const now = Date.now();
+    if (this.discoveryCache && now < this.discoveryCache.expiresAt) {
+      return {
+        authorizationEndpoint:
+          this.customAuthorizationEndpoint || this.discoveryCache.authorizationEndpoint || fallbackAuth,
+        tokenEndpoint: this.customTokenEndpoint || this.discoveryCache.tokenEndpoint || fallbackToken,
+        jwksUri: this.discoveryCache.jwksUri,
+      };
+    }
+
+    try {
+      const configRes = await fetch(`${this.issuerUrl}/.well-known/openid-configuration`);
+      if (configRes.ok) {
+        const config = (await configRes.json()) as {
+          authorization_endpoint?: string | undefined;
+          token_endpoint?: string | undefined;
+          jwks_uri?: string | undefined;
+        };
+        this.discoveryCache = {
+          authorizationEndpoint: config.authorization_endpoint,
+          tokenEndpoint: config.token_endpoint,
+          jwksUri: config.jwks_uri,
+          expiresAt: now + 3600 * 1000,
+        };
+        return {
+          authorizationEndpoint: this.customAuthorizationEndpoint || config.authorization_endpoint || fallbackAuth,
+          tokenEndpoint: this.customTokenEndpoint || config.token_endpoint || fallbackToken,
+          jwksUri: config.jwks_uri,
+        };
+      }
+    } catch {
+      // Offline or discovery endpoint unreachable; use fallback endpoints
+    }
+
+    return { authorizationEndpoint: fallbackAuth, tokenEndpoint: fallbackToken };
+  }
+
   public getAuthorizationUrl(state: string, nonce: string): string {
-    const authEndpoint = `${this.issuerUrl}/protocol/openid-connect/auth`;
+    const authEndpoint =
+      this.customAuthorizationEndpoint ||
+      (this.discoveryCache && Date.now() < this.discoveryCache.expiresAt
+        ? this.discoveryCache.authorizationEndpoint
+        : undefined) ||
+      `${this.issuerUrl}/protocol/openid-connect/auth`;
     const params = new URLSearchParams({
       client_id: this.clientId,
       response_type: "code",
@@ -148,8 +220,18 @@ export class OidcService {
     return `${authEndpoint}?${params.toString()}`;
   }
 
-  public async exchangeCode(code: string): Promise<{ idToken: string; accessToken: string }> {
-    const tokenEndpoint = `${this.issuerUrl}/protocol/openid-connect/token`;
+  public async resolveAuthorizationUrl(state: string, nonce: string): Promise<string> {
+    await this.discoverEndpoints();
+    return this.getAuthorizationUrl(state, nonce);
+  }
+
+  public async exchangeCode(code: string): Promise<{
+    idToken: string;
+    accessToken: string;
+    refreshToken?: string | undefined;
+    expiresIn?: number | undefined;
+  }> {
+    const { tokenEndpoint } = await this.discoverEndpoints();
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       client_id: this.clientId,
@@ -169,10 +251,17 @@ export class OidcService {
       throw new Error(`OIDC token exchange failed (${response.status}): ${errText}`);
     }
 
-    const data = (await response.json()) as { id_token: string; access_token: string };
+    const data = (await response.json()) as {
+      id_token: string;
+      access_token: string;
+      refresh_token?: string | undefined;
+      expires_in?: number | undefined;
+    };
     return {
       idToken: data.id_token,
       accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresIn: data.expires_in,
     };
   }
 
@@ -196,7 +285,17 @@ export class OidcService {
       if (!configRes.ok) {
         throw new Error(`Failed to fetch OpenID configuration from ${this.issuerUrl}`);
       }
-      const config = (await configRes.json()) as { jwks_uri?: string | undefined };
+      const config = (await configRes.json()) as {
+        authorization_endpoint?: string | undefined;
+        token_endpoint?: string | undefined;
+        jwks_uri?: string | undefined;
+      };
+      this.discoveryCache = {
+        authorizationEndpoint: config.authorization_endpoint,
+        tokenEndpoint: config.token_endpoint,
+        jwksUri: config.jwks_uri,
+        expiresAt: now + 3600 * 1000,
+      };
       if (!config.jwks_uri) {
         throw new Error("OpenID configuration is missing jwks_uri");
       }
@@ -333,6 +432,7 @@ export class OidcService {
   public async handleOidcLogin<TUser extends OidcUserRecord = OidcUserRecord>(
     database: OidcDatabaseAdapter,
     claims: OidcClaims,
+    tokens?: { accessToken?: string | undefined; refreshToken?: string | undefined; expiresIn?: number | undefined },
   ): Promise<{
     token: string;
     tempToken?: string | undefined;
@@ -346,6 +446,12 @@ export class OidcService {
       userGroups.includes(this.adminGroup) || userGroups.includes("admin") || userGroups.includes("administrators");
 
     const targetAccountType = isAdmin ? "admin" : "user";
+    const resolvedAccessToken = tokens?.accessToken || "oidc_verified_session";
+    const resolvedRefreshToken = tokens?.refreshToken;
+    const resolvedExpiresAt =
+      typeof tokens?.expiresIn === "number" && tokens.expiresIn > 0
+        ? new Date(Date.now() + tokens.expiresIn * 1000).toISOString()
+        : undefined;
 
     // 1. Check if user exists by OAuth provider linkage
     const existingOauth = database.getOAuthAccount("oidc", claims.sub);
@@ -360,6 +466,9 @@ export class OidcService {
         if (isAdmin && user.account_type !== "admin") {
           database.setUserAccountType(user.id, "admin");
           user.account_type = "admin";
+        }
+        if (tokens?.accessToken) {
+          database.updateOAuthTokens(user.id, "oidc", resolvedAccessToken, resolvedRefreshToken, resolvedExpiresAt);
         }
         if (user.totp_enabled === 1) {
           const tempToken = jwt.sign(
@@ -428,13 +537,20 @@ export class OidcService {
           database.updatePassword(user.id, "!oidc_sso_only");
           user.password_hash = "!oidc_sso_only";
         }
-        database.linkOAuthAccount(user.id, "oidc", claims.sub, "linked_oidc", undefined, undefined);
+        database.linkOAuthAccount(
+          user.id,
+          "oidc",
+          claims.sub,
+          resolvedAccessToken,
+          resolvedRefreshToken,
+          resolvedExpiresAt,
+        );
       }
       if (isAdmin && user.account_type !== "admin") {
         database.setUserAccountType(user.id, "admin");
         user.account_type = "admin";
       }
-      database.updateOAuthTokens(user.id, "oidc", "linked_oidc", undefined, undefined);
+      database.updateOAuthTokens(user.id, "oidc", resolvedAccessToken, resolvedRefreshToken, resolvedExpiresAt);
       if (user.totp_enabled === 1) {
         const tempToken = jwt.sign(
           {
@@ -488,8 +604,15 @@ export class OidcService {
       termsAcceptedAt: new Date().toISOString(),
     });
 
-    database.linkOAuthAccount(created.id, "oidc", claims.sub, "linked_oidc", undefined, undefined);
-    database.updateOAuthTokens(created.id, "oidc", "linked_oidc", undefined, undefined);
+    database.linkOAuthAccount(
+      created.id,
+      "oidc",
+      claims.sub,
+      resolvedAccessToken,
+      resolvedRefreshToken,
+      resolvedExpiresAt,
+    );
+    database.updateOAuthTokens(created.id, "oidc", resolvedAccessToken, resolvedRefreshToken, resolvedExpiresAt);
 
     database.logAudit({
       actorId: created.id,

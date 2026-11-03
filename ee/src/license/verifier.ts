@@ -102,6 +102,11 @@ export const PRODUCTION_ENTERPRISE_PUBLIC_KEY_PEM = [
 export const DEFAULT_ENTERPRISE_PUBLIC_KEY_PEM = PRODUCTION_ENTERPRISE_PUBLIC_KEY_PEM;
 
 /**
+ * License JTIs that have been explicitly revoked (e.g., previously committed example tokens).
+ */
+export const REVOKED_LICENSE_JTIS: ReadonlySet<string> = new Set(["lic_c78c809d5618433c"]);
+
+/**
  * Generates a fresh random Ed25519 keypair in PEM format for signing enterprise license tokens.
  */
 export function generateLicenseKeyPair(): Ed25519KeyPairPem {
@@ -121,8 +126,17 @@ export function signEnterpriseLicense(
     jti?: string | undefined;
     iat?: number | undefined;
   },
-  privateKeyPem: string = DEFAULT_KEYPAIR.privateKeyPem,
+  privateKeyPem?: string,
 ): string {
+  const isStrictProdEnforce = process.env["NODE_ENV"] === "production" && process.env["MSX_LICENSE_ENFORCE"] === "true";
+  const resolvedPrivateKey = privateKeyPem || process.env["MSX_LICENSE_PRIVATE_KEY"];
+  if (!resolvedPrivateKey && isStrictProdEnforce) {
+    throw new Error(
+      "Explicit privateKeyPem or MSX_LICENSE_PRIVATE_KEY is required when NODE_ENV=production and MSX_LICENSE_ENFORCE=true.",
+    );
+  }
+  const signingKeyPem = resolvedPrivateKey || DEFAULT_KEYPAIR.privateKeyPem;
+
   const nowSec = Math.floor(Date.now() / 1000);
   const fullClaims: EnterpriseLicenseClaims = {
     v: 1,
@@ -138,7 +152,7 @@ export function signEnterpriseLicense(
 
   const payloadBytes = Buffer.from(JSON.stringify(fullClaims), "utf-8");
   const payloadB64 = payloadBytes.toString("base64url");
-  const signatureBytes = crypto.sign(null, Buffer.from(payloadB64, "utf-8"), privateKeyPem);
+  const signatureBytes = crypto.sign(null, Buffer.from(payloadB64, "utf-8"), signingKeyPem);
   const sigB64 = signatureBytes.toString("base64url");
 
   return `msx_lic_${payloadB64}.${sigB64}`;
@@ -174,9 +188,19 @@ export function verifyEnterpriseLicense(
     };
   }
 
+  const isStrictProdEnforce = process.env["NODE_ENV"] === "production" && process.env["MSX_LICENSE_ENFORCE"] === "true";
+  const explicitKey = options?.publicKeyPem || process.env["MSX_LICENSE_PUBLIC_KEY"];
+  if (!explicitKey && isStrictProdEnforce) {
+    return {
+      valid: false,
+      mode: "invalid",
+      reason:
+        "Explicit publicKeyPem or MSX_LICENSE_PUBLIC_KEY is required when NODE_ENV=production and MSX_LICENSE_ENFORCE=true.",
+    };
+  }
+
   const payloadB64 = body.slice(0, dotIdx);
   const sigB64 = body.slice(dotIdx + 1);
-  const explicitKey = options?.publicKeyPem || process.env["MSX_LICENSE_PUBLIC_KEY"];
   const candidatePublicKeys = explicitKey
     ? [explicitKey]
     : process.env["NODE_ENV"] === "production"
@@ -226,6 +250,15 @@ export function verifyEnterpriseLicense(
       iat: parsed.iat,
       exp: parsed.exp,
     };
+
+    if (REVOKED_LICENSE_JTIS.has(claims.jti)) {
+      return {
+        valid: false,
+        mode: "invalid",
+        claims,
+        reason: `Enterprise license '${claims.jti}' has been revoked.`,
+      };
+    }
 
     const nowSec = options?.nowSeconds ?? Math.floor(Date.now() / 1000);
     if (claims.exp <= nowSec) {

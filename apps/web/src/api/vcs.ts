@@ -533,6 +533,10 @@ function getSynthesizedFallbackSpec(projectIdOrPath: string): FallbackRepoSpec {
   };
 }
 
+export function getRepoFallbackStars(projectIdOrPath: string): number {
+  return getSynthesizedFallbackSpec(projectIdOrPath).stars;
+}
+
 export async function getAllRepoFilePaths(
   projectIdOrPath: string,
   ref = "main",
@@ -684,7 +688,7 @@ export const getGitlabProject = async (
         star_count: data.stargazers_count ?? fb.stars,
         forks_count: data.forks_count ?? fb.forks,
         watchers_count: data.subscribers_count ?? data.watchers_count ?? fb.watchers,
-        open_issues_count: data.open_issues_count ?? 3,
+        open_issues_count: data.open_issues_count ?? 0,
         license: data.license?.spdx_id || data.license?.name || fb.license,
         topics: Array.isArray(data.topics) && data.topics.length > 0 ? data.topics : fb.topics,
         avatar_url: data.owner?.avatar_url || null,
@@ -731,7 +735,7 @@ export const getGitlabProject = async (
         star_count: data.star_count ?? fb.stars,
         forks_count: data.forks_count ?? fb.forks,
         watchers_count: data.star_count ?? fb.watchers,
-        open_issues_count: data.open_issues_count ?? 2,
+        open_issues_count: data.open_issues_count ?? 0,
         license: data.license?.name || fb.license,
         topics:
           Array.isArray(data.topics) && data.topics.length > 0
@@ -1020,51 +1024,6 @@ export const getGitlabCommits = async (
     }
   })();
 
-  const owner = projectIdOrPath.split("/")[0] || "maintainers";
-  const fallbackCommits: GitlabCommit[] = [
-    ...localCommits,
-    {
-      id: "a4f9c2187e3b9012d4567890abcdef1234567890",
-      short_id: "a4f9c218",
-      title: "Verify DAE structural balance and lock regression tolerances",
-      message: "Verify DAE structural balance and lock regression tolerances across continuous/discrete partitions.",
-      author_name: owner,
-      author_email: "engineering@modelscript.org",
-      created_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
-      status: "success",
-    },
-    {
-      id: "7c31e804b12a9801c23456789abcdef012345678",
-      short_id: "7c31e804",
-      title: "Add FMI 3.0 co-simulation step-size adaptation & Jacobian directional derivatives",
-      message: "Add FMI 3.0 co-simulation step-size adaptation & Jacobian directional derivatives",
-      author_name: "elena_vance",
-      author_email: "elena@modelscript.org",
-      created_at: new Date(Date.now() - 26 * 3600_000).toISOString(),
-      status: "success",
-    },
-    {
-      id: "9d02b115f44e7654a123456789abcdef98765432",
-      short_id: "9d02b115",
-      title: "Tighten SI unit consistency checks on thermal-fluid port connectors",
-      message: "Tighten SI unit consistency checks on thermal-fluid port connectors",
-      author_name: "marcus_chen",
-      author_email: "marcus@modelscript.org",
-      created_at: new Date(Date.now() - 4 * 86400_000).toISOString(),
-      status: "success",
-    },
-    {
-      id: "3e88a410c21b3321f6543210fedcba9876543210",
-      short_id: "3e88a410",
-      title: "Update reference trajectories and benchmark documentation",
-      message: "Update reference trajectories and benchmark documentation",
-      author_name: owner,
-      author_email: "engineering@modelscript.org",
-      created_at: new Date(Date.now() - 9 * 86400_000).toISOString(),
-      status: "success",
-    },
-  ];
-
   if (provider === "github" && !isActivityVaultPath(projectIdOrPath)) {
     try {
       const { data } = await axios.get(
@@ -1082,7 +1041,7 @@ export const getGitlabCommits = async (
       }));
       return [...localCommits, ...remote];
     } catch {
-      return fallbackCommits;
+      return localCommits;
     }
   }
 
@@ -1102,7 +1061,7 @@ export const getGitlabCommits = async (
         return data;
       } catch (err) {
         rethrowIfActivityOrAuthError(projectIdOrPath, err);
-        return fallbackCommits;
+        return localCommits;
       }
     }
   }
@@ -1117,67 +1076,18 @@ export const getGitlabCommits = async (
     return data;
   } catch (err) {
     rethrowIfActivityOrAuthError(projectIdOrPath, err);
-    return fallbackCommits;
+    return localCommits;
   }
 };
 
-function getFallbackPipelines(projectIdOrPath: string, refName: string): GitlabPipeline[] {
-  const localRuns: GitlabPipeline[] = (() => {
-    if (typeof localStorage === "undefined") return [];
-    try {
-      const raw = localStorage.getItem(`modelscript.vcs.pipelines.${projectIdOrPath}`);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  })();
-
-  const baseUrl = `https://github.com/${projectIdOrPath}/actions`;
-  const defaults: GitlabPipeline[] = [
-    {
-      id: 9042,
-      iid: 148,
-      project_id: 1,
-      status: "success",
-      ref: refName,
-      sha: "a4f9c2187e3b9012d4567890abcdef1234567890",
-      source: "push",
-      workflow_name: "ModelScript DAE Balance & OMC Parity Suite",
-      commit_title: "Verify DAE structural balance and lock regression tolerances",
-      web_url: baseUrl,
-      created_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
-      updated_at: new Date(Date.now() - 2 * 3600_000 + 84_000).toISOString(),
-    },
-    {
-      id: 9041,
-      iid: 147,
-      project_id: 1,
-      status: "success",
-      ref: refName,
-      sha: "7c31e804b12a9801c23456789abcdef012345678",
-      source: "pull_request",
-      workflow_name: "FMI 2.0 / 3.0 Export & Co-Simulation Verification",
-      commit_title: "Add FMI 3.0 co-simulation step-size adaptation & Jacobian directional derivatives",
-      web_url: baseUrl,
-      created_at: new Date(Date.now() - 26 * 3600_000).toISOString(),
-      updated_at: new Date(Date.now() - 26 * 3600_000 + 112_000).toISOString(),
-    },
-    {
-      id: 9040,
-      iid: 146,
-      project_id: 1,
-      status: "success",
-      ref: refName,
-      sha: "9d02b115f44e7654a123456789abcdef98765432",
-      source: "schedule",
-      workflow_name: "SysML v2 Requirement & SI Unit Compliance Audit",
-      commit_title: "Tighten SI unit consistency checks on thermal-fluid port connectors",
-      web_url: baseUrl,
-      created_at: new Date(Date.now() - 4 * 86400_000).toISOString(),
-      updated_at: new Date(Date.now() - 4 * 86400_000 + 68_000).toISOString(),
-    },
-  ];
-  return [...localRuns, ...defaults];
+function getLocalPipelines(projectIdOrPath: string): GitlabPipeline[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(`modelscript.vcs.pipelines.${projectIdOrPath}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 }
 
 export const triggerGitlabPipeline = async (
@@ -1208,7 +1118,7 @@ export const triggerGitlabPipeline = async (
     project_id: remotePipeline?.project_id || 1,
     status: remotePipeline?.status || "success",
     ref: remotePipeline?.ref || refName,
-    sha: remotePipeline?.sha || "a4f9c2187e3b9012d4567890abcdef1234567890",
+    sha: remotePipeline?.sha || "",
     source: remotePipeline?.source || "workflow_dispatch",
     workflow_name: remotePipeline?.workflow_name || workflowName,
     commit_title: remotePipeline?.commit_title || `Manual verification run (${workflowName})`,
@@ -1218,8 +1128,7 @@ export const triggerGitlabPipeline = async (
   };
   if (typeof localStorage !== "undefined") {
     try {
-      const raw = localStorage.getItem(`modelscript.vcs.pipelines.${projectIdOrPath}`);
-      const prev: GitlabPipeline[] = raw ? JSON.parse(raw) : [];
+      const prev = getLocalPipelines(projectIdOrPath);
       localStorage.setItem(`modelscript.vcs.pipelines.${projectIdOrPath}`, JSON.stringify([newRun, ...prev]));
     } catch {
       // Ignore
@@ -1264,9 +1173,9 @@ export const getGitlabPipelines = async (
           updated_at: run.updated_at,
         }));
       }
-      return getFallbackPipelines(projectIdOrPath, refName);
+      return getLocalPipelines(projectIdOrPath);
     } catch {
-      return getFallbackPipelines(projectIdOrPath, refName);
+      return getLocalPipelines(projectIdOrPath);
     }
   }
 
@@ -1276,7 +1185,7 @@ export const getGitlabPipelines = async (
         `https://gitlab.com/api/v4/projects/${encodeURIComponent(projectIdOrPath)}/pipelines`,
         { params: { ref: refName, per_page: 20 } },
       );
-      return data.length > 0 ? data : getFallbackPipelines(projectIdOrPath, refName);
+      return data.length > 0 ? data : getLocalPipelines(projectIdOrPath);
     } catch {
       try {
         const { data } = await api.get<GitlabPipeline[]>(
@@ -1285,7 +1194,7 @@ export const getGitlabPipelines = async (
         );
         return data;
       } catch {
-        return getFallbackPipelines(projectIdOrPath, refName);
+        return getLocalPipelines(projectIdOrPath);
       }
     }
   }
@@ -1299,60 +1208,9 @@ export const getGitlabPipelines = async (
     );
     return data;
   } catch {
-    return getFallbackPipelines(projectIdOrPath, refName);
+    return getLocalPipelines(projectIdOrPath);
   }
 };
-
-function getFallbackPipelineJobs(projectIdOrPath: string, pipelineId: number): GitlabJob[] {
-  const now = Date.now();
-  return [
-    {
-      id: pipelineId * 10 + 1,
-      status: "success",
-      stage: "validate",
-      name: "GLR Parser & CompilerLint Static Analysis",
-      ref: "main",
-      created_at: new Date(now - 120_000).toISOString(),
-      started_at: new Date(now - 118_000).toISOString(),
-      finished_at: new Date(now - 104_000).toISOString(),
-      duration: 14.2,
-      web_url: `https://github.com/${projectIdOrPath}/actions`,
-      artifacts: [{ file_type: "sarif", size: 18432, filename: "compiler-diagnostics.sarif.json" }],
-      log_output: `[msx:lint] Initializing WASM GLR parser for ${projectIdOrPath}...\n✓ Indexed symbol table (Salsa QueryEngine memoization active)\n✓ Checked syntax-placement, types-expressions, hierarchy-variability, connections-streams\n✓ 0 errors, 0 warnings across repository models — 100% passed (14.2s)`,
-    },
-    {
-      id: pipelineId * 10 + 2,
-      status: "success",
-      stage: "flatten",
-      name: "DAE Arena Flattening & Pantelides BLT Structural Balance",
-      ref: "main",
-      created_at: new Date(now - 104_000).toISOString(),
-      started_at: new Date(now - 103_000).toISOString(),
-      finished_at: new Date(now - 74_000).toISOString(),
-      duration: 28.6,
-      web_url: `https://github.com/${projectIdOrPath}/actions`,
-      artifacts: [{ file_type: "json", size: 65536, filename: "dae-blt-incidence.json" }],
-      log_output: `[msx:flatten] Lowering CST to linear-memory DAEBuilder arena...\n[msx:blt] Running Tarjan strong component decomposition & Pantelides index reduction...\n✓ System is structurally balanced: 148 continuous states, 148 equations (index-1 DAE)\n✓ Constant folding & alias elimination reduced algebraic system by 42.5% (28.6s)`,
-    },
-    {
-      id: pipelineId * 10 + 3,
-      status: "success",
-      stage: "simulate",
-      name: "SUNDIALS IDA / CVODE Numerical Trajectory Verification",
-      ref: "main",
-      created_at: new Date(now - 74_000).toISOString(),
-      started_at: new Date(now - 73_000).toISOString(),
-      finished_at: new Date(now - 32_000).toISOString(),
-      duration: 41.3,
-      web_url: `https://github.com/${projectIdOrPath}/actions`,
-      artifacts: [
-        { file_type: "csv", size: 245760, filename: "trajectory-verification.csv" },
-        { file_type: "fmu", size: 512000, filename: "model-exchange-v3.fmu" },
-      ],
-      log_output: `[msx:simulate] Solver: SUNDIALS IDA (relTol=1e-6, absTol=1e-8, stopTime=10.0s)\n[msx:verify] Comparing trajectory against reference baseline...\n✓ Max Normalized Relative Error: 1.42e-5 (threshold < 1.0e-3)\n✓ Exported FMI 3.0 Co-Simulation & Model Exchange archive (model-exchange-v3.fmu)`,
-    },
-  ];
-}
 
 export const getGitlabPipelineJobs = async (
   projectIdOrPath: string,
@@ -1389,13 +1247,12 @@ export const getGitlabPipelineJobs = async (
               ? Math.max(0, (new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000)
               : null,
           web_url: job.html_url || `https://github.com/${projectIdOrPath}/actions/runs/${pipelineId}`,
-          artifacts: [{ file_type: "log", size: 12480, filename: `${(job.name || "job").replace(/\s+/g, "-")}.log` }],
-          log_output: `[runner] Job "${job.name}" (${job.head_branch || "main"})\n✓ Status: ${job.conclusion || job.status}\n✓ All verification steps completed — 100% passed.`,
+          artifacts: [],
         }));
       }
-      return getFallbackPipelineJobs(projectIdOrPath, pipelineId);
+      return [];
     } catch {
-      return getFallbackPipelineJobs(projectIdOrPath, pipelineId);
+      return [];
     }
   }
 
@@ -1404,15 +1261,15 @@ export const getGitlabPipelineJobs = async (
       const { data } = await axios.get<GitlabJob[]>(
         `https://gitlab.com/api/v4/projects/${encodeURIComponent(projectIdOrPath)}/pipelines/${pipelineId}/jobs`,
       );
-      return data.length > 0 ? data : getFallbackPipelineJobs(projectIdOrPath, pipelineId);
+      return Array.isArray(data) ? data : [];
     } catch {
       try {
         const { data } = await api.get<GitlabJob[]>(
           `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipelines/${pipelineId}/jobs`,
         );
-        return data;
+        return Array.isArray(data) ? data : [];
       } catch {
-        return getFallbackPipelineJobs(projectIdOrPath, pipelineId);
+        return [];
       }
     }
   }
@@ -1421,9 +1278,9 @@ export const getGitlabPipelineJobs = async (
     const { data } = await api.get<GitlabJob[]>(
       `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipelines/${pipelineId}/jobs`,
     );
-    return data;
+    return Array.isArray(data) ? data : [];
   } catch {
-    return getFallbackPipelineJobs(projectIdOrPath, pipelineId);
+    return [];
   }
 };
 
@@ -1444,59 +1301,6 @@ function saveLocalIssues(projectIdOrPath: string, issues: GitlabIssue[]): void {
   } catch {
     // Ignore
   }
-}
-
-function getFallbackIssues(projectIdOrPath: string): GitlabIssue[] {
-  const proj = projectIdOrPath.split("/").pop() || projectIdOrPath;
-  return [
-    {
-      id: 401,
-      iid: 42,
-      project_id: 1,
-      title: `[Solver] Improve zero-crossing hysteresis stability during chattering contact in ${proj}`,
-      description: `When simulating stiff hybrid contact transitions with \`relTol = 1e-6\`, state event bisection in \`IDA\` can trigger repeated root evaluations.\n\n### Proposed Fix\n- Add deadband epsilon \`1e-9\` around signed distance root function\n- Add regression test in \`testsuite/\``,
-      state: "opened",
-      created_at: new Date(Date.now() - 18 * 3600_000).toISOString(),
-      updated_at: new Date(Date.now() - 6 * 3600_000).toISOString(),
-      author: { name: "Elena Vance", username: "elena_vance" },
-      labels: ["dae-solver", "numerical", "enhancement"],
-      comments: [
-        {
-          id: 1,
-          author: "marcus_chen",
-          body: "Verified that adding a `noEvent` hysteresis band reduces event iterations from 34 to 2.",
-          created_at: new Date(Date.now() - 8 * 3600_000).toISOString(),
-        },
-      ],
-    },
-    {
-      id: 402,
-      iid: 41,
-      project_id: 1,
-      title: "Support FMI 3.0 directional derivative export for sparse tearing blocks",
-      description:
-        "Expose `fmi3GetDirectionalDerivative` and `fmi3GetAdjointDerivative` on exported FMU archives for hardware-in-the-loop co-simulation.",
-      state: "opened",
-      created_at: new Date(Date.now() - 3 * 86400_000).toISOString(),
-      updated_at: new Date(Date.now() - 2 * 86400_000).toISOString(),
-      author: { name: "Marcus Chen", username: "marcus_chen" },
-      labels: ["fmi", "co-simulation"],
-      comments: [],
-    },
-    {
-      id: 403,
-      iid: 38,
-      project_id: 1,
-      title: "Fix SI unit display annotation for rotational damping constant",
-      description: "Resolved unit conversion between `N.m.s/rad` and `J.s/rad` in component inspector.",
-      state: "closed",
-      created_at: new Date(Date.now() - 12 * 86400_000).toISOString(),
-      updated_at: new Date(Date.now() - 7 * 86400_000).toISOString(),
-      author: { name: "Claire Dubois", username: "claire_dubois" },
-      labels: ["bug", "units"],
-      comments: [],
-    },
-  ];
 }
 
 function mergeIssuesWithLocal(remoteIssues: GitlabIssue[], projectIdOrPath: string): GitlabIssue[] {
@@ -1543,9 +1347,9 @@ export const getGitlabIssues = async (projectIdOrPath: string, provider: string 
           },
           labels: i.labels.map((l) => (typeof l === "string" ? l : l.name)),
         }));
-      return mergeIssuesWithLocal(mapped.length > 0 ? mapped : getFallbackIssues(projectIdOrPath), projectIdOrPath);
+      return mergeIssuesWithLocal(mapped, projectIdOrPath);
     } catch {
-      return mergeIssuesWithLocal(getFallbackIssues(projectIdOrPath), projectIdOrPath);
+      return getLocalIssues(projectIdOrPath);
     }
   }
 
@@ -1554,13 +1358,13 @@ export const getGitlabIssues = async (projectIdOrPath: string, provider: string 
       const { data } = await axios.get<GitlabIssue[]>(
         `https://gitlab.com/api/v4/projects/${encodeURIComponent(projectIdOrPath)}/issues?per_page=25`,
       );
-      return mergeIssuesWithLocal(data.length > 0 ? data : getFallbackIssues(projectIdOrPath), projectIdOrPath);
+      return mergeIssuesWithLocal(Array.isArray(data) ? data : [], projectIdOrPath);
     } catch {
       try {
         const { data } = await api.get<GitlabIssue[]>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues`);
         return data;
       } catch {
-        return mergeIssuesWithLocal(getFallbackIssues(projectIdOrPath), projectIdOrPath);
+        return getLocalIssues(projectIdOrPath);
       }
     }
   }
@@ -1569,7 +1373,7 @@ export const getGitlabIssues = async (projectIdOrPath: string, provider: string 
     const { data } = await api.get<GitlabIssue[]>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues`);
     return data;
   } catch {
-    return mergeIssuesWithLocal(getFallbackIssues(projectIdOrPath), projectIdOrPath);
+    return getLocalIssues(projectIdOrPath);
   }
 };
 
@@ -1601,8 +1405,8 @@ export const createGitlabIssue = async (
     }
   }
 
-  const existing = mergeIssuesWithLocal(getFallbackIssues(projectIdOrPath), projectIdOrPath);
-  const nextIid = existing.reduce((max, i) => Math.max(max, i.iid || 0), 40) + 1;
+  const local = getLocalIssues(projectIdOrPath);
+  const nextIid = local.reduce((max, i) => Math.max(max, i.iid || 0), 0) + 1;
   const created: GitlabIssue = {
     id: Date.now(),
     iid: nextIid,
@@ -1619,7 +1423,6 @@ export const createGitlabIssue = async (
     labels: labels.length > 0 ? labels : ["triage"],
     comments: [],
   };
-  const local = getLocalIssues(projectIdOrPath);
   saveLocalIssues(projectIdOrPath, [created, ...local]);
   return created;
 };
@@ -1643,7 +1446,7 @@ export const updateGitlabIssueState = async (
     // Offline or unauthenticated fallback — always update local state below
   }
 
-  const allIssues = mergeIssuesWithLocal(getFallbackIssues(projectIdOrPath), projectIdOrPath);
+  const allIssues = getLocalIssues(projectIdOrPath);
   const issue: GitlabIssue =
     typeof issueOrIid === "number"
       ? allIssues.find((i) => i.iid === issueOrIid) || {
@@ -1666,7 +1469,7 @@ export const updateGitlabIssueState = async (
     state: nextState,
     updated_at: new Date().toISOString(),
   };
-  const local = getLocalIssues(projectIdOrPath).filter((i) => i.iid !== issue.iid);
+  const local = allIssues.filter((i) => i.iid !== issue.iid);
   saveLocalIssues(projectIdOrPath, [updated, ...local]);
   return updated;
 };
@@ -1691,7 +1494,7 @@ export const addGitlabIssueComment = async (
     // Offline or unauthenticated fallback — always update local state below
   }
 
-  const allIssues = mergeIssuesWithLocal(getFallbackIssues(projectIdOrPath), projectIdOrPath);
+  const allIssues = getLocalIssues(projectIdOrPath);
   const issue: GitlabIssue | undefined =
     typeof issueOrIid === "number" ? allIssues.find((i) => i.iid === issueOrIid) : issueOrIid;
 
@@ -1707,7 +1510,7 @@ export const addGitlabIssueComment = async (
       updated_at: new Date().toISOString(),
       comments: [...(issue.comments || []), nextComment],
     };
-    const local = getLocalIssues(projectIdOrPath).filter((i) => i.iid !== issue.iid);
+    const local = allIssues.filter((i) => i.iid !== issue.iid);
     saveLocalIssues(projectIdOrPath, [updated, ...local]);
   }
   return nextComment;
@@ -1730,60 +1533,6 @@ function saveLocalMergeRequests(projectIdOrPath: string, mrs: GitlabMergeRequest
   } catch {
     // Ignore
   }
-}
-
-function getFallbackMergeRequests(projectIdOrPath: string): GitlabMergeRequest[] {
-  const fb = getSynthesizedFallbackSpec(projectIdOrPath);
-  const target = fb.defaultBranch || "main";
-  return [
-    {
-      id: 701,
-      iid: 19,
-      project_id: 1,
-      title: "feat(solver): Add adaptive Rosenbrock-W stiff integrator step control",
-      description:
-        "Implements 4th-order Rosenbrock-W stiffly accurate step control with analytical Jacobian reuse across non-event intervals.\n\n- Verified on `ChuaCircuit` and `CoupledClutches`\n- Reduces Jacobian factorizations by 38%",
-      state: "opened",
-      created_at: new Date(Date.now() - 14 * 3600_000).toISOString(),
-      updated_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
-      target_branch: target,
-      source_branch: "feature/rosenbrock-w-step",
-      author: { name: "Elena Vance", username: "elena_vance" },
-      labels: ["solver", "performance", "verified"],
-      review_verdict: "APPROVE",
-      diff_files: [
-        {
-          path: "src/SystemArchitecture.mo",
-          additions: 14,
-          deletions: 3,
-          patch: `@@ -4,7 +4,11 @@ model SystemArchitecture\n   parameter Real J_m = 2.4e-4 "Rotor inertia (kg.m2)";\n   parameter Real k_t = 0.85 "Torque constant (N.m/A)";\n+  parameter Real b_visc = 0.015 "Viscous damping (N.m.s/rad)";\n equation\n   i_q = 12.0 * (1.0 - theta);\n   der(theta) = omega;\n-  J_m * der(omega) = k_t * i_q - 0.015 * omega;\n+  J_m * der(omega) = k_t * i_q - b_visc * omega;`,
-        },
-      ],
-    },
-    {
-      id: 702,
-      iid: 18,
-      project_id: 1,
-      title: "fix(fmi): Preserve tunable parameter start attributes in modelDescription.xml",
-      description: 'Ensures `variability="tunable"` parameters emit explicit `start` values for FMI 2.0/3.0 export.',
-      state: "merged",
-      created_at: new Date(Date.now() - 5 * 86400_000).toISOString(),
-      updated_at: new Date(Date.now() - 4 * 86400_000).toISOString(),
-      target_branch: target,
-      source_branch: "fix/fmi-tunable-params",
-      author: { name: "Marcus Chen", username: "marcus_chen" },
-      labels: ["fmi", "bugfix"],
-      review_verdict: "APPROVE",
-      diff_files: [
-        {
-          path: "README.md",
-          additions: 6,
-          deletions: 1,
-          patch: `@@ -10,3 +10,8 @@\n - Verified FMI 2.0 & 3.0 export with tunable parameter start bindings`,
-        },
-      ],
-    },
-  ];
 }
 
 function mergeMrsWithLocal(remoteMrs: GitlabMergeRequest[], projectIdOrPath: string): GitlabMergeRequest[] {
@@ -1837,9 +1586,9 @@ export const getGitlabMergeRequests = async (
         },
         labels: Array.isArray(pr.labels) ? pr.labels.map((l) => l.name) : [],
       }));
-      return mergeMrsWithLocal(mapped.length > 0 ? mapped : getFallbackMergeRequests(projectIdOrPath), projectIdOrPath);
+      return mergeMrsWithLocal(mapped, projectIdOrPath);
     } catch {
-      return mergeMrsWithLocal(getFallbackMergeRequests(projectIdOrPath), projectIdOrPath);
+      return getLocalMergeRequests(projectIdOrPath);
     }
   }
 
@@ -1848,7 +1597,7 @@ export const getGitlabMergeRequests = async (
       const { data } = await axios.get<GitlabMergeRequest[]>(
         `https://gitlab.com/api/v4/projects/${encodeURIComponent(projectIdOrPath)}/merge_requests?per_page=25`,
       );
-      return mergeMrsWithLocal(data.length > 0 ? data : getFallbackMergeRequests(projectIdOrPath), projectIdOrPath);
+      return mergeMrsWithLocal(Array.isArray(data) ? data : [], projectIdOrPath);
     } catch {
       try {
         const { data } = await api.get<GitlabMergeRequest[]>(
@@ -1856,7 +1605,7 @@ export const getGitlabMergeRequests = async (
         );
         return data;
       } catch {
-        return mergeMrsWithLocal(getFallbackMergeRequests(projectIdOrPath), projectIdOrPath);
+        return getLocalMergeRequests(projectIdOrPath);
       }
     }
   }
@@ -1867,7 +1616,7 @@ export const getGitlabMergeRequests = async (
     );
     return data;
   } catch {
-    return mergeMrsWithLocal(getFallbackMergeRequests(projectIdOrPath), projectIdOrPath);
+    return getLocalMergeRequests(projectIdOrPath);
   }
 };
 
@@ -1902,8 +1651,8 @@ export const createGitlabMergeRequest = async (
     }
   }
 
-  const existing = mergeMrsWithLocal(getFallbackMergeRequests(projectIdOrPath), projectIdOrPath);
-  const nextIid = existing.reduce((max, m) => Math.max(max, m.iid || 0), 19) + 1;
+  const local = getLocalMergeRequests(projectIdOrPath);
+  const nextIid = local.reduce((max, m) => Math.max(max, m.iid || 0), 0) + 1;
   const author = payload.authorUsername || "engineer";
   const created: GitlabMergeRequest = {
     id: Date.now(),
@@ -1923,16 +1672,8 @@ export const createGitlabMergeRequest = async (
       username: author,
     },
     labels: ["ready-for-review"],
-    diff_files: [
-      {
-        path: "src/SystemArchitecture.mo",
-        additions: 8,
-        deletions: 2,
-        patch: `@@ -1,5 +1,11 @@\n+// Branch: ${payload.source_branch} -> ${payload.target_branch}\n+// ${payload.title}\n model SystemArchitecture\n   parameter Real J_m = 2.4e-4;\n end SystemArchitecture;`,
-      },
-    ],
+    diff_files: [],
   };
-  const local = getLocalMergeRequests(projectIdOrPath);
   saveLocalMergeRequests(projectIdOrPath, [created, ...local]);
   return created;
 };
@@ -1956,7 +1697,7 @@ export const updateGitlabMergeRequestState = async (
     // Offline or unauthenticated fallback — always update local state below
   }
 
-  const allMrs = mergeMrsWithLocal(getFallbackMergeRequests(projectIdOrPath), projectIdOrPath);
+  const allMrs = getLocalMergeRequests(projectIdOrPath);
   const mr: GitlabMergeRequest =
     typeof mrOrIid === "number"
       ? allMrs.find((m) => m.iid === mrOrIid) || {
@@ -1979,7 +1720,7 @@ export const updateGitlabMergeRequestState = async (
     state: nextState,
     updated_at: new Date().toISOString(),
   };
-  const local = getLocalMergeRequests(projectIdOrPath).filter((m) => m.iid !== mr.iid);
+  const local = allMrs.filter((m) => m.iid !== mr.iid);
   saveLocalMergeRequests(projectIdOrPath, [updated, ...local]);
   return updated;
 };
@@ -1991,11 +1732,11 @@ export const getRepoBotReviewsApi = async (
     const { data } = await api.get<{ reviews: RepoBotReviewRecord[] }>(
       `/repos/${encodeURIComponent(String(repoIdOrSlug))}/reviews`,
     );
-    if (Array.isArray(data?.reviews) && data.reviews.length > 0) {
+    if (Array.isArray(data?.reviews)) {
       return { reviews: data.reviews };
     }
   } catch {
-    // Fallback to local/synthesized reviews
+    // Fallback to local stored reviews if available
   }
 
   if (typeof localStorage !== "undefined") {
@@ -2010,24 +1751,7 @@ export const getRepoBotReviewsApi = async (
     }
   }
 
-  return {
-    reviews: [
-      {
-        id: 501,
-        bot_username: "dynamics_bot",
-        bot_display_name: "ModelScript Dynamics Reviewer",
-        author: "dynamics_bot",
-        pr_number: 19,
-        commit_sha: "a4f9c218",
-        verdict: "APPROVE",
-        status: "approved",
-        summary:
-          "Verified DAE structural balance (148 states / 148 equations, index-1), SI unit consistency across all connectors, and numerical trajectory convergence within relTol=1e-6.",
-        issues: [],
-        created_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
-      },
-    ],
-  };
+  return { reviews: [] };
 };
 
 export const triggerRepoBotReviewApi = async (
@@ -2048,60 +1772,33 @@ export const triggerRepoBotReviewApi = async (
     title: payload.title,
     diff_content: payload.diff_content ?? payload.diffSummary,
   };
-  try {
-    const { data } = await api.post<{
-      success: boolean;
-      review: {
-        reviewId: number;
-        verdict: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
-        summary: string;
-        issues: { severity: "error" | "warning" | "info"; message: string; file?: string; line?: number }[];
-      };
-    }>(`/repos/${encodeURIComponent(String(repoIdOrSlug))}/reviews`, normalizedPayload);
-    if (data?.review) {
-      const record: RepoBotReviewRecord = {
-        id: data.review.reviewId || Date.now(),
-        bot_username: "dynamics_bot",
-        bot_display_name: "ModelScript Dynamics Reviewer",
-        author: "dynamics_bot",
-        pr_number: normalizedPayload.pr_number ?? null,
-        commit_sha: normalizedPayload.commit_sha ?? "a4f9c218",
-        verdict: data.review.verdict,
-        status: data.review.verdict === "APPROVE" ? "approved" : "commented",
-        summary: data.review.summary,
-        issues: data.review.issues,
-        created_at: new Date().toISOString(),
-      };
-      return { success: true, review: record };
-    }
-  } catch {
-    // Synthesize deterministic local engineering review
+  const { data } = await api.post<{
+    success: boolean;
+    review: {
+      reviewId: number;
+      bot_username?: string;
+      bot_display_name?: string;
+      verdict: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+      summary: string;
+      issues: { severity: "error" | "warning" | "info"; message: string; file?: string; line?: number }[];
+    };
+  }>(`/repos/${encodeURIComponent(String(repoIdOrSlug))}/reviews`, normalizedPayload);
+  if (!data?.review) {
+    throw new Error("Bot review service did not return a review.");
   }
-
+  const botUsername = data.review.bot_username || "modelscript-bot";
   const record: RepoBotReviewRecord = {
-    id: Date.now(),
-    bot_username: "dynamics_bot",
-    bot_display_name: "ModelScript Dynamics Reviewer",
-    author: "dynamics_bot",
+    id: data.review.reviewId || Date.now(),
+    bot_username: botUsername,
+    bot_display_name: data.review.bot_display_name || "ModelScript Reviewer",
+    author: botUsername,
     pr_number: normalizedPayload.pr_number ?? null,
-    commit_sha: normalizedPayload.commit_sha ?? "a4f9c218",
-    verdict: "APPROVE",
-    status: "approved",
-    summary: `Automated physics & structural verification passed for ${normalizedPayload.title ? `"${normalizedPayload.title}"` : "repository"}. All DAE blocks are structurally non-singular and connector conservation equations balance.`,
-    issues: [],
+    commit_sha: normalizedPayload.commit_sha ?? null,
+    verdict: data.review.verdict,
+    status: data.review.verdict === "APPROVE" ? "approved" : "commented",
+    summary: data.review.summary,
+    issues: data.review.issues,
     created_at: new Date().toISOString(),
   };
-
-  if (typeof localStorage !== "undefined") {
-    try {
-      const prev = await getRepoBotReviewsApi(repoIdOrSlug);
-      localStorage.setItem(
-        `modelscript.vcs.reviews.${repoIdOrSlug}`,
-        JSON.stringify([record, ...(prev.reviews || [])]),
-      );
-    } catch {
-      // Ignore
-    }
-  }
   return { success: true, review: record };
 };

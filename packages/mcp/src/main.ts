@@ -11,7 +11,7 @@ import { registerResources } from "./resources.js";
 import { registerTools } from "./tools.js";
 import type { ServerContext } from "./types.js";
 
-const SERVER_VERSION = "0.0.18";
+const SERVER_VERSION = "0.1.0";
 const args = process.argv.slice(2);
 
 if (args.includes("--version") || args.includes("-v")) {

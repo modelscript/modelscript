@@ -21,6 +21,7 @@ import { Button, IconButton, SegmentedControl, Spinner } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import type { CadComponent } from "../cad-viewer";
 import type { AnimationController } from "../cad-viewer/animation-controller";
 import { getLanguageInfo } from "../constants";
@@ -77,6 +78,23 @@ function getStencilsForDialect(dialect: string): StencilItem[] {
           label: "Integrator",
           className: "Modelica.Blocks.Continuous.Integrator",
           snippet: "  Modelica.Blocks.Continuous.Integrator integ_new(k=1.0);\n",
+        },
+        {
+          label: "3D Shape",
+          className: "Modelica.Mechanics.MultiBody.Visualizers.FixedShape",
+          snippet:
+            '  Modelica.Mechanics.MultiBody.Visualizers.FixedShape shape_new(shapeType="box", length=1.0, width=0.2, height=0.2, color={0, 128, 255});\n',
+        },
+        {
+          label: "3D Arrow",
+          className: "Modelica.Mechanics.MultiBody.Visualizers.SignalArrow",
+          snippet:
+            "  Modelica.Mechanics.MultiBody.Visualizers.SignalArrow arrow_new(diameter=0.04, color={255, 80, 0});\n",
+        },
+        {
+          label: "3D Torus",
+          className: "Modelica.Mechanics.MultiBody.Visualizers.Torus",
+          snippet: "  Modelica.Mechanics.MultiBody.Visualizers.Torus torus_new(ri=0.5, ro=0.1, color={0, 180, 120});\n",
         },
       ];
     case "sysml2":
@@ -369,9 +387,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   setShowAnalysisView: controlledSetShowAnalysisView,
 }) => {
   const { hasCapability } = useCapabilities();
+  const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
   const isCosimMqttEnabled = hasCapability("cosimMqtt");
   const isTimescaleEnabled = hasCapability("timescaleHistorian");
-  const isCaeComputeEnabled = hasCapability("caeCompute");
+  const isCaeComputeEnabled = hasCloudSolverFlag && hasCapability("caeCompute");
   const showCosimSection = isCosimMqttEnabled || isTimescaleEnabled;
   const isDraggingProperties = useRef(false);
   const [internalShowAnalysisView, setInternalShowAnalysisView] = useState(false);
@@ -1386,6 +1405,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 onVariablesLoaded={handleVariablesLoaded}
                 error={simulationStatus?.status === "failed" ? simulationStatus.error : null}
                 colorMode={colorMode === "dark" ? "dark" : "light"}
+                onRetry={onSimulate}
               />
             </Suspense>
           ) : (
@@ -1393,10 +1413,12 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               style={{
                 padding: "32px",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
                 height: "100%",
                 color: "var(--color-fg-muted)",
+                gap: "12px",
               }}
             >
               {simulationStatus?.status === "pending" || simulationStatus?.status === "processing" ? (
@@ -1405,7 +1427,27 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   <div>Simulation in progress... please wait.</div>
                 </div>
               ) : (
-                "No simulation results available. Click 'Simulate' to generate results."
+                <>
+                  <div>Ready to simulate transient response.</div>
+                  {onSimulate && (
+                    <button
+                      type="button"
+                      onClick={onSimulate}
+                      style={{
+                        background: "var(--ms-brand, #0e7490)",
+                        color: "#ffffff",
+                        border: "1px solid var(--ms-brand, #0e7490)",
+                        borderRadius: "6px",
+                        padding: "6px 14px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      ▶ Run Simulation
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}

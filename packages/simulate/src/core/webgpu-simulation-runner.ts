@@ -549,17 +549,26 @@ export class WebGPUSimulationRunner {
 
   /**
    * Adaptive step size simulation (DOPRI5) orchestrated from the CPU,
-   * using WebGPU exclusively for RHS evaluation. This supports events
-   * and provides parity with existing CPU solvers.
+   * using WebGPU exclusively for RHS evaluation. Wires zero-crossing event
+   * detection from the DAEBuilder arena (`when`, `if`, relational conditions)
+   * into `dopri5Async` for parity with CPU solvers.
    */
   async runSimulationAdaptive(
     t0: number,
     y0: Float32Array,
     tEnd: number,
     outputTimes: number[],
-    options: { atol?: number | undefined; rtol?: number | undefined; maxStep?: number | undefined } = {},
-  ): Promise<{ t: number[]; y: number[][] }> {
+    options: {
+      atol?: number | undefined;
+      rtol?: number | undefined;
+      maxStep?: number | undefined;
+      eventFunctions?: ((t: number, y: number[]) => number)[] | undefined;
+      eventCallback?: ((eventIndex: number, t: number, y: number[]) => boolean | undefined) | undefined;
+      eventDirections?: number[] | undefined;
+    } = {},
+  ): Promise<{ t: number[]; y: number[][]; events?: { time: number; eventIndex: number }[] | undefined }> {
     const { dopri5Async } = await import("@modelscript/runtime/wasm_dopri5.js");
+    const { BinOp, EqKind, ExprKind, Variability, evaluateArenaExpression } = await import("@modelscript/runtime");
 
     const rhsFnAsync = async (t: number, y: number[]): Promise<number[]> => {
       const yF32 = new Float32Array(y);
@@ -567,14 +576,214 @@ export class WebGPUSimulationRunner {
       return Array.from(dyF32);
     };
 
-    // Note: Since this is an external orchestrator, event detection
-    // would be passed down via event functions similar to the CPU simulator.
-    // For now, we evaluate the RHS and use the async DOPRI5 to achieve
-    // basic parity for continuous adaptive stepping.
+    // Extract zero-crossing expressions and when-actions from this.arena
+    const arena = this.arena;
+    const stateNames: string[] = [];
+    for (let i = 0; i < this.buffers.stateVarIndices.length; i++) {
+      const vIdx = this.buffers.stateVarIndices[i]!;
+      stateNames.push(arena.getVarName(vIdx));
+    }
 
-    const result = await dopri5Async(rhsFnAsync, t0, Array.from(y0), tEnd, outputTimes, options);
+    const parameterMap = new Map<string, import("@modelscript/runtime").ArenaValue>();
+    for (let i = 0; i < arena.varCount; i++) {
+      const variability = arena.getVarVariability(i);
+      if (variability === Variability.Parameter || variability === Variability.Constant) {
+        const name = arena.getVarName(i);
+        let val = arena.getVarStartValue(i);
+        const bindExpr = arena.getVarExpression(i);
+        if (bindExpr !== undefined && bindExpr >= 0) {
+          const ev = evaluateArenaExpression(arena, bindExpr, parameterMap);
+          if (typeof ev === "number" && Number.isFinite(ev)) val = ev;
+        }
+        parameterMap.set(name, val);
+      }
+    }
 
-    return { t: result.times, y: result.states };
+    const buildEvalContext = (t: number, y: number[]): Map<string, import("@modelscript/runtime").ArenaValue> => {
+      const evalMap = new Map<string, import("@modelscript/runtime").ArenaValue>(parameterMap);
+      for (let i = 0; i < stateNames.length && i < y.length; i++) {
+        evalMap.set(stateNames[i]!, y[i]!);
+      }
+      evalMap.set("time", t);
+      return evalMap;
+    };
+
+    interface ArenaZeroCrossing {
+      condExprId: number;
+      direction: number;
+      whenEqId?: number | undefined;
+    }
+
+    const zeroCrossings: ArenaZeroCrossing[] = [];
+    const seenCondExprs = new Set<number>();
+
+    const isRelationalOp = (op: number): boolean =>
+      op === BinOp.Lt || op === BinOp.Lte || op === BinOp.Gt || op === BinOp.Gte || op === BinOp.Eq || op === BinOp.Neq;
+
+    const addZeroCrossingExpr = (exprId: number, whenEqId?: number) => {
+      if (exprId < 0 || exprId >= arena.exprCount || seenCondExprs.has(exprId)) return;
+      const kind = arena.getExprKind(exprId);
+      if (kind === ExprKind.Binary) {
+        const op = arena.getExprData1(exprId);
+        if (isRelationalOp(op)) {
+          seenCondExprs.add(exprId);
+          const dir = whenEqId !== undefined ? 1 : 0;
+          zeroCrossings.push({ condExprId: exprId, direction: dir, whenEqId });
+          return;
+        }
+        addZeroCrossingExpr(arena.getExprLeft(exprId), whenEqId);
+        addZeroCrossingExpr(arena.getExprRight(exprId), whenEqId);
+      } else if (kind === ExprKind.IfElse) {
+        addZeroCrossingExpr(arena.getExprData1(exprId), whenEqId);
+        addZeroCrossingExpr(arena.getExprLeft(exprId), whenEqId);
+        addZeroCrossingExpr(arena.getExprRight(exprId), whenEqId);
+      } else if (kind === ExprKind.Call && arena.interner?.resolve?.(arena.getExprData1(exprId)) === "sample") {
+        seenCondExprs.add(exprId);
+        zeroCrossings.push({ condExprId: exprId, direction: 1, whenEqId });
+      }
+    };
+
+    if (Array.isArray(arena.eventIndicatorExprIds)) {
+      for (const exprId of arena.eventIndicatorExprIds) {
+        addZeroCrossingExpr(exprId);
+      }
+    }
+
+    for (let e = 0; e < arena.eqCount; e++) {
+      const kind = arena.getEqKind(e);
+      if (kind === EqKind.When) {
+        addZeroCrossingExpr(arena.getEqLhs(e), e);
+        const whenMeta = arena.getWhenEquationMeta(e);
+        if (whenMeta) {
+          addZeroCrossingExpr(whenMeta.conditionExprId, e);
+          if (Array.isArray(whenMeta.elseWhenClauses)) {
+            for (const ew of whenMeta.elseWhenClauses) {
+              addZeroCrossingExpr(ew.conditionExprId, e);
+            }
+          }
+        }
+      } else if (kind === EqKind.If) {
+        addZeroCrossingExpr(arena.getEqLhs(e));
+        const ifMeta = arena.getIfEquationMeta(e);
+        if (ifMeta) {
+          addZeroCrossingExpr(ifMeta.conditionExprId);
+          if (Array.isArray(ifMeta.elseIfClauses)) {
+            for (const ei of ifMeta.elseIfClauses) {
+              addZeroCrossingExpr(ei.conditionExprId);
+            }
+          }
+        }
+      } else if (kind === EqKind.Simple) {
+        addZeroCrossingExpr(arena.getEqLhs(e));
+        addZeroCrossingExpr(arena.getEqRhs(e));
+      }
+    }
+
+    const arenaEventFunctions: ((t: number, y: number[]) => Promise<number>)[] = zeroCrossings.map((zc) => {
+      return async (t: number, y: number[]): Promise<number> => {
+        const ctx = buildEvalContext(t, y);
+        const exprId = zc.condExprId;
+        const kind = arena.getExprKind(exprId);
+        if (kind === ExprKind.Binary) {
+          const op = arena.getExprData1(exprId);
+          const lhsVal = Number(evaluateArenaExpression(arena, arena.getExprLeft(exprId), ctx));
+          const rhsVal = Number(evaluateArenaExpression(arena, arena.getExprRight(exprId), ctx));
+          if (Number.isFinite(lhsVal) && Number.isFinite(rhsVal)) {
+            return op === BinOp.Lt || op === BinOp.Lte ? rhsVal - lhsVal : lhsVal - rhsVal;
+          }
+        }
+        const val = evaluateArenaExpression(arena, exprId, ctx);
+        if (typeof val === "boolean") return val ? 1 : -1;
+        return typeof val === "number" && Number.isFinite(val) ? val : -1;
+      };
+    });
+
+    const allEventFunctions: ((t: number, y: number[]) => Promise<number>)[] = [
+      ...arenaEventFunctions,
+      ...(options.eventFunctions ?? []).map((fn) => async (t: number, y: number[]) => fn(t, y)),
+    ];
+    const allEventDirections = [
+      ...zeroCrossings.map((zc) => zc.direction),
+      ...(options.eventDirections ?? (options.eventFunctions ?? []).map(() => 0)),
+    ];
+
+    const detectedEvents: { time: number; eventIndex: number }[] = [];
+    const eventHandler =
+      allEventFunctions.length > 0
+        ? (t: number, y: number[], eventIndex: number, _dir: 1 | -1): number[] => {
+            detectedEvents.push({ time: t, eventIndex });
+            const yAfter = [...y];
+            if (eventIndex < zeroCrossings.length) {
+              const zc = zeroCrossings[eventIndex]!;
+              if (zc.whenEqId !== undefined) {
+                const whenMeta = arena.getWhenEquationMeta(zc.whenEqId);
+                const ctx = buildEvalContext(t, yAfter);
+                const bodyEquations: { kind: number; lhsExprId: number; rhsExprId: number }[] =
+                  whenMeta?.bodyEquations ?? [];
+                for (const bodyEq of bodyEquations) {
+                  let targetNameId = -1;
+                  let valExpr = -1;
+                  if (bodyEq.kind === EqKind.FunctionCall) {
+                    const callExprId = bodyEq.lhsExprId;
+                    if (arena.getExprKind(callExprId) === ExprKind.Call) {
+                      const funcName = arena.interner?.resolve?.(arena.getExprData1(callExprId));
+                      if (funcName === "reinit" && arena.getExprRight(callExprId) >= 2) {
+                        const firstArgId = arena.getExprLeft(callExprId);
+                        if (arena.getExprKind(firstArgId) === ExprKind.Name) {
+                          targetNameId = arena.getExprData1(firstArgId);
+                          valExpr = arena.getExprLeft(callExprId + 1);
+                        }
+                      }
+                    }
+                  } else if (bodyEq.kind === EqKind.Simple) {
+                    const lhs = bodyEq.lhsExprId;
+                    const rhs = bodyEq.rhsExprId;
+                    if (arena.getExprKind(rhs) === ExprKind.Call) {
+                      const funcName = arena.interner?.resolve?.(arena.getExprData1(rhs));
+                      if (funcName === "reinit" && arena.getExprKind(lhs) === ExprKind.Name) {
+                        targetNameId = arena.getExprData1(lhs);
+                        if (arena.getExprRight(rhs) >= 2) {
+                          valExpr = arena.getExprLeft(rhs + 1);
+                        }
+                      }
+                    }
+                  }
+                  if (targetNameId >= 0 && valExpr >= 0) {
+                    const vName = arena.interner?.resolve?.(targetNameId);
+                    const sIdx = vName ? stateNames.indexOf(vName) : -1;
+                    const newVal = Number(evaluateArenaExpression(arena, valExpr, ctx));
+                    if (sIdx >= 0 && Number.isFinite(newVal)) {
+                      yAfter[sIdx] = newVal;
+                    }
+                  }
+                }
+              }
+            }
+            if (options.eventCallback) {
+              const userIdx = eventIndex >= zeroCrossings.length ? eventIndex - zeroCrossings.length : eventIndex;
+              options.eventCallback(userIdx, t, yAfter);
+            }
+            return yAfter;
+          }
+        : undefined;
+
+    const result = await dopri5Async(
+      rhsFnAsync,
+      t0,
+      Array.from(y0),
+      tEnd,
+      outputTimes,
+      options,
+      allEventFunctions.length > 0 ? allEventFunctions : undefined,
+      eventHandler,
+      allEventFunctions.length > 0 ? allEventDirections : undefined,
+    );
+
+    return {
+      t: result.times,
+      y: result.states,
+      ...(detectedEvents.length > 0 ? { events: detectedEvents } : {}),
+    };
   }
 
   /**

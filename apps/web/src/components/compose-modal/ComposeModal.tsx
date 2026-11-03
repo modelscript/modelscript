@@ -41,11 +41,11 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   );
   const [notebookSummary, setNotebookSummary] = useState<string>(initialState?.notebookSummary || "");
   const [notebookDifficulty, setNotebookDifficulty] = useState<TutorialDifficulty | undefined>(
-    initialState?.notebookDifficulty || "Intermediate",
+    initialState?.notebookDifficulty,
   );
   const [notebookSeries, setNotebookSeries] = useState<string>(initialState?.notebookSeries || "");
   const [notebookDialect, setNotebookDialect] = useState<string>(
-    initialState?.notebookDialect || initialState?.initialDialect || "Modelica 3.4",
+    initialState?.notebookDialect || initialState?.initialDialect || "",
   );
   const [notebookCompanionRepo, setNotebookCompanionRepo] = useState<string>(
     initialState?.notebookCompanionRepo || initialState?.companionRepo || "",
@@ -74,14 +74,14 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     if (initialState.notebookSummary !== undefined) {
       setNotebookSummary(initialState.notebookSummary);
     }
-    if (initialState.notebookDifficulty) {
+    if (initialState.notebookDifficulty !== undefined) {
       setNotebookDifficulty(initialState.notebookDifficulty);
     }
     if (initialState.notebookSeries !== undefined) {
       setNotebookSeries(initialState.notebookSeries);
     }
     if (initialState.notebookDialect !== undefined || initialState.initialDialect !== undefined) {
-      setNotebookDialect(initialState.notebookDialect || initialState.initialDialect || "Modelica 3.4");
+      setNotebookDialect(initialState.notebookDialect || initialState.initialDialect || "");
     }
     if (initialState.notebookCompanionRepo !== undefined || initialState.companionRepo !== undefined) {
       setNotebookCompanionRepo(initialState.notebookCompanionRepo || initialState.companionRepo || "");

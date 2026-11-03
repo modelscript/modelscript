@@ -3,6 +3,7 @@
 // ts-check
 
 import { createWasmParser } from "@modelscript/dsl/bindings";
+import { getStdlibsForLanguage } from "@modelscript/exchange/catalog";
 import {
   FederatedQueryCacheStore,
   IndexedDBQueryCacheStore,
@@ -21,6 +22,8 @@ import {
   LoaderContext,
   loadMSL,
   loadSysML2StandardLibrary,
+  mountPolyglotLibrary,
+  resolveWorkspaceLibraryVersions,
 } from "../vfs/library-loader.js";
 import { DocumentManager } from "./document-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
@@ -609,13 +612,61 @@ export class ParserService {
     extensions?: string[] | undefined;
     syntaxNames?: string[] | undefined;
     fieldNames?: Record<string, number> | undefined;
-  }[] = [];
+  }[] = [
+    { id: "modelica", wasm: "modelica.wasm", displayName: "Modelica", fileExtensions: [".mo"] },
+    {
+      id: "sysml2",
+      wasm: "sysml2.wasm",
+      displayName: "SysML v2",
+      fileExtensions: [".sysml", ".sysml2", ".kerml"],
+    },
+    { id: "step", wasm: "step.wasm", displayName: "Step", fileExtensions: [".step"] },
+    { id: "owl2", wasm: "owl2.wasm", displayName: "Owl2", fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"] },
+    { id: "csv", wasm: "csv.wasm", displayName: "Csv", fileExtensions: [".csv"] },
+    { id: "scad", wasm: "scad.wasm", displayName: "Scad", fileExtensions: [".scad"] },
+  ];
   private lazyLoadParsers = false;
   private useLocalMsl = false;
   private validationServiceRef: any = null;
   private projectDependenciesRef: { name: string; version: string }[] = [];
   private loadingParserPromises = new Map<string, Promise<void>>();
   private loadingStdlibPromises = new Map<string, Promise<void>>();
+
+  private ensureSharedContext(): void {
+    if (this.sharedContext) return;
+    this.sharedContext = {
+      fs: (globalThis as any).sharedFs,
+      parse: (ext: string, input: string, ...rest: any[]) => {
+        const parser = this.getParserForUri(`file:///dummy${ext}`);
+        if (parser) return parser.parse(input, ...rest);
+        if (ext === ".sysml" || ext === ".sysml2" || ext === ".kerml")
+          return (this.sysml2Parser as any)?.parse(input, ...rest);
+        return (this.parser as any)?.parse(input, ...rest);
+      },
+      flattenArena: (name: string, classId?: any, _uri?: string, options?: any) => {
+        const engine =
+          this.workspaceManager.globalModelicaQueryEngine ?? this.workspaceManager.getQueryEngine("modelica");
+        if (!engine) return null;
+        let targetId = classId;
+        if (targetId !== undefined && !engine.index?.symbols?.has(targetId)) {
+          targetId = undefined;
+        }
+        if (targetId === undefined) {
+          const candidates = (engine as any).index?.byName?.get(name);
+          if (candidates && candidates.length > 0) {
+            targetId = candidates[0];
+          }
+        }
+        if (targetId === undefined) return null;
+        const queryDB = engine.toQueryDB();
+        const flattenerClass = (globalThis as any).ArenaQueryFlattener;
+        if (!flattenerClass) return null;
+        const flattener = new flattenerClass(queryDB, options);
+        return flattener.flatten(targetId, null, options);
+      },
+    };
+    (globalThis as any).sharedContext = this.sharedContext;
+  }
 
   private resolveNormalizedLanguageId(languageIdOrUri: string): string {
     const raw = (languageIdOrUri || "").trim();
@@ -659,11 +710,15 @@ export class ParserService {
     fieldNames?: Record<string, number> | undefined;
   }): Promise<void> {
     if (!entry.wasm || !this.serverDistBase) return;
-    if (this.isParserReady(entry.id)) return;
+    if (this.isParserReady(entry.id)) {
+      this.ensureSharedContext();
+      return;
+    }
 
     const existingPromise = this.loadingParserPromises.get(entry.id);
     if (existingPromise) {
       await existingPromise;
+      this.ensureSharedContext();
       return;
     }
 
@@ -696,6 +751,7 @@ export class ParserService {
 
         if (result) {
           this.registerParser(entry.id, result.parser, result.facade);
+          this.ensureSharedContext();
           if (this.workspaceManager?.unifiedWorkspace && result.parser) {
             for (const ext of exts) {
               this.workspaceManager.unifiedWorkspace.registerParser(ext, result.parser);
@@ -754,7 +810,73 @@ export class ParserService {
         : norm === "sysml2" || norm === "sysml"
           ? "SysML"
           : null;
-    if (!depName) return;
+
+    if (!depName) {
+      // Polyglot lazy activation: check if language has standard libraries in catalog
+      const polyglotLibs = getStdlibsForLanguage(norm);
+      if (polyglotLibs.length === 0) return;
+
+      const globalCtx = globalThis as unknown as {
+        savedLoaderCtx?: LoaderContext | undefined;
+        validateTextDocument?: ((doc: unknown) => Promise<void>) | undefined;
+        getReadyMessage?: (() => string) | undefined;
+      };
+
+      const loaderCtx = globalCtx.savedLoaderCtx;
+      if (!loaderCtx || !this.serverDistBase) return;
+
+      for (const lib of polyglotLibs) {
+        const libKey = `${lib.packageName}@${lib.version}`;
+        const existingPromise = this.loadingStdlibPromises.get(libKey);
+        if (existingPromise) {
+          await existingPromise;
+          continue;
+        }
+
+        const mountPromise = (async () => {
+          this.connection.sendNotification("modelscript/status", {
+            state: "loading",
+            message: `ModelScript (activating ${lib.packageName} standard library...)`,
+          });
+
+          try {
+            const ok = await mountPolyglotLibrary(this.serverDistBase, loaderCtx, {
+              packageName: lib.packageName,
+              version: lib.version,
+              filename: lib.filename,
+              language: lib.language,
+            });
+
+            if (ok) {
+              this.connection.console.info(`[lsp] Successfully lazy-mounted stdlib ${libKey} for ${norm}.`);
+            }
+          } catch (mountErr) {
+            this.connection.console.warn(`[lsp] Failed to mount polyglot stdlib ${libKey}: ${mountErr}`);
+          }
+
+          for (const doc of this.documents.all()) {
+            const docLang = this.resolveNormalizedLanguageId(doc.languageId || doc.uri);
+            if (docLang === norm) {
+              try {
+                await (this.validationServiceRef?.validateTextDocument?.(doc) ?? globalCtx.validateTextDocument?.(doc));
+              } catch (err) {
+                this.connection.console.warn(`[lsp] Failed to validate open doc after ${libKey} load: ${err}`);
+              }
+            }
+          }
+
+          this.sendProjectTreeChanged();
+          this.connection.sendNotification("modelscript/status", {
+            state: "ready",
+            message: globalCtx.getReadyMessage?.() ?? "ModelScript",
+          });
+        })();
+
+        this.loadingStdlibPromises.set(libKey, mountPromise);
+        await mountPromise;
+      }
+      return;
+    }
 
     const existingStdlib = this.loadingStdlibPromises.get(depName);
     if (existingStdlib) {
@@ -789,8 +911,8 @@ export class ParserService {
       });
 
       try {
-        if (this.useLocalMsl && dep.name === "Modelica" && dep.version === "4.1.0") {
-          await loadMSL(this.serverDistBase, loaderCtx);
+        if (this.useLocalMsl && dep.name === "Modelica") {
+          await loadMSL(this.serverDistBase, loaderCtx, dep.version);
         } else if (this.useLocalMsl && dep.name === "SysML" && dep.version === "2026.3.0") {
           await loadSysML2StandardLibrary(this.serverDistBase, loaderCtx);
         } else {
@@ -801,7 +923,7 @@ export class ParserService {
               this.connection.console.warn(
                 `[lsp] Registry load failed for Modelica, falling back to local MSL zip: ${regErr}`,
               );
-              await loadMSL(this.serverDistBase, loaderCtx);
+              await loadMSL(this.serverDistBase, loaderCtx, dep.version);
             } else if (dep.name === "SysML") {
               this.connection.console.warn(
                 `[lsp] Registry load failed for SysML, falling back to local SysML zip: ${regErr}`,
@@ -846,8 +968,39 @@ export class ParserService {
     await stdlibPromise;
   }
 
+  public async syncDocumentLibraryVersions(uri: string, text: string): Promise<void> {
+    const loaderCtx = (globalThis as any).savedLoaderCtx as LoaderContext | undefined;
+    if (!loaderCtx || !this.serverDistBase) return;
+    try {
+      const swapped = await resolveWorkspaceLibraryVersions(text, loaderCtx, uri, this.serverDistBase);
+      if (swapped.length > 0) {
+        for (const dep of swapped) {
+          const existingIdx = this.projectDependenciesRef.findIndex((d) => d.name === dep.name);
+          if (existingIdx >= 0) {
+            this.projectDependenciesRef[existingIdx] = dep;
+          } else {
+            this.projectDependenciesRef.push(dep);
+          }
+          this.validationServiceRef?.markDependencyLoaded?.(dep.name, dep.version);
+        }
+        (globalThis as any).clearDiagramCache?.();
+        (globalThis as any).diagramCache?.clear();
+        this.sendProjectTreeChanged();
+        for (const doc of this.documents.all()) {
+          try {
+            await (this.validationServiceRef?.validateTextDocument?.(doc) ??
+              (globalThis as any).validateTextDocument?.(doc));
+          } catch {}
+        }
+      }
+    } catch (err) {
+      this.connection.console.warn(`[lsp] syncDocumentLibraryVersions failed for ${uri}: ${err}`);
+    }
+  }
+
   public async ensureLanguageParserLoaded(languageIdOrUri: string): Promise<void> {
     if (!this.serverDistBase) return;
+    this.ensureSharedContext();
     const langId = this.resolveNormalizedLanguageId(languageIdOrUri);
     if (!this.isParserReady(langId)) {
       const entry = this.manifest.find((m) => m.id.toLowerCase() === langId.toLowerCase());
@@ -855,7 +1008,7 @@ export class ParserService {
         await this.loadSingleWasmEntry(entry);
       }
     }
-    if (this.lazyLoadParsers && (langId === "modelica" || langId === "modelscript" || langId === "sysml2")) {
+    if (this.lazyLoadParsers) {
       // Trigger stdlib loading in background if not already loaded, after parser is ready
       void this.ensureStdlibForLanguage(langId);
     }
@@ -900,6 +1053,7 @@ export class ParserService {
       this.useLocalMsl = useLocalMsl;
       this.validationServiceRef = validationService;
       this.projectDependenciesRef = projectDependencies;
+      this.ensureSharedContext();
 
       this.connection.sendNotification("modelscript/status", {
         state: "loading",
@@ -929,21 +1083,10 @@ export class ParserService {
       }
 
       if (!manifest || manifest.length === 0) {
-        manifest = [
-          { id: "modelica", wasm: "modelica.wasm", displayName: "Modelica", fileExtensions: [".mo"] },
-          {
-            id: "sysml2",
-            wasm: "sysml2.wasm",
-            displayName: "SysML v2",
-            fileExtensions: [".sysml", ".sysml2", ".kerml"],
-          },
-          { id: "step", wasm: "step.wasm", displayName: "Step", fileExtensions: [".step"] },
-          { id: "owl2", wasm: "owl2.wasm", displayName: "Owl2", fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"] },
-          { id: "csv", wasm: "csv.wasm", displayName: "Csv", fileExtensions: [".csv"] },
-          { id: "scad", wasm: "scad.wasm", displayName: "Scad", fileExtensions: [".scad"] },
-        ];
+        manifest = this.manifest;
+      } else {
+        this.manifest = manifest;
       }
-      this.manifest = manifest;
 
       if (this.lazyLoadParsers) {
         const initialTargets = new Set<string>();
@@ -974,38 +1117,7 @@ export class ParserService {
         }
       }
 
-      this.sharedContext = {
-        fs: (globalThis as any).sharedFs,
-        parse: (ext: string, input: string, ...rest: any[]) => {
-          const parser = this.getParserForUri(`file:///dummy${ext}`);
-          if (parser) return parser.parse(input, ...rest);
-          if (ext === ".sysml" || ext === ".sysml2" || ext === ".kerml")
-            return (this.sysml2Parser as any)?.parse(input, ...rest);
-          return (this.parser as any)?.parse(input, ...rest);
-        },
-        flattenArena: (name: string, classId?: any, _uri?: string, options?: any) => {
-          const engine =
-            this.workspaceManager.globalModelicaQueryEngine ?? this.workspaceManager.getQueryEngine("modelica");
-          if (!engine) return null;
-          let targetId = classId;
-          if (targetId !== undefined && !engine.index?.symbols?.has(targetId)) {
-            targetId = undefined;
-          }
-          if (targetId === undefined) {
-            const candidates = (engine as any).index?.byName?.get(name);
-            if (candidates && candidates.length > 0) {
-              targetId = candidates[0];
-            }
-          }
-          if (targetId === undefined) return null;
-          const queryDB = engine.toQueryDB();
-          const flattenerClass = (globalThis as any).ArenaQueryFlattener;
-          if (!flattenerClass) return null;
-          const flattener = new flattenerClass(queryDB, options);
-          return flattener.flatten(targetId, null, options);
-        },
-      };
-      (globalThis as any).sharedContext = this.sharedContext;
+      this.ensureSharedContext();
 
       // === EARLY VALIDATION PASS ===
       // Validate open documents NOW — before any library loading.
@@ -1095,14 +1207,45 @@ export class ParserService {
         for (const doc of this.documents.all()) {
           initialTargets.add(this.resolveNormalizedLanguageId(doc.languageId || doc.uri));
         }
+        const customDeps: { name: string; version: string }[] = [];
+        for (const dep of projectDependencies) {
+          if (dep.name === "Modelica") {
+            initialTargets.add("modelica");
+          } else if (dep.name === "SysML") {
+            initialTargets.add("sysml2");
+          } else {
+            customDeps.push(dep);
+          }
+        }
         const stdlibPromises: Promise<void>[] = [];
         for (const langId of initialTargets) {
           if (langId === "modelica" || langId === "modelscript" || langId === "sysml2") {
             stdlibPromises.push(this.ensureStdlibForLanguage(langId));
           }
         }
+        for (const dep of customDeps) {
+          if (validationService) {
+            validationService.declaredDependencies.push(dep);
+          }
+          stdlibPromises.push(
+            (async () => {
+              try {
+                await loadDependencyFromRegistry(dep, loaderCtx);
+              } catch (err) {
+                this.connection.console.warn(
+                  `[lsp] Failed to load custom dependency ${dep.name}@${dep.version}: ${err}`,
+                );
+              } finally {
+                if (validationService) {
+                  validationService.markDependencyLoaded(dep.name, dep.version);
+                }
+              }
+            })(),
+          );
+        }
         if (stdlibPromises.length > 0) {
           await Promise.all(stdlibPromises);
+          this.sendProjectTreeChanged();
         } else {
           this.sendProjectTreeChanged();
           this.connection.sendNotification("modelscript/status", {
@@ -1128,8 +1271,8 @@ export class ParserService {
       // Load dependencies concurrently
       const loadPromises = projectDependencies.map(async (dep) => {
         try {
-          if (useLocalMsl && dep.name === "Modelica" && dep.version === "4.1.0") {
-            await loadMSL(serverDistBase, loaderCtx);
+          if (useLocalMsl && dep.name === "Modelica") {
+            await loadMSL(serverDistBase, loaderCtx, dep.version);
           } else if (useLocalMsl && dep.name === "SysML" && dep.version === "2026.3.0") {
             await loadSysML2StandardLibrary(serverDistBase, loaderCtx);
           } else {
@@ -1140,7 +1283,7 @@ export class ParserService {
                 this.connection.console.warn(
                   `[lsp] Registry load failed for Modelica, falling back to local MSL zip: ${regErr}`,
                 );
-                await loadMSL(serverDistBase, loaderCtx);
+                await loadMSL(serverDistBase, loaderCtx, dep.version);
               } else if (dep.name === "SysML") {
                 this.connection.console.warn(
                   `[lsp] Registry load failed for SysML, falling back to local SysML zip: ${regErr}`,

@@ -21,7 +21,7 @@ import Box from "../Box";
 import { useToast } from "../ToastContext";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import SafeOrbitControls from "./SafeOrbitControls";
-import ViewportCameraControls, { type CameraPreset, type RenderMode } from "./ViewportCameraControls";
+import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
 import type { SpatialPin } from "./spatial-pin";
 
 interface CadStepViewerProps {
@@ -771,9 +771,21 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
   const [explosionFactor, setExplosionFactor] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [renderMode, setRenderMode] = useState<RenderMode>("shaded");
+  const [clipAxis, setClipAxis] = useState<ClipAxis>("none");
+  const [clipOffset, setClipOffset] = useState<number>(0);
+  const [probedPoint, setProbedPoint] = useState<{ position: [number, number, number]; partName: string } | null>(null);
   const [isPinMode, setIsPinMode] = useState(false);
   const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
   const controlsRef = useRef<any>(null);
+
+  const activeClippingPlanes = useMemo(() => {
+    if (clipAxis === "none") return [];
+    const span = 22;
+    const d = clipOffset * span;
+    if (clipAxis === "x") return [new THREE.Plane(new THREE.Vector3(-1, 0, 0), d)];
+    if (clipAxis === "y") return [new THREE.Plane(new THREE.Vector3(0, -1, 0), d)];
+    return [new THREE.Plane(new THREE.Vector3(0, 0, -1), d)];
+  }, [clipAxis, clipOffset]);
 
   // Physics Config State
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -1116,7 +1128,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
   return (
     <Box
       width="100%"
-      height={isFullScreen ? "100%" : "440px"}
+      height={isFullScreen ? "100%" : "450px"}
       borderRadius="0"
       overflow="hidden"
       position="relative"
@@ -1138,18 +1150,20 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
         zIndex={20}
       >
         <Box display="flex" alignItems="center" gap={2} minWidth={0}>
-          <Text
-            style={{
-              fontSize: "13px",
-              fontWeight: 600,
-              color: "var(--color-fg-default, #e6edf3)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {modelTitle}
-          </Text>
+          {!isFullScreen && (
+            <Text
+              style={{
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "var(--color-fg-default, #e6edf3)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {modelTitle}
+            </Text>
+          )}
           <span
             style={{
               fontSize: "10px",
@@ -1258,11 +1272,57 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                   onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })}
                   renderMode={renderMode}
                   onRenderModeChange={setRenderMode}
+                  clipAxis={clipAxis}
+                  onClipAxisChange={setClipAxis}
+                  clipOffset={clipOffset}
+                  onClipOffsetChange={setClipOffset}
                   isPinMode={isPinMode}
                   onTogglePinMode={() => setIsPinMode(!isPinMode)}
                 />
 
-                <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 0, 50], fov: 50 }}>
+                {probedPoint && (
+                  <Box
+                    position="absolute"
+                    top={12}
+                    right={12}
+                    zIndex={10}
+                    px={2}
+                    py={1}
+                    borderRadius="8px"
+                    bg="rgba(15, 23, 42, 0.85)"
+                    border="1px solid rgba(56, 189, 248, 0.35)"
+                    display="flex"
+                    alignItems="center"
+                    gap={2}
+                    style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11px", color: "#e2e8f0" }}
+                  >
+                    <span style={{ color: "#38bdf8", fontWeight: 700 }}>{probedPoint.partName}</span>
+                    <span>
+                      ({probedPoint.position[0].toFixed(2)}, {probedPoint.position[1].toFixed(2)},{" "}
+                      {probedPoint.position[2].toFixed(2)})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setProbedPoint(null)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#94a3b8",
+                        cursor: "pointer",
+                        padding: "0 2px",
+                        fontSize: "11px",
+                      }}
+                      aria-label="Clear surface probe"
+                    >
+                      ✕
+                    </button>
+                  </Box>
+                )}
+
+                <Canvas
+                  gl={{ preserveDrawingBuffer: true, localClippingEnabled: true }}
+                  camera={{ position: [0, 0, 50], fov: 50 }}
+                >
                   <AutoThumbnailCapture
                     artifactId={artifactId}
                     hasThumbnail={Boolean(viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url)}
@@ -1311,8 +1371,12 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                             geometry={geo}
                             position={offset}
                             onClick={(e) => {
+                              e.stopPropagation();
+                              setProbedPoint({
+                                position: [e.point.x, e.point.y, e.point.z],
+                                partName: compName,
+                              });
                               if (isPinMode && onPinCreated) {
-                                e.stopPropagation();
                                 onPinCreated({
                                   worldPosition: [e.point.x, e.point.y, e.point.z],
                                   cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
@@ -1333,6 +1397,8 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                               opacity={renderMode === "xray" ? 0.35 : 1.0}
                               clearcoat={0.1}
                               side={THREE.DoubleSide}
+                              clippingPlanes={activeClippingPlanes}
+                              clipShadows={true}
                             />
                           </mesh>
                         );

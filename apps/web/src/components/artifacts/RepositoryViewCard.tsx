@@ -23,8 +23,8 @@ interface RepositoryViewCardProps {
 }
 
 const CardWrapper = styled.div`
-  background: var(--surface-overlay, rgba(14, 20, 36, 0.95));
-  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.08));
+  background: var(--color-canvas-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 12px;
   padding: 16px;
   display: flex;
@@ -34,7 +34,7 @@ const CardWrapper = styled.div`
 
   &:hover {
     border-color: rgba(6, 182, 212, 0.3);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   }
 `;
 
@@ -46,9 +46,9 @@ const BranchPill = styled.span`
   font-size: 11px;
   padding: 2px 7px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--color-text-muted, #8b949e);
-  border: 1px solid var(--color-border, #30363d);
+  background: var(--color-neutral-muted, rgba(148, 163, 184, 0.12));
+  color: var(--color-fg-muted);
+  border: 1px solid var(--color-border-default);
 `;
 
 const ProviderBadge = styled.span`
@@ -60,7 +60,7 @@ const ProviderBadge = styled.span`
   padding: 2px 8px;
   border-radius: 6px;
   background: rgba(139, 92, 246, 0.12);
-  color: var(--color-accent-purple, #a855f7);
+  color: var(--color-done-fg, #a855f7);
   border: 1px solid rgba(139, 92, 246, 0.25);
   font-weight: 600;
   text-transform: capitalize;

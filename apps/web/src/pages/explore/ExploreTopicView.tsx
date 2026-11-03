@@ -2,12 +2,14 @@
 
 import { CheckIcon, PlusIcon, ShareIcon, TagIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { getRelatedTopics } from "../../api";
 import Box from "../../components/Box";
 import Post from "../../components/Post";
-import type { PostData } from "./constants";
-import { BASE_RELATED_TAGS, TOPIC_ARTIFACT_TABS } from "./constants";
+import { scrollToTop } from "../../components/ScrollToTop";
+import type { PostData, TopicData } from "./constants";
+import { TOPIC_ARTIFACT_TABS } from "./constants";
 import { ExploreSearchHeader } from "./ExploreSearchHeader";
 import { TabButton, TabContainer } from "./styles";
 
@@ -21,6 +23,7 @@ export interface ExploreTopicViewProps {
   setTopicFilter: (filter: string) => void;
   loading: boolean;
   topicPosts: PostData[];
+  trending?: TopicData[] | undefined;
   copiedTopicLink: boolean;
   handleCopyTopic: () => void;
   openCompose?: ((opts?: { content?: string; defaultText?: string }) => void) | undefined;
@@ -36,11 +39,41 @@ export const ExploreTopicView: React.FC<ExploreTopicViewProps> = ({
   setTopicFilter,
   loading,
   topicPosts,
+  trending = [],
   copiedTopicLink,
   handleCopyTopic,
   openCompose,
 }) => {
-  const relatedTags = BASE_RELATED_TAGS.filter((t) => t.toLowerCase() !== topic.toLowerCase());
+  const [coOccurringTags, setCoOccurringTags] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!topic) {
+      setCoOccurringTags([]);
+      return;
+    }
+    let active = true;
+    getRelatedTopics(topic, 8)
+      .then((res) => {
+        if (!active || !Array.isArray(res?.topics)) return;
+        const names = res.topics
+          .map((t: any) => String(t.display_name || t.concept || "").replace(/^#/, ""))
+          .filter((tag: string) => Boolean(tag) && tag.toLowerCase() !== topic.toLowerCase());
+        setCoOccurringTags(names);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [topic]);
+
+  const fallbackRelatedTags = trending
+    .filter(
+      (t) => Number(t.postsCount ?? (t.post_count as number | undefined) ?? (t.count as number | undefined) ?? 0) > 0,
+    )
+    .map((t) => String(t.display_name || t.tag || t.concept || t.name || "").replace(/^#/, ""))
+    .filter((tag) => Boolean(tag) && tag.toLowerCase() !== topic.toLowerCase());
+
+  const relatedTags = coOccurringTags.length > 0 ? coOccurringTags : fallbackRelatedTags;
 
   return (
     <Box>
@@ -156,49 +189,67 @@ export const ExploreTopicView: React.FC<ExploreTopicViewProps> = ({
         </Box>
 
         {/* Related Engineering Hashtags */}
-        <Box mt={3} pt={3} borderTop="1px solid rgba(255, 255, 255, 0.06)">
-          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 700,
-                color: "var(--color-text-muted)",
-                textTransform: "uppercase",
-              }}
-            >
-              Related Tags:
-            </span>
-            {relatedTags.slice(0, 6).map((rel) => (
-              <Link
-                key={rel}
-                to={`/explore?topic=${encodeURIComponent(rel)}`}
+        {relatedTags.length > 0 && (
+          <Box mt={3} pt={3} borderTop="1px solid rgba(255, 255, 255, 0.06)">
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+              <span
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
                   fontSize: "11px",
-                  fontFamily: "var(--font-mono)",
-                  padding: "2px 8px",
-                  borderRadius: "6px",
-                  background: "rgba(255, 255, 255, 0.04)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  color: "var(--color-text-secondary)",
-                  textDecoration: "none",
+                  fontWeight: 700,
+                  color: "var(--color-text-muted)",
+                  textTransform: "uppercase",
                 }}
               >
-                #{rel}
-              </Link>
-            ))}
+                Related Tags:
+              </span>
+              {relatedTags.slice(0, 6).map((rel) => (
+                <Link
+                  key={rel}
+                  to={`/explore?topic=${encodeURIComponent(rel)}`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    fontSize: "11px",
+                    fontFamily: "var(--font-mono)",
+                    padding: "2px 8px",
+                    borderRadius: "6px",
+                    background: "rgba(255, 255, 255, 0.04)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    color: "var(--color-text-secondary)",
+                    textDecoration: "none",
+                  }}
+                >
+                  #{rel}
+                </Link>
+              ))}
+            </Box>
           </Box>
-        </Box>
+        )}
       </Box>
 
       {/* Topic Sub-filter Tabs */}
-      <TabContainer style={{ borderBottom: "1px solid var(--color-border)" }}>
+      <TabContainer
+        role="tablist"
+        aria-label="Topic artifact filters"
+        style={{ borderBottom: "1px solid var(--color-border)" }}
+      >
         {TOPIC_ARTIFACT_TABS.map((tab) => {
           const Icon = tab.icon;
           return (
-            <TabButton key={tab.id} $active={topicFilter === tab.id} onClick={() => setTopicFilter(tab.id)}>
+            <TabButton
+              key={tab.id}
+              role="tab"
+              aria-selected={topicFilter === tab.id}
+              $active={topicFilter === tab.id}
+              onClick={() => {
+                if (topicFilter === tab.id) {
+                  scrollToTop({ smooth: true });
+                } else {
+                  setTopicFilter(tab.id);
+                }
+              }}
+            >
               {Icon && <Icon size={13} style={{ marginRight: "5px", verticalAlign: "middle" }} />}
               {tab.label}
             </TabButton>

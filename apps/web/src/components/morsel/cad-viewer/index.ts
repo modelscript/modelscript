@@ -11,6 +11,6 @@ export type {
 export { AnimationTimeline } from "./AnimationTimeline";
 export { CadBindingPickerModal } from "./CadBindingPickerModal";
 export { default as CadViewer } from "./CadViewer";
-export type { CadAnnotation, CadComponent, CadPortAnnotation } from "./CadViewer";
+export type { CadAnnotation, CadComponent, CadPortAnnotation, ProceduralMeshData } from "./CadViewer";
 export { InstancedCadAssembly, type InstancedCadAssemblyProps } from "./InstancedCadAssembly";
-export { extractCadComponents, parseCadAnnotationString } from "./parse-cad-annotations";
+export { extractCadComponents, parseCadAnnotationString, parseSourceCadVariables } from "./parse-cad-annotations";

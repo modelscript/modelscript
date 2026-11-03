@@ -10,11 +10,10 @@ export const TabBar = styled.div<{ $scrolled?: boolean | undefined }>`
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 50;
-  backdrop-filter: saturate(180%) blur(24px);
-  -webkit-backdrop-filter: saturate(180%) blur(24px);
-  background: ${(props) =>
-    props.$scrolled ? "color-mix(in srgb, var(--color-bg-primary) 92%, transparent)" : "transparent"};
-  transition: background-color 0.15s ease;
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  background: var(--surface-sticky);
+  transition: background-color 0.25s ease;
 `;
 
 export const Tab = styled.button<{ $active?: boolean | undefined }>`
@@ -60,7 +59,7 @@ export const TabText = styled.div<{ $active?: boolean | undefined }>`
     right: 0;
     height: 3px;
     background: var(--gradient-cta);
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--ms-brand) 45%, transparent);
     border-radius: var(--radius-pill);
     transform: ${(props) => (props.$active ? "scaleX(1)" : "scaleX(0.4)")};
     opacity: ${(props) => (props.$active ? 1 : 0)};
@@ -126,16 +125,15 @@ export const ComposePrompt = styled.div`
 `;
 
 export const FilterSection = styled.div<{ $scrolled?: boolean | undefined }>`
-  background: ${(props) =>
-    props.$scrolled ? "color-mix(in srgb, var(--color-bg-primary) 92%, transparent)" : "transparent"};
-  backdrop-filter: saturate(180%) blur(24px);
-  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
   border-bottom: 1px solid var(--color-border);
   padding: 8px 16px;
   position: sticky;
   top: calc(var(--dev-header-height, 0px) + 53px);
   z-index: 45;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.25s ease;
 `;
 
 export const FilterChipsScroll = styled.div`
@@ -164,20 +162,14 @@ export const FilterChipButton = styled.button<{ $active?: boolean | undefined }>
   font-family: inherit;
   flex-shrink: 0;
 
-  background: ${(props) =>
-    props.$active
-      ? "linear-gradient(135deg, rgba(6, 182, 212, 0.22) 0%, rgba(139, 92, 246, 0.3) 100%)"
-      : "var(--surface-row-hover)"};
+  background: ${(props) => (props.$active ? "var(--ms-brand-soft)" : "var(--surface-row-hover)")};
   border: 1px solid
     ${(props) => (props.$active ? "var(--color-accent-cyan)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.08))")};
   color: ${(props) => (props.$active ? "var(--color-text-primary)" : "var(--color-text-secondary)")};
   box-shadow: ${(props) => (props.$active ? "0 0 12px rgba(6, 182, 212, 0.35)" : "none")};
 
   &:hover {
-    background: ${(props) =>
-      props.$active
-        ? "linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(139, 92, 246, 0.4) 100%)"
-        : "var(--surface-row-hover)"};
+    background: ${(props) => (props.$active ? "var(--ms-brand-soft)" : "var(--surface-row-hover)")};
     border-color: ${(props) =>
       props.$active ? "var(--color-accent-cyan)" : "var(--color-border-default, rgba(255, 255, 255, 0.2))"};
     color: var(--color-text-primary);
@@ -207,18 +199,17 @@ export const HashtagPill = styled.button<{ $active?: boolean | undefined }>`
   transition: all 0.15s ease;
   flex-shrink: 0;
 
-  background: ${(props) => (props.$active ? "rgba(139, 92, 246, 0.25)" : "var(--surface-row-hover)")};
+  background: ${(props) => (props.$active ? "var(--ms-brand-soft)" : "var(--surface-row-hover)")};
   border: 1px solid
-    ${(props) =>
-      props.$active ? "var(--color-accent-purple)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.07))"};
+    ${(props) => (props.$active ? "var(--ms-brand)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.07))")};
   color: ${(props) => (props.$active ? "var(--color-text-primary)" : "var(--color-text-muted)")};
-  box-shadow: ${(props) => (props.$active ? "0 0 10px rgba(139, 92, 246, 0.35)" : "none")};
+  box-shadow: ${(props) => (props.$active ? "0 0 10px color-mix(in srgb, var(--ms-brand) 35%, transparent)" : "none")};
   font-weight: ${(props) => (props.$active ? "600" : "400")};
 
   &:hover {
-    background: rgba(139, 92, 246, 0.15);
-    border-color: rgba(139, 92, 246, 0.4);
-    color: var(--color-accent-purple);
+    background: var(--ms-brand-soft);
+    border-color: var(--color-accent-blue-border);
+    color: var(--ms-brand);
   }
 
   .post-count {
@@ -289,8 +280,8 @@ export const ActiveFilterBanner = styled.div`
 
   .topic-hub-link {
     background: none;
-    border: 1px solid rgba(139, 92, 246, 0.4);
-    color: var(--color-accent-purple);
+    border: 1px solid var(--color-accent-blue-border);
+    color: var(--ms-brand);
     font-size: 11.5px;
     font-weight: 600;
     padding: 3px 10px;
@@ -298,8 +289,8 @@ export const ActiveFilterBanner = styled.div`
     cursor: pointer;
     transition: all 0.15s ease;
     &:hover {
-      background: rgba(139, 92, 246, 0.15);
-      border-color: var(--color-accent-purple);
+      background: var(--ms-brand-soft);
+      border-color: var(--ms-brand);
     }
   }
 
@@ -332,7 +323,7 @@ export const EmptyStateIconOrb = styled.div`
   height: 64px;
   border-radius: var(--radius-lg);
   background: var(--gradient-ai-subtle);
-  border: 1px solid var(--color-accent-purple-border);
+  border: 1px solid var(--color-accent-blue-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -376,7 +367,7 @@ export const PrimaryActionButton = styled.button`
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  box-shadow: 0 0 14px rgba(139, 92, 246, 0.35);
+  box-shadow: var(--ms-brand-shadow);
   transition: all 0.2s ease;
 
   &:hover {
@@ -438,7 +429,7 @@ export const HeroCard = styled.div`
 
   &:hover {
     background: var(--surface-row-hover, rgba(255, 255, 255, 0.06));
-    border-color: var(--color-accent-emphasis, #8b5cf6);
+    border-color: var(--ms-brand);
     transform: translateY(-1px);
   }
 `;
@@ -467,19 +458,15 @@ export const DisciplineTabButton = styled.button<{ $active: boolean }>`
   font-weight: ${(props) => (props.$active ? "600" : "500")};
   cursor: pointer;
   border: 1px solid
-    ${(props) =>
-      props.$active
-        ? "var(--color-accent-emphasis, #8b5cf6)"
-        : "var(--color-border-default, rgba(255, 255, 255, 0.12))"};
+    ${(props) => (props.$active ? "var(--ms-brand)" : "var(--color-border-default, rgba(255, 255, 255, 0.12))")};
   background: ${(props) =>
-    props.$active ? "rgba(139, 92, 246, 0.15)" : "var(--color-canvas-subtle, rgba(255, 255, 255, 0.03))"};
-  color: ${(props) =>
-    props.$active ? "var(--color-accent-emphasis, #8b5cf6)" : "var(--color-text-secondary, #8b949e)"};
+    props.$active ? "var(--ms-brand-soft)" : "var(--color-canvas-subtle, rgba(255, 255, 255, 0.03))"};
+  color: ${(props) => (props.$active ? "var(--ms-brand)" : "var(--color-text-secondary, #8b949e)")};
   transition: all 0.2s ease;
 
   &:hover {
-    border-color: var(--color-accent-emphasis, #8b5cf6);
-    background: rgba(139, 92, 246, 0.1);
+    border-color: var(--ms-brand);
+    background: var(--ms-brand-soft);
   }
 `;
 

@@ -2083,7 +2083,7 @@ export function renderLandingPageHtml(): string {
             <a id="level2-docs-link" href="https://modelscript.org/languages/" target="_blank" rel="noopener" class="ms-nav-link">
               Language Specification Docs &nearr;
             </a>
-            <a href="/vscode/workbench/#memfs:empty" class="ms-cta-btn">
+            <a id="level2-empty-link" href="/vscode/workbench/#memfs:empty" class="ms-cta-btn">
               + Empty Workspace
             </a>
           </div>
@@ -2270,6 +2270,7 @@ export function renderLandingPageHtml(): string {
         var extEl = document.getElementById('level2-ext');
         var sumEl = document.getElementById('level2-summary');
         var docsEl = document.getElementById('level2-docs-link');
+        var emptyEl = document.getElementById('level2-empty-link');
         var exCountEl = document.getElementById('example-count-badge');
         var exGrid = document.getElementById('example-tiles-grid');
 
@@ -2281,6 +2282,7 @@ export function renderLandingPageHtml(): string {
         if (extEl) extEl.textContent = lang.ext;
         if (sumEl) sumEl.textContent = lang.summary;
         if (docsEl) docsEl.setAttribute('href', lang.docsUrl);
+        if (emptyEl) emptyEl.setAttribute('href', '/vscode/workbench/#memfs:empty?stdlib=' + encodeURIComponent(lang.id));
 
         var examples = getExamplesForLanguage(lang.id);
         if (exCountEl) {

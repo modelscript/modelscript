@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/simulate",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "Continuous & discrete ODE/DAE simulation, SUNDIALS/CVODE integrators, WebGPU acceleration, and numerical optimization engines for ModelScript",
   "keywords": [
     "modelscript",

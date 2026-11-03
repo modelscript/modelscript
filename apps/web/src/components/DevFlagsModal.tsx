@@ -82,6 +82,11 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     category: "Core",
     description: "Modelica and SysML library package registry, versioning, and documentation views.",
   },
+  git_repositories: {
+    title: "Git Repositories",
+    category: "Core",
+    description: "Git repository catalog, GitHub/GitLab integration, and repository workspaces.",
+  },
   community_social: {
     title: "Community Social & Feeds",
     category: "Community & Federation",
@@ -107,6 +112,22 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     category: "Advanced",
     description: "Zero-copy WebGPU LBM lattice fluid animations and high-order FEA stress shaders.",
   },
+  package_artifacts_tab: {
+    title: "Package Artifacts Tab & Viewers",
+    category: "Advanced",
+    description: "Enables the bundled Artifacts tab and embedded polyglot viewers on package detail pages.",
+  },
+  package_version_compare: {
+    title: "Package Version Diff & Compare Tab",
+    category: "Advanced",
+    description: "Enables the Compare tab and version diff selector on package detail pages.",
+  },
+  package_advanced_exports: {
+    title: "Package Advanced Exports (AASX, OKH, Salsa DB, DataPackage)",
+    category: "Advanced",
+    description:
+      "Exposes Asset Shell (.aasx), Hardware (.okh.json), Salsa DB (.db), DataPackage, and Lockfile exports on package detail pages.",
+  },
   bot_accounts: {
     title: "Simulation Bot Accounts",
     category: "Community & Federation",
@@ -121,6 +142,26 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     title: "Model Context Protocol (MCP) Gateway",
     category: "Advanced",
     description: "Server-Sent Events gateway for AI coding agent inspection and tool calls.",
+  },
+  composer_ai_polish: {
+    title: "AI Composer Polish",
+    category: "Community & Federation",
+    description: "Enable AI-powered text polishing, grammar correction, and style presets in the post composer.",
+  },
+  ai_polish: {
+    title: "AI Polish [Alias]",
+    category: "Community & Federation",
+    description: "Alias for composer_ai_polish — enable AI text polishing in the composer.",
+  },
+  feeds_page: {
+    title: "External RSS Feeds Page",
+    category: "Community & Federation",
+    description: "External RSS/Atom feed subscriptions and reader view (/feeds).",
+  },
+  rss_feeds: {
+    title: "RSS Feeds [Alias]",
+    category: "Community & Federation",
+    description: "Alias for feeds_page — enable external RSS feed subscriptions and reader view.",
   },
   ...LANGUAGE_FLAG_METADATA,
   lang_modelscript_msx: {

@@ -2,14 +2,15 @@
 
 import { PlusIcon, RssIcon, SyncIcon, TrashIcon } from "@primer/octicons-react";
 import { Button, Dialog, Spinner, Text } from "@primer/react";
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useCallback, useEffect, useState } from "react";
+import { Link, Navigate } from "react-router-dom";
 import styled from "styled-components";
 import { getFeeds, subscribeFeed, unsubscribeFeed } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import PageHeader from "../components/PageHeader";
 import { CircleIconButton } from "../components/SharedStyles";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
 
@@ -122,6 +123,9 @@ function formatRssHandle(urlStr: string) {
 
 const FeedsPage: React.FC = () => {
   usePageTitle("Feeds");
+  const hasFeedsPage = useFeatureFlag("feeds_page");
+  const hasRssFeeds = useFeatureFlag("rss_feeds");
+  const hasFeeds = hasFeedsPage || hasRssFeeds;
   const { token } = useAuth();
   const [feeds, setFeeds] = useState<any[]>([]);
   const [urlInput, setUrlInput] = useState("");
@@ -131,7 +135,7 @@ const FeedsPage: React.FC = () => {
   const [unsubscribingFeed, setUnsubscribingFeed] = useState<any | null>(null);
   const [isUnsubscribing, setIsUnsubscribing] = useState(false);
 
-  const fetchFeeds = async () => {
+  const fetchFeeds = useCallback(async () => {
     if (!token) {
       setInitialLoading(false);
       return;
@@ -144,12 +148,16 @@ const FeedsPage: React.FC = () => {
     } finally {
       setInitialLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
+    if (!hasFeeds) return;
     fetchFeeds();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [hasFeeds, fetchFeeds]);
+
+  if (!hasFeeds) {
+    return <Navigate to="/" replace />;
+  }
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -19,6 +19,9 @@ const isLanguageDetailPage = computed(
 
 <template>
   <Layout>
+    <template #nav-bar-title-after>
+      <span class="ms-nav-beta-badge">Beta</span>
+    </template>
     <template #home-hero-image>
       <ClientOnly>
         <TurbineHero />

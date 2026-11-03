@@ -20,11 +20,154 @@ import {
   VarType,
 } from "@modelscript/runtime";
 import { flattenSpiceCircuit } from "../solvers/mna.js";
-import type { SpiceCircuit } from "../types.js";
+import type { SpiceCircuit, SpiceComponent } from "../types.js";
 
 const THERMAL_VOLTAGE_VT = 0.02585;
 const DEFAULT_DIODE_IS = 1e-14;
 const DEFAULT_DIODE_N = 1.0;
+
+function buildSourceWaveformExpr(arena: DAEBuilder, interner: StringInterner, comp: SpiceComponent): number {
+  const wf = comp.sourceSpec?.waveform;
+  const dcVal = comp.sourceSpec?.dc ?? comp.value ?? 0.0;
+  if (!wf) {
+    return arena.addRealLiteral(dcVal);
+  }
+
+  const timeNameId = interner.intern("time");
+  const timeExpr = arena.addExpression(ExprKind.Name, timeNameId);
+
+  switch (wf.kind) {
+    case "SINE": {
+      // vo + va * exp(-theta * max(0, t - td)) * sin(2 * pi * freq * (t - td))
+      const voExpr = arena.addRealLiteral(wf.vo);
+      const vaExpr = arena.addRealLiteral(wf.va);
+      const td = wf.td ?? 0.0;
+      const tdExpr = arena.addRealLiteral(td);
+      const dtExpr = td !== 0 ? arena.addBinaryExpr(BinOp.Sub, timeExpr, tdExpr) : timeExpr;
+      const omegaExpr = arena.addRealLiteral(2.0 * Math.PI * wf.freq);
+      const sinTerm = arena.addCallExpr("sin", [arena.addBinaryExpr(BinOp.Mul, omegaExpr, dtExpr)]);
+      let acTerm = arena.addBinaryExpr(BinOp.Mul, vaExpr, sinTerm);
+      if (wf.theta && wf.theta !== 0) {
+        const dampArg = arena.addBinaryExpr(BinOp.Mul, arena.addRealLiteral(-wf.theta), dtExpr);
+        acTerm = arena.addBinaryExpr(BinOp.Mul, acTerm, arena.addCallExpr("exp", [dampArg]));
+      }
+      const activeSine = arena.addBinaryExpr(BinOp.Add, voExpr, acTerm);
+      if (td > 0) {
+        const condAfterTd = arena.addBinaryExpr(BinOp.Gte, timeExpr, tdExpr);
+        return arena.addIfElse(condAfterTd, activeSine, voExpr);
+      }
+      return activeSine;
+    }
+
+    case "PULSE": {
+      // Periodic pulse: v1 before td, then period per with rise tr, high pw, fall tf
+      const v1Expr = arena.addRealLiteral(wf.v1);
+      const v2Expr = arena.addRealLiteral(wf.v2);
+      const tdExpr = arena.addRealLiteral(wf.td);
+      const tr = Math.max(1e-12, wf.tr);
+      const tf = Math.max(1e-12, wf.tf);
+      const pw = Math.max(0.0, wf.pw);
+      const per = Math.max(tr + pw + tf, wf.per);
+
+      const dtExpr = arena.addBinaryExpr(BinOp.Sub, timeExpr, tdExpr);
+      const phaseExpr = arena.addCallExpr("mod", [dtExpr, arena.addRealLiteral(per)]);
+      const trExpr = arena.addRealLiteral(tr);
+      const trPwExpr = arena.addRealLiteral(tr + pw);
+      const trPwTfExpr = arena.addRealLiteral(tr + pw + tf);
+
+      // Rising edge: v1 + (v2 - v1) * (phase / tr)
+      const riseSlope = arena.addRealLiteral((wf.v2 - wf.v1) / tr);
+      const riseExpr = arena.addBinaryExpr(BinOp.Add, v1Expr, arena.addBinaryExpr(BinOp.Mul, riseSlope, phaseExpr));
+
+      // Falling edge: v2 + (v1 - v2) * ((phase - (tr + pw)) / tf)
+      const fallSlope = arena.addRealLiteral((wf.v1 - wf.v2) / tf);
+      const fallExpr = arena.addBinaryExpr(
+        BinOp.Add,
+        v2Expr,
+        arena.addBinaryExpr(BinOp.Mul, fallSlope, arena.addBinaryExpr(BinOp.Sub, phaseExpr, trPwExpr)),
+      );
+
+      const afterFall = arena.addIfElse(arena.addBinaryExpr(BinOp.Lt, phaseExpr, trPwTfExpr), fallExpr, v1Expr);
+      const afterHigh = arena.addIfElse(arena.addBinaryExpr(BinOp.Lt, phaseExpr, trPwExpr), v2Expr, afterFall);
+      const afterRise = arena.addIfElse(arena.addBinaryExpr(BinOp.Lt, phaseExpr, trExpr), riseExpr, afterHigh);
+      return arena.addIfElse(arena.addBinaryExpr(BinOp.Lt, timeExpr, tdExpr), v1Expr, afterRise);
+    }
+
+    case "EXP": {
+      // Double exponential waveform:
+      // t < td1: v1
+      // td1 <= t < td2: v1 + (v2 - v1) * (1 - exp(-(t - td1) / tau1))
+      // t >= td2: v1 + (v2 - v1) * (1 - exp(-(t - td1) / tau1)) + (v1 - v2) * (1 - exp(-(t - td2) / tau2))
+      const v1Expr = arena.addRealLiteral(wf.v1);
+      const dv12Expr = arena.addRealLiteral(wf.v2 - wf.v1);
+      const dv21Expr = arena.addRealLiteral(wf.v1 - wf.v2);
+      const td1Expr = arena.addRealLiteral(wf.td1);
+      const td2Expr = arena.addRealLiteral(wf.td2);
+      const tau1Expr = arena.addRealLiteral(Math.max(1e-12, wf.tau1));
+      const tau2Expr = arena.addRealLiteral(Math.max(1e-12, wf.tau2));
+      const oneExpr = arena.addRealLiteral(1.0);
+
+      const dt1 = arena.addBinaryExpr(BinOp.Sub, timeExpr, td1Expr);
+      const exp1 = arena.addCallExpr("exp", [
+        arena.addUnaryExpr(UnaryOp.Negate, arena.addBinaryExpr(BinOp.Div, dt1, tau1Expr)),
+      ]);
+      const branch1 = arena.addBinaryExpr(
+        BinOp.Add,
+        v1Expr,
+        arena.addBinaryExpr(BinOp.Mul, dv12Expr, arena.addBinaryExpr(BinOp.Sub, oneExpr, exp1)),
+      );
+
+      const dt2 = arena.addBinaryExpr(BinOp.Sub, timeExpr, td2Expr);
+      const exp2 = arena.addCallExpr("exp", [
+        arena.addUnaryExpr(UnaryOp.Negate, arena.addBinaryExpr(BinOp.Div, dt2, tau2Expr)),
+      ]);
+      const branch2 = arena.addBinaryExpr(
+        BinOp.Add,
+        branch1,
+        arena.addBinaryExpr(BinOp.Mul, dv21Expr, arena.addBinaryExpr(BinOp.Sub, oneExpr, exp2)),
+      );
+
+      const afterTd1 = arena.addIfElse(arena.addBinaryExpr(BinOp.Lt, timeExpr, td2Expr), branch1, branch2);
+      return arena.addIfElse(arena.addBinaryExpr(BinOp.Lt, timeExpr, td1Expr), v1Expr, afterTd1);
+    }
+
+    case "PWL": {
+      const pts = wf.points;
+      if (pts.length === 0) return arena.addRealLiteral(dcVal);
+      const firstPt = pts[0];
+      if (!firstPt) return arena.addRealLiteral(dcVal);
+      if (pts.length === 1) return arena.addRealLiteral(firstPt[1]);
+
+      const lastPt = pts[pts.length - 1];
+      let expr = arena.addRealLiteral(lastPt ? lastPt[1] : 0.0);
+      for (let i = pts.length - 2; i >= 0; i--) {
+        const pt0 = pts[i];
+        const pt1 = pts[i + 1];
+        if (!pt0 || !pt1) continue;
+        const [t0, y0] = pt0;
+        const [t1, y1] = pt1;
+        const dt = Math.max(1e-12, t1 - t0);
+        const slope = (y1 - y0) / dt;
+        const segExpr = arena.addBinaryExpr(
+          BinOp.Add,
+          arena.addRealLiteral(y0),
+          arena.addBinaryExpr(
+            BinOp.Mul,
+            arena.addRealLiteral(slope),
+            arena.addBinaryExpr(BinOp.Sub, timeExpr, arena.addRealLiteral(t0)),
+          ),
+        );
+        const cond = arena.addBinaryExpr(BinOp.Lt, timeExpr, arena.addRealLiteral(t1));
+        expr = arena.addIfElse(cond, segExpr, expr);
+      }
+      const firstCond = arena.addBinaryExpr(BinOp.Lte, timeExpr, arena.addRealLiteral(firstPt[0]));
+      return arena.addIfElse(firstCond, arena.addRealLiteral(firstPt[1]), expr);
+    }
+
+    default:
+      return arena.addRealLiteral(dcVal);
+  }
+}
 
 export function lowerSpiceToDae(circuit: SpiceCircuit, arenaTitle?: string): DAEBuilder {
   const title = arenaTitle ?? (circuit.title || "SpiceCircuit");
@@ -285,23 +428,21 @@ export function lowerSpiceToDae(circuit: SpiceCircuit, arenaTitle?: string): DAE
         break;
       }
       case "V": {
-        // Independent Voltage Source: v_diff = V_val
-        const vVal = comp.sourceSpec?.dc ?? comp.value ?? 0.0;
-        const vLit = arena.addRealLiteral(vVal);
-        arena.addEquation(EqKind.Simple, vDiffExpr, vLit);
+        // Independent Voltage Source: v_diff = V(t)
+        const vRhs = buildSourceWaveformExpr(arena, interner, comp);
+        arena.addEquation(EqKind.Simple, vDiffExpr, vRhs);
         break;
       }
       case "I": {
-        // Independent Current Source: i = I_val
-        const iVal = comp.sourceSpec?.dc ?? comp.value ?? 0.0;
-        const iLit = arena.addRealLiteral(iVal);
-        arena.addEquation(EqKind.Simple, iExprId, iLit);
+        // Independent Current Source: i = I(t)
+        const iRhs = buildSourceWaveformExpr(arena, interner, comp);
+        arena.addEquation(EqKind.Simple, iExprId, iRhs);
         break;
       }
       case "E": {
         // VCVS: v_diff = gain * (v_c1 - v_c2)
-        const c1 = normalizeNode(comp.controlNodes?.[0]);
-        const c2 = normalizeNode(comp.controlNodes?.[1]);
+        const c1 = normalizeNode(comp.controlNodes?.[0] ?? comp.nodes[2]);
+        const c2 = normalizeNode(comp.controlNodes?.[1] ?? comp.nodes[3]);
         const vc1Expr = nodeExprMap.get(c1) ?? arena.addRealLiteral(0.0);
         const vc2Expr = nodeExprMap.get(c2) ?? arena.addRealLiteral(0.0);
         const vcDiff = arena.addBinaryExpr(BinOp.Sub, vc1Expr, vc2Expr);
@@ -312,8 +453,8 @@ export function lowerSpiceToDae(circuit: SpiceCircuit, arenaTitle?: string): DAE
       }
       case "G": {
         // VCCS: i = gm * (v_c1 - v_c2)
-        const c1 = normalizeNode(comp.controlNodes?.[0]);
-        const c2 = normalizeNode(comp.controlNodes?.[1]);
+        const c1 = normalizeNode(comp.controlNodes?.[0] ?? comp.nodes[2]);
+        const c2 = normalizeNode(comp.controlNodes?.[1] ?? comp.nodes[3]);
         const vc1Expr = nodeExprMap.get(c1) ?? arena.addRealLiteral(0.0);
         const vc2Expr = nodeExprMap.get(c2) ?? arena.addRealLiteral(0.0);
         const vcDiff = arena.addBinaryExpr(BinOp.Sub, vc1Expr, vc2Expr);

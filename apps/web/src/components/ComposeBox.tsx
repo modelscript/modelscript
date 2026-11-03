@@ -107,7 +107,29 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const [snippetLang, setSnippetLang] = useState("modelica");
   const [snippetCode, setSnippetCode] = useState("");
 
-  const [replyVisibility, setReplyVisibility] = useState<"everyone" | "following" | "mentioned">("everyone");
+  const [postVisibility, setPostVisibility] = useState<"public" | "unlisted" | "followers" | "direct">(() => {
+    const dv = user?.default_post_visibility;
+    if (dv === "public" || dv === "unlisted" || dv === "followers" || dv === "direct") {
+      return dv;
+    }
+    return "public";
+  });
+  const [replyVisibility, setReplyVisibility] = useState<"everyone" | "following" | "mentioned">(() => {
+    const dv = user?.default_post_visibility;
+    if (dv === "followers") return "following";
+    if (dv === "direct") return "mentioned";
+    return "everyone";
+  });
+
+  useEffect(() => {
+    const dv = user?.default_post_visibility;
+    if (dv === "public" || dv === "unlisted" || dv === "followers" || dv === "direct") {
+      setPostVisibility(dv);
+      if (dv === "followers") setReplyVisibility("following");
+      else if (dv === "direct") setReplyVisibility("mentioned");
+    }
+  }, [user?.default_post_visibility]);
+
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showContentWarning, setShowContentWarning] = useState(false);
   const [contentWarning, setContentWarning] = useState("");
@@ -115,6 +137,9 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const [showMorselModal, setShowMorselModal] = useState(false);
   const [showPackageRepoPicker, setShowPackageRepoPicker] = useState(false);
   const hasHpc = useFeatureFlag("cae_cloud_solver");
+  const hasComposerAiPolish = useFeatureFlag("composer_ai_polish");
+  const hasAiPolishAlias = useFeatureFlag("ai_polish");
+  const hasAiPolish = hasComposerAiPolish || hasAiPolishAlias;
 
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(Boolean(autoFocus));
@@ -164,6 +189,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
     contentWarning,
     setContentWarning,
     setShowContentWarning,
+    visibility: postVisibility,
     replyVisibility,
     quotePost,
     replyToPost,
@@ -634,15 +660,17 @@ export default function ComposeBox(props: ComposeBoxProps) {
             </NotionGhostButton>
           )}
 
-          <NotionGhostButton
-            type="button"
-            disabled={Boolean(aiBusy) || !hasNotebookTextToPolish}
-            onClick={() => void handleAiPolish("polish")}
-            title="Polish active section with AI"
-          >
-            <SparklesFillIcon size={12} />
-            <span>{aiBusy === "polishing" ? "Polishing..." : "Polish"}</span>
-          </NotionGhostButton>
+          {hasAiPolish && (
+            <NotionGhostButton
+              type="button"
+              disabled={Boolean(aiBusy) || !hasNotebookTextToPolish}
+              onClick={() => void handleAiPolish("polish")}
+              title="Polish active section with AI"
+            >
+              <SparklesFillIcon size={12} />
+              <span>{aiBusy === "polishing" ? "Polishing..." : "Polish"}</span>
+            </NotionGhostButton>
+          )}
 
           {previousAiState !== null && (
             <NotionGhostButton type="button" onClick={handleUndoAi} title="Undo last AI change">
@@ -733,7 +761,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   setShowMorselModal={setShowMorselModal}
                   setShowPackageRepoPicker={setShowPackageRepoPicker}
                   fileInputRef={fileInputRef}
-                  onPolishCell={(cellId) => void handleAiPolish("polish", cellId)}
+                  onPolishCell={hasAiPolish ? (cellId) => void handleAiPolish("polish", cellId) : undefined}
                   onDraftFromArtifactCell={(artId, cellId) => void handleAiDraft(artId, null, cellId)}
                   aiBusy={aiBusy}
                 />
@@ -811,7 +839,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                 setShowMorselModal={setShowMorselModal}
                 setShowPackageRepoPicker={setShowPackageRepoPicker}
                 fileInputRef={fileInputRef}
-                onPolishCell={(cellId) => void handleAiPolish("polish", cellId)}
+                onPolishCell={hasAiPolish ? (cellId) => void handleAiPolish("polish", cellId) : undefined}
                 onDraftFromArtifactCell={(artId, cellId) => void handleAiDraft(artId, null, cellId)}
                 aiBusy={aiBusy}
               />
@@ -916,7 +944,18 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   }}
                 />
               )}
-              <Box flex={1} display="flex" flexDirection="column" style={{ minWidth: 0, position: "relative" }}>
+              <Box
+                flex={1}
+                display="flex"
+                flexDirection="column"
+                style={{ minWidth: 0, position: "relative" }}
+                onFocusCapture={() => setIsInputFocused(true)}
+                onBlurCapture={(e: React.FocusEvent<HTMLDivElement>) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                    setIsInputFocused(false);
+                  }
+                }}
+              >
                 <div style={{ display: hideInput ? "none" : "contents" }}>
                   {showContentWarning && (
                     <Box mb={2}>
@@ -939,15 +978,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                       />
                     </Box>
                   )}
-                  <div
-                    style={{ position: "relative", width: "100%" }}
-                    onFocusCapture={() => setIsInputFocused(true)}
-                    onBlurCapture={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                        setIsInputFocused(false);
-                      }
-                    }}
-                  >
+                  <div style={{ position: "relative", width: "100%" }}>
                     <OverlayWrapper>
                       <Backdrop ref={backdropRef}>
                         {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
@@ -956,7 +987,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                               {part}
                             </span>
                           ) : part.startsWith("#") ? (
-                            <span key={i} style={{ color: "var(--color-accent-purple, #a855f7)" }}>
+                            <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
                               {part}
                             </span>
                           ) : (
@@ -1033,7 +1064,6 @@ export default function ComposeBox(props: ComposeBoxProps) {
                           setIsInputFocused(true);
                         }}
                         onBlur={() => {
-                          setIsInputFocused(false);
                           setTimeout(() => {
                             autocomplete.setMentionQuery(null);
                             autocomplete.setHashtagQuery(null);
@@ -1075,13 +1105,20 @@ export default function ComposeBox(props: ComposeBoxProps) {
                       setReplyVisibility={setReplyVisibility}
                       showVisibilityMenu={showVisibilityMenu}
                       setShowVisibilityMenu={setShowVisibilityMenu}
-                      visible={isInputFocused || showVisibilityMenu}
+                      visible={
+                        isInputFocused ||
+                        showVisibilityMenu ||
+                        Boolean(content.trim() || artifactId !== null || submitHandler.hasNotebookContent)
+                      }
+                      isNotebookMode={notebook.isNotebookMode}
+                      handleToggleNotebookMode={notebook.handleToggleNotebookMode}
                     />
                   )}
                 </div>
 
                 <ComposeToolbar
                   isModal={isModal}
+                  isInputFocused={isInputFocused}
                   isNotebookMode={notebook.isNotebookMode}
                   content={content}
                   setContent={setContent}
@@ -1107,7 +1144,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   textareaRef={textareaRef}
                   onInsertEmoji={handleInsertEmoji}
                   onAiDraft={() => void handleAiDraft(artifactId, attachedArtifactView)}
-                  onAiPolish={(mode) => void handleAiPolish(mode)}
+                  onAiPolish={hasAiPolish ? (mode) => void handleAiPolish(mode) : undefined}
                   onUndoAi={handleUndoAi}
                   canUndoAi={previousAiState !== null}
                   aiBusy={aiBusy}

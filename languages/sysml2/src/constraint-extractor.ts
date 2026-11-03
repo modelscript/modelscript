@@ -29,7 +29,7 @@ export interface ExtractedConstraint {
   /** Right-hand side value (resolved to a number if possible) */
   rhs: number | string;
   /** Origin language */
-  source: "sysml2";
+  source: "sysml2" | "modelica";
   /** Requirement name, if traceable */
   requirementName?: string | undefined;
   /** Constraint entry name */

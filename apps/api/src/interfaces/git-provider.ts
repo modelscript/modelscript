@@ -64,7 +64,7 @@ export interface GitIssueItem {
 export interface GitMergeRequestItem {
   id: number;
   iid: number;
-  project_id: number;
+  project_id: number | string;
   title: string;
   description: string;
   state: string;
@@ -72,10 +72,22 @@ export interface GitMergeRequestItem {
   updated_at: string;
   source_branch: string;
   target_branch: string;
+  web_url?: string | undefined;
+  sha?: string | undefined;
+  target_sha?: string | undefined;
+  commits_ahead?: number | undefined;
   author: {
     name: string;
     avatar_url: string | null;
   };
+}
+
+export interface CreateGitMergeRequestInput {
+  title: string;
+  description?: string | undefined;
+  source_branch: string;
+  target_branch: string;
+  author_name?: string | undefined;
 }
 
 export interface IGitProvider {
@@ -85,7 +97,8 @@ export interface IGitProvider {
   getCommits(idOrUrl: string, refName: string): Promise<GitCommitItem[]>;
   getPipelines(idOrUrl: string, refName: string): Promise<GitPipelineItem[]>;
   getPipelineJobs(idOrUrl: string, pipelineId: string): Promise<GitJobItem[]>;
-  getIssues(idOrUrl: string): Promise<GitIssueItem[]>;
+  getIssues(idOrUrl: string, body?: unknown): Promise<GitIssueItem[]>;
   createIssue(idOrUrl: string, body: unknown): Promise<GitIssueItem>;
   getMergeRequests(idOrUrl: string): Promise<GitMergeRequestItem[]>;
+  createMergeRequest?(idOrUrl: string, body: CreateGitMergeRequestInput): Promise<GitMergeRequestItem>;
 }

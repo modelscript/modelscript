@@ -152,11 +152,13 @@ export {
   getUnitScaleFactor,
   hermiteInterpolate,
   quaternionFromAxisAngle,
+  quaternionFromDirections,
   quaternionFromEuler,
   quaternionFromMatrix3x3,
   quaternionMultiply,
   quaternionSlerp,
   quaternionToEuler,
+  rotateVectorByQuaternion,
   type Quat,
 } from "./kinematics.js";
 
@@ -167,6 +169,8 @@ export {
   type AnimationMode,
   type AnimationState,
   type CadDynamicBinding,
+  type CadDynamicProperty,
+  type ComponentDefaultTransform,
   type ComponentTransform,
   type StateListener,
 } from "./animation-controller.js";

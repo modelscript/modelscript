@@ -24,25 +24,27 @@ npm run build
 
 ### Common Commands
 
-| Command                  | Description                                                                 |
-| :----------------------- | :-------------------------------------------------------------------------- |
-| `npm run doctor:dev`     | Inspect local toolchains, memory, and database readiness across all tracks  |
-| `npm run dev:ansatz`     | Start Ansatz full-stack platform (API backend + Web frontend)               |
-| `npm run dev:compiler`   | Watch and recompile core compiler & language packages                       |
-| `npm run dev:cli`        | Start interactive ModelScript CLI (`msx`) development sandbox               |
-| `npm run dev:docs`       | Start VitePress documentation portal on `localhost:5173`                    |
-| `npm run build`          | Build all workspace packages in topological dependency order via Nx         |
-| `npm run build:affected` | Build only packages affected by current branch changes                      |
-| `npm test`               | Run tests for affected packages via the RAM/CPU-aware `test-coordinator.js` |
-| `npm run test:fast`      | Fast unit-test runner across affected packages                              |
-| `npm run test:all`       | Run all unit and integration test suites across the monorepo                |
-| `npm run lint`           | Run ESLint and repository policy linters on affected packages               |
-| `npm run lint:all`       | Run ESLint, manifest, header, cycle, and type-safety ratchet checks         |
-| `npm run typecheck`      | Run TypeScript `tsc --noEmit` across affected packages                      |
-| `npm run verify:dist`    | Verify `package.json#exports` and `.wasm` asset parity in `dist/`           |
-| `npm run verify:pack`    | Verify `npm pack` tarball completeness and isolated ESM consumer imports    |
-| `npm run clean:scratch`  | Remove untracked `scratch*` directories and ephemeral debug logs            |
-| `npm run format`         | Format code, JSON, and Markdown files with Prettier                         |
+| Command                   | Description                                                                 |
+| :------------------------ | :-------------------------------------------------------------------------- |
+| `npm run doctor:dev`      | Inspect local toolchains, memory, and database readiness across all tracks  |
+| `npm run dev:ansatz`      | Start Ansatz full-stack platform (API backend + Web frontend)               |
+| `npm run dev:compiler`    | Watch and recompile core compiler & language packages                       |
+| `npm run dev:cli`         | Start interactive ModelScript CLI (`msx`) development sandbox               |
+| `npm run dev:docs`        | Start VitePress documentation portal on `localhost:5173`                    |
+| `npm run build`           | Build all workspace packages in topological dependency order via Nx         |
+| `npm run build:affected`  | Build only packages affected by current branch changes                      |
+| `npm test`                | Run tests for affected packages via the RAM/CPU-aware `test-coordinator.js` |
+| `npm run test:fast`       | Fast unit-test runner across affected packages                              |
+| `npm run test:all`        | Run all unit and integration test suites across the monorepo                |
+| `npm run lint`            | Run ESLint and repository policy linters on affected packages               |
+| `npm run lint:all`        | Run ESLint, manifest, header, cycle, and type-safety ratchet checks         |
+| `npm run typecheck`       | Run TypeScript `tsc --noEmit` across affected packages                      |
+| `npm run verify:dist`     | Verify `package.json#exports` and `.wasm` asset parity in `dist/`           |
+| `npm run verify:pack`     | Verify `npm pack` tarball completeness and isolated ESM consumer imports    |
+| `npm run version:bump`    | Bump and synchronize all 73+ workspace manifests, Tauri, and source pins    |
+| `npm run release:dry-run` | Preview the Smart Hybrid release version, changelog, and tag plan locally   |
+| `npm run clean:scratch`   | Remove untracked `scratch*` directories and ephemeral debug logs            |
+| `npm run format`          | Format code, JSON, and Markdown files with Prettier                         |
 
 ### Choose Your Development Track
 
@@ -207,9 +209,47 @@ npm test
 
 ---
 
-## 6. Making a Release
+## 6. Versioning & Making a Release
 
-Releases are triggered manually via GitHub Actions ([`.github/workflows/release.yml`](./.github/workflows/release.yml)), which versions all publishable packages, generates changelogs, signs git tags with GPG, and publishes with npm provenance.
+ModelScript uses a **fixed-version monorepo** strategy where all workspace packages (`packages/*`, `languages/*`, `apps/*`, `ee/`), the VS Code extension, Tauri desktop bundles (`tauri.conf.json`, `Cargo.toml`), VitePress documentation metadata, and runtime version constants share a single canonical `major.minor.patch` version synchronized by [`scripts/sync-versions.ts`](./scripts/sync-versions.ts) (enforced in CI via `npm run lint:versions` / `npm run lint:repo`).
+
+> **Strict `X.Y.Z` Numeric SemVer Requirement:** Always use clean numeric `major.minor.patch` versions (e.g., `0.1.0`, `0.2.0`, `1.0.0`) without pre-release suffixes (`-alpha`, `-beta`, `-rc`). Both the Visual Studio Marketplace (`@vscode/vsce`) and native desktop bundlers (Windows MSI/NSIS and macOS `CFBundleShortVersionString` in Tauri) strictly reject hyphenated version strings.
+
+### Two Supported Versioning Workflows (Smart Hybrid Pipeline)
+
+The release orchestrator ([`scripts/ci-release-version.ts`](./scripts/ci-release-version.ts)) compares the version on disk (`packages/runtime/package.json`) against the latest Git release tag (`v*`), allowing you to use either workflow seamlessly:
+
+#### Workflow A: Pre-Bump During Development (Milestone Cycle)
+
+If you want `main` to reflect the upcoming version (`0.1.0`) while you land commits toward that milestone:
+
+1. **Bump all workspace manifests early on `main`:**
+   ```bash
+   # Pass an explicit X.Y.Z version or a relative bump (patch | minor | major):
+   npm run version:bump -- 0.1.0
+   ```
+   This updates all 73+ `package.json` manifests, `package-lock.json`, `Cargo.toml`, `tauri.conf.json`, VitePress language metadata, and embedded version constants (`ANSATZ_VERSION`, `SERVER_VERSION`, `workspaceVersion`).
+2. **Commit and continue landing PRs/commits on `main`:**
+   You can make as many additional commits as needed before tagging the release.
+3. **Cut the release when ready:**
+   Navigate to **Actions → Release → Run workflow** on GitHub and run with the default **`auto`** (or **`current`**) strategy. Because `diskVersion > latestGitTag`, the orchestrator detects the pre-bumped version and tags/publishes `v0.1.0` directly **without** double-bumping to `0.1.1` or `0.2.0`.
+
+#### Workflow B: Release-Time Bump (Continuous Trunk)
+
+If you prefer not to touch version numbers during development:
+
+1. Leave `main` at the last released version (`vX.Y.Z`).
+2. When ready to release, navigate to **Actions → Release → Run workflow** and select:
+   - **`auto`** _(default)_: Computes the next SemVer version automatically from [Conventional Commits](https://www.conventionalcommits.org/) (`feat:` $\rightarrow$ `minor`, `fix:`/`perf:` $\rightarrow$ `patch`).
+   - **`patch` / `minor` / `major`**: Applies an explicit relative SemVer bump from the latest `v*` Git tag.
+
+### Idempotent Publishing & Retry Safety
+
+If a release workflow run fails mid-flight (for example, due to a transient registry timeout), re-running the workflow with `auto` or `current` is **100% idempotent**:
+
+- **No Empty Version Bumps:** [`scripts/ci-release-version.ts`](./scripts/ci-release-version.ts) detects when `CHANGELOG.md` and `package.json` already contain the target version and skips duplicate version increments.
+- **Registry Deduplication:** `npm publish` checks `npm view @modelscript/runtime@<version>` before publishing, and both `@vscode/vsce publish --skip-duplicate` and `ovsx publish --skip-duplicate` gracefully skip if the extension version is already live.
+- **Zero Duplicate CI Runs:** Pushing the `chore(release): publish <version>` commit to `main` automatically skips redundant test/build jobs in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) since [`.github/workflows/release.yml`](./.github/workflows/release.yml) has already verified the tree.
 
 ### Required Repository Secrets
 
@@ -225,8 +265,11 @@ Releases are triggered manually via GitHub Actions ([`.github/workflows/release.
 
 ### Triggering a Release
 
-1. Preview locally if desired: `npm run release:dry-run`
-2. Navigate to **Actions → Release → Run workflow** on GitHub and choose the semver bump (`patch`, `minor`, `major`, `prepatch`, `preminor`, `premajor`).
+1. Preview the version resolution and changelog locally if desired:
+   ```bash
+   npm run release:dry-run
+   ```
+2. Navigate to **Actions → Release → Run workflow** on GitHub and choose the version strategy (`auto`, `current`, `patch`, `minor`, `major`).
 
 ---
 
@@ -278,16 +321,10 @@ EMAIL_FROM=noreply@ansatz.social
 When code merges into `main` or a new release workflow is triggered, the GitHub Actions deployment runner automatically:
 
 1. Connects to the host and ensures Docker and Docker Compose are installed (`which docker || curl -fsSL https://get.docker.com | sh`).
-2. Creates the target directory and subdirectories (`mkdir -p ${TARGET_DIR}/config`).
-3. Securely writes `.env.production` from `PROD_ENV_FILE` with `chmod 600`.
-4. Copies `docker-compose.yml`, `docker-compose.prod.yml`, and `config/*` (`Caddyfile`, `mosquitto.conf`, `init-timescaledb.sql`).
-5. Pulls pre-built images from `ghcr.io/modelscript/*` and launches the federated stack:
-   ```bash
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-     --env-file .env.production --profile federated up -d --remove-orphans
-   ```
-
----
+2. Creates the target directory and subdirectories (`mkdir -p ${TARGET_DIR}/config ${TARGET_DIR}/scripts ${TARGET_DIR}/backups`).
+3. Securely writes `.env.production` from `PROD_ENV_FILE` (plus `OAUTH_*`, `RESEND_API_KEY`, and `ADMIN_INIT_PASSWORD` secrets) with `chmod 600`.
+4. Copies `docker-compose.yml`, `docker-compose.prod.yml`, `config/*`, and operational scripts (`scripts/ops/*.sh`).
+5. Executes [`scripts/ops/deploy.sh`](./scripts/ops/deploy.sh), which takes an atomic pre-deploy SQLite hot backup (`scripts/ops/backup.sh`), pulls pre-built images from `ghcr.io/modelscript/*`, launches the stack, verifies health probes across `api`, `modelscript.org`, and `ansatz.social`, and automatically rolls back if any health check fails.
 
 ---
 

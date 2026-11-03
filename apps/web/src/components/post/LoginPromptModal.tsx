@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { MarkGithubIcon, XIcon } from "@primer/octicons-react";
+import { XIcon } from "@primer/octicons-react";
 import { Heading, IconButton, Text } from "@primer/react";
 import React from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useInstanceBranding } from "../../InstanceBrandingContext";
 import Box from "../Box";
@@ -20,6 +21,8 @@ const AnalyticsModalOverlay = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
 `;
 
 const AnalyticsModalContainer = styled.div`
@@ -29,24 +32,12 @@ const AnalyticsModalContainer = styled.div`
   border-radius: 16px;
   width: 90%;
   max-width: 600px;
-  max-height: 90vh;
+  max-height: calc(100dvh - 32px);
   overflow-y: auto;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
 `;
 
-const GitLabIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.43 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z" />
-  </svg>
-);
-
-const TwitterXIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-  </svg>
-);
-
-const ProviderButton = styled.button`
+const PrimaryButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -54,7 +45,28 @@ const ProviderButton = styled.button`
   width: 100%;
   padding: 12px 16px;
   border-radius: 9999px;
-  font-size: 16px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+  color: #ffffff;
+  border: none;
+  transition: opacity 0.2s;
+
+  &:hover {
+    opacity: 0.92;
+  }
+`;
+
+const SecondaryButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 9999px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   background-color: var(--color-bg-primary);
@@ -74,10 +86,7 @@ export interface LoginPromptModalProps {
 export const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ onClose }) => {
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
-
-  const handleOAuthLogin = (provider: string) => {
-    window.location.href = `/api/v1/auth/login/${provider}`;
-  };
+  const navigate = useNavigate();
 
   const modal = (
     <AnalyticsModalOverlay
@@ -99,18 +108,22 @@ export const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ onClose }) =
           </Text>
         </Box>
         <Box display="flex" flexDirection="column" gap={3}>
-          <ProviderButton onClick={() => handleOAuthLogin("github")}>
-            <MarkGithubIcon size={20} />
-            Continue with GitHub
-          </ProviderButton>
-          <ProviderButton onClick={() => handleOAuthLogin("gitlab")}>
-            <GitLabIcon />
-            Continue with GitLab
-          </ProviderButton>
-          <ProviderButton onClick={() => handleOAuthLogin("twitter")}>
-            <TwitterXIcon />
-            Continue with X
-          </ProviderButton>
+          <PrimaryButton
+            onClick={() => {
+              onClose();
+              navigate("/login");
+            }}
+          >
+            Sign In
+          </PrimaryButton>
+          <SecondaryButton
+            onClick={() => {
+              onClose();
+              navigate("/signup");
+            }}
+          >
+            Create an Account
+          </SecondaryButton>
         </Box>
       </AnalyticsModalContainer>
     </AnalyticsModalOverlay>

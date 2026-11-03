@@ -15,7 +15,8 @@ import {
   SyncIcon,
 } from "@primer/octicons-react";
 import { Tooltip } from "@primer/react";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
+import { useClickOutside } from "../../hooks/useClickOutside";
 import AnimatedCount from "../AnimatedCount";
 import Box from "../Box";
 import { ActionButton, MenuButton, ViewsLink, formatNumber } from "./styles";
@@ -27,6 +28,7 @@ export interface PostActionsBarProps {
   liked: boolean;
   likeCount: number;
   bookmarked: boolean;
+  bookmarkCount?: number;
   impressions: number;
   hasAttachment: boolean;
   token: string | null;
@@ -50,6 +52,7 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
   liked,
   likeCount,
   bookmarked,
+  bookmarkCount,
   impressions,
   hasAttachment,
   token,
@@ -67,6 +70,11 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
 }) => {
   const [showRepostMenu, setShowRepostMenu] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const repostContainerRef = useRef<HTMLDivElement>(null);
+  const shareContainerRef = useRef<HTMLDivElement>(null);
+
+  useClickOutside(repostContainerRef, () => setShowRepostMenu(false), showRepostMenu);
+  useClickOutside(shareContainerRef, () => setShowShareMenu(false), showShareMenu);
 
   const replyButton = (
     <Tooltip text="Reply" direction="n">
@@ -94,7 +102,7 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
   );
 
   const repostButtonAndMenu = (
-    <Box position="relative" style={{ zIndex: showRepostMenu ? 200 : undefined }}>
+    <Box ref={repostContainerRef} position="relative" style={{ zIndex: showRepostMenu ? 200 : undefined }}>
       <Tooltip text={reposted ? "Undo repost" : "Repost"} direction="n">
         <ActionButton
           aria-label={reposted ? "Undo repost" : "Repost"}
@@ -121,85 +129,75 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
       </Tooltip>
 
       {showRepostMenu && (
-        <>
-          <div
-            data-post-menu-open="true"
-            style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}
+        <Box
+          data-post-menu-open="true"
+          position="absolute"
+          top="calc(100% + 4px)"
+          left="0"
+          bg="var(--surface-overlay)"
+          border="1px solid var(--color-border)"
+          borderRadius="12px"
+          boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"
+          style={{ backdropFilter: "blur(12px)" }}
+          p={1}
+          zIndex={1000}
+          minWidth="140px"
+          display="flex"
+          flexDirection="column"
+        >
+          <button
+            onClick={(e) => {
+              setShowRepostMenu(false);
+              onRepost(e);
+            }}
+            style={{
+              padding: "8px 12px",
+              background: "none",
+              border: "none",
+              textAlign: "left",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "var(--color-fg-default)",
+              borderRadius: "8px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.06)")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+          >
+            <SyncIcon size={14} />
+            {reposted ? "Undo Repost" : "Repost"}
+          </button>
+          <button
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
               setShowRepostMenu(false);
+              onOpenQuote();
             }}
-          />
-          <Box
-            position="absolute"
-            top="calc(100% + 4px)"
-            left="0"
-            bg="var(--surface-overlay)"
-            border="1px solid var(--color-border)"
-            borderRadius="12px"
-            boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"
-            style={{ backdropFilter: "blur(12px)" }}
-            p={1}
-            zIndex={1000}
-            minWidth="140px"
-            display="flex"
-            flexDirection="column"
+            style={{
+              padding: "8px 12px",
+              background: "none",
+              border: "none",
+              textAlign: "left",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: "500",
+              color: "var(--color-fg-default)",
+              borderRadius: "8px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.06)")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
           >
-            <button
-              onClick={(e) => {
-                setShowRepostMenu(false);
-                onRepost(e);
-              }}
-              style={{
-                padding: "8px 12px",
-                background: "none",
-                border: "none",
-                textAlign: "left",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "var(--color-fg-default)",
-                borderRadius: "8px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.06)")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-            >
-              <SyncIcon size={14} />
-              {reposted ? "Undo Repost" : "Repost"}
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                setShowRepostMenu(false);
-                onOpenQuote();
-              }}
-              style={{
-                padding: "8px 12px",
-                background: "none",
-                border: "none",
-                textAlign: "left",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "500",
-                color: "var(--color-fg-default)",
-                borderRadius: "8px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.06)")}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-            >
-              <QuoteIcon size={14} />
-              Quote
-            </button>
-          </Box>
-        </>
+            <QuoteIcon size={14} />
+            Quote
+          </button>
+        </Box>
       )}
     </Box>
   );
@@ -215,95 +213,97 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
     </Tooltip>
   );
 
-  const bookmarkAndShareButtons = (
-    <Box display="flex" gap={0} alignItems="center">
-      <Tooltip text={bookmarked ? "Remove bookmark" : "Bookmark"} direction="n">
+  const bookmarkButton = (
+    <Tooltip text={bookmarked ? "Remove bookmark" : "Bookmark"} direction="n">
+      <ActionButton
+        aria-label={bookmarked ? "Remove bookmark" : "Bookmark"}
+        $active={bookmarked}
+        $color="var(--color-accent-cyan)"
+        onClick={onBookmark}
+      >
+        <div className="icon-wrapper">{bookmarked ? <BookmarkFillIcon size={18} /> : <BookmarkIcon size={18} />}</div>
+        {isDetail && (
+          <span className="action-count">
+            <AnimatedCount count={bookmarkCount ?? displayPost.bookmark_count ?? 0} />
+          </span>
+        )}
+      </ActionButton>
+    </Tooltip>
+  );
+
+  const shareButtonAndMenu = (
+    <Box ref={shareContainerRef} position="relative" style={{ zIndex: showShareMenu ? 200 : undefined }}>
+      <Tooltip text="Share" direction="n">
         <ActionButton
-          aria-label={bookmarked ? "Remove bookmark" : "Bookmark"}
-          $active={bookmarked}
+          aria-label="Share"
           $color="var(--color-accent-cyan)"
-          onClick={onBookmark}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            setShowRepostMenu(false);
+            setShowShareMenu(!showShareMenu);
+          }}
         >
-          <div className="icon-wrapper">{bookmarked ? <BookmarkFillIcon size={18} /> : <BookmarkIcon size={18} />}</div>
+          <div className="icon-wrapper">
+            <ShareIcon size={18} />
+          </div>
         </ActionButton>
       </Tooltip>
 
-      <Box position="relative" style={{ zIndex: showShareMenu ? 200 : undefined }}>
-        <Tooltip text="Share" direction="n">
-          <ActionButton
-            aria-label="Share"
-            $color="var(--color-accent-cyan)"
+      {showShareMenu && (
+        <Box
+          data-post-menu-open="true"
+          position="absolute"
+          top="calc(100% + 4px)"
+          right="0"
+          bg="var(--surface-overlay)"
+          border="1px solid var(--color-border)"
+          borderRadius="12px"
+          boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"
+          style={{ backdropFilter: "blur(12px)" }}
+          p={1}
+          zIndex={1000}
+          minWidth="200px"
+          display="flex"
+          flexDirection="column"
+        >
+          <MenuButton
             onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              setShowRepostMenu(false);
-              setShowShareMenu(!showShareMenu);
+              setShowShareMenu(false);
+              onCopyLink(e);
             }}
           >
-            <div className="icon-wrapper">
-              <ShareIcon size={18} />
-            </div>
-          </ActionButton>
-        </Tooltip>
-
-        {showShareMenu && (
-          <>
-            <div
-              data-post-menu-open="true"
-              style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                setShowShareMenu(false);
-              }}
-            />
-            <Box
-              position="absolute"
-              top="calc(100% + 4px)"
-              right="0"
-              bg="var(--surface-overlay)"
-              border="1px solid var(--color-border)"
-              borderRadius="12px"
-              boxShadow="0 8px 24px rgba(0, 0, 0, 0.5)"
-              style={{ backdropFilter: "blur(12px)" }}
-              p={1}
-              zIndex={1000}
-              minWidth="200px"
-              display="flex"
-              flexDirection="column"
-            >
+            <LinkIcon size={16} /> Copy link to post
+          </MenuButton>
+          {hasAttachment && (
+            <>
               <MenuButton
                 onClick={(e) => {
                   setShowShareMenu(false);
-                  onCopyLink(e);
+                  onDownload(e);
                 }}
               >
-                <LinkIcon size={16} /> Copy link to post
+                <DownloadIcon size={16} /> Download content
               </MenuButton>
-              {hasAttachment && (
-                <>
-                  <MenuButton
-                    onClick={(e) => {
-                      setShowShareMenu(false);
-                      onDownload(e);
-                    }}
-                  >
-                    <DownloadIcon size={16} /> Download content
-                  </MenuButton>
-                  <MenuButton
-                    onClick={(e) => {
-                      setShowShareMenu(false);
-                      onPostAsAttachment(e);
-                    }}
-                  >
-                    <PaperclipIcon size={16} /> Post as attachment
-                  </MenuButton>
-                </>
-              )}
-            </Box>
-          </>
-        )}
-      </Box>
+              <MenuButton
+                onClick={(e) => {
+                  setShowShareMenu(false);
+                  onPostAsAttachment(e);
+                }}
+              >
+                <PaperclipIcon size={16} /> Post as attachment
+              </MenuButton>
+            </>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+
+  const bookmarkAndShareButtons = (
+    <Box display="flex" gap={0} alignItems="center">
+      {bookmarkButton}
+      {shareButtonAndMenu}
     </Box>
   );
 
@@ -358,7 +358,8 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
           {replyButton}
           {repostButtonAndMenu}
           {likeButton}
-          {bookmarkAndShareButtons}
+          {bookmarkButton}
+          {shareButtonAndMenu}
         </Box>
       </>
     );

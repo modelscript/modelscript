@@ -8,7 +8,8 @@ import { usePageTitle } from "../util/title";
 import { FollowListPageLayout, type FollowUser } from "./FollowersPage";
 
 const FollowingPage: React.FC = () => {
-  const { username } = useParams();
+  const { username: rawUsername } = useParams();
+  const username = rawUsername?.startsWith("@") ? rawUsername.slice(1) : rawUsername;
   usePageTitle(username ? `People followed by @${username}` : "Following");
   const { token } = useAuth();
   const [users, setUsers] = useState<FollowUser[]>([]);

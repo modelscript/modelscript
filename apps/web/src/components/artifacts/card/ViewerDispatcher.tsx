@@ -2,10 +2,21 @@
 
 import { Spinner } from "@primer/react";
 import React, { Suspense } from "react";
+import styled from "styled-components";
 import Box from "../../Box";
 import LazyHeavyViewer from "../LazyHeavyViewer";
 import type { AnySpatialPin } from "../spatial-pin";
 import ViewerErrorBoundary from "../ViewerErrorBoundary";
+
+const EmbeddedViewerSlot = styled.div<{ $isFullScreen: boolean }>`
+  width: 100%;
+  height: ${(p) => (p.$isFullScreen ? "100%" : "auto")};
+  & > * {
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+`;
 
 // Lazy-loaded heavy viewers
 const AasPackageViewer = React.lazy(() => import("../AasPackageViewer"));
@@ -54,6 +65,77 @@ const FortranViewer = React.lazy(() => import("../FortranViewer"));
 const ReqifViewer = React.lazy(() => import("../ReqifViewer"));
 const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewer"));
 
+export function getViewerExpectedHeight(
+  viewType: string | undefined,
+  viewConfig?: any,
+  isFullScreen?: boolean,
+): string {
+  if (isFullScreen) return "100%";
+  const vt = String(viewType || "").toLowerCase();
+  switch (vt) {
+    case "cad":
+    case "cad-step":
+    case "cad_step":
+    case "cad-3d-viewer":
+    case "step":
+    case "stp":
+    case "3d-model":
+    case "webgpu":
+    case "webgpu-simulation":
+    case "gpu-simulation":
+    case "simulation":
+    case "simulation-result":
+    case "fea-result":
+    case "cfd-result":
+    case "cfd-animation":
+    case "gcode":
+    case "cam-result":
+    case "owl":
+    case "owl2":
+      return "450px";
+    case "pdf":
+    case "ssp":
+    case "ssd":
+      return "520px";
+    case "sysml":
+    case "sysml2":
+    case "sysml-architecture-viewer":
+    case "kerml":
+      return "460px";
+    case "modelica-diagram":
+    case "modelica":
+    case "morsel":
+    case "polyglot-morsel":
+    case "modelscript":
+    case "msx":
+      return "380px";
+    case "simulation-plot":
+      return viewConfig?.spec ? "440px" : "380px";
+    case "modelica-code":
+      return "360px";
+    case "audio":
+      return "260px";
+    case "tei-document":
+      return "400px";
+    case "reqif":
+    case "reqifz":
+      return "430px";
+    case "package":
+    case "library":
+    case "repository":
+    case "repo":
+      return "140px";
+    case "solution":
+    case "engineering-app":
+    case "app":
+      return "168px";
+    case "link-preview":
+      return "230px";
+    default:
+      return "440px";
+  }
+}
+
 export interface ViewerDispatcherProps {
   artifact: any;
   artifactId: number;
@@ -78,9 +160,10 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
   onThreadNodeSelected,
 }) => {
   const viewConfig = React.useMemo(
-    () => (rawViewConfig ? { ...rawViewConfig, standalone: rawViewConfig.standalone ?? false } : { standalone: false }),
+    () => (rawViewConfig ? { ...rawViewConfig, standalone: false } : { standalone: false }),
     [rawViewConfig],
   );
+  const expectedHeight = getViewerExpectedHeight(artifact?.view_type, viewConfig, isFullScreen);
   const renderViewer = () => {
     switch (artifact.view_type) {
       case "cad":
@@ -186,7 +269,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             <ZeroCopyWebGPUViewer
               uri={viewConfig?.uri as string}
               className={viewConfig?.className as string}
-              height={isFullScreen ? "100%" : "440px"}
+              height={isFullScreen ? "100%" : "450px"}
             />
           </LazyHeavyViewer>
         );
@@ -380,12 +463,19 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
     <ViewerErrorBoundary viewerTitle={artifact?.title || artifact?.view_type}>
       <Suspense
         fallback={
-          <Box p={3} display="flex" justifyContent="center" alignItems="center" minHeight="120px">
+          <Box
+            p={3}
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+            height={expectedHeight}
+            minHeight={expectedHeight}
+          >
             <Spinner size="small" />
           </Box>
         }
       >
-        {renderViewer()}
+        <EmbeddedViewerSlot $isFullScreen={isFullScreen}>{renderViewer()}</EmbeddedViewerSlot>
       </Suspense>
     </ViewerErrorBoundary>
   );

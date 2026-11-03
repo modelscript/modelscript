@@ -37,7 +37,7 @@ export const AiSearchHeader: React.FC<AiSearchHeaderProps> = ({ onOpenCommandPal
       <AiSearchBar
         role="button"
         tabIndex={0}
-        aria-label="Ask AI Copilot, search models, or run CVODE solver"
+        aria-label="Search"
         onClick={handleClick}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -45,12 +45,12 @@ export const AiSearchHeader: React.FC<AiSearchHeaderProps> = ({ onOpenCommandPal
             handleClick();
           }
         }}
-        title={`Ask AI Copilot, search models, or run CVODE solver (${isMac ? "⌘K" : "Ctrl+K"})`}
+        title={`Search (${isMac ? "⌘K" : "Ctrl+K"})`}
       >
         <span className="sparkle">
           <SearchIcon size={14} />
         </span>
-        <span className="text">Ask AI Copilot, search models...</span>
+        <span className="text">Search</span>
         <kbd>{isMac ? "⌘ K" : "Ctrl K"}</kbd>
       </AiSearchBar>
     </SearchContainer>

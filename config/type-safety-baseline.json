@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 634,
+      "explicitAny": 694,
       "tsComments": 0
     },
     "ee": {
@@ -106,7 +106,7 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3210,
+      "explicitAny": 3211,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -246,7 +246,7 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 2037,
+      "explicitAny": 2042,
       "tsComments": 0
     },
     "packages/mcp": {

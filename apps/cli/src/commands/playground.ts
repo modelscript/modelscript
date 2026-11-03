@@ -865,10 +865,37 @@ self.onmessage = async (e) => {
                 parser: { 
                     logInt: function(val) { console.log("logInt:", val); },
                     emitTextEdit: function(op, len, start, end) {},
-                    getSourceSlice: function(start, end) { return 0; }
+                    getSourceSlice: function(start, end) {
+                        const s = start >>> 0;
+                        const ePos = end >>> 0;
+                        if (ePos <= s) return 0;
+                        if (lspFacade && lspFacade.exports && typeof lspFacade.exports.getInputBuffer === 'function') {
+                            return (lspFacade.exports.getInputBuffer() >>> 0) + s;
+                        }
+                        return s;
+                    }
                 },
                 host: {
-                    runHostQuery: function(a, b, c, d) { return 0; }
+                    runHostQuery: function(queryId, arg1, arg2, arg3) {
+                        if (lspFacade && typeof lspFacade.runHostQuery === 'function') {
+                            return lspFacade.runHostQuery(queryId >>> 0, arg1 >>> 0, arg2 >>> 0, arg3 >>> 0) >>> 0;
+                        }
+                        const hostQueries = e.data && e.data.hostQueries;
+                        if (hostQueries && typeof hostQueries === 'object') {
+                            const keys = Object.keys(hostQueries);
+                            const qIdx = (queryId >>> 0) - 1;
+                            if (qIdx >= 0 && qIdx < keys.length) {
+                                const fn = hostQueries[keys[qIdx]];
+                                if (typeof fn === 'function') {
+                                    return fn(lspFacade, arg1 >>> 0, arg2 >>> 0, arg3 >>> 0) >>> 0;
+                                }
+                            }
+                        }
+                        if (lspFacade && lspFacade.exports && typeof lspFacade.exports.runQuery === 'function') {
+                            return lspFacade.exports.runQuery(queryId >>> 0, arg1 >>> 0, arg2 >>> 0, arg3 >>> 0, 0) >>> 0;
+                        }
+                        return 0;
+                    }
                 }
             };
 

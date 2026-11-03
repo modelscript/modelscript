@@ -199,4 +199,40 @@ describe("msx pack & local archive install CLI commands", () => {
       process.chdir(originalCwd);
     }
   });
+
+  test("msx pack --pre-index creates .lsp-bundle.zip with index.json and metadata.json", async () => {
+    const originalCwd = process.cwd();
+    process.chdir(pkgDir);
+    try {
+      await (Pack.handler as any)({
+        path: ".",
+        out: pkgDir,
+        preIndex: true,
+      });
+
+      const bundlePath = path.join(pkgDir, "offline-pkg-1.0.0.lsp-bundle.zip");
+      assert.ok(existsSync(bundlePath));
+
+      const zip = new AdmZip(bundlePath);
+      const indexEntry = zip.getEntry("index.json");
+      const metaEntry = zip.getEntry("metadata.json");
+      const manifestEntry = zip.getEntry("manifest.json");
+
+      assert.ok(indexEntry, "index.json should be present in pre-indexed bundle");
+      assert.ok(metaEntry, "metadata.json should be present in pre-indexed bundle");
+      assert.ok(manifestEntry, "manifest.json should be present in pre-indexed bundle");
+
+      const indexData = JSON.parse(indexEntry.getData().toString("utf-8"));
+      assert.ok(Array.isArray(indexData.symbols));
+      assert.ok(Array.isArray(indexData.byName));
+
+      const metaData = JSON.parse(metaEntry.getData().toString("utf-8"));
+      assert.equal(metaData.name, "offline-pkg");
+      assert.equal(metaData.version, "1.0.0");
+      assert.ok(Array.isArray(metaData.classes));
+      assert.ok(metaData.classes.some((c: { className: string }) => c.className === "offline-pkg.Model"));
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
 });

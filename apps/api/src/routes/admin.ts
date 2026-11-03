@@ -13,6 +13,7 @@ import {
   requireStaffRole,
   type StaffRole,
 } from "../middleware/auth-middleware.js";
+import { defaultLoginLimiter } from "../middleware/login-limiter.js";
 import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { allMigrations } from "../migrations/index.js";
 import type { FeatureFlagService } from "../services/feature-flag-service.js";
@@ -28,6 +29,7 @@ import {
   type SmtpTlsMode,
 } from "../services/mailer.js";
 import { getClientIp } from "../util/client-ip.js";
+import { signEmailVerificationToken } from "../util/email-verification.js";
 import { resolveBrandInstanceName } from "../util/registration-policy.js";
 import { verifyAndConsumeBackupCode, verifyTotpCode } from "../util/totp.js";
 
@@ -114,8 +116,7 @@ export function adminRouter(
       const { settings } = setupStatus;
       const isDown = settings.maintenanceLevel === "lockdown";
       const isReadOnly = settings.maintenanceLevel === "read_only";
-      const buildVersion =
-        process.env["MSX_BUILD_SHA"] || process.env["IMAGE_TAG"] || process.env["npm_package_version"] || "0.0.18";
+      const buildVersion = process.env["MSX_BUILD_SHA"] || process.env["IMAGE_TAG"] || "0.1.0";
       res.json({
         instanceName: settings.instanceName,
         instanceBadge: settings.instanceBadge,
@@ -146,6 +147,14 @@ export function adminRouter(
         onboardingWizardEnabled: settings.onboardingWizardEnabled ?? false,
         customTermsMarkdown: settings.customTermsMarkdown,
         customPrivacyMarkdown: settings.customPrivacyMarkdown,
+        customCookiesMarkdown: settings.customCookiesMarkdown,
+        legalPolicyMode: settings.legalPolicyMode,
+        legalJurisdiction: settings.legalJurisdiction,
+        legalEffectiveDate: settings.legalEffectiveDate,
+        remoteContentRetentionDays: settings.remoteContentRetentionDays,
+        remoteMediaCacheRetentionDays: settings.remoteMediaCacheRetentionDays,
+        autoFilterAction: settings.autoFilterAction,
+        autoQuarantineReportThreshold: settings.autoQuarantineReportThreshold,
         authorizedFetchEnabled: settings.authorizedFetchEnabled ?? false,
         federatedTimelinePublic: settings.federatedTimelinePublic ?? true,
         domainBlocksPublic: settings.domainBlocksPublic ?? true,
@@ -1012,6 +1021,131 @@ export function adminRouter(
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list users" });
     }
   });
+
+  /**
+   * POST /api/v1/admin/users
+   * Directly provisions a user account as an administrator regardless of public registrationMode.
+   */
+  router.post(
+    "/admin/users",
+    adminAuth,
+    express.json(),
+    verifyAdminSudo,
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const rawUsername = typeof req.body?.username === "string" ? req.body.username.trim() : "";
+        const rawEmail = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+        const rawPassword = typeof req.body?.password === "string" ? req.body.password : "";
+        const displayName =
+          typeof req.body?.displayName === "string" && req.body.displayName.trim()
+            ? req.body.displayName.trim()
+            : undefined;
+        const role: "user" | "moderator" | "auditor" | "admin" =
+          req.body?.role === "admin" || req.body?.role === "moderator" || req.body?.role === "auditor"
+            ? req.body.role
+            : "user";
+        const emailVerified = req.body?.emailVerified !== undefined ? Boolean(req.body.emailVerified) : true;
+        const initialCredits =
+          req.body?.initialCredits !== undefined && Number.isFinite(Number(req.body.initialCredits))
+            ? Math.max(0, Number(req.body.initialCredits))
+            : 100.0;
+
+        if (!rawUsername || !/^[a-zA-Z0-9_-]{3,32}$/.test(rawUsername)) {
+          res.status(400).json({
+            error: "Username must be 3–32 characters and contain only letters, numbers, underscores, or hyphens.",
+          });
+          return;
+        }
+
+        const emailRegex =
+          /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+        if (!rawEmail || !emailRegex.test(rawEmail)) {
+          res.status(400).json({ error: "A valid email address is required." });
+          return;
+        }
+
+        if (!rawPassword || rawPassword.length < 8) {
+          res.status(400).json({ error: "Password must be at least 8 characters." });
+          return;
+        }
+        if (Buffer.byteLength(rawPassword, "utf8") > 72) {
+          res.status(400).json({ error: "Password must not exceed 72 bytes." });
+          return;
+        }
+
+        if (database.getUserByEmail(rawEmail)) {
+          res.status(409).json({ error: "An account with this email already exists." });
+          return;
+        }
+        if (database.getUserByUsername(rawUsername)) {
+          res.status(409).json({ error: "This username is already taken." });
+          return;
+        }
+
+        const passwordHash = await bcrypt.hash(rawPassword, 10);
+        let user = database.createUser(rawUsername, rawEmail, passwordHash, {
+          accountType: role === "admin" ? "admin" : "user",
+          emailVerified,
+          initialCredits,
+          status: emailVerified ? "active" : "pending_verification",
+          termsAcceptedAt: new Date().toISOString(),
+          registrationIp: getClientIp(req),
+        });
+
+        if (displayName) {
+          database.updateProfile(user.id, { display_name: displayName });
+        }
+
+        if (role !== "user") {
+          database.moderateUserAccount(user.id, { role });
+        }
+
+        database.ensureUserRSAKeys(user.id);
+        user = database.getUserById(user.id) ?? user;
+
+        if (!emailVerified) {
+          const verificationToken = signEmailVerificationToken(user.id, user.email);
+          const instanceName = resolveBrandInstanceName(database);
+          void defaultMailer
+            .sendVerificationEmail(user.email, user.username, verificationToken, { instanceName })
+            .catch(() => {});
+        }
+
+        database.logAudit({
+          actorId: req.user?.id || null,
+          action: "admin.user.created",
+          resourceType: "user",
+          resourceId: String(user.id),
+          ipAddress: getClientIp(req),
+          details: {
+            username: user.username,
+            email: user.email,
+            role,
+            emailVerified,
+            initialCredits,
+          },
+        });
+
+        const {
+          password_hash: _pw,
+          github_token: _gh,
+          gitlab_token: _gl,
+          ...safeUser
+        } = user as typeof user & {
+          password_hash?: unknown;
+          github_token?: unknown;
+          gitlab_token?: unknown;
+        };
+
+        res.status(201).json({
+          success: true,
+          user: safeUser,
+        });
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : "Failed to create user account" });
+      }
+    },
+  );
 
   /**
    * PATCH /api/v1/admin/users/:id
@@ -2145,6 +2279,12 @@ export function adminRouter(
 
         const rawPath = typeof body["path"] === "string" && body["path"].trim() ? body["path"].trim() : "/";
         const cleanPath = (rawPath.split("?")[0]?.split("#")[0] || "/").slice(0, 512);
+        const scannerProbeRe =
+          /(?:^|\/)\.(?!well-known(?:\/|$))[^/]*|\.(?:php|asp|aspx|jsp|cgi|env|swp|swo|bak|sql|ini|sh)(?:\/|$)|^\/(?:maintenance\.html|wp-admin|wp-login(?:\.php)?|wp-content|wp-includes|xmlrpc\.php|phpmyadmin|pma|adminer)(?:\/|$)/i;
+        if (scannerProbeRe.test(cleanPath)) {
+          res.status(202).json({ success: true, counted: false, ignored: "scanner_probe" });
+          return;
+        }
         const docsPrefixRe =
           /^\/(docs|guide|architecture|algorithms|cli|languages|reference|industries|ansatz|pricing)(\/|$)/i;
         const surface: "web" | "docs" =
@@ -2524,6 +2664,12 @@ export function adminRouter(
       if ("cloudflare_tunnel_token" in sanitizedAuditDetails && sanitizedAuditDetails["cloudflare_tunnel_token"]) {
         sanitizedAuditDetails["cloudflare_tunnel_token"] = "[REDACTED]";
       }
+      if ("githubClientSecret" in sanitizedAuditDetails && sanitizedAuditDetails["githubClientSecret"]) {
+        sanitizedAuditDetails["githubClientSecret"] = "[REDACTED]";
+      }
+      if ("gitlabClientSecret" in sanitizedAuditDetails && sanitizedAuditDetails["gitlabClientSecret"]) {
+        sanitizedAuditDetails["gitlabClientSecret"] = "[REDACTED]";
+      }
 
       database.logAudit({
         actorId: req.user?.id || null,
@@ -2547,6 +2693,23 @@ export function adminRouter(
    */
   router.post("/admin/sudo/verify", adminAuth, express.json(), async (req: Request, res: Response): Promise<void> => {
     try {
+      const clientIp = getClientIp(req);
+      const userId = req.user?.id ?? 1;
+      const userRecord = database.getUserById(userId);
+      const userEmail = userRecord?.email || req.user?.email || `admin-${userId}`;
+      const bypassRateLimit = process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true";
+
+      if (!bypassRateLimit) {
+        const rateCheck = defaultLoginLimiter.check(clientIp, userEmail);
+        if (!rateCheck.allowed) {
+          res.status(429).json({
+            error: "Too many failed sudo verification attempts. Please try again in 15 minutes.",
+            retryAfterSeconds: Math.ceil(rateCheck.resetInMs / 1000),
+          });
+          return;
+        }
+      }
+
       const password = typeof req.body?.password === "string" ? req.body.password : "";
       const totpCode =
         typeof req.body?.totpCode === "string"
@@ -2555,11 +2718,22 @@ export function adminRouter(
             ? req.body.code.trim()
             : "";
 
-      const userId = req.user?.id ?? 1;
-      const userRecord = database.getUserById(userId);
       const state2FA = database.getUser2FAState(userId);
       const hasTotp = Boolean(state2FA && state2FA.totp_enabled === 1 && state2FA.totp_secret);
       const hasPassword = Boolean(userRecord?.password_hash);
+      const instanceSettings = database.getInstanceSettings();
+      const enforceAdmin2FAEnrollment =
+        instanceSettings.requireAdmin2FA &&
+        (process.env["NODE_ENV"] === "production" || req.headers["x-enforce-admin-2fa"] === "true");
+
+      if (enforceAdmin2FAEnrollment && !hasTotp) {
+        res.status(403).json({
+          error:
+            "Two-factor authentication must be enabled on your administrator account before using sudo mode (requireAdmin2FA policy is active).",
+          code: "ADMIN_2FA_ENROLLMENT_REQUIRED",
+        });
+        return;
+      }
 
       if (!password && !totpCode) {
         res.status(400).json({ error: "Administrator password or 2FA code is required for sudo verification" });
@@ -2580,7 +2754,9 @@ export function adminRouter(
       let totpValid = false;
       if (hasTotp && totpCode && state2FA?.totp_secret) {
         if (/^\d{6}$/.test(totpCode.replace(/\s+/g, ""))) {
-          totpValid = verifyTotpCode(state2FA.totp_secret, totpCode);
+          totpValid = verifyTotpCode(state2FA.totp_secret, totpCode, {
+            preventReplay: process.env["NODE_ENV"] === "production",
+          });
         } else if (state2FA.backup_codes.length > 0) {
           const backupResult = verifyAndConsumeBackupCode(totpCode, state2FA.backup_codes);
           if (backupResult.valid && backupResult.matchedHash) {
@@ -2589,7 +2765,6 @@ export function adminRouter(
         }
       }
 
-      const instanceSettings = database.getInstanceSettings();
       let valid = false;
       if (hasPassword && hasTotp) {
         if (totpCode) {
@@ -2606,20 +2781,28 @@ export function adminRouter(
       }
 
       if (!valid) {
+        if (!bypassRateLimit) {
+          defaultLoginLimiter.recordFailure(clientIp, userEmail);
+        }
         database.logAudit({
           actorId: userId,
           action: "admin.sudo_failed",
           resourceType: "user",
           resourceId: String(userId),
-          ipAddress: getClientIp(req),
+          ipAddress: clientIp,
         });
+        const missingRequiredTotp = Boolean(hasTotp && instanceSettings.requireAdmin2FA && !totpCode);
         res.status(401).json({
-          error:
-            hasTotp && instanceSettings.requireAdmin2FA && !totpCode
-              ? "Two-factor authentication code is required for administrator sudo verification"
-              : "Invalid administrator password or 2FA code",
+          error: missingRequiredTotp
+            ? "Two-factor authentication code is required for administrator sudo verification"
+            : "Invalid administrator password or 2FA code",
+          ...(missingRequiredTotp ? { requires2FA: true } : {}),
         });
         return;
+      }
+
+      if (!bypassRateLimit) {
+        defaultLoginLimiter.recordSuccess(clientIp, userEmail);
       }
 
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -2632,7 +2815,7 @@ export function adminRouter(
         action: "admin.sudo_verified",
         resourceType: "user",
         resourceId: String(userId),
-        ipAddress: getClientIp(req),
+        ipAddress: clientIp,
         details: { expiresAt, mfaVerified: totpValid },
       });
 
@@ -3749,7 +3932,12 @@ export function adminRouter(
   router.post("/admin/rules", adminAuth, express.json(), (req: Request, res: Response) => {
     const text = String(req.body?.text || "").trim();
     const hint = typeof req.body?.hint === "string" ? req.body.hint.trim() : null;
-    const position = req.body?.position !== undefined ? Number(req.body.position) : undefined;
+    const position =
+      req.body?.position !== undefined
+        ? Number(req.body.position)
+        : req.body?.priority !== undefined
+          ? Number(req.body.priority)
+          : undefined;
     if (!text) {
       res.status(400).json({ error: "Rule text is required" });
       return;

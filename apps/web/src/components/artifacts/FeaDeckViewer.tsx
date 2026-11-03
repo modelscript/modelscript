@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  CodeIcon,
-  PlayIcon,
-  SidebarCollapseIcon,
-  SidebarExpandIcon,
-  WorkflowIcon,
-  ZapIcon,
-} from "@primer/octicons-react";
+import { CodeIcon, PlayIcon, WorkflowIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -45,9 +38,9 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
-  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default, #30363d)")};
+  border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -57,28 +50,30 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const Toolbar = styled.div`
   height: 38px;
   min-height: 38px;
-  background: var(--surface-hud, rgba(14, 20, 36, 0.7));
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  background: var(--color-canvas-subtle);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
+  gap: 8px;
   z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
 `;
 
 const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
 `;
 
 const ModelTitle = styled.div`
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--color-text-heading, #f0f6fc);
+  color: var(--color-fg-default);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -94,6 +89,7 @@ const PillBadge = styled.span`
   border-radius: 9999px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
   background: rgba(14, 165, 233, 0.15);
   color: #38bdf8;
   border: 1px solid rgba(14, 165, 233, 0.35);
@@ -104,28 +100,6 @@ const ContentArea = styled.div`
   display: flex;
   overflow: hidden;
   position: relative;
-`;
-
-const InspectorSidebar = styled.div`
-  width: 260px;
-  border-left: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-subtle, #161b22);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: 14px;
-  gap: 12px;
-`;
-
-const StatItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--color-fg-muted, #8b949e);
-
-  strong {
-    color: var(--color-fg-default, #c9d1d9);
-  }
 `;
 
 function parseCalculixDeckClient(text: string) {
@@ -219,7 +193,6 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
   const [completedResultConfig, setCompletedResultConfig] = useState<any>(null);
   const [rawText, setRawText] = useState(viewConfig.code || "");
   const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
-  const [showInspector, setShowInspector] = useState<boolean>(() => !isFullScreen);
   const title = viewConfig.title || viewConfig.meshName || "FEA Simulation Deck (.inp)";
 
   useEffect(() => {
@@ -243,9 +216,6 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
 
   const parsedDeck = useMemo(() => parseCalculixDeckClient(rawText), [rawText]);
 
-  const nodeCount = viewConfig.nodeCount ?? viewConfig.nodes ?? parsedDeck.nodes.length;
-  const elementCount = viewConfig.elementCount ?? viewConfig.elements ?? parsedDeck.elements.length;
-  const elementType = viewConfig.elementType ?? parsedDeck.elementType;
   const youngsModulusGpa = viewConfig.youngsModulusGpa ?? parsedDeck.youngsModulusGpa;
   const poissonsRatio = viewConfig.poissonsRatio ?? parsedDeck.poissonsRatio;
   const loadKn = viewConfig.loadKn ?? parsedDeck.loadKn;
@@ -291,7 +261,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
       `
       <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
         <rect width="${width}" height="${height}" rx="8" fill="#090d16" stroke="#1e293b" stroke-width="1.5" />
-        <text x="20" y="26" fill="var(--ms-text-1)" font-size="12" font-weight="bold" font-family="monospace">${title}</text>
+        <text x="20" y="26" fill="#f8fafc" font-size="12" font-weight="bold" font-family="monospace">${title}</text>
         ${polys.join("\n")}
       </svg>
     `,
@@ -353,15 +323,15 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
       <Toolbar>
         <HeaderLeft>
           <ZapIcon size={15} fill="var(--color-accent-fg, currentColor)" />
-          {!isFullScreen && <ModelTitle>{title}</ModelTitle>}
-          <PillBadge>CalculiX FEA Deck</PillBadge>
+          <PillBadge>CalculiX FEA</PillBadge>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
         </HeaderLeft>
 
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
           {sanitizedSvg && (
             <Box
               display="flex"
-              bg="rgba(0,0,0,0.25)"
+              bg="var(--color-canvas-default)"
               borderRadius="6px"
               p="2px"
               border="1px solid var(--color-border-default)"
@@ -370,7 +340,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                 type="button"
                 onClick={() => setViewMode("diagram")}
                 style={{
-                  background: effectiveViewMode === "diagram" ? "rgba(14, 165, 233, 0.25)" : "transparent",
+                  background: effectiveViewMode === "diagram" ? "rgba(14, 165, 233, 0.18)" : "transparent",
                   color:
                     effectiveViewMode === "diagram"
                       ? "var(--color-accent-fg, var(--color-fg-default))"
@@ -392,7 +362,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                 type="button"
                 onClick={() => setViewMode("code")}
                 style={{
-                  background: effectiveViewMode === "code" ? "rgba(14, 165, 233, 0.25)" : "transparent",
+                  background: effectiveViewMode === "code" ? "rgba(14, 165, 233, 0.18)" : "transparent",
                   color:
                     effectiveViewMode === "code"
                       ? "var(--color-accent-fg, var(--color-fg-default))"
@@ -412,24 +382,16 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
               </button>
             </Box>
           )}
-          <Button
-            size="small"
-            leadingVisual={runningSim ? Spinner : PlayIcon}
-            disabled={runningSim}
-            onClick={handleRunSimulationLocally}
-          >
-            {runningSim ? "Solving..." : "Run Solver"}
-          </Button>
-          <Button
-            size="small"
-            variant="invisible"
-            leadingVisual={showInspector ? SidebarCollapseIcon : SidebarExpandIcon}
-            onClick={() => setShowInspector((v) => !v)}
-            title={showInspector ? "Hide telemetry sidebar" : "Show telemetry sidebar"}
-            style={{ color: showInspector ? "var(--color-accent-fg)" : "var(--color-fg-muted)" }}
-          >
-            Telemetry
-          </Button>
+          {(Boolean(viewConfig?.standalone) || isFullScreen) && (
+            <Button
+              size="small"
+              leadingVisual={runningSim ? Spinner : PlayIcon}
+              disabled={runningSim}
+              onClick={handleRunSimulationLocally}
+            >
+              {runningSim ? "Solving..." : "Run Solver"}
+            </Button>
+          )}
 
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
@@ -472,7 +434,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
             flex={1}
             py={2}
             overflow="auto"
-            bg="var(--color-canvas-inset, #010409)"
+            bg="var(--color-canvas-default)"
             style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
           >
             {codeLines.length > 0 ? (
@@ -502,46 +464,6 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
               </Box>
             )}
           </Box>
-        )}
-
-        {showInspector && (
-          <InspectorSidebar>
-            <Text style={{ fontWeight: "bold", fontSize: "12px", color: "var(--color-fg-default)" }}>
-              FEA Mesh &amp; Boundary Conditions
-            </Text>
-            <StatItem>
-              <span>Nodes</span>
-              <strong>{nodeCount.toLocaleString()}</strong>
-            </StatItem>
-            <StatItem>
-              <span>Elements</span>
-              <strong>{elementCount.toLocaleString()}</strong>
-            </StatItem>
-            {elementType && (
-              <StatItem>
-                <span>Element Type</span>
-                <strong style={{ color: "#38bdf8" }}>{elementType}</strong>
-              </StatItem>
-            )}
-            {youngsModulusGpa !== undefined && (
-              <StatItem>
-                <span>Young's Modulus</span>
-                <strong>{youngsModulusGpa} GPa</strong>
-              </StatItem>
-            )}
-            {poissonsRatio !== undefined && (
-              <StatItem>
-                <span>Poisson's Ratio</span>
-                <strong>{poissonsRatio}</strong>
-              </StatItem>
-            )}
-            {loadKn !== undefined && (
-              <StatItem>
-                <span>Boundary Load</span>
-                <strong style={{ color: "#10b981" }}>{loadKn} kN</strong>
-              </StatItem>
-            )}
-          </InspectorSidebar>
         )}
       </ContentArea>
     </CardWrapper>

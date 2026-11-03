@@ -17,7 +17,7 @@ import {
 } from "../util/notebook";
 import { useOembedDiscovery, usePageTitle } from "../util/title";
 import type { ActiveBotTypingState } from "./post-detail";
-import { PostDetailThreadView, SplitContainer, TutorialGuideDockPane } from "./post-detail";
+import { PostDetailThreadView } from "./post-detail";
 
 const PostDetailPage: React.FC = () => {
   const { id } = useParams();
@@ -46,6 +46,8 @@ const PostDetailPage: React.FC = () => {
     [notebookData],
   );
   const [activeHeadingSlug, setActiveHeadingSlug] = useState<string>("");
+  const [readingProgress, setReadingProgress] = useState<number>(0);
+  const [showStickySubtitle, setShowStickySubtitle] = useState<boolean>(false);
 
   usePageTitle(notebookData?.title ? notebookData.title : post?.username ? `Post by @${post.username}` : "Post");
   useOembedDiscovery(
@@ -61,6 +63,11 @@ const PostDetailPage: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [activeBotTyping, setActiveBotTyping] = useState<ActiveBotTypingState | null>(null);
+
+  const postIdRef = useRef<number>(post?.id ?? Number(id));
+  useEffect(() => {
+    postIdRef.current = post?.id ?? Number(id);
+  }, [id, post?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof WebSocket === "undefined") return;
@@ -79,7 +86,7 @@ const PostDetailPage: React.FC = () => {
           try {
             const msg = JSON.parse(String(event.data));
             if (msg.type === "bot_typing") {
-              const currentPostId = post?.id ?? Number(id);
+              const currentPostId = postIdRef.current;
               const isRelevant = msg.postId === currentPostId || repliesRef.current.some((r) => r.id === msg.postId);
 
               if (isRelevant) {
@@ -118,7 +125,9 @@ const PostDetailPage: React.FC = () => {
 
         ws.onerror = () => {
           try {
-            ws?.close();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.close();
+            }
           } catch {}
         };
       } catch {
@@ -128,16 +137,30 @@ const PostDetailPage: React.FC = () => {
       }
     }
 
-    connect();
+    reconnectTimeout = setTimeout(connect, 20);
 
     return () => {
       isDisposed = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       try {
-        ws?.close();
+        if (ws) {
+          ws.onclose = null;
+          ws.onerror = null;
+          ws.onmessage = null;
+          if (ws.readyState === WebSocket.CONNECTING) {
+            const pendingWs = ws;
+            pendingWs.onopen = () => {
+              try {
+                pendingWs.close();
+              } catch {}
+            };
+          } else if (ws.readyState === WebSocket.OPEN) {
+            ws.close();
+          }
+        }
       } catch {}
     };
-  }, [id, post?.id]);
+  }, [id]);
 
   useEffect(() => {
     if (!activeBotTyping) return;
@@ -147,35 +170,83 @@ const PostDetailPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [activeBotTyping]);
 
-  useEffect(() => {
-    if (notebookHeadings.length === 0) return;
-    setActiveHeadingSlug(notebookHeadings[0]?.id || "");
-    const handleScroll = () => {
-      let current = notebookHeadings[0]?.id || "";
-      for (const h of notebookHeadings) {
-        const el = document.getElementById(h.id);
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          if (rect.top <= 140) {
-            current = h.id;
-          }
-        }
-      }
-      setActiveHeadingSlug(current);
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [notebookHeadings]);
-
   const mainPostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const active = Boolean(isNotebook && notebookData);
-    window.dispatchEvent(new CustomEvent("modelscript:notebook-inspector", { detail: { active } }));
+    if (!isNotebook) {
+      setReadingProgress(0);
+      setShowStickySubtitle(false);
+      return;
+    }
+    setActiveHeadingSlug(notebookHeadings[0]?.id || "");
+
+    const handleScroll = () => {
+      if (notebookHeadings.length > 0) {
+        let current = notebookHeadings[0]?.id || "";
+        for (const h of notebookHeadings) {
+          const el = document.getElementById(h.id);
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            if (rect.top <= 140) {
+              current = h.id;
+            }
+          }
+        }
+        setActiveHeadingSlug(current);
+      }
+
+      setShowStickySubtitle(window.scrollY > 140);
+
+      if (mainPostRef.current) {
+        const rect = mainPostRef.current.getBoundingClientRect();
+        const articleHeight = Math.max(1, rect.height - window.innerHeight * 0.55);
+        const scrolled = Math.max(0, -rect.top + 60);
+        const pct = window.scrollY <= 8 ? 0 : Math.min(100, Math.round((scrolled / articleHeight) * 100));
+        setReadingProgress(pct);
+      }
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isNotebook, notebookHeadings]);
+
+  useEffect(() => {
+    const active = Boolean(isNotebook && notebookData && post);
+    window.dispatchEvent(
+      new CustomEvent("modelscript:notebook-inspector", {
+        detail: active
+          ? {
+              active: true,
+              post,
+              notebookData,
+              notebookHeadings,
+              readTimeMinutes,
+              activeHeadingSlug,
+              setActiveHeadingSlug,
+              readingProgress,
+            }
+          : { active: false },
+      }),
+    );
+  }, [isNotebook, notebookData, post, notebookHeadings, readTimeMinutes, activeHeadingSlug, readingProgress]);
+
+  useEffect(() => {
     return () => {
       window.dispatchEvent(new CustomEvent("modelscript:notebook-inspector", { detail: { active: false } }));
     };
-  }, [isNotebook, notebookData]);
+  }, []);
+
+  useEffect(() => {
+    const handlePostUpdated = (e: Event) => {
+      const updated = (e as CustomEvent<Partial<PostItem> | undefined>).detail;
+      if (updated && post && Number(updated.id ?? post.id) === Number(post.id)) {
+        setPost((prev) => (prev ? { ...prev, ...updated } : prev));
+      }
+    };
+    window.addEventListener("modelscript:post-updated", handlePostUpdated);
+    return () => window.removeEventListener("modelscript:post-updated", handlePostUpdated);
+  }, [post]);
 
   useEffect(() => {
     if (!loading && post && parents.length > 0 && mainPostRef.current) {
@@ -226,47 +297,49 @@ const PostDetailPage: React.FC = () => {
     );
   }
 
-  const threadContent = (
-    <PostDetailThreadView
-      post={post}
-      parents={parents}
-      replies={replies}
-      user={user}
-      mainPostRef={mainPostRef}
-      activeBotTyping={activeBotTyping}
-      onReplyCreated={(reply) => setReplies((prev) => [...prev, reply])}
-    />
-  );
-
   return (
     <Box minHeight="100vh" style={{ paddingBottom: "200px" }}>
-      <PageHeader back title={isNotebook ? "Engineering Tutorial" : "Post"} />
+      <PageHeader
+        back
+        title={isNotebook ? "Article" : "Post"}
+        subtitle={
+          isNotebook && showStickySubtitle && notebookData?.title
+            ? `${notebookData.title} · ${readTimeMinutes} min read`
+            : undefined
+        }
+        actions={
+          isNotebook && showStickySubtitle && readingProgress > 0 ? (
+            <span
+              style={{
+                fontSize: "11.5px",
+                fontFamily: "var(--font-mono, monospace)",
+                fontWeight: 600,
+                color: "var(--color-text-muted)",
+                padding: "2px 8px",
+                borderRadius: "999px",
+                background: "var(--color-canvas-subtle)",
+                border: "1px solid var(--color-border-subtle)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {readingProgress >= 100
+                ? "Done"
+                : `${Math.max(1, Math.ceil(readTimeMinutes * (1 - readingProgress / 100)))}m left`}
+            </span>
+          ) : undefined
+        }
+        progress={isNotebook ? readingProgress : undefined}
+      />
 
-      {isNotebook && notebookData ? (
-        <SplitContainer>
-          <Box display="flex" flexDirection="column">
-            {threadContent}
-          </Box>
-
-          <Box
-            display="flex"
-            flexDirection="column"
-            gap={2}
-            style={{ position: "sticky", top: "70px", height: "fit-content" }}
-          >
-            <TutorialGuideDockPane
-              post={post}
-              notebookData={notebookData}
-              notebookHeadings={notebookHeadings}
-              readTimeMinutes={readTimeMinutes}
-              activeHeadingSlug={activeHeadingSlug}
-              setActiveHeadingSlug={setActiveHeadingSlug}
-            />
-          </Box>
-        </SplitContainer>
-      ) : (
-        threadContent
-      )}
+      <PostDetailThreadView
+        post={post}
+        parents={parents}
+        replies={replies}
+        user={user}
+        mainPostRef={mainPostRef}
+        activeBotTyping={activeBotTyping}
+        onReplyCreated={(reply) => setReplies((prev) => [...prev, reply])}
+      />
     </Box>
   );
 };

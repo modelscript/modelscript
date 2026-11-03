@@ -13,11 +13,11 @@ import {
   XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { getSolution, type Solution, type SolutionRelease } from "../../api";
+import { useClickOutside } from "../../hooks/useClickOutside";
 import Box from "../Box";
 
 interface SolutionViewCardProps {
@@ -39,15 +39,17 @@ interface SolutionViewCardProps {
 }
 
 const CardWrapper = styled.div<{ $isFullScreen?: boolean }>`
-  background: var(--surface-overlay, rgba(14, 20, 36, 0.95));
-  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1));
+  background: var(--color-canvas-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 12px;
   padding: 16px;
+  min-height: 168px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 12px;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 
   &:hover {
     border-color: rgba(139, 92, 246, 0.4);
@@ -96,6 +98,10 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
   const [loading, setLoading] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const downloadMenuContainerRef = useRef<HTMLDivElement>(null);
+
+  useClickOutside(downloadMenuContainerRef, () => setShowDownloadMenu(false), showDownloadMenu);
+
   const [copied, setCopied] = useState(false);
 
   // If full config is not pre-populated, fetch from API
@@ -299,7 +305,7 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
 
           {/* Download Desktop Dropdown */}
           {(tauriWindows || tauriLinux || tauriDarwin) && (
-            <div style={{ position: "relative" }}>
+            <div ref={downloadMenuContainerRef} style={{ position: "relative" }}>
               <Button
                 size="small"
                 onClick={() => setShowDownloadMenu(!showDownloadMenu)}

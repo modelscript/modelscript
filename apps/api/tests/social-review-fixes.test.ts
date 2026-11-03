@@ -230,26 +230,51 @@ test("Social Web App Review Fixes Regression Suite (Phases 1-4)", async (t) => {
   });
 
   await t.test("OAuth account linking signs state JWT and rejects forged unsigned state", async () => {
-    // 1. Valid link initiation via cookie/token produces signed JWT state
-    const linkInit = await request(app).get(`/api/v1/auth/link/github?token=${encodeURIComponent(aliceToken)}`);
-    assert.strictEqual(linkInit.status, 302);
-    const redirectLocation = linkInit.headers["location"] || "";
-    assert.ok(redirectLocation.includes("/api/v1/auth/callback/github?code="));
+    process.env["GITHUB_CLIENT_ID"] = "gh_test_client_id";
+    process.env["GITHUB_CLIENT_SECRET"] = "gh_test_client_secret";
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("github.com/login/oauth/access_token")) {
+        return new Response(JSON.stringify({ access_token: "gh_live_token_alice" }), { status: 200 });
+      }
+      if (url.includes("api.github.com/user")) {
+        return new Response(JSON.stringify({ id: 445566, login: "alice_gh", email: "alice_gh@example.com" }), {
+          status: 200,
+        });
+      }
+      return origFetch(input);
+    }) as typeof fetch;
 
-    // 2. Forged unsigned state parameter must be rejected with error=InvalidState
-    const forgedState = encodeURIComponent(JSON.stringify({ action: "link", userId: bob.id }));
-    const forgedCallback = await request(app).get(
-      `/api/v1/auth/callback/github?code=mock_code_from_github&state=${forgedState}`,
-    );
-    assert.strictEqual(forgedCallback.status, 302);
-    assert.ok((forgedCallback.headers["location"] || "").includes("error=InvalidState"));
-    assert.strictEqual(db.getOAuthAccountByUserId(bob.id, "github"), undefined);
+    try {
+      // 1. Valid link initiation via cookie/token produces signed JWT state
+      const linkInit = await request(app).get(`/api/v1/auth/link/github?token=${encodeURIComponent(aliceToken)}`);
+      assert.strictEqual(linkInit.status, 302);
+      const redirectLocation = linkInit.headers["location"] || "";
+      assert.ok(redirectLocation.startsWith("https://github.com/login/oauth/authorize?"));
+      const parsedAuthUrl = new URL(redirectLocation);
+      const signedState = parsedAuthUrl.searchParams.get("state") || "";
+      assert.ok(signedState.length > 0);
 
-    // 3. Following the signed redirect links the account to Alice
-    const validCallback = await request(app).get(redirectLocation);
-    assert.strictEqual(validCallback.status, 302);
-    assert.ok((validCallback.headers["location"] || "").includes("success=Linkedgithub"));
-    assert.ok(db.getOAuthAccountByUserId(alice.id, "github"));
+      // 2. Forged unsigned state parameter must be rejected with error=InvalidState
+      const forgedState = encodeURIComponent(JSON.stringify({ action: "link", userId: bob.id }));
+      const forgedCallback = await request(app).get(`/api/v1/auth/callback/github?code=gh_code_1&state=${forgedState}`);
+      assert.strictEqual(forgedCallback.status, 302);
+      assert.ok((forgedCallback.headers["location"] || "").includes("error=InvalidState"));
+      assert.strictEqual(db.getOAuthAccountByUserId(bob.id, "github"), undefined);
+
+      // 3. Callback with the signed state links the account to Alice
+      const validCallback = await request(app).get(
+        `/api/v1/auth/callback/github?code=gh_code_2&state=${encodeURIComponent(signedState)}`,
+      );
+      assert.strictEqual(validCallback.status, 302);
+      assert.ok((validCallback.headers["location"] || "").includes("success=Linkedgithub"));
+      assert.ok(db.getOAuthAccountByUserId(alice.id, "github"));
+    } finally {
+      globalThis.fetch = origFetch;
+      delete process.env["GITHUB_CLIENT_ID"];
+      delete process.env["GITHUB_CLIENT_SECRET"];
+    }
   });
 
   await t.test(

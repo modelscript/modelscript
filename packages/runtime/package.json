@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/runtime",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "High-performance WebAssembly data-oriented DAE arena, memoized Salsa queries, and structural solvers for ModelScript",
   "keywords": [
     "modelscript",

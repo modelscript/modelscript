@@ -18,6 +18,14 @@ export function copyWasmAssets() {
       }
     }
   }
+
+  // Copy catalog json to dist
+  const catalogSrc = path.join(pkgDir, "src", "catalog", "stdlibs.catalog.json");
+  const catalogDist = path.join(pkgDir, "dist", "catalog", "stdlibs.catalog.json");
+  if (fs.existsSync(catalogSrc)) {
+    fs.mkdirSync(path.dirname(catalogDist), { recursive: true });
+    fs.copyFileSync(catalogSrc, catalogDist);
+  }
 }
 
 copyWasmAssets();

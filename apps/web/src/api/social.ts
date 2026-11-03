@@ -238,17 +238,26 @@ export const getNotifications = async (
 
 const NOTIFICATION_CATEGORIES = new Set(["all", "engineering", "packages", "mentions", "system"]);
 
-export const markNotificationsRead = async (id?: string | number): Promise<void> => {
+export const markNotificationsRead = async (
+  idOrCategoryOrIds?: string | number | Array<string | number>,
+): Promise<void> => {
   let body: Record<string, any> | undefined;
-  if (id !== undefined && id !== null && id !== "") {
-    if (typeof id === "string" && NOTIFICATION_CATEGORIES.has(id)) {
-      body = id !== "all" ? { category: id } : undefined;
+  if (Array.isArray(idOrCategoryOrIds)) {
+    const cleanIds = Array.from(new Set(idOrCategoryOrIds.filter((v) => v !== undefined && v !== null && v !== "")));
+    if (cleanIds.length === 0) return;
+    body = {
+      ids: cleanIds,
+      notification_ids: cleanIds,
+    };
+  } else if (idOrCategoryOrIds !== undefined && idOrCategoryOrIds !== null && idOrCategoryOrIds !== "") {
+    if (typeof idOrCategoryOrIds === "string" && NOTIFICATION_CATEGORIES.has(idOrCategoryOrIds)) {
+      body = idOrCategoryOrIds !== "all" ? { category: idOrCategoryOrIds } : undefined;
     } else {
       body = {
-        id,
-        notification_id: id,
-        notification_ids: [id],
-        ids: [id],
+        id: idOrCategoryOrIds,
+        notification_id: idOrCategoryOrIds,
+        notification_ids: [idOrCategoryOrIds],
+        ids: [idOrCategoryOrIds],
       };
     }
   }
@@ -292,14 +301,27 @@ export const getExplore = async (options?: {
 
 export const getTopicPosts = async (
   topic: string,
-  options?: { limit?: number | undefined; offset?: number | undefined; artifactType?: string | undefined },
+  options?: {
+    limit?: number | undefined;
+    offset?: number | undefined;
+    artifactType?: string | undefined;
+    sort?: "recent" | "top" | undefined;
+  },
 ): Promise<{ posts: any[] }> => {
   const params: Record<string, any> = {};
   if (options?.limit !== undefined) params.limit = options.limit;
   if (options?.offset !== undefined) params.offset = options.offset;
   if (options?.artifactType) params.artifactType = options.artifactType;
+  if (options?.sort) params.sort = options.sort;
   const { data } = await api.get(`/social/topics/${encodeURIComponent(topic)}/posts`, {
     params: Object.keys(params).length > 0 ? params : undefined,
+  });
+  return data;
+};
+
+export const getRelatedTopics = async (topic: string, limit = 8): Promise<{ topics: any[] }> => {
+  const { data } = await api.get(`/social/topics/${encodeURIComponent(topic)}/related`, {
+    params: { limit },
   });
   return data;
 };

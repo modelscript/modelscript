@@ -39,28 +39,30 @@ export const PostDetailThreadView: React.FC<PostDetailThreadViewProps> = ({
         <Post post={post} isDetail={true} />
       </div>
 
-      {user && (
-        <ReplyInputContainer>
-          <ComposeBox replyToPost={post} onPostCreated={onReplyCreated} />
-        </ReplyInputContainer>
-      )}
+      <div id="article-discussion" style={{ scrollMarginTop: "70px" }}>
+        {user && (
+          <ReplyInputContainer>
+            <ComposeBox replyToPost={post} onPostCreated={onReplyCreated} />
+          </ReplyInputContainer>
+        )}
 
-      {replies.length > 0 ? (
-        <Box>
-          {replies.map((reply) => (
-            <Post key={reply.id} post={reply} />
-          ))}
-          {activeBotTyping && (
-            <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
-          )}
-        </Box>
-      ) : activeBotTyping ? (
-        <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
-      ) : (
-        <Box p={4} textAlign="center">
-          <Text color="var(--color-fg-muted)">No replies yet.</Text>
-        </Box>
-      )}
+        {replies.length > 0 ? (
+          <Box>
+            {replies.map((reply) => (
+              <Post key={reply.id} post={reply} />
+            ))}
+            {activeBotTyping && (
+              <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
+            )}
+          </Box>
+        ) : activeBotTyping ? (
+          <BotTypingBubble botUsername={activeBotTyping.botUsername} status={activeBotTyping.status} />
+        ) : (
+          <Box p={4} textAlign="center">
+            <Text color="var(--color-fg-muted)">No replies yet.</Text>
+          </Box>
+        )}
+      </div>
     </>
   );
 };

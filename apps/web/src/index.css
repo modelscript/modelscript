@@ -37,9 +37,8 @@
   --color-search-border: var(--ms-border);
   --color-search-focus: color-mix(in srgb, var(--ms-brand) 50%, transparent);
 
-  /* Accents: legacy names mapped onto the shared hue scale. "purple" is
-     intentionally remapped to indigo so the app matches the docs palette. */
-  --color-accent-purple: var(--hue-indigo);
+  /* Accents: legacy names mapped onto the shared brand blue/cyan scale. */
+  --color-accent-purple: var(--ms-brand);
   --color-accent-cyan: var(--hue-cyan);
   --color-accent-blue: var(--ms-brand);
   --color-accent-emerald: var(--hue-emerald);
@@ -48,33 +47,33 @@
   --color-success: var(--ms-success);
   --color-danger-fg: var(--ms-danger);
 
-  --color-accent-purple-bg: color-mix(in srgb, var(--hue-indigo) 12%, transparent);
-  --color-accent-purple-border: color-mix(in srgb, var(--hue-indigo) 28%, transparent);
+  --color-accent-purple-bg: var(--ms-brand-soft);
+  --color-accent-purple-border: color-mix(in srgb, var(--ms-brand) 30%, transparent);
   --color-accent-blue-bg: var(--ms-brand-soft);
   --color-accent-blue-border: color-mix(in srgb, var(--ms-brand) 30%, transparent);
 
   --color-status-verified: var(--ms-success);
   --color-status-solver: var(--hue-cyan);
-  --color-status-fmu: var(--hue-indigo);
+  --color-status-fmu: var(--ms-brand);
   --color-status-warning: var(--ms-warning);
 
   /* Gradients — one brand gradient shared with the docs hero. */
   --gradient-icon-box: linear-gradient(
     135deg,
     color-mix(in srgb, var(--hue-teal) 18%, transparent),
-    color-mix(in srgb, var(--hue-indigo) 18%, transparent)
+    color-mix(in srgb, var(--hue-cyan) 18%, transparent)
   );
   --gradient-icon-box-border: var(--ms-divider);
   --gradient-cta: var(--ms-brand);
   --gradient-text: var(--ms-gradient-text);
   --gradient-ai: var(--ms-gradient);
-  --gradient-ai-subtle: linear-gradient(110deg, var(--ms-glow-teal) 0%, var(--ms-glow-indigo) 100%);
+  --gradient-ai-subtle: linear-gradient(110deg, var(--ms-glow-teal) 0%, var(--ms-glow-cyan) 100%);
 
-  --color-glow-purple: var(--ms-glow-indigo);
+  --color-glow-purple: var(--ms-glow-cyan);
   --color-glow-cyan: var(--ms-glow-cyan);
   --glow-ai-sm: 0 0 14px var(--ms-glow-cyan);
   --glow-cyan-sm: 0 0 14px var(--ms-glow-cyan);
-  --glow-purple-sm: 0 0 14px var(--ms-glow-indigo);
+  --glow-purple-sm: 0 0 14px var(--ms-glow-cyan);
   --glow-card: var(--ms-shadow-card);
 
   --color-badge-bg: var(--ms-surface-hover);
@@ -160,6 +159,9 @@
   --color-bg-card-hover: #ffffff;
   --color-glass-bg: rgba(255, 255, 255, 0.8);
   --color-glass-bg-hover: rgba(255, 255, 255, 0.95);
+  --sticky-bg-mix: var(--sticky-bg-mix-light, 0%);
+  --surface-sticky: color-mix(in srgb, var(--color-bg-primary) var(--sticky-bg-mix), transparent);
+  --backdrop-sticky: var(--backdrop-sticky-light, none);
   --color-pre-bg: #f1f5f9;
   --surface-overlay: rgba(255, 255, 255, 0.98);
   --color-overlay-backdrop: rgba(15, 23, 42, 0.52);
@@ -176,6 +178,9 @@
   --color-bg-card-hover: rgba(20, 30, 50, 0.82);
   --color-glass-bg: rgba(15, 22, 38, 0.72);
   --color-glass-bg-hover: rgba(20, 30, 50, 0.82);
+  --sticky-bg-mix: var(--sticky-bg-mix-dark, 0%);
+  --surface-sticky: color-mix(in srgb, var(--color-bg-primary) var(--sticky-bg-mix), transparent);
+  --backdrop-sticky: var(--backdrop-sticky-dark, none);
   --color-pre-bg: #050912;
   --surface-overlay: rgba(15, 22, 38, 0.97);
   --color-overlay-backdrop: rgba(2, 6, 23, 0.72);
@@ -185,6 +190,61 @@
   --color-map-land: rgba(148, 163, 184, 0.12);
   --color-map-land-hover: rgba(148, 163, 184, 0.24);
   --color-map-stroke: rgba(148, 163, 184, 0.22);
+}
+
+/* ─── Ansatz mark (counter-themed squircle tile: obsidian on light, platinum on dark) ─── */
+:root,
+[data-theme="light"] {
+  --ansatz-tile-bg:
+    radial-gradient(circle at 78% 20%, rgba(34, 211, 238, 0.18), transparent 60%),
+    linear-gradient(155deg, #111622 0%, #070a10 100%);
+  --ansatz-tile-ring: rgba(255, 255, 255, 0.1);
+  --ansatz-tile-highlight: rgba(255, 255, 255, 0.16);
+  --ansatz-tile-shadow: 0 1px 2px rgba(15, 23, 42, 0.14), 0 3px 8px -2px rgba(15, 23, 42, 0.18);
+  --ansatz-tile-shadow-hover: 0 2px 8px -1px rgba(15, 23, 42, 0.24), 0 0 0 3px rgba(14, 165, 233, 0.14);
+  --ansatz-facet-primary: #ffffff;
+  --ansatz-facet-accent: #38bdf8;
+  --ansatz-facet-bridge: #94a3b8;
+}
+
+[data-theme="dark"] {
+  --ansatz-tile-bg:
+    radial-gradient(circle at 78% 18%, rgba(14, 165, 233, 0.14), transparent 62%),
+    linear-gradient(155deg, #f8fafc 0%, #dbe4f0 100%);
+  --ansatz-tile-ring: rgba(255, 255, 255, 0.7);
+  --ansatz-tile-highlight: rgba(255, 255, 255, 0.95);
+  --ansatz-tile-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.45);
+  --ansatz-tile-shadow-hover: 0 3px 10px -1px rgba(0, 0, 0, 0.55), 0 0 0 3px rgba(56, 189, 248, 0.2);
+  --ansatz-facet-primary: #0f172a;
+  --ansatz-facet-accent: #0284c7;
+  --ansatz-facet-bridge: #64748b;
+}
+
+.ansatz-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--ansatz-tile-bg);
+  box-shadow:
+    inset 0 1px 0 var(--ansatz-tile-highlight),
+    inset 0 0 0 1px var(--ansatz-tile-ring),
+    var(--ansatz-tile-shadow);
+  transition: box-shadow 0.18s ease;
+}
+
+.ansatz-mark--custom {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ansatz-tile-ring);
+}
+
+.ansatz-mark svg {
+  display: block;
+}
+
+.ansatz-mark .ansatz-facet-accent {
+  transition: filter 0.18s ease;
 }
 
 /*
@@ -306,6 +366,15 @@ html [data-color-mode][data-light-theme][data-dark-theme] {
   --control-checked-bgColor-rest: var(--ms-brand);
   --control-checked-bgColor-hover: var(--ms-brand-hover);
   --underlineNav-borderColor-active: var(--ms-brand);
+
+  /* Primer typography bridge: ensure BaseStyles, Tooltip, TextInput, etc. never fall back to system/Noto fonts */
+  --fontStack-system: var(--ms-font-sans);
+  --fontStack-sansSerif: var(--ms-font-sans);
+  --fontStack-SansSerif: var(--ms-font-sans);
+  --fontStack-monospace: var(--ms-font-mono);
+  --BaseStyles-fontFamily: var(--ms-font-sans);
+  --BaseStyles-lineHeight: var(--leading-md);
+  --body-font-size: var(--text-md);
 }
 
 #__primerPortalRoot__,
@@ -324,6 +393,17 @@ html [data-color-mode][data-light-theme][data-dark-theme] {
   color: var(--fgColor-default, var(--ms-text-1));
   border: 1px solid var(--ms-border);
   box-shadow: var(--ms-shadow-pop);
+  max-height: calc(100dvh - 32px);
+}
+
+#__primerPortalRoot__ [class*="prc-Dialog-DialogOverflowWrapper"] {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+#__primerPortalRoot__ [class*="prc-Dialog-Body"] {
+  min-height: 0;
 }
 
 :root {
@@ -363,6 +443,11 @@ html [data-color-mode][data-light-theme][data-dark-theme] {
   }
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
 html,
 body {
   margin: 0;
@@ -374,17 +459,30 @@ body {
   line-height: var(--leading-md);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
   transition:
     background-color 0.3s ease,
     color 0.3s ease;
   min-height: 100vh;
 }
 
+button,
+input,
+select,
+textarea,
+optgroup {
+  font-family: inherit;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
+}
+
 /* Shared atmosphere with the docs hero: soft brand glows over a fading CAD grid near the top of the page. */
 body {
   background-image:
     radial-gradient(ellipse 60% 40% at 50% 0%, var(--ms-glow-cyan) 0%, transparent 70%),
-    radial-gradient(ellipse 40% 30% at 100% 100%, var(--ms-glow-indigo) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 30% at 100% 100%, var(--ms-glow-cyan) 0%, transparent 70%),
     linear-gradient(
       to bottom,
       transparent 0%,
@@ -511,4 +609,80 @@ a:focus-visible {
 /* Remove default focus outline on mouse click when focus-visible is supported */
 :focus:not(:focus-visible) {
   outline: none;
+}
+
+/* ─── Global Accessibility & Display Overrides (Settings -> Display & Accessibility) ─── */
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] *::before,
+html[data-reduced-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-high-contrast="true"] {
+  --color-border: rgba(255, 255, 255, 0.36);
+  --color-border-default: rgba(255, 255, 255, 0.42);
+  --color-border-glass: rgba(255, 255, 255, 0.38);
+  --color-text-muted: #cbd5e1;
+}
+
+html[data-theme="light"][data-high-contrast="true"] {
+  --color-border: rgba(15, 23, 42, 0.42);
+  --color-border-default: rgba(15, 23, 42, 0.48);
+  --color-border-glass: rgba(15, 23, 42, 0.38);
+  --color-text-muted: #334155;
+}
+
+html[data-density="compact"] {
+  --space-sm: 6px;
+  --space-md: 10px;
+  --space-lg: 14px;
+}
+
+/* ─── Polyglot Package List Action Dropdown Button (Light-bluish brand style) ─── */
+.package-action-dropdown-btn {
+  background-color: var(--ms-brand-soft, rgba(8, 145, 178, 0.12)) !important;
+  border-color: color-mix(in srgb, var(--ms-brand, #0891b2) 35%, transparent) !important;
+  color: var(--ms-brand, #0891b2) !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  transition: all 0.15s ease !important;
+}
+
+.package-action-dropdown-btn:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--ms-brand, #0891b2) 22%, transparent) !important;
+  border-color: var(--ms-brand, #0891b2) !important;
+  color: var(--ms-brand-hover, #06b6d4) !important;
+}
+
+.package-action-dropdown-btn:active:not(:disabled),
+.package-action-dropdown-btn[aria-expanded="true"] {
+  background-color: color-mix(in srgb, var(--ms-brand, #0891b2) 28%, transparent) !important;
+  border-color: var(--ms-brand, #0891b2) !important;
+  color: var(--ms-brand-hover, #06b6d4) !important;
+}
+
+.package-action-dropdown-btn:focus-visible {
+  outline: 2px solid var(--ms-brand, #0891b2) !important;
+  outline-offset: 1px !important;
+}
+
+.package-action-dropdown-btn svg {
+  color: inherit !important;
+}
+
+.package-action-dropdown-btn[data-state-success="true"] {
+  background-color: rgba(5, 150, 105, 0.14) !important;
+  border-color: rgba(5, 150, 105, 0.4) !important;
+  color: var(--color-success-fg, #059669) !important;
+}
+
+.package-action-dropdown-btn[data-state-success="true"]:hover:not(:disabled) {
+  background-color: rgba(5, 150, 105, 0.22) !important;
+  border-color: rgba(5, 150, 105, 0.6) !important;
+  color: var(--color-success-fg, #059669) !important;
 }

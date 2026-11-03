@@ -6,6 +6,8 @@ export interface ArtifactViewCardProps {
   artifactId: number;
   initialArtifactView?: any;
   forkedFromId?: number | string | undefined;
+  figureNumber?: number | undefined;
+  caption?: string | undefined;
   onPinCreated?: ((pin: AnySpatialPin) => void) | undefined;
   onThreadNodeSelected?: ((threadId: string | number) => void) | undefined;
 }

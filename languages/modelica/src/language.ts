@@ -523,25 +523,42 @@ export const modelicaLanguage = language({
     outline: ["component_declaration", "short_class_specifier", "long_class_specifier", "der_class_specifier"],
     handlers: {
       // Extracts 3D CAD / multibody visual shapes from a Modelica class
-      "modelscript/getCadComponents": async (ctx: any, params: { uri: string }) => {
+      "modelscript/getCadComponents": async (ctx: any, params: { uri: string; className?: string }) => {
         const sharedContext = ctx.parserService?.sharedContext;
         if (!sharedContext) return [];
 
         const unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
         if (!unifiedIndex) return [];
 
-        let targetClassName: string | undefined;
+        let targetClassName: string | undefined = params.className;
         let targetSymbolId: number | undefined;
 
         for (const [id, entry] of unifiedIndex.symbols.entries()) {
-          if (
-            entry.resourceId === params.uri &&
-            (entry.kind === "Class" || entry.kind === "Def") &&
-            entry.parentId === null
-          ) {
-            targetSymbolId = id;
-            targetClassName = entry.name;
-            break;
+          if (entry.resourceId === params.uri && (entry.kind === "Class" || entry.kind === "Def")) {
+            if (params.className && (entry.name === params.className || entry.qualifiedName === params.className)) {
+              targetSymbolId = id;
+              targetClassName = entry.qualifiedName || entry.name;
+              break;
+            }
+            if (!targetClassName && entry.parentId === null && entry.classPrefix !== "package") {
+              targetSymbolId = id;
+              targetClassName = entry.qualifiedName || entry.name;
+            }
+          }
+        }
+
+        // Fallback: if top-level is a package, pick the first non-package child model/class
+        if (!targetClassName) {
+          for (const [id, entry] of unifiedIndex.symbols.entries()) {
+            if (
+              entry.resourceId === params.uri &&
+              (entry.kind === "Class" || entry.kind === "Def") &&
+              entry.classPrefix !== "package"
+            ) {
+              targetSymbolId = id;
+              targetClassName = entry.qualifiedName || entry.name;
+              break;
+            }
           }
         }
 

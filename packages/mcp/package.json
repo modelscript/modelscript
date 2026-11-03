@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/mcp",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "Model Context Protocol (MCP) server, tools, and resources for ModelScript",
   "keywords": [
     "modelscript",

@@ -9,6 +9,7 @@ export interface EnterpriseComplianceContext {
   hasAdminUser(): boolean;
   isDatabaseOpen(): boolean;
   isGeoIpReady(): boolean;
+  isGeoIpFallbackActive?(): boolean;
   getMailerDriver(): string;
   sanctionedCountriesCount: number;
   sanctionedRegionsCount: number;
@@ -91,6 +92,14 @@ export function createEnterpriseComplianceRouter(ctx: EnterpriseComplianceContex
     const turnstileOk = Boolean(process.env["TURNSTILE_SECRET_KEY"]) || isAirgap;
     const hasAdmin = ctx.hasAdminUser();
     const geoIpLoaded = ctx.isGeoIpReady();
+    const fallbackPrefixesActive =
+      typeof ctx.isGeoIpFallbackActive === "function"
+        ? ctx.isGeoIpFallbackActive()
+        : process.env["DISABLE_GEOIP_FALLBACK"] === "true" || process.env["GEOIP_FALLBACK_PREFIXES"] === "false"
+          ? false
+          : process.env["GEOIP_FALLBACK_PREFIXES"] === "true" ||
+            !geoIpLoaded ||
+            process.env["GEOIP_FALLBACK_PREFIXES"] === undefined;
 
     const isDegraded = isProd && (!jwtOk || !turnstileOk || !hasAdmin);
 
@@ -114,7 +123,7 @@ export function createEnterpriseComplianceRouter(ctx: EnterpriseComplianceContex
         services: {
           geolocation: {
             dbLoaded: geoIpLoaded,
-            fallbackPrefixesActive: true,
+            fallbackPrefixesActive,
           },
           mailer: {
             driver: ctx.getMailerDriver(),

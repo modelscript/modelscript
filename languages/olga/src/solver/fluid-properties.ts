@@ -25,6 +25,8 @@ export interface EvaluatedCellFluid {
   muG: number; // Gas dynamic viscosity [Pa*s]
   muL: number; // Effective liquid dynamic viscosity [Pa*s]
   sigma: number; // Gas-liquid interfacial tension [N/m]
+  cpG: number; // Gas specific heat capacity [J/(kg*K)]
+  cpL: number; // Effective liquid specific heat capacity [J/(kg*K)]
 
   soundSpeedGas: number; // [m/s]
   soundSpeedLiquid: number; // [m/s]
@@ -71,12 +73,17 @@ export function evaluateCellFluidProperties(
       muL = emulsion.effectiveViscosity;
     }
 
+    const cpG = pvt.cpG ?? 2200.0;
+    const cpL = pvt.cpL ?? wc * 4184.0 + (1.0 - wc) * 2100.0;
+
     return {
       rhoG: pvt.rhoG,
       rhoL,
       muG: pvt.muG,
       muL,
       sigma: pvt.sigma,
+      cpG,
+      cpL,
       soundSpeedGas: pvt.soundSpeedGas,
       soundSpeedLiquid: pvt.soundSpeedLiquid,
       dRhoGdP: pvt.dRhoGdP,
@@ -96,12 +103,17 @@ export function evaluateCellFluidProperties(
   const soundSpeedGas = Math.sqrt(Math.max(100.0, 1.0 / Math.max(1e-9, dRhoGdP)));
   const soundSpeedLiquid = Math.sqrt(Math.max(1000.0, 1.0 / Math.max(1e-11, dRhoLdP)));
 
+  const cpG = 2200.0;
+  const cpL = wc * 4184.0 + (1.0 - wc) * 2100.0;
+
   return {
     rhoG: bo.rhoG,
     rhoL: bo.rhoL,
     muG: bo.muG,
     muL: emulsion.effectiveViscosity,
     sigma: 0.025,
+    cpG,
+    cpL,
     soundSpeedGas,
     soundSpeedLiquid,
     dRhoGdP,

@@ -261,6 +261,26 @@ function normalizeSx(sx: any): any {
       case "mr":
         result.marginRight = formatSpace(val as string | number);
         break;
+      case "gap":
+      case "rowGap":
+      case "columnGap":
+      case "gridGap":
+        result[key] = formatSpace(val as string | number);
+        break;
+      case "width":
+      case "height":
+      case "minWidth":
+      case "minHeight":
+      case "maxWidth":
+      case "maxHeight":
+      case "fontSize":
+      case "top":
+      case "bottom":
+      case "left":
+      case "right":
+      case "borderWidth":
+        result[key] = typeof val === "number" ? `${val}px` : resolveToken(val);
+        break;
       default:
         result[key] = resolveToken(val);
         break;

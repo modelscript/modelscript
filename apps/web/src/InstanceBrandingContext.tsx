@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { getPublicInstanceBanner, type PublicInstanceBannerResponse } from "./api/admin";
+import { getPublicInstanceBanner, type AdminInstanceRule, type PublicInstanceBannerResponse } from "./api/admin";
 import { setActiveBrandName } from "./util/title";
 
 export interface InstanceBrandingState {
@@ -23,6 +23,22 @@ export interface InstanceBrandingState {
   academicFastTrackEnabled: boolean;
   academicDomainPatterns: string[];
   onboardingWizardEnabled: boolean;
+  customTermsMarkdown: string;
+  customPrivacyMarkdown: string;
+  customCookiesMarkdown: string;
+  legalPolicyMode: "append" | "override";
+  legalJurisdiction: string;
+  legalEffectiveDate: string;
+  ingressMode: "direct" | "cloudflare";
+  cloudflareTunnelConfigured: boolean;
+  authorizedFetchEnabled: boolean;
+  federatedTimelinePublic: boolean;
+  domainBlocksPublic: boolean;
+  remoteContentRetentionDays: number;
+  remoteMediaCacheRetentionDays: number;
+  autoFilterAction: "cw" | "silence" | "quarantine";
+  autoQuarantineReportThreshold: number;
+  rules: AdminInstanceRule[];
   maintenanceMode: boolean;
   maintenanceLevel: "off" | "scheduled" | "read_only" | "lockdown";
   maintenanceEta: string;
@@ -70,6 +86,22 @@ const DEFAULT_BRANDING: Omit<
   academicFastTrackEnabled: false,
   academicDomainPatterns: ["edu", "ac.uk"],
   onboardingWizardEnabled: false,
+  customTermsMarkdown: "",
+  customPrivacyMarkdown: "",
+  customCookiesMarkdown: "",
+  legalPolicyMode: "append",
+  legalJurisdiction: "",
+  legalEffectiveDate: "",
+  ingressMode: "direct",
+  cloudflareTunnelConfigured: false,
+  authorizedFetchEnabled: false,
+  federatedTimelinePublic: true,
+  domainBlocksPublic: true,
+  remoteContentRetentionDays: 90,
+  remoteMediaCacheRetentionDays: 30,
+  autoFilterAction: "cw",
+  autoQuarantineReportThreshold: 5,
+  rules: [],
   maintenanceMode: false,
   maintenanceLevel: "off",
   maintenanceEta: "",
@@ -173,6 +205,46 @@ export const InstanceBrandingProvider: React.FC<{
           res.onboardingWizardEnabled !== undefined
             ? Boolean(res.onboardingWizardEnabled)
             : prev.onboardingWizardEnabled,
+        customTermsMarkdown: res.customTermsMarkdown !== undefined ? res.customTermsMarkdown : prev.customTermsMarkdown,
+        customPrivacyMarkdown:
+          res.customPrivacyMarkdown !== undefined ? res.customPrivacyMarkdown : prev.customPrivacyMarkdown,
+        customCookiesMarkdown:
+          res.customCookiesMarkdown !== undefined ? res.customCookiesMarkdown : prev.customCookiesMarkdown,
+        legalPolicyMode:
+          res.legalPolicyMode !== undefined
+            ? res.legalPolicyMode === "override"
+              ? "override"
+              : "append"
+            : prev.legalPolicyMode,
+        legalJurisdiction: res.legalJurisdiction !== undefined ? res.legalJurisdiction : prev.legalJurisdiction,
+        legalEffectiveDate: res.legalEffectiveDate !== undefined ? res.legalEffectiveDate : prev.legalEffectiveDate,
+        ingressMode: res.ingressMode !== undefined ? res.ingressMode : prev.ingressMode,
+        cloudflareTunnelConfigured:
+          res.cloudflareTunnelConfigured !== undefined
+            ? Boolean(res.cloudflareTunnelConfigured)
+            : prev.cloudflareTunnelConfigured,
+        authorizedFetchEnabled:
+          res.authorizedFetchEnabled !== undefined ? Boolean(res.authorizedFetchEnabled) : prev.authorizedFetchEnabled,
+        federatedTimelinePublic:
+          res.federatedTimelinePublic !== undefined
+            ? Boolean(res.federatedTimelinePublic)
+            : prev.federatedTimelinePublic,
+        domainBlocksPublic:
+          res.domainBlocksPublic !== undefined ? Boolean(res.domainBlocksPublic) : prev.domainBlocksPublic,
+        remoteContentRetentionDays:
+          res.remoteContentRetentionDays !== undefined
+            ? Number(res.remoteContentRetentionDays)
+            : prev.remoteContentRetentionDays,
+        remoteMediaCacheRetentionDays:
+          res.remoteMediaCacheRetentionDays !== undefined
+            ? Number(res.remoteMediaCacheRetentionDays)
+            : prev.remoteMediaCacheRetentionDays,
+        autoFilterAction: res.autoFilterAction ?? prev.autoFilterAction,
+        autoQuarantineReportThreshold:
+          res.autoQuarantineReportThreshold !== undefined
+            ? Number(res.autoQuarantineReportThreshold)
+            : prev.autoQuarantineReportThreshold,
+        rules: Array.isArray(res.rules) ? res.rules : prev.rules,
         maintenanceMode: nextMaintMode,
         maintenanceLevel: nextMaintLevel,
         maintenanceEta: res.maintenanceEta !== undefined ? res.maintenanceEta : prev.maintenanceEta,

@@ -45,12 +45,11 @@ export const ThreadGovernanceModal: React.FC<ThreadGovernanceModalProps> = ({
         width: "95vw",
         maxWidth: 960,
         maxHeight: "85vh",
-        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
       }}
     >
-      <Box display="flex" flexDirection="column" gap={3} sx={{ height: "100%", overflowY: "auto", pr: 1 }}>
+      <Box display="flex" flexDirection="column" gap={3} sx={{ pr: 1 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
           <SegmentedControl aria-label="Governance Views">
             <SegmentedControl.Button

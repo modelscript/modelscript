@@ -14,6 +14,12 @@ import type { FederatedQueryCacheStore } from "@modelscript/runtime/wasm_cache_s
 import { strFromU8, unzipSync } from "fflate";
 import { iconCache } from "../handlers/treeHandler.js";
 import type { Parser, Tree } from "../utils/cst-facade.js";
+import {
+  getLibraryName,
+  loadingLibraryState,
+  mountedLibraryMetadata,
+  normalizeLibraryName,
+} from "../utils/hierarchy-utils.js";
 import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
 import { ingestSalsaIndex } from "./salsa-index-ingester.js";
 
@@ -122,10 +128,22 @@ export interface RegistryPackageInfo {
  * and registered lazily in the globalWorkspaceIndex.
  */
 export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderContext): Promise<void> {
+  const normName = normalizeLibraryName(pkg.name);
+  const existingMeta = mountedLibraryMetadata.get(normName);
+  if (existingMeta && existingMeta.version !== pkg.version) {
+    unloadLibraryPackage(normName, ctx);
+  }
   try {
     const safeName = pkg.name.replace(/\//g, "_").replace(/^@/, "");
     const basePath = `/packages/${safeName}`;
     const label = `${pkg.name}@${pkg.version}`;
+
+    loadingLibraryState.set(normName, {
+      name: normName,
+      version: pkg.version,
+      message: "Indexing package...",
+    });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
 
     ctx.logger.log(`[registry] Loading package ${label} (${Object.keys(pkg.files).length} files)`);
     ctx.connectionState.sendNotification("modelscript/status", {
@@ -308,10 +326,20 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
       ctx.logger.warn(`[registry] ... and ${indexErrors - 3} more indexing errors`);
     }
 
+    loadingLibraryState.delete(normName);
+    mountedLibraryMetadata.set(normName, {
+      name: normName,
+      version: pkg.version,
+      language: pkg.modelscript?.languages?.[0],
+    });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+
     ctx.logger.log(
       `[registry] Loaded ${label}: ${fileCount} files, ${registeredCount} registered, ${indexedCount} indexed`,
     );
   } catch (e) {
+    loadingLibraryState.delete(normName);
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
     ctx.logger.error(`[registry] Failed to load package ${pkg.name}:`, e);
   }
 }
@@ -340,8 +368,20 @@ export async function loadDependencyFromRegistry(
   dep: { name: string; version: string },
   ctx: LoaderContext,
 ): Promise<void> {
+  const normName = normalizeLibraryName(dep.name);
+  const existingMeta = mountedLibraryMetadata.get(normName);
+  if (existingMeta && existingMeta.version !== dep.version) {
+    unloadLibraryPackage(normName, ctx);
+  }
   const label = `${dep.name}@${dep.version}`;
   ctx.logger.log(`[deps] Loading ${label} from registry via LSP bundle...`);
+
+  loadingLibraryState.set(normName, {
+    name: normName,
+    version: dep.version,
+    message: "Fetching bundle...",
+  });
+  ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
 
   try {
     let cached: any = null;
@@ -402,6 +442,7 @@ export async function loadDependencyFromRegistry(
               const iconsData = (await iconsRes.json()) as { icons: Record<string, string> };
               let iconCount = 0;
               for (const [className, svg] of Object.entries(iconsData.icons)) {
+                iconCache.set(`${normName}@${dep.version}:${className}`, svg);
                 iconCache.set(className, svg);
                 iconCount++;
               }
@@ -410,6 +451,12 @@ export async function loadDependencyFromRegistry(
           } catch {
             ctx.logger.warn(`[deps] Failed to fetch icons for ${label} (non-fatal)`);
           }
+          loadingLibraryState.delete(normName);
+          mountedLibraryMetadata.set(normName, {
+            name: normName,
+            version: dep.version,
+          });
+          ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
           return;
         }
 
@@ -443,6 +490,7 @@ export async function loadDependencyFromRegistry(
     let iconCount = 0;
     if (cached.iconsJson) {
       for (const [className, svg] of Object.entries(cached.iconsJson)) {
+        iconCache.set(`${normName}@${dep.version}:${className}`, svg as string);
         iconCache.set(className, svg as string);
         iconCount++;
       }
@@ -456,6 +504,7 @@ export async function loadDependencyFromRegistry(
         if (iconsRes.ok) {
           const iconsData = (await iconsRes.json()) as { icons: Record<string, string> };
           for (const [className, svg] of Object.entries(iconsData.icons)) {
+            iconCache.set(`${normName}@${dep.version}:${className}`, svg);
             iconCache.set(className, svg);
             iconCount++;
           }
@@ -517,7 +566,16 @@ export async function loadDependencyFromRegistry(
 
       ctx.logger.log(`[registry] Hydrated ${label}: ${fileCount} files, index hydrated with ${symbols.size} symbols.`);
     }
+
+    loadingLibraryState.delete(normName);
+    mountedLibraryMetadata.set(normName, {
+      name: normName,
+      version: dep.version,
+    });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
   } catch (e) {
+    loadingLibraryState.delete(normName);
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
     ctx.logger.error(`[deps] Failed to load ${label} from registry:`, e);
     throw e;
   }
@@ -525,11 +583,23 @@ export async function loadDependencyFromRegistry(
 
 export const SYSML_VERSION_KEY = "SysML-v2-Release-2026-03";
 
-export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promise<void> {
+export async function loadMSL(serverDistBase: string, ctx: LoaderContext, version = "4.1.0"): Promise<void> {
+  const existingMeta = mountedLibraryMetadata.get("Modelica");
+  if (existingMeta && existingMeta.version !== version) {
+    unloadLibraryPackage("Modelica", ctx);
+  }
+  const cacheKey = version === "4.1.0" ? MSL_VERSION_KEY : `ModelicaStandardLibrary_v${version}`;
+  const zipFilename = `ModelicaStandardLibrary_v${version}.zip`;
   try {
+    loadingLibraryState.set("Modelica", {
+      name: "Modelica",
+      version,
+      message: `Loading MSL v${version}...`,
+    });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
     ctx.connectionState.sendNotification("modelscript/status", {
       state: "loading",
-      message: "Loading Modelica Standard Library...",
+      message: `Loading Modelica Standard Library v${version}...`,
     });
 
     let fileEntries: Record<string, Uint8Array> | null = null;
@@ -537,7 +607,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
     try {
       const db = await openMSLCache();
       try {
-        const cached = await idbGet<Record<string, ArrayBuffer>>(db, MSL_VERSION_KEY);
+        const cached = await idbGet<Record<string, ArrayBuffer>>(db, cacheKey);
         if (cached) {
           ctx.logger.log("[msl-cache] Cache hit — loading from IndexedDB");
           ctx.connectionState.sendNotification("modelscript/status", {
@@ -557,7 +627,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
     }
 
     if (!fileEntries) {
-      let zipData: Uint8Array;
+      let zipData: Uint8Array | null = null;
       if (
         serverDistBase.startsWith("file://") ||
         (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://"))
@@ -565,22 +635,38 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
         const filePath = serverDistBase.startsWith("file://")
           ? serverDistBase.replace(/^file:\/\//, "")
           : serverDistBase;
-        const zipPath = `${filePath}/ModelicaStandardLibrary_v4.1.0.zip`;
+        const zipPath = `${filePath}/${zipFilename}`;
         const nodeFs = await import("node:fs");
-        zipData = nodeFs.readFileSync(zipPath);
-      } else {
-        const response = await fetch(`${serverDistBase}/ModelicaStandardLibrary_v4.1.0.zip`);
-        if (!response.ok) {
-          ctx.logger.warn("MSL zip not found — library features will be unavailable");
-          return;
+        if (nodeFs.existsSync(zipPath)) {
+          zipData = nodeFs.readFileSync(zipPath);
         }
-        ctx.connectionState.sendNotification("modelscript/status", {
-          state: "loading",
-          message: "Decompressing MSL...",
-        });
-        const buffer = await response.arrayBuffer();
-        zipData = new Uint8Array(buffer);
+      } else {
+        const response = await fetch(`${serverDistBase}/${zipFilename}`);
+        if (response.ok) {
+          ctx.connectionState.sendNotification("modelscript/status", {
+            state: "loading",
+            message: "Decompressing MSL...",
+          });
+          const buffer = await response.arrayBuffer();
+          zipData = new Uint8Array(buffer);
+        }
       }
+
+      if (!zipData) {
+        if (ctx.registryUrl || version !== "4.1.0") {
+          try {
+            await loadDependencyFromRegistry({ name: "Modelica", version }, ctx);
+            return;
+          } catch {
+            // Fall through to warning
+          }
+        }
+        loadingLibraryState.delete("Modelica");
+        ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+        ctx.logger.warn("MSL zip not found — library features will be unavailable");
+        return;
+      }
+
       fileEntries = unzipSync(zipData);
 
       // Cache extracted MSL in IndexedDB in the background so it doesn't block startup requests
@@ -592,7 +678,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
             for (const [name, data] of Object.entries(fileEntries!)) {
               serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
             }
-            await idbPut(db, MSL_VERSION_KEY, serializable);
+            await idbPut(db, cacheKey, serializable);
             ctx.logger.log("[msl-cache] Cached extracted MSL in IndexedDB");
           } finally {
             db.close();
@@ -647,11 +733,19 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
         parentFQN = parts.join(".");
         moFiles.push({ fullPath, uri, parentFQN });
 
-        if (name === "Modelica 4.1.0/package.mo" || name === "Modelica/package.mo") {
+        if (
+          name === `Modelica ${version}/package.mo` ||
+          name === "Modelica 4.1.0/package.mo" ||
+          name === "Modelica/package.mo"
+        ) {
           modelicaPkgUri = uri;
         } else if (name === "Complex.mo") {
           complexUri = uri;
-        } else if (name === "Modelica 4.1.0/Icons.mo" || name === "Modelica/Icons.mo") {
+        } else if (
+          name === `Modelica ${version}/Icons.mo` ||
+          name === "Modelica 4.1.0/Icons.mo" ||
+          name === "Modelica/Icons.mo"
+        ) {
           iconsUri = uri;
         }
       }
@@ -726,6 +820,13 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
       }
     }
 
+    loadingLibraryState.delete("Modelica");
+    mountedLibraryMetadata.set("Modelica", {
+      name: "Modelica",
+      version,
+      language: "modelica",
+    });
+
     ctx.logger.log(`[polyglot] Registered ${moFiles.length} MSL files in globalWorkspaceIndex`);
     ctx.connectionState.sendNotification("modelscript/status", {
       state: "ready",
@@ -733,16 +834,24 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
     });
     ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
   } catch (e) {
+    loadingLibraryState.delete("Modelica");
     ctx.logger.error("Failed to load MSL zip:", e);
     ctx.connectionState.sendNotification("modelscript/status", {
       state: "ready",
       message: "ModelScript",
     });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
   }
 }
 
 export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: LoaderContext): Promise<void> {
   try {
+    loadingLibraryState.set("SysML", {
+      name: "SysML",
+      version: "2026.3.0",
+      message: "Loading SysML v2...",
+    });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
     ctx.connectionState.sendNotification("modelscript/status", {
       state: "loading",
       message: "Loading SysML v2 Standard Library...",
@@ -770,6 +879,8 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
     if (!fileEntries) {
       const response = await fetch(`${serverDistBase}/SysML-v2-Release-2026-03.zip`);
       if (!response.ok) {
+        loadingLibraryState.delete("SysML");
+        ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
         ctx.logger.warn("SysML v2 standard library zip not found in dist");
         return;
       }
@@ -829,6 +940,13 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
       fileCount++;
     }
 
+    loadingLibraryState.delete("SysML");
+    mountedLibraryMetadata.set("SysML", {
+      name: "SysML",
+      version: "2026.3.0",
+      language: "sysml2",
+    });
+
     ctx.logger.log(
       `SysML2 Standard Library loaded: ${fileCount} files registered and indexed in sysml2WorkspaceIndex.`,
     );
@@ -838,10 +956,479 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
     });
     ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
   } catch (e) {
+    loadingLibraryState.delete("SysML");
     ctx.logger.error("Failed to load SysML2 standard library:", e);
     ctx.connectionState.sendNotification("modelscript/status", {
       state: "ready",
       message: "ModelScript",
     });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
   }
+}
+
+export interface MountPolyglotOptions {
+  packageName: string;
+  version: string;
+  filename: string;
+  language?: string | undefined;
+  cacheKey?: string | undefined;
+}
+
+/**
+ * Generic mounting function for polyglot libraries across all 44 languages.
+ * Unpacks the archive into /lib/<packageName> and hydrates WorkspaceIndex
+ * if an index.json pre-indexed bundle is present.
+ */
+export async function mountPolyglotLibrary(
+  serverDistBase: string,
+  ctx: LoaderContext,
+  options: MountPolyglotOptions,
+): Promise<boolean> {
+  const normName = normalizeLibraryName(options.packageName);
+  const existingMeta = mountedLibraryMetadata.get(normName);
+  if (existingMeta && existingMeta.version !== options.version) {
+    unloadLibraryPackage(normName, ctx);
+  }
+  const cacheKey = options.cacheKey || `${options.packageName}_v${options.version}`;
+  const label = `${options.packageName}@${options.version}`;
+
+  try {
+    loadingLibraryState.set(normName, {
+      name: normName,
+      version: options.version,
+      message: "Mounting archive...",
+    });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+    ctx.connectionState.sendNotification("modelscript/status", {
+      state: "loading",
+      message: `Loading ${label} library...`,
+    });
+
+    let fileEntries: Record<string, Uint8Array> | null = null;
+
+    try {
+      const db = await openMSLCache();
+      try {
+        const cached = await idbGet<Record<string, ArrayBuffer>>(db, cacheKey);
+        if (cached) {
+          ctx.logger.log(`[vfs-mount] Cache hit for ${label} from IndexedDB`);
+          fileEntries = {};
+          for (const [name, buf] of Object.entries(cached)) {
+            fileEntries[name] = new Uint8Array(buf);
+          }
+        }
+      } finally {
+        db.close();
+      }
+    } catch (cacheErr) {
+      ctx.logger.warn(`[vfs-mount] IndexedDB read failed for ${label}: ${cacheErr}`);
+    }
+
+    if (!fileEntries) {
+      let zipData: Uint8Array;
+      if (
+        serverDistBase.startsWith("file://") ||
+        (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://"))
+      ) {
+        const filePath = serverDistBase.startsWith("file://")
+          ? serverDistBase.replace(/^file:\/\//, "")
+          : serverDistBase;
+        const zipPath = `${filePath}/${options.filename}`;
+        const nodeFs = await import("node:fs");
+        zipData = nodeFs.readFileSync(zipPath);
+      } else {
+        const response = await fetch(`${serverDistBase}/${options.filename}`);
+        if (!response.ok) {
+          loadingLibraryState.delete(normName);
+          ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+          ctx.logger.warn(`[vfs-mount] Library archive not found at ${serverDistBase}/${options.filename}`);
+          return false;
+        }
+        ctx.connectionState.sendNotification("modelscript/status", {
+          state: "loading",
+          message: `Decompressing ${label}...`,
+        });
+        const buffer = await response.arrayBuffer();
+        zipData = new Uint8Array(buffer);
+      }
+      fileEntries = unzipSync(zipData);
+
+      // Cache extracted files into IndexedDB
+      setTimeout(async () => {
+        try {
+          const db = await openMSLCache();
+          try {
+            const serializable: Record<string, ArrayBuffer> = {};
+            for (const [name, data] of Object.entries(fileEntries!)) {
+              serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+            }
+            await idbPut(db, cacheKey, serializable);
+            ctx.logger.log(`[vfs-mount] Cached ${label} in IndexedDB`);
+          } finally {
+            db.close();
+          }
+        } catch (cacheErr) {
+          ctx.logger.warn(`[vfs-mount] IndexedDB write failed for ${label}: ${cacheErr}`);
+        }
+      }, 500);
+    }
+
+    // Mount files into VFS under /lib/<packageName>/
+    const basePath = `/lib/${options.packageName}`;
+    let fileCount = 0;
+    for (const [name, data] of Object.entries(fileEntries)) {
+      if (name.endsWith("/")) {
+        ctx.sharedFs.addDir(`${basePath}/${name.slice(0, -1)}`);
+        continue;
+      }
+      const fullPath = `${basePath}/${name}`;
+      ctx.sharedFs.addFile(fullPath, data);
+      fileCount++;
+    }
+
+    if (fileEntries["icons.json"]) {
+      try {
+        const textDecoder = new TextDecoder("utf-8");
+        const icons = JSON.parse(textDecoder.decode(fileEntries["icons.json"])) as Record<string, string>;
+        for (const [className, svg] of Object.entries(icons)) {
+          if (typeof svg === "string") {
+            iconCache.set(`${normName}@${options.version}:${className}`, svg);
+            iconCache.set(className, svg);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // If pre-indexed bundle (contains index.json):
+    if (fileEntries["index.json"]) {
+      try {
+        const textDecoder = new TextDecoder("utf-8");
+        const indexStr = textDecoder.decode(fileEntries["index.json"]);
+        const parsed = JSON.parse(indexStr);
+        if (parsed.symbols && parsed.byName && parsed.childrenOf) {
+          const symbols = new Map(parsed.symbols);
+          const byName = new Map(parsed.byName);
+          const childrenOf = new Map(parsed.childrenOf);
+          const uri = `library-bundle:/${options.packageName}@${options.version}`;
+
+          ctx.globalWorkspaceIndex.hydrate(uri, { symbols, byName, childrenOf }, undefined, (origPath: string) => {
+            if (origPath.startsWith("sources/")) {
+              return "file://" + ctx.sharedFs.join(basePath, origPath.substring("sources/".length));
+            }
+            return "file://" + ctx.sharedFs.join(basePath, origPath);
+          });
+          ctx.logger.log(`[vfs-mount] Hydrated ${label} pre-indexed bundle with ${symbols.size} symbols.`);
+        }
+      } catch (indexErr) {
+        ctx.logger.warn(`[vfs-mount] Failed to parse index.json for ${label}: ${indexErr}`);
+      }
+    }
+
+    loadingLibraryState.delete(normName);
+    mountedLibraryMetadata.set(normName, {
+      name: normName,
+      version: options.version,
+      language: options.language,
+    });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+
+    ctx.logger.log(`[vfs-mount] Successfully mounted ${label} (${fileCount} files into ${basePath}).`);
+    ctx.connectionState.sendNotification("modelscript/status", {
+      state: "ready",
+      message: "ModelScript",
+    });
+    return true;
+  } catch (err: unknown) {
+    loadingLibraryState.delete(normName);
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+    ctx.logger.error(`[vfs-mount] Failed to mount ${label}:`, err);
+    ctx.connectionState.sendNotification("modelscript/status", {
+      state: "ready",
+      message: "ModelScript",
+    });
+    return false;
+  }
+}
+
+/**
+ * Unmounts a library package (whether custom or standard library) from the
+ * workspace indexes and refreshes the Libraries tree.
+ */
+export function unloadLibraryPackage(packageName: string, ctx: LoaderContext): number {
+  const normName = normalizeLibraryName(packageName);
+  mountedLibraryMetadata.delete(normName);
+  loadingLibraryState.delete(normName);
+
+  let clearedUris = 0;
+
+  type WorkspaceIndexEvictionTarget = {
+    clear?(uri: string): void;
+    fileLoaders?: Map<string, unknown>;
+    fileSymbols?: Map<string, unknown>;
+    unifiedTreeIndex?: { symbols?: Map<number, { resourceId?: string }> };
+    toTreeIndex?(): { symbols?: Map<number, { resourceId?: string }> } | undefined;
+    toUnifiedPartial?(): { symbols?: Map<number, { resourceId?: string }> } | undefined;
+  };
+
+  const evictFromWorkspaceIndex = (wsIdx: WorkspaceIndexEvictionTarget | null | undefined) => {
+    if (!wsIdx || typeof wsIdx.clear !== "function") return;
+    const urisToClear = new Set<string>();
+
+    // 1. Check lazy fileLoaders map
+    if (wsIdx.fileLoaders instanceof Map) {
+      for (const uri of wsIdx.fileLoaders.keys()) {
+        if (getLibraryName(String(uri)) === normName) {
+          urisToClear.add(String(uri));
+        }
+      }
+    }
+
+    // 2. Check indexed fileSymbols map (includes hydrated library-bundle:/ URIs)
+    if (wsIdx.fileSymbols instanceof Map) {
+      for (const uri of wsIdx.fileSymbols.keys()) {
+        const uriStr = String(uri);
+        if (
+          getLibraryName(uriStr) === normName ||
+          uriStr.startsWith(`library-bundle:/${packageName}@`) ||
+          uriStr.startsWith(`library-bundle:/${normName}@`)
+        ) {
+          urisToClear.add(uriStr);
+        }
+      }
+    }
+
+    // 3. Check unified tree index symbols for any remapped file:// URIs
+    try {
+      const treeIdx = wsIdx.toTreeIndex?.() ?? wsIdx.toUnifiedPartial?.();
+      if (treeIdx?.symbols instanceof Map) {
+        for (const sym of treeIdx.symbols.values()) {
+          if (sym?.resourceId && getLibraryName(String(sym.resourceId)) === normName) {
+            urisToClear.add(String(sym.resourceId));
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    for (const uri of urisToClear) {
+      try {
+        wsIdx.clear(uri);
+        clearedUris++;
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  evictFromWorkspaceIndex(ctx.globalWorkspaceIndex);
+  evictFromWorkspaceIndex(ctx.sysml2WorkspaceIndex);
+
+  if (ctx.documentTrees instanceof Map) {
+    for (const uri of [...ctx.documentTrees.keys()]) {
+      if (getLibraryName(uri) === normName) {
+        ctx.documentTrees.delete(uri);
+      }
+    }
+  }
+
+  ctx.logger?.log?.(`[library] Unloaded package '${normName}' (${clearedUris} resource URI(s) evicted)`);
+  ctx.connectionState?.sendNotification?.("modelscript/projectTreeChanged", {});
+  return clearedUris;
+}
+
+/**
+ * Extracts declared library version dependencies from either a Modelica `uses(...)` annotation
+ * or a `package.json` / `modelscript.json` manifest.
+ */
+export function extractDeclaredDependenciesFromSource(
+  text: string,
+  uri = "",
+): Array<{ name: string; version: string }> {
+  const deps: Array<{ name: string; version: string }> = [];
+  const seen = new Set<string>();
+
+  if (uri.endsWith(".json") || text.trim().startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      const msx =
+        parsed["modelscript"] && typeof parsed["modelscript"] === "object"
+          ? (parsed["modelscript"] as Record<string, unknown>)
+          : undefined;
+      for (const mapObj of [parsed["dependencies"], msx?.["dependencies"]]) {
+        if (mapObj && typeof mapObj === "object") {
+          for (const [depName, depVer] of Object.entries(mapObj as Record<string, unknown>)) {
+            if (typeof depVer === "string" && depVer.trim() && !seen.has(depName)) {
+              const cleanVer = depVer.trim().replace(/^[\^~>=<]+/, "");
+              if (cleanVer) {
+                seen.add(depName);
+                deps.push({ name: depName, version: cleanVer });
+              }
+            }
+          }
+        }
+      }
+      return deps;
+    } catch {
+      // Not valid JSON, fall through to Modelica uses(...) extraction
+    }
+  }
+
+  const usesStartMatch = /\buses\s*\(/.exec(text);
+  if (usesStartMatch) {
+    const startIdx = usesStartMatch.index + usesStartMatch[0].length;
+    let depth = 1;
+    let endIdx = startIdx;
+    while (endIdx < text.length && depth > 0) {
+      const ch = text[endIdx];
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+      endIdx++;
+    }
+    const usesBody = text.slice(startIdx, Math.max(startIdx, endIdx - 1));
+    const depRe = /([A-Za-z_]\w*)\s*\(\s*version\s*=\s*"([^"]+)"\s*\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = depRe.exec(usesBody)) !== null) {
+      const depName = m[1]!;
+      const depVer = m[2]!.trim();
+      if (depName && depVer && !seen.has(depName)) {
+        seen.add(depName);
+        deps.push({ name: depName, version: depVer });
+      }
+    }
+  }
+
+  return deps;
+}
+
+/**
+ * Ensures that the specified library package is mounted at `dep.version`.
+ * If another version of the same library is currently mounted, it is cleanly unloaded
+ * from `WorkspaceIndex` and replaced with `dep.version` (unified for both built-in
+ * standard libraries like `Modelica` and user-published packages).
+ */
+export async function ensureLibraryVersionMounted(
+  dep: { name: string; version: string },
+  ctx: LoaderContext,
+  serverDistBase?: string,
+): Promise<boolean> {
+  const normName = normalizeLibraryName(dep.name);
+  const current = mountedLibraryMetadata.get(normName);
+  if (current && current.version === dep.version) {
+    return false;
+  }
+
+  if (current && current.version !== dep.version) {
+    ctx.logger.log(`[deps] Switching ${normName} from v${current.version} to v${dep.version}...`);
+    unloadLibraryPackage(normName, ctx);
+  }
+
+  // Activate any version-namespaced icons already in iconCache for this version
+  const prefix = `${normName}@${dep.version}:`;
+  for (const [k, svg] of iconCache.entries()) {
+    if (k.startsWith(prefix)) {
+      const className = k.slice(prefix.length);
+      iconCache.set(className, svg);
+    }
+  }
+
+  if (normName === "Modelica" && serverDistBase) {
+    await loadMSL(serverDistBase, ctx, dep.version);
+  } else {
+    await loadDependencyFromRegistry({ name: dep.name, version: dep.version }, ctx);
+  }
+  return true;
+}
+
+/**
+ * Inspects a workspace document (`package.mo`, `.mo`, `package.json`, `modelscript.json`)
+ * for declared library versions (`uses(Modelica(version="4.0.0"))`, etc.) and hot-swaps
+ * any mounted library whose active version differs from the workspace's requirement.
+ */
+export async function resolveWorkspaceLibraryVersions(
+  text: string,
+  ctx: LoaderContext,
+  uri = "",
+  serverDistBase?: string,
+): Promise<Array<{ name: string; version: string; swapped: boolean }>> {
+  const declared = extractDeclaredDependenciesFromSource(text, uri);
+  const results: Array<{ name: string; version: string; swapped: boolean }> = [];
+  for (const dep of declared) {
+    const swapped = await ensureLibraryVersionMounted(dep, ctx, serverDistBase);
+    results.push({ name: dep.name, version: dep.version, swapped });
+  }
+  return results;
+}
+
+/**
+ * Unpacks a base64-encoded or URL-fetched `.zip` archive containing `.mo` or `.sysml` files
+ * and mounts it into the workspace as a library package.
+ */
+export async function importLibraryZip(
+  params: {
+    name?: string | undefined;
+    version?: string | undefined;
+    zipBase64?: string | undefined;
+    url?: string | undefined;
+  },
+  ctx: LoaderContext,
+): Promise<{ name: string; version: string; fileCount: number }> {
+  let zipBytes: Uint8Array;
+  if (params.zipBase64) {
+    const bin = atob(params.zipBase64.replace(/[^A-Za-z0-9+/=]/g, ""));
+    zipBytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      zipBytes[i] = bin.charCodeAt(i);
+    }
+  } else if (params.url) {
+    const resp = await fetch(params.url);
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} fetching ${params.url}`);
+    }
+    zipBytes = new Uint8Array(await resp.arrayBuffer());
+  } else {
+    throw new Error("Either zipBase64 or url must be provided to importLibraryZip");
+  }
+
+  const unzipped = unzipSync(zipBytes);
+  const files: Record<string, string> = {};
+  let detectedPkgName = params.name || "";
+  let detectedVersion = params.version || "1.0.0";
+
+  for (const [relPath, data] of Object.entries(unzipped)) {
+    if (!data || data.length === 0 || relPath.endsWith("/")) continue;
+    const cleanPath = relPath.replace(/^\/+/, "");
+    if (cleanPath.endsWith("package.json") && cleanPath.split("/").length <= 2) {
+      try {
+        const parsed = JSON.parse(strFromU8(data));
+        if (!detectedPkgName && typeof parsed.name === "string") detectedPkgName = parsed.name;
+        if (!params.version && typeof parsed.version === "string") detectedVersion = parsed.version;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (cleanPath.endsWith(".mo") || cleanPath.endsWith(".msim") || cleanPath.endsWith(".sysml")) {
+      files[cleanPath] = strFromU8(data);
+      if (!detectedPkgName) {
+        const firstSeg = cleanPath.split("/")[0]?.split(" ")[0];
+        if (firstSeg && !firstSeg.endsWith(".mo") && !firstSeg.endsWith(".sysml")) {
+          detectedPkgName = firstSeg;
+        }
+      }
+    }
+  }
+
+  const finalName = detectedPkgName || "ImportedLibrary";
+  await loadRegistryPackage(
+    {
+      name: finalName,
+      version: detectedVersion,
+      files,
+    },
+    ctx,
+  );
+
+  return { name: finalName, version: detectedVersion, fileCount: Object.keys(files).length };
 }

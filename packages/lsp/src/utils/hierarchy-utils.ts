@@ -125,31 +125,128 @@ export function getCompositeName(entry: any, index: any, visited = new Set<strin
   return getCompositeName(parent, index, visited) + "." + entry.name;
 }
 
-function getLibraryName(resourceId?: string): string | null {
-  if (!resourceId) return null;
+export interface MountedLibraryInfo {
+  name: string;
+  version: string;
+  description?: string | undefined;
+  language?: string | undefined;
+}
+
+export interface LoadingLibraryInfo {
+  name: string;
+  version: string;
+  status?: string | undefined;
+  message?: string | undefined;
+}
+
+/** Tracks metadata (version, language) for all mounted libraries (stdlibs and custom Ansatz packages alike). */
+export const mountedLibraryMetadata = new Map<string, MountedLibraryInfo>();
+
+/** Tracks libraries currently downloading, decompressing, or indexing in the background. */
+export const loadingLibraryState = new Map<string, LoadingLibraryInfo>();
+
+export function normalizeLibraryName(rawName: string): string {
+  const trimmed = rawName.trim();
   if (
-    resourceId.startsWith("modelica:") ||
-    resourceId.includes("/lib/Modelica") ||
-    resourceId.includes("/lib/Complex")
+    trimmed === "Modelica Standard Library" ||
+    trimmed === "Modelica" ||
+    trimmed === "Complex" ||
+    trimmed === "ModelicaServices"
   ) {
-    return "Modelica Standard Library";
+    return "Modelica";
   }
-  if (resourceId.startsWith("sysml2://stdlib/")) {
-    return "SysML2 Standard Library";
+  if (trimmed === "SysML2 Standard Library" || trimmed === "SysML v2 Standard Library" || trimmed === "SysML") {
+    return "SysML";
   }
-  if (resourceId.startsWith("library-bundle:/")) {
-    const parts = resourceId.substring("library-bundle:/".length).split("/");
-    return parts[0] || "External Library";
+  return trimmed;
+}
+
+export function getLibraryInfo(resourceId?: string): { name: string; version?: string | undefined } | null {
+  if (!resourceId) return null;
+
+  // 1. Custom packages mounted under /packages/<pkgName>/...
+  if (resourceId.includes("/packages/")) {
+    const after = resourceId.split("/packages/")[1] || "";
+    const pkgName = after.split("/")[0];
+    if (pkgName) {
+      return { name: pkgName, version: mountedLibraryMetadata.get(pkgName)?.version };
+    }
   }
+
+  // 2. Registry packages mounted under /modelscript_registry/<pkgName>/<version>/...
   if (resourceId.includes("/modelscript_registry/")) {
     const after = resourceId.split("/modelscript_registry/")[1] || "";
-    const pkgName = after.split("/")[0];
-    if (pkgName === "Modelica" || pkgName === "Complex" || pkgName === "ModelicaServices") {
-      return "Modelica Standard Library";
+    const parts = after.split("/").filter(Boolean);
+    let pkgName = parts[0] || "";
+    let version = parts[1];
+    if (pkgName.startsWith("@") && parts.length >= 2) {
+      pkgName = `${parts[0]}/${parts[1]}`;
+      version = parts[2];
     }
-    return pkgName || "External Library";
+    const norm = normalizeLibraryName(pkgName);
+    return {
+      name: norm || "External Library",
+      version: version || mountedLibraryMetadata.get(norm)?.version,
+    };
   }
+
+  // 3. Pre-indexed library bundles: library-bundle:/<pkgName>@<version>
+  if (resourceId.startsWith("library-bundle:/")) {
+    const spec = resourceId.substring("library-bundle:/".length).split("/")[0] || "";
+    const atIdx = spec.lastIndexOf("@");
+    const rawName = atIdx > 0 ? spec.slice(0, atIdx) : spec;
+    const version = atIdx > 0 ? spec.slice(atIdx + 1) : undefined;
+    const norm = normalizeLibraryName(rawName);
+    return {
+      name: norm || "External Library",
+      version: version || mountedLibraryMetadata.get(norm)?.version,
+    };
+  }
+
+  // 4. Polyglot / local /lib/<folder> mounts
+  if (resourceId.includes("/lib/")) {
+    const after = resourceId.split("/lib/")[1] || "";
+    const firstSeg = after.split("/")[0] || "";
+    if (
+      firstSeg.startsWith("Modelica") ||
+      firstSeg === "Complex" ||
+      firstSeg === "Complex.mo" ||
+      firstSeg === "ModelicaServices"
+    ) {
+      const spaceVersion = firstSeg.startsWith("Modelica ") ? firstSeg.slice("Modelica ".length).trim() : undefined;
+      return {
+        name: "Modelica",
+        version: mountedLibraryMetadata.get("Modelica")?.version || spaceVersion || "4.1.0",
+      };
+    }
+    const cleanName = firstSeg.replace(/\.[^/.]+$/, "") || "External Library";
+    return {
+      name: cleanName,
+      version: mountedLibraryMetadata.get(cleanName)?.version,
+    };
+  }
+
+  // 5. Fallback for modelica: scheme (if not /packages/)
+  if (resourceId.startsWith("modelica:")) {
+    return {
+      name: "Modelica",
+      version: mountedLibraryMetadata.get("Modelica")?.version || "4.1.0",
+    };
+  }
+
+  // 6. SysML v2 stdlib
+  if (resourceId.startsWith("sysml2://stdlib/")) {
+    return {
+      name: "SysML",
+      version: mountedLibraryMetadata.get("SysML")?.version || "2026.3.0",
+    };
+  }
+
   return null;
+}
+
+export function getLibraryName(resourceId?: string): string | null {
+  return getLibraryInfo(resourceId)?.name ?? null;
 }
 
 function getRootChildIds(index: any): number[] {
@@ -207,27 +304,36 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
   }
 
   if (!parentId) {
-    // Root level: group by library or show workspace files directly
+    // Root level: group by library or show workspace files
     const rootChildIds = getRootChildIds(index);
-    const libraryNames = new Set<string>();
+    const libraryVersions = new Map<string, string | undefined>();
+    const workspaceNodes: TreeNodeInfo[] = [];
+
+    for (const [libKey, meta] of mountedLibraryMetadata.entries()) {
+      libraryVersions.set(libKey, meta.version);
+    }
 
     for (const id of rootChildIds) {
       const entry = index.symbols.get(id);
       if (!entry || !isTreeVisible(entry)) continue;
 
-      const libName = getLibraryName(entry.resourceId);
-      if (libName) {
-        libraryNames.add(libName);
+      const libInfo = getLibraryInfo(entry.resourceId);
+      if (libInfo) {
+        if (!libraryVersions.has(libInfo.name) || libInfo.version) {
+          libraryVersions.set(libInfo.name, libInfo.version ?? libraryVersions.get(libInfo.name));
+        }
       } else {
         const compositeName = entry.name;
         if (seen.has(compositeName)) continue;
         seen.add(compositeName);
 
-        nodes.push({
+        const kind = classKindFromEntry(entry);
+        workspaceNodes.push({
           id: compositeName,
           name: entry.name,
           compositeName,
-          classKind: classKindFromEntry(entry),
+          classKind: kind,
+          description: `${kind} · workspace`,
           icon: iconFromEntry(entry),
           iconSvg: entry.metadata?.iconSvg,
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
@@ -238,15 +344,44 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
       }
     }
 
-    for (const libName of libraryNames) {
+    // Emit mounted library package root nodes
+    for (const [libName, ver] of libraryVersions.entries()) {
+      const meta = mountedLibraryMetadata.get(libName);
+      const formattedVer = ver ? (ver.startsWith("v") ? ver : `v${ver}`) : "package";
       nodes.push({
         id: `__LIB__:${libName}`,
         name: libName,
         compositeName: `__LIB__:${libName}`,
         classKind: "package",
+        description: formattedVer,
         hasChildren: true,
-        language: libName.includes("SysML") ? "sysml2" : "modelica",
+        language: meta?.language ?? (libName.includes("SysML") ? "sysml2" : "modelica"),
       });
+    }
+
+    // Emit in-progress loading library nodes for any packages currently hydrating
+    for (const [loadingName, loadingInfo] of loadingLibraryState.entries()) {
+      const normName = normalizeLibraryName(loadingName);
+      if (libraryVersions.has(normName)) continue;
+      const verStr = loadingInfo.version
+        ? loadingInfo.version.startsWith("v")
+          ? loadingInfo.version
+          : `v${loadingInfo.version}`
+        : "";
+      nodes.push({
+        id: `__LOADING__:${normName}`,
+        name: normName,
+        compositeName: `__LOADING__:${normName}`,
+        classKind: "loading-package",
+        description: `${verStr ? `${verStr} · ` : ""}${loadingInfo.message ?? loadingInfo.status ?? "Loading..."}`,
+        hasChildren: false,
+        pendingIcon: true,
+      });
+    }
+
+    // Append workspace classes after library packages
+    for (const wsNode of workspaceNodes) {
+      nodes.push(wsNode);
     }
 
     // Add OWL 2 ontology root containers
@@ -257,8 +392,8 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
       }
     }
   } else if (parentId.startsWith("__LIB__:")) {
-    // Return root children belonging to this library
-    const libName = parentId.substring("__LIB__:".length);
+    // Return root children belonging to this library (supporting legacy stdlib aliases)
+    const libName = normalizeLibraryName(parentId.substring("__LIB__:".length));
     const rootChildIds = getRootChildIds(index);
     for (const id of rootChildIds) {
       const entry = index.symbols.get(id);
@@ -323,8 +458,15 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
     }
   }
 
-  // Sort nodes alphabetically
-  nodes.sort((a, b) => a.name.localeCompare(b.name));
+  // Sort library packages first at root level, then alphabetically by name
+  nodes.sort((a, b) => {
+    if (!parentId) {
+      const aIsLib = a.id?.startsWith("__LIB__:") || a.id?.startsWith("__LOADING__:") ? 0 : 1;
+      const bIsLib = b.id?.startsWith("__LIB__:") || b.id?.startsWith("__LOADING__:") ? 0 : 1;
+      if (aIsLib !== bIsLib) return aIsLib - bIsLib;
+    }
+    return a.name.localeCompare(b.name);
+  });
   return nodes;
 }
 

@@ -20,7 +20,14 @@ import {
 } from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol";
 
+import {
+  WasmSimulationStepper,
+  type DebugVariableEntry,
+  type SimulationStepSnapshot,
+} from "./dap/simulation-debug-session.js";
 import { MultiBodyAnimationPanel } from "./multibody-animation-panel.js";
+
+export { WasmSimulationStepper, type DebugVariableEntry, type SimulationStepSnapshot };
 
 /** Currently active in-process DAP debug session instance, if one is running. */
 export let activeDebugSession: ModelScriptDebugSession | undefined;
@@ -69,6 +76,9 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
   /** Reference to the active `ModelicaSimulator` or LSP Simulation Manager instance. */
   public _runtime: unknown;
 
+  /** Local in-process WASM DAE simulation stepper used when external LSP callbacks are not registered. */
+  public stepper?: WasmSimulationStepper | undefined;
+
   /** Document URI where the simulation debugger most recently paused. */
   public lastStoppedUri?: string | undefined;
   /** 1-based source line number where the simulation debugger most recently paused. */
@@ -107,6 +117,11 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     args: DebugProtocol.LaunchRequestArguments,
   ): Promise<void> {
     const program = (args as Record<string, string>)["program"];
+    if (program) {
+      this.stepper = new WasmSimulationStepper(program);
+      await this.stepper.init();
+      this.lastStoppedUri = program;
+    }
 
     if (program && startLspDebugSession) {
       // Must send the launch response BEFORE events or it hangs
@@ -207,9 +222,9 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     response: DebugProtocol.VariablesResponse,
     args: DebugProtocol.VariablesArguments,
   ): Promise<void> {
-    if (getLspDebugVariables) {
+    if (getLspDebugVariables || this.stepper) {
       try {
-        const allVars = await getLspDebugVariables();
+        const allVars = getLspDebugVariables ? await getLspDebugVariables() : (this.stepper?.getDebugVariables() ?? []);
         if (MultiBodyAnimationPanel.currentPanel) {
           MultiBodyAnimationPanel.currentPanel.syncWithDebugger(allVars);
         }
@@ -249,9 +264,9 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
 
   /** Helper to synchronize current simulation step variables to the 3D Multibody Animation Panel if active. */
   public async syncAnimationViewport(): Promise<void> {
-    if (MultiBodyAnimationPanel.currentPanel && getLspDebugVariables) {
+    if (MultiBodyAnimationPanel.currentPanel && (getLspDebugVariables || this.stepper)) {
       try {
-        const vars = await getLspDebugVariables();
+        const vars = getLspDebugVariables ? await getLspDebugVariables() : (this.stepper?.getDebugVariables() ?? []);
         MultiBodyAnimationPanel.currentPanel.syncWithDebugger(vars);
       } catch {}
     }
@@ -261,6 +276,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
   protected override async continueRequest(response: DebugProtocol.ContinueResponse): Promise<void> {
     if (continueLspDebugSession) {
       await continueLspDebugSession();
+    } else if (this.stepper) {
+      this.stepper.step();
     }
     response.body = { allThreadsContinued: true };
     this.sendResponse(response);
@@ -270,6 +287,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
   protected override async nextRequest(response: DebugProtocol.NextResponse): Promise<void> {
     if (nextLspDebugSession) {
       await nextLspDebugSession();
+    } else if (this.stepper) {
+      this.stepper.step();
     }
     await this.syncAnimationViewport();
     this.sendResponse(response);
@@ -280,6 +299,8 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     // In flattened ModelScript, Step Into is the same as Step Over because functions are inlined
     if (nextLspDebugSession) {
       await nextLspDebugSession();
+    } else if (this.stepper) {
+      this.stepper.step();
     }
     await this.syncAnimationViewport();
     this.sendResponse(response);
@@ -290,9 +311,9 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     response: DebugProtocol.EvaluateResponse,
     args: DebugProtocol.EvaluateArguments,
   ): Promise<void> {
-    if (getLspDebugVariables) {
+    if (getLspDebugVariables || this.stepper) {
       try {
-        const vars = await getLspDebugVariables();
+        const vars = getLspDebugVariables ? await getLspDebugVariables() : (this.stepper?.getDebugVariables() ?? []);
         const expr = (args.expression || "").trim();
 
         // 1. Direct match
@@ -350,3 +371,5 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     this.sendResponse(response);
   }
 }
+
+export { ModelScriptDebugSession as SimulationDebugSession };

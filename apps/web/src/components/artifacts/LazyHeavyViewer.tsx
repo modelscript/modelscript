@@ -2,8 +2,8 @@
 
 import { globalContextPool } from "@modelscript/embed";
 import { PlayIcon } from "@primer/octicons-react";
-import { useTheme } from "@primer/react";
-import React, { useEffect, useRef, useState } from "react";
+import { Spinner, useTheme } from "@primer/react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import Box from "../Box";
 import ArtifactPlaceholder from "./ArtifactPlaceholder";
 import { captureCompositeCanvasDataUrl } from "./AutoThumbnailCapture";
@@ -216,7 +216,15 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
             ✕ Sleep 3D
           </button>
         )}
-        {children}
+        <Suspense
+          fallback={
+            <Box width="100%" height="100%" display="flex" justifyContent="center" alignItems="center">
+              <Spinner size="medium" />
+            </Box>
+          }
+        >
+          {children}
+        </Suspense>
       </div>
     );
   }

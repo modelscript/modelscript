@@ -13,13 +13,15 @@ import {
   PackageIcon,
   PeopleIcon,
   PlayIcon,
+  PlusIcon,
   ShieldCheckIcon,
   VerifiedIcon,
 } from "@primer/octicons-react";
 import { Button, Label, Text } from "@primer/react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import styled from "styled-components";
+import styledImport from "styled-components";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import {
   getPackageAasxExportUrl,
   getPackageDataPackageExportUrl,
@@ -47,6 +49,9 @@ import {
   SparklineContainer,
   timeAgo,
 } from "../types";
+
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 const ExportTile = styled.a<{ $activeColor?: string | undefined }>`
   display: flex;
@@ -126,6 +131,59 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
   const [copiedInstall, setCopiedInstall] = useState(false);
   const [copiedHash, setCopiedHash] = useState(false);
   const [installTab, setInstallTab] = useState<"cli" | "manifest" | "import">("cli");
+  const [activeIdeTitle, setActiveIdeTitle] = useState<string | null>(null);
+  const [addedToIde, setAddedToIde] = useState(false);
+  const hasCae = useFeatureFlag("cae_cloud_solver");
+  const hasAdvancedExports = useFeatureFlag("package_advanced_exports");
+  const hasArtifactsTab = useFeatureFlag("package_artifacts_tab");
+
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.onmessage = (ev) => {
+        if (ev.data?.type === "MODELSCRIPT_IDE_HEARTBEAT") {
+          setActiveIdeTitle(ev.data.workspaceTitle || "Active Workspace");
+        } else if (ev.data?.type === "MODELSCRIPT_PACKAGE_INSTALLED" && ev.data?.name === name) {
+          setAddedToIde(true);
+          setTimeout(() => setAddedToIde(false), 3000);
+        }
+      };
+      channel.postMessage({ type: "MODELSCRIPT_PING_IDE", requestId: `ping-${Date.now()}` });
+    } catch {
+      // ignore if BroadcastChannel unsupported
+    }
+    return () => {
+      try {
+        channel?.close();
+      } catch {
+        // ignore
+      }
+    };
+  }, [name]);
+
+  const handleAddToActiveIde = () => {
+    try {
+      const channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.postMessage({
+        type: "MODELSCRIPT_INSTALL_PACKAGE",
+        name,
+        version: version || "latest",
+        requestId: `install-${Date.now()}`,
+      });
+      setAddedToIde(true);
+      setTimeout(() => {
+        setAddedToIde(false);
+        try {
+          channel.close();
+        } catch {
+          // ignore
+        }
+      }, 2500);
+    } catch {
+      // ignore
+    }
+  };
 
   const importIdentifier =
     name
@@ -142,6 +200,9 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
         ? `"${name}": "^${version}"`
         : `import { ${importIdentifier} } from "${importSpecifier}";`;
 
+  const normalizedHash = contentHash ? contentHash.replace(/^sha256:/i, "") : null;
+  const fullDigest = normalizedHash ? `sha256:${normalizedHash}` : null;
+
   const handleCopyInstall = () => {
     navigator.clipboard.writeText(currentSnippet);
     setCopiedInstall(true);
@@ -149,24 +210,34 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
   };
 
   const handleCopyHash = () => {
-    if (contentHash) {
-      navigator.clipboard.writeText(contentHash);
+    if (fullDigest) {
+      navigator.clipboard.writeText(fullDigest);
       setCopiedHash(true);
       setTimeout(() => setCopiedHash(false), 2000);
     }
   };
 
+  const nonAllDomains = availableDomains.filter((d) => d.id !== "all");
+  const modelingDomains = nonAllDomains.filter((d) => ["modelica", "sysml2", "cad", "fmu"].includes(d.id));
+  const showPolyglotDomains = hasArtifactsTab ? nonAllDomains.length > 1 : modelingDomains.length > 1;
+  const displayedDomains = hasArtifactsTab ? nonAllDomains : modelingDomains;
+
+  const downloads30d = packageStats?.daily?.reduce((acc, d) => acc + d.downloads, 0) ?? 0;
+  const totalDownloads = packageStats?.totalDownloads ?? 0;
+  const hasNonZeroSparkline = Boolean(packageStats?.daily && packageStats.daily.some((d) => d.downloads > 0));
+
   return (
     <aside style={{ display: "flex", flexDirection: "column" }}>
+      {/* ── Install Snippet ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <MetaLabel style={{ marginBottom: 0 }}>Install</MetaLabel>
         <div
           style={{
             display: "inline-flex",
-            background: "var(--color-canvas-subtle, rgba(255,255,255,0.05))",
+            background: "var(--color-canvas-subtle)",
             borderRadius: 6,
             padding: 2,
-            border: "1px solid var(--color-border-subtle, rgba(255,255,255,0.08))",
+            border: "1px solid var(--color-border)",
           }}
         >
           {(["cli", "manifest", "import"] as const).map((tab) => (
@@ -175,7 +246,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
               type="button"
               onClick={() => setInstallTab(tab)}
               style={{
-                background: installTab === tab ? "var(--color-bg-card, rgba(255,255,255,0.15))" : "transparent",
+                background: installTab === tab ? "var(--color-bg-card)" : "transparent",
                 border: "none",
                 borderRadius: 4,
                 padding: "2px 8px",
@@ -202,41 +273,107 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
           }
         }}
         title="Click to copy snippet"
+        style={{ marginBottom: 14 }}
       >
         <code style={{ fontSize: 12 }}>
           {installTab === "cli" && <span style={{ color: "var(--color-text-muted)" }}>&gt;&nbsp;</span>}
           {currentSnippet}
         </code>
-        <span className="copy-icon">{copiedInstall ? <VerifiedIcon size={16} /> : <CopyIcon size={16} />}</span>
+        <span className="copy-icon">{copiedInstall ? <CheckIcon size={16} /> : <CopyIcon size={16} />}</span>
       </InstallBox>
 
-      <Link
-        to={`/ide#memfs:package-${name || "model"}`}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "8px",
-          width: "100%",
-          padding: "10px 16px",
-          borderRadius: "8px",
-          background: "linear-gradient(135deg, var(--color-accent-emphasis, #0969da), #2563eb)",
-          color: "white",
-          fontSize: "14px",
-          fontWeight: 600,
-          textDecoration: "none",
-          marginBottom: "16px",
-          boxShadow: "0 2px 8px rgba(9, 105, 218, 0.25)",
-          boxSizing: "border-box",
-          transition: "all 0.2s ease",
-        }}
-      >
-        <CodeIcon size={16} />
-        Open in Web IDE
-      </Link>
+      {/* ── Workspace & Source Download Actions ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+        {(activeIdeTitle || addedToIde) && (
+          <button
+            type="button"
+            onClick={handleAddToActiveIde}
+            title={`Hot-mount ${name}@${version} into active VS Code workspace (${activeIdeTitle || "Active Workspace"})`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              width: "100%",
+              padding: "9px 14px",
+              borderRadius: "8px",
+              background: addedToIde
+                ? "linear-gradient(135deg, #059669, #10b981)"
+                : "linear-gradient(135deg, var(--color-accent-emphasis, #0969da), #2563eb)",
+              color: "white",
+              fontSize: "13px",
+              fontWeight: 600,
+              border: "none",
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(9, 105, 218, 0.25)",
+              boxSizing: "border-box",
+              transition: "all 0.2s ease",
+            }}
+          >
+            {addedToIde ? <CheckIcon size={16} /> : <PlusIcon size={16} />}
+            {addedToIde ? `Added ${name}@${version} to Libraries!` : `Add to Active VS Code (${activeIdeTitle})`}
+          </button>
+        )}
 
-      {/* Direct Exports & Downloads */}
-      {name && version && (
+        <Link
+          to={`/ide#memfs:package-${name || "model"}?libs=${encodeURIComponent(`${name}@${version || "latest"}`)}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            width: "100%",
+            padding: "9px 14px",
+            borderRadius: "8px",
+            background:
+              activeIdeTitle || addedToIde
+                ? "var(--color-canvas-subtle)"
+                : "linear-gradient(135deg, var(--color-accent-emphasis, #0969da), #2563eb)",
+            border: activeIdeTitle || addedToIde ? "1px solid var(--color-border)" : "none",
+            color: activeIdeTitle || addedToIde ? "var(--color-text-primary)" : "#ffffff",
+            fontSize: "13px",
+            fontWeight: 600,
+            textDecoration: "none",
+            boxShadow: activeIdeTitle || addedToIde ? "none" : "0 2px 8px rgba(9, 105, 218, 0.2)",
+            boxSizing: "border-box",
+            transition: "all 0.2s ease",
+          }}
+        >
+          <CodeIcon size={15} />
+          Open in Web IDE Workspace
+        </Link>
+
+        {name && version && !hasAdvancedExports && (
+          <a
+            href={getPackageDownloadUrl(name, version)}
+            download
+            title={`Download ${name} v${version} source archive (.zip)`}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              width: "100%",
+              padding: "8px 14px",
+              borderRadius: "8px",
+              background: "var(--color-canvas-subtle)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text-primary)",
+              fontSize: "13px",
+              fontWeight: 600,
+              textDecoration: "none",
+              boxSizing: "border-box",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <FileZipIcon size={15} style={{ color: "#eab308" }} />
+            Download Source (.zip)
+          </a>
+        )}
+      </div>
+
+      {/* ── Advanced Exports & Downloads (Feature-Gated by package_advanced_exports) ── */}
+      {hasAdvancedExports && name && version && (
         <MetaBlock style={{ marginBottom: 16 }}>
           <MetaLabel style={{ marginBottom: 8 }}>Download &amp; Export</MetaLabel>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -315,33 +452,72 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
         </MetaBlock>
       )}
 
+      <Divider style={{ margin: "12px 0 18px" }} />
+
+      {/* ── Package Metadata Grid ── */}
+      <MetaGrid style={{ gap: 16, marginBottom: 16 }}>
+        <MetaBlock style={{ marginBottom: 0 }}>
+          <MetaLabel>Version</MetaLabel>
+          <MetaValue style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 13 }}>v{version}</MetaValue>
+        </MetaBlock>
+        <MetaBlock style={{ marginBottom: 0 }}>
+          <MetaLabel>License</MetaLabel>
+          <MetaValue style={{ fontSize: 13 }}>{libraryDetail?.license || packument?.license || "—"}</MetaValue>
+        </MetaBlock>
+        <MetaBlock style={{ marginBottom: 0 }}>
+          <MetaLabel>Last publish</MetaLabel>
+          <MetaValue style={{ fontSize: 13 }}>{publishedAt ? timeAgo(publishedAt) : "—"}</MetaValue>
+        </MetaBlock>
+        {currentManifest?.modelscript?.modelicaVersion && (
+          <MetaBlock style={{ marginBottom: 0 }}>
+            <MetaLabel>Standard</MetaLabel>
+            <MetaValue style={{ fontSize: 13 }}>Modelica {currentManifest.modelscript.modelicaVersion}</MetaValue>
+          </MetaBlock>
+        )}
+      </MetaGrid>
+
       {packument?.repository?.url && (
-        <MetaBlock>
+        <MetaBlock style={{ marginBottom: 14 }}>
           <MetaLabel>Repository</MetaLabel>
-          <MetaValue>
-            <BookIcon size={16} />
+          <MetaValue style={{ fontSize: 13 }}>
+            <BookIcon size={14} />
             <a
               href={packument.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ color: "var(--color-heading)", textDecoration: "none" }}
+              style={{
+                color: "var(--color-link)",
+                textDecoration: "none",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
             >
-              {packument.repository.url.replace(/^git\+https:\/\//, "").replace(/\.git$/, "")}
+              {packument.repository.url
+                .replace(/^git\+https?:\/\//, "")
+                .replace(/^https?:\/\//, "")
+                .replace(/\.git$/, "")}
             </a>
           </MetaValue>
         </MetaBlock>
       )}
 
       {packument?.homepage && (
-        <MetaBlock>
+        <MetaBlock style={{ marginBottom: 14 }}>
           <MetaLabel>Homepage</MetaLabel>
-          <MetaValue>
-            <LinkIcon size={16} />
+          <MetaValue style={{ fontSize: 13 }}>
+            <LinkIcon size={14} />
             <a
               href={packument.homepage}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ color: "var(--color-heading)", textDecoration: "none" }}
+              style={{
+                color: "var(--color-link)",
+                textDecoration: "none",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
             >
               {packument.homepage.replace(/^https?:\/\//, "")}
             </a>
@@ -349,61 +525,39 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
         </MetaBlock>
       )}
 
-      <Divider />
-
-      <MetaGrid>
-        <MetaBlock style={{ marginBottom: 0 }}>
-          <MetaLabel>Version</MetaLabel>
-          <MetaValue>{version}</MetaValue>
-        </MetaBlock>
-        {(libraryDetail?.license || packument?.license) && (
-          <MetaBlock style={{ marginBottom: 0 }}>
-            <MetaLabel>License</MetaLabel>
-            <MetaValue>{libraryDetail?.license || packument?.license}</MetaValue>
-          </MetaBlock>
-        )}
-      </MetaGrid>
-
-      <MetaBlock>
-        <MetaLabel>Last publish</MetaLabel>
-        <MetaValue>{publishedAt ? timeAgo(publishedAt) : "—"}</MetaValue>
-      </MetaBlock>
-
-      {currentManifest?.modelscript?.modelicaVersion && (
-        <MetaBlock>
-          <MetaLabel>Modelica Version</MetaLabel>
-          <MetaValue>{currentManifest.modelscript.modelicaVersion}</MetaValue>
-        </MetaBlock>
-      )}
-
-      {/* Cryptographic Provenance */}
-      {(contentHash || packageSignature) && (
-        <MetaBlock>
+      {/* ── Cryptographic Provenance (Fixed duplicate sha256: prefix) ── */}
+      {(normalizedHash || packageSignature) && (
+        <MetaBlock style={{ marginBottom: 16 }}>
           <MetaLabel style={{ marginBottom: 6 }}>Provenance &amp; Integrity</MetaLabel>
-          {contentHash && (
+          {normalizedHash && (
             <div
               onClick={handleCopyHash}
-              title={`Click to copy full digest: ${contentHash}`}
+              title={`Click to copy full digest: sha256:${normalizedHash}`}
               style={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 8,
-                padding: "6px 10px",
+                padding: "7px 10px",
                 borderRadius: 6,
-                background: "var(--color-canvas-subtle, rgba(0, 0, 0, 0.25))",
+                background: "var(--color-canvas-subtle)",
                 border: "1px solid var(--color-border)",
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 11.5,
                 color: "var(--color-text-primary)",
                 cursor: "pointer",
+                transition: "border-color 0.15s ease",
               }}
             >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                 <ShieldCheckIcon size={13} fill="var(--color-success-fg, #2da44e)" />
-                <span>sha256:{contentHash.slice(0, 14)}…</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  sha256:{normalizedHash.slice(0, 12)}…
+                </span>
               </span>
-              {copiedHash ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
+              <span style={{ color: "var(--color-text-muted)", flexShrink: 0, display: "inline-flex" }}>
+                {copiedHash ? <CheckIcon size={13} fill="var(--color-success-fg, #2da44e)" /> : <CopyIcon size={13} />}
+              </span>
             </div>
           )}
           {packageSignature && (
@@ -416,70 +570,75 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
         </MetaBlock>
       )}
 
-      {/* Polyglot Engineering Domains */}
-      {availableDomains.filter((d) => d.id !== "all").length > 1 && (
-        <MetaBlock>
-          <MetaLabel style={{ marginBottom: 8 }}>
-            Polyglot Domains ({availableDomains.filter((d) => d.id !== "all").length})
-          </MetaLabel>
+      {/* ── Polyglot Engineering Domains ── */}
+      {showPolyglotDomains && (
+        <MetaBlock style={{ marginBottom: 16 }}>
+          <MetaLabel style={{ marginBottom: 8 }}>Polyglot Domains ({displayedDomains.length})</MetaLabel>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-            {availableDomains
-              .filter((d) => d.id !== "all")
-              .map((d) => (
-                <span
-                  key={d.id}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "3px 8px",
-                    borderRadius: "6px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
-                    border: `1px solid ${d.color}44`,
-                    color: d.color,
-                  }}
-                >
-                  <span>
-                    {React.isValidElement(d.icon)
-                      ? d.icon
-                      : d.icon
-                        ? React.createElement(d.icon as React.ComponentType<{ size?: number }>, { size: 12 })
-                        : null}
-                  </span>
-                  <span>{d.label}</span>
-                  <span style={{ opacity: 0.7, fontSize: 11 }}>({d.count})</span>
+            {displayedDomains.map((d) => (
+              <span
+                key={d.id}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "3px 8px",
+                  borderRadius: "6px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  background: "var(--color-canvas-subtle)",
+                  border: `1px solid ${d.color}44`,
+                  color: d.color,
+                }}
+              >
+                <span>
+                  {React.isValidElement(d.icon)
+                    ? d.icon
+                    : d.icon
+                      ? React.createElement(d.icon as React.ComponentType<{ size?: number }>, { size: 12 })
+                      : null}
                 </span>
-              ))}
+                <span>{d.label}</span>
+                <span style={{ opacity: 0.7, fontSize: 11 }}>({d.count})</span>
+              </span>
+            ))}
           </div>
         </MetaBlock>
       )}
 
-      <Divider />
+      <Divider style={{ margin: "4px 0 16px" }} />
 
-      {/* 30-Day Download Trends */}
-      <MetaBlock>
+      {/* ── 30-Day Download Trends ── */}
+      <MetaBlock style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <MetaLabel>Downloads</MetaLabel>
-          <Text style={{ fontSize: 13, fontWeight: 600, color: "var(--color-heading)" }}>
-            {(packageStats?.daily?.reduce((acc, d) => acc + d.downloads, 0) ?? 0).toLocaleString()}
+          <MetaLabel style={{ marginBottom: 0 }}>Downloads (30d)</MetaLabel>
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--color-text-heading)",
+              fontFamily: "var(--font-mono, monospace)",
+            }}
+          >
+            {downloads30d.toLocaleString()}
           </Text>
         </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            fontSize: 11,
-            color: "var(--color-text-muted)",
-            marginTop: 2,
-          }}
-        >
-          <span>Total: {(packageStats?.totalDownloads ?? 0).toLocaleString()}</span>
-          <span>Last 30 days</span>
-        </div>
-        {packageStats?.daily &&
-          packageStats.daily.length > 0 &&
+        {totalDownloads > 0 && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 11,
+              color: "var(--color-text-muted)",
+              marginTop: 2,
+            }}
+          >
+            <span>All-time total</span>
+            <span>{totalDownloads.toLocaleString()}</span>
+          </div>
+        )}
+        {hasNonZeroSparkline &&
+          packageStats?.daily &&
           (() => {
             const maxVal = Math.max(...packageStats.daily.map((d) => d.downloads), 1);
             return (
@@ -497,12 +656,10 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
           })()}
       </MetaBlock>
 
-      <Divider />
-
-      {/* Dependents ("Used by") */}
-      <MetaBlock>
-        <MetaLabel style={{ marginBottom: 8 }}>Used by ({dependents.length})</MetaLabel>
-        {dependents.length > 0 ? (
+      {/* ── Dependents ("Used by") ── */}
+      {dependents.length > 0 && (
+        <MetaBlock style={{ marginBottom: 16 }}>
+          <MetaLabel style={{ marginBottom: 8 }}>Used by ({dependents.length})</MetaLabel>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {dependents.slice(0, 8).map((dep) => (
               <DependentBadge key={dep.name} to={`/packages/${dep.name}/${dep.version}`}>
@@ -516,88 +673,98 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
               </Text>
             )}
           </div>
-        ) : (
-          <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>
-            0 packages depend on this library
-          </Text>
-        )}
-      </MetaBlock>
+        </MetaBlock>
+      )}
 
-      <Divider />
+      {/* ── Linked Studies, Study Instances & Jobs (Feature-Gated by cae_cloud_solver) ── */}
+      {hasCae && <Divider style={{ margin: "4px 0 16px" }} />}
+      {hasCae &&
+        (() => {
+          const bundled = linkedStudies?.bundledStudies || [];
+          const templates = linkedStudies?.linkedTemplates || [];
+          const jobs = linkedStudies?.linkedJobs || [];
+          const totalLinked = bundled.length + templates.length + jobs.length;
 
-      {/* Linked Studies, Study Instances & Jobs */}
-      {(() => {
-        const bundled = linkedStudies?.bundledStudies || [];
-        const templates = linkedStudies?.linkedTemplates || [];
-        const jobs = linkedStudies?.linkedJobs || [];
-        const totalLinked = bundled.length + templates.length + jobs.length;
-
-        return (
-          <MetaBlock>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <MetaLabel style={{ marginBottom: 0 }}>Linked Studies &amp; Jobs ({totalLinked})</MetaLabel>
-              {onOpenStudiesTab && (
-                <Button
-                  size="small"
-                  variant="invisible"
-                  onClick={onOpenStudiesTab}
-                  style={{ fontSize: 11, padding: "2px 6px", color: "var(--color-accent-cyan, #06b6d4)" }}
-                >
-                  View all →
-                </Button>
-              )}
-            </div>
-            {totalLinked > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {[...bundled, ...templates].slice(0, 3).map((tpl) => (
-                  <DependentBadge
-                    key={`tpl-${tpl.slug}`}
-                    to={`/jobs/templates/${tpl.slug}?package=${encodeURIComponent(name)}&version=${encodeURIComponent(version)}`}
-                    title={`Study Template (${(tpl.standardFormat || "sedml").toUpperCase()})`}
-                  >
-                    <BeakerIcon size={12} />
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {tpl.name}
-                    </span>
-                    <Label variant="secondary" style={{ fontSize: 9, padding: "0 4px", marginLeft: "auto" }}>
-                      .{tpl.standardFormat === "ssp-ssv" ? "ssv" : tpl.standardFormat === "dakota" ? "dakota" : "sedml"}
-                    </Label>
-                  </DependentBadge>
-                ))}
-                {jobs.slice(0, 3).map((job) => (
-                  <DependentBadge key={`job-${job.id}`} to={`/jobs/${job.id}`} title={`Study Instance Run #${job.id}`}>
-                    <PlayIcon size={12} />
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {job.name}
-                    </span>
-                    <Label variant="accent" style={{ fontSize: 9, padding: "0 4px", marginLeft: "auto" }}>
-                      #{job.id}
-                    </Label>
-                  </DependentBadge>
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>
-                  No linked study instances yet
-                </Text>
+          return (
+            <MetaBlock style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <MetaLabel style={{ marginBottom: 0 }}>Linked Studies &amp; Jobs ({totalLinked})</MetaLabel>
                 {onOpenStudiesTab && (
-                  <Button size="small" leadingVisual={BeakerIcon} onClick={onOpenStudiesTab} style={{ fontSize: 11 }}>
-                    Run Study on {name.split("/").pop()}
+                  <Button
+                    size="small"
+                    variant="invisible"
+                    onClick={onOpenStudiesTab}
+                    style={{ fontSize: 11, padding: "2px 6px", color: "var(--color-accent-cyan, #06b6d4)" }}
+                  >
+                    View all →
                   </Button>
                 )}
               </div>
-            )}
-          </MetaBlock>
-        );
-      })()}
+              {totalLinked > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {[...bundled, ...templates].slice(0, 3).map((tpl) => (
+                    <DependentBadge
+                      key={`tpl-${tpl.slug}`}
+                      to={`/jobs/templates/${tpl.slug}?package=${encodeURIComponent(name)}&version=${encodeURIComponent(version)}`}
+                      title={`Study Template (${(tpl.standardFormat || "sedml").toUpperCase()})`}
+                    >
+                      <BeakerIcon size={12} />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {tpl.name}
+                      </span>
+                      <Label variant="secondary" style={{ fontSize: 9, padding: "0 4px", marginLeft: "auto" }}>
+                        .
+                        {tpl.standardFormat === "ssp-ssv"
+                          ? "ssv"
+                          : tpl.standardFormat === "dakota"
+                            ? "dakota"
+                            : "sedml"}
+                      </Label>
+                    </DependentBadge>
+                  ))}
+                  {jobs.slice(0, 3).map((job) => (
+                    <DependentBadge
+                      key={`job-${job.id}`}
+                      to={`/jobs/${job.id}`}
+                      title={`Study Instance Run #${job.id}`}
+                    >
+                      <PlayIcon size={12} />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {job.name}
+                      </span>
+                      <Label variant="accent" style={{ fontSize: 9, padding: "0 4px", marginLeft: "auto" }}>
+                        #{job.id}
+                      </Label>
+                    </DependentBadge>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>
+                    No linked study instances yet
+                  </Text>
+                  {onOpenStudiesTab && (
+                    <Button size="small" leadingVisual={BeakerIcon} onClick={onOpenStudiesTab} style={{ fontSize: 11 }}>
+                      Run Study on {name.split("/").pop()}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </MetaBlock>
+          );
+        })()}
 
-      <Divider />
+      <Divider style={{ margin: "4px 0 16px" }} />
 
-      {/* Maintainers & Collaborators */}
-      <MetaBlock>
+      {/* ── Maintainers & Collaborators ── */}
+      <MetaBlock style={{ marginBottom: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <MetaLabel>Maintainers ({(packageOwner ? 1 : 0) + collaborators.length})</MetaLabel>
+          <MetaLabel style={{ marginBottom: 0 }}>
+            Maintainers
+            {(packageOwner ? 1 : 0) + collaborators.length > 0
+              ? ` (${(packageOwner ? 1 : 0) + collaborators.length})`
+              : ""}
+          </MetaLabel>
           {canManage && (
             <Button
               size="small"
@@ -620,7 +787,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 padding: "3px 8px",
                 borderRadius: 6,
                 fontSize: 12,
-                background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
+                background: "var(--color-canvas-subtle)",
                 border: "1px solid var(--color-border)",
                 color: "var(--color-text-primary)",
                 textDecoration: "none",
@@ -644,7 +811,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
                 padding: "3px 8px",
                 borderRadius: 6,
                 fontSize: 12,
-                background: "var(--color-glass-bg, rgba(255,255,255,0.04))",
+                background: "var(--color-canvas-subtle)",
                 border: "1px solid var(--color-border)",
                 color: "var(--color-text-primary)",
                 textDecoration: "none",
@@ -658,9 +825,22 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
             </Link>
           ))}
           {!packageOwner && collaborators.length === 0 && (
-            <Text style={{ fontSize: 12, color: "var(--color-text-muted)", fontStyle: "italic" }}>
-              Core registry library
-            </Text>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 10px",
+                borderRadius: 6,
+                fontSize: 12,
+                background: "var(--color-canvas-subtle)",
+                border: "1px solid var(--color-border)",
+                color: "var(--color-text-muted)",
+              }}
+            >
+              <VerifiedIcon size={13} fill="var(--color-accent-cyan, #06b6d4)" />
+              <span>Official Standard Library</span>
+            </span>
           )}
         </div>
       </MetaBlock>

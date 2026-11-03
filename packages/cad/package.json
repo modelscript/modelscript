@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/cad",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "ModelScript CAD and ECAD engine — CSG primitives, OpenCascade boolean operations, STEP serialization, Gerber parser, and PCB routing",
   "keywords": [
     "modelscript",

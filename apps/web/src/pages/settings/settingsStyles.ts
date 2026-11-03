@@ -14,11 +14,12 @@ export const Header = styled.div`
   gap: 12px;
   position: sticky;
   top: var(--dev-header-height, 0px);
-  background: var(--surface-hud);
-  backdrop-filter: saturate(160%) blur(14px);
-  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  transition: background-color 0.25s ease;
   border-bottom: 1px solid var(--color-border);
-  z-index: 10;
+  z-index: 50;
   margin-bottom: 12px;
 
   & > button:first-child:not(.subtab-back) {
@@ -67,21 +68,45 @@ export const DetailSubtitle = styled.span`
   margin-top: 2px;
 `;
 
-export const SaveButton = styled.button`
-  background: var(--gradient-cta);
-  color: white;
-  border: none;
+export const SaveButton = styled.button<{ $variant?: "primary" | "danger" | "secondary" | undefined }>`
+  background-color: ${(props) =>
+    props.$variant === "danger"
+      ? "var(--color-danger-fg, #cf222e)"
+      : props.$variant === "secondary"
+        ? "var(--color-canvas-subtle, rgba(255, 255, 255, 0.06))"
+        : "var(--color-accent-fg, #8b5cf6)"};
+  background-image: ${(props) =>
+    props.$variant === "danger" || props.$variant === "secondary" ? "none" : "var(--gradient-cta)"};
+  color: ${(props) => (props.$variant === "secondary" ? "var(--color-text-primary)" : "white")};
+  border: ${(props) => (props.$variant === "secondary" ? "1px solid var(--color-border-default)" : "none")};
   border-radius: 9999px;
   padding: 8px 16px;
   font-weight: bold;
   cursor: pointer;
   font-size: 14px;
   align-self: flex-end;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
+  box-shadow: ${(props) =>
+    props.$variant === "danger"
+      ? "0 2px 8px rgba(207, 34, 46, 0.25)"
+      : props.$variant === "secondary"
+        ? "none"
+        : "0 2px 8px rgba(139, 92, 246, 0.25)"};
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &[style*="background-color"],
+  &[style*="background:"],
+  &.danger {
+    background-image: none;
+  }
+
   &:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.35);
+    box-shadow: ${(props) =>
+      props.$variant === "danger"
+        ? "0 4px 12px rgba(207, 34, 46, 0.35)"
+        : props.$variant === "secondary"
+          ? "0 2px 6px rgba(0, 0, 0, 0.15)"
+          : "0 4px 12px rgba(139, 92, 246, 0.35)"};
   }
   &:disabled {
     opacity: 0.5;
@@ -90,7 +115,8 @@ export const SaveButton = styled.button`
 `;
 
 export const PrimaryButton = styled.button`
-  background: var(--gradient-cta);
+  background-color: var(--color-accent-fg, #8b5cf6);
+  background-image: var(--gradient-cta);
   color: white;
   border: none;
   border-radius: 9999px;
@@ -162,7 +188,7 @@ export const DangerButton = styled.button`
 export const FormInput = styled.input`
   width: 100%;
   padding: 12px 16px;
-  border-radius: 4px;
+  border-radius: 8px;
   border: 1px solid var(--color-border-default);
   background-color: var(--color-canvas-default);
   color: var(--color-text-primary);
@@ -170,8 +196,12 @@ export const FormInput = styled.input`
   font-size: 15px;
   margin-top: 8px;
   margin-bottom: 16px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
   &:focus {
     border-color: var(--color-accent-emphasis);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
   }
 `;
 

@@ -201,6 +201,14 @@ export async function createStripePaymentIntent(
     };
   }
 
+  if (
+    process.env["NODE_ENV"] === "production" &&
+    process.env["ALLOW_SANDBOX_TOPUP"] !== "true" &&
+    process.env["ALLOW_BILLING_SIMULATION"] !== "true"
+  ) {
+    throw new Error("Stripe PaymentIntent creation is disabled without STRIPE_SECRET_KEY in production.");
+  }
+
   const paymentIntentId = `pi_${crypto.randomBytes(12).toString("hex")}`;
   const clientSecret = `${paymentIntentId}_secret_${crypto.randomBytes(16).toString("hex")}`;
   if (issuedSandboxIntents.size >= MAX_SANDBOX_INTENTS) {
@@ -400,6 +408,14 @@ export async function createStripeCheckoutSession(
       automaticTax: true,
       taxIdCollection: true,
     };
+  }
+
+  if (
+    process.env["NODE_ENV"] === "production" &&
+    process.env["ALLOW_SANDBOX_TOPUP"] !== "true" &&
+    process.env["ALLOW_BILLING_SIMULATION"] !== "true"
+  ) {
+    throw new Error("Stripe Checkout Session creation is disabled without STRIPE_SECRET_KEY in production.");
   }
 
   const sessionId = `cs_test_${crypto.randomBytes(12).toString("hex")}`;

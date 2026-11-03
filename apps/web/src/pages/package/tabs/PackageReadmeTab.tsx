@@ -17,6 +17,7 @@ import {
 import Box from "../../../components/Box";
 import { buildClassTree } from "../../../components/classTreeUtils";
 import InvertedSvg from "../../../components/InvertedSvg";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { DiagramWrap, DocCard, GlassCard } from "../types";
 
 export interface PackageReadmeTabProps {
@@ -45,6 +46,14 @@ export const PackageReadmeTab: React.FC<PackageReadmeTabProps> = ({
   const [diagramError, setDiagramError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [showDiagram, setShowDiagram] = useState(false);
+  const hasDigitalThread = useFeatureFlag("digital_thread_explorer");
+  const hasCrossDomainTwins = useMemo(
+    () => availableDomains.some((d) => d.id === "sysml2" || d.id === "cad"),
+    [availableDomains],
+  );
+  const hasRootSchematic = Boolean(
+    rootClass?.classKind && !["package", "type", "record", "function"].includes(rootClass.classKind.toLowerCase()),
+  );
 
   const topModules = useMemo(() => {
     if (!classes || classes.length === 0) return [];
@@ -55,7 +64,7 @@ export const PackageReadmeTab: React.FC<PackageReadmeTabProps> = ({
   return (
     <>
       {/* Cyber-Physical Digital Thread Banner */}
-      {availableDomains.length > 2 && (
+      {hasDigitalThread && hasCrossDomainTwins && (
         <GlassCard
           style={{
             padding: "14px 18px",
@@ -85,8 +94,8 @@ export const PackageReadmeTab: React.FC<PackageReadmeTabProps> = ({
         </GlassCard>
       )}
 
-      {/* Root class diagram - collapsible so README remains hero content */}
-      {!diagramError && (
+      {/* Root class diagram - collapsible so README remains hero content, hidden for pure namespace packages */}
+      {hasRootSchematic && !diagramError && (
         <GlassCard
           style={{
             padding: "12px 18px",

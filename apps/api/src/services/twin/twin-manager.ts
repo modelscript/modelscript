@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, DAEBuilder, EqKind, VarType, Variability } from "@modelscript/runtime";
+import {
+  BinOp,
+  DAEBuilder,
+  EqKind,
+  ExprKind,
+  VarType,
+  Variability,
+  evaluateArenaExpression,
+} from "@modelscript/runtime";
 import {
   CircularTelemetryBuffer,
   CusumDriftDetector,
@@ -10,10 +18,12 @@ import {
   type MheResult,
 } from "@modelscript/simulate/twin";
 import type { LibraryDatabase } from "../../database.js";
+import { compileAndFlattenModelicaSource } from "../studies/study-execution-service.js";
 import { SocialTwinNotifier } from "./social-twin-notifier.js";
 
 export interface TwinConfig {
   channels: string[]; // e.g. ["T", "speed"]
+  modelCode?: string | undefined; // Optional inline Modelica source for custom DAE compilation
   mheWindowDuration?: number | undefined; // e.g. 4.0 seconds
   mheIntervals?: number | undefined; // e.g. 41 points
   parametersToEstimate: string[]; // e.g. ["R_th"]
@@ -69,6 +79,11 @@ export interface ActiveTwinSession {
   healthScore: number;
   config: TwinConfig;
   arena: DAEBuilder;
+  derEquations: { stateName: string; rhsExpr: number }[];
+  algEquations: { varName: string; rhsExpr: number }[];
+  initialNominalState: Record<string, number>;
+  nominalState: Record<string, number>;
+  lastSimTimestamp: number | null;
   buffer: CircularTelemetryBuffer;
   driftDetector: CusumDriftDetector;
   mhe: MovingHorizonEstimator;
@@ -140,13 +155,42 @@ export class TwinManager {
   }
 
   /**
-   * Helper to construct a standard DAE arena for the digital twin model.
+   * Helper to construct a DAE arena for the digital twin model, compiling Modelica source
+   * when provided or constructing the canonical domain DAE.
    */
   private buildArenaForClass(
     modelicaClass: string,
     initialParams: Record<string, number>,
     channels: string[] = [],
+    modelCode?: string,
   ): DAEBuilder {
+    const candidateSource =
+      modelCode && modelCode.trim().length > 0
+        ? modelCode
+        : /\b(?:model|class|block)\s+[A-Za-z_]/.test(modelicaClass)
+          ? modelicaClass
+          : undefined;
+
+    if (candidateSource) {
+      const compiled = compileAndFlattenModelicaSource(candidateSource);
+      if (compiled && compiled.arena.varCount > 0 && compiled.arena.eqCount > 0) {
+        const compiledArena = compiled.arena;
+        compiledArena.isMutatedBySim = false;
+        for (const [paramName, paramVal] of Object.entries(initialParams)) {
+          if (typeof paramVal !== "number") continue;
+          const vIdx = compiledArena.getVarIdxByName(paramName);
+          if (vIdx >= 0) {
+            compiledArena.setVarStartValue(vIdx, paramVal);
+            compiledArena.setVarExpression(vIdx, compiledArena.addRealLiteral(paramVal));
+          } else {
+            const pIdx = compiledArena.addVariable(paramName, VarType.Real, Variability.Parameter, 0, paramVal);
+            compiledArena.setVarExpression(pIdx, compiledArena.addRealLiteral(paramVal));
+          }
+        }
+        return compiledArena;
+      }
+    }
+
     const arena = new DAEBuilder();
     const domain = this.detectDomain(modelicaClass, initialParams, channels);
 
@@ -301,6 +345,147 @@ export class TwinManager {
   }
 
   /**
+   * Extracts ODE derivative (`der(x) = rhs`) and algebraic (`y = rhs`) equations
+   * along with continuous variable initial values from a `DAEBuilder` arena.
+   */
+  private extractArenaEquations(arena: DAEBuilder): {
+    derEquations: { stateName: string; rhsExpr: number }[];
+    algEquations: { varName: string; rhsExpr: number }[];
+    initialState: Record<string, number>;
+  } {
+    const derEquations: { stateName: string; rhsExpr: number }[] = [];
+    const algEquations: { varName: string; rhsExpr: number }[] = [];
+    const initialState: Record<string, number> = {};
+
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      const v = arena.getVarVariability(i);
+      if (v === Variability.Parameter || v === Variability.Constant) continue;
+      const name = arena.getVarName(i);
+      if (name && !name.startsWith("der(")) {
+        initialState[name] = arena.getVarStartValue(i);
+      }
+    }
+
+    for (let eqIdx = 0; eqIdx < arena.eqCount; eqIdx++) {
+      if (arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+      const lhs = arena.getEqLhs(eqIdx);
+      const rhs = arena.getEqRhs(eqIdx);
+      if (lhs < 0 || rhs < 0) continue;
+
+      const lhsKind = arena.getExprKind(lhs);
+      if (lhsKind === ExprKind.Der) {
+        const d1 = arena.getExprData1(lhs);
+        const argExpr = d1 >= 0 && d1 < arena.exprCount ? d1 : arena.getExprLeft(lhs);
+        if (argExpr >= 0 && argExpr < arena.exprCount && arena.getExprKind(argExpr) === ExprKind.Name) {
+          const stateName = arena.interner.resolve(arena.getExprData1(argExpr));
+          if (stateName) {
+            derEquations.push({ stateName, rhsExpr: rhs });
+            if (!(stateName in initialState)) {
+              const vIdx = arena.getVarIdxByName(stateName);
+              initialState[stateName] = vIdx >= 0 ? arena.getVarStartValue(vIdx) : 0;
+            }
+          }
+        }
+      } else if (lhsKind === ExprKind.Name) {
+        const varName = arena.interner.resolve(arena.getExprData1(lhs));
+        if (varName) {
+          algEquations.push({ varName, rhsExpr: rhs });
+        }
+      }
+    }
+
+    return { derEquations, algEquations, initialState };
+  }
+
+  /**
+   * Steps the session's nominal DAE arena state forward to `targetTimestamp` using
+   * 4th-order Runge-Kutta (RK4) integration over the arena's derivative equations.
+   */
+  private stepNominalArenaState(session: ActiveTwinSession, targetTimestamp: number): number {
+    const primaryChannel = session.config.channels[0] ?? "T";
+
+    if (session.lastSimTimestamp === null || targetTimestamp < session.lastSimTimestamp) {
+      session.nominalState = { ...session.initialNominalState };
+      session.lastSimTimestamp = 0.0;
+    }
+
+    const totalDt = targetTimestamp - session.lastSimTimestamp;
+    const evalRhs = (t: number, stateMap: Record<string, number>): Record<string, number> => {
+      const env = new Map<string, number>();
+      env.set("time", t);
+      for (const [k, v] of Object.entries(session.currentParameters)) {
+        if (typeof v === "number" && Number.isFinite(v)) env.set(k, v);
+      }
+      for (const [k, v] of Object.entries(stateMap)) {
+        if (typeof v === "number" && Number.isFinite(v)) env.set(k, v);
+      }
+      for (const alg of session.algEquations) {
+        const val = evaluateArenaExpression(session.arena, alg.rhsExpr, env);
+        if (typeof val === "number" && Number.isFinite(val)) {
+          env.set(alg.varName, val);
+          stateMap[alg.varName] = val;
+        }
+      }
+      const derivs: Record<string, number> = {};
+      for (const deq of session.derEquations) {
+        const dVal = evaluateArenaExpression(session.arena, deq.rhsExpr, env);
+        derivs[deq.stateName] = typeof dVal === "number" && Number.isFinite(dVal) ? dVal : 0.0;
+      }
+      return derivs;
+    };
+
+    if (totalDt > 0 && session.derEquations.length > 0) {
+      const subSteps = Math.min(64, Math.max(4, Math.ceil(totalDt / 0.02)));
+      const h = totalDt / subSteps;
+      let t = session.lastSimTimestamp;
+
+      for (let s = 0; s < subSteps; s++) {
+        const y0 = { ...session.nominalState };
+        const k1 = evalRhs(t, y0);
+
+        const y1: Record<string, number> = { ...y0 };
+        for (const deq of session.derEquations) {
+          const name = deq.stateName;
+          y1[name] = (y0[name] ?? 0) + 0.5 * h * (k1[name] ?? 0);
+        }
+        const k2 = evalRhs(t + 0.5 * h, y1);
+
+        const y2: Record<string, number> = { ...y0 };
+        for (const deq of session.derEquations) {
+          const name = deq.stateName;
+          y2[name] = (y0[name] ?? 0) + 0.5 * h * (k2[name] ?? 0);
+        }
+        const k3 = evalRhs(t + 0.5 * h, y2);
+
+        const y3: Record<string, number> = { ...y0 };
+        for (const deq of session.derEquations) {
+          const name = deq.stateName;
+          y3[name] = (y0[name] ?? 0) + h * (k3[name] ?? 0);
+        }
+        const k4 = evalRhs(t + h, y3);
+
+        for (const deq of session.derEquations) {
+          const name = deq.stateName;
+          session.nominalState[name] =
+            (y0[name] ?? 0) +
+            (h / 6.0) * ((k1[name] ?? 0) + 2 * (k2[name] ?? 0) + 2 * (k3[name] ?? 0) + (k4[name] ?? 0));
+        }
+        t += h;
+      }
+    }
+
+    evalRhs(targetTimestamp, session.nominalState);
+    session.lastSimTimestamp = targetTimestamp;
+
+    if (primaryChannel in session.nominalState) {
+      return session.nominalState[primaryChannel]!;
+    }
+    const firstState = session.derEquations[0]?.stateName;
+    return firstState ? (session.nominalState[firstState] ?? 0) : 0;
+  }
+
+  /**
    * Retrieve active in-memory session or instantiate it from the database.
    */
   async getOrCreateSession(twinId: number, db: LibraryDatabase): Promise<ActiveTwinSession> {
@@ -334,7 +519,8 @@ export class TwinManager {
     }
 
     const domain = this.detectDomain(row.modelica_class, currentParams, config.channels);
-    const arena = this.buildArenaForClass(row.modelica_class, currentParams, config.channels);
+    const arena = this.buildArenaForClass(row.modelica_class, currentParams, config.channels, config.modelCode);
+    const { derEquations, algEquations, initialState } = this.extractArenaEquations(arena);
 
     const buffer = new CircularTelemetryBuffer({
       numChannels: config.channels.length || 1,
@@ -397,6 +583,11 @@ export class TwinManager {
       healthScore: row.health_score,
       config,
       arena,
+      derEquations,
+      algEquations,
+      initialNominalState: { ...initialState },
+      nominalState: { ...initialState },
+      lastSimTimestamp: null,
       buffer,
       driftDetector,
       mhe,
@@ -442,8 +633,8 @@ export class TwinManager {
   }
 
   /**
-   * Ingest real-time telemetry sample, compute residuals, test for CUSUM drift,
-   * and conditionally trigger online adaptation.
+   * Ingest real-time telemetry sample, compute residuals by stepping the DAE state forward in time,
+   * test for CUSUM drift, and conditionally trigger online adaptation.
    */
   async ingestTelemetry(
     twinId: number,
@@ -463,27 +654,9 @@ export class TwinManager {
     const nowIso = new Date().toISOString();
     session.lastTelemetryAt = nowIso;
 
-    // 2. Innovation residual comparison against expected nominal baseline
-    // In an operational twin, residual is y_meas - y_nominal
+    // 2. Innovation residual comparison by stepping the DAE arena state forward over dt
     const measuredVal = channels[0] ?? 0;
-    let nominalVal: number;
-    if (session.domain === "rotational") {
-      const jNom = Math.max(1e-3, session.currentParameters["J"] ?? 0.25);
-      const bNom = Math.max(1e-3, session.currentParameters["b"] ?? 0.05);
-      const tauNom = session.currentParameters["tau_load"] ?? session.currentParameters["tau"] ?? 10.0;
-      const tauTime = Math.max(0.1, jNom / bNom);
-      nominalVal = (tauNom / bNom) * (1.0 - Math.exp(-timestamp / tauTime));
-    } else if (session.domain === "electrical") {
-      const rNom = Math.max(1e-3, session.currentParameters["R"] ?? 2.0);
-      const cNom = Math.max(1e-3, session.currentParameters["C"] ?? 0.5);
-      const vInNom = session.currentParameters["V_in"] ?? 48.0;
-      const tauTime = Math.max(0.1, rNom * cNom);
-      nominalVal = vInNom * (1.0 - Math.exp(-timestamp / tauTime));
-    } else {
-      const rThNom = session.currentParameters["R_th"] ?? 0.12;
-      const tau = Math.max(0.1, 20.0 * rThNom);
-      nominalVal = 25.0 + 100.0 * rThNom * (1.0 - Math.exp(-timestamp / tau));
-    }
+    const nominalVal = this.stepNominalArenaState(session, timestamp);
     const residual = measuredVal - nominalVal;
 
     // 3. Test sequential CUSUM drift

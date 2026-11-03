@@ -3,7 +3,9 @@
 import { ChevronRightIcon } from "@primer/octicons-react";
 import React from "react";
 import { Link } from "react-router-dom";
-import styled from "styled-components";
+import styledImport from "styled-components";
+
+const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
 
 const Nav = styled.nav`
   display: flex;

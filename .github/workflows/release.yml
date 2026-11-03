@@ -4,11 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version bump (major, minor, patch, premajor, preminor, prepatch, or explicit version)"
+        description: "Version strategy: auto (pre-bumped or Conventional Commits), current (manifest version as-is), or relative bump"
         required: true
-        default: "patch"
+        default: "auto"
         type: choice
         options:
+          - auto
+          - current
           - patch
           - minor
           - major
@@ -35,6 +37,12 @@ jobs:
       PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
       PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
       PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      ADMIN_INIT_PASSWORD: ${{ secrets.ADMIN_INIT_PASSWORD }}
+      OAUTH_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+      OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+      GITLAB_CLIENT_ID: ${{ secrets.GITLAB_CLIENT_ID || secrets.OAUTH_GITLAB_CLIENT_ID }}
+      GITLAB_CLIENT_SECRET: ${{ secrets.GITLAB_CLIENT_SECRET || secrets.OAUTH_GITLAB_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,8 +99,9 @@ jobs:
           key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
           restore-keys: |
             ${{ runner.os }}-wasm-
-      - name: Download MSL
+      - name: Download Standard Libraries
         run: |
+          npx tsx scripts/sync-stdlibs.ts --pack=core
           if [ ! -d "data/libraries/Modelica/4.1.0/extracted/Modelica" ]; then
             node scripts/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
           fi
@@ -109,31 +118,26 @@ jobs:
           npm run lint:all
 
       # --- Version, Changelog, Full Monorepo Sync, Tag & Push ---
-      - name: Version & Changelog
-        run: npx nx release --skip-publish ${{ github.event.inputs.version }}
+      - name: Version, Changelog & Tag (Smart Hybrid Orchestrator)
+        id: version
+        run: npx tsx scripts/ci-release-version.ts --bump="${{ github.event.inputs.version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Synchronize All Workspace & Desktop Versions
-        id: version
-        run: |
-          npm run sync:versions
-          VERSION=$(node -p 'require("./packages/runtime/package.json").version')
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          if [ -n "$(git status --porcelain)" ]; then
-            git add -A
-            git commit --amend --no-edit
-            git tag -f -a "v${VERSION}" -m "v${VERSION}"
-          fi
 
       - name: Push Release Commit & Tag Before External Publishing
         run: |
           git push origin HEAD:main
           git push origin "refs/tags/v${{ steps.version.outputs.version }}" --force
 
-      # --- Publish to npm ---
+      # --- Publish to npm (Idempotent) ---
       - name: Publish to npm
-        run: npx nx release publish --yes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if npm view "@modelscript/runtime@${VERSION}" version >/dev/null 2>&1; then
+            echo "✓ @modelscript/*@${VERSION} is already published on npm. Skipping duplicate npm publish."
+          else
+            NODE_OPTIONS="--require ./scripts/nx-minimatch-shim.cjs" npx nx release publish --yes
+          fi
         env:
           NPM_CONFIG_PROVENANCE: true
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -151,18 +155,20 @@ jobs:
         with:
           name: modelscript-vsix
           path: dist/extension/*.vsix
-      - name: Attach VSIX to GitHub Release
+      - name: Create or Update GitHub Release & Attach VSIX
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          body_path: .cache/release-notes.md
           files: dist/extension/*.vsix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish to VS Code Marketplace
-        run: npx --yes @vscode/vsce publish --no-dependencies --allow-star-activation -p ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce publish --skip-duplicate --no-dependencies --allow-star-activation -p ${{ secrets.VSCE_PAT }}
         working-directory: dist/extension
       - name: Publish to Open VSX
-        run: npx --yes ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx publish *.vsix --skip-duplicate -p ${{ secrets.OVSX_PAT }}
         working-directory: dist/extension
 
       # --- Build Unified Site & Docs (bundled into web/appliance Docker images) ---
@@ -235,24 +241,45 @@ jobs:
           ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "which docker >/dev/null 2>&1 || (curl -fsSL https://get.docker.com | sh)"
 
           # 2. Ensure target directories exist
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "mkdir -p ${TARGET_DIR}/config"
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "mkdir -p ${TARGET_DIR}/config ${TARGET_DIR}/scripts ${TARGET_DIR}/backups"
 
-          # 3. Synchronize compose files and Caddy / broker / DB runtime configs
+          # 3. Synchronize compose files, configs, and ops deployment scripts
           scp docker-compose.yml docker-compose.prod.yml "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/"
           scp config/Caddyfile config/mosquitto.conf config/init-timescaledb.sql "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/config/"
+          scp scripts/ops/*.sh "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/scripts/"
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "chmod +x ${TARGET_DIR}/scripts/*.sh"
 
           # 4. Bootstrap / update .env.production from GitHub secret if provided
           if [ -n "$PROD_ENV_FILE" ]; then
             printf '%s\n' "$PROD_ENV_FILE" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cat > ${TARGET_DIR}/.env.production && chmod 600 ${TARGET_DIR}/.env.production"
           fi
+          if [ -n "$OAUTH_GITHUB_CLIENT_ID" ] || [ -n "$GITLAB_CLIENT_ID" ]; then
+            {
+              [ -n "$OAUTH_GITHUB_CLIENT_ID" ] && printf 'GITHUB_CLIENT_ID=%s\n' "$OAUTH_GITHUB_CLIENT_ID"
+              [ -n "$OAUTH_GITHUB_CLIENT_SECRET" ] && printf 'GITHUB_CLIENT_SECRET=%s\n' "$OAUTH_GITHUB_CLIENT_SECRET"
+              [ -n "$GITLAB_CLIENT_ID" ] && printf 'GITLAB_CLIENT_ID=%s\n' "$GITLAB_CLIENT_ID"
+              [ -n "$GITLAB_CLIENT_SECRET" ] && printf 'GITLAB_CLIENT_SECRET=%s\n' "$GITLAB_CLIENT_SECRET"
+            } | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "touch ${TARGET_DIR}/.env.production && chmod 600 ${TARGET_DIR}/.env.production && grep -v -E '^(GITHUB_CLIENT_ID|GITHUB_CLIENT_SECRET|GITLAB_CLIENT_ID|GITLAB_CLIENT_SECRET)=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true && cat - >> ${TARGET_DIR}/.env.production.tmp && mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production"
+          fi
+          if [ -n "$RESEND_API_KEY" ]; then
+            printf '%s' "$RESEND_API_KEY" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "
+              touch ${TARGET_DIR}/.env.production &&
+              chmod 600 ${TARGET_DIR}/.env.production &&
+              (grep -v '^RESEND_API_KEY=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true) &&
+              mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production &&
+              printf 'RESEND_API_KEY=%s\n' \"\$(cat)\" >> ${TARGET_DIR}/.env.production
+            "
+          fi
+          if [ -n "$ADMIN_INIT_PASSWORD" ]; then
+            printf '%s' "$ADMIN_INIT_PASSWORD" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "
+              touch ${TARGET_DIR}/.env.production &&
+              chmod 600 ${TARGET_DIR}/.env.production &&
+              (grep -v '^ADMIN_INIT_PASSWORD=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true) &&
+              mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production &&
+              printf 'ADMIN_INIT_PASSWORD=%s\n' \"\$(cat)\" >> ${TARGET_DIR}/.env.production
+            "
+          fi
 
-          # 5. Authenticate droplet to GHCR, create pre-deploy SQLite hot backup, pull release images, launch the stack, and verify both domains
+          # 5. Authenticate droplet to GHCR and execute production rollout sentinel with automated rollback
           ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin >/dev/null 2>&1 || true && \
-            cd ${TARGET_DIR} && \
-            (docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production exec -T api node -e 'const fs=require(\"node:fs\"),D=require(\"better-sqlite3\");fs.mkdirSync(\"/app/apps/api/data/backups\",{recursive:true});const db=new D(\"/app/apps/api/data/modelscript.db\");db.exec(\"VACUUM INTO \\\"/app/apps/api/data/backups/pre-deploy-\"+Date.now()+\".db\\\"\");db.close();' >/dev/null 2>&1 || true) && \
-            IMAGE_TAG=${{ steps.version.outputs.version }} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated pull && \
-            IMAGE_TAG=${{ steps.version.outputs.version }} docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production --profile federated up -d --wait --remove-orphans && \
-            curl --fail --silent --show-error http://127.0.0.1:3000/health >/dev/null && \
-            curl --fail --silent --show-error -H 'Host: modelscript.org' http://127.0.0.1:3001/healthz >/dev/null && \
-            curl --fail --silent --show-error -H 'Host: ansatz.social' http://127.0.0.1:3001/healthz >/dev/null && \
-            docker image prune -f --filter 'until=72h'"
+            IMAGE_TAG=${{ steps.version.outputs.version }} TARGET_DIR=${TARGET_DIR} ${TARGET_DIR}/scripts/deploy.sh"

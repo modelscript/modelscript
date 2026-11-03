@@ -11,7 +11,8 @@ export interface AnsatzMarkProps {
 
 /**
  * Renders the Kuwayama K3-D (Sharp Mitre Fold, 3-Facet Depth) Ansatz mark inside
- * an obsidian squircle, or a custom white-label image if `logoUrl` is configured.
+ * a counter-themed squircle (obsidian in light mode, cool platinum in dark mode — see
+ * the `--ansatz-*` tokens in index.css), or a custom white-label image if `logoUrl` is configured.
  */
 export const AnsatzMark: React.FC<AnsatzMarkProps> = ({
   size = 36,
@@ -39,29 +40,27 @@ export const AnsatzMark: React.FC<AnsatzMarkProps> = ({
     safeLogoUrl !== "/ms-logo-light.png" &&
     safeLogoUrl !== "/ansatz-logo.svg";
 
-  const svgSize = Math.round(size * 0.68);
+  // Keep glyph and tile the same parity so the inset is a whole number of
+  // pixels on each side — a half-pixel offset makes the mark shimmer/shift
+  // whenever it's re-rasterized (hover, theme change, zoom).
+  let svgSize = Math.round(size * 0.68);
+  if ((size - svgSize) % 2 !== 0) svgSize += 1;
+  // Only override the themed accent when a white-label colour is configured.
+  const trimmedAccent = (accentColor || "").trim();
   const resolvedAccent =
-    accentColor && accentColor.trim() && accentColor.trim().toLowerCase() !== "#06b6d4"
-      ? accentColor.trim()
-      : "#38bdf8";
+    trimmedAccent && !["#06b6d4", "#38bdf8"].includes(trimmedAccent.toLowerCase())
+      ? trimmedAccent
+      : "var(--ansatz-facet-accent)";
 
   return (
     <div
+      className={isCustomLogo ? "ansatz-mark ansatz-mark--custom" : "ansatz-mark"}
       style={{
         width: `${size}px`,
         height: `${size}px`,
         minWidth: `${size}px`,
         minHeight: `${size}px`,
         borderRadius: `${Math.round(size * 0.27)}px`,
-        overflow: "hidden",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background:
-          "radial-gradient(circle at 78% 20%, rgba(34, 211, 238, 0.18), transparent 60%), linear-gradient(155deg, #111622 0%, #070a10 100%)",
-        boxShadow:
-          "inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 3px 10px -2px rgba(0, 0, 0, 0.35)",
-        flexShrink: 0,
       }}
     >
       {isCustomLogo && safeLogoUrl ? (
@@ -72,12 +71,16 @@ export const AnsatzMark: React.FC<AnsatzMarkProps> = ({
         />
       ) : (
         <svg width={svgSize} height={svgSize} viewBox="0 0 36 36" fill="none" role="img" aria-label={alt}>
-          {/* Facet 1: Left ascending wing (Pure White) */}
-          <polygon points="18,5.5 21.8,12 11.8,29 6.5,29" fill="#ffffff" />
+          {/* Facet 1: Left ascending wing (Primary — white on light-mode obsidian, ink on dark-mode platinum) */}
+          <polygon points="18,5.5 21.8,12 11.8,29 6.5,29" style={{ fill: "var(--ansatz-facet-primary)" }} />
           {/* Facet 2: Right descending wing (3-Facet Depth Sky/Accent) */}
-          <polygon points="23,14.1 29.5,25.2 27.2,29 19.2,15.2" fill={resolvedAccent} />
+          <polygon
+            className="ansatz-facet-accent"
+            points="23,14.1 29.5,25.2 27.2,29 19.2,15.2"
+            style={{ fill: resolvedAccent }}
+          />
           {/* Facet 3: Inner floating delta bridge (Cool Slate) */}
-          <polygon points="14.4,29 25,29 22.7,24.6 16.9,24.6" fill="#94a3b8" />
+          <polygon points="14.4,29 25,29 22.7,24.6 16.9,24.6" style={{ fill: "var(--ansatz-facet-bridge)" }} />
         </svg>
       )}
     </div>

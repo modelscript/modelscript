@@ -364,36 +364,116 @@ export class HostBridgeService implements vscode.Disposable {
     }
   }
 
+  public getWorkspaceTitle(): string {
+    if (this._mountedTitle) return this._mountedTitle;
+    if (this.memfsRootUri?.path) {
+      const clean = this.memfsRootUri.path.replace(/^\/+/, "");
+      if (clean) return clean;
+    }
+    return workspace.workspaceFolders?.[0]?.name || "ModelScript Workspace";
+  }
+
+  public sendHeartbeat(requestId?: string): void {
+    const payload = {
+      type: "MODELSCRIPT_IDE_HEARTBEAT",
+      workspaceTitle: this.getWorkspaceTitle(),
+      uri: this.memfsRootUri?.toString() || workspace.workspaceFolders?.[0]?.uri.toString() || "memfs:/empty",
+      timestamp: Date.now(),
+      requestId,
+    };
+    try {
+      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+        window.parent.postMessage(payload, window.location.origin);
+      }
+      const channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.postMessage(payload);
+      channel.close();
+    } catch {
+      // ignore
+    }
+  }
+
+  public async handleInstallPackage(payload: {
+    name: string;
+    version?: string | undefined;
+    requestId?: string | undefined;
+  }): Promise<void> {
+    const pkgName = payload?.name?.trim();
+    if (!pkgName) return;
+    const pkgVersion = payload.version?.trim() || "latest";
+
+    await vscode.commands.executeCommand("modelscript.registry.install", pkgName, pkgVersion);
+    const tp = this.getTreeProvider();
+    tp?.refresh();
+
+    const ack = {
+      type: "MODELSCRIPT_PACKAGE_INSTALLED",
+      name: pkgName,
+      version: pkgVersion,
+      workspaceTitle: this.getWorkspaceTitle(),
+      requestId: payload.requestId,
+    };
+    try {
+      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+        window.parent.postMessage(ack, window.location.origin);
+      }
+      const channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.postMessage(ack);
+      channel.close();
+    } catch {
+      // ignore
+    }
+  }
+
+  private handleIncomingBridgeMessage(data: unknown): void {
+    if (!data || typeof data !== "object") return;
+    const msg = data as Record<string, unknown>;
+    if (typeof msg["type"] !== "string") return;
+    if (
+      msg["type"] === "MODELSCRIPT_MOUNT_ARTIFACT" &&
+      (typeof msg["artifactId"] === "string" || typeof msg["artifactId"] === "number")
+    ) {
+      this.handleMountArtifact({
+        artifactId: msg["artifactId"],
+        title: typeof msg["title"] === "string" ? msg["title"] : undefined,
+        viewType: typeof msg["viewType"] === "string" ? msg["viewType"] : undefined,
+        viewConfig:
+          typeof msg["viewConfig"] === "object" && msg["viewConfig"] !== null
+            ? (msg["viewConfig"] as Record<string, unknown>)
+            : undefined,
+      }).catch((e) => console.warn("[host-bridge] Mount artifact error:", e));
+    } else if (msg["type"] === "MODELSCRIPT_INSTALL_PACKAGE" && typeof msg["name"] === "string") {
+      this.handleInstallPackage({
+        name: msg["name"],
+        version: typeof msg["version"] === "string" ? msg["version"] : undefined,
+        requestId: typeof msg["requestId"] === "string" ? msg["requestId"] : undefined,
+      }).catch((e) => console.warn("[host-bridge] Install package error:", e));
+    } else if (msg["type"] === "MODELSCRIPT_PING_IDE") {
+      this.sendHeartbeat(typeof msg["requestId"] === "string" ? msg["requestId"] : undefined);
+    } else if (msg["type"] === "MODELSCRIPT_REQUEST_WORKSPACE_SNAPSHOT") {
+      this.sendWorkspaceSnapshot(typeof msg["requestId"] === "string" ? msg["requestId"] : undefined);
+    } else if (msg["type"] === "MODELSCRIPT_REQUEST_ACTIVE_FILE") {
+      this.sendShareToFeed();
+    } else if (msg["type"] === "MODELSCRIPT_RESTART_LSP") {
+      vscode.commands.executeCommand("modelscript.restartLsp");
+    }
+  }
+
   private register(): void {
     try {
       const bridge = new BroadcastChannel("modelscript:host-bridge");
       bridge.onmessage = (ev) => {
-        if (ev.data?.type === "MODELSCRIPT_MOUNT_ARTIFACT" && ev.data?.artifactId) {
-          this.handleMountArtifact(ev.data).catch((e) => console.warn("[host-bridge] Mount artifact error:", e));
-        } else if (ev.data?.type === "MODELSCRIPT_REQUEST_WORKSPACE_SNAPSHOT") {
-          this.sendWorkspaceSnapshot(ev.data?.requestId);
-        } else if (ev.data?.type === "MODELSCRIPT_REQUEST_ACTIVE_FILE") {
-          this.sendShareToFeed();
-        } else if (ev.data?.type === "MODELSCRIPT_RESTART_LSP") {
-          vscode.commands.executeCommand("modelscript.restartLsp");
-        }
+        this.handleIncomingBridgeMessage(ev.data);
       };
       this._disposables.push({ dispose: () => bridge.close() });
+      this.sendHeartbeat();
     } catch {
       // BroadcastChannel unsupported in environment
     }
 
     if (typeof window !== "undefined") {
       const windowMsgHandler = (ev: MessageEvent) => {
-        if (ev.data?.type === "MODELSCRIPT_MOUNT_ARTIFACT" && ev.data?.artifactId) {
-          this.handleMountArtifact(ev.data).catch((e) => console.warn("[window-message] Mount artifact error:", e));
-        } else if (ev.data?.type === "MODELSCRIPT_REQUEST_WORKSPACE_SNAPSHOT") {
-          this.sendWorkspaceSnapshot(ev.data?.requestId);
-        } else if (ev.data?.type === "MODELSCRIPT_REQUEST_ACTIVE_FILE") {
-          this.sendShareToFeed();
-        } else if (ev.data?.type === "MODELSCRIPT_RESTART_LSP") {
-          vscode.commands.executeCommand("modelscript.restartLsp");
-        }
+        this.handleIncomingBridgeMessage(ev.data);
       };
       window.addEventListener("message", windowMsgHandler);
       this._disposables.push({ dispose: () => window.removeEventListener("message", windowMsgHandler) });

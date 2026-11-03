@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   lint:
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -58,6 +59,7 @@ jobs:
           fi
 
   test:
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -147,6 +149,7 @@ jobs:
 
   modelica_testsuite:
     name: Modelica OMC Testsuite (WASM vs JS)
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -246,7 +249,7 @@ jobs:
   publish_reports:
     needs: [test, modelica_testsuite]
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && !startsWith(github.event.head_commit.message, 'chore(release):')
     timeout-minutes: 10
     permissions:
       contents: read
@@ -321,6 +324,7 @@ jobs:
           retention-days: 7
 
   build:
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -359,6 +363,8 @@ jobs:
           key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
           restore-keys: |
             ${{ runner.os }}-wasm-
+      - name: Ensure Standard Library Assets Exist
+        run: npx tsx scripts/sync-stdlibs.ts --pack=core
       - name: Build VS Code Extension
         run: npm run build:extension
       - name: Run Build
@@ -428,7 +434,7 @@ jobs:
 
   docker_build:
     needs: [build, lint]
-    if: github.actor != 'nektos/act'
+    if: github.actor != 'nektos/act' && !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -477,6 +483,9 @@ jobs:
             ${{ runner.os }}-nx-build-${{ github.sha }}
             ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
+      - name: Ensure Standard Library Assets Exist
+        if: steps.check-affected.outputs.run_docker == 'true'
+        run: npx tsx scripts/sync-stdlibs.ts --pack=core
       - name: Fast Rebuild from Cache
         if: steps.check-affected.outputs.run_docker == 'true'
         run: npx nx run-many -t build --parallel=3
@@ -550,6 +559,8 @@ jobs:
       PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
       PROD_DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
       PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      ADMIN_INIT_PASSWORD: ${{ secrets.ADMIN_INIT_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - name: Trigger Production Docker Compose Rollout via Webhook
@@ -595,6 +606,28 @@ jobs:
           # 4. Bootstrap / update .env.production from GitHub secret if provided
           if [ -n "$PROD_ENV_FILE" ]; then
             printf '%s\n' "$PROD_ENV_FILE" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cat > ${TARGET_DIR}/.env.production && chmod 600 ${TARGET_DIR}/.env.production"
+          fi
+
+          # 4b. Inject standalone RESEND_API_KEY GitHub secret if configured
+          if [ -n "$RESEND_API_KEY" ]; then
+            printf '%s' "$RESEND_API_KEY" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "
+              touch ${TARGET_DIR}/.env.production &&
+              chmod 600 ${TARGET_DIR}/.env.production &&
+              (grep -v '^RESEND_API_KEY=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true) &&
+              mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production &&
+              printf 'RESEND_API_KEY=%s\n' \"\$(cat)\" >> ${TARGET_DIR}/.env.production
+            "
+          fi
+
+          # 4c. Inject standalone ADMIN_INIT_PASSWORD GitHub secret if configured
+          if [ -n "$ADMIN_INIT_PASSWORD" ]; then
+            printf '%s' "$ADMIN_INIT_PASSWORD" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "
+              touch ${TARGET_DIR}/.env.production &&
+              chmod 600 ${TARGET_DIR}/.env.production &&
+              (grep -v '^ADMIN_INIT_PASSWORD=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true) &&
+              mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production &&
+              printf 'ADMIN_INIT_PASSWORD=%s\n' \"\$(cat)\" >> ${TARGET_DIR}/.env.production
+            "
           fi
 
           # 5. Authenticate droplet to GHCR and execute production rollout sentinel with automated rollback

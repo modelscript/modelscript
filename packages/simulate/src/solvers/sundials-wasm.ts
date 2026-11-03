@@ -744,19 +744,70 @@ export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsEmscri
       : (typeof self !== "undefined" && self.location?.href) ||
         (typeof document !== "undefined" && document.baseURI) ||
         "http://localhost/";
-  let url = wasmUrl;
-  if (!url) {
+
+  const candidateUrls: string[] = [];
+  if (wasmUrl) {
+    candidateUrls.push(wasmUrl);
+  } else {
     try {
-      url = new URL(/* webpackIgnore: true */ "../../wasm/sundials.wasm", base).href;
+      candidateUrls.push(new URL(/* webpackIgnore: true */ "../../wasm/sundials.wasm", base).href);
     } catch {
-      url = "/wasm/sundials.wasm";
+      // ignore
+    }
+    try {
+      candidateUrls.push(new URL(/* webpackIgnore: true */ "../wasm/sundials.wasm", base).href);
+    } catch {
+      // ignore
+    }
+    try {
+      candidateUrls.push(new URL(/* webpackIgnore: true */ "wasm/sundials.wasm", base).href);
+    } catch {
+      // ignore
+    }
+    try {
+      candidateUrls.push(new URL(/* webpackIgnore: true */ "sundials.wasm", base).href);
+    } catch {
+      // ignore
+    }
+    try {
+      candidateUrls.push(new URL("/lsp/wasm/sundials.wasm", base).href);
+    } catch {
+      // ignore
+    }
+    try {
+      candidateUrls.push(new URL("/wasm/sundials.wasm", base).href);
+    } catch {
+      // ignore
+    }
+    try {
+      candidateUrls.push(new URL("/lsp/server/dist/sundials.wasm", base).href);
+    } catch {
+      // ignore
+    }
+    candidateUrls.push("/lsp/wasm/sundials.wasm");
+    candidateUrls.push("/wasm/sundials.wasm");
+  }
+
+  const uniqueCandidates = Array.from(new Set(candidateUrls));
+  let lastErr: unknown;
+
+  for (const candWasmUrl of uniqueCandidates) {
+    const candJsUrl = candWasmUrl.replace(/\.wasm$/, ".js");
+    try {
+      const factory = await import(/* webpackIgnore: true */ candJsUrl);
+      const modFn = factory.default || factory;
+      cachedModule = await modFn({
+        locateFile: (p: string) => (p.endsWith(".wasm") ? candWasmUrl : p),
+      });
+      if (cachedModule) {
+        return cachedModule;
+      }
+    } catch (err) {
+      lastErr = err;
     }
   }
-  const jsUrl = url.replace(/\.wasm$/, ".js");
-  const factory = await import(/* webpackIgnore: true */ jsUrl);
-  cachedModule = await factory.default({
-    locateFile: () => url,
-  });
 
-  return cachedModule!;
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error(`Failed to load SUNDIALS WebAssembly module (attempted URLs: ${uniqueCandidates.join(", ")})`);
 }

@@ -19,7 +19,7 @@ export interface ComposeTutorialMetaEditorProps {
   notebookSummary: string;
   setNotebookSummary: (val: string) => void;
   notebookDifficulty: TutorialDifficulty | undefined;
-  setNotebookDifficulty: (val: TutorialDifficulty) => void;
+  setNotebookDifficulty: (val: TutorialDifficulty | undefined) => void;
   notebookSeries: string;
   setNotebookSeries: (val: string) => void;
   notebookDialect: string;
@@ -79,9 +79,12 @@ export const ComposeTutorialMetaEditor: React.FC<ComposeTutorialMetaEditorProps>
     }
   }, [notebookSummary, showSubtitle]);
 
-  const activePropertyCount = [notebookSeries.trim(), notebookDialect.trim(), notebookCompanionRepo.trim()].filter(
-    Boolean,
-  ).length;
+  const activePropertyCount = [
+    notebookDifficulty,
+    notebookSeries.trim(),
+    notebookDialect.trim(),
+    notebookCompanionRepo.trim(),
+  ].filter(Boolean).length;
 
   return (
     <div style={{ marginBottom: "20px" }}>
@@ -184,12 +187,12 @@ export const ComposeTutorialMetaEditor: React.FC<ComposeTutorialMetaEditorProps>
             </NotionPropertyLabel>
             <div style={{ display: "flex", gap: "4px", paddingLeft: "4px" }}>
               {(["Beginner", "Intermediate", "Advanced"] as const).map((level) => {
-                const isSelected = (notebookDifficulty || "Intermediate") === level;
+                const isSelected = notebookDifficulty === level;
                 return (
                   <button
                     key={level}
                     type="button"
-                    onClick={() => setNotebookDifficulty(level)}
+                    onClick={() => setNotebookDifficulty(isSelected ? undefined : level)}
                     style={{
                       padding: "3px 10px",
                       fontSize: "12px",

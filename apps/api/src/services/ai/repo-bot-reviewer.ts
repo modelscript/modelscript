@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { Context } from "@modelscript/modelica";
+import { Variability } from "@modelscript/runtime";
 import type { LibraryDatabase } from "../../database.js";
+import { NodeFileSystem } from "../../util/filesystem.js";
+import { ensureSyncModelicaParser } from "../studies/study-execution-service.js";
 import { createDefaultLLMProvider, OpenAICompatibleProvider, type LLMMessage, type LLMProvider } from "./llm-client.js";
 
 export interface RepoReviewRequest {
@@ -46,14 +50,14 @@ export class RepoBotReviewer {
       throw new Error(`Bot @${bot.username} lacks required scopes ('social:write' or 'modelica:validate')`);
     }
 
-    // Static Modelica heuristic check
     const issues: { severity: "error" | "warning" | "info"; message: string; file?: string; line?: number }[] = [];
     const fullCode = (req.diffContent || "") + (req.files ? req.files.map((f) => f.content).join("\n") : "");
 
-    // Check for unbalanced model/end
+    // Check for unbalanced model/end blocks
     const modelMatches = fullCode.match(/\bmodel\s+([a-zA-Z0-9_]+)/g) || [];
     const endMatches = fullCode.match(/\bend\s+([a-zA-Z0-9_]+);/g) || [];
-    if (modelMatches.length !== endMatches.length) {
+    const hasUnbalancedModelEnd = modelMatches.length !== endMatches.length;
+    if (hasUnbalancedModelEnd) {
       issues.push({
         severity: "warning",
         message: `Mismatched 'model' (${modelMatches.length}) and 'end' (${endMatches.length}) statements detected.`,
@@ -66,6 +70,94 @@ export class RepoBotReviewer {
         severity: "info",
         message: "Model contains no 'equation' or 'algorithm' section.",
       });
+    }
+
+    // Parse and validate Modelica files/snippets using @modelscript/modelica WASM parser and DAE flattener
+    const candidateFiles: { path: string; content: string }[] = [];
+    if (req.files && req.files.length > 0) {
+      for (const f of req.files) {
+        if (f.path.endsWith(".mo") || /\b(?:model|class|block|connector|record|function|package)\s+/.test(f.content)) {
+          candidateFiles.push(f);
+        }
+      }
+    } else if (
+      fullCode.trim().length > 0 &&
+      /\b(?:model|class|block|connector|record|function|package)\s+/.test(fullCode)
+    ) {
+      candidateFiles.push({ path: "review_diff.mo", content: fullCode });
+    }
+
+    if (candidateFiles.length > 0) {
+      try {
+        ensureSyncModelicaParser();
+        for (const file of candidateFiles) {
+          const ctx = Context.createBatch(new NodeFileSystem(), { loadStdlib: false });
+          const tree = ctx.load(file.content, file.path);
+          interface SyntaxNodeLike {
+            hasError?: () => boolean;
+            type?: string;
+            isMissing?: () => boolean;
+            startPosition?: { row: number };
+            children?: SyntaxNodeLike[];
+          }
+          const rootNode = tree?.rootNode as unknown as SyntaxNodeLike | undefined;
+
+          if (rootNode && typeof rootNode.hasError === "function" && rootNode.hasError()) {
+            // Find the first syntax error node line
+            let errLine = (rootNode.startPosition?.row ?? 0) + 1;
+            const walkForErr = (node: SyntaxNodeLike | undefined): boolean => {
+              if (!node) return false;
+              if (node.type === "ERROR" || (typeof node.isMissing === "function" && node.isMissing())) {
+                errLine = (node.startPosition?.row ?? 0) + 1;
+                return true;
+              }
+              const children = node.children;
+              if (Array.isArray(children)) {
+                for (const ch of children) {
+                  if (walkForErr(ch)) return true;
+                }
+              }
+              return false;
+            };
+            walkForErr(rootNode);
+
+            issues.push({
+              severity: hasUnbalancedModelEnd ? "warning" : "error",
+              message: `Modelica syntax error detected by WASM parser at line ${errLine}.`,
+              file: file.path,
+              line: errLine,
+            });
+          } else {
+            // Flatten top-level classes and check DAE structural balance
+            for (const cls of ctx.classes) {
+              if (!cls?.name) continue;
+              const arena = ctx.flattenArena(cls.name);
+              if (arena) {
+                let unknownCount = 0;
+                for (let i = 0; i < arena.varCount; i++) {
+                  if (arena.isVarRemoved(i)) continue;
+                  const v = arena.getVarVariability(i);
+                  if (v !== Variability.Parameter && v !== Variability.Constant) {
+                    const name = arena.getVarName(i);
+                    if (name && !name.startsWith("der(") && !name.startsWith("_")) {
+                      unknownCount++;
+                    }
+                  }
+                }
+                if (unknownCount > 0 && arena.eqCount > 0 && unknownCount !== arena.eqCount) {
+                  issues.push({
+                    severity: "warning",
+                    message: `Class '${cls.name}' has ${unknownCount} continuous/discrete variable(s) and ${arena.eqCount} equation(s) (unbalanced DAE).`,
+                    file: file.path,
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Non-fatal if diff contains unified diff markers rather than standalone Modelica source
+      }
     }
 
     // Determine LLM provider (custom BYOK or instance default)

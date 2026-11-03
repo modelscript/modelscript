@@ -47,6 +47,7 @@ export interface UseComposeSubmitParams {
   contentWarning: string;
   setContentWarning: (val: string) => void;
   setShowContentWarning: (val: boolean) => void;
+  visibility?: "public" | "unlisted" | "followers" | "direct" | undefined;
   replyVisibility: "everyone" | "following" | "mentioned";
   quotePost?: any;
   replyToPost?: any;
@@ -84,6 +85,7 @@ export function useComposeSubmit({
   contentWarning,
   setContentWarning,
   setShowContentWarning,
+  visibility = "public",
   replyVisibility,
   quotePost,
   replyToPost,
@@ -225,6 +227,7 @@ export function useComposeSubmit({
         artifact_view_id: primaryArtifactId,
         quote_post_id: quotePost?.id,
         reply_to_id: replyToPost?.id,
+        visibility,
         reply_visibility: replyVisibility,
         ...(excludedList ? { excluded_mentions: excludedList } : {}),
         ...(notebookPayload ? { notebook: notebookPayload } : {}),

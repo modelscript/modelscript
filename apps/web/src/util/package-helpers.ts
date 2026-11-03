@@ -198,7 +198,7 @@ export function inspectPackageZip(zipData: Uint8Array): ExtractedZipMetadata {
   return result;
 }
 
-export type SortOption = "downloads" | "recent" | "name";
+export type SortOption = "recommended" | "downloads" | "dependents" | "recent" | "name";
 
 export function filterAndSortLibraries(
   libraries: LibraryListItem[],
@@ -230,7 +230,23 @@ export function filterAndSortLibraries(
   });
 
   return [...filtered].sort((a, b) => {
-    if (options.sortBy === "downloads") {
+    if (options.sortBy === "recommended") {
+      const scoreDiff = (b.recommendationScore ?? 0) - (a.recommendationScore ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      const dl30Diff = (b.downloads30d ?? 0) - (a.downloads30d ?? 0);
+      if (dl30Diff !== 0) return dl30Diff;
+      const depDiff = (b.dependentsCount ?? 0) - (a.dependentsCount ?? 0);
+      if (depDiff !== 0) return depDiff;
+      const dlTotalDiff = (b.totalDownloads ?? 0) - (a.totalDownloads ?? 0);
+      if (dlTotalDiff !== 0) return dlTotalDiff;
+    } else if (options.sortBy === "downloads") {
+      const diff = (b.totalDownloads ?? 0) - (a.totalDownloads ?? 0);
+      if (diff !== 0) return diff;
+      const dl30Diff = (b.downloads30d ?? 0) - (a.downloads30d ?? 0);
+      if (dl30Diff !== 0) return dl30Diff;
+    } else if (options.sortBy === "dependents") {
+      const depDiff = (b.dependentsCount ?? 0) - (a.dependentsCount ?? 0);
+      if (depDiff !== 0) return depDiff;
       const diff = (b.totalDownloads ?? 0) - (a.totalDownloads ?? 0);
       if (diff !== 0) return diff;
     } else if (options.sortBy === "recent") {

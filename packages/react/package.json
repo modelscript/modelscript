@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/react",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "description": "ModelScript & Ansatz React SDK & Widgets — engineering UI primitives, WebAssembly solver hooks, and IDE bridges",
   "keywords": [
     "modelscript",

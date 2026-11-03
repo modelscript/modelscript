@@ -68,13 +68,22 @@ test("Sandbox WebWorker Protocol & Parser Runner", async (t) => {
     const diagnostics = successMsg.result.diagnostics;
     assert.ok(Array.isArray(diagnostics));
 
-    // Verify rules triggered by worker heuristics
-    const hasAlgebraicLoop = diagnostics.some((d: any) => d.code === "M7202");
-    const hasUnconnectedPort = diagnostics.some((d: any) => d.code === "M7201");
-    const hasMissingIC = diagnostics.some((d: any) => d.code === "M7210");
+    // Verify rules triggered by worker heuristics with real extracted block names and spans
+    const algLoopDiag = diagnostics.find((d: any) => d.code === "M7202");
+    const unconnPortDiag = diagnostics.find((d: any) => d.code === "M7201");
+    const missingIcDiag = diagnostics.find((d: any) => d.code === "M7210");
 
-    assert.strictEqual(hasAlgebraicLoop, true, "Should detect M7202 algebraic loop");
-    assert.strictEqual(hasUnconnectedPort, true, "Should detect M7201 unconnected port");
-    assert.strictEqual(hasMissingIC, true, "Should detect M7210 missing initial condition");
+    assert.ok(algLoopDiag, "Should detect M7202 algebraic loop");
+    assert.strictEqual(algLoopDiag.blockName, "DirectFeedthrough_Gain");
+    assert.strictEqual(typeof algLoopDiag.line, "number");
+    assert.ok(algLoopDiag.line >= 2);
+
+    assert.ok(unconnPortDiag, "Should detect M7201 unconnected port");
+    assert.strictEqual(unconnPortDiag.blockName, "Unconnected_Port");
+    assert.ok(unconnPortDiag.line >= 4);
+
+    assert.ok(missingIcDiag, "Should detect M7210 missing initial condition");
+    assert.strictEqual(missingIcDiag.blockName, "Integrator_Without_IC");
+    assert.ok(missingIcDiag.line >= 3);
   });
 });

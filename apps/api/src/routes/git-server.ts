@@ -272,6 +272,37 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     return user;
   }
 
+  function checkRepoReadAccess(req: Request, res: Response, namespace: string, project: string): boolean {
+    const ownerUser = database.getUserByUsername(namespace);
+    if (!ownerUser) return true;
+    const cleanNsLower = namespace.trim().toLowerCase();
+    const cleanProjLower = project
+      .trim()
+      .replace(/\.git$/i, "")
+      .toLowerCase();
+    const matchedRepo = database.getUserRepos(ownerUser.id).find((r) => {
+      const rProj = (r.project || "").replace(/\.git$/i, "").toLowerCase();
+      const rFull = `${r.namespace || ""}/${r.project || ""}`.replace(/\.git$/i, "").toLowerCase();
+      return rProj === cleanProjLower || rFull === `${cleanNsLower}/${cleanProjLower}`;
+    });
+    const vis = (matchedRepo as { visibility?: string | undefined } | undefined)?.visibility;
+    if (vis !== "private" && vis !== "internal") {
+      return true;
+    }
+    const { user } = authenticate(req);
+    if (!user) {
+      res.setHeader("WWW-Authenticate", `Basic realm="${database.getInstanceSettings().instanceName || "Ansatz"} Git"`);
+      res.status(401).send("Authentication required to access private repository");
+      return false;
+    }
+    const isAdmin = user.account_type === "admin" || (user as { role?: string | undefined }).role === "admin";
+    if (vis === "private" && user.id !== ownerUser.id && !isAdmin) {
+      res.status(403).send("Forbidden: Repository is private");
+      return false;
+    }
+    return true;
+  }
+
   /**
    * GET /:namespace/:project/info/refs
    * Git Smart HTTP reference discovery
@@ -351,6 +382,9 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
         res.status(404).send("Repository not found");
         return;
       }
+      if (!checkRepoReadAccess(req, res, namespace, project)) {
+        return;
+      }
     }
 
     res.setHeader("Content-Type", `application/x-${service}-advertisement`);
@@ -419,6 +453,10 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
 
     if (!repoPath || !fs.existsSync(repoPath)) {
       res.status(404).send("Repository not found");
+      return;
+    }
+
+    if (!checkRepoReadAccess(req, res, namespace, project)) {
       return;
     }
 

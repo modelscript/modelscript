@@ -70,6 +70,24 @@ body {
   -webkit-backdrop-filter: saturate(160%) blur(14px);
 }
 
+/* ───────────────────────── Top-Left Navbar 'Beta' Badge ───────────────────────── */
+.ms-nav-beta-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 7px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--ms-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--ms-brand) 30%, transparent);
+  color: var(--vp-c-brand-1, var(--ms-brand));
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
 /* ───────────────────────── Highlighted 'Ansatz' Pill CTA in Top Navbar ───────────────────────── */
 .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] {
   display: inline-flex !important;
@@ -404,6 +422,36 @@ body {
   overflow: visible !important;
 }
 
+/* Override VitePress's negative mobile/tablet image margins so the 3D turbine
+   and its bottom toolbar never collide with the hero heading below it */
+@media (max-width: 959px) {
+  .VPHero .image {
+    margin: -16px auto 24px !important;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .VPHero .image-container {
+    width: 100% !important;
+    max-width: 520px !important;
+    height: 380px !important;
+    transform: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .VPHero .image {
+    margin: -12px auto 20px !important;
+  }
+
+  .VPHero .image-container {
+    max-width: 100% !important;
+    height: 320px !important;
+  }
+}
+
 /* Align Hero and Feature content with Header Navbar */
 @media (min-width: 960px) {
   .VPHero {
@@ -464,7 +512,8 @@ body {
 
 @media (max-width: 959px) {
   .turbine-ssr-fallback {
-    height: 440px;
+    height: 380px;
+    min-height: 340px;
   }
   .turbine-ssr-fallback .fallback-img {
     max-height: 260px;
@@ -473,7 +522,8 @@ body {
 
 @media (max-width: 640px) {
   .turbine-ssr-fallback {
-    height: 360px;
+    height: 320px;
+    min-height: 280px;
   }
   .turbine-ssr-fallback .fallback-img {
     max-height: 200px;

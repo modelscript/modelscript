@@ -36,18 +36,49 @@ export async function seedInitialAdmin(
   database: LibraryDatabase,
   options?: AdminSeedOptions,
 ): Promise<AdminSeedResult> {
-  if (database.hasAdminUser()) {
-    return {
-      created: false,
-      username: "admin",
-      email: "admin@modelscript.org",
-    };
-  }
-
   const username = options?.username || process.env["ADMIN_INIT_USERNAME"] || "admin";
   const email = options?.email || process.env["ADMIN_INIT_EMAIL"] || "admin@modelscript.org";
   const envPassword = options?.password || process.env["ADMIN_INIT_PASSWORD"];
   const presetKey = options?.preset || process.env["DEPLOYMENT_PRESET"] || process.env["MSX_SETUP_PRESET"];
+
+  if (database.hasAdminUser()) {
+    if (envPassword && envPassword.trim().length > 0) {
+      const existingAdmin = database.getUserByUsername(username) || database.getUserByEmail(email);
+      if (existingAdmin) {
+        if (existingAdmin.account_type !== "admin") {
+          database.setUserAccountType(existingAdmin.id, "admin");
+        }
+        const alreadyMatches = existingAdmin.password_hash
+          ? await bcrypt.compare(envPassword, existingAdmin.password_hash)
+          : false;
+        if (!alreadyMatches) {
+          const passwordHash = await bcrypt.hash(envPassword, 10);
+          database.updatePassword(existingAdmin.id, passwordHash);
+          database.logAudit({
+            actorId: existingAdmin.id,
+            action: "admin_password_synced_from_env",
+            resourceType: "user",
+            resourceId: existingAdmin.username,
+            details: {
+              username: existingAdmin.username,
+              email: existingAdmin.email,
+              note: "Administrator password synchronized from ADMIN_INIT_PASSWORD environment variable",
+            },
+          });
+        }
+        return {
+          created: false,
+          username: existingAdmin.username,
+          email: existingAdmin.email,
+        };
+      }
+    }
+    return {
+      created: false,
+      username,
+      email,
+    };
+  }
 
   let generatedPassword: string | undefined;
   let finalPassword = envPassword;
@@ -65,6 +96,7 @@ export async function seedInitialAdmin(
   const existingUser = database.getUserByUsername(username);
   if (existingUser) {
     database.setUserAccountType(existingUser.id, "admin");
+    database.updatePassword(existingUser.id, passwordHash);
     adminUserId = existingUser.id;
   } else {
     const createdUser = database.createUser(username, email, passwordHash, {

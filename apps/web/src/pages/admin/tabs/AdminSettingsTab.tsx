@@ -1,13 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, CopyIcon, DownloadIcon, KeyIcon, PlusIcon, TrashIcon } from "@primer/octicons-react";
-import React, { useEffect, useState } from "react";
-import { exportInstanceEnvConfig } from "../../../api";
+import {
+  CheckIcon,
+  CopyIcon,
+  DownloadIcon,
+  EyeIcon,
+  KeyIcon,
+  LawIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@primer/octicons-react";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  createAdminInstanceRule,
+  deleteAdminInstanceRule,
+  exportInstanceEnvConfig,
+  getAdminInstanceRules,
+  updateAdminInstanceRule,
+  type AdminInstanceRule,
+} from "../../../api";
 import AnsatzMark from "../../../components/AnsatzLogo";
 import Box from "../../../components/Box";
 import { notifyInstanceBrandingUpdated } from "../../../InstanceBrandingContext";
+import {
+  DEFAULT_INSTANCE_RULES,
+  getDefaultCookiesTemplate,
+  getDefaultPrivacyTemplate,
+  getDefaultTermsTemplate,
+  interpolateLegalMarkdown,
+  LegalMarkdownRenderer,
+} from "../../legal/LegalLayout";
 import { AdminEmailStudioCard } from "../components/AdminEmailStudioCard";
-import { ActionButton, Badge, Card, Input, Select, Table, Textarea } from "../styles";
+import { ActionButton, Badge, Card, FilterPill, Input, Select, Table, Textarea } from "../styles";
 import type { AdminInstanceInvite, AdminInstanceSettings } from "../types";
 
 export interface AdminSettingsTabProps {
@@ -25,6 +49,7 @@ export interface AdminSettingsTabProps {
     expiresInDays?: number | undefined;
     assignedRole?: string | undefined;
     initialCredits?: number | undefined;
+    recipientEmail?: string | undefined;
   }) => Promise<void>;
   onRevokeInvite: (id: number) => Promise<void>;
   loading: boolean;
@@ -103,17 +128,136 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
   const [requireAdmin2FA, setRequireAdmin2FA] = useState<boolean>(Boolean(settings?.requireAdmin2FA));
   const [customTermsMarkdown, setCustomTermsMarkdown] = useState(settings?.customTermsMarkdown || "");
   const [customPrivacyMarkdown, setCustomPrivacyMarkdown] = useState(settings?.customPrivacyMarkdown || "");
+  const [customCookiesMarkdown, setCustomCookiesMarkdown] = useState(settings?.customCookiesMarkdown || "");
+  const [legalPolicyMode, setLegalPolicyMode] = useState<"append" | "override">(
+    settings?.legalPolicyMode === "override" ? "override" : "append",
+  );
+  const [legalJurisdiction, setLegalJurisdiction] = useState(settings?.legalJurisdiction || "");
+  const [legalEffectiveDate, setLegalEffectiveDate] = useState(settings?.legalEffectiveDate || "");
+  const [legalPreviewDoc, setLegalPreviewDoc] = useState<"terms" | "privacy" | "cookies" | null>(null);
+
+  // OAuth 2.0 Social Login state
+  const [githubClientId, setGithubClientId] = useState(settings?.githubClientId || "");
+  const [githubClientSecret, setGithubClientSecret] = useState("");
+  const [clearGithubClientSecret, setClearGithubClientSecret] = useState(false);
+  const [gitlabClientId, setGitlabClientId] = useState(settings?.gitlabClientId || "");
+  const [gitlabClientSecret, setGitlabClientSecret] = useState("");
+  const [clearGitlabClientSecret, setClearGitlabClientSecret] = useState(false);
+  const [gitlabUrl, setGitlabUrl] = useState(settings?.gitlabUrl || "https://gitlab.com");
+  const [copiedCallbackProvider, setCopiedCallbackProvider] = useState<"github" | "gitlab" | null>(null);
+
+  // Numbered Server Rules state
+  const [instanceRules, setInstanceRules] = useState<AdminInstanceRule[]>([]);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [newRuleText, setNewRuleText] = useState("");
+  const [newRuleHint, setNewRuleHint] = useState("");
+  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [editingRuleText, setEditingRuleText] = useState("");
+  const [editingRuleHint, setEditingRuleHint] = useState("");
 
   // Config export state
   const [exportedEnv, setExportedEnv] = useState<{ envSnippet: string; dockerComposeSnippet: string } | null>(null);
 
   // Invite creation state
+  const [inviteRecipientEmail, setInviteRecipientEmail] = useState("");
   const [inviteNote, setInviteNote] = useState("");
   const [inviteMaxUses, setInviteMaxUses] = useState("5");
   const [inviteExpiresInDays, setInviteExpiresInDays] = useState("14");
   const [inviteRole, setInviteRole] = useState("user");
   const [inviteCredits, setInviteCredits] = useState("500");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const loadRules = useCallback(async () => {
+    try {
+      const res = await getAdminInstanceRules();
+      if (Array.isArray(res.rules)) {
+        setInstanceRules(res.rules);
+      }
+    } catch {
+      // Ignore in offline/mock test environments
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRules();
+  }, [loadRules]);
+
+  const handleAddRule = async () => {
+    if (!newRuleText.trim()) return;
+    setRulesLoading(true);
+    try {
+      const res = await createAdminInstanceRule({
+        text: newRuleText.trim(),
+        hint: newRuleHint.trim() || null,
+        priority: instanceRules.length + 1,
+      });
+      const next = [...instanceRules, res.rule];
+      setInstanceRules(next);
+      setNewRuleText("");
+      setNewRuleHint("");
+      notifyInstanceBrandingUpdated({ rules: next });
+    } catch {
+      // Ignore
+    } finally {
+      setRulesLoading(false);
+    }
+  };
+
+  const handleSaveEditRule = async (id: number) => {
+    if (!editingRuleText.trim()) return;
+    setRulesLoading(true);
+    try {
+      const res = await updateAdminInstanceRule(id, {
+        text: editingRuleText.trim(),
+        hint: editingRuleHint.trim() || null,
+      });
+      const next = instanceRules.map((r) => (r.id === id ? res.rule : r));
+      setInstanceRules(next);
+      setEditingRuleId(null);
+      notifyInstanceBrandingUpdated({ rules: next });
+    } catch {
+      // Ignore
+    } finally {
+      setRulesLoading(false);
+    }
+  };
+
+  const handleDeleteRule = async (id: number) => {
+    setRulesLoading(true);
+    try {
+      await deleteAdminInstanceRule(id);
+      const next = instanceRules.filter((r) => r.id !== id);
+      setInstanceRules(next);
+      notifyInstanceBrandingUpdated({ rules: next });
+    } catch {
+      // Ignore
+    } finally {
+      setRulesLoading(false);
+    }
+  };
+
+  const handleSeedDefaultRules = async () => {
+    setRulesLoading(true);
+    try {
+      const created: AdminInstanceRule[] = [...instanceRules];
+      for (let i = 0; i < DEFAULT_INSTANCE_RULES.length; i++) {
+        const tmpl = DEFAULT_INSTANCE_RULES[i]!;
+        if (created.some((r) => r.text.toLowerCase() === tmpl.text.toLowerCase())) continue;
+        const res = await createAdminInstanceRule({
+          text: tmpl.text,
+          hint: tmpl.hint,
+          priority: created.length + 1,
+        });
+        created.push(res.rule);
+      }
+      setInstanceRules(created);
+      notifyInstanceBrandingUpdated({ rules: created });
+    } catch {
+      // Ignore
+    } finally {
+      setRulesLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!settings) return;
@@ -151,6 +295,17 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
     setRequireAdmin2FA(Boolean(settings.requireAdmin2FA));
     setCustomTermsMarkdown(settings.customTermsMarkdown || "");
     setCustomPrivacyMarkdown(settings.customPrivacyMarkdown || "");
+    setCustomCookiesMarkdown(settings.customCookiesMarkdown || "");
+    setLegalPolicyMode(settings.legalPolicyMode === "override" ? "override" : "append");
+    setLegalJurisdiction(settings.legalJurisdiction || "");
+    setLegalEffectiveDate(settings.legalEffectiveDate || "");
+    setGithubClientId(settings.githubClientId || "");
+    setGithubClientSecret("");
+    setClearGithubClientSecret(false);
+    setGitlabClientId(settings.gitlabClientId || "");
+    setGitlabClientSecret("");
+    setClearGitlabClientSecret(false);
+    setGitlabUrl(settings.gitlabUrl || "https://gitlab.com");
   }, [settings]);
 
   const handleSave = async () => {
@@ -199,8 +354,29 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
       requireAdmin2FA,
       customTermsMarkdown: customTermsMarkdown.trim(),
       customPrivacyMarkdown: customPrivacyMarkdown.trim(),
+      customCookiesMarkdown: customCookiesMarkdown.trim(),
+      legalPolicyMode,
+      legalJurisdiction: legalJurisdiction.trim(),
+      legalEffectiveDate: legalEffectiveDate.trim(),
+      githubClientId: githubClientId.trim(),
+      gitlabClientId: gitlabClientId.trim(),
+      gitlabUrl: (gitlabUrl.trim() || "https://gitlab.com").replace(/\/$/, ""),
     };
+    if (clearGithubClientSecret) {
+      patch.clearGithubClientSecret = true;
+    } else if (githubClientSecret.trim()) {
+      patch.githubClientSecret = githubClientSecret.trim();
+    }
+    if (clearGitlabClientSecret) {
+      patch.clearGitlabClientSecret = true;
+    } else if (gitlabClientSecret.trim()) {
+      patch.gitlabClientSecret = gitlabClientSecret.trim();
+    }
     await onSaveSettings(patch);
+    setGithubClientSecret("");
+    setClearGithubClientSecret(false);
+    setGitlabClientSecret("");
+    setClearGitlabClientSecret(false);
     notifyInstanceBrandingUpdated(patch);
   };
 
@@ -223,8 +399,10 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
       expiresInDays: Math.max(1, parseInt(inviteExpiresInDays, 10) || 14),
       assignedRole: inviteRole,
       initialCredits: Math.max(0, parseInt(inviteCredits, 10) || 0),
+      recipientEmail: inviteRecipientEmail.trim() || undefined,
     });
     setInviteNote("");
+    setInviteRecipientEmail("");
   };
 
   const handleCopyInviteLink = (code: string) => {
@@ -342,22 +520,20 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
                     display: "inline-block",
                   }}
                 />
-                {instanceBadge.trim() && (
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      padding: "1.5px 5px",
-                      borderRadius: "5px",
-                      background: "rgba(6, 182, 212, 0.14)",
-                      border: `1px solid ${brandAccentColor || "#06b6d4"}`,
-                      color: brandAccentColor || "#06b6d4",
-                    }}
-                  >
-                    {instanceBadge.trim()}
-                  </span>
-                )}
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    padding: "1.5px 5px",
+                    borderRadius: "5px",
+                    background: "rgba(6, 182, 212, 0.14)",
+                    border: `1px solid ${brandAccentColor || "#06b6d4"}`,
+                    color: brandAccentColor || "#06b6d4",
+                  }}
+                >
+                  {instanceBadge.trim() || "Beta"}
+                </span>
               </Box>
               <span
                 style={{
@@ -736,38 +912,646 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
         </Box>
       </Card>
 
-      {/* ── CUSTOM INSTANCE TERMS OF SERVICE & PRIVACY POLICY ── */}
-      <Card style={{ marginBottom: "24px" }}>
-        <span style={{ fontWeight: 700, fontSize: "14px" }}>
-          Custom Instance Legal &amp; Compliance Policies (Markdown)
-        </span>
-        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-          Optionally override or append instance-specific Terms of Service, Acceptable Use Policy, or corporate intranet
-          compliance notices.
-        </span>
-
-        <Box display="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }} mt={2}>
+      {/* ── OAUTH 2.0 SOCIAL LOGIN PROVIDERS (GITHUB & GITLAB) ── */}
+      <Card style={{ marginBottom: "24px" }} data-testid="admin-oauth-providers-card">
+        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
           <Box display="flex" flexDirection="column" gap={1}>
-            <label style={{ fontSize: "12px", fontWeight: 600 }}>Custom Terms of Service / AUP (Markdown)</label>
+            <Box display="flex" alignItems="center" gap={2}>
+              <KeyIcon size={16} />
+              <span style={{ fontWeight: 700, fontSize: "14px" }}>
+                OAuth 2.0 Social Login &amp; Git Forge Providers (GitHub &amp; GitLab)
+              </span>
+              <Badge
+                $variant={
+                  (githubClientId.trim() && (settings?.githubClientSecretConfigured || githubClientSecret.trim())) ||
+                  (gitlabClientId.trim() && (settings?.gitlabClientSecretConfigured || gitlabClientSecret.trim()))
+                    ? "success"
+                    : "neutral"
+                }
+              >
+                {githubClientId.trim() &&
+                (settings?.githubClientSecretConfigured || githubClientSecret.trim()) &&
+                gitlabClientId.trim() &&
+                (settings?.gitlabClientSecretConfigured || gitlabClientSecret.trim())
+                  ? "GitHub + GitLab Active"
+                  : githubClientId.trim() && (settings?.githubClientSecretConfigured || githubClientSecret.trim())
+                    ? "GitHub Active"
+                    : gitlabClientId.trim() && (settings?.gitlabClientSecretConfigured || gitlabClientSecret.trim())
+                      ? "GitLab Active"
+                      : "Unconfigured"}
+              </Badge>
+            </Box>
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+              Configure OAuth 2.0 Client IDs and Client Secrets for one-click Sign In with GitHub and GitLab. Secrets
+              are encrypted at rest using AES-256-GCM or can be locked declaratively via <code>GITHUB_CLIENT_ID</code> /{" "}
+              <code>GITLAB_CLIENT_ID</code> environment variables.
+            </span>
+          </Box>
+          <ActionButton
+            $variant="primary"
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={loading}
+            data-testid="save-oauth-settings-btn"
+          >
+            <CheckIcon size={13} />
+            <span>Save OAuth Credentials</span>
+          </ActionButton>
+        </Box>
+
+        <Box display="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }} mt={3}>
+          {/* GitHub OAuth Panel */}
+          <Box
+            p={3}
+            style={{
+              borderRadius: "10px",
+              border: "1px solid var(--color-border-primary)",
+              background: "var(--color-bg-secondary)",
+            }}
+          >
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Box display="flex" alignItems="center" gap={2}>
+                <span style={{ fontWeight: 700, fontSize: "13px" }}>GitHub OAuth App</span>
+                {settings?.lockedByEnv?.includes("githubClientId") && <Badge $variant="info">Locked by ENV</Badge>}
+              </Box>
+              <Badge
+                $variant={
+                  githubClientId.trim() && (settings?.githubClientSecretConfigured || githubClientSecret.trim())
+                    ? "success"
+                    : "warning"
+                }
+              >
+                {githubClientId.trim() && (settings?.githubClientSecretConfigured || githubClientSecret.trim())
+                  ? "Configured"
+                  : "Not Configured"}
+              </Badge>
+            </Box>
+
+            <Box display="flex" flexDirection="column" gap={2}>
+              <Box display="flex" flexDirection="column" gap={1}>
+                <label style={{ fontSize: "12px", fontWeight: 600 }}>GitHub Client ID</label>
+                <Input
+                  aria-label="GitHub Client ID"
+                  placeholder="Ov23li... or Iv1...."
+                  value={githubClientId}
+                  disabled={Boolean(settings?.lockedByEnv?.includes("githubClientId"))}
+                  onChange={(e) => setGithubClientId(e.target.value)}
+                  data-testid="oauth-github-client-id-input"
+                />
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={1}>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <label style={{ fontSize: "12px", fontWeight: 600 }}>GitHub Client Secret</label>
+                  {settings?.githubClientSecretConfigured && !clearGithubClientSecret && (
+                    <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                      Stored: <code>{settings.githubClientSecretMasked || "••••••••"}</code>
+                    </span>
+                  )}
+                </Box>
+                <Box display="flex" gap={2} alignItems="center">
+                  <Input
+                    aria-label="GitHub Client Secret"
+                    type="password"
+                    placeholder={
+                      settings?.githubClientSecretConfigured && !clearGithubClientSecret
+                        ? "Leave blank to keep stored secret, or enter new secret"
+                        : "Enter GitHub OAuth Client Secret"
+                    }
+                    value={githubClientSecret}
+                    disabled={Boolean(settings?.lockedByEnv?.includes("githubClientSecret"))}
+                    onChange={(e) => {
+                      setGithubClientSecret(e.target.value);
+                      if (e.target.value) setClearGithubClientSecret(false);
+                    }}
+                    data-testid="oauth-github-client-secret-input"
+                  />
+                  {settings?.githubClientSecretConfigured && !settings?.lockedByEnv?.includes("githubClientSecret") && (
+                    <ActionButton
+                      type="button"
+                      $variant={clearGithubClientSecret ? "danger" : "secondary"}
+                      onClick={() => {
+                        setClearGithubClientSecret(!clearGithubClientSecret);
+                        setGithubClientSecret("");
+                      }}
+                      title="Clear stored GitHub Client Secret on next save"
+                    >
+                      <TrashIcon size={12} />
+                      <span>{clearGithubClientSecret ? "Will Clear" : "Clear"}</span>
+                    </ActionButton>
+                  )}
+                </Box>
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={1} mt={1}>
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--color-text-muted)" }}>
+                  Authorization Callback URL (GitHub → Settings → Developer settings → OAuth Apps):
+                </span>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <code
+                    style={{
+                      flex: 1,
+                      padding: "6px 8px",
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      background: "var(--color-bg-primary)",
+                      border: "1px solid var(--color-border-primary)",
+                      overflowX: "auto",
+                    }}
+                  >
+                    {`${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/api/v1/auth/callback/github`}
+                  </code>
+                  <ActionButton
+                    type="button"
+                    $variant="secondary"
+                    onClick={() => {
+                      const url = `${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/api/v1/auth/callback/github`;
+                      if (typeof navigator !== "undefined" && navigator.clipboard) {
+                        void navigator.clipboard.writeText(url);
+                      }
+                      setCopiedCallbackProvider("github");
+                      setTimeout(() => setCopiedCallbackProvider(null), 2000);
+                    }}
+                  >
+                    {copiedCallbackProvider === "github" ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                    <span>{copiedCallbackProvider === "github" ? "Copied" : "Copy"}</span>
+                  </ActionButton>
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+
+          {/* GitLab OAuth Panel */}
+          <Box
+            p={3}
+            style={{
+              borderRadius: "10px",
+              border: "1px solid var(--color-border-primary)",
+              background: "var(--color-bg-secondary)",
+            }}
+          >
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Box display="flex" alignItems="center" gap={2}>
+                <span style={{ fontWeight: 700, fontSize: "13px" }}>GitLab OAuth Application</span>
+                {settings?.lockedByEnv?.includes("gitlabClientId") && <Badge $variant="info">Locked by ENV</Badge>}
+              </Box>
+              <Badge
+                $variant={
+                  gitlabClientId.trim() && (settings?.gitlabClientSecretConfigured || gitlabClientSecret.trim())
+                    ? "success"
+                    : "warning"
+                }
+              >
+                {gitlabClientId.trim() && (settings?.gitlabClientSecretConfigured || gitlabClientSecret.trim())
+                  ? "Configured"
+                  : "Not Configured"}
+              </Badge>
+            </Box>
+
+            <Box display="flex" flexDirection="column" gap={2}>
+              <Box display="flex" flexDirection="column" gap={1}>
+                <label style={{ fontSize: "12px", fontWeight: 600 }}>GitLab Application ID (Client ID)</label>
+                <Input
+                  aria-label="GitLab Client ID"
+                  placeholder="Enter GitLab Application ID"
+                  value={gitlabClientId}
+                  disabled={Boolean(settings?.lockedByEnv?.includes("gitlabClientId"))}
+                  onChange={(e) => setGitlabClientId(e.target.value)}
+                  data-testid="oauth-gitlab-client-id-input"
+                />
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={1}>
+                <Box display="flex" justifyContent="space-between" alignItems="center">
+                  <label style={{ fontSize: "12px", fontWeight: 600 }}>GitLab Client Secret</label>
+                  {settings?.gitlabClientSecretConfigured && !clearGitlabClientSecret && (
+                    <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                      Stored: <code>{settings.gitlabClientSecretMasked || "••••••••"}</code>
+                    </span>
+                  )}
+                </Box>
+                <Box display="flex" gap={2} alignItems="center">
+                  <Input
+                    aria-label="GitLab Client Secret"
+                    type="password"
+                    placeholder={
+                      settings?.gitlabClientSecretConfigured && !clearGitlabClientSecret
+                        ? "Leave blank to keep stored secret, or enter new secret"
+                        : "Enter GitLab OAuth Secret (gloas-...)"
+                    }
+                    value={gitlabClientSecret}
+                    disabled={Boolean(settings?.lockedByEnv?.includes("gitlabClientSecret"))}
+                    onChange={(e) => {
+                      setGitlabClientSecret(e.target.value);
+                      if (e.target.value) setClearGitlabClientSecret(false);
+                    }}
+                    data-testid="oauth-gitlab-client-secret-input"
+                  />
+                  {settings?.gitlabClientSecretConfigured && !settings?.lockedByEnv?.includes("gitlabClientSecret") && (
+                    <ActionButton
+                      type="button"
+                      $variant={clearGitlabClientSecret ? "danger" : "secondary"}
+                      onClick={() => {
+                        setClearGitlabClientSecret(!clearGitlabClientSecret);
+                        setGitlabClientSecret("");
+                      }}
+                      title="Clear stored GitLab Client Secret on next save"
+                    >
+                      <TrashIcon size={12} />
+                      <span>{clearGitlabClientSecret ? "Will Clear" : "Clear"}</span>
+                    </ActionButton>
+                  )}
+                </Box>
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={1}>
+                <label style={{ fontSize: "12px", fontWeight: 600 }}>GitLab Instance Base URL</label>
+                <Input
+                  aria-label="GitLab Base URL"
+                  placeholder="https://gitlab.com"
+                  value={gitlabUrl}
+                  disabled={Boolean(settings?.lockedByEnv?.includes("gitlabUrl"))}
+                  onChange={(e) => setGitlabUrl(e.target.value)}
+                  data-testid="oauth-gitlab-url-input"
+                />
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={1} mt={1}>
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--color-text-muted)" }}>
+                  Redirect URI (GitLab → User Settings → Applications, Scopes: <code>read_user</code>):
+                </span>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <code
+                    style={{
+                      flex: 1,
+                      padding: "6px 8px",
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      background: "var(--color-bg-primary)",
+                      border: "1px solid var(--color-border-primary)",
+                      overflowX: "auto",
+                    }}
+                  >
+                    {`${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/api/v1/auth/callback/gitlab`}
+                  </code>
+                  <ActionButton
+                    type="button"
+                    $variant="secondary"
+                    onClick={() => {
+                      const url = `${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/api/v1/auth/callback/gitlab`;
+                      if (typeof navigator !== "undefined" && navigator.clipboard) {
+                        void navigator.clipboard.writeText(url);
+                      }
+                      setCopiedCallbackProvider("gitlab");
+                      setTimeout(() => setCopiedCallbackProvider(null), 2000);
+                    }}
+                  >
+                    {copiedCallbackProvider === "gitlab" ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                    <span>{copiedCallbackProvider === "gitlab" ? "Copied" : "Copy"}</span>
+                  </ActionButton>
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Card>
+
+      {/* ── MASTODON-STYLE NUMBERED INSTANCE SERVER RULES ── */}
+      <Card style={{ marginBottom: "24px" }} data-testid="admin-instance-rules-card">
+        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+          <Box display="flex" flexDirection="column" gap={1}>
+            <Box display="flex" alignItems="center" gap={2}>
+              <LawIcon size={16} />
+              <span style={{ fontWeight: 700, fontSize: "14px" }}>
+                Numbered Instance Server Rules (Mastodon Governance Parity)
+              </span>
+              <Badge $variant="neutral">{instanceRules.length} configured</Badge>
+            </Box>
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+              Define numbered community and engineering rules displayed on <a href="/terms">/terms</a> and cited when
+              issuing moderation warnings or strikes.
+            </span>
+          </Box>
+          <ActionButton
+            $variant="secondary"
+            type="button"
+            onClick={() => void handleSeedDefaultRules()}
+            disabled={rulesLoading || loading}
+            data-testid="seed-default-rules-btn"
+          >
+            <PlusIcon size={13} />
+            <span>Seed Default Engineering &amp; Community Rules</span>
+          </ActionButton>
+        </Box>
+
+        <Box display="flex" gap={2} flexWrap="wrap" mt={2}>
+          <Input
+            aria-label="New Rule Title"
+            placeholder="Rule title (e.g. Cite simulation assumptions and solver tolerances)"
+            value={newRuleText}
+            onChange={(e) => setNewRuleText(e.target.value)}
+            style={{ flex: "1 1 240px" }}
+          />
+          <Input
+            aria-label="New Rule Hint"
+            placeholder="Optional explanation / hint..."
+            value={newRuleHint}
+            onChange={(e) => setNewRuleHint(e.target.value)}
+            style={{ flex: "2 1 320px" }}
+          />
+          <ActionButton
+            $variant="primary"
+            type="button"
+            onClick={() => void handleAddRule()}
+            disabled={rulesLoading || !newRuleText.trim()}
+            data-testid="add-instance-rule-btn"
+          >
+            <PlusIcon size={13} />
+            <span>Add Rule</span>
+          </ActionButton>
+        </Box>
+
+        {instanceRules.length > 0 && (
+          <Table style={{ marginTop: "12px" }}>
+            <thead>
+              <tr>
+                <th style={{ width: "48px" }}>#</th>
+                <th>Rule Text</th>
+                <th>Clarification Hint</th>
+                <th style={{ width: "160px" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {instanceRules.map((rule, idx) => (
+                <tr key={rule.id}>
+                  <td style={{ fontWeight: 700 }}>{idx + 1}</td>
+                  <td>
+                    {editingRuleId === rule.id ? (
+                      <Input
+                        aria-label="Edit Rule Text"
+                        value={editingRuleText}
+                        onChange={(e) => setEditingRuleText(e.target.value)}
+                      />
+                    ) : (
+                      <strong>{rule.text}</strong>
+                    )}
+                  </td>
+                  <td style={{ color: "var(--color-text-muted)", fontSize: "12px" }}>
+                    {editingRuleId === rule.id ? (
+                      <Input
+                        aria-label="Edit Rule Hint"
+                        value={editingRuleHint}
+                        onChange={(e) => setEditingRuleHint(e.target.value)}
+                      />
+                    ) : (
+                      rule.hint || "—"
+                    )}
+                  </td>
+                  <td>
+                    <Box display="flex" gap={1}>
+                      {editingRuleId === rule.id ? (
+                        <>
+                          <ActionButton
+                            $variant="primary"
+                            type="button"
+                            onClick={() => void handleSaveEditRule(rule.id)}
+                            disabled={rulesLoading}
+                          >
+                            Save
+                          </ActionButton>
+                          <ActionButton
+                            $variant="secondary"
+                            type="button"
+                            onClick={() => setEditingRuleId(null)}
+                            disabled={rulesLoading}
+                          >
+                            Cancel
+                          </ActionButton>
+                        </>
+                      ) : (
+                        <>
+                          <ActionButton
+                            $variant="secondary"
+                            type="button"
+                            onClick={() => {
+                              setEditingRuleId(rule.id);
+                              setEditingRuleText(rule.text);
+                              setEditingRuleHint(rule.hint || "");
+                            }}
+                            disabled={rulesLoading}
+                          >
+                            Edit
+                          </ActionButton>
+                          <ActionButton
+                            $variant="danger"
+                            type="button"
+                            onClick={() => void handleDeleteRule(rule.id)}
+                            disabled={rulesLoading}
+                          >
+                            <TrashIcon size={12} />
+                          </ActionButton>
+                        </>
+                      )}
+                    </Box>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </Card>
+
+      {/* ── CUSTOM INSTANCE TERMS, PRIVACY & COOKIE POLICY STUDIO ── */}
+      <Card style={{ marginBottom: "24px" }} data-testid="admin-legal-studio-card">
+        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+          <Box display="flex" flexDirection="column" gap={1}>
+            <span style={{ fontWeight: 700, fontSize: "14px" }}>
+              Custom Instance Legal &amp; Compliance Policies (Terms, Privacy &amp; Cookies Studio)
+            </span>
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+              Customize <a href="/terms">/terms</a>, <a href="/privacy">/privacy</a>, and{" "}
+              <a href="/cookies">/cookies</a>. Supports dynamic variables: <code>{"{{instanceName}}"}</code>,{" "}
+              <code>{"{{contactEmail}}"}</code>, <code>{"{{domain}}"}</code>, <code>{"{{jurisdiction}}"}</code>,{" "}
+              <code>{"{{effectiveDate}}"}</code>, <code>{"{{registrationMode}}"}</code>,{" "}
+              <code>{"{{federationMode}}"}</code>, <code>{"{{ingressMode}}"}</code>, and{" "}
+              <code>{"{{remoteRetentionDays}}"}</code>.
+            </span>
+          </Box>
+        </Box>
+
+        <Box display="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }} mt={2}>
+          <Box display="flex" flexDirection="column" gap={1}>
+            <label style={{ fontSize: "12px", fontWeight: 600 }}>Legal Customization Mode</label>
+            <Select
+              aria-label="Legal Customization Mode"
+              value={legalPolicyMode}
+              onChange={(e) => setLegalPolicyMode(e.target.value as "append" | "override")}
+            >
+              <option value="append">Addendum Mode (Highlight custom Markdown above platform baseline)</option>
+              <option value="override">Full Override Mode (Replace baseline document body with custom Markdown)</option>
+            </Select>
+          </Box>
+          <Box display="flex" flexDirection="column" gap={1}>
+            <label style={{ fontSize: "12px", fontWeight: 600 }}>Governing Jurisdiction / Legal Entity</label>
+            <Input
+              aria-label="Governing Jurisdiction"
+              value={legalJurisdiction}
+              onChange={(e) => setLegalJurisdiction(e.target.value)}
+              placeholder="e.g. State of Delaware, USA / European Union"
+            />
+          </Box>
+          <Box display="flex" flexDirection="column" gap={1}>
+            <label style={{ fontSize: "12px", fontWeight: 600 }}>Policy Effective Date Label</label>
+            <Input
+              aria-label="Policy Effective Date"
+              value={legalEffectiveDate}
+              onChange={(e) => setLegalEffectiveDate(e.target.value)}
+              placeholder="e.g. November 2026"
+            />
+          </Box>
+        </Box>
+
+        <Box display="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }} mt={3}>
+          <Box display="flex" flexDirection="column" gap={1}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={1}>
+              <label style={{ fontSize: "12px", fontWeight: 600 }}>Custom Terms of Service / AUP (Markdown)</label>
+              <Box display="flex" gap={1}>
+                <ActionButton
+                  $variant="secondary"
+                  type="button"
+                  onClick={() => setCustomTermsMarkdown(getDefaultTermsTemplate())}
+                  style={{ padding: "3px 8px", fontSize: "11px" }}
+                  data-testid="populate-default-terms-btn"
+                >
+                  Load Template
+                </ActionButton>
+                <FilterPill
+                  $active={legalPreviewDoc === "terms"}
+                  type="button"
+                  onClick={() => setLegalPreviewDoc(legalPreviewDoc === "terms" ? null : "terms")}
+                >
+                  <EyeIcon size={12} /> Preview
+                </FilterPill>
+              </Box>
+            </Box>
             <Textarea
               aria-label="Custom Terms of Service"
               value={customTermsMarkdown}
               onChange={(e) => setCustomTermsMarkdown(e.target.value)}
-              placeholder="# Instance Acceptable Use Policy..."
+              placeholder="# {{instanceName}} Acceptable Use Policy..."
+              style={{ minHeight: "120px" }}
             />
           </Box>
+
           <Box display="flex" flexDirection="column" gap={1}>
-            <label style={{ fontSize: "12px", fontWeight: 600 }}>
-              Custom Privacy &amp; Data Retention Policy (Markdown)
-            </label>
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={1}>
+              <label style={{ fontSize: "12px", fontWeight: 600 }}>
+                Custom Privacy &amp; Data Retention Policy (Markdown)
+              </label>
+              <Box display="flex" gap={1}>
+                <ActionButton
+                  $variant="secondary"
+                  type="button"
+                  onClick={() => setCustomPrivacyMarkdown(getDefaultPrivacyTemplate())}
+                  style={{ padding: "3px 8px", fontSize: "11px" }}
+                  data-testid="populate-default-privacy-btn"
+                >
+                  Load Template
+                </ActionButton>
+                <FilterPill
+                  $active={legalPreviewDoc === "privacy"}
+                  type="button"
+                  onClick={() => setLegalPreviewDoc(legalPreviewDoc === "privacy" ? null : "privacy")}
+                >
+                  <EyeIcon size={12} /> Preview
+                </FilterPill>
+              </Box>
+            </Box>
             <Textarea
               aria-label="Custom Privacy Policy"
               value={customPrivacyMarkdown}
               onChange={(e) => setCustomPrivacyMarkdown(e.target.value)}
-              placeholder="# Data Retention & Telemetry Policy..."
+              placeholder="# {{instanceName}} Data Retention & Telemetry Policy..."
+              style={{ minHeight: "120px" }}
+            />
+          </Box>
+
+          <Box display="flex" flexDirection="column" gap={1}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={1}>
+              <label style={{ fontSize: "12px", fontWeight: 600 }}>
+                Custom Cookie &amp; Local Storage Policy (Markdown)
+              </label>
+              <Box display="flex" gap={1}>
+                <ActionButton
+                  $variant="secondary"
+                  type="button"
+                  onClick={() => setCustomCookiesMarkdown(getDefaultCookiesTemplate())}
+                  style={{ padding: "3px 8px", fontSize: "11px" }}
+                  data-testid="populate-default-cookies-btn"
+                >
+                  Load Template
+                </ActionButton>
+                <FilterPill
+                  $active={legalPreviewDoc === "cookies"}
+                  type="button"
+                  onClick={() => setLegalPreviewDoc(legalPreviewDoc === "cookies" ? null : "cookies")}
+                >
+                  <EyeIcon size={12} /> Preview
+                </FilterPill>
+              </Box>
+            </Box>
+            <Textarea
+              aria-label="Custom Cookie Policy"
+              value={customCookiesMarkdown}
+              onChange={(e) => setCustomCookiesMarkdown(e.target.value)}
+              placeholder="# {{instanceName}} Cookie & Browser Storage Policy..."
+              style={{ minHeight: "120px" }}
             />
           </Box>
         </Box>
+
+        {legalPreviewDoc && (
+          <Box
+            mt={3}
+            p={3}
+            data-testid="admin-legal-live-preview"
+            style={{
+              borderRadius: "10px",
+              border: "1px solid var(--color-border-primary)",
+              background: "var(--color-bg-primary)",
+            }}
+          >
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <span style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase" }}>
+                Live Interpolated Preview ({legalPreviewDoc.toUpperCase()})
+              </span>
+              <ActionButton $variant="secondary" type="button" onClick={() => setLegalPreviewDoc(null)}>
+                Close Preview
+              </ActionButton>
+            </Box>
+            <LegalMarkdownRenderer
+              markdown={interpolateLegalMarkdown(
+                legalPreviewDoc === "terms"
+                  ? customTermsMarkdown || getDefaultTermsTemplate()
+                  : legalPreviewDoc === "privacy"
+                    ? customPrivacyMarkdown || getDefaultPrivacyTemplate()
+                    : customCookiesMarkdown || getDefaultCookiesTemplate(),
+                {
+                  instanceName,
+                  contactEmail,
+                  legalJurisdiction,
+                  legalEffectiveDate,
+                  registrationMode,
+                  federationMode,
+                  ingressMode: settings?.ingressMode || "direct",
+                  cloudflareTunnelConfigured: Boolean(settings?.cloudflareTunnelConfigured),
+                  remoteContentRetentionDays: settings?.remoteContentRetentionDays ?? 90,
+                  remoteMediaCacheRetentionDays: settings?.remoteMediaCacheRetentionDays ?? 30,
+                },
+              )}
+            />
+          </Box>
+        )}
       </Card>
 
       {/* ── MAINTENANCE MODE & GLOBAL BANNER ── */}
@@ -910,11 +1694,20 @@ export const AdminSettingsTab: React.FC<AdminSettingsTabProps> = ({
           </Box>
           <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
             <Input
+              aria-label="Invite Recipient Email"
+              type="email"
+              placeholder="Email to invite (optional)"
+              value={inviteRecipientEmail}
+              onChange={(e) => setInviteRecipientEmail(e.target.value)}
+              style={{ width: "180px", padding: "6px 10px", fontSize: "12px" }}
+              title="Optional: automatically sends an invitation email to this address"
+            />
+            <Input
               aria-label="Invite Note"
               placeholder="Note (e.g. Lab Team A)"
               value={inviteNote}
               onChange={(e) => setInviteNote(e.target.value)}
-              style={{ width: "160px", padding: "6px 10px", fontSize: "12px" }}
+              style={{ width: "150px", padding: "6px 10px", fontSize: "12px" }}
             />
             <Select
               aria-label="Assigned Role"

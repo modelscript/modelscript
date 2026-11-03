@@ -115,6 +115,24 @@ if (releaseWasmSrc && existsSync(releaseWasmSrc)) {
   console.warn("  Warning: release.wasm not found, BLT solver will be disabled");
 }
 
+// Ensure sundials.wasm and sundials.js (SUNDIALS CVODE solver) are copied
+for (const file of ["sundials.wasm", "sundials.js"]) {
+  const fileSrc = [
+    join(MODELSCRIPT_EXT_DIR, "server", "dist", file),
+    join(MODELSCRIPT_EXT_DIR, "wasm", file),
+    resolve(__dirname, "..", "..", "..", "packages", "simulate", "src", "wasm", file),
+    resolve(__dirname, "..", "..", "..", "packages", "simulate", "dist", "wasm", file),
+  ].find(existsSync);
+  if (fileSrc) {
+    const destServer = join(extDestDir, "server", "dist", file);
+    const destWasm = join(extDestDir, "wasm", file);
+    mkdirSync(join(extDestDir, "wasm"), { recursive: true });
+    cpSync(fileSrc, destServer);
+    cpSync(fileSrc, destWasm);
+    console.log(`  Copied ${file} to ${destServer} and ${destWasm}`);
+  }
+}
+
 // 3. Copy GitHub FS extension
 console.log("  Copying GitHub FS extension...");
 cpSync(GITHUB_FS_EXT_DIR, join(OUT_DIR, "static", "extensions", "github-fs"), {
@@ -237,6 +255,7 @@ function renderStaticWorkbench(): string {
       if (typeof arguments[i] === 'string' && (
         arguments[i].includes('ENOPRO: No file system provider found for resource') ||
         arguments[i].includes('No search provider registered for scheme: memfs') ||
+        arguments[i].includes('No search provider registered for scheme: github') ||
         arguments[i].includes('Ignoring the error while validating workspace folder') ||
         arguments[i].includes('Overwriting grammar scope name to file mapping') ||
         arguments[i].includes('extensionEnabledApiProposals') ||
@@ -278,7 +297,10 @@ function renderStaticWorkbench(): string {
     "*.r5": "relap5"
   };
   if (hash.startsWith('memfs')) {
-    var template = hash.split(':')[1] || 'empty';
+    var rawSpec = hash.split(':')[1] || 'empty';
+    var qIdx = rawSpec.indexOf('?');
+    var template = qIdx !== -1 ? (rawSpec.slice(0, qIdx) || 'empty') : rawSpec;
+    var query = qIdx !== -1 ? rawSpec.slice(qIdx + 1) : '';
     if (template.startsWith('artifact-')) {
       document.title = 'Artifact #' + template.slice(9) + ' — ModelScript IDE';
     } else if (template.startsWith('package-')) {
@@ -286,7 +308,7 @@ function renderStaticWorkbench(): string {
     } else {
       document.title = 'New Project — ModelScript IDE';
     }
-    config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template };
+    config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template, query: query };
   } else {
     var parts = hash.split('@');
     var ownerRepo = parts[0];

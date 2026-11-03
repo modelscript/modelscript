@@ -6,10 +6,12 @@ import {
   AnimationController,
   getUnitScaleFactor,
   quaternionFromAxisAngle,
+  quaternionFromDirections,
   quaternionFromEuler,
   quaternionFromMatrix3x3,
   quaternionSlerp,
   quaternionToEuler,
+  rotateVectorByQuaternion,
 } from "../src/index.js";
 
 describe("CAD Kinematics & Spatial Orientation Solvers", () => {
@@ -179,5 +181,105 @@ describe("Unified Animation Controller", () => {
     ctrl.pause();
     assert.equal(ctrl.mode, "paused");
     assert.ok(stateUpdates >= 2);
+  });
+
+  it("constructs right-handed orthonormal frame quaternion from MSL lengthDirection and widthDirection", () => {
+    // Default lengthDirection = [1, 0, 0], widthDirection = [0, 1, 0] -> identity
+    const qIdentity = quaternionFromDirections([1, 0, 0], [0, 1, 0]);
+    assert.ok(Math.abs(qIdentity[0]) < 1e-6);
+    assert.ok(Math.abs(qIdentity[1]) < 1e-6);
+    assert.ok(Math.abs(qIdentity[2]) < 1e-6);
+    assert.ok(Math.abs(qIdentity[3] - 1.0) < 1e-6);
+
+    // lengthDirection along +Y ([0, 1, 0]), widthDirection along -X ([-1, 0, 0]) -> +90 deg Z rotation
+    const qRotZ = quaternionFromDirections([0, 1, 0], [-1, 0, 0]);
+    const rotatedEx = rotateVectorByQuaternion([1, 0, 0], qRotZ);
+    assert.ok(Math.abs(rotatedEx[0] - 0) < 1e-5);
+    assert.ok(Math.abs(rotatedEx[1] - 1) < 1e-5);
+    assert.ok(Math.abs(rotatedEx[2] - 0) < 1e-5);
+
+    // Degenerate parallel lengthDirection and widthDirection falls back cleanly without NaN
+    const qParallel = quaternionFromDirections([0, 1, 0], [0, 2, 0]);
+    const rotatedParallel = rotateVectorByQuaternion([1, 0, 0], qParallel);
+    assert.ok(Math.abs(rotatedParallel[1] - 1) < 1e-5);
+  });
+
+  it("evaluates MSL Visualizers.Advanced.Shape and Vector local frame offsets, directions, and headAtOrigin", () => {
+    const ctrl = new AnimationController();
+
+    ctrl.setBindings([
+      {
+        componentName: "rev.cylinder",
+        bindings: [
+          { property: "position", index: 0, variable: "rev.cylinder.r[1]" },
+          { property: "position", index: 1, variable: "rev.cylinder.r[2]" },
+          { property: "position", index: 2, variable: "rev.cylinder.r[3]" },
+          { property: "lengthDirection", index: 0, variable: "rev.cylinder.lengthDirection[1]" },
+          { property: "lengthDirection", index: 1, variable: "rev.cylinder.lengthDirection[2]" },
+          { property: "lengthDirection", index: 2, variable: "rev.cylinder.lengthDirection[3]" },
+        ],
+        defaults: {
+          position: [1, 2, 3],
+          shapeOffset: [0, 0, -0.25],
+          lengthDirection: [0, 0, 1],
+          widthDirection: [1, 0, 0],
+          scale: [0.5, 0.1, 0.1],
+        },
+      },
+      {
+        componentName: "forceArrow",
+        bindings: [
+          { property: "vectorCoordinates", index: 0, variable: "forceArrow.coordinates[1]" },
+          { property: "vectorCoordinates", index: 1, variable: "forceArrow.coordinates[2]" },
+          { property: "vectorCoordinates", index: 2, variable: "forceArrow.coordinates[3]" },
+        ],
+        defaults: {
+          position: [0, 0, 0],
+          shapeOffset: [0, 0, 0],
+          vectorCoordinates: [2, 0, 0],
+          headAtOrigin: true,
+          scale: [2, 0.05, 0.05],
+        },
+      },
+    ]);
+
+    const t = [0.0, 1.0];
+    const y = [
+      [1.0, 2.0, 3.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0],
+      [2.0, 2.0, 3.0, 0.0, 1.0, 0.0, 0.0, 4.0, 0.0],
+    ];
+    const states = [
+      "rev.cylinder.r[1]",
+      "rev.cylinder.r[2]",
+      "rev.cylinder.r[3]",
+      "rev.cylinder.lengthDirection[1]",
+      "rev.cylinder.lengthDirection[2]",
+      "rev.cylinder.lengthDirection[3]",
+      "forceArrow.coordinates[1]",
+      "forceArrow.coordinates[2]",
+      "forceArrow.coordinates[3]",
+    ];
+
+    ctrl.loadTimeseries(t, y, states);
+    ctrl.seek(0.0);
+
+    // At t=0: cylinder is at r=[1,2,3] + r_shape=[0,0,-0.25] = [1, 2, 2.75], pointing along +Z
+    const cyl0 = ctrl.getTransform("rev.cylinder");
+    assert.ok(Math.abs(cyl0.position[0] - 1.0) < 1e-5);
+    assert.ok(Math.abs(cyl0.position[1] - 2.0) < 1e-5);
+    assert.ok(Math.abs(cyl0.position[2] - 2.75) < 1e-5);
+    const cylDir0 = rotateVectorByQuaternion([1, 0, 0], cyl0.quaternion!);
+    assert.ok(Math.abs(cylDir0[2] - 1.0) < 1e-5);
+
+    // At t=0: forceArrow has coordinates=[2,0,0] with headAtOrigin=true -> origin shifted to [-2, 0, 0], length=2
+    const arrow0 = ctrl.getTransform("forceArrow");
+    assert.ok(Math.abs(arrow0.position[0] - -2.0) < 1e-5);
+    assert.ok(Math.abs(arrow0.scale[0] - 2.0) < 1e-5);
+
+    // At t=1: forceArrow has coordinates=[0,4,0] with headAtOrigin=true -> origin shifted to [0, -4, 0], length=4
+    ctrl.seek(1.0);
+    const arrow1 = ctrl.getTransform("forceArrow");
+    assert.ok(Math.abs(arrow1.position[1] - -4.0) < 1e-5);
+    assert.ok(Math.abs(arrow1.scale[0] - 4.0) < 1e-5);
   });
 });

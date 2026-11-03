@@ -287,6 +287,58 @@ export async function verifyGate1Syntax(
 }
 
 /**
+ * Flattens a Modelica candidate model into a DAEBuilder arena using the native
+ * @modelscript/modelica Context.flattenArena pipeline when available.
+ */
+async function flattenModelicaCandidate(
+  code: string,
+  documentUri = "file:///candidate/model.mo",
+  lspContext?: any,
+): Promise<{ arena: any; className: string; ctx: any } | null> {
+  try {
+    const uri = documentUri.endsWith(".mo") ? documentUri : "file:///candidate/model.mo";
+    const filePath = uri.startsWith("file://") ? uri.slice("file://".length) : uri;
+    const classMatch = stripComments(code).match(/\b(?:model|class|block|connector|record)\s+([A-Za-z_][A-Za-z0-9_]*)/);
+    if (!classMatch?.[1]) return null;
+    const className = classMatch[1];
+
+    // If lspContext exposes an initialized sharedContext, try it first
+    const sharedCtx = lspContext?.parserService?.sharedContext;
+    if (sharedCtx && typeof sharedCtx.load === "function" && typeof sharedCtx.flattenArena === "function") {
+      try {
+        sharedCtx.load(code, filePath);
+        const arena = sharedCtx.flattenArena(className, undefined, filePath);
+        if (arena) return { arena, className, ctx: sharedCtx };
+      } catch {
+        // Fall through to isolated Context
+      }
+    }
+
+    const parser = await getWasmParserForLanguage("modelica");
+    if (!parser) return null;
+
+    const { Context } = await import("@modelscript/modelica");
+    Context.registerParser(".mo", parser);
+
+    const memFiles = new Map<string, string>([[filePath, code]]);
+    const memFs = {
+      readFile: (p: string) => memFiles.get(p) ?? "",
+      exists: (p: string) => memFiles.has(p),
+      readDir: () => [] as string[],
+      isDir: () => false,
+    };
+
+    const ctx = new Context(memFs as any, undefined, undefined, { loadStdlib: false });
+    ctx.load(code, filePath);
+    const arena = ctx.flattenArena(className, undefined, filePath);
+    if (!arena) return null;
+    return { arena, className, ctx };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Gate 2: QUDV SI-7 Dimensional Calculus
  */
 export async function verifyGate2Dimensions(
@@ -418,6 +470,118 @@ export async function verifyGate2Dimensions(
       },
     };
   } else if (norm === "modelica") {
+    let checkedFeatures = 0;
+
+    // 0. Real Modelica arena flattening + SI unit checking via @modelscript/modelica
+    const flattened = await flattenModelicaCandidate(code, documentUri);
+    if (flattened?.arena) {
+      try {
+        const { parseUnit, checkEquationUnits, formatSIUnit, unitDivide, unitMultiply } =
+          await import("@modelscript/modelica");
+        const { EqKind, ExprKind, BinOp } = await import("@modelscript/runtime");
+        const arena = flattened.arena;
+        const varUnits = new Map<number, any>();
+
+        for (let i = 0; i < arena.varCount; i++) {
+          checkedFeatures++;
+          const vName = arena.getVarName(i);
+          const unitAttrId = arena.getVarAttr?.(i, "unit");
+          let uStr: string | undefined;
+          if (unitAttrId !== undefined && unitAttrId >= 0 && arena.getExprKind(unitAttrId) === ExprKind.StringLiteral) {
+            uStr = arena.interner?.resolve?.(arena.getExprData1(unitAttrId));
+          } else if (typeof arena.getVarUnit === "function") {
+            uStr = arena.getVarUnit(i);
+          }
+          if (uStr) {
+            const parsed = parseUnit(uStr);
+            if (parsed) {
+              varUnits.set(i, parsed);
+              inferredDims[vName] = formatSIUnit(parsed);
+            }
+          }
+        }
+
+        const timeUnit = parseUnit("s");
+        const inferArenaExprUnit = (exprId: number): any => {
+          if (exprId < 0 || exprId >= arena.exprCount) return null;
+          const kind = arena.getExprKind(exprId);
+          if (kind === ExprKind.Name) {
+            const nameStr = arena.interner?.resolve?.(arena.getExprData1(exprId));
+            const vId = nameStr ? arena.lookupVariable(nameStr) : -1;
+            return vId >= 0 ? (varUnits.get(vId) ?? null) : null;
+          }
+          if (kind === ExprKind.Der) {
+            const inner = inferArenaExprUnit(arena.getExprData1(exprId));
+            return inner && timeUnit ? unitDivide(inner, timeUnit) : null;
+          }
+          if (kind === ExprKind.Negate || kind === ExprKind.Unary) {
+            return inferArenaExprUnit(arena.getExprLeft(exprId));
+          }
+          if (kind === ExprKind.Binary) {
+            const op = arena.getExprData1(exprId);
+            const lu = inferArenaExprUnit(arena.getExprLeft(exprId));
+            const ru = inferArenaExprUnit(arena.getExprRight(exprId));
+            if (op === BinOp.Add || op === BinOp.Sub) {
+              if (lu && ru && !checkEquationUnits(lu, ru)) {
+                diagnostics.push({
+                  gate: 2,
+                  gateName: "QUDV Physical Dimensions",
+                  severity: "error",
+                  message: `Dimensional mismatch in Modelica binary expression: cannot combine [${formatSIUnit(lu)}] and [${formatSIUnit(ru)}].`,
+                });
+              }
+              return lu ?? ru;
+            }
+            if (op === BinOp.Mul) {
+              return lu && ru ? unitMultiply(lu, ru) : null;
+            }
+            if (op === BinOp.Div) {
+              return lu && ru ? unitDivide(lu, ru) : null;
+            }
+          }
+          return null;
+        };
+
+        // Check variable binding expressions against declared unit
+        for (let i = 0; i < arena.varCount; i++) {
+          const declUnit = varUnits.get(i);
+          if (!declUnit) continue;
+          const bindExpr = arena.getVarExpression(i);
+          if (bindExpr !== undefined && bindExpr >= 0) {
+            const rhsUnit = inferArenaExprUnit(bindExpr);
+            if (rhsUnit && !checkEquationUnits(declUnit, rhsUnit)) {
+              const vName = arena.getVarName(i);
+              diagnostics.push({
+                gate: 2,
+                gateName: "QUDV Physical Dimensions",
+                severity: "error",
+                message: `Dimensional mismatch in binding for '${vName}': declared unit [${formatSIUnit(declUnit)}] is incompatible with [${formatSIUnit(rhsUnit)}].`,
+                metadata: { featureName: vName },
+              });
+            }
+          }
+        }
+
+        // Check simple equations LHS vs RHS units
+        for (let e = 0; e < arena.eqCount; e++) {
+          if (arena.getEqKind(e) === EqKind.Simple) {
+            const lhsUnit = inferArenaExprUnit(arena.getEqLhs(e));
+            const rhsUnit = inferArenaExprUnit(arena.getEqRhs(e));
+            if (lhsUnit && rhsUnit && !checkEquationUnits(lhsUnit, rhsUnit)) {
+              diagnostics.push({
+                gate: 2,
+                gateName: "QUDV Physical Dimensions",
+                severity: "error",
+                message: `Dimensional mismatch in Modelica equation: LHS unit [${formatSIUnit(lhsUnit)}] is incompatible with RHS unit [${formatSIUnit(rhsUnit)}].`,
+              });
+            }
+          }
+        }
+      } catch {
+        // Fall through to additional source checks
+      }
+    }
+
     // 1. Check unit bracket additions: e.g. 5[m] + 10[s]
     const unitMatches = code.matchAll(/\b([a-zA-Z0-9_]+)\s*=\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*);/g);
     for (const match of unitMatches) {
@@ -482,6 +646,10 @@ export async function verifyGate2Dimensions(
       gateName: "QUDV Physical Dimensions",
       passed: diagnostics.length === 0,
       diagnostics,
+      metadata: {
+        checkedFeatures: checkedFeatures || varTypes.size,
+        inferredDimensions: inferredDims,
+      },
     };
   }
 
@@ -608,15 +776,128 @@ export async function verifyGate3Requirements(
       },
     };
   } else if (norm === "modelica") {
-    // Modelica parameter and assertion consistency
+    // Modelica parameter, bound, and assertion consistency using real arena + SMT check
     const boundVars = new Map<string, number>();
+    const modelicaConstraints: ExtractedConstraint[] = [];
+
+    const flattened = await flattenModelicaCandidate(code, documentUri);
+    if (flattened?.arena) {
+      try {
+        const { EqKind, ExprKind, evaluateArenaExpression } = await import("@modelscript/runtime");
+        const arena = flattened.arena;
+        const evalCtx = new Map<string, number>();
+        evalCtx.set("time", 0);
+
+        for (let i = 0; i < arena.varCount; i++) {
+          const vName = arena.getVarName(i);
+          const bindExpr = arena.getVarExpression(i);
+          let val: number | undefined;
+          if (bindExpr !== undefined && bindExpr >= 0) {
+            const evaluated = evaluateArenaExpression(arena, bindExpr, evalCtx);
+            if (typeof evaluated === "number" && Number.isFinite(evaluated)) {
+              val = evaluated;
+            }
+          } else {
+            val = arena.getVarStartValue(i);
+          }
+          if (val !== undefined && Number.isFinite(val)) {
+            evalCtx.set(vName, val);
+            boundVars.set(vName, val);
+          }
+        }
+
+        // Evaluate assert function call equations directly in the flattened DAE arena
+        for (let e = 0; e < arena.eqCount; e++) {
+          if (arena.getEqKind(e) === EqKind.FunctionCall) {
+            const callExpr = arena.getEqLhs(e);
+            if (callExpr >= 0 && arena.getExprKind(callExpr) === ExprKind.Call) {
+              const funcName = arena.interner?.resolve?.(arena.getExprData1(callExpr));
+              if (funcName === "assert") {
+                const condExpr = arena.getExprLeft(callExpr);
+                const condVal = evaluateArenaExpression(arena, condExpr, evalCtx);
+                if (condVal === false || condVal === 0) {
+                  const msgVal =
+                    arena.getExprRight(callExpr) >= 2
+                      ? evaluateArenaExpression(arena, arena.getExprLeft(callExpr + 1), evalCtx)
+                      : "Assertion failed";
+                  diagnostics.push({
+                    gate: 3,
+                    gateName: "SMT Requirement Feasibility",
+                    severity: "error",
+                    message: `Infeasible Modelica assertion in flattened DAE: ${String(msgVal)}`,
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Continue with source-level parameter and constraint extraction
+      }
+    }
+
     const clean = stripComments(code);
     const paramRegex =
-      /\b(?:(?:parameter|constant)\s+)?(?!parameter\b|constant\b)[A-Za-z_][A-Za-z0-9_.]*\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\([^()]*\))?\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*;/g;
+      /\b(?:(?:parameter|constant)\s+)?(?!parameter\b|constant\b)[A-Za-z_][A-Za-z0-9_.]*\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(([^()]*)\))?\s*(?:=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?))?\s*;/g;
     for (const pm of clean.matchAll(paramRegex)) {
-      const val = Number(pm[2]);
-      if (Number.isFinite(val)) {
-        boundVars.set(pm[1]!, val);
+      const vName = pm[1]!;
+      const mods = pm[2] ?? "";
+      const valStr = pm[3];
+      if (valStr !== undefined) {
+        const val = Number(valStr);
+        if (Number.isFinite(val)) {
+          boundVars.set(vName, val);
+          modelicaConstraints.push({
+            lhs: vName,
+            operator: "==",
+            rhs: val,
+            expression: `${vName} == ${val}`,
+            source: "modelica",
+            requirementName: `${vName}_binding`,
+          });
+        }
+      }
+      const minMatch = mods.match(/\bmin\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/);
+      if (minMatch?.[1]) {
+        const minVal = Number(minMatch[1]);
+        if (Number.isFinite(minVal)) {
+          modelicaConstraints.push({
+            lhs: vName,
+            operator: ">=",
+            rhs: minVal,
+            expression: `${vName} >= ${minVal}`,
+            source: "modelica",
+            requirementName: `${vName}_min`,
+          });
+        }
+      }
+      const maxMatch = mods.match(/\bmax\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/);
+      if (maxMatch?.[1]) {
+        const maxVal = Number(maxMatch[1]);
+        if (Number.isFinite(maxVal)) {
+          modelicaConstraints.push({
+            lhs: vName,
+            operator: "<=",
+            rhs: maxVal,
+            expression: `${vName} <= ${maxVal}`,
+            source: "modelica",
+            requirementName: `${vName}_max`,
+          });
+        }
+      }
+    }
+
+    if (modelicaConstraints.length > 0) {
+      const smtCheck = verifyConstraintSet(modelicaConstraints);
+      if (!smtCheck.isConsistent) {
+        for (const v of smtCheck.violatedConstraints) {
+          diagnostics.push({
+            gate: 3,
+            gateName: "SMT Requirement Feasibility",
+            severity: "error",
+            message: `Infeasible Modelica parameter bound '${v.expression}': ${v.reason}`,
+          });
+        }
       }
     }
 
@@ -625,7 +906,7 @@ export async function verifyGate3Requirements(
       const expr = am[1]!.trim();
       const msg = am[2]!;
       const evalResult = evaluateModelicaBooleanExpr(expr, boundVars);
-      if (evalResult === false) {
+      if (evalResult === false && diagnostics.length === 0) {
         diagnostics.push({
           gate: 3,
           gateName: "SMT Requirement Feasibility",
@@ -640,6 +921,10 @@ export async function verifyGate3Requirements(
       gateName: "SMT Requirement Feasibility",
       passed: diagnostics.length === 0,
       diagnostics,
+      metadata: {
+        isConsistent: diagnostics.length === 0,
+        numConstraints: modelicaConstraints.length,
+      },
     };
   }
 
@@ -849,6 +1134,52 @@ export async function verifyGate4DAEBalance(
   const norm = language.toLowerCase();
 
   if (norm === "modelica") {
+    // 0. Flatten into real DAEBuilder arena and run performBltTransformationArena when available
+    const flattened = await flattenModelicaCandidate(code, "file:///candidate/model.mo", _lspContext);
+    let arenaVars: string[] = [];
+    let arenaEqCount = 0;
+    let arenaBltBlocksCount: number | undefined;
+
+    if (flattened?.arena) {
+      try {
+        const { Variability, Causality, EqKind, initBltWasm, performBltTransformationArena } =
+          await import("@modelscript/runtime");
+        const arena = flattened.arena;
+        for (let i = 0; i < arena.varCount; i++) {
+          const variability = arena.getVarVariability(i);
+          const causality = arena.getVarCausality(i);
+          if (
+            variability !== Variability.Parameter &&
+            variability !== Variability.Constant &&
+            causality !== Causality.Input
+          ) {
+            arenaVars.push(arena.getVarName(i));
+          }
+        }
+        for (let e = 0; e < arena.eqCount; e++) {
+          const kind = arena.getEqKind(e);
+          if (kind === EqKind.Connect) {
+            arenaEqCount += 2;
+          } else if (kind !== EqKind.FunctionCall) {
+            arenaEqCount += 1;
+          }
+        }
+        if (arenaVars.length > 0 && arenaEqCount === arenaVars.length) {
+          try {
+            await initBltWasm();
+            const blt = performBltTransformationArena(arena);
+            if (blt && Array.isArray(blt.blocks) && blt.blocks.length > 0) {
+              arenaBltBlocksCount = blt.blocks.length;
+            }
+          } catch {
+            // Fallback to bipartite/SCC analysis below
+          }
+        }
+      } catch {
+        // Fall through to CST/declaration extraction if runtime BLT is unavailable
+      }
+    }
+
     // Robust Modelica equation & variable structural balance
     const cleanCode = stripComments(code);
 
@@ -862,7 +1193,7 @@ export async function verifyGate4DAEBalance(
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 
-    const declaredVars = new Set<string>();
+    const declaredVars = new Set<string>(arenaVars);
 
     // Walk CST if provided to extract component_clause nodes
     if (_tree?.rootNode) {
@@ -941,7 +1272,7 @@ export async function verifyGate4DAEBalance(
       }
     }
 
-    const eqCount = equationStrings.length;
+    const eqCount = Math.max(arenaEqCount, equationStrings.length);
     const varCount = declaredVars.size;
 
     if (varCount > 0 || eqCount > 0) {
@@ -973,7 +1304,12 @@ export async function verifyGate4DAEBalance(
     }
 
     // Perform bipartite matching & Tarjan SCC BLT block decomposition
-    const { matchedCount, bltBlocksCount, unmatchedVars } = analyzeBipartiteAndBLT([...declaredVars], equationStrings);
+    const {
+      matchedCount,
+      bltBlocksCount: fallbackBltCount,
+      unmatchedVars,
+    } = analyzeBipartiteAndBLT([...declaredVars], equationStrings);
+    const bltBlocksCount = arenaBltBlocksCount ?? fallbackBltCount;
 
     if (varCount > 0 && matchedCount < varCount) {
       diagnostics.push({

@@ -59,11 +59,12 @@ export const Header = styled.div`
   gap: 12px;
   position: sticky;
   top: var(--dev-header-height, 0px);
-  background: var(--surface-hud);
-  backdrop-filter: saturate(160%) blur(14px);
-  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+  transition: background-color 0.25s ease;
   border-bottom: 1px solid var(--color-border);
-  z-index: 10;
+  z-index: 50;
 `;
 
 export const TabButton = styled.button<{ $active?: boolean | undefined }>`
@@ -257,6 +258,7 @@ export const ModalOverlay = styled.div`
   justify-content: center;
   z-index: 10000;
   padding: 20px;
+  overflow-y: auto;
 `;
 
 export const ModalBox = styled.div`
@@ -265,6 +267,8 @@ export const ModalBox = styled.div`
   border-radius: 12px;
   width: 100%;
   max-width: 520px;
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -272,8 +276,58 @@ export const ModalBox = styled.div`
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
 `;
 
+export const TableWrapper = styled.div`
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+`;
+
+export const ActionMenuDropdown = styled.div`
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--color-bg-primary, #0d1117);
+  border: 1px solid var(--color-border-default, #30363d);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 190px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+`;
+
+export const ActionMenuItem = styled.button<{ $danger?: boolean | undefined }>`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: ${(props) => (props.$danger ? "var(--ms-danger, #f85149)" : "var(--color-text-primary, #c9d1d9)")};
+  transition: background-color 0.12s ease;
+
+  &:hover:not(:disabled) {
+    background-color: ${(props) => (props.$danger ? "rgba(218, 54, 51, 0.15)" : "rgba(255, 255, 255, 0.08)")};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
 export const Table = styled.table`
   width: 100%;
+  max-width: 100%;
   border-collapse: collapse;
   font-size: 13px;
   display: block;

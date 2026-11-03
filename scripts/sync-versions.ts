@@ -12,17 +12,45 @@ function getTargetWorkspaceJsonPaths(): string[] {
   return getWorkspacePackages({ excludeExamples: true, excludeIdeGithubFs: true });
 }
 
+function resolveTargetVersion(currentVersion: string, requested?: string): string {
+  if (!requested) return currentVersion;
+  const trimmed = requested.replace(/^v/, "").trim();
+  const match = currentVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (trimmed === "patch" || trimmed === "minor" || trimmed === "major") {
+    if (!match) {
+      throw new Error(`Cannot compute ${trimmed} bump from non-numeric version "${currentVersion}".`);
+    }
+    const major = Number(match[1]);
+    const minor = Number(match[2]);
+    const patch = Number(match[3]);
+    if (trimmed === "major") return `${major + 1}.0.0`;
+    if (trimmed === "minor") return `${major}.${minor + 1}.0`;
+    return `${major}.${minor}.${patch + 1}`;
+  }
+  if (!/^\d+\.\d+\.\d+$/.test(trimmed)) {
+    throw new Error(
+      `Invalid version "${requested}". ModelScript requires clean numeric SemVer (major.minor.patch, e.g. 0.1.0) for VS Code Marketplace (vsce) and Tauri desktop bundler compatibility.`,
+    );
+  }
+  return trimmed;
+}
+
 export function syncVersions(options?: { checkOnly?: boolean; explicitVersion?: string }): {
   version: string;
   mismatches: string[];
   updated: string[];
 } {
   const checkOnly = options?.checkOnly ?? process.argv.includes("--check");
-  const versionArg = process.argv.find((a) => a.startsWith("--version="));
+  const versionFlag = process.argv.find((a) => a.startsWith("--version="));
+  const positionalArg =
+    options?.explicitVersion === undefined && !checkOnly
+      ? process.argv.slice(2).find((a) => !a.startsWith("-"))
+      : undefined;
   const runtimePkgPath = path.join(REPO_ROOT, "packages", "runtime", "package.json");
   const runtimePkg = JSON.parse(fs.readFileSync(runtimePkgPath, "utf-8"));
-  const canonicalVersion: string =
-    options?.explicitVersion || (versionArg ? versionArg.slice("--version=".length) : runtimePkg.version);
+  const requestedVersion =
+    options?.explicitVersion || (versionFlag ? versionFlag.slice("--version=".length) : positionalArg);
+  const canonicalVersion: string = resolveTargetVersion(runtimePkg.version, requestedVersion);
 
   const mismatches: string[] = [];
   const updated: string[] = [];
@@ -162,6 +190,60 @@ export function syncVersions(options?: { checkOnly?: boolean; explicitVersion?: 
     }
   }
 
+  // 7. Synchronize embedded source version constants
+  const sourceVersionPins: Array<{
+    relPath: string;
+    pattern: RegExp;
+    replace: (ver: string) => string;
+  }> = [
+    {
+      relPath: "apps/web/src/config.ts",
+      pattern: /export const ANSATZ_VERSION\s*=\s*"([^"]+)"/,
+      replace: (ver) => `export const ANSATZ_VERSION = "${ver}"`,
+    },
+    {
+      relPath: "packages/mcp/src/main.ts",
+      pattern: /const SERVER_VERSION\s*=\s*"([^"]+)"/,
+      replace: (ver) => `const SERVER_VERSION = "${ver}"`,
+    },
+    {
+      relPath: "packages/dsl/src/codegen/ide/extension-generator.ts",
+      pattern: /let workspaceVersion\s*=\s*"([^"]+)"/,
+      replace: (ver) => `let workspaceVersion = "${ver}"`,
+    },
+    {
+      relPath: "apps/api/src/routes/admin.ts",
+      pattern:
+        /const buildVersion\s*=\s*process\.env\["MSX_BUILD_SHA"\]\s*\|\|\s*process\.env\["IMAGE_TAG"\]\s*\|\|\s*"([^"]+)"/,
+      replace: (ver) => `const buildVersion = process.env["MSX_BUILD_SHA"] || process.env["IMAGE_TAG"] || "${ver}"`,
+    },
+    {
+      relPath: "apps/cli/src/main.ts",
+      pattern: /let pkgVersion\s*=\s*"([^"]+)"/,
+      replace: (ver) => `let pkgVersion = "${ver}"`,
+    },
+    {
+      relPath: "apps/desktop/src/index.ts",
+      pattern: /appVersion:\s*"([^"]+)"/,
+      replace: (ver) => `appVersion: "${ver}"`,
+    },
+  ];
+
+  for (const pin of sourceVersionPins) {
+    const absPath = path.join(REPO_ROOT, pin.relPath);
+    if (!fs.existsSync(absPath)) continue;
+    const raw = fs.readFileSync(absPath, "utf-8");
+    const match = raw.match(pin.pattern);
+    if (match && match[1] !== canonicalVersion) {
+      mismatches.push(`${pin.relPath} (found ${match[1]}, expected ${canonicalVersion})`);
+      if (!checkOnly) {
+        const nextRaw = raw.replace(pin.pattern, pin.replace(canonicalVersion));
+        fs.writeFileSync(absPath, nextRaw, "utf-8");
+        updated.push(pin.relPath);
+      }
+    }
+  }
+
   return { version: canonicalVersion, mismatches, updated };
 }
 
@@ -175,7 +257,7 @@ function run(): void {
       for (const m of mismatches) {
         console.error(`  - ${m}`);
       }
-      console.error("\nRun 'npx tsx scripts/sync-versions.ts' to synchronize workspace versions.\n");
+      console.error("\nRun 'npm run sync:versions' to synchronize workspace versions.\n");
       process.exit(1);
     }
     console.log(`✓ All workspace packages, lockfile entries, and Tauri manifests match version ${version}.`);

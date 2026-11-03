@@ -22,6 +22,7 @@ import {
 import { ActionList, ActionMenu, IconButton } from "@primer/react";
 import React from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { getLanguageInfo, useVisibleMorselLanguages } from "../constants";
 import { MorselView } from "./types";
 export { MorselView };
@@ -98,7 +99,8 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
   toggleTheme,
 }) => {
   const { hasCapability } = useCapabilities();
-  const isCaeComputeEnabled = hasCapability("caeCompute");
+  const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
+  const isCaeComputeEnabled = hasCloudSolverFlag && hasCapability("caeCompute");
   const visibleMorselLanguages = useVisibleMorselLanguages();
   const activeLangInfo = getLanguageInfo(dialect);
   const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");

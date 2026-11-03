@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/ide-client",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "private": true,
   "description": "ModelScript VS Code Web Extension client, custom editors, and webview panels",
   "license": "AGPL-3.0-or-later",

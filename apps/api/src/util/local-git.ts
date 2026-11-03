@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { simpleGit, type SimpleGit } from "simple-git";
 import type {
+  CreateGitMergeRequestInput,
   GitCommitItem,
   GitIssueItem,
   GitJobItem,
@@ -45,9 +46,38 @@ function sanitizeGitSubpath(subpath: string): string {
 }
 
 export class LocalGitProvider implements IGitProvider {
+  private readonly mergeRequestsByProject = new Map<string, GitMergeRequestItem[]>();
+
+  private async resolveHostedBareRepoPath(idOrUrl: string): Promise<string | null> {
+    const reposDir = process.env["GIT_REPOS_DIR"] || path.resolve(process.cwd(), "data", "git-repos");
+    const trimmed = idOrUrl.trim().replace(/^\/+|\/+$/g, "");
+    const parts = trimmed.split("/");
+    if (parts.length === 2 && parts[0] && parts[1] && !parts[0].includes("..") && !parts[1].includes("..")) {
+      const cleanNs = parts[0].replace(/[^a-zA-Z0-9_.-]/g, "");
+      const cleanProj = parts[1].replace(/\.git$/i, "").replace(/[^a-zA-Z0-9_.-]/g, "");
+      if (cleanNs && cleanProj) {
+        const candidate = path.resolve(reposDir, cleanNs, `${cleanProj}.git`);
+        if (candidate.startsWith(path.resolve(reposDir) + path.sep)) {
+          try {
+            await fs.access(candidate);
+            return candidate;
+          } catch {
+            // Fall through to standard cache resolution
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   private async getRepoPath(url: string): Promise<string> {
     if (!url || typeof url !== "string" || url.startsWith("-") || hasControlChar(url)) {
       throw new Error("Invalid git repository URL");
+    }
+
+    const hostedBarePath = await this.resolveHostedBareRepoPath(url);
+    if (hostedBarePath) {
+      return hostedBarePath;
     }
 
     const isHttpUrl = /^https?:\/\//i.test(url);
@@ -101,6 +131,84 @@ export class LocalGitProvider implements IGitProvider {
     }
 
     return repoPath;
+  }
+
+  private getMergeRequestsStoreFilePath(idOrUrl: string): string {
+    const projectHash = crypto.createHash("sha256").update(idOrUrl).digest("hex").slice(0, 24);
+    return path.resolve(CACHE_DIR, `merge-requests-${projectHash}.json`);
+  }
+
+  private async loadStoredMergeRequests(idOrUrl: string): Promise<GitMergeRequestItem[]> {
+    const filePath = this.getMergeRequestsStoreFilePath(idOrUrl);
+    try {
+      const raw = await fs.readFile(filePath, "utf8");
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        const items = parsed as GitMergeRequestItem[];
+        this.mergeRequestsByProject.set(idOrUrl, items);
+        return items;
+      }
+    } catch {
+      // File may not exist yet
+    }
+    return this.mergeRequestsByProject.get(idOrUrl) ?? [];
+  }
+
+  private async saveStoredMergeRequests(idOrUrl: string, items: GitMergeRequestItem[]): Promise<void> {
+    this.mergeRequestsByProject.set(idOrUrl, items);
+    try {
+      await fs.mkdir(CACHE_DIR, { recursive: true });
+      const filePath = this.getMergeRequestsStoreFilePath(idOrUrl);
+      await fs.writeFile(filePath, JSON.stringify(items, null, 2), "utf8");
+    } catch {
+      // In-memory store remains authoritative if disk cache is read-only
+    }
+  }
+
+  private async inspectBranchCommitMetadata(
+    idOrUrl: string,
+    sourceBranch: string,
+    targetBranch: string,
+  ): Promise<{
+    sha?: string | undefined;
+    target_sha?: string | undefined;
+    commits_ahead?: number | undefined;
+    author_name?: string | undefined;
+  }> {
+    try {
+      const safeSource = sanitizeGitRef(sourceBranch);
+      const safeTarget = sanitizeGitRef(targetBranch);
+      const repoPath = await this.getRepoPath(idOrUrl);
+      const git = simpleGit(repoPath);
+
+      const sourceSha = (await git.revparse([safeSource]).catch(() => "")).trim() || undefined;
+      const targetSha = (await git.revparse([safeTarget]).catch(() => "")).trim() || undefined;
+
+      let commitsAhead: number | undefined;
+      let latestAuthor: string | undefined;
+      if (sourceSha) {
+        const latestLog = await git.log(["-n", "1", safeSource, "--"]).catch(() => null);
+        if (latestLog?.latest?.author_name) {
+          latestAuthor = latestLog.latest.author_name;
+        }
+      }
+      if (sourceSha && targetSha) {
+        const aheadRaw = await git.raw(["rev-list", "--count", `${safeTarget}..${safeSource}`]).catch(() => "");
+        const parsedCount = Number.parseInt(aheadRaw.trim(), 10);
+        if (Number.isFinite(parsedCount)) {
+          commitsAhead = parsedCount;
+        }
+      }
+
+      return {
+        sha: sourceSha,
+        target_sha: targetSha,
+        commits_ahead: commitsAhead,
+        author_name: latestAuthor,
+      };
+    } catch {
+      return {};
+    }
   }
 
   async getProject(idOrUrl: string): Promise<unknown> {
@@ -188,7 +296,40 @@ export class LocalGitProvider implements IGitProvider {
     throw new Error("Issues are not supported by local git provider");
   }
 
-  async getMergeRequests(_idOrUrl: string): Promise<GitMergeRequestItem[]> {
-    return [];
+  async getMergeRequests(idOrUrl: string): Promise<GitMergeRequestItem[]> {
+    const existing = await this.loadStoredMergeRequests(idOrUrl);
+    return [...existing];
+  }
+
+  async createMergeRequest(idOrUrl: string, body: CreateGitMergeRequestInput): Promise<GitMergeRequestItem> {
+    const existing = await this.loadStoredMergeRequests(idOrUrl);
+    const nextIid = existing.reduce((maxIid, mr) => Math.max(maxIid, mr.iid), 0) + 1;
+    const nowIso = new Date().toISOString();
+    const branchMeta = await this.inspectBranchCommitMetadata(idOrUrl, body.source_branch, body.target_branch);
+
+    const created: GitMergeRequestItem = {
+      id: Date.now() * 1000 + nextIid,
+      iid: nextIid,
+      project_id: idOrUrl,
+      title: body.title,
+      description: body.description || "",
+      state: "opened",
+      created_at: nowIso,
+      updated_at: nowIso,
+      source_branch: body.source_branch,
+      target_branch: body.target_branch,
+      web_url: `${idOrUrl}/-/merge_requests/${nextIid}`,
+      ...(branchMeta.sha ? { sha: branchMeta.sha } : {}),
+      ...(branchMeta.target_sha ? { target_sha: branchMeta.target_sha } : {}),
+      ...(branchMeta.commits_ahead !== undefined ? { commits_ahead: branchMeta.commits_ahead } : {}),
+      author: {
+        name: body.author_name || branchMeta.author_name || "Anonymous",
+        avatar_url: null,
+      },
+    };
+
+    const updated = [created, ...existing];
+    await this.saveStoredMergeRequests(idOrUrl, updated);
+    return created;
   }
 }

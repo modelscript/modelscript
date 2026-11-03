@@ -1,6 +1,6 @@
 [package]
 name = "modelscript-desktop"
-version = "0.0.18"
+version = "0.1.0"
 description = "ModelScript Multi-Domain Modeling, Simulation & Systems Engineering Studio"
 authors = ["Mohamad Omar Nachawati <omar@modelscript.org>"]
 license = "AGPL-3.0-or-later"

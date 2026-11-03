@@ -28,6 +28,13 @@ export function lowerSimulinkToDae(model: SimulinkModel, options?: SimulinkLower
   return dae;
 }
 
+function parseMatrixParam(raw: string): number[][] {
+  const cleaned = raw.trim().replace(/^\[|\]$/g, "");
+  if (!cleaned) return [[0]];
+  const rows = cleaned.split(";").map((r) => parseVectorString(r));
+  return rows.filter((r) => r.length > 0);
+}
+
 function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""): void {
   const qualify = (blockName: string): string => (prefix ? `${prefix}.${blockName}` : blockName);
 
@@ -287,19 +294,135 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       }
 
       // -----------------------------------------------------------------------
-      // UnitDelay: Discrete state variable
+      // UnitDelay: First-order hold / state delay equation
       // -----------------------------------------------------------------------
       case "UnitDelay": {
         const uExpr = getInputExpr(block.name, 1);
         const xPrevName = `${qualify(block.name)}.x_prev`;
         const x0 = Number.parseFloat(String(block.parameters.get("InitialCondition") ?? "0"));
-        dae.addVariable(xPrevName, VarType.Real, Variability.Discrete, Causality.Local, Number.isFinite(x0) ? x0 : 0.0);
+        const tsRaw = Number.parseFloat(String(block.parameters.get("SampleTime") ?? "0.05"));
+        const ts = Number.isFinite(tsRaw) && tsRaw > 0 ? tsRaw : 0.05;
+        dae.addVariable(
+          xPrevName,
+          VarType.Real,
+          Variability.Continuous,
+          Causality.Local,
+          Number.isFinite(x0) ? x0 : 0.0,
+        );
         const xPrevExpr = dae.addNameExpr(xPrevName);
 
-        // y = x_prev
+        // Output equals held state: y = x_prev
         dae.addEquation(EqKind.Simple, outExpr, xPrevExpr);
-        // Discrete sample equation: x_prev = u
-        dae.addEquation(EqKind.Simple, xPrevExpr, uExpr);
+        // First-order hold state equation: der(x_prev) = (u - x_prev) / Ts
+        const derXPrev = dae.addDerExpr(xPrevExpr);
+        const diffExpr = dae.addBinaryExpr(BinOp.Sub, uExpr, xPrevExpr);
+        dae.addEquation(EqKind.Simple, derXPrev, dae.addBinaryExpr(BinOp.Div, diffExpr, dae.addRealLiteral(ts)));
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // PIDController: y = P * u + I * x_i + D * N * (u - x_d)
+      //                der(x_i) = u, der(x_d) = N * (u - x_d)
+      // -----------------------------------------------------------------------
+      case "PIDController": {
+        const uExpr = getInputExpr(block.name, 1);
+        const kpRaw = Number.parseFloat(String(block.parameters.get("P") ?? "1.0"));
+        const kiRaw = Number.parseFloat(String(block.parameters.get("I") ?? "1.0"));
+        const kdRaw = Number.parseFloat(String(block.parameters.get("D") ?? "0.0"));
+        const nRaw = Number.parseFloat(String(block.parameters.get("N") ?? "100.0"));
+        const kp = Number.isFinite(kpRaw) ? kpRaw : 1.0;
+        const ki = Number.isFinite(kiRaw) ? kiRaw : 1.0;
+        const kd = Number.isFinite(kdRaw) ? kdRaw : 0.0;
+        const nFilt = Number.isFinite(nRaw) && nRaw !== 0 ? nRaw : 100.0;
+
+        const xiName = `${qualify(block.name)}.x_i`;
+        const xdName = `${qualify(block.name)}.x_d`;
+        dae.addVariable(xiName, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+        dae.addVariable(xdName, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+        const xiExpr = dae.addNameExpr(xiName);
+        const xdExpr = dae.addNameExpr(xdName);
+
+        // Integrator state: der(x_i) = u
+        dae.addEquation(EqKind.Simple, dae.addDerExpr(xiExpr), uExpr);
+
+        // Derivative filter state: der(x_d) = N * (u - x_d)
+        const nDiffExpr = dae.addBinaryExpr(
+          BinOp.Mul,
+          dae.addRealLiteral(nFilt),
+          dae.addBinaryExpr(BinOp.Sub, uExpr, xdExpr),
+        );
+        dae.addEquation(EqKind.Simple, dae.addDerExpr(xdExpr), nDiffExpr);
+
+        // PID output: y = P * u + I * x_i + D * N * (u - x_d)
+        const pTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kp), uExpr);
+        const iTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(ki), xiExpr);
+        const dTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(kd), nDiffExpr);
+        const pidSum = dae.addBinaryExpr(BinOp.Add, dae.addBinaryExpr(BinOp.Add, pTerm, iTerm), dTerm);
+        dae.addEquation(EqKind.Simple, outExpr, pidSum);
+        break;
+      }
+
+      // -----------------------------------------------------------------------
+      // StateSpace: der(x) = A * x + B * u, y = C * x + D * u
+      // -----------------------------------------------------------------------
+      case "StateSpace": {
+        const uExpr = getInputExpr(block.name, 1);
+        const aRows = parseMatrixParam(String(block.parameters.get("A") ?? "-1"));
+        const bRows = parseMatrixParam(String(block.parameters.get("B") ?? "1"));
+        const cRows = parseMatrixParam(String(block.parameters.get("C") ?? "1"));
+        const dRows = parseMatrixParam(String(block.parameters.get("D") ?? "0"));
+        const nStates = Math.max(1, aRows.length);
+        const x0Vec = parseVectorString(
+          String(block.parameters.get("X0") ?? block.parameters.get("InitialCondition") ?? "0"),
+        );
+
+        const stateExprs: number[] = [];
+        for (let i = 0; i < nStates; i++) {
+          const stateName = `${qualify(block.name)}.x${i + 1}`;
+          const x0 = x0Vec[i] ?? x0Vec[0] ?? 0.0;
+          dae.addVariable(
+            stateName,
+            VarType.Real,
+            Variability.Continuous,
+            Causality.Local,
+            Number.isFinite(x0) ? x0 : 0.0,
+          );
+          stateExprs.push(dae.addNameExpr(stateName));
+        }
+
+        for (let i = 0; i < nStates; i++) {
+          let rhsState: number | null = null;
+          const aRow = aRows[i] ?? [];
+          for (let j = 0; j < nStates; j++) {
+            const aij = aRow[j] ?? (i === j ? -1.0 : 0.0);
+            if (Math.abs(aij) > 1e-15) {
+              const term = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(aij), stateExprs[j]!);
+              rhsState = rhsState === null ? term : dae.addBinaryExpr(BinOp.Add, rhsState, term);
+            }
+          }
+          const bi = bRows[i]?.[0] ?? bRows[0]?.[i] ?? (i === nStates - 1 ? 1.0 : 0.0);
+          if (Math.abs(bi) > 1e-15) {
+            const bTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(bi), uExpr);
+            rhsState = rhsState === null ? bTerm : dae.addBinaryExpr(BinOp.Add, rhsState, bTerm);
+          }
+          dae.addEquation(EqKind.Simple, dae.addDerExpr(stateExprs[i]!), rhsState ?? dae.addRealLiteral(0.0));
+        }
+
+        let rhsOut: number | null = null;
+        const cRow = cRows[0] ?? [];
+        for (let j = 0; j < nStates; j++) {
+          const cj = cRow[j] ?? (j === 0 ? 1.0 : 0.0);
+          if (Math.abs(cj) > 1e-15) {
+            const term = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(cj), stateExprs[j]!);
+            rhsOut = rhsOut === null ? term : dae.addBinaryExpr(BinOp.Add, rhsOut, term);
+          }
+        }
+        const d0 = dRows[0]?.[0] ?? 0.0;
+        if (Math.abs(d0) > 1e-15) {
+          const dTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(d0), uExpr);
+          rhsOut = rhsOut === null ? dTerm : dae.addBinaryExpr(BinOp.Add, rhsOut, dTerm);
+        }
+        dae.addEquation(EqKind.Simple, outExpr, rhsOut ?? dae.addRealLiteral(0.0));
         break;
       }
 
@@ -363,11 +486,53 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       }
 
       // -----------------------------------------------------------------------
-      // Step / Ramp source blocks
+      // Step / Ramp / Sine source blocks
       // -----------------------------------------------------------------------
       case "Step": {
-        const afterVal = Number.parseFloat(String(block.parameters.get("After") ?? "1.0"));
-        dae.addEquation(EqKind.Simple, outExpr, dae.addRealLiteral(Number.isFinite(afterVal) ? afterVal : 1.0));
+        const stepTimeRaw = Number.parseFloat(String(block.parameters.get("Time") ?? "1.0"));
+        const beforeRaw = Number.parseFloat(String(block.parameters.get("Before") ?? "0.0"));
+        const afterRaw = Number.parseFloat(String(block.parameters.get("After") ?? "1.0"));
+        const stepTime = dae.addRealLiteral(Number.isFinite(stepTimeRaw) ? stepTimeRaw : 1.0);
+        const beforeExpr = dae.addRealLiteral(Number.isFinite(beforeRaw) ? beforeRaw : 0.0);
+        const afterExpr = dae.addRealLiteral(Number.isFinite(afterRaw) ? afterRaw : 1.0);
+        const timeExpr = dae.addNameExpr("time");
+        const cond = dae.addBinaryExpr(BinOp.Gte, timeExpr, stepTime);
+        dae.addEquation(EqKind.Simple, outExpr, dae.addIfElse(cond, afterExpr, beforeExpr));
+        break;
+      }
+
+      case "Ramp": {
+        const slopeRaw = Number.parseFloat(String(block.parameters.get("Slope") ?? "1.0"));
+        const startRaw = Number.parseFloat(String(block.parameters.get("Start") ?? "0.0"));
+        const initRaw = Number.parseFloat(String(block.parameters.get("InitialOutput") ?? "0.0"));
+        const slopeExpr = dae.addRealLiteral(Number.isFinite(slopeRaw) ? slopeRaw : 1.0);
+        const startExpr = dae.addRealLiteral(Number.isFinite(startRaw) ? startRaw : 0.0);
+        const initExpr = dae.addRealLiteral(Number.isFinite(initRaw) ? initRaw : 0.0);
+        const timeExpr = dae.addNameExpr("time");
+        const activeRamp = dae.addBinaryExpr(
+          BinOp.Add,
+          initExpr,
+          dae.addBinaryExpr(BinOp.Mul, slopeExpr, dae.addBinaryExpr(BinOp.Sub, timeExpr, startExpr)),
+        );
+        const cond = dae.addBinaryExpr(BinOp.Gte, timeExpr, startExpr);
+        dae.addEquation(EqKind.Simple, outExpr, dae.addIfElse(cond, activeRamp, initExpr));
+        break;
+      }
+
+      case "Sine": {
+        const ampRaw = Number.parseFloat(String(block.parameters.get("Amplitude") ?? "1.0"));
+        const biasRaw = Number.parseFloat(String(block.parameters.get("Bias") ?? "0.0"));
+        const freqRaw = Number.parseFloat(String(block.parameters.get("Frequency") ?? "1.0"));
+        const phaseRaw = Number.parseFloat(String(block.parameters.get("Phase") ?? "0.0"));
+        const ampExpr = dae.addRealLiteral(Number.isFinite(ampRaw) ? ampRaw : 1.0);
+        const biasExpr = dae.addRealLiteral(Number.isFinite(biasRaw) ? biasRaw : 0.0);
+        const freqExpr = dae.addRealLiteral(Number.isFinite(freqRaw) ? freqRaw : 1.0);
+        const phaseExpr = dae.addRealLiteral(Number.isFinite(phaseRaw) ? phaseRaw : 0.0);
+        const timeExpr = dae.addNameExpr("time");
+        const argExpr = dae.addBinaryExpr(BinOp.Add, dae.addBinaryExpr(BinOp.Mul, freqExpr, timeExpr), phaseExpr);
+        const sinExpr = dae.addCallExpr("sin", [argExpr]);
+        const rhsExpr = dae.addBinaryExpr(BinOp.Add, biasExpr, dae.addBinaryExpr(BinOp.Mul, ampExpr, sinExpr));
+        dae.addEquation(EqKind.Simple, outExpr, rhsExpr);
         break;
       }
 

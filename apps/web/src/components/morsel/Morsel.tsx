@@ -17,6 +17,7 @@ import {
   didChange,
   didClose,
   didOpen,
+  extractPrimaryModelicaClassName,
   getComponentProperties,
   getDiagramData,
   parseCode,
@@ -66,6 +67,7 @@ export interface MorselEditorProps {
   onAnchorClick?: ((anchor: { elementId: string; kind: "component" }) => void) | undefined;
   onSimulationStatus?: ((status: string, data?: unknown) => void) | undefined;
   onActiveViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code") => void) | undefined;
+  onParametersChange?: ((params: Record<string, number>) => void) | undefined;
   onSave?: ((code: string) => void) | undefined;
 }
 
@@ -146,7 +148,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [selectedComponentProperties, setSelectedComponentProperties] = useState<any | null>(null);
   const [isPropertiesLoading, setIsPropertiesLoading] = useState(false);
   const [diagramData, setDiagramData] = useState<any>(null);
-  const [selectedTreeClassName, setSelectedTreeClassName] = useState<string | null>(null);
+  const [selectedTreeClassName, setSelectedTreeClassName] = useState<string | null>(() =>
+    dialect === "modelica" || !dialect ? extractPrimaryModelicaClassName(content) : null,
+  );
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const [documentModels, setDocumentModels] = useState<{ name: string; kind: string }[]>([]);
   const [drillDownPath, setDrillDownPath] = useState<string[]>([]);
@@ -302,6 +306,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     editor,
     showResultsView,
     setShowResultsView,
+    showCadView,
     isNarrow,
     setMobileTab,
     setTreeVisible,
@@ -338,6 +343,10 @@ export default function MorselEditor(props: MorselEditorProps) {
       props.onSimulationStatus(simulationStatus, localSimulationData);
     }
   }, [simulationStatus, localSimulationData, props.onSimulationStatus]);
+
+  useEffect(() => {
+    props.onParametersChange?.(parameterOverrides);
+  }, [parameterOverrides, props.onParametersChange]);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
   const [treeWidth, setTreeWidth] = useState(300);
@@ -589,8 +598,15 @@ export default function MorselEditor(props: MorselEditorProps) {
         if (res && res.classes) {
           setDocumentModels(res.classes);
           if (res.classes.length > 0) {
+            const preferredName = extractPrimaryModelicaClassName(text);
             setSelectedTreeClassName((prev) => {
               if (prev && res.classes.some((c) => c.name === prev)) return prev;
+              if (preferredName && res.classes.some((c) => c.name === preferredName)) return preferredName;
+              const simulatable = res.classes.filter((c) => {
+                const k = (c.kind || "").toLowerCase();
+                return k === "model" || k === "block" || k === "class";
+              });
+              if (simulatable.length > 0) return simulatable[simulatable.length - 1]!.name;
               return res.classes[0]!.name;
             });
           }
@@ -659,8 +675,8 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLoadingProgress(80);
       setLoadingMessage("Loading modeling workspace…");
 
-      // Notify LSP of the initial file content
-      didOpen(documentUri, content, dialect);
+      // Notify LSP of the initial file content and ensure notification is sent before triggering simulation/tree update
+      await didOpen(documentUri, content, dialect);
 
       // Force tree update by bumping version now that LSP is ready
       setContextVersion((v) => v + 1);
@@ -696,13 +712,63 @@ export default function MorselEditor(props: MorselEditorProps) {
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     const handleOpenShareModal = () => setShareDialogOpen(true);
+    const handleMorselCommand = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ action?: string } | undefined>).detail;
+      if (!detail?.action) return;
+      switch (detail.action) {
+        case "simulate":
+          void handleSimulate();
+          break;
+        case "view:diagram":
+          setShowCadView(false);
+          setShowResultsView(false);
+          setShowAnalysisView(false);
+          setView(View.DIAGRAM);
+          break;
+        case "view:3d":
+          setShowResultsView(false);
+          setShowAnalysisView(false);
+          setShowCadView(true);
+          setView(View.DIAGRAM);
+          break;
+        case "view:simulation":
+          setShowCadView(false);
+          setShowAnalysisView(false);
+          setShowResultsView(true);
+          setView(View.DIAGRAM);
+          break;
+        case "view:inspector":
+          setShowCadView(false);
+          setShowResultsView(false);
+          setShowAnalysisView(true);
+          setView(View.DIAGRAM);
+          break;
+        case "view:code":
+          setShowCadView(false);
+          setShowResultsView(false);
+          setShowAnalysisView(false);
+          setView(View.CODE);
+          break;
+        case "view:split":
+          setShowCadView(false);
+          setShowResultsView(false);
+          setShowAnalysisView(false);
+          setView(View.SPLIT_COLUMNS);
+          break;
+        case "share":
+          setShareDialogOpen(true);
+          break;
+      }
+    };
     window.addEventListener("resize", handleResize);
     window.addEventListener("modelscript:open-share-modal", handleOpenShareModal);
+    window.addEventListener("modelscript:morsel-command", handleMorselCommand);
     return () => {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("modelscript:open-share-modal", handleOpenShareModal);
+      window.removeEventListener("modelscript:morsel-command", handleMorselCommand);
     };
-  }, []);
+  }, [handleSimulate]);
 
   useEffect(() => {
     if (isNarrow) {
@@ -733,8 +799,16 @@ export default function MorselEditor(props: MorselEditorProps) {
         setView(View.DIAGRAM);
       }
       props.onActiveViewChange?.("simulation");
+    } else if (showCadView) {
+      props.onActiveViewChange?.("3d");
+    } else if (showAnalysisView) {
+      props.onActiveViewChange?.("inspector");
+    } else if (view === View.CODE) {
+      props.onActiveViewChange?.("code");
+    } else {
+      props.onActiveViewChange?.("diagram");
     }
-  }, [showResultsView, props.hideCenterFloatingToolbar, props.onActiveViewChange, view]);
+  }, [showResultsView, showCadView, showAnalysisView, props.hideCenterFloatingToolbar, props.onActiveViewChange, view]);
 
   useEffect(() => {
     if (content) {

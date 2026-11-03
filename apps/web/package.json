@@ -1,6 +1,6 @@
 {
   "name": "@modelscript/web",
-  "version": "0.0.18",
+  "version": "0.1.0",
   "private": true,
   "description": "Ansatz (ansatz.social) Web Platform powered by ModelScript — federated scientific & engineering network, package registry, Cloud HPC studio, and polyglot playground",
   "license": "AGPL-3.0-or-later",
@@ -9,6 +9,7 @@
     "build": "vite build",
     "clean": "rimraf dist",
     "dev": "vite --port 3001",
+    "dev:flagship": "vite --port 3001",
     "lint": "eslint src tests vite.config.ts --no-warn-ignored",
     "preview": "vite preview",
     "test": "node ../../scripts/test-runner.js",
@@ -23,6 +24,7 @@
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
     "@modelscript/embed": "*",
+    "@modelscript/exchange": "*",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/reqif": "*",

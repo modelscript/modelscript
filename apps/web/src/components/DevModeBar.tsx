@@ -564,7 +564,8 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
 }) => {
   const navigate = useNavigate();
   const { user, isAdmin, login, logout, creditBalance, refreshWallet } = useAuth();
-  const { overrides, resetAllOverrides } = useFeatureFlags();
+  const { overrides, resetAllOverrides, isEnabled } = useFeatureFlags();
+  const hasCaeCluster = isEnabled("cae_cloud_solver");
   const { theme, toggleTheme } = useTheme();
 
   const [switchingEmail, setSwitchingEmail] = useState<string | null>(null);
@@ -624,6 +625,7 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
   }, [onClusterStatusChange]);
 
   useEffect(() => {
+    if (!isExpanded || !hasCaeCluster) return;
     if (!clusterStatus) {
       void fetchCluster();
     }
@@ -633,7 +635,7 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
       }
     }, 20000);
     return () => clearInterval(interval);
-  }, [clusterStatus, fetchCluster]);
+  }, [isExpanded, hasCaeCluster, clusterStatus, fetchCluster]);
 
   const handlePersonaSwitch = async (persona: DevPersona) => {
     if (user?.email === persona.email) {
@@ -932,6 +934,7 @@ export const DevModeBar: React.FC<DevModeBarProps> = ({
                       onClick={() => {
                         setIsPersonaMenuOpen(false);
                         logout();
+                        navigate("/logout", { replace: true });
                       }}
                     >
                       <SignOutIcon size={13} />

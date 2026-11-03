@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
+import { FeatureFlagContext } from "../src/FeatureFlagContext";
 import { AdminMenuSidebar } from "../src/pages/admin/components/AdminMenuSidebar";
 import { AdminAuditLogsTab } from "../src/pages/admin/tabs/AdminAuditLogsTab";
 import { AdminDatabaseTab } from "../src/pages/admin/tabs/AdminDatabaseTab";
@@ -147,11 +148,59 @@ describe("Admin Console & Moderation UI Components Suite", () => {
     assert.ok(html.includes("bad-instance.social"));
     assert.ok(html.includes("Moderators"));
     assert.ok(html.includes("Auditors"));
-    assert.ok(html.includes("500"));
-    assert.ok(html.includes("Credits"));
     assert.ok(html.includes("Forensics"));
+    assert.ok(html.includes("Manage"));
+    // By default, billing_stripe_live is false so Credits column is hidden
+    assert.ok(!html.includes("<th>Credits</th>"));
     assert.ok(html.includes("User Forensic Dossier"));
     assert.ok(html.includes("Recent forensic post snippet"));
+
+    // When billing feature flag is enabled, Credits column is visible
+    const htmlWithBilling = renderToStaticMarkup(
+      React.createElement(
+        MemoryRouter,
+        null,
+        React.createElement(
+          FeatureFlagContext.Provider,
+          {
+            value: {
+              flags: { billing_stripe_live: true },
+              overrides: {},
+              isLoading: false,
+              refreshFlags: async () => {},
+              isEnabled: (k: string) => k === "billing_stripe_live",
+              setFlagOverride: () => {},
+              resetAllOverrides: () => {},
+            },
+          },
+          React.createElement(AdminUsersTab, {
+            users: [
+              {
+                id: 9,
+                username: "remote_spammer",
+                display_name: "Remote Spammer",
+                email: "spammer@bad-instance.social",
+                account_type: "moderator",
+                status: "frozen",
+                credit_balance: 500,
+                created_at: "2026-10-01T00:00:00Z",
+              },
+            ],
+            userSearchQuery: "",
+            setUserSearchQuery: () => {},
+            userStatusFilter: "all",
+            setUserStatusFilter: () => {},
+            userRoleFilter: "all",
+            setUserRoleFilter: () => {},
+            onModerateUser: async () => {},
+            onAdjustUserCredits: async () => {},
+            loading: false,
+          }),
+        ),
+      ),
+    );
+    assert.ok(htmlWithBilling.includes("<th>Credits</th>"));
+    assert.ok(htmlWithBilling.includes("500"));
   });
 
   it("renders AdminFederationTab with Domain Tier policies, CSV Import/Export, Peer Tester, and S2S Delivery Queue telemetry", () => {

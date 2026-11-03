@@ -382,6 +382,50 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
 
     const wrapperRes = await request(app).get("/github.com/modelscript/modelscript").expect(200);
     assert.ok(wrapperRes.text.includes("/vscode/workbench?folder="));
+
+    const ghFsPkgRes = await request(app).get("/static/extensions/github-fs/package.json").expect(200);
+    assert.ok(Array.isArray(ghFsPkgRes.body.activationEvents));
+    assert.ok(ghFsPkgRes.body.activationEvents.includes("onFileSystem:github"));
+
+    const mslTreeRes = await request(app)
+      .get("/api/github/repos/modelica/ModelicaStandardLibrary/git/trees/main?recursive=1")
+      .expect(200);
+    assert.ok(Array.isArray(mslTreeRes.body.tree));
+    assert.ok(mslTreeRes.body.tree.some((entry: { path: string }) => entry.path === "Modelica/package.mo"));
+    assert.ok(mslTreeRes.body.tree.some((entry: { path: string }) => entry.path === "README.md"));
+
+    const mslContentRes = await request(app)
+      .get("/api/github/repos/modelica/ModelicaStandardLibrary/contents/Modelica/package.mo?ref=main")
+      .expect(200);
+    assert.strictEqual(mslContentRes.body.type, "file");
+    assert.strictEqual(mslContentRes.body.encoding, "base64");
+    const decodedPkg = Buffer.from(mslContentRes.body.content, "base64").toString("utf-8");
+    assert.ok(decodedPkg.includes("package Modelica"));
+
+    // Non-repository GitHub API endpoints must be blocked by the read-only repo proxy
+    await request(app).get("/api/github/user").expect(403);
+    await request(app).get("/api/github/user/repos").expect(403);
+
+    // Automated dotfile and vulnerability scanner probes must return 404 and be ignored by pageview analytics
+    const scannerPaths = [
+      "/.env",
+      "/.git/config",
+      "/wp-login.php",
+      "/live/.env",
+      "/panel/.env",
+      "/.env.backup",
+      "/.env.swp",
+    ];
+    for (const probePath of scannerPaths) {
+      await request(app).get(probePath).expect(404);
+      const pvRes = await request(app)
+        .post("/api/v1/analytics/pageview")
+        .set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/125.0.0.0")
+        .send({ path: probePath, surface: "web" })
+        .expect(202);
+      assert.strictEqual(pvRes.body.counted, false);
+      assert.strictEqual(pvRes.body.ignored, "scanner_probe");
+    }
   });
 
   await t.test(
@@ -1229,6 +1273,10 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
           autoFilterAction: "cw",
           customTermsMarkdown: "# Custom Corporate Terms",
           customPrivacyMarkdown: "# Custom Corporate Privacy",
+          customCookiesMarkdown: "# Custom Corporate Cookies",
+          legalPolicyMode: "override",
+          legalJurisdiction: "Zurich, Switzerland",
+          legalEffectiveDate: "November 2026",
         })
         .expect(200);
 
@@ -1246,6 +1294,13 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
       const bannerLegalRes = await request(app).get("/api/v1/instance/banner").expect(200);
       assert.strictEqual(bannerLegalRes.body.customTermsMarkdown, "# Custom Corporate Terms");
       assert.strictEqual(bannerLegalRes.body.customPrivacyMarkdown, "# Custom Corporate Privacy");
+      assert.strictEqual(bannerLegalRes.body.customCookiesMarkdown, "# Custom Corporate Cookies");
+      assert.strictEqual(bannerLegalRes.body.legalPolicyMode, "override");
+      assert.strictEqual(bannerLegalRes.body.legalJurisdiction, "Zurich, Switzerland");
+      assert.strictEqual(bannerLegalRes.body.legalEffectiveDate, "November 2026");
+
+      const complianceRes = await request(app).get("/api/v1/compliance/policy").expect(200);
+      assert.strictEqual(complianceRes.body.cookiesPolicy, "https://ansatz.social/cookies");
 
       // Federation Domain Health & 1-Click Circuit Breaker
       db.enqueueFederationDelivery(

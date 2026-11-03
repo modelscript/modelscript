@@ -16,36 +16,61 @@ export async function exportLspBundle(
     const zipfile = new ZipFile();
     zipfile.outputStream.on("error", reject);
 
-    // 1. Serialize the unified SymbolIndex to index.json
+    // 1. Serialize the unified SymbolIndex to index.json (excluding hydrated external dependencies)
     const index = engine.index; // This is the unified SymbolIndex
 
     // Normalize libraryPath for mapping
     const libPrefix = libraryPath.replace(/\\/g, "/").replace(/\/?$/, "/");
+    const excludedIds = new Set<number>();
+    const symbolsArr: [number, unknown][] = [];
 
-    const symbolsArr = Array.from(index.symbols.entries()).map(([id, entry]) => {
+    for (const [id, entry] of index.symbols.entries()) {
       const mappedEntry = { ...entry };
       if (mappedEntry.resourceId) {
-        let resPath = mappedEntry.resourceId;
-        // In Context.ts, resourceId might be prefixed with a scheme like "modelica:/" or "sysml2:/",
-        // but addLibrary registers the absolute filesystem path as the URI!
-        resPath = resPath.replace(/\\/g, "/");
+        const resPath = mappedEntry.resourceId.replace(/\\/g, "/");
+        if (
+          resPath.startsWith("dep-bundle:/") ||
+          resPath.endsWith("modelscript-cas.mo") ||
+          resPath.endsWith("modelscript-studies.mo") ||
+          resPath.endsWith("modelscript-geometry.mo")
+        ) {
+          excludedIds.add(id);
+          continue;
+        }
         if (resPath.startsWith(libPrefix)) {
           mappedEntry.resourceId = "sources/" + resPath.substring(libPrefix.length);
         } else {
-          // If it has a scheme prefix (like file://), try stripping it
           const cleanPath = resPath.replace(/^[a-z0-9+-]+:\/\//i, "");
           if (cleanPath.startsWith(libPrefix)) {
             mappedEntry.resourceId = "sources/" + cleanPath.substring(libPrefix.length);
+          } else if (cleanPath.startsWith("/") || /^[a-zA-Z]:\//.test(cleanPath)) {
+            // Absolute path belonging to an external hydrated dependency library
+            excludedIds.add(id);
+            continue;
           } else {
             mappedEntry.resourceId = "sources/" + path.basename(resPath);
           }
         }
       }
-      return [id, mappedEntry];
-    });
+      symbolsArr.push([id, mappedEntry]);
+    }
 
-    const byNameArr = Array.from(index.byName.entries());
-    const childrenOfArr = Array.from(index.childrenOf.entries());
+    const byNameArr: [string, number[]][] = [];
+    for (const [name, ids] of index.byName.entries()) {
+      const filtered = ids.filter((id) => !excludedIds.has(id));
+      if (filtered.length > 0) {
+        byNameArr.push([name, filtered]);
+      }
+    }
+
+    const childrenOfArr: [number | null, number[]][] = [];
+    for (const [parentId, childIds] of index.childrenOf.entries()) {
+      if (parentId !== null && excludedIds.has(parentId)) continue;
+      const filtered = childIds.filter((id) => !excludedIds.has(id));
+      if (filtered.length > 0) {
+        childrenOfArr.push([parentId, filtered]);
+      }
+    }
 
     const indexJson = JSON.stringify({
       symbols: symbolsArr,

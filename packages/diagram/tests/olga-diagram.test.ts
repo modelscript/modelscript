@@ -140,6 +140,11 @@ assert.ok(pvtSvg.includes("PVT P-T Phase Envelope"));
 assert.ok(pvtSvg.includes("2-PHASE GAS + LIQUID"));
 assert.ok(pvtSvg.includes("HYDRATE RISK ZONE"));
 assert.ok(pvtSvg.includes("Critical Point (48°C, 145 bar)"));
+const pvtSvgHighCrit = renderOlgaPvtEnvelopeSvg(undefined, {
+  criticalPoint: { temperatureC: 65, pressureBar: 175 },
+  cricondentherm: { temperatureC: 112, pressureBar: 80 },
+});
+assert.notStrictEqual(pvtSvg, pvtSvgHighCrit, "Phase envelope path should respond to fluid critical properties");
 console.log("✔ PVT P-T Phase Envelope SVG rendered cleanly with hydrate zone and operational trajectory!");
 
 // 5. Test renderOlgaWellboreIprSvg

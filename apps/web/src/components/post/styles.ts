@@ -128,8 +128,8 @@ export const AiBadge = styled.span<{ $variant?: "generated" | "verified" | "revi
 `;
 
 export const AiInsightRibbon = styled.div`
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(6, 182, 212, 0.05));
-  border: 1px solid rgba(139, 92, 246, 0.22);
+  background: var(--ms-brand-soft);
+  border: 1px solid var(--color-accent-blue-border);
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 12.5px;
@@ -142,12 +142,12 @@ export const AiInsightRibbon = styled.div`
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   &:hover {
-    border-color: rgba(139, 92, 246, 0.4);
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(6, 182, 212, 0.08));
+    border-color: var(--ms-brand);
+    background: var(--ms-brand-soft);
   }
 
   strong {
-    color: var(--color-accent-purple);
+    color: var(--ms-brand);
   }
 `;
 
@@ -329,6 +329,7 @@ export interface PostProps {
   post: any;
   isDetail?: boolean | undefined;
   isThread?: boolean | undefined;
+  isPinned?: boolean | undefined;
 }
 
 export function formatRelativeTime(dateString: string): string {

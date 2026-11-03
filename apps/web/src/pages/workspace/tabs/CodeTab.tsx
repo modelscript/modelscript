@@ -1140,12 +1140,10 @@ git push -u origin ${defaultBranch}`}
       {/* In-Repository File Finder Modal */}
       {isFinderOpen && (
         <Dialog
-          isOpen={isFinderOpen}
-          onDismiss={() => setIsFinderOpen(false)}
-          aria-labelledby="repo-file-finder-title"
+          title={`Jump to file in ${repo.name}`}
+          onClose={() => setIsFinderOpen(false)}
           sx={{ width: "560px", maxWidth: "95vw" }}
         >
-          <Dialog.Header id="repo-file-finder-title">Jump to file in {repo.name}</Dialog.Header>
           <Box p={3}>
             <TextInput
               block
@@ -1216,14 +1214,10 @@ git push -u origin ${defaultBranch}`}
       {/* Create New File Modal */}
       {isCreateFileOpen && (
         <Dialog
-          isOpen={isCreateFileOpen}
-          onDismiss={() => setIsCreateFileOpen(false)}
-          aria-labelledby="create-repo-file-title"
+          title={`Create new file in ${repo.name}${currentPath ? ` (${currentPath}/)` : ""}`}
+          onClose={() => setIsCreateFileOpen(false)}
           sx={{ width: "680px", maxWidth: "95vw" }}
         >
-          <Dialog.Header id="create-repo-file-title">
-            Create new file in {repo.name} {currentPath ? `(${currentPath}/)` : ""}
-          </Dialog.Header>
           <Box p={3}>
             <form onSubmit={handleCreateNewFile}>
               <Box mb={2}>

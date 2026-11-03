@@ -14,7 +14,8 @@ export const Overlay = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 10vh;
+  padding: 6vh 16px;
+  overflow-y: auto;
 `;
 
 export const ModalPanel = styled.div`
@@ -29,7 +30,7 @@ export const ModalPanel = styled.div`
   display: flex;
   flex-direction: column;
   overflow: visible;
-  max-height: 84vh;
+  max-height: 88dvh;
   min-height: 250px;
   transition: max-width 0.2s ease;
 `;
@@ -48,4 +49,5 @@ export const Body = styled.div`
   gap: 12px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 `;

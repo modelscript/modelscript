@@ -78,6 +78,15 @@ test("Headless Preinstall & Deployment Presets", async (t) => {
         profileTier: "tier1_federated",
       });
       assert.equal(completeRes.status, 403);
+
+      // Verify flagship node has ZERO dev mock data (0 posts, 0 mock personas, 0 jobs)
+      const postCount = (db.db.prepare("SELECT count(*) as c FROM posts").get() as { c: number }).c;
+      const jobCount = (db.db.prepare("SELECT count(*) as c FROM jobs").get() as { c: number }).c;
+      assert.equal(postCount, 0);
+      assert.equal(jobCount, 0);
+      const allUsers = db.db.prepare("SELECT username FROM users").all() as { username: string }[];
+      assert.equal(allUsers.length, 1);
+      assert.equal(allUsers[0]?.username, "superadmin");
     } finally {
       if (app) {
         if (app.locals.decayWorkerInterval) clearInterval(app.locals.decayWorkerInterval);
@@ -91,6 +100,98 @@ test("Headless Preinstall & Deployment Presets", async (t) => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  await t.test("createApp with DEPLOYMENT_PRESET=tier3_flagship strictly blocks dev auto-seeding", async () => {
+    const origPreset = process.env["DEPLOYMENT_PRESET"];
+    const origNodeEnv = process.env["NODE_ENV"];
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "flagship-no-seed-test-"));
+    const dbPath = path.join(tmpDir, "db");
+    const db = new LibraryDatabase(dbPath);
+    let app: ReturnType<typeof createApp> | undefined;
+
+    try {
+      process.env["DEPLOYMENT_PRESET"] = "tier3_flagship";
+      // Even if NODE_ENV is omitted or not "production", flagship preset must NEVER seed dev data
+      delete process.env["NODE_ENV"];
+
+      app = createApp({ database: db, storage: new LibraryStorage(path.join(tmpDir, "storage")) });
+
+      // Ensure no mock dev data was seeded
+      const postCount = (db.db.prepare("SELECT count(*) as c FROM posts").get() as { c: number }).c;
+      const jobCount = (db.db.prepare("SELECT count(*) as c FROM jobs").get() as { c: number }).c;
+      assert.equal(postCount, 0);
+      assert.equal(jobCount, 0);
+      const users = db.db.prepare("SELECT username FROM users").all() as { username: string }[];
+      assert.equal(users.length, 0);
+    } finally {
+      if (origPreset !== undefined) process.env["DEPLOYMENT_PRESET"] = origPreset;
+      else delete process.env["DEPLOYMENT_PRESET"];
+      if (origNodeEnv !== undefined) process.env["NODE_ENV"] = origNodeEnv;
+      else delete process.env["NODE_ENV"];
+
+      if (app) {
+        if (app.locals.decayWorkerInterval) clearInterval(app.locals.decayWorkerInterval);
+        if (app.locals.rssWorkerInterval) clearInterval(app.locals.rssWorkerInterval);
+        if (app.locals.logPurgeInterval) clearInterval(app.locals.logPurgeInterval);
+        if (app.locals.autoBackupInterval) clearInterval(app.locals.autoBackupInterval);
+        if (app.locals.federationWorker) app.locals.federationWorker.stop();
+        if (app.locals.botMentionWorker) app.locals.botMentionWorker.stop();
+      }
+      db.db.close();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  await t.test(
+    "createApp with DEPLOYMENT_PRESET=tier3_flagship and ALLOW_DEV_SEEDING=true enables mock data seeding in dev",
+    async () => {
+      const origPreset = process.env["DEPLOYMENT_PRESET"];
+      const origAllowDev = process.env["ALLOW_DEV_SEEDING"];
+      const origSeedExamples = process.env["SEED_EXAMPLES"];
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "flagship-allow-seed-test-"));
+      const dbPath = path.join(tmpDir, "db");
+      const db = new LibraryDatabase(dbPath);
+      let app: ReturnType<typeof createApp> | undefined;
+
+      try {
+        process.env["DEPLOYMENT_PRESET"] = "tier3_flagship";
+        process.env["ALLOW_DEV_SEEDING"] = "true";
+        process.env["SEED_EXAMPLES"] = "false";
+
+        app = createApp({ database: db, storage: new LibraryStorage(path.join(tmpDir, "storage")) });
+
+        // Verify that mock personas were seeded immediately
+        const users = db.db.prepare("SELECT username FROM users").all() as { username: string }[];
+        assert.ok(users.length > 0, "Expected mock users to be seeded when ALLOW_DEV_SEEDING is true");
+        assert.ok(users.some((u) => u.username === "elena_vance"));
+      } finally {
+        if (origPreset !== undefined) process.env["DEPLOYMENT_PRESET"] = origPreset;
+        else delete process.env["DEPLOYMENT_PRESET"];
+        if (origAllowDev !== undefined) process.env["ALLOW_DEV_SEEDING"] = origAllowDev;
+        else delete process.env["ALLOW_DEV_SEEDING"];
+        if (origSeedExamples !== undefined) process.env["SEED_EXAMPLES"] = origSeedExamples;
+        else delete process.env["SEED_EXAMPLES"];
+
+        if (app) {
+          if (app.locals.decayWorkerInterval) clearInterval(app.locals.decayWorkerInterval);
+          if (app.locals.rssWorkerInterval) clearInterval(app.locals.rssWorkerInterval);
+          if (app.locals.logPurgeInterval) clearInterval(app.locals.logPurgeInterval);
+          if (app.locals.autoBackupInterval) clearInterval(app.locals.autoBackupInterval);
+          if (app.locals.federationWorker) app.locals.federationWorker.stop();
+          if (app.locals.botMentionWorker) app.locals.botMentionWorker.stop();
+          if (app.locals.devSeedPromise) {
+            try {
+              await app.locals.devSeedPromise;
+            } catch {
+              // Ignored
+            }
+          }
+        }
+        db.db.close();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   await t.test("seedInitialAdmin with corporate preset configures airgapped settings", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "preinstall-corp-test-"));

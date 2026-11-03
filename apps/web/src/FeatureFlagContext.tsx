@@ -16,7 +16,7 @@ export interface FeatureFlagContextType {
   resetAllOverrides: () => void;
 }
 
-const FeatureFlagContext = createContext<FeatureFlagContextType | null>(null);
+export const FeatureFlagContext = createContext<FeatureFlagContextType | null>(null);
 
 export const POLYGLOT_LANGUAGE_IDS = [
   "modelica",
@@ -81,6 +81,7 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   modelica_simulation: true,
   morsel_playground: true,
   package_browser: true,
+  git_repositories: true,
   community_social: true,
   cad_step_viewer: true,
   cae_cloud_solver: false,
@@ -93,9 +94,16 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   digital_thread_explorer: false,
   heavy_vscode_ide: true,
   experimental_viewers: false,
+  package_artifacts_tab: false,
+  package_version_compare: false,
+  package_advanced_exports: false,
   bot_accounts: false,
   sparql_rdf_endpoints: false,
   mcp_gateway_sse: false,
+  composer_ai_polish: false,
+  ai_polish: false,
+  feeds_page: false,
+  rss_feeds: false,
   ...DEFAULT_LANGUAGE_FLAGS,
   lang_modelscript_msx: false,
 };
@@ -199,8 +207,20 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
       if (key in overrides) {
         return overrides[key]!;
       }
+      if (key === "feeds_page" && "rss_feeds" in overrides) {
+        return overrides["rss_feeds"]!;
+      }
+      if (key === "rss_feeds" && "feeds_page" in overrides) {
+        return overrides["feeds_page"]!;
+      }
 
       // 3. Fall back to evaluated flags or default
+      if (key === "feeds_page" && flags["feeds_page"] === undefined && flags["rss_feeds"] !== undefined) {
+        return flags["rss_feeds"]!;
+      }
+      if (key === "rss_feeds" && flags["rss_feeds"] === undefined && flags["feeds_page"] !== undefined) {
+        return flags["feeds_page"]!;
+      }
       return flags[key] ?? DEFAULT_FRONTEND_FLAGS[key] ?? false;
     },
     [flags, overrides],

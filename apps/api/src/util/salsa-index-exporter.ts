@@ -9,7 +9,7 @@ import path from "node:path";
  * Serializes a QueryEngine's state (SymbolIndex and Memos) into a SQLite database.
  * This generated artifact can be served by the registry and hydrated by edge clients.
  */
-export async function exportSalsaIndex(engine: QueryEngine, dbPath: string): Promise<void> {
+export async function exportSalsaIndex(engine: QueryEngine, dbPath: string, libraryPath?: string): Promise<void> {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
@@ -34,14 +34,24 @@ export async function exportSalsaIndex(engine: QueryEngine, dbPath: string): Pro
   const insertSymbol = db.prepare(`INSERT OR REPLACE INTO symbols (id, data) VALUES (?, ?)`);
   const insertMemo = db.prepare(`INSERT OR REPLACE INTO memos (key, data) VALUES (?, ?)`);
   const insertMeta = db.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`);
+  const normLibPath = libraryPath ? libraryPath.replace(/\\/g, "/").replace(/\/?$/, "/") : null;
 
   const transaction = db.transaction(() => {
     // Schema version for forward compatibility
     insertMeta.run("schema_version", "1");
     insertMeta.run("created_at", new Date().toISOString());
 
-    // Dump symbols
+    // Dump symbols (excluding hydrated cross-library dependency symbols)
     for (const [id, entry] of engine.index.symbols.entries()) {
+      const resId = entry.resourceId || "";
+      if (resId.startsWith("dep-bundle:/")) continue;
+      if (path.basename(resId).startsWith("modelscript-") && resId.endsWith(".mo")) continue;
+      if (normLibPath && resId) {
+        const cleanPath = resId.replace(/\\/g, "/").replace(/^[a-z0-9+-]+:\/\//i, "");
+        if (cleanPath.startsWith("/") && !cleanPath.startsWith(normLibPath)) {
+          continue;
+        }
+      }
       insertSymbol.run(id, JSON.stringify(entry));
     }
 

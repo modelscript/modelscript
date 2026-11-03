@@ -2,124 +2,68 @@
 
 import {
   AlertIcon,
-  CheckIcon,
-  CodeIcon,
-  CopyIcon,
-  FileDirectoryIcon,
+  ChevronDownIcon,
+  CpuIcon,
+  DatabaseIcon,
+  FileCodeIcon,
   GitBranchIcon,
-  LinkExternalIcon,
+  GlobeIcon,
   LockIcon,
   MarkGithubIcon,
+  PackageIcon as OcticonPackageIcon,
   PlusIcon,
   RepoIcon,
   SearchIcon,
-  ShareIcon,
+  SortAscIcon,
   StarFillIcon,
   StarIcon,
-  SyncIcon,
   TrashIcon,
+  WorkflowIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
 import { Button, Dialog, Flash, FormControl, Heading, Select, Spinner, Text, TextInput } from "@primer/react";
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
-import { createRepo, deleteRepo, getPopularRepos, getRepos } from "../api";
+import { createRepo, deleteRepo, getPopularRepos, getRepoFallbackStars, getRepos } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
-import { ComposeContext } from "../components/ComposeContext";
-import { CircleIconButton, PageTab as Tab, PageTabBar as TabBar } from "../components/SharedStyles";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import type { RepositoryDTO } from "../types/api";
 import { usePageTitle } from "../util/title";
-import { getFollowedReposMap, setRepoStarred } from "./workspace/utils";
+import {
+  CardList,
+  FilterPill,
+  HeaderActionsGroup,
+  HeaderControlsRow,
+  HeaderTitle,
+  HeaderTitleGroup,
+  HeaderTopRow,
+  PackagesHeader,
+  ResultCount,
+  ScopeSegmentButton,
+  ScopeSegmentedControl,
+  SearchClearButton,
+  SearchFieldWrapper,
+  SearchKbdHint,
+  ToolbarSelectWrapper,
+} from "./libraries";
+import { getFollowedReposMap } from "./workspace/utils";
 
 /* ─── styled helpers ─── */
-
-const ResultCount = styled.span`
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  background: var(--color-bg-elevated, rgba(127, 140, 154, 0.12));
-  padding: 2px 8px;
-  border-radius: 9999px;
-`;
-
-const TabCountBadge = styled.span`
-  font-size: 11px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 9999px;
-  margin-left: 6px;
-  background: var(--color-bg-elevated, rgba(127, 140, 154, 0.14));
-  color: var(--color-text-muted);
-`;
-
-const CardList = styled.div`
-  display: flex;
-  flex-direction: column;
-`;
 
 const RepoCard = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 20px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--color-border);
-  transition: background-color 0.15s ease;
-
-  &:hover {
-    background-color: var(--color-bg-hover, rgba(127, 140, 154, 0.04));
-  }
-
-  @media (max-width: 680px) {
-    flex-direction: column;
-  }
-`;
-
-const InputSection = styled.form`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid var(--color-border);
-  min-height: 56px;
-  padding: 8px 16px;
-  background: var(--color-bg-elevated, transparent);
-`;
-
-const RepoInput = styled.input`
-  flex: 1;
-  height: 40px;
-  border: none;
-  background: transparent;
-  font-size: 15px;
-  color: var(--color-text-primary);
-  outline: none;
-
-  &::placeholder {
-    color: var(--color-text-muted);
-    opacity: 0.7;
-  }
-`;
-
-const FilterPill = styled.button<{ $active?: boolean }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 9999px;
-  font-size: 12.5px;
-  font-weight: 600;
+  transition: background 0.15s ease;
   cursor: pointer;
-  transition: all 0.15s ease;
-  border: 1px solid ${({ $active }) => ($active ? "var(--ms-brand, #0f766e)" : "var(--color-border)")};
-  background: ${({ $active }) => ($active ? "rgba(15, 118, 110, 0.12)" : "transparent")};
-  color: ${({ $active }) => ($active ? "var(--ms-brand, #0f766e)" : "var(--color-text-muted)")};
 
   &:hover {
-    border-color: var(--ms-brand, #0f766e);
-    color: var(--color-text-heading);
+    background: var(--surface-row-hover);
   }
 `;
 
@@ -128,39 +72,44 @@ const MetaBadge = styled.span`
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 2px 8px;
   border-radius: 9999px;
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
-  background: var(--color-bg-elevated, rgba(127, 140, 154, 0.06));
+  background: transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
 `;
 
-const TopicTagButton = styled.button<{ $color?: string; $active?: boolean }>`
+const TopicTagBadge = styled.span<{ $color?: string; $active?: boolean }>`
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 2px 9px;
   border-radius: 9999px;
-  border: 1px solid ${({ $active }) => ($active ? "var(--ms-brand, #0f766e)" : "transparent")};
-  background: ${({ $active }) => ($active ? "rgba(15, 118, 110, 0.18)" : "rgba(15, 118, 110, 0.09)")};
-  color: var(--ms-brand, #0f766e);
-  cursor: pointer;
-  transition: all 0.15s ease;
-
-  &:hover {
-    background: rgba(15, 118, 110, 0.16);
-  }
+  border: 1px solid ${({ $active }) => ($active ? "var(--ms-brand, #0f766e)" : "var(--color-border)")};
+  background: ${({ $active }) =>
+    $active ? "color-mix(in srgb, var(--ms-brand, #0f766e) 12%, transparent)" : "transparent"};
+  color: ${({ $active }) => ($active ? "var(--ms-brand, #0f766e)" : "var(--color-text-muted)")};
 `;
 
-const ActionPillButton = styled.button<{ $danger?: boolean }>`
-  background-color: transparent;
-  color: ${({ $danger }) => ($danger ? "var(--color-danger-fg, #cf222e)" : "var(--color-text-primary)")};
-  border: 1px solid var(--color-border);
+const ActionPillButton = styled.button<{ $danger?: boolean; $active?: boolean }>`
+  background-color: ${({ $active }) =>
+    $active ? "color-mix(in srgb, var(--ms-brand, #0f766e) 10%, transparent)" : "transparent"};
+  color: ${({ $danger, $active }) =>
+    $danger ? "var(--color-danger-fg, #cf222e)" : $active ? "var(--ms-brand, #0f766e)" : "var(--color-text-primary)"};
+  border: 1px solid
+    ${({ $danger, $active }) =>
+      $danger
+        ? "color-mix(in srgb, var(--color-danger-fg, #cf222e) 40%, var(--color-border))"
+        : $active
+          ? "color-mix(in srgb, var(--ms-brand, #0f766e) 45%, var(--color-border))"
+          : "var(--color-border)"};
   border-radius: 9999px;
-  padding: 6px 12px;
+  padding: 6px 13px;
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
@@ -172,7 +121,8 @@ const ActionPillButton = styled.button<{ $danger?: boolean }>`
 
   &:hover {
     border-color: ${({ $danger }) => ($danger ? "var(--color-danger-fg, #cf222e)" : "var(--color-text-muted)")};
-    background-color: ${({ $danger }) => ($danger ? "rgba(207, 34, 46, 0.08)" : "rgba(127, 140, 154, 0.08)")};
+    background-color: ${({ $danger }) =>
+      $danger ? "rgba(207, 34, 46, 0.08)" : "var(--surface-row-hover, rgba(127, 140, 154, 0.08))"};
   }
 `;
 
@@ -186,16 +136,19 @@ const SpinAnimation = styled.div`
   display: flex;
 `;
 
-const ALL_DOMAIN_FILTERS = [
-  "All Domains",
-  "Modelica",
-  "SysML v2",
-  "FMI / SSP",
-  "3D CAD / CSG",
-  "CFD / Multiphysics",
-  "Numerical Solvers",
-  "Schematic & Vector",
-] as const;
+const REPO_DOMAIN_OPTIONS: {
+  id: string;
+  label: string;
+  color: string;
+  icon: React.ComponentType<{ size?: number | undefined }>;
+}[] = [
+  { id: "All Domains", label: "All Domains", color: "#06b6d4", icon: GlobeIcon },
+  { id: "Modelica", label: "Modelica", color: "#eab308", icon: FileCodeIcon },
+  { id: "SysML v2", label: "SysML v2", color: "#a855f7", icon: WorkflowIcon },
+  { id: "3D CAD / CSG", label: "3D CAD", color: "#06b6d4", icon: OcticonPackageIcon },
+  { id: "FMI / SSP", label: "FMU / SSP", color: "#f43f5e", icon: CpuIcon },
+  { id: "CFD / Multiphysics", label: "CFD & Solvers", color: "#3b82f6", icon: DatabaseIcon },
+];
 
 export function inferRepoDomainTags(repo: RepositoryDTO): { label: string; color: string }[] {
   const hay = `${repo.namespace}/${repo.project} ${repo.description || ""}`.toLowerCase();
@@ -219,36 +172,194 @@ export function inferRepoDomainTags(repo: RepositoryDTO): { label: string; color
   return tags.slice(0, 3);
 }
 
-const GitlabSvgIcon: React.FC<{ size?: number }> = ({ size = 14 }) => (
+export const GitlabSvgIcon: React.FC<{ size?: number }> = ({ size = 14 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z" />
   </svg>
 );
 
-const RepoAvatarBadge: React.FC<{ url?: string | null; name: string }> = ({ url, name }) => {
+function renderRepoDomainGlyph(domainLabel: string, s: number): React.ReactNode {
+  switch (domainLabel) {
+    case "Modelica":
+      return (
+        <svg
+          width={s}
+          height={s}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M2 12h4l2.5-5 3 10 3-10 2.5 5h5" />
+        </svg>
+      );
+    case "SysML v2":
+      return (
+        <svg
+          width={s}
+          height={s}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="3" width="7" height="6" rx="1.5" />
+          <rect x="14" y="3" width="7" height="6" rx="1.5" />
+          <rect x="8.5" y="15" width="7" height="6" rx="1.5" />
+          <path d="M6.5 9v3a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V9" />
+          <line x1="12" y1="13" x2="12" y2="15" />
+        </svg>
+      );
+    case "FMI / SSP":
+      return (
+        <svg
+          width={s}
+          height={s}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <rect x="9" y="9" width="6" height="6" />
+          <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" />
+        </svg>
+      );
+    case "3D CAD / CSG":
+      return (
+        <svg
+          width={s}
+          height={s}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+          <line x1="12" y1="22.08" x2="12" y2="12" />
+        </svg>
+      );
+    case "CFD / Multiphysics":
+      return (
+        <svg
+          width={s}
+          height={s}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 8c3-3 6 3 9 0s6-3 9 0" />
+          <path d="M3 13c3-3 6 3 9 0s6-3 9 0" />
+          <path d="M3 18c3-3 6 3 9 0s6-3 9 0" />
+        </svg>
+      );
+    case "Numerical Solvers":
+      return (
+        <svg
+          width={s}
+          height={s}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M6 4H4v16h2" />
+          <path d="M18 4h2v16h-2" />
+          <circle cx="9" cy="9" r="1.2" fill="currentColor" />
+          <circle cx="15" cy="9" r="1.2" fill="currentColor" />
+          <circle cx="9" cy="15" r="1.2" fill="currentColor" />
+          <circle cx="15" cy="15" r="1.2" fill="currentColor" />
+        </svg>
+      );
+    case "Schematic & Vector":
+      return (
+        <svg
+          width={s}
+          height={s}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="6" cy="6" r="3" />
+          <circle cx="18" cy="6" r="3" />
+          <circle cx="12" cy="18" r="3" />
+          <line x1="8.7" y1="7.5" x2="10.8" y2="15.3" />
+          <line x1="15.3" y1="7.5" x2="13.2" y2="15.3" />
+          <line x1="9" y1="6" x2="15" y2="6" />
+        </svg>
+      );
+    default:
+      return <RepoIcon size={s} />;
+  }
+}
+
+export interface RepoAvatarBadgeProps {
+  url?: string | null | undefined;
+  name: string;
+  namespace?: string | undefined;
+  provider?: string | undefined;
+  description?: string | null | undefined;
+  size?: number | undefined;
+}
+
+export const RepoAvatarBadge: React.FC<RepoAvatarBadgeProps> = ({
+  url,
+  name,
+  namespace = "",
+  description = null,
+  size = 40,
+}) => {
   const [imgFailed, setImgFailed] = useState(false);
-  const letter = (name || "R").charAt(0).toUpperCase();
-  const showImage = Boolean(url && !imgFailed);
+  // Ignore human persona portraits (/avatars/...) and generic instance logo (/ms-logo.png) on repositories
+  const isPersonaOrGenericLogo = Boolean(
+    url && (url.startsWith("/avatars/") || url === "/ms-logo.png" || url === "/ms-logo-light.png"),
+  );
+  const showImage = Boolean(url && !isPersonaOrGenericLogo && !imgFailed);
+  const tags = inferRepoDomainTags({
+    id: 0,
+    provider: "github",
+    namespace,
+    project: name,
+    description,
+  });
+  const primaryTag = tags[0] || { label: "Engineering", color: "#0f766e" };
+  const glyphSize = Math.round(size * 0.5);
 
   return (
     <div
       style={{
-        width: 44,
-        height: 44,
-        borderRadius: "12px",
+        width: size,
+        height: size,
+        borderRadius: "10px",
         background: showImage
           ? "var(--color-bg-elevated, #f8fafc)"
-          : "linear-gradient(135deg, #0f766e 0%, #0284c7 100%)",
-        border: "1px solid var(--color-border)",
+          : `color-mix(in srgb, ${primaryTag.color} 14%, transparent)`,
+        border: showImage
+          ? "1px solid var(--color-border)"
+          : `1px solid color-mix(in srgb, ${primaryTag.color} 35%, transparent)`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        color: "#ffffff",
-        fontWeight: 800,
-        fontSize: "18px",
+        color: primaryTag.color,
         flexShrink: 0,
         overflow: "hidden",
-        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.06)",
       }}
     >
       {showImage ? (
@@ -259,7 +370,7 @@ const RepoAvatarBadge: React.FC<{ url?: string | null; name: string }> = ({ url,
           style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
         />
       ) : (
-        letter
+        renderRepoDomainGlyph(primaryTag.label, glyphSize)
       )}
     </div>
   );
@@ -318,8 +429,8 @@ const RepositoryListPage: React.FC = () => {
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const navigate = useNavigate();
-  const { openCompose } = useContext(ComposeContext);
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const initialTabParam = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<"all" | "my" | "starred">(() => {
@@ -339,10 +450,8 @@ const RepositoryListPage: React.FC = () => {
   const [domainFilter, setDomainFilter] = useState<string>("All Domains");
   const [sortBy, setSortBy] = useState<"featured" | "name" | "provider">("featured");
 
-  const [repoInput, setRepoInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [copiedCloneId, setCopiedCloneId] = useState<string | null>(null);
 
   // Connect / Create Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -353,6 +462,27 @@ const RepositoryListPage: React.FC = () => {
   const [modalError, setModalError] = useState<string | null>(null);
 
   const [followedRepos, setFollowedRepos] = useState<Record<string, boolean>>(() => getFollowedReposMap());
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const active = document.activeElement;
+        const tag = active?.tagName.toLowerCase();
+        if (
+          tag === "input" ||
+          tag === "textarea" ||
+          tag === "select" ||
+          (active as HTMLElement | null)?.isContentEditable
+        ) {
+          return;
+        }
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const syncEngagement = () => {
@@ -447,21 +577,9 @@ const RepositoryListPage: React.FC = () => {
     return allRepos;
   }, [activeTab, allRepos, myRepos, followedRepos]);
 
-  const starredCount = useMemo(() => {
-    return allRepos.filter((r) => Boolean(followedRepos[`${r.namespace}/${r.project}`])).length;
-  }, [allRepos, followedRepos]);
-
-  const countsByProvider = useMemo(() => {
-    let github = 0;
-    let gitlab = 0;
-    let local = 0;
-    for (const r of activeSourceRepos) {
-      if (r.provider === "github") github++;
-      else if (r.provider === "gitlab") gitlab++;
-      else if (r.provider === "local") local++;
-    }
-    return { all: activeSourceRepos.length, github, gitlab, local };
-  }, [activeSourceRepos]);
+  const hasLocalRepos = useMemo(() => {
+    return activeSourceRepos.some((r) => r.provider === "local") || providerFilter === "local";
+  }, [activeSourceRepos, providerFilter]);
 
   const filteredRepos = useMemo(() => {
     const list = activeSourceRepos.filter((r) => {
@@ -470,7 +588,12 @@ const RepositoryListPage: React.FC = () => {
       }
       if (domainFilter !== "All Domains") {
         const tags = inferRepoDomainTags(r);
-        if (!tags.some((t) => t.label === domainFilter)) {
+        if (
+          !tags.some(
+            (t) =>
+              t.label === domainFilter || (domainFilter === "CFD / Multiphysics" && t.label === "Numerical Solvers"),
+          )
+        ) {
           return false;
         }
       }
@@ -494,79 +617,6 @@ const RepositoryListPage: React.FC = () => {
     }
     return list;
   }, [activeSourceRepos, providerFilter, domainFilter, query, sortBy]);
-
-  const detectedInputProvider = useMemo(() => {
-    const trimmed = repoInput.trim();
-    if (!trimmed) return null;
-    const lower = trimmed.toLowerCase();
-    if (lower.startsWith("local:")) return "local";
-    if (/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(trimmed) && !trimmed.includes(".com") && !trimmed.includes(".org")) {
-      return "github";
-    }
-    try {
-      const parsedUrl = new URL(
-        trimmed.startsWith("http://") || trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`,
-      );
-      const host = parsedUrl.hostname.toLowerCase();
-      if (host === "github.com" || host.endsWith(".github.com")) return "github";
-      if (host === "gitlab.com" || host.endsWith(".gitlab.com")) return "gitlab";
-      if (
-        host === "ansatz.social" ||
-        host.endsWith(".ansatz.social") ||
-        host === "modelscript.org" ||
-        host.endsWith(".modelscript.org") ||
-        host === "localhost" ||
-        host.endsWith(".local")
-      ) {
-        return "local";
-      }
-    } catch {
-      // Ignore URL parsing errors for incomplete input
-    }
-    return null;
-  }, [repoInput]);
-
-  const handleAddRepo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const raw = repoInput.trim();
-    if (!raw || !token) return;
-
-    let parsed: { provider: string; repo_full_name: string };
-    try {
-      parsed = parseRepositoryInput(raw, "github");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Invalid repository URL";
-      setAddRepoError(msg);
-      return;
-    }
-
-    setIsAdding(true);
-    setAddRepoError(null);
-    setStatusBanner(null);
-    try {
-      await createRepo({
-        provider: parsed.provider,
-        repo_full_name: parsed.repo_full_name,
-        external_repo_id: parsed.repo_full_name,
-      });
-
-      setRepoInput("");
-      setRefreshKey((k) => k + 1);
-      setActiveTab("my");
-      setStatusBanner(`Connected repository ${parsed.repo_full_name}.`);
-    } catch (e: unknown) {
-      if (e && typeof e === "object" && "response" in e) {
-        const axErr = e as { response?: { data?: { error?: string | undefined } | undefined } | undefined };
-        setAddRepoError(axErr.response?.data?.error || "Failed to add repository");
-      } else if (e instanceof Error) {
-        setAddRepoError(e.message);
-      } else {
-        setAddRepoError("Failed to add repository");
-      }
-    } finally {
-      setIsAdding(false);
-    }
-  };
 
   const handleModalCreateRepo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -628,211 +678,201 @@ const RepositoryListPage: React.FC = () => {
     }
   };
 
-  const handleCopyCloneUrl = (repo: RepositoryDTO, cloneUrl: string) => {
-    navigator.clipboard?.writeText(cloneUrl).catch(() => {});
-    const idStr = String(repo.id);
-    setCopiedCloneId(idStr);
-    setTimeout(() => {
-      setCopiedCloneId((prev) => (prev === idStr ? null : prev));
-    }, 1800);
+  const clearSearch = () => {
+    setSearchInput("");
+    const next = new URLSearchParams(searchParams);
+    next.delete("q");
+    setSearchParams(next, { replace: true });
   };
+
+  const activeDomainObj = REPO_DOMAIN_OPTIONS.find((d) => d.id === domainFilter) ?? REPO_DOMAIN_OPTIONS[0];
+  const ActiveDomainIcon = activeDomainObj?.icon ?? GlobeIcon;
 
   return (
     <Box>
-      <TabBar>
-        <Tab $active={activeTab === "all"} onClick={() => setActiveTab("all")}>
-          All Repositories
-          {!loading && <TabCountBadge>{allRepos.length}</TabCountBadge>}
-        </Tab>
-        {token && (
-          <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
-            My Repositories
-            {!loading && <TabCountBadge>{myRepos.length}</TabCountBadge>}
-          </Tab>
-        )}
-        <Tab $active={activeTab === "starred"} onClick={() => setActiveTab("starred")}>
-          Starred
-          {!loading && <TabCountBadge>{starredCount}</TabCountBadge>}
-        </Tab>
-      </TabBar>
-
-      {token && (
-        <InputSection onSubmit={handleAddRepo}>
-          <Box display="flex" alignItems="center" color="var(--color-text-muted)">
-            {detectedInputProvider === "github" ? (
-              <MarkGithubIcon size={18} />
-            ) : detectedInputProvider === "gitlab" ? (
-              <span style={{ color: "#e24329", display: "inline-flex" }}>
-                <GitlabSvgIcon size={18} />
-              </span>
-            ) : (
-              <RepoIcon size={18} />
-            )}
-          </Box>
-          <RepoInput
-            type="text"
-            placeholder="Quick-connect a GitHub/GitLab URL or owner/repo (e.g. modelica/ModelicaStandardLibrary)..."
-            value={repoInput}
-            onChange={(e) => {
-              setRepoInput(e.target.value);
-              if (addRepoError) setAddRepoError(null);
-            }}
-            disabled={isAdding}
-          />
-          {detectedInputProvider && (
-            <MetaBadge style={{ textTransform: "capitalize" }}>
-              {detectedInputProvider === "local" ? `${brandName} Git` : detectedInputProvider}
-            </MetaBadge>
-          )}
-          <CircleIconButton type="submit" disabled={isAdding || !repoInput.trim()} title="Quick connect repository">
-            {isAdding ? (
-              <SpinAnimation>
-                <SyncIcon size={16} />
-              </SpinAnimation>
-            ) : (
-              <PlusIcon size={16} />
-            )}
-          </CircleIconButton>
-        </InputSection>
-      )}
-
-      <Box p={4}>
-        {addRepoError && (
-          <Box mb={3}>
-            <Flash variant="danger">{addRepoError}</Flash>
-          </Box>
-        )}
-        {statusBanner && (
-          <Box mb={3}>
-            <Flash variant="success">{statusBanner}</Flash>
-          </Box>
-        )}
-
-        {/* Header + Filter & Search Toolbar */}
-        <Box
-          display="flex"
-          alignItems="center"
-          justifyContent="space-between"
-          flexWrap="wrap"
-          gap={3}
-          style={{ marginBottom: "14px" }}
-        >
-          <Box display="flex" alignItems="center" gap="10px" flexWrap="wrap">
-            <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 800, fontSize: 22, margin: 0 }}>
-              Repositories
-            </Heading>
+      <PackagesHeader>
+        <HeaderTopRow>
+          <HeaderTitleGroup>
+            <HeaderTitle>Repositories</HeaderTitle>
             {!loading && (
-              <ResultCount>
-                {filteredRepos.length} {filteredRepos.length === 1 ? "repository" : "repositories"}
+              <ResultCount
+                title={`${filteredRepos.length} ${filteredRepos.length === 1 ? "repository" : "repositories"}`}
+              >
+                {filteredRepos.length}
               </ResultCount>
             )}
-          </Box>
+          </HeaderTitleGroup>
 
-          <Box
-            display="flex"
-            alignItems="center"
-            gap={2}
-            flexWrap="wrap"
-            style={{ flex: "1 1 360px", justifyContent: "flex-end" }}
-          >
-            <Box style={{ maxWidth: "320px", width: "100%", flex: "1 1 220px" }}>
-              <TextInput
-                leadingVisual={SearchIcon}
-                placeholder="Filter by name, owner, or domain..."
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                trailingAction={
-                  searchInput ? (
-                    <TextInput.Action
-                      icon={XCircleFillIcon}
-                      aria-label="Clear search"
-                      onClick={() => {
-                        setSearchInput("");
-                        const next = new URLSearchParams(searchParams);
-                        next.delete("q");
-                        setSearchParams(next, { replace: true });
-                      }}
-                    />
-                  ) : undefined
-                }
-                sx={{ width: "100%" }}
-              />
-            </Box>
+          <HeaderActionsGroup>
+            <ScopeSegmentedControl role="tablist" aria-label="Repository scope">
+              <ScopeSegmentButton
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "all"}
+                $active={activeTab === "all"}
+                onClick={() => setActiveTab("all")}
+              >
+                All
+              </ScopeSegmentButton>
+              {token && (
+                <ScopeSegmentButton
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === "my"}
+                  $active={activeTab === "my"}
+                  onClick={() => setActiveTab("my")}
+                >
+                  My Repos
+                </ScopeSegmentButton>
+              )}
+              <ScopeSegmentButton
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "starred"}
+                $active={activeTab === "starred"}
+                onClick={() => setActiveTab("starred")}
+              >
+                Starred
+              </ScopeSegmentButton>
+            </ScopeSegmentedControl>
 
-            <Select
-              aria-label="Sort repositories"
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "featured" | "name" | "provider")}
-              sx={{ minWidth: "130px" }}
-            >
-              <Select.Option value="featured">Sort: Featured</Select.Option>
-              <Select.Option value="name">Sort: Name (A–Z)</Select.Option>
-              <Select.Option value="provider">Sort: Provider</Select.Option>
-            </Select>
-
-            {token && (
-              <Button
-                variant="primary"
-                leadingVisual={PlusIcon}
-                onClick={() => {
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={PlusIcon}
+              onClick={() => {
+                if (!token) {
+                  navigate("/login");
+                } else {
                   setModalError(null);
                   setIsCreateModalOpen(true);
-                }}
-              >
-                New / Connect
-              </Button>
-            )}
-          </Box>
-        </Box>
-
-        {/* Provider & Domain Filter Bars */}
-        <Box
-          display="flex"
-          alignItems="center"
-          justifyContent="space-between"
-          gap={2}
-          flexWrap="wrap"
-          style={{ marginBottom: "10px" }}
-        >
-          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-            <FilterPill $active={providerFilter === "all"} onClick={() => setProviderFilter("all")} type="button">
-              All Providers ({countsByProvider.all})
-            </FilterPill>
-            <FilterPill $active={providerFilter === "github"} onClick={() => setProviderFilter("github")} type="button">
-              <MarkGithubIcon size={14} /> GitHub ({countsByProvider.github})
-            </FilterPill>
-            <FilterPill $active={providerFilter === "gitlab"} onClick={() => setProviderFilter("gitlab")} type="button">
-              <span style={{ color: "#e24329", display: "inline-flex" }}>
-                <GitlabSvgIcon size={14} />
-              </span>
-              GitLab ({countsByProvider.gitlab})
-            </FilterPill>
-            {(countsByProvider.local > 0 || providerFilter === "local") && (
-              <FilterPill $active={providerFilter === "local"} onClick={() => setProviderFilter("local")} type="button">
-                <RepoIcon size={14} /> {brandName} Git ({countsByProvider.local})
-              </FilterPill>
-            )}
-          </Box>
-        </Box>
-
-        <Box display="flex" alignItems="center" gap="6px" flexWrap="wrap" style={{ marginBottom: "20px" }}>
-          {ALL_DOMAIN_FILTERS.map((domain) => (
-            <FilterPill
-              key={domain}
-              $active={domainFilter === domain}
-              onClick={() => setDomainFilter(domain)}
-              type="button"
-              style={{ padding: "3px 10px", fontSize: "12px" }}
+                }
+              }}
+              style={{ height: 32, borderRadius: 8, padding: "0 12px", fontWeight: 600 }}
             >
-              {domain}
-            </FilterPill>
-          ))}
-        </Box>
+              Connect Repository
+            </Button>
+          </HeaderActionsGroup>
+        </HeaderTopRow>
 
+        <HeaderControlsRow>
+          <SearchFieldWrapper>
+            <SearchIcon size={15} />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search repositories by name, owner, or domain..."
+              aria-label="Search repositories"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  if (searchInput) {
+                    clearSearch();
+                  } else {
+                    searchInputRef.current?.blur();
+                  }
+                }
+              }}
+            />
+            {searchInput ? (
+              <SearchClearButton type="button" aria-label="Clear search" onClick={clearSearch}>
+                <XCircleFillIcon size={14} />
+              </SearchClearButton>
+            ) : (
+              <SearchKbdHint className="search-kbd-hint" aria-hidden="true">
+                /
+              </SearchKbdHint>
+            )}
+          </SearchFieldWrapper>
+
+          <ToolbarSelectWrapper $active={providerFilter !== "all"}>
+            <span className="select-leading" aria-hidden="true">
+              {providerFilter === "github" ? (
+                <MarkGithubIcon size={14} />
+              ) : providerFilter === "gitlab" ? (
+                <GitlabSvgIcon size={14} />
+              ) : (
+                <RepoIcon size={14} />
+              )}
+            </span>
+            <select
+              value={providerFilter}
+              onChange={(e) => setProviderFilter(e.target.value as "all" | "github" | "gitlab" | "local")}
+              aria-label="Filter repositories by provider"
+            >
+              <option value="all">All Providers</option>
+              <option value="github">GitHub</option>
+              <option value="gitlab">GitLab</option>
+              {hasLocalRepos && <option value="local">{brandName} Git</option>}
+            </select>
+            <span className="select-trailing" aria-hidden="true">
+              <ChevronDownIcon size={13} />
+            </span>
+          </ToolbarSelectWrapper>
+
+          <ToolbarSelectWrapper $active={domainFilter !== "All Domains"}>
+            <span className="select-leading" aria-hidden="true">
+              <ActiveDomainIcon size={14} />
+            </span>
+            <select
+              value={domainFilter}
+              onChange={(e) => setDomainFilter(e.target.value)}
+              aria-label="Filter repositories by domain"
+            >
+              {REPO_DOMAIN_OPTIONS.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            <span className="select-trailing" aria-hidden="true">
+              <ChevronDownIcon size={13} />
+            </span>
+          </ToolbarSelectWrapper>
+
+          <ToolbarSelectWrapper $active={sortBy !== "featured"}>
+            <span className="select-leading" aria-hidden="true">
+              <SortAscIcon size={14} />
+            </span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as "featured" | "name" | "provider")}
+              aria-label="Sort repositories"
+            >
+              <option value="featured">Recommended</option>
+              <option value="name">Alphabetical (A–Z)</option>
+              <option value="provider">Provider</option>
+            </select>
+            <span className="select-trailing" aria-hidden="true">
+              <ChevronDownIcon size={13} />
+            </span>
+          </ToolbarSelectWrapper>
+        </HeaderControlsRow>
+      </PackagesHeader>
+
+      {(addRepoError || statusBanner) && (
+        <Box px="20px" pt={3}>
+          {addRepoError && (
+            <Box mb={2}>
+              <Flash variant="danger">{addRepoError}</Flash>
+            </Box>
+          )}
+          {statusBanner && (
+            <Box mb={2}>
+              <Flash variant="success">{statusBanner}</Flash>
+            </Box>
+          )}
+        </Box>
+      )}
+
+      <Box>
         {/* Pinned Personal Activity Git Vault (My Repositories) */}
         {token && user?.username && activeTab === "my" && (
           <Box
-            mb={3}
+            mx="20px"
+            mt={3}
+            mb={2}
             style={{
               border: "1px solid var(--ms-brand, #0f766e)",
               borderRadius: "12px",
@@ -840,11 +880,31 @@ const RepositoryListPage: React.FC = () => {
               overflow: "hidden",
             }}
           >
-            <RepoCard style={{ borderBottom: "none" }}>
-              <Box display="flex" gap="14px" flex={1} style={{ minWidth: 0 }}>
+            <RepoCard
+              style={{ borderBottom: "none" }}
+              onClick={() => navigate(`/repos/local/${user.username}/activity`)}
+            >
+              <Link
+                to={`/repos/local/${user.username}/activity`}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  textDecoration: "none",
+                  color: "inherit",
+                  display: "flex",
+                  gap: "14px",
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
                 <RepoAvatarBadge url={user.avatar_url} name="activity" />
                 <Box flex={1} style={{ minWidth: 0 }}>
-                  <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
+                  <Box
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    gap="12px"
+                    style={{ flexWrap: "nowrap", minWidth: 0 }}
+                  >
                     <Heading
                       as="h4"
                       style={{
@@ -853,79 +913,36 @@ const RepositoryListPage: React.FC = () => {
                         margin: 0,
                         color: "var(--color-text-heading)",
                         lineHeight: 1.3,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      <Link
-                        to={`/repos/local/${user.username}/activity`}
-                        style={{ textDecoration: "none", color: "inherit" }}
-                      >
-                        <span style={{ color: "var(--color-text-muted)", fontWeight: 500 }}>{user.username} / </span>
-                        activity
-                      </Link>
+                      <span style={{ color: "var(--color-text-muted)", fontWeight: 500 }}>{user.username} / </span>
+                      activity
                     </Heading>
 
-                    <MetaBadge
-                      style={{
-                        borderColor: "var(--ms-brand, #0f766e)",
-                        color: "var(--ms-brand, #0f766e)",
-                        background: "rgba(15, 118, 110, 0.12)",
-                      }}
-                      title="Strictly private to your account and read-only"
-                    >
-                      <LockIcon size={12} />
-                      Owner-Only • Read-Only
-                    </MetaBadge>
-
-                    <MetaBadge title="GDPR Art. 20 / CCPA Data Portability Git Vault">
-                      <RepoIcon size={12} />
-                      Personal Activity Vault
-                    </MetaBadge>
-
-                    <MetaBadge title="Default branch: main">
-                      <GitBranchIcon size={12} />
-                      main
-                    </MetaBadge>
-                  </Box>
-
-                  <Box display="flex" alignItems="center" gap="10px" mt={1} flexWrap="wrap">
-                    <span style={{ fontSize: "12.5px", color: "var(--color-text-muted)" }}>
-                      /git/{user.username}/activity.git
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const url = `${window.location.origin}/git/${user.username}/activity.git`;
-                        navigator.clipboard?.writeText(url).catch(() => {});
-                        setCopiedCloneId("activity-vault");
-                        setTimeout(() => {
-                          setCopiedCloneId((prev) => (prev === "activity-vault" ? null : prev));
-                        }, 1800);
-                      }}
-                      title="Copy Activity Vault Git clone URL"
-                      style={{
-                        border: "none",
-                        background: "transparent",
-                        color:
-                          copiedCloneId === "activity-vault" ? "var(--ms-brand, #0f766e)" : "var(--color-text-muted)",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        padding: "1px 4px",
-                      }}
-                    >
-                      {copiedCloneId === "activity-vault" ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
-                      {copiedCloneId === "activity-vault" ? "Copied URL" : "Clone URL"}
-                    </button>
+                    <Box display="flex" alignItems="center" gap="8px" style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                      <MetaBadge
+                        style={{
+                          borderColor: "var(--ms-brand, #0f766e)",
+                          color: "var(--ms-brand, #0f766e)",
+                          background: "rgba(15, 118, 110, 0.12)",
+                        }}
+                        title="Strictly private to your account and read-only"
+                      >
+                        <LockIcon size={12} />
+                        Personal Activity Vault
+                      </MetaBadge>
+                    </Box>
                   </Box>
 
                   <Text
                     as="p"
                     style={{
                       fontSize: "14px",
-                      margin: "8px 0 0 0",
+                      margin: "6px 0 0 0",
                       color: "var(--color-text-primary)",
                       lineHeight: 1.45,
                     }}
@@ -934,26 +951,7 @@ const RepositoryListPage: React.FC = () => {
                     as an owner-authenticated, fast-forwarding Git repository (GDPR Art. 20).
                   </Text>
                 </Box>
-              </Box>
-
-              <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap" style={{ flexShrink: 0 }}>
-                <ActionPillButton
-                  type="button"
-                  onClick={() => navigate(`/repos/local/${user.username}/activity`)}
-                  title="Browse Activity Vault files and commits"
-                >
-                  <FileDirectoryIcon size={14} />
-                  Browse
-                </ActionPillButton>
-                <ActionPillButton
-                  type="button"
-                  onClick={() => navigate(`/repos/local/${user.username}/activity/ide?ref=main`)}
-                  title="Open Activity Vault in Web IDE"
-                >
-                  <CodeIcon size={14} />
-                  IDE
-                </ActionPillButton>
-              </Box>
+              </Link>
             </RepoCard>
           </Box>
         )}
@@ -1044,237 +1042,152 @@ const RepositoryListPage: React.FC = () => {
             {filteredRepos.map((r) => {
               const branch = (r as RepositoryDTO & { default_branch?: string }).default_branch || "main";
               const isLocal = r.provider === "local";
-              const externalHost = isLocal ? "ansatz.social" : r.provider === "gitlab" ? "gitlab.com" : "github.com";
-              const externalUrl = isLocal
-                ? `${window.location.origin}/git/${r.namespace}/${r.project}.git`
-                : `https://${externalHost}/${r.namespace}/${r.project}`;
-              const cloneUrl = isLocal
-                ? `${window.location.origin}/git/${r.namespace}/${r.project}.git`
-                : `https://${externalHost}/${r.namespace}/${r.project}.git`;
               const domainTags = inferRepoDomainTags(r);
               const repoKey = `${r.namespace}/${r.project}`;
+              const repoUrl = `/repos/${r.provider}/${r.namespace}/${r.project}`;
               const isFollowing = Boolean(followedRepos[repoKey]);
+              const baseStars = r.star_count ?? r.stars_count ?? r.stargazers_count ?? getRepoFallbackStars(repoKey);
+              const starCount = baseStars + (isFollowing ? 1 : 0);
 
               return (
-                <RepoCard key={`${r.provider}-${r.id}-${repoKey}`}>
-                  <Box display="flex" gap="14px" flex={1} style={{ minWidth: 0 }}>
-                    <RepoAvatarBadge url={r.avatar_url} name={r.project} />
+                <RepoCard key={`${r.provider}-${r.id}-${repoKey}`} onClick={() => navigate(repoUrl)}>
+                  <Link
+                    to={repoUrl}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      textDecoration: "none",
+                      color: "inherit",
+                      display: "flex",
+                      gap: "14px",
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    <RepoAvatarBadge
+                      url={r.avatar_url}
+                      name={r.project}
+                      namespace={r.namespace}
+                      provider={r.provider}
+                      description={r.description}
+                      size={42}
+                    />
                     <Box flex={1} style={{ minWidth: 0 }}>
-                      <Box display="flex" alignItems="center" gap="8px" flexWrap="wrap">
+                      <Box
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="space-between"
+                        gap="12px"
+                        style={{ flexWrap: "nowrap", minWidth: 0 }}
+                      >
                         <Heading
                           as="h4"
                           style={{
-                            fontSize: "16px",
+                            fontSize: "15.5px",
                             fontWeight: 700,
                             margin: 0,
                             color: "var(--color-text-heading)",
                             lineHeight: 1.3,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          <Link
-                            to={`/repos/${r.provider}/${r.namespace}/${r.project}`}
-                            style={{ textDecoration: "none", color: "inherit" }}
-                          >
-                            <span style={{ color: "var(--color-text-muted)", fontWeight: 500 }}>{r.namespace} / </span>
-                            {r.project}
-                          </Link>
+                          <span style={{ color: "var(--color-text-muted)", fontWeight: 500 }}>{r.namespace} / </span>
+                          {r.project}
                         </Heading>
 
-                        <MetaBadge title={`Hosted on ${externalHost}`}>
-                          {r.provider === "gitlab" ? (
-                            <span style={{ color: "#e24329", display: "inline-flex" }}>
-                              <GitlabSvgIcon size={12} />
-                            </span>
-                          ) : r.provider === "local" ? (
-                            <RepoIcon size={12} />
-                          ) : (
-                            <MarkGithubIcon size={12} />
-                          )}
-                          {r.provider === "gitlab" ? "GitLab" : r.provider === "local" ? `${brandName} Git` : "GitHub"}
-                        </MetaBadge>
-
-                        <MetaBadge title={`Default branch: ${branch}`}>
-                          <GitBranchIcon size={12} />
-                          {branch}
-                        </MetaBadge>
-                      </Box>
-
-                      <Box display="flex" alignItems="center" gap="10px" mt={1} flexWrap="wrap">
-                        {!isLocal ? (
-                          <a
-                            href={externalUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              fontSize: "12.5px",
-                              color: "var(--color-text-muted)",
-                              textDecoration: "none",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                            }}
-                            title={`Open ${externalUrl} in new tab`}
-                          >
-                            {externalHost}/{r.namespace}/{r.project}
-                            <LinkExternalIcon size={12} />
-                          </a>
-                        ) : (
-                          <span style={{ fontSize: "12.5px", color: "var(--color-text-muted)" }}>
-                            /git/{r.namespace}/{r.project}.git
-                          </span>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => handleCopyCloneUrl(r, cloneUrl)}
-                          title={`Copy Git clone URL: ${cloneUrl}`}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            color: copiedCloneId === r.id ? "var(--ms-brand, #0f766e)" : "var(--color-text-muted)",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            padding: "1px 4px",
-                          }}
+                        <Box
+                          display="flex"
+                          alignItems="center"
+                          gap="8px"
+                          style={{ flexShrink: 0, whiteSpace: "nowrap" }}
                         >
-                          {copiedCloneId === r.id ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
-                          {copiedCloneId === r.id ? "Copied URL" : "Clone URL"}
-                        </button>
+                          {!isLocal ? (
+                            <MetaBadge title={`Hosted on ${r.provider === "gitlab" ? "GitLab" : "GitHub"}`}>
+                              {r.provider === "gitlab" ? (
+                                <span style={{ color: "#e24329", display: "inline-flex" }}>
+                                  <GitlabSvgIcon size={12} />
+                                </span>
+                              ) : (
+                                <MarkGithubIcon size={12} />
+                              )}
+                              {r.provider === "gitlab" ? "GitLab" : "GitHub"}
+                            </MetaBadge>
+                          ) : (
+                            <MetaBadge title={`Hosted on ${brandName} Git`}>
+                              <RepoIcon size={12} />
+                              {brandName} Git
+                            </MetaBadge>
+                          )}
+
+                          <MetaBadge title={`Default branch: ${branch}`} style={{ fontFamily: "var(--font-mono)" }}>
+                            <GitBranchIcon size={11} />
+                            {branch}
+                          </MetaBadge>
+
+                          {activeTab === "my" && token && (
+                            <ActionPillButton
+                              type="button"
+                              $danger
+                              title="Unlink repository from My Repositories"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleUnlinkRepo(r);
+                              }}
+                            >
+                              <TrashIcon size={14} />
+                            </ActionPillButton>
+                          )}
+                        </Box>
                       </Box>
 
                       <Text
                         as="p"
                         style={{
                           fontSize: "14px",
-                          margin: "8px 0 10px 0",
-                          color: "var(--color-text-primary)",
+                          margin: "6px 0 10px 0",
+                          color: "var(--color-text-secondary, var(--color-text-primary))",
                           lineHeight: 1.45,
                         }}
                       >
                         {r.description || "No description provided."}
                       </Text>
 
-                      <Box display="flex" alignItems="center" gap="6px" flexWrap="wrap">
+                      <Box display="flex" alignItems="center" gap="10px" flexWrap="wrap">
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            color: "var(--color-text-muted)",
+                          }}
+                          title={`${starCount.toLocaleString()} ${starCount === 1 ? "star" : "stars"}`}
+                        >
+                          {isFollowing ? <StarFillIcon size={12} fill="#eab308" /> : <StarIcon size={12} />}
+                          {starCount.toLocaleString()}
+                        </span>
+
                         {domainTags.map((tag) => (
-                          <TopicTagButton
-                            key={tag.label}
-                            type="button"
-                            $active={domainFilter === tag.label}
-                            onClick={() => setDomainFilter((prev) => (prev === tag.label ? "All Domains" : tag.label))}
-                            title={`Filter by ${tag.label}`}
-                          >
+                          <TopicTagBadge key={tag.label} $active={domainFilter === tag.label}>
                             <span
                               style={{
-                                width: 7,
-                                height: 7,
+                                width: 6,
+                                height: 6,
                                 borderRadius: "50%",
                                 backgroundColor: tag.color,
                                 display: "inline-block",
                               }}
                             />
                             {tag.label}
-                          </TopicTagButton>
+                          </TopicTagBadge>
                         ))}
                       </Box>
                     </Box>
-                  </Box>
-
-                  <Box display="flex" alignItems="center" gap={2} flexWrap="wrap" style={{ flexShrink: 0 }}>
-                    <ActionPillButton
-                      type="button"
-                      title="Browse repository files, issues, pull requests, and CI pipelines"
-                      onClick={() => {
-                        navigate(`/repos/${r.provider}/${r.namespace}/${r.project}`);
-                      }}
-                    >
-                      <FileDirectoryIcon size={14} /> Browse
-                    </ActionPillButton>
-
-                    <ActionPillButton
-                      type="button"
-                      title={`Open repository in ${brandName} Web IDE`}
-                      onClick={() => {
-                        navigate(
-                          `/repos/${r.provider}/${r.namespace}/${r.project}/ide?ref=${encodeURIComponent(branch)}`,
-                        );
-                      }}
-                    >
-                      <CodeIcon size={14} /> IDE
-                    </ActionPillButton>
-
-                    {openCompose && (
-                      <ActionPillButton
-                        type="button"
-                        title="Share repository to feed"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          openCompose({
-                            content: `Check out repository **${r.namespace}/${r.project}**! 🚀`,
-                            repoPayload: {
-                              namespace: r.namespace,
-                              project: r.project,
-                              provider: r.provider,
-                              description: r.description || undefined,
-                            },
-                          });
-                        }}
-                      >
-                        <ShareIcon size={14} /> Share
-                      </ActionPillButton>
-                    )}
-
-                    <button
-                      type="button"
-                      title={isFollowing ? "Remove from Starred repositories" : "Star & follow this repository"}
-                      style={{
-                        backgroundColor: isFollowing
-                          ? "var(--color-btn-secondary-bg, transparent)"
-                          : "var(--ms-brand, var(--color-accent-emphasis))",
-                        color: isFollowing ? "var(--color-text-primary)" : "#ffffff",
-                        border: isFollowing ? "1px solid var(--color-border)" : "1px solid transparent",
-                        borderRadius: "9999px",
-                        padding: "6px 14px",
-                        fontWeight: 700,
-                        fontSize: "13px",
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        transition: "all 0.2s ease",
-                      }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        const nextVal = !isFollowing;
-                        setRepoStarred(repoKey, nextVal);
-                        setFollowedRepos(getFollowedReposMap());
-                      }}
-                    >
-                      {isFollowing ? (
-                        <>
-                          <StarFillIcon size={14} fill="#eab308" /> Starred
-                        </>
-                      ) : (
-                        <>
-                          <StarIcon size={14} /> Star
-                        </>
-                      )}
-                    </button>
-
-                    {activeTab === "my" && token && (
-                      <ActionPillButton
-                        type="button"
-                        $danger
-                        title="Unlink repository from My Repositories"
-                        onClick={() => handleUnlinkRepo(r)}
-                      >
-                        <TrashIcon size={14} />
-                      </ActionPillButton>
-                    )}
-                  </Box>
+                  </Link>
                 </RepoCard>
               );
             })}
@@ -1285,12 +1198,10 @@ const RepositoryListPage: React.FC = () => {
       {/* Connect / Create Repository Modal */}
       {isCreateModalOpen && (
         <Dialog
-          isOpen={isCreateModalOpen}
-          onDismiss={() => setIsCreateModalOpen(false)}
-          aria-labelledby="connect-repo-dialog-title"
+          title="Connect or Create Repository"
+          onClose={() => setIsCreateModalOpen(false)}
           sx={{ width: "540px", maxWidth: "95vw" }}
         >
-          <Dialog.Header id="connect-repo-dialog-title">Connect or Create Repository</Dialog.Header>
           <Box p={3}>
             <form onSubmit={handleModalCreateRepo}>
               {modalError && (
@@ -1401,6 +1312,7 @@ const RepositoryListPage: React.FC = () => {
                   ].map((preset) => (
                     <FilterPill
                       key={preset.slug}
+                      $active={modalRepoInput === preset.slug}
                       type="button"
                       onClick={() => {
                         setModalProvider(preset.provider);

@@ -8,5 +8,5 @@ export { StudioInspectorSidebar } from "./StudioInspectorSidebar";
 export type { StudioInspectorSidebarProps } from "./StudioInspectorSidebar";
 export type * from "./types";
 export * from "./utils";
-export { ViewerDispatcher } from "./ViewerDispatcher";
+export { ViewerDispatcher, getViewerExpectedHeight } from "./ViewerDispatcher";
 export type { ViewerDispatcherProps } from "./ViewerDispatcher";

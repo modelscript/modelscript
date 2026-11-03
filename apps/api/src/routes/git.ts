@@ -441,6 +441,30 @@ export function gitRouter(database?: LibraryDatabase): Router {
     }
   });
 
+  function ensureLocalMergeRequestsTable(): void {
+    if (!database || !database.isOpen()) return;
+    database.db.exec(`
+      CREATE TABLE IF NOT EXISTS git_local_merge_requests (
+        id INTEGER PRIMARY KEY,
+        iid INTEGER NOT NULL,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        state TEXT NOT NULL DEFAULT 'opened',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        source_branch TEXT NOT NULL,
+        target_branch TEXT NOT NULL,
+        web_url TEXT NOT NULL,
+        sha TEXT,
+        target_sha TEXT,
+        commits_ahead INTEGER,
+        author_name TEXT NOT NULL DEFAULT 'Anonymous',
+        UNIQUE(project_id, iid)
+      );
+    `);
+  }
+
   /**
    * Get merge requests
    */
@@ -453,9 +477,77 @@ export function gitRouter(database?: LibraryDatabase): Router {
         res.json([]);
         return;
       }
-      const provider = getGitProvider(req.params.id);
-      const mrs = await provider.getMergeRequests(req.params.id);
-      res.json(mrs);
+      const projectId = req.params.id;
+      const provider = getGitProvider(projectId);
+      if (provider instanceof GitLabProvider && process.env["GITLAB_TOKEN"]) {
+        const mrs = await provider.getMergeRequests(projectId);
+        res.json(mrs);
+        return;
+      }
+
+      const providerMrs = await provider.getMergeRequests(projectId).catch(() => []);
+      if (database && database.isOpen()) {
+        ensureLocalMergeRequestsTable();
+        const rows = database.db
+          .prepare(
+            `SELECT id, iid, project_id, title, description, state, created_at, updated_at,
+                    source_branch, target_branch, web_url, sha, target_sha, commits_ahead, author_name
+             FROM git_local_merge_requests
+             WHERE project_id = ?
+             ORDER BY iid DESC`,
+          )
+          .all(projectId) as Array<{
+          id: number;
+          iid: number;
+          project_id: string;
+          title: string;
+          description: string;
+          state: string;
+          created_at: string;
+          updated_at: string;
+          source_branch: string;
+          target_branch: string;
+          web_url: string;
+          sha: string | null;
+          target_sha: string | null;
+          commits_ahead: number | null;
+          author_name: string;
+        }>;
+        if (rows.length > 0) {
+          const byIid = new Map<number, unknown>();
+          for (const row of rows) {
+            byIid.set(row.iid, {
+              id: row.id,
+              iid: row.iid,
+              project_id: row.project_id,
+              title: row.title,
+              description: row.description,
+              state: row.state,
+              created_at: row.created_at,
+              updated_at: row.updated_at,
+              source_branch: row.source_branch,
+              target_branch: row.target_branch,
+              web_url: row.web_url,
+              ...(row.sha ? { sha: row.sha } : {}),
+              ...(row.target_sha ? { target_sha: row.target_sha } : {}),
+              ...(row.commits_ahead !== null ? { commits_ahead: row.commits_ahead } : {}),
+              author: {
+                name: row.author_name,
+                avatar_url: null,
+              },
+            });
+          }
+          for (const mr of providerMrs) {
+            if (!byIid.has(mr.iid)) {
+              byIid.set(mr.iid, mr);
+            }
+          }
+          res.json(Array.from(byIid.values()));
+          return;
+        }
+      }
+
+      res.json(providerMrs);
     } catch (err: unknown) {
       if (err instanceof GitlabError) {
         res.status(err.status).json({ error: err.message });
@@ -487,7 +579,7 @@ export function gitRouter(database?: LibraryDatabase): Router {
       }
 
       const provider = getGitProvider(projectId);
-      if (provider instanceof GitLabProvider) {
+      if (provider instanceof GitLabProvider && process.env["GITLAB_TOKEN"]) {
         const encodedId = encodeURIComponent(projectId);
         const mr = await gitlabRequest(`/projects/${encodedId}/merge_requests`, {
           method: "POST",
@@ -502,20 +594,61 @@ export function gitRouter(database?: LibraryDatabase): Router {
         return;
       }
 
-      res.status(201).json({
-        id: Date.now(),
-        iid: 1,
-        title,
-        description: description || "",
-        state: "opened",
-        created_at: new Date().toISOString(),
-        author: {
-          name: (req as { user?: { username?: string | undefined } | undefined }).user?.username || "Anonymous",
-        },
-        source_branch,
-        target_branch,
-        web_url: `${projectId}/-/merge_requests/1`,
-      });
+      const authorName =
+        (req as { user?: { username?: string | undefined } | undefined }).user?.username || "Anonymous";
+      const localProvider = provider.createMergeRequest ? provider : getGitProvider(`${projectId}.git`);
+      const created = localProvider.createMergeRequest
+        ? await localProvider.createMergeRequest(projectId, {
+            title,
+            description: description || "",
+            source_branch,
+            target_branch,
+            author_name: authorName,
+          })
+        : {
+            id: Date.now(),
+            iid: 1,
+            project_id: projectId,
+            title,
+            description: description || "",
+            state: "opened",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            source_branch,
+            target_branch,
+            web_url: `${projectId}/-/merge_requests/1`,
+            author: { name: authorName, avatar_url: null },
+          };
+
+      if (database && database.isOpen()) {
+        ensureLocalMergeRequestsTable();
+        database.db
+          .prepare(
+            `INSERT OR REPLACE INTO git_local_merge_requests (
+              id, iid, project_id, title, description, state, created_at, updated_at,
+              source_branch, target_branch, web_url, sha, target_sha, commits_ahead, author_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            created.id,
+            created.iid,
+            String(created.project_id),
+            created.title,
+            created.description,
+            created.state,
+            created.created_at,
+            created.updated_at,
+            created.source_branch,
+            created.target_branch,
+            created.web_url || `${projectId}/-/merge_requests/${created.iid}`,
+            created.sha ?? null,
+            created.target_sha ?? null,
+            created.commits_ahead ?? null,
+            created.author.name,
+          );
+      }
+
+      res.status(201).json(created);
     } catch (err: unknown) {
       if (err instanceof GitlabError) {
         res.status(err.status).json({ error: err.message });

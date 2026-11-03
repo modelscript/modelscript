@@ -8,6 +8,7 @@ import type { ArtifactViewerInfo } from "../../../api";
 import type { LinkedStudyJobItemPayload, StudyDefinitionPayload } from "../../../api/compute";
 import Box from "../../../components/Box";
 import DatasetTableViewer from "../../../components/DatasetTableViewer";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { ArtifactBadge, ArtifactCard, DomainPill, SectionTitle, type PolyglotDomain } from "../types";
 
 // Lazy-loaded artifact viewers to prevent initial bundle bloat
@@ -67,6 +68,7 @@ export const PackageArtifactsTab: React.FC<PackageArtifactsTabProps> = ({
   onViewArtifactStudies,
 }) => {
   const navigate = useNavigate();
+  const hasCae = useFeatureFlag("cae_cloud_solver");
 
   const countLinkedForArtifact = (artPath: string, displayName?: string) => {
     if (!linkedStudies) return 0;
@@ -114,22 +116,29 @@ export const PackageArtifactsTab: React.FC<PackageArtifactsTabProps> = ({
             {artType}
           </Label>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {onViewArtifactStudies && (
+        {hasCae && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {onViewArtifactStudies && (
+              <Button
+                size="small"
+                variant="invisible"
+                leadingVisual={BeakerIcon}
+                onClick={() => onViewArtifactStudies(artPath)}
+                style={{ fontSize: 11.5, color: linkedCount > 0 ? "#38bdf8" : "var(--color-text-muted)" }}
+              >
+                Linked Studies ({linkedCount})
+              </Button>
+            )}
             <Button
               size="small"
-              variant="invisible"
-              leadingVisual={BeakerIcon}
-              onClick={() => onViewArtifactStudies(artPath)}
-              style={{ fontSize: 11.5, color: linkedCount > 0 ? "#38bdf8" : "var(--color-text-muted)" }}
+              leadingVisual={PlayIcon}
+              onClick={() => navigate(wizardUrl)}
+              style={{ fontSize: 11.5 }}
             >
-              Linked Studies ({linkedCount})
+              Run Study →
             </Button>
-          )}
-          <Button size="small" leadingVisual={PlayIcon} onClick={() => navigate(wizardUrl)} style={{ fontSize: 11.5 }}>
-            Run Study →
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
     );
   };

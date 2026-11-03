@@ -100,8 +100,12 @@ export interface CadComponent {
   dynamicBindings?: { property: string; index: number; variable: string }[] | undefined;
   /** Source code metadata linking to AST parameters and CST byte ranges */
   sourceMetadata?: CadSourceMetadata | undefined;
-  /** Procedural triangle mesh for inline CSG/OpenSCAD solids */
+  /** Procedural triangle mesh for inline CSG/OpenSCAD or MSL Visualizer solids */
   proceduralMesh?: ProceduralMeshData | undefined;
+  /** Baseline transform defaults for MSL Visualizers and CAD components */
+  defaults?: Record<string, unknown> | undefined;
+  /** MSL Visualizer shapeType identifier (e.g., "box", "cylinder", "spring", "torus") */
+  shapeType?: string | undefined;
 }
 
 interface CadViewerProps {
@@ -249,13 +253,13 @@ function CadModel({
   >([]);
 
   const effectivePos: [number, number, number] = component.cad.position ?? [0, 0, 0];
-  // Procedural CSG meshes from ManifoldWorker already have rotation and scale baked into vertices
-  const effectiveRot: [number, number, number] = component.proceduralMesh
-    ? [0, 0, 0]
-    : (component.cad.rotation ?? [0, 0, 0]);
-  const effectiveScl: [number, number, number] = component.proceduralMesh
-    ? [1, 1, 1]
-    : (component.cad.scale ?? [1, 1, 1]);
+  // Procedural CSG meshes from ManifoldWorker already have rotation and scale baked into vertices,
+  // whereas MSL Visualizer unit meshes rely on group transform for orientation and dimensions.
+  const isBakedCsgMesh = Boolean(
+    component.proceduralMesh && !component.defaults && !component.cad.uri?.startsWith("procedural://msl/"),
+  );
+  const effectiveRot: [number, number, number] = isBakedCsgMesh ? [0, 0, 0] : (component.cad.rotation ?? [0, 0, 0]);
+  const effectiveScl: [number, number, number] = isBakedCsgMesh ? [1, 1, 1] : (component.cad.scale ?? [1, 1, 1]);
 
   // Gizmo dragging & delta state
   const [isDraggingGizmo, setIsDraggingGizmo] = useState(false);
@@ -266,10 +270,10 @@ function CadModel({
 
   useEffect(() => {
     initialGizmoPosRef.current = component.cad.position ?? [0, 0, 0];
-    initialGizmoRotRef.current = component.proceduralMesh ? [0, 0, 0] : (component.cad.rotation ?? [0, 0, 0]);
-    initialGizmoSclRef.current = component.proceduralMesh ? [1, 1, 1] : (component.cad.scale ?? [1, 1, 1]);
+    initialGizmoRotRef.current = isBakedCsgMesh ? [0, 0, 0] : (component.cad.rotation ?? [0, 0, 0]);
+    initialGizmoSclRef.current = isBakedCsgMesh ? [1, 1, 1] : (component.cad.scale ?? [1, 1, 1]);
     setGizmoDelta([0, 0, 0]);
-  }, [component.cad.position, component.cad.rotation, component.cad.scale, component.proceduralMesh]);
+  }, [component.cad.position, component.cad.rotation, component.cad.scale, isBakedCsgMesh]);
 
   const handleGizmoChange = useCallback(() => {
     if (!groupRef.current) return;
@@ -402,11 +406,15 @@ function CadModel({
 
     const tf = animationController.getTransform(component.name);
     groupRef.current.position.set(tf.position[0], tf.position[1], tf.position[2]);
-    groupRef.current.rotation.set(
-      (tf.rotation[0] * Math.PI) / 180,
-      (tf.rotation[1] * Math.PI) / 180,
-      (tf.rotation[2] * Math.PI) / 180,
-    );
+    if (tf.quaternion) {
+      groupRef.current.quaternion.set(tf.quaternion[0], tf.quaternion[1], tf.quaternion[2], tf.quaternion[3]);
+    } else {
+      groupRef.current.rotation.set(
+        (tf.rotation[0] * Math.PI) / 180,
+        (tf.rotation[1] * Math.PI) / 180,
+        (tf.rotation[2] * Math.PI) / 180,
+      );
+    }
     groupRef.current.scale.set(tf.scale[0], tf.scale[1], tf.scale[2]);
 
     // Update ghost trail if selected and animating

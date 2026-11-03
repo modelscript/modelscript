@@ -6,8 +6,13 @@ const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const ENCRYPTED_TOTP_PREFIX = "enc:v1:";
 
 function deriveTotpEncryptionKey(): Buffer {
-  const rawMaterial =
-    process.env["TOTP_ENCRYPTION_KEY"] || process.env["JWT_SECRET"] || "modelscript-dev-totp-fallback-key";
+  const configuredMaterial = (process.env["TOTP_ENCRYPTION_KEY"] || process.env["JWT_SECRET"] || "").trim();
+  if (!configuredMaterial && process.env["NODE_ENV"] === "production") {
+    throw new Error(
+      "TOTP secret encryption requires TOTP_ENCRYPTION_KEY or JWT_SECRET to be configured in production.",
+    );
+  }
+  const rawMaterial = configuredMaterial || "modelscript-dev-totp-fallback-key";
   return Buffer.from(
     crypto.hkdfSync(
       "sha256",

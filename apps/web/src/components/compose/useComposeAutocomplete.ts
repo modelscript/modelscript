@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { useEffect, useMemo, useState } from "react";
-import { getTrending, getUserFollowers, resolveFederatedActor } from "../../api";
+import {
+  getSearchCompletions,
+  getTrending,
+  getUserFollowers,
+  getUserFollowing,
+  resolveFederatedActor,
+} from "../../api";
 import type { NotebookCell } from "../../util/notebook";
 
 export interface UseComposeAutocompleteParams {
@@ -30,6 +36,7 @@ export function useComposeAutocomplete({
   textareaRef,
 }: UseComposeAutocompleteParams) {
   const [followers, setFollowers] = useState<any[]>([]);
+  const [following, setFollowing] = useState<any[]>([]);
   const [mentionQuery, setMentionQuery] = useState<{ query: string; index: number } | null>(null);
   const [hashtagQuery, setHashtagQuery] = useState<{ query: string; index: number } | null>(null);
   const [trendingTopics, setTrendingTopics] = useState<any[]>([]);
@@ -51,6 +58,11 @@ export function useComposeAutocomplete({
           if (d.followers) setFollowers(d.followers);
         })
         .catch(console.error);
+      getUserFollowing(user.username)
+        .then((d) => {
+          if (d.following) setFollowing(d.following);
+        })
+        .catch(console.error);
     }
     getTrending(20)
       .then((d) => {
@@ -60,22 +72,45 @@ export function useComposeAutocomplete({
   }, [user, token]);
 
   useEffect(() => {
-    if (!mentionQuery || !mentionQuery.query.includes("@")) return;
+    if (!mentionQuery) return;
     const handle = mentionQuery.query;
-    const parts = handle.split("@");
-    if (parts.length < 2 || !parts[0] || parts[1]!.length < 2) return;
+    if (handle.includes("@")) {
+      const parts = handle.split("@");
+      if (parts.length < 2 || !parts[0] || parts[1]!.length < 2) return;
 
-    const timer = setTimeout(() => {
-      resolveFederatedActor(handle)
-        .then((res) => {
-          if (res?.user) {
-            setRemoteActorSuggestions((prev) => new Map(prev).set(res.user.username.toLowerCase(), res.user));
-          }
-        })
-        .catch(() => {});
-    }, 350);
+      const timer = setTimeout(() => {
+        resolveFederatedActor(handle)
+          .then((res) => {
+            if (res?.user) {
+              setRemoteActorSuggestions((prev) => new Map(prev).set(res.user.username.toLowerCase(), res.user));
+            }
+          })
+          .catch(() => {});
+      }, 350);
 
-    return () => clearTimeout(timer);
+      return () => clearTimeout(timer);
+    }
+
+    if (handle.length >= 2) {
+      const timer = setTimeout(() => {
+        getSearchCompletions(handle, 8)
+          .then((res) => {
+            const users = (res as any)?.users || res?.suggestions || [];
+            if (Array.isArray(users) && users.length > 0) {
+              setRemoteActorSuggestions((prev) => {
+                const next = new Map(prev);
+                for (const u of users) {
+                  if (u?.username) next.set(u.username.toLowerCase(), u);
+                }
+                return next;
+              });
+            }
+          })
+          .catch(() => {});
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
   }, [mentionQuery]);
 
   const mentionSuggestions = useMemo(() => {
@@ -83,7 +118,10 @@ export function useComposeAutocomplete({
     const matches = (content.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g) || []).map((m: string) => m.slice(1));
     const allUsers = new Map<string, any>();
 
-    followers.forEach((f) => allUsers.set(f.username.toLowerCase(), f));
+    following.forEach((f) => allUsers.set(f.username.toLowerCase(), f));
+    followers.forEach((f) => {
+      if (!allUsers.has(f.username.toLowerCase())) allUsers.set(f.username.toLowerCase(), f);
+    });
     allMentionedUsers.forEach((u: string) => {
       if (!allUsers.has(u.toLowerCase())) allUsers.set(u.toLowerCase(), { username: u });
     });
@@ -98,7 +136,7 @@ export function useComposeAutocomplete({
     return Array.from(allUsers.values())
       .filter((u) => u.username.toLowerCase().includes(q) || u.display_name?.toLowerCase().includes(q))
       .slice(0, 15);
-  }, [mentionQuery, followers, allMentionedUsers, content, remoteActorSuggestions]);
+  }, [mentionQuery, following, followers, allMentionedUsers, content, remoteActorSuggestions]);
 
   const hashtagSuggestions = useMemo(() => {
     if (!hashtagQuery) return [];

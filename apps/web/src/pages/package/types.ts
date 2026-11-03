@@ -16,8 +16,11 @@ import {
 import { Heading } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
-import styled, { css } from "styled-components";
+import styledImport, { css } from "styled-components";
 import type { ArtifactViewerInfo } from "../../api";
+
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 /* ─── tab types ─── */
 

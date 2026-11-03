@@ -676,7 +676,8 @@ test("Mastodon Platform Parity Suite: Federation, Moderation, Trust & Safety, an
 
       // 7g. Trending Content Review Gate
       db.updateInstanceSettings({ trendingRequiresApproval: true }, alice.id);
-      db.updateTopicScore("thermofluid", "Thermofluid", 15.0);
+      const tfTopicId = db.updateTopicScore("thermofluid", "Thermofluid", 15.0);
+      db.linkPostToTopic(filteredPostRes.body.post.id, tfTopicId);
       assert.strictEqual(
         db.getTopTrendingTopics(10).some((t) => t.concept === "thermofluid"),
         false,

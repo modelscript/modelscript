@@ -12,6 +12,8 @@ import {
   type CanonicalWorkspaceManifest,
   type DataPackageResourceDescriptor,
   EXTENSION_TO_LANGUAGE_ID,
+  getStdlibById,
+  getStdlibCatalog,
   KparPackageAdapter,
   ManifestLensEngine,
   OpcAasxPackager,
@@ -302,20 +304,95 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     return false;
   }
 
+  const PERSONA_DOMAIN_AFFINITY: Record<string, string[]> = {
+    physical_systems: [
+      "modelica",
+      "power",
+      "power-energy",
+      "hydraulics",
+      "robotics",
+      "fmu",
+      "thermofluid",
+      "multibody",
+      "control",
+      "electrical",
+      "fluid",
+    ],
+    systems_engineering: [
+      "sysml2",
+      "sysml",
+      "kerml",
+      "fmu",
+      "ssp",
+      "verification",
+      "requirements",
+      "mbse",
+      "architecture",
+    ],
+    computational_cad: ["cad", "step", "scad", "openscad", "cfd", "fea", "robotics", "urdf", "geometry", "mesh"],
+    scientific_research: [
+      "dataset",
+      "csv",
+      "verification",
+      "cfd",
+      "fea",
+      "modelica",
+      "pde",
+      "optimization",
+      "surrogate",
+      "montecarlo",
+      "numerical",
+    ],
+  };
+
+  const PERSONA_DISPLAY_LABEL: Record<string, string> = {
+    physical_systems: "Physical Systems",
+    systems_engineering: "Systems Engineering",
+    computational_cad: "3D CAD & CAE",
+    scientific_research: "Scientific Research",
+  };
+
   /**
    * GET /api/v1/libraries
    *
-   * List all published packages with their versions.
-   * Supports an optional `?q=` query parameter
-   * for case-insensitive substring filtering on the package name.
+   * List all published packages with their versions, ranked by multi-signal
+   * popularity (downloads, velocity, reverse dependencies), query relevance,
+   * and personalized persona/topic affinity.
    */
-  router.get("/", (req: Request, res: Response): void => {
+  router.get("/", optionalAuth, (req: Request, res: Response): void => {
     const q = req.query["q"];
-    const query = typeof q === "string" ? q : undefined;
-    const names = storage.list(query);
-    const packages = names.map((name) => {
-      const versions = storage.versions(name);
-      const latestVersion = versions[0] || null;
+    const query = typeof q === "string" ? q.trim() : undefined;
+    const rawSort = typeof req.query["sort"] === "string" ? req.query["sort"].trim().toLowerCase() : undefined;
+
+    const snapshot = database.getLibraryDiscoverySnapshot(req.user?.id);
+    const catalogLibraries = getStdlibCatalog().libraries;
+    const catalogByPkgName = new Map<string, (typeof catalogLibraries)[number]>();
+    for (const l of catalogLibraries) {
+      const existing = catalogByPkgName.get(l.packageName);
+      if (
+        !existing ||
+        (semver.valid(l.version) && semver.valid(existing.version) && semver.gt(l.version, existing.version))
+      ) {
+        catalogByPkgName.set(l.packageName, l);
+      }
+    }
+
+    const storageNames = new Set(storage.list());
+    for (const pkgName of snapshot.packagesByName.keys()) {
+      storageNames.add(pkgName);
+    }
+    const names = Array.from(storageNames).sort();
+
+    const allPackages = names.map((name) => {
+      const pkgRecord = snapshot.packagesByName.get(name);
+      const storageVersions = storage.versions(name);
+      const dbVersions = pkgRecord ? (snapshot.versionsByPackageId.get(pkgRecord.id) ?? []).map((v) => v.version) : [];
+      const versions = Array.from(new Set([...storageVersions, ...dbVersions])).sort((a, b) => {
+        if (semver.valid(a) && semver.valid(b)) return semver.rcompare(a, b);
+        return b.localeCompare(a);
+      });
+      const distTagLatest = pkgRecord ? database.getDistTags(pkgRecord.id)["latest"] : undefined;
+      const latestVersion = (distTagLatest && versions.includes(distTagLatest) ? distTagLatest : versions[0]) || null;
       let jobStatus = null;
       if (latestVersion) {
         const status = jobQueue.getStatus(`${name}@${latestVersion}`);
@@ -328,38 +405,42 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         }
       }
 
-      const pkgRecord = database.getPackage(name);
-      const release = latestVersion ? database.getLibraryRelease(name, latestVersion) : undefined;
-      const stats = database.getPackageStats(name, 30);
-      const downloads30d = stats.daily.reduce((sum, d) => sum + d.downloads, 0);
+      const release = latestVersion ? snapshot.releasesByKey.get(`${name}@${latestVersion}`) : undefined;
+      const dlStats = snapshot.downloadsByName.get(name);
+      const totalDownloads = dlStats?.totalDownloads ?? 0;
+      const downloads30d = dlStats?.downloads30d ?? 0;
+      const downloads7d = dlStats?.downloads7d ?? 0;
+      const dependentsCount = snapshot.dependentsCountByName.get(name) ?? 0;
+
       const scope = name.startsWith("@") ? name.split("/")[0]!.slice(1) : undefined;
-      const publisherUser = release?.published_by ? database.getUserById(release.published_by) : undefined;
-      const author = publisherUser?.username ?? scope ?? undefined;
+      const author = release?.publisher_username ?? scope ?? undefined;
 
       const domainSet = new Set<string>();
       let pkgProfile: string | undefined;
       let resourcesCount = 0;
+      let classCount = 0;
 
       if (latestVersion) {
-        const classes = database.getClasses(name, latestVersion);
-        if (classes.length > 0) {
+        const classSummary = snapshot.classSummaryByKey.get(`${name}@${latestVersion}`);
+        if (classSummary && classSummary.classCount > 0) {
+          classCount = classSummary.classCount;
           domainSet.add("modelica");
-          for (const c of classes) {
-            if (c.class_kind.toLowerCase().includes("sysml")) domainSet.add("sysml2");
+          if (classSummary.hasSysml) {
+            domainSet.add("sysml2");
           }
         }
         if (pkgRecord) {
-          const verRow = database.getPackageVersion(pkgRecord.id, latestVersion);
+          const verRow = snapshot.versionByPkgAndVer.get(`${pkgRecord.id}@${latestVersion}`);
           if (verRow) {
-            const artifacts = database.getArtifacts(verRow.id);
+            const artifacts = snapshot.artifactsByVersionId.get(verRow.id) ?? [];
             for (const a of artifacts) {
-              const t = a.type.toLowerCase();
+              const t = a.type;
               if (t === "cad" || t === "step") domainSet.add("cad");
               else if (t === "sysml" || t === "sysml2" || t === "kerml") domainSet.add("sysml2");
               else if (t === "fmu") domainSet.add("fmu");
               else if (t === "dataset" || t === "csv") {
                 domainSet.add("dataset");
-                resourcesCount += 1;
+                resourcesCount += a.count;
               }
             }
             if (verRow.manifest) {
@@ -369,6 +450,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                   parsedM["modelscript"] && typeof parsedM["modelscript"] === "object"
                     ? (parsedM["modelscript"] as Record<string, unknown>)
                     : undefined;
+                if (msxM?.["domains"] && Array.isArray(msxM["domains"])) {
+                  for (const d of msxM["domains"]) {
+                    if (typeof d === "string") domainSet.add(d);
+                  }
+                }
                 const prof =
                   typeof parsedM["profile"] === "string"
                     ? parsedM["profile"]
@@ -392,8 +478,83 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           }
         }
       }
+
+      const catalogLib = getStdlibById(name) ?? catalogByPkgName.get(name);
       if (domainSet.size === 0) {
-        domainSet.add("modelica");
+        if (catalogLib?.domain) {
+          domainSet.add(catalogLib.domain);
+        } else {
+          domainSet.add("modelica");
+        }
+      }
+
+      const description = pkgRecord?.description ?? catalogLib?.description ?? undefined;
+      const domains = Array.from(domainSet);
+      const isDeprecated = Boolean(release?.is_deprecated);
+      const isYanked = Boolean(release?.is_yanked);
+
+      // Compute multi-signal recommendation score
+      let recommendationScore =
+        12 * Math.log(1 + downloads30d) +
+        5 * Math.log(1 + totalDownloads) +
+        8 * Math.log(1 + downloads7d) +
+        18 * dependentsCount +
+        3 * Math.log(1 + classCount) +
+        (catalogLib ? 8 : 0);
+
+      if (isYanked) recommendationScore -= 200;
+      if (isDeprecated) recommendationScore -= 80;
+
+      const textHaystack = `${name} ${description ?? ""} ${domains.join(" ")}`.toLowerCase();
+      let matchedTopicReason: string | null = null;
+      let matchedPersonaReason: string | null = null;
+
+      if (snapshot.activeTopics.size > 0) {
+        let topicMatches = 0;
+        for (const topic of snapshot.activeTopics) {
+          if (topic.length >= 2 && (domains.some((d) => d.toLowerCase() === topic) || textHaystack.includes(topic))) {
+            topicMatches += 1;
+            if (!matchedTopicReason) {
+              matchedTopicReason = `Matches #${topic}`;
+            }
+          }
+        }
+        recommendationScore += Math.min(3, topicMatches) * 18;
+      }
+
+      if (snapshot.dismissedTopics.size > 0) {
+        for (const dismissed of snapshot.dismissedTopics) {
+          if (
+            dismissed.length >= 2 &&
+            (domains.some((d) => d.toLowerCase() === dismissed) || name.toLowerCase().includes(dismissed))
+          ) {
+            recommendationScore -= 60;
+            break;
+          }
+        }
+      }
+
+      if (snapshot.viewerPersona) {
+        const personaKeywords = PERSONA_DOMAIN_AFFINITY[snapshot.viewerPersona] ?? [];
+        const matchesPersona = personaKeywords.some(
+          (kw) => domains.some((d) => d.toLowerCase().includes(kw)) || textHaystack.includes(kw),
+        );
+        if (matchesPersona) {
+          recommendationScore += 25;
+          const label = PERSONA_DISPLAY_LABEL[snapshot.viewerPersona] ?? snapshot.viewerPersona;
+          matchedPersonaReason = `Matches your ${label} focus`;
+        }
+      }
+
+      let recommendationReason: string | undefined;
+      if (matchedTopicReason) {
+        recommendationReason = matchedTopicReason;
+      } else if (matchedPersonaReason) {
+        recommendationReason = matchedPersonaReason;
+      } else if (dependentsCount > 0) {
+        recommendationReason = `Used by ${dependentsCount} ${dependentsCount === 1 ? "package" : "packages"}`;
+      } else if (downloads7d >= 5) {
+        recommendationReason = "Trending this week";
       }
 
       return {
@@ -402,20 +563,100 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         latestVersion,
         profile: pkgProfile ?? (domainSet.has("dataset") ? "engineering-data-package" : "engineering-package"),
         resourcesCount: resourcesCount > 0 ? resourcesCount : undefined,
-        description: pkgRecord?.description ?? undefined,
-        license: pkgRecord?.license ?? undefined,
+        description,
+        license: pkgRecord?.license ?? catalogLib?.license ?? undefined,
         author,
         scope,
         publishedAt: release?.published_at ?? pkgRecord?.modified_at ?? undefined,
-        totalDownloads: stats.totalDownloads,
+        totalDownloads,
         downloads30d,
-        isDeprecated: Boolean(release?.is_deprecated),
+        downloads7d,
+        dependentsCount,
+        recommendationScore: Math.round(recommendationScore * 100) / 100,
+        recommendationReason,
+        isDeprecated,
         deprecationReason: release?.deprecation_reason ?? null,
-        isYanked: Boolean(release?.is_yanked),
-        domains: Array.from(domainSet),
+        isYanked,
+        domains,
         jobStatus,
       };
     });
+
+    const queryTokens = query
+      ? query
+          .toLowerCase()
+          .split(/\s+/)
+          .map((t) => t.replace(/^#/, ""))
+          .filter(Boolean)
+      : [];
+    const queryLower = queryTokens.join(" ");
+
+    const filteredPackages =
+      queryTokens.length > 0
+        ? allPackages
+            .filter((pkg) => {
+              const haystack = [pkg.name, pkg.description, pkg.author, pkg.scope, ...(pkg.domains || [])]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+              return queryTokens.every((tok) => haystack.includes(tok));
+            })
+            .map((pkg) => {
+              const nameLower = pkg.name.toLowerCase();
+              const baseLower = nameLower.includes("/") ? nameLower.split("/")[1]! : nameLower;
+              let queryBoost = 0;
+              if (nameLower === queryLower || baseLower === queryLower) {
+                queryBoost += 500;
+              } else if (nameLower.startsWith(queryLower) || baseLower.startsWith(queryLower)) {
+                queryBoost += 250;
+              } else if (pkg.domains.some((d) => d.toLowerCase() === queryLower)) {
+                queryBoost += 120;
+              } else if (nameLower.includes(queryLower)) {
+                queryBoost += 80;
+              }
+              return {
+                ...pkg,
+                recommendationScore: Math.round((pkg.recommendationScore + queryBoost) * 100) / 100,
+              };
+            })
+        : allPackages;
+
+    const packages = [...filteredPackages].sort((a, b) => {
+      if (rawSort === "name") {
+        return a.name.localeCompare(b.name);
+      }
+      if (rawSort === "recent") {
+        const ta = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+        const tb = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+        if (tb !== ta) return tb - ta;
+        return a.name.localeCompare(b.name);
+      }
+      if (rawSort === "dependents") {
+        if (b.dependentsCount !== a.dependentsCount) return b.dependentsCount - a.dependentsCount;
+        if (b.totalDownloads !== a.totalDownloads) return b.totalDownloads - a.totalDownloads;
+        return a.name.localeCompare(b.name);
+      }
+      if (rawSort === "downloads") {
+        if (b.totalDownloads !== a.totalDownloads) return b.totalDownloads - a.totalDownloads;
+        if (b.downloads30d !== a.downloads30d) return b.downloads30d - a.downloads30d;
+        return a.name.localeCompare(b.name);
+      }
+      // Default ("recommended") or search query ranking
+      if (b.recommendationScore !== a.recommendationScore) {
+        return b.recommendationScore - a.recommendationScore;
+      }
+      if (b.downloads30d !== a.downloads30d) {
+        return b.downloads30d - a.downloads30d;
+      }
+      if (b.dependentsCount !== a.dependentsCount) {
+        return b.dependentsCount - a.dependentsCount;
+      }
+      if (b.totalDownloads !== a.totalDownloads) {
+        return b.totalDownloads - a.totalDownloads;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
     res.json({ packages });
   });
 

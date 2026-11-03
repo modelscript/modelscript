@@ -27,8 +27,46 @@ interface RegistryPackument {
 }
 
 interface PackageQuickPickItem extends vscode.QuickPickItem {
-  pkg: AnsatzPackageSummary;
+  pkg?: AnsatzPackageSummary | undefined;
+  actionCommand?: string | undefined;
 }
+
+const PINNED_QUICK_ACTIONS: PackageQuickPickItem[] = [
+  {
+    label: "$(file-zip) Import Library from .zip Archive...",
+    description: "Local file",
+    detail: "Mount a local .zip library archive directly into the workspace Libraries panel",
+    alwaysShow: true,
+    actionCommand: "modelscript.libraryView.importZip",
+  },
+  {
+    label: "$(cloud-download) Import Library from URL...",
+    description: "GitHub / HTTP .zip",
+    detail: "Download and mount a .zip library archive from any URL",
+    alwaysShow: true,
+    actionCommand: "modelscript.libraryView.importUrl",
+  },
+];
+
+const CURATED_LIBRARIES: AnsatzPackageSummary[] = [
+  {
+    name: "Modelica",
+    latestVersion: "4.1.0",
+    versions: ["4.1.0", "4.0.0", "3.2.3"],
+    description:
+      "Modelica Standard Library — multi-domain physical modeling (Electrical, Mechanical, Fluid, Thermal, Blocks)",
+    license: "BSD-3-Clause",
+    domains: ["Modelica", "Physical Modeling"],
+  },
+  {
+    name: "SysML",
+    latestVersion: "2026.3.0",
+    versions: ["2026.3.0"],
+    description: "OMG Systems Modeling Language (SysML v2) & KerML Standard Library",
+    license: "OMG",
+    domains: ["SysML v2", "Systems Engineering"],
+  },
+];
 
 /**
  * Fetches matching packages from the Ansatz registry (`/api/v1/packages` with fallback to `/api/v1/libraries`).
@@ -73,7 +111,7 @@ function toQuickPickItem(pkg: AnsatzPackageSummary): PackageQuickPickItem {
   return {
     label: `$(package) ${pkg.name}`,
     description: `v${version}${domainBadges}${downloads}${deprecated}`,
-    detail: pkg.description || `Install ${pkg.name}@${version} from Ansatz into Standard Libraries`,
+    detail: pkg.description || `Install ${pkg.name}@${version} from Ansatz into Libraries`,
     alwaysShow: true,
     buttons: [
       {
@@ -87,18 +125,29 @@ function toQuickPickItem(pkg: AnsatzPackageSummary): PackageQuickPickItem {
 
 /**
  * Opens an interactive VS Code QuickPick that searches Ansatz live and installs the chosen package
- * directly into the workspace and Standard Libraries tree view.
+ * directly into the workspace and Libraries tree view.
  */
 export async function showAnsatzPackagePicker(): Promise<void> {
   const quickPick = vscode.window.createQuickPick<PackageQuickPickItem>();
-  quickPick.title = "Add Package from Ansatz Registry";
+  quickPick.title = "Add Library to Workspace";
   quickPick.placeholder =
-    "Search Ansatz packages by name, domain, or keyword (e.g., Modelica, Thermal, PlanarMechanics)...";
+    "Search Ansatz packages by name, domain, or keyword (e.g., Modelica, SysML, Thermal, PlanarMechanics)...";
   quickPick.matchOnDescription = true;
   quickPick.matchOnDetail = true;
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let activeAbort: AbortController | null = null;
+
+  const filterCurated = (q: string): AnsatzPackageSummary[] => {
+    const trimmed = q.trim().toLowerCase();
+    if (!trimmed) return CURATED_LIBRARIES;
+    return CURATED_LIBRARIES.filter(
+      (c) =>
+        c.name.toLowerCase().includes(trimmed) ||
+        (c.description && c.description.toLowerCase().includes(trimmed)) ||
+        c.domains?.some((d) => d.toLowerCase().includes(trimmed)),
+    );
+  };
 
   const runSearch = async (query: string) => {
     if (activeAbort) {
@@ -112,7 +161,11 @@ export async function showAnsatzPackagePicker(): Promise<void> {
       const results = await searchAnsatzPackages(query, controller.signal);
       if (controller.signal.aborted) return;
 
-      if (results.length === 0 && query.trim().length > 0) {
+      const seen = new Set(results.map((r) => r.name.toLowerCase()));
+      const extraCurated = filterCurated(query).filter((c) => !seen.has(c.name.toLowerCase()));
+      const merged = [...results.slice(0, 50), ...extraCurated];
+
+      if (merged.length === 0 && query.trim().length > 0) {
         // Allow direct install of typed package spec (e.g., "MyPackage" or "MyPackage@1.0.0")
         const [rawName, rawVer] = query.trim().split("@");
         const directPkg: AnsatzPackageSummary = {
@@ -120,13 +173,14 @@ export async function showAnsatzPackagePicker(): Promise<void> {
           latestVersion: rawVer || "latest",
           description: `Install '${query.trim()}' directly from Ansatz registry`,
         };
-        quickPick.items = [toQuickPickItem(directPkg)];
+        quickPick.items = [toQuickPickItem(directPkg), ...PINNED_QUICK_ACTIONS];
       } else {
-        quickPick.items = results.slice(0, 50).map(toQuickPickItem);
+        quickPick.items = [...merged.map(toQuickPickItem), ...PINNED_QUICK_ACTIONS];
       }
     } catch (err) {
       if ((err as { name?: string })?.name === "AbortError") return;
       const raw = query.trim();
+      const curated = filterCurated(raw).map(toQuickPickItem);
       if (raw.length > 0) {
         const [rawName, rawVer] = raw.split("@");
         quickPick.items = [
@@ -135,9 +189,11 @@ export async function showAnsatzPackagePicker(): Promise<void> {
             latestVersion: rawVer || "latest",
             description: `Install '${raw}' from Ansatz (${getRegistryUrl()})`,
           }),
+          ...curated,
+          ...PINNED_QUICK_ACTIONS,
         ];
       } else {
-        quickPick.items = [];
+        quickPick.items = [...curated, ...PINNED_QUICK_ACTIONS];
       }
     } finally {
       if (activeAbort === controller) {
@@ -155,6 +211,7 @@ export async function showAnsatzPackagePicker(): Promise<void> {
 
   quickPick.onDidTriggerItemButton((event) => {
     const { pkg } = event.item;
+    if (!pkg) return;
     const version = pkg.latestVersion || pkg.versions?.[0] || "latest";
     quickPick.hide();
     void vscode.commands.executeCommand("modelscript.registry.openPackage", pkg.name, version);
@@ -165,7 +222,13 @@ export async function showAnsatzPackagePicker(): Promise<void> {
     if (!selected) return;
     quickPick.hide();
 
+    if (selected.actionCommand) {
+      await vscode.commands.executeCommand(selected.actionCommand);
+      return;
+    }
+
     const { pkg } = selected;
+    if (!pkg) return;
     let targetVersion = pkg.latestVersion || pkg.versions?.[0] || "latest";
 
     if (pkg.versions && pkg.versions.length > 1) {
@@ -174,7 +237,7 @@ export async function showAnsatzPackagePicker(): Promise<void> {
       );
       const pickedVer = await vscode.window.showQuickPick(versionItems, {
         title: `Select Version for ${pkg.name}`,
-        placeHolder: `Choose version of ${pkg.name} to add to Standard Libraries`,
+        placeHolder: `Choose version of ${pkg.name} to add to Libraries`,
       });
       if (!pickedVer) return;
       targetVersion = pickedVer.version;
@@ -215,7 +278,27 @@ async function resolveConcreteVersion(packageName: string, requestedVersion: str
       // Fall through
     }
   }
+  const curated = CURATED_LIBRARIES.find((c) => c.name.toLowerCase() === packageName.toLowerCase());
+  if (curated?.latestVersion) return curated.latestVersion;
   return requestedVersion || "latest";
+}
+
+function extractPackageNameFromArg(arg?: string | { info?: { name?: string; id?: string; description?: string } }): {
+  name?: string | undefined;
+  currentVersion?: string | undefined;
+} {
+  if (typeof arg === "string") {
+    return { name: arg };
+  }
+  const name =
+    typeof arg?.info?.name === "string"
+      ? arg.info.name
+      : typeof arg?.info?.id === "string"
+        ? arg.info.id.replace(/^__LIB__:/, "")
+        : undefined;
+  const rawDesc = typeof arg?.info?.description === "string" ? arg.info.description : undefined;
+  const currentVersion = rawDesc?.startsWith("v") ? rawDesc.slice(1).split(" ")[0] : undefined;
+  return { name, currentVersion };
 }
 
 export function registerRegistryView(
@@ -226,14 +309,14 @@ export function registerRegistryView(
     await showAnsatzPackagePicker();
   };
 
-  // Register unified Standard Libraries '+' button and command palette aliases
+  // Register unified Libraries '+' button and command palette aliases
   context.subscriptions.push(
     vscode.commands.registerCommand("modelscript.libraryView.addPackage", openPicker),
     vscode.commands.registerCommand("modelscript.registry.search", openPicker),
     vscode.commands.registerCommand("modelscript.openRegistry", openPicker),
   );
 
-  // Install package from Ansatz into Standard Libraries & workspace package.json
+  // Install package from Ansatz into Libraries & workspace package.json
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "modelscript.registry.install",
@@ -248,7 +331,7 @@ export function registerRegistryView(
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: `Adding ${packageName}@${resolvedVersion} from Ansatz...`,
+            title: `Adding ${packageName}@${resolvedVersion} to Libraries...`,
             cancellable: false,
           },
           async () => {
@@ -297,19 +380,106 @@ export function registerRegistryView(
     ),
   );
 
+  // Switch version command for any mounted library (standard or custom)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "modelscript.libraryView.switchVersion",
+      async (arg?: string | { info?: { name?: string; id?: string; description?: string } }) => {
+        const { name: extractedName, currentVersion } = extractPackageNameFromArg(arg);
+        const packageName =
+          extractedName ||
+          (
+            await vscode.window.showInputBox({
+              prompt: "Enter library name to switch version",
+            })
+          )?.trim();
+        if (!packageName) return;
+
+        let versions: string[] = [];
+        const baseUrl = getRegistryUrl().replace(/\/+$/, "");
+        for (const prefix of ["packages", "libraries"]) {
+          try {
+            const resp = await fetch(`${baseUrl}/${prefix}/${encodeURIComponent(packageName)}`);
+            if (resp.ok) {
+              const data = (await resp.json()) as { versions?: string[]; latestVersion?: string };
+              if (Array.isArray(data.versions) && data.versions.length > 0) {
+                versions = data.versions;
+                break;
+              } else if (data.latestVersion) {
+                versions = [data.latestVersion];
+                break;
+              }
+            }
+          } catch {
+            // Fall through
+          }
+        }
+
+        if (versions.length === 0) {
+          const curated = CURATED_LIBRARIES.find((c) => c.name.toLowerCase() === packageName.toLowerCase());
+          if (curated?.versions) {
+            versions = curated.versions;
+          } else if (currentVersion) {
+            versions = [currentVersion];
+          }
+        }
+
+        const items: (vscode.QuickPickItem & { version: string })[] = versions.map((v, idx) => ({
+          label: `v${v}`,
+          description: v === currentVersion ? "(currently mounted)" : idx === 0 ? "(latest)" : "",
+          version: v,
+        }));
+
+        items.push({
+          label: "$(edit) Enter custom version...",
+          description: "Type a specific semver tag",
+          version: "__CUSTOM__",
+        });
+
+        const picked = await vscode.window.showQuickPick(items, {
+          title: `Switch Version for ${packageName}`,
+          placeHolder: currentVersion
+            ? `Currently mounted: v${currentVersion}. Select target version:`
+            : `Select version of ${packageName} to mount:`,
+        });
+        if (!picked) return;
+
+        let targetVersion = picked.version;
+        if (targetVersion === "__CUSTOM__") {
+          const customInput = await vscode.window.showInputBox({
+            prompt: `Enter version for ${packageName}`,
+            value: currentVersion || "latest",
+          });
+          if (!customInput) return;
+          targetVersion = customInput.trim();
+        }
+
+        if (lspClient) {
+          lspClient.sendNotification("modelscript/uninstallDependency", { name: packageName });
+        }
+        await vscode.commands.executeCommand("modelscript.registry.install", packageName, targetVersion);
+      },
+    ),
+  );
+
+  // Open package details from tree item context menu
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "modelscript.libraryView.openPackageDetails",
+      async (arg?: string | { info?: { name?: string; id?: string; description?: string } }) => {
+        const { name, currentVersion } = extractPackageNameFromArg(arg);
+        if (!name) return;
+        await vscode.commands.executeCommand("modelscript.registry.openPackage", name, currentVersion || "latest");
+      },
+    ),
+  );
+
   // Uninstall / remove package command
   const uninstallHandler = async (arg?: string | { info?: { name?: string; id?: string } }) => {
-    let packageName =
-      typeof arg === "string"
-        ? arg
-        : typeof arg?.info?.name === "string"
-          ? arg.info.name
-          : typeof arg?.info?.id === "string"
-            ? arg.info.id.replace(/^__LIB__:/, "")
-            : undefined;
+    let packageName = extractPackageNameFromArg(arg).name;
 
     if (!packageName) {
-      const input = await vscode.window.showInputBox({ prompt: "Package name to remove from workspace" });
+      const input = await vscode.window.showInputBox({ prompt: "Library name to remove from workspace" });
       if (!input) return;
       packageName = input.trim();
     }
@@ -330,10 +500,23 @@ export function registerRegistryView(
               const data = await vscode.workspace.fs.readFile(packageJsonUri);
               const packageJsonObj = JSON.parse(new TextDecoder().decode(data)) as {
                 dependencies?: Record<string, string> | undefined;
+                modelscript?: { dependencies?: Record<string, string> | undefined } | undefined;
               };
+              let modified = false;
               if (packageJsonObj.dependencies) {
                 Reflect.deleteProperty(packageJsonObj.dependencies, packageName);
                 Reflect.deleteProperty(packageJsonObj.dependencies, `@modelscript/${packageName.toLowerCase()}`);
+                modified = true;
+              }
+              if (packageJsonObj.modelscript?.dependencies) {
+                Reflect.deleteProperty(packageJsonObj.modelscript.dependencies, packageName);
+                Reflect.deleteProperty(
+                  packageJsonObj.modelscript.dependencies,
+                  `@modelscript/${packageName.toLowerCase()}`,
+                );
+                modified = true;
+              }
+              if (modified) {
                 const encoded = new TextEncoder().encode(JSON.stringify(packageJsonObj, null, 2));
                 await vscode.workspace.fs.writeFile(packageJsonUri, encoded);
               }
@@ -348,9 +531,9 @@ export function registerRegistryView(
               void vscode.commands.executeCommand("modelscript.libraryView.refresh");
             }, 500);
           }
-          vscode.window.showInformationMessage(`Removed ${packageName}.`);
+          vscode.window.showInformationMessage(`Removed ${packageName} from workspace.`);
         } catch (err) {
-          vscode.window.showErrorMessage(`Failed to remove package '${packageName}': ${err}`);
+          vscode.window.showErrorMessage(`Failed to remove library '${packageName}': ${err}`);
         }
       },
     );
@@ -388,8 +571,19 @@ export function registerRegistryView(
             `${registryUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(resolvedVersion)}`,
           );
         }
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const packument = (await resp.json()) as RegistryPackument;
+        let packument: RegistryPackument;
+        if (resp.ok) {
+          packument = (await resp.json()) as RegistryPackument;
+        } else {
+          const curated = CURATED_LIBRARIES.find((c) => c.name.toLowerCase() === name.toLowerCase());
+          if (!curated) throw new Error(`HTTP ${resp.status}`);
+          packument = {
+            name: curated.name,
+            version: resolvedVersion,
+            description: curated.description,
+            license: curated.license,
+          };
+        }
         const readme = packument.description || "No description available.";
         panel.webview.html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';"><style>
           body { font-family: var(--vscode-font-family); padding: 24px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
@@ -400,7 +594,7 @@ export function registerRegistryView(
           .install-btn:hover { background: var(--vscode-button-hoverBackground); }
           .readme { line-height: 1.7; }
         </style></head><body>
-          <h1>${escapeHtml(packument.name || name)} <button class="install-btn" onclick="acquireVsCodeApi().postMessage({command: 'install'})">Add to Standard Libraries</button></h1>
+          <h1>${escapeHtml(packument.name || name)} <button class="install-btn" onclick="acquireVsCodeApi().postMessage({command: 'install'})">Add to Libraries</button></h1>
           <div class="meta">
             <span class="badge">v${escapeHtml(packument.version || resolvedVersion)}</span>
             ${packument.license ? `<span class="badge">${escapeHtml(packument.license)}</span>` : ""}
@@ -412,6 +606,76 @@ export function registerRegistryView(
       } catch (e) {
         panel.webview.html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none';"></head><body><p>Failed to load package details: ${escapeHtml(String(e))}</p></body></html>`;
       }
+    }),
+  );
+
+  // Import library from a local .zip archive
+  context.subscriptions.push(
+    vscode.commands.registerCommand("modelscript.libraryView.importZip", async () => {
+      try {
+        const picked = await vscode.window.showOpenDialog({
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: false,
+          filters: { "Library Archive (.zip)": ["zip"] },
+          openLabel: "Mount Library (.zip)",
+        });
+        const uri = picked?.[0];
+        if (!uri) return;
+        const bytes = await vscode.workspace.fs.readFile(uri);
+        const fileName = uri.path.split("/").pop() || "Library.zip";
+        const defaultName = fileName.replace(/\.zip$/i, "").split(/[-_ ]/)[0] || "CustomLibrary";
+        let binary = "";
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.byteLength; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+        }
+        const zipBase64 = btoa(binary);
+        if (lspClient) {
+          lspClient.sendNotification("modelscript/importLibraryZip", {
+            name: defaultName,
+            version: "1.0.0",
+            zipBase64,
+          });
+          setTimeout(() => {
+            void vscode.commands.executeCommand("modelscript.libraryView.refresh");
+          }, 500);
+        }
+        vscode.window.showInformationMessage(`Mounted library archive '${fileName}' into Libraries.`);
+      } catch (err) {
+        vscode.window.showErrorMessage(`Failed to import .zip library: ${err}`);
+      }
+    }),
+  );
+
+  // Import library from an HTTP/HTTPS URL
+  context.subscriptions.push(
+    vscode.commands.registerCommand("modelscript.libraryView.importUrl", async (passedUrl?: string) => {
+      const url =
+        typeof passedUrl === "string" && passedUrl.trim()
+          ? passedUrl.trim()
+          : (
+              await vscode.window.showInputBox({
+                title: "Import Library from URL",
+                prompt: "Enter the URL of a .zip library archive (e.g., GitHub release or raw archive URL)",
+                placeHolder: "https://example.com/MyLibrary-1.0.0.zip",
+              })
+            )?.trim();
+      if (!url) return;
+
+      const fileName = url.split("/").pop()?.split("?")[0] || "Library.zip";
+      const defaultName = fileName.replace(/\.zip$/i, "").split(/[-_ ]/)[0] || "CustomLibrary";
+      if (lspClient) {
+        lspClient.sendNotification("modelscript/importLibraryZip", {
+          name: defaultName,
+          version: "1.0.0",
+          url,
+        });
+        setTimeout(() => {
+          void vscode.commands.executeCommand("modelscript.libraryView.refresh");
+        }, 700);
+      }
+      vscode.window.showInformationMessage(`Importing library from ${url}...`);
     }),
   );
 }

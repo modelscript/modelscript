@@ -56,11 +56,11 @@ interface NormalizedPrDiffFile {
   patch: string;
 }
 
-function getDiffFilesForPr(mr: GitlabMergeRequest, projectId: string): NormalizedPrDiffFile[] {
+function getDiffFilesForPr(mr: GitlabMergeRequest): NormalizedPrDiffFile[] {
   if (Array.isArray(mr.diff_files) && mr.diff_files.length > 0) {
     return mr.diff_files.map((df) => {
       const patch = df.patch || df.diff || "";
-      const path = df.new_path || df.path || df.old_path || "src/SystemArchitecture.mo";
+      const path = df.new_path || df.path || df.old_path || "diff";
       const lines = patch.split("\n");
       const additions =
         typeof df.additions === "number"
@@ -84,7 +84,7 @@ function getDiffFilesForPr(mr: GitlabMergeRequest, projectId: string): Normalize
   if (Array.isArray(mr.changes) && mr.changes.length > 0) {
     return mr.changes.map((ch) => {
       const patch = ch.diff || ch.patch || "";
-      const path = ch.new_path || ch.path || ch.old_path || "src/SystemArchitecture.mo";
+      const path = ch.new_path || ch.path || ch.old_path || "diff";
       const lines = patch.split("\n");
       const additions =
         typeof ch.additions === "number"
@@ -105,81 +105,26 @@ function getDiffFilesForPr(mr: GitlabMergeRequest, projectId: string): Normalize
     });
   }
 
-  const repoName = projectId.split("/").pop() || "Model";
-  const branchSlug = (mr.source_branch || "feature/model-update")
-    .replace(/^(feature|fix|chore|refactor|release)\//i, "")
-    .replace(/[^a-zA-Z0-9]+/g, " ")
-    .trim();
-  const derivedModelName =
-    branchSlug
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join("") || "SystemArchitecture";
-  const filePath = `${repoName}/${derivedModelName}.mo`;
-  const patch =
-    mr.diff_summary ||
-    `diff --git a/${filePath} b/${filePath}
-index 4a81c2e..9f03d1b 100644
---- a/${filePath} (${mr.target_branch})
-+++ b/${filePath} (${mr.source_branch})
-@@ -12,7 +12,10 @@ model ${derivedModelName} "${mr.title}"
-   // Merge branch: ${mr.source_branch} -> ${mr.target_branch}
-   parameter Modelica.Units.SI.ThermalConductance G = 12.5 "Nominal conductance";
-   parameter Modelica.Units.SI.HeatCapacity C = 420.0 "Lumped thermal capacity";
-+  parameter Real relTol(min = 1e-9) = 1e-6 "Solver relative tolerance (${mr.source_branch})";
-   Modelica.Units.SI.Temperature T(start = 293.15, fixed = true);
- equation
--  C * der(T) = -G * (T - 293.15);
-+  // ${mr.title}
-+  C * der(T) = -G * (T - 293.15) + 0.05 * noEvent(smooth(1, tanh(293.15 - T)));
- end ${derivedModelName};`;
+  if (mr.diff_summary) {
+    const lines = mr.diff_summary.split("\n");
+    return [
+      {
+        path: "diff",
+        additions: lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length,
+        deletions: lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length,
+        patch: mr.diff_summary,
+      },
+    ];
+  }
 
-  const lines = patch.split("\n");
-  return [
-    {
-      path: filePath,
-      old_path: filePath,
-      new_path: filePath,
-      additions: lines.filter((l) => l.startsWith("+") && !l.startsWith("+++")).length,
-      deletions: lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length,
-      patch,
-    },
-  ];
+  return [];
 }
 
-function buildDefaultDiffForPr(mr: GitlabMergeRequest, projectId: string): string {
+function buildDefaultDiffForPr(mr: GitlabMergeRequest): string {
   if (mr.diff_summary) return mr.diff_summary;
-  return getDiffFilesForPr(mr, projectId)
+  return getDiffFilesForPr(mr)
     .map((f) => f.patch)
     .join("\n\n");
-}
-
-function buildFallbackBotReview(mr: GitlabMergeRequest, projectId: string): RepoBotReviewRecord {
-  return {
-    id: `local-review-${mr.iid}`,
-    repo_id: projectId,
-    pr_number: mr.iid,
-    commit_sha: "a1b2c3d",
-    author: "modelscript-bot",
-    status: "approved",
-    created_at: new Date().toISOString(),
-    summary: `### 🤖 Ansatz Automated Engineering Review (Powered by ModelScript) — PR #${mr.iid}
-
-**Verdict:** ✅ **Approved (DAE Balanced & Dimensionally Consistent)**
-
-#### 1. Structural & DAE Index Analysis
-- **Variables:** \`1\` differential state (\`T\`), \`3\` parameters (\`G\`, \`C\`, \`relTol\`).
-- **Equations:** \`1\` continuous differential equation — **1:1 balanced system** (Pantelides index = 1).
-- **Initialization:** Fixed start value \`T(start = 293.15, fixed = true)\` provides a well-posed initial condition.
-
-#### 2. Physical Units & Dimensional Check
-- Left-hand side \`C * der(T)\` has units \`[J/K] * [K/s] = [W]\`.
-- Right-hand side \`-G * (T - 293.15)\` has units \`[W/K] * [K] = [W]\`.
-
-#### 3. Numerical Solver & Stiffness Recommendations
-- Use of \`noEvent(smooth(1, ...))\` prevents chattering during adaptive RK45 / CVODE step-size control.`,
-  };
 }
 
 export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, provider, defaultBranch = "main" }) => {
@@ -321,7 +266,7 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
     setIsRunningReview(true);
     setDetailTab("ai");
     try {
-      const diffText = buildDefaultDiffForPr(mr, projectId);
+      const diffText = buildDefaultDiffForPr(mr);
       const res = await triggerRepoBotReviewApi(projectId, {
         prNumber: mr.iid,
         title: mr.title,
@@ -330,22 +275,16 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
       if (res?.review) {
         setBotReviews((prev) => ({ ...prev, [mr.iid]: res.review }));
         showToast(`AI Engineering Review completed for PR #${mr.iid}`, "success");
-        return;
       }
-    } catch {
-      // Fallback to instant local engineering review when unauthenticated or repo not yet linked in SQLite
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to run AI Engineering Review.";
+      showToast(msg, "error");
     } finally {
       setIsRunningReview(false);
     }
-    const fallback = buildFallbackBotReview(mr, projectId);
-    setBotReviews((prev) => ({ ...prev, [mr.iid]: fallback }));
-    showToast(`AI Engineering Review completed for PR #${mr.iid}`, "success");
   };
 
-  const diffFiles = useMemo(
-    () => (selectedMr ? getDiffFilesForPr(selectedMr, projectId) : []),
-    [selectedMr, projectId],
-  );
+  const diffFiles = useMemo(() => (selectedMr ? getDiffFilesForPr(selectedMr) : []), [selectedMr]);
 
   return (
     <Box>

@@ -626,7 +626,7 @@ export async function activate(context: vscode.ExtensionContext) {
           {
             label: "🟢 Stable (Default)",
             description: currentChannel === "stable" ? "Active" : "",
-            detail: "Core LSP, 1-click Simulate CodeLens, 2D/3D viewers, Standard Libraries & Experiments views",
+            detail: "Core LSP, 1-click Simulate CodeLens, 2D/3D viewers, Libraries & Experiments views",
             channel: "stable",
           },
           {

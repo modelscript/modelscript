@@ -15,6 +15,7 @@ import {
   TrashIcon,
 } from "@primer/octicons-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFeatureFlag } from "../../FeatureFlagContext";
 import type { NotebookCell } from "../../util/notebook";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
 import {
@@ -267,6 +268,9 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
   onDraftFromArtifactCell,
   aiBusy,
 }) => {
+  const hasComposerAiPolish = useFeatureFlag("composer_ai_polish");
+  const hasAiPolishAlias = useFeatureFlag("ai_polish");
+  const isAiPolishFeatureEnabled = hasComposerAiPolish || hasAiPolishAlias;
   const [slashMenuState, setSlashMenuState] = useState<{
     cellId: string;
     query: string;
@@ -1088,7 +1092,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                 )}
 
                 <SlashMenuSectionTitle>Actions</SlashMenuSectionTitle>
-                {cell.type === "markdown" && onPolishCell && (
+                {cell.type === "markdown" && onPolishCell && isAiPolishFeatureEnabled && (
                   <SlashMenuItemButton
                     type="button"
                     disabled={Boolean(aiBusy) || !cell.content.trim()}

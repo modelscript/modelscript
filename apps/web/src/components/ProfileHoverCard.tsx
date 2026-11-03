@@ -24,7 +24,7 @@ const PopoverContainer = styled.div`
   width: 300px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   cursor: default;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--ms-font-sans);
 `;
 
 const BannerHeader = styled.div<{ $url?: string | undefined }>`

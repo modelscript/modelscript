@@ -115,6 +115,7 @@ const HeaderLeft = styled.div`
   gap: 8px;
   min-width: 0;
   flex: 1;
+  overflow: hidden;
 `;
 
 const ModelTitle = styled.div`
@@ -136,6 +137,7 @@ const PillBadge = styled.span<{ $tone?: "emerald" | "purple" | "cyan" }>`
   border-radius: 9999px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
   background: ${(p) =>
     p.$tone === "emerald"
       ? "rgba(16, 185, 129, 0.16)"
@@ -873,7 +875,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
   const [rawText, setRawText] = useState(viewConfig.code || "");
   const [activeTab, setActiveTab] = useState<SspTabMode>("topology");
   const [selectedFmuName, setSelectedFmuName] = useState<string | null>(null);
-  const [showInspector, setShowInspector] = useState(true);
+  const [showInspector, setShowInspector] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -956,9 +958,9 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
       <Toolbar>
         <HeaderLeft>
           <PackageIcon size={16} fill="#10b981" />
-          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
           <PillBadge $tone="emerald">SSP {ssdModel.sspVersion}</PillBadge>
           <PillBadge $tone="cyan">FMI 3.0 CS</PillBadge>
+          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2}>

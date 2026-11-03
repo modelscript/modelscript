@@ -3671,7 +3671,8 @@ export function mountArtifactToMemFs(
 
 export function scaffoldTemplateFiles(memFs: IMemoryFileSystemProvider, workspaceUri: vscode.Uri): void {
   const encoder = new TextEncoder();
-  const template = workspaceUri.path.substring(1) || "empty";
+  const rawTemplate = workspaceUri.path.substring(1) || "empty";
+  const template = rawTemplate.split("?")[0] || "empty";
 
   if (template === "scratch" || template.startsWith("artifact-")) {
     const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
@@ -3747,7 +3748,8 @@ export function scaffoldTemplateFiles(memFs: IMemoryFileSystemProvider, workspac
   }
 }
 
-export function getTemplatePrimaryFile(template: string): string {
+export function getTemplatePrimaryFile(rawTemplate: string): string {
+  const template = (rawTemplate || "empty").split("?")[0] || "empty";
   if (template === "empty" || template === "blank") {
     return "HelloWorld.mo";
   }

@@ -165,15 +165,25 @@ export function lowerFlowpathToDae(
 
   // Pass 2: Lower discretized 1D drift-flux conservation equations
   const N = cellsMeta.length;
-  const rhoM = 700.0; // kg/m^3 nominal mixture density
-  const cpM = 2200.0; // J/(kg*K) nominal mixture heat capacity
   const g = 9.80665; // m/s^2 gravitational acceleration
   const cSound = 350.0; // m/s speed of sound in multiphase mixture
-  const km = rhoM * cSound * cSound; // Pa bulk modulus
-  const fChurchill = 0.02; // nominal Darcy-Weisbach friction factor
+  const pvtTable = resolvePvtTable(undefined);
 
   for (let i = 0; i < N; i++) {
     const cell = cellsMeta[i]!;
+    const fluid = evaluateCellFluidProperties(pvtTable, inletPressure, inletTemp, 0.05);
+    const alphaG0 = 0.35;
+    const rhoM = alphaG0 * fluid.rhoG + (1.0 - alphaG0) * fluid.rhoL;
+    const cpM = alphaG0 * fluid.cpG + (1.0 - alphaG0) * fluid.cpL;
+    const muM = alphaG0 * fluid.muG + (1.0 - alphaG0) * fluid.muL;
+    const jNominal = Math.max(0.5, inletMassRate / Math.max(1e-3, cell.area * rhoM) || 2.5);
+    const km = rhoM * cSound * cSound; // Pa bulk modulus
+
+    const theta = Math.asin(Math.max(-1.0, Math.min(1.0, cell.sinTheta)));
+    const { c0, ugj } = computeZuberFindlaySlip(alphaG0, fluid.rhoG, fluid.rhoL, fluid.sigma, theta);
+    const ugNominal = Math.max(0.1, Math.abs(c0 * jNominal + ugj));
+    const reM = (rhoM * Math.abs(jNominal) * cell.diameter) / Math.max(1e-7, muM);
+    const fChurchill = computeChurchillFriction(reM, cell.roughness, cell.diameter);
 
     // Upstream boundaries / cell references
     let jUp: number;
@@ -208,19 +218,18 @@ export function lowerFlowpathToDae(
     const rhsP = builder.addBinaryExpr(BinOp.Mul, builder.addRealLiteral(c1), deltaJ);
     builder.addEquation(EqKind.Simple, derP, rhsP);
 
-    // 2. Gas mass continuity (gas void fraction advection)
+    // 2. Gas mass continuity (gas void fraction advection using Zuber-Findlay gas phase velocity)
     // d(alpha_g)/dt = - (u_g / dx) * (alpha_g - alpha_up)
-    const ugNominal = 3.2; // m/s nominal gas velocity
     const c2 = -ugNominal / cell.dx;
     const derAlpha = builder.addDer(cell.alphaGIdx);
     const deltaAlpha = builder.addBinaryExpr(BinOp.Sub, builder.addName(cell.alphaGIdx), alphaUp);
     const rhsAlpha = builder.addBinaryExpr(BinOp.Mul, builder.addRealLiteral(c2), deltaAlpha);
     builder.addEquation(EqKind.Simple, derAlpha, rhsAlpha);
 
-    // 3. Mixture momentum balance
+    // 3. Mixture momentum balance (using Churchill friction factor)
     // dj/dt = - (1 / (rho_m * dx)) * (P_down - P_i) - (2*f*|j| / D) * j - g * sinTheta
     const cPress = -1.0 / (rhoM * cell.dx);
-    const cFric = (2.0 * fChurchill * 2.5) / cell.diameter;
+    const cFric = (2.0 * fChurchill * jNominal) / cell.diameter;
     const cGrav = -g * cell.sinTheta;
 
     const derJ = builder.addDer(cell.jFaceIdx);
@@ -233,7 +242,7 @@ export function lowerFlowpathToDae(
 
     // 4. Mixture thermal energy balance
     // dT/dt = - (j / dx) * (T_i - T_up) - (4*U / (rho_m * Cp * D)) * (T_i - T_amb)
-    const cAdv = -2.5 / cell.dx;
+    const cAdv = -jNominal / cell.dx;
     const cLoss = -(4.0 * cell.uHeatTransfer) / (rhoM * cpM * cell.diameter);
 
     const derT = builder.addDer(cell.tempIdx);

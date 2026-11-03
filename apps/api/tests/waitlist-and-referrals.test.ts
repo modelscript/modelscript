@@ -18,10 +18,10 @@ test("Ansatz Onboarding, User Referrals & Waitlist Submissions Suite", async (t)
     } catch {}
   });
 
-  await t.test("Migration 0020 applied successfully in ledger", () => {
+  await t.test("Consolidated 0001_baseline_schema applied successfully in ledger", () => {
     const applied = db.migrationRunner.getApplied();
-    const m20 = applied.find((m) => m.name === "0020_ansatz_onboarding_and_referrals");
-    assert.ok(m20, "Expected migration 0020 to be recorded in applied migrations ledger");
+    const baseline = applied.find((m) => m.name === "0001_baseline_schema");
+    assert.ok(baseline, "Expected consolidated 0001_baseline_schema to be recorded in applied migrations ledger");
   });
 
   await t.test("Instance Settings includes waitlist, referral, and fast-track defaults", () => {

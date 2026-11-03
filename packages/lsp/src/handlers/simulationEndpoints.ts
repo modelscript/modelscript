@@ -62,8 +62,15 @@ export function resolveTargetClass(
     }
   }
 
+  const isSimulatableClassKind = (kind: string) => {
+    const k = kind.toLowerCase();
+    return k === "model" || k === "block" || k === "class";
+  };
+
   const normUri = uri ? uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///") : "";
-  // Fallback: search for top-level class in the specified URI
+  // Fallback: search for top-level class in the specified URI, preferring model/block/class over connector/record/type
+  let fallbackUnified: { symbolId: number; className: string; classKind: string } | null = null;
+  let preferredUnified: { symbolId: number; className: string; classKind: string } | null = null;
   for (const [id, entry] of unifiedIndex.symbols.entries()) {
     const entryNorm = entry.resourceId?.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
     if (
@@ -71,13 +78,15 @@ export function resolveTargetClass(
       (entry.kind === "Class" || entry.kind === "Def") &&
       entry.parentId === null
     ) {
-      return {
-        symbolId: id,
-        className: entry.name,
-        classKind: (entry.metadata?.["classKind"] as string) ?? "class",
-      };
+      const classKind = (entry.metadata?.["classKind"] as string) ?? "class";
+      const candidate = { symbolId: id, className: entry.name, classKind };
+      if (!fallbackUnified) fallbackUnified = candidate;
+      if (isSimulatableClassKind(classKind)) {
+        preferredUnified = candidate;
+      }
     }
   }
+  if (preferredUnified) return preferredUnified;
 
   // Second fallback: check language workspace index directly
   const wsIndex = context.workspaceManager?.getWorkspaceIndex("modelica");
@@ -96,6 +105,8 @@ export function resolveTargetClass(
         }
       }
     }
+    let fallbackWs: { symbolId: number; className: string; classKind: string } | null = null;
+    let preferredWs: { symbolId: number; className: string; classKind: string } | null = null;
     for (const [id, entry] of wsIndex.unifiedIndex.symbols.entries()) {
       const entryNorm = entry.resourceId?.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
       if (
@@ -103,16 +114,19 @@ export function resolveTargetClass(
         (entry.kind === "Class" || entry.kind === "Def") &&
         entry.parentId === null
       ) {
-        return {
-          symbolId: id,
-          className: entry.name,
-          classKind: (entry.metadata?.classKind as string) ?? "class",
-        };
+        const classKind = (entry.metadata?.classKind as string) ?? "class";
+        const candidate = { symbolId: id, className: entry.name, classKind };
+        if (!fallbackWs) fallbackWs = candidate;
+        if (isSimulatableClassKind(classKind)) {
+          preferredWs = candidate;
+        }
       }
     }
+    if (preferredWs) return preferredWs;
+    if (fallbackWs) return fallbackWs;
   }
 
-  return null;
+  return fallbackUnified;
 }
 
 export function flattenTargetClass(
@@ -218,7 +232,9 @@ export function registerSimulationEndpoints(context: LspContext) {
         `[simulate] Requested simulation for URI: ${params.uri} class: ${params.className}`,
       );
       const doc = context.documents.get(params.uri);
+      await context.parserService.ensureLanguageParserLoaded(doc?.languageId || params.uri);
       if (doc) {
+        await context.validationService.flushValidation(params.uri);
         await context.validationService.validateTextDocument(doc);
         const inflight = context.state.activeValidationPromises.get(params.uri);
         if (inflight) await inflight;

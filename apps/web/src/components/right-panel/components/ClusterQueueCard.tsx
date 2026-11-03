@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { ArrowRightIcon, PlayIcon, ServerIcon } from "@primer/octicons-react";
-import { Text } from "@primer/react";
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { ClusterStatus, UnifiedJob } from "../../../api";
 import Box from "../../Box";
-import { Card, CloudRunButton, SpinSyncIcon } from "../styles";
+import { Card, CardHeader, CardTitle, CloudRunButton, PanelList, SpinSyncIcon, TrendingItem } from "../styles";
 
 export interface ClusterQueueCardProps {
   clusterInfo: ClusterStatus | null;
@@ -27,7 +26,7 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
 
   return (
     <Card>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <CardHeader>
         <Link
           to="/jobs"
           style={{
@@ -41,18 +40,7 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
           <span style={{ color: "var(--color-accent-cyan)", display: "inline-flex" }}>
             <ServerIcon size={14} />
           </span>
-          <Text
-            style={{
-              fontSize: "12px",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--color-text-muted)",
-              cursor: "pointer",
-            }}
-          >
-            Cloud &amp; HPC Queue
-          </Text>
+          <CardTitle style={{ cursor: "pointer" }}>Cloud &amp; HPC Queue</CardTitle>
           <span style={{ color: "var(--color-text-muted)", display: "inline-flex" }}>
             <ArrowRightIcon size={11} />
           </span>
@@ -94,113 +82,115 @@ export const ClusterQueueCard: React.FC<ClusterQueueCardProps> = ({
             <SpinSyncIcon size={12} $isSpinning={isHpcLoading} />
           </button>
         </Box>
-      </Box>
+      </CardHeader>
 
-      <Box display="flex" flexDirection="column" gap={3} style={{ fontSize: "12px" }}>
+      <Box display="flex" flexDirection="column" gap={2} style={{ fontSize: "12px" }}>
         {hpcJobs.length > 0 ? (
-          hpcJobs.map((job) => {
-            const isRunning = job.status === "running" || job.status === "processing";
-            const isDone = job.status === "completed" || job.status === "SUCCESS";
-            const isFailed = job.status === "failed" || job.status === "FAILED";
-            const progress = Math.min(100, Math.max(0, job.progress || (isDone ? 100 : isRunning ? 55 : 0)));
-            const strId = String(job.id);
-            const routeId =
-              strId.startsWith("cloud-") || strId.startsWith("cae-")
-                ? strId
-                : job.domain === "cfd" || job.domain === "fea"
-                  ? `cae-${strId}`
-                  : `cloud-${strId}`;
-            const displayId = strId.replace(/^(cloud[-_]|cae[-_])+/, "").slice(0, 6);
+          <PanelList>
+            {hpcJobs.map((job) => {
+              const isRunning = job.status === "running" || job.status === "processing";
+              const isDone = job.status === "completed" || job.status === "SUCCESS";
+              const isFailed = job.status === "failed" || job.status === "FAILED";
+              const progress = Math.min(100, Math.max(0, job.progress || (isDone ? 100 : isRunning ? 55 : 0)));
+              const strId = String(job.id);
+              const routeId =
+                strId.startsWith("cloud-") || strId.startsWith("cae-")
+                  ? strId
+                  : job.domain === "cfd" || job.domain === "fea"
+                    ? `cae-${strId}`
+                    : `cloud-${strId}`;
+              const displayId = strId.replace(/^(cloud[-_]|cae[-_])+/, "").slice(0, 6);
 
-            return (
-              <div
-                key={job.id}
-                onClick={() => navigate(`/jobs/${routeId}`)}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "4px",
-                  cursor: "pointer",
-                  padding: "4px",
-                  borderRadius: "6px",
-                  transition: "background 0.15s ease",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-              >
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      color: "var(--color-text-primary)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      maxWidth: "190px",
-                    }}
-                    title={job.name}
-                  >
-                    #{displayId} {job.name}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: 600,
-                      padding: "1px 5px",
-                      borderRadius: "3px",
-                      background: isDone
-                        ? "rgba(16, 185, 129, 0.15)"
-                        : isFailed
-                          ? "rgba(239, 68, 68, 0.15)"
-                          : isRunning
-                            ? "rgba(6, 182, 212, 0.15)"
-                            : "rgba(245, 158, 11, 0.15)",
-                      color: isDone
-                        ? "var(--color-status-verified)"
-                        : isFailed
-                          ? "#ef4444"
-                          : isRunning
-                            ? "var(--color-accent-cyan)"
-                            : "#f59e0b",
-                    }}
-                  >
-                    {job.status.toUpperCase()}
-                  </span>
-                </Box>
-
-                <div
+              return (
+                <TrendingItem
+                  key={job.id}
+                  onClick={() => navigate(`/jobs/${routeId}`)}
                   style={{
-                    height: "4px",
-                    background: "var(--color-border)",
-                    borderRadius: "9999px",
-                    overflow: "hidden",
+                    flexDirection: "column",
+                    alignItems: "stretch",
+                    gap: "5px",
                   }}
                 >
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "13px",
+                        lineHeight: "18px",
+                        color: "var(--color-text-heading)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        maxWidth: "190px",
+                      }}
+                      title={job.name}
+                    >
+                      #{displayId} {job.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        padding: "1px 5px",
+                        borderRadius: "3px",
+                        background: isDone
+                          ? "rgba(16, 185, 129, 0.15)"
+                          : isFailed
+                            ? "rgba(239, 68, 68, 0.15)"
+                            : isRunning
+                              ? "rgba(6, 182, 212, 0.15)"
+                              : "rgba(245, 158, 11, 0.15)",
+                        color: isDone
+                          ? "var(--color-status-verified)"
+                          : isFailed
+                            ? "#ef4444"
+                            : isRunning
+                              ? "var(--color-accent-cyan)"
+                              : "#f59e0b",
+                      }}
+                    >
+                      {job.status.toUpperCase()}
+                    </span>
+                  </Box>
+
                   <div
                     style={{
-                      height: "100%",
-                      width: `${progress}%`,
-                      background: isFailed ? "#ef4444" : isDone ? "var(--color-status-verified)" : "var(--gradient-ai)",
+                      height: "4px",
+                      background: "var(--color-border)",
                       borderRadius: "9999px",
-                      boxShadow: isRunning ? "0 0 8px rgba(6, 182, 212, 0.5)" : "none",
-                      transition: "width 0.4s ease",
+                      overflow: "hidden",
                     }}
-                  />
-                </div>
+                  >
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${progress}%`,
+                        background: isFailed
+                          ? "#ef4444"
+                          : isDone
+                            ? "var(--color-status-verified)"
+                            : "var(--gradient-ai)",
+                        borderRadius: "9999px",
+                        boxShadow: isRunning ? "0 0 8px rgba(6, 182, 212, 0.5)" : "none",
+                        transition: "width 0.4s ease",
+                      }}
+                    />
+                  </div>
 
-                <Box display="flex" justifyContent="space-between" alignItems="center">
-                  <span style={{ fontSize: "10px", color: "var(--color-text-muted)" }}>
-                    {job.domain.toUpperCase()} · {job.profile || "standard"}
-                  </span>
-                  {job.costCredits != null && (
-                    <span style={{ fontSize: "10px", color: "var(--color-accent-purple)" }}>
-                      {job.costCredits.toFixed(2)} cr
+                  <Box display="flex" justifyContent="space-between" alignItems="center">
+                    <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                      {job.domain.toUpperCase()} · {job.profile || "standard"}
                     </span>
-                  )}
-                </Box>
-              </div>
-            );
-          })
+                    {job.costCredits != null && (
+                      <span style={{ fontSize: "11px", color: "var(--color-accent-purple)" }}>
+                        {job.costCredits.toFixed(2)} cr
+                      </span>
+                    )}
+                  </Box>
+                </TrendingItem>
+              );
+            })}
+          </PanelList>
         ) : (
           <Box display="flex" flexDirection="column" alignItems="center" py={3} textAlign="center" gap={2}>
             <div

@@ -208,7 +208,12 @@ export function InstancedCadAssembly({
 }: InstancedCadAssemblyProps) {
   // Cluster components into instanced batches and singletons
   const { clusters, singletonComponents } = useMemo(() => {
-    const descriptors: InstancedPartDescriptor[] = components.map((comp) => ({
+    const gltfComponents = components.filter((c) => !c.proceduralMesh && !c.cad.uri?.startsWith("procedural://"));
+    const proceduralComponents = components.filter(
+      (c) => Boolean(c.proceduralMesh) || Boolean(c.cad.uri?.startsWith("procedural://")),
+    );
+
+    const descriptors: InstancedPartDescriptor[] = gltfComponents.map((comp) => ({
       name: comp.name,
       geometryKey: comp.cad.uri,
       position: comp.cad.position ?? [0, 0, 0],
@@ -219,10 +224,11 @@ export function InstancedCadAssembly({
     const result = AssemblyClusteringEngine.cluster(descriptors, { minInstanceCount });
 
     // Map singletons back to original CadComponent
-    const singletonMap = new Map(components.map((c) => [c.name, c]));
-    const singletonComps = result.singletons
-      .map((s) => singletonMap.get(s.name))
-      .filter((c): c is CadComponent => c !== undefined);
+    const singletonMap = new Map(gltfComponents.map((c) => [c.name, c]));
+    const singletonComps = [
+      ...result.singletons.map((s) => singletonMap.get(s.name)).filter((c): c is CadComponent => c !== undefined),
+      ...proceduralComponents,
+    ];
 
     return {
       clusters: result.clusters,

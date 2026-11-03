@@ -186,13 +186,28 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
 
         for (const d of diagnostics) {
           const featureName = d.metadata?.["featureName"];
+          const declaredType = d.metadata?.["declaredType"];
           if (featureName) {
             const attrRegex = new RegExp(`attribute\\s+${featureName}\\s*:\\s*([a-zA-Z0-9_:]+)\\s*=\\s*([^;]+);`);
             const match = repaired.match(attrRegex);
             if (match) {
               repaired = repaired.replace(attrRegex, `attribute ${featureName} : Length = ${fallbackLengthVar};`);
             }
+            if (declaredType) {
+              const moDeclRegex = new RegExp(
+                `(\\b(?:Modelica\\s*\\.\\s*SIunits\\s*\\.\\s*)?${declaredType}\\s+${featureName}(?:\\s*\\([^)]*\\))?\\s*=\\s*)([^;]+)(;)`,
+              );
+              if (moDeclRegex.test(repaired)) {
+                repaired = repaired.replace(moDeclRegex, "$11.0$3");
+              }
+            }
           }
+
+          // Modelica unit bracket mismatch repair: e.g. 5[m] + 10[s] -> 5[m] + 10[m]
+          repaired = repaired.replace(
+            /(\[([a-zA-Z]+)\][^[+;]*\+[^[;]*)\[([a-zA-Z]+)\]/g,
+            (_full, prefix: string, u1: string, u2: string) => (u1 !== u2 ? `${prefix}[${u1}]` : _full),
+          );
 
           if (d.metadata?.["constraintName"] || d.message.includes("incompatible physical dimensions")) {
             repaired = repaired.replace(
@@ -313,6 +328,27 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
               additions.push(`  ${vName} = 0.0;`);
             }
             repaired = repaired.replace(/(\bend\s+[A-Za-z_][A-Za-z0-9_]*\s*;)/, `${additions.join("\n")}\n$1`);
+          } else {
+            // Structurally singular (numEqs == numVars, but unmatched variables exist)
+            const unmatchedVars = gate.diagnostics.flatMap(
+              (d) => (d.metadata?.["unmatchedVars"] as string[] | undefined) ?? [],
+            );
+            if (unmatchedVars.length > 0) {
+              const eqSec = repaired.match(/(\bequation\b)([\s\S]*?)(\balgorithm\b|\bend\s+[A-Za-z_])/);
+              if (eqSec && eqSec[2]) {
+                const stmts = eqSec[2]
+                  .split(";")
+                  .map((s) => s.trim())
+                  .filter((s) => s.length > 0);
+                for (let i = 0; i < unmatchedVars.length && i < stmts.length; i++) {
+                  stmts[stmts.length - 1 - i] = `${unmatchedVars[i]} = 0.0`;
+                }
+                repaired = repaired.replace(
+                  eqSec[0],
+                  `${eqSec[1]}\n  ${stmts.map((s) => `${s};`).join("\n  ")}\n${eqSec[3]}`,
+                );
+              }
+            }
           }
         } else {
           if (numEqs > numVars) {

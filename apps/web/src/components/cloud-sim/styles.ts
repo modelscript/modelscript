@@ -28,6 +28,7 @@ export const ModalOverlay = styled.div`
   justify-content: center;
   padding: 16px;
   box-sizing: border-box;
+  overflow-y: auto;
 `;
 
 export const ModalCard = styled.div`
@@ -37,7 +38,7 @@ export const ModalCard = styled.div`
   border-radius: 18px;
   width: 100%;
   max-width: 960px;
-  max-height: 90vh;
+  max-height: calc(100dvh - 32px);
   display: flex;
   flex-direction: column;
   box-shadow:
@@ -55,6 +56,7 @@ export const ModalHeader = styled.div`
   justify-content: space-between;
   gap: 12px;
   background: var(--color-canvas-subtle, #161b22);
+  flex-shrink: 0;
 `;
 
 export const BoundArtifactBar = styled.div`
@@ -71,6 +73,7 @@ export const BoundArtifactBar = styled.div`
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px;
+  flex-shrink: 0;
 `;
 
 export const WizardStepperBar = styled.div`
@@ -78,6 +81,7 @@ export const WizardStepperBar = styled.div`
   grid-template-columns: repeat(4, 1fr);
   border-bottom: 1px solid var(--color-border-default, #30363d);
   background: var(--color-canvas-subtle, #161b22);
+  flex-shrink: 0;
 
   @media (max-width: 680px) {
     grid-template-columns: repeat(2, 1fr);
@@ -144,6 +148,7 @@ export const ModalBody = styled.div`
   padding: 20px 24px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -158,6 +163,7 @@ export const ModalFooter = styled.div`
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
+  flex-shrink: 0;
   background: var(--color-canvas-subtle, #161b22);
 `;
 

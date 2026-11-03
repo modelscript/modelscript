@@ -14,6 +14,41 @@ import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-a
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { normalizeSolutionBundleUrl } from "./solutions.js";
 
+export function getRequestBaseUrl(req: Request): string {
+  if (process.env["PUBLIC_URL"]) {
+    return process.env["PUBLIC_URL"].replace(/\/+$/, "");
+  }
+  const originHeader = req.headers.origin;
+  if (typeof originHeader === "string" && /^https?:\/\//i.test(originHeader)) {
+    return originHeader.replace(/\/+$/, "");
+  }
+  const forwardedProto =
+    typeof req.headers["x-forwarded-proto"] === "string"
+      ? req.headers["x-forwarded-proto"].split(",")[0]!.trim()
+      : req.protocol || "http";
+  const forwardedHost =
+    typeof req.headers["x-forwarded-host"] === "string"
+      ? req.headers["x-forwarded-host"].split(",")[0]!.trim()
+      : req.get("host") || "localhost:3001";
+  return `${forwardedProto}://${forwardedHost}`.replace(/\/+$/, "");
+}
+
+export function resolveUserActorUrl(
+  req: Request,
+  username: string,
+  storedActorUrl?: string | null,
+  remoteDomain?: string | null,
+): string {
+  if (remoteDomain) {
+    return storedActorUrl || "";
+  }
+  const baseUrl = getRequestBaseUrl(req);
+  if (!storedActorUrl || storedActorUrl.includes("://hub.modelscript.org")) {
+    return `${baseUrl}/users/${username}`;
+  }
+  return storedActorUrl;
+}
+
 export function usersRouter(
   database: LibraryDatabase,
   worker?: FederationWorker,
@@ -146,7 +181,8 @@ export function usersRouter(
    * GET /api/v1/users/:username
    */
   router.get("/:username", optionalAuth, async (req: Request, res: Response) => {
-    const username = req.params["username"] as string;
+    const rawUsername = (req.params["username"] as string) || "";
+    const username = rawUsername.startsWith("@") ? rawUsername.slice(1) : rawUsername;
     let profile = database.getFullProfileByUsername(username);
 
     if (!profile && username.includes("@")) {
@@ -165,6 +201,17 @@ export function usersRouter(
       res.status(404).json({ error: "User not found" });
       return;
     }
+
+    const resolvedActorUrl = resolveUserActorUrl(
+      req,
+      profile.username,
+      (profile as { actor_url?: string | null }).actor_url,
+      (profile as { remote_domain?: string | null }).remote_domain,
+    );
+    profile = {
+      ...profile,
+      actor_url: resolvedActorUrl,
+    };
 
     // Check if the current user follows, blocks, or mutes this profile (if authenticated)
     let isFollowing = false;
@@ -186,7 +233,9 @@ export function usersRouter(
    * GET /api/v1/users/:username/following
    */
   router.get("/:username/following", optionalAuth, (req: Request, res: Response) => {
-    const targetUser = database.getUserByUsername(req.params["username"] as string);
+    const rawUsername = (req.params["username"] as string) || "";
+    const username = rawUsername.startsWith("@") ? rawUsername.slice(1) : rawUsername;
+    const targetUser = database.getUserByUsername(username);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -200,7 +249,9 @@ export function usersRouter(
    * GET /api/v1/users/:username/followers
    */
   router.get("/:username/followers", optionalAuth, (req: Request, res: Response) => {
-    const targetUser = database.getUserByUsername(req.params["username"] as string);
+    const rawUsername = (req.params["username"] as string) || "";
+    const username = rawUsername.startsWith("@") ? rawUsername.slice(1) : rawUsername;
+    const targetUser = database.getUserByUsername(username);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -334,6 +385,71 @@ export function usersRouter(
   });
 
   /**
+   * GET /api/v1/users/me/privacy
+   * Returns current account privacy, discovery, follow lock, post visibility, verified profile fields, and ActivityPub migration state.
+   */
+  router.get("/me/privacy", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const fedInfo = database.getUserFederationInfo(userId);
+    if (!fedInfo) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    let profileFields: Array<{ name: string; value: string; verified_at?: string | null }> = [];
+    let alsoKnownAs: string[] = [];
+    try {
+      if (fedInfo.profile_fields) {
+        const parsed = JSON.parse(fedInfo.profile_fields);
+        if (Array.isArray(parsed)) profileFields = parsed;
+      }
+    } catch {}
+    try {
+      if (fedInfo.also_known_as) {
+        const parsed = JSON.parse(fedInfo.also_known_as);
+        if (Array.isArray(parsed)) alsoKnownAs = parsed.map(String);
+      }
+    } catch {}
+
+    const currentUser = database.getUserById(userId);
+    const resolvedActorUrl = resolveUserActorUrl(
+      req,
+      currentUser?.username || req.user!.username,
+      fedInfo.actor_url,
+      currentUser?.remote_domain,
+    );
+
+    res.json({
+      discoverable: fedInfo.discoverable !== undefined ? Boolean(fedInfo.discoverable) : true,
+      indexable: fedInfo.indexable !== undefined ? Boolean(fedInfo.indexable) : true,
+      locked: Boolean(fedInfo.locked),
+      default_post_visibility: fedInfo.default_post_visibility || "public",
+      profile_fields: profileFields,
+      also_known_as: alsoKnownAs,
+      moved_to_actor_url: fedInfo.moved_to_actor_url ?? null,
+      actor_url: resolvedActorUrl || null,
+    });
+  });
+
+  /**
+   * GET /api/v1/users/me/blocked
+   * Lists accounts blocked by the authenticated user.
+   */
+  router.get("/me/blocked", requireAuth, (req: Request, res: Response) => {
+    const blocked = database.getBlockedUsersDetailed(req.user!.id);
+    res.json({ blocked });
+  });
+
+  /**
+   * GET /api/v1/users/me/muted
+   * Lists accounts muted by the authenticated user.
+   */
+  router.get("/me/muted", requireAuth, (req: Request, res: Response) => {
+    const muted = database.getMutedUsersDetailed(req.user!.id);
+    res.json({ muted });
+  });
+
+  /**
    * POST /api/v1/users/me/verify-fields
    * Verifies profile metadata fields via rel="me" link backlink check or ORCID identifier validation.
    */
@@ -357,9 +473,10 @@ export function usersRouter(
       fields = [];
     }
 
-    const baseUrl = process.env["PUBLIC_URL"] || `${req.protocol}://${req.get("host") || "hub.modelscript.org"}`;
-    const actorUrl = fedInfo?.actor_url || `${baseUrl}/users/${user.username}`;
+    const baseUrl = getRequestBaseUrl(req);
+    const actorUrl = resolveUserActorUrl(req, user.username, fedInfo?.actor_url, user.remote_domain);
     const profilePageUrl = `${baseUrl}/@${user.username}`;
+    const canonicalProfileUrl = `${baseUrl}/${user.username}`;
     const orcidRegex = /^(?:https?:\/\/orcid\.org\/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])$/i;
 
     const verifiedFields: Array<{ name: string; value: string; verified_at?: string | null }> = [];
@@ -386,7 +503,11 @@ export function usersRouter(
           if (resp.ok) {
             const html = await resp.text();
             const hasRelMe =
-              (html.includes(actorUrl) || html.includes(profilePageUrl) || html.includes(`/@${user.username}`)) &&
+              (html.includes(actorUrl) ||
+                html.includes(profilePageUrl) ||
+                html.includes(canonicalProfileUrl) ||
+                html.includes(`/@${user.username}`) ||
+                html.includes(`/users/${user.username}`)) &&
               /rel=["'][^"']*\bme\b[^"']*["']/i.test(html);
             if (hasRelMe) {
               verifiedAt = new Date().toISOString();
@@ -1250,7 +1371,15 @@ export function usersRouter(
     res.json({ bots });
   });
 
-  const ALLOWED_BOT_SCOPES = new Set(["social:read", "social:write", "repos:read", "repos:review", "packages:read"]);
+  const ALLOWED_BOT_SCOPES = new Set([
+    "social:read",
+    "social:write",
+    "social:simulate",
+    "modelica:validate",
+    "repos:read",
+    "repos:review",
+    "packages:read",
+  ]);
 
   function sanitizeBotScopes(rawScopes: unknown): { valid: boolean; normalized: string; invalidScope?: string } {
     if (rawScopes === undefined || rawScopes === null || rawScopes === "") {
@@ -1405,6 +1534,46 @@ export function usersRouter(
   });
 
   /**
+   * POST /api/v1/users/me/bots/:botId/rotate-token
+   * Regenerates and hashes a fresh bearer token for the bot, invalidating the previous token.
+   */
+  router.post("/me/bots/:botId/rotate-token", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const botId = parseInt(req.params["botId"] as string, 10);
+
+    if (isNaN(botId)) {
+      res.status(400).json({ error: "Invalid bot ID" });
+      return;
+    }
+
+    const bot = database.getBotById(botId);
+    if (!bot || bot.owner_id !== userId) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const fullToken = `ms_bot_${rawToken}`;
+    const tokenHash = crypto.createHash("sha256").update(fullToken).digest("hex");
+
+    const rotated = database.rotateBotToken(userId, botId, tokenHash);
+    if (!rotated) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+
+    database.logAudit({
+      actorId: userId,
+      action: "bot_token_rotated",
+      resourceType: "bot",
+      resourceId: String(botId),
+      details: { botUsername: bot.username },
+    });
+
+    res.json({ success: true, token: fullToken });
+  });
+
+  /**
    * DELETE /api/v1/users/me/bots/:botId
    */
   router.delete("/me/bots/:botId", requireAuth, (req: Request, res: Response) => {
@@ -1430,7 +1599,11 @@ export function usersRouter(
       return;
     }
     try {
-      const repos = database.getUserRepos(targetUser.id);
+      const allRepos = database.getUserRepos(targetUser.id);
+      const canViewPrivate = req.user?.id === targetUser.id || req.user?.account_type === "admin";
+      const repos = canViewPrivate
+        ? allRepos
+        : allRepos.filter((r) => (r as { visibility?: string | undefined }).visibility !== "private");
       res.json({ repos });
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch user repositories" });

@@ -29,6 +29,7 @@ export interface PostAuthorHeaderProps {
   setShowAiDetails?: ((show: boolean) => void) | undefined;
   token: string | null;
   remoteOriginUrl: string | null;
+  isPinned?: boolean | undefined;
 }
 
 export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
@@ -46,6 +47,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
   onPostDeleted,
   token,
   remoteOriginUrl,
+  isPinned,
 }) => {
   const postMeta =
     typeof displayPost?.metadata === "string"
@@ -161,6 +163,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
             token={token}
             onOpenLoginModal={onOpenLoginModal}
             remoteOriginUrl={remoteOriginUrl}
+            isPinned={isPinned}
           />
         </Box>
       </Box>
@@ -297,6 +300,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
           token={token}
           onOpenLoginModal={onOpenLoginModal}
           remoteOriginUrl={remoteOriginUrl}
+          isPinned={isPinned}
         />
       </Box>
     </Box>

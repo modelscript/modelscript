@@ -81,9 +81,6 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
         position: "relative",
         marginTop: "8px",
         marginBottom: "8px",
-        borderRadius: "12px",
-        overflow: "hidden",
-        border: "1px solid var(--color-border)",
       }}
     >
       <ArtifactViewCard artifactId={artifactId} />
@@ -111,8 +108,8 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
               alignItems: "center",
               gap: "5px",
               backgroundColor: "rgba(0, 0, 0, 0.82)",
-              color: "#c084fc",
-              border: "1px solid rgba(168, 85, 247, 0.45)",
+              color: "var(--color-accent-cyan, #06b6d4)",
+              border: "1px solid rgba(6, 182, 212, 0.45)",
               borderRadius: "999px",
               padding: "5px 11px",
               fontSize: "11.5px",

@@ -273,8 +273,11 @@ export function registerVirtualFileSystems(
     try {
       const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
       if (hash.startsWith("memfs")) {
-        const template = hash.split(":")[1] || "empty";
-        memfsRootUri = vscode.Uri.from({ scheme: "memfs", path: "/" + template });
+        const rawSpec = hash.split(":")[1] || "empty";
+        const qIdx = rawSpec.indexOf("?");
+        const template = qIdx !== -1 ? rawSpec.slice(0, qIdx) || "empty" : rawSpec;
+        const query = qIdx !== -1 ? rawSpec.slice(qIdx + 1) : "";
+        memfsRootUri = vscode.Uri.from({ scheme: "memfs", path: "/" + template, query });
       }
     } catch {
       // ignore
@@ -306,8 +309,11 @@ export async function initWorkspaceAndTree(
     try {
       const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
       if (hash.startsWith("memfs")) {
-        const template = hash.split(":")[1] || "empty";
-        workspaceUri = vscode.Uri.from({ scheme: "memfs", path: "/" + template });
+        const rawSpec = hash.split(":")[1] || "empty";
+        const qIdx = rawSpec.indexOf("?");
+        const template = qIdx !== -1 ? rawSpec.slice(0, qIdx) || "empty" : rawSpec;
+        const query = qIdx !== -1 ? rawSpec.slice(qIdx + 1) : "";
+        workspaceUri = vscode.Uri.from({ scheme: "memfs", path: "/" + template, query });
       }
     } catch {
       // ignore
@@ -316,7 +322,8 @@ export async function initWorkspaceAndTree(
 
   if (workspaceUri && workspaceUri.scheme === "memfs") {
     try {
-      const template = workspaceUri.path.substring(1) || "empty";
+      const rawTemplate = workspaceUri.path.substring(1) || "empty";
+      const template = rawTemplate.split("?")[0] || "empty";
 
       if ((template === "scratch" || template.startsWith("artifact-")) && memFs) {
         const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
@@ -470,6 +477,19 @@ export async function initWorkspaceAndTree(
     return;
   }
 
+  if (folders && folders.length > 0 && folders[0]!.uri.scheme === "github") {
+    try {
+      await vscode.commands.executeCommand("workbench.view.explorer");
+      const readmeUri = Uri.joinPath(folders[0]!.uri, "README.md");
+      await vscode.workspace.fs.stat(readmeUri);
+      const doc = await vscode.workspace.openTextDocument(readmeUri);
+      await vscode.window.showTextDocument(doc, { preview: false });
+    } catch {
+      // README.md is optional in github workspaces
+    }
+    return;
+  }
+
   // Always scan for existing .mo/.sysml files so the LSP indexes the workspace
   const moFiles = await scanWorkspaceFiles(getClient);
   const isMemfs = folders && folders.length > 0 && folders[0]!.uri.scheme === "memfs";
@@ -498,7 +518,7 @@ export async function initWorkspaceAndTree(
  */
 export async function scanWorkspaceFiles(getClient?: () => LanguageClient | undefined): Promise<vscode.Uri[]> {
   const folders = workspace.workspaceFolders;
-  if (folders && folders.length > 0 && folders.every((f) => f.uri.scheme === "memfs")) {
+  if (folders && folders.length > 0 && folders.every((f) => f.uri.scheme === "memfs" || f.uri.scheme === "github")) {
     return [];
   }
   const maxRetries = 5;

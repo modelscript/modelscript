@@ -119,8 +119,8 @@ const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`
   blockquote {
     margin: 10px 0;
     padding: 8px 14px;
-    border-left: 3px solid var(--color-accent-purple, #8b5cf6);
-    background: rgba(139, 92, 246, 0.05);
+    border-left: 3px solid var(--ms-brand);
+    background: var(--ms-brand-soft);
     border-radius: 0 8px 8px 0;
     color: var(--color-text-secondary);
   }
@@ -159,11 +159,11 @@ const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`
   }
 
   .msx-callout-important {
-    border-color: rgba(139, 92, 246, 0.3);
-    border-left-color: var(--color-accent-purple, #8b5cf6);
-    background: rgba(139, 92, 246, 0.07);
+    border-color: var(--color-accent-blue-border);
+    border-left-color: var(--ms-brand);
+    background: var(--ms-brand-soft);
     .msx-callout-header {
-      color: var(--color-accent-purple, #8b5cf6);
+      color: var(--ms-brand);
     }
   }
 
@@ -265,9 +265,9 @@ const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`
     text-transform: uppercase;
     padding: 1px 6px;
     border-radius: 4px;
-    background: rgba(139, 92, 246, 0.15);
-    color: var(--color-accent-purple, #a78bfa);
-    border: 1px solid rgba(139, 92, 246, 0.28);
+    background: var(--ms-brand-soft);
+    color: var(--ms-brand);
+    border: 1px solid var(--color-accent-blue-border);
   }
 
   .msx-code-actions {
@@ -296,8 +296,8 @@ const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`
   }
 
   .msx-code-btn-ide {
-    background: rgba(139, 92, 246, 0.14);
-    border-color: rgba(139, 92, 246, 0.35);
+    background: var(--ms-brand-soft);
+    border-color: var(--color-accent-blue-border);
     color: var(--color-text-heading);
   }
 

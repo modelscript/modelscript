@@ -7,9 +7,11 @@ import {
   ClockIcon,
   CopyIcon,
   KeyIcon,
+  LinkIcon,
   PlusIcon,
   SparkleFillIcon,
 } from "@primer/octicons-react";
+import { Spinner } from "@primer/react";
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 import { generateUserInvite, getUserInvites } from "../../../api/admin";
@@ -43,7 +45,7 @@ const StatCard = styled.div`
 const QuotaNumber = styled.div`
   font-size: 36px;
   font-weight: 800;
-  color: #fff;
+  color: var(--color-text-heading, var(--color-text-primary));
   letter-spacing: -0.03em;
   display: flex;
   align-items: baseline;
@@ -57,8 +59,8 @@ const QuotaNumber = styled.div`
 `;
 
 const GenerateSection = styled.div`
-  background: var(--surface-overlay, #0e1424);
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  background: var(--color-canvas-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 14px;
   padding: 20px;
   margin-bottom: 28px;
@@ -66,7 +68,8 @@ const GenerateSection = styled.div`
 
 const TableContainer = styled.div`
   overflow-x: auto;
-  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  background: var(--color-canvas-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 12px;
   margin-bottom: 32px;
 `;
@@ -78,17 +81,17 @@ const StyledTable = styled.table`
   text-align: left;
 
   th {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--color-canvas-subtle);
     padding: 12px 16px;
     color: var(--color-text-secondary, #94a3b8);
     font-weight: 600;
-    border-bottom: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.08));
+    border-bottom: 1px solid var(--color-border-default);
   }
 
   td {
     padding: 14px 16px;
-    border-bottom: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.06));
-    color: #fff;
+    border-bottom: 1px solid var(--color-border-default);
+    color: var(--color-text-primary);
   }
 
   tr:last-child td {
@@ -97,9 +100,9 @@ const StyledTable = styled.table`
 `;
 
 const CopyButton = styled.button`
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: var(--color-canvas-default);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 12px;
@@ -111,8 +114,8 @@ const CopyButton = styled.button`
   transition: all 0.15s ease;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.16);
-    border-color: rgba(255, 255, 255, 0.25);
+    background: var(--color-canvas-subtle);
+    border-color: var(--color-accent-cyan, #06b6d4);
   }
 `;
 
@@ -145,13 +148,15 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
 
-  const [_loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [invitesRemaining, setInvitesRemaining] = useState(0);
   const [invites, setInvites] = useState<any[]>([]);
   const [referrals, setReferrals] = useState<any[]>([]);
+  const [count, setCount] = useState(1);
   const [note, setNote] = useState("");
   const [generating, setGenerating] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [copiedLinkCode, setCopiedLinkCode] = useState<string | null>(null);
 
   const fetchInvites = useCallback(async () => {
     try {
@@ -175,26 +180,60 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
     e.preventDefault();
     if (invitesRemaining <= 0) return;
 
+    const toGenerate = Math.max(1, Math.min(count, invitesRemaining));
     setGenerating(true);
     try {
-      await generateUserInvite(note.trim() || undefined);
-      toast.show("Golden ticket generated successfully!", { type: "success" });
+      for (let i = 0; i < toGenerate; i++) {
+        await generateUserInvite(note.trim() || undefined);
+      }
+      toast.show(toGenerate === 1 ? "Invite code generated successfully!" : `${toGenerate} invite codes generated!`, {
+        type: "success",
+      });
       setNote("");
+      setCount(1);
       await fetchInvites();
     } catch {
-      toast.show("Failed to generate ticket", { type: "error" });
+      toast.show("Failed to generate invite code", { type: "error" });
     } finally {
       setGenerating(false);
     }
   };
 
-  const copyInviteLink = (code: string) => {
-    const link = `${window.location.origin}/signup?invite=${encodeURIComponent(code)}`;
-    navigator.clipboard.writeText(link).catch(() => {});
+  const copyRawCode = (code: string) => {
+    navigator.clipboard.writeText(code).catch(() => {});
     setCopiedCode(code);
-    toast.show("Invite link copied to clipboard", { type: "success" });
+    toast.show("Invite code copied to clipboard", { type: "success" });
     setTimeout(() => setCopiedCode(null), 2500);
   };
+
+  const copyRegistrationLink = (inv: { code: string }) => {
+    const link = `${window.location.origin}/register?invite=${inv.code}`;
+    navigator.clipboard.writeText(link).catch(() => {});
+    setCopiedLinkCode(inv.code);
+    toast.show("Registration link copied to clipboard", { type: "success" });
+    setTimeout(() => setCopiedLinkCode(null), 2500);
+  };
+
+  if (loading) {
+    return (
+      <>
+        <Header>
+          <CircleIconButton onClick={onBack} style={{ marginRight: "8px" }} aria-label="Go back">
+            <ArrowLeftIcon size={20} />
+          </CircleIconButton>
+          <span style={{ color: "var(--color-text-heading, var(--color-text-primary))" }}>
+            Invite Friends &amp; Golden Tickets
+          </span>
+        </Header>
+        <Box px={4} py={6} display="flex" flexDirection="column" alignItems="center" justifyContent="center" gap={3}>
+          <Spinner size="medium" />
+          <div style={{ fontSize: "13px", color: "var(--color-text-secondary, #94a3b8)" }}>
+            Loading your invite codes and referral rewards…
+          </div>
+        </Box>
+      </>
+    );
+  }
 
   return (
     <>
@@ -202,14 +241,14 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
         <CircleIconButton onClick={onBack} style={{ marginRight: "8px" }} aria-label="Go back">
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
-        Member Invites & Golden Tickets
+        <span style={{ color: "var(--color-text-heading, var(--color-text-primary))" }}>
+          Invite Friends &amp; Golden Tickets
+        </span>
       </Header>
 
       <Box px={4} pb={4} style={{ overflowY: "auto" }}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
-          Invite colleagues and fellow researchers to {brandName}. When an engineer registers with your Golden Ticket
-          and completes their first simulation run, both of your accounts receive{" "}
-          <strong>50 free compute credits</strong>.
+          Invite colleagues and fellow researchers to {brandName} using your single-use Golden Tickets.
         </DetailSubtitle>
 
         {/* STAT QUOTA CARD */}
@@ -248,20 +287,37 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
             style={{
               fontSize: "16px",
               fontWeight: 700,
-              color: "#fff",
-              marginBottom: "8px",
+              color: "var(--color-text-heading, var(--color-text-primary))",
+              marginBottom: "12px",
               display: "flex",
               alignItems: "center",
               gap: "8px",
             }}
           >
             <KeyIcon size={18} />
-            Generate New Golden Ticket
+            Generate New Codes
           </div>
           <form onSubmit={handleGenerate}>
             <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div style={{ flex: 1, minWidth: "240px" }}>
-                <FormLabel htmlFor="ticket-note">Recipient note (optional)</FormLabel>
+              <div>
+                <FormLabel htmlFor="ticket-count" style={{ marginBottom: "6px" }}>
+                  Count
+                </FormLabel>
+                <FormInput
+                  id="ticket-count"
+                  type="number"
+                  min={1}
+                  max={Math.max(1, invitesRemaining)}
+                  value={count}
+                  onChange={(e) => setCount(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                  disabled={invitesRemaining <= 0 || generating}
+                  style={{ width: "90px", margin: 0 }}
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: "220px" }}>
+                <FormLabel htmlFor="ticket-note" style={{ marginBottom: "6px" }}>
+                  Recipient note (optional)
+                </FormLabel>
                 <FormInput
                   id="ticket-note"
                   type="text"
@@ -269,19 +325,31 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   disabled={invitesRemaining <= 0 || generating}
+                  style={{ margin: 0 }}
                 />
               </div>
-              <SaveButton type="submit" disabled={invitesRemaining <= 0 || generating} style={{ height: "42px" }}>
+              <SaveButton
+                type="submit"
+                disabled={invitesRemaining <= 0 || generating}
+                style={{ height: "42px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+              >
                 <PlusIcon size={16} />
-                {generating ? "Generating…" : "Generate Ticket"}
+                {generating ? "Generating…" : "Generate Codes"}
               </SaveButton>
             </div>
           </form>
         </GenerateSection>
 
         {/* INVITES TABLE */}
-        <div style={{ fontSize: "16px", fontWeight: 700, color: "#fff", marginBottom: "12px" }}>
-          Your Generated Tickets ({invites.length})
+        <div
+          style={{
+            fontSize: "16px",
+            fontWeight: 700,
+            color: "var(--color-text-heading, var(--color-text-primary))",
+            marginBottom: "12px",
+          }}
+        >
+          Your Invite Codes ({invites.length})
         </div>
         <TableContainer>
           <StyledTable>
@@ -301,14 +369,14 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
                     colSpan={5}
                     style={{ textAlign: "center", color: "var(--color-text-secondary, #94a3b8)", padding: "24px" }}
                   >
-                    No golden tickets generated yet.
+                    No invite codes generated yet.
                   </td>
                 </tr>
               ) : (
                 invites.map((inv) => {
-                  const isUsed = inv.uses_count >= inv.max_uses;
+                  const isUsed = Boolean(inv.used_by) || inv.uses_count >= inv.max_uses;
                   return (
-                    <tr key={inv.id}>
+                    <tr key={inv.id ?? inv.code}>
                       <td
                         style={{ fontFamily: "monospace", fontWeight: 600, color: "var(--color-accent-cyan, #06b6d4)" }}
                       >
@@ -319,20 +387,35 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
                           {isUsed ? "Redeemed" : "Available"}
                         </StatusBadge>
                       </td>
-                      <td>{inv.initial_credits} MSX</td>
+                      <td>{inv.initial_credits ?? 100} MSX</td>
                       <td style={{ color: "var(--color-text-secondary, #94a3b8)" }}>{inv.note || "—"}</td>
                       <td>
-                        <CopyButton type="button" onClick={() => copyInviteLink(inv.code)}>
-                          {copiedCode === inv.code ? (
-                            <>
-                              <CheckIcon size={14} fill="#10b981" /> Copied
-                            </>
-                          ) : (
-                            <>
-                              <CopyIcon size={14} /> Copy Link
-                            </>
+                        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                          <CopyButton type="button" onClick={() => copyRawCode(inv.code)}>
+                            {copiedCode === inv.code ? (
+                              <>
+                                <CheckIcon size={14} fill="#10b981" /> Copied Code
+                              </>
+                            ) : (
+                              <>
+                                <CopyIcon size={14} /> Copy Code
+                              </>
+                            )}
+                          </CopyButton>
+                          {!isUsed && (
+                            <CopyButton type="button" onClick={() => copyRegistrationLink(inv)}>
+                              {copiedLinkCode === inv.code ? (
+                                <>
+                                  <CheckIcon size={14} fill="#10b981" /> Link Copied
+                                </>
+                              ) : (
+                                <>
+                                  <LinkIcon size={14} /> Copy Registration Link
+                                </>
+                              )}
+                            </CopyButton>
                           )}
-                        </CopyButton>
+                        </Box>
                       </td>
                     </tr>
                   );
@@ -347,7 +430,7 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
           style={{
             fontSize: "16px",
             fontWeight: 700,
-            color: "#fff",
+            color: "var(--color-text-heading, var(--color-text-primary))",
             marginBottom: "12px",
             display: "flex",
             alignItems: "center",

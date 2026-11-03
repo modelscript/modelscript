@@ -19,7 +19,7 @@ import { Link } from "react-router-dom";
 import FederatedDomainPill from "../../components/FederatedDomainPill";
 import ProfileHoverCard from "../../components/ProfileHoverCard";
 import { parseFederatedHandle } from "../../util/federation";
-import type { NotificationActor, NotificationItem } from "./types";
+import type { NotificationActor } from "./types";
 
 export function formatRelativeTime(dateString: string): string {
   if (!dateString) return "";
@@ -74,6 +74,8 @@ export const getIconForType = (type: string) => {
     case "like":
       return <HeartFillIcon color="var(--color-danger-fg)" size={22} />;
     case "follow":
+    case "follow_request":
+    case "follow_accepted":
       return <PersonIcon color="var(--color-accent-fg)" size={22} />;
     case "reply":
       return <ReplyIcon color="var(--color-fg-muted)" size={22} />;
@@ -91,6 +93,8 @@ export const getIconForType = (type: string) => {
     case "package":
     case "package_published":
       return <PackageIcon color="var(--color-accent-fg)" size={22} />;
+    case "package_yanked":
+      return <PackageIcon color="var(--color-danger-fg)" size={22} />;
     case "security_alert":
       return <ShieldIcon color="var(--color-danger-fg)" size={22} />;
     case "credit_warning":
@@ -100,31 +104,54 @@ export const getIconForType = (type: string) => {
   }
 };
 
+function renderActorName(actor: NotificationActor | undefined, fallback: string) {
+  const label = actor?.display_name || actor?.username || fallback;
+  if (!actor?.username) {
+    return <Text fontWeight="bold">{label}</Text>;
+  }
+  return (
+    <ProfileHoverCard username={actor.username}>
+      <Link
+        to={`/${actor.username}`}
+        style={{
+          fontWeight: 700,
+          color: "var(--color-fg-default)",
+          textDecoration: "none",
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+        onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+      >
+        {label}
+      </Link>
+    </ProfileHoverCard>
+  );
+}
+
 export const getMessageForType = (type: string, actors: NotificationActor[] = [], currentUsername?: string) => {
   const count = actors?.length || 0;
   if (count === 0 && type !== "security_alert" && type !== "credit_warning") return null;
 
   const firstActor = actors[0] || {};
   const isSelf = Boolean(currentUsername && firstActor.username === currentUsername);
-  const name = isSelf ? "You" : firstActor.display_name || firstActor.username || "Someone";
 
-  let actorText;
+  let actorText: React.ReactNode;
   if (isSelf) {
     actorText = <Text fontWeight="bold">You</Text>;
   } else if (count === 1) {
-    actorText = <Text fontWeight="bold">{name}</Text>;
+    actorText = renderActorName(firstActor, "Someone");
   } else if (count === 2) {
-    const secondActor = actors[1] || {};
     actorText = (
       <>
-        <Text fontWeight="bold">{name}</Text> and{" "}
-        <Text fontWeight="bold">{secondActor.display_name || secondActor.username || "someone"}</Text>
+        {renderActorName(firstActor, "Someone")} and {renderActorName(actors[1], "someone")}
       </>
     );
   } else {
+    const othersCount = count - 2;
     actorText = (
       <>
-        <Text fontWeight="bold">{name}</Text> and {count - 1} others
+        {renderActorName(firstActor, "Someone")}, {renderActorName(actors[1], "someone")} and {othersCount}{" "}
+        {othersCount === 1 ? "other" : "others"}
       </>
     );
   }
@@ -134,6 +161,10 @@ export const getMessageForType = (type: string, actors: NotificationActor[] = []
       return <>{actorText} liked your post</>;
     case "follow":
       return <>{actorText} followed you</>;
+    case "follow_request":
+      return <>{actorText} requested to follow you</>;
+    case "follow_accepted":
+      return <>{actorText} accepted your follow request</>;
     case "reply":
       return <>{actorText} replied to your post</>;
     case "repost":
@@ -150,6 +181,12 @@ export const getMessageForType = (type: string, actors: NotificationActor[] = []
     case "package":
     case "package_published":
       return isSelf ? <>Your package was published to registry</> : <>{actorText} published a package</>;
+    case "package_yanked":
+      return isSelf ? (
+        <>Your package release was yanked from the registry</>
+      ) : (
+        <>{actorText} yanked a package release</>
+      );
     case "security_alert":
       return <>Security advisory: Vulnerability detected in package dependencies</>;
     case "credit_warning":
@@ -159,57 +196,4 @@ export const getMessageForType = (type: string, actors: NotificationActor[] = []
   }
 };
 
-export function groupNotifications(notifs: NotificationItem[]): NotificationItem[] {
-  const grouped: NotificationItem[] = [];
-  const postGroups = new Map<string, NotificationItem>();
-
-  for (const notif of notifs) {
-    if (notif.post_id && (notif.type === "like" || notif.type === "repost")) {
-      const key = `${notif.type}-${notif.post_id}`;
-      if (postGroups.has(key)) {
-        const group = postGroups.get(key)!;
-        if (!group.actors) {
-          group.actors = [];
-        }
-        if (!group.actors.some((a) => a.username === notif.actor_username)) {
-          group.actors.push({
-            username: notif.actor_username,
-            display_name: notif.actor_display_name,
-            avatar_url: notif.actor_avatar_url,
-          });
-        }
-        if (notif.read === 0 || notif.read === false) {
-          group.read = 0;
-        }
-      } else {
-        const group: NotificationItem = {
-          ...notif,
-          isGroup: true,
-          actors: [
-            {
-              username: notif.actor_username,
-              display_name: notif.actor_display_name,
-              avatar_url: notif.actor_avatar_url,
-            },
-          ],
-        };
-        postGroups.set(key, group);
-        grouped.push(group);
-      }
-    } else {
-      grouped.push({
-        ...notif,
-        isGroup: false,
-        actors: [
-          {
-            username: notif.actor_username,
-            display_name: notif.actor_display_name,
-            avatar_url: notif.actor_avatar_url,
-          },
-        ],
-      });
-    }
-  }
-
-  return grouped;
-}
+export { groupNotifications } from "./types";

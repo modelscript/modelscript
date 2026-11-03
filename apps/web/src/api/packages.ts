@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getStdlibCatalog } from "@modelscript/exchange/catalog";
 import { encodePackagePath } from "../util/url";
 import { api } from "./client";
 
@@ -163,6 +164,10 @@ export interface LibraryListItem {
   publishedAt?: string | undefined;
   totalDownloads?: number | undefined;
   downloads30d?: number | undefined;
+  downloads7d?: number | undefined;
+  dependentsCount?: number | undefined;
+  recommendationScore?: number | undefined;
+  recommendationReason?: string | undefined;
   isDeprecated?: boolean | undefined;
   deprecationReason?: string | null | undefined;
   isYanked?: boolean | undefined;
@@ -178,9 +183,11 @@ export interface LibraryListItem {
   [key: string]: any;
 }
 
-export const getLibraries = async (q?: string) => {
+export const getLibraries = async (q?: string, sort?: string) => {
   try {
-    const { data } = await api.get<{ packages: LibraryListItem[] }>("/libraries", { params: { q } });
+    const params: { q?: string; sort?: string } = { q };
+    if (sort !== undefined) params.sort = sort;
+    const { data } = await api.get<{ packages: LibraryListItem[] }>("/libraries", { params });
     if (Array.isArray(data.packages)) {
       return data.packages;
     }
@@ -188,25 +195,15 @@ export const getLibraries = async (q?: string) => {
     if (!import.meta.env.DEV) throw err;
   }
 
-  // Fallback to local standard libraries in development
-  const stdLibs: LibraryListItem[] = [
-    {
-      name: "Modelica",
-      versions: ["4.1.0"],
-      latestVersion: "4.1.0",
-      description: "Modelica Standard Library",
-      license: "BSD-3-Clause",
-      domains: ["modelica"],
-    },
-    {
-      name: "SysML",
-      versions: ["2026.3.0"],
-      latestVersion: "2026.3.0",
-      description: "SysML v2 Standard Library",
-      license: "OMG-SysML-2.0",
-      domains: ["sysml2"],
-    },
-  ];
+  // Fallback to local standard libraries from catalog in development
+  const stdLibs: LibraryListItem[] = getStdlibCatalog().libraries.map((lib) => ({
+    name: lib.packageName,
+    versions: [lib.version],
+    latestVersion: lib.version,
+    description: lib.description,
+    license: lib.license,
+    domains: [lib.domain],
+  }));
 
   if (q) {
     return stdLibs.filter((lib) => lib.name.toLowerCase().includes(q.toLowerCase()));

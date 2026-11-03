@@ -180,6 +180,82 @@ export function quaternionMultiply(a: Quat, b: Quat): Quat {
 }
 
 /**
+ * Rotate a 3D vector by a unit quaternion: v' = q * v * q^-1.
+ */
+export function rotateVectorByQuaternion(v: Vec3, q: Quat): Vec3 {
+  const [vx, vy, vz] = v;
+  const [qx, qy, qz, qw] = q;
+
+  // t = 2 * cross(q.xyz, v)
+  const tx = 2 * (qy * vz - qz * vy);
+  const ty = 2 * (qz * vx - qx * vz);
+  const tz = 2 * (qx * vy - qy * vx);
+
+  // v' = v + qw * t + cross(q.xyz, t)
+  return [vx + qw * tx + (qy * tz - qz * ty), vy + qw * ty + (qz * tx - qx * tz), vz + qw * tz + (qx * ty - qy * tx)];
+}
+
+/**
+ * Construct a quaternion from Modelica MultiBody `lengthDirection` (local +X axis)
+ * and `widthDirection` (local +Y reference plane), following MSL `Frames.Internal` conventions.
+ */
+export function quaternionFromDirections(lengthDirection: Vec3, widthDirection: Vec3 = [0, 1, 0]): Quat {
+  const lx = lengthDirection[0];
+  const ly = lengthDirection[1];
+  const lz = lengthDirection[2];
+  const lLen = Math.hypot(lx, ly, lz);
+  if (lLen < 1e-12) {
+    return [...QUAT_IDENTITY];
+  }
+
+  const ex0 = lx / lLen;
+  const ex1 = ly / lLen;
+  const ex2 = lz / lLen;
+
+  let wx = widthDirection[0];
+  let wy = widthDirection[1];
+  let wz = widthDirection[2];
+  const wLen = Math.hypot(wx, wy, wz);
+  if (wLen < 1e-12) {
+    wx = 0;
+    wy = 1;
+    wz = 0;
+  } else {
+    wx /= wLen;
+    wy /= wLen;
+    wz /= wLen;
+  }
+
+  // ez = normalize(ex × widthDirection)
+  let ez0 = ex1 * wz - ex2 * wy;
+  let ez1 = ex2 * wx - ex0 * wz;
+  let ez2 = ex0 * wy - ex1 * wx;
+  let ezLen = Math.hypot(ez0, ez1, ez2);
+
+  // Fallback if widthDirection is parallel to lengthDirection
+  if (ezLen < 1e-7) {
+    const fx = Math.abs(ex0) < 0.9 ? 1 : 0;
+    const fy = Math.abs(ex0) < 0.9 ? 0 : 1;
+    const fz = 0;
+    ez0 = ex1 * fz - ex2 * fy;
+    ez1 = ex2 * fx - ex0 * fz;
+    ez2 = ex0 * fy - ex1 * fx;
+    ezLen = Math.hypot(ez0, ez1, ez2) || 1;
+  }
+  ez0 /= ezLen;
+  ez1 /= ezLen;
+  ez2 /= ezLen;
+
+  // ey = ez × ex (guaranteed unit length and right-handed)
+  const ey0 = ez1 * ex2 - ez2 * ex1;
+  const ey1 = ez2 * ex0 - ez0 * ex2;
+  const ey2 = ez0 * ex1 - ez1 * ex0;
+
+  // Columns of rotation matrix are ex, ey, ez (row-major array for quaternionFromMatrix3x3(..., false))
+  return quaternionFromMatrix3x3([ex0, ey0, ez0, ex1, ey1, ez1, ex2, ey2, ez2], false);
+}
+
+/**
  * Spherical linear interpolation between two quaternions.
  */
 export function quaternionSlerp(qa: Quat, qb: Quat, t: number): Quat {

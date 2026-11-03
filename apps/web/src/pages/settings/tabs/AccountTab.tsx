@@ -2,6 +2,7 @@
 
 import {
   ArrowLeftIcon,
+  CheckCircleIcon,
   ChevronRightIcon,
   DownloadIcon,
   GlobeIcon,
@@ -12,11 +13,12 @@ import {
 } from "@primer/octicons-react";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { changeAccountCredentials, revokeAllSessions, updateAccount } from "../../../api";
+import { resendVerificationEmail, revokeAllSessions, updateAccount, updatePassword } from "../../../api";
 import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
+import { safeCssImageUrl } from "../../../util/url";
 import {
   DangerButton,
   DetailIcon,
@@ -28,12 +30,35 @@ import {
   FormLabel,
   Header,
   SaveButton,
+  SecondaryButton,
 } from "../settingsStyles";
 
 export interface AccountTabProps {
-  subView: "account" | "accountInfo" | "changePassword";
+  subView: "account" | "accountInfo" | "changePassword" | "main";
   onNavigate: (tab: any) => void;
   onBack?: (() => void) | undefined;
+}
+
+function getPasswordStrength(pw: string): {
+  label: "Weak" | "Fair" | "Strong";
+  percent: number;
+  color: string;
+} | null {
+  if (!pw) return null;
+  let score = 0;
+  if (pw.length >= 8) score += 1;
+  if (pw.length >= 12) score += 1;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score += 1;
+  if (/\d/.test(pw)) score += 1;
+  if (/[^A-Za-z0-9]/.test(pw)) score += 1;
+
+  if (pw.length < 8 || score <= 2) {
+    return { label: "Weak", percent: 33, color: "var(--color-danger-fg, #ef4444)" };
+  }
+  if (score <= 3) {
+    return { label: "Fair", percent: 66, color: "#d29922" };
+  }
+  return { label: "Strong", percent: 100, color: "var(--color-success, #3fb950)" };
 }
 
 export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onBack }) => {
@@ -42,10 +67,11 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
   const brandName = branding.instanceName || "Ansatz";
   const navigate = useNavigate();
   const toast = useToast();
+  const setSubView = onNavigate;
 
   // Account Info states
-  const [accountInfoMode, setAccountInfoMode] = useState<"password" | "form">("form");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [accountInfoMode, setAccountInfoMode] = useState<"gate" | "form">("gate");
+  const [password, setPassword] = useState("");
   const [username, setUsername] = useState(user?.username || "");
   const [displayName, setDisplayName] = useState(user?.display_name || "");
   const [email, setEmail] = useState(user?.email || "");
@@ -60,38 +86,49 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
 
   // Status states
   const [loading, setLoading] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const isEmailVerified = user?.email_verified !== 0 && user?.email_verified !== false;
 
-  useEffect(() => {
-    if (user) {
-      setUsername(user.username || "");
-      setDisplayName(user.display_name || "");
-      setEmail(user.email || "");
-      setAvatarUrl(user.avatar_url || "");
-      setBannerUrl(user.banner_url || "");
-    }
-  }, [user]);
-
+  // Only reset mode and password gate when subView changes (NOT when user refreshes)
   useEffect(() => {
     setError(null);
     setSuccess(null);
     if (subView === "accountInfo") {
-      setAccountInfoMode(user?.has_password === false ? "form" : "password");
-      setPasswordConfirm("");
+      setAccountInfoMode(user?.has_password === false ? "form" : "gate");
+      setPassword("");
+      if (user) {
+        setUsername(user.username || "");
+        setDisplayName(user.display_name || "");
+        setEmail(user.email || "");
+        setAvatarUrl(user.avatar_url || "");
+        setBannerUrl(user.banner_url || "");
+      }
     }
     if (subView === "changePassword") {
       setOldPassword("");
       setNewPassword("");
       setNewPasswordConfirm("");
     }
-  }, [subView, user]);
+  }, [subView]);
+
+  // Sync profile fields from user only when entering accountInfo or while in gate mode
+  useEffect(() => {
+    if (user && accountInfoMode === "gate") {
+      setUsername(user.username || "");
+      setDisplayName(user.display_name || "");
+      setEmail(user.email || "");
+      setAvatarUrl(user.avatar_url || "");
+      setBannerUrl(user.banner_url || "");
+    }
+  }, [user, accountInfoMode]);
 
   const handlePasswordConfirm = async () => {
     setLoading(true);
     setError(null);
     try {
-      await updateAccount({ password: passwordConfirm });
+      await updateAccount({ password });
       setAccountInfoMode("form");
     } catch (err: any) {
       setError(err.response?.data?.error || "Incorrect password");
@@ -100,21 +137,39 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
     }
   };
 
-  const handleUpdateAccount = async () => {
+  const handleResendVerification = async () => {
+    if (!user?.email) return;
+    setResendingVerification(true);
+    try {
+      const res = await resendVerificationEmail(user.email);
+      toast.success(res?.message || `Verification link sent to ${user.email}.`);
+    } catch (err: unknown) {
+      const errObj = err as { response?: { data?: { error?: string } } };
+      toast.error(errObj.response?.data?.error || "Failed to resend verification email.");
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
+  const handleSaveAccount = async () => {
     setLoading(true);
     setError(null);
     setSuccess(null);
     try {
-      await updateAccount({
-        password: passwordConfirm,
-        username,
-        email,
-        display_name: displayName || undefined,
-        avatar_url: avatarUrl || undefined,
-        banner_url: bannerUrl || undefined,
+      const res = await updateAccount({
+        password,
+        username: username.trim(),
+        email: email.trim(),
+        display_name: displayName.trim(),
+        avatar_url: avatarUrl.trim(),
+        banner_url: bannerUrl.trim(),
       });
       await refreshUser();
-      setSuccess("Account updated successfully!");
+      setSuccess(
+        res?.verificationRequired
+          ? "Account updated! A verification link has been sent to your new email address."
+          : "Account updated successfully!",
+      );
     } catch (err: any) {
       setError(err.response?.data?.error || "Update failed");
     } finally {
@@ -123,6 +178,10 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
   };
 
   const handleChangePassword = async () => {
+    if (user?.has_password !== false && !oldPassword) {
+      setError("Current password is required");
+      return;
+    }
     if (newPassword.length < 8) {
       setError("New password must be at least 8 characters");
       return;
@@ -135,13 +194,14 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
     setError(null);
     setSuccess(null);
     try {
-      const res = await changeAccountCredentials({
+      const res = await updatePassword({
         oldPassword: user?.has_password === false ? undefined : oldPassword,
         newPassword,
       });
       if (res?.token) {
         updateToken(res.token);
       }
+      await refreshUser();
       setSuccess(
         user?.has_password === false
           ? "Password established successfully! You can now sign in with your email directly."
@@ -172,6 +232,8 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
     }
   };
 
+  const passwordStrength = getPasswordStrength(newPassword);
+
   if (subView === "accountInfo") {
     return (
       <>
@@ -199,7 +261,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
           </DetailText>
           <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
         </DetailItem>
-        {accountInfoMode === "password" ? (
+        {accountInfoMode === "gate" ? (
           <Box p={4}>
             <h2 style={{ margin: "0 0 16px 0", fontSize: "24px" }}>Confirm your password</h2>
             <p style={{ color: "var(--color-text-muted)", marginBottom: "24px" }}>
@@ -209,16 +271,16 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
             <FormInput
               type="password"
               placeholder="Password"
-              value={passwordConfirm}
-              onChange={(e) => setPasswordConfirm(e.target.value)}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && passwordConfirm && !loading) {
+                if (e.key === "Enter" && password && !loading) {
                   handlePasswordConfirm();
                 }
               }}
             />
             <Box display="flex" justifyContent="flex-end" mt={2}>
-              <SaveButton onClick={handlePasswordConfirm} disabled={loading || !passwordConfirm}>
+              <SaveButton onClick={handlePasswordConfirm} disabled={loading || !password}>
                 {loading ? "Confirming..." : "Confirm"}
               </SaveButton>
             </Box>
@@ -236,7 +298,42 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
             <FormLabel>Display Name</FormLabel>
             <FormInput value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
 
-            <FormLabel>Email</FormLabel>
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+              <FormLabel style={{ marginBottom: 0 }}>Email</FormLabel>
+              <Box display="flex" alignItems="center" gap={2}>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    padding: "2px 8px",
+                    borderRadius: "999px",
+                    backgroundColor: isEmailVerified ? "rgba(63, 185, 80, 0.15)" : "rgba(210, 153, 34, 0.15)",
+                    color: isEmailVerified ? "var(--color-success, #3fb950)" : "#d29922",
+                    border: `1px solid ${isEmailVerified ? "rgba(63, 185, 80, 0.4)" : "rgba(210, 153, 34, 0.4)"}`,
+                  }}
+                >
+                  {isEmailVerified ? "Verified" : "Unverified"}
+                </span>
+                {!isEmailVerified && (
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={resendingVerification}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--color-accent-cyan, #06b6d4)",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: resendingVerification ? "not-allowed" : "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    {resendingVerification ? "Sending…" : "Resend verification email"}
+                  </button>
+                )}
+              </Box>
+            </Box>
             <FormInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
 
             <FormLabel>Avatar URL</FormLabel>
@@ -256,7 +353,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
             />
 
             <Box display="flex" justifyContent="flex-end" mt={2}>
-              <SaveButton onClick={handleUpdateAccount} disabled={loading}>
+              <SaveButton onClick={handleSaveAccount} disabled={loading}>
                 {loading ? "Saving..." : "Save"}
               </SaveButton>
             </Box>
@@ -313,7 +410,40 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
           )}
 
           <FormLabel>New Password (min. 8 characters)</FormLabel>
-          <FormInput type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          <FormInput
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            style={{ marginBottom: passwordStrength ? "8px" : "16px" }}
+          />
+          {passwordStrength && (
+            <Box mb={3}>
+              <Box
+                style={{
+                  width: "100%",
+                  height: "6px",
+                  borderRadius: "999px",
+                  background: "var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${passwordStrength.percent}%`,
+                    height: "100%",
+                    background: passwordStrength.color,
+                    transition: "width 0.2s ease, background-color 0.2s ease",
+                  }}
+                />
+              </Box>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mt={1}>
+                <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Password strength</span>
+                <span style={{ fontSize: "12px", fontWeight: 600, color: passwordStrength.color }}>
+                  {passwordStrength.label}
+                </span>
+              </Box>
+            </Box>
+          )}
 
           <FormLabel>Confirm New Password</FormLabel>
           <FormInput
@@ -385,10 +515,133 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         <span>Your Account</span>
       </Header>
       <Box px={3} pb={3}>
-        <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4" }}>
+        <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4", display: "block" }}>
           See information about your account, download an archive of your data, or learn about your account deactivation
           options.
         </DetailSubtitle>
+
+        {user && (
+          <Box
+            mt={3}
+            p={3}
+            style={{
+              border: "1px solid var(--color-border-default)",
+              borderRadius: "12px",
+              background: "var(--color-canvas-subtle, rgba(255, 255, 255, 0.02))",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "16px",
+            }}
+          >
+            <Box display="flex" alignItems="center" gap={3}>
+              <Box
+                style={{
+                  width: "52px",
+                  height: "52px",
+                  borderRadius: "50%",
+                  background: "var(--color-canvas-default)",
+                  border: "1px solid var(--color-border-default)",
+                  backgroundImage: safeCssImageUrl(user.avatar_url),
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "20px",
+                  fontWeight: 700,
+                  color: "var(--color-text-muted)",
+                  flexShrink: 0,
+                }}
+              >
+                {!user.avatar_url && (user.display_name || user.username || "?").charAt(0).toUpperCase()}
+              </Box>
+              <Box display="flex" flexDirection="column" gap={1}>
+                <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                  <span style={{ fontSize: "16px", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                    {user.display_name || user.username}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: "999px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      backgroundColor: isEmailVerified ? "rgba(63, 185, 80, 0.15)" : "rgba(210, 153, 34, 0.15)",
+                      color: isEmailVerified ? "var(--color-success, #3fb950)" : "#d29922",
+                      border: `1px solid ${isEmailVerified ? "rgba(63, 185, 80, 0.4)" : "rgba(210, 153, 34, 0.4)"}`,
+                    }}
+                  >
+                    {isEmailVerified && <CheckCircleIcon size={12} />}
+                    {isEmailVerified ? "Email Verified" : "Email Unverified"}
+                  </span>
+                </Box>
+                <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+                  @{user.username}
+                  {user.email ? ` · ${user.email}` : ""}
+                </span>
+              </Box>
+            </Box>
+
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+              <SecondaryButton
+                type="button"
+                style={{ padding: "6px 14px", fontSize: "13px" }}
+                onClick={() => setSubView("accountInfo")}
+              >
+                Account information
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                style={{ padding: "6px 14px", fontSize: "13px" }}
+                onClick={() => navigate(`/${user.username}`)}
+              >
+                View Public Profile
+              </SecondaryButton>
+              <SecondaryButton
+                type="button"
+                style={{ padding: "6px 14px", fontSize: "13px" }}
+                onClick={() => navigate("/settings/profile")}
+              >
+                Edit Public Profile
+              </SecondaryButton>
+            </Box>
+          </Box>
+        )}
+
+        {!isEmailVerified && user?.email && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "12px 16px",
+              borderRadius: "10px",
+              background: "rgba(210, 153, 34, 0.12)",
+              border: "1px solid rgba(210, 153, 34, 0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px",
+            }}
+          >
+            <span style={{ fontSize: "13px", color: "var(--color-text-primary)", lineHeight: "1.4" }}>
+              Your email address (<strong>{user.email}</strong>) is not verified yet. Verify your email to activate full
+              account features.
+            </span>
+            <SaveButton
+              type="button"
+              onClick={handleResendVerification}
+              disabled={resendingVerification}
+              style={{ padding: "6px 14px", fontSize: "12px" }}
+            >
+              {resendingVerification ? "Sending…" : "Resend Verification Email"}
+            </SaveButton>
+          </div>
+        )}
       </Box>
       <DetailItem $clickable onClick={() => navigate("/settings/profile")}>
         <DetailIcon>

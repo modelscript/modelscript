@@ -27,6 +27,7 @@ const Overlay = styled.div`
   justify-content: center;
   z-index: 9999;
   padding: 16px;
+  overflow-y: auto;
 `;
 
 const ModalCard = styled.div`
@@ -35,6 +36,7 @@ const ModalCard = styled.div`
   border-radius: var(--radius-xl, 16px);
   width: 100%;
   max-width: 520px;
+  max-height: calc(100dvh - 32px);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
   display: flex;
   flex-direction: column;
@@ -47,6 +49,7 @@ const ModalHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 `;
 
 const ModalTitle = styled.h2`
@@ -77,7 +80,8 @@ const CloseButton = styled.button`
 
 const ModalBody = styled.div`
   padding: 24px;
-  max-height: 80vh;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 `;
 
@@ -251,7 +255,7 @@ export default function TwoFactorModal({
       return;
     }
 
-    if (!isEnabled) {
+    if (!isEnabled && step === "setup") {
       setLoading(true);
       setError("");
       setup2FA()
@@ -274,7 +278,7 @@ export default function TwoFactorModal({
         })
         .finally(() => setLoading(false));
     }
-  }, [isOpen, isEnabled]);
+  }, [isOpen, isEnabled, step]);
 
   if (!isOpen) return null;
 

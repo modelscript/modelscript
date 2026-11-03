@@ -116,6 +116,12 @@ export interface NotificationPreferences {
         inApp: boolean;
       }
     | undefined;
+  deliveryChannels?:
+    | {
+        inApp: boolean;
+        emailNotifications: boolean;
+      }
+    | undefined;
   events?:
     | {
         social: {
@@ -147,6 +153,10 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     browserPush: false,
     inApp: true,
   },
+  deliveryChannels: {
+    inApp: true,
+    emailNotifications: true,
+  },
   events: {
     social: {
       mentions: true,
@@ -167,15 +177,62 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   },
 };
 
+export const NOTIFICATION_PREFS_STORAGE_KEY = "modelscript_notification_prefs";
+
+export function getCachedNotificationPreferences(): NotificationPreferences {
+  if (typeof localStorage === "undefined") return DEFAULT_NOTIFICATION_PREFERENCES;
+  try {
+    const raw = localStorage.getItem(NOTIFICATION_PREFS_STORAGE_KEY);
+    if (!raw) return DEFAULT_NOTIFICATION_PREFERENCES;
+    const parsed = JSON.parse(raw) as Partial<NotificationPreferences>;
+    return {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      ...parsed,
+      channels: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.channels!,
+        ...(parsed.channels || {}),
+      },
+      deliveryChannels: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.deliveryChannels!,
+        ...(parsed.deliveryChannels || {}),
+      },
+    };
+  } catch {
+    return DEFAULT_NOTIFICATION_PREFERENCES;
+  }
+}
+
 export const getNotificationSettings = async (): Promise<NotificationPreferences> => {
   const { data } = await api.get<NotificationPreferences>("/auth/notifications");
+  if (typeof localStorage !== "undefined" && data) {
+    try {
+      localStorage.setItem(NOTIFICATION_PREFS_STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      // ignore storage quota errors
+    }
+  }
   return data;
 };
 
 export const updateNotificationSettings = async (
   settings: Partial<NotificationPreferences>,
 ): Promise<{ success: boolean }> => {
-  const { data } = await api.put("/auth/notifications", settings);
+  const payload: Partial<NotificationPreferences> = { ...settings };
+  if (settings.channels && !settings.deliveryChannels) {
+    payload.deliveryChannels = {
+      inApp: settings.channels.inApp ?? true,
+      emailNotifications: settings.channels.email ?? true,
+    };
+  }
+  const { data } = await api.put("/auth/notifications", payload);
+  if (typeof localStorage !== "undefined") {
+    try {
+      const merged = { ...getCachedNotificationPreferences(), ...payload };
+      localStorage.setItem(NOTIFICATION_PREFS_STORAGE_KEY, JSON.stringify(merged));
+    } catch {
+      // ignore storage quota errors
+    }
+  }
   return data;
 };
 
@@ -366,5 +423,173 @@ export const createApiToken = async (payload: {
 
 export const revokeApiToken = async (tokenId: number): Promise<{ success: boolean }> => {
   const { data } = await api.delete(`/auth/tokens/${tokenId}`);
+  return data;
+};
+
+// ── Privacy, Federation, Social Graph & Web Push API ────────────────────
+
+export interface ProfileFieldItem {
+  name: string;
+  value: string;
+  verified_at?: string | null | undefined;
+}
+
+export interface PrivacyFederationSettings {
+  discoverable: boolean;
+  indexable: boolean;
+  locked: boolean;
+  default_post_visibility: "public" | "unlisted" | "followers" | "direct";
+  profile_fields: ProfileFieldItem[];
+  also_known_as: string[];
+  moved_to_actor_url: string | null;
+  actor_url: string | null;
+}
+
+export interface FollowRequestUser {
+  id: number;
+  username: string;
+  display_name?: string | null | undefined;
+  avatar_url?: string | null | undefined;
+  actor_url?: string | null | undefined;
+  remote_domain?: string | null | undefined;
+  created_at?: string | undefined;
+}
+
+export interface BlockedOrMutedUser {
+  id: number;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  remote_domain: string | null;
+  created_at: string;
+}
+
+export interface PushSubscriptionRecord {
+  id: number;
+  endpoint: string;
+  alerts?: Record<string, boolean> | undefined;
+  created_at: string;
+}
+
+export const getPrivacySettings = async (): Promise<PrivacyFederationSettings> => {
+  const { data } = await api.get<PrivacyFederationSettings>("/users/me/privacy");
+  return data;
+};
+
+export const updatePrivacySettings = async (payload: {
+  discoverable?: boolean | undefined;
+  indexable?: boolean | undefined;
+  locked?: boolean | undefined;
+  default_post_visibility?: "public" | "unlisted" | "followers" | "direct" | undefined;
+  profile_fields?: ProfileFieldItem[] | undefined;
+  also_known_as?: string[] | undefined;
+}): Promise<{ success: boolean }> => {
+  const { data } = await api.put<{ success: boolean }>("/users/me", payload);
+  return data;
+};
+
+export const verifyProfileFields = async (
+  profile_fields?: ProfileFieldItem[],
+): Promise<{ success: boolean; profile_fields: ProfileFieldItem[] }> => {
+  const { data } = await api.post<{ success: boolean; profile_fields: ProfileFieldItem[] }>("/users/me/verify-fields", {
+    ...(profile_fields ? { profile_fields } : {}),
+  });
+  return data;
+};
+
+export const getFollowRequests = async (): Promise<FollowRequestUser[]> => {
+  const { data } = await api.get<{ requests: FollowRequestUser[] }>("/users/me/follow-requests");
+  return data.requests || [];
+};
+
+export const acceptFollowRequest = async (followerId: number): Promise<{ success: boolean }> => {
+  const { data } = await api.post<{ success: boolean }>(`/users/me/follow-requests/${followerId}/accept`);
+  return data;
+};
+
+export const rejectFollowRequest = async (followerId: number): Promise<{ success: boolean }> => {
+  const { data } = await api.post<{ success: boolean }>(`/users/me/follow-requests/${followerId}/reject`);
+  return data;
+};
+
+export const getBlockedUsers = async (): Promise<BlockedOrMutedUser[]> => {
+  const { data } = await api.get<{ blocked: BlockedOrMutedUser[] }>("/users/me/blocked");
+  return data.blocked || [];
+};
+
+export const getMutedUsers = async (): Promise<BlockedOrMutedUser[]> => {
+  const { data } = await api.get<{ muted: BlockedOrMutedUser[] }>("/users/me/muted");
+  return data.muted || [];
+};
+
+export const updateAccountAliases = async (
+  alsoKnownAs: string[],
+): Promise<{ success: boolean; alsoKnownAs: string[] }> => {
+  const { data } = await api.post<{ success: boolean; alsoKnownAs: string[] }>("/users/me/aliases", {
+    alsoKnownAs,
+  });
+  return data;
+};
+
+export const migrateAccountToActor = async (
+  targetActorUrl: string,
+): Promise<{ success: boolean; movedToActorUrl: string; migratedLocalFollowers: number }> => {
+  const { data } = await api.post<{
+    success: boolean;
+    movedToActorUrl: string;
+    migratedLocalFollowers: number;
+  }>("/users/me/move", { targetActorUrl });
+  return data;
+};
+
+export const exportSocialGraph = async (
+  format: "json" | "csv" = "json",
+  type: "following" | "blocks" | "mutes" = "following",
+): Promise<Blob | { following: string[]; blocks: string[]; mutes: string[] }> => {
+  if (format === "csv") {
+    const response = await api.get(`/users/me/social-graph/export?format=csv&type=${type}`, {
+      responseType: "blob",
+    });
+    return response.data;
+  }
+  const { data } = await api.get<{ following: string[]; blocks: string[]; mutes: string[] }>(
+    "/users/me/social-graph/export?format=json",
+  );
+  return data;
+};
+
+export const importSocialGraph = async (payload: {
+  following?: string[] | undefined;
+  blocks?: string[] | undefined;
+  mutes?: string[] | undefined;
+  csv?: string | undefined;
+  type?: "following" | "blocks" | "mutes" | undefined;
+  mode?: "merge" | "overwrite" | undefined;
+}): Promise<{
+  success: boolean;
+  importedFollowing: number;
+  importedBlocks: number;
+  importedMutes: number;
+}> => {
+  const { data } = await api.post("/users/me/social-graph/import", payload);
+  return data;
+};
+
+export const getPushSubscriptions = async (): Promise<PushSubscriptionRecord[]> => {
+  const { data } = await api.get<{ subscriptions: PushSubscriptionRecord[] }>("/users/me/push-subscriptions");
+  return data.subscriptions || [];
+};
+
+export const registerPushSubscription = async (payload: {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  alerts?: Record<string, boolean> | undefined;
+}): Promise<{ subscription: PushSubscriptionRecord }> => {
+  const { data } = await api.post<{ subscription: PushSubscriptionRecord }>("/users/me/push-subscriptions", payload);
+  return data;
+};
+
+export const deletePushSubscription = async (id: number): Promise<{ success: boolean }> => {
+  const { data } = await api.delete<{ success: boolean }>(`/users/me/push-subscriptions/${id}`);
   return data;
 };

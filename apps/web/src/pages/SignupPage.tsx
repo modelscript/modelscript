@@ -198,9 +198,7 @@ export default function SignupPage() {
     setLoading(true);
     try {
       const effectiveCaptchaToken =
-        captchaToken ||
-        (typeof window !== "undefined" && (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__) ||
-        (turnstileSiteKey ? "" : "mock-token");
+        captchaToken || (typeof window !== "undefined" && (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__) || "";
 
       if (turnstileSiteKey && !effectiveCaptchaToken) {
         setError("Please complete the security verification challenge before registering.");
@@ -240,13 +238,22 @@ export default function SignupPage() {
   const brandName = branding.instanceName || "Ansatz";
   const [waitlistOpen, setWaitlistOpen] = useState(false);
 
+  const emailDomain = email.includes("@") ? email.split("@").pop()!.trim().toLowerCase() : "";
+  const academicPatterns =
+    branding.academicDomainPatterns && branding.academicDomainPatterns.length > 0
+      ? branding.academicDomainPatterns
+      : [".edu", ".ac.uk", ".edu.au", ".ac.jp", ".ethz.ch", ".epfl.ch", ".mpg.de", ".cern.ch"];
   const isAcademicEmail = Boolean(
-    email &&
+    emailDomain &&
     branding.academicFastTrackEnabled &&
-    (email.toLowerCase().endsWith(".edu") ||
-      email.toLowerCase().endsWith(".ac.uk") ||
-      (branding.academicDomainPatterns &&
-        branding.academicDomainPatterns.some((p) => email.toLowerCase().includes(p.toLowerCase())))),
+    academicPatterns.some((raw) => {
+      const p = raw.trim().toLowerCase();
+      if (!p) return false;
+      if (p.startsWith(".")) {
+        return emailDomain.endsWith(p) || emailDomain === p.slice(1);
+      }
+      return emailDomain === p || emailDomain.endsWith(`.${p}`);
+    }),
   );
 
   return (
@@ -280,13 +287,12 @@ export default function SignupPage() {
               {authConfig?.mailerConfigured === false ? (
                 <>
                   Account created for <strong>{email}</strong>. Outbound email delivery is not configured on this
-                  instance — you can continue directly into your workspace or verify below to unlock{" "}
-                  <strong>50 free compute credits</strong>.
+                  instance — you can continue directly into your workspace or verify your email address below.
                 </>
               ) : (
                 <>
-                  We sent a verification link to <strong>{email}</strong>. Verify your address to activate full features
-                  and unlock your <strong>50 free compute credits</strong>, or continue directly to your workspace now.
+                  We sent a verification link to <strong>{email}</strong>. Verify your address to activate full
+                  features, or continue directly to your workspace now.
                 </>
               )}
             </p>
@@ -296,7 +302,7 @@ export default function SignupPage() {
                   type="button"
                   onClick={() => navigate(`/verify-email?token=${encodeURIComponent(devVerificationToken)}`)}
                 >
-                  Verify Instantly &amp; Claim 50 Credits
+                  Verify Email Instantly
                 </Button>
               )}
               <Button
@@ -316,7 +322,7 @@ export default function SignupPage() {
               </Button>
             </div>
           </div>
-        ) : authConfig?.registrationMode === "closed" ? (
+        ) : authConfig?.registrationMode === "closed" && !inviteCode && !showInviteField ? (
           <div style={{ textAlign: "center", padding: "16px 0", width: "100%" }}>
             <h2 style={{ fontSize: "18px", fontWeight: 700, color: "var(--color-text-heading)", margin: "0 0 8px 0" }}>
               Registration Closed
@@ -332,31 +338,47 @@ export default function SignupPage() {
               Self-service registration is disabled on this {brandName} instance. Please contact your instance
               administrator to provision an account.
             </p>
-            <Button type="button" onClick={() => navigate("/login")}>
-              Return to Sign In
-            </Button>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "center" }}>
+              <Button type="button" onClick={() => navigate("/login")} style={{ width: "100%" }}>
+                Return to Sign In
+              </Button>
+              <button
+                type="button"
+                onClick={() => setShowInviteField(true)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--color-accent-cyan, #06b6d4)",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: "4px 0",
+                }}
+              >
+                Have an administrator invite code?
+              </button>
+            </div>
           </div>
         ) : (
           <>
-            {!authConfig?.airgapEnforced &&
-              ((authConfig?.oauthProviders && authConfig.oauthProviders.length > 0) ||
-                authConfig?.oidcEnabled ||
-                !authConfig) && (
+            {authConfig &&
+              !authConfig.airgapEnforced &&
+              ((authConfig.oauthProviders && authConfig.oauthProviders.length > 0) || authConfig.oidcEnabled) && (
                 <>
                   <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
-                    {(!authConfig || authConfig.oauthProviders?.includes("github")) && (
+                    {authConfig.oauthProviders?.includes("github") && (
                       <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
                         <MarkGithubIcon size={16} />
                         Sign up with GitHub
                       </ProviderButton>
                     )}
-                    {(!authConfig || authConfig.oauthProviders?.includes("gitlab")) && (
+                    {authConfig.oauthProviders?.includes("gitlab") && (
                       <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
                         <GitLabIcon />
                         Sign up with GitLab
                       </ProviderButton>
                     )}
-                    {authConfig?.oidcEnabled && (
+                    {authConfig.oidcEnabled && (
                       <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/oidc/login")}>
                         Sign up with Enterprise SSO (OIDC)
                       </ProviderButton>
@@ -499,11 +521,15 @@ export default function SignupPage() {
                   </div>
                 )}
 
-                {authConfig?.registrationMode === "invite_only" || showInviteField || Boolean(inviteCode) ? (
+                {authConfig?.registrationMode === "invite_only" ||
+                authConfig?.registrationMode === "closed" ||
+                showInviteField ||
+                Boolean(inviteCode) ? (
                   <>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <FieldLabel htmlFor="signup-invite-code" style={{ marginBottom: 0 }}>
-                        {authConfig?.registrationMode === "invite_only" && !isAcademicEmail
+                        {authConfig?.registrationMode === "closed" ||
+                        (authConfig?.registrationMode === "invite_only" && !isAcademicEmail)
                           ? "Invite Code (required)"
                           : "Invite or Referral Code (optional)"}
                       </FieldLabel>
@@ -532,9 +558,16 @@ export default function SignupPage() {
                       type="text"
                       value={inviteCode}
                       onChange={(e) => setInviteCode(e.target.value)}
-                      placeholder={isAcademicEmail ? "Not required for verified academic domains" : "msx-inv-..."}
+                      placeholder={
+                        isAcademicEmail && authConfig?.registrationMode !== "closed"
+                          ? "Not required for verified academic domains"
+                          : "msx-inv-..."
+                      }
                       aria-label="Invite Code"
-                      required={authConfig?.registrationMode === "invite_only" && !isAcademicEmail}
+                      required={
+                        authConfig?.registrationMode === "closed" ||
+                        (authConfig?.registrationMode === "invite_only" && !isAcademicEmail)
+                      }
                     />
                   </>
                 ) : (
@@ -594,10 +627,14 @@ export default function SignupPage() {
                   I agree to the{" "}
                   <Link to="/terms" target="_blank">
                     Terms of Service
-                  </Link>{" "}
-                  and{" "}
+                  </Link>
+                  ,{" "}
                   <Link to="/privacy" target="_blank">
                     Privacy Policy
+                  </Link>
+                  , and{" "}
+                  <Link to="/cookies" target="_blank">
+                    Cookie Policy
                   </Link>
                 </span>
               </CheckboxWrapper>

@@ -75,21 +75,32 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     assert.strictEqual(guestRes.body.activitypub_federation, false);
     assert.strictEqual(guestRes.body.sysml2_omg_api, false);
     assert.strictEqual(guestRes.body.experimental_viewers, false);
+    assert.strictEqual(guestRes.body.composer_ai_polish, false);
+    assert.strictEqual(guestRes.body.feeds_page, false);
+    assert.strictEqual(guestRes.body.rss_feeds, false);
 
     // Regular user evaluation
     const userRes = await request(app).get("/api/v1/flags").set("Authorization", `Bearer ${regularToken}`).expect(200);
     assert.strictEqual(userRes.body.cae_cloud_solver, false);
     assert.strictEqual(userRes.body.billing_stripe_live, false);
+    assert.strictEqual(userRes.body.composer_ai_polish, false);
+    assert.strictEqual(userRes.body.feeds_page, false);
+    assert.strictEqual(userRes.body.rss_feeds, false);
 
-    // Admin user evaluation (admin has access to role-gated flags)
+    // Admin user evaluation (default-disabled flags must be false for everyone including admin)
     const adminRes = await request(app).get("/api/v1/flags").set("Authorization", `Bearer ${adminToken}`).expect(200);
-    assert.strictEqual(adminRes.body.cae_cloud_solver, true);
-    assert.strictEqual(adminRes.body.billing_stripe_live, true);
+    assert.strictEqual(adminRes.body.cae_cloud_solver, false);
+    assert.strictEqual(adminRes.body.billing_stripe_live, false);
+    assert.strictEqual(adminRes.body.feeds_page, false);
+    assert.strictEqual(adminRes.body.rss_feeds, false);
   });
 
-  await t.test("Gated endpoints return 404 for unprivileged users when disabled", async () => {
-    // CAE / HPC profiles endpoint
+  await t.test("Gated endpoints return 404 when disabled (including for admin)", async () => {
+    // CAE / HPC profiles endpoint disabled for regular user
     await request(app).get("/api/v1/cae/profiles").set("Authorization", `Bearer ${regularToken}`).expect(404);
+
+    // CAE / HPC profiles endpoint disabled even for admin when flag is disabled
+    await request(app).get("/api/v1/cae/profiles").set("Authorization", `Bearer ${adminToken}`).expect(404);
 
     // Cloud balance endpoint
     await request(app).get("/api/v1/cloud/balance").set("Authorization", `Bearer ${regularToken}`).expect(404);
@@ -108,6 +119,10 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
 
     // Historian endpoint
     await request(app).get("/api/v1/historian/sessions").set("Authorization", `Bearer ${regularToken}`).expect(404);
+
+    // RSS feeds endpoint
+    await request(app).get("/api/v1/social/feeds").set("Authorization", `Bearer ${regularToken}`).expect(404);
+    await request(app).get("/api/v1/social/feeds").set("Authorization", `Bearer ${adminToken}`).expect(404);
   });
 
   await t.test("Admin can list and dynamically toggle flags via /api/v1/admin/flags", async () => {
@@ -120,7 +135,25 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     const caeFlag = listRes.body.flags.find((f: any) => f.key === "cae_cloud_solver");
     assert(caeFlag);
 
-    // Toggle cae_cloud_solver to true globally
+    // 1. Enable cae_cloud_solver for admin only
+    await request(app)
+      .patch("/api/v1/admin/flags/cae_cloud_solver")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ isEnabled: true, allowedRoles: "admin" })
+      .expect(200);
+
+    const adminFlags = await request(app).get("/api/v1/flags").set("Authorization", `Bearer ${adminToken}`).expect(200);
+    assert.strictEqual(adminFlags.body.cae_cloud_solver, true);
+    await request(app).get("/api/v1/cae/profiles").set("Authorization", `Bearer ${adminToken}`).expect(200);
+
+    const userFlagsRoleGated = await request(app)
+      .get("/api/v1/flags")
+      .set("Authorization", `Bearer ${regularToken}`)
+      .expect(200);
+    assert.strictEqual(userFlagsRoleGated.body.cae_cloud_solver, false);
+    await request(app).get("/api/v1/cae/profiles").set("Authorization", `Bearer ${regularToken}`).expect(404);
+
+    // 2. Toggle cae_cloud_solver to true globally
     await request(app)
       .patch("/api/v1/admin/flags/cae_cloud_solver")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -137,14 +170,15 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     // CAE endpoint should now respond with 200
     await request(app).get("/api/v1/cae/profiles").set("Authorization", `Bearer ${regularToken}`).expect(200);
 
-    // Toggle it back off
+    // 3. Toggle it back off
     await request(app)
       .patch("/api/v1/admin/flags/cae_cloud_solver")
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ isEnabled: false, allowedRoles: "admin" })
       .expect(200);
 
-    // Route is 404 again for regular user
+    // Route is 404 again for regular user and admin
     await request(app).get("/api/v1/cae/profiles").set("Authorization", `Bearer ${regularToken}`).expect(404);
+    await request(app).get("/api/v1/cae/profiles").set("Authorization", `Bearer ${adminToken}`).expect(404);
   });
 });

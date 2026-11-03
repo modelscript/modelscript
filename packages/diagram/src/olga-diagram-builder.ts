@@ -91,12 +91,21 @@ export interface OlgaIprLike {
   waterCut?: number | undefined;
 }
 
+export interface OlgaPvtComponentLike {
+  name?: string | undefined;
+  moleFraction: number;
+  criticalTempC: number;
+  criticalPressureBar: number;
+  acentricFactor: number;
+}
+
 export interface OlgaPvtEnvelopeDataLike {
   bubblePoints?: { pressureBar: number; temperatureC: number }[] | undefined;
   dewPoints?: { pressureBar: number; temperatureC: number }[] | undefined;
   criticalPoint?: { pressureBar: number; temperatureC: number } | undefined;
   cricondenbar?: { pressureBar: number; temperatureC: number } | undefined;
   cricondentherm?: { pressureBar: number; temperatureC: number } | undefined;
+  components?: OlgaPvtComponentLike[] | undefined;
 }
 
 export interface OlgaFlowpathLike {
@@ -847,23 +856,136 @@ export function renderOlgaPvtEnvelopeSvg(
     svg += `  <text x="${padL - 12}" y="${py + 4}" text-anchor="end" class="axis-label">${pVal.toFixed(0)} bar</text>\n`;
   }
 
-  // 1. Synthetic or Real 2-Phase Hydrocarbon Envelope Points
-  const bubblePts = pvtData?.bubblePoints || [
-    { temperatureC: -5, pressureBar: 12 },
-    { temperatureC: 10, pressureBar: 42 },
-    { temperatureC: 25, pressureBar: 90 },
-    { temperatureC: 38, pressureBar: 135 },
-    { temperatureC: 45, pressureBar: 152 }, // Critical point vicinity
-  ];
+  // 1. Compute 2-Phase Hydrocarbon Envelope from Wilson K-value flash & critical properties when not explicitly passed
+  const critT = pvtData?.criticalPoint?.temperatureC ?? 45;
+  const critP = pvtData?.criticalPoint?.pressureBar ?? 152;
+  const cricondenthermT = pvtData?.cricondentherm?.temperatureC ?? critT + 53;
+  const cricondenthermP = pvtData?.cricondentherm?.pressureBar ?? Math.max(25, critP * 0.43);
+  const cricondenbarP = pvtData?.cricondenbar?.pressureBar ?? Math.max(critP, critP * 1.04);
 
-  const dewPts = pvtData?.dewPoints || [
-    { temperatureC: 45, pressureBar: 152 },
-    { temperatureC: 62, pressureBar: 140 },
-    { temperatureC: 85, pressureBar: 110 },
-    { temperatureC: 98, pressureBar: 65 }, // Cricondentherm
-    { temperatureC: 92, pressureBar: 25 },
-    { temperatureC: 75, pressureBar: 10 },
-  ];
+  const computeWilsonEnvelope = (): {
+    bubblePoints: { temperatureC: number; pressureBar: number }[];
+    dewPoints: { temperatureC: number; pressureBar: number }[];
+  } => {
+    // Default 5-pseudocomponent natural gas / gas-condensate mixture (C1, C2, C3, nC5, C7+)
+    // scaled to the specified mixture critical temperature and pressure
+    const refCritT_K = 45 + 273.15;
+    const targetCritT_K = critT + 273.15;
+    const tRatio = targetCritT_K / refCritT_K;
+    const pRatio = critP / 152;
+
+    const comps: OlgaPvtComponentLike[] =
+      pvtData?.components && pvtData.components.length > 0
+        ? pvtData.components
+        : [
+            {
+              name: "C1",
+              moleFraction: 0.72,
+              criticalTempC: 190.56 * tRatio - 273.15,
+              criticalPressureBar: 45.99 * pRatio,
+              acentricFactor: 0.011,
+            },
+            {
+              name: "C2",
+              moleFraction: 0.11,
+              criticalTempC: 305.32 * tRatio - 273.15,
+              criticalPressureBar: 48.72 * pRatio,
+              acentricFactor: 0.099,
+            },
+            {
+              name: "C3",
+              moleFraction: 0.07,
+              criticalTempC: 369.83 * tRatio - 273.15,
+              criticalPressureBar: 42.48 * pRatio,
+              acentricFactor: 0.152,
+            },
+            {
+              name: "nC5",
+              moleFraction: 0.06,
+              criticalTempC: 469.7 * tRatio - 273.15,
+              criticalPressureBar: 33.7 * pRatio,
+              acentricFactor: 0.252,
+            },
+            {
+              name: "C7+",
+              moleFraction: 0.04,
+              criticalTempC: 540.2 * tRatio - 273.15,
+              criticalPressureBar: 27.4 * pRatio,
+              acentricFactor: 0.35,
+            },
+          ];
+
+    // Wilson K-factor saturation pressure P_sat,i(T) = Pc_i * exp(5.373 * (1 + omega_i) * (1 - Tc_i / T))
+    const wilsonBubblePressureRaw = (tempC: number): number => {
+      const T = Math.max(150, tempC + 273.15);
+      let pb = 0;
+      for (const c of comps) {
+        const Tc = Math.max(100, c.criticalTempC + 273.15);
+        const psat = c.criticalPressureBar * Math.exp(5.373 * (1 + c.acentricFactor) * (1 - Tc / T));
+        pb += c.moleFraction * psat;
+      }
+      return pb;
+    };
+
+    const wilsonDewPressureRaw = (tempC: number): number => {
+      const T = Math.max(150, tempC + 273.15);
+      let invPd = 0;
+      for (const c of comps) {
+        const Tc = Math.max(100, c.criticalTempC + 273.15);
+        const psat = Math.max(1e-6, c.criticalPressureBar * Math.exp(5.373 * (1 + c.acentricFactor) * (1 - Tc / T)));
+        invPd += c.moleFraction / psat;
+      }
+      return invPd > 0 ? 1 / invPd : 10;
+    };
+
+    const rawCritPb = Math.max(1e-3, wilsonBubblePressureRaw(critT));
+    const bubbleScale = critP / rawCritPb;
+
+    const bubblePoints: { temperatureC: number; pressureBar: number }[] = [];
+    const tStart = Math.max(minT + 5, critT - 50);
+    const nBubble = 6;
+    for (let i = 0; i <= nBubble; i++) {
+      const frac = i / nBubble;
+      const tC = Number((tStart + frac * (critT - tStart)).toFixed(2));
+      const pRaw = wilsonBubblePressureRaw(tC) * bubbleScale;
+      // Blend Wilson saturation locus smoothly to cricondenbar/critical point near T -> critT
+      const pBar =
+        i === nBubble
+          ? critP
+          : Number(Math.max(5, Math.min(cricondenbarP, pRaw * (0.35 + 0.65 * Math.pow(frac, 0.45)))).toFixed(2));
+      bubblePoints.push({ temperatureC: tC, pressureBar: pBar });
+    }
+
+    // Dew point curve from critical point through cricondentherm down to low-pressure tail
+    const rawDewAtCricondentherm = Math.max(1e-3, wilsonDewPressureRaw(cricondenthermT));
+    const dewScale = cricondenthermP / rawDewAtCricondentherm;
+
+    const dewPoints: { temperatureC: number; pressureBar: number }[] = [{ temperatureC: critT, pressureBar: critP }];
+    // Upper retrograde branch from critical point to cricondentherm
+    const upperFracs = [0.35, 0.75, 1.0];
+    for (const s of upperFracs) {
+      const tC = Number((critT + s * (cricondenthermT - critT)).toFixed(2));
+      const pWilson = wilsonDewPressureRaw(tC) * dewScale;
+      const pRetro = critP - Math.pow(s, 1.35) * (critP - cricondenthermP);
+      const pBar = s === 1.0 ? cricondenthermP : Number((0.75 * pRetro + 0.25 * Math.min(critP, pWilson)).toFixed(2));
+      dewPoints.push({ temperatureC: tC, pressureBar: pBar });
+    }
+    // Lower dew branch below cricondentherm
+    const lowerSteps = [0.45, 1.0];
+    const tDewEnd = Math.max(critT + 15, cricondenthermT - 23);
+    for (const s of lowerSteps) {
+      const tC = Number((cricondenthermT - s * (cricondenthermT - tDewEnd)).toFixed(2));
+      const pWilson = wilsonDewPressureRaw(tC) * dewScale;
+      const pBar = Number(Math.max(8, Math.min(cricondenthermP * (1 - 0.55 * s), pWilson)).toFixed(2));
+      dewPoints.push({ temperatureC: tC, pressureBar: pBar });
+    }
+
+    return { bubblePoints, dewPoints };
+  };
+
+  const computedEnvelope = !pvtData?.bubblePoints || !pvtData?.dewPoints ? computeWilsonEnvelope() : undefined;
+  const bubblePts = pvtData?.bubblePoints ?? computedEnvelope!.bubblePoints;
+  const dewPts = pvtData?.dewPoints ?? computedEnvelope!.dewPoints;
 
   // Draw 2-phase envelope filled path
   const envPath = [
@@ -878,8 +1000,6 @@ export function renderOlgaPvtEnvelopeSvg(
   svg += `  <text x="${mapT(55)}" y="${mapP(75)}" class="axis-label" fill="#38bdf8" fill-opacity="0.65" font-weight="600">2-PHASE GAS + LIQUID</text>\n`;
 
   // Critical Point Marker
-  const critT = pvtData?.criticalPoint?.temperatureC ?? 45;
-  const critP = pvtData?.criticalPoint?.pressureBar ?? 152;
   const cX = mapT(critT);
   const cY = mapP(critP);
   svg += `  <circle cx="${cX}" cy="${cY}" r="5" fill="#f43f5e" stroke="#fff" stroke-width="1.5" />\n`;

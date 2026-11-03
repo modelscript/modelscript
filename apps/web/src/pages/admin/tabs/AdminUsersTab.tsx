@@ -1,11 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckCircleIcon, EyeIcon, LockIcon, PlusIcon, ShieldCheckIcon, TrashIcon } from "@primer/octicons-react";
-import React, { useState } from "react";
+import {
+  CheckCircleIcon,
+  EyeIcon,
+  KebabHorizontalIcon,
+  LockIcon,
+  PlusIcon,
+  ShieldCheckIcon,
+  TrashIcon,
+} from "@primer/octicons-react";
+import React, { useEffect, useRef, useState } from "react";
 import { type AdminUserForensics, getAdminUserForensics } from "../../../api/admin";
 import Box from "../../../components/Box";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import {
   ActionButton,
+  ActionMenuDropdown,
+  ActionMenuItem,
   Badge,
   Card,
   FilterPill,
@@ -15,6 +26,7 @@ import {
   Select,
   StatGrid,
   Table,
+  TableWrapper,
   Textarea,
 } from "../styles";
 import type { AdminUsersStatusBreakdown, AdminUserSummary } from "../types";
@@ -44,6 +56,17 @@ export interface AdminUsersTabProps {
     },
   ) => Promise<void>;
   onAdjustUserCredits?: ((userId: number, amount: number, reason: string) => Promise<void>) | undefined;
+  onCreateUser?:
+    | ((payload: {
+        username: string;
+        email: string;
+        password: string;
+        displayName?: string | undefined;
+        role?: "user" | "moderator" | "auditor" | "admin" | undefined;
+        initialCredits?: number | undefined;
+        emailVerified?: boolean | undefined;
+      }) => Promise<void>)
+    | undefined;
   initialForensics?: AdminUserForensics | null | undefined;
   loading: boolean;
 }
@@ -62,9 +85,27 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
   setUserPageOffset,
   onModerateUser,
   onAdjustUserCredits,
+  onCreateUser,
   initialForensics = null,
   loading,
 }) => {
+  const hasBilling = useFeatureFlag("billing_stripe_live");
+  const [openMenuUserId, setOpenMenuUserId] = useState<number | null>(null);
+  const menuContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (openMenuUserId === null) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (menuContainerRef.current && !menuContainerRef.current.contains(e.target as Node)) {
+        setOpenMenuUserId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [openMenuUserId]);
+
   const [selectedUser, setSelectedUser] = useState<AdminUserSummary | null>(null);
   const [targetStatus, setTargetStatus] = useState<"active" | "frozen" | "suspended">("active");
   const [targetRole, setTargetRole] = useState<"user" | "moderator" | "auditor" | "admin">("user");
@@ -78,6 +119,15 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
   const [creditModalUser, setCreditModalUser] = useState<AdminUserSummary | null>(null);
   const [creditDelta, setCreditDelta] = useState<string>("100");
   const [creditReason, setCreditReason] = useState<string>("Admin compute credit grant");
+
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"user" | "moderator" | "auditor" | "admin">("user");
+  const [newCredits, setNewCredits] = useState("100");
+  const [newEmailVerified, setNewEmailVerified] = useState(true);
 
   const [forensicsData, setForensicsData] = useState<AdminUserForensics | null>(initialForensics);
   const [forensicsLoading, setForensicsLoading] = useState(false);
@@ -137,6 +187,28 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
     if (!Number.isFinite(amount) || amount === 0) return;
     await onAdjustUserCredits(creditModalUser.id, amount, creditReason.trim() || "Admin compute credit adjustment");
     setCreditModalUser(null);
+  };
+
+  const handleConfirmCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onCreateUser || !newUsername.trim() || !newEmail.trim() || !newPassword) return;
+    await onCreateUser({
+      username: newUsername.trim(),
+      email: newEmail.trim(),
+      password: newPassword,
+      ...(newDisplayName.trim() ? { displayName: newDisplayName.trim() } : {}),
+      role: newRole,
+      initialCredits: hasBilling ? Math.max(0, Number(newCredits) || 0) : undefined,
+      emailVerified: newEmailVerified,
+    });
+    setCreateModalOpen(false);
+    setNewUsername("");
+    setNewEmail("");
+    setNewDisplayName("");
+    setNewPassword("");
+    setNewRole("user");
+    setNewCredits("100");
+    setNewEmailVerified(true);
   };
 
   const activeCount = statusBreakdown ? statusBreakdown.active : users.filter((u) => u.status === "active").length;
@@ -201,172 +273,251 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
           </FilterPill>
         </Box>
 
-        <Input
-          style={{ width: "280px" }}
-          placeholder="Search @username, email, or domain..."
-          value={userSearchQuery}
-          onChange={(e) => setUserSearchQuery(e.target.value)}
-        />
+        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+          <Input
+            style={{ width: "260px" }}
+            placeholder="Search @username, email, or domain..."
+            value={userSearchQuery}
+            onChange={(e) => setUserSearchQuery(e.target.value)}
+          />
+          {onCreateUser && (
+            <ActionButton $variant="primary" type="button" disabled={loading} onClick={() => setCreateModalOpen(true)}>
+              <PlusIcon size={13} />
+              <span>Create User</span>
+            </ActionButton>
+          )}
+        </Box>
       </Box>
 
-      <Table>
-        <thead>
-          <tr>
-            <th>Account</th>
-            <th>Role &amp; Security</th>
-            <th>Status</th>
-            <th>Activity &amp; Reports</th>
-            <th>Credits</th>
-            <th style={{ textAlign: "right" }}>Governance Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.length === 0 ? (
+      <TableWrapper>
+        <Table style={{ minWidth: hasBilling ? "860px" : "740px" }}>
+          <thead>
             <tr>
-              <td colSpan={6} style={{ textAlign: "center", color: "var(--color-text-muted)", padding: "24px" }}>
-                No user accounts match the current filters.
-              </td>
+              <th>Account</th>
+              <th>Role &amp; Security</th>
+              <th>Status</th>
+              <th>Activity &amp; Reports</th>
+              {hasBilling && <th>Credits</th>}
+              <th style={{ textAlign: "right", whiteSpace: "nowrap" }}>Governance Actions</th>
             </tr>
-          ) : (
-            users.map((u) => (
-              <tr key={u.id}>
-                <td>
-                  <Box display="flex" flexDirection="column">
-                    <span style={{ fontWeight: 700, fontSize: "13px" }}>
-                      @{u.username} <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>#{u.id}</span>
-                    </span>
-                    <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
-                      {u.email || (u.remote_domain ? `Federated (${u.remote_domain})` : "No email")}
-                    </span>
-                  </Box>
-                </td>
-                <td>
-                  <Box display="flex" gap={1} flexWrap="wrap">
-                    <Badge
-                      $variant={
-                        u.account_type === "admin"
-                          ? "approved"
-                          : u.account_type === "moderator" || u.account_type === "auditor"
-                            ? "warning"
-                            : "neutral"
-                      }
-                    >
-                      {u.account_type}
-                    </Badge>
-                    {u.totp_enabled === 1 && <Badge $variant="success">2FA</Badge>}
-                    {u.email_verified === 1 && <Badge $variant="neutral">Verified</Badge>}
-                  </Box>
-                </td>
-                <td>
-                  <Badge $variant={u.status === "active" ? "success" : u.status === "frozen" ? "warning" : "danger"}>
-                    {u.status}
-                  </Badge>
-                </td>
-                <td>
-                  <Box display="flex" flexDirection="column" fontSize="12px">
-                    <span>{u.post_count} posts</span>
-                    <span
-                      style={{
-                        color: u.report_count > 0 ? "var(--ms-danger)" : "var(--color-text-muted)",
-                      }}
-                    >
-                      {u.report_count} reports ({u.resolved_violation_count} confirmed)
-                    </span>
-                  </Box>
-                </td>
-                <td style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>{u.credit_balance ?? 0}</span>
-                    {onAdjustUserCredits && (
-                      <ActionButton
-                        $variant="secondary"
-                        disabled={loading}
-                        onClick={() => {
-                          setCreditModalUser(u);
-                          setCreditDelta("100");
-                          setCreditReason("Admin compute credit grant");
-                        }}
-                        title="Grant or deduct compute credits"
-                      >
-                        <PlusIcon size={12} />
-                        <span>Credits</span>
-                      </ActionButton>
-                    )}
-                  </Box>
-                </td>
-                <td style={{ textAlign: "right" }}>
-                  <Box display="flex" justifyContent="flex-end" gap={1} flexWrap="wrap">
-                    {u.status !== "active" && (
-                      <ActionButton
-                        $variant="secondary"
-                        disabled={loading}
-                        onClick={() => openGovernanceModal(u, "active")}
-                      >
-                        <CheckCircleIcon size={13} />
-                        <span>Restore</span>
-                      </ActionButton>
-                    )}
-                    {u.status !== "frozen" && (
-                      <ActionButton
-                        $variant="secondary"
-                        disabled={loading}
-                        onClick={() => openGovernanceModal(u, "frozen")}
-                      >
-                        <LockIcon size={13} />
-                        <span>Freeze</span>
-                      </ActionButton>
-                    )}
-                    {u.status !== "suspended" && (
-                      <ActionButton
-                        $variant="danger"
-                        disabled={loading}
-                        onClick={() => openGovernanceModal(u, "suspended")}
-                      >
-                        <TrashIcon size={13} />
-                        <span>Suspend</span>
-                      </ActionButton>
-                    )}
-                    {!u.email_verified && !u.remote_domain && (
-                      <ActionButton
-                        $variant="secondary"
-                        disabled={loading}
-                        onClick={() => void onModerateUser(u.id, { emailVerified: true })}
-                        title="Manually verify user email address"
-                      >
-                        <CheckCircleIcon size={13} />
-                        <span>Verify Email</span>
-                      </ActionButton>
-                    )}
-                    {u.totp_enabled === 1 && (
-                      <ActionButton
-                        $variant="secondary"
-                        disabled={loading}
-                        onClick={() => setConfirmReset2FAUser(u)}
-                        title="Emergency reset two-factor authentication (TOTP) for locked-out user"
-                      >
-                        <ShieldCheckIcon size={13} />
-                        <span>Reset 2FA</span>
-                      </ActionButton>
-                    )}
-                    <ActionButton
-                      $variant="secondary"
-                      disabled={loading || forensicsLoading}
-                      onClick={() => void handleOpenForensics(u.id)}
-                    >
-                      <EyeIcon size={13} />
-                      <span>Forensics</span>
-                    </ActionButton>
-                    <ActionButton $variant="secondary" disabled={loading} onClick={() => openGovernanceModal(u)}>
-                      <ShieldCheckIcon size={13} />
-                      <span>Manage...</span>
-                    </ActionButton>
-                  </Box>
+          </thead>
+          <tbody>
+            {users.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={hasBilling ? 6 : 5}
+                  style={{ textAlign: "center", color: "var(--color-text-muted)", padding: "24px" }}
+                >
+                  No user accounts match the current filters.
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </Table>
+            ) : (
+              users.map((u) => (
+                <tr key={u.id}>
+                  <td>
+                    <Box display="flex" flexDirection="column">
+                      <span style={{ fontWeight: 700, fontSize: "13px" }}>
+                        @{u.username} <span style={{ color: "var(--color-text-muted)", fontWeight: 400 }}>#{u.id}</span>
+                      </span>
+                      <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                        {u.email || (u.remote_domain ? `Federated (${u.remote_domain})` : "No email")}
+                      </span>
+                    </Box>
+                  </td>
+                  <td>
+                    <Box display="flex" gap={1} flexWrap="wrap">
+                      <Badge
+                        $variant={
+                          u.account_type === "admin"
+                            ? "approved"
+                            : u.account_type === "moderator" || u.account_type === "auditor"
+                              ? "warning"
+                              : "neutral"
+                        }
+                      >
+                        {u.account_type}
+                      </Badge>
+                      {u.totp_enabled === 1 && <Badge $variant="success">2FA</Badge>}
+                      {u.email_verified === 1 && <Badge $variant="neutral">Verified</Badge>}
+                    </Box>
+                  </td>
+                  <td>
+                    <Badge
+                      $variant={
+                        u.status === "active"
+                          ? "success"
+                          : u.status === "frozen" || u.status === "pending_verification"
+                            ? "warning"
+                            : "danger"
+                      }
+                    >
+                      {u.status}
+                    </Badge>
+                  </td>
+                  <td>
+                    <Box display="flex" flexDirection="column" fontSize="12px">
+                      <span>{u.post_count} posts</span>
+                      <span
+                        style={{
+                          color: u.report_count > 0 ? "var(--ms-danger)" : "var(--color-text-muted)",
+                        }}
+                      >
+                        {u.report_count} reports ({u.resolved_violation_count} confirmed)
+                      </span>
+                    </Box>
+                  </td>
+                  {hasBilling && (
+                    <td style={{ fontSize: "12px", color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>
+                          {u.credit_balance ?? 0}
+                        </span>
+                        {onAdjustUserCredits && (
+                          <ActionButton
+                            $variant="secondary"
+                            disabled={loading}
+                            onClick={() => {
+                              setCreditModalUser(u);
+                              setCreditDelta("100");
+                              setCreditReason("Admin compute credit grant");
+                            }}
+                            title="Grant or deduct compute credits"
+                          >
+                            <PlusIcon size={12} />
+                            <span>Credits</span>
+                          </ActionButton>
+                        )}
+                      </Box>
+                    </td>
+                  )}
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <Box display="inline-flex" alignItems="center" justifyContent="flex-end" gap={1}>
+                      <ActionButton
+                        $variant="secondary"
+                        disabled={loading || forensicsLoading}
+                        onClick={() => void handleOpenForensics(u.id)}
+                        title="Inspect user forensic dossier and activity"
+                      >
+                        <EyeIcon size={13} />
+                        <span>Forensics</span>
+                      </ActionButton>
+
+                      <ActionButton
+                        $variant="secondary"
+                        disabled={loading}
+                        onClick={() => openGovernanceModal(u)}
+                        title="Open full governance management dialog"
+                      >
+                        <ShieldCheckIcon size={13} />
+                        <span>Manage</span>
+                      </ActionButton>
+
+                      <div
+                        style={{ position: "relative" }}
+                        ref={openMenuUserId === u.id ? menuContainerRef : undefined}
+                      >
+                        <ActionButton
+                          $variant="secondary"
+                          disabled={loading}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuUserId((prev) => (prev === u.id ? null : u.id));
+                          }}
+                          title="More governance actions"
+                          aria-label={`More governance actions for @${u.username}`}
+                          style={{ padding: "6px 8px" }}
+                        >
+                          <KebabHorizontalIcon size={14} />
+                        </ActionButton>
+
+                        {openMenuUserId === u.id && (
+                          <ActionMenuDropdown onClick={(e) => e.stopPropagation()}>
+                            {u.status !== "active" && (
+                              <ActionMenuItem
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuUserId(null);
+                                  openGovernanceModal(u, "active");
+                                }}
+                              >
+                                <CheckCircleIcon size={13} />
+                                <span>Restore Account</span>
+                              </ActionMenuItem>
+                            )}
+                            {u.status !== "frozen" && (
+                              <ActionMenuItem
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuUserId(null);
+                                  openGovernanceModal(u, "frozen");
+                                }}
+                              >
+                                <LockIcon size={13} />
+                                <span>Freeze Account</span>
+                              </ActionMenuItem>
+                            )}
+                            {u.status !== "suspended" && (
+                              <ActionMenuItem
+                                $danger
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuUserId(null);
+                                  openGovernanceModal(u, "suspended");
+                                }}
+                              >
+                                <TrashIcon size={13} />
+                                <span>Suspend Account</span>
+                              </ActionMenuItem>
+                            )}
+                            {!u.email_verified && !u.remote_domain && (
+                              <ActionMenuItem
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuUserId(null);
+                                  void onModerateUser(u.id, { emailVerified: true });
+                                }}
+                              >
+                                <CheckCircleIcon size={13} />
+                                <span>Verify Email</span>
+                              </ActionMenuItem>
+                            )}
+                            {u.totp_enabled === 1 && (
+                              <ActionMenuItem
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuUserId(null);
+                                  setConfirmReset2FAUser(u);
+                                }}
+                              >
+                                <ShieldCheckIcon size={13} />
+                                <span>Reset 2FA</span>
+                              </ActionMenuItem>
+                            )}
+                            {hasBilling && onAdjustUserCredits && (
+                              <ActionMenuItem
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenuUserId(null);
+                                  setCreditModalUser(u);
+                                  setCreditDelta("100");
+                                  setCreditReason("Admin compute credit grant");
+                                }}
+                              >
+                                <PlusIcon size={13} />
+                                <span>Adjust Credits</span>
+                              </ActionMenuItem>
+                            )}
+                          </ActionMenuDropdown>
+                        )}
+                      </div>
+                    </Box>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </Table>
+      </TableWrapper>
 
       {setUserPageOffset && effectiveTotal > 50 && (
         <Box display="flex" justifyContent="space-between" alignItems="center" mt={3}>
@@ -408,11 +559,15 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
               <span>
                 Role: <strong>{forensicsData.user.account_type}</strong>
               </span>
-              <span>•</span>
-              <span>
-                Balance: <strong>{forensicsData.user.credit_balance} cr</strong> (Spent:{" "}
-                {forensicsData.user.total_spent} cr)
-              </span>
+              {hasBilling && (
+                <>
+                  <span>•</span>
+                  <span>
+                    Balance: <strong>{forensicsData.user.credit_balance} cr</strong> (Spent:{" "}
+                    {forensicsData.user.total_spent} cr)
+                  </span>
+                </>
+              )}
               <span>•</span>
               <span>
                 2FA: <strong>{forensicsData.user.totp_enabled ? "Enabled" : "Off"}</strong>
@@ -558,7 +713,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
                   checked={markEmailVerified}
                   onChange={(e) => setMarkEmailVerified(e.target.checked)}
                 />
-                Manually mark email address as verified &amp; grant initial compute credits
+                Manually mark email address as verified
               </label>
             )}
 
@@ -635,7 +790,7 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
         </ModalOverlay>
       )}
 
-      {creditModalUser && (
+      {hasBilling && creditModalUser && (
         <ModalOverlay>
           <ModalBox>
             <span style={{ fontWeight: 800, fontSize: "16px" }}>
@@ -684,6 +839,125 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
                 Apply Credit Adjustment
               </ActionButton>
             </Box>
+          </ModalBox>
+        </ModalOverlay>
+      )}
+
+      {createModalOpen && (
+        <ModalOverlay onClick={() => setCreateModalOpen(false)}>
+          <ModalBox
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Create User Account"
+          >
+            <span style={{ fontWeight: 800, fontSize: "16px" }}>Create User Account</span>
+            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+              Directly provision an account on this instance (bypasses public registration mode restrictions).
+            </span>
+
+            <form
+              onSubmit={(e) => void handleConfirmCreateUser(e)}
+              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+            >
+              <Box display="flex" flexDirection="column" gap={1}>
+                <label style={{ fontSize: "12px", fontWeight: 600 }}>Username</label>
+                <Input
+                  placeholder="e.g. alice_chen"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  required
+                  minLength={3}
+                  maxLength={32}
+                  autoFocus
+                />
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={1}>
+                <label style={{ fontSize: "12px", fontWeight: 600 }}>Email Address</label>
+                <Input
+                  type="email"
+                  placeholder="e.g. alice@ansatz.social"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  required
+                />
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={1}>
+                <label style={{ fontSize: "12px", fontWeight: 600 }}>Display Name (optional)</label>
+                <Input
+                  placeholder="e.g. Dr. Alice Chen"
+                  value={newDisplayName}
+                  onChange={(e) => setNewDisplayName(e.target.value)}
+                />
+              </Box>
+
+              <Box display="flex" flexDirection="column" gap={1}>
+                <label style={{ fontSize: "12px", fontWeight: 600 }}>Initial Password (min. 8 characters)</label>
+                <Input
+                  type="password"
+                  placeholder="Initial password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={8}
+                />
+              </Box>
+
+              <Box display="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <Box display="flex" flexDirection="column" gap={1}>
+                  <label style={{ fontSize: "12px", fontWeight: 600 }}>RBAC Role</label>
+                  <Select
+                    value={newRole}
+                    onChange={(e) => setNewRole(e.target.value as "user" | "moderator" | "auditor" | "admin")}
+                  >
+                    <option value="user">user — Standard Member</option>
+                    <option value="moderator">moderator — Moderator</option>
+                    <option value="auditor">auditor — Compliance Auditor</option>
+                    <option value="admin">admin — Instance Admin</option>
+                  </Select>
+                </Box>
+
+                {hasBilling && (
+                  <Box display="flex" flexDirection="column" gap={1}>
+                    <label style={{ fontSize: "12px", fontWeight: 600 }}>Initial Compute Credits</label>
+                    <Input type="number" min="0" value={newCredits} onChange={(e) => setNewCredits(e.target.value)} />
+                  </Box>
+                )}
+              </Box>
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "12px",
+                  color: "var(--color-text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={newEmailVerified}
+                  onChange={(e) => setNewEmailVerified(e.target.checked)}
+                />
+                Mark email address as pre-verified (uncheck to send verification email)
+              </label>
+
+              <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
+                <ActionButton type="button" $variant="secondary" onClick={() => setCreateModalOpen(false)}>
+                  Cancel
+                </ActionButton>
+                <ActionButton
+                  type="submit"
+                  $variant="primary"
+                  disabled={loading || !newUsername.trim() || !newEmail.trim() || newPassword.length < 8}
+                >
+                  Create Account
+                </ActionButton>
+              </Box>
+            </form>
           </ModalBox>
         </ModalOverlay>
       )}

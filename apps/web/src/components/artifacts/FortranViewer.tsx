@@ -34,7 +34,7 @@ interface FortranSymbolPill {
 const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
-  height: ${(p) => (p.$isFullScreen ? "100%" : "auto")};
+  height: ${(p) => (p.$isFullScreen ? "100%" : "440px")};
   background: var(--color-canvas-default);
   border-radius: ${(p) => (p.$isFullScreen ? "0" : "6px")};
   border: ${(p) => (p.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
@@ -127,8 +127,8 @@ const SymbolChip = styled.button<{ $active: boolean }>`
 const CodePane = styled.div<{ $isFullScreen?: boolean | undefined }>`
   background: var(--color-canvas-default);
   overflow: auto;
-  max-height: ${(p) => (p.$isFullScreen ? "100%" : "440px")};
-  min-height: ${(p) => (p.$isFullScreen ? "100%" : "320px")};
+  max-height: 100%;
+  min-height: 0;
   font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
