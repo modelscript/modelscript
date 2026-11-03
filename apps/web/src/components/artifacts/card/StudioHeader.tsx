@@ -5,14 +5,18 @@ import {
   DownloadIcon,
   GitCompareIcon,
   InfoIcon,
+  KebabHorizontalIcon,
   LinkIcon,
   PlayIcon,
+  RepoForkedIcon,
   ScreenFullIcon,
+  ServerIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { Text } from "@primer/react";
+import { ActionList, ActionMenu, IconButton, Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import styled from "styled-components";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
 import {
   buildEditorUrlForArtifact,
@@ -22,6 +26,25 @@ import {
 import { sanitizeHttpUrl } from "../../../util/url";
 import Box from "../../Box";
 import { VsCodeIcon } from "../../icons/VsCodeIcon";
+
+const StudioHeaderBar = styled(Box)`
+  .studio-mobile-menu {
+    display: none;
+  }
+
+  @media (max-width: 767px) {
+    padding: 8px 12px !important;
+    gap: 8px;
+
+    .studio-hide-mobile {
+      display: none !important;
+    }
+
+    .studio-mobile-menu {
+      display: inline-flex;
+    }
+  }
+`;
 
 export interface StudioHeaderProps {
   artifact: any;
@@ -64,8 +87,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
     view_config: viewConfig,
   });
 
-  const handleOpenVsCode = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleOpenVsCode = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    e?.stopPropagation?.();
     openArtifactInVsCodeWindow({
       artifactId,
       viewType: artifact?.view_type,
@@ -74,8 +97,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
     });
   };
 
-  const handleOpenEditor = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleOpenEditor = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    e?.stopPropagation?.();
     if (isMultiFile) {
       handleOpenVsCode(e);
       return;
@@ -90,17 +113,19 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
     );
   };
 
+  const downloadAssetUrl = sanitizeHttpUrl(viewConfig.url || viewConfig.downloadUrl, { allowRelative: true });
+
   return (
-    <Box
+    <StudioHeaderBar
       p={3}
       display="flex"
       justifyContent="space-between"
       alignItems="center"
-      bg="rgba(15, 23, 42, 0.95)"
-      borderBottom="1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1))"
-      style={{ backdropFilter: "blur(12px)" }}
+      bg="var(--color-canvas-subtle, rgba(15, 23, 42, 0.95))"
+      borderBottom="1px solid var(--color-border-default, rgba(255, 255, 255, 0.1))"
+      style={{ backdropFilter: "blur(12px)", minWidth: 0 }}
     >
-      <Box display="flex" alignItems="center" gap={3}>
+      <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0, flex: 1 }}>
         {isFullScreen && (
           <button
             onClick={(e) => {
@@ -109,11 +134,11 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               onExitFullScreen();
             }}
             style={{
-              background: "rgba(255, 255, 255, 0.08)",
-              border: "1px solid rgba(255, 255, 255, 0.15)",
-              color: "#e2e8f0",
+              background: "var(--color-canvas-default, rgba(255, 255, 255, 0.08))",
+              border: "1px solid var(--color-border-default, rgba(255, 255, 255, 0.15))",
+              color: "var(--color-fg-default, #e2e8f0)",
               cursor: "pointer",
-              padding: "6px 12px",
+              padding: "6px 10px",
               borderRadius: "8px",
               display: "flex",
               alignItems: "center",
@@ -121,13 +146,24 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               fontSize: "12px",
               fontWeight: 600,
               fontFamily: "var(--font-mono, monospace)",
+              flexShrink: 0,
             }}
             title="Exit studio mode (Esc)"
           >
-            <XIcon size={14} /> Exit Studio
+            <XIcon size={14} /> <span className="studio-hide-mobile">Exit Studio</span>
           </button>
         )}
-        <Text style={{ color: "white", fontWeight: "bold", fontSize: "15px" }}>
+        <Text
+          style={{
+            color: "var(--color-fg-default, white)",
+            fontWeight: "bold",
+            fontSize: "15px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            minWidth: 0,
+          }}
+        >
           {artifact.title || artifact.name || artifact.view_type}
         </Text>
         <span
@@ -140,12 +176,14 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             borderRadius: "6px",
             fontWeight: 700,
             fontFamily: "var(--font-mono, monospace)",
+            flexShrink: 0,
           }}
         >
           {artifact.view_type?.toUpperCase()}
         </span>
         {(viewConfig.provenance || viewConfig.solverInfo || viewConfig.profile) && (
           <span
+            className="studio-hide-mobile"
             style={{
               fontSize: "10px",
               background: "rgba(139, 92, 246, 0.15)",
@@ -155,6 +193,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               borderRadius: "6px",
               fontWeight: 600,
               fontFamily: "var(--font-mono, monospace)",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
           >
             ⚡ {viewConfig.provenance?.solver?.toUpperCase() || viewConfig.solverInfo?.name} ·{" "}
@@ -164,6 +204,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
         {resolvedForkedFromId && (
           <>
             <span
+              className="studio-hide-mobile"
               style={{
                 fontSize: "10px",
                 background: "rgba(245, 158, 11, 0.15)",
@@ -177,6 +218,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "4px",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
               title={`Forked from Artifact #${resolvedForkedFromId}${paramDeltaCount !== null ? ` (${paramDeltaCount} parameter${paramDeltaCount === 1 ? "" : "s"} changed)` : ""}`}
               onClick={(e) => {
@@ -201,6 +244,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             </span>
             <button
               type="button"
+              className="studio-hide-mobile"
               style={{
                 fontSize: "10px",
                 background: "rgba(6, 182, 212, 0.15)",
@@ -214,6 +258,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "4px",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
               title="Compare model changes against upstream parent"
               onClick={(e) => {
@@ -227,10 +273,11 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
         )}
       </Box>
 
-      <Box display="flex" alignItems="center" gap={2}>
+      <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
         {isFullScreen && (
           <>
             <button
+              className="studio-hide-mobile"
               onClick={(e) => {
                 e.stopPropagation();
                 onCopyLink();
@@ -254,9 +301,10 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               {copiedLink ? "Copied" : "Share"}
             </button>
 
-            {sanitizeHttpUrl(viewConfig.url || viewConfig.downloadUrl, { allowRelative: true }) && (
+            {downloadAssetUrl && (
               <a
-                href={sanitizeHttpUrl(viewConfig.url || viewConfig.downloadUrl, { allowRelative: true })}
+                className="studio-hide-mobile"
+                href={downloadAssetUrl}
                 download
                 target="_blank"
                 rel="noopener noreferrer"
@@ -281,6 +329,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             )}
             {viewConfig.provenance && viewConfig.jobId && (
               <button
+                className="studio-hide-mobile"
                 onClick={(e) => {
                   e.stopPropagation();
                   window.open(
@@ -310,6 +359,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             {hasCloudSolverFlag && onRunOnHpc && (
               <button
                 type="button"
+                className="studio-hide-mobile"
                 onClick={(e) => {
                   e.stopPropagation();
                   onRunOnHpc();
@@ -334,6 +384,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             )}
             {!isMultiFile && (
               <button
+                className="studio-hide-mobile"
                 onClick={handleOpenEditor}
                 style={{
                   background: "linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.2))",
@@ -354,6 +405,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               </button>
             )}
             <button
+              className="studio-hide-mobile"
               onClick={handleOpenVsCode}
               style={{
                 background: "linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(59, 130, 246, 0.18))",
@@ -394,8 +446,102 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
           }}
           title="Toggle Telemetry Sidebar"
         >
-          <InfoIcon size={14} /> Inspector
+          <InfoIcon size={14} /> <span className="studio-hide-mobile">Inspector</span>
         </button>
+
+        {isFullScreen && (
+          <div className="studio-mobile-menu" onClick={(e) => e.stopPropagation()}>
+            <ActionMenu>
+              <ActionMenu.Anchor>
+                <IconButton
+                  icon={KebabHorizontalIcon}
+                  size="small"
+                  variant="invisible"
+                  aria-label="More studio actions"
+                  title="More studio actions"
+                />
+              </ActionMenu.Anchor>
+              <ActionMenu.Overlay width="medium" align="end">
+                <ActionList>
+                  <ActionList.Item
+                    onSelect={() => {
+                      if (navigator.share) {
+                        navigator
+                          .share({
+                            title: artifact.title || artifact.name || "Ansatz Artifact",
+                            url: `${window.location.origin}/render-artifact/${artifactId}`,
+                          })
+                          .catch(() => onCopyLink());
+                      } else {
+                        onCopyLink();
+                      }
+                    }}
+                  >
+                    <ActionList.LeadingVisual>
+                      <LinkIcon />
+                    </ActionList.LeadingVisual>
+                    {copiedLink ? "Copied Link" : "Share / Copy Link"}
+                  </ActionList.Item>
+                  {!isMultiFile && (
+                    <ActionList.Item onSelect={(e) => handleOpenEditor(e)}>
+                      <ActionList.LeadingVisual>
+                        <PlayIcon />
+                      </ActionList.LeadingVisual>
+                      Open in Playground
+                    </ActionList.Item>
+                  )}
+                  {hasCloudSolverFlag && onRunOnHpc && (
+                    <ActionList.Item onSelect={() => onRunOnHpc()}>
+                      <ActionList.LeadingVisual>
+                        <ServerIcon />
+                      </ActionList.LeadingVisual>
+                      Run on Cloud HPC
+                    </ActionList.Item>
+                  )}
+                  {viewConfig.provenance && viewConfig.jobId && (
+                    <ActionList.Item
+                      onSelect={() => {
+                        window.open(
+                          `/api/v1/cae/jobs/${encodeURIComponent(String(viewConfig.jobId))}/reproduce-spec`,
+                          "_blank",
+                          "noopener,noreferrer",
+                        );
+                      }}
+                    >
+                      <ActionList.LeadingVisual>
+                        <RepoForkedIcon />
+                      </ActionList.LeadingVisual>
+                      Fork &amp; Reproduce
+                    </ActionList.Item>
+                  )}
+                  {resolvedForkedFromId && (
+                    <ActionList.Item onSelect={() => onOpenDiff()}>
+                      <ActionList.LeadingVisual>
+                        <GitCompareIcon />
+                      </ActionList.LeadingVisual>
+                      View Changes vs. #{resolvedForkedFromId}
+                    </ActionList.Item>
+                  )}
+                  {downloadAssetUrl && (
+                    <ActionList.LinkItem href={downloadAssetUrl} download target="_blank" rel="noopener noreferrer">
+                      <ActionList.LeadingVisual>
+                        <DownloadIcon />
+                      </ActionList.LeadingVisual>
+                      Download Asset
+                    </ActionList.LinkItem>
+                  )}
+                  <ActionList.Item onSelect={(e) => handleOpenVsCode(e)}>
+                    <ActionList.LeadingVisual>
+                      <VsCodeIcon size={14} color="#38bdf8" />
+                    </ActionList.LeadingVisual>
+                    Open in VS Code
+                  </ActionList.Item>
+                </ActionList>
+              </ActionMenu.Overlay>
+            </ActionMenu>
+          </div>
+        )}
+
         {!isFullScreen && onEnterFullScreen && (
           <button
             onClick={(e) => {
@@ -421,6 +567,6 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
           </button>
         )}
       </Box>
-    </Box>
+    </StudioHeaderBar>
   );
 };

@@ -4,7 +4,7 @@
 import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
-import styled from "styled-components";
+import styledImport from "styled-components";
 import { useAuth } from "../AuthContext";
 import { blockUser, followUser, getUserProfile, unblockUser, unfollowUser } from "../api";
 import { getAvatarUrl, getBannerUrl } from "../util/avatar";
@@ -12,6 +12,8 @@ import { parseFederatedHandle } from "../util/federation";
 import { safeCssImageUrl } from "../util/url";
 import Box from "./Box";
 import FederatedDomainPill from "./FederatedDomainPill";
+
+const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
 
 const PopoverContainer = styled.div`
   position: absolute;

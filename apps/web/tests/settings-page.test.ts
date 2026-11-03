@@ -122,4 +122,80 @@ describe("Settings Page, Deep Search Index, Dynamic Instance URLs & Accessibilit
       "theme.ts must apply data-density, data-reduced-motion, and data-high-contrast attributes",
     );
   });
+
+  it("index.html and App.tsx prevent font and page flickering on load", () => {
+    const indexHtml = fs.readFileSync(path.join(WEB_SRC_DIR, "../index.html"), "utf-8");
+    assert.ok(
+      indexHtml.includes("https://fonts.googleapis.com") && indexHtml.includes("https://fonts.gstatic.com"),
+      "index.html must preconnect to fonts.googleapis.com and fonts.gstatic.com",
+    );
+    assert.ok(
+      indexHtml.includes("family=Inter") && indexHtml.includes("family=JetBrains+Mono"),
+      "index.html must link Inter and JetBrains Mono fonts upfront",
+    );
+    assert.ok(
+      indexHtml.includes('html[data-theme="dark"]') && indexHtml.includes("#0a0f1c"),
+      "index.html must define critical inline dark styles to prevent white flash",
+    );
+    assert.ok(
+      indexHtml.includes("modelscript_display_accessibility"),
+      "index.html must pre-hydrate display and accessibility preferences in head",
+    );
+
+    const appSrc = fs.readFileSync(path.join(WEB_SRC_DIR, "App.tsx"), "utf-8");
+    assert.ok(
+      !appSrc.includes("if (isLoading || isFlagsLoading)"),
+      "App.tsx must not gate the entire application with an unstyled loading fallback",
+    );
+
+    const cssSrc = fs.readFileSync(path.join(WEB_SRC_DIR, "index.css"), "utf-8");
+    assert.ok(
+      cssSrc.includes("theme-transitioning"),
+      "index.css must scope theme transitions to theme-transitioning class",
+    );
+  });
+
+  it("prevents font and page flickering on scroll down and back up", () => {
+    // 1. packages/diagram must never include @import url() in generated SVGs
+    const svgRendererPath = path.resolve(WEB_SRC_DIR, "../../../packages/diagram/src/svg-renderer.ts");
+    const diffRendererPath = path.resolve(WEB_SRC_DIR, "../../../packages/diagram/src/visual-diff-renderer.ts");
+    const svgRendererSrc = fs.readFileSync(svgRendererPath, "utf-8");
+    const diffRendererSrc = fs.readFileSync(diffRendererPath, "utf-8");
+    assert.ok(!svgRendererSrc.includes("@import url"), "svg-renderer.ts must not inject @import url into SVG defs");
+    assert.ok(
+      !diffRendererSrc.includes("@import url"),
+      "visual-diff-renderer.ts must not inject @import url into SVG defs",
+    );
+
+    // 2. Sanitizers in web app must strip any @import rules from embedded SVGs
+    const polyglotViewerSrc = fs.readFileSync(
+      path.join(WEB_SRC_DIR, "components/artifacts/PolyglotArtifactViewer.tsx"),
+      "utf-8",
+    );
+    const invertedSvgSrc = fs.readFileSync(path.join(WEB_SRC_DIR, "components/InvertedSvg.tsx"), "utf-8");
+    assert.ok(
+      polyglotViewerSrc.includes("@import"),
+      "PolyglotArtifactViewer.tsx must strip @import rules from SVG markup",
+    );
+    assert.ok(invertedSvgSrc.includes("@import"), "InvertedSvg.tsx must strip @import rules from Modelica SVGs");
+
+    // 3. VirtualPostList must maintain an overscan of at least 8 to prevent mount delays during rapid scroll
+    const virtualListSrc = fs.readFileSync(path.join(WEB_SRC_DIR, "components/VirtualPostList.tsx"), "utf-8");
+    assert.ok(virtualListSrc.includes("overscan: 10"), "VirtualPostList must use overscan: 10 for smooth scrolling");
+
+    // 4. index.css must apply font smoothing globally to *, *::before, *::after
+    const indexCss = fs.readFileSync(path.join(WEB_SRC_DIR, "index.css"), "utf-8");
+    assert.ok(
+      indexCss.includes("-webkit-font-smoothing: antialiased;") &&
+        indexCss.includes("-moz-osx-font-smoothing: grayscale;"),
+      "index.css must define antialiased and grayscale font smoothing",
+    );
+
+    // 5. ScrollToTop must throttle scroll updates with requestAnimationFrame and use getPropertyValue checks
+    const scrollToTopSrc = fs.readFileSync(path.join(WEB_SRC_DIR, "components/ScrollToTop.tsx"), "utf-8");
+    assert.ok(
+      scrollToTopSrc.includes("requestAnimationFrame") && scrollToTopSrc.includes("getPropertyValue"),
+      "ScrollToTop.tsx must throttle scroll updates and avoid redundant property set calls",
+    );
+  });
 });

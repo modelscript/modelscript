@@ -23,9 +23,40 @@ import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { CaeCloudClient } from "./cae-cloud-client.js";
 import { isFeatureEnabled } from "./utils/config.js";
+import { exportFeaResultToVtu, projectFieldsToSurfaceMesh, type StressProbePoint } from "./utils/vtu-exporter.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
 export type { InpMeshGeometry, InpMeshPayload };
+
+function mergeCadMeshesToSurface(meshes: unknown[]): { vertices: number[]; indices: number[] } | null {
+  const vertices: number[] = [];
+  const indices: number[] = [];
+  for (const raw of meshes) {
+    if (!raw || typeof raw !== "object") continue;
+    const m = raw as Record<string, unknown>;
+    const vRaw = m["vertices"];
+    const iRaw = m["indices"];
+    const vArr =
+      vRaw instanceof Float32Array || Array.isArray(vRaw)
+        ? Array.from(vRaw as Iterable<number>)
+        : vRaw && typeof vRaw === "object"
+          ? Object.values(vRaw as Record<string, number>).map(Number)
+          : [];
+    const iArr =
+      iRaw instanceof Uint32Array || Array.isArray(iRaw)
+        ? Array.from(iRaw as Iterable<number>)
+        : iRaw && typeof iRaw === "object"
+          ? Object.values(iRaw as Record<string, number>).map(Number)
+          : [];
+    if (vArr.length < 9 || iArr.length < 3) continue;
+    const baseVertex = Math.floor(vertices.length / 3);
+    vertices.push(...vArr);
+    for (const idx of iArr) {
+      indices.push(baseVertex + idx);
+    }
+  }
+  return vertices.length >= 9 && indices.length >= 3 ? { vertices, indices } : null;
+}
 
 export class InpEditorProvider extends BaseCustomEditorProvider {
   public static readonly viewType = "modelscript.inpEditor";
@@ -56,6 +87,12 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
     let currentMaterial: MaterialProperties | null = null;
     let currentNodeIdToIdx = new Map<number, number>();
     let currentSurfaceIndices: number[] = [];
+    let lastCompanionCad: { vertices: number[]; indices: number[] } | null = null;
+    let lastSolvedPayload: {
+      geometry: { positions: number[]; indices: number[] };
+      fields: { vonMisesStress: number[]; displacements: number[] };
+      stats: { maxStress: number; maxDisplacement: number; safetyFactor: number };
+    } | null = null;
 
     const parseAndSendDeck = async () => {
       if (disposed) return;
@@ -165,6 +202,7 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
                   };
                 });
               if (scadMeshes.length > 0) {
+                lastCompanionCad = mergeCadMeshesToSurface(scadMeshes);
                 webviewPanel.webview.postMessage({ type: "companionCad", data: scadMeshes });
               }
             }
@@ -173,6 +211,7 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
               uri: cadUriToLoad.toString(),
             });
             if (stepMeshes && stepMeshes.length > 0 && !disposed) {
+              lastCompanionCad = mergeCadMeshesToSurface(stepMeshes);
               webviewPanel.webview.postMessage({ type: "companionCad", data: stepMeshes });
             }
           }
@@ -235,22 +274,42 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
               if (nodeElemCount[n]! > 0) nodalStress[n] = nodalStress[n]! / nodeElemCount[n]!;
             }
 
-            // Displacement magnitudes
-            const displacementsArr = Array.from(stepResult.displacements);
+            const rawPositions = Array.from(currentMesh.nodeCoords);
+            const rawIndices =
+              currentSurfaceIndices.length > 0
+                ? currentSurfaceIndices
+                : Array.from(currentMesh.elements.slice(0, currentMesh.numElements * 3));
+            const rawVonMises = Array.from(stepResult.nodalVonMises ?? nodalStress);
+            const rawDisplacements = Array.from(stepResult.displacements);
+
+            let outPositions = rawPositions;
+            let outIndices = rawIndices;
+            let outVonMises = rawVonMises;
+            let outDisplacements = rawDisplacements;
+
+            if (lastCompanionCad && lastCompanionCad.vertices.length >= 9 && lastCompanionCad.indices.length >= 3) {
+              const projected = projectFieldsToSurfaceMesh(
+                rawPositions,
+                lastCompanionCad.vertices,
+                { stress: rawVonMises },
+                { disp: rawDisplacements },
+              );
+              outPositions = lastCompanionCad.vertices;
+              outIndices = lastCompanionCad.indices;
+              outVonMises = projected.projectedScalars["stress"] ?? rawVonMises;
+              outDisplacements = projected.projectedVectors["disp"] ?? rawDisplacements;
+            }
 
             const feaPayload = {
               type: "fea-mesh",
               time: 0,
               geometry: {
-                positions: Array.from(currentMesh.nodeCoords),
-                indices:
-                  currentSurfaceIndices.length > 0
-                    ? currentSurfaceIndices
-                    : Array.from(currentMesh.elements.slice(0, currentMesh.numElements * 3)),
+                positions: outPositions,
+                indices: outIndices,
               },
               fields: {
-                vonMisesStress: Array.from(stepResult.nodalVonMises ?? nodalStress),
-                displacements: displacementsArr,
+                vonMisesStress: outVonMises,
+                displacements: outDisplacements,
               },
               stats: {
                 maxStress: stepResult.maxVonMisesStress,
@@ -259,6 +318,7 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
               },
             };
 
+            lastSolvedPayload = feaPayload;
             webviewPanel.webview.postMessage({ type: "feaResults", data: feaPayload });
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
           } catch (err: unknown) {
@@ -287,6 +347,7 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
               try {
                 const meshPayload = await cloudClient.fetchMeshPayload(jobId);
                 if (!disposed) {
+                  lastSolvedPayload = meshPayload;
                   webviewPanel.webview.postMessage({ type: "feaResults", data: meshPayload });
                 }
                 vscode.window.showInformationMessage(
@@ -359,14 +420,70 @@ export class InpEditorProvider extends BaseCustomEditorProvider {
           break;
         case "applyConstraint": {
           const action = message.data || {};
+          if (action.kind === "stress-probe") {
+            break;
+          }
           const text = document.getText();
-          const updated = applyBoundaryActionToDeck(text, action, "calculix");
+          let updated = text;
+          if (action.kind === "force" && Array.isArray(action.forceVector) && action.forceVector.length === 3) {
+            const nodeId = Number(action.targetId) + 1;
+            const [fx, fy, fz] = action.forceVector.map(Number);
+            const cloadLines: string[] = ["*CLOAD"];
+            if (Math.abs(fx) > 1e-9) cloadLines.push(`${nodeId}, 1, ${fx}`);
+            if (Math.abs(fy) > 1e-9) cloadLines.push(`${nodeId}, 2, ${fy}`);
+            if (Math.abs(fz) > 1e-9 || cloadLines.length === 1) cloadLines.push(`${nodeId}, 3, ${fz || 0}`);
+            const snippet = `\n${cloadLines.join("\n")}\n`;
+            const endStepIdx = text.toUpperCase().lastIndexOf("*END STEP");
+            updated =
+              endStepIdx >= 0
+                ? text.slice(0, endStepIdx) + snippet + text.slice(endStepIdx)
+                : `${text.trimEnd()}\n*STEP\n*STATIC${snippet}*END STEP\n`;
+          } else {
+            updated = applyBoundaryActionToDeck(text, action, "calculix");
+          }
           if (updated !== text) {
             const edit = new vscode.WorkspaceEdit();
             const fullRange = new vscode.Range(document.positionAt(0), document.positionAt(text.length));
             edit.replace(document.uri, fullRange, updated);
             await vscode.workspace.applyEdit(edit);
           }
+          break;
+        }
+        case "publishResult": {
+          if (!lastSolvedPayload) {
+            vscode.window.showWarningMessage("Run the FEA solver first before publishing results.");
+            break;
+          }
+          const baseStem =
+            document.uri.path
+              .split("/")
+              .pop()
+              ?.replace(/\.(inp|inpt|fea)$/i, "") || "fea_study";
+          const rawProbes: StressProbePoint[] = Array.isArray(message.data?.stressProbes)
+            ? message.data.stressProbes
+            : [];
+          const bundle = exportFeaResultToVtu(
+            {
+              title: `${baseStem} — Structural FEA Result`,
+              nodes: lastSolvedPayload.geometry.positions,
+              triangles: lastSolvedPayload.geometry.indices,
+              nodalStress: lastSolvedPayload.fields.vonMisesStress,
+              nodalDisplacement: lastSolvedPayload.fields.displacements,
+              maxStress: lastSolvedPayload.stats.maxStress,
+              maxDisplacement: lastSolvedPayload.stats.maxDisplacement,
+              minSafetyFactor: lastSolvedPayload.stats.safetyFactor,
+              companionCad: lastCompanionCad,
+              stressProbes: rawProbes,
+            },
+            baseStem,
+          );
+          await vscode.commands.executeCommand("modelscript.publishSimulationResult", {
+            fileName: bundle.fileName,
+            title: bundle.title,
+            vtuXml: bundle.vtuXml,
+            summaryMarkdown: bundle.summaryMarkdown,
+            sourceUri: document.uri,
+          });
           break;
         }
 

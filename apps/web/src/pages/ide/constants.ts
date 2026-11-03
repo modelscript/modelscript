@@ -21,7 +21,7 @@ export const TEMPLATE_NAMES: Record<string, string> = {
   "owl2-subsumption": "Component Subsumption Reasoning",
   "owl2-units": "Semantic Unit Verification",
   empty: "Blank Project",
-  notebook: "Interactive Engineering Notebook",
+  notebook: "Interactive Engineering Article",
   script: "ModelScript REPL & Automation Script",
   cad: "3D CAD Polyglot Modeler",
   "drone-meshing": "Drone Mesh Generation",

@@ -11,6 +11,7 @@ import {
 } from "@primer/octicons-react";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { UNSAFE_LocationContext, UNSAFE_NavigationContext } from "react-router-dom";
 import type { AiPolishMode } from "../api";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -22,7 +23,7 @@ import {
   runComposerAiPolish,
   setPreferredAiEngine,
 } from "../util/composer-ai";
-import { estimateReadingTimeMinutes, type NotebookCell } from "../util/notebook";
+import { createCellId, estimateReadingTimeMinutes, type NotebookCell } from "../util/notebook";
 import Box from "./Box";
 import {
   Backdrop,
@@ -47,7 +48,12 @@ import {
   useComposeNotebookState,
   useComposeSubmit,
 } from "./compose";
+import { ConfirmSaveModal } from "./compose-modal/ConfirmSaveModal";
+import { deleteDraft, getDrafts, upsertDraft } from "./compose-modal/drafts";
+import { DraftsView } from "./compose-modal/DraftsView";
+import { ModalPanel, Overlay } from "./compose-modal/styles";
 import { TutorialPreview } from "./compose-modal/TutorialPreview";
+import type { DraftPost } from "./compose-modal/types";
 import type { ComposeBoxProps } from "./compose/types";
 
 const HpcArtifactPickerModal = React.lazy(() => import("./HpcArtifactPickerModal"));
@@ -106,6 +112,15 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const [snippetFilename, setSnippetFilename] = useState("");
   const [snippetLang, setSnippetLang] = useState("modelica");
   const [snippetCode, setSnippetCode] = useState("");
+  const [editingCodeCellId, setEditingCodeCellId] = useState<string | null>(null);
+
+  const handleOpenCodeCellInModal = useCallback((cellId: string, lang: string, filename: string, code: string) => {
+    setEditingCodeCellId(cellId);
+    setSnippetLang(lang || "modelica");
+    setSnippetFilename(filename || "");
+    setSnippetCode(code || "");
+    setShowCodeSnippetModal(true);
+  }, []);
 
   const [postVisibility, setPostVisibility] = useState<"public" | "unlisted" | "followers" | "direct">(() => {
     const dv = user?.default_post_visibility;
@@ -164,6 +179,325 @@ export default function ComposeBox(props: ComposeBoxProps) {
     textareaRef,
   });
 
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [showConfirmSave, setShowConfirmSave] = useState(false);
+  const [showDraftsModal, setShowDraftsModal] = useState(false);
+  const [draftsList, setDraftsList] = useState<DraftPost[]>([]);
+  const [pendingAction, setPendingAction] = useState<"navigate" | "view_drafts" | null>(null);
+  const pendingNavigationRef = useRef<(() => void) | null>(null);
+  const bypassNavigationBlockRef = useRef(false);
+
+  const hasUnsavedChanges = useCallback(() => {
+    if (isModal) return false;
+    if (notebook.isNotebookMode) {
+      return Boolean(
+        notebook.notebookTitle.trim() ||
+        notebook.notebookSummary.trim() ||
+        notebook.notebookCells.some((c) => (c.type === "markdown" && c.content.trim()) || c.type === "artifact"),
+      );
+    }
+    return Boolean(
+      content.trim().length > 0 || artifactId !== null || contentWarning.trim().length > 0 || quotePost || pendingPin,
+    );
+  }, [
+    isModal,
+    notebook.isNotebookMode,
+    notebook.notebookTitle,
+    notebook.notebookSummary,
+    notebook.notebookCells,
+    content,
+    artifactId,
+    contentWarning,
+    quotePost,
+    pendingPin,
+  ]);
+
+  const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
+  useEffect(() => {
+    hasUnsavedChangesRef.current = hasUnsavedChanges;
+  }, [hasUnsavedChanges]);
+
+  const navCtx = React.useContext(UNSAFE_NavigationContext);
+  const locCtx = React.useContext(UNSAFE_LocationContext);
+  const navigator = navCtx?.navigator;
+  const currentPathname = locCtx?.location?.pathname;
+  const currentPathnameRef = useRef(currentPathname);
+  useEffect(() => {
+    currentPathnameRef.current = currentPathname;
+  }, [currentPathname]);
+
+  /* eslint-disable react-hooks/immutability */
+  useEffect(() => {
+    if (isModal || !navigator) return;
+
+    const origPush = navigator.push;
+    const origReplace = navigator.replace;
+    const origGo = navigator.go;
+
+    const resolveTargetPathname = (to: unknown): string | undefined => {
+      if (typeof to === "string") {
+        return to.split("?")[0]?.split("#")[0] || "/";
+      }
+      if (to && typeof to === "object" && "pathname" in to) {
+        const p = (to as { pathname?: unknown }).pathname;
+        if (typeof p === "string") return p;
+      }
+      return undefined;
+    };
+
+    navigator.push = (to: any, state?: any, opts?: any) => {
+      const targetPathname = resolveTargetPathname(to);
+      const curPath = currentPathnameRef.current;
+      if (
+        !bypassNavigationBlockRef.current &&
+        hasUnsavedChangesRef.current() &&
+        (!curPath || targetPathname !== curPath)
+      ) {
+        pendingNavigationRef.current = () => origPush.call(navigator, to, state, opts);
+        setPendingAction("navigate");
+        setShowConfirmSave(true);
+        return;
+      }
+      origPush.call(navigator, to, state, opts);
+    };
+
+    navigator.replace = (to: any, state?: any, opts?: any) => {
+      const targetPathname = resolveTargetPathname(to);
+      const curPath = currentPathnameRef.current;
+      if (
+        !bypassNavigationBlockRef.current &&
+        hasUnsavedChangesRef.current() &&
+        (!curPath || targetPathname !== curPath)
+      ) {
+        pendingNavigationRef.current = () => origReplace.call(navigator, to, state, opts);
+        setPendingAction("navigate");
+        setShowConfirmSave(true);
+        return;
+      }
+      origReplace.call(navigator, to, state, opts);
+    };
+
+    navigator.go = (delta: number) => {
+      if (!bypassNavigationBlockRef.current && delta !== 0 && hasUnsavedChangesRef.current()) {
+        pendingNavigationRef.current = () => origGo.call(navigator, delta);
+        setPendingAction("navigate");
+        setShowConfirmSave(true);
+        return;
+      }
+      origGo.call(navigator, delta);
+    };
+
+    return () => {
+      navigator.push = origPush;
+      navigator.replace = origReplace;
+      navigator.go = origGo;
+    };
+  }, [isModal, navigator]);
+  /* eslint-enable react-hooks/immutability */
+
+  useEffect(() => {
+    if (isModal || typeof window === "undefined") return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!bypassNavigationBlockRef.current && hasUnsavedChangesRef.current()) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    const handleDocumentClick = (e: MouseEvent) => {
+      if (
+        e.defaultPrevented ||
+        e.button !== 0 ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey ||
+        bypassNavigationBlockRef.current ||
+        !hasUnsavedChangesRef.current()
+      ) {
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      if (anchor.target && anchor.target !== "_self") return;
+      if (anchor.hasAttribute("download")) return;
+      const rawHref = anchor.getAttribute("href");
+      if (!rawHref || rawHref.startsWith("#") || rawHref.startsWith("javascript:") || rawHref.startsWith("mailto:")) {
+        return;
+      }
+      try {
+        const url = new URL(anchor.href, window.location.origin);
+        if (url.origin === window.location.origin && url.pathname === window.location.pathname) {
+          return;
+        }
+        e.preventDefault();
+        pendingNavigationRef.current = () => {
+          window.location.assign(anchor.href);
+        };
+        setPendingAction("navigate");
+        setShowConfirmSave(true);
+      } catch {
+        // Ignore malformed URLs
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("click", handleDocumentClick);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", handleDocumentClick);
+    };
+  }, [isModal]);
+
+  useEffect(() => {
+    if (!showDraftsModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowDraftsModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showDraftsModal]);
+
+  const resetComposerState = useCallback(() => {
+    setActiveDraftId(null);
+    setContent("");
+    setArtifactId(null);
+    setContentWarning("");
+    setShowContentWarning(false);
+    notebook.setIsNotebookMode(false);
+    notebook.setNotebookTitle("");
+    notebook.setNotebookSummary("");
+    notebook.setNotebookSeries("");
+    notebook.setNotebookCompanionRepo("");
+    notebook.setNotebookCells([{ id: createCellId("md"), type: "markdown", content: "" }]);
+  }, [setContent, setArtifactId, notebook]);
+
+  const handleDraftsClick = useCallback(() => {
+    if (onOpenDrafts) {
+      onOpenDrafts();
+      return;
+    }
+    if (hasUnsavedChanges()) {
+      setPendingAction("view_drafts");
+      setShowConfirmSave(true);
+    } else {
+      setDraftsList(getDrafts());
+      setShowDraftsModal(true);
+    }
+  }, [onOpenDrafts, hasUnsavedChanges]);
+
+  const effectiveOnOpenDrafts = onOpenDrafts || (!isModal ? handleDraftsClick : undefined);
+
+  const commitDraftAndNavigate = useCallback(() => {
+    if (hasUnsavedChanges() && !editPostId) {
+      upsertDraft({
+        id: activeDraftId || Date.now().toString(),
+        content,
+        artifactId,
+        notebookMode: notebook.isNotebookMode,
+        notebookTitle: notebook.notebookTitle,
+        notebookSummary: notebook.notebookSummary,
+        notebookDifficulty: notebook.notebookDifficulty,
+        notebookSeries: notebook.notebookSeries,
+        notebookDialect: notebook.notebookDialect,
+        notebookCompanionRepo: notebook.notebookCompanionRepo,
+        notebookCells: notebook.notebookCells,
+        quotePost,
+        replyToPost,
+        pendingPin,
+        timestamp: Date.now(),
+      });
+    }
+    resetComposerState();
+    setShowConfirmSave(false);
+    const action = pendingAction;
+    setPendingAction(null);
+
+    if (action === "view_drafts") {
+      setDraftsList(getDrafts());
+      setShowDraftsModal(true);
+      return;
+    }
+
+    const navFn = pendingNavigationRef.current;
+    pendingNavigationRef.current = null;
+    if (navFn) {
+      bypassNavigationBlockRef.current = true;
+      try {
+        navFn();
+      } finally {
+        bypassNavigationBlockRef.current = false;
+      }
+    }
+  }, [
+    hasUnsavedChanges,
+    editPostId,
+    activeDraftId,
+    content,
+    artifactId,
+    notebook,
+    quotePost,
+    replyToPost,
+    pendingPin,
+    resetComposerState,
+    pendingAction,
+  ]);
+
+  const discardAndNavigate = useCallback(() => {
+    resetComposerState();
+    setShowConfirmSave(false);
+    const action = pendingAction;
+    setPendingAction(null);
+
+    if (action === "view_drafts") {
+      setDraftsList(getDrafts());
+      setShowDraftsModal(true);
+      return;
+    }
+
+    const navFn = pendingNavigationRef.current;
+    pendingNavigationRef.current = null;
+    if (navFn) {
+      bypassNavigationBlockRef.current = true;
+      try {
+        navFn();
+      } finally {
+        bypassNavigationBlockRef.current = false;
+      }
+    }
+  }, [resetComposerState, pendingAction]);
+
+  const cancelConfirmSave = useCallback(() => {
+    pendingNavigationRef.current = null;
+    setPendingAction(null);
+    setShowConfirmSave(false);
+  }, []);
+
+  const loadDraft = useCallback(
+    (draft: DraftPost) => {
+      setActiveDraftId(draft.id);
+      setContent(draft.content);
+      setArtifactId(draft.artifactId);
+      notebook.setIsNotebookMode(Boolean(draft.notebookMode));
+      notebook.setNotebookTitle(draft.notebookTitle || "");
+      notebook.setNotebookSummary(draft.notebookSummary || "");
+      notebook.setNotebookDifficulty(draft.notebookDifficulty || "Intermediate");
+      notebook.setNotebookSeries(draft.notebookSeries || "");
+      notebook.setNotebookDialect(draft.notebookDialect || "Modelica 3.4");
+      notebook.setNotebookCompanionRepo(draft.notebookCompanionRepo || "");
+      notebook.setNotebookCells(
+        draft.notebookCells || [{ id: createCellId("md"), type: "markdown", content: draft.content }],
+      );
+      setShowDraftsModal(false);
+    },
+    [setContent, setArtifactId, notebook],
+  );
+
   // Submission & uploads
   const submitHandler = useComposeSubmit({
     token,
@@ -197,7 +531,13 @@ export default function ComposeBox(props: ComposeBoxProps) {
     forkedFromArtifactId,
     pendingPin,
     excludedUsers,
-    onPostCreated,
+    onPostCreated: (post) => {
+      if (activeDraftId) {
+        deleteDraft(activeDraftId);
+        setActiveDraftId(null);
+      }
+      onPostCreated?.(post);
+    },
     fileInputRef,
   });
 
@@ -422,9 +762,10 @@ export default function ComposeBox(props: ComposeBoxProps) {
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      const minHeightPx = minRows > 1 ? minRows * 24 + 10 : 0;
+      textareaRef.current.style.height = `${Math.max(textareaRef.current.scrollHeight, minHeightPx)}px`;
     }
-  }, [content]);
+  }, [content, minRows]);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setContent(e.target.value);
@@ -654,8 +995,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
             Short post
           </NotionGhostButton>
 
-          {onOpenDrafts && (
-            <NotionGhostButton type="button" onClick={onOpenDrafts}>
+          {effectiveOnOpenDrafts && (
+            <NotionGhostButton type="button" onClick={effectiveOnOpenDrafts}>
               Drafts
             </NotionGhostButton>
           )}
@@ -751,6 +1092,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   removeCell={notebook.removeCell}
                   updateMarkdownCell={notebook.updateMarkdownCell}
                   updateArtifactCellCaption={notebook.updateArtifactCellCaption}
+                  onReplaceArtifactCell={notebook.replaceArtifactCell}
                   updateTokenState={autocomplete.updateTokenState}
                   handleInteraction={handleInteraction}
                   handleSubmit={submitHandler.handleSubmit}
@@ -763,6 +1105,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   fileInputRef={fileInputRef}
                   onPolishCell={hasAiPolish ? (cellId) => void handleAiPolish("polish", cellId) : undefined}
                   onDraftFromArtifactCell={(artId, cellId) => void handleAiDraft(artId, null, cellId)}
+                  onEditCodeCellInModal={handleOpenCodeCellInModal}
                   aiBusy={aiBusy}
                 />
                 <ComposeMentionHashtagPopups
@@ -829,6 +1172,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                 removeCell={notebook.removeCell}
                 updateMarkdownCell={notebook.updateMarkdownCell}
                 updateArtifactCellCaption={notebook.updateArtifactCellCaption}
+                onReplaceArtifactCell={notebook.replaceArtifactCell}
                 updateTokenState={autocomplete.updateTokenState}
                 handleInteraction={handleInteraction}
                 handleSubmit={submitHandler.handleSubmit}
@@ -841,6 +1185,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                 fileInputRef={fileInputRef}
                 onPolishCell={hasAiPolish ? (cellId) => void handleAiPolish("polish", cellId) : undefined}
                 onDraftFromArtifactCell={(artId, cellId) => void handleAiDraft(artId, null, cellId)}
+                onEditCodeCellInModal={handleOpenCodeCellInModal}
                 aiBusy={aiBusy}
               />
 
@@ -881,7 +1226,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
             type="file"
             style={{ display: "none" }}
             ref={fileInputRef}
-            accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.tsv,.mo,.mos,.sysml,.sysml2,.kerml,.pscx,.pslx,.psout,.raw,.con,.inl,.opi,.key,.tpl,.olga,.ez5,.ezm,.roc,.deck,.lps,.tgx,.sima,.sys,.gtm,.gtd,.inp,.inpt,.bdf,.cfg,.cfgt,.su2,.fmu,.ssp,.ssd,.owl,.ttl,.ofn,.tei,.xml"
+            accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.tsv,.json,.yaml,.yml,.h5,.hdf5,.mo,.mos,.sysml,.sysml2,.kerml,.pscx,.pslx,.psout,.raw,.con,.inl,.opi,.key,.tpl,.olga,.ez5,.ezm,.roc,.deck,.lps,.tgx,.sima,.sys,.gtm,.gtd,.inp,.inpt,.bdf,.cfg,.cfgt,.su2,.fmu,.ssp,.ssd,.owl,.ttl,.ofn,.tei,.xml"
             onChange={submitHandler.handleFileUpload}
             disabled={submitHandler.uploadingFile}
           />
@@ -937,10 +1282,12 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   style={{
                     width: 40,
                     height: 40,
-                    borderRadius: "50%",
+                    borderRadius:
+                      user?.avatar_url === "/ms-logo.png" || user?.avatar_url === "/ms-logo-light.png" ? "10px" : "50%",
                     flexShrink: 0,
                     objectFit: "cover",
-                    backgroundColor: "rgba(255, 255, 255, 0.05)",
+                    backgroundColor: "var(--ms-surface-hover, rgba(255, 255, 255, 0.05))",
+                    boxShadow: "inset 0 0 0 1px var(--ms-divider)",
                   }}
                 />
               )}
@@ -1000,6 +1347,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                         ref={textareaRef}
                         value={content}
                         onChange={handleContentChange}
+                        onInput={handleContentChange}
                         onKeyUp={handleInteraction}
                         onClick={handleInteraction}
                         onPaste={handlePaste}
@@ -1012,7 +1360,10 @@ export default function ComposeBox(props: ComposeBoxProps) {
                         placeholder={placeholder || (replyToPost ? "Post your reply" : "What is happening?!")}
                         rows={minRows}
                         autoFocus={autoFocus}
-                        style={{ marginBottom: replyToPost ? "0px" : "12px" }}
+                        style={{
+                          marginBottom: replyToPost ? "0px" : "8px",
+                          minHeight: minRows > 1 ? `${minRows * 24 + 10}px` : undefined,
+                        }}
                         onKeyDown={(e) => {
                           const hasMentions = Boolean(
                             autocomplete.mentionQuery && autocomplete.mentionSuggestions.length > 0,
@@ -1094,6 +1445,10 @@ export default function ComposeBox(props: ComposeBoxProps) {
                       onDraftWithAi={(view) => void handleAiDraft(artifactId, view)}
                       aiDrafting={aiBusy === "drafting"}
                       onArtifactViewLoaded={setAttachedArtifactView}
+                      onReplaceArtifact={(newId, _title, createdView) => {
+                        setArtifactId(newId);
+                        if (createdView) setAttachedArtifactView(createdView);
+                      }}
                     />
                   )}
 
@@ -1103,6 +1458,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
                     <ComposeVisibilityMenu
                       replyVisibility={replyVisibility}
                       setReplyVisibility={setReplyVisibility}
+                      postVisibility={postVisibility}
+                      setPostVisibility={setPostVisibility}
                       showVisibilityMenu={showVisibilityMenu}
                       setShowVisibilityMenu={setShowVisibilityMenu}
                       visible={
@@ -1112,6 +1469,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                       }
                       isNotebookMode={notebook.isNotebookMode}
                       handleToggleNotebookMode={notebook.handleToggleNotebookMode}
+                      onOpenDrafts={!isModal ? effectiveOnOpenDrafts : undefined}
                     />
                   )}
                 </div>
@@ -1158,9 +1516,88 @@ export default function ComposeBox(props: ComposeBoxProps) {
         </>
       )}
 
+      {!isModal &&
+        showDraftsModal &&
+        (typeof document !== "undefined" ? (
+          createPortal(
+            <Overlay onClick={() => setShowDraftsModal(false)} style={{ paddingTop: "7vh" }}>
+              <ModalPanel
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: "100%",
+                  maxWidth: "600px",
+                  maxHeight: "86vh",
+                  borderRadius: "16px",
+                  margin: "0 auto",
+                  display: "flex",
+                }}
+              >
+                <DraftsView
+                  draftsList={draftsList}
+                  onBack={() => setShowDraftsModal(false)}
+                  onSelectDraft={loadDraft}
+                  onDeleteDraft={(id) => {
+                    deleteDraft(id);
+                    setDraftsList(getDrafts());
+                  }}
+                />
+              </ModalPanel>
+            </Overlay>,
+            document.body,
+          )
+        ) : (
+          <Overlay onClick={() => setShowDraftsModal(false)} style={{ paddingTop: "7vh" }}>
+            <ModalPanel
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "100%",
+                maxWidth: "600px",
+                maxHeight: "86vh",
+                borderRadius: "16px",
+                margin: "0 auto",
+                display: "flex",
+              }}
+            >
+              <DraftsView
+                draftsList={draftsList}
+                onBack={() => setShowDraftsModal(false)}
+                onSelectDraft={loadDraft}
+                onDeleteDraft={(id) => {
+                  deleteDraft(id);
+                  setDraftsList(getDrafts());
+                }}
+              />
+            </ModalPanel>
+          </Overlay>
+        ))}
+
+      {!isModal &&
+        showConfirmSave &&
+        (typeof document !== "undefined" ? (
+          createPortal(
+            <ConfirmSaveModal
+              isEditing={Boolean(editPostId)}
+              onCancel={cancelConfirmSave}
+              onSave={commitDraftAndNavigate}
+              onDiscard={discardAndNavigate}
+            />,
+            document.body,
+          )
+        ) : (
+          <ConfirmSaveModal
+            isEditing={Boolean(editPostId)}
+            onCancel={cancelConfirmSave}
+            onSave={commitDraftAndNavigate}
+            onDiscard={discardAndNavigate}
+          />
+        ))}
+
       <ComposeCodeSnippetModal
         isOpen={showCodeSnippetModal}
-        onClose={() => setShowCodeSnippetModal(false)}
+        onClose={() => {
+          setShowCodeSnippetModal(false);
+          setEditingCodeCellId(null);
+        }}
         snippetFilename={snippetFilename}
         setSnippetFilename={setSnippetFilename}
         snippetLang={snippetLang}
@@ -1175,6 +1612,15 @@ export default function ComposeBox(props: ComposeBoxProps) {
         content={content}
         setContent={setContent}
         attachArtifactToComposer={notebook.attachArtifactToComposer}
+        isEditingExistingBlock={editingCodeCellId !== null}
+        onReplaceFencedBlock={
+          editingCodeCellId
+            ? (fenced) => {
+                notebook.updateMarkdownCell(editingCodeCellId, fenced);
+                setEditingCodeCellId(null);
+              }
+            : undefined
+        }
       />
 
       <Suspense fallback={null}>

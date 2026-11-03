@@ -865,6 +865,31 @@ await yargs(rawArgs)
       "FeaCommand",
     ),
   )
+  .command(
+    lazy(
+      "qif <action> [files..]",
+      "Inspect, validate ASME Y14.5 GD&T & NIST QIF rules, compute SPC capability, and project ISO 23952 QIF models (.qif)",
+      () => import("./commands/qif.js"),
+      "QifCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "oscal <action> [files..]",
+      "Inspect, resolve profiles, verify NIST SP 800-53 / SP 800-82 CPS compliance, and project NIST OSCAL models (.oscal.json, .oscal.yaml, .oscal.xml)",
+      () => import("./commands/oscal.js"),
+      "OscalCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "aml <action> [files..]",
+      "Inspect, validate, virtually commission, lower to DAE, and project IEC 62714 AutomationML / CAEX models (.aml, .caex, .amlx)",
+      () => import("./commands/automationml.js"),
+      "AutomationMLCommand",
+      ["automationml", "caex"],
+    ),
+  )
   .strictCommands()
   .demandCommand()
   .help()

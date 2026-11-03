@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { CheckIcon, CodeIcon, CopyIcon, GraphIcon, PlayIcon, StackIcon, WorkflowIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text, useTheme } from "@primer/react";
+import { Button, Spinner, Text } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -42,7 +43,8 @@ const Toolbar = styled.div`
 
 const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isFullScreen }) => {
   const navigate = useNavigate();
-  const { resolvedColorMode } = useTheme();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<CodeViewerTab>("code");
   const [isInteractiveDiagram, setIsInteractiveDiagram] = useState(false);
@@ -71,10 +73,10 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
 
   const svgMarkup = useMemo(() => {
     if (pregenSvg) {
-      return sanitizeSvgMarkup(pregenSvg);
+      return sanitizeSvgMarkup(pregenSvg, { isFullScreen, isDark });
     }
     return "";
-  }, [pregenSvg]);
+  }, [pregenSvg, isFullScreen, isDark]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -111,7 +113,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
           )}
           <Box
             display="flex"
-            bg="rgba(0,0,0,0.2)"
+            bg="var(--color-canvas-default)"
             borderRadius="6px"
             p="2px"
             border="1px solid var(--color-border-default)"
@@ -334,7 +336,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
             <MonacoEditor
               height="100%"
               language="modelica"
-              theme={resolvedColorMode === "dark" ? "vs-dark" : "light"}
+              theme={isDark ? "vs-dark" : "light"}
               value={code}
               options={{
                 readOnly: true,

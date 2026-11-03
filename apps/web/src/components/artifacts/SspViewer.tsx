@@ -17,9 +17,11 @@ import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import { adaptSvgMarkupForTheme, highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
 export interface SspPortMeta {
   name: string;
@@ -85,7 +87,7 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "520px")};
-  background: #0b111e;
+  background: var(--color-canvas-default, #0b111e);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
   border: ${(props) => (props.$isFullScreen ? "none" : "1px solid var(--color-border-default)")};
   overflow: hidden;
@@ -97,8 +99,8 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 const Toolbar = styled.div`
   height: 40px;
   min-height: 40px;
-  background: var(--surface-hud, rgba(13, 19, 33, 0.92));
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: var(--surface-hud, var(--color-canvas-subtle, rgba(13, 19, 33, 0.92)));
+  border-bottom: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.16));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -121,7 +123,7 @@ const HeaderLeft = styled.div`
 const ModelTitle = styled.div`
   font-size: 13px;
   font-weight: 700;
-  color: #f8fafc;
+  color: var(--color-fg-default, #f8fafc);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -144,7 +146,7 @@ const PillBadge = styled.span<{ $tone?: "emerald" | "purple" | "cyan" }>`
       : p.$tone === "cyan"
         ? "rgba(56, 189, 248, 0.15)"
         : "rgba(139, 92, 246, 0.16)"};
-  color: ${(p) => (p.$tone === "emerald" ? "#6ee7b7" : p.$tone === "cyan" ? "#7dd3fc" : "#c4b5fd")};
+  color: ${(p) => (p.$tone === "emerald" ? "#10b981" : p.$tone === "cyan" ? "#0284c7" : "#7c3aed")};
   border: 1px solid
     ${(p) =>
       p.$tone === "emerald"
@@ -157,8 +159,8 @@ const PillBadge = styled.span<{ $tone?: "emerald" | "purple" | "cyan" }>`
 const TabGroup = styled.div`
   display: flex;
   align-items: center;
-  background: rgba(2, 6, 23, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--color-canvas-inset, rgba(2, 6, 23, 0.55));
+  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.18));
   border-radius: 6px;
   padding: 2px;
   gap: 2px;
@@ -166,7 +168,7 @@ const TabGroup = styled.div`
 
 const TabButton = styled.button<{ $active: boolean }>`
   background: ${(p) => (p.$active ? "rgba(16, 185, 129, 0.22)" : "transparent")};
-  color: ${(p) => (p.$active ? "#6ee7b7" : "#94a3b8")};
+  color: ${(p) => (p.$active ? "#10b981" : "var(--color-fg-muted, #94a3b8)")};
   border: ${(p) => (p.$active ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid transparent")};
   border-radius: 4px;
   padding: 3px 8px;
@@ -180,7 +182,7 @@ const TabButton = styled.button<{ $active: boolean }>`
   transition: all 0.15s ease;
 
   &:hover {
-    color: #e2e8f0;
+    color: var(--color-fg-default, #e2e8f0);
     background: ${(p) => (p.$active ? "rgba(16, 185, 129, 0.28)" : "rgba(148, 163, 184, 0.1)")};
   }
 `;
@@ -190,7 +192,7 @@ const ContentArea = styled.div`
   display: flex;
   overflow: hidden;
   position: relative;
-  background: #0b111e;
+  background: var(--color-canvas-default, #0b111e);
 `;
 
 const DiagramStage = styled.div<{ $selectedFmu?: string | null; $dragging?: boolean }>`
@@ -200,7 +202,11 @@ const DiagramStage = styled.div<{ $selectedFmu?: string | null; $dragging?: bool
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 45%, #111c33 0%, #0b111e 75%);
+  background: radial-gradient(
+    circle at 50% 45%,
+    var(--color-canvas-subtle, #111c33) 0%,
+    var(--color-canvas-default, #0b111e) 75%
+  );
   user-select: none;
   cursor: ${(p) => (p.$dragging ? "grabbing" : "grab")};
 
@@ -249,9 +255,12 @@ const StageOverlayBottomLeft = styled.div`
 `;
 
 const FmuChip = styled.button<{ $selected: boolean }>`
-  background: ${(p) => (p.$selected ? "rgba(16, 185, 129, 0.24)" : "rgba(15, 23, 42, 0.85)")};
-  color: ${(p) => (p.$selected ? "#6ee7b7" : "#cbd5e1")};
-  border: 1px solid ${(p) => (p.$selected ? "#10b981" : "rgba(148, 163, 184, 0.24)")};
+  background: ${(p) =>
+    p.$selected
+      ? "rgba(16, 185, 129, 0.24)"
+      : "var(--surface-hud, var(--color-canvas-subtle, rgba(15, 23, 42, 0.85)))"};
+  color: ${(p) => (p.$selected ? "#10b981" : "var(--color-fg-muted, #cbd5e1)")};
+  border: 1px solid ${(p) => (p.$selected ? "#10b981" : "var(--color-border-default, rgba(148, 163, 184, 0.24))")};
   border-radius: 999px;
   padding: 3px 9px;
   font-size: 10.5px;
@@ -263,7 +272,7 @@ const FmuChip = styled.button<{ $selected: boolean }>`
 
   &:hover {
     border-color: #10b981;
-    color: #f8fafc;
+    color: var(--color-fg-default, #f8fafc);
   }
 `;
 
@@ -274,8 +283,8 @@ const ZoomControls = styled.div`
   display: flex;
   align-items: center;
   gap: 2px;
-  background: rgba(15, 23, 42, 0.88);
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: var(--surface-hud, var(--color-canvas-subtle, rgba(15, 23, 42, 0.88)));
+  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.22));
   border-radius: 6px;
   padding: 2px;
   z-index: 5;
@@ -284,7 +293,7 @@ const ZoomControls = styled.div`
 
 const ZoomBtn = styled.button`
   background: transparent;
-  color: #cbd5e1;
+  color: var(--color-fg-muted, #cbd5e1);
   border: none;
   border-radius: 4px;
   padding: 2px 7px;
@@ -295,21 +304,21 @@ const ZoomBtn = styled.button`
 
   &:hover {
     background: rgba(148, 163, 184, 0.16);
-    color: #ffffff;
+    color: var(--color-fg-default, #ffffff);
   }
 `;
 
 const InspectorSidebar = styled.div`
   width: 265px;
   min-width: 265px;
-  border-left: 1px solid rgba(148, 163, 184, 0.16);
-  background: #0d1526;
+  border-left: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.16));
+  background: var(--color-canvas-subtle, #0d1526);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   padding: 12px 14px;
   gap: 10px;
-  color: #e2e8f0;
+  color: var(--color-fg-default, #e2e8f0);
 
   @media (max-width: 768px) {
     display: none;
@@ -321,7 +330,7 @@ const SectionHeader = styled.div`
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #64748b;
+  color: var(--color-fg-muted, #64748b);
   margin-top: 2px;
 `;
 
@@ -330,10 +339,10 @@ const StatItem = styled.div`
   justify-content: space-between;
   align-items: center;
   font-size: 11.5px;
-  color: #94a3b8;
+  color: var(--color-fg-muted, #94a3b8);
 
   strong {
-    color: #f1f5f9;
+    color: var(--color-fg-default, #f1f5f9);
     font-family: var(--font-mono, monospace);
     font-size: 11px;
   }
@@ -343,8 +352,8 @@ const PaneScroll = styled.div`
   flex: 1;
   overflow: auto;
   padding: 16px;
-  background: #0b111e;
-  color: #e2e8f0;
+  background: var(--color-canvas-default, #0b111e);
+  color: var(--color-fg-default, #e2e8f0);
 `;
 
 const FmuGrid = styled.div`
@@ -354,7 +363,7 @@ const FmuGrid = styled.div`
 `;
 
 const FmuCard = styled.div`
-  background: #111a2e;
+  background: var(--color-canvas-subtle, #111a2e);
   border: 1px solid rgba(16, 185, 129, 0.35);
   border-radius: 8px;
   padding: 12px 14px;
@@ -374,21 +383,21 @@ const SignalTable = styled.table`
     font-size: 10.5px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #94a3b8;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-    background: rgba(15, 23, 42, 0.6);
+    color: var(--color-fg-muted, #94a3b8);
+    border-bottom: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.2));
+    background: var(--color-canvas-subtle, rgba(15, 23, 42, 0.6));
   }
 
   td {
     padding: 9px 10px;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    border-bottom: 1px solid var(--color-border-muted, rgba(148, 163, 184, 0.12));
     font-family: var(--font-mono, monospace);
     font-size: 11.5px;
-    color: #e2e8f0;
+    color: var(--color-fg-default, #e2e8f0);
   }
 
   tr:hover td {
-    background: rgba(30, 41, 59, 0.45);
+    background: var(--color-canvas-subtle, rgba(30, 41, 59, 0.45));
   }
 `;
 
@@ -871,6 +880,8 @@ function synthesizeClientSspSvg(model: ReturnType<typeof parseSsdClientModel>): 
 
 export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
   const [activeTab, setActiveTab] = useState<SspTabMode>("topology");
@@ -879,7 +890,40 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
+  const draggingRef = useRef(false);
+  const cleanupDragListenersRef = useRef<(() => void) | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number; moved: boolean } | null>(null);
+
+  const endDrag = React.useCallback(() => {
+    draggingRef.current = false;
+    setDragging(false);
+    if (cleanupDragListenersRef.current) {
+      cleanupDragListenersRef.current();
+      cleanupDragListenersRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (cleanupDragListenersRef.current) {
+        cleanupDragListenersRef.current();
+        cleanupDragListenersRef.current = null;
+      }
+    };
+  }, []);
+
+  const { showHint } = useWheelZoom({
+    containerRef: stageRef,
+    zoom,
+    setZoom,
+    pan,
+    setPan,
+    isFullScreen,
+    minZoom: 0.4,
+    maxZoom: 3.5,
+  });
+
   const [copied, setCopied] = useState(false);
 
   const title = viewConfig.title || viewConfig.systemName || "System Structure Package (.ssp)";
@@ -911,11 +955,12 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
     const isLegacyStub = serverSvg.includes('viewBox="0 0 440 280"') || !serverSvg.includes("ssp-fmu-node");
     const chosenSvg = !serverSvg || isLegacyStub ? synthesizeClientSspSvg(ssdModel) : serverSvg;
     if (!chosenSvg) return "";
-    return DOMPurify.sanitize(chosenSvg, {
+    const themedSvg = adaptSvgMarkupForTheme(chosenSvg, isDark);
+    return DOMPurify.sanitize(themedSvg, {
       USE_PROFILES: { svg: true, svgFilters: true },
       ADD_ATTR: ["target", "marker-end", "marker-start", "data-fmu"],
     });
-  }, [viewConfig.svg, ssdModel]);
+  }, [viewConfig.svg, ssdModel, isDark]);
 
   const selectedFmu = useMemo(
     () => ssdModel.fmus.find((f) => f.name === selectedFmuName) ?? null,
@@ -1019,34 +1064,84 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
           </Box>
         ) : activeTab === "topology" && sanitizedSvg ? (
           <DiagramStage
+            ref={stageRef}
             $selectedFmu={selectedFmuName}
             $dragging={dragging}
             onClick={handleStageClick}
+            onDragStart={(e) => e.preventDefault()}
             onPointerDown={(e) => {
-              if ((e.target as HTMLElement).closest("button")) return;
+              if (e.button !== 0) return;
+              if ((e.target as HTMLElement | null)?.closest("button, a, input, select, textarea, [role='button']"))
+                return;
+              if (cleanupDragListenersRef.current) {
+                cleanupDragListenersRef.current();
+                cleanupDragListenersRef.current = null;
+              }
               dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y, moved: false };
+              draggingRef.current = true;
               setDragging(true);
               try {
                 e.currentTarget.setPointerCapture(e.pointerId);
               } catch {
                 /* ignore */
               }
+
+              const handleWindowMove = (ev: MouseEvent) => {
+                if (!dragRef.current || !draggingRef.current) return;
+                if (typeof ev.buttons === "number" && (ev.buttons & 1) === 0) {
+                  endDrag();
+                  return;
+                }
+                const dx = ev.clientX - dragRef.current.startX;
+                const dy = ev.clientY - dragRef.current.startY;
+                if (Math.hypot(dx, dy) > 4) dragRef.current.moved = true;
+                setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+              };
+
+              const handleWindowUp = () => {
+                endDrag();
+              };
+
+              window.addEventListener("mousemove", handleWindowMove);
+              window.addEventListener("mouseup", handleWindowUp);
+              window.addEventListener("pointerup", handleWindowUp);
+              window.addEventListener("pointercancel", handleWindowUp);
+              window.addEventListener("blur", handleWindowUp);
+              window.addEventListener("dragend", handleWindowUp);
+
+              cleanupDragListenersRef.current = () => {
+                window.removeEventListener("mousemove", handleWindowMove);
+                window.removeEventListener("mouseup", handleWindowUp);
+                window.removeEventListener("pointerup", handleWindowUp);
+                window.removeEventListener("pointercancel", handleWindowUp);
+                window.removeEventListener("blur", handleWindowUp);
+                window.removeEventListener("dragend", handleWindowUp);
+              };
             }}
             onPointerMove={(e) => {
-              if (!dragRef.current || !dragging) return;
+              if (!dragRef.current || (!draggingRef.current && !dragging)) return;
+              if (typeof e.buttons === "number" && (e.buttons & 1) === 0) {
+                endDrag();
+                return;
+              }
               const dx = e.clientX - dragRef.current.startX;
               const dy = e.clientY - dragRef.current.startY;
               if (Math.hypot(dx, dy) > 4) dragRef.current.moved = true;
               setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
             }}
             onPointerUp={(e) => {
-              if (!dragging) return;
-              setDragging(false);
+              endDrag();
               try {
                 e.currentTarget.releasePointerCapture(e.pointerId);
               } catch {
                 /* ignore */
               }
+            }}
+            onPointerCancel={() => {
+              endDrag();
+            }}
+            onLostPointerCapture={() => {
+              endDrag();
             }}
           >
             <div
@@ -1063,6 +1158,8 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
               }}
               dangerouslySetInnerHTML={{ __html: sanitizedSvg }}
             />
+
+            <ZoomHintBadge show={showHint && !isFullScreen} label="💡 Hold ⌘/Ctrl to zoom schematic" />
 
             <StageOverlayBottomLeft onClick={(e) => e.stopPropagation()}>
               <FmuChip type="button" $selected={selectedFmuName === null} onClick={() => setSelectedFmuName(null)}>
@@ -1108,10 +1205,12 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                 <FmuCard key={fmu.name}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                     <div>
-                      <div style={{ fontSize: "10px", fontWeight: 700, color: "#34d399", letterSpacing: "0.04em" }}>
+                      <div style={{ fontSize: "10px", fontWeight: 700, color: "#10b981", letterSpacing: "0.04em" }}>
                         «{fmu.fmiType || "FMI 3.0 CS"}»
                       </div>
-                      <div style={{ fontSize: "14px", fontWeight: 700, color: "#f8fafc" }}>{fmu.name}</div>
+                      <div style={{ fontSize: "14px", fontWeight: 700, color: "var(--color-fg-default, #f8fafc)" }}>
+                        {fmu.name}
+                      </div>
                     </div>
                     <PillBadge $tone="emerald">{fmu.source}</PillBadge>
                   </div>
@@ -1126,7 +1225,8 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                             display: "flex",
                             justifyContent: "space-between",
                             alignItems: "center",
-                            background: "rgba(15, 23, 42, 0.7)",
+                            background: "var(--color-canvas-default, rgba(15, 23, 42, 0.7))",
+                            border: "1px solid var(--color-border-muted, transparent)",
                             padding: "4px 8px",
                             borderRadius: 4,
                             fontFamily: "var(--font-mono, monospace)",
@@ -1134,12 +1234,12 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                           }}
                         >
                           <span>
-                            <span style={{ color: pt.kind === "input" ? "#38bdf8" : "#f59e0b", marginRight: 6 }}>
+                            <span style={{ color: pt.kind === "input" ? "#0284c7" : "#d97706", marginRight: 6 }}>
                               {pt.kind === "input" ? "▶ IN " : "OUT ▶"}
                             </span>
                             {pt.name}
                           </span>
-                          <span style={{ color: pt.unit === "W" ? "#fbbf24" : "#38bdf8", fontWeight: 600 }}>
+                          <span style={{ color: pt.unit === "W" ? "#d97706" : "#0284c7", fontWeight: 600 }}>
                             {pt.type}
                             {pt.unit ? ` [${pt.unit}]` : ""}
                           </span>
@@ -1156,16 +1256,16 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                           <span
                             key={pr.name}
                             style={{
-                              background: "#09101d",
-                              border: "1px solid rgba(148, 163, 184, 0.2)",
+                              background: "var(--color-canvas-default, #09101d)",
+                              border: "1px solid var(--color-border-default, rgba(148, 163, 184, 0.2))",
                               borderRadius: 4,
                               padding: "2px 7px",
                               fontFamily: "var(--font-mono, monospace)",
                               fontSize: "10.5px",
-                              color: "#cbd5e1",
+                              color: "var(--color-fg-muted, #cbd5e1)",
                             }}
                           >
-                            <strong style={{ color: "#6ee7b7" }}>{pr.name}</strong> = {pr.value}
+                            <strong style={{ color: "#10b981" }}>{pr.name}</strong> = {pr.value}
                             {pr.unit ? ` ${pr.unit}` : ""}
                           </span>
                         ))}
@@ -1191,16 +1291,16 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
               <tbody>
                 {ssdModel.connections.map((c, idx) => (
                   <tr key={`${c.startElement}.${c.startConnector}->${c.endElement}.${c.endConnector}-${idx}`}>
-                    <td style={{ color: "#64748b" }}>{idx + 1}</td>
+                    <td style={{ color: "var(--color-fg-muted, #64748b)" }}>{idx + 1}</td>
                     <td>
-                      <span style={{ color: "#34d399", fontWeight: 600 }}>{c.startElement}</span>
-                      <span style={{ color: "#64748b" }}>.</span>
-                      <span style={{ color: "#f8fafc" }}>{c.startConnector}</span>
+                      <span style={{ color: "#10b981", fontWeight: 600 }}>{c.startElement}</span>
+                      <span style={{ color: "var(--color-fg-muted, #64748b)" }}>.</span>
+                      <span style={{ color: "var(--color-fg-default, #f8fafc)" }}>{c.startConnector}</span>
                     </td>
                     <td>
-                      <span style={{ color: "#38bdf8", fontWeight: 600 }}>{c.endElement}</span>
-                      <span style={{ color: "#64748b" }}>.</span>
-                      <span style={{ color: "#f8fafc" }}>{c.endConnector}</span>
+                      <span style={{ color: "#0284c7", fontWeight: 600 }}>{c.endElement}</span>
+                      <span style={{ color: "var(--color-fg-muted, #64748b)" }}>.</span>
+                      <span style={{ color: "var(--color-fg-default, #f8fafc)" }}>{c.endConnector}</span>
                     </td>
                     <td>
                       <PillBadge $tone={c.unit === "W" ? "purple" : "cyan"}>
@@ -1208,7 +1308,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                         {c.unit ? ` [${c.unit}]` : ""}
                       </PillBadge>
                     </td>
-                    <td style={{ color: "#6ee7b7", fontWeight: 600 }}>✓ Output → Input</td>
+                    <td style={{ color: "#10b981", fontWeight: 600 }}>✓ Output → Input</td>
                   </tr>
                 ))}
               </tbody>
@@ -1229,11 +1329,11 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
               <tbody>
                 {allParameters.map((p, idx) => (
                   <tr key={`${p.fmu}.${p.name}-${idx}`}>
-                    <td style={{ color: "#a7f3d0" }}>{p.set}</td>
-                    <td style={{ color: "#38bdf8", fontWeight: 600 }}>{p.fmu}</td>
-                    <td style={{ color: "#f8fafc", fontWeight: 600 }}>{p.name}</td>
-                    <td style={{ color: "#fbbf24" }}>{p.value}</td>
-                    <td style={{ color: "#94a3b8" }}>{p.unit || "—"}</td>
+                    <td style={{ color: "#10b981" }}>{p.set}</td>
+                    <td style={{ color: "#0284c7", fontWeight: 600 }}>{p.fmu}</td>
+                    <td style={{ color: "var(--color-fg-default, #f8fafc)", fontWeight: 600 }}>{p.name}</td>
+                    <td style={{ color: "#d97706" }}>{p.value}</td>
+                    <td style={{ color: "var(--color-fg-muted, #94a3b8)" }}>{p.unit || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1244,7 +1344,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
             flex={1}
             py={2}
             overflow="auto"
-            bg="#070c17"
+            bg="var(--color-canvas-default, #070c17)"
             style={{
               fontFamily: "var(--font-mono, monospace)",
               fontSize: "12px",
@@ -1275,17 +1375,19 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                       minWidth: "36px",
                       textAlign: "right",
                       paddingRight: "12px",
-                      color: "#475569",
+                      color: "var(--color-fg-subtle, #475569)",
                       fontSize: "11px",
                     }}
                   >
                     {idx + 1}
                   </span>
-                  <span style={{ whiteSpace: "pre", color: "#e2e8f0" }}>{highlightPolyglotLine(line, "ssp")}</span>
+                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default, #e2e8f0)" }}>
+                    {highlightPolyglotLine(line, "ssp")}
+                  </span>
                 </div>
               ))
             ) : (
-              <Box p={4} color="#94a3b8" textAlign="center">
+              <Box p={4} color="var(--color-fg-muted, #94a3b8)" textAlign="center">
                 No SSP/SSD source available.
               </Box>
             )}
@@ -1304,7 +1406,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                     style={{
                       background: "transparent",
                       border: "none",
-                      color: "#38bdf8",
+                      color: "#0284c7",
                       fontSize: "11px",
                       cursor: "pointer",
                       fontWeight: 600,
@@ -1313,7 +1415,9 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                     ← System
                   </button>
                 </div>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: "#f8fafc" }}>{selectedFmu.name}</div>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-fg-default, #f8fafc)" }}>
+                  {selectedFmu.name}
+                </div>
                 <StatItem>
                   <span>Archive</span>
                   <strong>{selectedFmu.source.split("/").pop()}</strong>
@@ -1327,7 +1431,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                 {(selectedFmu.ports ?? []).map((pt) => (
                   <StatItem key={pt.name}>
                     <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11px" }}>
-                      <span style={{ color: pt.kind === "input" ? "#38bdf8" : "#f59e0b" }}>
+                      <span style={{ color: pt.kind === "input" ? "#0284c7" : "#d97706" }}>
                         {pt.kind === "input" ? "IN " : "OUT "}
                       </span>
                       {pt.name}
@@ -1391,15 +1495,15 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                     display: "flex",
                     flexDirection: "column",
                     gap: 5,
-                    background: "rgba(2, 6, 23, 0.55)",
-                    border: "1px solid rgba(148, 163, 184, 0.14)",
+                    background: "var(--color-canvas-default, rgba(2, 6, 23, 0.55))",
+                    border: "1px solid var(--color-border-default, rgba(148, 163, 184, 0.14))",
                     borderRadius: 6,
                     padding: "8px 10px",
                     fontFamily: "var(--font-mono, monospace)",
                     fontSize: "10.5px",
                   }}
                 >
-                  <div style={{ color: "#6ee7b7", display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ color: "#10b981", display: "flex", alignItems: "center", gap: 6 }}>
                     <FileZipIcon size={12} /> SystemStructure.ssd
                   </div>
                   {ssdModel.fmus.map((f) => (
@@ -1407,7 +1511,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                       key={f.name}
                       onClick={() => setSelectedFmuName(f.name)}
                       style={{
-                        color: "#cbd5e1",
+                        color: "var(--color-fg-muted, #cbd5e1)",
                         paddingLeft: 10,
                         cursor: "pointer",
                         display: "flex",
@@ -1415,11 +1519,11 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                       }}
                     >
                       <span>├─ {f.source}</span>
-                      <span style={{ color: "#38bdf8" }}>{(f.ports ?? []).length}p</span>
+                      <span style={{ color: "#0284c7" }}>{(f.ports ?? []).length}p</span>
                     </div>
                   ))}
                   {ssdModel.parameterSetNames.length > 0 && (
-                    <div style={{ color: "#fde68a", paddingLeft: 10 }}>
+                    <div style={{ color: "#d97706", paddingLeft: 10 }}>
                       └─ resources/{ssdModel.parameterSetNames.length}×.ssv
                     </div>
                   )}

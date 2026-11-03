@@ -106,6 +106,9 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   aspen: "beta",
   eclipse: "beta",
   "verilog-a": "beta",
+  qif: "beta",
+  oscal: "beta",
+  automationml: "beta",
 
   // Experimental (Tier 3)
   aacl: "experimental",
@@ -422,6 +425,14 @@ export class LanguageRegistry {
     if (lowerUri.endsWith(".jsbsim.xml")) return this.getPluginById("jsbsim");
     if (lowerUri.endsWith(".plcopen.xml")) return this.getPluginById("plcopen");
     if (lowerUri.endsWith(".sbml.xml")) return this.getPluginById("sbml");
+    if (
+      lowerUri.endsWith(".oscal.json") ||
+      lowerUri.endsWith(".oscal.yaml") ||
+      lowerUri.endsWith(".oscal.yml") ||
+      lowerUri.endsWith(".oscal.xml")
+    ) {
+      return this.getPluginById("oscal");
+    }
 
     const dotIdx = cleanUri.lastIndexOf(".");
     if (dotIdx === -1) return undefined;
@@ -454,6 +465,8 @@ export class LanguageRegistry {
         if (/<sbml\b/i.test(header)) return this.getPluginById("sbml") ?? this.extMap.get(ext);
         if (/<fdm_config\b/i.test(header)) return this.getPluginById("jsbsim") ?? this.extMap.get(ext);
         if (/<project\b[^>]*plcopen/i.test(header)) return this.getPluginById("plcopen") ?? this.extMap.get(ext);
+        if (/<QIFDocument\b/i.test(header)) return this.getPluginById("qif") ?? this.extMap.get(ext);
+        if (/<CAEXFile\b/i.test(header)) return this.getPluginById("automationml") ?? this.extMap.get(ext);
       }
     }
 

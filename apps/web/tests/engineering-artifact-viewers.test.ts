@@ -58,4 +58,51 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
     assert.strictEqual(resolvePlaceholder(undefined), "generic");
     assert.strictEqual(resolvePlaceholder("unknown-type"), "generic");
   });
+
+  it("wires interactive wheel-zoom, 3-layer collision-free SVG routing, and Protégé-style Tree explorer in Owl2Viewer", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const owlViewerSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/Owl2Viewer.tsx"),
+      "utf8",
+    );
+
+    assert.ok(owlViewerSrc.includes("useWheelZoom"), "Owl2Viewer must wire useWheelZoom on the primary graph viewport");
+    assert.ok(
+      owlViewerSrc.includes("ZoomHintBadge"),
+      "Owl2Viewer must display ZoomHintBadge for feed scroll protection",
+    );
+    assert.ok(
+      owlViewerSrc.includes("owl-edges-layer") &&
+        owlViewerSrc.includes("owl-nodes-layer") &&
+        owlViewerSrc.includes("owl-edge-labels-layer"),
+      "Owl2Viewer must render SVG in 3 layers (edges -> nodes -> edge labels) so labels are never occluded by cards",
+    );
+    assert.ok(
+      owlViewerSrc.includes("TreeSplitContainer") && owlViewerSrc.includes("totalEntities > 20"),
+      "Owl2Viewer must include a hierarchical Tree explorer and auto-switch to Tree view for large ontologies",
+    );
+  });
+
+  it("wires interactive 3D Three.js viewport, C3D8 hexahedral tessellation, BC/load vectors, and Stress/Deform HUD in FeaDeckViewer", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const feaViewerSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../src/components/artifacts/FeaDeckViewer.tsx"),
+      "utf8",
+    );
+
+    assert.ok(
+      feaViewerSrc.includes("<Canvas") && feaViewerSrc.includes("ViewportCameraControls"),
+      "FeaDeckViewer must mount an interactive 3D Three.js Canvas with ViewportCameraControls",
+    );
+    assert.ok(
+      feaViewerSrc.includes("build3DDeckGeometries") && feaViewerSrc.includes("clippingPlanes"),
+      "FeaDeckViewer must build 3D solid/edge BufferGeometries and support X/Y/Z section clipping planes",
+    );
+    assert.ok(
+      feaViewerSrc.includes("STRESS") && feaViewerSrc.includes("DEFORM") && feaViewerSrc.includes("QUALITY"),
+      "FeaDeckViewer must provide Stress, Deform, and Quality 3D inspection modes in the viewport HUD",
+    );
+  });
 });

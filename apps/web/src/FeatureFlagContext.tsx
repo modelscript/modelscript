@@ -108,6 +108,24 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   lang_modelscript_msx: false,
 };
 
+const FLAGS_CACHE_KEY = "modelscript:cached-feature-flags";
+
+function readCachedFlags(): FeatureFlags {
+  if (typeof window === "undefined" || !window.localStorage) return DEFAULT_FRONTEND_FLAGS;
+  try {
+    const raw = localStorage.getItem(FLAGS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return { ...DEFAULT_FRONTEND_FLAGS, ...parsed };
+      }
+    }
+  } catch {
+    // Ignore storage parse error
+  }
+  return DEFAULT_FRONTEND_FLAGS;
+}
+
 function readStorageOverrides(): Record<string, boolean> {
   const overrides: Record<string, boolean> = {};
   if (typeof window === "undefined" || !window.localStorage) return overrides;
@@ -130,15 +148,22 @@ function readStorageOverrides(): Record<string, boolean> {
 
 export function FeatureFlagProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
-  const [flags, setFlags] = useState<FeatureFlags>(DEFAULT_FRONTEND_FLAGS);
+  const [flags, setFlags] = useState<FeatureFlags>(readCachedFlags);
   const [overrides, setOverrides] = useState<Record<string, boolean>>(readStorageOverrides);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   const refreshFlags = useCallback(async () => {
     try {
       const res = await api.get("/flags");
       if (res.data && typeof res.data === "object") {
         setFlags((prev) => ({ ...prev, ...res.data }));
+        try {
+          if (typeof localStorage !== "undefined") {
+            localStorage.setItem(FLAGS_CACHE_KEY, JSON.stringify(res.data));
+          }
+        } catch {
+          // Ignore storage quota error
+        }
       }
     } catch {
       // In case of network error, fallback to defaults

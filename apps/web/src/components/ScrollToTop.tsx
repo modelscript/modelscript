@@ -32,18 +32,31 @@ export function updateStickyScrollVars(scrollTopOverride?: number): void {
   const lightMix = `${(progress * 88).toFixed(1)}%`;
   const darkMix = `${(progress * 85).toFixed(1)}%`;
 
-  root.style.setProperty("--sticky-bg-mix-light", lightMix);
-  root.style.setProperty("--sticky-bg-mix-dark", darkMix);
+  if (root.style.getPropertyValue("--sticky-bg-mix-light") !== lightMix) {
+    root.style.setProperty("--sticky-bg-mix-light", lightMix);
+  }
+  if (root.style.getPropertyValue("--sticky-bg-mix-dark") !== darkMix) {
+    root.style.setProperty("--sticky-bg-mix-dark", darkMix);
+  }
 
+  let backdropLight: string;
+  let backdropDark: string;
   if (progress <= 0) {
-    root.style.setProperty("--backdrop-sticky-light", "none");
-    root.style.setProperty("--backdrop-sticky-dark", "none");
+    backdropLight = "none";
+    backdropDark = "none";
   } else {
     const blurPx = (progress * 16).toFixed(1);
     const satLight = Math.round(100 + progress * 40);
     const satDark = Math.round(100 + progress * 60);
-    root.style.setProperty("--backdrop-sticky-light", `saturate(${satLight}%) blur(${blurPx}px)`);
-    root.style.setProperty("--backdrop-sticky-dark", `saturate(${satDark}%) blur(${blurPx}px)`);
+    backdropLight = `saturate(${satLight}%) blur(${blurPx}px)`;
+    backdropDark = `saturate(${satDark}%) blur(${blurPx}px)`;
+  }
+
+  if (root.style.getPropertyValue("--backdrop-sticky-light") !== backdropLight) {
+    root.style.setProperty("--backdrop-sticky-light", backdropLight);
+  }
+  if (root.style.getPropertyValue("--backdrop-sticky-dark") !== backdropDark) {
+    root.style.setProperty("--backdrop-sticky-dark", backdropDark);
   }
 }
 
@@ -84,12 +97,22 @@ export const ScrollToTop: React.FC = () => {
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
+    let ticking = false;
     const onScroll = () => {
-      updateStickyScrollVars();
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          updateStickyScrollVars();
+          ticking = false;
+        });
+        ticking = true;
+      }
     };
-    onScroll();
+    updateStickyScrollVars();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      ticking = false;
+    };
   }, []);
 
   useIsomorphicLayoutEffect(() => {

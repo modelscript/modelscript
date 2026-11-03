@@ -2,10 +2,11 @@
 
 import { DownloadIcon, EyeIcon, FileMediaIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, IconButton, Text } from "@primer/react";
-import React, { useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
 import type { AnySpatialPin, SpatialPin2D } from "./spatial-pin";
+import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
 interface PictureViewerProps {
   viewConfig: any; // expects { url: string, title?: string }
@@ -118,8 +119,40 @@ const PictureViewer: React.FC<PictureViewerProps> = ({ viewConfig, isFullScreen,
   const [pins, setPins] = useState<SpatialPin2D[]>([]);
   const [naturalDimensions, setNaturalDimensions] = useState<{ width: number; height: number } | null>(null);
 
+  const viewportRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const panStartRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const cleanupDragListenersRef = useRef<(() => void) | null>(null);
+
+  const endDrag = useCallback(() => {
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    if (cleanupDragListenersRef.current) {
+      cleanupDragListenersRef.current();
+      cleanupDragListenersRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (cleanupDragListenersRef.current) {
+        cleanupDragListenersRef.current();
+        cleanupDragListenersRef.current = null;
+      }
+    };
+  }, []);
+
+  const { showHint } = useWheelZoom({
+    containerRef: viewportRef,
+    zoom,
+    setZoom,
+    pan,
+    setPan,
+    isFullScreen,
+    minZoom: 0.2,
+    maxZoom: 8.0,
+  });
 
   if (!url) {
     return (
@@ -139,6 +172,7 @@ const PictureViewer: React.FC<PictureViewerProps> = ({ viewConfig, isFullScreen,
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
+    if ((e.target as HTMLElement | null)?.closest("button, a, input, select, textarea, [role='button']")) return;
     if (isPinMode) {
       const rect = e.currentTarget.getBoundingClientRect();
       const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
@@ -159,13 +193,57 @@ const PictureViewer: React.FC<PictureViewerProps> = ({ viewConfig, isFullScreen,
       return;
     }
 
+    e.preventDefault();
+    if (cleanupDragListenersRef.current) {
+      cleanupDragListenersRef.current();
+      cleanupDragListenersRef.current = null;
+    }
+    isDraggingRef.current = true;
     setIsDragging(true);
     dragStartRef.current = { x: e.clientX, y: e.clientY };
     panStartRef.current = { ...pan };
+
+    const handleWindowMouseMove = (ev: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      if (typeof ev.buttons === "number" && (ev.buttons & 1) === 0) {
+        endDrag();
+        return;
+      }
+      const dx = ev.clientX - dragStartRef.current.x;
+      const dy = ev.clientY - dragStartRef.current.y;
+      setPan({
+        x: panStartRef.current.x + dx,
+        y: panStartRef.current.y + dy,
+      });
+    };
+
+    const handleWindowMouseUp = () => {
+      endDrag();
+    };
+
+    window.addEventListener("mousemove", handleWindowMouseMove);
+    window.addEventListener("mouseup", handleWindowMouseUp);
+    window.addEventListener("pointerup", handleWindowMouseUp);
+    window.addEventListener("pointercancel", handleWindowMouseUp);
+    window.addEventListener("blur", handleWindowMouseUp);
+    window.addEventListener("dragend", handleWindowMouseUp);
+
+    cleanupDragListenersRef.current = () => {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+      window.removeEventListener("pointerup", handleWindowMouseUp);
+      window.removeEventListener("pointercancel", handleWindowMouseUp);
+      window.removeEventListener("blur", handleWindowMouseUp);
+      window.removeEventListener("dragend", handleWindowMouseUp);
+    };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isDraggingRef.current && !isDragging) return;
+    if (typeof e.buttons === "number" && (e.buttons & 1) === 0) {
+      endDrag();
+      return;
+    }
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
     setPan({
@@ -175,13 +253,7 @@ const PictureViewer: React.FC<PictureViewerProps> = ({ viewConfig, isFullScreen,
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.15 : 0.85;
-    setZoom((prev) => Math.min(Math.max(0.2, prev * factor), 8.0));
+    endDrag();
   };
 
   const handleResetZoom = () => {
@@ -295,18 +367,19 @@ const PictureViewer: React.FC<PictureViewerProps> = ({ viewConfig, isFullScreen,
       </Toolbar>
 
       <CanvasViewport
+        ref={viewportRef}
         $isDragging={isDragging}
         $isPinMode={isPinMode}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
+        onDragStart={(e) => e.preventDefault()}
         onDoubleClick={handleDoubleClick}
       >
         <ImageTransformLayer $zoom={zoom} $panX={pan.x} $panY={pan.y} $isInverted={isInverted}>
           <img src={url} alt={title} onLoad={handleImageLoad} />
         </ImageTransformLayer>
+        <ZoomHintBadge show={showHint && !isFullScreen} label="💡 Hold ⌘/Ctrl to zoom image" />
 
         {/* 2D Spatial Pin Markers */}
         {pins.map((pin, idx) => (

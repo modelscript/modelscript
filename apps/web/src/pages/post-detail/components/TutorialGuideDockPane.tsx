@@ -45,7 +45,7 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
   const primaryArtifactId = postAny.artifact_view_id ?? post.artifact_id ?? notebookData.artifactIds?.[0];
   const primaryArtifactView =
     (primaryArtifactId ? postAny.artifact_views?.[primaryArtifactId] : undefined) || postAny.artifact_view;
-  const isMultiFileTutorial = Boolean(
+  const isMultiFileArticle = Boolean(
     primaryArtifactView &&
     isMultiFileArtifact({
       ...primaryArtifactView,
@@ -497,7 +497,7 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
             }}
           >
             <ZapIcon size={13} />
-            <span>{isMultiFileTutorial ? "Open in Web IDE" : "Open in Playground"}</span>
+            <span>{isMultiFileArticle ? "Open in Web IDE" : "Open in Playground"}</span>
           </button>
         )}
 
@@ -556,5 +556,8 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
     </div>
   );
 };
+
+export const ArticleGuideDockPane = TutorialGuideDockPane;
+export type ArticleGuideDockPaneProps = TutorialGuideDockPaneProps;
 
 export default TutorialGuideDockPane;

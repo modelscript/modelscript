@@ -28,10 +28,10 @@ class MemoryFsMock implements IMemoryFileSystemProvider {
   }
 }
 
-describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
-  it("defines all 15 domain groups and all 44 polyglot language tiles", () => {
+describe("47-Language Catalog & 2-Level Example Templates Suite", () => {
+  it("defines all 15 domain groups and all 47 polyglot language tiles", () => {
     assert.strictEqual(LANGUAGE_GROUPS.length, 15, "Must define 15 domain groups");
-    assert.strictEqual(LANGUAGE_TILES.length, 44, "Must define all 44 languages");
+    assert.strictEqual(LANGUAGE_TILES.length, 47, "Must define all 47 languages");
 
     const groupIds = new Set(LANGUAGE_GROUPS.map((g) => g.id));
     for (const lang of LANGUAGE_TILES) {
@@ -90,7 +90,7 @@ describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
     assert.strictEqual(res1.primaryFile, "LorenzAttractor.mo");
     assert.strictEqual(getTemplatePrimaryFile("artifact-101"), "LorenzAttractor.mo");
     assert.ok(memFs1.files.has("/artifact-101/LorenzAttractor.mo"));
-    assert.ok(memFs1.files.has("/artifact-101/README.md"));
+    assert.ok(!memFs1.files.has("/artifact-101/README.md"), "Must not inject synthetic README.md");
 
     // 2. CAD STEP Artifact
     const memFs2 = new MemoryFsMock();
@@ -104,10 +104,11 @@ describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
       },
     });
 
-    assert.strictEqual(res2.primaryFile, "DroneArm.mo");
-    assert.strictEqual(getTemplatePrimaryFile("artifact-102"), "DroneArm.mo");
+    assert.strictEqual(res2.primaryFile, "geometry.step");
+    assert.strictEqual(getTemplatePrimaryFile("artifact-102"), "geometry.step");
     assert.ok(memFs2.files.has("/artifact-102/geometry.step"));
-    assert.ok(memFs2.files.has("/artifact-102/DroneArm.mo"));
+    assert.ok(!memFs2.files.has("/artifact-102/DroneArm.mo"), "Must not create fake Modelica wrapper for STEP file");
+    assert.ok(!memFs2.files.has("/artifact-102/README.md"), "Must not inject synthetic README.md");
 
     // 3. Simulation Plot Artifact
     const memFs3 = new MemoryFsMock();
@@ -128,6 +129,7 @@ describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
     assert.ok(memFs3.files.has("/artifact-103/ChuaCircuit.mo"));
     assert.ok(memFs3.files.has("/artifact-103/simulate.mos"));
     assert.ok(memFs3.files.has("/artifact-103/trajectory.csv"));
+    assert.ok(!memFs3.files.has("/artifact-103/README.md"));
 
     // 4. GCode Toolpath Artifact
     const memFs4 = new MemoryFsMock();
@@ -144,6 +146,7 @@ describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
     assert.strictEqual(res4.primaryFile, "toolpath.gcode");
     assert.strictEqual(getTemplatePrimaryFile("artifact-104"), "toolpath.gcode");
     assert.ok(memFs4.files.has("/artifact-104/toolpath.gcode"));
+    assert.ok(!memFs4.files.has("/artifact-104/README.md"));
 
     // 5. AAS Package Artifact
     const memFs5 = new MemoryFsMock();
@@ -160,16 +163,43 @@ describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
     assert.strictEqual(res5.primaryFile, "aas-manifest.json");
     assert.strictEqual(getTemplatePrimaryFile("artifact-105"), "aas-manifest.json");
     assert.ok(memFs5.files.has("/artifact-105/aas-manifest.json"));
+    assert.ok(!memFs5.files.has("/artifact-105/README.md"));
 
-    // 6. Package template mounting
+    // 6. Package template & package artifact mounting
     const memFsPkg = new MemoryFsMock();
     const wsPkg = { scheme: "memfs", path: "/package-thermal_grid" } as any;
     scaffoldTemplateFiles(memFsPkg, wsPkg);
 
-    assert.strictEqual(getTemplatePrimaryFile("package-thermal_grid"), "thermal_gridDemo.mo");
-    assert.ok(memFsPkg.files.has("/package-thermal_grid/package.json"));
+    assert.strictEqual(getTemplatePrimaryFile("package-thermal_grid"), "package.mo");
     assert.ok(memFsPkg.files.has("/package-thermal_grid/package.mo"));
-    assert.ok(memFsPkg.files.has("/package-thermal_grid/thermal_gridDemo.mo"));
+    assert.ok(!memFsPkg.files.has("/package-thermal_grid/thermal_gridDemo.mo"));
+    assert.ok(!memFsPkg.files.has("/package-thermal_grid/README.md"));
+
+    // 6b. Package card artifact (like artifact-51 Modelica@4.1.0)
+    const memFsPkgCard = new MemoryFsMock();
+    const wsPkgCard = { scheme: "memfs", path: "/artifact-51" } as any;
+    const resPkgCard = mountArtifactToMemFs(memFsPkgCard, wsPkgCard, {
+      artifactId: 51,
+      title: "Modelica@4.1.0",
+      viewType: "package",
+      viewConfig: {
+        name: "Modelica",
+        version: "4.1.0",
+        description: "Modelica Standard Library 4.1.0",
+      },
+      files: {
+        "package.mo": 'within ;\npackage Modelica "Modelica Standard Library"\nend Modelica;\n',
+        "package.order": "Blocks\nElectrical\nMechanics\n",
+      },
+      primaryFile: "package.mo",
+    });
+
+    assert.strictEqual(resPkgCard.primaryFile, "package.mo");
+    assert.strictEqual(getTemplatePrimaryFile("artifact-51"), "package.mo");
+    assert.ok(memFsPkgCard.files.has("/artifact-51/package.mo"));
+    assert.ok(memFsPkgCard.files.has("/artifact-51/package.order"));
+    assert.ok(!memFsPkgCard.files.has("/artifact-51/ArtifactModel_51.mo"));
+    assert.ok(!memFsPkgCard.files.has("/artifact-51/README.md"));
 
     // 7. Scratch template mounting
     const memFsScratch = new MemoryFsMock();
@@ -205,7 +235,7 @@ describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
     assert.strictEqual(resSysml.primaryFile, "ArtemisLunarLanderGNC.sysml");
     assert.strictEqual(getTemplatePrimaryFile("artifact-3"), "ArtemisLunarLanderGNC.sysml");
     assert.ok(memFsSysml.files.has("/artifact-3/ArtemisLunarLanderGNC.sysml"));
-    assert.ok(memFsSysml.files.has("/artifact-3/README.md"));
+    assert.ok(!memFsSysml.files.has("/artifact-3/README.md"), "Must not inject synthetic README.md");
     assert.ok(
       !memFsSysml.files.has("/artifact-3/ArtifactModel.mo"),
       "Must not create dummy ArtifactModel.mo for SysML v2",
@@ -231,6 +261,7 @@ describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
     assert.ok(memFsMulti.files.has("/artifact-106/main.msx"));
     assert.ok(memFsMulti.files.has("/artifact-106/battery.msx"));
     assert.ok(memFsMulti.files.has("/artifact-106/thermal.msx"));
+    assert.ok(!memFsMulti.files.has("/artifact-106/README.md"));
 
     // 10. Direct URL navigation (#memfs:artifact-777) hydrated via localStorage
     const storageMap = new Map<string, string>();

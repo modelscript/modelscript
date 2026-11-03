@@ -150,7 +150,8 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     }
   }, [initialState]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [draftsList, setDraftsList] = useState<DraftPost[]>([]);
+  const [draftsList, setDraftsList] = useState<DraftPost[]>(() => getDrafts());
+  const modalPanelRef = useRef<HTMLDivElement>(null);
 
   const hasUnsavedChanges = useCallback(() => {
     if (initialState?.editPostId) {
@@ -214,6 +215,27 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
         } else if (view === "drafts") {
           e.preventDefault();
           setView("compose");
+        }
+        return;
+      }
+
+      if (e.key === "Tab" && view !== "confirm_save" && modalPanelRef.current) {
+        const focusable = Array.from(
+          modalPanelRef.current.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first || !modalPanelRef.current.contains(document.activeElement)) {
+            e.preventDefault();
+            last?.focus();
+          }
+        } else if (document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
         }
       }
     };
@@ -313,32 +335,41 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   };
 
   const isFullPageNotebook = notebookMode && view === "compose";
-  const computedMaxWidth = isFullPageNotebook
-    ? "100vw"
-    : editorLayout === "split" || isExpandedWidth
-      ? "1180px"
-      : "600px";
+  const isExpandedLayout = editorLayout === "split" || isExpandedWidth;
+
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const syncViewportHeight = () => {
+      if (modalPanelRef.current) {
+        modalPanelRef.current.style.setProperty("--compose-vvh", `${Math.round(vv.height)}px`);
+      }
+    };
+    syncViewportHeight();
+    vv.addEventListener("resize", syncViewportHeight);
+    vv.addEventListener("scroll", syncViewportHeight);
+    return () => {
+      vv.removeEventListener("resize", syncViewportHeight);
+      vv.removeEventListener("scroll", syncViewportHeight);
+    };
+  }, []);
 
   const modal = (
     <>
       <Overlay
+        $isFullPageNotebook={isFullPageNotebook}
+        $isExpanded={isExpandedLayout}
         onClick={view === "drafts" ? onClose : view === "compose" ? handleCloseClick : undefined}
-        style={{
-          paddingTop: isFullPageNotebook ? "0" : editorLayout === "split" || isExpandedWidth ? "3vh" : "7vh",
-        }}
       >
         <ModalPanel
+          ref={modalPanelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={view === "drafts" ? "Saved drafts" : initialState?.editPostId ? "Edit post" : "Create post"}
           onClick={(e) => e.stopPropagation()}
-          style={{
-            width: isFullPageNotebook ? "100vw" : "100%",
-            maxWidth: view === "drafts" ? "600px" : computedMaxWidth,
-            height: isFullPageNotebook ? "100vh" : undefined,
-            maxHeight: isFullPageNotebook ? "100vh" : editorLayout === "split" || isExpandedWidth ? "92vh" : "86vh",
-            borderRadius: isFullPageNotebook ? "0" : "16px",
-            border: isFullPageNotebook ? "none" : undefined,
-            margin: "0 auto",
-            display: "flex",
-          }}
+          $isFullPageNotebook={isFullPageNotebook}
+          $isExpanded={isExpandedLayout}
+          $isDrafts={view === "drafts"}
         >
           {view === "drafts" ? (
             <DraftsView
@@ -398,8 +429,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
               <Header
                 style={{
                   gap: "8px",
-                  borderBottom: "1px solid var(--color-border-subtle, rgba(255,255,255,0.06))",
-                  paddingBottom: "8px",
+                  borderBottom: "1px solid var(--ms-divider, var(--color-border-subtle))",
                 }}
               >
                 <IconButton
@@ -410,20 +440,20 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                   style={{
                     color: "var(--color-text-primary)",
                     borderRadius: "50%",
-                    width: "36px",
-                    height: "36px",
+                    width: "34px",
+                    height: "34px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    marginLeft: "-6px",
                   }}
                 />
                 {initialState?.editPostId && (
                   <span
                     style={{
-                      fontFamily: "var(--font-mono, monospace)",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      color: "var(--color-accent-cyan)",
+                      fontSize: "12.5px",
+                      fontWeight: 600,
+                      color: "var(--ms-brand, var(--color-accent-cyan))",
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "5px",
@@ -434,13 +464,15 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                 )}
                 <Box flex={1} />
                 <div
+                  role="tablist"
+                  aria-label="Editor layout mode"
                   style={{
                     display: "inline-flex",
-                    gap: "4px",
+                    gap: "2px",
                     padding: "3px",
                     borderRadius: "8px",
-                    background: "rgba(255, 255, 255, 0.04)",
-                    border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1))",
+                    background: "var(--ms-surface-hover, rgba(15, 23, 42, 0.045))",
+                    border: "1px solid var(--ms-divider, var(--color-border-subtle))",
                   }}
                 >
                   {(
@@ -451,24 +483,34 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                     ] as const
                   ).map((tab) => {
                     const TabIcon = tab.icon;
+                    const isActive = editorLayout === tab.id;
                     return (
                       <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setEditorLayout(tab.id)}
+                        role="tab"
+                        aria-selected={isActive}
+                        className={tab.id === "split" ? "desktop-only-action" : undefined}
+                        onClick={() => {
+                          setEditorLayout(tab.id);
+                          if (tab.id === "split" && !isExpandedWidth) {
+                            setIsExpandedWidth(true);
+                          }
+                        }}
                         style={{
                           padding: "4px 10px",
                           borderRadius: "6px",
                           border: "none",
-                          background: editorLayout === tab.id ? "rgba(6, 182, 212, 0.18)" : "transparent",
-                          color: editorLayout === tab.id ? "var(--color-accent-cyan)" : "var(--color-text-muted)",
-                          fontFamily: "var(--font-mono, monospace)",
-                          fontSize: "11.5px",
-                          fontWeight: 600,
+                          background: isActive ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))" : "transparent",
+                          color: isActive ? "var(--ms-brand, var(--color-accent-cyan))" : "var(--ms-text-2)",
+                          fontFamily: "inherit",
+                          fontSize: "12px",
+                          fontWeight: isActive ? 600 : 500,
                           cursor: "pointer",
                           display: "inline-flex",
                           alignItems: "center",
                           gap: "5px",
+                          transition: "background-color 0.15s ease, color 0.15s ease",
                         }}
                       >
                         <TabIcon size={12} /> {tab.label}
@@ -478,20 +520,31 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsExpandedWidth(!isExpandedWidth)}
-                  title="Toggle expanded width"
+                  className="desktop-only-action"
+                  onClick={() => {
+                    const nextExpanded = !isExpandedWidth;
+                    setIsExpandedWidth(nextExpanded);
+                    if (!nextExpanded && editorLayout === "split") {
+                      setEditorLayout("write");
+                    }
+                  }}
+                  title={isExpandedWidth ? "Restore compact modal width" : "Expand modal width"}
+                  aria-pressed={isExpandedWidth}
                   style={{
-                    background: "rgba(255, 255, 255, 0.04)",
-                    border: "1px solid var(--color-border-subtle)",
+                    background: isExpandedWidth ? "var(--ms-brand-soft)" : "transparent",
+                    border: "1px solid var(--ms-border, var(--color-border-subtle))",
                     borderRadius: "8px",
-                    color: "var(--color-text-secondary)",
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: "11.5px",
-                    padding: "5px 10px",
+                    color: isExpandedWidth ? "var(--ms-brand)" : "var(--ms-text-2)",
+                    fontFamily: "inherit",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    height: "30px",
+                    padding: "0 10px",
                     cursor: "pointer",
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "5px",
+                    transition: "border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease",
                   }}
                 >
                   {isExpandedWidth ? (
@@ -505,18 +558,44 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                   )}
                 </button>
                 <button
+                  type="button"
                   onClick={handleDraftsClick}
                   style={{
-                    background: "none",
+                    background: "transparent",
                     border: "none",
-                    color: "var(--color-accent-cyan)",
-                    fontWeight: "bold",
-                    fontSize: "14px",
+                    borderRadius: "999px",
+                    color: "var(--ms-brand, var(--color-accent-cyan))",
+                    fontWeight: 600,
+                    fontSize: "13.5px",
                     cursor: "pointer",
-                    paddingRight: "8px",
+                    padding: "5px 10px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    transition: "background-color 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "var(--ms-surface-hover)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
                   }}
                 >
-                  Drafts
+                  <span>Drafts</span>
+                  {draftsList.length > 0 && (
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        padding: "1px 6px",
+                        borderRadius: "999px",
+                        background: "var(--ms-brand-soft)",
+                        color: "var(--ms-brand)",
+                      }}
+                    >
+                      {draftsList.length}
+                    </span>
+                  )}
                 </button>
               </Header>
               <Body>
@@ -532,9 +611,10 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                       background: "rgba(245, 158, 11, 0.12)",
                       color: "#f59e0b",
                       border: "1px solid rgba(245, 158, 11, 0.25)",
-                      marginBottom: "12px",
+                      marginBottom: "4px",
                       fontWeight: 600,
                       fontFamily: "var(--font-mono, monospace)",
+                      width: "fit-content",
                     }}
                   >
                     <span>⚡ Forking Artifact #{initialState.forkedFromArtifactId}</span>
@@ -546,7 +626,8 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                     gridTemplateColumns: editorLayout === "split" ? "minmax(0, 1fr) minmax(0, 1fr)" : undefined,
                     flexDirection: editorLayout === "split" ? undefined : "column",
                     gap: "16px",
-                    alignItems: "start",
+                    alignItems: editorLayout === "split" ? "start" : "stretch",
+                    flex: 1,
                   }}
                 >
                   {editorLayout === "preview" && (
@@ -563,7 +644,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                       />
                     </div>
                   )}
-                  <div style={{ minWidth: 0, width: "100%" }}>
+                  <div style={{ minWidth: 0, width: "100%", flex: 1, display: "flex", flexDirection: "column" }}>
                     <ComposeBox
                       editPostId={initialState?.editPostId}
                       forkedFromArtifactId={initialState?.forkedFromArtifactId}
@@ -602,7 +683,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                       quotePost={currentQuotePost}
                       replyToPost={currentReplyToPost}
                       pendingPin={currentPendingPin}
-                      minRows={1}
+                      minRows={3}
                       autoFocus={true}
                       isModal={true}
                       hideInput={editorLayout === "preview"}

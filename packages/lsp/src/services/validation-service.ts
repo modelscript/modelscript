@@ -920,10 +920,26 @@ export class ValidationService {
     await currentLock;
 
     try {
-      if (oldCached && oldCached.text !== text) {
+      const oldTree = oldCached?.tree as unknown as
+        | {
+            rootPtr?: number;
+            rootNode?: { id?: number; tree?: { facade?: unknown } };
+            facade?: unknown;
+            edit?: (e: unknown) => void;
+          }
+        | null
+        | undefined;
+      const oldRootPtr = oldTree?.rootPtr ?? oldTree?.rootNode?.id ?? 0;
+      const activeFacade = (plugin?.facade ??
+        oldTree?.facade ??
+        oldTree?.rootNode?.tree?.facade ??
+        this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
+      const isOldTreeActiveInWasm = Boolean(oldRootPtr && activeFacade && activeFacade.lastAstRoot === oldRootPtr);
+
+      if (oldCached && oldCached.text !== text && isOldTreeActiveInWasm) {
         const edit = computeTreeEdit(oldCached.text, text);
-        if (typeof (oldCached.tree as any)?.edit === "function") {
-          oldCached.tree.edit(edit as never);
+        if (typeof oldTree?.edit === "function") {
+          oldTree.edit(edit as never);
         }
         if (parser) {
           tree = parser.parse(
@@ -947,11 +963,10 @@ export class ValidationService {
             endOffset: edit.newEndIndex,
           },
         ];
-      } else if (oldCached) {
+      } else if (oldCached && oldCached.text === text && isOldTreeActiveInWasm) {
         tree = oldCached.tree;
-        const facade = plugin?.facade ?? tree?.facade ?? tree?.rootNode?.tree?.facade ?? this.parserService.facade;
-        if (facade && typeof facade.loadSource === "function") {
-          facade.loadSource(text);
+        if (activeFacade && typeof activeFacade.loadSource === "function") {
+          activeFacade.loadSource(text);
         }
       } else {
         if (parser) {

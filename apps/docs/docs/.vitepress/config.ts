@@ -230,11 +230,13 @@ export default defineConfig({
     ["link", { rel: "icon", type: "image/png", href: "/ms-logo.png" }],
     ["link", { rel: "preconnect", href: "https://fonts.googleapis.com" }],
     ["link", { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" }],
+    ["link", { rel: "dns-prefetch", href: "https://fonts.googleapis.com" }],
+    ["link", { rel: "dns-prefetch", href: "https://fonts.gstatic.com" }],
     [
       "link",
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;600&display=swap",
       },
     ],
     ["meta", { name: "theme-color", content: "#0a0f1c" }],

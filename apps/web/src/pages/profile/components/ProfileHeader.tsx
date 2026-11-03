@@ -138,15 +138,20 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 
       <Box
         style={{
-          height: "200px",
+          height: "clamp(124px, 32vw, 200px)",
           backgroundColor: "var(--color-canvas-subtle)",
           backgroundImage: safeCssImageUrl(getBannerUrl(profile.username, profile.banner_url)) || "none",
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}
       />
-      <Box px={4} style={{ marginTop: "-65px" }}>
-        <Box display="flex" justifyContent="space-between" alignItems="flex-end">
+      <Box px={4} style={{ marginTop: "clamp(-65px, -11vw, -44px)" }}>
+        <Box
+          display="flex"
+          justifyContent="space-between"
+          alignItems="flex-end"
+          style={{ gap: "8px", flexWrap: "wrap" }}
+        >
           <Box
             role="button"
             tabIndex={0}
@@ -159,8 +164,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               }
             }}
             style={{
-              width: "134px",
-              height: "134px",
+              width: "clamp(88px, 24vw, 134px)",
+              height: "clamp(88px, 24vw, 134px)",
               borderRadius: "50%",
               backgroundColor: "var(--color-accent-purple)",
               border: "4px solid var(--color-bg-primary)",
@@ -168,13 +173,14 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               alignItems: "center",
               justifyContent: "center",
               color: "white",
-              fontSize: "48px",
+              fontSize: "clamp(32px, 8vw, 48px)",
               fontWeight: "bold",
               backgroundImage: avatarBgImage || "none",
               backgroundSize: "cover",
               backgroundPosition: "center",
               cursor: "pointer",
               transition: "filter 0.15s ease",
+              flexShrink: 0,
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.filter = "brightness(0.9)";

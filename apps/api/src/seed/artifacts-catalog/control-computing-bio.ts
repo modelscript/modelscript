@@ -202,7 +202,7 @@ export const CONTROL_COMPUTING_BIO_POSTS: SeedPostSpec[] = [
           <ST>
             <xhtml xmlns="http://www.w3.org/1999/xhtml">
 (* SIL-3 Dual-Channel Safety Interlock &amp; Process Permissives *)
-bSafetyRelayEnable := bLightCurtainChA AND bLightCurtainChB AND (rCellTempDegC &lt; 55.0);
+bSafetyRelayEnable := bLightCurtainChA AND bLightCurtainChB AND NOT bEStopResetPulse AND (rCellTempDegC &lt; 55.0);
 
 IF NOT bSafetyRelayEnable THEN
   bLaserEmissionGate  := FALSE;
@@ -223,6 +223,15 @@ END_IF;
       </pou>
     </pous>
   </types>
+  <instances>
+    <configurations>
+      <configuration name="SafetyPLC_Cfg">
+        <resource name="Core0_SIL3">
+          <task name="SafetyScan_1ms" interval="T#1ms" priority="1" />
+        </resource>
+      </configuration>
+    </configurations>
+  </instances>
 </project>
 `,
     likedBy: ["omar", "claire_dubois", "kenji_takahashi", "marcus_chen", "lukas_weber"],

@@ -69,7 +69,7 @@ const ToastViewport = styled.div`
   width: calc(100vw - 48px);
   pointer-events: none;
 
-  @media (max-width: 500px) {
+  @media (max-width: 767px) {
     bottom: calc(136px + env(safe-area-inset-bottom, 0px)); /* Above mobile bottom bar and floating pill */
     right: 16px;
     left: 16px;

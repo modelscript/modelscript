@@ -58,6 +58,8 @@ export interface MorselLeftSidebarProps {
   isSimulating: boolean;
 }
 
+export type MobileSidebarSection = "parameters" | "variables" | "components" | "libraries" | "solver";
+
 export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   treeVisible,
   isNarrow,
@@ -104,8 +106,19 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   const isCaeComputeEnabled = hasCapability("caeCompute");
   const isDraggingTree = useRef(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
+  const [mobileSection, setMobileSection] = useState<MobileSidebarSection>(() =>
+    simulationParameters.length > 0 ? "parameters" : showResultsView ? "variables" : "components",
+  );
 
   if (!treeVisible) return null;
+
+  const showLibrariesSection = isNarrow ? mobileSection === "libraries" : !showResultsView;
+  const showComponentsSection = isNarrow ? mobileSection === "components" : !showResultsView;
+  const showVariablesSection = isNarrow ? mobileSection === "variables" : showResultsView;
+  const showParametersSection = isNarrow
+    ? mobileSection === "parameters"
+    : showResultsView && simulationParameters.length > 0;
+  const showSolverSection = isNarrow ? mobileSection === "solver" : showResultsView;
 
   return (
     <>
@@ -122,7 +135,84 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
           overflow: "hidden",
         }}
       >
-        {!showResultsView && (
+        {isNarrow && (
+          <div
+            role="tablist"
+            aria-label="Model tuning and inspection sections"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 10px",
+              overflowX: "auto",
+              borderBottom: "1px solid var(--color-border-default)",
+              background: "var(--color-canvas-default)",
+              flexShrink: 0,
+            }}
+          >
+            {(
+              [
+                { id: "parameters", label: "Parameters", count: simulationParameters.length },
+                { id: "variables", label: "Variables", count: simulationVariables?.length ?? 0 },
+                {
+                  id: "components",
+                  label: translations.components || "Components",
+                  count: diagramData?.nodes?.length ?? 0,
+                },
+                { id: "libraries", label: translations.libraries || "Libraries" },
+                { id: "solver", label: "Solver" },
+              ] as const
+            ).map((sec) => {
+              const active = mobileSection === sec.id;
+              return (
+                <button
+                  key={sec.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setMobileSection(sec.id)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    height: 30,
+                    padding: "0 11px",
+                    borderRadius: 999,
+                    border: "1px solid",
+                    borderColor: active
+                      ? "color-mix(in srgb, var(--ms-brand, #0891b2) 45%, transparent)"
+                      : "var(--color-border-default)",
+                    background: active ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))" : "transparent",
+                    color: active ? "var(--ms-link, #0891b2)" : "var(--color-fg-muted)",
+                    fontSize: 12,
+                    fontWeight: active ? 600 : 500,
+                    fontFamily: "inherit",
+                    whiteSpace: "nowrap",
+                    cursor: "pointer",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span>{sec.label}</span>
+                  {"count" in sec && typeof sec.count === "number" && sec.count > 0 && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "0 5px",
+                        borderRadius: 999,
+                        background: active ? "rgba(8, 145, 178, 0.22)" : "var(--color-canvas-subtle)",
+                      }}
+                    >
+                      {sec.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {showLibrariesSection && (
           <>
             <div
               className="text-bold px-3 py-2 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
@@ -203,7 +293,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 />
               </div>
             </div>
-            <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+            <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>
               <TreeWidget
                 uri={documentUri}
                 onSelect={onTreeSelect}
@@ -216,63 +306,95 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
             </div>
           </>
         )}
-        <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
-          {showResultsView ? "Simulation Variables" : translations.components}
-        </div>
-        <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-          {!showResultsView ? (
-            <ComponentList
-              components={diagramData?.nodes ?? null}
-              onSelect={onSelectComponent}
-              selectedName={selectedComponent}
-              language={language}
-              translations={translations}
-            />
-          ) : (
-            <VariablesTree
-              variables={simulationVariables ?? []}
-              selectedVariables={selectedSimulationVariables}
-              onToggleVariable={onToggleSimulationVariable}
-            />
-          )}
-        </div>
-        {showResultsView && simulationParameters.length > 0 && (
+
+        {(showComponentsSection || showVariablesSection) && (
           <>
-            <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">Simulation Parameters</div>
-            <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-              <SimulationParameters
-                parameters={simulationParameters}
-                overrides={parameterOverrides}
-                sweepState={sweepState}
-                onChange={onParameterChange}
-                onReset={onParameterReset}
-                onSweepChange={onSweepChange}
-              />
+            {!isNarrow && (
+              <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
+                {showVariablesSection ? "Simulation Variables" : translations.components}
+              </div>
+            )}
+            <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>
+              {showComponentsSection ? (
+                <ComponentList
+                  components={diagramData?.nodes ?? null}
+                  onSelect={onSelectComponent}
+                  selectedName={selectedComponent}
+                  language={language}
+                  translations={translations}
+                />
+              ) : (
+                <VariablesTree
+                  variables={simulationVariables ?? []}
+                  selectedVariables={selectedSimulationVariables}
+                  onToggleVariable={onToggleSimulationVariable}
+                />
+              )}
             </div>
           </>
         )}
-        {showResultsView && (
+
+        {showParametersSection && (
           <>
-            <button
-              type="button"
-              onClick={() => setIsSettingsExpanded((prev) => !prev)}
-              aria-expanded={isSettingsExpanded}
-              className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
-              style={{
-                width: "100%",
-                borderLeft: "none",
-                borderRight: "none",
-                cursor: "pointer",
-                textAlign: "left",
-                color: "inherit",
-                fontSize: "inherit",
-              }}
-            >
-              <span>Simulation Settings</span>
-              {isSettingsExpanded ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
-            </button>
+            {!isNarrow && (
+              <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">Simulation Parameters</div>
+            )}
+            <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>
+              {simulationParameters.length > 0 ? (
+                <SimulationParameters
+                  parameters={simulationParameters}
+                  overrides={parameterOverrides}
+                  sweepState={sweepState}
+                  onChange={onParameterChange}
+                  onReset={onParameterReset}
+                  onSweepChange={onSweepChange}
+                />
+              ) : (
+                <div
+                  style={{
+                    padding: "24px 16px",
+                    textAlign: "center",
+                    color: "var(--color-fg-muted)",
+                    fontSize: "13px",
+                  }}
+                >
+                  Run a simulation first or switch to <b>Components</b> / <b>Solver</b> to configure this model.
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {showSolverSection && (
+          <div
+            style={{
+              flex: isNarrow ? 1 : undefined,
+              overflowY: isNarrow ? "auto" : undefined,
+              paddingBottom: isNarrow ? 72 : 0,
+            }}
+          >
+            {!isNarrow && (
+              <button
+                type="button"
+                onClick={() => setIsSettingsExpanded((prev) => !prev)}
+                aria-expanded={isSettingsExpanded}
+                className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
+                style={{
+                  width: "100%",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  color: "inherit",
+                  fontSize: "inherit",
+                }}
+              >
+                <span>Simulation Settings</span>
+                {isSettingsExpanded ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
+              </button>
+            )}
             <div style={{ padding: "0" }}>
-              {isSettingsExpanded && (
+              {(isNarrow || isSettingsExpanded) && (
                 <SimulationExperimentSettings
                   experiment={cachedSimulator?.dae?.experiment}
                   overrides={experimentOverrides}
@@ -296,7 +418,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 )}
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
       {!isNarrow && (

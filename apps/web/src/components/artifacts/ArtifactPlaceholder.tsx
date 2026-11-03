@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React from "react";
-import styled from "styled-components";
+import styledImport from "styled-components";
 import { useTheme } from "../../theme";
 import { CadVisual, CfdVisual, DocumentVisual, FeaVisual, SimulationVisual, getBadgeLabel } from "./placeholders";
+
+const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
 
 export interface ArtifactPlaceholderProps {
   type?: "cfd" | "fea" | "cad" | "pdf" | "generic" | string | undefined;

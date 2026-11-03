@@ -133,6 +133,15 @@ export function useComposeNotebookState({
     syncNotebookToContentAndArtifact(nextCells, notebookTitle);
   };
 
+  const replaceArtifactCell = (cellId: string, newArtifactId: number, newTitle?: string) => {
+    const nextCells = notebookCells.map((c) =>
+      c.id === cellId && c.type === "artifact"
+        ? { ...c, artifactId: newArtifactId, ...(newTitle ? { title: newTitle } : {}) }
+        : c,
+    );
+    syncNotebookToContentAndArtifact(nextCells, notebookTitle);
+  };
+
   const addMarkdownCellAfter = (afterCellId?: string | null, initialContent = ""): string => {
     const newCell: NotebookCell = { id: createCellId("md"), type: "markdown", content: initialContent };
     const nextCells = [...notebookCells];
@@ -268,6 +277,7 @@ export function useComposeNotebookState({
     handleToggleNotebookMode,
     updateMarkdownCell,
     updateArtifactCellCaption,
+    replaceArtifactCell,
     addMarkdownCellAfter,
     duplicateCell,
     moveCell,

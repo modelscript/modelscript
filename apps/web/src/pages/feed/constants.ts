@@ -20,7 +20,7 @@ export const FILTER_CHIPS: FilterChip[] = [
     icon: BookIcon,
     emoji: "📓",
     artifactType: "notebook",
-    description: "Long-form articles, tutorials & interactive engineering notebooks",
+    description: "Long-form articles, guides & engineering deep-dives",
   },
   { id: "cad", label: "CAD 3D", icon: PackageIcon, emoji: "📐", artifactType: "cad", description: "STEP & CAD models" },
   {

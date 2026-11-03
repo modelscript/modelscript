@@ -80,6 +80,8 @@ export const EXTENSION_TO_DIALECT: Record<string, string> = {
   ".f95": "fortran",
   ".st": "plcopen",
   ".plc": "plcopen",
+  ".plcopen": "plcopen",
+  ".iec": "plcopen",
   ".arxml": "autosar",
   ".slx": "simulink",
   ".mdl": "simulink",
@@ -130,6 +132,10 @@ export const EXTENSION_TO_DIALECT: Record<string, string> = {
   ".ibis": "ibis",
   ".dss": "opendss",
   ".opendss": "opendss",
+  ".qif": "qif",
+  ".oscal": "oscal",
+  ".aml": "automationml",
+  ".caex": "automationml",
 };
 
 export const DIALECT_TO_EXTENSION: Record<string, string> = {
@@ -179,6 +185,10 @@ export const DIALECT_TO_EXTENSION: Record<string, string> = {
   touchstone: ".s2p",
   ibis: ".ibs",
   opendss: ".dss",
+  qif: ".qif",
+  oscal: ".oscal.json",
+  automationml: ".aml",
+  aml: ".aml",
 };
 
 export const VIEW_TYPE_TO_DIALECT: Record<string, string> = {
@@ -269,6 +279,10 @@ export const VIEW_TYPE_TO_DIALECT: Record<string, string> = {
   touchstone: "touchstone",
   ibis: "ibis",
   opendss: "opendss",
+  qif: "qif",
+  oscal: "oscal",
+  automationml: "automationml",
+  aml: "automationml",
 };
 
 export function getExtensionForDialect(dialect: string): string {
@@ -605,26 +619,30 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
     dialect,
   };
 
-  try {
-    const artifactMeta = {
-      id: artifactId || "scratch",
-      artifactId: artifactId || "scratch",
-      title: rawTitle,
-      viewType,
-      viewConfig: enrichedConfig,
-      files: enrichedConfig.files,
-      primaryFile: enrichedConfig.primaryFile || enrichedConfig.filename,
-    };
-    sessionStorage.setItem("modelscript.artifact_scratch", JSON.stringify(artifactMeta));
-    localStorage.setItem("modelscript.artifact_scratch", JSON.stringify(artifactMeta));
-    if (artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
-      const artKey = `modelscript.artifact_${artifactId}`;
-      sessionStorage.setItem(artKey, JSON.stringify(artifactMeta));
-      localStorage.setItem(artKey, JSON.stringify(artifactMeta));
-      localStorage.setItem(`modelscript:ide:memfs:artifact-${artifactId}`, JSON.stringify(artifactMeta));
+  const hasInlinePayload = Object.keys(parsedViewConfig).length > 0 || code !== undefined;
+
+  if (hasInlinePayload) {
+    try {
+      const artifactMeta = {
+        id: artifactId || "scratch",
+        artifactId: artifactId || "scratch",
+        title: rawTitle,
+        viewType,
+        viewConfig: enrichedConfig,
+        files: enrichedConfig.files,
+        primaryFile: enrichedConfig.primaryFile || enrichedConfig.filename,
+      };
+      sessionStorage.setItem("modelscript.artifact_scratch", JSON.stringify(artifactMeta));
+      localStorage.setItem("modelscript.artifact_scratch", JSON.stringify(artifactMeta));
+      if (artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
+        const artKey = `modelscript.artifact_${artifactId}`;
+        sessionStorage.setItem(artKey, JSON.stringify(artifactMeta));
+        localStorage.setItem(artKey, JSON.stringify(artifactMeta));
+        localStorage.setItem(`modelscript:ide:memfs:artifact-${artifactId}`, JSON.stringify(artifactMeta));
+      }
+    } catch {
+      // ignore storage quota errors
     }
-  } catch {
-    // ignore storage quota errors
   }
 
   const workbenchUrl = buildVsCodeWorkbenchUrlForArtifact(options);

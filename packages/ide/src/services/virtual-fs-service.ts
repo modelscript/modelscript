@@ -4,7 +4,14 @@ import * as vscode from "vscode";
 import { Uri, workspace } from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
 import { type LibraryTreeItem, type LibraryTreeProvider } from "../library-tree-provider.js";
-import { getTemplatePrimaryFile, mountArtifactToMemFs, scaffoldTemplateFiles } from "../templates/catalog.js";
+import {
+  type ArtifactWorkspaceDescriptor,
+  getTemplatePrimaryFile,
+  mountArtifactToMemFs,
+  registerPackageDescriptor,
+  type RemoteFileEntry,
+  scaffoldTemplateFiles,
+} from "../templates/catalog.js";
 
 export function decodeBase64ToArray(base64: string): Uint8Array {
   // Extract only base64 characters
@@ -39,10 +46,12 @@ export function decodeBase64ToArray(base64: string): Uint8Array {
 
 /**
  * Simple in-memory filesystem provider for the `tmp` and `memfs` schemes.
- * Used by blank project mode to store files in memory.
+ * Supports both eager in-memory files (`files`) and lazy remote files (`remoteFiles`)
+ * fetched on demand when opened in the VS Code Explorer.
  */
 export class MemoryFileSystemProvider implements vscode.FileSystemProvider {
   private files = new Map<string, Uint8Array>();
+  private remoteFiles = new Map<string, { url: string; size: number }>();
   private directories = new Set<string>(["/"]); // Root always exists
   private _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
   readonly onDidChangeFile = this._emitter.event;
@@ -58,6 +67,10 @@ export class MemoryFileSystemProvider implements vscode.FileSystemProvider {
     }
     if (this.files.has(path)) {
       return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: this.files.get(path)?.length ?? 0 };
+    }
+    const remote = this.remoteFiles.get(path);
+    if (remote) {
+      return { type: vscode.FileType.File, ctime: 0, mtime: 0, size: remote.size };
     }
     const doc = vscode.workspace.textDocuments.find((d) => d.uri.scheme === uri.scheme && d.uri.path === path);
     if (doc) {
@@ -75,7 +88,17 @@ export class MemoryFileSystemProvider implements vscode.FileSystemProvider {
       if (path.startsWith(prefix)) {
         const rest = path.slice(prefix.length);
         const name = rest.split("/")[0]!;
-        if (!seen.has(name)) {
+        if (name && !seen.has(name)) {
+          seen.add(name);
+          result.push([name, rest.includes("/") ? vscode.FileType.Directory : vscode.FileType.File]);
+        }
+      }
+    }
+    for (const [path] of this.remoteFiles) {
+      if (path.startsWith(prefix)) {
+        const rest = path.slice(prefix.length);
+        const name = rest.split("/")[0]!;
+        if (name && !seen.has(name)) {
           seen.add(name);
           result.push([name, rest.includes("/") ? vscode.FileType.Directory : vscode.FileType.File]);
         }
@@ -84,7 +107,7 @@ export class MemoryFileSystemProvider implements vscode.FileSystemProvider {
     for (const dir of this.directories) {
       if (dir.startsWith(prefix)) {
         const rest = dir.slice(prefix.length);
-        if (!rest.includes("/") && !seen.has(rest)) {
+        if (rest && !rest.includes("/") && !seen.has(rest)) {
           seen.add(rest);
           result.push([rest, vscode.FileType.Directory]);
         }
@@ -97,7 +120,7 @@ export class MemoryFileSystemProvider implements vscode.FileSystemProvider {
     this._mkdirp(uri.path);
   }
 
-  readFile(uri: vscode.Uri): Uint8Array {
+  readFile(uri: vscode.Uri): Uint8Array | Promise<Uint8Array> {
     const data = this.files.get(uri.path);
     if (data) return data;
     const doc = vscode.workspace.textDocuments.find((d) => d.uri.scheme === uri.scheme && d.uri.path === uri.path);
@@ -105,6 +128,18 @@ export class MemoryFileSystemProvider implements vscode.FileSystemProvider {
       const content = new TextEncoder().encode(doc.getText());
       this.files.set(uri.path, content);
       return content;
+    }
+    const remote = this.remoteFiles.get(uri.path);
+    if (remote) {
+      return fetch(remote.url).then(async (resp) => {
+        if (!resp.ok) {
+          throw vscode.FileSystemError.FileNotFound(uri);
+        }
+        const buf = await resp.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        this.files.set(uri.path, bytes);
+        return bytes;
+      });
     }
     throw vscode.FileSystemError.FileNotFound(uri);
   }
@@ -114,7 +149,8 @@ export class MemoryFileSystemProvider implements vscode.FileSystemProvider {
     for (let i = 1; i < parts.length - 1; i++) {
       this._mkdirp(parts.slice(0, i + 1).join("/"));
     }
-    const isNew = !this.files.has(uri.path);
+    const isNew = !this.files.has(uri.path) && !this.remoteFiles.has(uri.path);
+    this.remoteFiles.delete(uri.path);
     this.files.set(uri.path, content);
     this._emitter.fire([{ type: isNew ? vscode.FileChangeType.Created : vscode.FileChangeType.Changed, uri }]);
   }
@@ -126,15 +162,72 @@ export class MemoryFileSystemProvider implements vscode.FileSystemProvider {
       for (let i = 1; i < parts.length - 1; i++) {
         this._mkdirp(parts.slice(0, i + 1).join("/"));
       }
-      const isNew = !this.files.has(uri.path);
+      const isNew = !this.files.has(uri.path) && !this.remoteFiles.has(uri.path);
+      this.remoteFiles.delete(uri.path);
       this.files.set(uri.path, content);
       events.push({ type: isNew ? vscode.FileChangeType.Created : vscode.FileChangeType.Changed, uri });
     }
     this._emitter.fire(events);
   }
 
+  registerRemoteFiles(workspaceUri: vscode.Uri, entries: RemoteFileEntry[]): void {
+    const events: vscode.FileChangeEvent[] = [];
+    for (const entry of entries) {
+      const cleanRel = entry.path.replace(/^\/+/, "");
+      if (!cleanRel) continue;
+      const fileUri = vscode.Uri.joinPath(workspaceUri, ...cleanRel.split("/"));
+      const parts = fileUri.path.split("/");
+      for (let i = 1; i < parts.length - 1; i++) {
+        this._mkdirp(parts.slice(0, i + 1).join("/"));
+      }
+      if (!this.files.has(fileUri.path)) {
+        const isNew = !this.remoteFiles.has(fileUri.path);
+        this.remoteFiles.set(fileUri.path, { url: entry.url, size: entry.size ?? 0 });
+        if (isNew) {
+          events.push({ type: vscode.FileChangeType.Created, uri: fileUri });
+        }
+      }
+    }
+    if (events.length > 0) {
+      this._emitter.fire(events);
+    }
+  }
+
+  clearDirectory(workspaceUri: vscode.Uri): void {
+    const rootPath = workspaceUri.path.replace(/\/+$/, "");
+    const prefix = rootPath + "/";
+    const events: vscode.FileChangeEvent[] = [];
+    for (const filePath of Array.from(this.files.keys())) {
+      if (filePath.startsWith(prefix)) {
+        this.files.delete(filePath);
+        events.push({
+          type: vscode.FileChangeType.Deleted,
+          uri: workspaceUri.with({ path: filePath }),
+        });
+      }
+    }
+    for (const filePath of Array.from(this.remoteFiles.keys())) {
+      if (filePath.startsWith(prefix)) {
+        this.remoteFiles.delete(filePath);
+        events.push({
+          type: vscode.FileChangeType.Deleted,
+          uri: workspaceUri.with({ path: filePath }),
+        });
+      }
+    }
+    for (const dirPath of Array.from(this.directories)) {
+      if (dirPath.startsWith(prefix)) {
+        this.directories.delete(dirPath);
+      }
+    }
+    if (events.length > 0) {
+      this._emitter.fire(events);
+    }
+  }
+
   delete(uri: vscode.Uri): void {
     this.files.delete(uri.path);
+    this.remoteFiles.delete(uri.path);
     this.directories.delete(uri.path);
     this._emitter.fire([{ type: vscode.FileChangeType.Deleted, uri }]);
   }
@@ -145,11 +238,196 @@ export class MemoryFileSystemProvider implements vscode.FileSystemProvider {
       this.files.delete(oldUri.path);
       this.files.set(newUri.path, data);
     }
+    const remote = this.remoteFiles.get(oldUri.path);
+    if (remote) {
+      this.remoteFiles.delete(oldUri.path);
+      this.remoteFiles.set(newUri.path, remote);
+    }
   }
 
   private _mkdirp(path: string): void {
     this.directories.add(path);
   }
+}
+
+function encodeLibraryPath(pkgName: string): string {
+  if (pkgName.startsWith("@") && pkgName.includes("/")) {
+    const [scope, ...rest] = pkgName.split("/");
+    return `${encodeURIComponent(scope!)}/${encodeURIComponent(rest.join("/"))}`;
+  }
+  return encodeURIComponent(pkgName);
+}
+
+/**
+ * Hydrates an artifact or package workspace descriptor with actual files/tree from the backend API
+ * when the descriptor references a registry package, library class, or remote resource URL.
+ */
+export async function hydrateArtifactDescriptor(
+  descriptor: ArtifactWorkspaceDescriptor,
+): Promise<ArtifactWorkspaceDescriptor> {
+  const config = descriptor.viewConfig || {};
+  const viewType = (
+    descriptor.viewType ||
+    (typeof config["view_type"] === "string" ? config["view_type"] : "") ||
+    (typeof config["viewType"] === "string" ? config["viewType"] : "")
+  )
+    .toLowerCase()
+    .trim();
+
+  const hasCustomFiles =
+    (descriptor.files && typeof descriptor.files === "object" && Object.keys(descriptor.files).length > 0) ||
+    (config["files"] &&
+      typeof config["files"] === "object" &&
+      !Array.isArray(config["files"]) &&
+      Object.keys(config["files"] as Record<string, unknown>).length > 0) ||
+    (descriptor.remoteFiles && descriptor.remoteFiles.length > 0);
+
+  if (hasCustomFiles) {
+    return descriptor;
+  }
+
+  // 1. Package / Library artifact card -> fetch package files & lazy tree from /api/v1/libraries/:name/:version/files?tree=true
+  if (viewType === "package" || viewType === "library") {
+    const rawTitle = (descriptor.title || "").trim();
+    const lastAt = rawTitle.lastIndexOf("@");
+    const pkgName =
+      (typeof config["name"] === "string" && config["name"].trim()) ||
+      (typeof config["packageName"] === "string" && config["packageName"].trim()) ||
+      (lastAt > 0 ? rawTitle.slice(0, lastAt).trim() : rawTitle);
+    let pkgVersion =
+      (typeof config["version"] === "string" && config["version"].trim()) ||
+      (typeof config["packageVersion"] === "string" && config["packageVersion"].trim()) ||
+      (lastAt > 0 ? rawTitle.slice(lastAt + 1).trim() : "");
+
+    if (pkgName) {
+      try {
+        if (!pkgVersion || pkgVersion === "latest") {
+          const metaResp = await fetch(`/api/v1/libraries/${encodeLibraryPath(pkgName)}`);
+          if (metaResp.ok) {
+            const meta = await metaResp.json();
+            pkgVersion =
+              (typeof meta?.latest_version === "string" && meta.latest_version) ||
+              (Array.isArray(meta?.versions) && typeof meta.versions[0]?.version === "string"
+                ? meta.versions[0].version
+                : "1.0.0");
+          } else {
+            pkgVersion = "1.0.0";
+          }
+        }
+
+        const filesResp = await fetch(
+          `/api/v1/libraries/${encodeLibraryPath(pkgName)}/${encodeURIComponent(pkgVersion)}/files?tree=true`,
+        );
+        if (filesResp.ok) {
+          const data = await filesResp.json();
+          if (data?.files && typeof data.files === "object") {
+            descriptor.files = data.files as Record<string, string>;
+          }
+          if (typeof data?.primaryFile === "string" && data.primaryFile) {
+            descriptor.primaryFile = data.primaryFile;
+          }
+          if (Array.isArray(data?.tree) && data.tree.length > 0) {
+            descriptor.remoteFiles = data.tree.map((entry: { path: string; rawPath?: string; size?: number }) => {
+              const rawRel = (entry.rawPath || entry.path)
+                .split("/")
+                .map((seg) => encodeURIComponent(seg))
+                .join("/");
+              return {
+                path: entry.path,
+                url: `/api/v1/libraries/${encodeLibraryPath(pkgName)}/${encodeURIComponent(pkgVersion)}/resources/${rawRel}`,
+                size: entry.size ?? 0,
+              };
+            });
+          }
+          registerPackageDescriptor(pkgName, descriptor);
+        }
+      } catch (err) {
+        console.warn(`[artifact-hydrate] Failed to fetch package files for ${pkgName}@${pkgVersion}:`, err);
+      }
+    }
+    return descriptor;
+  }
+
+  const hasInlineCode =
+    typeof config["code"] === "string" ||
+    typeof config["content"] === "string" ||
+    typeof config["source"] === "string" ||
+    typeof config["modelicaCode"] === "string" ||
+    typeof config["step"] === "string" ||
+    typeof config["gcode"] === "string" ||
+    typeof config["xml"] === "string" ||
+    typeof config["csv"] === "string";
+
+  if (hasInlineCode) {
+    return descriptor;
+  }
+
+  // 2. Class reference in a library (e.g. modelica-diagram with className + packageName)
+  const className =
+    (typeof config["className"] === "string" && config["className"].trim()) ||
+    (typeof config["model"] === "string" && config["model"].includes(".") ? config["model"].trim() : "");
+  if (className) {
+    const pkgName =
+      (typeof config["packageName"] === "string" && config["packageName"].trim()) ||
+      (typeof config["package"] === "string" && config["package"].trim()) ||
+      (className.startsWith("Modelica.") ? "Modelica" : className.split(".")[0] || "");
+    const pkgVersion =
+      (typeof config["packageVersion"] === "string" && config["packageVersion"].trim()) ||
+      (typeof config["version"] === "string" && config["version"].trim()) ||
+      (pkgName === "Modelica" ? "4.1.0" : "1.0.0");
+
+    if (pkgName) {
+      try {
+        const clsResp = await fetch(
+          `/api/v1/libraries/${encodeLibraryPath(pkgName)}/${encodeURIComponent(pkgVersion)}/classes/${encodeURIComponent(className)}`,
+        );
+        if (clsResp.ok) {
+          const clsData = await clsResp.json();
+          if (typeof clsData?.sourceCode === "string" && clsData.sourceCode.trim()) {
+            const shortName = className.split(".").pop() || "Model";
+            const filename = `${shortName}.mo`;
+            descriptor.files = { [filename]: clsData.sourceCode };
+            descriptor.primaryFile = filename;
+            return descriptor;
+          }
+        }
+      } catch {
+        // fall through
+      }
+    }
+  }
+
+  // 3. Remote resource URL (e.g. cad-step or dataset referencing /api/v1/libraries/.../resources/...)
+  const resourceUrl =
+    (typeof config["url"] === "string" && config["url"].trim()) ||
+    (typeof config["stepUrl"] === "string" && config["stepUrl"].trim()) ||
+    (typeof config["fileUrl"] === "string" && config["fileUrl"].trim()) ||
+    (typeof config["resourceUrl"] === "string" && config["resourceUrl"].trim()) ||
+    "";
+  if (
+    resourceUrl &&
+    (resourceUrl.startsWith("/") || resourceUrl.startsWith("http://") || resourceUrl.startsWith("https://"))
+  ) {
+    try {
+      const resResp = await fetch(resourceUrl);
+      if (resResp.ok) {
+        const text = await resResp.text();
+        if (text) {
+          const explicitName =
+            (typeof config["filename"] === "string" && config["filename"].trim()) ||
+            (typeof config["fileName"] === "string" && config["fileName"].trim()) ||
+            decodeURIComponent(resourceUrl.split("?")[0]!.split("/").pop() || "") ||
+            "resource.txt";
+          descriptor.files = { [explicitName]: text };
+          descriptor.primaryFile = explicitName;
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  return descriptor;
 }
 
 /**
@@ -286,7 +564,12 @@ export function registerVirtualFileSystems(
 
   if (memfsRootUri) {
     memFs.createDirectory(memfsRootUri);
-    scaffoldTemplateFiles(memFs, memfsRootUri);
+    const rawTemplate = (memfsRootUri.path.substring(1) || "empty").split("?")[0] || "empty";
+    // Defer artifact-*, package-*, and scratch scaffolding to initWorkspaceAndTree so async API hydration
+    // completes first instead of populating placeholder stub files in the Extension Host worker.
+    if (!rawTemplate.startsWith("artifact-") && !rawTemplate.startsWith("package-") && rawTemplate !== "scratch") {
+      scaffoldTemplateFiles(memFs, memfsRootUri);
+    }
   }
 
   return { memFs, modelicaFs, memfsRootUri };
@@ -327,14 +610,7 @@ export async function initWorkspaceAndTree(
 
       if ((template === "scratch" || template.startsWith("artifact-")) && memFs) {
         const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
-        interface CachedArtifactPayload {
-          title?: string | undefined;
-          viewType?: string | undefined;
-          viewConfig?: Record<string, unknown> | undefined;
-          files?: Record<string, string> | undefined;
-          primaryFile?: string | undefined;
-        }
-        let cachedPayload: CachedArtifactPayload | null = null;
+        let descriptor: ArtifactWorkspaceDescriptor | null = null;
         try {
           const raw =
             typeof sessionStorage !== "undefined" ? sessionStorage.getItem(`modelscript.artifact_${artifactId}`) : null;
@@ -351,57 +627,78 @@ export async function initWorkspaceAndTree(
                 (typeof localStorage !== "undefined" ? localStorage.getItem("modelscript.artifact_scratch") : null)
               : null;
           const effectiveRaw = raw || localRaw || scratchRaw;
-          if (effectiveRaw) cachedPayload = JSON.parse(effectiveRaw) as CachedArtifactPayload;
+          if (effectiveRaw) {
+            const parsed = JSON.parse(effectiveRaw) as Partial<ArtifactWorkspaceDescriptor>;
+            if (parsed && (parsed.viewConfig || parsed.viewType || parsed.files)) {
+              descriptor = {
+                artifactId,
+                title: parsed.title,
+                viewType: parsed.viewType,
+                viewConfig: parsed.viewConfig,
+                files: parsed.files,
+                remoteFiles: parsed.remoteFiles,
+                primaryFile: parsed.primaryFile,
+              };
+            }
+          }
         } catch {
           // ignore
         }
 
-        if (cachedPayload && (cachedPayload.viewConfig || cachedPayload.viewType || cachedPayload.files)) {
-          mountArtifactToMemFs(memFs, workspaceUri, {
-            artifactId,
-            title: cachedPayload.title,
-            viewType: cachedPayload.viewType,
-            viewConfig: cachedPayload.viewConfig,
-            files: cachedPayload.files,
-            primaryFile: cachedPayload.primaryFile,
-          });
-        } else {
+        if (!descriptor && artifactId !== "scratch") {
           try {
-            const resp = await fetch(`/api/v1/social/artifact-views/${artifactId}`);
+            const resp = await fetch(`/api/v1/social/artifact-views/${encodeURIComponent(artifactId)}`);
             if (resp.ok) {
               const data = await resp.json();
               if (data?.artifactView) {
                 const av = data.artifactView;
                 const config = typeof av.view_config === "string" ? JSON.parse(av.view_config) : av.view_config || {};
-                const descriptor = {
-                  artifactId: av.id,
+                descriptor = {
+                  artifactId: av.id ?? artifactId,
                   title: av.title || av.name,
                   viewType: av.view_type,
                   viewConfig: config,
                   files: config.files,
                   primaryFile: config.primaryFile || config.filename,
                 };
-                mountArtifactToMemFs(memFs, workspaceUri, descriptor);
-                try {
-                  if (typeof sessionStorage !== "undefined") {
-                    sessionStorage.setItem(`modelscript.artifact_${artifactId}`, JSON.stringify(descriptor));
-                  }
-                  if (typeof localStorage !== "undefined") {
-                    localStorage.setItem(`modelscript.artifact_${artifactId}`, JSON.stringify(descriptor));
-                  }
-                } catch {
-                  // ignore
-                }
               }
             }
           } catch (e) {
             console.warn("[artifact-init] Proactive fetch failed:", e);
           }
         }
+
+        if (descriptor) {
+          await hydrateArtifactDescriptor(descriptor);
+          mountArtifactToMemFs(memFs, workspaceUri, descriptor);
+          try {
+            if (typeof sessionStorage !== "undefined") {
+              sessionStorage.setItem(`modelscript.artifact_${artifactId}`, JSON.stringify(descriptor));
+            }
+            if (typeof localStorage !== "undefined") {
+              localStorage.setItem(`modelscript.artifact_${artifactId}`, JSON.stringify(descriptor));
+            }
+          } catch {
+            // ignore
+          }
+        }
+      } else if (template.startsWith("package-") && memFs) {
+        const rawPkgSpec = decodeURIComponent(template.slice("package-".length));
+        const lastAt = rawPkgSpec.lastIndexOf("@");
+        const pkgName = lastAt > 0 ? rawPkgSpec.slice(0, lastAt) : rawPkgSpec;
+        const pkgVersion = lastAt > 0 ? rawPkgSpec.slice(lastAt + 1) : "";
+        const descriptor: ArtifactWorkspaceDescriptor = {
+          artifactId: `package-${pkgName}`,
+          title: rawPkgSpec,
+          viewType: "package",
+          viewConfig: { name: pkgName, ...(pkgVersion ? { version: pkgVersion } : {}) },
+        };
+        await hydrateArtifactDescriptor(descriptor);
+        mountArtifactToMemFs(memFs, workspaceUri, descriptor);
       }
 
       const primaryFile = getTemplatePrimaryFile(template);
-      const fileUri = Uri.joinPath(workspaceUri, primaryFile);
+      const fileUri = Uri.joinPath(workspaceUri, ...primaryFile.split("/"));
 
       if (memFs) {
         try {
@@ -412,13 +709,24 @@ export async function initWorkspaceAndTree(
         }
       }
 
-      // Pre-open any other files in this memfs template workspace so LSP server tracks them
+      // Pre-open up to 8 root code files in this memfs workspace so the LSP server indexes them
       try {
         const dirEntries = await workspace.fs.readDirectory(workspaceUri);
+        let preOpened = 0;
         for (const [name, type] of dirEntries) {
-          if (type === vscode.FileType.File && name !== primaryFile) {
+          if (
+            type === vscode.FileType.File &&
+            name !== primaryFile &&
+            !name.toLowerCase().endsWith(".md") &&
+            !name.toLowerCase().endsWith(".json") &&
+            !name.toLowerCase().endsWith(".pdf") &&
+            !name.toLowerCase().endsWith(".png") &&
+            !name.toLowerCase().endsWith(".jpg") &&
+            preOpened < 8
+          ) {
             try {
               await workspace.openTextDocument(Uri.joinPath(workspaceUri, name));
+              preOpened++;
             } catch {
               // ignore
             }

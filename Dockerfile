@@ -46,6 +46,7 @@ COPY packages/simulate/package.json packages/simulate/
 # Languages manifests
 COPY languages/adams/package.json languages/adams/
 COPY languages/aspen/package.json languages/aspen/
+COPY languages/automationml/package.json languages/automationml/
 COPY languages/autosar/package.json languages/autosar/
 COPY languages/c/package.json languages/c/
 COPY languages/ccsds/package.json languages/ccsds/
@@ -68,10 +69,12 @@ COPY languages/olga/package.json languages/olga/
 COPY languages/opendrive/package.json languages/opendrive/
 COPY languages/opendss/package.json languages/opendss/
 COPY languages/openscenario/package.json languages/openscenario/
+COPY languages/oscal/package.json languages/oscal/
 COPY languages/owl2/package.json languages/owl2/
 COPY languages/plcopen/package.json languages/plcopen/
 COPY languages/pscad/package.json languages/pscad/
 COPY languages/psse/package.json languages/psse/
+COPY languages/qif/package.json languages/qif/
 COPY languages/relap5/package.json languages/relap5/
 COPY languages/reqif/package.json languages/reqif/
 COPY languages/rocets/package.json languages/rocets/

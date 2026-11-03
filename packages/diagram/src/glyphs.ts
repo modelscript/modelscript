@@ -585,8 +585,8 @@ export function transformerGlyph(
   },
 ): X6Markup[] {
   const stroke = options?.stroke ?? "#0284c7";
-  const strokeWidth = options?.strokeWidth ?? 1.8;
-  const fill = options?.fill ?? "rgba(2, 132, 199, 0.06)";
+  const strokeWidth = options?.strokeWidth ?? 2.0;
+  const fill = options?.fill ?? "rgba(2, 132, 199, 0.08)";
   const width = options?.width ?? 72;
   const height = options?.height ?? 52;
   const cy = Math.round(height / 2);
@@ -594,7 +594,7 @@ export function transformerGlyph(
   const xLeft = options?.leftPortX !== undefined ? centerX + options.leftPortX : 0;
   const xRight = options?.rightPortX !== undefined ? centerX + options.rightPortX : width;
   const midX = Math.round((xLeft + xRight) / 2);
-  const r = 13;
+  const r = 13.5;
   const priCx = midX - 9;
   const secCx = midX + 9;
   const priBadge = options?.primaryGroup ?? "Y";
@@ -611,7 +611,7 @@ export function transformerGlyph(
         x2: priCx - r,
         y2: cy,
         stroke,
-        strokeWidth: 2,
+        strokeWidth: 2.5,
       },
     },
     // Secondary Terminal Lead
@@ -624,7 +624,7 @@ export function transformerGlyph(
         x2: xRight,
         y2: cy,
         stroke,
-        strokeWidth: 2,
+        strokeWidth: 2.5,
       },
     },
     // Magnetic Core Bars
@@ -637,7 +637,7 @@ export function transformerGlyph(
         x2: midX - 1.5,
         y2: cy + 15,
         stroke: "#64748b",
-        strokeWidth: 1.2,
+        strokeWidth: 1.3,
       },
     },
     {
@@ -649,7 +649,7 @@ export function transformerGlyph(
         x2: midX + 1.5,
         y2: cy + 15,
         stroke: "#64748b",
-        strokeWidth: 1.2,
+        strokeWidth: 1.3,
       },
     },
     // Primary Winding Circle
@@ -734,8 +734,8 @@ export function generatorGlyph(
   },
 ): X6Markup[] {
   const stroke = options?.stroke ?? "#d97706";
-  const strokeWidth = options?.strokeWidth ?? 1.8;
-  const fill = options?.fill ?? "rgba(217, 119, 6, 0.08)";
+  const strokeWidth = options?.strokeWidth ?? 2.0;
+  const fill = options?.fill ?? "rgba(217, 119, 6, 0.10)";
   const width = options?.width ?? 72;
   const height = options?.height ?? 48;
   const cx = Math.round(width / 2);
@@ -803,7 +803,7 @@ export function generatorGlyph(
         x2: leadEndX,
         y2: cy,
         stroke: "#0284c7",
-        strokeWidth: 2,
+        strokeWidth: 2.5,
       },
     },
     // Outer Stator Ring
@@ -856,8 +856,8 @@ export function inverterIbrGlyph(
   },
 ): X6Markup[] {
   const stroke = options?.stroke ?? "#059669";
-  const strokeWidth = options?.strokeWidth ?? 1.8;
-  const fill = options?.fill ?? "rgba(5, 150, 105, 0.08)";
+  const strokeWidth = options?.strokeWidth ?? 2.0;
+  const fill = options?.fill ?? "rgba(5, 150, 105, 0.10)";
   const width = options?.width ?? 64;
   const height = options?.height ?? 48;
   const cx = Math.round(width / 2);
@@ -879,7 +879,7 @@ export function inverterIbrGlyph(
         x2: boxX,
         y2: cy,
         stroke: "#0284c7",
-        strokeWidth: 2,
+        strokeWidth: 2.5,
       },
     },
     // Converter Bridge Housing
@@ -1049,12 +1049,12 @@ export function breakerGlyph(options?: GlyphOptions & { isOpen?: boolean | undef
     {
       tagName: "line",
       selector: "brkLeadL",
-      attrs: { x1: 0, y1: cy, x2: cx - boxHalf, y2: cy, stroke: "#0284c7", strokeWidth: 2 },
+      attrs: { x1: 0, y1: cy, x2: cx - boxHalf, y2: cy, stroke: "#0284c7", strokeWidth: 2.5 },
     },
     {
       tagName: "line",
       selector: "brkLeadR",
-      attrs: { x1: cx + boxHalf, y1: cy, x2: width, y2: cy, stroke: "#0284c7", strokeWidth: 2 },
+      attrs: { x1: cx + boxHalf, y1: cy, x2: width, y2: cy, stroke: "#0284c7", strokeWidth: 2.5 },
     },
     {
       tagName: "rect",
@@ -1111,7 +1111,7 @@ export function surgeArresterGlyph(options?: GlyphOptions): X6Markup[] {
     {
       tagName: "line",
       selector: "arrLeadTop",
-      attrs: { x1: cx, y1: 0, x2: cx, y2: 7, stroke: "#0284c7", strokeWidth: 2 },
+      attrs: { x1: cx, y1: 0, x2: cx, y2: 7, stroke: "#0284c7", strokeWidth: 2.5 },
     },
     {
       tagName: "rect",
@@ -1180,7 +1180,7 @@ export function faultGlyph(options?: GlyphOptions): X6Markup[] {
     {
       tagName: "line",
       selector: "faultLeadTop",
-      attrs: { x1: cx, y1: 0, x2: cx, y2: 6, stroke: "#0284c7", strokeWidth: 2 },
+      attrs: { x1: cx, y1: 0, x2: cx, y2: 6, stroke: "#0284c7", strokeWidth: 2.5 },
     },
     // Lightning strike polygon
     {
@@ -1320,7 +1320,7 @@ export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boole
         ry: 9,
         fill,
         stroke,
-        strokeWidth: 1.6,
+        strokeWidth: 1.8,
       },
     },
     // Through-Conductor Line reaching exact ports at x=0 and x=width
@@ -1333,7 +1333,7 @@ export function transmissionLineGlyph(options?: GlyphOptions & { isCable?: boole
         x2: width,
         y2: cy,
         stroke,
-        strokeWidth: 2,
+        strokeWidth: 2.5,
         ...(isCable ? { strokeDasharray: "4,2" } : {}),
       },
     },
@@ -1385,19 +1385,19 @@ export function passiveBranchGlyph(
   const cx = Math.round(width / 2);
   const cy = Math.round(height / 2);
   const stroke = options?.stroke ?? "#0284c7";
-  const strokeWidth = options?.strokeWidth ?? 1.8;
+  const strokeWidth = options?.strokeWidth ?? 2.0;
 
   if (kind === "capacitor") {
     return [
       {
         tagName: "line",
         selector: "passiveLeadL",
-        attrs: { x1: 0, y1: cy, x2: cx - 3, y2: cy, stroke, strokeWidth: 2 },
+        attrs: { x1: 0, y1: cy, x2: cx - 3, y2: cy, stroke, strokeWidth: 2.5 },
       },
       {
         tagName: "line",
         selector: "passiveLeadR",
-        attrs: { x1: cx + 3, y1: cy, x2: width, y2: cy, stroke, strokeWidth: 2 },
+        attrs: { x1: cx + 3, y1: cy, x2: width, y2: cy, stroke, strokeWidth: 2.5 },
       },
       {
         tagName: "line",
@@ -1430,12 +1430,12 @@ export function passiveBranchGlyph(
       {
         tagName: "line",
         selector: "passiveLeadL",
-        attrs: { x1: 0, y1: cy, x2: 5, y2: cy, stroke, strokeWidth: 2 },
+        attrs: { x1: 0, y1: cy, x2: 5, y2: cy, stroke, strokeWidth: 2.5 },
       },
       {
         tagName: "line",
         selector: "passiveLeadR",
-        attrs: { x1: width - 5, y1: cy, x2: width, y2: cy, stroke, strokeWidth: 2 },
+        attrs: { x1: width - 5, y1: cy, x2: width, y2: cy, stroke, strokeWidth: 2.5 },
       },
       {
         tagName: "polyline",
@@ -1469,12 +1469,12 @@ export function passiveBranchGlyph(
     {
       tagName: "line",
       selector: "passiveLeadL",
-      attrs: { x1: 0, y1: cy, x2: 4, y2: cy, stroke, strokeWidth: 2 },
+      attrs: { x1: 0, y1: cy, x2: 4, y2: cy, stroke, strokeWidth: 2.5 },
     },
     {
       tagName: "line",
       selector: "passiveLeadR",
-      attrs: { x1: width - 4, y1: cy, x2: width, y2: cy, stroke, strokeWidth: 2 },
+      attrs: { x1: width - 4, y1: cy, x2: width, y2: cy, stroke, strokeWidth: 2.5 },
     },
     {
       tagName: "path",

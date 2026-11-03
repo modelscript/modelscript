@@ -12,7 +12,10 @@ export type RtmDomain =
   | "physical_component"
   | "modelica_physics"
   | "verification_case"
-  | "test_run";
+  | "test_run"
+  | "oscal_control"
+  | "qif_characteristic"
+  | "aml_resource";
 
 /**
  * Semantic kind of traceability connection.
@@ -28,7 +31,9 @@ export type RtmPresetKind =
   | "verification_matrix"
   | "interface_n2"
   | "derivation_matrix"
-  | "risk_mitigation";
+  | "risk_mitigation"
+  | "oscal_compliance"
+  | "qif_metrology";
 
 export interface RtmPresetDefinition {
   id: RtmPresetKind;
@@ -88,6 +93,23 @@ export const STANDARD_MATRIX_PRESETS: RtmPresetDefinition[] = [
     colDomain: "requirement",
     defaultLinkKind: "mitigate",
     description: "Correlates ISO 14971 hazards with the functional safety requirements mitigating them.",
+  },
+  {
+    id: "oscal_compliance",
+    title: "NIST OSCAL Security Control Allocation (SP 800-53 / 800-82)",
+    rowDomain: "sysml_logical",
+    colDomain: "oscal_control",
+    defaultLinkKind: "satisfy",
+    description:
+      "Maps cyber-physical system components and SysML v2 blocks to NIST SP 800-53 / SP 800-82 security controls for continuous ATO.",
+  },
+  {
+    id: "qif_metrology",
+    title: "NIST QIF Dimensional Metrology & GD&T Verification (ISO 23952)",
+    rowDomain: "qif_characteristic",
+    colDomain: "requirement",
+    defaultLinkKind: "verify",
+    description: "Traces QIF GD&T characteristics and CMM inspection actuals against engineering design requirements.",
   },
 ];
 

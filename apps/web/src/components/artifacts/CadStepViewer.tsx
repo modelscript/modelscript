@@ -1,25 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-
-import { CheckIcon, CodeIcon, CopyIcon, PlayIcon } from "@primer/octicons-react";
-import { Button, Dialog, FormControl, Spinner, Text, TextInput } from "@primer/react";
+import { CheckIcon, CodeIcon, CopyIcon } from "@primer/octicons-react";
+import { Button, Spinner, Text } from "@primer/react";
 import { Environment, Html, useProgress } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import DOMPurify from "dompurify";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as THREE from "three";
-import {
-  convertCadGeometry,
-  flattenPhysicsStudy,
-  getComputeProfiles,
-  runPhysicsJob,
-  uploadPhysicsGeometry,
-  type ComputeProfileInfo,
-} from "../../api";
+import { convertCadGeometry } from "../../api";
+import { useTheme } from "../../theme";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
 import { useToast } from "../ToastContext";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
+import { adaptSvgMarkupForTheme } from "./PolyglotArtifactViewer";
 import SafeOrbitControls from "./SafeOrbitControls";
 import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
 import type { SpatialPin } from "./spatial-pin";
@@ -787,16 +781,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
     return [new THREE.Plane(new THREE.Vector3(0, 0, -1), d)];
   }, [clipAxis, clipOffset]);
 
-  // Physics Config State
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [className, setClassName] = useState("SimulationConfig");
-  const [config, setConfig] = useState<any>({ workflowClass: "StaticStructuralFEA", parameters: {} });
-  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
-  const [profiles, setProfiles] = useState<ComputeProfileInfo[]>([]);
-  const [selectedProfileId, setSelectedProfileId] = useState<string>("standard");
-
   const navigate = useNavigate();
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const stepUrl: string =
     viewConfig?.url || viewConfig?.stepUrl || viewConfig?.fileUrl || viewConfig?.downloadUrl || viewConfig?.path || "";
@@ -870,18 +855,19 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
 
   const effectiveStepSource = stepSource;
 
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const pregenExpressSvg = typeof viewConfig?.expressSvg === "string" ? viewConfig.expressSvg : "";
 
   const expressDiagram = useMemo(() => {
-    if (pregenExpressSvg.trim().length > 0) {
-      const parsed = parseStepExpressDiagram(effectiveStepSource);
-      return {
-        ...parsed,
-        svg: DOMPurify.sanitize(pregenExpressSvg),
-      };
-    }
-    return parseStepExpressDiagram(effectiveStepSource);
-  }, [pregenExpressSvg, effectiveStepSource]);
+    const parsed = parseStepExpressDiagram(effectiveStepSource);
+    const rawSvg = pregenExpressSvg.trim().length > 0 ? DOMPurify.sanitize(pregenExpressSvg) : parsed.svg;
+    return {
+      ...parsed,
+      svg: adaptSvgMarkupForTheme(rawSvg, isDark),
+    };
+  }, [pregenExpressSvg, effectiveStepSource, isDark]);
 
   const handleOpenInPlayground = () => {
     const targetUrl = buildEditorUrlForArtifact({
@@ -902,78 +888,6 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error("Failed to copy STEP source to clipboard");
-    }
-  };
-
-  useEffect(() => {
-    getComputeProfiles()
-      .then((data) => {
-        if (data && data.length > 0) {
-          setProfiles(data);
-        }
-      })
-      .catch(console.error);
-  }, []);
-
-  const loadConfig = async () => {
-    setIsLoadingConfig(true);
-    try {
-      const data = await flattenPhysicsStudy(className);
-      setConfig(data);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to load config");
-    } finally {
-      setIsLoadingConfig(false);
-    }
-  };
-
-  const updateField = (key: string, value: unknown) => {
-    setConfig((prev: any) => ({
-      ...prev,
-      parameters: {
-        ...prev.parameters,
-        [key]: value,
-      },
-    }));
-  };
-
-  const runSimulation = async () => {
-    setIsSubmitting(true);
-    try {
-      const workflowClass = config.workflowClass || "StaticStructuralFEA";
-      const runConfig = {
-        type: workflowClass.includes("FEA") ? "FEA" : workflowClass.includes("CFD") ? "CFD" : "FEA",
-        version: 1,
-        className: className,
-        stepFile: stepUrl.split("/").pop() || "geometry.step",
-        parameters: config.parameters || {},
-        profile: selectedProfileId,
-      };
-
-      // 1. Fetch step file blob or construct from inline STEP code / stepSource state
-      let stepBlob: Blob;
-      if (!stepUrl) {
-        const inlineStep = viewConfig?.code || viewConfig?.stepSource || stepSource || effectiveStepSource;
-        stepBlob = new Blob([String(inlineStep)], { type: "text/plain" });
-      } else {
-        const stepRes = await fetch(stepUrl);
-        stepBlob = await stepRes.blob();
-      }
-
-      // 2. Upload geometry to get hash
-      const formData = new FormData();
-      formData.append("file", stepBlob, runConfig.stepFile);
-      const { hash: geometryHash } = await uploadPhysicsGeometry(formData);
-
-      // 3. Submit physics run
-      const { jobId } = await runPhysicsJob({ geometryHash, config: runConfig });
-
-      setIsConfigOpen(false);
-      navigate(`/scripts/${jobId}`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to run simulation");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -1187,20 +1101,18 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
             aria-label="STEP Viewer Mode"
             style={{
               display: "inline-flex",
-              background: "rgba(15, 23, 42, 0.75)",
+              background: "var(--color-canvas-default, rgba(15, 23, 42, 0.75))",
               border: "1px solid var(--color-border-default, #30363d)",
               borderRadius: "6px",
               padding: "2px",
               gap: "2px",
             }}
           >
-            {(
-              [
-                { id: "3d", label: "3D CAD" },
-                { id: "diagram", label: "2D EXPRESS" },
-                { id: "code", label: "Source" },
-              ] as const
-            ).map((tab) => {
+            {[
+              { id: "3d" as const, label: "3D CAD" },
+              { id: "diagram" as const, label: "2D EXPRESS" },
+              { id: "code" as const, label: "Source" },
+            ].map((tab) => {
               const active = viewTab === tab.id;
               return (
                 <button
@@ -1435,13 +1347,6 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                 </Box>
               </>
             )}
-
-            {/* 3D Toolbar Actions: Create Simulation */}
-            <Box position="absolute" bottom={16} right={16} display="flex" alignItems="center" gap={2} zIndex={15}>
-              <Button size="small" variant="primary" leadingVisual={PlayIcon} onClick={() => setIsConfigOpen(true)}>
-                Create Simulation
-              </Button>
-            </Box>
           </Box>
         )}
 
@@ -1495,7 +1400,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                 overflow="auto"
                 border="1px solid var(--color-border-default, #30363d)"
                 borderRadius="6px"
-                bg="#090d16"
+                bg="var(--color-canvas-default, #090d16)"
                 p={2}
                 dangerouslySetInnerHTML={{ __html: expressDiagram.svg }}
               />
@@ -1587,137 +1492,6 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
           </Box>
         )}
       </Box>
-
-      {isConfigOpen && (
-        <Dialog onClose={() => setIsConfigOpen(false)} title="Create Physics Configuration" width="medium">
-          <Box p={3} display="flex" flexDirection="column" gap={3}>
-            <FormControl>
-              <FormControl.Label>Study Class Name</FormControl.Label>
-              <Box display="flex" gap={2}>
-                <TextInput
-                  value={className}
-                  onChange={(e) => setClassName(e.target.value)}
-                  placeholder="e.g. DroneCAD.StaticTest"
-                  style={{ flex: 1 }}
-                />
-                <Button onClick={loadConfig} disabled={isLoadingConfig}>
-                  {isLoadingConfig ? <Spinner size="small" /> : "Load Properties"}
-                </Button>
-              </Box>
-              <FormControl.Caption>Enter the Modelica study class name to load its parameters.</FormControl.Caption>
-            </FormControl>
-
-            {/* HPC Compute Profile Selector */}
-            <Box mt={2}>
-              <Text
-                style={{
-                  fontWeight: "bold",
-                  fontSize: "13px",
-                  color: "var(--color-fg-default)",
-                  display: "block",
-                  marginBottom: "8px",
-                }}
-              >
-                Compute Node Profile &amp; Resources
-              </Text>
-              <Box display="grid" gap={2} style={{ gridTemplateColumns: "1fr 1fr" }}>
-                {profiles.map((p) => {
-                  const isSelected = p.id === selectedProfileId;
-                  const ramGb = Math.round(p.memoryMb / 1024);
-                  return (
-                    <Box
-                      key={p.id}
-                      p={2}
-                      borderRadius="6px"
-                      border="1px solid"
-                      borderColor={isSelected ? "var(--color-accent-purple)" : "var(--color-border-default)"}
-                      bg={isSelected ? "rgba(139, 92, 246, 0.12)" : "var(--color-canvas-subtle)"}
-                      style={{ cursor: "pointer", transition: "all 0.15s ease" }}
-                      onClick={() => setSelectedProfileId(p.id)}
-                    >
-                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                        <Text
-                          style={{
-                            fontWeight: "bold",
-                            fontSize: "12px",
-                            color: isSelected ? "var(--color-accent-cyan)" : "var(--color-fg-default)",
-                          }}
-                        >
-                          {p.name}
-                        </Text>
-                        <Text
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: "bold",
-                            color: "var(--color-success-fg, #3fb950)",
-                          }}
-                        >
-                          {p.costCreditsPerHour} cr/hr
-                        </Text>
-                      </Box>
-                      <Text
-                        style={{
-                          fontSize: "11px",
-                          color: "var(--color-fg-muted)",
-                          display: "block",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        {p.description}
-                      </Text>
-                      <Text
-                        style={{
-                          fontSize: "10px",
-                          color: "var(--color-fg-subtle)",
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        {p.cpus} CPUs · {ramGb} GB RAM{" "}
-                        {p.gpus > 0 ? `· ${p.gpus}x ${p.gpuType?.toUpperCase() || "GPU"}` : ""}
-                      </Text>
-                    </Box>
-                  );
-                })}
-              </Box>
-            </Box>
-
-            {Object.keys(config.parameters || {}).length > 0 && (
-              <Box
-                mt={3}
-                p={3}
-                bg="var(--color-canvas-subtle)"
-                borderRadius="6px"
-                display="flex"
-                flexDirection="column"
-                gap={3}
-              >
-                <Text style={{ fontWeight: "bold", display: "block" }}>Study Parameters</Text>
-                {Object.keys(config.parameters).map((key) => (
-                  <FormControl key={key}>
-                    <FormControl.Label>{key}</FormControl.Label>
-                    <TextInput
-                      type={typeof config.parameters[key] === "number" ? "number" : "text"}
-                      value={config.parameters[key]}
-                      onChange={(e) => {
-                        const val =
-                          typeof config.parameters[key] === "number" ? parseFloat(e.target.value) : e.target.value;
-                        updateField(key, val);
-                      }}
-                      block
-                    />
-                  </FormControl>
-                ))}
-              </Box>
-            )}
-            <Box mt={3} display="flex" justifyContent="flex-end" gap={2}>
-              <Button onClick={() => setIsConfigOpen(false)}>Cancel</Button>
-              <Button variant="primary" onClick={runSimulation} disabled={isSubmitting}>
-                {isSubmitting ? "Submitting..." : "Run Simulation"}
-              </Button>
-            </Box>
-          </Box>
-        </Dialog>
-      )}
     </Box>
   );
 };

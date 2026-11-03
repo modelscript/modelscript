@@ -107,14 +107,23 @@ function resetViewport() {
 
 function onPointerDown(e: PointerEvent) {
   if (e.button !== 0) return;
+  e.preventDefault();
   isPanning.value = true;
   dragStartX = e.clientX - panX.value;
   dragStartY = e.clientY - panY.value;
-  (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+  try {
+    (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+  } catch {
+    /* ignore */
+  }
 }
 
 function onPointerMove(e: PointerEvent) {
   if (!isPanning.value) return;
+  if (typeof e.buttons === "number" && (e.buttons & 1) === 0) {
+    isPanning.value = false;
+    return;
+  }
   panX.value = e.clientX - dragStartX;
   panY.value = e.clientY - dragStartY;
 }
@@ -122,7 +131,11 @@ function onPointerMove(e: PointerEvent) {
 function onPointerUp(e: PointerEvent) {
   if (!isPanning.value) return;
   isPanning.value = false;
-  (e.currentTarget as HTMLElement | null)?.releasePointerCapture?.(e.pointerId);
+  try {
+    (e.currentTarget as HTMLElement | null)?.releasePointerCapture?.(e.pointerId);
+  } catch {
+    /* ignore */
+  }
 }
 </script>
 
@@ -288,6 +301,8 @@ function onPointerUp(e: PointerEvent) {
           @pointermove="onPointerMove"
           @pointerup="onPointerUp"
           @pointercancel="onPointerUp"
+          @lostpointercapture="onPointerUp"
+          @dragstart.prevent
         >
           <div
             class="diagram-svg-stage"

@@ -1003,6 +1003,55 @@ export default function MorselEditor(props: MorselEditorProps) {
     toast.info(`Auto-layout applied (${isMac ? "⌘Z" : "Ctrl+Z"} to undo)`);
   }, [toast]);
 
+  const handleNewModel = useCallback(
+    (e?: React.MouseEvent) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      const defaultCode = getLanguageInfo(dialect).defaultCode;
+      if (editorRef.current) {
+        editorRef.current.setValue(defaultCode);
+      }
+      setLastLoadedContent(defaultCode);
+      setSidecarContent(undefined);
+      didOpen(documentUri, defaultCode, dialect);
+      setContextVersion((v) => v + 1);
+    },
+    [dialect, documentUri],
+  );
+
+  const handleSaveModel = useCallback(async () => {
+    const currentContent = editor?.getValue() || "";
+    props.onSave?.(currentContent);
+    const ext = getLanguageExtension(dialect);
+    let filename = `model.${ext}`;
+    if ((dialect === "modelica" || dialect === "modelscript") && codeEditorRef.current) {
+      const synced = await codeEditorRef.current.sync();
+      const firstNamed = Array.isArray(synced) ? (synced[0] as { name?: string } | undefined) : undefined;
+      if (firstNamed?.name) {
+        filename = `${firstNamed.name}.${ext}`;
+      }
+    }
+    if (filename === `model.${ext}`) {
+      const nameMatch = /(?:model|package|block|class|connector|record|function)\s+([A-Za-z_]\w*)/.exec(currentContent);
+      if (nameMatch?.[1]) {
+        filename = `${nameMatch[1]}.${ext}`;
+      }
+    }
+    const blob = new Blob([currentContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [editor, props, dialect]);
+
+  const isParameterRibbonVisible = Boolean(
+    (props.embed || props.showParameterRibbon) && ribbonParams.length > 0 && view !== View.CODE && !showAnalysisView,
+  );
+
   return (
     <>
       <div
@@ -1024,8 +1073,18 @@ export default function MorselEditor(props: MorselEditorProps) {
           setView={setView}
           setShowResultsView={setShowResultsView}
           setShowCadView={setShowCadView}
+          setShowAnalysisView={setShowAnalysisView}
           onSimulate={handleSimulate}
           simulationStatus={simulationStatus}
+          dialect={dialect}
+          onSelectDialect={handleSelectDialect}
+          onNewModel={!props.embed ? handleNewModel : undefined}
+          onOpenFile={!props.embed ? () => setIsOpenFileDialogOpen(true) : undefined}
+          onSaveModel={!props.embed ? handleSaveModel : undefined}
+          onAutoLayout={handleAutoLayout}
+          onFlatten={handleFlatten}
+          onOpenCloudModal={!props.embed ? () => setIsCloudModalOpen(true) : undefined}
+          hasParameterRibbon={isParameterRibbonVisible}
         />
 
         <div
@@ -1311,49 +1370,10 @@ export default function MorselEditor(props: MorselEditorProps) {
             translations={translations}
             dialect={dialect}
             onSelectDialect={handleSelectDialect}
-            onNewModel={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const defaultCode = getLanguageInfo(dialect).defaultCode;
-              if (editorRef.current) {
-                editorRef.current.setValue(defaultCode);
-              }
-              setLastLoadedContent(defaultCode);
-              setSidecarContent(undefined);
-              didOpen(documentUri, defaultCode, dialect);
-              setContextVersion((v) => v + 1);
-            }}
+            onNewModel={handleNewModel}
             openFileButtonRef={openFileButtonRef}
             onOpenFile={() => setIsOpenFileDialogOpen(true)}
-            onSaveModel={async () => {
-              const currentContent = editor?.getValue() || "";
-              props.onSave?.(currentContent);
-              const ext = getLanguageExtension(dialect);
-              let filename = `model.${ext}`;
-              if ((dialect === "modelica" || dialect === "modelscript") && codeEditorRef.current) {
-                const synced = await codeEditorRef.current.sync();
-                if ((synced as any)?.[0]?.name) {
-                  filename = `${(synced as any)[0].name}.${ext}`;
-                }
-              }
-              if (filename === `model.${ext}`) {
-                const nameMatch = /(?:model|package|block|class|connector|record|function)\s+([A-Za-z_]\w*)/.exec(
-                  currentContent,
-                );
-                if (nameMatch?.[1]) {
-                  filename = `${nameMatch[1]}.${ext}`;
-                }
-              }
-              const blob = new Blob([currentContent], { type: "text/plain" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = filename;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            }}
+            onSaveModel={handleSaveModel}
             onAutoLayout={handleAutoLayout}
             view={view}
             setView={setView}

@@ -4179,7 +4179,7 @@ export class LspFacade {
     this.currentInputLength = text.length;
     const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
     let baseRoot =
-      oldRoot !== undefined && oldRoot !== 0
+      oldRoot !== undefined
         ? oldRoot
         : Array.isArray(editStartOrEdits) &&
             typeof editOldEnd === "number" &&
@@ -4187,11 +4187,15 @@ export class LspFacade {
           ? editOldEnd
           : prevAstRoot !== 0
             ? prevAstRoot
-            : this.lastAstRoot;
+            : 0;
+    if (baseRoot !== 0 && baseRoot !== this.lastAstRoot) {
+      baseRoot = 0;
+    }
     let newAstRoot = 0;
     if (Array.isArray(editStartOrEdits)) {
       const edits = editStartOrEdits;
       if (
+        baseRoot !== 0 &&
         edits.length > 0 &&
         this.exports.parseWithEdits &&
         this.exports.atomicChunkAlloc
@@ -4218,7 +4222,7 @@ export class LspFacade {
           edits.length,
         );
       } else {
-        newAstRoot = this.exports.parse(baseRoot, 0, 0, inputLen);
+        newAstRoot = this.exports.parse(0, 0, 0, inputLen);
       }
     } else {
       let editStart =

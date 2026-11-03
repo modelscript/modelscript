@@ -65,13 +65,14 @@ export function generateThumbnail(artifactId: number, anchor?: string): Promise<
 
 import {
   renderCfdAnimationIsometricSvg,
+  renderCfdConfigIsometricSvg,
   renderStepIsometricSvg,
   renderVtuIsometricSvg,
 } from "../services/artifact-preprocessor.js";
 import { resolveLocalUploadBuffer } from "../util/cad-converter.js";
 
 async function doGenerateThumbnail(artifactId: number, anchor?: string): Promise<string | null> {
-  // Fast deterministic server-side 3D SVG thumbnail path for STEP, VTU, and CFD Animation artifacts
+  // Fast deterministic server-side 3D SVG thumbnail path for STEP, VTU, CFD Config, and CFD Animation artifacts
   try {
     const db = getDatabase();
     const view = db.getArtifactView(artifactId);
@@ -127,6 +128,15 @@ async function doGenerateThumbnail(artifactId: number, anchor?: string): Promise
               : undefined;
           svgContent = renderVtuIsometricSvg(vtuText, view.title || "Simulation Result", fieldUnits).svg;
         }
+      } else if (vType === "cfd-config" || vType === "cfd-su2") {
+        svgContent = renderCfdConfigIsometricSvg(
+          {
+            solver: typeof cfg["solver"] === "string" ? cfg["solver"] : undefined,
+            machNumber: typeof cfg["machNumber"] === "number" ? cfg["machNumber"] : 0.82,
+            aoa: typeof cfg["aoa"] === "number" ? cfg["aoa"] : 2.75,
+          },
+          view.title || "SU2 CFD Flow",
+        );
       } else if (vType === "cfd-animation" && Array.isArray(cfg["frames"])) {
         const moldGeo =
           cfg["moldGeometry"] && typeof cfg["moldGeometry"] === "object"

@@ -105,7 +105,6 @@ export function renderVisualDiffToSvg(diffData: VisualDiffData, options: VisualD
   const defs: string[] = [];
   defs.push(`
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
       text { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
       .diff-banner-title { font-size: 14px; font-weight: 700; fill: ${textColor}; }
       .diff-stat-pill { font-size: 11px; font-weight: 600; }

@@ -150,8 +150,19 @@ export function storageRouter(): Router {
     else if (checkExt([".data", ".eclipse", ".inc"])) viewType = "eclipse";
     else if (checkExt([".sbml"])) viewType = "sbml";
     else if (checkExt([".jsbsim"])) viewType = "jsbsim";
+    else if (checkExt([".qif", ".qif.xml"])) viewType = "qif";
+    else if (checkExt([".oscal", ".oscal.json", ".oscal.yaml", ".oscal.yml", ".oscal.xml"])) viewType = "oscal";
+    else if (checkExt([".aml", ".caex"])) viewType = "automationml";
     else if (checkExt([".xml"])) {
       if (/<REQ-IF\b/i.test(headerSnippet)) viewType = "reqif";
+      else if (/<QIFDocument\b/i.test(headerSnippet)) viewType = "qif";
+      else if (/<CAEXFile\b/i.test(headerSnippet)) viewType = "automationml";
+      else if (
+        /<(catalog|profile|system-security-plan|component-definition|assessment-plan|assessment-results|plan-of-action-and-milestones)\b/i.test(
+          headerSnippet,
+        )
+      )
+        viewType = "oscal";
       else if (/<AUTOSAR\b/i.test(headerSnippet)) viewType = "autosar";
       else if (/<OpenDRIVE\b/i.test(headerSnippet)) viewType = "opendrive";
       else if (/<OpenSCENARIO\b/i.test(headerSnippet)) viewType = "openscenario";
@@ -160,6 +171,23 @@ export function storageRouter(): Router {
       else if (/<(robot|sdf)\b/i.test(headerSnippet)) viewType = "urdf";
       else if (/plcopen\.org/i.test(headerSnippet)) viewType = "plcopen";
       else if (/Simpack/i.test(headerSnippet)) viewType = "simpack";
+      else viewType = "dataset-table";
+    } else if (checkExt([".json"])) {
+      viewType =
+        /"(catalog|profile|system-security-plan|component-definition|assessment-plan|assessment-results|plan-of-action-and-milestones)"\s*:/i.test(
+          headerSnippet,
+        )
+          ? "oscal"
+          : "json-table";
+    } else if (checkExt([".yaml", ".yml"])) {
+      viewType =
+        /^\s*(catalog|profile|system-security-plan|component-definition|assessment-plan|assessment-results|plan-of-action-and-milestones)\s*:/m.test(
+          headerSnippet,
+        )
+          ? "oscal"
+          : "dataset-table";
+    } else if (checkExt([".h5", ".hdf5"])) {
+      viewType = "dataset-table";
     }
 
     let preprocessed: {

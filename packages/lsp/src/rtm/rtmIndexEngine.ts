@@ -89,6 +89,28 @@ export class RtmIndexEngine {
       return "physical_component";
     }
 
+    if (
+      entry.language === "oscal" ||
+      rule.startsWith("oscal_") ||
+      resId.includes(".oscal") ||
+      entry.metadata?.["controlId"]
+    ) {
+      return "oscal_control";
+    }
+
+    if (entry.language === "qif" || rule.startsWith("qif_") || resId.endsWith(".qif") || entry.metadata?.["gdtType"]) {
+      return "qif_characteristic";
+    }
+
+    if (
+      entry.language === "automationml" ||
+      rule.startsWith("aml_") ||
+      resId.endsWith(".aml") ||
+      resId.endsWith(".caex")
+    ) {
+      return "aml_resource";
+    }
+
     if (rule === "PartDefinition" || rule === "PartUsage" || rule === "ItemDefinition" || rule === "ItemUsage") {
       return "sysml_logical";
     }

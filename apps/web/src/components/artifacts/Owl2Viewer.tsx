@@ -3,21 +3,29 @@
 import {
   CheckCircleFillIcon,
   CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   CodeIcon,
   CopyIcon,
+  FilterIcon,
+  ListUnorderedIcon,
   OrganizationIcon,
   PlayIcon,
+  PlusIcon,
+  SearchIcon,
+  SyncIcon,
   WorkflowIcon,
   XIcon,
 } from "@primer/octicons-react";
 import { Button, Spinner, Text } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
 export interface Owl2ViewerProps {
   viewConfig: {
@@ -26,6 +34,7 @@ export interface Owl2ViewerProps {
     code?: string | undefined;
     svg?: string | undefined;
     title?: string | undefined;
+    filename?: string | undefined;
     ontologyIri?: string | undefined;
     classCount?: number | undefined;
     individualCount?: number | undefined;
@@ -40,6 +49,7 @@ export interface Owl2ViewerProps {
 }
 
 export type Owl2GraphProjection = "all" | "taxonomy" | "properties";
+export type Owl2ViewMode = "diagram" | "tree" | "code";
 
 export interface ParsedOwlEntity {
   iri: string;
@@ -52,11 +62,18 @@ export interface ParsedOwlEntity {
   domains: string[];
   ranges: string[];
   inverses: string[];
+  superProperties: string[];
+  subProperties: string[];
   characteristics: string[];
   types: string[];
   propertyAssertions: { property: string; target: string }[];
+  incomingAssertions: { property: string; source: string }[];
   dataAssertions: { property: string; value: string }[];
   restrictions: string[];
+  domainOfProperties: string[];
+  rangeOfProperties: string[];
+  instances: string[];
+  sourceLines: number[];
 }
 
 export interface ParsedOwlEdge {
@@ -100,7 +117,35 @@ function getShortLabel(iri: string): string {
   return clean;
 }
 
-function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
+function resolveDisplayTitle(viewConfig: Owl2ViewerProps["viewConfig"], ontologyIri: string): string {
+  const rawTitle = (viewConfig.title || "").trim();
+  const filename = (viewConfig.filename || "").trim();
+
+  // If rawTitle is a human-readable title (not a raw http/https URL), extract its lead segment
+  if (rawTitle && !rawTitle.startsWith("http://") && !rawTitle.startsWith("https://")) {
+    const dashIdx = rawTitle.indexOf("—");
+    return dashIdx > 0 ? rawTitle.slice(0, dashIdx).trim() : rawTitle;
+  }
+
+  // Prefer filename stem if available (e.g. "CyberPhysicalAssetOntology.ofn" -> "CyberPhysicalAssetOntology")
+  if (filename) {
+    return filename.replace(/\.(ofn|owl2|owl|ttl|fss|rdf)$/i, "");
+  }
+
+  // Otherwise derive a clean slug from the URL / IRI
+  const iriSource = rawTitle || ontologyIri;
+  if (iriSource) {
+    const short = getShortLabel(iriSource.replace(/[/#]+$/, ""));
+    if (short && short !== "http:" && short !== "https:") {
+      return short;
+    }
+  }
+
+  return "OWL 2 Ontology";
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
   const prefixes: Record<string, string> = {};
   const entities = new Map<string, ParsedOwlEntity>();
   let ontologyIri = fallbackIri;
@@ -109,6 +154,19 @@ function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
   if (!rawText || !rawText.trim()) {
     return { ontologyIri, prefixes, entities, rawAxiomCount };
   }
+
+  const lines = rawText.split(/\r?\n/);
+  const findLinesContaining = (token: string): number[] => {
+    const matched: number[] = [];
+    const short = getShortLabel(token);
+    if (!short) return matched;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i]!.includes(token) || lines[i]!.includes(`:${short}`)) {
+        matched.push(i + 1);
+      }
+    }
+    return matched;
+  };
 
   for (const m of rawText.matchAll(/Prefix\s*\(\s*([A-Za-z0-9_-]*:)\s*=\s*<([^>]+)>\s*\)/g)) {
     prefixes[m[1]!] = m[2]!;
@@ -140,11 +198,18 @@ function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
         domains: [],
         ranges: [],
         inverses: [],
+        superProperties: [],
+        subProperties: [],
         characteristics: [],
         types: [],
         propertyAssertions: [],
+        incomingAssertions: [],
         dataAssertions: [],
         restrictions: [],
+        domainOfProperties: [],
+        rangeOfProperties: [],
+        instances: [],
+        sourceLines: findLinesContaining(iri),
       };
       entities.set(iri, existing);
     } else if (existing.kind === "class" && defaultKind !== "class") {
@@ -175,15 +240,16 @@ function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
     rawAxiomCount++;
   }
 
-  // 2. SubClassOf
+  // 2. SubClassOf (existential/universal restrictions & atomic subsumption)
   for (const m of rawText.matchAll(
-    /\bSubClassOf\s*\(\s*([:A-Za-z0-9_#-]+)\s+ObjectSomeValuesFrom\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)\s*\)/g,
+    /\bSubClassOf\s*\(\s*([:A-Za-z0-9_#-]+)\s+(ObjectSomeValuesFrom|ObjectAllValuesFrom)\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)\s*\)/g,
   )) {
     const sub = ensureEntity(m[1]!, "class");
-    const prop = ensureEntity(m[2]!, "objectProperty");
-    const filler = ensureEntity(m[3]!, "class");
+    const quant = m[2] === "ObjectAllValuesFrom" ? "∀" : "∃";
+    const prop = ensureEntity(m[3]!, "objectProperty");
+    const filler = ensureEntity(m[4]!, "class");
     if (sub && prop && filler) {
-      pushUnique(sub.restrictions, `⊑ ∃${prop.label}.${filler.label}`);
+      pushUnique(sub.restrictions, `⊑ ${quant}${prop.label}.${filler.label}`);
       pushUnique(prop.domains, sub.iri);
       pushUnique(prop.ranges, filler.iri);
     }
@@ -240,7 +306,7 @@ function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
     rawAxiomCount++;
   }
 
-  // 4. Object/Data Property Domains, Ranges, Inverses & Characteristics
+  // 4. Object/Data Property Domains, Ranges, Inverses, SubProperties & Characteristics
   for (const m of rawText.matchAll(
     /\b(ObjectPropertyDomain|DataPropertyDomain)\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)/g,
   )) {
@@ -249,6 +315,7 @@ function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
     const dom = ensureEntity(m[3]!, "class");
     if (prop && dom) {
       pushUnique(prop.domains, dom.iri);
+      pushUnique(dom.domainOfProperties, prop.iri);
     }
     rawAxiomCount++;
   }
@@ -261,10 +328,26 @@ function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
     if (prop) {
       if (!isData) {
         const rng = ensureEntity(m[3]!, "class");
-        if (rng) pushUnique(prop.ranges, rng.iri);
+        if (rng) {
+          pushUnique(prop.ranges, rng.iri);
+          pushUnique(rng.rangeOfProperties, prop.iri);
+        }
       } else {
         pushUnique(prop.ranges, m[3]!);
       }
+    }
+    rawAxiomCount++;
+  }
+
+  for (const m of rawText.matchAll(
+    /\b(SubObjectPropertyOf|SubDataPropertyOf)\s*\(\s*([:A-Za-z0-9_#-]+)\s+([:A-Za-z0-9_#-]+)\s*\)/g,
+  )) {
+    const isData = m[1] === "SubDataPropertyOf";
+    const subP = ensureEntity(m[2]!, isData ? "dataProperty" : "objectProperty");
+    const supP = ensureEntity(m[3]!, isData ? "dataProperty" : "objectProperty");
+    if (subP && supP && subP.iri !== supP.iri) {
+      pushUnique(subP.superProperties, supP.iri);
+      pushUnique(supP.subProperties, subP.iri);
     }
     rawAxiomCount++;
   }
@@ -297,6 +380,7 @@ function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
     const ind = ensureEntity(m[2]!, "individual");
     if (cls && ind) {
       pushUnique(ind.types, cls.iri);
+      pushUnique(cls.instances, ind.iri);
     }
     rawAxiomCount++;
   }
@@ -309,6 +393,7 @@ function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
     const obj = ensureEntity(m[3]!, "individual");
     if (prop && subj && obj) {
       subj.propertyAssertions.push({ property: prop.iri, target: obj.iri });
+      obj.incomingAssertions.push({ property: prop.iri, source: subj.iri });
     }
     rawAxiomCount++;
   }
@@ -346,32 +431,123 @@ interface PositionedNode {
   y: number;
   w: number;
   h: number;
+  tier: number;
+  colIndex: number;
   subtitle?: string | undefined;
   badges: string[];
 }
 
-function computeGraphLayout(
+interface RoutedEdge {
+  edge: ParsedOwlEdge;
+  pathD: string;
+  labelX: number;
+  labelY: number;
+  pillW: number;
+  stroke: string;
+  dash?: string | undefined;
+  markerEnd: string;
+}
+
+function computeNeighborhoodSet(ontology: ParsedOwlOntology, centerIri: string, maxHops = 1): Set<string> {
+  const visited = new Set<string>([centerIri]);
+  let frontier = [centerIri];
+
+  for (let hop = 0; hop < maxHops; hop++) {
+    const nextFrontier: string[] = [];
+    const add = (iri: string) => {
+      if (iri && ontology.entities.has(iri) && !visited.has(iri)) {
+        visited.add(iri);
+        nextFrontier.push(iri);
+      }
+    };
+
+    for (const currIri of frontier) {
+      const ent = ontology.entities.get(currIri);
+      if (!ent) continue;
+      ent.superClasses.forEach(add);
+      ent.subClasses.forEach(add);
+      ent.disjointWith.forEach(add);
+      ent.equivalentTo.forEach(add);
+      ent.domains.forEach(add);
+      ent.ranges.forEach(add);
+      ent.inverses.forEach(add);
+      ent.types.forEach(add);
+      ent.instances.forEach(add);
+      ent.domainOfProperties.forEach((pIri) => {
+        add(pIri);
+        const p = ontology.entities.get(pIri);
+        p?.ranges.forEach(add);
+      });
+      ent.rangeOfProperties.forEach((pIri) => {
+        add(pIri);
+        const p = ontology.entities.get(pIri);
+        p?.domains.forEach(add);
+      });
+      ent.propertyAssertions.forEach((pa) => {
+        add(pa.property);
+        add(pa.target);
+      });
+      ent.incomingAssertions.forEach((ia) => {
+        add(ia.property);
+        add(ia.source);
+      });
+    }
+    frontier = nextFrontier;
+  }
+
+  // Also include all ancestor superclasses up to root so taxonomy context is unbroken
+  const queue = Array.from(visited);
+  while (queue.length > 0) {
+    const curr = queue.pop()!;
+    const ent = ontology.entities.get(curr);
+    if (!ent) continue;
+    for (const sup of ent.superClasses) {
+      if (ontology.entities.has(sup) && !visited.has(sup)) {
+        visited.add(sup);
+        queue.push(sup);
+      }
+    }
+  }
+
+  return visited;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function computeGraphLayout(
   ontology: ParsedOwlOntology,
   projection: Owl2GraphProjection,
+  focusIri?: string | null,
 ): {
   nodes: PositionedNode[];
   edges: ParsedOwlEdge[];
+  routedEdges: RoutedEdge[];
   width: number;
   height: number;
 } {
-  const allEntities = Array.from(ontology.entities.values());
+  const allowedIris =
+    focusIri && ontology.entities.has(focusIri) ? computeNeighborhoodSet(ontology, focusIri, 1) : null;
+  const allEntities = Array.from(ontology.entities.values()).filter((e) => !allowedIris || allowedIris.has(e.iri));
+
   const classes = allEntities.filter((e) => e.kind === "class" || e.kind === "definedClass");
   const properties = allEntities.filter((e) => e.kind === "objectProperty" || e.kind === "dataProperty");
   const individuals = allEntities.filter((e) => e.kind === "individual");
 
   const visibleNodes: ParsedOwlEntity[] = [];
+  const visibleSet = new Set<string>();
+  const addVisible = (ent: ParsedOwlEntity) => {
+    if (!visibleSet.has(ent.iri)) {
+      visibleSet.add(ent.iri);
+      visibleNodes.push(ent);
+    }
+  };
+
   const edges: ParsedOwlEdge[] = [];
 
   if (projection === "taxonomy") {
-    visibleNodes.push(...classes);
+    classes.forEach(addVisible);
     for (const c of classes) {
       for (const sup of c.superClasses) {
-        if (ontology.entities.has(sup)) {
+        if (visibleSet.has(sup)) {
           edges.push({
             id: `sub_${c.iri}_${sup}`,
             source: c.iri,
@@ -382,7 +558,7 @@ function computeGraphLayout(
         }
       }
       for (const disj of c.disjointWith) {
-        if (c.iri < disj && ontology.entities.has(disj)) {
+        if (c.iri < disj && visibleSet.has(disj)) {
           edges.push({
             id: `disj_${c.iri}_${disj}`,
             source: c.iri,
@@ -393,7 +569,7 @@ function computeGraphLayout(
         }
       }
       for (const eq of c.equivalentTo) {
-        if (c.iri < eq && ontology.entities.has(eq)) {
+        if (c.iri < eq && visibleSet.has(eq)) {
           edges.push({
             id: `eq_${c.iri}_${eq}`,
             source: c.iri,
@@ -405,12 +581,12 @@ function computeGraphLayout(
       }
     }
   } else if (projection === "properties") {
-    const connectedClassIris = new Set<string>();
     for (const p of properties) {
-      visibleNodes.push(p);
+      addVisible(p);
       for (const d of p.domains) {
-        if (ontology.entities.has(d)) {
-          connectedClassIris.add(d);
+        const domEnt = ontology.entities.get(d);
+        if (domEnt && (!allowedIris || allowedIris.has(d))) {
+          addVisible(domEnt);
           edges.push({
             id: `dom_${p.iri}_${d}`,
             source: p.iri,
@@ -421,8 +597,9 @@ function computeGraphLayout(
         }
       }
       for (const r of p.ranges) {
-        if (ontology.entities.has(r)) {
-          connectedClassIris.add(r);
+        const rngEnt = ontology.entities.get(r);
+        if (rngEnt && (!allowedIris || allowedIris.has(r))) {
+          addVisible(rngEnt);
           edges.push({
             id: `rng_${p.iri}_${r}`,
             source: p.iri,
@@ -433,7 +610,7 @@ function computeGraphLayout(
         }
       }
       for (const inv of p.inverses) {
-        if (p.iri < inv && ontology.entities.has(inv)) {
+        if (p.iri < inv && ontology.entities.has(inv) && (!allowedIris || allowedIris.has(inv))) {
           edges.push({
             id: `inv_${p.iri}_${inv}`,
             source: p.iri,
@@ -444,17 +621,14 @@ function computeGraphLayout(
         }
       }
     }
-    for (const cIri of connectedClassIris) {
-      const c = ontology.entities.get(cIri);
-      if (c) visibleNodes.push(c);
-    }
   } else {
     // "all" projection: Classes + Individuals + folded Domain→Range object property edges
-    visibleNodes.push(...classes, ...individuals);
+    classes.forEach(addVisible);
+    individuals.forEach(addVisible);
 
     for (const c of classes) {
       for (const sup of c.superClasses) {
-        if (ontology.entities.has(sup)) {
+        if (visibleSet.has(sup)) {
           edges.push({
             id: `sub_${c.iri}_${sup}`,
             source: c.iri,
@@ -465,7 +639,7 @@ function computeGraphLayout(
         }
       }
       for (const disj of c.disjointWith) {
-        if (c.iri < disj && ontology.entities.has(disj)) {
+        if (c.iri < disj && visibleSet.has(disj)) {
           edges.push({
             id: `disj_${c.iri}_${disj}`,
             source: c.iri,
@@ -478,7 +652,7 @@ function computeGraphLayout(
     }
 
     const handledProps = new Set<string>();
-    for (const p of properties) {
+    for (const p of ontology.entities.values()) {
       if (handledProps.has(p.iri) || p.kind !== "objectProperty") continue;
       if (p.domains.length > 0 && p.ranges.length > 0) {
         handledProps.add(p.iri);
@@ -498,7 +672,7 @@ function computeGraphLayout(
         }
         for (const domIri of p.domains) {
           for (const rngIri of p.ranges) {
-            if (ontology.entities.has(domIri) && ontology.entities.has(rngIri)) {
+            if (visibleSet.has(domIri) && visibleSet.has(rngIri)) {
               edges.push({
                 id: `op_${p.iri}_${domIri}_${rngIri}`,
                 source: domIri,
@@ -512,10 +686,9 @@ function computeGraphLayout(
       }
     }
 
-    // If any objectProperty had no domain/range (e.g. only inverseOf), show it in "all" if nothing else linked it
     for (const ind of individuals) {
       for (const tIri of ind.types) {
-        if (ontology.entities.has(tIri)) {
+        if (visibleSet.has(tIri)) {
           edges.push({
             id: `type_${ind.iri}_${tIri}`,
             source: ind.iri,
@@ -526,7 +699,7 @@ function computeGraphLayout(
         }
       }
       for (const pa of ind.propertyAssertions) {
-        if (ontology.entities.has(pa.target)) {
+        if (visibleSet.has(pa.target)) {
           edges.push({
             id: `pa_${ind.iri}_${pa.property}_${pa.target}`,
             source: ind.iri,
@@ -543,7 +716,6 @@ function computeGraphLayout(
   const tierMap = new Map<string, number>();
 
   if (projection === "properties") {
-    // Row 0: Domain classes, Row 1: Properties, Row 2: Range classes
     const domainSet = new Set<string>();
     const rangeSet = new Set<string>();
     for (const p of properties) {
@@ -562,7 +734,6 @@ function computeGraphLayout(
       }
     }
   } else {
-    // Compute depth from root classes via superClasses
     const getDepth = (iri: string, visited = new Set<string>()): number => {
       if (visited.has(iri)) return 0;
       visited.add(iri);
@@ -570,7 +741,7 @@ function computeGraphLayout(
       if (!ent || ent.superClasses.length === 0) return 0;
       let maxParentDepth = 0;
       for (const sup of ent.superClasses) {
-        if (ontology.entities.has(sup)) {
+        if (visibleSet.has(sup)) {
           maxParentDepth = Math.max(maxParentDepth, getDepth(sup, visited) + 1);
         }
       }
@@ -603,38 +774,90 @@ function computeGraphLayout(
     tiers.set(t, list);
   }
 
-  // Order within each tier so children stay near their parents/types
+  // Count same-tier connections so hub nodes on Tier 0 sit between their peers (avoiding pass-through edges)
+  const sameTierNeighbors = new Map<string, Set<string>>();
+  for (const e of edges) {
+    if (tierMap.get(e.source) === tierMap.get(e.target)) {
+      const sSet = sameTierNeighbors.get(e.source) ?? new Set<string>();
+      sSet.add(e.target);
+      sameTierNeighbors.set(e.source, sSet);
+      const tSet = sameTierNeighbors.get(e.target) ?? new Set<string>();
+      tSet.add(e.source);
+      sameTierNeighbors.set(e.target, tSet);
+    }
+  }
+
   const sortedTierKeys = Array.from(tiers.keys()).sort((a, b) => a - b);
   const nodeOrderX = new Map<string, number>();
 
   for (const tKey of sortedTierKeys) {
     const rowNodes = tiers.get(tKey)!;
-    rowNodes.sort((a, b) => {
-      const parentRefsA = [...a.superClasses, ...a.types, ...a.domains];
-      const parentRefsB = [...b.superClasses, ...b.types, ...b.domains];
-      const avgA =
-        parentRefsA.length > 0
-          ? parentRefsA.reduce((acc, r) => acc + (nodeOrderX.get(r) ?? 0), 0) / parentRefsA.length
-          : 0;
-      const avgB =
-        parentRefsB.length > 0
-          ? parentRefsB.reduce((acc, r) => acc + (nodeOrderX.get(r) ?? 0), 0) / parentRefsB.length
-          : 0;
-      if (avgA !== avgB) return avgA - avgB;
-      return a.label.localeCompare(b.label);
-    });
-    rowNodes.forEach((n, idx) => nodeOrderX.set(n.iri, idx));
+    if (tKey === 0 && rowNodes.length >= 3) {
+      // Sort initially by label for determinism, then place highest-degree horizontal hub in center
+      rowNodes.sort((a, b) => a.label.localeCompare(b.label));
+      const byDegree = [...rowNodes].sort(
+        (a, b) =>
+          (sameTierNeighbors.get(b.iri)?.size ?? 0) - (sameTierNeighbors.get(a.iri)?.size ?? 0) ||
+          a.label.localeCompare(b.label),
+      );
+      const reordered: ParsedOwlEntity[] = new Array(rowNodes.length);
+      let left = Math.floor((rowNodes.length - 1) / 2);
+      let right = left + 1;
+      byDegree.forEach((node, idx) => {
+        if (idx % 2 === 0) {
+          reordered[left--] = node;
+        } else {
+          reordered[right++] = node;
+        }
+      });
+      tiers.set(tKey, reordered);
+      reordered.forEach((n, idx) => nodeOrderX.set(n.iri, idx));
+    } else {
+      rowNodes.sort((a, b) => {
+        const parentRefsA = [...a.superClasses, ...a.types, ...a.domains];
+        const parentRefsB = [...b.superClasses, ...b.types, ...b.domains];
+        const avgA =
+          parentRefsA.length > 0
+            ? parentRefsA.reduce((acc, r) => acc + (nodeOrderX.get(r) ?? 0), 0) / parentRefsA.length
+            : 0;
+        const avgB =
+          parentRefsB.length > 0
+            ? parentRefsB.reduce((acc, r) => acc + (nodeOrderX.get(r) ?? 0), 0) / parentRefsB.length
+            : 0;
+        if (avgA !== avgB) return avgA - avgB;
+        return a.label.localeCompare(b.label);
+      });
+      rowNodes.forEach((n, idx) => nodeOrderX.set(n.iri, idx));
+    }
   }
 
-  // Measure and position each node
-  const H_GAP = 48;
-  const V_GAP = 64;
-  const PADDING_X = 44;
-  const PADDING_Y = 36;
+  // Helper to find max label pill width between two nodes on the same row
+  const getHorizontalEdgeGap = (iriA: string, iriB: string): number => {
+    let maxPill = 0;
+    for (const e of edges) {
+      if ((e.source === iriA && e.target === iriB) || (e.source === iriB && e.target === iriA)) {
+        const pillW = Math.max(48, e.label.length * 5.8 + 16);
+        if (pillW > maxPill) maxPill = pillW;
+      }
+    }
+    return maxPill > 0 ? Math.max(72, Math.ceil(maxPill + 34)) : 54;
+  };
+
+  // Measure and position each node with dynamic edge-label-aware horizontal gaps
+  const V_GAP = 72;
+  const PADDING_X = 48;
+  const PADDING_Y = 52;
 
   const rowLayouts: {
     tier: number;
-    items: { entity: ParsedOwlEntity; w: number; h: number; subtitle?: string | undefined; badges: string[] }[];
+    items: {
+      entity: ParsedOwlEntity;
+      w: number;
+      h: number;
+      subtitle?: string | undefined;
+      badges: string[];
+      gapAfter: number;
+    }[];
     totalW: number;
     maxH: number;
   }[] = [];
@@ -643,7 +866,7 @@ function computeGraphLayout(
 
   for (const tKey of sortedTierKeys) {
     const rowNodes = tiers.get(tKey)!;
-    const items = rowNodes.map((ent) => {
+    const items = rowNodes.map((ent, idx) => {
       let subtitle: string | undefined;
       const badges: string[] = [];
 
@@ -667,10 +890,12 @@ function computeGraphLayout(
       );
       const w = Math.min(260, Math.ceil(longestLine));
       const h = 48 + (subtitle ? 15 : 0) + badges.length * 16;
-      return { entity: ent, w, h, subtitle, badges };
+      const nextEnt = idx < rowNodes.length - 1 ? rowNodes[idx + 1] : undefined;
+      const gapAfter = nextEnt ? getHorizontalEdgeGap(ent.iri, nextEnt.iri) : 0;
+      return { entity: ent, w, h, subtitle, badges, gapAfter };
     });
 
-    const totalW = items.reduce((acc, it) => acc + it.w, 0) + Math.max(0, items.length - 1) * H_GAP;
+    const totalW = items.reduce((acc, it) => acc + it.w + it.gapAfter, 0);
     const maxH = items.reduce((acc, it) => Math.max(acc, it.h), 50);
     if (totalW > canvasInnerWidth) canvasInnerWidth = totalW;
     rowLayouts.push({ tier: tKey, items, totalW, maxH });
@@ -678,30 +903,154 @@ function computeGraphLayout(
 
   const totalWidth = canvasInnerWidth + PADDING_X * 2;
   const positionedNodes: PositionedNode[] = [];
+  const nodeByIri = new Map<string, PositionedNode>();
   let currentY = PADDING_Y;
 
   for (const row of rowLayouts) {
     let currentX = Math.floor((totalWidth - row.totalW) / 2);
-    for (const it of row.items) {
-      positionedNodes.push({
+    row.items.forEach((it, colIdx) => {
+      const pNode: PositionedNode = {
         entity: it.entity,
         x: currentX,
         y: currentY + Math.floor((row.maxH - it.h) / 2),
         w: it.w,
         h: it.h,
+        tier: row.tier,
+        colIndex: colIdx,
         subtitle: it.subtitle,
         badges: it.badges,
-      });
-      currentX += it.w + H_GAP;
-    }
+      };
+      positionedNodes.push(pNode);
+      nodeByIri.set(it.entity.iri, pNode);
+      currentX += it.w + it.gapAfter;
+    });
     currentY += row.maxH + V_GAP;
   }
 
   const totalHeight = Math.max(300, currentY - V_GAP + PADDING_Y);
 
+  // Pre-compute collision-free edge paths & exact Bézier midpoints
+  const pairEdgeCounts = new Map<string, number>();
+  const routedEdges: RoutedEdge[] = [];
+
+  for (const edge of edges) {
+    const srcNode = nodeByIri.get(edge.source);
+    const tgtNode = nodeByIri.get(edge.target);
+    if (!srcNode || !tgtNode) continue;
+
+    const pairKey = edge.source < edge.target ? `${edge.source}__${edge.target}` : `${edge.target}__${edge.source}`;
+    const parallelIdx = pairEdgeCounts.get(pairKey) ?? 0;
+    pairEdgeCounts.set(pairKey, parallelIdx + 1);
+
+    const sCx = srcNode.x + srcNode.w / 2;
+    const sCy = srcNode.y + srcNode.h / 2;
+    const tCx = tgtNode.x + tgtNode.w / 2;
+    const tCy = tgtNode.y + tgtNode.h / 2;
+
+    const dy = tCy - sCy;
+    const dx = tCx - sCx;
+
+    let pathD = "";
+    let labelX = (sCx + tCx) / 2;
+    let labelY = (sCy + tCy) / 2;
+
+    if (Math.abs(dy) > 24) {
+      // Vertical / Cross-tier connection
+      const xOffset = parallelIdx > 0 ? (parallelIdx % 2 === 1 ? 22 : -22) : 0;
+      const x1 = sCx + xOffset;
+      const x2 = tCx + xOffset;
+      const y1 = dy < 0 ? srcNode.y : srcNode.y + srcNode.h;
+      const y2 = dy < 0 ? tgtNode.y + tgtNode.h + 2 : tgtNode.y - 2;
+      const midY = (y1 + y2) / 2;
+      pathD = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+      // Exact cubic Bézier midpoint at t = 0.5
+      labelX = 0.125 * x1 + 0.375 * x1 + 0.375 * x2 + 0.125 * x2;
+      labelY = 0.125 * y1 + 0.375 * midY + 0.375 * midY + 0.125 * y2;
+    } else {
+      // Same-row connection: check whether nodes are adjacent or separated by intermediate nodes
+      const colDist = Math.abs(srcNode.colIndex - tgtNode.colIndex);
+      if (colDist > 1) {
+        // Non-adjacent nodes on the same row: route an overhead arc above the row so we never cross intermediate cards
+        const x1 = sCx;
+        const y1 = srcNode.y;
+        const x2 = tCx;
+        const y2 = tgtNode.y;
+        const ctrlY = Math.min(y1, y2) - 42 - parallelIdx * 20;
+        const midX = (x1 + x2) / 2;
+        pathD = `M ${x1} ${y1} Q ${midX} ${ctrlY} ${x2} ${y2}`;
+        labelX = midX;
+        labelY = 0.25 * y1 + 0.5 * ctrlY + 0.25 * y2;
+      } else {
+        // Adjacent nodes on the same row: connect cleanly across the widened gap
+        const x1 = dx >= 0 ? srcNode.x + srcNode.w : srcNode.x;
+        const x2 = dx >= 0 ? tgtNode.x - 2 : tgtNode.x + tgtNode.w + 2;
+        const yShift = parallelIdx > 0 ? (parallelIdx % 2 === 1 ? -14 : 14) : 0;
+        const y1 = sCy + yShift;
+        const y2 = tCy + yShift;
+        const arcOffset = edge.kind === "disjointWith" ? -24 : 0;
+        const midX = (x1 + x2) / 2;
+        const ctrlY = (y1 + y2) / 2 + arcOffset;
+        pathD = `M ${x1} ${y1} Q ${midX} ${ctrlY} ${x2} ${y2}`;
+        labelX = midX;
+        labelY = 0.25 * y1 + 0.5 * ctrlY + 0.25 * y2;
+      }
+    }
+
+    let stroke = "#3b82f6";
+    let dash: string | undefined;
+    let markerEnd = "url(#owl-marker-prop)";
+
+    if (edge.kind === "subClassOf") {
+      stroke = "#3b82f6";
+      markerEnd = "url(#owl-marker-subclass)";
+    } else if (edge.kind === "disjointWith") {
+      stroke = "#ef4444";
+      dash = "5 4";
+      markerEnd = "url(#owl-marker-disjoint)";
+    } else if (edge.kind === "classAssertion" || edge.kind === "propertyAssertion") {
+      stroke = "#8b5cf6";
+      if (edge.kind === "classAssertion") dash = "4 3";
+      markerEnd = "url(#owl-marker-indiv)";
+    } else if (edge.kind === "objectProperty" || edge.kind === "domain" || edge.kind === "range") {
+      stroke = "#0284c7";
+      markerEnd = "url(#owl-marker-prop)";
+    } else if (edge.kind === "inverseOf") {
+      stroke = "#64748b";
+      dash = "4 3";
+    }
+
+    const pillW = Math.max(48, edge.label.length * 5.8 + 14);
+
+    routedEdges.push({
+      edge,
+      pathD,
+      labelX,
+      labelY,
+      pillW,
+      stroke,
+      dash,
+      markerEnd,
+    });
+  }
+
+  // De-conflict any edge label pills that sit too close to each other
+  for (let i = 0; i < routedEdges.length; i++) {
+    for (let j = i + 1; j < routedEdges.length; j++) {
+      const a = routedEdges[i]!;
+      const b = routedEdges[j]!;
+      const overlapX = Math.abs(a.labelX - b.labelX) < (a.pillW + b.pillW) / 2 + 4;
+      const overlapY = Math.abs(a.labelY - b.labelY) < 19;
+      if (overlapX && overlapY) {
+        a.labelY -= 10;
+        b.labelY += 10;
+      }
+    }
+  }
+
   return {
     nodes: positionedNodes,
     edges,
+    routedEdges,
     width: totalWidth,
     height: totalHeight,
   };
@@ -721,8 +1070,8 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
 `;
 
 const Toolbar = styled.div`
-  height: 38px;
-  min-height: 38px;
+  height: 40px;
+  min-height: 40px;
   background: var(--surface-hud, var(--color-canvas-subtle));
   border-bottom: 1px solid var(--color-border-default);
   display: flex;
@@ -738,6 +1087,7 @@ const HeaderLeft = styled.div`
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1;
 `;
 
 const ModelTitle = styled.div`
@@ -749,7 +1099,7 @@ const ModelTitle = styled.div`
   text-overflow: ellipsis;
 `;
 
-const PillBadge = styled.span<{ $variant?: "owl" | "verified" }>`
+const PillBadge = styled.span<{ $variant?: "owl" | "verified" | "neutral" }>`
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -759,25 +1109,29 @@ const PillBadge = styled.span<{ $variant?: "owl" | "verified" }>`
   border-radius: 9999px;
   font-weight: 600;
   white-space: nowrap;
-  background: ${(p) => (p.$variant === "verified" ? "rgba(46, 160, 67, 0.14)" : "rgba(139, 92, 246, 0.15)")};
-  color: ${(p) => (p.$variant === "verified" ? "#2ea043" : "var(--color-done-fg, #8b5cf6)")};
-  border: 1px solid ${(p) => (p.$variant === "verified" ? "rgba(46, 160, 67, 0.35)" : "rgba(139, 92, 246, 0.35)")};
+  flex-shrink: 0;
+  background: ${(p) =>
+    p.$variant === "verified"
+      ? "rgba(46, 160, 67, 0.14)"
+      : p.$variant === "neutral"
+        ? "var(--color-canvas-default)"
+        : "rgba(139, 92, 246, 0.15)"};
+  color: ${(p) =>
+    p.$variant === "verified"
+      ? "#2ea043"
+      : p.$variant === "neutral"
+        ? "var(--color-fg-muted)"
+        : "var(--color-done-fg, #8b5cf6)"};
+  border: 1px solid
+    ${(p) =>
+      p.$variant === "verified"
+        ? "rgba(46, 160, 67, 0.35)"
+        : p.$variant === "neutral"
+          ? "var(--color-border-default)"
+          : "rgba(139, 92, 246, 0.35)"};
 `;
 
-const SubToolbar = styled.div`
-  height: 32px;
-  min-height: 32px;
-  padding: 0 12px;
-  background: var(--color-canvas-subtle);
-  border-bottom: 1px solid var(--color-border-default);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-`;
-
-const ProjectionSwitch = styled.div`
+const SegmentedGroup = styled.div`
   display: inline-flex;
   align-items: center;
   background: var(--color-canvas-default);
@@ -787,15 +1141,19 @@ const ProjectionSwitch = styled.div`
   gap: 2px;
 `;
 
-const ProjectionBtn = styled.button<{ $active: boolean }>`
+const SegmentedBtn = styled.button<{ $active: boolean }>`
   border: none;
   background: ${(p) => (p.$active ? "rgba(139, 92, 246, 0.18)" : "transparent")};
   color: ${(p) => (p.$active ? "var(--color-done-fg, #8b5cf6)" : "var(--color-fg-muted)")};
   font-size: 11px;
-  font-weight: ${(p) => (p.$active ? 600 : 500)};
-  padding: 2px 9px;
+  font-weight: 600;
+  padding: 3px 9px;
   border-radius: 4px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
   transition: all 0.12s ease;
 
   &:hover {
@@ -810,15 +1168,17 @@ const ContentArea = styled.div`
   position: relative;
 `;
 
-const GraphViewport = styled.div<{ $isDark: boolean }>`
+const GraphViewport = styled.div<{ $isDark: boolean; $isDragging: boolean }>`
   flex: 1;
   width: 100%;
   height: 100%;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  cursor: ${(p) => (p.$isDragging ? "grabbing" : "grab")};
+  user-select: none;
   background-color: ${(p) =>
     p.$isDark ? "var(--color-canvas-default, #0d1117)" : "var(--color-canvas-subtle, #f8fafc)"};
   background-image: radial-gradient(
@@ -826,6 +1186,43 @@ const GraphViewport = styled.div<{ $isDark: boolean }>`
     transparent 1px
   );
   background-size: 18px 18px;
+`;
+
+const FloatingHudPill = styled.div`
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-canvas-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 7px;
+  padding: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+`;
+
+const HudIconBtn = styled.button`
+  border: none;
+  background: transparent;
+  color: var(--color-fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  height: 22px;
+  min-width: 22px;
+  padding: 0 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+
+  &:hover {
+    background: var(--color-canvas-subtle);
+    color: var(--color-fg-default);
+  }
 `;
 
 const EntityDrawer = styled.div`
@@ -878,28 +1275,80 @@ const EntityChip = styled.button<{ $color: string }>`
   }
 `;
 
-const FooterBar = styled.div`
-  height: 24px;
-  min-height: 24px;
-  padding: 0 12px;
-  background: var(--color-canvas-subtle);
-  border-top: 1px solid var(--color-border-default);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 10.5px;
-  color: var(--color-fg-muted);
-  font-family: var(--font-mono, monospace);
-  gap: 12px;
-`;
-
 const LegendDot = styled.span<{ $color: string }>`
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: ${(p) => p.$color};
   margin-right: 4px;
+`;
+
+const TreeSplitContainer = styled.div`
+  flex: 1;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+`;
+
+const TreeSidebar = styled.div`
+  width: 42%;
+  min-width: 220px;
+  max-width: 360px;
+  height: 100%;
+  border-right: 1px solid var(--color-border-default);
+  background: var(--color-canvas-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
+const TreeInspectorPane = styled.div`
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px 18px;
+  background: var(--color-canvas-default);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+`;
+
+const TreeRowBtn = styled.button<{ $selected: boolean; $depth: number }>`
+  width: 100%;
+  border: none;
+  background: ${(p) => (p.$selected ? "rgba(139, 92, 246, 0.16)" : "transparent")};
+  color: ${(p) => (p.$selected ? "var(--color-fg-default)" : "var(--color-fg-default)")};
+  border-left: 2px solid ${(p) => (p.$selected ? "#8b5cf6" : "transparent")};
+  padding: 5px 10px 5px ${(p) => 10 + p.$depth * 16}px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: ${(p) => (p.$selected ? 600 : 500)};
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    background: ${(p) => (p.$selected ? "rgba(139, 92, 246, 0.22)" : "var(--color-canvas-default)")};
+  }
+`;
+
+const KindBadge = styled.span<{ $color: string }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  background: ${(p) => `${p.$color}22`};
+  color: ${(p) => p.$color};
+  border: 1px solid ${(p) => `${p.$color}55`};
+  flex-shrink: 0;
 `;
 
 function getEntityColors(kind: ParsedOwlEntity["kind"], isDark: boolean) {
@@ -910,6 +1359,7 @@ function getEntityColors(kind: ParsedOwlEntity["kind"], isDark: boolean) {
         fill: isDark ? "#1e1b2e" : "#fff1f2",
         headerBg: isDark ? "rgba(244, 63, 94, 0.18)" : "rgba(225, 29, 72, 0.1)",
         stereotype: "«owl:Class»",
+        shortBadge: "C",
       };
     case "definedClass":
       return {
@@ -917,6 +1367,7 @@ function getEntityColors(kind: ParsedOwlEntity["kind"], isDark: boolean) {
         fill: isDark ? "#231f1a" : "#fffbeb",
         headerBg: isDark ? "rgba(245, 158, 11, 0.18)" : "rgba(217, 119, 6, 0.12)",
         stereotype: "«owl:DefinedClass»",
+        shortBadge: "≡",
       };
     case "objectProperty":
       return {
@@ -924,6 +1375,7 @@ function getEntityColors(kind: ParsedOwlEntity["kind"], isDark: boolean) {
         fill: isDark ? "#132337" : "#f0f9ff",
         headerBg: isDark ? "rgba(56, 189, 248, 0.18)" : "rgba(2, 132, 199, 0.1)",
         stereotype: "«owl:ObjectProperty»",
+        shortBadge: "P",
       };
     case "dataProperty":
       return {
@@ -931,6 +1383,7 @@ function getEntityColors(kind: ParsedOwlEntity["kind"], isDark: boolean) {
         fill: isDark ? "#122925" : "#ecfdf5",
         headerBg: isDark ? "rgba(52, 211, 153, 0.18)" : "rgba(5, 150, 105, 0.1)",
         stereotype: "«owl:DataProperty»",
+        shortBadge: "D",
       };
     case "individual":
       return {
@@ -938,6 +1391,7 @@ function getEntityColors(kind: ParsedOwlEntity["kind"], isDark: boolean) {
         fill: isDark ? "#1e1b36" : "#f5f3ff",
         headerBg: isDark ? "rgba(167, 139, 250, 0.18)" : "rgba(124, 58, 237, 0.1)",
         stereotype: "«owl:NamedIndividual»",
+        shortBadge: "I",
       };
   }
 }
@@ -949,16 +1403,36 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
 
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [viewMode, setViewMode] = useState<Owl2ViewMode | null>(null);
   const [projection, setProjection] = useState<Owl2GraphProjection>("all");
   const [selectedIri, setSelectedIri] = useState<string | null>(null);
+  const [focusIri, setFocusIri] = useState<string | null>(null);
+  const [treeFilter, setTreeFilter] = useState("");
+  const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
+  const [highlightedLines, setHighlightedLines] = useState<Set<number>>(new Set());
 
-  const rawTitle = viewConfig.title || "OWL 2 Ontology";
-  const shortTitle = useMemo(() => {
-    const dashIdx = rawTitle.indexOf("—");
-    return dashIdx > 0 ? rawTitle.slice(0, dashIdx).trim() : rawTitle;
-  }, [rawTitle]);
+  // Interactive Zoom & Pan state for the Graph canvas
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const codeContainerRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    moved: boolean;
+  }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    origX: 0,
+    origY: 0,
+    moved: false,
+  });
 
   useEffect(() => {
     if (viewConfig.code) {
@@ -984,7 +1458,10 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
     [rawText, viewConfig.ontologyIri],
   );
 
-  const graphLayout = useMemo(() => computeGraphLayout(ontology, projection), [ontology, projection]);
+  const displayTitle = useMemo(
+    () => resolveDisplayTitle(viewConfig, ontology.ontologyIri),
+    [viewConfig, ontology.ontologyIri],
+  );
 
   const counts = useMemo(() => {
     let classes = 0;
@@ -1003,6 +1480,31 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
     };
   }, [ontology, viewConfig]);
 
+  // Automatically pick "tree" mode as default when the ontology is large (> 20 entities) so it always scales
+  const totalEntities = ontology.entities.size;
+  const resolvedViewMode: Owl2ViewMode = useMemo(() => {
+    if (viewMode) return viewMode;
+    if (totalEntities > 20) return "tree";
+    return "diagram";
+  }, [viewMode, totalEntities]);
+
+  const graphLayout = useMemo(
+    () => computeGraphLayout(ontology, projection, focusIri),
+    [ontology, projection, focusIri],
+  );
+
+  const { showHint } = useWheelZoom({
+    containerRef: viewportRef,
+    zoom,
+    setZoom,
+    pan,
+    setPan,
+    isFullScreen,
+    minZoom: 0.35,
+    maxZoom: 3.5,
+    disabled: resolvedViewMode !== "diagram" || graphLayout.nodes.length === 0,
+  });
+
   const fallbackSvg = useMemo(() => {
     if (graphLayout.nodes.length === 0 && typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
       return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
@@ -1011,18 +1513,47 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
   }, [graphLayout.nodes.length, viewConfig.svg, isFullScreen]);
 
   const hasGraph = graphLayout.nodes.length > 0 || Boolean(fallbackSvg);
-  const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && hasGraph ? "diagram" : "code";
+  const effectiveViewMode: Owl2ViewMode = resolvedViewMode === "diagram" && !hasGraph ? "code" : resolvedViewMode;
 
-  const selectedEntity = useMemo(
-    () => (selectedIri ? (ontology.entities.get(selectedIri) ?? null) : null),
-    [ontology, selectedIri],
-  );
+  // Grouped entities for Tree View
+  const treeGroups = useMemo(() => {
+    const q = treeFilter.trim().toLowerCase();
+    const all = Array.from(ontology.entities.values());
+    const matches = (e: ParsedOwlEntity) => !q || e.label.toLowerCase().includes(q) || e.iri.toLowerCase().includes(q);
 
-  const nodeByIri = useMemo(() => {
-    const map = new Map<string, PositionedNode>();
-    for (const n of graphLayout.nodes) map.set(n.entity.iri, n);
-    return map;
-  }, [graphLayout.nodes]);
+    const classes = all.filter((e) => e.kind === "class" || e.kind === "definedClass");
+    const rootClasses = classes
+      .filter((c) => c.superClasses.filter((s) => ontology.entities.has(s)).length === 0)
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    const objProps = all
+      .filter((e) => e.kind === "objectProperty" && matches(e))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    const dataProps = all
+      .filter((e) => e.kind === "dataProperty" && matches(e))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    const individuals = all
+      .filter((e) => e.kind === "individual" && matches(e))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    return {
+      classes: classes.filter(matches),
+      rootClasses,
+      objProps,
+      dataProps,
+      individuals,
+    };
+  }, [ontology, treeFilter]);
+
+  const selectedEntity = useMemo(() => {
+    if (selectedIri && ontology.entities.has(selectedIri)) {
+      return ontology.entities.get(selectedIri)!;
+    }
+    if (effectiveViewMode === "tree") {
+      return treeGroups.rootClasses[0] ?? Array.from(ontology.entities.values())[0] ?? null;
+    }
+    return null;
+  }, [ontology, selectedIri, effectiveViewMode, treeGroups.rootClasses]);
 
   const codeLines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
 
@@ -1033,67 +1564,546 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
     setTimeout(() => setCopied(false), 1800);
   };
 
+  const handleResetView = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement | null)?.closest("button")) return;
+    dragRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: pan.x,
+      origY: pan.y,
+      moved: false,
+    };
+    setIsDragging(true);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragRef.current.active) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      dragRef.current.moved = true;
+    }
+    setPan({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy });
+  };
+
+  const handleMouseUp = () => {
+    dragRef.current.active = false;
+    setIsDragging(false);
+  };
+
+  const handleCanvasClick = () => {
+    if (dragRef.current.moved) {
+      dragRef.current.moved = false;
+      return;
+    }
+    setSelectedIri(null);
+  };
+
+  const toggleCollapse = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCollapsedNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleJumpToSource = (ent: ParsedOwlEntity) => {
+    setHighlightedLines(new Set(ent.sourceLines));
+    setViewMode("code");
+    setTimeout(() => {
+      const firstLine = ent.sourceLines[0];
+      if (firstLine && codeContainerRef.current) {
+        const lineEl = codeContainerRef.current.querySelector(`[data-line="${firstLine}"]`);
+        lineEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 40);
+  };
+
+  const renderClassSubtree = (cls: ParsedOwlEntity, depth: number, visited = new Set<string>()): React.ReactNode => {
+    if (visited.has(cls.iri)) return null;
+    visited.add(cls.iri);
+
+    const q = treeFilter.trim().toLowerCase();
+    const children = cls.subClasses
+      .map((sIri) => ontology.entities.get(sIri))
+      .filter((c): c is ParsedOwlEntity => Boolean(c))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    const selfMatches = !q || cls.label.toLowerCase().includes(q) || cls.iri.toLowerCase().includes(q);
+    const renderedChildren = children
+      .map((child) => renderClassSubtree(child, depth + 1, new Set(visited)))
+      .filter(Boolean);
+
+    if (!selfMatches && renderedChildren.length === 0) return null;
+
+    const isCollapsed = collapsedNodes.has(cls.iri) && !q;
+    const palette = getEntityColors(cls.kind, isDark);
+    const isSelected = selectedEntity?.iri === cls.iri;
+
+    return (
+      <React.Fragment key={`${cls.iri}_${depth}`}>
+        <TreeRowBtn type="button" $selected={isSelected} $depth={depth} onClick={() => setSelectedIri(cls.iri)}>
+          {children.length > 0 ? (
+            <span
+              onClick={(e) => toggleCollapse(cls.iri, e)}
+              style={{ display: "inline-flex", alignItems: "center", color: "var(--color-fg-muted)" }}
+            >
+              {isCollapsed ? <ChevronRightIcon size={12} /> : <ChevronDownIcon size={12} />}
+            </span>
+          ) : (
+            <span style={{ width: 12, display: "inline-block" }} />
+          )}
+          <KindBadge $color={palette.stroke}>{palette.shortBadge}</KindBadge>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+            {cls.label}
+          </span>
+          {cls.disjointWith.length > 0 && (
+            <span
+              title={`Disjoint with: ${cls.disjointWith.map(getShortLabel).join(", ")}`}
+              style={{ fontSize: "10px", color: "#ef4444", fontFamily: "var(--font-mono, monospace)", fontWeight: 700 }}
+            >
+              ⊥
+            </span>
+          )}
+          {children.length > 0 && (
+            <span
+              style={{
+                fontSize: "10px",
+                color: "var(--color-fg-muted)",
+                fontFamily: "var(--font-mono, monospace)",
+              }}
+            >
+              {children.length}
+            </span>
+          )}
+        </TreeRowBtn>
+        {!isCollapsed && renderedChildren}
+      </React.Fragment>
+    );
+  };
+
+  const renderInspectorDetails = (ent: ParsedOwlEntity, isTreePane: boolean) => {
+    const palette = getEntityColors(ent.kind, isDark);
+    return (
+      <>
+        <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={2}>
+          <Box minWidth={0}>
+            <Text
+              style={{
+                fontSize: "10px",
+                fontFamily: "var(--font-mono, monospace)",
+                color: palette.stroke,
+                fontWeight: 700,
+                display: "block",
+              }}
+            >
+              {palette.stereotype}
+            </Text>
+            <Text
+              style={{
+                fontSize: isTreePane ? "15px" : "14px",
+                fontWeight: 700,
+                color: "var(--color-fg-default)",
+                wordBreak: "break-word",
+              }}
+            >
+              {ent.label}
+            </Text>
+          </Box>
+          {!isTreePane ? (
+            <button
+              type="button"
+              onClick={() => setSelectedIri(null)}
+              aria-label="Close entity inspector"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--color-fg-muted)",
+                cursor: "pointer",
+                padding: "2px",
+              }}
+            >
+              <XIcon size={14} />
+            </button>
+          ) : (
+            <Box display="flex" alignItems="center" gap={1} style={{ flexShrink: 0 }}>
+              <HudIconBtn
+                type="button"
+                title="Focus this entity's neighborhood in the interactive Graph"
+                onClick={() => {
+                  setSelectedIri(ent.iri);
+                  setFocusIri(ent.iri);
+                  setViewMode("diagram");
+                  handleResetView();
+                }}
+                style={{
+                  border: "1px solid var(--color-border-default)",
+                  padding: "0 8px",
+                  height: "24px",
+                }}
+              >
+                <WorkflowIcon size={11} /> Focus Graph
+              </HudIconBtn>
+              {ent.sourceLines.length > 0 && (
+                <HudIconBtn
+                  type="button"
+                  title="Jump to axiom declarations in OWL 2 Functional Source"
+                  onClick={() => handleJumpToSource(ent)}
+                  style={{
+                    border: "1px solid var(--color-border-default)",
+                    padding: "0 8px",
+                    height: "24px",
+                  }}
+                >
+                  <CodeIcon size={11} /> Source
+                </HudIconBtn>
+              )}
+            </Box>
+          )}
+        </Box>
+
+        {!isTreePane && (
+          <Box display="flex" alignItems="center" gap={1}>
+            <HudIconBtn
+              type="button"
+              onClick={() => {
+                setFocusIri((prev) => (prev === ent.iri ? null : ent.iri));
+                handleResetView();
+              }}
+              style={{
+                border: "1px solid var(--color-border-default)",
+                background: focusIri === ent.iri ? "rgba(139, 92, 246, 0.18)" : "var(--color-canvas-subtle)",
+                color: focusIri === ent.iri ? "#8b5cf6" : "var(--color-fg-default)",
+                padding: "0 8px",
+                height: "22px",
+              }}
+            >
+              <FilterIcon size={11} /> {focusIri === ent.iri ? "Showing 1-Hop (Reset)" : "Isolate 1-Hop"}
+            </HudIconBtn>
+            {ent.sourceLines.length > 0 && (
+              <HudIconBtn
+                type="button"
+                onClick={() => handleJumpToSource(ent)}
+                style={{
+                  border: "1px solid var(--color-border-default)",
+                  background: "var(--color-canvas-subtle)",
+                  padding: "0 8px",
+                  height: "22px",
+                }}
+              >
+                <CodeIcon size={11} /> Line {ent.sourceLines[0]}
+              </HudIconBtn>
+            )}
+          </Box>
+        )}
+
+        <DrawerSection>
+          <DrawerLabel>Identifier (IRI)</DrawerLabel>
+          <Text
+            style={{
+              fontSize: "11px",
+              fontFamily: "var(--font-mono, monospace)",
+              color: "var(--color-fg-muted)",
+              wordBreak: "break-all",
+            }}
+          >
+            {ent.iri}
+          </Text>
+        </DrawerSection>
+
+        {ent.superClasses.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>SubClassOf (⊑)</DrawerLabel>
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {ent.superClasses.map((supIri) => (
+                <EntityChip key={supIri} $color="#3b82f6" onClick={() => setSelectedIri(supIri)}>
+                  {getShortLabel(supIri)}
+                </EntityChip>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.restrictions.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Class Restrictions &amp; Attributes</DrawerLabel>
+            <Box display="flex" flexDirection="column" gap={1}>
+              {ent.restrictions.map((r, i) => (
+                <span
+                  key={i}
+                  style={{
+                    fontSize: "11px",
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: "var(--color-fg-default)",
+                    background: "var(--color-canvas-subtle)",
+                    border: "1px solid var(--color-border-default)",
+                    borderRadius: "4px",
+                    padding: "3px 7px",
+                  }}
+                >
+                  {r}
+                </span>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.subClasses.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Direct SubClasses ({ent.subClasses.length})</DrawerLabel>
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {ent.subClasses.map((subIri) => (
+                <EntityChip key={subIri} $color="#f43f5e" onClick={() => setSelectedIri(subIri)}>
+                  {getShortLabel(subIri)}
+                </EntityChip>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.disjointWith.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>DisjointClasses (⊥)</DrawerLabel>
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {ent.disjointWith.map((dIri) => (
+                <EntityChip key={dIri} $color="#ef4444" onClick={() => setSelectedIri(dIri)}>
+                  {getShortLabel(dIri)}
+                </EntityChip>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.domainOfProperties.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Outgoing Properties (Domain)</DrawerLabel>
+            <Box display="flex" flexDirection="column" gap={1}>
+              {ent.domainOfProperties.map((pIri) => {
+                const prop = ontology.entities.get(pIri);
+                const rngLabel = prop?.ranges.map(getShortLabel).join(", ") || "owl:Thing";
+                return (
+                  <Box
+                    key={pIri}
+                    display="flex"
+                    alignItems="center"
+                    flexWrap="wrap"
+                    gap={1}
+                    style={{ fontSize: "11px" }}
+                  >
+                    <EntityChip $color="#0284c7" onClick={() => setSelectedIri(pIri)}>
+                      {getShortLabel(pIri)}
+                    </EntityChip>
+                    <span style={{ color: "var(--color-fg-muted)", fontFamily: "var(--font-mono, monospace)" }}>
+                      → {rngLabel}
+                    </span>
+                  </Box>
+                );
+              })}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.rangeOfProperties.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Incoming Properties (Range)</DrawerLabel>
+            <Box display="flex" flexDirection="column" gap={1}>
+              {ent.rangeOfProperties.map((pIri) => {
+                const prop = ontology.entities.get(pIri);
+                const domLabel = prop?.domains.map(getShortLabel).join(", ") || "owl:Thing";
+                return (
+                  <Box
+                    key={pIri}
+                    display="flex"
+                    alignItems="center"
+                    flexWrap="wrap"
+                    gap={1}
+                    style={{ fontSize: "11px" }}
+                  >
+                    <span style={{ color: "var(--color-fg-muted)", fontFamily: "var(--font-mono, monospace)" }}>
+                      {domLabel} →
+                    </span>
+                    <EntityChip $color="#0284c7" onClick={() => setSelectedIri(pIri)}>
+                      {getShortLabel(pIri)}
+                    </EntityChip>
+                  </Box>
+                );
+              })}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.domains.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Domain (rdfs:domain)</DrawerLabel>
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {ent.domains.map((dIri) => (
+                <EntityChip key={dIri} $color="#f43f5e" onClick={() => setSelectedIri(dIri)}>
+                  {getShortLabel(dIri)}
+                </EntityChip>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.ranges.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Range (rdfs:range)</DrawerLabel>
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {ent.ranges.map((rIri) => (
+                <EntityChip
+                  key={rIri}
+                  $color="#0284c7"
+                  onClick={() => {
+                    if (ontology.entities.has(rIri)) setSelectedIri(rIri);
+                  }}
+                >
+                  {getShortLabel(rIri)}
+                </EntityChip>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.inverses.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Inverse Of (⇄)</DrawerLabel>
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {ent.inverses.map((invIri) => (
+                <EntityChip key={invIri} $color="#0284c7" onClick={() => setSelectedIri(invIri)}>
+                  {getShortLabel(invIri)}
+                </EntityChip>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.instances.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Named Individuals ({ent.instances.length})</DrawerLabel>
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {ent.instances.map((indIri) => (
+                <EntityChip key={indIri} $color="#8b5cf6" onClick={() => setSelectedIri(indIri)}>
+                  {getShortLabel(indIri)}
+                </EntityChip>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.types.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Class Assertion (rdf:type)</DrawerLabel>
+            <Box display="flex" flexWrap="wrap" gap={1}>
+              {ent.types.map((tIri) => (
+                <EntityChip key={tIri} $color="#f43f5e" onClick={() => setSelectedIri(tIri)}>
+                  {getShortLabel(tIri)}
+                </EntityChip>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.propertyAssertions.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Object Property Assertions</DrawerLabel>
+            <Box display="flex" flexDirection="column" gap={1}>
+              {ent.propertyAssertions.map((pa, idx) => (
+                <Box key={idx} display="flex" alignItems="center" gap={1} style={{ fontSize: "11px" }}>
+                  <span style={{ fontFamily: "var(--font-mono, monospace)", color: "var(--color-fg-muted)" }}>
+                    {getShortLabel(pa.property)} →
+                  </span>
+                  <EntityChip $color="#8b5cf6" onClick={() => setSelectedIri(pa.target)}>
+                    {getShortLabel(pa.target)}
+                  </EntityChip>
+                </Box>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+
+        {ent.incomingAssertions.length > 0 && (
+          <DrawerSection>
+            <DrawerLabel>Referenced By Individuals</DrawerLabel>
+            <Box display="flex" flexDirection="column" gap={1}>
+              {ent.incomingAssertions.map((ia, idx) => (
+                <Box key={idx} display="flex" alignItems="center" gap={1} style={{ fontSize: "11px" }}>
+                  <EntityChip $color="#8b5cf6" onClick={() => setSelectedIri(ia.source)}>
+                    {getShortLabel(ia.source)}
+                  </EntityChip>
+                  <span style={{ fontFamily: "var(--font-mono, monospace)", color: "var(--color-fg-muted)" }}>
+                    → {getShortLabel(ia.property)}
+                  </span>
+                </Box>
+              ))}
+            </Box>
+          </DrawerSection>
+        )}
+      </>
+    );
+  };
+
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
       <Toolbar>
         <HeaderLeft>
-          <OrganizationIcon size={16} fill="var(--color-done-fg, #8b5cf6)" />
-          {!isFullScreen && <ModelTitle title={rawTitle}>{shortTitle}</ModelTitle>}
-          <PillBadge $variant="owl">OWL 2 DL</PillBadge>
-          <PillBadge $variant="verified" title="Tableau Reasoner verified DL consistency (0 unsatisfiable classes)">
+          <OrganizationIcon size={15} fill="var(--color-done-fg, #8b5cf6)" />
+          {!isFullScreen && (
+            <ModelTitle title={ontology.ontologyIri || viewConfig.title || displayTitle}>{displayTitle}</ModelTitle>
+          )}
+          <PillBadge
+            $variant="verified"
+            title={`OWL 2 DL · Tableau Reasoner verified consistency (0 unsatisfiable classes)${ontology.ontologyIri ? ` · IRI: ${ontology.ontologyIri}` : ""}`}
+          >
             <CheckCircleFillIcon size={11} /> DL Consistent
+          </PillBadge>
+          <PillBadge
+            $variant="neutral"
+            title={`${counts.classCount} Classes · ${counts.propertyCount} Properties · ${counts.individualCount} Individuals · ${counts.axiomCount} Axioms`}
+          >
+            {counts.classCount}C · {counts.propertyCount}P · {counts.individualCount}I
           </PillBadge>
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
-          {hasGraph && (
-            <Box
-              display="flex"
-              bg="var(--color-canvas-default)"
-              borderRadius="6px"
-              p="2px"
-              border="1px solid var(--color-border-default)"
-            >
-              <button
+          <SegmentedGroup>
+            {hasGraph && (
+              <SegmentedBtn
                 type="button"
+                $active={effectiveViewMode === "diagram"}
                 onClick={() => setViewMode("diagram")}
-                style={{
-                  background: effectiveViewMode === "diagram" ? "rgba(139, 92, 246, 0.2)" : "transparent",
-                  color: effectiveViewMode === "diagram" ? "var(--color-done-fg, #8b5cf6)" : "var(--color-fg-muted)",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "3px 9px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
+                title="Interactive Ontology Graph"
               >
                 <WorkflowIcon size={12} /> Graph
-              </button>
-              <button
+              </SegmentedBtn>
+            )}
+            {totalEntities > 0 && (
+              <SegmentedBtn
                 type="button"
-                onClick={() => setViewMode("code")}
-                style={{
-                  background: effectiveViewMode === "code" ? "rgba(139, 92, 246, 0.2)" : "transparent",
-                  color: effectiveViewMode === "code" ? "var(--color-done-fg, #8b5cf6)" : "var(--color-fg-muted)",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "3px 9px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
+                $active={effectiveViewMode === "tree"}
+                onClick={() => setViewMode("tree")}
+                title="Protégé-style Class & Property Hierarchy Explorer"
               >
-                <CodeIcon size={12} /> Source
-              </button>
-            </Box>
-          )}
+                <ListUnorderedIcon size={12} /> Tree
+              </SegmentedBtn>
+            )}
+            <SegmentedBtn
+              type="button"
+              $active={effectiveViewMode === "code"}
+              onClick={() => setViewMode("code")}
+              title="OWL 2 Functional-Style Syntax (.ofn)"
+            >
+              <CodeIcon size={12} /> Source
+            </SegmentedBtn>
+          </SegmentedGroup>
 
           {effectiveViewMode === "code" && rawText && (
             <Button size="small" onClick={handleCopy} leadingVisual={copied ? CheckIcon : CopyIcon}>
@@ -1101,7 +2111,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
             </Button>
           )}
 
-          {Boolean(viewConfig?.standalone) && !isFullScreen && (
+          {Boolean(viewConfig?.standalone) && !isFullScreen && !viewConfig?.artifactId && (
             <Button
               size="small"
               variant="primary"
@@ -1111,10 +2121,9 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                   v: 1,
                   lang: "owl2" as any,
                   code: rawText || `Ontology(<http://example.org/ontology>\n)\n`,
-                  title: rawTitle,
+                  title: displayTitle,
                 });
-                const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-                navigate(`/playground${fromArtifact}#m=${hash}`);
+                navigate(`/playground#m=${hash}`);
               }}
             >
               Open in Playground
@@ -1123,41 +2132,6 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
         </Box>
       </Toolbar>
 
-      {effectiveViewMode === "diagram" && graphLayout.nodes.length > 0 && (
-        <SubToolbar>
-          <ProjectionSwitch>
-            <ProjectionBtn type="button" $active={projection === "all"} onClick={() => setProjection("all")}>
-              All Entities (TBox + ABox)
-            </ProjectionBtn>
-            <ProjectionBtn type="button" $active={projection === "taxonomy"} onClick={() => setProjection("taxonomy")}>
-              Class Taxonomy (⊑)
-            </ProjectionBtn>
-            <ProjectionBtn
-              type="button"
-              $active={projection === "properties"}
-              onClick={() => setProjection("properties")}
-            >
-              Properties &amp; Domains
-            </ProjectionBtn>
-          </ProjectionSwitch>
-
-          <Box display="flex" alignItems="center" gap={3} color="var(--color-fg-muted)" style={{ fontSize: "11px" }}>
-            <span>
-              <LegendDot $color={isDark ? "#f43f5e" : "#e11d48"} />
-              Class
-            </span>
-            <span>
-              <LegendDot $color={isDark ? "#38bdf8" : "#0284c7"} />
-              ObjectProperty
-            </span>
-            <span>
-              <LegendDot $color={isDark ? "#a78bfa" : "#7c3aed"} />
-              Individual
-            </span>
-          </Box>
-        </SubToolbar>
-      )}
-
       <ContentArea>
         {loading ? (
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
@@ -1165,452 +2139,595 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
           </Box>
         ) : effectiveViewMode === "diagram" && graphLayout.nodes.length > 0 ? (
           <>
-            <GraphViewport $isDark={isDark} onClick={() => setSelectedIri(null)}>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox={`0 0 ${graphLayout.width} ${graphLayout.height}`}
+            <GraphViewport
+              ref={viewportRef}
+              $isDark={isDark}
+              $isDragging={isDragging}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onClick={handleCanvasClick}
+            >
+              {/* Top-Left Floating Projection Lens Pill */}
+              <FloatingHudPill style={{ top: 10, left: 10 }} onClick={(e) => e.stopPropagation()}>
+                <SegmentedBtn
+                  type="button"
+                  $active={projection === "all"}
+                  onClick={() => setProjection("all")}
+                  title="TBox Classes + Domain/Range Property Edges + ABox Individuals"
+                >
+                  All
+                </SegmentedBtn>
+                <SegmentedBtn
+                  type="button"
+                  $active={projection === "taxonomy"}
+                  onClick={() => setProjection("taxonomy")}
+                  title="Pure Class Subsumption & Disjointness Hierarchy (⊑ / ⊥)"
+                >
+                  Taxonomy ⊑
+                </SegmentedBtn>
+                <SegmentedBtn
+                  type="button"
+                  $active={projection === "properties"}
+                  onClick={() => setProjection("properties")}
+                  title="Object & Data Properties with Domain and Range Classes"
+                >
+                  Properties
+                </SegmentedBtn>
+                {focusIri && ontology.entities.has(focusIri) && (
+                  <SegmentedBtn
+                    type="button"
+                    $active
+                    onClick={() => {
+                      setFocusIri(null);
+                      handleResetView();
+                    }}
+                    title="Click to exit neighborhood isolation and show all entities"
+                  >
+                    <FilterIcon size={11} /> {getShortLabel(focusIri)} (1-hop) ×
+                  </SegmentedBtn>
+                )}
+              </FloatingHudPill>
+
+              {/* Bottom-Left Floating Compact Legend Pill */}
+              <FloatingHudPill
+                style={{
+                  bottom: 10,
+                  left: 10,
+                  padding: "4px 10px",
+                  gap: 10,
+                  fontSize: "10.5px",
+                  color: "var(--color-fg-muted)",
+                  pointerEvents: "none",
+                }}
+              >
+                <span>
+                  <LegendDot $color={isDark ? "#f43f5e" : "#e11d48"} />
+                  Class
+                </span>
+                <span>
+                  <LegendDot $color={isDark ? "#38bdf8" : "#0284c7"} />
+                  Property
+                </span>
+                <span>
+                  <LegendDot $color={isDark ? "#a78bfa" : "#7c3aed"} />
+                  Individual
+                </span>
+              </FloatingHudPill>
+
+              {/* Bottom-Right Floating Zoom & Fit Controls */}
+              <FloatingHudPill
+                style={{ bottom: 10, right: selectedEntity ? 12 : 10 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <HudIconBtn
+                  type="button"
+                  aria-label="Zoom out"
+                  title="Zoom out"
+                  onClick={() => setZoom((z) => Math.max(0.35, Number((z / 1.2).toFixed(2))))}
+                >
+                  −
+                </HudIconBtn>
+                <HudIconBtn
+                  type="button"
+                  aria-label="Reset zoom"
+                  title="Reset zoom and pan to fit"
+                  onClick={handleResetView}
+                >
+                  {Math.round(zoom * 100)}%
+                </HudIconBtn>
+                <HudIconBtn
+                  type="button"
+                  aria-label="Zoom in"
+                  title="Zoom in"
+                  onClick={() => setZoom((z) => Math.min(3.5, Number((z * 1.2).toFixed(2))))}
+                >
+                  <PlusIcon size={11} />
+                </HudIconBtn>
+                {(zoom !== 1 || pan.x !== 0 || pan.y !== 0) && (
+                  <HudIconBtn type="button" title="Reset view" onClick={handleResetView}>
+                    <SyncIcon size={11} />
+                  </HudIconBtn>
+                )}
+              </FloatingHudPill>
+
+              <div
                 style={{
                   width: "100%",
                   height: "100%",
-                  maxWidth: `${graphLayout.width}px`,
-                  maxHeight: `${graphLayout.height}px`,
-                  display: "block",
-                  margin: "auto",
-                  userSelect: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transformOrigin: "center center",
+                  transition: isDragging ? "none" : "transform 0.08s ease-out",
+                  padding: "36px 16px 32px 16px",
+                  boxSizing: "border-box",
                 }}
               >
-                <defs>
-                  <filter id="owl-card-shadow" x="-8%" y="-8%" width="116%" height="120%">
-                    <feDropShadow
-                      dx="0"
-                      dy="2"
-                      stdDeviation="3"
-                      floodColor="#000000"
-                      floodOpacity={isDark ? "0.45" : "0.08"}
-                    />
-                  </filter>
-                  {/* Hollow triangle marker for SubClassOf */}
-                  <marker
-                    id="owl-marker-subclass"
-                    viewBox="0 0 12 12"
-                    refX="11"
-                    refY="6"
-                    markerWidth="8"
-                    markerHeight="8"
-                    orient="auto-start-reverse"
-                  >
-                    <polygon
-                      points="1,1 11,6 1,11"
-                      fill={isDark ? "var(--color-canvas-default, #0d1117)" : "#ffffff"}
-                      stroke="#3b82f6"
-                      strokeWidth="1.8"
-                    />
-                  </marker>
-                  <marker
-                    id="owl-marker-prop"
-                    viewBox="0 0 10 10"
-                    refX="9"
-                    refY="5"
-                    markerWidth="6"
-                    markerHeight="6"
-                    orient="auto-start-reverse"
-                  >
-                    <path d="M 0 1 L 10 5 L 0 9 z" fill="#0284c7" />
-                  </marker>
-                  <marker
-                    id="owl-marker-indiv"
-                    viewBox="0 0 10 10"
-                    refX="9"
-                    refY="5"
-                    markerWidth="6"
-                    markerHeight="6"
-                    orient="auto-start-reverse"
-                  >
-                    <path d="M 0 1 L 10 5 L 0 9 z" fill="#8b5cf6" />
-                  </marker>
-                  <marker
-                    id="owl-marker-disjoint"
-                    viewBox="0 0 10 10"
-                    refX="9"
-                    refY="5"
-                    markerWidth="6"
-                    markerHeight="6"
-                    orient="auto-start-reverse"
-                  >
-                    <path d="M 0 1 L 10 5 L 0 9 z" fill="#ef4444" />
-                  </marker>
-                </defs>
-
-                {/* Render Edges */}
-                {graphLayout.edges.map((edge) => {
-                  const srcNode = nodeByIri.get(edge.source);
-                  const tgtNode = nodeByIri.get(edge.target);
-                  if (!srcNode || !tgtNode) return null;
-
-                  const isConnectedToSelection =
-                    !selectedIri || edge.source === selectedIri || edge.target === selectedIri;
-                  const edgeOpacity = isConnectedToSelection ? 1 : 0.25;
-
-                  const sCx = srcNode.x + srcNode.w / 2;
-                  const sCy = srcNode.y + srcNode.h / 2;
-                  const tCx = tgtNode.x + tgtNode.w / 2;
-                  const tCy = tgtNode.y + tgtNode.h / 2;
-
-                  const dy = tCy - sCy;
-                  const dx = tCx - sCx;
-
-                  let x1 = sCx;
-                  let y1 = sCy;
-                  let x2 = tCx;
-                  let y2 = tCy;
-                  let pathD = "";
-
-                  if (Math.abs(dy) > 24) {
-                    // Vertical connection
-                    if (dy < 0) {
-                      y1 = srcNode.y;
-                      y2 = tgtNode.y + tgtNode.h + 2;
-                    } else {
-                      y1 = srcNode.y + srcNode.h;
-                      y2 = tgtNode.y - 2;
-                    }
-                    const midY = (y1 + y2) / 2;
-                    pathD = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
-                  } else {
-                    // Horizontal connection on same row
-                    if (dx >= 0) {
-                      x1 = srcNode.x + srcNode.w;
-                      x2 = tgtNode.x - 2;
-                    } else {
-                      x1 = srcNode.x;
-                      x2 = tgtNode.x + tgtNode.w + 2;
-                    }
-                    const arcOffset = edge.kind === "disjointWith" ? -26 : 0;
-                    const midX = (x1 + x2) / 2;
-                    const midY = (y1 + y2) / 2 + arcOffset;
-                    pathD = `M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}`;
-                  }
-
-                  let stroke = "#3b82f6";
-                  let dash: string | undefined;
-                  let markerEnd = "url(#owl-marker-prop)";
-
-                  if (edge.kind === "subClassOf") {
-                    stroke = "#3b82f6";
-                    markerEnd = "url(#owl-marker-subclass)";
-                  } else if (edge.kind === "disjointWith") {
-                    stroke = "#ef4444";
-                    dash = "5 4";
-                    markerEnd = "url(#owl-marker-disjoint)";
-                  } else if (edge.kind === "classAssertion" || edge.kind === "propertyAssertion") {
-                    stroke = "#8b5cf6";
-                    if (edge.kind === "classAssertion") dash = "4 3";
-                    markerEnd = "url(#owl-marker-indiv)";
-                  } else if (edge.kind === "objectProperty" || edge.kind === "domain" || edge.kind === "range") {
-                    stroke = "#0284c7";
-                    markerEnd = "url(#owl-marker-prop)";
-                  } else if (edge.kind === "inverseOf") {
-                    stroke = "#64748b";
-                    dash = "4 3";
-                  }
-
-                  const labelX = (x1 + x2) / 2;
-                  const labelY = (y1 + y2) / 2 + (Math.abs(dy) <= 24 && edge.kind === "disjointWith" ? -13 : 0);
-                  const pillW = Math.max(48, edge.label.length * 5.8 + 14);
-
-                  return (
-                    <g key={edge.id} opacity={edgeOpacity}>
-                      <path
-                        d={pathD}
-                        fill="none"
-                        stroke={stroke}
-                        strokeWidth={1.75}
-                        strokeDasharray={dash}
-                        markerEnd={markerEnd}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox={`0 0 ${graphLayout.width} ${graphLayout.height}`}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    maxWidth: `${graphLayout.width}px`,
+                    maxHeight: `${graphLayout.height}px`,
+                    display: "block",
+                    margin: "auto",
+                    userSelect: "none",
+                    overflow: "visible",
+                  }}
+                >
+                  <defs>
+                    <filter id="owl-card-shadow" x="-8%" y="-8%" width="116%" height="120%">
+                      <feDropShadow
+                        dx="0"
+                        dy="2"
+                        stdDeviation="3"
+                        floodColor="#000000"
+                        floodOpacity={isDark ? "0.45" : "0.08"}
                       />
-                      <rect
-                        x={labelX - pillW / 2}
-                        y={labelY - 9}
-                        width={pillW}
-                        height={17}
-                        rx={4}
-                        fill={isDark ? "var(--color-canvas-subtle, #161b22)" : "#ffffff"}
-                        stroke={stroke}
-                        strokeWidth={0.9}
-                        strokeOpacity={0.6}
+                    </filter>
+                    <marker
+                      id="owl-marker-subclass"
+                      viewBox="0 0 12 12"
+                      refX="11"
+                      refY="6"
+                      markerWidth="8"
+                      markerHeight="8"
+                      orient="auto-start-reverse"
+                    >
+                      <polygon
+                        points="1,1 11,6 1,11"
+                        fill={isDark ? "var(--color-canvas-default, #0d1117)" : "#ffffff"}
+                        stroke="#3b82f6"
+                        strokeWidth="1.8"
                       />
-                      <text
-                        x={labelX}
-                        y={labelY + 3}
-                        textAnchor="middle"
-                        fill={isDark ? "#e2e8f0" : "#1e293b"}
-                        fontSize={9.5}
-                        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                        fontWeight={600}
-                      >
-                        {edge.label}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* Render Nodes */}
-                {graphLayout.nodes.map((node) => {
-                  const { entity, x, y, w, h, subtitle, badges } = node;
-                  const palette = getEntityColors(entity.kind, isDark);
-                  const isSelected = selectedIri === entity.iri;
-                  const rx = entity.kind === "individual" ? 12 : 8;
-
-                  return (
-                    <g
-                      key={entity.iri}
-                      transform={`translate(${x}, ${y})`}
-                      filter="url(#owl-card-shadow)"
-                      style={{ cursor: "pointer" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedIri((prev) => (prev === entity.iri ? null : entity.iri));
-                      }}
+                    </marker>
+                    <marker
+                      id="owl-marker-prop"
+                      viewBox="0 0 10 10"
+                      refX="9"
+                      refY="5"
+                      markerWidth="6"
+                      markerHeight="6"
+                      orient="auto-start-reverse"
                     >
-                      <rect
-                        width={w}
-                        height={h}
-                        rx={rx}
-                        ry={rx}
-                        fill={palette.fill}
-                        stroke={palette.stroke}
-                        strokeWidth={isSelected ? 2.6 : 1.65}
-                      />
-                      <rect width={w} height={20} rx={rx} ry={rx} fill={palette.headerBg} />
-                      <text
-                        x={w / 2}
-                        y={13.5}
-                        textAnchor="middle"
-                        fill={palette.stroke}
-                        fontSize={9.5}
-                        fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                        fontWeight={700}
-                      >
-                        {palette.stereotype}
-                      </text>
-                      <text
-                        x={w / 2}
-                        y={36}
-                        textAnchor="middle"
-                        fill={isDark ? "#f8fafc" : "#0f172a"}
-                        fontSize={12}
-                        fontWeight={700}
-                      >
-                        {entity.label}
-                      </text>
-                      {subtitle && (
-                        <text
-                          x={w / 2}
-                          y={51}
-                          textAnchor="middle"
-                          fill={isDark ? "#94a3b8" : "#475569"}
-                          fontSize={10}
-                          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                          fontStyle="italic"
-                        >
-                          {subtitle}
-                        </text>
-                      )}
-                      {badges.map((bText, bIdx) => (
-                        <text
-                          key={bIdx}
-                          x={12}
-                          y={(subtitle ? 65 : 52) + bIdx * 15}
-                          fill={isDark ? "#cbd5e1" : "#334155"}
-                          fontSize={10}
-                          fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                        >
-                          {bText}
-                        </text>
-                      ))}
-                    </g>
-                  );
-                })}
-              </svg>
-            </GraphViewport>
-
-            {selectedEntity && (
-              <EntityDrawer>
-                <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={2}>
-                  <Box minWidth={0}>
-                    <Text
-                      style={{
-                        fontSize: "10px",
-                        fontFamily: "var(--font-mono, monospace)",
-                        color: getEntityColors(selectedEntity.kind, isDark).stroke,
-                        fontWeight: 700,
-                        display: "block",
-                      }}
+                      <path d="M 0 1 L 10 5 L 0 9 z" fill="#0284c7" />
+                    </marker>
+                    <marker
+                      id="owl-marker-indiv"
+                      viewBox="0 0 10 10"
+                      refX="9"
+                      refY="5"
+                      markerWidth="6"
+                      markerHeight="6"
+                      orient="auto-start-reverse"
                     >
-                      {getEntityColors(selectedEntity.kind, isDark).stereotype}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 700,
-                        color: "var(--color-fg-default)",
-                        wordBreak: "break-word",
-                      }}
+                      <path d="M 0 1 L 10 5 L 0 9 z" fill="#8b5cf6" />
+                    </marker>
+                    <marker
+                      id="owl-marker-disjoint"
+                      viewBox="0 0 10 10"
+                      refX="9"
+                      refY="5"
+                      markerWidth="6"
+                      markerHeight="6"
+                      orient="auto-start-reverse"
                     >
-                      {selectedEntity.label}
-                    </Text>
-                  </Box>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedIri(null)}
-                    aria-label="Close entity inspector"
-                    style={{
-                      background: "transparent",
-                      border: "none",
-                      color: "var(--color-fg-muted)",
-                      cursor: "pointer",
-                      padding: "2px",
-                    }}
-                  >
-                    <XIcon size={14} />
-                  </button>
-                </Box>
+                      <path d="M 0 1 L 10 5 L 0 9 z" fill="#ef4444" />
+                    </marker>
+                  </defs>
 
-                <DrawerSection>
-                  <DrawerLabel>Identifier (IRI)</DrawerLabel>
-                  <Text
-                    style={{
-                      fontSize: "11px",
-                      fontFamily: "var(--font-mono, monospace)",
-                      color: "var(--color-fg-muted)",
-                      wordBreak: "break-all",
-                    }}
-                  >
-                    {selectedEntity.iri}
-                  </Text>
-                </DrawerSection>
+                  {/* Layer 1: Edge Curves */}
+                  <g className="owl-edges-layer">
+                    {graphLayout.routedEdges.map(({ edge, pathD, stroke, dash, markerEnd }) => {
+                      const isConnected = !selectedIri || edge.source === selectedIri || edge.target === selectedIri;
+                      return (
+                        <path
+                          key={edge.id}
+                          d={pathD}
+                          fill="none"
+                          stroke={stroke}
+                          strokeWidth={isConnected && selectedIri ? 2.1 : 1.75}
+                          strokeDasharray={dash}
+                          markerEnd={markerEnd}
+                          opacity={isConnected ? 1 : 0.22}
+                        />
+                      );
+                    })}
+                  </g>
 
-                {selectedEntity.superClasses.length > 0 && (
-                  <DrawerSection>
-                    <DrawerLabel>SubClassOf (⊑)</DrawerLabel>
-                    <Box display="flex" flexWrap="wrap" gap={1}>
-                      {selectedEntity.superClasses.map((supIri) => (
-                        <EntityChip key={supIri} $color="#3b82f6" onClick={() => setSelectedIri(supIri)}>
-                          {getShortLabel(supIri)}
-                        </EntityChip>
-                      ))}
-                    </Box>
-                  </DrawerSection>
-                )}
+                  {/* Layer 2: Node Cards */}
+                  <g className="owl-nodes-layer">
+                    {graphLayout.nodes.map((node) => {
+                      const { entity, x, y, w, h, subtitle, badges } = node;
+                      const palette = getEntityColors(entity.kind, isDark);
+                      const isSelected = selectedIri === entity.iri;
+                      const rx = entity.kind === "individual" ? 12 : 8;
 
-                {selectedEntity.subClasses.length > 0 && (
-                  <DrawerSection>
-                    <DrawerLabel>Direct SubClasses</DrawerLabel>
-                    <Box display="flex" flexWrap="wrap" gap={1}>
-                      {selectedEntity.subClasses.map((subIri) => (
-                        <EntityChip key={subIri} $color="#f43f5e" onClick={() => setSelectedIri(subIri)}>
-                          {getShortLabel(subIri)}
-                        </EntityChip>
-                      ))}
-                    </Box>
-                  </DrawerSection>
-                )}
-
-                {selectedEntity.disjointWith.length > 0 && (
-                  <DrawerSection>
-                    <DrawerLabel>DisjointClasses (⊥)</DrawerLabel>
-                    <Box display="flex" flexWrap="wrap" gap={1}>
-                      {selectedEntity.disjointWith.map((dIri) => (
-                        <EntityChip key={dIri} $color="#ef4444" onClick={() => setSelectedIri(dIri)}>
-                          {getShortLabel(dIri)}
-                        </EntityChip>
-                      ))}
-                    </Box>
-                  </DrawerSection>
-                )}
-
-                {selectedEntity.domains.length > 0 && (
-                  <DrawerSection>
-                    <DrawerLabel>Domain (rdfs:domain)</DrawerLabel>
-                    <Box display="flex" flexWrap="wrap" gap={1}>
-                      {selectedEntity.domains.map((dIri) => (
-                        <EntityChip key={dIri} $color="#0284c7" onClick={() => setSelectedIri(dIri)}>
-                          {getShortLabel(dIri)}
-                        </EntityChip>
-                      ))}
-                    </Box>
-                  </DrawerSection>
-                )}
-
-                {selectedEntity.ranges.length > 0 && (
-                  <DrawerSection>
-                    <DrawerLabel>Range (rdfs:range)</DrawerLabel>
-                    <Box display="flex" flexWrap="wrap" gap={1}>
-                      {selectedEntity.ranges.map((rIri) => (
-                        <EntityChip
-                          key={rIri}
-                          $color="#0284c7"
-                          onClick={() => {
-                            if (ontology.entities.has(rIri)) setSelectedIri(rIri);
+                      return (
+                        <g
+                          key={entity.iri}
+                          transform={`translate(${x}, ${y})`}
+                          filter="url(#owl-card-shadow)"
+                          style={{ cursor: "pointer" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (dragRef.current.moved) {
+                              dragRef.current.moved = false;
+                              return;
+                            }
+                            setSelectedIri((prev) => (prev === entity.iri ? null : entity.iri));
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedIri(entity.iri);
+                            setFocusIri((prev) => (prev === entity.iri ? null : entity.iri));
+                            handleResetView();
                           }}
                         >
-                          {getShortLabel(rIri)}
-                        </EntityChip>
-                      ))}
-                    </Box>
-                  </DrawerSection>
-                )}
+                          <rect
+                            width={w}
+                            height={h}
+                            rx={rx}
+                            ry={rx}
+                            fill={palette.fill}
+                            stroke={palette.stroke}
+                            strokeWidth={isSelected ? 2.6 : 1.65}
+                          />
+                          <rect width={w} height={20} rx={rx} ry={rx} fill={palette.headerBg} />
+                          <text
+                            x={w / 2}
+                            y={13.5}
+                            textAnchor="middle"
+                            fill={palette.stroke}
+                            fontSize={9.5}
+                            fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                            fontWeight={700}
+                          >
+                            {palette.stereotype}
+                          </text>
+                          <text
+                            x={w / 2}
+                            y={36}
+                            textAnchor="middle"
+                            fill={isDark ? "#f8fafc" : "#0f172a"}
+                            fontSize={12}
+                            fontWeight={700}
+                          >
+                            {entity.label}
+                          </text>
+                          {subtitle && (
+                            <text
+                              x={w / 2}
+                              y={51}
+                              textAnchor="middle"
+                              fill={isDark ? "#94a3b8" : "#475569"}
+                              fontSize={10}
+                              fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                              fontStyle="italic"
+                            >
+                              {subtitle}
+                            </text>
+                          )}
+                          {badges.map((bText, bIdx) => (
+                            <text
+                              key={bIdx}
+                              x={12}
+                              y={(subtitle ? 65 : 52) + bIdx * 15}
+                              fill={isDark ? "#cbd5e1" : "#334155"}
+                              fontSize={10}
+                              fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                            >
+                              {bText}
+                            </text>
+                          ))}
+                        </g>
+                      );
+                    })}
+                  </g>
 
-                {selectedEntity.inverses.length > 0 && (
-                  <DrawerSection>
-                    <DrawerLabel>Inverse Of (⇄)</DrawerLabel>
-                    <Box display="flex" flexWrap="wrap" gap={1}>
-                      {selectedEntity.inverses.map((invIri) => (
-                        <EntityChip key={invIri} $color="#0284c7" onClick={() => setSelectedIri(invIri)}>
-                          {getShortLabel(invIri)}
-                        </EntityChip>
-                      ))}
-                    </Box>
-                  </DrawerSection>
-                )}
+                  {/* Layer 3: Edge Label Pills (rendered above nodes & curves so labels are never occluded) */}
+                  <g className="owl-edge-labels-layer" style={{ pointerEvents: "none" }}>
+                    {graphLayout.routedEdges.map(({ edge, labelX, labelY, pillW, stroke }) => {
+                      const isConnected = !selectedIri || edge.source === selectedIri || edge.target === selectedIri;
+                      return (
+                        <g key={`lbl_${edge.id}`} opacity={isConnected ? 1 : 0.22}>
+                          <rect
+                            x={labelX - pillW / 2}
+                            y={labelY - 9}
+                            width={pillW}
+                            height={17}
+                            rx={4}
+                            fill={isDark ? "var(--color-canvas-subtle, #161b22)" : "#ffffff"}
+                            stroke={stroke}
+                            strokeWidth={0.95}
+                            strokeOpacity={0.75}
+                          />
+                          <text
+                            x={labelX}
+                            y={labelY + 3}
+                            textAnchor="middle"
+                            fill={isDark ? "#e2e8f0" : "#1e293b"}
+                            fontSize={9.5}
+                            fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                            fontWeight={600}
+                          >
+                            {edge.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
+                </svg>
+              </div>
 
-                {selectedEntity.types.length > 0 && (
-                  <DrawerSection>
-                    <DrawerLabel>Class Assertion (rdf:type)</DrawerLabel>
-                    <Box display="flex" flexWrap="wrap" gap={1}>
-                      {selectedEntity.types.map((tIri) => (
-                        <EntityChip key={tIri} $color="#8b5cf6" onClick={() => setSelectedIri(tIri)}>
-                          {getShortLabel(tIri)}
-                        </EntityChip>
-                      ))}
-                    </Box>
-                  </DrawerSection>
-                )}
+              <ZoomHintBadge visible={showHint} />
+            </GraphViewport>
 
-                {selectedEntity.propertyAssertions.length > 0 && (
-                  <DrawerSection>
-                    <DrawerLabel>Object Property Assertions</DrawerLabel>
-                    <Box display="flex" flexDirection="column" gap={1}>
-                      {selectedEntity.propertyAssertions.map((pa, idx) => (
-                        <Box key={idx} display="flex" alignItems="center" gap={1} style={{ fontSize: "11px" }}>
-                          <span style={{ fontFamily: "var(--font-mono, monospace)", color: "var(--color-fg-muted)" }}>
-                            {getShortLabel(pa.property)} →
-                          </span>
-                          <EntityChip $color="#8b5cf6" onClick={() => setSelectedIri(pa.target)}>
-                            {getShortLabel(pa.target)}
-                          </EntityChip>
-                        </Box>
-                      ))}
-                    </Box>
-                  </DrawerSection>
-                )}
-              </EntityDrawer>
-            )}
+            {selectedEntity && <EntityDrawer>{renderInspectorDetails(selectedEntity, false)}</EntityDrawer>}
           </>
+        ) : effectiveViewMode === "tree" && totalEntities > 0 ? (
+          <TreeSplitContainer>
+            <TreeSidebar>
+              {/* Search Filter */}
+              <Box
+                p={2}
+                borderBottom="1px solid var(--color-border-default)"
+                display="flex"
+                alignItems="center"
+                gap={1}
+                bg="var(--color-canvas-default)"
+              >
+                <SearchIcon size={13} fill="var(--color-fg-muted)" />
+                <input
+                  type="text"
+                  value={treeFilter}
+                  onChange={(e) => setTreeFilter(e.target.value)}
+                  placeholder={`Filter ${totalEntities} entities...`}
+                  style={{
+                    flex: 1,
+                    border: "none",
+                    outline: "none",
+                    background: "transparent",
+                    color: "var(--color-fg-default)",
+                    fontSize: "12px",
+                  }}
+                />
+                {treeFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setTreeFilter("")}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--color-fg-muted)",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    <XIcon size={12} />
+                  </button>
+                )}
+              </Box>
+
+              {/* Hierarchical Tree List */}
+              <Box flex={1} overflowY="auto" py={1}>
+                {/* 1. Classes Taxonomy */}
+                <TreeRowBtn
+                  type="button"
+                  $selected={false}
+                  $depth={0}
+                  onClick={(e) => toggleCollapse("__GROUP_CLASSES__", e)}
+                  style={{ fontWeight: 700, fontSize: "11px", color: "var(--color-fg-muted)" }}
+                >
+                  {collapsedNodes.has("__GROUP_CLASSES__") ? (
+                    <ChevronRightIcon size={12} />
+                  ) : (
+                    <ChevronDownIcon size={12} />
+                  )}
+                  <span>CLASSES (owl:Thing)</span>
+                  <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: "10px" }}>
+                    {treeGroups.classes.length}
+                  </span>
+                </TreeRowBtn>
+                {!collapsedNodes.has("__GROUP_CLASSES__") &&
+                  treeGroups.rootClasses.map((rootCls) => renderClassSubtree(rootCls, 1))}
+
+                {/* 2. Object Properties */}
+                {treeGroups.objProps.length > 0 && (
+                  <>
+                    <TreeRowBtn
+                      type="button"
+                      $selected={false}
+                      $depth={0}
+                      onClick={(e) => toggleCollapse("__GROUP_OBJ_PROPS__", e)}
+                      style={{ fontWeight: 700, fontSize: "11px", color: "var(--color-fg-muted)", marginTop: 4 }}
+                    >
+                      {collapsedNodes.has("__GROUP_OBJ_PROPS__") ? (
+                        <ChevronRightIcon size={12} />
+                      ) : (
+                        <ChevronDownIcon size={12} />
+                      )}
+                      <span>OBJECT PROPERTIES</span>
+                      <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: "10px" }}>
+                        {treeGroups.objProps.length}
+                      </span>
+                    </TreeRowBtn>
+                    {!collapsedNodes.has("__GROUP_OBJ_PROPS__") &&
+                      treeGroups.objProps.map((prop) => {
+                        const palette = getEntityColors(prop.kind, isDark);
+                        return (
+                          <TreeRowBtn
+                            key={prop.iri}
+                            type="button"
+                            $selected={selectedEntity?.iri === prop.iri}
+                            $depth={1}
+                            onClick={() => setSelectedIri(prop.iri)}
+                          >
+                            <span style={{ width: 12, display: "inline-block" }} />
+                            <KindBadge $color={palette.stroke}>{palette.shortBadge}</KindBadge>
+                            <span
+                              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+                            >
+                              {prop.label}
+                            </span>
+                            {prop.inverses.length > 0 && (
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  color: "var(--color-fg-muted)",
+                                  fontFamily: "var(--font-mono, monospace)",
+                                }}
+                              >
+                                ⇄
+                              </span>
+                            )}
+                          </TreeRowBtn>
+                        );
+                      })}
+                  </>
+                )}
+
+                {/* 3. Data Properties */}
+                {treeGroups.dataProps.length > 0 && (
+                  <>
+                    <TreeRowBtn
+                      type="button"
+                      $selected={false}
+                      $depth={0}
+                      onClick={(e) => toggleCollapse("__GROUP_DATA_PROPS__", e)}
+                      style={{ fontWeight: 700, fontSize: "11px", color: "var(--color-fg-muted)", marginTop: 4 }}
+                    >
+                      {collapsedNodes.has("__GROUP_DATA_PROPS__") ? (
+                        <ChevronRightIcon size={12} />
+                      ) : (
+                        <ChevronDownIcon size={12} />
+                      )}
+                      <span>DATA PROPERTIES</span>
+                      <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: "10px" }}>
+                        {treeGroups.dataProps.length}
+                      </span>
+                    </TreeRowBtn>
+                    {!collapsedNodes.has("__GROUP_DATA_PROPS__") &&
+                      treeGroups.dataProps.map((prop) => {
+                        const palette = getEntityColors(prop.kind, isDark);
+                        return (
+                          <TreeRowBtn
+                            key={prop.iri}
+                            type="button"
+                            $selected={selectedEntity?.iri === prop.iri}
+                            $depth={1}
+                            onClick={() => setSelectedIri(prop.iri)}
+                          >
+                            <span style={{ width: 12, display: "inline-block" }} />
+                            <KindBadge $color={palette.stroke}>{palette.shortBadge}</KindBadge>
+                            <span
+                              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+                            >
+                              {prop.label}
+                            </span>
+                          </TreeRowBtn>
+                        );
+                      })}
+                  </>
+                )}
+
+                {/* 4. Named Individuals */}
+                {treeGroups.individuals.length > 0 && (
+                  <>
+                    <TreeRowBtn
+                      type="button"
+                      $selected={false}
+                      $depth={0}
+                      onClick={(e) => toggleCollapse("__GROUP_INDIVS__", e)}
+                      style={{ fontWeight: 700, fontSize: "11px", color: "var(--color-fg-muted)", marginTop: 4 }}
+                    >
+                      {collapsedNodes.has("__GROUP_INDIVS__") ? (
+                        <ChevronRightIcon size={12} />
+                      ) : (
+                        <ChevronDownIcon size={12} />
+                      )}
+                      <span>INDIVIDUALS (ABox)</span>
+                      <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: "10px" }}>
+                        {treeGroups.individuals.length}
+                      </span>
+                    </TreeRowBtn>
+                    {!collapsedNodes.has("__GROUP_INDIVS__") &&
+                      treeGroups.individuals.map((ind) => {
+                        const palette = getEntityColors(ind.kind, isDark);
+                        return (
+                          <TreeRowBtn
+                            key={ind.iri}
+                            type="button"
+                            $selected={selectedEntity?.iri === ind.iri}
+                            $depth={1}
+                            onClick={() => setSelectedIri(ind.iri)}
+                          >
+                            <span style={{ width: 12, display: "inline-block" }} />
+                            <KindBadge $color={palette.stroke}>{palette.shortBadge}</KindBadge>
+                            <span
+                              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+                            >
+                              {ind.label}
+                            </span>
+                            {ind.types[0] && (
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  color: "var(--color-fg-muted)",
+                                  fontFamily: "var(--font-mono, monospace)",
+                                }}
+                              >
+                                :{getShortLabel(ind.types[0])}
+                              </span>
+                            )}
+                          </TreeRowBtn>
+                        );
+                      })}
+                  </>
+                )}
+              </Box>
+            </TreeSidebar>
+
+            <TreeInspectorPane>
+              {selectedEntity ? (
+                renderInspectorDetails(selectedEntity, true)
+              ) : (
+                <Box color="var(--color-fg-muted)" fontSize={1}>
+                  Select an entity from the ontology hierarchy to inspect its axioms.
+                </Box>
+              )}
+            </TreeInspectorPane>
+          </TreeSplitContainer>
         ) : effectiveViewMode === "diagram" && fallbackSvg ? (
-          <InteractiveSvgStage svgHtml={fallbackSvg} />
+          <InteractiveSvgStage svgHtml={fallbackSvg} isFullScreen={isFullScreen} />
         ) : (
           <Box
+            ref={codeContainerRef}
             flex={1}
             py={2}
             overflow="auto"
@@ -1618,26 +2735,39 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
             style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "12px", lineHeight: 1.55 }}
           >
             {codeLines.length > 0 ? (
-              codeLines.map((line, idx) => (
-                <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
-                  <span
+              codeLines.map((line, idx) => {
+                const lineNum = idx + 1;
+                const isHighlighted = highlightedLines.has(lineNum);
+                return (
+                  <div
+                    key={idx}
+                    data-line={lineNum}
                     style={{
-                      userSelect: "none",
-                      width: "36px",
-                      minWidth: "36px",
-                      textAlign: "right",
-                      paddingRight: "12px",
-                      color: "var(--color-fg-subtle)",
-                      fontSize: "11px",
+                      display: "flex",
+                      padding: "0 14px",
+                      background: isHighlighted ? "rgba(139, 92, 246, 0.18)" : "transparent",
+                      borderLeft: isHighlighted ? "2px solid #8b5cf6" : "2px solid transparent",
                     }}
                   >
-                    {idx + 1}
-                  </span>
-                  <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
-                    {highlightPolyglotLine(line, "owl2")}
-                  </span>
-                </div>
-              ))
+                    <span
+                      style={{
+                        userSelect: "none",
+                        width: "36px",
+                        minWidth: "36px",
+                        textAlign: "right",
+                        paddingRight: "12px",
+                        color: isHighlighted ? "#c084fc" : "var(--color-fg-subtle)",
+                        fontSize: "11px",
+                      }}
+                    >
+                      {lineNum}
+                    </span>
+                    <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                      {highlightPolyglotLine(line, "owl2")}
+                    </span>
+                  </div>
+                );
+              })
             ) : (
               <Box p={4} color="var(--color-fg-muted)" textAlign="center">
                 No OWL2 ontology content available.
@@ -1646,16 +2776,6 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
           </Box>
         )}
       </ContentArea>
-
-      <FooterBar>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {ontology.ontologyIri ? `IRI: ${ontology.ontologyIri}` : "OWL 2 Functional-Style Syntax (.ofn)"}
-        </span>
-        <span style={{ flexShrink: 0 }}>
-          {counts.classCount} Classes · {counts.propertyCount} Properties · {counts.individualCount} Individuals ·{" "}
-          {counts.axiomCount} Axioms
-        </span>
-      </FooterBar>
     </CardWrapper>
   );
 };

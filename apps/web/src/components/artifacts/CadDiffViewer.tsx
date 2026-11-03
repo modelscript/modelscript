@@ -32,8 +32,8 @@ const ViewerContainer = styled.div<{ $height?: number | string | undefined }>`
   position: relative;
   width: 100%;
   height: ${({ $height }) => (typeof $height === "number" ? `${$height}px` : $height || "520px")};
-  background: #0d1117;
-  border: 1px solid var(--color-border, #30363d);
+  background: var(--color-canvas-default, #0d1117);
+  border: 1px solid var(--color-border-default, #30363d);
   border-radius: 8px;
   overflow: hidden;
   display: flex;
@@ -46,9 +46,9 @@ const Toolbar = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  background: rgba(22, 27, 34, 0.95);
+  background: var(--surface-hud, var(--color-canvas-subtle, rgba(22, 27, 34, 0.95)));
   backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--color-border, #30363d);
+  border-bottom: 1px solid var(--color-border-default, #30363d);
   z-index: 10;
   gap: 12px;
 `;
@@ -64,12 +64,12 @@ const ControlPill = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(33, 38, 45, 0.85);
-  border: 1px solid var(--color-border, #30363d);
+  background: var(--color-canvas-default, rgba(33, 38, 45, 0.85));
+  border: 1px solid var(--color-border-default, #30363d);
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 12px;
-  color: #c9d1d9;
+  color: var(--color-fg-default, #c9d1d9);
 `;
 
 const CanvasWrapper = styled.div`
@@ -93,9 +93,9 @@ const FloatingMetricsBar = styled.div`
 
 const MetricsCard = styled.div`
   pointer-events: auto;
-  background: rgba(13, 17, 23, 0.85);
+  background: var(--surface-hud, var(--color-canvas-subtle, rgba(13, 17, 23, 0.85)));
   backdrop-filter: blur(6px);
-  border: 1px solid var(--color-border, #30363d);
+  border: 1px solid var(--color-border-default, #30363d);
   border-radius: 6px;
   padding: 6px 12px;
   display: flex;

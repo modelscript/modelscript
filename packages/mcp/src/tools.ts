@@ -4981,4 +4981,129 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       };
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // NIST Strategic Standards: QIF (ISO 23952), OSCAL (SP 800-53/82), & AutomationML (IEC 62714)
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    "qif_inspect_and_spc",
+    "Evaluates an ISO 23952 Quality Information Framework (QIF) document, runs NIST QIF & ASME Y14.5 GD&T lint checks, computes SPC capability (Cp/Cpk, TUR, MMC/LMC bonus tolerances), and optionally reconciles STEP AP242 entities.",
+    {
+      qifContent: z.string().describe("QIF 3.0 XML, DSL, or JSON document content"),
+      stepContent: z.string().optional().describe("Optional STEP AP242 CAD content for entity ID reconciliation"),
+    },
+    async ({ qifContent, stepContent }) => {
+      const { evaluateQifSpc, lintQifDocument, parseQif, reconcileStepWithQif } = await import("@modelscript/qif");
+      const doc = parseQif(qifContent);
+      const diagnostics = lintQifDocument(doc);
+      const spc = evaluateQifSpc(doc);
+      const stepReconciliation = stepContent ? reconcileStepWithQif(stepContent, doc) : undefined;
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                qpId: doc.qpId,
+                diagnostics,
+                spc,
+                stepReconciliation,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "oscal_audit_cps_compliance",
+    "Audits a NIST OSCAL document (Catalog, Profile, Component Definition, SSP, SAR, or POA&M) against NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS overlays, resolves profile baselines, and verifies cyber-physical architectural component coverage.",
+    {
+      oscalContent: z.string().describe("OSCAL JSON, YAML, or XML content"),
+      architectureComponents: z
+        .array(
+          z.object({
+            name: z.string(),
+            kind: z.string(),
+            isSafetyCritical: z.boolean().optional(),
+          }),
+        )
+        .optional()
+        .describe("Optional list of SysML v2 / AutomationML / PLCopen components to verify coverage against"),
+    },
+    async ({ oscalContent, architectureComponents }) => {
+      const { auditCpsArchitectureCompliance, lintOscalDocument, parseOscal, resolveOscalProfile } =
+        await import("@modelscript/oscal");
+      const doc = parseOscal(oscalContent);
+      const diagnostics = lintOscalDocument(doc);
+      const resolvedProfile = resolveOscalProfile(doc);
+      const comps =
+        architectureComponents ??
+        (doc.systemImplementation?.components ?? doc.components ?? []).map((c) => ({
+          name: c.title,
+          kind: c.type,
+          isSafetyCritical: c.type === "plc" || c.type === "ied" || c.type === "ot-controller",
+        }));
+      const cpsAudit = auditCpsArchitectureCompliance(doc, comps);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                uuid: doc.uuid,
+                kind: doc.kind,
+                diagnostics,
+                resolvedControlCount: resolvedProfile.controls.length,
+                cpsAudit,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "aml_run_virtual_commissioning",
+    "Parses an IEC 62714 AutomationML / CAEX workcell topology, runs semantic port & PPR role verification, and executes closed-loop virtual commissioning coupling VirtualPlc logic and mechatronic plant dynamics.",
+    {
+      amlContent: z.string().describe("AutomationML CAEX XML or declarative AML content"),
+      cycles: z.number().optional().default(20).describe("Number of virtual commissioning scan cycles"),
+      dtMs: z.number().optional().default(10).describe("Scan cycle time step in milliseconds"),
+    },
+    async ({ amlContent, cycles, dtMs }) => {
+      const { lintAutomationML, parseAutomationML, runAmlVirtualCommissioning } =
+        await import("@modelscript/automationml");
+      const doc = parseAutomationML(amlContent);
+      const diagnostics = lintAutomationML(doc);
+      const commissioning = runAmlVirtualCommissioning(doc, { cycles, dtMs });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                fileName: doc.fileName,
+                schemaVersion: doc.schemaVersion,
+                diagnostics,
+                commissioning,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
 }

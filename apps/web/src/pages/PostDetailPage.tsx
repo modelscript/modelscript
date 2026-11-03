@@ -298,7 +298,7 @@ const PostDetailPage: React.FC = () => {
   }
 
   return (
-    <Box minHeight="100vh" style={{ paddingBottom: "200px" }}>
+    <Box minHeight="100dvh" style={{ paddingBottom: "200px" }}>
       <PageHeader
         back
         title={isNotebook ? "Article" : "Post"}

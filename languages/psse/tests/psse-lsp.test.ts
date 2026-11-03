@@ -4,14 +4,20 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { lowerPsseToDae } from "../src/dae/index.js";
 import {
+  applyPsseDiagramWriteback,
   executePsseAction,
+  formatPsseDocument,
+  getPsseCodeActions,
   getPsseCompletions,
   getPsseDefinition,
   getPsseDocumentSymbols,
   getPsseHover,
+  getPsseInlayHints,
   getPsseReferences,
+  getPsseRenameEdits,
   validatePsse,
 } from "../src/lsp.js";
+import { parseDyr } from "../src/parser/dyr-parser.js";
 import { parseRaw } from "../src/parser/raw-parser.js";
 
 const IEEE_14_RAW = `0, 100.00, 33, 0, 0, 60.00 / PSS/E-33.0 IEEE 14 BUS TEST CASE
@@ -214,5 +220,73 @@ describe("PSS/E LSP Services & DAE Lowering (@modelscript/psse)", () => {
     const defToRaw = getPsseDefinition(SAMPLE_DYR, { line: 1, character: 0 }, dyrUri, ws);
     assert.equal(defToRaw?.uri, rawUri);
     assert.equal(defToRaw?.range.start.line, 3);
+
+    // Cross-file Find References on Bus 1 in ieee14.raw includes companion .dyr records
+    const crossRefs = getPsseReferences(IEEE_14_RAW, { line: 3, character: 0 }, rawUri, ws);
+    assert.ok(crossRefs.some((r) => r.uri === dyrUri));
+  });
+
+  it("supports Inlay Hints, Atomic Bus Rename (F2), Quick Fix Code Actions, Writeback (branch_/shunt_), and WECC IBR .dyr models", async () => {
+    const rawHints = getPsseInlayHints(IEEE_14_RAW, "ieee14.raw");
+    assert.ok(rawHints.length >= 10);
+    assert.ok(rawHints.some((h) => h.label.includes("Slack")));
+
+    const dyrHints = getPsseInlayHints(SAMPLE_DYR, "ieee14.dyr");
+    assert.equal(dyrHints.length, 2);
+    assert.ok(dyrHints[0]?.label.includes("Td0p=6.5"));
+
+    // Atomic Bus Rename: renumber Bus 2 -> Bus 202 across .raw and companion .dyr
+    const { PsseWorkspaceIndex } = await import("../src/workspace-index.js");
+    const ws = new PsseWorkspaceIndex();
+    const rawUri = "file:///workspace/ieee14.raw";
+    const dyrUri = "file:///workspace/ieee14.dyr";
+    ws.indexFile(rawUri, IEEE_14_RAW);
+    ws.indexFile(dyrUri, SAMPLE_DYR);
+
+    const renameEdit = getPsseRenameEdits(IEEE_14_RAW, { line: 3, character: 0 }, "101", rawUri, ws);
+    assert.ok(renameEdit);
+    assert.ok(renameEdit.changes[rawUri]);
+    assert.ok(renameEdit.changes[dyrUri]);
+    const renumberedCase = parseRaw(renameEdit.changes[rawUri]![0]!.newText);
+    assert.ok(renumberedCase.buses.has(101));
+    assert.ok(!renumberedCase.buses.has(1));
+
+    // Diagram writeback for branch_1_2_1 (used by buildPsseDiagram)
+    const afterBranchEdit = applyPsseDiagramWriteback(IEEE_14_RAW, "branch_1_2_1", { x: 0.0888, st: 0 });
+    const editedCase = parseRaw(afterBranchEdit);
+    const br12 = editedCase.branches.find((b) => b.i === 1 && b.j === 2);
+    assert.ok(br12);
+    assert.equal(br12.x, 0.0888);
+    assert.equal(br12.st, 0);
+
+    // Quick Fix Code Action for P3001 (inverted Qmin/Qmax)
+    const badGenRaw = applyPsseDiagramWriteback(IEEE_14_RAW, "gen_2_1", { qb: 100.0, qt: -50.0 });
+    const diags = validatePsse(badGenRaw, rawUri);
+    const p3001 = diags.find((d) => d.code === "P3001");
+    assert.ok(p3001);
+    const actions = getPsseCodeActions(badGenRaw, p3001.range, [p3001], rawUri);
+    assert.equal(actions.length, 1);
+    const fixedCase = parseRaw(actions[0]!.edit.changes[rawUri]![0]!.newText);
+    const gen2 = fixedCase.generators.find((g) => g.i === 2)!;
+    assert.ok(gen2.qb <= gen2.qt);
+
+    // WECC 2nd-gen Renewable IBR dynamic models (REGC_A, REEC_A, REPC_A)
+    const ibrDyrText = `
+1 'REGC_A' '1' 0.02 10.0 0.9 0.4 1.22 1.2 0.8 0.4 -1.3 0.01 0.7 999.0 -999.0 0.7 /
+1 'REEC_A' '1' 0.85 1.15 0.01 -0.05 0.05 2.0 1.05 -1.05 1.0 0.0 0.0 0.0 0.05 0.436 -0.436 1.1 0.9 0.0 0.1 0.0 40.0 0.02 99.0 -99.0 1.0 0.0 1.3 0.02 /
+`;
+    const ibrDyr = parseDyr(ibrDyrText);
+    assert.equal(ibrDyr.records.length, 2);
+    assert.equal(ibrDyr.records[0]?.model, "REGC_A");
+    assert.equal(ibrDyr.records[0]?.namedParams["Tg"], 0.02);
+    const ibrCase = parseRaw(IEEE_14_RAW);
+    ibrCase.dyr = ibrDyr;
+    const ibrDae = lowerPsseToDae(ibrCase);
+    assert.equal(ibrDae.varCount, ibrDae.eqCount);
+
+    // Formatting
+    const formattedDyr = formatPsseDocument(ibrDyrText, "ibr.dyr");
+    assert.ok(formattedDyr.includes("@! IBUS"));
+    assert.ok(formattedDyr.includes("'REGC_A'"));
   });
 });

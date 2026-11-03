@@ -377,6 +377,17 @@ export class CadViewerPanel extends BaseWebviewPanel {
   }
 
   /**
+   * Push ISO 23952 QIF MBD GD&T Feature Control Frame callouts, CMM probe points,
+   * and dimensional deviation heatmap overlays to the 3D CAD viewport.
+   */
+  public sendQifInspectionOverlay(payload: unknown): void {
+    this._panel.webview.postMessage({
+      type: "QIF_INSPECTION_OVERLAY",
+      data: payload,
+    });
+  }
+
+  /**
    * Posts an arbitrary message payload directly to the underlying CAD webview.
    */
   public postMessage(msg: unknown): void {

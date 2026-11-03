@@ -267,6 +267,24 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
           display="flex"
           flexDirection="column"
         >
+          {typeof navigator !== "undefined" && typeof navigator.share === "function" && (
+            <MenuButton
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setShowShareMenu(false);
+                const postUrl = `${window.location.origin}/${displayPost.username || "post"}/status/${displayPost.id}`;
+                navigator
+                  .share({
+                    title: `Post by @${displayPost.username || "user"} on Ansatz`,
+                    url: postUrl,
+                  })
+                  .catch(() => {});
+              }}
+            >
+              <ShareIcon size={16} /> Share post via…
+            </MenuButton>
+          )}
           <MenuButton
             onClick={(e) => {
               setShowShareMenu(false);

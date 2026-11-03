@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  AlertIcon,
   ArrowDownIcon,
   ArrowUpIcon,
+  CheckCircleIcon,
   CodeIcon,
   CopyIcon,
   GrabberIcon,
+  GraphIcon,
   ImageIcon,
   PackageIcon,
   PaperclipIcon,
@@ -18,6 +21,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useFeatureFlag } from "../../FeatureFlagContext";
 import type { NotebookCell } from "../../util/notebook";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
+import { getLanguageInfo, useVisibleMorselLanguages } from "../morsel/constants";
+import {
+  analyzeSnippetDiagnostics,
+  formatLanguageFileHeader,
+  GENERAL_CODE_LANGUAGES,
+  inferSnippetFilename,
+  parseLanguageFileHeader,
+} from "./snippet-diagnostics";
 import {
   ArtifactCaptionInput,
   NotebookCellTextarea,
@@ -29,6 +40,7 @@ import {
   SlashMenuPopover,
   SlashMenuSectionTitle,
 } from "./styles";
+import { VegaWizardModal } from "./VegaWizardModal";
 
 export interface ComposeNotebookCellsEditorProps {
   notebookCells: NotebookCell[];
@@ -41,6 +53,7 @@ export interface ComposeNotebookCellsEditorProps {
   removeCell: (cellId: string) => void;
   updateMarkdownCell: (cellId: string, content: string) => void;
   updateArtifactCellCaption: (cellId: string, caption: string) => void;
+  onReplaceArtifactCell?: ((cellId: string, newArtifactId: number, newTitle?: string) => void) | undefined;
   updateTokenState: (value: string, cursorPosition: number) => void;
   handleInteraction: (e: React.SyntheticEvent<HTMLTextAreaElement>) => void;
   handleSubmit: () => void;
@@ -53,6 +66,7 @@ export interface ComposeNotebookCellsEditorProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onPolishCell?: ((cellId: string) => void) | undefined;
   onDraftFromArtifactCell?: ((artifactId: number, cellId: string) => void) | undefined;
+  onEditCodeCellInModal?: ((cellId: string, lang: string, filename: string, code: string) => void) | undefined;
   aiBusy?: "drafting" | "polishing" | null | undefined;
 }
 
@@ -179,6 +193,14 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     keywords: ["model", "morsel", "simulation", "interactive", "circuit", "dae"],
   },
   {
+    id: "chart",
+    category: "Interactive engineering",
+    title: "Data Visualization (Vega-Lite)",
+    description: "Upload CSV, JSON, YAML, XML, or HDF5 and create a Vega-Lite plot",
+    icon: <GraphIcon size={14} />,
+    keywords: ["chart", "vega", "vegalite", "plot", "visualize", "csv", "json", "yaml", "hdf5", "dataset"],
+  },
+  {
     id: "cad",
     category: "Interactive engineering",
     title: "3D CAD / File Artifact",
@@ -196,20 +218,6 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
   },
 ];
 
-const CODE_BLOCK_LANGUAGES = [
-  { id: "modelica", label: "Modelica" },
-  { id: "sysml2", label: "SysML v2" },
-  { id: "python", label: "Python" },
-  { id: "typescript", label: "TypeScript" },
-  { id: "rust", label: "Rust" },
-  { id: "cpp", label: "C++" },
-  { id: "julia", label: "Julia" },
-  { id: "matlab", label: "MATLAB" },
-  { id: "scad", label: "OpenSCAD" },
-  { id: "json", label: "JSON" },
-  { id: "bash", label: "Bash" },
-] as const;
-
 function detectMarkdownVariant(content: string): {
   kind: "p" | "h1" | "h2" | "h3" | "quote" | "callout" | "code" | "math" | "divider";
   codeLang?: string;
@@ -224,14 +232,13 @@ function detectMarkdownVariant(content: string): {
   const codeMatch = content.match(/^```([a-zA-Z0-9_-]*)\n([\s\S]*?)\n?```$/);
   if (codeMatch) {
     const codeLang = codeMatch[1] || "modelica";
-    let rawBody = codeMatch[2] ?? "";
-    let codeFilename = "";
-    const fileMatch = rawBody.match(/^\/\/\s*File:\s*([^\n]+)\n([\s\S]*)$/);
-    if (fileMatch) {
-      codeFilename = fileMatch[1]!.trim();
-      rawBody = fileMatch[2] ?? "";
-    }
-    return { kind: "code", codeLang, codeFilename, codeBody: rawBody };
+    const parsedHeader = parseLanguageFileHeader(codeMatch[2] ?? "");
+    return {
+      kind: "code",
+      codeLang,
+      codeFilename: parsedHeader.filename,
+      codeBody: parsedHeader.body,
+    };
   }
   const mathMatch = content.match(/^\$\$\n?([\s\S]*?)\n?\$\$$/);
   if (mathMatch) {
@@ -255,19 +262,23 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
   removeCell,
   updateMarkdownCell,
   updateArtifactCellCaption,
+  onReplaceArtifactCell,
   updateTokenState,
   handleInteraction,
   handleSubmit,
   setMentionQuery,
   setHashtagQuery,
   setPendingInsertAfterCellId,
+  setShowCodeSnippetModal,
   setShowMorselModal,
   setShowPackageRepoPicker,
   fileInputRef,
   onPolishCell,
   onDraftFromArtifactCell,
+  onEditCodeCellInModal,
   aiBusy,
 }) => {
+  const visibleMorselLanguages = useVisibleMorselLanguages();
   const hasComposerAiPolish = useFeatureFlag("composer_ai_polish");
   const hasAiPolishAlias = useFeatureFlag("ai_polish");
   const isAiPolishFeatureEnabled = hasComposerAiPolish || hasAiPolishAlias;
@@ -279,6 +290,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
   } | null>(null);
   const [blockActionMenuCellId, setBlockActionMenuCellId] = useState<string | null>(null);
   const [pendingFileOpen, setPendingFileOpen] = useState(false);
+  const [vegaWizardCell, setVegaWizardCell] = useState<{ cellId: string; artifactId: number } | null>(null);
   const menuContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -411,6 +423,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
           break;
         case "picture":
         case "cad":
+        case "chart":
           if (cell && cell.type === "markdown" && replaceSlashText) {
             updateMarkdownCell(targetCellId, baseText);
           }
@@ -569,146 +582,229 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                   )}
                 </div>
               ) : mdInfo.kind === "code" ? (
-                <div
-                  style={{
-                    margin: "8px 0",
-                    borderRadius: "10px",
-                    border: "1px solid var(--ms-divider)",
-                    background: "var(--color-pre-bg, #f8fafc)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "6px 12px",
-                      borderBottom: "1px solid var(--ms-divider)",
-                      gap: "8px",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <select
-                        value={mdInfo.codeLang || "modelica"}
-                        onChange={(e) => {
-                          const nextLang = e.target.value;
-                          const fileHeader = mdInfo.codeFilename ? `// File: ${mdInfo.codeFilename}\n` : "";
-                          updateMarkdownCell(
-                            cell.id,
-                            `\`\`\`${nextLang}\n${fileHeader}${mdInfo.codeBody || ""}\n\`\`\``,
-                          );
-                        }}
+                (() => {
+                  const activeCodeLang = mdInfo.codeLang || "modelica";
+                  const activeCodeBody = mdInfo.codeBody || "";
+                  const activeCodeFile = mdInfo.codeFilename || "";
+                  const generalMatch = GENERAL_CODE_LANGUAGES.find((g) => g.id === activeCodeLang);
+                  const morselMatch = generalMatch ? null : getLanguageInfo(activeCodeLang);
+                  const ext = generalMatch?.ext || morselMatch?.ext || activeCodeLang;
+                  const autoName = inferSnippetFilename(activeCodeBody, activeCodeLang, ext);
+                  const cellDiagnostics = analyzeSnippetDiagnostics(activeCodeBody, activeCodeLang);
+                  const firstError = cellDiagnostics[0];
+
+                  return (
+                    <div
+                      style={{
+                        margin: "8px 0",
+                        borderRadius: "10px",
+                        border: firstError
+                          ? "1px solid var(--color-danger-emphasis, #ef4444)"
+                          : "1px solid var(--ms-divider)",
+                        background: "var(--color-pre-bg, #f8fafc)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
                         style={{
-                          padding: "3px 8px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          fontFamily: "var(--font-mono, monospace)",
-                          borderRadius: "6px",
-                          border: "1px solid var(--ms-border)",
-                          background: "var(--color-canvas-inset, #ffffff)",
-                          color: "var(--ms-text-1)",
-                          outline: "none",
-                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "6px 12px",
+                          borderBottom: "1px solid var(--ms-divider)",
+                          gap: "8px",
+                          flexWrap: "wrap",
                         }}
                       >
-                        {CODE_BLOCK_LANGUAGES.map((lang) => (
-                          <option key={lang.id} value={lang.id}>
-                            {lang.label}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="text"
-                        placeholder="Filename (optional, e.g. Oscillator.mo)"
-                        value={mdInfo.codeFilename || ""}
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <select
+                            value={activeCodeLang}
+                            onChange={(e) => {
+                              const nextLang = e.target.value;
+                              const fileHeader = formatLanguageFileHeader(activeCodeFile, nextLang);
+                              updateMarkdownCell(cell.id, `\`\`\`${nextLang}\n${fileHeader}${activeCodeBody}\n\`\`\``);
+                            }}
+                            style={{
+                              padding: "3px 8px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              fontFamily: "var(--font-mono, monospace)",
+                              borderRadius: "6px",
+                              border: "1px solid var(--ms-border)",
+                              background: "var(--color-canvas-inset, #ffffff)",
+                              color: "var(--ms-text-1)",
+                              outline: "none",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <optgroup label={`Engineering & Simulation Languages (${visibleMorselLanguages.length})`}>
+                              {visibleMorselLanguages.map((lang) => (
+                                <option key={lang.id} value={lang.id}>
+                                  {lang.label || lang.name} (.{lang.ext})
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="General Code Blocks">
+                              {GENERAL_CODE_LANGUAGES.map((lang) => (
+                                <option key={lang.id} value={lang.id}>
+                                  {lang.label} (.{lang.ext})
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder={
+                              autoName ? `Filename (auto: ${autoName})` : `Filename (optional, e.g. Oscillator.${ext})`
+                            }
+                            value={activeCodeFile}
+                            onChange={(e) => {
+                              const nextFile = e.target.value;
+                              const fileHeader = formatLanguageFileHeader(nextFile, activeCodeLang);
+                              updateMarkdownCell(
+                                cell.id,
+                                `\`\`\`${activeCodeLang}\n${fileHeader}${activeCodeBody}\n\`\`\``,
+                              );
+                            }}
+                            style={{
+                              padding: "3px 8px",
+                              fontSize: "12px",
+                              fontFamily: "var(--font-mono, monospace)",
+                              borderRadius: "6px",
+                              border: "1px solid transparent",
+                              background: "transparent",
+                              color: "var(--ms-text-2)",
+                              outline: "none",
+                              width: "220px",
+                            }}
+                          />
+                          {activeCodeBody.trim() && (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                fontSize: "11px",
+                                fontFamily: "var(--font-mono, monospace)",
+                                fontWeight: 600,
+                                color: firstError
+                                  ? "var(--color-danger-fg, #ef4444)"
+                                  : "var(--color-success-fg, #16a34a)",
+                              }}
+                            >
+                              {firstError ? (
+                                <>
+                                  <AlertIcon size={12} />
+                                  <span>
+                                    [{firstError.code}] {firstError.message}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircleIcon size={12} />
+                                  <span>Valid</span>
+                                </>
+                              )}
+                            </span>
+                          )}
+                          {firstError?.quickFix && (
+                            <NotionGhostButton
+                              type="button"
+                              onClick={() => {
+                                const fileHeader = formatLanguageFileHeader(activeCodeFile, activeCodeLang);
+                                updateMarkdownCell(
+                                  cell.id,
+                                  `\`\`\`${activeCodeLang}\n${fileHeader}${firstError.quickFix!.replacementCode}\n\`\`\``,
+                                );
+                              }}
+                              style={{
+                                color: "var(--color-accent-cyan, #06b6d4)",
+                                fontWeight: 700,
+                                fontSize: "11px",
+                              }}
+                            >
+                              ✨ Fix: {firstError.quickFix.label}
+                            </NotionGhostButton>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <NotionGhostButton
+                            type="button"
+                            onClick={() => {
+                              setActiveCellId(cell.id);
+                              if (onEditCodeCellInModal) {
+                                onEditCodeCellInModal(cell.id, activeCodeLang, activeCodeFile, activeCodeBody);
+                              } else {
+                                setShowCodeSnippetModal(true);
+                              }
+                            }}
+                            title="Open in full Monaco + WASM compiler code editor"
+                          >
+                            <CodeIcon size={12} /> Code Editor
+                          </NotionGhostButton>
+                          <NotionGhostButton
+                            type="button"
+                            onClick={() => transformMarkdownBlock(cell.id, "p")}
+                            title="Convert code block to plain text"
+                          >
+                            Plain text
+                          </NotionGhostButton>
+                          <NotionGhostButton
+                            type="button"
+                            onClick={() => removeCell(cell.id)}
+                            title="Remove code block"
+                          >
+                            <TrashIcon size={12} />
+                          </NotionGhostButton>
+                        </div>
+                      </div>
+                      <textarea
+                        data-cell-id={cell.id}
+                        value={activeCodeBody}
+                        placeholder="Write or paste code here..."
+                        rows={Math.max(3, activeCodeBody.split("\n").length)}
+                        onFocus={() => setActiveCellId(cell.id)}
                         onChange={(e) => {
-                          const nextFile = e.target.value;
-                          const fileHeader = nextFile.trim() ? `// File: ${nextFile.trim()}\n` : "";
-                          updateMarkdownCell(
-                            cell.id,
-                            `\`\`\`${mdInfo.codeLang || "modelica"}\n${fileHeader}${mdInfo.codeBody || ""}\n\`\`\``,
-                          );
+                          const nextCode = e.target.value;
+                          const fileHeader = formatLanguageFileHeader(activeCodeFile, activeCodeLang);
+                          updateMarkdownCell(cell.id, `\`\`\`${activeCodeLang}\n${fileHeader}${nextCode}\n\`\`\``);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Tab") {
+                            e.preventDefault();
+                            const target = e.currentTarget;
+                            const start = target.selectionStart;
+                            const end = target.selectionEnd;
+                            const nextCode = `${activeCodeBody.slice(0, start)}  ${activeCodeBody.slice(end)}`;
+                            const fileHeader = formatLanguageFileHeader(activeCodeFile, activeCodeLang);
+                            updateMarkdownCell(cell.id, `\`\`\`${activeCodeLang}\n${fileHeader}${nextCode}\n\`\`\``);
+                            requestAnimationFrame(() => {
+                              target.setSelectionRange(start + 2, start + 2);
+                            });
+                          } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            const nextId = addMarkdownCellAfter(cell.id, "");
+                            if (typeof nextId === "string") focusCell(nextId, "start");
+                          }
                         }}
                         style={{
-                          padding: "3px 8px",
-                          fontSize: "12px",
-                          fontFamily: "var(--font-mono, monospace)",
-                          borderRadius: "6px",
-                          border: "1px solid transparent",
-                          background: "transparent",
-                          color: "var(--ms-text-2)",
+                          width: "100%",
+                          border: "none",
                           outline: "none",
-                          width: "220px",
+                          resize: "none",
+                          overflow: "hidden",
+                          padding: "12px 14px",
+                          fontSize: "13.5px",
+                          lineHeight: 1.6,
+                          fontFamily: "var(--font-mono, monospace)",
+                          background: "transparent",
+                          color: "var(--ms-text-1)",
+                          boxSizing: "border-box",
                         }}
                       />
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                      <NotionGhostButton
-                        type="button"
-                        onClick={() => transformMarkdownBlock(cell.id, "p")}
-                        title="Convert code block to plain text"
-                      >
-                        Plain text
-                      </NotionGhostButton>
-                      <NotionGhostButton type="button" onClick={() => removeCell(cell.id)} title="Remove code block">
-                        <TrashIcon size={12} />
-                      </NotionGhostButton>
-                    </div>
-                  </div>
-                  <textarea
-                    data-cell-id={cell.id}
-                    value={mdInfo.codeBody || ""}
-                    placeholder="Write or paste code here..."
-                    rows={Math.max(3, (mdInfo.codeBody || "").split("\n").length)}
-                    onFocus={() => setActiveCellId(cell.id)}
-                    onChange={(e) => {
-                      const nextCode = e.target.value;
-                      const fileHeader = mdInfo.codeFilename ? `// File: ${mdInfo.codeFilename}\n` : "";
-                      updateMarkdownCell(
-                        cell.id,
-                        `\`\`\`${mdInfo.codeLang || "modelica"}\n${fileHeader}${nextCode}\n\`\`\``,
-                      );
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Tab") {
-                        e.preventDefault();
-                        const target = e.currentTarget;
-                        const start = target.selectionStart;
-                        const end = target.selectionEnd;
-                        const body = mdInfo.codeBody || "";
-                        const nextCode = `${body.slice(0, start)}  ${body.slice(end)}`;
-                        const fileHeader = mdInfo.codeFilename ? `// File: ${mdInfo.codeFilename}\n` : "";
-                        updateMarkdownCell(
-                          cell.id,
-                          `\`\`\`${mdInfo.codeLang || "modelica"}\n${fileHeader}${nextCode}\n\`\`\``,
-                        );
-                        requestAnimationFrame(() => {
-                          target.setSelectionRange(start + 2, start + 2);
-                        });
-                      } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                        e.preventDefault();
-                        const nextId = addMarkdownCellAfter(cell.id, "");
-                        if (typeof nextId === "string") focusCell(nextId, "start");
-                      }
-                    }}
-                    style={{
-                      width: "100%",
-                      border: "none",
-                      outline: "none",
-                      resize: "none",
-                      overflow: "hidden",
-                      padding: "12px 14px",
-                      fontSize: "13.5px",
-                      lineHeight: 1.6,
-                      fontFamily: "var(--font-mono, monospace)",
-                      background: "transparent",
-                      color: "var(--ms-text-1)",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                </div>
+                  );
+                })()
               ) : mdInfo.kind === "math" ? (
                 <div
                   style={{
@@ -948,6 +1044,21 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                       `Embedded Artifact #${(cell as { artifactId?: number }).artifactId}`}
                   </span>
                   <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                    <NotionGhostButton
+                      type="button"
+                      data-testid={`notebook-cell-vega-btn-${cell.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVegaWizardCell({
+                          cellId: cell.id,
+                          artifactId: (cell as { artifactId: number }).artifactId,
+                        });
+                      }}
+                      title="Open Vega-Lite Visualization Wizard for this dataset"
+                    >
+                      <GraphIcon size={12} />
+                      <span>Visualize Data</span>
+                    </NotionGhostButton>
                     {onDraftFromArtifactCell && (
                       <NotionGhostButton
                         type="button"
@@ -1277,6 +1388,18 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
           </NotionGhostButton>
         </div>
       </div>
+
+      {vegaWizardCell && (
+        <VegaWizardModal
+          isOpen={true}
+          onClose={() => setVegaWizardCell(null)}
+          artifactId={vegaWizardCell.artifactId}
+          onApplyVisualization={(newArtifactId, title) => {
+            onReplaceArtifactCell?.(vegaWizardCell.cellId, newArtifactId, `📊 ${title}`);
+            setVegaWizardCell(null);
+          }}
+        />
+      )}
     </div>
   );
 };

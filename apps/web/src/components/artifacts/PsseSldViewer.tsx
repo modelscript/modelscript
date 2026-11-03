@@ -4,8 +4,10 @@ import {
   renderPsseSldSvg,
   type PsseBranchLike,
   type PsseBusLike,
+  type PsseFixedShuntLike,
   type PsseGeneratorLike,
   type PsseLoadLike,
+  type PsseSwitchedShuntLike,
   type PsseTransformerLike,
 } from "@modelscript/diagram";
 import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, PlayIcon, ZapIcon } from "@primer/octicons-react";
@@ -166,26 +168,69 @@ const LineNo = styled.span`
   padding-right: 16px;
 `;
 
+function stripInlineComment(line: string): string {
+  let inQuotes = false;
+  let qChar = "";
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (inQuotes) {
+      if (ch === qChar) inQuotes = false;
+    } else if (ch === "'" || ch === '"') {
+      inQuotes = true;
+      qChar = ch;
+    } else if (ch === "/") {
+      return line.slice(0, i).trim();
+    }
+  }
+  return line.trim();
+}
+
 function parsePsseRawClient(code: string) {
   const lines = code.split(/\r?\n/);
-  let section = 0; // 0 = header/bus, 1 = load, 2 = fixed shunt, 3 = generator, 4 = branch, 5 = transformer
+  // Find first non-comment line and check if it's a PSS/E Case Identification header
+  let firstDataIdx = 0;
+  while (firstDataIdx < lines.length) {
+    const t = (lines[firstDataIdx] ?? "").trim();
+    if (!t || t.startsWith("@!") || t.startsWith("//")) {
+      firstDataIdx++;
+    } else {
+      break;
+    }
+  }
+  let startIdx = firstDataIdx;
+  if (firstDataIdx < lines.length) {
+    const firstParts = stripInlineComment(lines[firstDataIdx] ?? "")
+      .split(",")
+      .map((p) => p.trim());
+    const ic = Number.parseInt(firstParts[0] || "", 10);
+    const secondIsQuote = (firstParts[1] ?? "").startsWith("'");
+    if ((ic === 0 || ic === 1) && !secondIsQuote) {
+      startIdx = firstDataIdx + 3;
+    }
+  }
+
+  let section = 0; // 0 = bus, 1 = load, 2 = fixed shunt, 3 = generator, 4 = branch, 5 = transformer, 8 = switched shunt
   const buses: PsseBusLike[] = [];
   const loads: PsseLoadLike[] = [];
+  const fixedShunts: PsseFixedShuntLike[] = [];
+  const switchedShunts: PsseSwitchedShuntLike[] = [];
   const generators: PsseGeneratorLike[] = [];
   const branches: PsseBranchLike[] = [];
   const transformers: PsseTransformerLike[] = [];
   let loadMw = 0;
   let genMw = 0;
+  let shuntMvar = 0;
   let minVm = Number.POSITIVE_INFINITY;
   let maxVm = Number.NEGATIVE_INFINITY;
 
-  for (let i = 3; i < lines.length; i++) {
-    const line = (lines[i] ?? "").trim();
-    if (!line || line.startsWith("@!") || line.startsWith("/")) continue;
-    if (/^0\s*\/|^\s*Q\b/i.test(line)) {
+  for (let i = startIdx; i < lines.length; i++) {
+    const rawLine = (lines[i] ?? "").trim();
+    if (!rawLine || rawLine.startsWith("@!") || rawLine.startsWith("//") || rawLine.startsWith("/")) continue;
+    if (/^0(?:\s*,|\s*\/|\s*$)|^\s*Q\b/i.test(rawLine)) {
       section++;
       continue;
     }
+    const line = stripInlineComment(rawLine);
     const parts = line.split(",").map((p) => p.trim());
     if (section === 0 && parts.length >= 8) {
       const id = Number.parseInt(parts[0] || "0", 10);
@@ -194,8 +239,23 @@ function parsePsseRawClient(code: string) {
       const type = Number.parseInt(parts[3] || "1", 10) || 1;
       const vm = Number.parseFloat(parts[7] || "1.0");
       const va = Number.parseFloat(parts[8] || "0.0") || 0;
+      const nvhi = parts[9] ? Number.parseFloat(parts[9]) : undefined;
+      const nvlo = parts[10] ? Number.parseFloat(parts[10]) : undefined;
+      const evhi = parts[11] ? Number.parseFloat(parts[11]) : undefined;
+      const evlo = parts[12] ? Number.parseFloat(parts[12]) : undefined;
       if (id > 0) {
-        buses.push({ i: id, name, baseKv, ide: type, vm: Number.isNaN(vm) ? 1.0 : vm, va });
+        buses.push({
+          i: id,
+          name,
+          baseKv,
+          ide: type,
+          vm: Number.isNaN(vm) ? 1.0 : vm,
+          va,
+          nvhi: nvhi && !Number.isNaN(nvhi) ? nvhi : undefined,
+          nvlo: nvlo && !Number.isNaN(nvlo) ? nvlo : undefined,
+          evhi: evhi && !Number.isNaN(evhi) ? evhi : undefined,
+          evlo: evlo && !Number.isNaN(evlo) ? evlo : undefined,
+        });
       }
       if (!Number.isNaN(vm) && vm > 0) {
         if (vm < minVm) minVm = vm;
@@ -203,45 +263,118 @@ function parsePsseRawClient(code: string) {
       }
     } else if (section === 1 && parts.length >= 6) {
       const bus = Number.parseInt(parts[0] || "0", 10);
+      const id = (parts[1] || "1").replace(/^'|'$/g, "").trim() || "1";
+      const status = Number.parseInt(parts[2] || "1", 10);
       const pl = Number.parseFloat(parts[5] || "0");
       const ql = Number.parseFloat(parts[6] || "0") || 0;
       if (!Number.isNaN(pl)) {
-        loadMw += pl;
-        if (bus > 0) loads.push({ i: bus, id: "1", pl, ql, status: 1 });
+        if (status !== 0) loadMw += pl;
+        if (bus > 0) loads.push({ i: bus, id, pl, ql, status: Number.isNaN(status) ? 1 : status });
+      }
+    } else if (section === 2 && parts.length >= 5) {
+      const bus = Number.parseInt(parts[0] || "0", 10);
+      const id = (parts[1] || "1").replace(/^'|'$/g, "").trim() || "1";
+      const status = Number.parseInt(parts[2] || "1", 10);
+      const gl = Number.parseFloat(parts[3] || "0") || 0;
+      const bl = Number.parseFloat(parts[4] || "0") || 0;
+      if (bus > 0) {
+        if (status !== 0) shuntMvar += bl;
+        fixedShunts.push({ i: bus, id, status: Number.isNaN(status) ? 1 : status, gl, bl });
       }
     } else if (section === 3 && parts.length >= 3) {
       const bus = Number.parseInt(parts[0] || "0", 10);
+      const id = (parts[1] || "1").replace(/^'|'$/g, "").trim() || "1";
       const pg = Number.parseFloat(parts[2] || "0");
       const qg = Number.parseFloat(parts[3] || "0") || 0;
+      const stat = parts[14] !== undefined ? Number.parseInt(parts[14], 10) : 1;
+      const pt = parts[16] !== undefined ? Number.parseFloat(parts[16]) : undefined;
+      const pb = parts[17] !== undefined ? Number.parseFloat(parts[17]) : undefined;
       if (!Number.isNaN(pg)) {
-        genMw += pg;
-        if (bus > 0) generators.push({ i: bus, id: "1", pg, qg, stat: 1 });
+        if (stat !== 0) genMw += pg;
+        if (bus > 0) {
+          generators.push({
+            i: bus,
+            id,
+            pg,
+            qg,
+            stat: Number.isNaN(stat) ? 1 : stat,
+            pt: pt !== undefined && !Number.isNaN(pt) ? pt : undefined,
+            pb: pb !== undefined && !Number.isNaN(pb) ? pb : undefined,
+          });
+        }
       }
-    } else if (section === 4 && parts.length >= 4) {
+    } else if (section === 4 && parts.length >= 5) {
       const fromBus = Number.parseInt(parts[0] || "0", 10);
       const toBus = Math.abs(Number.parseInt(parts[1] || "0", 10));
+      const ckt = (parts[2] || "1").replace(/^'|'$/g, "").trim() || "1";
       const r = Number.parseFloat(parts[3] || "0.01") || 0.01;
       const x = Number.parseFloat(parts[4] || "0.05") || 0.05;
+      const b = Number.parseFloat(parts[5] || "0") || 0;
+      const rateA = Number.parseFloat(parts[6] || "0") || 0;
+      const st = parts[13] !== undefined ? Number.parseInt(parts[13], 10) : 1;
       if (fromBus > 0 && toBus > 0) {
-        branches.push({ i: fromBus, j: toBus, ckt: "1", r, x, b: 0, st: 1 });
+        branches.push({
+          i: fromBus,
+          j: toBus,
+          ckt,
+          r,
+          x,
+          b,
+          rateA,
+          st: Number.isNaN(st) ? 1 : st,
+        });
       }
     } else if (section === 5 && parts.length >= 2) {
       const bus1 = Number.parseInt(parts[0] || "0", 10);
       const bus2 = Number.parseInt(parts[1] || "0", 10);
+      const bus3 = Number.parseInt(parts[2] || "0", 10) || 0;
+      const ckt = (parts[3] || "1").replace(/^'|'$/g, "").trim() || "1";
+      const stat = parts[11] !== undefined ? Number.parseInt(parts[11], 10) : 1;
+      const line2 = stripInlineComment(lines[i + 1] ?? "")
+        .split(",")
+        .map((p) => p.trim());
+      const line3 = stripInlineComment(lines[i + 2] ?? "")
+        .split(",")
+        .map((p) => p.trim());
+      const r12 = Number.parseFloat(line2[0] || "0") || 0;
+      const x12 = Number.parseFloat(line2[1] || "0.05") || 0.05;
+      const windv1 = Number.parseFloat(line3[0] || "1.0") || 1.0;
       if (bus1 > 0 && bus2 > 0) {
-        transformers.push({ i: bus1, j: bus2, ckt: "1", stat: 1 });
+        transformers.push({
+          i: bus1,
+          j: bus2,
+          k: bus3,
+          ckt,
+          windv1,
+          r12,
+          x12,
+          stat: Number.isNaN(stat) ? 1 : stat,
+        });
+      }
+      // Advance past the 3 (for 2-winding) or 4 (for 3-winding) continuation lines
+      i += bus3 !== 0 ? 4 : 3;
+    } else if (section >= 8 && parts.length >= 10) {
+      const bus = Number.parseInt(parts[0] || "0", 10);
+      const stat = Number.parseInt(parts[3] || "1", 10);
+      const binit = Number.parseFloat(parts[9] || "0") || 0;
+      if (bus > 0 && !Number.isNaN(binit) && Math.abs(binit) > 0) {
+        if (stat !== 0) shuntMvar += binit;
+        switchedShunts.push({ i: bus, stat: Number.isNaN(stat) ? 1 : stat, binit });
       }
     }
   }
   return {
     buses,
     loads,
+    fixedShunts,
+    switchedShunts,
     generators,
     branches,
     transformers,
     busCount: buses.length > 0 ? buses.length : undefined,
     totalLoadMw: loadMw > 0 ? Number(loadMw.toFixed(1)) : undefined,
     totalGenMw: genMw > 0 ? Number(genMw.toFixed(1)) : undefined,
+    totalShuntMvar: Math.abs(shuntMvar) > 0 ? Number(shuntMvar.toFixed(1)) : undefined,
     branchCount: branches.length > 0 ? branches.length : undefined,
     minVm: Number.isFinite(minVm) ? minVm : undefined,
     maxVm: Number.isFinite(maxVm) ? maxVm : undefined,
@@ -280,9 +413,6 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
   const parsedClient = useMemo(() => (rawText ? parsePsseRawClient(rawText) : undefined), [rawText]);
 
   const sanitizedSvg = useMemo(() => {
-    if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
-    }
     const clientBuses: PsseBusLike[] =
       parsedClient?.buses && parsedClient.buses.length > 0
         ? parsedClient.buses
@@ -300,14 +430,19 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           title1: title,
           buses: clientBuses,
           loads: parsedClient?.loads || [],
+          fixedShunts: parsedClient?.fixedShunts || [],
+          switchedShunts: parsedClient?.switchedShunts || [],
           generators: parsedClient?.generators || [],
           branches: parsedClient?.branches || [],
           transformers: parsedClient?.transformers || [],
         });
         return sanitizeSvgMarkup(built, { isFullScreen });
       } catch {
-        return "";
+        // Fallback to pre-rendered svg if available
       }
+    }
+    if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
     }
     return "";
   }, [viewConfig.svg, viewConfig.buses, parsedClient, title, isFullScreen]);

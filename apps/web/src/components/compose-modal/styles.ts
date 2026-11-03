@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import styled from "styled-components";
+import styledImport from "styled-components";
 
-export const Overlay = styled.div`
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
+
+export const Overlay = styled.div<{
+  $isFullPageNotebook?: boolean;
+  $isExpanded?: boolean;
+}>`
   position: fixed;
   top: 0;
   left: 0;
@@ -15,8 +21,13 @@ export const Overlay = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 6vh 16px;
+  padding: ${(p) => (p.$isFullPageNotebook ? "0" : p.$isExpanded ? "3dvh 16px" : "6dvh 16px")};
   overflow-y: auto;
+
+  @media (max-width: 767px) {
+    padding: 0;
+    align-items: stretch;
+  }
 `;
 
 export const NestedOverlay = styled.div`
@@ -36,21 +47,38 @@ export const NestedOverlay = styled.div`
   overflow-y: auto;
 `;
 
-export const ModalPanel = styled.div`
+export const ModalPanel = styled.div<{
+  $isFullPageNotebook?: boolean;
+  $isExpanded?: boolean;
+  $isDrafts?: boolean;
+}>`
   background: var(--surface-overlay, rgba(14, 20, 36, 0.95));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  width: 100%;
-  max-width: 600px;
-  border-radius: 16px;
-  border: 1px solid var(--color-border-glass);
-  box-shadow: var(--glow-card);
+  width: ${(p) => (p.$isFullPageNotebook ? "100vw" : "100%")};
+  max-width: ${(p) => (p.$isDrafts ? "600px" : p.$isFullPageNotebook ? "100vw" : p.$isExpanded ? "1180px" : "600px")};
+  height: ${(p) => (p.$isFullPageNotebook ? "100dvh" : "auto")};
+  max-height: ${(p) => (p.$isFullPageNotebook ? "100dvh" : p.$isExpanded ? "92dvh" : "86dvh")};
+  border-radius: ${(p) => (p.$isFullPageNotebook ? "0" : "16px")};
+  border: ${(p) => (p.$isFullPageNotebook ? "none" : "1px solid var(--color-border-glass)")};
+  box-shadow: var(--ms-shadow-pop, var(--glow-card));
   display: flex;
   flex-direction: column;
   overflow: visible;
-  max-height: 88dvh;
-  min-height: 250px;
+  min-height: 0;
+  margin: 0 auto;
   transition: max-width 0.2s ease;
+
+  @media (max-width: 767px) {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 0;
+    border: none;
+    height: var(--compose-vvh, 100dvh);
+    max-height: var(--compose-vvh, 100dvh);
+    min-height: var(--compose-vvh, 100dvh);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 `;
 
 export const ConfirmModalPanel = styled.div`
@@ -87,16 +115,28 @@ export const ConfirmModalPanel = styled.div`
 export const Header = styled.div`
   display: flex;
   align-items: center;
-  padding: 12px 16px 4px;
+  padding: 10px 16px;
   flex-shrink: 0;
+
+  @media (max-width: 640px) {
+    padding: 8px 12px;
+
+    .desktop-only-action {
+      display: none !important;
+    }
+  }
 `;
 
 export const Body = styled.div`
-  padding: 4px 20px 20px;
+  padding: 14px 20px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+
+  @media (max-width: 640px) {
+    padding: 10px 14px 14px;
+  }
 `;

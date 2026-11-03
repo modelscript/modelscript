@@ -54,19 +54,34 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
       psseCase.dyr?.generatorsByBusId.get(genId) ??
       psseCase.dyr?.generatorsByBusId.get(String(gen.i)) ??
       psseCase.dyr?.records?.find(
-        (m) => m.ibus === gen.i && (m.model === "GENROU" || m.model === "GENSAL" || m.model === "GENCLS"),
+        (m) =>
+          m.ibus === gen.i &&
+          (m.model === "GENROU" || m.model === "GENSAL" || m.model === "GENCLS" || m.model === "REGC_A"),
       );
     const dyrExc =
       psseCase.dyr?.excitersByBusId.get(genId) ??
       psseCase.dyr?.excitersByBusId.get(String(gen.i)) ??
       psseCase.dyr?.records?.find(
-        (m) => m.ibus === gen.i && (m.model === "EXST1" || m.model === "IEEET1" || m.model === "SEXS"),
+        (m) =>
+          m.ibus === gen.i &&
+          (m.model === "EXST1" ||
+            m.model === "IEEET1" ||
+            m.model === "SEXS" ||
+            m.model === "ESDC1A" ||
+            m.model === "REEC_A"),
       );
     const dyrGov =
       psseCase.dyr?.governorsByBusId.get(genId) ??
       psseCase.dyr?.governorsByBusId.get(String(gen.i)) ??
       psseCase.dyr?.records?.find(
-        (m) => m.ibus === gen.i && (m.model === "TGOV1" || m.model === "IEEEG1" || m.model === "HYGOV"),
+        (m) =>
+          m.ibus === gen.i &&
+          (m.model === "TGOV1" ||
+            m.model === "IEEEG1" ||
+            m.model === "HYGOV" ||
+            m.model === "GGOV1" ||
+            m.model === "REPC_A" ||
+            m.model === "WTGT_A"),
       );
 
     const H = dyrGen?.namedParams["H"] !== undefined && dyrGen.namedParams["H"] > 0 ? dyrGen.namedParams["H"] : 3.5;
@@ -90,12 +105,21 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
     const omegaDiff = dae.addBinaryExpr(BinOp.Sub, omegaExpr, dae.addRealLiteral(omega0));
     dae.addEquation(EqKind.Simple, derDelta, omegaDiff);
 
-    // Optional TGOV1 governor state: Pm_${genId}
+    // Optional TGOV1 / IEEEG1 / GGOV1 / REPC_A governor / plant controller state: Pm_${genId}
     let pmExpr = dae.addRealLiteral(gen.pg);
     if (dyrGov) {
       const pmVar = dae.addVariable(`Pm_${genId}`, VarType.Real, Variability.Continuous, Causality.Local, gen.pg);
-      const rDroop = Math.max(0.005, dyrGov.namedParams["R"] ?? dyrGov.con[0] ?? 0.05);
-      const t1Gov = Math.max(0.01, dyrGov.namedParams["T1"] ?? dyrGov.con[1] ?? 0.5);
+      const rDroop = Math.max(
+        0.005,
+        dyrGov.namedParams["R"] ??
+          (dyrGov.namedParams["K"] ? 1.0 / Math.max(1.0, dyrGov.namedParams["K"]) : undefined) ??
+          dyrGov.con[0] ??
+          0.05,
+      );
+      const t1Gov = Math.max(
+        0.01,
+        dyrGov.namedParams["T1"] ?? dyrGov.namedParams["Tg"] ?? dyrGov.namedParams["Tact"] ?? dyrGov.con[1] ?? 0.5,
+      );
       const derPm = dae.addDer(pmVar);
       const lhsGov = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(t1Gov), derPm);
       const droopGain = sbase / (rDroop * omega0);
@@ -107,7 +131,7 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
       pmExpr = pmNameExpr;
     }
 
-    // Optional EXST1 exciter state: Efd_${genId}
+    // Optional EXST1 / ESDC1A / REEC_A exciter / voltage control state: Efd_${genId}
     let efdExpr = dae.addRealLiteral(1.05);
     const vrBusExpr = bus ? dae.addNameExpr(`V_${gen.i}_r`) : dae.addRealLiteral(1.0);
     const viBusExpr = bus ? dae.addNameExpr(`V_${gen.i}_i`) : dae.addRealLiteral(0.0);
@@ -123,8 +147,14 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
     if (dyrExc) {
       const efd0 = 1.05;
       const efdVar = dae.addVariable(`Efd_${genId}`, VarType.Real, Variability.Continuous, Causality.Local, efd0);
-      const kaExc = Math.max(1.0, dyrExc.namedParams["KA"] ?? dyrExc.con[2] ?? 200.0);
-      const taExc = Math.max(0.005, dyrExc.namedParams["TA"] ?? dyrExc.con[3] ?? 0.02);
+      const kaExc = Math.max(
+        1.0,
+        dyrExc.namedParams["KA"] ?? dyrExc.namedParams["Kqv"] ?? dyrExc.namedParams["K"] ?? dyrExc.con[2] ?? 200.0,
+      );
+      const taExc = Math.max(
+        0.005,
+        dyrExc.namedParams["TA"] ?? dyrExc.namedParams["Tiq"] ?? dyrExc.namedParams["TE"] ?? dyrExc.con[3] ?? 0.02,
+      );
       const vRef = (bus?.vm ?? 1.0) + efd0 / kaExc;
       const derEfd = dae.addDer(efdVar);
       const lhsExc = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(taExc), derEfd);
@@ -136,7 +166,8 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
       efdExpr = efdNameExpr;
     }
 
-    // Optional GENROU / GENSAL transient flux linkage states: Eqp_${genId} (E'_q) and Edp_${genId} (E'_d)
+    // Optional GENROU / GENSAL transient flux linkage states: Eqp_${genId} (E'_q) and Edp_${genId} (E'_d),
+    // or REGC_A inverter current regulator state Ip_${genId}
     let eqpExpr: number | null = null;
     if (dyrGen && (dyrGen.model === "GENROU" || dyrGen.model === "GENSAL")) {
       const eqp0 = 1.05;
@@ -176,6 +207,17 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
       dae.addEquation(EqKind.Simple, lhsEdp, rhsEdp);
 
       eqpExpr = eqpNameExpr;
+    } else if (dyrGen && dyrGen.model === "REGC_A") {
+      // WECC REGC_A converter current regulator lag state: Tg * der(Ip) = (Pm / Sbase) - Ip
+      const tgConv = Math.max(0.005, dyrGen.namedParams["Tg"] ?? dyrGen.con[0] ?? 0.02);
+      const ip0 = gen.pg / sbase;
+      const ipVar = dae.addVariable(`Ip_${genId}`, VarType.Real, Variability.Continuous, Causality.Local, ip0);
+      const derIp = dae.addDer(ipVar);
+      const lhsIp = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(tgConv), derIp);
+      const ipCmd = dae.addBinaryExpr(BinOp.Div, pmExpr, dae.addRealLiteral(sbase));
+      const ipNameExpr = dae.addNameExpr(`Ip_${genId}`);
+      const rhsIp = dae.addBinaryExpr(BinOp.Sub, ipCmd, ipNameExpr);
+      dae.addEquation(EqKind.Simple, lhsIp, rhsIp);
     }
 
     // Eq 2: (2H / omega0) * der(omega) = Pm - Pe - D * (omega - omega0)

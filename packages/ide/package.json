@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@mlc-ai/web-llm": "^0.2.85",
+    "@modelscript/automationml": "*",
     "@modelscript/c": "*",
     "@modelscript/cad": "*",
     "@modelscript/cfd": "*",
@@ -27,8 +28,10 @@
     "@modelscript/lps": "*",
     "@modelscript/lsp": "*",
     "@modelscript/olga": "*",
+    "@modelscript/oscal": "*",
     "@modelscript/owl2": "*",
     "@modelscript/psse": "*",
+    "@modelscript/qif": "*",
     "@modelscript/rocets": "*",
     "@modelscript/runtime": "*",
     "@modelscript/scad": "*",

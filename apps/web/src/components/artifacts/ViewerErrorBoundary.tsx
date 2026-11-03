@@ -3,8 +3,11 @@
 import { AlertIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import styled from "styled-components";
+import styledImport from "styled-components";
 import Box from "../Box";
+
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 interface Props {
   children: ReactNode;

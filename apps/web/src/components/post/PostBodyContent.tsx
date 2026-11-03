@@ -108,7 +108,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
     const primaryArtifactId = displayPost.artifact_view_id ?? notebookData.artifactIds?.[0];
     const primaryArtifactView =
       (primaryArtifactId ? displayPost.artifact_views?.[primaryArtifactId] : undefined) || displayPost.artifact_view;
-    const isMultiFileTutorial = Boolean(
+    const isMultiFileArticle = Boolean(
       primaryArtifactView &&
       isMultiFileArtifact({
         ...primaryArtifactView,
@@ -124,7 +124,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
         gap={isDetailView ? 2.5 : 2}
         style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}
       >
-        {/* Tutorial Hero Banner */}
+        {/* Article Hero Banner */}
         <PostNotebookHeader
           notebookData={notebookData}
           readTimeMinutes={readTimeMinutes}
@@ -401,7 +401,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                     fontFamily: "inherit",
                   }}
                 >
-                  {isMultiFileTutorial ? "▶ Open in Web IDE" : "▶ Open in Playground"}
+                  {isMultiFileArticle ? "▶ Open in Web IDE" : "▶ Open in Playground"}
                 </button>
               </div>
             </div>

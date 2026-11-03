@@ -4,7 +4,10 @@
  * PSS/E Single-Line Diagram (SLD) Builder.
  *
  * Translates PSS/E base cases into AntV X6 diagram graphs and standalone SVGs
- * with voltage-level color coding and standard electrical power symbols.
+ * with voltage-level color coding, Sugiyama barycenter crossing minimization,
+ * IEEE/IEC electrical equipment symbols (Synchronous Generators, Wind/Solar IBRs,
+ * Synchronous Condensers, Shunt Capacitor/Reactor Banks, 2W/3W Transformers, HVDC),
+ * and AC power-flow telemetry overlays.
  */
 
 export interface PsseBusLike {
@@ -14,6 +17,12 @@ export interface PsseBusLike {
   ide: number;
   vm?: number | undefined;
   va?: number | undefined;
+  nvhi?: number | undefined;
+  nvlo?: number | undefined;
+  evhi?: number | undefined;
+  evlo?: number | undefined;
+  area?: number | undefined;
+  zone?: number | undefined;
   position?: { x: number; y: number } | undefined;
 }
 
@@ -34,6 +43,11 @@ export interface PsseTransformerLike {
   k?: number | undefined;
   ckt: string;
   windv1?: number | undefined;
+  windv2?: number | undefined;
+  ang1?: number | undefined;
+  r12?: number | undefined;
+  x12?: number | undefined;
+  sbase12?: number | undefined;
   stat: number;
 }
 
@@ -42,6 +56,12 @@ export interface PsseGeneratorLike {
   id: string;
   pg: number;
   qg: number;
+  qt?: number | undefined;
+  qb?: number | undefined;
+  vs?: number | undefined;
+  mbase?: number | undefined;
+  pt?: number | undefined;
+  pb?: number | undefined;
   stat: number;
 }
 
@@ -50,47 +70,116 @@ export interface PsseLoadLike {
   id: string;
   pl: number;
   ql: number;
+  ip?: number | undefined;
+  iq?: number | undefined;
+  yp?: number | undefined;
+  yq?: number | undefined;
   status: number;
 }
 
+export interface PsseFixedShuntLike {
+  i: number;
+  id: string;
+  status: number;
+  gl: number;
+  bl: number;
+}
+
+export interface PsseSwitchedShuntLike {
+  i: number;
+  modsw?: number | undefined;
+  stat: number;
+  vswhi?: number | undefined;
+  vswlo?: number | undefined;
+  binit: number;
+}
+
+export interface PsseTwoTerminalDcLike {
+  i?: number | undefined;
+  name?: string | undefined;
+  mdc: number;
+  rcomp?: number | undefined;
+  setvl?: number | undefined;
+  vschd?: number | undefined;
+  ipr?: number | undefined;
+  ipi?: number | undefined;
+}
+
+export interface PsseVscDcLike {
+  name: string;
+  mdc: number;
+  ibus1?: number | undefined;
+  ibus2?: number | undefined;
+}
+
+/**
+ * Supports both PssePowerFlowOverlay (`pGen`, `qGen`, `pLoad`, `qLoad`)
+ * and `BusPowerFlowResult` from `@modelscript/psse` (`pgMw`, `qgMvar`, `plMw`, `qlMvar`).
+ */
 export interface PsseBusPowerFlowOverlay {
   busNumber: number;
   vm: number;
   va: number;
-  pGen: number;
-  qGen: number;
-  pLoad: number;
-  qLoad: number;
+  pGen?: number | undefined;
+  qGen?: number | undefined;
+  pLoad?: number | undefined;
+  qLoad?: number | undefined;
+  pgMw?: number | undefined;
+  qgMvar?: number | undefined;
+  plMw?: number | undefined;
+  qlMvar?: number | undefined;
 }
 
+/**
+ * Supports both PssePowerFlowOverlay (`pFrom`, `qFrom`, `pTo`, `qTo`, `pLoss`, `qLoss`, `loadingPct`)
+ * and `BranchPowerFlowResult` from `@modelscript/psse` (`pFromMw`, `qFromMvar`, `pToMw`, `qToMvar`, `lossMw`, `lossMvar`, `loadingPercent`).
+ */
 export interface PsseBranchPowerFlowOverlay {
   fromBus: number;
   toBus: number;
   ckt: string;
-  pFrom: number;
-  qFrom: number;
-  pTo: number;
-  qTo: number;
-  pLoss: number;
-  qLoss: number;
-  loadingPct: number;
+  pFrom?: number | undefined;
+  qFrom?: number | undefined;
+  pTo?: number | undefined;
+  qTo?: number | undefined;
+  pLoss?: number | undefined;
+  qLoss?: number | undefined;
+  loadingPct?: number | undefined;
+  pFromMw?: number | undefined;
+  qFromMvar?: number | undefined;
+  pToMw?: number | undefined;
+  qToMvar?: number | undefined;
+  lossMw?: number | undefined;
+  lossMvar?: number | undefined;
+  mvaFlow?: number | undefined;
+  loadingPercent?: number | undefined;
 }
 
 export interface PssePowerFlowOverlay {
   converged: boolean;
   iterations?: number | undefined;
   maxMismatch?: number | undefined;
+  totalGenMw?: number | undefined;
+  totalLoadMw?: number | undefined;
+  totalLossMw?: number | undefined;
   buses: PsseBusPowerFlowOverlay[];
   branches: PsseBranchPowerFlowOverlay[];
 }
 
+export type PsseSldOverlayMode = "powerflow" | "impedance" | "voltage" | "shortcircuit";
+
 export interface PsseCaseLike {
   title1?: string | undefined;
+  sbase?: number | undefined;
   buses: Map<number, PsseBusLike> | PsseBusLike[];
   branches: PsseBranchLike[];
   transformers?: PsseTransformerLike[] | undefined;
   generators?: PsseGeneratorLike[] | undefined;
   loads?: PsseLoadLike[] | undefined;
+  fixedShunts?: PsseFixedShuntLike[] | undefined;
+  switchedShunts?: PsseSwitchedShuntLike[] | undefined;
+  twoTerminalDc?: PsseTwoTerminalDcLike[] | undefined;
+  vscDc?: PsseVscDcLike[] | undefined;
   powerflow?: PssePowerFlowOverlay | undefined;
 }
 
@@ -115,6 +204,8 @@ export interface PsseDiagramGraph {
   cells: PsseDiagramCell[];
 }
 
+export type PsseGenKind = "sync" | "wind" | "solar" | "condenser";
+
 /**
  * Maps a nominal voltage to a standard transmission color.
  */
@@ -132,6 +223,170 @@ function formatKv(baseKv: number): string {
   return Number.isInteger(baseKv) ? `${baseKv} kV` : `${baseKv.toFixed(1)} kV`;
 }
 
+function escapeXml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+interface NormalizedBusPf {
+  busNumber: number;
+  vm: number;
+  va: number;
+  pGen: number;
+  qGen: number;
+  pLoad: number;
+  qLoad: number;
+}
+
+interface NormalizedBranchPf {
+  fromBus: number;
+  toBus: number;
+  ckt: string;
+  pFrom: number;
+  qFrom: number;
+  pTo: number;
+  qTo: number;
+  pLoss: number;
+  qLoss: number;
+  mvaFlow: number;
+  loadingPct: number;
+}
+
+function normalizeBusPf(b: PsseBusPowerFlowOverlay): NormalizedBusPf {
+  return {
+    busNumber: b.busNumber,
+    vm: b.vm ?? 1.0,
+    va: b.va ?? 0.0,
+    pGen: b.pGen ?? b.pgMw ?? 0.0,
+    qGen: b.qGen ?? b.qgMvar ?? 0.0,
+    pLoad: b.pLoad ?? b.plMw ?? 0.0,
+    qLoad: b.qLoad ?? b.qlMvar ?? 0.0,
+  };
+}
+
+function normalizeBranchPf(br: PsseBranchPowerFlowOverlay): NormalizedBranchPf {
+  const pFrom = br.pFrom ?? br.pFromMw ?? 0.0;
+  const qFrom = br.qFrom ?? br.qFromMvar ?? 0.0;
+  const pTo = br.pTo ?? br.pToMw ?? -pFrom;
+  const qTo = br.qTo ?? br.qToMvar ?? -qFrom;
+  const pLoss = br.pLoss ?? br.lossMw ?? Math.abs(pFrom + pTo);
+  const qLoss = br.qLoss ?? br.lossMvar ?? Math.abs(qFrom + qTo);
+  const mvaFlow = br.mvaFlow ?? Math.hypot(pFrom, qFrom);
+  const loadingPct = br.loadingPct ?? br.loadingPercent ?? 0.0;
+  return {
+    fromBus: br.fromBus,
+    toBus: br.toBus,
+    ckt: br.ckt,
+    pFrom,
+    qFrom,
+    pTo,
+    qTo,
+    pLoss,
+    qLoss,
+    mvaFlow,
+    loadingPct,
+  };
+}
+
+/**
+ * Classifies a generator into Synchronous, Wind IBR, Solar PV IBR, or Synchronous Condenser
+ * based on its machine ID, host bus name, and active/reactive power limits.
+ */
+export function classifyGeneratorKind(g: PsseGeneratorLike, busName?: string): PsseGenKind {
+  const idUpper = g.id.trim().toUpperCase();
+  const nameUpper = (busName ?? "").toUpperCase();
+
+  if (
+    idUpper.startsWith("W") ||
+    nameUpper.includes("WIND") ||
+    nameUpper.includes("WTG") ||
+    nameUpper.includes("OFFSHORE")
+  ) {
+    return "wind";
+  }
+  if (idUpper.startsWith("S") && !idUpper.startsWith("SC") && !idUpper.startsWith("SYNC")) {
+    return "solar";
+  }
+  if (
+    idUpper.startsWith("PV") ||
+    nameUpper.includes("SOLAR") ||
+    nameUpper.includes("PV") ||
+    nameUpper.includes("BESS")
+  ) {
+    return "solar";
+  }
+  if (
+    idUpper.startsWith("SC") ||
+    idUpper.startsWith("CS") ||
+    nameUpper.includes("COND") ||
+    (Math.abs(g.pg) < 0.05 && Math.abs(g.qg) > 0.1 && (g.pt === undefined || Math.abs(g.pt) < 0.05))
+  ) {
+    return "condenser";
+  }
+  return "sync";
+}
+
+/**
+ * Sugiyama barycenter ordering within voltage-level rows to minimize edge crossings.
+ */
+function orderRowsByBarycenter(rows: PsseBusLike[][], neighbors: Map<number, number[]>): void {
+  if (rows.length <= 1 && (rows[0]?.length ?? 0) <= 2) return;
+
+  const getRowPosMap = (): Map<number, { row: number; col: number }> => {
+    const map = new Map<number, { row: number; col: number }>();
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r]!;
+      for (let c = 0; c < row.length; c++) {
+        map.set(row[c]!.i, { row: r, col: c });
+      }
+    }
+    return map;
+  };
+
+  for (let pass = 0; pass < 4; pass++) {
+    // Top-down sweep
+    for (let r = 1; r < rows.length; r++) {
+      const posMap = getRowPosMap();
+      const row = rows[r]!;
+      if (row.length <= 1) continue;
+      const weights = new Map<number, number>();
+      row.forEach((b, idx) => {
+        const nbrs = neighbors.get(b.i) ?? [];
+        const adjCols: number[] = [];
+        for (const nb of nbrs) {
+          const p = posMap.get(nb);
+          if (p && p.row <= r) {
+            adjCols.push(p.col);
+          }
+        }
+        const avg = adjCols.length > 0 ? adjCols.reduce((a, v) => a + v, 0) / adjCols.length : idx;
+        weights.set(b.i, avg);
+      });
+      row.sort((a, b) => (weights.get(a.i) ?? 0) - (weights.get(b.i) ?? 0) || a.i - b.i);
+    }
+
+    // Bottom-up sweep
+    for (let r = rows.length - 2; r >= 0; r--) {
+      const posMap = getRowPosMap();
+      const row = rows[r]!;
+      if (row.length <= 1) continue;
+      const weights = new Map<number, number>();
+      row.forEach((b, idx) => {
+        const nbrs = neighbors.get(b.i) ?? [];
+        const adjCols: number[] = [];
+        for (const nb of nbrs) {
+          const p = posMap.get(nb);
+          if (p && p.row >= r) {
+            adjCols.push(p.col);
+          }
+        }
+        const avg = adjCols.length > 0 ? adjCols.reduce((a, v) => a + v, 0) / adjCols.length : idx;
+        weights.set(b.i, avg);
+      });
+      row.sort((a, b) => (weights.get(a.i) ?? 0) - (weights.get(b.i) ?? 0) || a.i - b.i);
+    }
+  }
+}
+
 /**
  * Builds an interactive AntV X6 graph model for a PSS/E base case,
  * optionally overlaid with solved AC power-flow telemetry (voltages, angles,
@@ -140,19 +395,33 @@ function formatKv(baseKv: number): string {
 export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay): PsseDiagramGraph {
   const cells: PsseDiagramCell[] = [];
   const pf = powerflow ?? c.powerflow;
-  const pfBusMap = new Map<number, PsseBusPowerFlowOverlay>();
-  const pfBranchMap = new Map<string, PsseBranchPowerFlowOverlay>();
+  const pfBusMap = new Map<number, NormalizedBusPf>();
+  const pfBranchMap = new Map<string, NormalizedBranchPf>();
 
   if (pf?.buses) {
     for (const b of pf.buses) {
-      pfBusMap.set(b.busNumber, b);
+      pfBusMap.set(b.busNumber, normalizeBusPf(b));
     }
   }
   if (pf?.branches) {
     for (const br of pf.branches) {
-      const key = `${br.fromBus}_${br.toBus}_${br.ckt.trim() || "1"}`;
+      const norm = normalizeBranchPf(br);
+      const ckt = norm.ckt.trim() || "1";
+      const key = `${norm.fromBus}_${norm.toBus}_${ckt}`;
       if (!pfBranchMap.has(key)) {
-        pfBranchMap.set(key, br);
+        pfBranchMap.set(key, norm);
+      }
+      const revKey = `${norm.toBus}_${norm.fromBus}_${ckt}`;
+      if (!pfBranchMap.has(revKey)) {
+        pfBranchMap.set(revKey, {
+          ...norm,
+          fromBus: norm.toBus,
+          toBus: norm.fromBus,
+          pFrom: norm.pTo,
+          qFrom: norm.qTo,
+          pTo: norm.pFrom,
+          qTo: norm.qFrom,
+        });
       }
     }
   }
@@ -163,12 +432,59 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
     busMap.set(b.i, b);
   }
 
+  // Build adjacency map for Sugiyama crossing minimization
+  const neighbors = new Map<number, number[]>();
+  const addNeighbor = (u: number, v: number): void => {
+    if (!u || !v || u === v) return;
+    let listU = neighbors.get(u);
+    if (!listU) {
+      listU = [];
+      neighbors.set(u, listU);
+    }
+    if (!listU.includes(v)) listU.push(v);
+
+    let listV = neighbors.get(v);
+    if (!listV) {
+      listV = [];
+      neighbors.set(v, listV);
+    }
+    if (!listV.includes(u)) listV.push(u);
+  };
+
+  for (const br of c.branches) {
+    if (br.st === 1) addNeighbor(br.i, br.j);
+  }
+  if (c.transformers) {
+    for (const t of c.transformers) {
+      if (t.stat !== 0) {
+        addNeighbor(t.i, t.j);
+        if (t.k) {
+          addNeighbor(t.i, t.k);
+          addNeighbor(t.j, t.k);
+        }
+      }
+    }
+  }
+
   // Count in-service generators per bus so solved bus generation can be apportioned
-  const inServiceGenCountByBus = new Map<number, number>();
+  const inServiceGensByBus = new Map<number, PsseGeneratorLike[]>();
   if (c.generators) {
     for (const g of c.generators) {
       if (g.stat === 1) {
-        inServiceGenCountByBus.set(g.i, (inServiceGenCountByBus.get(g.i) ?? 0) + 1);
+        const arr = inServiceGensByBus.get(g.i) ?? [];
+        arr.push(g);
+        inServiceGensByBus.set(g.i, arr);
+      }
+    }
+  }
+
+  const inServiceLoadsByBus = new Map<number, PsseLoadLike[]>();
+  if (c.loads) {
+    for (const l of c.loads) {
+      if (l.status === 1) {
+        const arr = inServiceLoadsByBus.get(l.i) ?? [];
+        arr.push(l);
+        inServiceLoadsByBus.set(l.i, arr);
       }
     }
   }
@@ -204,7 +520,7 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
     const rows: PsseBusLike[][] = [];
     for (const tier of rawTiers) {
       if (tier.length <= maxCols) {
-        rows.push(tier);
+        rows.push([...tier]);
       } else {
         const perRow = Math.min(maxCols, Math.ceil(tier.length / Math.ceil(tier.length / maxCols)));
         for (let i = 0; i < tier.length; i += perRow) {
@@ -213,21 +529,24 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
       }
     }
 
-    const startY = 140;
-    const rowSpacingY = 220;
-    const busSpacingX = 240;
+    // Apply Sugiyama barycenter ordering within rows to minimize crossings
+    orderRowsByBarycenter(rows, neighbors);
+
+    const startY = 150;
+    const rowSpacingY = 230;
+    const busSpacingX = 250;
 
     for (let rIdx = 0; rIdx < rows.length; rIdx++) {
       const rowBuses = rows[rIdx]!;
       const yBase = startY + rIdx * rowSpacingY;
       const rowWidth = (rowBuses.length - 1) * busSpacingX;
-      const startX = Math.max(150, Math.round(520 - rowWidth / 2) + (rIdx % 2 === 1 ? 45 : 0));
+      const startX = Math.max(160, Math.round(540 - rowWidth / 2) + (rIdx % 2 === 1 && rowBuses.length > 1 ? 35 : 0));
 
       for (let bIdx = 0; bIdx < rowBuses.length; bIdx++) {
         const b = rowBuses[bIdx]!;
         const x = startX + bIdx * busSpacingX;
-        // Slight vertical stagger on middle buses in a row so horizontal tie-lines don't overlap busbars
-        const staggerY = rowBuses.length >= 3 && bIdx % 2 === 1 ? 28 : 0;
+        // Slight vertical stagger on middle buses in a wide row so horizontal tie-lines don't overlap busbars
+        const staggerY = rowBuses.length >= 3 && bIdx % 2 === 1 ? 30 : 0;
         busCoords.set(b.i, { x, y: yBase + staggerY });
       }
     }
@@ -241,34 +560,40 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
     const vm = pfBus?.vm ?? b.vm;
     const va = pfBus?.va ?? b.va;
 
-    let strokeColor = getVoltageColor(b.baseKv);
+    const voltageColor = getVoltageColor(b.baseKv);
+    let strokeColor = voltageColor;
     let fillColor = "#1e293b";
     let voltageStatus: "normal" | "warning" | "violation" = "normal";
 
+    // Respect bus-specific normal (nvlo/nvhi) and emergency (evlo/evhi) voltage limits
+    const nvlo = b.nvlo && b.nvlo > 0 ? b.nvlo : 0.95;
+    const nvhi = b.nvhi && b.nvhi > 0 ? b.nvhi : 1.05;
+    const evlo = b.evlo && b.evlo > 0 ? b.evlo : Math.min(0.9, nvlo - 0.03);
+    const evhi = b.evhi && b.evhi > 0 ? b.evhi : Math.max(1.1, nvhi + 0.03);
+
     if (vm !== undefined && vm > 0) {
-      if (vm < 0.95 || vm > 1.05) {
-        strokeColor = "#ef4444"; // ANSI C84.1 Emergency Violation Red
+      if (vm < evlo || vm > evhi || vm < 0.92 || vm > 1.08) {
+        strokeColor = "#ef4444"; // Emergency Voltage Violation Red
         fillColor = "#3b1219";
         voltageStatus = "violation";
-      } else if (vm < 0.97 || vm > 1.03) {
-        strokeColor = "#f59e0b"; // Near-limit Warning Amber
+      } else if (vm < nvlo || vm > nvhi) {
         fillColor = "#2e2111";
         voltageStatus = "warning";
       }
     }
 
-    const typeLabel = b.ide === 3 ? "Slack" : b.ide === 2 ? "PV" : "PQ";
+    const typeLabel = b.ide === 3 ? "Slack" : b.ide === 2 ? "PV" : b.ide === 4 ? "Isolated" : "PQ";
     const vmText = vm !== undefined && vm > 0 ? ` · ${vm.toFixed(3)} pu` : "";
-    const vaText = va !== undefined && pfBus ? ` ∠${va.toFixed(1)}°` : "";
+    const vaText = va !== undefined && (pfBus !== undefined || Math.abs(va) > 1e-3) ? ` ∠${va.toFixed(1)}°` : "";
     const busLabel = `Bus ${b.i}: ${b.name.trim()}\n${formatKv(b.baseKv)} (${typeLabel}${vmText}${vaText})`;
 
     cells.push({
       id: `bus_${b.i}`,
       shape: "rect",
-      x: x - 74,
-      y: y - 19,
-      width: 148,
-      height: 38,
+      x: x - 78,
+      y: y - 20,
+      width: 156,
+      height: 40,
       label: busLabel,
       attrs: {
         body: {
@@ -289,33 +614,52 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
       },
       data: {
         busNumber: b.i,
+        busName: b.name.trim(),
         baseKv: b.baseKv,
+        voltageColor,
         busType: b.ide,
         vm,
         va,
+        nvlo,
+        nvhi,
+        evlo,
+        evhi,
         voltageStatus,
       },
     });
   }
 
-  // 2. Add Generators attached above buses
-  if (c.generators) {
-    for (const g of c.generators) {
-      if (g.stat !== 1) continue;
-      const bPos = busCoords.get(g.i);
-      if (!bPos) continue;
+  // 2. Add Generators attached above buses (fanning out multiple units per bus)
+  for (const [busNum, gens] of inServiceGensByBus.entries()) {
+    const bPos = busCoords.get(busNum);
+    if (!bPos) continue;
+    const hostBus = busMap.get(busNum);
+    const pfBus = pfBusMap.get(busNum);
+    const genCount = gens.length;
 
-      const pfBus = pfBusMap.get(g.i);
-      const genCount = inServiceGenCountByBus.get(g.i) ?? 1;
-      const pGen = pfBus ? pfBus.pGen / genCount : g.pg;
-      const qGen = pfBus ? pfBus.qGen / genCount : g.qg;
+    // Total nominal pg for proportional sharing when solved pfBus is present
+    const totalSchedPg = gens.reduce((acc, g) => acc + Math.abs(g.pg), 0);
+    const totalSchedQg = gens.reduce((acc, g) => acc + Math.abs(g.qg), 0);
 
-      const genNodeId = `gen_${g.i}_${g.id.trim() || "1"}`;
-      const gx = bPos.x;
-      const gy = bPos.y - 68;
-      const genLabel = pfBus
-        ? `G~ ${pGen.toFixed(1)} MW\n${qGen >= 0 ? "+" : ""}${qGen.toFixed(1)} Mvar`
-        : `G~ (${g.pg.toFixed(0)} MW)`;
+    gens.forEach((g, idx) => {
+      const pShare = totalSchedPg > 1e-3 ? Math.abs(g.pg) / totalSchedPg : 1 / genCount;
+      const qShare = totalSchedQg > 1e-3 ? Math.abs(g.qg) / totalSchedQg : 1 / genCount;
+      const pGen = pfBus ? pfBus.pGen * pShare : g.pg;
+      const qGen = pfBus ? pfBus.qGen * qShare : g.qg;
+
+      const genIdClean = g.id.trim() || "1";
+      const genNodeId = `gen_${g.i}_${genIdClean}`;
+      const offsetX = genCount > 1 ? (idx - (genCount - 1) / 2) * 72 : 0;
+      const gx = bPos.x + offsetX;
+      const gy = bPos.y - 74;
+
+      const genKind = classifyGeneratorKind(g, hostBus?.name);
+      const kindBadge = genKind === "wind" ? "WTG" : genKind === "solar" ? "PV" : genKind === "condenser" ? "SC" : "G~";
+      const strokeColor = genKind === "condenser" ? "#38bdf8" : genKind === "solar" ? "#10b981" : "#22c55e";
+
+      const qSign = qGen >= 0 ? "+" : "";
+      const genPrefix = genIdClean.toUpperCase() === kindBadge.toUpperCase() ? kindBadge : `${kindBadge} ${genIdClean}`;
+      const genLabel = `${genPrefix} · ${pGen.toFixed(1)} MW\n${qSign}${qGen.toFixed(1)} Mvar`;
 
       cells.push({
         id: genNodeId,
@@ -328,12 +672,12 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
         attrs: {
           body: {
             fill: "#0f172a",
-            stroke: "#22c55e",
+            stroke: strokeColor,
             strokeWidth: 2.5,
           },
           label: {
             text: genLabel,
-            fill: "#4ade80",
+            fill: genKind === "condenser" ? "#7dd3fc" : "#4ade80",
             fontSize: 8.5,
             fontWeight: "bold",
             fontFamily: "Inter, system-ui, sans-serif",
@@ -341,13 +685,15 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
         },
         data: {
           busNumber: g.i,
-          generatorId: g.id.trim() || "1",
+          generatorId: genIdClean,
+          genKind,
           pGen,
           qGen,
+          mbase: g.mbase ?? 100,
         },
       });
 
-      // Connecting lead from generator to bus (no directional arrowhead)
+      // Connecting lead from generator to bus
       cells.push({
         id: `wire_${genNodeId}_to_bus_${g.i}`,
         shape: "edge",
@@ -355,34 +701,36 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
         target: { cell: `bus_${g.i}` },
         attrs: {
           line: {
-            stroke: "#22c55e",
+            stroke: strokeColor,
             strokeWidth: 2,
             targetMarker: null,
             sourceMarker: null,
           },
         },
       });
-    }
+    });
   }
 
   // 3. Add Loads attached below buses
-  if (c.loads) {
-    for (const l of c.loads) {
-      if (l.status !== 1) continue;
-      const bPos = busCoords.get(l.i);
-      if (!bPos) continue;
+  for (const [busNum, loads] of inServiceLoadsByBus.entries()) {
+    const bPos = busCoords.get(busNum);
+    if (!bPos) continue;
+    const loadCount = loads.length;
 
-      const loadNodeId = `load_${l.i}_${l.id.trim() || "1"}`;
-      const lx = bPos.x;
-      const ly = bPos.y + 66;
+    loads.forEach((l, idx) => {
+      const loadIdClean = l.id.trim() || "1";
+      const loadNodeId = `load_${l.i}_${loadIdClean}`;
+      const offsetX = loadCount > 1 ? (idx - (loadCount - 1) / 2) * 92 : 0;
+      const lx = bPos.x + offsetX;
+      const ly = bPos.y + 68;
       const loadLabel = `Load ${l.pl.toFixed(1)} MW\n${l.ql.toFixed(1)} Mvar`;
 
       cells.push({
         id: loadNodeId,
         shape: "rect",
-        x: lx - 40,
+        x: lx - 42,
         y: ly - 15,
-        width: 80,
+        width: 84,
         height: 30,
         label: loadLabel,
         attrs: {
@@ -399,6 +747,12 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
             fontSize: 9,
             fontFamily: "Inter, system-ui, sans-serif",
           },
+        },
+        data: {
+          busNumber: l.i,
+          loadId: loadIdClean,
+          pl: l.pl,
+          ql: l.ql,
         },
       });
 
@@ -420,7 +774,121 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
           },
         },
       });
+    });
+  }
+
+  // 3b. Add Fixed & Switched Shunt Capacitor / Reactor Banks
+  interface ShuntEntry {
+    id: string;
+    bus: number;
+    shuntId: string;
+    bMvar: number;
+    gMw: number;
+    isSwitched: boolean;
+  }
+  const shuntsByBus = new Map<number, ShuntEntry[]>();
+  if (c.fixedShunts) {
+    for (const s of c.fixedShunts) {
+      if (s.status !== 1) continue;
+      const arr = shuntsByBus.get(s.i) ?? [];
+      const shuntIdClean = s.id.trim() || "1";
+      arr.push({
+        id: `shunt_${s.i}_${shuntIdClean}`,
+        bus: s.i,
+        shuntId: shuntIdClean,
+        bMvar: s.bl,
+        gMw: s.gl,
+        isSwitched: false,
+      });
+      shuntsByBus.set(s.i, arr);
     }
+  }
+  if (c.switchedShunts) {
+    for (const s of c.switchedShunts) {
+      if (s.stat !== 1) continue;
+      const arr = shuntsByBus.get(s.i) ?? [];
+      arr.push({
+        id: `swshunt_${s.i}_SW`,
+        bus: s.i,
+        shuntId: "SW",
+        bMvar: s.binit,
+        gMw: 0,
+        isSwitched: true,
+      });
+      shuntsByBus.set(s.i, arr);
+    }
+  }
+
+  for (const [busNum, shunts] of shuntsByBus.entries()) {
+    const bPos = busCoords.get(busNum);
+    if (!bPos) continue;
+    const hasLoadOnBus = (inServiceLoadsByBus.get(busNum)?.length ?? 0) > 0;
+
+    shunts.forEach((sh, idx) => {
+      // Place shunt bank to the bottom-right if bus already has a load below it, or directly below
+      const sx = hasLoadOnBus ? bPos.x + 76 + idx * 66 : bPos.x + idx * 66;
+      const sy = bPos.y + 66;
+      const isCap = sh.bMvar >= 0;
+      const typeTag = sh.isSwitched ? (isCap ? "SwCap" : "SwReac") : isCap ? "Cap" : "Reac";
+      const sign = sh.bMvar >= 0 ? "+" : "";
+      const shuntLabel = `${typeTag} ${sh.shuntId}\n${sign}${sh.bMvar.toFixed(1)} Mvar`;
+
+      cells.push({
+        id: sh.id,
+        shape: "rect",
+        x: sx - 32,
+        y: sy - 15,
+        width: 64,
+        height: 30,
+        label: shuntLabel,
+        attrs: {
+          body: {
+            fill: "#0f172a",
+            stroke: "#06b6d4",
+            strokeWidth: 1.8,
+            rx: 4,
+            ry: 4,
+          },
+          label: {
+            text: shuntLabel,
+            fill: "#67e8f9",
+            fontSize: 8.5,
+            fontFamily: "Inter, system-ui, sans-serif",
+          },
+        },
+        data: {
+          busNumber: sh.bus,
+          shuntId: sh.shuntId,
+          bMvar: sh.bMvar,
+          gMw: sh.gMw,
+          isSwitched: sh.isSwitched,
+        },
+      });
+
+      cells.push({
+        id: `wire_bus_${sh.bus}_to_${sh.id}`,
+        shape: "edge",
+        source: { cell: `bus_${sh.bus}` },
+        target: { cell: sh.id },
+        attrs: {
+          line: {
+            stroke: "#06b6d4",
+            strokeWidth: 1.8,
+            targetMarker: null,
+            sourceMarker: null,
+          },
+        },
+      });
+    });
+  }
+
+  // Group parallel branches between the same bus pair so they can be offset cleanly
+  const pairCounts = new Map<string, number>();
+  const pairIndices = new Map<string, number>();
+  for (const br of c.branches) {
+    if (br.st !== 1) continue;
+    const pairKey = `${Math.min(br.i, br.j)}_${Math.max(br.i, br.j)}`;
+    pairCounts.set(pairKey, (pairCounts.get(pairKey) ?? 0) + 1);
   }
 
   // 4. Add AC Transmission Lines
@@ -430,6 +898,11 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
     if (!fromBus || !busCoords.has(br.i) || !busCoords.has(br.j)) continue;
 
     const cktId = br.ckt.trim() || "1";
+    const pairKey = `${Math.min(br.i, br.j)}_${Math.max(br.i, br.j)}`;
+    const parallelCount = pairCounts.get(pairKey) ?? 1;
+    const parallelIndex = pairIndices.get(pairKey) ?? 0;
+    pairIndices.set(pairKey, parallelIndex + 1);
+
     const pfBr = pfBranchMap.get(`${br.i}_${br.j}_${cktId}`);
     let color = getVoltageColor(fromBus.baseKv);
     let strokeWidth = 2.2;
@@ -444,10 +917,11 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
       }
     }
 
+    const cktBadge = parallelCount > 1 || cktId !== "1" ? ` #${cktId}` : "";
     const loadingSuffix = pfBr && pfBr.loadingPct > 0 ? ` [${pfBr.loadingPct.toFixed(0)}%]` : "";
     const edgeLabel = pfBr
-      ? `${br.i}→${br.j}: ${pfBr.pFrom.toFixed(1)} MW, ${pfBr.qFrom.toFixed(1)} Mvar${loadingSuffix}`
-      : `${br.i}–${br.j} (X=${br.x.toFixed(3)})`;
+      ? `${br.i}→${br.j}${cktBadge}: ${pfBr.pFrom.toFixed(1)} MW, ${pfBr.qFrom.toFixed(1)} Mvar${loadingSuffix}`
+      : `${br.i}–${br.j}${cktBadge} (X=${br.x.toFixed(3)})`;
 
     cells.push({
       id: `branch_${br.i}_${br.j}_${cktId}`,
@@ -483,23 +957,36 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
           sourceMarker: null,
         },
       },
-      data: pfBr
-        ? {
-            fromBus: br.i,
-            toBus: br.j,
-            ckt: cktId,
-            pFrom: pfBr.pFrom,
-            qFrom: pfBr.qFrom,
-            loadingPct: pfBr.loadingPct,
-          }
-        : undefined,
+      data: {
+        fromBus: br.i,
+        toBus: br.j,
+        ckt: cktId,
+        r: br.r,
+        x: br.x,
+        b: br.b,
+        rateA: br.rateA ?? 0,
+        parallelIndex,
+        parallelCount,
+        ...(pfBr
+          ? {
+              pFrom: pfBr.pFrom,
+              qFrom: pfBr.qFrom,
+              pTo: pfBr.pTo,
+              qTo: pfBr.qTo,
+              pLoss: pfBr.pLoss,
+              qLoss: pfBr.qLoss,
+              mvaFlow: pfBr.mvaFlow,
+              loadingPct: pfBr.loadingPct,
+            }
+          : {}),
+      },
     });
   }
 
   // 5. Add Two-Winding / Three-Winding Transformers
   if (c.transformers) {
     for (const t of c.transformers) {
-      if (t.stat !== 1) continue;
+      if (t.stat === 0) continue;
       if (!busCoords.has(t.i) || !busCoords.has(t.j)) continue;
 
       const cktId = t.ckt.trim() || "1";
@@ -547,6 +1034,22 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
             sourceMarker: null,
           },
         },
+        data: {
+          fromBus: t.i,
+          toBus: t.j,
+          tertiaryBus: t.k ?? 0,
+          ckt: cktId,
+          windv1: t.windv1 ?? 1.0,
+          windv2: t.windv2 ?? 1.0,
+          x12: t.x12 ?? 0,
+          ...(pfXf
+            ? {
+                pFrom: pfXf.pFrom,
+                qFrom: pfXf.qFrom,
+                loadingPct: pfXf.loadingPct,
+              }
+            : {}),
+        },
       });
 
       // Render tertiary winding leg for 3-winding transformers
@@ -592,6 +1095,63 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
     }
   }
 
+  // 6. Add HVDC Links (Two-Terminal DC & VSC DC)
+  if (c.twoTerminalDc) {
+    for (const dc of c.twoTerminalDc) {
+      if (dc.mdc === 0 || !dc.ipr || !dc.ipi) continue;
+      if (!busCoords.has(dc.ipr) || !busCoords.has(dc.ipi)) continue;
+      const dcName = dc.name?.trim() || (dc.i !== undefined ? String(dc.i) : "1");
+      const dcLabel = `HVDC ${dcName}: ${dc.ipr}⇒${dc.ipi}`;
+      cells.push({
+        id: `hvdc_${dc.ipr}_${dc.ipi}_${dcName}`,
+        shape: "edge",
+        source: { cell: `bus_${dc.ipr}` },
+        target: { cell: `bus_${dc.ipi}` },
+        label: dcLabel,
+        attrs: {
+          line: {
+            stroke: "#a855f7",
+            strokeWidth: 2.8,
+            strokeDasharray: "8 4",
+          },
+        },
+        data: {
+          fromBus: dc.ipr,
+          toBus: dc.ipi,
+          dcName,
+          dcType: "LCC",
+        },
+      });
+    }
+  }
+  if (c.vscDc) {
+    for (const vsc of c.vscDc) {
+      if (vsc.mdc === 0 || !vsc.ibus1 || !vsc.ibus2) continue;
+      if (!busCoords.has(vsc.ibus1) || !busCoords.has(vsc.ibus2)) continue;
+      const vscLabel = `VSC-HVDC ${vsc.name.trim()}: ${vsc.ibus1}⇔${vsc.ibus2}`;
+      cells.push({
+        id: `vscdc_${vsc.ibus1}_${vsc.ibus2}_${vsc.name.trim() || "1"}`,
+        shape: "edge",
+        source: { cell: `bus_${vsc.ibus1}` },
+        target: { cell: `bus_${vsc.ibus2}` },
+        label: vscLabel,
+        attrs: {
+          line: {
+            stroke: "#c084fc",
+            strokeWidth: 2.8,
+            strokeDasharray: "8 4",
+          },
+        },
+        data: {
+          fromBus: vsc.ibus1,
+          toBus: vsc.ibus2,
+          dcName: vsc.name.trim(),
+          dcType: "VSC",
+        },
+      });
+    }
+  }
+
   return {
     title: c.title1 || "PSS/E Single-Line Diagram",
     cells,
@@ -599,7 +1159,9 @@ export function buildPsseDiagram(c: PsseCaseLike, powerflow?: PssePowerFlowOverl
 }
 
 /**
- * Renders standalone SVG markup for a PSS/E base case.
+ * Renders standalone SVG markup for a PSS/E base case with IEEE/IEC power
+ * symbols, substation busbars, interlocking transformer coils, and haloed
+ * telemetry badges.
  */
 export function renderPsseSvg(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay): string {
   const diag = buildPsseDiagram(c, powerflow);
@@ -614,7 +1176,9 @@ export function renderPsseSvg(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay)
     cellMap.set(cell.id, cell);
     if (cell.x !== undefined && cell.y !== undefined) {
       if (cell.x < minX) minX = cell.x;
-      if (cell.y < minY) minY = cell.y;
+      // Account for generator top callout pill above circle
+      const topExtra = cell.shape === "circle" ? 28 : 0;
+      if (cell.y - topExtra < minY) minY = cell.y - topExtra;
       const w = cell.width ?? 80;
       const h = cell.height ?? 30;
       if (cell.x + w > maxX) maxX = cell.x + w;
@@ -629,7 +1193,7 @@ export function renderPsseSvg(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay)
     maxY = 600;
   }
 
-  const pad = 60;
+  const pad = 64;
   const vbX = Math.round(minX - pad);
   const vbY = Math.round(minY - pad);
   const vbW = Math.round(maxX - minX + 2 * pad);
@@ -641,21 +1205,28 @@ export function renderPsseSvg(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay)
   svg += `      <feGaussianBlur stdDeviation="3" result="blur" />\n`;
   svg += `      <feComposite in="SourceGraphic" in2="blur" operator="over" />\n`;
   svg += `    </filter>\n`;
+  svg += `    <pattern id="sld-grid" width="40" height="40" patternUnits="userSpaceOnUse">\n`;
+  svg += `      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.6" opacity="0.45" />\n`;
+  svg += `    </pattern>\n`;
   svg += `  </defs>\n`;
   svg += `  <style>\n`;
-  svg += `    .bus-text { font-family: Inter, system-ui, sans-serif; fill: #f8fafc; font-size: 10px; font-weight: 500; pointer-events: none; }\n`;
-  svg += `    .gen-text { font-family: Inter, system-ui, sans-serif; fill: #22c55e; font-size: 9px; font-weight: bold; pointer-events: none; }\n`;
-  svg += `    .load-text { font-family: Inter, system-ui, sans-serif; fill: #f59e0b; font-size: 9px; pointer-events: none; }\n`;
-  svg += `    .edge-text { font-family: Inter, system-ui, sans-serif; fill: #94a3b8; font-size: 9px; pointer-events: none; }\n`;
+  svg += `    .bus-text { font-family: Inter, system-ui, sans-serif; fill: #f8fafc; font-size: 10px; font-weight: 600; pointer-events: none; }\n`;
+  svg += `    .bus-subtext { font-family: Inter, system-ui, sans-serif; fill: #cbd5e1; font-size: 9.5px; font-weight: 500; pointer-events: none; }\n`;
+  svg += `    .gen-text { font-family: Inter, system-ui, sans-serif; fill: #4ade80; font-size: 9px; font-weight: bold; pointer-events: none; }\n`;
+  svg += `    .load-text { font-family: Inter, system-ui, sans-serif; fill: #fbbf24; font-size: 9px; font-weight: 600; pointer-events: none; }\n`;
+  svg += `    .shunt-text { font-family: Inter, system-ui, sans-serif; fill: #67e8f9; font-size: 8.5px; font-weight: 600; pointer-events: none; }\n`;
+  svg += `    .edge-text { font-family: Inter, system-ui, sans-serif; fill: #e2e8f0; font-size: 9px; font-weight: 500; pointer-events: none; }\n`;
+  svg += `    .xfmr-text { font-family: Inter, system-ui, sans-serif; fill: #f9a8d4; font-size: 9px; font-weight: 600; pointer-events: none; }\n`;
   svg += `    .sld-edge { transition: all 0.2s ease; cursor: pointer; }\n`;
-  svg += `    .sld-edge:hover line { stroke-width: 4.5px !important; filter: drop-shadow(0 0 6px rgba(255,255,255,0.8)); }\n`;
-  svg += `    .sld-edge.selected line { stroke: #facc15 !important; stroke-width: 4px !important; filter: drop-shadow(0 0 8px #facc15); }\n`;
+  svg += `    .sld-edge:hover line, .sld-edge:hover path.edge-main { stroke-width: 4.5px !important; filter: drop-shadow(0 0 6px rgba(255,255,255,0.8)); }\n`;
+  svg += `    .sld-edge.selected line, .sld-edge.selected path.edge-main { stroke: #facc15 !important; stroke-width: 4px !important; filter: drop-shadow(0 0 8px #facc15); }\n`;
   svg += `    .sld-node { transition: all 0.2s ease; cursor: pointer; }\n`;
-  svg += `    .sld-node:hover rect { stroke-width: 3.5px !important; filter: drop-shadow(0 0 8px #38bdf8); }\n`;
+  svg += `    .sld-node:hover rect.node-body { stroke-width: 3.5px !important; filter: drop-shadow(0 0 8px #38bdf8); }\n`;
   svg += `    .sld-node:hover circle { stroke-width: 3px !important; filter: drop-shadow(0 0 8px #22c55e); }\n`;
-  svg += `    .sld-node.selected rect { stroke: #facc15 !important; stroke-width: 4px !important; filter: drop-shadow(0 0 10px #facc15); }\n`;
+  svg += `    .sld-node.selected rect.node-body { stroke: #facc15 !important; stroke-width: 4px !important; filter: drop-shadow(0 0 10px #facc15); }\n`;
   svg += `    .sld-node.selected circle { stroke: #facc15 !important; stroke-width: 3.5px !important; filter: drop-shadow(0 0 10px #facc15); }\n`;
   svg += `  </style>\n`;
+  svg += `  <rect x="${vbX}" y="${vbY}" width="${vbW}" height="${vbH}" fill="url(#sld-grid)" pointer-events="none" />\n`;
 
   // Helper to get center of a cell
   function getCellCenter(id: string): { x: number; y: number } | null {
@@ -685,26 +1256,80 @@ export function renderPsseSvg(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay)
       const strokeDash = rawDash ? `stroke-dasharray="${rawDash}"` : "";
 
       if (cell.id.startsWith("wire_")) {
-        svg += `    <line id="${cell.id}" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="0.6" />\n`;
+        svg += `    <line id="${cell.id}" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="0.75" />\n`;
       } else if (cell.id.startsWith("xfmr_")) {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        const nx = -uy;
+
         const midX = (p1.x + p2.x) / 2;
         const midY = (p1.y + p2.y) / 2;
+        const coilOffset = 7.5;
+        const coilR = 9;
+        const c1x = (midX - ux * coilOffset).toFixed(1);
+        const c1y = (midY - uy * coilOffset).toFixed(1);
+        const c2x = (midX + ux * coilOffset).toFixed(1);
+        const c2y = (midY + uy * coilOffset).toFixed(1);
+
         svg += `    <g id="${cell.id}" class="sld-edge xfmr-line">\n`;
         svg += `      <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash} />\n`;
-        svg += `      <circle cx="${midX - 6}" cy="${midY}" r="7" fill="none" stroke="${stroke}" stroke-width="1.5" />\n`;
-        svg += `      <circle cx="${midX + 6}" cy="${midY}" r="7" fill="none" stroke="${stroke}" stroke-width="1.5" />\n`;
+        // Opaque dark mask behind transformer windings so dashed line doesn't cut through coils
+        svg += `      <circle cx="${c1x}" cy="${c1y}" r="${coilR + 1.5}" fill="#0b0f19" />\n`;
+        svg += `      <circle cx="${c2x}" cy="${c2y}" r="${coilR + 1.5}" fill="#0b0f19" />\n`;
+        svg += `      <circle cx="${c1x}" cy="${c1y}" r="${coilR}" fill="none" stroke="${stroke}" stroke-width="2" />\n`;
+        svg += `      <circle cx="${c2x}" cy="${c2y}" r="${coilR}" fill="none" stroke="${stroke}" stroke-width="2" />\n`;
         if (cell.label) {
-          svg += `      <text x="${midX}" y="${midY - 10}" text-anchor="middle" class="edge-text">${cell.label}</text>\n`;
+          const safeLabel = escapeXml(cell.label);
+          const pillW = Math.max(76, cell.label.length * 5.6 + 14);
+          // Offset label perpendicular to the branch or above it so it never collides with coils
+          const labelX = midX + (Math.abs(uy) > 0.7 ? 62 : nx * 20);
+          const labelY = midY + (Math.abs(uy) > 0.7 ? 0 : -20);
+          svg += `      <rect x="${(labelX - pillW / 2).toFixed(1)}" y="${(labelY - 10).toFixed(1)}" width="${pillW.toFixed(1)}" height="15" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="1" opacity="0.95" />\n`;
+          svg += `      <text x="${labelX.toFixed(1)}" y="${(labelY + 1).toFixed(1)}" text-anchor="middle" class="xfmr-text">${safeLabel}</text>\n`;
         }
         svg += `    </g>\n`;
       } else {
-        // Transmission branch line
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
+        // Transmission branch line (or HVDC link)
+        const parallelCount = (cell.data?.["parallelCount"] as number | undefined) ?? 1;
+        const parallelIndex = (cell.data?.["parallelIndex"] as number | undefined) ?? 0;
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        const nx = -uy;
+        const ny = ux;
+
+        const offsetDist = parallelCount > 1 ? (parallelIndex - (parallelCount - 1) / 2) * 18 : 0;
+        const x1 = p1.x + nx * offsetDist;
+        const y1 = p1.y + ny * offsetDist;
+        const x2 = p2.x + nx * offsetDist;
+        const y2 = p2.y + ny * offsetDist;
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+
+        // Flow direction arrow along line
+        const pFrom = cell.data?.["pFrom"] as number | undefined;
+        const dirSign = pFrom !== undefined && pFrom < 0 ? -1 : 1;
+        const arrowX = midX + ux * 36 * dirSign;
+        const arrowY = midY + uy * 36 * dirSign;
+        const angleDeg = (Math.atan2(uy * dirSign, ux * dirSign) * 180) / Math.PI;
+
         svg += `    <g id="${cell.id}" class="sld-edge branch-line">\n`;
-        svg += `      <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" />\n`;
+        svg += `      <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash} />\n`;
+        // Directional flow chevron
+        if (len > 110) {
+          svg += `      <polygon points="-5,-3.5 5,0 -5,3.5" fill="${stroke}" transform="translate(${arrowX.toFixed(1)},${arrowY.toFixed(1)}) rotate(${angleDeg.toFixed(1)})" opacity="0.9" />\n`;
+        }
         if (cell.label) {
-          svg += `      <text x="${midX}" y="${midY - 6}" text-anchor="middle" class="edge-text">${cell.label}</text>\n`;
+          const safeLabel = escapeXml(cell.label);
+          const pillW = Math.max(78, cell.label.length * 5.4 + 14);
+          const pillY = midY - 12;
+          svg += `      <rect x="${(midX - pillW / 2).toFixed(1)}" y="${pillY.toFixed(1)}" width="${pillW.toFixed(1)}" height="16" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="0.9" opacity="0.94" />\n`;
+          svg += `      <text x="${midX.toFixed(1)}" y="${(pillY + 11).toFixed(1)}" text-anchor="middle" class="edge-text">${safeLabel}</text>\n`;
         }
         svg += `    </g>\n`;
       }
@@ -720,44 +1345,106 @@ export function renderPsseSvg(c: PsseCaseLike, powerflow?: PssePowerFlowOverlay)
       const h = cell.height ?? 20;
 
       if (cell.shape === "circle") {
+        // Generator / IBR / Synchronous Condenser node
         const cx = cell.x + w / 2;
         const cy = cell.y + h / 2;
         const r = w / 2;
-        svg += `    <g id="${cell.id}" class="sld-node gen-node">\n`;
-        svg += `      <circle cx="${cx}" cy="${cy}" r="${r}" fill="#0f172a" stroke="#22c55e" stroke-width="2" />\n`;
-        svg += `      <text x="${cx}" y="${cy + 3}" text-anchor="middle" class="gen-text">~</text>\n`;
+        const genKind = (cell.data?.["genKind"] as PsseGenKind | undefined) ?? "sync";
+        const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#22c55e";
+
+        svg += `    <g id="${cell.id}" class="sld-node gen-node" data-gen-kind="${genKind}">\n`;
+        svg += `      <circle cx="${cx}" cy="${cy}" r="${r}" fill="#0f172a" stroke="${stroke}" stroke-width="2.2" />\n`;
+
+        if (genKind === "wind") {
+          // Wind Turbine Generator icon + AC wave
+          svg += `      <circle cx="${cx}" cy="${cy - 2}" r="2.2" fill="${stroke}" />\n`;
+          svg += `      <path d="M ${cx} ${cy - 2} L ${cx} ${cy - 14} M ${cx} ${cy - 2} L ${cx - 10} ${cy + 5} M ${cx} ${cy - 2} L ${cx + 10} ${cy + 5}" stroke="${stroke}" stroke-width="2" stroke-linecap="round" />\n`;
+          svg += `      <path d="M ${cx - 8} ${cy + 13} Q ${cx - 4} ${cy + 9}, ${cx} ${cy + 13} T ${cx + 8} ${cy + 13}" fill="none" stroke="${stroke}" stroke-width="1.6" />\n`;
+        } else if (genKind === "solar") {
+          // Solar PV Inverter icon
+          svg += `      <rect x="${cx - 10}" y="${cy - 11}" width="20" height="12" rx="1.5" fill="none" stroke="${stroke}" stroke-width="1.6" />\n`;
+          svg += `      <line x1="${cx - 10}" y1="${cy - 5}" x2="${cx + 10}" y2="${cy - 5}" stroke="${stroke}" stroke-width="1.1" />\n`;
+          svg += `      <line x1="${cx - 3.5}" y1="${cy - 11}" x2="${cx - 3.5}" y2="${cy + 1}" stroke="${stroke}" stroke-width="1.1" />\n`;
+          svg += `      <line x1="${cx + 3.5}" y1="${cy - 11}" x2="${cx + 3.5}" y2="${cy + 1}" stroke="${stroke}" stroke-width="1.1" />\n`;
+          svg += `      <path d="M ${cx - 8} ${cy + 10} Q ${cx - 4} ${cy + 6}, ${cx} ${cy + 10} T ${cx + 8} ${cy + 10}" fill="none" stroke="${stroke}" stroke-width="1.6" />\n`;
+        } else if (genKind === "condenser") {
+          // Synchronous Condenser (SC + sine wave)
+          svg += `      <text x="${cx}" y="${cy - 2}" text-anchor="middle" class="gen-text" style="fill:${stroke};font-size:10px;">SC</text>\n`;
+          svg += `      <path d="M ${cx - 9} ${cy + 8} Q ${cx - 4.5} ${cy + 3}, ${cx} ${cy + 8} T ${cx + 9} ${cy + 8}" fill="none" stroke="${stroke}" stroke-width="1.8" />\n`;
+        } else {
+          // Standard Synchronous Generator (crisp AC sine wave + ~)
+          svg += `      <path d="M ${cx - 10} ${cy} Q ${cx - 5} ${cy - 7}, ${cx} ${cy} T ${cx + 10} ${cy}" fill="none" stroke="${stroke}" stroke-width="2" />\n`;
+          svg += `      <text x="${cx}" y="${cy + 13}" text-anchor="middle" class="gen-text" style="font-size:8px;opacity:0.85;">~</text>\n`;
+        }
+
+        // Always render generator callout badge above the circle so it never collides with lead wire
         if (cell.label) {
           const lines = cell.label.split("\n");
-          if (lines[1]) {
-            svg += `      <text x="${cx}" y="${cy + r + 11}" text-anchor="middle" class="gen-text">${lines[1]}</text>\n`;
+          const line0 = escapeXml(lines[0] ?? "");
+          const line1 = lines[1] ? escapeXml(lines[1]) : "";
+          const badgeH = line1 ? 26 : 15;
+          const badgeW = Math.max(78, Math.max(lines[0]?.length ?? 0, lines[1]?.length ?? 0) * 5.5 + 12);
+          const badgeY = cy - r - badgeH - 5;
+          svg += `      <rect x="${(cx - badgeW / 2).toFixed(1)}" y="${badgeY.toFixed(1)}" width="${badgeW.toFixed(1)}" height="${badgeH}" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="1" opacity="0.95" />\n`;
+          svg += `      <text x="${cx}" y="${(badgeY + 10.5).toFixed(1)}" text-anchor="middle" class="gen-text" style="fill:${genKind === "condenser" ? "#7dd3fc" : "#4ade80"};">${line0}</text>\n`;
+          if (line1) {
+            svg += `      <text x="${cx}" y="${(badgeY + 21.5).toFixed(1)}" text-anchor="middle" class="gen-text" style="fill:#86efac;font-weight:500;font-size:8.5px;">${line1}</text>\n`;
           }
         }
         svg += `    </g>\n`;
       } else if (cell.id.startsWith("load_")) {
         const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#f59e0b";
         svg += `    <g id="${cell.id}" class="sld-node load-node">\n`;
-        svg += `      <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="3" fill="#0f172a" stroke="${stroke}" stroke-width="1.5" />\n`;
+        svg += `      <rect class="node-body" x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="1.6" />\n`;
         if (cell.label) {
           const lines = cell.label.split("\n");
-          let lineY = cell.y + 11;
+          let lineY = cell.y + 11.5;
           for (const l of lines) {
-            svg += `      <text x="${cell.x + w / 2}" y="${lineY}" text-anchor="middle" class="load-text">${l}</text>\n`;
-            lineY += 10;
+            svg += `      <text x="${cell.x + w / 2}" y="${lineY}" text-anchor="middle" class="load-text">${escapeXml(l)}</text>\n`;
+            lineY += 11;
+          }
+        }
+        svg += `    </g>\n`;
+      } else if (cell.id.startsWith("shunt_") || cell.id.startsWith("swshunt_")) {
+        const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#06b6d4";
+        const cx = cell.x + w / 2;
+        svg += `    <g id="${cell.id}" class="sld-node shunt-node">\n`;
+        // Capacitor plates symbol at top of shunt box
+        svg += `      <line x1="${cx - 8}" y1="${cell.y - 5}" x2="${cx + 8}" y2="${cell.y - 5}" stroke="${stroke}" stroke-width="2" />\n`;
+        svg += `      <line x1="${cx - 8}" y1="${cell.y - 2}" x2="${cx + 8}" y2="${cell.y - 2}" stroke="${stroke}" stroke-width="2" />\n`;
+        svg += `      <rect class="node-body" x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="1.6" />\n`;
+        if (cell.label) {
+          const lines = cell.label.split("\n");
+          let lineY = cell.y + 11.5;
+          for (const l of lines) {
+            svg += `      <text x="${cx}" y="${lineY}" text-anchor="middle" class="shunt-text">${escapeXml(l)}</text>\n`;
+            lineY += 11;
           }
         }
         svg += `    </g>\n`;
       } else {
-        // Bus node
+        // Substation Busbar Node
         const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+        const voltageColor = (cell.data?.["voltageColor"] as string | undefined) ?? stroke;
+        const fill = (cell.attrs?.["body"]?.["fill"] as string | undefined) ?? "#1e293b";
         const busNum = cell.data?.["busNumber"] ?? cell.id.replace("bus_", "");
+        const voltageStatus = (cell.data?.["voltageStatus"] as string | undefined) ?? "normal";
+
         svg += `    <g id="${cell.id}" class="sld-node bus-node" data-bus="${busNum}">\n`;
-        svg += `      <rect x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="#1e293b" stroke="${stroke}" stroke-width="2.5" />\n`;
+        svg += `      <rect class="node-body" x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="2.5" />\n`;
+        // Prominent substation busbar conductor rail along top edge in nominal voltage color
+        svg += `      <line x1="${cell.x + 3}" y1="${cell.y + 2}" x2="${cell.x + w - 3}" y2="${cell.y + 2}" stroke="${voltageColor}" stroke-width="3.5" stroke-linecap="round" />\n`;
+        if (voltageStatus === "warning" || voltageStatus === "violation") {
+          const badgeColor = voltageStatus === "violation" ? "#ef4444" : "#f59e0b";
+          svg += `      <circle cx="${cell.x + w - 9}" cy="${cell.y + 10}" r="3.5" fill="${badgeColor}" />\n`;
+        }
         if (cell.label) {
           const lines = cell.label.split("\n");
-          let lineY = cell.y + 12;
-          for (const l of lines) {
-            svg += `      <text x="${cell.x + w / 2}" y="${lineY}" text-anchor="middle" class="bus-text">${l}</text>\n`;
-            lineY += 12;
+          if (lines[0]) {
+            svg += `      <text x="${cell.x + w / 2}" y="${cell.y + 15}" text-anchor="middle" class="bus-text">${escapeXml(lines[0])}</text>\n`;
+          }
+          if (lines[1]) {
+            svg += `      <text x="${cell.x + w / 2}" y="${cell.y + 29}" text-anchor="middle" class="bus-subtext">${escapeXml(lines[1])}</text>\n`;
           }
         }
         svg += `    </g>\n`;

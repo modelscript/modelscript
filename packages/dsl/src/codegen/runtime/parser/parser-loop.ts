@@ -60,7 +60,7 @@ import {
     MAX_LR_STACK_DEPTH, FieldCursor, MAX_TERMINAL_ID, isReachableZeroDist, lookupGoto,
     configEnableBranchA1, configEnableBranchB, configEnableMultiFile
 } from "./engine";
-import { globalAstRoot } from "./lsp";
+import { globalAstRoot, setLastParsedAstRoot } from "./lsp";
 
 export let diag_count_reduce: u32 = 0;
 export let diag_count_clone: u32 = 0;
@@ -4221,6 +4221,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     let accepted = parseLR();
     if (currentParserMode == MODE_LR) {
       globalAstRoot = accepted;
+      setLastParsedAstRoot(accepted);
       debugLog(9100, diag_count_reduce, diag_count_clone, diag_count_append);
       debugLog(9101, diag_count_shift, 0, 0);
       debugLog(9701, g_counter_lex_calls as i32, g_counter_expected_tokens_calls as i32, g_counter_peak_active_heads as i32);
@@ -4270,6 +4271,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         fixNodeLength(finalTree);
       }
       globalAstRoot = finalTree;
+      setLastParsedAstRoot(finalTree);
       debugLog(9100, diag_count_reduce, diag_count_clone, diag_count_append);
       debugLog(9101, diag_count_shift, activeHeadsCount, nextHeadsCount);
       debugLog(9701, g_counter_lex_calls as i32, g_counter_expected_tokens_calls as i32, g_counter_peak_active_heads as i32);
@@ -4424,6 +4426,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
 
     globalAstRoot = root;
+    setLastParsedAstRoot(root);
     debugLog(9701, g_counter_lex_calls as i32, g_counter_expected_tokens_calls as i32, g_counter_peak_active_heads as i32);
     debugLog(9702, g_counter_action_memo_hits as i32, g_counter_action_memo_misses as i32, 0);
     debugLog(9003, root, 999999, errorCount);
@@ -4435,6 +4438,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     return root;
   }
   globalAstRoot = 0;
+  setLastParsedAstRoot(0);
   debugLog(9701, g_counter_lex_calls as i32, g_counter_expected_tokens_calls as i32, g_counter_peak_active_heads as i32);
   debugLog(9702, g_counter_action_memo_hits as i32, g_counter_action_memo_misses as i32, 0);
   debugLog(9003, 0, 999999, errorCount);

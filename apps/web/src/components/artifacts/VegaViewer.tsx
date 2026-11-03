@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { GraphIcon } from "@primer/octicons-react";
-import { Spinner, Text, useTheme } from "@primer/react";
+import { GraphIcon, TableIcon } from "@primer/octicons-react";
+import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { VegaEmbed } from "react-vega";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
+import CsvViewer from "./CsvViewer";
 
 interface VegaViewerProps {
   viewConfig: any; // expects { spec: any, data?: any, title?: string }
@@ -53,6 +55,38 @@ const Badge = styled.span`
   font-weight: 600;
 `;
 
+const ModeToggleGroup = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-border-default, #30363d);
+`;
+
+const ModeToggleButton = styled.button<{ $active: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: none;
+  font-size: 11px;
+  font-weight: ${(p) => (p.$active ? 600 : 500)};
+  font-family: var(--font-mono, monospace);
+  cursor: pointer;
+  background: ${(p) => (p.$active ? "rgba(168, 85, 247, 0.2)" : "transparent")};
+  color: ${(p) => (p.$active ? "var(--color-accent-purple, #c084fc)" : "var(--color-fg-muted, #8b949e)")};
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+
+  &:hover {
+    color: var(--color-fg-default, #f1f5f9);
+  }
+`;
+
 const PlotContainer = styled.div`
   flex: 1;
   width: 100%;
@@ -66,6 +100,7 @@ const PlotContainer = styled.div`
 
   .vega-embed {
     max-width: 100%;
+    width: 100%;
     display: flex;
     justify-content: center;
 
@@ -77,12 +112,13 @@ const PlotContainer = styled.div`
 `;
 
 const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => {
-  const { resolvedColorMode } = useTheme();
+  const { theme } = useTheme();
   const [spec, setSpec] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"chart" | "table">("chart");
 
-  const isDark = resolvedColorMode === "dark";
+  const isDark = theme === "dark";
   const title = viewConfig?.title || "Statistical Visualization";
 
   useEffect(() => {
@@ -130,6 +166,33 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
 
     loadSpec();
   }, [viewConfig]);
+
+  const tabularMatrix = useMemo<string[][] | null>(() => {
+    const rawValues = Array.isArray(viewConfig?.data)
+      ? viewConfig.data
+      : Array.isArray(spec?.data?.values)
+        ? spec.data.values
+        : null;
+    if (!rawValues || rawValues.length === 0) return null;
+    if (Array.isArray(rawValues[0])) {
+      return rawValues.map((row: unknown[]) => row.map((cell) => String(cell ?? "")));
+    }
+    if (typeof rawValues[0] === "object" && rawValues[0] !== null) {
+      const headers = Array.from(
+        new Set(rawValues.slice(0, 50).flatMap((r: Record<string, unknown>) => Object.keys(r || {}))),
+      );
+      if (headers.length === 0) return null;
+      const rows = rawValues.map((r: Record<string, unknown>) =>
+        headers.map((h) => (r?.[h] === null || r?.[h] === undefined ? "" : String(r[h]))),
+      );
+      return [headers, ...rows];
+    }
+    return null;
+  }, [viewConfig?.data, spec]);
+
+  const hasTabularData = Boolean(
+    tabularMatrix || typeof viewConfig?.rawData === "string" || typeof viewConfig?.sourceUrl === "string",
+  );
 
   const embedOptions = useMemo(() => {
     return {
@@ -221,11 +284,50 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
             {title}
           </Text>
         </Box>
+
+        {hasTabularData && (
+          <ModeToggleGroup>
+            <ModeToggleButton
+              type="button"
+              $active={activeTab === "chart"}
+              onClick={() => setActiveTab("chart")}
+              title="Show Vega-Lite Visualization"
+            >
+              <GraphIcon size={12} />
+              <span>Chart</span>
+            </ModeToggleButton>
+            <ModeToggleButton
+              type="button"
+              $active={activeTab === "table"}
+              onClick={() => setActiveTab("table")}
+              title="Inspect Underlying Tabular Dataset"
+            >
+              <TableIcon size={12} />
+              <span>Data ({tabularMatrix ? tabularMatrix.length - 1 : "Table"})</span>
+            </ModeToggleButton>
+          </ModeToggleGroup>
+        )}
       </Toolbar>
 
-      <PlotContainer>
-        <VegaEmbed spec={spec} options={embedOptions as any} />
-      </PlotContainer>
+      {activeTab === "table" && hasTabularData ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <CsvViewer
+            viewConfig={{
+              title,
+              data: tabularMatrix ?? (typeof viewConfig?.rawData === "string" ? viewConfig.rawData : undefined),
+              url: typeof viewConfig?.sourceUrl === "string" ? viewConfig.sourceUrl : undefined,
+            }}
+            isFullScreen={true}
+          />
+        </div>
+      ) : (
+        <PlotContainer>
+          <VegaEmbed
+            spec={spec}
+            options={embedOptions as unknown as React.ComponentProps<typeof VegaEmbed>["options"]}
+          />
+        </PlotContainer>
+      )}
     </Wrapper>
   );
 };

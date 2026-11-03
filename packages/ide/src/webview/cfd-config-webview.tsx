@@ -652,10 +652,30 @@ function App() {
               <span style={{ color: "#94a3b8" }}>Max Velocity:</span>
               <span style={{ fontWeight: 600 }}>{cfdResults.metadata?.maxVelocity?.toFixed(1) ?? "0"} m/s</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
               <span style={{ color: "#94a3b8" }}>Total Drag Force:</span>
               <span style={{ fontWeight: 600 }}>{cfdResults.metadata?.dragForce?.[0]?.toFixed(2) ?? "0"} N</span>
             </div>
+            <button
+              onClick={() => vscode?.postMessage({ type: "publishResult" })}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                background: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)",
+                border: "none",
+                borderRadius: "6px",
+                color: "#ffffff",
+                fontWeight: 700,
+                cursor: "pointer",
+                fontSize: "12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+              }}
+            >
+              📤 Publish Result (.vtu)
+            </button>
           </div>
         )}
       </div>

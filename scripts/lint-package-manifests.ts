@@ -50,6 +50,9 @@ const BETA_LANGUAGES = new Set([
   "energyplus",
   "simpack",
   "verilog-a",
+  "automationml",
+  "oscal",
+  "qif",
 ]);
 
 const CORE_FOUNDATIONAL_LANGUAGES = new Set(["ssp", "csv"]);

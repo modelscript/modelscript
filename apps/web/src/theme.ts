@@ -51,6 +51,7 @@ export function ThemeContextProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.style.colorScheme = theme;
     localStorage.setItem("ms-theme", theme);
   }, [theme]);
 
@@ -58,7 +59,21 @@ export function ThemeContextProvider({ children }: { children: React.ReactNode }
     hydrateDisplayAccessibilityPreferences();
   }, []);
 
-  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+  const changeThemeWithTransition = (newTheme: Theme) => {
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.add("theme-transitioning");
+      window.setTimeout(() => {
+        document.documentElement.classList.remove("theme-transitioning");
+      }, 260);
+    }
+    setTheme(newTheme);
+  };
 
-  return React.createElement(ThemeContext.Provider, { value: { theme, toggleTheme, setTheme } }, children);
+  const toggleTheme = () => changeThemeWithTransition(theme === "dark" ? "light" : "dark");
+
+  return React.createElement(
+    ThemeContext.Provider,
+    { value: { theme, toggleTheme, setTheme: changeThemeWithTransition } },
+    children,
+  );
 }

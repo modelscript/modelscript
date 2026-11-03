@@ -605,250 +605,120 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
       )}
 
       {/* Floating View Switcher & Actions */}
-      {!hideCenterFloatingToolbar && (
-        <div
-          style={{
-            position: "absolute",
-            top: nestedModels.length > 1 ? "48px" : "16px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "max-content",
-            maxWidth: "calc(100% - 24px)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 6,
-            zIndex: 100,
-          }}
-        >
+      {!hideCenterFloatingToolbar &&
+        (!isNarrow ||
+          (!showResultsView && !showCadView && !showAnalysisView) ||
+          cadComponents.length > 0 ||
+          (showCadView && Boolean(animationControllerRef.current?.hasData))) && (
           <div
             style={{
+              position: "absolute",
+              top: nestedModels.length > 1 ? "48px" : "12px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              width: "max-content",
+              maxWidth: "calc(100% - 24px)",
               display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "center",
+              flexDirection: "column",
               alignItems: "center",
               gap: 6,
-              maxWidth: "100%",
-              boxSizing: "border-box",
-              padding: "6px 10px",
-              borderRadius: 12,
-              backgroundColor: colorMode === "dark" ? "rgba(15, 22, 38, 0.9)" : "rgba(255, 255, 255, 0.9)",
-              backdropFilter: "blur(12px)",
-              boxShadow:
-                colorMode === "dark"
-                  ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.16)"
-                  : "0 4px 24px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.08)",
+              zIndex: 100,
             }}
           >
-            {isPlaygroundRoute && !isNarrow && setTreeVisible && (
-              <>
-                <IconButton
-                  icon={treeVisible ? SidebarExpandIcon : SidebarCollapseIcon}
-                  size="small"
-                  variant="invisible"
-                  aria-label={translations.toggleTree}
-                  title={translations.toggleTree}
-                  onClick={() => setTreeVisible((prev) => !prev)}
-                  style={
-                    treeVisible
-                      ? {
-                          backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)",
-                          borderRadius: 6,
-                        }
-                      : {}
-                  }
-                />
-                <div style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-              </>
-            )}
-
-            <SegmentedControl
-              aria-label="Center Pane View"
-              size="small"
-              variant={isNarrow ? { narrow: "hideLabels", regular: "hideLabels", wide: "hideLabels" } : "default"}
-              onChange={(i) => {
-                const targetTab = centerViewTabs[i];
-                if (!targetTab) return;
-                if (targetTab.id === "diagram") {
-                  setShowResultsView(false);
-                  setShowCadView(false);
-                  setShowAnalysisView(false);
-                } else if (targetTab.id === "simulation") {
-                  setShowResultsView(true);
-                  setShowCadView(false);
-                  setShowAnalysisView(false);
-                } else if (targetTab.id === "3d") {
-                  setShowResultsView(false);
-                  setShowCadView(true);
-                  setShowAnalysisView(false);
-                } else if (targetTab.id === "inspector") {
-                  setShowResultsView(false);
-                  setShowCadView(false);
-                  setShowAnalysisView(true);
-                }
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 6,
+                maxWidth: "100%",
+                boxSizing: "border-box",
+                padding: isNarrow ? "4px 8px" : "6px 10px",
+                borderRadius: 12,
+                backgroundColor: colorMode === "dark" ? "rgba(15, 22, 38, 0.9)" : "rgba(255, 255, 255, 0.9)",
+                backdropFilter: "blur(12px)",
+                boxShadow:
+                  colorMode === "dark"
+                    ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.16)"
+                    : "0 4px 24px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.08)",
               }}
             >
-              {centerViewTabs.map((tab) => {
-                const isSelected =
-                  tab.id === "diagram"
-                    ? !showResultsView && !showCadView && !showAnalysisView
-                    : tab.id === "simulation"
-                      ? showResultsView && !showAnalysisView
-                      : tab.id === "3d"
-                        ? showCadView && !showAnalysisView
-                        : showAnalysisView;
-                return (
-                  <SegmentedControl.Button key={tab.id} selected={isSelected} leadingVisual={tab.icon}>
-                    {tab.label}
-                  </SegmentedControl.Button>
-                );
-              })}
-            </SegmentedControl>
-
-            {!showResultsView &&
-              !showCadView &&
-              !showAnalysisView &&
-              activeLangInfo.diagramTypes &&
-              activeLangInfo.diagramTypes.length > 1 &&
-              setDiagramType && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 2,
-                    padding: 2,
-                    borderRadius: 8,
-                    backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
-                  }}
-                >
-                  {activeLangInfo.diagramTypes.map((dt) => {
-                    const isSelected = effectiveDiagramType === dt.id;
-                    return (
-                      <button
-                        key={dt.id}
-                        type="button"
-                        onClick={() => setDiagramType(dt.id)}
-                        style={{
-                          border: "none",
-                          borderRadius: 6,
-                          padding: "3px 8px",
-                          fontSize: 11,
-                          fontWeight: isSelected ? 600 : 400,
-                          cursor: "pointer",
-                          backgroundColor: isSelected
-                            ? colorMode === "dark"
-                              ? "rgba(255,255,255,0.14)"
-                              : "#ffffff"
-                            : "transparent",
-                          color: isSelected
-                            ? colorMode === "dark"
-                              ? "#e6edf3"
-                              : "#1f2328"
-                            : colorMode === "dark"
-                              ? "#8b949e"
-                              : "#656d76",
-                        }}
-                      >
-                        {dt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-            {!showResultsView && !showCadView && !showAnalysisView && (
-              <button
-                type="button"
-                onClick={() => setShowPalette((v) => !v)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "4px 10px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  borderRadius: 999,
-                  border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 40%, transparent)",
-                  background: showPalette ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))" : "transparent",
-                  color: colorMode === "dark" ? "var(--ms-link, #22d3ee)" : "var(--ms-brand, #0e7490)",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-                title="Open interactive element & stencil palette"
-              >
-                <PlusIcon size={12} />
-                <span>Add Element</span>
-              </button>
-            )}
-
-            {cadComponents.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowResultsView(false);
-                  setShowAnalysisView(false);
-                  setShowCadView(true);
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "3px 10px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  borderRadius: 20,
-                  border: "1px solid rgba(6, 182, 212, 0.4)",
-                  background: showCadView ? "rgba(6, 182, 212, 0.2)" : "rgba(6, 182, 212, 0.08)",
-                  color: "#06b6d4",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-                title="Digital Thread CAD binding active. Click to view 3D assembly"
-              >
-                <span style={{ fontSize: 13 }}>🧵</span>
-                <span>{cadComponents.length} CAD Twins</span>
-              </button>
-            )}
-
-            {showCadView && animationControllerRef.current?.hasData && (
-              <Button
-                variant="primary"
-                size="small"
-                leadingVisual={animationMode === "playing" ? PauseIcon : PlayIcon}
-                onClick={() => {
-                  const ctrl = animationControllerRef.current;
-                  if (!ctrl) return;
-                  if (ctrl.mode === "playing") {
-                    ctrl.pause();
-                  } else {
-                    ctrl.play();
-                  }
-                }}
-                style={{
-                  marginLeft: 8,
-                  borderRadius: 8,
-                  fontWeight: 600,
-                  fontSize: 12,
-                }}
-              >
-                {animationMode === "playing" ? "Pause" : "Animate"}
-              </Button>
-            )}
-
-            {isPlaygroundRoute && !isNarrow && (
-              <>
-                <div style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
-                {onAutoLayout && activeLangInfo.supportsDiagram && (
+              {isPlaygroundRoute && !isNarrow && setTreeVisible && (
+                <>
                   <IconButton
-                    icon={FlowchartIcon}
+                    icon={treeVisible ? SidebarExpandIcon : SidebarCollapseIcon}
                     size="small"
                     variant="invisible"
-                    aria-label={translations.autoLayout}
-                    title={translations.autoLayout}
-                    onClick={onAutoLayout}
+                    aria-label={translations.toggleTree}
+                    title={translations.toggleTree}
+                    onClick={() => setTreeVisible((prev) => !prev)}
+                    style={
+                      treeVisible
+                        ? {
+                            backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)",
+                            borderRadius: 6,
+                          }
+                        : {}
+                    }
                   />
-                )}
-                {setView && (
+                  <div
+                    style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }}
+                  />
+                </>
+              )}
+
+              {!isNarrow && (
+                <SegmentedControl
+                  aria-label="Center Pane View"
+                  size="small"
+                  variant="default"
+                  onChange={(i) => {
+                    const targetTab = centerViewTabs[i];
+                    if (!targetTab) return;
+                    if (targetTab.id === "diagram") {
+                      setShowResultsView(false);
+                      setShowCadView(false);
+                      setShowAnalysisView(false);
+                    } else if (targetTab.id === "simulation") {
+                      setShowResultsView(true);
+                      setShowCadView(false);
+                      setShowAnalysisView(false);
+                    } else if (targetTab.id === "3d") {
+                      setShowResultsView(false);
+                      setShowCadView(true);
+                      setShowAnalysisView(false);
+                    } else if (targetTab.id === "inspector") {
+                      setShowResultsView(false);
+                      setShowCadView(false);
+                      setShowAnalysisView(true);
+                    }
+                  }}
+                >
+                  {centerViewTabs.map((tab) => {
+                    const isSelected =
+                      tab.id === "diagram"
+                        ? !showResultsView && !showCadView && !showAnalysisView
+                        : tab.id === "simulation"
+                          ? showResultsView && !showAnalysisView
+                          : tab.id === "3d"
+                            ? showCadView && !showAnalysisView
+                            : showAnalysisView;
+                    return (
+                      <SegmentedControl.Button key={tab.id} selected={isSelected} leadingVisual={tab.icon}>
+                        {tab.label}
+                      </SegmentedControl.Button>
+                    );
+                  })}
+                </SegmentedControl>
+              )}
+
+              {!showResultsView &&
+                !showCadView &&
+                !showAnalysisView &&
+                activeLangInfo.diagramTypes &&
+                activeLangInfo.diagramTypes.length > 1 &&
+                setDiagramType && (
                   <div
                     style={{
                       display: "flex",
@@ -859,170 +729,310 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
                     }}
                   >
-                    <IconButton
-                      icon={WorkflowIcon}
-                      size="small"
-                      variant="invisible"
-                      aria-label={translations.diagramView}
-                      title={translations.diagramView}
-                      onClick={() => setView(MorselView.DIAGRAM)}
-                      style={
-                        view === MorselView.DIAGRAM
-                          ? {
-                              backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
-                              borderRadius: 6,
-                            }
-                          : {}
-                      }
-                    />
-                    <IconButton
-                      icon={ColumnsIcon}
-                      size="small"
-                      variant="invisible"
-                      aria-label={translations.splitViewColumns}
-                      title={translations.splitViewColumns}
-                      onClick={() => setView(MorselView.SPLIT_COLUMNS)}
-                      style={
-                        view === MorselView.SPLIT_COLUMNS
-                          ? {
-                              backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
-                              borderRadius: 6,
-                            }
-                          : {}
-                      }
-                    />
-                    <IconButton
-                      icon={RowsIcon}
-                      size="small"
-                      variant="invisible"
-                      aria-label={translations.splitViewRows}
-                      title={translations.splitViewRows}
-                      onClick={() => setView(MorselView.SPLIT_ROWS)}
-                      style={
-                        view === MorselView.SPLIT_ROWS
-                          ? {
-                              backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
-                              borderRadius: 6,
-                            }
-                          : {}
-                      }
-                    />
-                    <IconButton
-                      icon={UnwrapIcon}
-                      size="small"
-                      variant="invisible"
-                      aria-label={translations.codeView}
-                      title={translations.codeView}
-                      onClick={() => setView(MorselView.CODE)}
-                      style={
-                        (view as MorselView) === MorselView.CODE
-                          ? {
-                              backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
-                              borderRadius: 6,
-                            }
-                          : {}
-                      }
-                    />
+                    {activeLangInfo.diagramTypes.map((dt) => {
+                      const isSelected = effectiveDiagramType === dt.id;
+                      return (
+                        <button
+                          key={dt.id}
+                          type="button"
+                          onClick={() => setDiagramType(dt.id)}
+                          style={{
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "3px 8px",
+                            fontSize: 11,
+                            fontWeight: isSelected ? 600 : 400,
+                            cursor: "pointer",
+                            backgroundColor: isSelected
+                              ? colorMode === "dark"
+                                ? "rgba(255,255,255,0.14)"
+                                : "#ffffff"
+                              : "transparent",
+                            color: isSelected
+                              ? colorMode === "dark"
+                                ? "#e6edf3"
+                                : "#1f2328"
+                              : colorMode === "dark"
+                                ? "#8b949e"
+                                : "#656d76",
+                          }}
+                        >
+                          {dt.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
-                {activeLangInfo.supportsSimulation && (onSimulate || onOpenCloudModal || onFlatten) && (
-                  <>
-                    <div
-                      style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }}
-                    />
-                    {onSimulate && (
-                      <IconButton
-                        icon={PlayIcon}
-                        size="small"
-                        variant="invisible"
-                        aria-label={translations.simulateModel}
-                        title={translations.simulateModel}
-                        onClick={onSimulate}
-                      />
-                    )}
-                    {onOpenCloudModal && isCaeComputeEnabled && (
-                      <IconButton
-                        icon={ServerIcon}
-                        size="small"
-                        variant="invisible"
-                        aria-label="Run on Ansatz Cloud HPC"
-                        title="Run on Ansatz Cloud HPC"
-                        onClick={onOpenCloudModal}
-                      />
-                    )}
-                    {onFlatten && (
-                      <IconButton
-                        icon={StackIcon}
-                        size="small"
-                        variant="invisible"
-                        aria-label={translations.flattenModel}
-                        title={translations.flattenModel}
-                        onClick={onFlatten}
-                      />
-                    )}
-                  </>
-                )}
-              </>
-            )}
-          </div>
 
-          {/* Collapsible Stencil Palette Bar */}
-          {showPalette && !showResultsView && !showCadView && !showAnalysisView && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 6,
-                padding: "6px 12px",
-                borderRadius: 10,
-                backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.95)" : "rgba(255, 255, 255, 0.95)",
-                backdropFilter: "blur(12px)",
-                boxShadow:
-                  colorMode === "dark"
-                    ? "0 4px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08)"
-                    : "0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06)",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  color: colorMode === "dark" ? "#8b949e" : "#656d76",
-                  marginRight: 4,
-                }}
-              >
-                {activeLangInfo.label} Palette:
-              </span>
-              {stencils.map((item) => (
+              {!showResultsView && !showCadView && !showAnalysisView && (
                 <button
-                  key={item.label}
+                  type="button"
+                  onClick={() => setShowPalette((v) => !v)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 10px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    borderRadius: 999,
+                    border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 40%, transparent)",
+                    background: showPalette ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))" : "transparent",
+                    color: colorMode === "dark" ? "var(--ms-link, #22d3ee)" : "var(--ms-brand, #0e7490)",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                  title="Open interactive element & stencil palette"
+                >
+                  <PlusIcon size={12} />
+                  <span>Add Element</span>
+                </button>
+              )}
+
+              {cadComponents.length > 0 && (
+                <button
                   type="button"
                   onClick={() => {
-                    onInsertStencilSnippet?.(item.snippet, item.className);
+                    setShowResultsView(false);
+                    setShowAnalysisView(false);
+                    setShowCadView(true);
                   }}
                   style={{
-                    border:
-                      colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.12)" : "1px solid rgba(0, 0, 0, 0.12)",
-                    borderRadius: 6,
-                    padding: "3px 8px",
-                    fontSize: 11,
-                    fontWeight: 500,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "3px 10px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: 20,
+                    border: "1px solid rgba(6, 182, 212, 0.4)",
+                    background: showCadView ? "rgba(6, 182, 212, 0.2)" : "rgba(6, 182, 212, 0.08)",
+                    color: "#06b6d4",
                     cursor: "pointer",
-                    backgroundColor: colorMode === "dark" ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.03)",
-                    color: colorMode === "dark" ? "#e6edf3" : "#1f2328",
+                    transition: "all 0.15s ease",
                   }}
-                  title={`Insert ${item.label} into ${activeLangInfo.label} document`}
+                  title="Digital Thread CAD binding active. Click to view 3D assembly"
                 >
-                  + {item.label}
+                  <span style={{ fontSize: 13 }}>🧵</span>
+                  <span>{cadComponents.length} CAD Twins</span>
                 </button>
-              ))}
+              )}
+
+              {showCadView && animationControllerRef.current?.hasData && (
+                <Button
+                  variant="primary"
+                  size="small"
+                  leadingVisual={animationMode === "playing" ? PauseIcon : PlayIcon}
+                  onClick={() => {
+                    const ctrl = animationControllerRef.current;
+                    if (!ctrl) return;
+                    if (ctrl.mode === "playing") {
+                      ctrl.pause();
+                    } else {
+                      ctrl.play();
+                    }
+                  }}
+                  style={{
+                    marginLeft: 8,
+                    borderRadius: 8,
+                    fontWeight: 600,
+                    fontSize: 12,
+                  }}
+                >
+                  {animationMode === "playing" ? "Pause" : "Animate"}
+                </Button>
+              )}
+
+              {isPlaygroundRoute && !isNarrow && (
+                <>
+                  <div
+                    style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }}
+                  />
+                  {onAutoLayout && activeLangInfo.supportsDiagram && (
+                    <IconButton
+                      icon={FlowchartIcon}
+                      size="small"
+                      variant="invisible"
+                      aria-label={translations.autoLayout}
+                      title={translations.autoLayout}
+                      onClick={onAutoLayout}
+                    />
+                  )}
+                  {setView && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 2,
+                        padding: 2,
+                        borderRadius: 8,
+                        backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      <IconButton
+                        icon={WorkflowIcon}
+                        size="small"
+                        variant="invisible"
+                        aria-label={translations.diagramView}
+                        title={translations.diagramView}
+                        onClick={() => setView(MorselView.DIAGRAM)}
+                        style={
+                          view === MorselView.DIAGRAM
+                            ? {
+                                backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
+                                borderRadius: 6,
+                              }
+                            : {}
+                        }
+                      />
+                      <IconButton
+                        icon={ColumnsIcon}
+                        size="small"
+                        variant="invisible"
+                        aria-label={translations.splitViewColumns}
+                        title={translations.splitViewColumns}
+                        onClick={() => setView(MorselView.SPLIT_COLUMNS)}
+                        style={
+                          view === MorselView.SPLIT_COLUMNS
+                            ? {
+                                backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
+                                borderRadius: 6,
+                              }
+                            : {}
+                        }
+                      />
+                      <IconButton
+                        icon={RowsIcon}
+                        size="small"
+                        variant="invisible"
+                        aria-label={translations.splitViewRows}
+                        title={translations.splitViewRows}
+                        onClick={() => setView(MorselView.SPLIT_ROWS)}
+                        style={
+                          view === MorselView.SPLIT_ROWS
+                            ? {
+                                backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
+                                borderRadius: 6,
+                              }
+                            : {}
+                        }
+                      />
+                      <IconButton
+                        icon={UnwrapIcon}
+                        size="small"
+                        variant="invisible"
+                        aria-label={translations.codeView}
+                        title={translations.codeView}
+                        onClick={() => setView(MorselView.CODE)}
+                        style={
+                          (view as MorselView) === MorselView.CODE
+                            ? {
+                                backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.12)" : "#ffffff",
+                                borderRadius: 6,
+                              }
+                            : {}
+                        }
+                      />
+                    </div>
+                  )}
+                  {activeLangInfo.supportsSimulation && (onSimulate || onOpenCloudModal || onFlatten) && (
+                    <>
+                      <div
+                        style={{ width: 1, height: 18, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }}
+                      />
+                      {onSimulate && (
+                        <IconButton
+                          icon={PlayIcon}
+                          size="small"
+                          variant="invisible"
+                          aria-label={translations.simulateModel}
+                          title={translations.simulateModel}
+                          onClick={onSimulate}
+                        />
+                      )}
+                      {onOpenCloudModal && isCaeComputeEnabled && (
+                        <IconButton
+                          icon={ServerIcon}
+                          size="small"
+                          variant="invisible"
+                          aria-label="Run on Ansatz Cloud HPC"
+                          title="Run on Ansatz Cloud HPC"
+                          onClick={onOpenCloudModal}
+                        />
+                      )}
+                      {onFlatten && (
+                        <IconButton
+                          icon={StackIcon}
+                          size="small"
+                          variant="invisible"
+                          aria-label={translations.flattenModel}
+                          title={translations.flattenModel}
+                          onClick={onFlatten}
+                        />
+                      )}
+                    </>
+                  )}
+                </>
+              )}
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Collapsible Stencil Palette Bar */}
+            {showPalette && !showResultsView && !showCadView && !showAnalysisView && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  padding: "6px 12px",
+                  borderRadius: 10,
+                  backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.95)" : "rgba(255, 255, 255, 0.95)",
+                  backdropFilter: "blur(12px)",
+                  boxShadow:
+                    colorMode === "dark"
+                      ? "0 4px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08)"
+                      : "0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06)",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    color: colorMode === "dark" ? "#8b949e" : "#656d76",
+                    marginRight: 4,
+                  }}
+                >
+                  {activeLangInfo.label} Palette:
+                </span>
+                {stencils.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      onInsertStencilSnippet?.(item.snippet, item.className);
+                    }}
+                    style={{
+                      border:
+                        colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.12)" : "1px solid rgba(0, 0, 0, 0.12)",
+                      borderRadius: 6,
+                      padding: "3px 8px",
+                      fontSize: 11,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      backgroundColor: colorMode === "dark" ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.03)",
+                      color: colorMode === "dark" ? "#e6edf3" : "#1f2328",
+                    }}
+                    title={`Insert ${item.label} into ${activeLangInfo.label} document`}
+                  >
+                    + {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
       {/* Compact corner Diagram/Icon switcher when center floating HUD is hidden (e.g. inline artifact card) */}
       {hideCenterFloatingToolbar &&

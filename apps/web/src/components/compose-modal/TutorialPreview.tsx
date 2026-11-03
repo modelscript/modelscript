@@ -58,9 +58,9 @@ export const TutorialPreview: React.FC<TutorialPreviewProps> = ({
             letterSpacing: "0.04em",
           }}
         >
-          Live Article Preview
+          {notebookMode ? "Live Article Preview" : "Post Preview"}
         </span>
-        <span style={{ fontSize: "12px", color: "var(--ms-text-3)" }}>{readMins} min read</span>
+        {notebookMode && <span style={{ fontSize: "12px", color: "var(--ms-text-3)" }}>{readMins} min read</span>}
       </div>
 
       {notebookMode ? (
@@ -152,3 +152,6 @@ export const TutorialPreview: React.FC<TutorialPreviewProps> = ({
     </div>
   );
 };
+
+export const ArticlePreview = TutorialPreview;
+export type ArticlePreviewProps = TutorialPreviewProps;

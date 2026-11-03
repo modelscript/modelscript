@@ -29,6 +29,9 @@ const FALLBACK_LANGS: Record<string, FallbackSpec> = {
   relap5: { name: "RELAP5", short: "NUC", color: "#991b1b" },
   aspen: { name: "Aspen", short: "ASP", color: "#047857" },
   energyplus: { name: "EnergyPlus", short: "E+", color: "#15803d" },
+  qif: { name: "QIF 3.0", short: "QIF", color: "#0284c7" },
+  oscal: { name: "NIST OSCAL", short: "OSC", color: "#7c3aed" },
+  automationml: { name: "AutomationML", short: "AML", color: "#0d9488" },
 };
 
 /**

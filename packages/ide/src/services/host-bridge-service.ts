@@ -3,8 +3,8 @@
 import * as vscode from "vscode";
 import { Uri, workspace } from "vscode";
 import type { LibraryTreeProvider } from "../library-tree-provider.js";
-import { mountArtifactToMemFs } from "../templates/catalog.js";
-import type { MemoryFileSystemProvider } from "./virtual-fs-service.js";
+import { type ArtifactWorkspaceDescriptor, mountArtifactToMemFs } from "../templates/catalog.js";
+import { hydrateArtifactDescriptor, type MemoryFileSystemProvider } from "./virtual-fs-service.js";
 
 const EXT_METADATA: Record<string, { dialect: string; viewType: string; langTag: string }> = {
   ".mo": { dialect: "modelica", viewType: "modelica-code", langTag: "modelica" },
@@ -46,6 +46,8 @@ const EXT_METADATA: Record<string, { dialect: string; viewType: string; langTag:
   ".f90": { dialect: "fortran", viewType: "modelica-code", langTag: "fortran" },
   ".f": { dialect: "fortran", viewType: "modelica-code", langTag: "fortran" },
   ".st": { dialect: "plcopen", viewType: "modelica-code", langTag: "iecst" },
+  ".plcopen": { dialect: "plcopen", viewType: "modelica-code", langTag: "xml" },
+  ".iec": { dialect: "plcopen", viewType: "modelica-code", langTag: "iecst" },
   ".arxml": { dialect: "autosar", viewType: "modelica-code", langTag: "xml" },
   ".mdl": { dialect: "simulink", viewType: "modelica-code", langTag: "text" },
   ".reqif": { dialect: "reqif", viewType: "modelica-code", langTag: "xml" },
@@ -79,6 +81,8 @@ const EXT_METADATA: Record<string, { dialect: string; viewType: string; langTag:
   ".s1p": { dialect: "touchstone", viewType: "touchstone", langTag: "text" },
   ".ibs": { dialect: "ibis", viewType: "ibis", langTag: "text" },
   ".dss": { dialect: "opendss", viewType: "opendss", langTag: "text" },
+  ".vtu": { dialect: "vtk", viewType: "simulation-result", langTag: "xml" },
+  ".vtk": { dialect: "vtk", viewType: "simulation-result", langTag: "xml" },
 };
 
 export interface WorkspaceSnapshotPayload {
@@ -106,6 +110,7 @@ export class HostBridgeService implements vscode.Disposable {
   private _disposables: vscode.Disposable[] = [];
   private _mountedArtifactId: string | number | undefined;
   private _mountedTitle: string | undefined;
+  private _lastMountedKey: string | undefined;
 
   constructor(
     _context: vscode.ExtensionContext,
@@ -131,6 +136,7 @@ export class HostBridgeService implements vscode.Disposable {
     primaryFile?: string | undefined;
   }): Promise<void> {
     if (!payload?.artifactId) return;
+    const artIdStr = String(payload.artifactId);
     this._mountedArtifactId = payload.artifactId;
     if (payload.title) {
       this._mountedTitle = payload.title;
@@ -138,23 +144,53 @@ export class HostBridgeService implements vscode.Disposable {
 
     const targetUri =
       this.memfsRootUri || vscode.Uri.from({ scheme: "memfs", path: `/artifact-${payload.artifactId}` });
+
+    const mountKey = `${artIdStr}:${payload.viewType || ""}:${targetUri.path}`;
+    if (this._lastMountedKey === mountKey) {
+      return;
+    }
+
+    // If initWorkspaceAndTree already mounted real (non-stub) files into /artifact-<id>, skip duplicate re-mount
+    if (targetUri.path === `/artifact-${artIdStr}`) {
+      try {
+        const existingEntries = this.memFs.readDirectory(targetUri);
+        const hasRealFiles = existingEntries.some(
+          ([name]) =>
+            name !== "ArtifactModel.mo" &&
+            name !== `ArtifactModel_${artIdStr}.mo` &&
+            name !== "README.md" &&
+            name !== "HelloWorld.mo",
+        );
+        if (hasRealFiles) {
+          this._lastMountedKey = mountKey;
+          return;
+        }
+      } catch {
+        // directory not populated yet
+      }
+    }
+
+    this._lastMountedKey = mountKey;
     try {
       this.memFs.createDirectory(targetUri);
     } catch {
       // directory may already exist
     }
 
-    const { primaryFile } = mountArtifactToMemFs(this.memFs, targetUri, {
+    const descriptor: ArtifactWorkspaceDescriptor = {
       artifactId: payload.artifactId,
       title: payload.title,
       viewType: payload.viewType,
       viewConfig: payload.viewConfig,
       files: payload.files,
       primaryFile: payload.primaryFile,
-    });
+    };
+    await hydrateArtifactDescriptor(descriptor);
+
+    const { primaryFile } = mountArtifactToMemFs(this.memFs, targetUri, descriptor);
 
     try {
-      const fileUri = Uri.joinPath(targetUri, primaryFile);
+      const fileUri = Uri.joinPath(targetUri, ...primaryFile.split("/"));
       if (primaryFile.endsWith(".monb")) {
         await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
       } else {
@@ -216,7 +252,10 @@ export class HostBridgeService implements vscode.Disposable {
               walk(childUri, rel);
             } else if (fileType === vscode.FileType.File) {
               try {
-                files[rel] = decoder.decode(this.memFs.readFile(childUri));
+                const rawData = this.memFs.readFile(childUri);
+                if (rawData instanceof Uint8Array) {
+                  files[rel] = decoder.decode(rawData);
+                }
               } catch {
                 // Ignore read failure
               }
@@ -366,6 +405,85 @@ export class HostBridgeService implements vscode.Disposable {
       await vscode.env.clipboard.writeText(payload.codeSnippet);
       vscode.window.showInformationMessage(`Copied snippet for ${payload.title} to clipboard.`);
     }
+  }
+
+  /**
+   * Writes a solved 3D simulation result (.vtu) into the workspace and immediately
+   * opens the ModelScript Hub publish composer with the 3D result attached.
+   */
+  public async publishSimulationResult(options: {
+    fileName: string;
+    title: string;
+    vtuXml: string;
+    summaryMarkdown?: string | undefined;
+    sourceUri?: vscode.Uri | undefined;
+  }): Promise<WorkspaceSnapshotPayload> {
+    const cleanFileName = options.fileName.replace(/^\/+/, "") || "study_result.vtu";
+    const baseDirUri = options.sourceUri
+      ? vscode.Uri.joinPath(options.sourceUri, "..")
+      : this.memfsRootUri || workspace.workspaceFolders?.[0]?.uri || vscode.Uri.from({ scheme: "memfs", path: "/" });
+    const targetVtuUri = vscode.Uri.joinPath(baseDirUri, cleanFileName);
+
+    try {
+      await workspace.fs.writeFile(targetVtuUri, new TextEncoder().encode(options.vtuXml));
+      const tp = this.getTreeProvider();
+      tp?.refresh();
+    } catch (err) {
+      console.warn("[host-bridge] Could not write .vtu file to workspace:", err);
+    }
+
+    const snapshot = this.collectWorkspaceSnapshot();
+    const files: Record<string, string> = {
+      ...snapshot.files,
+      [cleanFileName]: options.vtuXml,
+    };
+
+    const forkedFromArtifactId =
+      this._mountedArtifactId !== undefined
+        ? Number.isNaN(Number(this._mountedArtifactId))
+          ? this._mountedArtifactId
+          : Number(this._mountedArtifactId)
+        : null;
+
+    const payload: WorkspaceSnapshotPayload = {
+      title: options.title || snapshot.title,
+      content: options.summaryMarkdown || `Published 3D simulation result \`${cleanFileName}\` from ModelScript IDE.`,
+      codeSnippet: options.vtuXml,
+      viewType: "simulation-result",
+      isMultiFile: Object.keys(files).length > 1,
+      files,
+      primaryFile: cleanFileName,
+      dialect: "vtk",
+      forkedFromArtifactId,
+      morselPayload: {
+        title: options.title || snapshot.title,
+        code: options.vtuXml,
+        dialect: "vtk",
+        isMultiFile: Object.keys(files).length > 1,
+        files,
+        primaryFile: cleanFileName,
+        forkedFromArtifactId,
+      },
+    };
+
+    try {
+      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "MODELSCRIPT_SHARE_TO_FEED", payload }, window.location.origin);
+      }
+      const channel = new BroadcastChannel("modelscript:host-bridge");
+      channel.postMessage({
+        type: "MODELSCRIPT_SHARE_TO_FEED",
+        payload,
+      });
+      channel.close();
+      vscode.window.showInformationMessage(
+        `Saved ${cleanFileName} and opened Publish Result composer in ModelScript Hub.`,
+      );
+    } catch {
+      vscode.window.showInformationMessage(`Saved simulation result to ${cleanFileName} in workspace.`);
+    }
+
+    return payload;
   }
 
   public getWorkspaceTitle(): string {

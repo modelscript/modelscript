@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { getOlgaQuickFixes } from "@modelscript/olga";
-import { getPscadQuickFixes } from "@modelscript/pscad";
+import { getPscadQuickFixes, getPscadReferences, getPscadRenameEdits } from "@modelscript/pscad";
+import { getPsseCodeActions, getPsseRenameEdits } from "@modelscript/psse";
 import {
   CodeAction,
   CodeActionKind,
@@ -11,6 +12,24 @@ import {
   WorkspaceEdit,
 } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+
+function collectPscadWorkspaceDocs(
+  documents: TextDocuments<TextDocument>,
+  documentTrees: Map<string, any>,
+): Array<{ uri: string; text: string }> {
+  const docs: Array<{ uri: string; text: string }> = [];
+  for (const d of documents.all()) {
+    if (/\.(pscx|pslx|pswx|psmx)$/i.test(d.uri)) {
+      docs.push({ uri: d.uri, text: d.getText() });
+    }
+  }
+  for (const [tUri, tTree] of documentTrees.entries()) {
+    if (/\.(pscx|pslx|pswx|psmx)$/i.test(tUri) && tTree?.text && !docs.some((d) => d.uri === tUri)) {
+      docs.push({ uri: tUri, text: tTree.text });
+    }
+  }
+  return docs;
+}
 
 export function registerWorkspaceFeaturesProvider(
   connection: Connection,
@@ -78,6 +97,12 @@ export function registerWorkspaceFeaturesProvider(
 
     const offset = document.offsetAt(params.position);
     const text = document.getText();
+
+    if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
+      const pscadDocs = collectPscadWorkspaceDocs(documents, documentTrees);
+      const pscadRefs = getPscadReferences(text, offset, params.textDocument.uri, pscadDocs);
+      if (pscadRefs.length > 0) return pscadRefs;
+    }
 
     const { globalLanguageRegistry } = await import("../registry/LanguageRegistry.js");
     const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, text);
@@ -193,10 +218,34 @@ export function registerWorkspaceFeaturesProvider(
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
 
+    const offset = document.offsetAt(params.position);
+    if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
+      const pscadDocs = collectPscadWorkspaceDocs(documents, documentTrees);
+      const pscadRename = getPscadRenameEdits(
+        document.getText(),
+        offset,
+        params.newName,
+        params.textDocument.uri,
+        pscadDocs,
+      );
+      if (pscadRename) return { changes: pscadRename };
+    }
+
+    if (/\.(raw|dyr)$/i.test(params.textDocument.uri) || document.languageId === "psse") {
+      const { globalLanguageRegistry } = await import("../registry/LanguageRegistry.js");
+      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, document.getText());
+      const psseRename = getPsseRenameEdits(
+        document.getText(),
+        params.position,
+        params.newName,
+        params.textDocument.uri,
+        plugin?.workspaceIndex as unknown as Parameters<typeof getPsseRenameEdits>[4],
+      );
+      if (psseRename) return psseRename;
+    }
+
     const isSysML2 = params.textDocument.uri.endsWith(".sysml");
     const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
-
-    const offset = document.offsetAt(params.position);
     let targetEntry: any = null;
 
     for (const entry of unifiedIndex.symbols.values()) {
@@ -404,6 +453,26 @@ export function registerWorkspaceFeaturesProvider(
     if (/\.(opi|olga)$/i.test(params.textDocument.uri)) {
       const olgaFixes = getOlgaQuickFixes(document.getText(), params.textDocument.uri);
       for (const fix of olgaFixes) {
+        const action: CodeAction = {
+          title: fix.title,
+          kind: CodeActionKind.QuickFix,
+          edit: fix.edit,
+        };
+        if (fix.isPreferred !== undefined) {
+          action.isPreferred = fix.isPreferred;
+        }
+        actions.push(action);
+      }
+    }
+
+    if (/\.(raw|dyr)$/i.test(params.textDocument.uri) || document.languageId === "psse") {
+      const psseActions = getPsseCodeActions(
+        document.getText(),
+        params.range,
+        params.context.diagnostics as unknown as Parameters<typeof getPsseCodeActions>[2],
+        params.textDocument.uri,
+      );
+      for (const fix of psseActions) {
         const action: CodeAction = {
           title: fix.title,
           kind: CodeActionKind.QuickFix,

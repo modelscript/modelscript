@@ -970,9 +970,25 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       : cmp.instanceName || cmp.id;
     const cleanDefn = cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName;
 
-    // Build concise instance + rating label for apparatus glyphs
-    const mvaRating = cmp.parameters["MVA"] ?? cmp.parameters["mva"] ?? cmp.parameters["rated_mva"];
-    const vRating = cmp.parameters["V"] ?? cmp.parameters["Vref"] ?? cmp.parameters["v"];
+    const stripUnitBracket = (raw: string | number | undefined): string | undefined => {
+      if (raw === undefined || raw === null || raw === "") return undefined;
+      return String(raw)
+        .replace(/\s*\[[^\]]*\]\s*/g, "")
+        .trim();
+    };
+
+    // Build concise instance + rating label and secondary engineering subtitle for apparatus glyphs
+    const mvaRating = stripUnitBracket(
+      cmp.parameters["MVA"] ?? cmp.parameters["Tmva"] ?? cmp.parameters["mva"] ?? cmp.parameters["rated_mva"],
+    );
+    const vRating = stripUnitBracket(
+      cmp.parameters["V"] ??
+        cmp.parameters["Vm"] ??
+        cmp.parameters["Vbase"] ??
+        cmp.parameters["Vref"] ??
+        cmp.parameters["v"] ??
+        cmp.parameters["rated_kv"],
+    );
     const cleanLower = cleanName.toLowerCase();
     const hasMva = mvaRating !== undefined && cleanLower.includes("mva");
     const hasKv = vRating !== undefined && cleanLower.includes("kv");
@@ -985,6 +1001,64 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
             (defn.includes("source") || defn.includes("arrester") || defn.includes("mov"))
           ? `${cleanName} (${vRating} kV)`
           : cleanName;
+
+    let ratingSubtitle = "";
+    const freqVal = stripUnitBracket(cmp.parameters["F0"] ?? cmp.parameters["f"] ?? cmp.parameters["Freq"]);
+    if (defn.includes("xfmr") || defn.includes("transformer") || defn.includes("tp3")) {
+      const xlVal = stripUnitBracket(cmp.parameters["Xl"] ?? cmp.parameters["X"] ?? cmp.parameters["x"]);
+      const v1Val = stripUnitBracket(cmp.parameters["V1"] ?? cmp.parameters["v1"]);
+      const v2Val = stripUnitBracket(cmp.parameters["V2"] ?? cmp.parameters["v2"]);
+      const parts: string[] = [];
+      if (v1Val && v2Val) parts.push(`${v1Val}/${v2Val} kV`);
+      else if (mvaRating && hasMva) parts.push(`${mvaRating} MVA`);
+      if (xlVal) parts.push(`X=${xlVal} pu`);
+      ratingSubtitle = parts.join(" • ");
+    } else if (
+      defn.includes("source") ||
+      defn.includes("gen") ||
+      defn.includes("sync_machine") ||
+      defn.includes("ind_machine")
+    ) {
+      const parts: string[] = [];
+      if (vRating && hasKv) parts.push(`${vRating} kV`);
+      if (freqVal) parts.push(`${freqVal} Hz`);
+      if (mvaRating && hasMva) parts.push(`${mvaRating} MVA`);
+      ratingSubtitle = parts.join(" • ");
+    } else if (defn.includes("tline") || defn.includes("cable")) {
+      const lenVal = stripUnitBracket(cmp.parameters["Length"] ?? cmp.parameters["length"] ?? cmp.parameters["len"]);
+      if (lenVal) {
+        ratingSubtitle = `${lenVal} km • ${defn.includes("cable") ? "Cable" : "Bergeron"}`;
+      }
+    } else if (defn.includes("tpflt") || defn.includes("fault")) {
+      const tfVal = stripUnitBracket(cmp.parameters["TF"] ?? cmp.parameters["tf"]);
+      const dfVal = stripUnitBracket(cmp.parameters["DF"] ?? cmp.parameters["df"]);
+      const parts: string[] = [];
+      if (tfVal) parts.push(`t=${tfVal}s`);
+      if (dfVal) parts.push(`Δt=${dfVal}s`);
+      ratingSubtitle = parts.join(" • ");
+    } else if (
+      defn.includes("rlc") ||
+      defn.includes("resistor") ||
+      defn.includes("inductor") ||
+      defn.includes("capacitor")
+    ) {
+      const rVal = stripUnitBracket(cmp.parameters["R"] ?? cmp.parameters["r"]);
+      const lVal = stripUnitBracket(cmp.parameters["L"] ?? cmp.parameters["l"]);
+      const cVal = stripUnitBracket(cmp.parameters["C"] ?? cmp.parameters["c"]);
+      const parts: string[] = [];
+      if (rVal) parts.push(`R=${rVal}Ω`);
+      if (lVal) parts.push(`L=${lVal}mH`);
+      if (cVal) parts.push(`C=${cVal}µF`);
+      ratingSubtitle = parts.join(" • ");
+    } else if (defn.includes("inverter") || defn.includes("fmu") || defn.includes("ibr") || defn.includes("vsc")) {
+      const hVirt = stripUnitBracket(cmp.parameters["H_virt"] ?? cmp.parameters["H"]);
+      const dDroop = stripUnitBracket(cmp.parameters["D_droop"] ?? cmp.parameters["D"]);
+      const parts: string[] = [];
+      if (hVirt) parts.push(`H=${hVirt}s`);
+      if (dDroop) parts.push(`D=${dDroop} pu`);
+      if (!parts.length && vRating) parts.push(`${vRating} kV`);
+      ratingSubtitle = parts.join(" • ");
+    }
 
     const isAnnotation = defn.includes("annotation");
     const cellAngle = isAnnotation ? 0 : (cmp.rotation ?? 0);
@@ -1006,6 +1080,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
 
     let markup: X6Markup[] | undefined = undefined;
     let attrs: Record<string, X6MarkupAttr> | undefined = undefined;
+    let hasCustomSvgDef = false;
     let width = cmp.width && cmp.width > 0 ? cmp.width : 60;
     let height = cmp.height && cmp.height > 0 ? cmp.height : 40;
 
@@ -1147,6 +1222,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         ? parseSvgXmlToMarkup(graphicXml, effParams, width, height, cellAngle, cmp.mirror ?? false, cleanDefn)
         : undefined;
       if (parsedDef) {
+        hasCustomSvgDef = true;
         markup = parsedDef.markup;
         attrs = parsedDef.attrs;
       } else if (defn.includes("xfmr") || defn.includes("transformer")) {
@@ -1513,6 +1589,23 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       defn.includes("pin");
 
     const labelColor = "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))";
+    const includeSublabel = Boolean(!hasCustomSvgDef && !isAnnotation && !isPageNav && !isProbeOrPin && ratingSubtitle);
+
+    const baseMarkup: X6Markup[] = markup
+      ? markup.some((m) => m.selector === "label")
+        ? markup
+        : [...markup, { tagName: "text", selector: "label" }]
+      : [
+          { tagName: "rect", selector: "body" },
+          { tagName: "rect", selector: "headerBg" },
+          { tagName: "text", selector: "typeBadge" },
+          { tagName: "text", selector: "label" },
+        ];
+
+    const finalMarkup: X6Markup[] =
+      includeSublabel && !baseMarkup.some((m) => m.selector === "sublabel")
+        ? [...baseMarkup, { tagName: "text", selector: "sublabel" }]
+        : baseMarkup;
 
     cells.push({
       id: cmp.id,
@@ -1523,16 +1616,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
       height,
       opacity: cmp.disabled ? 0.45 : 1,
       angle: cellAngle,
-      markup: markup
-        ? markup.some((m) => m.selector === "label")
-          ? markup
-          : [...markup, { tagName: "text", selector: "label" }]
-        : [
-            { tagName: "rect", selector: "body" },
-            { tagName: "rect", selector: "headerBg" },
-            { tagName: "text", selector: "typeBadge" },
-            { tagName: "text", selector: "label" },
-          ],
+      markup: finalMarkup,
       attrs: {
         ...(attrs ??
           (markup
@@ -1622,6 +1706,21 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
                   },
             }
           : {}),
+        ...(includeSublabel
+          ? {
+              sublabel: {
+                text: ratingSubtitle,
+                fill: "#38bdf8",
+                fontSize: 8.5,
+                fontWeight: "600",
+                fontFamily: "monospace",
+                textAnchor: "middle",
+                textVerticalAnchor: "top",
+                refX: 0.5,
+                refY: height + 19,
+              },
+            }
+          : {}),
       },
       ports: portItems.length > 0 ? { groups: portGroups, items: portItems } : undefined,
       properties: nodeProperties,
@@ -1632,6 +1731,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
         name: cmp.instanceName,
         disabled: cmp.disabled,
         parameters: cmp.parameters,
+        ratingSubtitle: ratingSubtitle || undefined,
         centerPosition: { x: cmp.position.x, y: cmp.position.y },
         properties: nodeProperties,
       },
@@ -1911,12 +2011,27 @@ export function renderPscadSvg(
 
   for (const c of diag.cells) {
     if (c.x !== undefined && c.y !== undefined) {
-      if (c.x < minX) minX = c.x;
-      if (c.y < minY) minY = c.y;
+      const labelPadX = c.data?.["kind"] === "component" ? 24 : 0;
+      const topPadY = c.data?.["kind"] === "bus" ? 18 : 0;
+      const bottomPadY = c.data?.["kind"] === "component" ? (c.data?.["ratingSubtitle"] ? 30 : 18) : 0;
+      if (c.x - labelPadX < minX) minX = c.x - labelPadX;
+      if (c.y - topPadY < minY) minY = c.y - topPadY;
       const w = c.width ?? 60;
       const h = c.height ?? 60;
-      if (c.x + w > maxX) maxX = c.x + w;
-      if (c.y + h > maxY) maxY = c.y + h;
+      if (c.x + w + labelPadX > maxX) maxX = c.x + w + labelPadX;
+      if (c.y + h + bottomPadY > maxY) maxY = c.y + h + bottomPadY;
+    } else if (c.shape === "edge") {
+      const srcPt = (c.data?.["sourcePoint"] as { x?: number; y?: number } | undefined) ?? c.source;
+      const tgtPt = (c.data?.["targetPoint"] as { x?: number; y?: number } | undefined) ?? c.target;
+      const pts = [srcPt, ...(c.vertices ?? []), tgtPt];
+      for (const p of pts) {
+        if (p?.x !== undefined && p?.y !== undefined) {
+          if (p.x < minX) minX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y > maxY) maxY = p.y;
+        }
+      }
     }
   }
 
@@ -1927,11 +2042,19 @@ export function renderPscadSvg(
     maxY = 600;
   }
 
-  const padding = 50;
-  const vbX = minX - padding;
-  const vbY = minY - padding;
-  const vbW = maxX - minX + 2 * padding;
-  const vbH = maxY - minY + 2 * padding;
+  const padding = 44;
+  const vbX = Math.round(minX - padding);
+  let vbY = Math.round(minY - padding);
+  const vbW = Math.round(maxX - minX + 2 * padding);
+  let vbH = Math.round(maxY - minY + 2 * padding);
+
+  // Prevent ultra-flat ribbon aspect ratios on 1D horizontal schematics
+  if (project.projectType !== "library" && vbH < vbW * 0.34) {
+    const targetH = Math.round(vbW * 0.34);
+    const extraH = targetH - vbH;
+    vbY = Math.round(vbY - extraH / 2);
+    vbH = targetH;
+  }
 
   const isDark = options?.theme === "dark" || (!options?.theme && project.projectType !== "library");
   const bgColor = isDark ? "#0f172a" : "#ffffff";
@@ -1943,38 +2066,45 @@ export function renderPscadSvg(
     if (c.x === undefined || c.y === undefined) return "";
     const w = c.width ?? 60;
     const h = c.height ?? 60;
+    const cellKind = String(c.data?.["kind"] ?? "component");
+    const dataAttrs = ` data-id="${escapeHtml(c.id)}" data-kind="${escapeHtml(cellKind)}"`;
 
-    if (c.data?.["kind"] === "junction") {
+    if (cellKind === "junction") {
       if (project.projectType === "library") return "";
-      const pos = c.data["position"] as { x?: number; y?: number } | undefined;
+      const pos = c.data?.["position"] as { x?: number; y?: number } | undefined;
       const jx = pos?.x ?? c.x + 2.5;
       const jy = pos?.y ?? c.y + 2.5;
       return `  <circle cx="${jx}" cy="${jy}" r="2.5" fill="${isDark ? "#f8fafc" : "#0f172a"}" />\n`;
-    } else if (c.data?.["kind"] === "bus") {
-      const vbase = Number(c.data["vbase"] ?? 230);
-      const color = vbase >= 200 ? "#dc2626" : vbase >= 69 ? "#d97706" : "#0284c7";
-      let res = `  <g transform="translate(${c.x}, ${c.y})">\n`;
-      res += `    <rect width="${w}" height="${h}" rx="2" fill="${color}" />\n`;
-      res += `    <text x="${w / 2}" y="-4" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${escapeHtml(String(c.data["name"] ?? c.id))} (${vbase} kV)</text>\n`;
+    } else if (cellKind === "bus") {
+      const vbase = Number(c.data?.["vbase"] ?? 230);
+      const color = vbase >= 200 ? "#ef4444" : vbase >= 69 ? "#f59e0b" : "#38bdf8";
+      const busLabel = `${String(c.data?.["name"] ?? c.id)} (${vbase} kV)`;
+      let res = `  <g transform="translate(${c.x}, ${c.y})"${dataAttrs} style="cursor: pointer;">\n`;
+      res += `    <rect width="${w}" height="${h}" rx="2.5" fill="${color}" />\n`;
+      res += `    <text x="${w / 2}" y="-6" fill="${color}" font-size="10" font-weight="bold" font-family="monospace" text-anchor="middle">${escapeHtml(busLabel)}</text>\n`;
       res += `  </g>\n`;
       return res;
-    } else if (c.data?.["kind"] === "sticky") {
-      const lines = String(c.data["text"] || "").split("\n");
+    } else if (cellKind === "sticky") {
+      const lines = String(c.data?.["text"] || "").split("\n");
       const isBanner = w > 400;
-      const fill = isBanner ? "#fffbeb" : "#fef3c7";
-      const stroke = isBanner ? "#f59e0b" : "#d97706";
-      let res = `  <g transform="translate(${c.x}, ${c.y})">\n`;
-      res += `    <rect width="${w}" height="${h}" rx="4" fill="${fill}" stroke="${stroke}" stroke-width="1" />\n`;
-      let textY = 18;
-      for (const line of lines.slice(0, 12)) {
-        res += `    <text x="12" y="${textY}" fill="#1e293b" font-size="11" font-family="sans-serif">${escapeHtml(line)}</text>\n`;
+      const fill = isDark ? "rgba(30, 41, 59, 0.92)" : isBanner ? "#fffbeb" : "#fef3c7";
+      const stroke = isDark ? "#0284c7" : isBanner ? "#f59e0b" : "#d97706";
+      const textColor = isDark ? "#e2e8f0" : "#1e293b";
+      let res = `  <g transform="translate(${c.x}, ${c.y})"${dataAttrs}>\n`;
+      res += `    <rect width="${w}" height="${h}" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="1.2" />\n`;
+      let textY = 17;
+      for (let i = 0; i < Math.min(lines.length, 12); i++) {
+        const line = lines[i]!;
+        const fw = i === 0 ? ' font-weight="bold"' : "";
+        const fillLine = i === 0 && isDark ? "#38bdf8" : textColor;
+        res += `    <text x="12" y="${textY}" fill="${fillLine}" font-size="${i === 0 ? 11 : 10}"${fw} font-family="sans-serif">${escapeHtml(line)}</text>\n`;
         textY += 15;
       }
       res += `  </g>\n`;
       return res;
     } else if (c.markup && Array.isArray(c.markup) && c.markup.length > 0) {
       const rotStr = c.angle ? ` rotate(${c.angle}, ${w / 2}, ${h / 2})` : "";
-      let res = `  <g transform="translate(${c.x}, ${c.y})${rotStr}">\n`;
+      let res = `  <g transform="translate(${c.x}, ${c.y})${rotStr}"${dataAttrs} style="cursor: pointer;">\n`;
       for (const m of c.markup) {
         const merged: X6MarkupAttr = {
           ...(m.attrs || {}),
@@ -2031,13 +2161,14 @@ export function renderPscadSvg(
           const fill = resolveVar(merged.fill, isDark) ?? (isDark ? "#f8fafc" : "#0f172a");
           const fs = merged.fontSize ?? merged["font-size"] ?? 9;
           const fw = merged.fontWeight ?? merged["font-weight"] ?? "bold";
+          const ff = merged.fontFamily ?? merged["font-family"] ?? "sans-serif";
           const ta = merged.textAnchor ?? merged["text-anchor"] ?? "middle";
           const dbl =
             merged.textVerticalAnchor === "middle" || merged["text-vertical-anchor"] === "middle"
               ? ' dominant-baseline="middle"'
               : "";
           const transform = merged.transform ? ` transform="${merged.transform}"` : "";
-          res += `    <text x="${tx}" y="${ty}" fill="${fill}" font-size="${fs}" font-weight="${fw}" font-family="sans-serif" text-anchor="${ta}"${dbl}${transform}>${textVal}</text>\n`;
+          res += `    <text x="${tx}" y="${ty}" fill="${fill}" font-size="${fs}" font-weight="${fw}" font-family="${ff}" text-anchor="${ta}"${dbl}${transform}>${textVal}</text>\n`;
         }
       }
       res += `  </g>\n`;
@@ -2047,7 +2178,7 @@ export function renderPscadSvg(
       const name = rawName.includes(":") ? rawName.split(":").pop()! : rawName;
       const defn = String(c.data?.["definition"] || "Component");
       const rotStr = c.angle ? ` rotate(${c.angle}, ${w / 2}, ${h / 2})` : "";
-      let res = `  <g transform="translate(${c.x}, ${c.y})${rotStr}">\n`;
+      let res = `  <g transform="translate(${c.x}, ${c.y})${rotStr}"${dataAttrs} style="cursor: pointer;">\n`;
       res += `    <rect width="${w}" height="${h}" rx="4" fill="${isDark ? "#1e293b" : "#f1f5f9"}" stroke="#38bdf8" stroke-width="1.5" />\n`;
       res += `    <text x="${w / 2}" y="${h / 2 - 4}" fill="${isDark ? "#f8fafc" : "#0f172a"}" font-size="10" font-weight="bold" font-family="sans-serif" text-anchor="middle">${escapeHtml(name)}</text>\n`;
       res += `    <text x="${w / 2}" y="${h / 2 + 10}" fill="#64748b" font-size="8" font-family="sans-serif" text-anchor="middle">${escapeHtml(defn)}</text>\n`;
@@ -2100,7 +2231,7 @@ export function renderPscadSvg(
       <circle cx="1" cy="1" r="1" fill="${gridDotColor}" />
     </pattern>
   </defs>
-  <rect x="${vbX}" y="${vbY}" width="${vbW}" height="${vbH}" fill="url(#grid)" />
+  <rect x="${vbX - 2000}" y="${vbY - 2000}" width="${vbW + 4000}" height="${vbH + 4000}" fill="url(#grid)" />
 ${elementsSvg}
 </svg>`;
 }

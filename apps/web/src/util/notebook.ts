@@ -17,6 +17,7 @@ export interface NotebookArtifactCell {
 export type NotebookCell = NotebookMarkdownCell | NotebookArtifactCell;
 
 export type TutorialDifficulty = "Beginner" | "Intermediate" | "Advanced";
+export type ArticleDifficulty = TutorialDifficulty;
 
 export interface NotebookHeading {
   id: string;
@@ -24,6 +25,12 @@ export interface NotebookHeading {
   level: 1 | 2 | 3;
   cellId: string;
 }
+
+export type ArticleHeading = NotebookHeading;
+export type ArticleCell = NotebookCell;
+export type ArticleMarkdownCell = NotebookMarkdownCell;
+export type ArticleArtifactCell = NotebookArtifactCell;
+export type ArticleMetadata = NotebookMetadata;
 
 export interface NotebookMetadata {
   isNotebook: boolean;
@@ -148,10 +155,10 @@ export function createStarterNotebookCells(): {
         type: "markdown",
         content: `## 1. Overview
 
-In this tutorial, we'll explore how to build, parameterize, and simulate a continuous-time physical system in **ModelScript**. We'll start from the governing differential equations, implement the acausal model, and inspect its step response.
+In this article, we'll explore how to build, parameterize, and simulate a continuous-time physical system in **ModelScript**. We'll start from the governing differential equations, implement the acausal model, and inspect its step response.
 
 > [!TIP]
-> Every code block in this tutorial can be copied or opened directly in the **ModelScript Web IDE** for live interactive simulation.`,
+> Every code block in this article can be copied or opened directly in the **ModelScript Web IDE** for live interactive simulation.`,
       },
       {
         id: createCellId("md"),
@@ -480,3 +487,9 @@ export function isNotebookPost(post: any): boolean {
   if (typeof post.content === "string" && /^#\s+[^\n]+\n+[\s\S]*\n##\s+/m.test(post.content)) return true;
   return false;
 }
+
+export const isArticlePost = isNotebookPost;
+export const parseArticleFromContent = parseNotebookFromContent;
+export const createStarterArticleCells = createStarterNotebookCells;
+export const extractArticleHeadings = extractNotebookHeadings;
+export const serializeArticleToMarkdown = serializeCellsToMarkdown;

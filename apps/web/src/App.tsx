@@ -18,7 +18,7 @@ import { RealtimeNotificationListener } from "./components/RealtimeNotificationL
 import RequireAuth from "./components/RequireAuth";
 import ScrollToTop, { scrollToTop } from "./components/ScrollToTop";
 import { ToastProvider } from "./components/ToastContext";
-import { FeatureFlagProvider, useFeatureFlag, useFeatureFlags } from "./FeatureFlagContext";
+import { FeatureFlagProvider, useFeatureFlag } from "./FeatureFlagContext";
 import { InstanceBrandingProvider } from "./InstanceBrandingContext";
 import { ModelingPreferencesProvider } from "./ModelingPreferencesContext";
 import { ThemeContextProvider, useTheme } from "./theme";
@@ -520,19 +520,10 @@ export function InstanceAnnouncementBanner({
 function App() {
   const { theme } = useTheme();
   const { user, isLoading, setSession, justLoggedOut } = useAuth();
-  const { isLoading: isFlagsLoading } = useFeatureFlags();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
-
-  if (isLoading || isFlagsLoading) {
-    return (
-      <div style={{ minHeight: "100vh", backgroundColor: "transparent" }}>
-        <PageLoadingFallback />
-      </div>
-    );
-  }
 
   return (
     <ThemeProvider colorMode={theme === "dark" ? "night" : "day"}>
@@ -559,7 +550,13 @@ function App() {
                 <Routes>
                   <Route
                     path="/"
-                    element={<Navigate to={user ? "/home" : justLoggedOut ? "/logout" : "/explore"} replace />}
+                    element={
+                      isLoading ? (
+                        <PageLoadingFallback />
+                      ) : (
+                        <Navigate to={user ? "/home" : justLoggedOut ? "/logout" : "/explore"} replace />
+                      )
+                    }
                   />
                   <Route path="/setup" element={<SetupWizardPage onLoginSuccess={setSession} />} />
                   <Route path="/login" element={<LoginPage />} />

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Link } from "react-router-dom";
-import styled from "styled-components";
+import styledImport from "styled-components";
 import { safeCssImageUrl } from "../../util/url";
+
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 export const PostWrapper = styled.div<{
   $isDetail?: boolean | undefined;
@@ -267,6 +270,15 @@ export const ActionButton = styled.button<{
     height: 32px;
     border-radius: 50%;
     transition: background-color 0.2s;
+  }
+
+  @media (max-width: 767px), (pointer: coarse) {
+    min-height: 44px;
+
+    .icon-wrapper {
+      width: 38px;
+      height: 38px;
+    }
   }
 
   &:hover .icon-wrapper {

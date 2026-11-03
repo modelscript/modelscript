@@ -469,10 +469,13 @@ export class ParserService {
     }
 
     const cached = this.documentManager.documentTrees.get(uri);
+    const cachedTree = cached?.tree as unknown as { rootPtr?: number; rootNode?: { id?: number } } | null | undefined;
+    const oldRootPtr = cachedTree?.rootPtr ?? cachedTree?.rootNode?.id ?? 0;
+    const isCachedTreeActive = Boolean(oldRootPtr && this.facade && this.facade.lastAstRoot === oldRootPtr);
     let tree: TreeSitterTree;
     const t0 = performance.now();
 
-    if (cached && cached.text !== newText) {
+    if (cached && cached.text !== newText && isCachedTreeActive) {
       // Incremental reparse: edit the old tree and pass it to parse()
       const tEdit0 = performance.now();
       const edit = computeTreeEdit(cached.text, newText);
@@ -500,7 +503,7 @@ export class ParserService {
           `[perf] updateDocumentTree (incremental) slow: total=${(tEdit3 - t0).toFixed(2)}ms, diff=${(tEdit1 - tEdit0).toFixed(2)}ms, edit=${(tEdit2 - tEdit1).toFixed(2)}ms, parse=${(tEdit3 - tEdit2).toFixed(2)}ms`,
         );
       }
-    } else if (cached) {
+    } else if (cached && cached.text === newText && isCachedTreeActive) {
       // Text unchanged — reuse existing tree
       return cached.tree;
     } else {
@@ -538,11 +541,14 @@ export class ParserService {
     if (!this.parserReady || !this.parser) return null;
 
     const cached = this.documentManager.documentTrees.get(uri);
-    if (cached) return cached.tree;
+    const cachedTree = cached?.tree as unknown as { rootPtr?: number; rootNode?: { id?: number } } | null | undefined;
+    const oldRootPtr = cachedTree?.rootPtr ?? cachedTree?.rootNode?.id ?? 0;
+    const isCachedTreeActive = Boolean(oldRootPtr && this.facade && this.facade.lastAstRoot === oldRootPtr);
+    if (cached && isCachedTreeActive) return cached.tree;
 
     // No cached tree — parse from current document text
     const document = this.documents.get(uri);
-    if (!document) return null;
+    if (!document) return cached?.tree ?? null;
 
     const text = document.getText();
     return this.updateDocumentTree(uri, text);

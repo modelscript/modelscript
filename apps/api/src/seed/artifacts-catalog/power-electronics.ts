@@ -18,6 +18,7 @@ export const POWER_ELECTRONICS_POSTS: SeedPostSpec[] = [
   <definitions>
     <definition name="Main" version="5.0">
       <schematic>
+        <Sticky id="s_hdr" x="90" y="96" w="756" h="32">IEEE 2800-2022 Cl. 7.2 Ride-Through Study — 250 MW / 1 GWh Grid-Forming BESS @ 230 kV POI (SCR = 1.85, dt = 10 us)</Sticky>
         <User id="u1" name="master:source_3" x="126" y="180">
           <param name="Name" value="Grid230kV_Thevenin"/>
           <param name="Vm" value="230.0 [kV]"/>
@@ -27,7 +28,7 @@ export const POWER_ELECTRONICS_POSTS: SeedPostSpec[] = [
           <param name="Name" value="TieLine_230kV_42km"/>
           <param name="Length" value="42.0 [km]"/>
         </User>
-        <User id="u3" name="master:tpflt" x="360" y="216">
+        <User id="u3" name="master:tpflt" x="360" y="234">
           <param name="Name" value="POI_Bolted_Fault"/>
           <param name="TF" value="0.50 [s]"/>
           <param name="DF" value="0.15 [s]"/>
@@ -38,7 +39,13 @@ export const POWER_ELECTRONICS_POSTS: SeedPostSpec[] = [
         <User id="u5" name="master:xfmr-3p2w" x="558" y="180">
           <param name="Name" value="GSU_230_34p5kV_280MVA"/>
           <param name="Tmva" value="280.0 [MVA]"/>
+          <param name="V1" value="230.0 [kV]"/>
+          <param name="V2" value="34.5 [kV]"/>
           <param name="Xl" value="0.105 [pu]"/>
+        </User>
+        <User id="u_mov" name="master:arrester" x="630" y="234">
+          <param name="Name" value="MV_34p5kV_MOV"/>
+          <param name="V" value="36.0 [kV]"/>
         </User>
         <User id="u6" name="master:rlc" x="684" y="180">
           <param name="Name" value="LCL_Harmonic_Filter"/>
@@ -49,12 +56,14 @@ export const POWER_ELECTRONICS_POSTS: SeedPostSpec[] = [
           <param name="Name" value="GFM_BESS_250MW_VSC"/>
           <param name="H_virt" value="4.5 [s]"/>
           <param name="D_droop" value="20.0 [pu]"/>
+          <param name="control_mode" value="grid_forming"/>
         </User>
         <Wire id="w1" x="162" y="180" x2="216" y2="180"/>
         <Wire id="w2" x="288" y="180" x2="414" y2="180"/>
-        <Wire id="w3" x="360" y="180" x2="360" y2="198"/>
+        <Wire id="w3" x="360" y="180" x2="360" y2="216"/>
         <Wire id="w4" x="450" y="180" x2="504" y2="180"/>
         <Wire id="w5" x="594" y="180" x2="666" y2="180"/>
+        <Wire id="w_mov" x="630" y="180" x2="630" y2="216"/>
         <Wire id="w6" x="702" y="180" x2="790" y2="180"/>
       </schematic>
     </definition>
@@ -64,6 +73,11 @@ export const POWER_ELECTRONICS_POSTS: SeedPostSpec[] = [
       projectTitle: "BESS_250MW_GridForming_IEEE2800",
       definitionName: "Main",
       timeStepUs: 10,
+      scr: 1.85,
+      systemFrequencyHz: 60,
+      faultTimeSec: 0.5,
+      faultDurationSec: 0.15,
+      negSeqResponseMs: 11.4,
       ieee2800Compliant: true,
       standalone: true,
       netlist: {
@@ -76,7 +90,9 @@ export const POWER_ELECTRONICS_POSTS: SeedPostSpec[] = [
           { id: "u1", definition: "master:source_3", name: "Grid230kV_Thevenin" },
           { id: "u2", definition: "master:tline", name: "TieLine_230kV_42km" },
           { id: "u3", definition: "master:tpflt", name: "POI_Bolted_Fault" },
+          { id: "u4", definition: "master:breaker3", name: "POI_230kV_Breaker" },
           { id: "u5", definition: "master:xfmr-3p2w", name: "GSU_230_34p5kV_280MVA" },
+          { id: "u_mov", definition: "master:arrester", name: "MV_34p5kV_MOV" },
           { id: "u6", definition: "master:rlc", name: "LCL_Harmonic_Filter" },
           { id: "u7", definition: "master:inverter_fmu", name: "GFM_BESS_250MW_VSC" },
         ],

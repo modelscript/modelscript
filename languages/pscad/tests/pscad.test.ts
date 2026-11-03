@@ -15,15 +15,21 @@ import {
   getPscadDocumentSymbols,
   getPscadFoldingRanges,
   getPscadHover,
+  getPscadInlayHints,
   getPscadPaletteCategories,
   getPscadQuickFixes,
+  getPscadReferences,
+  getPscadRenameEdits,
 } from "../src/catalog/master-library-schemas.js";
+import { orthogonalize, planDiagramActions } from "../src/edit/diagram-actions.js";
+import { planPscadEdits } from "../src/edit/edit-engine.js";
 import { pscadLanguage, runPscadSimulationPipeline } from "../src/language.js";
 import { lintPscx } from "../src/lints/index.js";
 import { extractEmtNetlist, netlistToEmtCircuit } from "../src/netlist/emt-netlist.js";
 import { parsePscx } from "../src/parser/pscx-parser.js";
 import { pscadToModelica } from "../src/projections/modelica.js";
 import { pscadToSsd } from "../src/projections/ssp.js";
+import { EmtSolver as PscadEmtSolver, parsePscadSnapshot, serializePscadSnapshot } from "../src/solver/emt-solver.js";
 import { verifyIeee2800Compliance } from "../src/verification/ieee2800.js";
 
 async function main() {
@@ -1225,7 +1231,273 @@ async function main() {
     throw new Error(`Expected M6001 squiggle to highlight exact component ID 'vm_float', got '${highlightedSlice}'`);
   }
 
-  console.log("ALL TESTS PASSED SUCCESSFULLY! Milestones 1-5 + Phases 1-11 + SOTA Core Editing Suite verified.");
+  // ── 19. Unit-Aware Hover, Cross-File Definition/References/Rename, Inlay Hints & Edit Engine Ops ──
+  console.log("19. Testing Unit-Aware Hover, Cross-File LSP Intelligence, Inlay Hints & Edit Engine Ops...");
+
+  // 19a. Unit-aware hover on GSU transformer u5 and LCL filter u6
+  const u5Offset = bess250Pscx.indexOf('id="u5"');
+  const u5Hover = getPscadHover(bess250Pscx, u5Offset);
+  if (!u5Hover || !u5Hover.contents.includes("280 MVA")) {
+    throw new Error(
+      `Expected unit-aware hover on u5 to derive 280 MVA rating from Tmva="280.0 [MVA]", got: ${JSON.stringify(u5Hover)}`,
+    );
+  }
+  const u6Offset = bess250Pscx.indexOf('id="u6"');
+  const u6Hover = getPscadHover(bess250Pscx, u6Offset);
+  if (!u6Hover || !u6Hover.contents.includes("LC Resonant Frequency")) {
+    throw new Error(
+      `Expected unit-aware hover on u6 to derive LC Resonant Frequency from L="0.45 [mH]" & C="185.0 [uF]", got: ${JSON.stringify(u6Hover)}`,
+    );
+  }
+
+  // 19b. Inlay hints on BESS 250MW project
+  const hints = getPscadInlayHints(bess250Pscx);
+  if (hints.length < 3 || !hints.some((h) => h.label.includes("f_res ="))) {
+    throw new Error(`Expected getPscadInlayHints to emit f_res and travel delay hints, got: ${JSON.stringify(hints)}`);
+  }
+
+  // 19c. Cross-file Go-to-Definition, Find All References, and Rename across .pscx and .pslx
+  const libPslx = `<project name="CustomLib" version="5.0.0" type="library">
+  <definitions>
+    <Definition name="PLL_GridSync" id="def_pll">
+      <schematic/>
+    </Definition>
+  </definitions>
+</project>`;
+  const callerPscx = `<project name="CallerStudy" version="5.0.0">
+  <definitions>
+    <Definition name="Main" id="def_main">
+      <schematic>
+        <User id="c_pll" defn="CustomLib:PLL_GridSync" x="180" y="180">
+          <paramlist><param name="Name" value="MainPLL"/></paramlist>
+        </User>
+        <User id="dl1" defn="master:datalabel" x="220" y="180">
+          <paramlist><param name="Name" value="Theta_PLL"/></paramlist>
+        </User>
+        <User id="dl2" defn="master:datalabel" x="320" y="180">
+          <paramlist><param name="Name" value="Theta_PLL"/></paramlist>
+        </User>
+      </schematic>
+    </Definition>
+  </definitions>
+</project>`;
+  const wsDocs = [
+    { uri: "file:///CallerStudy.pscx", text: callerPscx },
+    { uri: "file:///CustomLib.pslx", text: libPslx },
+  ];
+  const defnCallOffset = callerPscx.indexOf("CustomLib:PLL_GridSync") + 12;
+  const crossDefLoc = getPscadDefinitionLocation(callerPscx, defnCallOffset, "file:///CallerStudy.pscx", wsDocs);
+  if (!crossDefLoc || crossDefLoc.uri !== "file:///CustomLib.pslx") {
+    throw new Error(
+      `Expected cross-file Go-to-Definition to resolve to file:///CustomLib.pslx, got ${JSON.stringify(crossDefLoc)}`,
+    );
+  }
+  const crossRefs = getPscadReferences(callerPscx, defnCallOffset, "file:///CallerStudy.pscx", wsDocs);
+  if (crossRefs.length !== 2) {
+    throw new Error(
+      `Expected 2 cross-file references (definition + caller instance) for PLL_GridSync, got ${crossRefs.length}`,
+    );
+  }
+  const netOffset = callerPscx.indexOf("Theta_PLL") + 3;
+  const netRename = getPscadRenameEdits(callerPscx, netOffset, "Omega_PLL", "file:///CallerStudy.pscx", wsDocs);
+  const callerEdits = netRename?.["file:///CallerStudy.pscx"] ?? [];
+  if (callerEdits.length !== 2) {
+    throw new Error(`Expected rename on wireless net 'Theta_PLL' to produce 2 edits, got ${callerEdits.length}`);
+  }
+
+  // 19d. Edit engine: addSticky, editSticky, renameNet, and obstacle-aware orthogonalize
+  const editRes = planPscadEdits(callerPscx, [
+    { type: "addSticky", x: 100, y: 60, w: 240, h: 48, text: "Initial Note" },
+    { type: "renameNet", oldName: "Theta_PLL", newName: "Phi_Sync" },
+  ]);
+  if (
+    editRes.errors.length > 0 ||
+    !editRes.text.includes("Initial Note") ||
+    !editRes.text.includes('value="Phi_Sync"')
+  ) {
+    throw new Error(
+      `Expected addSticky and renameNet to succeed without errors, got errors=${editRes.errors.join(", ")}`,
+    );
+  }
+  const stickyId = editRes.createdIds[0]!;
+  const editStickyRes = planPscadEdits(editRes.text, [
+    { type: "editSticky", id: stickyId, text: "Updated Engineering Note", w: 300 },
+  ]);
+  if (editStickyRes.errors.length > 0 || !editStickyRes.text.includes("Updated Engineering Note")) {
+    throw new Error(`Expected editSticky to update CDATA text cleanly, got errors=${editStickyRes.errors.join(", ")}`);
+  }
+
+  // Obstacle at (200, 100) blocks horizontal-first elbow (200, 100) from (100, 100) -> (200, 200), so router picks vertical-first (100, 200)
+  const routedPts = orthogonalize(
+    [
+      { x: 100, y: 100 },
+      { x: 200, y: 200 },
+    ],
+    [{ x: 200, y: 100, w: 40, h: 40 }],
+  );
+  if (routedPts.length !== 3 || routedPts[1]!.x !== 100 || routedPts[1]!.y !== 200) {
+    throw new Error(
+      `Expected obstacle-aware orthogonalize to pick vertical-first elbow (100, 200), got ${JSON.stringify(routedPts)}`,
+    );
+  }
+
+  // 20. P3 & Next Horizons: ULM / J. Marti Recursive Convolution, Sub-Step Zero-Crossing Interpolation,
+  //     Load-Flow Pre-Solve Initialization, .snp Snapshots, and Bus/Sticky Resize Actions
+  console.log(
+    "20. Testing ULM recursive convolution, switching interpolation, load-flow & .snp snapshots, and resize actions...",
+  );
+
+  // 20a. ULM / J. Marti frequency-dependent line vs Bergeron line
+  const ulmNetlist = {
+    nominalFrequencyHz: 60,
+    buses: new Map([
+      ["B1", { id: "B1", name: "B1", baseKv: 345, phaseCount: 3, connectedBranchIds: [] }],
+      ["B2", { id: "B2", name: "B2", baseKv: 345, phaseCount: 3, connectedBranchIds: [] }],
+    ]),
+    branches: [
+      {
+        id: "R_load",
+        kind: "rlc" as const,
+        fromBus: "B2",
+        toBus: "0",
+        resistanceOhm: 400,
+        inductanceH: 0.2,
+        capacitanceF: 0,
+      },
+    ],
+    transformers: [],
+    transmissionLines: [
+      {
+        id: "Line_ULM",
+        fromBus: "B1",
+        toBus: "B2",
+        lengthKm: 120,
+        rPerKm: 0.028,
+        lPerKm: 0.00095,
+        cPerKm: 1.2e-8,
+        modelType: "fdpm" as const,
+        poles: [-150, -1500, -15000, -90000],
+        residues: [30, 225, 1500, 4500],
+        d0: 0.3,
+      },
+    ],
+    sources: [{ id: "Src1", bus: "B1", voltageKv: 345, frequencyHz: 60, phaseDeg: 0, rSourceOhm: 2.0, lSourceH: 0.01 }],
+    faults: [],
+    fmuInstances: [],
+  };
+  const ulmSolver = new PscadEmtSolver(ulmNetlist, {
+    timeStepSec: 50e-6,
+    durationSec: 0.04,
+    initializeFromLoadFlow: true,
+  });
+  const ulmRes = ulmSolver.solve();
+  const ulmV2 = ulmRes.busPhaseVoltages.get("B2")!.a;
+  // Because initializeFromLoadFlow: true pre-solved 2 cycles of AC steady state, B2 should already have non-zero voltage at step 0!
+  if (Math.abs(ulmV2[0]!) < 1000) {
+    throw new Error(`Expected initializeFromLoadFlow to pre-charge ULM receiving bus B2 at t=0, got vA[0]=${ulmV2[0]}`);
+  }
+
+  // 20b. .snp Snapshot export, serialize/parse round-trip, and warm-start restore
+  const snap = ulmSolver.exportSnapshot(100);
+  const snapText = serializePscadSnapshot(snap);
+  const parsedSnap = parsePscadSnapshot(snapText);
+  if (
+    parsedSnap.formatVersion !== "1.0" ||
+    !parsedSnap.busVoltages["B2"] ||
+    !parsedSnap.bergeronBuffers?.["Line_ULM"]
+  ) {
+    throw new Error(`Expected .snp snapshot round-trip to preserve busVoltages and bergeronBuffers`);
+  }
+  const warmSolver = new PscadEmtSolver(ulmNetlist, {
+    timeStepSec: 50e-6,
+    durationSec: 0.01,
+    initialSnapshot: parsedSnap,
+  });
+  const warmSnap0 = warmSolver.exportSnapshot(0);
+  if (Math.abs(warmSnap0.busVoltages["B2"]!.va - parsedSnap.busVoltages["B2"]!.va) > 1e-6) {
+    throw new Error(`Expected initialSnapshot to restore exact B2 voltage state at t=0`);
+  }
+
+  // 20c. Sub-step zero-crossing switching interpolation
+  const swNetlist = {
+    nominalFrequencyHz: 60,
+    buses: new Map([
+      ["S1", { id: "S1", name: "S1", baseKv: 230, phaseCount: 3, connectedBranchIds: [] }],
+      ["S2", { id: "S2", name: "S2", baseKv: 230, phaseCount: 3, connectedBranchIds: [] }],
+    ]),
+    branches: [
+      {
+        id: "Brk1",
+        kind: "switch" as const,
+        fromBus: "S1",
+        toBus: "S2",
+        resistanceOhm: 0.001,
+        inductanceH: 0,
+        capacitanceF: 0,
+        status: "closed" as const,
+        openTimeSec: 0.00823, // Fractional sub-step switching time between 8.20ms and 8.25ms
+      },
+      {
+        id: "Load_RL",
+        kind: "rlc" as const,
+        fromBus: "S2",
+        toBus: "0",
+        resistanceOhm: 150,
+        inductanceH: 0.15,
+        capacitanceF: 0,
+      },
+    ],
+    transformers: [],
+    transmissionLines: [],
+    sources: [
+      { id: "SrcS1", bus: "S1", voltageKv: 230, frequencyHz: 60, phaseDeg: 0, rSourceOhm: 1.0, lSourceH: 0.005 },
+    ],
+    faults: [],
+    fmuInstances: [],
+  };
+  const swRes = new PscadEmtSolver(swNetlist, {
+    timeStepSec: 50e-6,
+    durationSec: 0.02,
+    enableSwitchingInterpolation: true,
+  }).solve();
+  if ((swRes.metrics.interpolatedZeroCrossings ?? 0) < 1) {
+    throw new Error(
+      `Expected enableSwitchingInterpolation to record >= 1 interpolatedZeroCrossings, got ${swRes.metrics.interpolatedZeroCrossings}`,
+    );
+  }
+
+  // 20d. Diagram resize action on <Bus> and <Sticky>
+  const resizeXml = `<project name="ResizeStudy" version="5.0.0">
+  <definitions>
+    <Definition name="Main" id="def_main">
+      <schematic>
+        <Bus id="b_pcc" name="PCC_345kV" x="400" y="100">
+          <vertex x="0" y="0" />
+          <vertex x="0" y="180" />
+        </Bus>
+        <Sticky id="st_1" x="80" y="40" w="320" h="36"><![CDATA[Study Header]]></Sticky>
+      </schematic>
+    </Definition>
+  </definitions>
+</project>`;
+  const plannedResize = planDiagramActions(resizeXml, [
+    {
+      type: "resize",
+      items: [
+        { name: "bus_b_pcc", x: 400, y: 100, width: 12, height: 320 },
+        { name: "sticky_st_1", x: 80, y: 40, width: 480, height: 54 },
+      ],
+    },
+  ]);
+  if (plannedResize.unresolved.length > 0 || plannedResize.edits.length < 2) {
+    throw new Error(
+      `Expected planDiagramActions('resize') to resolve bus_b_pcc and sticky_st_1 cleanly, got unresolved=${plannedResize.unresolved.join(",")}`,
+    );
+  }
+
+  console.log(
+    "ALL TESTS PASSED SUCCESSFULLY! Milestones 1-5 + Phases 1-11 + SOTA Core Editing & P3 Horizons verified.",
+  );
 }
 
 main().catch((err) => {

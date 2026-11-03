@@ -52,6 +52,11 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
     );
     baseCylinder.dispose();
 
+    if (!geometry.getAttribute("normal")) {
+      geometry.computeVertexNormals();
+    }
+    const normAttr = geometry.getAttribute("normal")?.array;
+
     const randoms = new Float32Array(count);
     const velocityMags = new Float32Array(count);
 
@@ -60,7 +65,7 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
     const matrices = new Float32Array(count * 16);
 
     // Streak thickness relative to the overall model scale
-    const thickness = modelScale * 0.003;
+    const thickness = modelScale * 0.0045;
 
     for (let i = 0; i < count; i++) {
       const idx = Math.min(i * downsampleFactor, totalCount - 1);
@@ -80,6 +85,12 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
         px = posOriginal[idx * 3]!;
         py = posOriginal[idx * 3 + 1]!;
         pz = posOriginal[idx * 3 + 2]!;
+        if (normAttr && idx * 3 + 2 < normAttr.length) {
+          const lift = modelScale * (0.016 + 0.028 * randoms[i]!);
+          px += normAttr[idx * 3]! * lift;
+          py += normAttr[idx * 3 + 1]! * lift;
+          pz += normAttr[idx * 3 + 2]! * lift;
+        }
       }
 
       const vx = velocityData[idx * 3];
@@ -115,6 +126,7 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
         time: { value: 0 },
         maxTime: { value: 2.0 },
         scale: { value: scale }, // global multiplier for streak speed/length
+        modelScale: { value: modelScale },
         colormap: { value: colormapTexture },
         vMin: { value: vMin },
         vMax: { value: vMax },
@@ -126,6 +138,7 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
         uniform float time;
         uniform float maxTime;
         uniform float scale;
+        uniform float modelScale;
         uniform float vMin;
         uniform float vMax;
         
@@ -136,13 +149,14 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
           float t = mod(time + randoms * maxTime, maxTime);
           
           vec3 localPos = position;
+          float normVel = (vMax > 0.0001) ? clamp(velocityMag / vMax, 0.15, 1.25) : 0.5;
           
-          // Make the streaks much longer relative to the local velocity magnitude
-          float streakLen = velocityMag * scale * 25.0; 
+          // Scale streak length proportionally to model bounding sphere and normalized velocity
+          float streakLen = normVel * modelScale * scale * 9.0; 
           localPos.y *= streakLen; 
           
           // Move the streak forward along its local Y axis (which is aligned with velocity)
-          localPos.y += velocityMag * t * scale * 5.0;
+          localPos.y += normVel * modelScale * t * scale * 2.8;
           
           // Fade the tail (local Y goes from -0.5 to 0.5 before scaling)
           float tailFade = smoothstep(-0.5, 0.5, position.y);
@@ -169,7 +183,7 @@ export const FlowStreaks: React.FC<FlowStreaksProps> = ({
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-  }, [scale, colormapTexture, vMin, vMax]);
+  }, [scale, modelScale, colormapTexture, vMin, vMax]);
 
   useEffect(() => {
     return () => {

@@ -38,6 +38,10 @@ export class InpDialect implements FeaDialect {
       elsetMaterials: new Map<string, string>(),
       sectionThickness: new Map<string, number>(),
       beamAreas: new Map<string, number>(),
+      steps: [],
+      boundaries: [],
+      cloads: [],
+      dloads: [],
       nodeLines: new Map<number, number>(),
       elementLines: new Map<number, number>(),
       materialLines: new Map<string, number>(),
@@ -139,6 +143,31 @@ export class InpDialect implements FeaDialect {
           }
         } else if (keyword === "BOUNDARY") {
           data.boundaryLines!.push(lineNum);
+        } else if (keyword === "STEP") {
+          const nlgeom = currentOptions["NLGEOM"]?.toUpperCase() === "YES" || currentOptions["NLGEOM"] === "TRUE";
+          data.steps!.push({
+            name: currentOptions["NAME"] || `Step-${data.steps!.length + 1}`,
+            analysisType: "STATIC",
+            nlgeom,
+            line: lineNum,
+          });
+        } else if (
+          keyword === "STATIC" ||
+          keyword === "FREQUENCY" ||
+          keyword === "BUCKLE" ||
+          keyword === "DYNAMIC" ||
+          keyword === "HEAT TRANSFER" ||
+          keyword === "COUPLED TEMP-DISPLACEMENT"
+        ) {
+          if (data.steps!.length === 0) {
+            data.steps!.push({
+              name: "Step-1",
+              analysisType: keyword,
+              line: lineNum,
+            });
+          } else {
+            data.steps![data.steps!.length - 1]!.analysisType = keyword;
+          }
         }
 
         continue;
@@ -315,6 +344,12 @@ export class InpDialect implements FeaDialect {
           };
 
           const numId = parseInt(target, 10);
+          data.boundaries!.push({
+            target: !isNaN(numId) ? numId : target.toUpperCase(),
+            dofs,
+            value: dispVal,
+            line: lineNum,
+          });
           if (!isNaN(numId)) {
             applyBoundary(numId);
           } else {
@@ -341,6 +376,14 @@ export class InpDialect implements FeaDialect {
           };
 
           const numId = parseInt(target, 10);
+          if (!isNaN(dof) && !isNaN(mag)) {
+            data.cloads!.push({
+              target: !isNaN(numId) ? numId : target.toUpperCase(),
+              dof,
+              magnitude: mag,
+              line: lineNum,
+            });
+          }
           if (!isNaN(numId)) {
             applyLoad(numId, mag);
           } else {
@@ -352,6 +395,21 @@ export class InpDialect implements FeaDialect {
                 applyLoad(nid, nodeMag);
               }
             }
+          }
+        }
+      } else if (currentSection === "DLOAD") {
+        if (tokens.length >= 3) {
+          const target = tokens[0]!;
+          const loadType = tokens[1]!;
+          const mag = parseFloat(tokens[2]!);
+          const numId = parseInt(target, 10);
+          if (!isNaN(mag)) {
+            data.dloads!.push({
+              target: !isNaN(numId) ? numId : target.toUpperCase(),
+              type: loadType,
+              magnitude: mag,
+              line: lineNum,
+            });
           }
         }
       }

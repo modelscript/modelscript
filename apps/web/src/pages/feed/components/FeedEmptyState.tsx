@@ -3,6 +3,7 @@
 import { FilterIcon, PlusIcon, RocketIcon, SearchIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { FILTER_CHIPS } from "../constants";
 import {
   EmptyStateActions,
@@ -13,7 +14,6 @@ import {
   PrimaryActionButton,
   SecondaryActionButton,
 } from "../styles";
-import FeedQuickstartStudio from "./FeedQuickstartStudio";
 
 export interface FeedEmptyStateProps {
   isFiltering: boolean;
@@ -21,8 +21,8 @@ export interface FeedEmptyStateProps {
   activeTag: string | null;
   onClearFilters: () => void;
   openCompose?: ((opts?: any) => void) | undefined;
-  followedHandles: Record<string, boolean>;
-  onToggleFollow: (handle: string) => void;
+  followedHandles?: Record<string, boolean> | undefined;
+  onToggleFollow?: ((handle: string) => void) | undefined;
 }
 
 export const FeedEmptyState: React.FC<FeedEmptyStateProps> = ({
@@ -31,15 +31,15 @@ export const FeedEmptyState: React.FC<FeedEmptyStateProps> = ({
   activeTag,
   onClearFilters,
   openCompose,
-  followedHandles,
-  onToggleFollow,
 }) => {
   const navigate = useNavigate();
+  const branding = useInstanceBranding();
+  const brandName = branding.instanceName || "Ansatz";
 
   return (
     <EmptyStateContainer>
       <EmptyStateIconOrb>{isFiltering ? <FilterIcon size={28} /> : <RocketIcon size={28} />}</EmptyStateIconOrb>
-      <EmptyStateTitle>{isFiltering ? "No Matching Engineering Posts" : "Engineering Timeline Ready"}</EmptyStateTitle>
+      <EmptyStateTitle>{isFiltering ? "No Matching Posts" : `${brandName} Timeline`}</EmptyStateTitle>
       <EmptyStateSubtitle>
         {isFiltering ? (
           <>
@@ -49,10 +49,9 @@ export const FeedEmptyState: React.FC<FeedEmptyStateProps> = ({
             {activeTag && <strong>#{activeTag}</strong>}. Try adjusting your filters or share the first artifact!
           </>
         ) : (
-          "Follow physical modeling engineers, explore Modelica & SysML packages, or publish your first simulation artifact."
+          "Follow engineers, explore packages and models, or publish your first post."
         )}
       </EmptyStateSubtitle>
-      {!isFiltering && <FeedQuickstartStudio followedHandles={followedHandles} onToggleFollow={onToggleFollow} />}
       <EmptyStateActions>
         {isFiltering ? (
           <>
@@ -78,7 +77,7 @@ export const FeedEmptyState: React.FC<FeedEmptyStateProps> = ({
           <>
             <PrimaryActionButton onClick={() => navigate("/explore")}>
               <SearchIcon size={16} />
-              <span>Explore Models</span>
+              <span>Explore</span>
             </PrimaryActionButton>
             {openCompose && (
               <SecondaryActionButton onClick={() => openCompose()}>

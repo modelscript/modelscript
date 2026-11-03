@@ -129,9 +129,9 @@ const WORKSPACE_CATALOG: WorkspaceTemplateItem[] = [
   },
   {
     id: "notebook",
-    name: TEMPLATE_NAMES["notebook"] || "Interactive Engineering Notebook",
+    name: TEMPLATE_NAMES["notebook"] || "Interactive Engineering Article",
     category: "featured",
-    badge: "Notebook",
+    badge: "Article",
     description: "Literate engineering document combining executable simulations, equations, and live 3D views.",
   },
 ];

@@ -402,15 +402,26 @@ Solve
     extensions: [".st", ".plcopen", ".iec"],
     family: "plcopen",
     defaultCode: `PROGRAM PumpControl
-VAR
+VAR_INPUT
   TankLevel : REAL := 45.0;
   SetPoint : REAL := 60.0;
+  HighLevelTrip : BOOL := FALSE;
+END_VAR
+VAR_OUTPUT
   PumpActive : BOOL := FALSE;
+  AlarmLatch : BOOL := FALSE;
+END_VAR
+VAR
+  HysteresisBand : REAL := 5.0;
 END_VAR
 
-IF TankLevel < SetPoint - 5.0 THEN
+AlarmLatch := HighLevelTrip OR (TankLevel > 95.0);
+
+IF AlarmLatch THEN
+  PumpActive := FALSE;
+ELSIF TankLevel < SetPoint - HysteresisBand THEN
   PumpActive := TRUE;
-ELSIF TankLevel > SetPoint + 5.0 THEN
+ELSIF TankLevel > SetPoint + HysteresisBand THEN
   PumpActive := FALSE;
 END_IF;
 END_PROGRAM
@@ -1037,6 +1048,196 @@ META_STOP
     supportsDiagram: true,
     supportsSimulation: true,
     supports3d: false,
+  },
+  {
+    id: "qif",
+    name: "QIF 3.0 (ISO 23952)",
+    ext: "qif",
+    extensions: [".qif", ".qif.xml"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument versionQIF="3.0.0" qpId="f47ac10b-58cc-4372-a567-0e02b2c3d479">
+  <Header>
+    <Author><Name>NIST MBE Metrology Lab</Name></Author>
+    <Application><Name>ModelScript QIF 3.0 Suite</Name></Application>
+    <FileUnits><PrimaryUnits><LinearUnit><UnitName>mm</UnitName></LinearUnit></PrimaryUnits></FileUnits>
+  </Header>
+  <DatumDefinitions>
+    <DatumDefinition id="D_A" label="A" featureId="F_BASE"/>
+    <DatumDefinition id="D_B" label="B" featureId="F_BORE"/>
+  </DatumDefinitions>
+  <FeatureNominals>
+    <PlaneFeatureNominal id="F_BASE">
+      <Name>PrimaryBasePlaneA</Name>
+      <Location>0 0 0</Location>
+      <Normal>0 0 1</Normal>
+      <StepEntityId>#101</StepEntityId>
+      <ProbingPoints>6</ProbingPoints>
+    </PlaneFeatureNominal>
+    <CylinderFeatureNominal id="F_BORE">
+      <Name>CenterCoolingBoreB</Name>
+      <Diameter>12.000</Diameter>
+      <Location>24 0 15</Location>
+      <AxisVector>0 0 1</AxisVector>
+      <StepEntityId>#108</StepEntityId>
+      <ProbingPoints>8</ProbingPoints>
+    </CylinderFeatureNominal>
+  </FeatureNominals>
+  <CharacteristicNominals>
+    <PositionCharacteristicNominal id="C_POS" balloonNumber="1">
+      <Name>CoolingBore_TruePosition</Name>
+      <ToleranceValue>0.050</ToleranceValue>
+      <DiametricalZone>true</DiametricalZone>
+      <MaterialCondition>MMC</MaterialCondition>
+      <DatumReferenceFrame>
+        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>
+        <DatumReference precedence="2"><DatumLabel>B</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>
+      </DatumReferenceFrame>
+      <FeatureNominalIds><Id>F_BORE</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM_01</MeasurementDeviceId>
+    </PositionCharacteristicNominal>
+  </CharacteristicNominals>
+  <MeasurementResources>
+    <MeasurementDevice id="CMM_01" deviceType="CMM">
+      <Name>Hexagon_Global_S</Name>
+      <CalibrationUncertainty>0.0018</CalibrationUncertainty>
+    </MeasurementDevice>
+  </MeasurementResources>
+  <Results>
+    <GeometricCharacteristicActual id="ACT_1" characteristicNominalId="C_POS" partSerialNumber="SN-001">
+      <MeasuredValue>0.038</MeasuredValue>
+      <ActualFeatureSize>12.012</ActualFeatureSize>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+  </Results>
+</QIFDocument>
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: true,
+  },
+  {
+    id: "oscal",
+    name: "NIST OSCAL 1.1",
+    ext: "oscal.json",
+    extensions: [".oscal", ".oscal.json", ".oscal.yaml", ".oscal.yml", ".oscal.xml"],
+    family: "xml",
+    defaultCode: `{
+  "system-security-plan": {
+    "uuid": "770e8400-e29b-41d4-a716-446655440000",
+    "metadata": {
+      "title": "Smart Manufacturing Workcell OT SSP",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "import-profile": {
+      "href": "builtin://nist-sp-800-82-r3-ot"
+    },
+    "system-characteristics": {
+      "system-name": "SmartFactoryWorkcell_OT",
+      "security-sensitivity-level": "high"
+    },
+    "system-implementation": {
+      "components": [
+        {
+          "uuid": "11111111-e29b-41d4-a716-446655440001",
+          "title": "SafetyCellControllerPLC",
+          "type": "plc",
+          "status": "operational"
+        },
+        {
+          "uuid": "22222222-e29b-41d4-a716-446655440002",
+          "title": "IndustrialDmzFirewall",
+          "type": "interconnection",
+          "status": "operational"
+        }
+      ]
+    },
+    "control-implementation": {
+      "implemented-requirements": [
+        {
+          "uuid": "55555555-e29b-41d4-a716-446655440011",
+          "control-id": "sc-7",
+          "by-components": [
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440101",
+              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+              "description": "Enforces Purdue Level 3.5 DMZ segmentation."
+            }
+          ]
+        },
+        {
+          "uuid": "55555555-e29b-41d4-a716-446655440012",
+          "control-id": "ac-3",
+          "by-components": [
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440102",
+              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+              "description": "Enforces X.509 mTLS and hardware RUN keyswitch."
+            }
+          ]
+        },
+        {
+          "uuid": "55555555-e29b-41d4-a716-446655440013",
+          "control-id": "si-7",
+          "by-components": [
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440103",
+              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+              "description": "Verifies signed PLCopen firmware digest at boot."
+            }
+          ]
+        },
+        {
+          "uuid": "55555555-e29b-41d4-a716-446655440014",
+          "control-id": "pe-3",
+          "by-components": [
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440104",
+              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+              "description": "Interlocks physical safety cage and SIL-3 light curtains."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+`,
+    supportsDiagram: true,
+    supportsSimulation: false,
+    supports3d: false,
+  },
+  {
+    id: "automationml",
+    name: "AutomationML (IEC 62714)",
+    ext: "aml",
+    extensions: [".aml", ".caex"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="RoboticAssemblyWorkcell.aml" SchemaVersion="3.0">
+  <InstanceHierarchy Name="SmartAssemblyWorkcell">
+    <InternalElement Name="WeldRobot_6DOF" ID="rob-01" PPRCategory="Resource">
+      <Attribute Name="Frame">
+        <Attribute Name="x"><Value>1.2</Value></Attribute>
+        <Attribute Name="y"><Value>0.8</Value></Attribute>
+        <Attribute Name="z"><Value>0.0</Value></Attribute>
+        <Attribute Name="rx"><Value>0</Value></Attribute>
+        <Attribute Name="ry"><Value>0</Value></Attribute>
+        <Attribute Name="rz"><Value>45</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="enableIn" ID="rob-en" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+    </InternalElement>
+    <InternalElement Name="CellSafetyPLC" ID="plc-01" PPRCategory="Resource">
+      <ExternalInterface Name="enableOut" ID="plc-en" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <InternalLink Name="EnableLink" RefPartnerSideA="plc-01:enableOut" RefPartnerSideB="rob-01:enableIn" />
+    </InternalElement>
+  </InstanceHierarchy>
+</CAEXFile>
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: true,
   },
 ];
 

@@ -5,6 +5,7 @@ import { Button, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
 import {
@@ -160,6 +161,8 @@ const LineNo = styled.span`
 
 export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
@@ -189,18 +192,18 @@ export const PipelineLpsViewer: React.FC<PipelineLpsViewerProps> = ({ viewConfig
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
     }
     if (rawText.trim()) {
       try {
-        const fallback = renderSourceToDiagramSvg(rawText, "lps", title, true, isFullScreen);
+        const fallback = renderSourceToDiagramSvg(rawText, "lps", title, isDark, isFullScreen);
         if (fallback.svg) return fallback.svg;
       } catch (err) {
         console.warn("[PipelineLpsViewer] Client-side schematic fallback failed:", err);
       }
     }
     return "";
-  }, [viewConfig.svg, rawText, title, isFullScreen]);
+  }, [viewConfig.svg, rawText, title, isFullScreen, isDark]);
 
   const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 

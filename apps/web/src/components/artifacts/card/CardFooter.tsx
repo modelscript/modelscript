@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlayIcon, ScreenFullIcon } from "@primer/octicons-react";
-import { Text } from "@primer/react";
+import { KebabHorizontalIcon, PlayIcon, RepoForkedIcon, ScreenFullIcon, ServerIcon } from "@primer/octicons-react";
+import { ActionList, ActionMenu, IconButton, Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import styled from "styled-components";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
 import {
   buildEditorUrlForArtifact,
@@ -12,6 +13,29 @@ import {
 } from "../../../util/editor-routing";
 import Box from "../../Box";
 import { VsCodeIcon } from "../../icons/VsCodeIcon";
+
+const CardFooterBar = styled(Box)`
+  .card-footer-mobile-menu {
+    display: none;
+  }
+
+  @media (max-width: 767px) {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+
+    .card-footer-hide-mobile {
+      display: none !important;
+    }
+
+    .card-footer-mobile-menu {
+      display: inline-flex;
+    }
+
+    .card-footer-playground-label-full {
+      display: none;
+    }
+  }
+`;
 
 export interface CardFooterProps {
   artifact: any;
@@ -38,8 +62,8 @@ export const CardFooter: React.FC<CardFooterProps> = ({
     view_config: viewConfig,
   });
 
-  const handleOpenEditor = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleOpenEditor = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    e?.stopPropagation?.();
     if (isMultiFile) {
       openArtifactInVsCodeWindow({
         artifactId,
@@ -59,14 +83,23 @@ export const CardFooter: React.FC<CardFooterProps> = ({
     );
   };
 
-  const handleOpenVsCode = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleOpenVsCode = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    e?.stopPropagation?.();
     openArtifactInVsCodeWindow({
       artifactId,
       viewType: artifact?.view_type,
       viewConfig,
       title: artifact?.title || artifact?.name || viewConfig?.title,
     });
+  };
+
+  const handleReproduce = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    e?.stopPropagation?.();
+    window.open(
+      `/api/v1/cae/jobs/${encodeURIComponent(String(viewConfig.jobId))}/reproduce-spec`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   };
 
   const rawViewType = String(artifact?.view_type || "").toLowerCase();
@@ -97,7 +130,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
   ].includes(rawViewType);
 
   return (
-    <Box
+    <CardFooterBar
       px={3}
       py={1}
       borderTop="1px solid var(--color-accent-blue-border, var(--color-border-default))"
@@ -105,7 +138,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
       display="flex"
       justifyContent="space-between"
       alignItems="center"
-      style={{ gap: "10px", minHeight: "40px" }}
+      style={{ gap: "8px", minHeight: "40px" }}
     >
       <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0, flex: 1 }}>
         {isUntitledMediaOr3dViewer ? (
@@ -145,6 +178,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
         )}
         {viewConfig.provenance && (
           <span
+            className="card-footer-hide-mobile"
             style={{
               fontSize: "11px",
               lineHeight: "14px",
@@ -167,14 +201,8 @@ export const CardFooter: React.FC<CardFooterProps> = ({
         {viewConfig.provenance && viewConfig.jobId && (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              window.open(
-                `/api/v1/cae/jobs/${encodeURIComponent(String(viewConfig.jobId))}/reproduce-spec`,
-                "_blank",
-                "noopener,noreferrer",
-              );
-            }}
+            className="card-footer-hide-mobile"
+            onClick={handleReproduce}
             style={{
               background: "var(--color-canvas-default)",
               color: "var(--color-fg-default)",
@@ -199,6 +227,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
         {hasCloudSolverFlag && onRunOnHpc && (
           <button
             type="button"
+            className="card-footer-hide-mobile"
             onClick={(e) => {
               e.stopPropagation();
               onRunOnHpc();
@@ -247,11 +276,12 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             }}
             title="Open model in interactive Playground"
           >
-            <PlayIcon size={12} /> Open in Playground
+            <PlayIcon size={12} /> <span className="card-footer-playground-label-full">Open in </span>Playground
           </button>
         )}
         <button
           type="button"
+          className="card-footer-hide-mobile"
           onClick={handleOpenVsCode}
           style={{
             background: "var(--color-canvas-default)",
@@ -300,7 +330,64 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             <ScreenFullIcon size={14} />
           </button>
         )}
+
+        <div className="card-footer-mobile-menu" onClick={(e) => e.stopPropagation()}>
+          <ActionMenu>
+            <ActionMenu.Anchor>
+              <IconButton
+                icon={KebabHorizontalIcon}
+                size="small"
+                variant="invisible"
+                aria-label="More artifact actions"
+                title="More artifact actions"
+                style={{ width: 28, height: 28 }}
+              />
+            </ActionMenu.Anchor>
+            <ActionMenu.Overlay width="medium" align="end">
+              <ActionList>
+                {isLoaded && (
+                  <ActionList.Item onSelect={() => onOpenFullScreen()}>
+                    <ActionList.LeadingVisual>
+                      <ScreenFullIcon />
+                    </ActionList.LeadingVisual>
+                    Full Screen Studio
+                  </ActionList.Item>
+                )}
+                {!isMultiFile && (
+                  <ActionList.Item onSelect={(e) => handleOpenEditor(e)}>
+                    <ActionList.LeadingVisual>
+                      <PlayIcon />
+                    </ActionList.LeadingVisual>
+                    Open in Playground
+                  </ActionList.Item>
+                )}
+                {hasCloudSolverFlag && onRunOnHpc && (
+                  <ActionList.Item onSelect={() => onRunOnHpc()}>
+                    <ActionList.LeadingVisual>
+                      <ServerIcon />
+                    </ActionList.LeadingVisual>
+                    Run on Cloud HPC
+                  </ActionList.Item>
+                )}
+                {viewConfig.provenance && viewConfig.jobId && (
+                  <ActionList.Item onSelect={(e) => handleReproduce(e)}>
+                    <ActionList.LeadingVisual>
+                      <RepoForkedIcon />
+                    </ActionList.LeadingVisual>
+                    Fork &amp; Reproduce
+                  </ActionList.Item>
+                )}
+                <ActionList.Item onSelect={(e) => handleOpenVsCode(e)}>
+                  <ActionList.LeadingVisual>
+                    <VsCodeIcon size={14} color="#0284c7" />
+                  </ActionList.LeadingVisual>
+                  Open in VS Code
+                </ActionList.Item>
+              </ActionList>
+            </ActionMenu.Overlay>
+          </ActionMenu>
+        </div>
       </Box>
-    </Box>
+    </CardFooterBar>
   );
 };

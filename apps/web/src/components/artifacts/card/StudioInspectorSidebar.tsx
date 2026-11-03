@@ -1,15 +1,77 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { XIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
+import styled from "styled-components";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../../util/editor-routing";
 import Box from "../../Box";
+
+const InspectorContainer = styled(Box)`
+  width: 320px;
+  background: var(--color-canvas-subtle, rgba(15, 23, 42, 0.95));
+  border-left: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.1));
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  overflow-y: auto;
+  color: var(--color-fg-default, #e2e8f0);
+  flex-shrink: 0;
+
+  .inspector-mobile-grabber,
+  .inspector-mobile-close {
+    display: none;
+  }
+
+  @media (max-width: 767px) {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 55dvh;
+    border-left: none;
+    border-top: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.16));
+    border-radius: 16px 16px 0 0;
+    padding: 10px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 40;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+
+    .inspector-mobile-grabber {
+      display: block;
+      width: 36px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.4);
+      margin: 0 auto 10px;
+      flex-shrink: 0;
+    }
+
+    .inspector-mobile-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: var(--color-fg-default, #e2e8f0);
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      padding: 0;
+    }
+  }
+`;
 
 export interface StudioInspectorSidebarProps {
   isOpen: boolean;
   artifact: any;
   artifactId: number;
   viewConfig: any;
+  onClose?: (() => void) | undefined;
 }
 
 export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
@@ -17,8 +79,15 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
   artifact,
   artifactId,
   viewConfig,
+  onClose,
 }) => {
+  const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   if (!isOpen) return null;
+
+  const isCoarsePointer =
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(pointer: coarse)").matches
+      : false;
 
   const isMultiFile = isMultiFileArtifact({
     view_type: artifact?.view_type,
@@ -32,19 +101,24 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
   });
 
   return (
-    <Box
-      width="320px"
-      bg="rgba(15, 23, 42, 0.95)"
-      borderLeft="1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1))"
-      display="flex"
-      flexDirection="column"
-      p={3}
-      overflowY="auto"
-      style={{ color: "#e2e8f0" }}
-    >
-      <Text style={{ fontSize: "13px", fontWeight: "bold", marginBottom: "12px", color: "white" }}>
-        Engineering Telemetry &amp; Specs
-      </Text>
+    <InspectorContainer>
+      <div className="inspector-mobile-grabber" aria-hidden="true" />
+      <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+        <Text style={{ fontSize: "13px", fontWeight: "bold", color: "var(--color-fg-default, white)" }}>
+          Engineering Telemetry &amp; Specs
+        </Text>
+        {onClose && (
+          <button
+            type="button"
+            className="inspector-mobile-close"
+            onClick={onClose}
+            aria-label="Close inspector"
+            title="Close inspector"
+          >
+            <XIcon size={14} />
+          </button>
+        )}
+      </Box>
 
       <Box display="flex" flexDirection="column" gap={2} mb={4} fontSize="12px">
         <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
@@ -241,7 +315,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
             </span>
           </Box>
         )}
-        {(viewConfig.usage || viewConfig.hpc) && (
+        {hasCloudSolver && (viewConfig.usage || viewConfig.hpc) && (
           <>
             <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
               <span style={{ color: "var(--color-fg-muted)" }}>Compute Runtime</span>
@@ -294,16 +368,40 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
         ].includes(artifact.view_type?.toLowerCase()) ? (
           <>
             <div>
-              🖱️ <b>Rotate:</b> Left-click + drag
+              {isCoarsePointer ? (
+                <>
+                  👆 <b>Rotate:</b> 1-finger drag
+                </>
+              ) : (
+                <>
+                  🖱️ <b>Rotate:</b> Left-click + drag
+                </>
+              )}
             </div>
             <div>
-              ✋ <b>Pan:</b> Right-click + drag / Two-finger swipe
+              {isCoarsePointer ? (
+                <>
+                  ✌️ <b>Pan:</b> Two-finger swipe
+                </>
+              ) : (
+                <>
+                  ✋ <b>Pan:</b> Right-click + drag / Two-finger swipe
+                </>
+              )}
             </div>
             <div>
-              🔍 <b>Zoom:</b> Scroll wheel / Pinch
+              {isCoarsePointer ? (
+                <>
+                  🤏 <b>Zoom:</b> Pinch
+                </>
+              ) : (
+                <>
+                  🔍 <b>Zoom:</b> Hold Ctrl / ⌘ + scroll or pinch
+                </>
+              )}
             </div>
             <div>
-              📍 <b>Spatial Pin:</b> Click in PIN mode to attach comments
+              📍 <b>Spatial Pin:</b> {isCoarsePointer ? "Tap" : "Click"} in PIN mode to attach comments
             </div>
           </>
         ) : ["fmu", "fmu-package", "fmu-simulator", "fmi"].includes(artifact.view_type?.toLowerCase()) ? (
@@ -360,7 +458,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
               🔗 <b>FMU Topology:</b> Click any FMU block in the sidebar to highlight it on canvas
             </div>
             <div>
-              ✋ <b>Pan &amp; Zoom:</b> Drag stage to pan, use HUD controls to zoom
+              ✋ <b>Pan &amp; Zoom:</b> Drag stage to pan, hold Ctrl / ⌘ + scroll or use HUD controls to zoom
             </div>
           </>
         ) : ["simpack", "spck", "gensys", "gensys-track"].includes(artifact.view_type?.toLowerCase()) ? (
@@ -414,25 +512,27 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
         ) : (
           <>
             <div>
-              🔍 <b>Pan &amp; Zoom:</b> Drag diagram stage to pan, use zoom HUD controls
+              🔍 <b>Pan &amp; Zoom:</b> Drag diagram stage to pan, hold Ctrl / ⌘ + scroll or use zoom HUD controls
             </div>
             <div>
               📄 <b>Source View:</b> Switch between schematic diagram and syntax-highlighted code
             </div>
           </>
         )}
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: "4px", paddingTop: "4px" }}>
-          ⌨️ <b>Hotkeys:</b> [Esc] Exit &bull; [I] Inspector &bull;{" "}
-          <a
-            href={editorUrl}
-            style={{ color: "#38bdf8", textDecoration: "none" }}
-            title={isMultiFile ? "Open in VS Code IDE (R)" : "Open in Playground (R)"}
-          >
-            [R] {isMultiFile ? "IDE" : "Playground"}
-          </a>{" "}
-          &bull; [C] Copy Link
-        </div>
+        {!isCoarsePointer && (
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: "4px", paddingTop: "4px" }}>
+            ⌨️ <b>Hotkeys:</b> [Esc] Exit &bull; [I] Inspector &bull;{" "}
+            <a
+              href={editorUrl}
+              style={{ color: "#38bdf8", textDecoration: "none" }}
+              title={isMultiFile ? "Open in VS Code IDE (R)" : "Open in Playground (R)"}
+            >
+              [R] {isMultiFile ? "IDE" : "Playground"}
+            </a>{" "}
+            &bull; [C] Copy Link
+          </div>
+        )}
       </Box>
-    </Box>
+    </InspectorContainer>
   );
 };

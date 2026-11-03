@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import {
@@ -112,6 +113,8 @@ const ChartCanvas = styled.div`
 
 export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [loading, setLoading] = useState(false);
   const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
   const [rawText, setRawText] = useState(initialSource);
@@ -194,7 +197,7 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
     }
     if (parsedEngine.blocks.length > 0) {
       try {
@@ -203,17 +206,17 @@ export const GtSuiteViewer: React.FC<GtSuiteViewerProps> = ({ viewConfig, isFull
           blocks: parsedEngine.blocks,
           lines: parsedEngine.lines,
         });
-        return sanitizeSvgMarkup(built, { isFullScreen });
+        return sanitizeSvgMarkup(built, { isFullScreen, isDark });
       } catch {
         // fall through
       }
     }
     if (rawText.trim()) {
-      const fallback = renderSourceToDiagramSvg(rawText, "gtsuite", title, true, isFullScreen);
+      const fallback = renderSourceToDiagramSvg(rawText, "gtsuite", title, isDark, isFullScreen);
       if (fallback.svg) return fallback.svg;
     }
     return "";
-  }, [viewConfig.svg, parsedEngine, rawText, title, isFullScreen]);
+  }, [viewConfig.svg, parsedEngine, rawText, title, isFullScreen, isDark]);
 
   const pvData = useMemo(() => {
     if (Array.isArray(viewConfig.pvData) && viewConfig.pvData.length > 0) {

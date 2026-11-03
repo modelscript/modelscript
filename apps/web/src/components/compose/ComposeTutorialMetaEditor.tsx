@@ -245,7 +245,7 @@ export const ComposeTutorialMetaEditor: React.FC<ComposeTutorialMetaEditorProps>
             </NotionPropertyLabel>
             <NotionPropertyValueInput
               type="text"
-              placeholder="Empty (e.g., modelscript/tutorials)"
+              placeholder="Empty (e.g., modelscript/articles)"
               value={notebookCompanionRepo}
               onChange={(e) => setNotebookCompanionRepo(e.target.value)}
             />
@@ -255,3 +255,6 @@ export const ComposeTutorialMetaEditor: React.FC<ComposeTutorialMetaEditorProps>
     </div>
   );
 };
+
+export const ComposeArticleMetaEditor = ComposeTutorialMetaEditor;
+export type ComposeArticleMetaEditorProps = ComposeTutorialMetaEditorProps;

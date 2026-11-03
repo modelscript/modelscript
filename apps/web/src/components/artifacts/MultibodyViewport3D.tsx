@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { GizmoHelper, GizmoViewport, Grid, OrbitControls } from "@react-three/drei";
+import { GizmoHelper, GizmoViewport, Grid } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import React, { useEffect, useMemo } from "react";
 import styled from "styled-components";
 import * as THREE from "three";
+import SafeOrbitControls from "./SafeOrbitControls";
 
 export interface MultibodyNode3D {
   id: string;
@@ -34,7 +35,11 @@ export interface MultibodyViewport3DProps {
 const ViewportContainer = styled.div<{ $height: string | number }>`
   width: 100%;
   height: ${(p) => (typeof p.$height === "number" ? `${p.$height}px` : p.$height)};
-  background: radial-gradient(circle at center, #161b22 0%, #0d1117 100%);
+  background: radial-gradient(
+    circle at center,
+    var(--color-canvas-subtle, #161b22) 0%,
+    var(--color-canvas-default, #0d1117) 100%
+  );
   border-radius: 6px;
   border: 1px solid var(--color-border-default, #30363d);
   overflow: hidden;
@@ -126,7 +131,7 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
         );
       })}
 
-      <OrbitControls makeDefault enableDamping dampingFactor={0.05} />
+      <SafeOrbitControls enableDamping dampingFactor={0.05} />
       <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
         <GizmoViewport axisColors={["#ef4444", "#22c55e", "#58a6ff"]} labelColor="#ffffff" />
       </GizmoHelper>

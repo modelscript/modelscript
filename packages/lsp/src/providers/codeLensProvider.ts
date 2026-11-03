@@ -1200,6 +1200,53 @@ export function registerCodeLensProvider(context: LspContext) {
           });
         }
       }
+
+      if ((detectedPlugin.id === "pscad" || /\.(pscx|pslx)$/i.test(uri)) && currentText) {
+        const lines = currentText.split(/\r?\n/);
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+          const line = lines[lineIdx]!;
+          const defMatch = /<Definition\b[^>]*\bname="([^"]+)"/i.exec(line);
+          if (defMatch && showDiagram) {
+            const defName = defMatch[1]!;
+            const col = Math.max(0, line.indexOf(defName));
+            lenses.push({
+              range: Range.create(lineIdx, col, lineIdx, col + defName.length),
+              command: {
+                title: `⊞ Open Schematic Sub-Page '${defName}'`,
+                command: "modelscript.openDiagram",
+                arguments: [uri, defName],
+              },
+            });
+          }
+          const userMatch = /<User\b[^>]*\bdefn="([^"]+)"/i.exec(line);
+          if (userMatch) {
+            const defn = userMatch[1]!;
+            const idMatch = /\bid="([^"]+)"/i.exec(line);
+            const compId = idMatch?.[1] ?? defn;
+            const col = Math.max(0, line.indexOf(defn));
+            const range = Range.create(lineIdx, col, lineIdx, col + defn.length);
+            if (/tline|cable/i.test(defn) && (showSimulate || showDiagram)) {
+              lenses.push({
+                range,
+                command: {
+                  title: `🗼 Inspect Line Constants & Tower Geometry (${defn})`,
+                  command: "modelscript.pscad.inspect_line_constants",
+                  arguments: [uri, compId],
+                },
+              });
+            } else if (/inverter|ibr|grid_forming|vsc|statcom/i.test(defn) && (showVerification || showSimulate)) {
+              lenses.push({
+                range,
+                command: {
+                  title: `✓ Verify IEEE 2800 Ride-Through & Sequence Current (${defn})`,
+                  command: "modelscript.pscad.verify_ieee2800",
+                  arguments: [uri, compId],
+                },
+              });
+            }
+          }
+        }
+      }
     }
 
     return lenses;

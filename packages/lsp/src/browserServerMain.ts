@@ -1127,7 +1127,8 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       customHandlers: {
         symbols: (treeWrapper: any) => {
           const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-          return getPsseDocumentSymbols(text);
+          const uri = typeof treeWrapper?.uri === "string" ? treeWrapper.uri : "model.raw";
+          return getPsseDocumentSymbols(text, uri);
         },
         hover: (offset: number, text: string, uri?: string) => {
           const lines = text.slice(0, offset).split("\n");
@@ -1150,7 +1151,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
           const lines = text.slice(0, offset).split("\n");
           const line = lines.length - 1;
           const character = lines[lines.length - 1]!.length;
-          return getPsseReferences(text, { line, character }, uri ?? "");
+          return getPsseReferences(text, { line, character }, uri ?? "", psseWsIndex);
         },
         complete: (offset: number, text: string, uri?: string) => {
           const lines = text.slice(0, offset).split("\n");

@@ -37,12 +37,67 @@ export interface VtuParseResult {
 
 // ── Parser ──────────────────────────────────────────────────────
 
+interface XmlLikeElement {
+  getAttribute(name: string): string | null;
+  textContent: string | null;
+  querySelector(selector: string): XmlLikeElement | null;
+  querySelectorAll(selector: string): XmlLikeElement[];
+}
+
+function createHeadlessVtuDoc(xmlString: string): XmlLikeElement {
+  const parseAttrs = (attrText: string): Record<string, string> => {
+    const attrs: Record<string, string> = {};
+    const re = /([A-Za-z0-9_:-]+)\s*=\s*"([^"]*)"/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(attrText)) !== null) {
+      attrs[m[1]!] = m[2]!;
+    }
+    return attrs;
+  };
+
+  const makeEl = (tag: string, attrStr: string, inner: string): XmlLikeElement => {
+    const attrs = parseAttrs(attrStr);
+    return {
+      getAttribute: (name: string) => attrs[name] ?? null,
+      textContent: inner.replace(/<[^>]+>/g, " "),
+      querySelector(selector: string): XmlLikeElement | null {
+        const all = this.querySelectorAll(selector);
+        return all[0] ?? null;
+      },
+      querySelectorAll(selector: string): XmlLikeElement[] {
+        const parts = selector
+          .split(">")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (parts.length === 0) return [];
+        if (parts.length > 1) {
+          const first = this.querySelector(parts[0]!);
+          if (!first) return [];
+          return first.querySelectorAll(parts.slice(1).join(" > "));
+        }
+        const targetTag = parts[0]!;
+        const results: XmlLikeElement[] = [];
+        const tagRe = new RegExp(`<${targetTag}(\\s[^>]*)?>([\\s\\S]*?)<\\/${targetTag}>`, "g");
+        let match: RegExpExecArray | null;
+        while ((match = tagRe.exec(inner)) !== null) {
+          results.push(makeEl(targetTag, match[1] || "", match[2] || ""));
+        }
+        return results;
+      },
+    };
+  };
+
+  return makeEl("root", "", xmlString);
+}
+
 /**
  * Parse a VTU XML string into geometry + field data.
  */
 export function parseVtu(xmlString: string): VtuParseResult {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlString, "application/xml");
+  const doc: XmlLikeElement =
+    typeof DOMParser !== "undefined"
+      ? (new DOMParser().parseFromString(xmlString, "application/xml") as unknown as XmlLikeElement)
+      : createHeadlessVtuDoc(xmlString);
 
   const parseError = doc.querySelector("parsererror");
   if (parseError) {
@@ -150,7 +205,7 @@ export function parseVtu(xmlString: string): VtuParseResult {
 
 // ── Helpers ─────────────────────────────────────────────────────
 
-function parseDataArray(node: Element, expectedLength: number): Float32Array {
+function parseDataArray(node: XmlLikeElement, expectedLength: number): Float32Array {
   const format = node.getAttribute("format") || "ascii";
   const text = (node.textContent || "").trim();
 
@@ -179,7 +234,11 @@ function parseDataArray(node: Element, expectedLength: number): Float32Array {
   return new Float32Array(values);
 }
 
-function parseFieldDataArray(node: Element, numEntities: number, association: "point" | "cell"): VtuField | null {
+function parseFieldDataArray(
+  node: XmlLikeElement,
+  numEntities: number,
+  association: "point" | "cell",
+): VtuField | null {
   const name = node.getAttribute("Name");
   if (!name) return null;
 
@@ -211,9 +270,9 @@ function parseFieldDataArray(node: Element, numEntities: number, association: "p
 }
 
 function triangulateFromVtkCells(
-  connectivityNode: Element,
-  offsetsNode: Element,
-  typesNode: Element,
+  connectivityNode: XmlLikeElement,
+  offsetsNode: XmlLikeElement,
+  typesNode: XmlLikeElement,
   numCells: number,
 ): Uint32Array {
   const connectivityText = (connectivityNode.textContent || "").trim();

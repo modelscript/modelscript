@@ -15,12 +15,48 @@
 import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { EmtNetlist } from "../types.js";
 
+export interface PscadSnapshot {
+  formatVersion: "1.0";
+  timestampSec: number;
+  nominalFrequencyHz: number;
+  busVoltages: Record<string, { va: number; vb: number; vc: number }>;
+  branchHistories: Record<string, { iHistA: number; iHistB: number; iHistC: number }>;
+  bergeronBuffers?:
+    | Record<
+        string,
+        {
+          ptr: number;
+          vkBufA: number[];
+          vkBufB: number[];
+          vkBufC: number[];
+          vmBufA: number[];
+          vmBufB: number[];
+          vmBufC: number[];
+          ikmBufA: number[];
+          ikmBufB: number[];
+          ikmBufC: number[];
+          imkBufA: number[];
+          imkBufB: number[];
+          imkBufC: number[];
+        }
+      >
+    | undefined;
+  syncGenerators?: Record<string, { deltaRad: number; omegaRadSec: number }> | undefined;
+  switchStates?: Record<string, boolean> | undefined;
+}
+
 export interface EmtSolverOptions {
   timeStepSec: number;
   durationSec: number;
   nominalFrequencyHz?: number | undefined;
   /** Whether to enable Critical Damping Adjustment (CDA) to eliminate switching chatter. Default: true. */
   enableCda?: boolean | undefined;
+  /** Whether to enable sub-step zero-crossing switching interpolation to suppress current chopping spikes. Default: true. */
+  enableSwitchingInterpolation?: boolean | undefined;
+  /** Whether to pre-solve fundamental-frequency AC steady-state load flow at t=0 before stepping. Default: false. */
+  initializeFromLoadFlow?: boolean | undefined;
+  /** Optional `.snp` snapshot state to restore at t=0. */
+  initialSnapshot?: PscadSnapshot | undefined;
   /** Maximum number of simulation steps. Default: 50,000. */
   maxSteps?: number | undefined;
   /** Whether to execute via native WebAssembly companion solver kernel. Default: false. */
@@ -32,6 +68,7 @@ export interface EmtSolverMetrics {
   luFactorizations: number;
   switchingEvents: number;
   chatterDampedSteps: number;
+  interpolatedZeroCrossings?: number | undefined;
   executionTimeMs: number;
 }
 
@@ -98,6 +135,17 @@ interface BergeronLineState {
   imkBufA: Float64Array;
   imkBufB: Float64Array;
   imkBufC: Float64Array;
+  /** Whether frequency-dependent ULM / J. Marti recursive convolution is active for this line. */
+  isFdpm: boolean;
+  d0: number;
+  expDecays: Float64Array;
+  convGains: Float64Array;
+  xKmA: Float64Array;
+  xKmB: Float64Array;
+  xKmC: Float64Array;
+  xMkA: Float64Array;
+  xMkB: Float64Array;
+  xMkC: Float64Array;
   ia: Float64Array;
   ib: Float64Array;
   ic: Float64Array;
@@ -184,6 +232,9 @@ interface LegacyLineLike {
   lPerKm?: number | undefined;
   cPerKm?: number | undefined;
   modelType?: "bergeron" | "pi" | "fdpm" | undefined;
+  poles?: number[] | undefined;
+  residues?: number[] | undefined;
+  d0?: number | undefined;
 }
 
 interface LegacyTransformerLike {
@@ -306,7 +357,8 @@ interface SourceInfo {
  * High-performance, zero-allocation native Dommel companion-circuit EMT solver.
  * Solves the coupled 3N x 3N phase-domain (abc) nodal conductance system:
  *   G_abc * v_abc(t) = j_abc(t) - i_hist,abc(t - dt)
- * with Bergeron traveling-wave transmission lines and Park dq0 synchronous machines.
+ * with Bergeron traveling-wave transmission lines, ULM / J. Marti frequency-dependent
+ * recursive convolution, sub-step zero-crossing switching interpolation, and Park dq0 machines.
  */
 export class EmtSolver {
   private readonly netlist: EmtNetlist;
@@ -314,6 +366,7 @@ export class EmtSolver {
   private readonly durationSec: number;
   private readonly omega: number;
   private readonly enableCda: boolean;
+  private readonly enableSwitchingInterpolation: boolean;
   private readonly nSteps: number;
 
   private readonly busList: BusInfo[] = [];
@@ -358,6 +411,7 @@ export class EmtSolver {
   private luFactorizationCount: number = 0;
   private switchingEventCount: number = 0;
   private chatterDampedCount: number = 0;
+  private interpolatedZeroCrossingsCount: number = 0;
 
   private readonly useWasm: boolean;
 
@@ -367,6 +421,7 @@ export class EmtSolver {
     this.durationSec = Math.max(this.timeStepSec * 2, options.durationSec);
     this.omega = 2 * Math.PI * (options.nominalFrequencyHz ?? netlist.nominalFrequencyHz ?? 60.0);
     this.enableCda = options.enableCda ?? true;
+    this.enableSwitchingInterpolation = options.enableSwitchingInterpolation ?? true;
     this.useWasm = options.useWasm ?? false;
 
     const maxSteps = options.maxSteps ?? 50000;
@@ -378,6 +433,12 @@ export class EmtSolver {
         : 1.5;
 
     this.initializeTopology();
+
+    if (options.initialSnapshot) {
+      this.applySnapshot(options.initialSnapshot);
+    } else if (options.initializeFromLoadFlow) {
+      this.initializeSteadyState();
+    }
   }
 
   private registerBranchBuffers(id: string): { ia: Float64Array; ib: Float64Array; ic: Float64Array } {
@@ -511,7 +572,7 @@ export class EmtSolver {
       });
     };
 
-    // Helper to register Bergeron distributed traveling-wave line or fallback pi-section
+    // Helper to register Bergeron distributed traveling-wave line, ULM / J. Marti FDPM line, or fallback pi-section
     const addTransmissionLine = (ln: LegacyLineLike) => {
       const fromBus = ln.fromBus ?? ln.from ?? "0";
       const toBus = ln.toBus ?? ln.to ?? "0";
@@ -538,6 +599,38 @@ export class EmtSolver {
         const bufLen = delaySteps + 3;
         const { ia, ib, ic } = this.registerBranchBuffers(ln.id);
 
+        const isFdpm = modelType === "fdpm";
+        const rawPoles =
+          isFdpm && ln.poles && ln.poles.length > 0 ? ln.poles : isFdpm ? [-120.0, -1200.0, -12000.0, -90000.0] : [];
+        const nPoles = rawPoles.length;
+        const expDecays = new Float64Array(nPoles);
+        const convGains = new Float64Array(nPoles);
+        let d0 = isFdpm ? (ln.d0 ?? 0.35) : 1.0;
+
+        if (isFdpm && nPoles > 0) {
+          const defaultWeights = [0.4, 0.3, 0.2, 0.1];
+          const hasExplicitResidues = Boolean(ln.residues && ln.residues.length === nPoles);
+          for (let m = 0; m < nPoles; m++) {
+            const p = -Math.max(1.0, Math.abs(rawPoles[m]!));
+            const alpha = Math.exp(p * this.timeStepSec);
+            expDecays[m] = alpha;
+            if (hasExplicitResidues) {
+              const res = ln.residues![m]!;
+              convGains[m] = (res / -p) * (1.0 - alpha);
+            } else {
+              const w = defaultWeights[m] ?? 1.0 / nPoles;
+              convGains[m] = (1.0 - d0) * w * (1.0 - alpha);
+            }
+          }
+          if (hasExplicitResidues && ln.d0 === undefined) {
+            let dcPoleSum = 0;
+            for (let m = 0; m < nPoles; m++) {
+              dcPoleSum += convGains[m]! / Math.max(1e-12, 1.0 - expDecays[m]!);
+            }
+            d0 = Math.max(0.0, Math.min(1.0, 1.0 - dcPoleSum));
+          }
+        }
+
         this.bergeronLines.push({
           id: ln.id,
           fromIdx,
@@ -561,6 +654,16 @@ export class EmtSolver {
           imkBufA: new Float64Array(bufLen),
           imkBufB: new Float64Array(bufLen),
           imkBufC: new Float64Array(bufLen),
+          isFdpm,
+          d0,
+          expDecays,
+          convGains,
+          xKmA: new Float64Array(nPoles),
+          xKmB: new Float64Array(nPoles),
+          xKmC: new Float64Array(nPoles),
+          xMkA: new Float64Array(nPoles),
+          xMkB: new Float64Array(nPoles),
+          xMkC: new Float64Array(nPoles),
           ia,
           ib,
           ic,
@@ -1031,6 +1134,416 @@ export class EmtSolver {
   }
 
   /**
+   * Computes terminal traveling-wave history currents for a Bergeron or ULM / J. Marti
+   * frequency-dependent (`modelType === "fdpm"`) transmission line using O(N_poles) recursive convolution.
+   */
+  private computeLineHistoryCurrents(
+    bl: BergeronLineState,
+    advanceStates: boolean,
+  ): {
+    iHistKmA: number;
+    iHistKmB: number;
+    iHistKmC: number;
+    iHistMkA: number;
+    iHistMkB: number;
+    iHistMkC: number;
+  } {
+    const { ptr, bufLen, delaySteps, fracDelay, gBerg, hLoss } = bl;
+    const c1 = 0.5 * (1.0 + hLoss);
+    const c2 = 0.5 * (1.0 - hLoss);
+
+    const vkDelA = this.readDelayed(bl.vkBufA, ptr, bufLen, delaySteps, fracDelay);
+    const vkDelB = this.readDelayed(bl.vkBufB, ptr, bufLen, delaySteps, fracDelay);
+    const vkDelC = this.readDelayed(bl.vkBufC, ptr, bufLen, delaySteps, fracDelay);
+
+    const vmDelA = this.readDelayed(bl.vmBufA, ptr, bufLen, delaySteps, fracDelay);
+    const vmDelB = this.readDelayed(bl.vmBufB, ptr, bufLen, delaySteps, fracDelay);
+    const vmDelC = this.readDelayed(bl.vmBufC, ptr, bufLen, delaySteps, fracDelay);
+
+    const ikmDelA = this.readDelayed(bl.ikmBufA, ptr, bufLen, delaySteps, fracDelay);
+    const ikmDelB = this.readDelayed(bl.ikmBufB, ptr, bufLen, delaySteps, fracDelay);
+    const ikmDelC = this.readDelayed(bl.ikmBufC, ptr, bufLen, delaySteps, fracDelay);
+
+    const imkDelA = this.readDelayed(bl.imkBufA, ptr, bufLen, delaySteps, fracDelay);
+    const imkDelB = this.readDelayed(bl.imkBufB, ptr, bufLen, delaySteps, fracDelay);
+    const imkDelC = this.readDelayed(bl.imkBufC, ptr, bufLen, delaySteps, fracDelay);
+
+    const rawKmA = -c1 * (gBerg * vmDelA + hLoss * imkDelA) - c2 * (gBerg * vkDelA + hLoss * ikmDelA);
+    const rawKmB = -c1 * (gBerg * vmDelB + hLoss * imkDelB) - c2 * (gBerg * vkDelB + hLoss * ikmDelB);
+    const rawKmC = -c1 * (gBerg * vmDelC + hLoss * imkDelC) - c2 * (gBerg * vkDelC + hLoss * ikmDelC);
+
+    const rawMkA = -c1 * (gBerg * vkDelA + hLoss * ikmDelA) - c2 * (gBerg * vmDelA + hLoss * imkDelA);
+    const rawMkB = -c1 * (gBerg * vkDelB + hLoss * ikmDelB) - c2 * (gBerg * vmDelB + hLoss * imkDelB);
+    const rawMkC = -c1 * (gBerg * vkDelC + hLoss * ikmDelC) - c2 * (gBerg * vmDelC + hLoss * imkDelC);
+
+    if (!bl.isFdpm || bl.expDecays.length === 0) {
+      return {
+        iHistKmA: rawKmA,
+        iHistKmB: rawKmB,
+        iHistKmC: rawKmC,
+        iHistMkA: rawMkA,
+        iHistMkB: rawMkB,
+        iHistMkC: rawMkC,
+      };
+    }
+
+    const nPoles = bl.expDecays.length;
+    let convKmA = bl.d0 * rawKmA;
+    let convKmB = bl.d0 * rawKmB;
+    let convKmC = bl.d0 * rawKmC;
+    let convMkA = bl.d0 * rawMkA;
+    let convMkB = bl.d0 * rawMkB;
+    let convMkC = bl.d0 * rawMkC;
+
+    for (let m = 0; m < nPoles; m++) {
+      const alpha = bl.expDecays[m]!;
+      const beta = bl.convGains[m]!;
+      const nextKmA = alpha * bl.xKmA[m]! + beta * rawKmA;
+      const nextKmB = alpha * bl.xKmB[m]! + beta * rawKmB;
+      const nextKmC = alpha * bl.xKmC[m]! + beta * rawKmC;
+      const nextMkA = alpha * bl.xMkA[m]! + beta * rawMkA;
+      const nextMkB = alpha * bl.xMkB[m]! + beta * rawMkB;
+      const nextMkC = alpha * bl.xMkC[m]! + beta * rawMkC;
+
+      convKmA += nextKmA;
+      convKmB += nextKmB;
+      convKmC += nextKmC;
+      convMkA += nextMkA;
+      convMkB += nextMkB;
+      convMkC += nextMkC;
+
+      if (advanceStates) {
+        bl.xKmA[m] = nextKmA;
+        bl.xKmB[m] = nextKmB;
+        bl.xKmC[m] = nextKmC;
+        bl.xMkA[m] = nextMkA;
+        bl.xMkB[m] = nextMkB;
+        bl.xMkC[m] = nextMkC;
+      }
+    }
+
+    return {
+      iHistKmA: convKmA,
+      iHistKmB: convKmB,
+      iHistKmC: convKmC,
+      iHistMkA: convMkA,
+      iHistMkB: convMkB,
+      iHistMkC: convMkC,
+    };
+  }
+
+  /**
+   * Pre-solves the fundamental-frequency AC steady-state over two full cycles prior to t = 0
+   * (`t in [-2 * T0, -dt]`) so that all companion branch histories, Bergeron/ULM traveling-wave
+   * delay buffers, and synchronous generator states start in sinusoidal steady state at t = 0
+   * with zero initialization transient.
+   */
+  public initializeSteadyState(): void {
+    if (this.nBuses === 0) return;
+    const periodSec = (2 * Math.PI) / Math.max(1.0, this.omega);
+    const stepsPerCycle = Math.max(16, Math.round(periodSec / this.timeStepSec));
+    const preSteps = Math.min(2000, 2 * stepsPerCycle);
+    const n = this.nBuses;
+    const n3 = this.nPhaseNodes;
+
+    // Assemble pre-fault steady-state conductance matrix G3
+    this.G3.fill(0);
+    for (const [bIdx, srcs] of this.busSources.entries()) {
+      for (const s of srcs) {
+        for (let p = 0; p < 3; p++) {
+          const pNode = 3 * bIdx + p;
+          this.G3[pNode * n3 + pNode] = this.G3[pNode * n3 + pNode]! + s.gSrc;
+        }
+      }
+    }
+    for (const sg of this.syncGenerators) {
+      for (let p = 0; p < 3; p++) {
+        const pNode = 3 * sg.busIdx + p;
+        this.G3[pNode * n3 + pNode] = this.G3[pNode * n3 + pNode]! + sg.gGen;
+      }
+    }
+    for (const br of this.companionBranches) {
+      const gTotal = br.gEq + 0.5 * br.shuntG;
+      this.stamp3PhaseBranch(br.fromIdx, br.toIdx, gTotal, br.gMut);
+      if (br.windingConnection === "Yg-D" || br.windingConnection === "D-D") {
+        const dIdx = br.toIdx;
+        if (dIdx >= 0) {
+          const gDelta = 0.1 * br.gEq;
+          this.stampNodeAdmittance(3 * dIdx + 0, 3 * dIdx + 1, gDelta);
+          this.stampNodeAdmittance(3 * dIdx + 1, 3 * dIdx + 2, gDelta);
+          this.stampNodeAdmittance(3 * dIdx + 2, 3 * dIdx + 0, gDelta);
+        }
+      }
+      if (br.windingConnection === "D-Yg" || br.windingConnection === "D-D") {
+        const dIdx = br.fromIdx;
+        if (dIdx >= 0) {
+          const gDelta = 0.1 * br.gEq;
+          this.stampNodeAdmittance(3 * dIdx + 0, 3 * dIdx + 1, gDelta);
+          this.stampNodeAdmittance(3 * dIdx + 1, 3 * dIdx + 2, gDelta);
+          this.stampNodeAdmittance(3 * dIdx + 2, 3 * dIdx + 0, gDelta);
+        }
+      }
+    }
+    for (const bl of this.bergeronLines) {
+      for (let p = 0; p < 3; p++) {
+        if (bl.fromIdx >= 0) {
+          const pk = 3 * bl.fromIdx + p;
+          this.G3[pk * n3 + pk] = this.G3[pk * n3 + pk]! + bl.gBerg;
+        }
+        if (bl.toIdx >= 0) {
+          const pm = 3 * bl.toIdx + p;
+          this.G3[pm * n3 + pm] = this.G3[pm * n3 + pm]! + bl.gBerg;
+        }
+      }
+    }
+    for (const swState of this.switchStates) {
+      const initClosed = Boolean(swState.sw.initialClosed);
+      swState.currentClosed = initClosed;
+      const rSw = initClosed
+        ? Math.max(swState.sw.rClosedOhm || 1e-3, 1e-4)
+        : Math.max(swState.sw.rOpenOhm || 1e6, 1e3);
+      this.stamp3PhaseBranch(swState.fromIdx, swState.toIdx, 1.0 / rSw, 0);
+    }
+
+    this.factorize3Phase(this.G3, this.LU3, this.piv3);
+    this.luValid = true;
+
+    for (let step = -preSteps; step < 0; step++) {
+      const t = step * this.timeStepSec;
+      this.J3.fill(0);
+
+      for (const [bIdx, srcs] of this.busSources.entries()) {
+        for (const s of srcs) {
+          const ea = s.vPeak * Math.sin(s.freqRad * t + s.phaseRad);
+          const eb = s.vPeak * Math.sin(s.freqRad * t + s.phaseRad - (2 * Math.PI) / 3);
+          const ec = s.vPeak * Math.sin(s.freqRad * t + s.phaseRad + (2 * Math.PI) / 3);
+          this.J3[3 * bIdx + 0] = this.J3[3 * bIdx + 0]! + s.gSrc * ea;
+          this.J3[3 * bIdx + 1] = this.J3[3 * bIdx + 1]! + s.gSrc * eb;
+          this.J3[3 * bIdx + 2] = this.J3[3 * bIdx + 2]! + s.gSrc * ec;
+        }
+      }
+      for (const sg of this.syncGenerators) {
+        const thetaE = sg.omega0 * t + sg.deltaRad;
+        const ePeak = sg.efPu * sg.vPeak;
+        this.J3[3 * sg.busIdx + 0] = this.J3[3 * sg.busIdx + 0]! + sg.gGen * ePeak * Math.sin(thetaE);
+        this.J3[3 * sg.busIdx + 1] =
+          this.J3[3 * sg.busIdx + 1]! + sg.gGen * ePeak * Math.sin(thetaE - (2 * Math.PI) / 3);
+        this.J3[3 * sg.busIdx + 2] =
+          this.J3[3 * sg.busIdx + 2]! + sg.gGen * ePeak * Math.sin(thetaE + (2 * Math.PI) / 3);
+      }
+      for (const br of this.companionBranches) {
+        if (br.fromIdx >= 0) {
+          this.J3[3 * br.fromIdx + 0] = this.J3[3 * br.fromIdx + 0]! - br.iHistA;
+          this.J3[3 * br.fromIdx + 1] = this.J3[3 * br.fromIdx + 1]! - br.iHistB;
+          this.J3[3 * br.fromIdx + 2] = this.J3[3 * br.fromIdx + 2]! - br.iHistC;
+        }
+        if (br.toIdx >= 0) {
+          this.J3[3 * br.toIdx + 0] = this.J3[3 * br.toIdx + 0]! + br.iHistA;
+          this.J3[3 * br.toIdx + 1] = this.J3[3 * br.toIdx + 1]! + br.iHistB;
+          this.J3[3 * br.toIdx + 2] = this.J3[3 * br.toIdx + 2]! + br.iHistC;
+        }
+      }
+      for (const bl of this.bergeronLines) {
+        const { iHistKmA, iHistKmB, iHistKmC, iHistMkA, iHistMkB, iHistMkC } = this.computeLineHistoryCurrents(
+          bl,
+          false,
+        );
+        if (bl.fromIdx >= 0) {
+          this.J3[3 * bl.fromIdx + 0] = this.J3[3 * bl.fromIdx + 0]! - iHistKmA;
+          this.J3[3 * bl.fromIdx + 1] = this.J3[3 * bl.fromIdx + 1]! - iHistKmB;
+          this.J3[3 * bl.fromIdx + 2] = this.J3[3 * bl.fromIdx + 2]! - iHistKmC;
+        }
+        if (bl.toIdx >= 0) {
+          this.J3[3 * bl.toIdx + 0] = this.J3[3 * bl.toIdx + 0]! - iHistMkA;
+          this.J3[3 * bl.toIdx + 1] = this.J3[3 * bl.toIdx + 1]! - iHistMkB;
+          this.J3[3 * bl.toIdx + 2] = this.J3[3 * bl.toIdx + 2]! - iHistMkC;
+        }
+      }
+
+      this.solveFromLU3Phase(this.LU3, this.piv3, this.J3, this.v3Step);
+      for (let i = 0; i < n; i++) {
+        this.vaStep[i] = this.v3Step[3 * i + 0]!;
+        this.vbStep[i] = this.v3Step[3 * i + 1]!;
+        this.vcStep[i] = this.v3Step[3 * i + 2]!;
+      }
+
+      for (const br of this.companionBranches) {
+        const dvA = (br.fromIdx >= 0 ? this.vaStep[br.fromIdx]! : 0) - (br.toIdx >= 0 ? this.vaStep[br.toIdx]! : 0);
+        const dvB = (br.fromIdx >= 0 ? this.vbStep[br.fromIdx]! : 0) - (br.toIdx >= 0 ? this.vbStep[br.toIdx]! : 0);
+        const dvC = (br.fromIdx >= 0 ? this.vcStep[br.fromIdx]! : 0) - (br.toIdx >= 0 ? this.vcStep[br.toIdx]! : 0);
+        const curA = br.gEq * dvA + br.gMut * (dvB + dvC) + br.iHistA;
+        const curB = br.gEq * dvB + br.gMut * (dvA + dvC) + br.iHistB;
+        const curC = br.gEq * dvC + br.gMut * (dvA + dvB) + br.iHistC;
+        br.iHistA = br.alphaHist * curA + br.alphaMutHist * (curB + curC) + br.gEq * dvA + br.gMut * (dvB + dvC);
+        br.iHistB = br.alphaHist * curB + br.alphaMutHist * (curA + curC) + br.gEq * dvB + br.gMut * (dvA + dvC);
+        br.iHistC = br.alphaHist * curC + br.alphaMutHist * (curA + curB) + br.gEq * dvC + br.gMut * (dvA + dvB);
+      }
+
+      for (const bl of this.bergeronLines) {
+        const { ptr, bufLen, gBerg } = bl;
+        const { iHistKmA, iHistKmB, iHistKmC, iHistMkA, iHistMkB, iHistMkC } = this.computeLineHistoryCurrents(
+          bl,
+          true,
+        );
+        const vkA = bl.fromIdx >= 0 ? this.vaStep[bl.fromIdx]! : 0.0;
+        const vkB = bl.fromIdx >= 0 ? this.vbStep[bl.fromIdx]! : 0.0;
+        const vkC = bl.fromIdx >= 0 ? this.vcStep[bl.fromIdx]! : 0.0;
+        const vmA = bl.toIdx >= 0 ? this.vaStep[bl.toIdx]! : 0.0;
+        const vmB = bl.toIdx >= 0 ? this.vbStep[bl.toIdx]! : 0.0;
+        const vmC = bl.toIdx >= 0 ? this.vcStep[bl.toIdx]! : 0.0;
+        bl.vkBufA[ptr] = vkA;
+        bl.vkBufB[ptr] = vkB;
+        bl.vkBufC[ptr] = vkC;
+        bl.vmBufA[ptr] = vmA;
+        bl.vmBufB[ptr] = vmB;
+        bl.vmBufC[ptr] = vmC;
+        bl.ikmBufA[ptr] = gBerg * vkA + iHistKmA;
+        bl.ikmBufB[ptr] = gBerg * vkB + iHistKmB;
+        bl.ikmBufC[ptr] = gBerg * vkC + iHistKmC;
+        bl.imkBufA[ptr] = gBerg * vmA + iHistMkA;
+        bl.imkBufB[ptr] = gBerg * vmB + iHistMkB;
+        bl.imkBufC[ptr] = gBerg * vmC + iHistMkC;
+        bl.ptr = (ptr + 1) % bufLen;
+      }
+    }
+  }
+
+  /**
+   * Restores solver internal state (bus voltages, companion branch histories, Bergeron/ULM line buffers,
+   * synchronous generator rotor angles, and switch states) from a `PscadSnapshot` (`.snp`).
+   */
+  public applySnapshot(snapshot: PscadSnapshot): void {
+    for (const [busId, v] of Object.entries(snapshot.busVoltages ?? {})) {
+      const idx = this.busIdxMap.get(busId);
+      if (idx !== undefined && idx >= 0) {
+        this.vaStep[idx] = v.va;
+        this.vbStep[idx] = v.vb;
+        this.vcStep[idx] = v.vc;
+      }
+    }
+    for (const br of this.companionBranches) {
+      const h = snapshot.branchHistories?.[br.id];
+      if (h) {
+        br.iHistA = h.iHistA;
+        br.iHistB = h.iHistB;
+        br.iHistC = h.iHistC;
+      }
+    }
+    if (snapshot.bergeronBuffers) {
+      for (const bl of this.bergeronLines) {
+        const b = snapshot.bergeronBuffers[bl.id];
+        if (!b) continue;
+        bl.ptr = b.ptr % bl.bufLen;
+        const copyBuf = (dst: Float64Array, src: number[]) => {
+          const len = Math.min(dst.length, src.length);
+          for (let i = 0; i < len; i++) dst[i] = src[i]!;
+        };
+        copyBuf(bl.vkBufA, b.vkBufA);
+        copyBuf(bl.vkBufB, b.vkBufB);
+        copyBuf(bl.vkBufC, b.vkBufC);
+        copyBuf(bl.vmBufA, b.vmBufA);
+        copyBuf(bl.vmBufB, b.vmBufB);
+        copyBuf(bl.vmBufC, b.vmBufC);
+        copyBuf(bl.ikmBufA, b.ikmBufA);
+        copyBuf(bl.ikmBufB, b.ikmBufB);
+        copyBuf(bl.ikmBufC, b.ikmBufC);
+        copyBuf(bl.imkBufA, b.imkBufA);
+        copyBuf(bl.imkBufB, b.imkBufB);
+        copyBuf(bl.imkBufC, b.imkBufC);
+      }
+    }
+    if (snapshot.syncGenerators) {
+      for (const sg of this.syncGenerators) {
+        const g = snapshot.syncGenerators[sg.id];
+        if (g) {
+          sg.deltaRad = g.deltaRad;
+          sg.omegaRadSec = g.omegaRadSec;
+        }
+      }
+    }
+    if (snapshot.switchStates) {
+      for (const sw of this.switchStates) {
+        const st = snapshot.switchStates[sw.sw.id];
+        if (typeof st === "boolean") {
+          sw.currentClosed = st;
+        }
+      }
+    }
+    this.luValid = false;
+  }
+
+  /**
+   * Exports the current (or specified step's) complete EMT operating point as a `PscadSnapshot` (`.snp`).
+   */
+  public exportSnapshot(stepIndex?: number): PscadSnapshot {
+    const k =
+      stepIndex !== undefined ? Math.max(0, Math.min(this.nSteps - 1, stepIndex)) : Math.max(0, this.nSteps - 1);
+    const busVoltages: Record<string, { va: number; vb: number; vc: number }> = {};
+    for (let i = 0; i < this.nBuses; i++) {
+      const busId = this.busList[i]!.id;
+      const pv = this.busPhaseVoltages.get(busId);
+      const useTraj = stepIndex !== undefined && pv && (pv.a[k] !== 0 || pv.b[k] !== 0 || pv.c[k] !== 0);
+      busVoltages[busId] = {
+        va: useTraj ? pv!.a[k]! : this.vaStep[i]!,
+        vb: useTraj ? pv!.b[k]! : this.vbStep[i]!,
+        vc: useTraj ? pv!.c[k]! : this.vcStep[i]!,
+      };
+    }
+
+    const branchHistories: Record<string, { iHistA: number; iHistB: number; iHistC: number }> = {};
+    for (const br of this.companionBranches) {
+      branchHistories[br.id] = {
+        iHistA: br.iHistA,
+        iHistB: br.iHistB,
+        iHistC: br.iHistC,
+      };
+    }
+
+    const bergeronBuffers: NonNullable<PscadSnapshot["bergeronBuffers"]> = {};
+    for (const bl of this.bergeronLines) {
+      bergeronBuffers[bl.id] = {
+        ptr: bl.ptr,
+        vkBufA: Array.from(bl.vkBufA),
+        vkBufB: Array.from(bl.vkBufB),
+        vkBufC: Array.from(bl.vkBufC),
+        vmBufA: Array.from(bl.vmBufA),
+        vmBufB: Array.from(bl.vmBufB),
+        vmBufC: Array.from(bl.vmBufC),
+        ikmBufA: Array.from(bl.ikmBufA),
+        ikmBufB: Array.from(bl.ikmBufB),
+        ikmBufC: Array.from(bl.ikmBufC),
+        imkBufA: Array.from(bl.imkBufA),
+        imkBufB: Array.from(bl.imkBufB),
+        imkBufC: Array.from(bl.imkBufC),
+      };
+    }
+
+    const syncGenerators: Record<string, { deltaRad: number; omegaRadSec: number }> = {};
+    for (const sg of this.syncGenerators) {
+      syncGenerators[sg.id] = {
+        deltaRad: sg.deltaRad,
+        omegaRadSec: sg.omegaRadSec,
+      };
+    }
+
+    const switchStates: Record<string, boolean> = {};
+    for (const sw of this.switchStates) {
+      switchStates[sw.sw.id] = sw.currentClosed;
+    }
+
+    return {
+      formatVersion: "1.0",
+      timestampSec: this.time[k] ?? k * this.timeStepSec,
+      nominalFrequencyHz: this.omega / (2 * Math.PI),
+      busVoltages,
+      branchHistories,
+      bergeronBuffers: Object.keys(bergeronBuffers).length > 0 ? bergeronBuffers : undefined,
+      syncGenerators: Object.keys(syncGenerators).length > 0 ? syncGenerators : undefined,
+      switchStates: Object.keys(switchStates).length > 0 ? switchStates : undefined,
+    };
+  }
+
+  /**
    * Executes the full time-domain simulation loop.
    */
   public solve(): EmtSolverResult {
@@ -1061,18 +1574,28 @@ export class EmtSolver {
           luFactorizations: 0,
           switchingEvents: 0,
           chatterDampedSteps: 0,
+          interpolatedZeroCrossings: 0,
           executionTimeMs: 0,
         },
       };
     }
 
     let cdaCounter = 0;
+    const vaPrevStep = new Float64Array(n);
+    const vbPrevStep = new Float64Array(n);
+    const vcPrevStep = new Float64Array(n);
 
     for (let k = 0; k < this.nSteps; k++) {
       const t = this.time[k]!;
+      if (k > 0) {
+        vaPrevStep.set(this.vaStep);
+        vbPrevStep.set(this.vbStep);
+        vcPrevStep.set(this.vcStep);
+      }
 
-      // 1. Detect switch state toggles
+      // 1. Detect switch state toggles & compute sub-step zero-crossing interpolation factor alpha
       let topologyChanged = false;
+      const switchedBusInterpolation = new Map<number, number>();
       for (const swState of this.switchStates) {
         const initClosed = Boolean(swState.sw.initialClosed);
         const isClosed = t >= swState.sw.actionTimeSec ? !initClosed : initClosed;
@@ -1082,6 +1605,14 @@ export class EmtSolver {
           this.switchingEventCount++;
           if (this.enableCda) {
             cdaCounter = 2; // Trigger 2 steps of CDA damping
+          }
+          if (this.enableSwitchingInterpolation) {
+            const tPrev = k > 0 ? this.time[k - 1]! : t - this.timeStepSec;
+            const rawAlpha = (swState.sw.actionTimeSec - tPrev) / this.timeStepSec;
+            const alpha = rawAlpha > 0.01 && rawAlpha < 0.99 ? rawAlpha : 0.5;
+            this.interpolatedZeroCrossingsCount++;
+            if (swState.fromIdx >= 0) switchedBusInterpolation.set(swState.fromIdx, alpha);
+            if (swState.toIdx >= 0) switchedBusInterpolation.set(swState.toIdx, alpha);
           }
         }
       }
@@ -1142,7 +1673,7 @@ export class EmtSolver {
           }
         }
 
-        // Bergeron distributed traveling-wave lines (decoupled Norton shunt gBerg at both terminals)
+        // Bergeron / ULM distributed traveling-wave lines (decoupled Norton shunt gBerg at both terminals)
         for (const bl of this.bergeronLines) {
           for (let p = 0; p < 3; p++) {
             if (bl.fromIdx >= 0) {
@@ -1239,35 +1770,12 @@ export class EmtSolver {
         }
       }
 
-      // Bergeron traveling-wave delayed history current injections
+      // Bergeron / ULM traveling-wave delayed history current injections
       for (const bl of this.bergeronLines) {
-        const { ptr, bufLen, delaySteps, fracDelay, gBerg, hLoss } = bl;
-        const c1 = 0.5 * (1.0 + hLoss);
-        const c2 = 0.5 * (1.0 - hLoss);
-
-        const vkDelA = this.readDelayed(bl.vkBufA, ptr, bufLen, delaySteps, fracDelay);
-        const vkDelB = this.readDelayed(bl.vkBufB, ptr, bufLen, delaySteps, fracDelay);
-        const vkDelC = this.readDelayed(bl.vkBufC, ptr, bufLen, delaySteps, fracDelay);
-
-        const vmDelA = this.readDelayed(bl.vmBufA, ptr, bufLen, delaySteps, fracDelay);
-        const vmDelB = this.readDelayed(bl.vmBufB, ptr, bufLen, delaySteps, fracDelay);
-        const vmDelC = this.readDelayed(bl.vmBufC, ptr, bufLen, delaySteps, fracDelay);
-
-        const ikmDelA = this.readDelayed(bl.ikmBufA, ptr, bufLen, delaySteps, fracDelay);
-        const ikmDelB = this.readDelayed(bl.ikmBufB, ptr, bufLen, delaySteps, fracDelay);
-        const ikmDelC = this.readDelayed(bl.ikmBufC, ptr, bufLen, delaySteps, fracDelay);
-
-        const imkDelA = this.readDelayed(bl.imkBufA, ptr, bufLen, delaySteps, fracDelay);
-        const imkDelB = this.readDelayed(bl.imkBufB, ptr, bufLen, delaySteps, fracDelay);
-        const imkDelC = this.readDelayed(bl.imkBufC, ptr, bufLen, delaySteps, fracDelay);
-
-        const iHistKmA = -c1 * (gBerg * vmDelA + hLoss * imkDelA) - c2 * (gBerg * vkDelA + hLoss * ikmDelA);
-        const iHistKmB = -c1 * (gBerg * vmDelB + hLoss * imkDelB) - c2 * (gBerg * vkDelB + hLoss * ikmDelB);
-        const iHistKmC = -c1 * (gBerg * vmDelC + hLoss * imkDelC) - c2 * (gBerg * vkDelC + hLoss * ikmDelC);
-
-        const iHistMkA = -c1 * (gBerg * vkDelA + hLoss * ikmDelA) - c2 * (gBerg * vmDelA + hLoss * imkDelA);
-        const iHistMkB = -c1 * (gBerg * vkDelB + hLoss * ikmDelB) - c2 * (gBerg * vmDelB + hLoss * imkDelB);
-        const iHistMkC = -c1 * (gBerg * vkDelC + hLoss * ikmDelC) - c2 * (gBerg * vmDelC + hLoss * imkDelC);
+        const { iHistKmA, iHistKmB, iHistKmC, iHistMkA, iHistMkB, iHistMkC } = this.computeLineHistoryCurrents(
+          bl,
+          false,
+        );
 
         if (bl.fromIdx >= 0) {
           this.J3[3 * bl.fromIdx + 0] = this.J3[3 * bl.fromIdx + 0]! - iHistKmA;
@@ -1314,9 +1822,15 @@ export class EmtSolver {
       this.solveFromLU3Phase(this.LU3, this.piv3, this.J3, this.v3Step);
 
       for (let i = 0; i < n; i++) {
-        const va = this.v3Step[3 * i + 0]!;
-        const vb = this.v3Step[3 * i + 1]!;
-        const vc = this.v3Step[3 * i + 2]!;
+        let va = this.v3Step[3 * i + 0]!;
+        let vb = this.v3Step[3 * i + 1]!;
+        let vc = this.v3Step[3 * i + 2]!;
+        const swAlpha = k > 0 ? switchedBusInterpolation.get(i) : undefined;
+        if (swAlpha !== undefined) {
+          va = (1.0 - swAlpha) * vaPrevStep[i]! + swAlpha * va;
+          vb = (1.0 - swAlpha) * vbPrevStep[i]! + swAlpha * vb;
+          vc = (1.0 - swAlpha) * vcPrevStep[i]! + swAlpha * vc;
+        }
         this.vaStep[i] = va;
         this.vbStep[i] = vb;
         this.vcStep[i] = vc;
@@ -1355,46 +1869,37 @@ export class EmtSolver {
         br.ib[k] = curB;
         br.ic[k] = curC;
 
-        if (isCdaActive) {
-          br.iHistA = curA - (br.gEq * dvA + br.gMut * (dvB + dvC));
-          br.iHistB = curB - (br.gEq * dvB + br.gMut * (dvA + dvC));
-          br.iHistC = curC - (br.gEq * dvC + br.gMut * (dvA + dvB));
+        const interpAlpha = switchedBusInterpolation.get(br.fromIdx) ?? switchedBusInterpolation.get(br.toIdx);
+        const iHistBeA = curA - (br.gEq * dvA + br.gMut * (dvB + dvC));
+        const iHistBeB = curB - (br.gEq * dvB + br.gMut * (dvA + dvC));
+        const iHistBeC = curC - (br.gEq * dvC + br.gMut * (dvA + dvB));
+
+        const iHistTrapA = br.alphaHist * curA + br.alphaMutHist * (curB + curC) + br.gEq * dvA + br.gMut * (dvB + dvC);
+        const iHistTrapB = br.alphaHist * curB + br.alphaMutHist * (curA + curC) + br.gEq * dvB + br.gMut * (dvA + dvC);
+        const iHistTrapC = br.alphaHist * curC + br.alphaMutHist * (curA + curB) + br.gEq * dvC + br.gMut * (dvA + dvB);
+
+        if (interpAlpha !== undefined && this.enableSwitchingInterpolation) {
+          br.iHistA = (1.0 - interpAlpha) * iHistBeA + interpAlpha * iHistTrapA;
+          br.iHistB = (1.0 - interpAlpha) * iHistBeB + interpAlpha * iHistTrapB;
+          br.iHistC = (1.0 - interpAlpha) * iHistBeC + interpAlpha * iHistTrapC;
+        } else if (isCdaActive) {
+          br.iHistA = iHistBeA;
+          br.iHistB = iHistBeB;
+          br.iHistC = iHistBeC;
         } else {
-          br.iHistA = br.alphaHist * curA + br.alphaMutHist * (curB + curC) + br.gEq * dvA + br.gMut * (dvB + dvC);
-          br.iHistB = br.alphaHist * curB + br.alphaMutHist * (curA + curC) + br.gEq * dvB + br.gMut * (dvA + dvC);
-          br.iHistC = br.alphaHist * curC + br.alphaMutHist * (curA + curB) + br.gEq * dvC + br.gMut * (dvA + dvB);
+          br.iHistA = iHistTrapA;
+          br.iHistB = iHistTrapB;
+          br.iHistC = iHistTrapC;
         }
       }
 
-      // 6b. Update Bergeron distributed line ring buffers and terminal currents
+      // 6b. Update Bergeron / ULM distributed line ring buffers and terminal currents
       for (const bl of this.bergeronLines) {
-        const { ptr, bufLen, delaySteps, fracDelay, gBerg, hLoss } = bl;
-        const c1 = 0.5 * (1.0 + hLoss);
-        const c2 = 0.5 * (1.0 - hLoss);
-
-        const vkDelA = this.readDelayed(bl.vkBufA, ptr, bufLen, delaySteps, fracDelay);
-        const vkDelB = this.readDelayed(bl.vkBufB, ptr, bufLen, delaySteps, fracDelay);
-        const vkDelC = this.readDelayed(bl.vkBufC, ptr, bufLen, delaySteps, fracDelay);
-
-        const vmDelA = this.readDelayed(bl.vmBufA, ptr, bufLen, delaySteps, fracDelay);
-        const vmDelB = this.readDelayed(bl.vmBufB, ptr, bufLen, delaySteps, fracDelay);
-        const vmDelC = this.readDelayed(bl.vmBufC, ptr, bufLen, delaySteps, fracDelay);
-
-        const ikmDelA = this.readDelayed(bl.ikmBufA, ptr, bufLen, delaySteps, fracDelay);
-        const ikmDelB = this.readDelayed(bl.ikmBufB, ptr, bufLen, delaySteps, fracDelay);
-        const ikmDelC = this.readDelayed(bl.ikmBufC, ptr, bufLen, delaySteps, fracDelay);
-
-        const imkDelA = this.readDelayed(bl.imkBufA, ptr, bufLen, delaySteps, fracDelay);
-        const imkDelB = this.readDelayed(bl.imkBufB, ptr, bufLen, delaySteps, fracDelay);
-        const imkDelC = this.readDelayed(bl.imkBufC, ptr, bufLen, delaySteps, fracDelay);
-
-        const iHistKmA = -c1 * (gBerg * vmDelA + hLoss * imkDelA) - c2 * (gBerg * vkDelA + hLoss * ikmDelA);
-        const iHistKmB = -c1 * (gBerg * vmDelB + hLoss * imkDelB) - c2 * (gBerg * vkDelB + hLoss * ikmDelB);
-        const iHistKmC = -c1 * (gBerg * vmDelC + hLoss * imkDelC) - c2 * (gBerg * vkDelC + hLoss * ikmDelC);
-
-        const iHistMkA = -c1 * (gBerg * vkDelA + hLoss * ikmDelA) - c2 * (gBerg * vmDelA + hLoss * imkDelA);
-        const iHistMkB = -c1 * (gBerg * vkDelB + hLoss * ikmDelB) - c2 * (gBerg * vmDelB + hLoss * imkDelB);
-        const iHistMkC = -c1 * (gBerg * vkDelC + hLoss * ikmDelC) - c2 * (gBerg * vmDelC + hLoss * imkDelC);
+        const { ptr, bufLen, gBerg } = bl;
+        const { iHistKmA, iHistKmB, iHistKmC, iHistMkA, iHistMkB, iHistMkC } = this.computeLineHistoryCurrents(
+          bl,
+          true,
+        );
 
         const vkA = bl.fromIdx >= 0 ? this.vaStep[bl.fromIdx]! : 0.0;
         const vkB = bl.fromIdx >= 0 ? this.vbStep[bl.fromIdx]! : 0.0;
@@ -1545,10 +2050,35 @@ export class EmtSolver {
         luFactorizations: this.luFactorizationCount,
         switchingEvents: this.switchingEventCount,
         chatterDampedSteps: this.chatterDampedCount,
+        interpolatedZeroCrossings: this.interpolatedZeroCrossingsCount,
         executionTimeMs,
       },
     };
   }
+}
+
+/**
+ * Serializes a `PscadSnapshot` operating point to a PSCAD `.snp` snapshot file string.
+ */
+export function serializePscadSnapshot(snapshot: PscadSnapshot): string {
+  return JSON.stringify(snapshot, null, 2);
+}
+
+/**
+ * Parses a PSCAD `.snp` snapshot file string into a `PscadSnapshot` structure.
+ */
+export function parsePscadSnapshot(content: string): PscadSnapshot {
+  const parsed = JSON.parse(content) as PscadSnapshot;
+  return {
+    formatVersion: "1.0",
+    timestampSec: Number(parsed.timestampSec ?? 0),
+    nominalFrequencyHz: Number(parsed.nominalFrequencyHz ?? 60),
+    busVoltages: parsed.busVoltages ?? {},
+    branchHistories: parsed.branchHistories ?? {},
+    bergeronBuffers: parsed.bergeronBuffers,
+    syncGenerators: parsed.syncGenerators,
+    switchStates: parsed.switchStates,
+  };
 }
 
 /**

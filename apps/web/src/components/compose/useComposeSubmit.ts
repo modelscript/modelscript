@@ -11,6 +11,7 @@ import {
   parseNotebookFromContent,
   serializeCellsToMarkdown,
 } from "../../util/notebook";
+import { parseBinaryHdf5Buffer } from "../../util/tabular-data-parser";
 import type { SpatialPin } from "../artifacts/spatial-pin";
 
 export interface AttachedMorselDraft {
@@ -107,9 +108,46 @@ export function useComposeSubmit({
       const formData = new FormData();
       formData.append("file", file);
 
+      const lowerName = file.name.toLowerCase();
+      const isTextDatasetFile =
+        lowerName.endsWith(".csv") ||
+        lowerName.endsWith(".tsv") ||
+        lowerName.endsWith(".json") ||
+        lowerName.endsWith(".yaml") ||
+        lowerName.endsWith(".yml") ||
+        lowerName.endsWith(".xml");
+      const isHdf5File = lowerName.endsWith(".h5") || lowerName.endsWith(".hdf5");
+
+      let clientTextSnippet: string | undefined;
+      let clientHdf5Rows: Record<string, unknown>[] | undefined;
+      if (isTextDatasetFile && file.size <= 1_500_000 && typeof file.text === "function") {
+        try {
+          clientTextSnippet = await file.text();
+        } catch {
+          clientTextSnippet = undefined;
+        }
+      } else if (isHdf5File && file.size <= 2_500_000 && typeof file.arrayBuffer === "function") {
+        try {
+          const buf = await file.arrayBuffer();
+          const parsedH5 = parseBinaryHdf5Buffer(buf, file.name);
+          if (parsedH5.rows.length > 0) {
+            clientHdf5Rows = parsedH5.rows;
+          }
+        } catch {
+          clientHdf5Rows = undefined;
+        }
+      }
+
       const uploadData = await uploadStorageFile(formData);
+      let resolvedViewType = uploadData.view_type;
+      if ((!resolvedViewType || resolvedViewType === "other") && (isTextDatasetFile || isHdf5File)) {
+        resolvedViewType = isHdf5File ? "dataset-table" : lowerName.endsWith(".json") ? "json-table" : "dataset-table";
+      }
+
       const view_config = JSON.stringify({
         url: uploadData.url,
+        ...(clientTextSnippet ? { rawData: clientTextSnippet, data: clientTextSnippet } : {}),
+        ...(clientHdf5Rows ? { data: clientHdf5Rows, format: "hdf5" } : {}),
         ...(uploadData.svg ? { svg: uploadData.svg } : {}),
         ...(uploadData.thumbnail_url ? { thumbnailUrl: uploadData.thumbnail_url } : {}),
         ...(uploadData.view_config_additions || {}),
@@ -117,7 +155,7 @@ export function useComposeSubmit({
       });
 
       const artifactData = await createArtifactView({
-        artifact_type: uploadData.view_type,
+        artifact_type: resolvedViewType,
         view_config,
         title: file.name,
       });

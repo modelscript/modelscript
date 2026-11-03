@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getPscadInlayHints } from "@modelscript/pscad";
+import { getPsseInlayHints } from "@modelscript/psse";
 import { InlayHint, InlayHintKind, Position, Range } from "vscode-languageserver";
 import type { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
@@ -23,6 +25,37 @@ export function registerInlayHintProvider(context: LspContext) {
 
       const plugin = globalLanguageRegistry.getPluginForLanguageIdOrUri(document.languageId, uri);
       if (plugin && !globalLanguageRegistry.isLanguageEnabled(plugin.id)) {
+        return hints;
+      }
+
+      if (showUnitsAndBounds && (document.languageId === "pscad" || /\.(pscx|pslx|pswx|psmx)$/i.test(uri))) {
+        const pscadHints = getPscadInlayHints(document.getText(), params.range);
+        for (const h of pscadHints) {
+          hints.push({
+            position: Position.create(h.position.line, h.position.character),
+            label: h.label,
+            kind: h.kind === "parameter" ? InlayHintKind.Parameter : InlayHintKind.Type,
+            paddingLeft: h.paddingLeft ?? true,
+          });
+        }
+        return hints;
+      }
+
+      if (
+        showUnitsAndBounds &&
+        (document.languageId === "psse" || plugin?.id === "psse" || /\.(raw|dyr)$/i.test(uri))
+      ) {
+        const psseHints = getPsseInlayHints(document.getText(), uri);
+        for (const h of psseHints) {
+          if (h.position.line < params.range.start.line || h.position.line > params.range.end.line) continue;
+          hints.push({
+            position: Position.create(h.position.line, h.position.character),
+            label: h.label,
+            kind: h.kind === 2 ? InlayHintKind.Parameter : InlayHintKind.Type,
+            paddingLeft: h.paddingLeft ?? false,
+            paddingRight: h.paddingRight ?? true,
+          });
+        }
         return hints;
       }
 

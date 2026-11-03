@@ -5,7 +5,7 @@ import { Canvas } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
-import { BoundaryPicker, type BoundaryActionPayload } from "./cad-viewer/boundary-picker";
+import { BoundaryPicker, type BoundaryActionPayload, type StressProbeMarker } from "./cad-viewer/boundary-picker";
 import { CaeTelemetryPanel, type TelemetryDataPoint } from "./cad-viewer/cae-telemetry-panel";
 import {
   CuttingPlaneVisualizer,
@@ -36,6 +36,7 @@ interface InpMeshPayload {
   normals: number[];
   fixedNodes: { id: number; position: [number, number, number] }[];
   loads: { id: number; position: [number, number, number]; force: [number, number, number] }[];
+  cloudHpcEnabled?: boolean;
   stats: {
     numNodes: number;
     numElements: number;
@@ -163,7 +164,9 @@ function SceneContents({
   cuttingPlane,
   companionCad,
   cadOpacity,
+  stressProbes,
   onSelectBoundary,
+  onAddStressProbe,
   onHoverProbe,
 }: {
   meshData: InpMeshPayload | null;
@@ -173,10 +176,14 @@ function SceneContents({
   cuttingPlane: CuttingPlaneOptions;
   companionCad: StepMeshPayload[] | null;
   cadOpacity: number;
+  stressProbes: StressProbeMarker[];
   onSelectBoundary: (action: BoundaryActionPayload) => void;
+  onAddStressProbe: (probe: StressProbeMarker) => void;
   onHoverProbe: (probe: ProbeData | null) => void;
 }) {
   const clipPlanes = useCuttingPlane(cuttingPlane);
+  const pickerPositions = feaResults?.geometry.positions ?? meshData?.positions ?? [];
+  const pickerIndices = feaResults?.geometry.indices ?? meshData?.indices ?? [];
 
   return (
     <>
@@ -196,11 +203,13 @@ function SceneContents({
       ) : null}
 
       {/* 3D Raycast Boundary Condition Picker & Hover Probe Hook */}
-      {meshData && (
+      {pickerPositions.length > 0 && (
         <BoundaryPicker
-          positions={meshData.positions}
-          indices={meshData.indices}
+          positions={pickerPositions}
+          indices={pickerIndices}
           onSelectBoundary={onSelectBoundary}
+          onAddStressProbe={onAddStressProbe}
+          stressProbes={stressProbes}
           onHoverProbe={onHoverProbe}
           probeFields={
             feaResults
@@ -236,6 +245,7 @@ function App() {
   const [probeData, setProbeData] = useState<ProbeData | null>(null);
   const [companionCad, setCompanionCad] = useState<StepMeshPayload[] | null>(null);
   const [cadOpacity, setCadOpacity] = useState<number>(0.35);
+  const [stressProbes, setStressProbes] = useState<StressProbeMarker[]>([]);
 
   const [cuttingPlane, setCuttingPlane] = useState<CuttingPlaneOptions>({
     enabled: false,
@@ -377,6 +387,19 @@ function App() {
     vscode?.postMessage({ type: "applyConstraint", data: action });
   };
 
+  const handleAddStressProbe = (probe: StressProbeMarker) => {
+    setStressProbes((prev) => [...prev, probe]);
+  };
+
+  const handlePublishResult = () => {
+    vscode?.postMessage({
+      type: "publishResult",
+      data: {
+        stressProbes,
+      },
+    });
+  };
+
   return (
     <div style={{ width: "100%", height: "100vh", position: "relative", overflow: "hidden", background: "#111827" }}>
       {/* 3D Scene Viewport */}
@@ -389,7 +412,9 @@ function App() {
           cuttingPlane={cuttingPlane}
           companionCad={companionCad}
           cadOpacity={cadOpacity}
+          stressProbes={stressProbes}
           onSelectBoundary={handleSelectBoundary}
+          onAddStressProbe={handleAddStressProbe}
           onHoverProbe={setProbeData}
         />
       </Canvas>
@@ -437,7 +462,7 @@ function App() {
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ color: "#9ca3af" }}>Constraints / Loads:</span>
               <span style={{ fontWeight: 600 }}>
-                {meshData.fixedNodes.length} fix / {meshData.loads.length} loads
+                {meshData.fixedNodes.length} fix / {meshData.loads.length} loads / {stressProbes.length} probes
               </span>
             </div>
           </div>
@@ -621,6 +646,59 @@ function App() {
           </div>
         )}
 
+        {/* Interactive Stress Probe Points List */}
+        {stressProbes.length > 0 && (
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "10px", marginBottom: "12px" }}>
+            <div style={{ fontWeight: 600, color: "#fbbf24", marginBottom: "6px" }}>
+              🎯 Stress Probe Points ({stressProbes.length})
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {stressProbes.map((probe) => {
+                const sPa = feaResults?.fields.vonMisesStress?.[probe.nodeIndex];
+                const dX = feaResults?.fields.displacements?.[probe.nodeIndex * 3] ?? 0;
+                const dY = feaResults?.fields.displacements?.[probe.nodeIndex * 3 + 1] ?? 0;
+                const dZ = feaResults?.fields.displacements?.[probe.nodeIndex * 3 + 2] ?? 0;
+                const dispMm = Math.hypot(dX, dY, dZ) * 1000;
+                return (
+                  <div
+                    key={probe.id}
+                    style={{
+                      background: "rgba(0,0,0,0.3)",
+                      borderRadius: "6px",
+                      padding: "6px 8px",
+                      border: "1px solid rgba(245, 158, 11, 0.3)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <strong style={{ color: "#fcd34d", fontSize: "11px" }}>{probe.label}</strong>
+                      <button
+                        onClick={() => setStressProbes((prev) => prev.filter((p) => p.id !== probe.id))}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "#9ca3af",
+                          cursor: "pointer",
+                          fontSize: "11px",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div style={{ fontSize: "10px", color: "#9ca3af", fontFamily: "monospace" }}>
+                      ({probe.position[0].toFixed(3)}, {probe.position[1].toFixed(3)}, {probe.position[2].toFixed(3)})
+                    </div>
+                    {sPa !== undefined && (
+                      <div style={{ fontSize: "11px", marginTop: "3px", color: "#e5e7eb" }}>
+                        {(sPa / 1e6).toFixed(2)} MPa · {dispMm.toFixed(4)} mm
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Simulation Results Display */}
         {feaResults && (
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "12px" }}>
@@ -644,7 +722,7 @@ function App() {
               </div>
             </div>
 
-            <div style={{ marginTop: "12px" }}>
+            <div style={{ marginTop: "12px", marginBottom: "10px" }}>
               <label style={{ display: "block", color: "#9ca3af", marginBottom: "4px" }}>
                 Displacement Scale: {displacementScale}×
               </label>
@@ -657,6 +735,27 @@ function App() {
                 style={{ width: "100%" }}
               />
             </div>
+
+            <button
+              onClick={handlePublishResult}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                border: "none",
+                borderRadius: "6px",
+                color: "#ffffff",
+                fontWeight: 700,
+                cursor: "pointer",
+                fontSize: "12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+              }}
+            >
+              📤 Publish Result (.vtu)
+            </button>
           </div>
         )}
       </div>

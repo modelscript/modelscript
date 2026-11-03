@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckIcon, CopyIcon, DownloadIcon, GraphIcon, SyncIcon } from "@primer/octicons-react";
-import { Button, IconButton, Text, useTheme } from "@primer/react";
+import { Button, IconButton, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import mermaid from "mermaid";
 import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
+import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
 interface MermaidViewerProps {
   viewConfig: any; // expects { code?: string, codeUrl?: string, title?: string }
@@ -58,7 +60,7 @@ const ZoomBadge = styled.span`
   font-size: 11px;
   font-family: var(--font-mono, monospace);
   color: var(--color-fg-muted, #8b949e);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.05));
   padding: 2px 6px;
   border-radius: 4px;
 `;
@@ -94,7 +96,7 @@ const SvgTransformLayer = styled.div<{ $zoom: number; $panX: number; $panY: numb
 `;
 
 const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen }) => {
-  const { resolvedColorMode } = useTheme();
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -109,6 +111,17 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const panStartRef = useRef({ x: 0, y: 0 });
+
+  const { showHint } = useWheelZoom({
+    containerRef: viewportRef,
+    zoom,
+    setZoom,
+    pan,
+    setPan,
+    isFullScreen,
+    minZoom: 0.3,
+    maxZoom: 4.0,
+  });
 
   const [copiedSvg, setCopiedSvg] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -136,7 +149,7 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
   useEffect(() => {
     if (!code) return;
 
-    const isDark = resolvedColorMode === "dark";
+    const isDark = theme === "dark";
 
     mermaid.initialize({
       startOnLoad: false,
@@ -184,18 +197,84 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
     };
 
     renderMermaid();
-  }, [code, resolvedColorMode]);
+  }, [code, theme]);
 
   // Pan / Drag Handlers
+  const isDraggingRef = useRef(false);
+  const cleanupDragListenersRef = useRef<(() => void) | null>(null);
+
+  const endDrag = React.useCallback(() => {
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    if (cleanupDragListenersRef.current) {
+      cleanupDragListenersRef.current();
+      cleanupDragListenersRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (cleanupDragListenersRef.current) {
+        cleanupDragListenersRef.current();
+        cleanupDragListenersRef.current = null;
+      }
+    };
+  }, []);
+
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return; // Left mouse button only
+    if ((e.target as HTMLElement | null)?.closest("button, a, input, select, textarea, [role='button']")) return;
+    e.preventDefault();
+    if (cleanupDragListenersRef.current) {
+      cleanupDragListenersRef.current();
+      cleanupDragListenersRef.current = null;
+    }
+    isDraggingRef.current = true;
     setIsDragging(true);
     dragStartRef.current = { x: e.clientX, y: e.clientY };
     panStartRef.current = { ...pan };
+
+    const handleWindowMouseMove = (ev: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      if (typeof ev.buttons === "number" && (ev.buttons & 1) === 0) {
+        endDrag();
+        return;
+      }
+      const dx = ev.clientX - dragStartRef.current.x;
+      const dy = ev.clientY - dragStartRef.current.y;
+      setPan({
+        x: panStartRef.current.x + dx,
+        y: panStartRef.current.y + dy,
+      });
+    };
+
+    const handleWindowMouseUp = () => {
+      endDrag();
+    };
+
+    window.addEventListener("mousemove", handleWindowMouseMove);
+    window.addEventListener("mouseup", handleWindowMouseUp);
+    window.addEventListener("pointerup", handleWindowMouseUp);
+    window.addEventListener("pointercancel", handleWindowMouseUp);
+    window.addEventListener("blur", handleWindowMouseUp);
+    window.addEventListener("dragend", handleWindowMouseUp);
+
+    cleanupDragListenersRef.current = () => {
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
+      window.removeEventListener("pointerup", handleWindowMouseUp);
+      window.removeEventListener("pointercancel", handleWindowMouseUp);
+      window.removeEventListener("blur", handleWindowMouseUp);
+      window.removeEventListener("dragend", handleWindowMouseUp);
+    };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isDraggingRef.current && !isDragging) return;
+    if (typeof e.buttons === "number" && (e.buttons & 1) === 0) {
+      endDrag();
+      return;
+    }
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
     setPan({
@@ -205,13 +284,7 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.15 : 0.85;
-    setZoom((prev) => Math.min(Math.max(0.3, prev * factor), 4.0));
+    endDrag();
   };
 
   const handleResetZoom = () => {
@@ -365,8 +438,7 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
+          onDragStart={(e) => e.preventDefault()}
         >
           <SvgTransformLayer $zoom={zoom} $panX={pan.x} $panY={pan.y}>
             <div
@@ -374,6 +446,7 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
               style={{ width: "100%", height: "100%", display: "flex", justifyContent: "center", alignItems: "center" }}
             />
           </SvgTransformLayer>
+          <ZoomHintBadge show={showHint && !isFullScreen} label="💡 Hold ⌘/Ctrl to zoom diagram" />
         </CanvasViewport>
       )}
     </Wrapper>

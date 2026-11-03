@@ -45,7 +45,42 @@ export type PscadEditOp =
   | { type: "setWirePoints"; id: string; points: Pt[] }
   | { type: "addWire"; definition?: string; points: Pt[] }
   | { type: "removeWire"; id: string }
-  | { type: "toggleDisable"; id: string; disabled?: boolean | undefined };
+  | { type: "toggleDisable"; id: string; disabled?: boolean | undefined }
+  | {
+      type: "resizeBus";
+      id: string;
+      x?: number;
+      y?: number;
+      w?: number;
+      h?: number;
+      points?: Pt[];
+      name?: string;
+      baseKV?: string;
+    }
+  | {
+      type: "editSticky";
+      id: string;
+      text?: string;
+      x?: number;
+      y?: number;
+      w?: number;
+      h?: number;
+    }
+  | {
+      type: "addSticky";
+      definition?: string;
+      x: number;
+      y: number;
+      w?: number;
+      h?: number;
+      text: string;
+    }
+  | {
+      type: "renameNet";
+      oldName: string;
+      newName: string;
+      definition?: string;
+    };
 
 export interface PscadEditResult {
   text: string;
@@ -97,6 +132,17 @@ function findWire(model: PscadProjectModel, id: string) {
   return undefined;
 }
 
+function findElementById(root: XmlElement, id: string, tagNames?: Set<string>): XmlElement | undefined {
+  if (attr(root, "id") === id && (!tagNames || tagNames.has(root.name))) {
+    return root;
+  }
+  for (const c of root.children) {
+    const found = findElementById(c, id, tagNames);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 function schematicOf(def: ModelDefinition): XmlElement | undefined {
   return childrenNamed(def.element, "schematic")[0];
 }
@@ -111,6 +157,21 @@ export function wireXml(id: string, points: Pt[], eol: string, indent: string): 
   const h = Math.max(...ys) - Math.min(...ys) + 10;
   const verts = points.map((_, i) => `${indent}  <vertex x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`).join(eol);
   return `<Wire classid="WireOrthogonal" id="${id}" name="" x="${x0}" y="${y0}" w="${w}" h="${h}" orient="0" disable="false">${eol}${verts}${eol}${indent}</Wire>`;
+}
+
+function stickyXml(id: string, op: Extract<PscadEditOp, { type: "addSticky" }>, eol: string, indent: string): string {
+  const safeText = op.text.replace(/]]>/g, "]]]]><![CDATA[>");
+  return (
+    `<Sticky classid="Sticky" id="${id}" x="${Math.round(op.x)}" y="${Math.round(op.y)}" ` +
+    `w="${Math.round(op.w ?? 220)}" h="${Math.round(op.h ?? 44)}" fullfont="true">${eol}` +
+    `${indent}  <paramlist link="-1" name="" crc="0">${eol}` +
+    `${indent}    <param name="font" value="1" />${eol}` +
+    `${indent}    <param name="style" value="0" />${eol}` +
+    `${indent}    <param name="fg_color" value="0" />${eol}` +
+    `${indent}    <param name="bg_color" value="16777199" />${eol}` +
+    `${indent}  </paramlist><![CDATA[${safeText}]]>${eol}` +
+    `${indent}</Sticky>`
+  );
 }
 
 function componentXml(
@@ -254,14 +315,15 @@ export function planPscadEdits(
         const ys = op.points.map((p) => Math.round(p.y));
         const x0 = xs[0] ?? 0;
         const y0 = ys[0] ?? 0;
-        writeAttr(el, "x", String(x0));
-        writeAttr(el, "y", String(y0));
-        writeAttr(el, "w", String(Math.max(...xs) - Math.min(...xs) + 10));
-        writeAttr(el, "h", String(Math.max(...ys) - Math.min(...ys) + 10));
-        const verts = childrenNamed(el, "vertex");
+        const verts = [...childrenNamed(el, "vertex"), ...childrenNamed(el, "Vertex")];
         const first = verts[0];
         const last = verts[verts.length - 1];
         if (first && last) {
+          writeAttr(el, "x", String(x0));
+          writeAttr(el, "y", String(y0));
+          writeAttr(el, "w", String(Math.max(...xs) - Math.min(...xs) + 10));
+          writeAttr(el, "h", String(Math.max(...ys) - Math.min(...ys) + 10));
+          const vTag = first.name;
           const vindent = (() => {
             let vs = first.start;
             while (vs > 0 && (text[vs - 1] === " " || text[vs - 1] === "\t")) vs--;
@@ -270,7 +332,22 @@ export function planPscadEdits(
           splices.push({
             start: first.start,
             end: last.end,
-            text: op.points.map((_, i) => `<vertex x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`).join(`${eol}${vindent}`),
+            text: op.points.map((_, i) => `<${vTag} x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`).join(`${eol}${vindent}`),
+          });
+        } else if (op.points.length === 2 && (attr(el, "x2") !== undefined || attr(el, "y2") !== undefined)) {
+          writeAttr(el, "x", String(x0));
+          writeAttr(el, "y", String(y0));
+          writeAttr(el, "x2", String(xs[1] ?? x0));
+          writeAttr(el, "y2", String(ys[1] ?? y0));
+        } else if (el.selfClosing) {
+          const open = text.slice(el.start, el.end).replace(/\s*\/>$/, ">");
+          const vText = op.points
+            .map((_, i) => `${indent}  <vertex x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`)
+            .join(eol);
+          splices.push({
+            start: el.start,
+            end: el.end,
+            text: `${open}${eol}${vText}${eol}${indent}</Wire>`,
           });
         } else {
           errors.push(`Wire '${op.id}' has no vertices to replace (indent '${indent.length}').`);
@@ -303,6 +380,144 @@ export function planPscadEdits(
         const current = attr(hit.inst.element, "disable") === "true";
         const target = op.disabled !== undefined ? op.disabled : !current;
         writeAttr(hit.inst.element, "disable", target ? "true" : "false");
+        break;
+      }
+      case "resizeBus": {
+        const busEl = findElementById(model.root, op.id, new Set(["Bus", "Wire"]));
+        if (!busEl) {
+          errors.push(`Bus '${op.id}' not found.`);
+          break;
+        }
+        if (op.x !== undefined) writeAttr(busEl, "x", String(Math.round(op.x)));
+        if (op.y !== undefined) writeAttr(busEl, "y", String(Math.round(op.y)));
+        if (op.w !== undefined) writeAttr(busEl, "w", String(Math.round(op.w)));
+        if (op.h !== undefined) writeAttr(busEl, "h", String(Math.round(op.h)));
+        if (op.name !== undefined) {
+          writeAttr(busEl, "name", op.name);
+          const paramlist = childrenNamed(busEl, "paramlist")[0];
+          const nameParam = paramlist
+            ? childrenNamed(paramlist, "param").find((p) => {
+                const n = attr(p, "name");
+                return n === "Name" || n === "name";
+              })
+            : undefined;
+          if (nameParam) writeAttr(nameParam, "value", op.name);
+        }
+        if (op.baseKV !== undefined) {
+          const paramlist = childrenNamed(busEl, "paramlist")[0];
+          const kvParam = paramlist
+            ? childrenNamed(paramlist, "param").find((p) => {
+                const n = attr(p, "name");
+                return n === "BaseKV" || n === "Vbase" || n === "Vm";
+              })
+            : undefined;
+          if (kvParam) writeAttr(kvParam, "value", op.baseKV);
+        }
+        if (op.points && op.points.length >= 2) {
+          const verts = [...childrenNamed(busEl, "vertex"), ...childrenNamed(busEl, "Vertex")];
+          const first = verts[0];
+          const last = verts[verts.length - 1];
+          const xs = op.points.map((p) => Math.round(p.x));
+          const ys = op.points.map((p) => Math.round(p.y));
+          const x0 = xs[0] ?? 0;
+          const y0 = ys[0] ?? 0;
+          writeAttr(busEl, "x", String(x0));
+          writeAttr(busEl, "y", String(y0));
+          if (first && last) {
+            const vTag = first.name;
+            let vs = first.start;
+            while (vs > 0 && (text[vs - 1] === " " || text[vs - 1] === "\t")) vs--;
+            const vindent = text.slice(vs, first.start);
+            splices.push({
+              start: first.start,
+              end: last.end,
+              text: op.points
+                .map((_, i) => `<${vTag} x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`)
+                .join(`${eol}${vindent}`),
+            });
+          }
+        } else if (op.w !== undefined || op.h !== undefined) {
+          const verts = [...childrenNamed(busEl, "vertex"), ...childrenNamed(busEl, "Vertex")];
+          if (verts.length >= 2) {
+            const last = verts[verts.length - 1]!;
+            const isVertical = (op.h ?? 0) >= (op.w ?? 0);
+            if (isVertical && op.h !== undefined) {
+              writeAttr(last, "y", String(Math.round(op.h)));
+            } else if (!isVertical && op.w !== undefined) {
+              writeAttr(last, "x", String(Math.round(op.w)));
+            }
+          }
+        }
+        break;
+      }
+      case "editSticky": {
+        const stickyEl = findElementById(model.root, op.id, new Set(["Sticky"]));
+        if (!stickyEl) {
+          errors.push(`Sticky '${op.id}' not found.`);
+          break;
+        }
+        if (op.x !== undefined) writeAttr(stickyEl, "x", String(Math.round(op.x)));
+        if (op.y !== undefined) writeAttr(stickyEl, "y", String(Math.round(op.y)));
+        if (op.w !== undefined) writeAttr(stickyEl, "w", String(Math.round(op.w)));
+        if (op.h !== undefined) writeAttr(stickyEl, "h", String(Math.round(op.h)));
+        if (op.text !== undefined) {
+          const rawSlice = text.slice(stickyEl.start, stickyEl.end);
+          const cdataMatch = /<!\[CDATA\[([\s\S]*?)\]\]>/.exec(rawSlice);
+          const safeText = op.text.replace(/]]>/g, "]]]]><![CDATA[>");
+          if (cdataMatch && cdataMatch.index !== undefined) {
+            const cStart = stickyEl.start + cdataMatch.index;
+            const cEnd = cStart + cdataMatch[0].length;
+            splices.push({
+              start: cStart,
+              end: cEnd,
+              text: `<![CDATA[${safeText}]]>`,
+            });
+          } else if (!stickyEl.selfClosing) {
+            const closeIdx = rawSlice.lastIndexOf("</Sticky>");
+            if (closeIdx > 0) {
+              const openEnd = rawSlice.indexOf(">") + 1;
+              const paramlist = childrenNamed(stickyEl, "paramlist")[0];
+              const bodyStart = paramlist ? paramlist.end : stickyEl.start + openEnd;
+              const bodyEnd = stickyEl.start + closeIdx;
+              splices.push({
+                start: bodyStart,
+                end: bodyEnd,
+                text: `<![CDATA[${safeText}]]>`,
+              });
+            }
+          }
+        }
+        break;
+      }
+      case "addSticky": {
+        const id = newId(used, seed++);
+        if (insertInto(op.definition, (indent) => stickyXml(id, op, eol, indent))) createdIds.push(id);
+        break;
+      }
+      case "renameNet": {
+        const targetDefs = op.definition
+          ? [model.definitions.get(op.definition)].filter((d): d is ModelDefinition => Boolean(d))
+          : [...model.definitions.values()];
+        let count = 0;
+        for (const d of targetDefs) {
+          for (const inst of d.instances) {
+            const isNetEndpoint = /datalabel|xnode|pgb|pin|port/i.test(inst.defnName);
+            if (!isNetEndpoint) continue;
+            const paramlist = childrenNamed(inst.element, "paramlist")[0];
+            const searchEls = paramlist ? childrenNamed(paramlist, "param") : childrenNamed(inst.element, "param");
+            for (const p of searchEls) {
+              const pName = attr(p, "name");
+              const pVal = attr(p, "value") ?? p.text.trim();
+              if ((pName === "Name" || pName === "name") && pVal === op.oldName) {
+                writeAttr(p, "value", op.newName);
+                count++;
+              }
+            }
+          }
+        }
+        if (count === 0) {
+          errors.push(`Wireless net '${op.oldName}' not found.`);
+        }
         break;
       }
     }

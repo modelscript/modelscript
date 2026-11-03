@@ -923,4 +923,215 @@ Ontology(<https://modelscript.org/ontologies/cps-asset>
     ],
     likedBy: ["omar", "kenji_takahashi", "alex_rivera", "claire_dubois", "elena_vance"],
   },
+
+  // 8. oscal (NIST OSCAL 1.1.2 Cyber-Physical System Security Plan)
+  {
+    id: "seed-post-oscal-smart-factory-ssp",
+    languageId: "oscal",
+    author: "claire_dubois",
+    title: "SmartFactoryWorkcell_OT_SSP — NIST OSCAL 1.1.2 & SP 800-82 Rev 3 CPS Security Plan",
+    filename: "SmartFactoryWorkcell_OT_SSP.oscal.json",
+    viewType: "oscal",
+    hoursAgo: 3,
+    postContent:
+      "Published our machine-readable **NIST OSCAL 1.1.2 System Security Plan (`SmartFactoryWorkcell_OT_SSP.oscal.json`)** for the 800V EV Battery Laser-Welding Cyber-Physical Workcell. Enforces the **NIST SP 800-82 Rev 3 (OT/ICS Overlay)** & **SP 800-53 Rev 5** control baseline (`sc-7`, `ac-3`, `si-7`, `pe-3`, `au-2`, `cm-2`, `ia-3`, `sr-3`) across Purdue Levels 1–3.5 with full component traceability and POA&M remediation tracking for Continuous Authority to Operate (cATO). #OSCAL #NIST #SP80082 #SP80053 #CyberPhysical #OTSecurity #cATO",
+    code: `{
+  "system-security-plan": {
+    "uuid": "770e8400-e29b-41d4-a716-446655440000",
+    "metadata": {
+      "title": "800V EV Battery Laser-Weld Cyber-Physical Workcell SSP",
+      "version": "2.4.0",
+      "oscal-version": "1.1.2",
+      "props": [
+        {
+          "name": "aml-component",
+          "value": "SafetyCellControllerPLC"
+        },
+        {
+          "name": "aml-component",
+          "value": "IndustrialDmzFirewall"
+        },
+        {
+          "name": "aml-component",
+          "value": "OpcUaTelemetryHistorian"
+        }
+      ]
+    },
+    "import-profile": {
+      "href": "builtin://nist-sp-800-82-r3-ot"
+    },
+    "system-characteristics": {
+      "system-name": "EVBatteryLaserWeldWorkcell_OT",
+      "security-sensitivity-level": "high"
+    },
+    "system-implementation": {
+      "components": [
+        {
+          "uuid": "11111111-e29b-41d4-a716-446655440001",
+          "title": "SafetyCellControllerPLC",
+          "type": "plc",
+          "status": "operational",
+          "props": [
+            { "name": "zone", "value": "Field-OT" },
+            { "name": "purdue-level", "value": "Level-1" }
+          ]
+        },
+        {
+          "uuid": "22222222-e29b-41d4-a716-446655440002",
+          "title": "IndustrialDmzFirewall",
+          "type": "interconnection",
+          "status": "operational",
+          "props": [
+            { "name": "zone", "value": "DMZ" },
+            { "name": "purdue-level", "value": "Level-3.5" }
+          ]
+        },
+        {
+          "uuid": "33333333-e29b-41d4-a716-446655440003",
+          "title": "OpcUaTelemetryHistorian",
+          "type": "service",
+          "status": "operational",
+          "props": [
+            { "name": "zone", "value": "Supervisory" },
+            { "name": "purdue-level", "value": "Level-2" }
+          ]
+        },
+        {
+          "uuid": "44444444-e29b-41d4-a716-446655440004",
+          "title": "QifMetrologyEnterpriseGateway",
+          "type": "software",
+          "status": "operational",
+          "props": [
+            { "name": "zone", "value": "Enterprise" },
+            { "name": "purdue-level", "value": "Level-4" }
+          ]
+        }
+      ]
+    },
+    "control-implementation": {
+      "description": "NIST SP 800-82 Rev 3 OT/ICS & SP 800-53 Rev 5 defense-in-depth implementation across Purdue Levels 1 to 4.",
+      "set-parameters": [
+        {
+          "param-id": "sc-7_prm_1",
+          "values": ["unidirectional optical data diode and deep-packet PROFINET/OPC-UA inspection"]
+        },
+        {
+          "param-id": "ac-3_prm_1",
+          "values": ["role-based X.509 mutual TLS authentication and hardware keyswitch run-mode lock"]
+        },
+        {
+          "param-id": "si-7_prm_1",
+          "values": ["ECDSA-P384 signed PLCopen firmware and SHA-256 boot-time attestation"]
+        },
+        {
+          "param-id": "pe-3_prm_1",
+          "values": ["badge-interlocked perimeter cage and SIL-3 dual-channel optical light curtains"]
+        }
+      ],
+      "implemented-requirements": [
+        {
+          "uuid": "55555555-e29b-41d4-a716-446655440011",
+          "control-id": "sc-7",
+          "description": "Enforces Purdue Level 3.5 DMZ conduit segmentation via {{ insert: param, sc-7_prm_1 }}.",
+          "by-components": [
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440101",
+              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+              "description": "Restricts PROFINET Cyclic I/O to isolated VLAN 102 with hardware firewall rules."
+            },
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440102",
+              "component-uuid": "22222222-e29b-41d4-a716-446655440002",
+              "description": "Terminates all inbound IT traffic at the Level 3.5 Industrial DMZ."
+            }
+          ]
+        },
+        {
+          "uuid": "55555555-e29b-41d4-a716-446655440012",
+          "control-id": "ac-3",
+          "description": "Enforces access permissions across OT controllers using {{ insert: param, ac-3_prm_1 }}.",
+          "by-components": [
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440103",
+              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+              "description": "Physical RUN/PROG keyswitch locked to RUN; engineering download requires dual-person cryptographic token."
+            },
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440104",
+              "component-uuid": "33333333-e29b-41d4-a716-446655440003",
+              "description": "OPC-UA server enforces read-only anonymous disablement and X.509 client certificates."
+            }
+          ]
+        },
+        {
+          "uuid": "55555555-e29b-41d4-a716-446655440013",
+          "control-id": "si-7",
+          "description": "Verifies software and firmware integrity via {{ insert: param, si-7_prm_1 }}.",
+          "by-components": [
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440105",
+              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+              "description": "Verifies SHA-256 digest of PLCopen safety POU on every cold/warm boot."
+            },
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440106",
+              "component-uuid": "44444444-e29b-41d4-a716-446655440004",
+              "description": "Validates Ed25519 digital signatures on incoming QIF 3.0 metrology packages."
+            }
+          ]
+        },
+        {
+          "uuid": "55555555-e29b-41d4-a716-446655440014",
+          "control-id": "pe-3",
+          "description": "Controls physical access to the workcell via {{ insert: param, pe-3_prm_1 }}.",
+          "by-components": [
+            {
+              "uuid": "66666666-e29b-41d4-a716-446655440107",
+              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+              "description": "Monitors dual-channel safety door interlocks and de-energizes 4 kW fiber laser within 2 ms."
+            }
+          ]
+        }
+      ]
+    },
+    "findings": [
+      {
+        "uuid": "88888888-e29b-41d4-a716-446655440201",
+        "title": "OPC-UA Certificate CRL Rotation Interval Exceeds 72h",
+        "target-control-id": "ac-3",
+        "severity": "high",
+        "status": "open"
+      }
+    ],
+    "poam-items": [
+      {
+        "uuid": "99999999-e29b-41d4-a716-446655440301",
+        "title": "Automate 12-Hour OCSP Stapling on Level-2 OPC-UA Historian",
+        "target-control-id": "ac-3",
+        "related-finding-uuid": "88888888-e29b-41d4-a716-446655440201",
+        "status": "in-progress"
+      }
+    ]
+  }
+}`,
+    extraViewConfig: {
+      dialect: "oscal",
+      standalone: true,
+    },
+    comments: [
+      {
+        author: "lukas_weber",
+        content:
+          "Having `SafetyCellControllerPLC` cross-checked against our AutomationML workcell via `aml-component` props (`M8206`) and verified against the mandatory NIST SP 800-82 OT overlay (`sc-7`, `ac-3`, `si-7`, `pe-3`) makes cATO audits completely automated!",
+      },
+      {
+        author: "omar",
+        content:
+          "Also notice that the open high-severity finding on `ac-3` (`88888888-e29b-41d4-a716-446655440201`) is bound to POA&M remediation item `99999999-e29b-41d4-a716-446655440301`, satisfying `M8208`.",
+      },
+    ],
+    likedBy: ["omar", "lukas_weber", "kenji_takahashi", "elena_vance", "hannah_becker", "alex_rivera"],
+    repostedBy: ["omar", "lukas_weber"],
+    bookmarkedBy: ["omar", "kenji_takahashi"],
+  },
 ];

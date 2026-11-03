@@ -87,7 +87,7 @@ function getNumericSize(dim: number | string | undefined): number | null {
  * 2. Fixes legacy `<text>` elements that were generated with a stroke or without auto-sized `font-size`.
  */
 function normalizeModelicaSvg(svg: string, instanceId: string): string {
-  let out = svg;
+  let out = svg.replace(/@import\s+(?:url\([^)]+\)|['"][^'"]+['"])\s*;?/gi, "");
 
   // 1. Fix legacy <text> elements with <tspan> and missing font-size
   out = out.replace(

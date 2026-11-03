@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import {
@@ -113,6 +114,8 @@ const ChartCanvas = styled.div`
 
 export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [loading, setLoading] = useState(false);
   const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
   const [rawText, setRawText] = useState(initialSource);
@@ -191,7 +194,7 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
     }
     if (parsedModel.blocks.length > 0) {
       try {
@@ -200,17 +203,17 @@ export const Easy5Viewer: React.FC<Easy5ViewerProps> = ({ viewConfig, isFullScre
           blocks: parsedModel.blocks,
           lines: parsedModel.lines,
         });
-        return sanitizeSvgMarkup(built, { isFullScreen });
+        return sanitizeSvgMarkup(built, { isFullScreen, isDark });
       } catch {
         // fall through
       }
     }
     if (rawText.trim()) {
-      const fallback = renderSourceToDiagramSvg(rawText, "easy5", title, true, isFullScreen);
+      const fallback = renderSourceToDiagramSvg(rawText, "easy5", title, isDark, isFullScreen);
       if (fallback.svg) return fallback.svg;
     }
     return "";
-  }, [viewConfig.svg, parsedModel, rawText, title, isFullScreen]);
+  }, [viewConfig.svg, parsedModel, rawText, title, isFullScreen, isDark]);
 
   const bodeData = useMemo(() => {
     if (Array.isArray(viewConfig.bodeData) && viewConfig.bodeData.length > 0) {

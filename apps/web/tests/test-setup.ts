@@ -7,6 +7,32 @@ import React from "react";
 (globalThis as any).React = React;
 
 const cssLoaderCode = `
+export async function resolve(specifier, context, nextResolve) {
+  if (specifier === "styled-components" && !context.parentURL?.startsWith("data:")) {
+    const resolved = await nextResolve(specifier, context);
+    const shimCode = [
+      "import sc from " + JSON.stringify(resolved.url) + ";",
+      "const styled = sc.default ?? sc;",
+      "if (typeof styled === 'function' && !styled.default) { styled.default = styled; }",
+      "export default styled;",
+      "export const css = sc.css ?? styled.css;",
+      "export const keyframes = sc.keyframes ?? styled.keyframes;",
+      "export const createGlobalStyle = sc.createGlobalStyle ?? styled.createGlobalStyle;",
+      "export const ThemeProvider = sc.ThemeProvider ?? styled.ThemeProvider;",
+      "export const StyleSheetManager = sc.StyleSheetManager ?? styled.StyleSheetManager;",
+      "export const useTheme = sc.useTheme ?? styled.useTheme;",
+      "export const isStyledComponent = sc.isStyledComponent ?? styled.isStyledComponent;",
+      "export const ServerStyleSheet = sc.ServerStyleSheet ?? styled.ServerStyleSheet;",
+      "export const withTheme = sc.withTheme ?? styled.withTheme;",
+    ].join("\\n");
+    return {
+      shortCircuit: true,
+      url: "data:text/javascript," + encodeURIComponent(shimCode),
+    };
+  }
+  return nextResolve(specifier, context);
+}
+
 export function load(url, context, nextLoad) {
   if (url.endsWith(".css") || url.includes(".css?")) {
     return {

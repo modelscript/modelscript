@@ -75,6 +75,22 @@ interface AuthContextType {
 
 const TOKEN_KEY = "modelscript-auth-token";
 const LAST_LOGGED_OUT_USER_KEY = "modelscript:last-logged-out-user";
+const USER_CACHE_KEY = "modelscript-auth-user";
+
+function readCachedUser(): User | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY) || localStorage.getItem("user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as User;
+    if (parsed && typeof parsed.id === "number") {
+      return parsed;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return null;
+}
 
 function readLastLoggedOutUser(): LoggedOutUserSnapshot | null {
   if (typeof sessionStorage === "undefined") return null;
@@ -138,11 +154,17 @@ const AuthContext: React.Context<AuthContextType | null> =
   ).__MODEL_SCRIPT_AUTH_CONTEXT__ = createContext<AuthContextType | null>(null));
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [cachedInitialUser] = useState<User | null>(readCachedUser);
+  const [user, setUser] = useState<User | null>(cachedInitialUser);
   const [token, setToken] = useState<string | null>(() =>
     typeof localStorage !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null,
   );
-  const [isLoading, setIsLoading] = useState(!!token);
+  const [isLoading, setIsLoading] = useState(() => {
+    if (typeof localStorage === "undefined") return false;
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    const cached = readCachedUser();
+    return Boolean(storedToken && !cached);
+  });
   const [justLoggedOut, setJustLoggedOut] = useState(false);
   const [lastLoggedOutUser, setLastLoggedOutUser] = useState<LoggedOutUserSnapshot | null>(() =>
     readLastLoggedOutUser(),
@@ -150,9 +172,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [adminPendingCount, setAdminPendingCount] = useState(0);
-  const [creditBalance, setCreditBalance] = useState<number>(0);
+  const [creditBalance, setCreditBalance] = useState<number>(() => cachedInitialUser?.credit_balance ?? 0);
 
   const isAdmin = Boolean(user && (user.account_type === "admin" || user.role === "admin"));
+
+  // Keep localStorage user snapshot in sync with active user state
+  useEffect(() => {
+    if (typeof localStorage === "undefined") return;
+    try {
+      if (user) {
+        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+        localStorage.setItem("user", JSON.stringify(user));
+      } else {
+        localStorage.removeItem(USER_CACHE_KEY);
+        localStorage.removeItem("user");
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [user]);
 
   const clearJustLoggedOut = useCallback(() => {
     setJustLoggedOut(false);
@@ -290,31 +328,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshWallet, refreshAdminCount]);
 
-  // Validate stored or newly set token when user is not yet populated
+  // Validate stored or newly set token on boot or token changes
   useEffect(() => {
     if (!token) {
       setIsLoading(false);
       return;
     }
-    if (user) {
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
+    let isMounted = true;
     api
       .get("/auth/me")
       .then((res) => {
-        setUser(res.data.user);
-        if (typeof res.data.user?.credit_balance === "number") {
-          setCreditBalance(res.data.user.credit_balance);
+        if (!isMounted) return;
+        if (res.data?.user) {
+          setUser(res.data.user);
+          if (typeof res.data.user?.credit_balance === "number") {
+            setCreditBalance(res.data.user.credit_balance);
+          }
         }
       })
       .catch(() => {
+        if (!isMounted) return;
         setToken(null);
         setUser(null);
       })
-      .finally(() => setIsLoading(false));
-  }, [token, user]);
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
 
   const refreshUser = useCallback(async () => {
     const activeToken = token || localStorage.getItem(TOKEN_KEY);

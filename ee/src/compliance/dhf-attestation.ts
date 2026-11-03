@@ -21,7 +21,10 @@ export type RegulatoryStandard =
   | "IEEE-2800-2022"
   | "EN-14363-Rail"
   | "DO-178C"
-  | "ISO-26262";
+  | "ISO-26262"
+  | "NIST-SP-800-53-OSCAL"
+  | "NIST-SP-800-82-CPS"
+  | "ISO-23952-QIF-MBE";
 
 export interface ComplianceAttestationPayload {
   /** Attestation schema version */

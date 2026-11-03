@@ -47,7 +47,7 @@ const RibbonContainer = styled.div<{
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   @media (max-width: 768px) {
-    bottom: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     max-width: calc(100% - 24px);
   }
 `;
@@ -131,6 +131,11 @@ const ValueInput = styled.input<{ $dark: boolean }>`
   font-family: var(--font-mono, monospace);
   color: ${(props) => (props.$dark ? "#f0f6fc" : "#1f2328")};
   text-align: right;
+
+  @media (max-width: 768px) and (pointer: coarse) {
+    font-size: 16px;
+    width: 64px;
+  }
 
   &:focus {
     outline: none;

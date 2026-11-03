@@ -21,6 +21,7 @@ import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { CaeCloudClient } from "./cae-cloud-client.js";
 import { isFeatureEnabled } from "./utils/config.js";
+import { exportCfdResultToVtu } from "./utils/vtu-exporter.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
 export {
@@ -511,6 +512,15 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
     };
 
     const cleanupCallbacks: (() => void)[] = [];
+    let lastSolvedCfd: {
+      positions: number[];
+      indices: number[];
+      nodalVelocity: number[];
+      nodalPressure: number[];
+      nodalMach: number[];
+      cl: number;
+      cd: number;
+    } | null = null;
 
     const msgSubscription = webviewPanel.webview.onDidReceiveMessage(async (message) => {
       switch (message.type) {
@@ -560,6 +570,7 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
             const pressures = run?.fields["pressure"]
               ? Array.from(run.fields["pressure"])
               : new Array(numNodes).fill(101325);
+            const machs = velMags.map((v) => +(v / 340.3).toFixed(4));
 
             const cfdPayload = {
               type: "cfd-mesh",
@@ -582,6 +593,17 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
               },
             };
 
+            const qDyn = Math.max(1e-6, 0.5 * slicing.density * velocity * velocity);
+            lastSolvedCfd = {
+              positions: baselineMesh.positions,
+              indices: baselineMesh.indices,
+              nodalVelocity: Array.from(velField),
+              nodalPressure: pressures,
+              nodalMach: machs,
+              cl: (slicing.liftForce ?? 0) / qDyn,
+              cd: (slicing.dragForce ?? 0) / qDyn,
+            };
+
             webviewPanel.webview.postMessage({ type: "cfdResults", data: cfdPayload });
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
           } catch (err: unknown) {
@@ -589,6 +611,39 @@ export class CfgEditorProvider extends BaseCustomEditorProvider {
             webviewPanel.webview.postMessage({ type: "setLoading", data: false });
           }
           break;
+        case "publishResult": {
+          if (!lastSolvedCfd) {
+            vscode.window.showWarningMessage("Run the CFD solver first before publishing results.");
+            break;
+          }
+          const baseStem =
+            document.uri.path
+              .split("/")
+              .pop()
+              ?.replace(/\.(cfg|cfgt|cfd)$/i, "") || "cfd_study";
+          const bundle = exportCfdResultToVtu(
+            {
+              title: `${baseStem} — Aerodynamic CFD Result`,
+              nodes: lastSolvedCfd.positions,
+              triangles: lastSolvedCfd.indices,
+              nodalVelocity: lastSolvedCfd.nodalVelocity,
+              nodalPressure: lastSolvedCfd.nodalPressure,
+              nodalMach: lastSolvedCfd.nodalMach,
+              cl: lastSolvedCfd.cl,
+              cd: lastSolvedCfd.cd,
+            },
+            baseStem,
+          );
+          await vscode.commands.executeCommand("modelscript.publishSimulationResult", {
+            fileName: bundle.fileName,
+            title: bundle.title,
+            vtuXml: bundle.vtuXml,
+            summaryMarkdown: bundle.summaryMarkdown,
+            sourceUri: document.uri,
+          });
+          break;
+        }
+
         case "runCloudCfd":
           try {
             webviewPanel.webview.postMessage({ type: "setLoading", data: true });

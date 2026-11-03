@@ -43,6 +43,7 @@ const SidebarContainer = styled.header`
   position: sticky;
   top: var(--dev-header-height, 0px);
   height: calc(100vh - var(--dev-header-height, 0px) - var(--guest-banner-height, 0px));
+  height: calc(100dvh - var(--dev-header-height, 0px) - var(--guest-banner-height, 0px));
   overflow-y: auto;
   padding: 14px 12px 12px 12px;
   box-sizing: border-box;
@@ -63,7 +64,7 @@ const SidebarContainer = styled.header`
     padding: 12px 6px;
   }
 
-  @media (max-width: 500px) {
+  @media (max-width: 767px) {
     display: none;
   }
 

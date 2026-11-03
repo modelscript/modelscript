@@ -4,19 +4,76 @@
     <meta charset="UTF-8" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0a0f1c" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    />
     <script>
       (function () {
         try {
           var t = localStorage.getItem("ms-theme");
-          document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+          var isLight = t === "light";
+          var theme = isLight ? "light" : "dark";
+          var root = document.documentElement;
+          root.setAttribute("data-theme", theme);
+          root.style.colorScheme = theme;
+
+          var raw = localStorage.getItem("modelscript_display_accessibility");
+          if (raw) {
+            var p = JSON.parse(raw);
+            if (p.fontScale === 90 || p.fontScale === 100 || p.fontScale === 110 || p.fontScale === 120) {
+              root.style.fontSize = p.fontScale + "%";
+              root.style.setProperty("--ui-font-scale", String(p.fontScale / 100));
+            }
+            if (p.compactDensity) root.setAttribute("data-density", "compact");
+            if (p.reducedMotion) root.setAttribute("data-reduced-motion", "true");
+            if (p.highContrast) root.setAttribute("data-high-contrast", "true");
+          }
         } catch (e) {
           document.documentElement.setAttribute("data-theme", "dark");
+          document.documentElement.style.colorScheme = "dark";
         }
       })();
     </script>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html[data-theme="dark"] {
+        background-color: #0a0f1c;
+        color: #e2e8f0;
+        color-scheme: dark;
+      }
+      html[data-theme="light"] {
+        background-color: #ffffff;
+        color: #0f172a;
+        color-scheme: light;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background-color: inherit;
+        color: inherit;
+        font-family: "Inter", "Inter var", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+        font-optical-sizing: auto;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      #root {
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+    </style>
     <link rel="icon" type="image/svg+xml" href="/ansatz-logo.svg" />
     <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Ansatz — The Federated Scientific & Engineering Network powered by ModelScript." />
     <link rel="alternate" type="application/json+oembed" href="/api/v1/oembed?url=https%3A%2F%2Fansatz.social&format=json" title="Ansatz Interactive Engineering Model" />
     <meta property="og:title" content="Ansatz | The Federated Scientific & Engineering Network" />

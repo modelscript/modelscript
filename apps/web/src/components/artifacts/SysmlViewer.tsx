@@ -16,6 +16,7 @@ import { Button, Heading, Text, TextInput } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -257,7 +258,7 @@ const TabCount = styled.span<{ $active: boolean }>`
 const SubViewSwitch = styled.div`
   display: inline-flex;
   align-items: center;
-  background: rgba(13, 17, 23, 0.85);
+  background: var(--color-canvas-default, rgba(13, 17, 23, 0.85));
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 6px;
   padding: 2px;
@@ -296,7 +297,7 @@ const DiagramStage = styled.div`
   min-height: 320px;
   display: flex;
   flex-direction: column;
-  background: #0b111e;
+  background: var(--color-canvas-subtle, #0b111e);
   position: relative;
   overflow: hidden;
 `;
@@ -306,8 +307,8 @@ const DiagramHudBar = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
-  background: rgba(15, 23, 42, 0.75);
-  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  background: var(--surface-hud, var(--color-canvas-subtle, rgba(15, 23, 42, 0.75)));
+  border-bottom: 1px solid var(--color-border-default, rgba(51, 65, 85, 0.5));
   gap: 8px;
   z-index: 5;
 `;
@@ -330,7 +331,7 @@ const TreeCard = styled.div`
 const CodeEditor = styled.pre`
   margin: 0;
   padding: 12px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-canvas-subtle, rgba(0, 0, 0, 0.3));
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 6px;
   font-family: var(--font-mono, monospace);
@@ -1010,7 +1011,7 @@ function buildBddDiagramSvg(
     <g>
       <rect x="${rootX}" y="${rootY}" width="${rootW}" height="${rootH}" rx="6" fill="#1e293b" stroke="#60a5fa" stroke-width="1.8"/>
       <text x="${rootX + rootW / 2}" y="${rootY + 22}" text-anchor="middle" fill="#93c5fd" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9.5" font-weight="600">«system part def»</text>
-      <text x="${rootX + rootW / 2}" y="${rootY + 44}" text-anchor="middle" fill="#ffffff" font-family="ui-monospace, SFMono-Regular, monospace" font-size="13" font-weight="700">${escapeXml(rootName)}</text>
+      <text x="${rootX + rootW / 2}" y="${rootY + 44}" text-anchor="middle" fill="#f8fafc" font-family="ui-monospace, SFMono-Regular, monospace" font-size="13" font-weight="700">${escapeXml(rootName)}</text>
     </g>
     ${compLines.join("\n    ")}
     ${childBlocks.join("\n    ")}
@@ -1022,6 +1023,8 @@ function buildBddDiagramSvg(
 
 const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [activeTab, setActiveTab] = useState<"diagram" | "architecture" | "requirements" | "source">("diagram");
   const [diagramMode, setDiagramMode] = useState<"ibd" | "bdd">("ibd");
   const [searchQuery, setSearchQuery] = useState("");
@@ -1119,13 +1122,14 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
 
   const svgMarkup = useMemo(() => {
     if (parts.length > 0) {
-      if (diagramMode === "bdd") {
-        return buildBddDiagramSvg(systemName, rootPartDef, parts, parsedModel.portDefs, isFullScreen);
-      }
-      return buildIbdDiagramSvg(systemName, rootPartDef, parts, connections, states, requirements, isFullScreen);
+      const raw =
+        diagramMode === "bdd"
+          ? buildBddDiagramSvg(systemName, rootPartDef, parts, parsedModel.portDefs, isFullScreen)
+          : buildIbdDiagramSvg(systemName, rootPartDef, parts, connections, states, requirements, isFullScreen);
+      return sanitizeSvgMarkup(raw, { isFullScreen, isDark });
     }
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
     }
     return "";
   }, [
@@ -1139,6 +1143,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
     parsedModel.portDefs,
     viewConfig.svg,
     isFullScreen,
+    isDark,
   ]);
 
   const effectiveTab =
@@ -1501,7 +1506,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                         ml="22px"
                         p={2}
                         style={{
-                          background: "rgba(15, 23, 42, 0.7)",
+                          background: "var(--color-canvas-default, rgba(15, 23, 42, 0.7))",
                           border: "1px solid rgba(16, 185, 129, 0.28)",
                           borderRadius: "6px",
                         }}
@@ -1510,11 +1515,11 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                           style={{
                             fontSize: "11px",
                             fontFamily: "var(--font-mono, monospace)",
-                            color: "#6ee7b7",
+                            color: "#10b981",
                             marginBottom: req.witnesses && req.witnesses.length > 0 ? "6px" : "0",
                           }}
                         >
-                          <span style={{ color: "#93c5fd", fontWeight: 600 }}>require constraint</span> {"{ "}
+                          <span style={{ color: "#3b82f6", fontWeight: 600 }}>require constraint</span> {"{ "}
                           {formatConstraintMath(req.constraintExpr)}
                           {" }"}
                         </div>
@@ -1536,15 +1541,15 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                                   border: w.passed
                                     ? "1px solid rgba(16, 185, 129, 0.3)"
                                     : "1px solid rgba(248, 113, 113, 0.35)",
-                                  color: w.passed ? "#d1fae5" : "#fecaca",
+                                  color: w.passed ? "var(--color-fg-default, #d1fae5)" : "#ef4444",
                                 }}
                               >
-                                <span style={{ color: w.passed ? "#34d399" : "#f87171", fontWeight: 700 }}>
+                                <span style={{ color: w.passed ? "#10b981" : "#ef4444", fontWeight: 700 }}>
                                   {w.passed ? "✓" : "✗"}
                                 </span>
                                 <span>{formatConstraintMath(w.expr)}:</span>
                                 <strong>{w.actual}</strong>
-                                <span style={{ color: "#6ee7b7", opacity: 0.85 }}>({w.margin})</span>
+                                <span style={{ color: "#10b981", opacity: 0.85 }}>({w.margin})</span>
                               </span>
                             ))}
                           </Box>

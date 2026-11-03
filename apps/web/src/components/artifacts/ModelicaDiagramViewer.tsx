@@ -14,6 +14,7 @@ import {
 import { Button, Text } from "@primer/react";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -296,15 +297,18 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
     [code, explicitMode, rawSvg, rawThumbUrl],
   );
 
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const validInlineSvg = useMemo(() => {
     if (rawSvg && !isLegacyBogusModelicaSvg(rawSvg, previewMode)) {
-      return sanitizeSvgMarkup(rawSvg, { isFullScreen });
+      return sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark });
     }
     if (!rawThumbUrl) {
-      return sanitizeSvgMarkup(buildClientCodeFallbackSvg(code, title), { isFullScreen });
+      return sanitizeSvgMarkup(buildClientCodeFallbackSvg(code, title), { isFullScreen, isDark });
     }
     return "";
-  }, [rawSvg, rawThumbUrl, previewMode, code, title, isFullScreen]);
+  }, [rawSvg, rawThumbUrl, previewMode, code, title, isFullScreen, isDark]);
 
   const [interactive, setInteractive] = useState(isFullScreen);
   const [hasBeenActive, setHasBeenActive] = useState(isFullScreen);
@@ -626,7 +630,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
             style={{
               cursor: "pointer",
               position: "relative",
-              background: "#0d1117",
+              background: "var(--color-canvas-default, #0d1117)",
             }}
             onClick={() => {
               setInteractive(true);

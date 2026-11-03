@@ -56,7 +56,7 @@ const TimeBadge = styled.span`
   font-size: 11px;
   font-family: var(--font-mono, monospace);
   color: var(--color-fg-muted, #8b949e);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.05));
   padding: 2px 6px;
   border-radius: 4px;
 `;
@@ -69,7 +69,11 @@ const VisualizerContainer = styled.div`
   align-items: center;
   justify-content: center;
   padding: 16px 24px;
-  background: linear-gradient(180deg, #090d16 0%, #0d1117 100%);
+  background: linear-gradient(
+    180deg,
+    var(--color-canvas-subtle, #090d16) 0%,
+    var(--color-canvas-default, #0d1117) 100%
+  );
   gap: 12px;
   user-select: none;
 `;
@@ -79,7 +83,7 @@ const WaveformCanvas = styled.canvas`
   height: 70px;
   cursor: pointer;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--color-canvas-inset, rgba(128, 128, 128, 0.06));
 `;
 
 const ControlsRow = styled.div`

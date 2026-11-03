@@ -20,7 +20,7 @@ export interface PostLayoutTarget {
 export function estimatePostHeight(post: PostLayoutTarget | null | undefined): number {
   if (!post) return 180;
 
-  // Notebooks / interactive engineering tutorials
+  // Articles / interactive engineering deep-dives
   if (post.metadata?.notebook || isNotebookPost(post as Parameters<typeof isNotebookPost>[0])) {
     return 660;
   }

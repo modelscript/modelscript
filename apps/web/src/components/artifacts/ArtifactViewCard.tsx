@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner, useTheme } from "@primer/react";
+import { Spinner } from "@primer/react";
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { getArtifactView } from "../../api";
 import { useFeatureFlag } from "../../FeatureFlagContext";
+import { useTheme } from "../../theme";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import { safeJsonParse } from "../../util/json";
 import { parseModelicaParameters } from "../../util/modelica-params";
@@ -44,7 +45,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const [isHpcModalOpen, setIsHpcModalOpen] = useState(false);
   const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
-  const { resolvedColorMode } = useTheme();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const navigate = useNavigate();
 
   const viewConfig: any = useMemo(
@@ -380,10 +382,9 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   ) : null;
 
   if (isFullScreen) {
-    const currentThumbnailUrl =
-      resolvedColorMode === "dark"
-        ? resolvedThumbnailUrlDark || resolvedThumbnailUrl
-        : resolvedThumbnailUrlLight || resolvedThumbnailUrl;
+    const currentThumbnailUrl = isDark
+      ? resolvedThumbnailUrlDark || resolvedThumbnailUrl
+      : resolvedThumbnailUrlLight || resolvedThumbnailUrl;
 
     const fullScreenOverlay = (
       <div
@@ -393,7 +394,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: "#090d16",
+          backgroundColor: "var(--color-canvas-default, #090d16)",
           zIndex: 9999,
           display: "flex",
           flexDirection: "column",
@@ -416,7 +417,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         />
 
         <Box flex={1} display="flex" overflow="hidden" position="relative">
-          <Box flex={1} height="100%" bg="black" overflow="auto" position="relative">
+          <Box flex={1} height="100%" bg="var(--color-canvas-default)" overflow="auto" position="relative">
             {viewerContent}
           </Box>
 
@@ -425,6 +426,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
             artifact={artifact}
             artifactId={artifactId}
             viewConfig={viewConfig}
+            onClose={() => setIsStudioSidebarOpen(false)}
           />
         </Box>
       </div>
@@ -453,10 +455,9 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
                 width: "100%",
                 display: "block",
                 objectFit: "contain",
-                background:
-                  resolvedColorMode === "dark"
-                    ? "radial-gradient(circle at center, #2b2e36 0%, #1f2229 55%, #14161b 100%)"
-                    : "radial-gradient(circle at center, #cdced0 0%, #d6d7d9 50%, #e2e3e4 100%)",
+                background: isDark
+                  ? "radial-gradient(circle at center, #2b2e36 0%, #1f2229 55%, #14161b 100%)"
+                  : "radial-gradient(circle at center, #cdced0 0%, #d6d7d9 50%, #e2e3e4 100%)",
               }}
               alt="thumbnail"
             />

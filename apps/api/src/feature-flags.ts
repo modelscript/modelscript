@@ -63,6 +63,9 @@ export const POLYGLOT_LANGUAGE_SPECS: readonly PolyglotLanguageFlagSpec[] = [
   { id: "ibis", name: "IBIS Signal Integrity", ext: ".ibs", defaultValue: true, maturity: "production" },
   { id: "opendss", name: "OpenDSS Distribution Grid", ext: ".dss", defaultValue: true, maturity: "production" },
   { id: "csv", name: "CSV Tabular Dataset", ext: ".csv", defaultValue: true, maturity: "production" },
+  { id: "qif", name: "QIF 3.0 Metrology (ISO 23952)", ext: ".qif", defaultValue: true, maturity: "production" },
+  { id: "oscal", name: "NIST OSCAL 1.1 Security", ext: ".oscal.json", defaultValue: true, maturity: "production" },
+  { id: "automationml", name: "AutomationML (IEC 62714)", ext: ".aml", defaultValue: true, maturity: "production" },
 ];
 
 export function getLanguageFeatureFlagKey(langId: string): string {

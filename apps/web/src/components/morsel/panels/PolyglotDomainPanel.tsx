@@ -634,45 +634,118 @@ function analyzePowerAndCircuits(dialect: string, _code: string, lines: string[]
       }
     }
   } else if (dialect === "psse") {
-    let section = "bus";
+    let section = "header";
+    let headerLines = 0;
+    const secOrder = [
+      "bus",
+      "load",
+      "shunt",
+      "gen",
+      "branch",
+      "xfmr",
+      "area",
+      "twodc",
+      "vsc",
+      "imp",
+      "term",
+      "zone",
+      "inter",
+      "owner",
+      "facts",
+      "swshunt",
+    ];
+    let secIdx = -1;
     for (let i = 0; i < lines.length; i++) {
       const trimmed = lines[i]!.trim();
       if (!trimmed || trimmed.startsWith("@!")) continue;
-      if (/^0\s*\/.*BEGIN\s+([A-Z\s]+)\s+DATA/i.test(trimmed)) {
-        const secName = /^0\s*\/.*BEGIN\s+([A-Z\s]+)\s+DATA/i.exec(trimmed)?.[1]?.toLowerCase() ?? "";
-        if (secName.includes("load")) section = "load";
-        else if (secName.includes("generator")) section = "gen";
-        else if (secName.includes("branch") || secName.includes("transformer")) section = "branch";
-        else section = "other";
+      if (section === "header") {
+        headerLines++;
+        if (headerLines >= 3) {
+          section = "bus";
+          secIdx = 0;
+        }
         continue;
       }
-      if (trimmed.startsWith("0 /") || trimmed.startsWith("Q")) continue;
-      const parts = trimmed.split(",").map((s) => s.trim());
-      if (parts.length >= 4 && /^\d+$/.test(parts[0]!)) {
+      if (/^0(\s*,|\s*\/|\s*$)/.test(trimmed) || /^Q(\s*\/|\s*$)/i.test(trimmed)) {
+        if (/^Q(\s*\/|\s*$)/i.test(trimmed)) break;
+        const beginMatch = /BEGIN\s+([A-Z\s-]+?)\s+DATA/i.exec(trimmed);
+        if (beginMatch) {
+          const secName = beginMatch[1]!.toLowerCase();
+          if (secName.includes("load")) section = "load";
+          else if (secName.includes("fixed shunt")) section = "shunt";
+          else if (secName.includes("switched shunt")) section = "swshunt";
+          else if (secName.includes("generator")) section = "gen";
+          else if (secName.includes("branch")) section = "branch";
+          else if (secName.includes("transformer")) section = "xfmr";
+          else section = "other";
+        } else {
+          secIdx++;
+          section = secOrder[secIdx] ?? "other";
+        }
+        continue;
+      }
+      const noComment = trimmed.split("/")[0]!.trim();
+      const parts = noComment.split(",").map((s) => s.trim());
+      if (parts.length >= 3 && /^\d+$/.test(parts[0]!)) {
         if (section === "bus" && parts.length >= 7) {
           busRows.push({
             id: parts[0]!,
-            name: parts[1]?.replace(/'/g, "") || `Bus_${parts[0]}`,
+            name: parts[1]?.replace(/'/g, "").trim() || `Bus_${parts[0]}`,
             baseKvOrType: `${parts[2]} kV (Type ${parts[3]})`,
             voltageOrAngle: `V=${parts[7] ?? "1.0"} pu, θ=${parts[8] ?? "0.0"}°`,
             line: i + 1,
           });
         } else if (section === "load" || section === "gen") {
+          const id = parts[1]?.replace(/'/g, "").trim() || "1";
           genLoadRows.push({
-            id: `${section.toUpperCase()}_${parts[0]}_${parts[1]?.replace(/'/g, "") || "1"}`,
-            kind: section === "gen" ? "Generator" : "Load",
+            id: `${section.toUpperCase()}_${parts[0]}_${id}`,
+            kind: section === "gen" ? `Generator (${id})` : `Load (${id})`,
             busOrNode: `Bus ${parts[0]}`,
             spec: `P=${parts[section === "gen" ? 2 : 5] ?? "0"} MW, Q=${parts[section === "gen" ? 3 : 6] ?? "0"} Mvar`,
             line: i + 1,
           });
-        } else if (section === "branch") {
-          branchRows.push({
-            id: `${parts[0]}-${parts[1]}(${parts[2]?.replace(/'/g, "") || "1"})`,
-            category: "AC Branch",
-            nodes: `Bus ${parts[0]} → Bus ${parts[1]}`,
-            params: `R=${parts[3] ?? "0"}, X=${parts[4] ?? "0"} pu`,
+        } else if (section === "shunt") {
+          const id = parts[1]?.replace(/'/g, "").trim() || "1";
+          genLoadRows.push({
+            id: `SHUNT_${parts[0]}_${id}`,
+            kind: "Fixed Shunt",
+            busOrNode: `Bus ${parts[0]}`,
+            spec: `G=${parts[3] ?? "0"} MW, B=${parts[4] ?? "0"} Mvar`,
             line: i + 1,
           });
+        } else if (section === "swshunt") {
+          genLoadRows.push({
+            id: `SWSHUNT_${parts[0]}`,
+            kind: "Switched Shunt",
+            busOrNode: `Bus ${parts[0]}`,
+            spec: `Binit=${parts[7] ?? parts[6] ?? "0"} Mvar`,
+            line: i + 1,
+          });
+        } else if (section === "branch") {
+          branchRows.push({
+            id: `${parts[0]}-${parts[1]}(${parts[2]?.replace(/'/g, "").trim() || "1"})`,
+            category: "AC Branch",
+            nodes: `Bus ${parts[0]} → Bus ${parts[1]}`,
+            params: `R=${parts[3] ?? "0"}, X=${parts[4] ?? "0"} pu, RateA=${parts[6] ?? "0"} MVA`,
+            line: i + 1,
+          });
+        } else if (section === "xfmr") {
+          const kBus = parseInt(parts[2] ?? "0", 10);
+          const ckt = parts[3]?.replace(/'/g, "").trim() || "1";
+          const line2 = (lines[i + 1] ?? "")
+            .split("/")[0]!
+            .split(",")
+            .map((s) => s.trim());
+          const r12 = line2[0] ?? "0";
+          const x12 = line2[1] ?? "0.05";
+          branchRows.push({
+            id: `T_${parts[0]}-${parts[1]}(${ckt})`,
+            category: "Transformer",
+            nodes: `Bus ${parts[0]} → Bus ${parts[1]}`,
+            params: `R=${r12}, X=${x12} pu`,
+            line: i + 1,
+          });
+          i += !isNaN(kBus) && kBus !== 0 ? 4 : 3;
         }
       }
     }
@@ -1435,6 +1508,168 @@ function analyzeGeneralModel(dialect: string, _code: string, lines: string[]): D
   };
 }
 
+function analyzePlcopenAndAutomation(dialect: string, code: string, lines: string[]): DomainAnalysisResult {
+  const varRows: TableRow[] = [];
+  const logicRows: TableRow[] = [];
+  let pouCount = 0;
+  let inputCount = 0;
+  let outputCount = 0;
+  let currentVarSection = "LOCAL";
+  let taskInterval = "T#1ms";
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]!;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.startsWith("<!--") || trimmed.startsWith("(*") || trimmed.startsWith("//")) continue;
+
+    const taskM = /\binterval\s*=\s*["']([^"']+)["']/i.exec(trimmed);
+    if (taskM) {
+      taskInterval = taskM[1]!;
+    }
+
+    // XML or ST section headers
+    if (/<inputVars\b/i.test(trimmed) || /^VAR_INPUT\b/i.test(trimmed)) {
+      currentVarSection = "INPUT";
+      continue;
+    }
+    if (/<outputVars\b/i.test(trimmed) || /^VAR_OUTPUT\b/i.test(trimmed)) {
+      currentVarSection = "OUTPUT";
+      continue;
+    }
+    if (/<inOutVars\b/i.test(trimmed) || /^VAR_IN_OUT\b/i.test(trimmed)) {
+      currentVarSection = "IN_OUT";
+      continue;
+    }
+    if (/<localVars\b/i.test(trimmed) || /^VAR\b/i.test(trimmed)) {
+      currentVarSection = "LOCAL";
+      continue;
+    }
+
+    // POU header (XML <pou name="..." pouType="..."> or ST PROGRAM/FUNCTION_BLOCK)
+    const xmlPouM = /<pou\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*\bpouType\s*=\s*["']([^"']+)["']/i.exec(trimmed);
+    const stPouM = /^(PROGRAM|FUNCTION_BLOCK|FUNCTION)\s+([A-Za-z_]\w*)/i.exec(trimmed);
+    if (xmlPouM || stPouM) {
+      pouCount++;
+      const pouName = xmlPouM ? xmlPouM[1]! : stPouM![2]!;
+      const pouType = (xmlPouM ? xmlPouM[2]! : stPouM![1]!).toUpperCase();
+      varRows.push({
+        id: `pou-${i}`,
+        name: pouName,
+        direction: "POU",
+        dataType: pouType,
+        line: i + 1,
+      });
+      continue;
+    }
+
+    // XML <variable name="...">
+    const xmlVarM = /<variable\b[^>]*\bname\s*=\s*["']([^"']+)["']/i.exec(trimmed);
+    if (xmlVarM) {
+      const vName = xmlVarM[1]!;
+      const typeM = /<type>\s*<([A-Za-z0-9_]+)\s*\/>|<derived\b[^>]*\bname\s*=\s*["']([^"']+)["']/i.exec(trimmed);
+      const vType = (typeM?.[1] || typeM?.[2] || "BOOL").toUpperCase();
+      if (currentVarSection === "INPUT") inputCount++;
+      else if (currentVarSection === "OUTPUT") outputCount++;
+      varRows.push({
+        id: `var-${i}`,
+        name: vName,
+        direction: currentVarSection,
+        dataType: vType,
+        line: i + 1,
+      });
+      continue;
+    }
+
+    // ST variable declaration: name : TYPE := init;
+    const stVarM = /^([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)(?:\s*:=\s*([^;]+))?\s*;/.exec(trimmed);
+    if (stVarM) {
+      const vName = stVarM[1]!;
+      const vType = stVarM[2]!.toUpperCase();
+      if (currentVarSection === "INPUT") inputCount++;
+      else if (currentVarSection === "OUTPUT") outputCount++;
+      varRows.push({
+        id: `stvar-${i}`,
+        name: vName,
+        direction: currentVarSection,
+        dataType: vType,
+        line: i + 1,
+      });
+      continue;
+    }
+
+    // ST control statements (inside XML or plain ST)
+    const unescaped = trimmed
+      .replace(/<\/?xhtml:[^>]+>/gi, "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .trim();
+    if (!unescaped || unescaped.startsWith("<")) continue;
+
+    if (/^(IF|ELSIF)\b/i.test(unescaped)) {
+      logicRows.push({
+        id: `branch-${i}`,
+        kind: unescaped.toUpperCase().startsWith("ELSIF") ? "ELSIF" : "IF-GUARD",
+        target: "Branch Condition",
+        expression: unescaped.slice(0, 72),
+        line: i + 1,
+      });
+    } else if (unescaped.includes(":=")) {
+      const parts = unescaped.split(":=");
+      const lhs = parts[0]!.trim();
+      const rhs = parts.slice(1).join(":=").replace(/;\s*$/, "").trim();
+      logicRows.push({
+        id: `assign-${i}`,
+        kind: "ASSIGN",
+        target: lhs,
+        expression: rhs.slice(0, 72),
+        line: i + 1,
+      });
+    }
+  }
+
+  return {
+    domainTitle:
+      dialect === "plcopen"
+        ? "IEC 61131-3 / PLCopen TC6 Safety & Control Inspector"
+        : `${dialect.toUpperCase()} Automation Inspector`,
+    standardRef: "IEC 61131-3 Ed. 3 / PLCopen TC6 XML v2.01",
+    accentColor: "#eab308",
+    kpis: [
+      { label: "POUs", value: Math.max(1, pouCount), tone: "accent" },
+      { label: "Inputs / Outputs", value: `${inputCount} IN / ${outputCount} OUT`, tone: "good" },
+      { label: "Logic Statements", value: logicRows.length },
+      { label: "Scan Cycle", value: taskInterval, tone: "good" },
+    ],
+    sections: [
+      {
+        id: "plc-interface",
+        title: "POUs & Interface Variables (VAR_INPUT / VAR_OUTPUT / VAR)",
+        badgeCount: varRows.length,
+        columns: [
+          { key: "name", header: "Symbol", mono: true },
+          { key: "direction", header: "Section", badge: true },
+          { key: "dataType", header: "IEC Type", badge: true },
+          { key: "line", header: "Line", mono: true },
+        ],
+        rows: varRows,
+      },
+      {
+        id: "plc-logic",
+        title: "Structured Text (ST) & FBD Synthesis Networks",
+        badgeCount: logicRows.length,
+        columns: [
+          { key: "kind", header: "Network Kind", badge: true },
+          { key: "target", header: "Target / Guard", mono: true },
+          { key: "expression", header: "IEC 61131-3 Expression", mono: true },
+          { key: "line", header: "Line", mono: true },
+        ],
+        rows: logicRows,
+      },
+    ],
+  };
+}
+
 export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
   dialect,
   code,
@@ -1450,6 +1685,9 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
     const lines = code.split(/\r?\n/);
     const d = dialect.toLowerCase();
 
+    if (d === "plcopen" || d === "automationml" || d === "aml") {
+      return analyzePlcopenAndAutomation(d, code, lines);
+    }
     if (d === "sysml2" || d === "reqif" || code.includes("<REQ-IF")) {
       return analyzeRequirementsAndSysml(d, code, lines);
     }

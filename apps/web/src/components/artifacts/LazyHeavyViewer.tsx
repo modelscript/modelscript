@@ -2,8 +2,9 @@
 
 import { globalContextPool } from "@modelscript/embed";
 import { PlayIcon } from "@primer/octicons-react";
-import { Spinner, useTheme } from "@primer/react";
+import { Spinner } from "@primer/react";
 import React, { Suspense, useEffect, useRef, useState } from "react";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import ArtifactPlaceholder from "./ArtifactPlaceholder";
 import { captureCompositeCanvasDataUrl } from "./AutoThumbnailCapture";
@@ -37,7 +38,7 @@ export const THUMBNAIL_RADIAL_GREY_DARK = "radial-gradient(circle at center, #2b
 export const THUMBNAIL_RADIAL_GREY_BG = THUMBNAIL_RADIAL_GREY_LIGHT;
 
 function getThumbnailRadialBg(colorMode?: string): string {
-  return colorMode === "dark" ? THUMBNAIL_RADIAL_GREY_DARK : THUMBNAIL_RADIAL_GREY_LIGHT;
+  return colorMode === "dark" || colorMode === "night" ? THUMBNAIL_RADIAL_GREY_DARK : THUMBNAIL_RADIAL_GREY_LIGHT;
 }
 
 const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
@@ -53,8 +54,9 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
   const [isActive, setIsActive] = useState(isFullScreen);
   const [frozenSnapshot, setFrozenSnapshot] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { resolvedColorMode } = useTheme();
-  const radialBg = getThumbnailRadialBg(resolvedColorMode);
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const radialBg = getThumbnailRadialBg(theme);
 
   const captureCanvasSnapshot = (): string | null => {
     const canvas = containerRef.current?.querySelector("canvas");
@@ -105,8 +107,7 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
     };
   }, [isActive, isFullScreen, artifactId]);
 
-  const defaultThumbnailUrl =
-    resolvedColorMode === "dark" ? thumbnailUrlDark || thumbnailUrl : thumbnailUrlLight || thumbnailUrl;
+  const defaultThumbnailUrl = isDark ? thumbnailUrlDark || thumbnailUrl : thumbnailUrlLight || thumbnailUrl;
   const currentThumbnailUrl = frozenSnapshot || defaultThumbnailUrl;
 
   // Missing/404 thumbnails fall back to the placeholder instead of a broken <img>.

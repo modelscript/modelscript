@@ -14,6 +14,8 @@
 
 import { renderPsseSvg } from "@modelscript/diagram/psse-diagram-builder";
 import {
+  applyPsseDiagramWriteback,
+  calculateShortCircuit,
   extractPowerFlowNetlist,
   lintPsse,
   parseRaw,
@@ -46,8 +48,9 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
         const parsed = parseRaw(text);
         const diags = lintPsse(parsed);
         const netlist = extractPowerFlowNetlist(parsed);
-        const svg = renderPsseSvg(parsed);
         const powerflow = solvePowerFlow(parsed);
+        const shortCircuit = calculateShortCircuit(parsed);
+        const svg = renderPsseSvg(parsed, powerflow);
 
         // Serialize bus map into array for webview tables
         const busList = Array.from(parsed.buses.values());
@@ -63,8 +66,10 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
           transformers: parsed.transformers,
           loads: parsed.loads,
           fixedShunts: parsed.fixedShunts,
+          switchedShunts: parsed.switchedShunts,
           metrics: netlist.metrics,
           powerflow,
+          shortCircuit,
           diagnostics: diags,
           svg,
         });
@@ -94,11 +99,34 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
           updateWebview();
           break;
 
+        case "writeback":
+        case "toggleEquipmentStatus": {
+          if (typeof msg.cellId === "string" && msg.changes && typeof msg.changes === "object") {
+            try {
+              const currentText = document.getText();
+              const updatedText = applyPsseDiagramWriteback(currentText, msg.cellId, msg.changes);
+              if (updatedText !== currentText) {
+                const edit = new vscode.WorkspaceEdit();
+                const fullRange = new vscode.Range(
+                  new vscode.Position(0, 0),
+                  new vscode.Position(document.lineCount, 0),
+                );
+                edit.replace(document.uri, fullRange, updatedText);
+                await vscode.workspace.applyEdit(edit);
+              }
+            } catch (e: unknown) {
+              vscode.window.showErrorMessage(`Failed to update PSS/E record: ${e}`);
+            }
+          }
+          break;
+        }
+
         case "exportSvg": {
           const text = document.getText();
           try {
             const parsed = parseRaw(text);
-            const svg = renderPsseSvg(parsed);
+            const pf = solvePowerFlow(parsed);
+            const svg = renderPsseSvg(parsed, pf);
             const saveUri = await vscode.window.showSaveDialog({
               filters: { "Scalable Vector Graphics (*.svg)": ["svg"] },
               defaultUri: vscode.Uri.file("grid.svg"),
@@ -729,6 +757,20 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
         if (parts.length >= 2) selectBus(parseInt(parts[1], 10));
         return;
       }
+      const shuntNode = e.target.closest(".shunt-node");
+      if (shuntNode) {
+        const parts = shuntNode.id.split("_");
+        if (parts.length >= 2) selectBus(parseInt(parts[1], 10));
+        return;
+      }
+    }
+
+    function toggleEquipmentStatus(cellId, nextStatus) {
+      vscode.postMessage({
+        type: "toggleEquipmentStatus",
+        cellId,
+        changes: { status: nextStatus, st: nextStatus, stat: nextStatus },
+      });
     }
 
     function selectBus(busNumber) {
@@ -750,13 +792,20 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
       const vm = pfBus ? pfBus.vm : bus.vm;
       const va = pfBus ? pfBus.va : bus.va;
       const actualKv = (vm * bus.baseKv).toFixed(2);
-      const isUnder = vm < 0.95;
-      const isOver = vm > 1.05;
+      const nvlo = bus.nvlo && bus.nvlo > 0 ? bus.nvlo : 0.95;
+      const nvhi = bus.nvhi && bus.nvhi > 0 ? bus.nvhi : 1.05;
+      const isUnder = vm < nvlo;
+      const isOver = vm > nvhi;
       const vStatus = isUnder ? '<span class="badge" style="background:#5c1d1d;color:#ff7b72;">UNDERVOLTAGE</span>'
         : isOver ? '<span class="badge" style="background:#5a3e1b;color:#f0883e;">OVERVOLTAGE</span>'
-        : '<span class="badge" style="background:#1b4332;color:#4ade80;">NORMAL (0.95-1.05 pu)</span>';
+        : '<span class="badge" style="background:#1b4332;color:#4ade80;">NORMAL (' + nvlo.toFixed(2) + '-' + nvhi.toFixed(2) + ' pu)</span>';
 
-      const typeLabel = bus.ide === 3 ? "Swing / Slack (Type 3)" : bus.ide === 2 ? "Generator / PV (Type 2)" : "Load / PQ (Type 1)";
+      const typeLabel = bus.ide === 3 ? "Swing / Slack (Type 3)" : bus.ide === 2 ? "Generator / PV (Type 2)" : bus.ide === 4 ? "Isolated (Type 4)" : "Load / PQ (Type 1)";
+
+      // Short-circuit fault duty
+      const scBus = currentData.shortCircuit && currentData.shortCircuit.buses
+        ? currentData.shortCircuit.buses.find(sb => sb.busNumber === busNumber)
+        : null;
 
       // Connected equipment
       const gens = (currentData.generators || []).filter(g => g.i === busNumber);
@@ -781,15 +830,29 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
           '</div>' +
         '</div>';
 
+      if (scBus) {
+        html += '<div class="card-panel">' +
+          '<div class="panel-heading">⚡ IEC 60909 / ANSI C37 Fault Duty</div>' +
+          '<div class="telemetry-grid">' +
+            '<div class="telemetry-item"><span class="telemetry-label">3-Phase I&apos;&apos;k3</span><span class="telemetry-val">' + scBus.ik3Ka.toFixed(2) + ' kA (' + scBus.sk3Mva.toFixed(0) + ' MVA)</span></div>' +
+            '<div class="telemetry-item"><span class="telemetry-label">1LG Fault I1LG</span><span class="telemetry-val">' + scBus.i1lgKa.toFixed(2) + ' kA</span></div>' +
+            '<div class="telemetry-item"><span class="telemetry-label">Peak Ip</span><span class="telemetry-val">' + scBus.ipPeakKa.toFixed(2) + ' kA</span></div>' +
+            '<div class="telemetry-item"><span class="telemetry-label">X/R Ratio</span><span class="telemetry-val">' + scBus.xrRatio.toFixed(1) + '</span></div>' +
+          '</div>' +
+        '</div>';
+      }
+
       // Connected Generations
       if (gens.length > 0) {
         html += '<div class="card-panel">' +
           '<div class="panel-heading">⚡ Connected Generation (' + gens.length + ')</div>' +
-          gens.map(g =>
-            '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
-              '<div style="display:flex; justify-content:space-between; font-weight:600; font-size:12px; color:#4ade80;">' +
+          gens.map(g => {
+            const cellId = "gen_" + g.i + "_" + g.id.trim();
+            const nextSt = g.stat === 1 ? 0 : 1;
+            return '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
+              '<div style="display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; color:#4ade80;">' +
                 "<span>Gen ID: '" + g.id + "'</span>" +
-                '<span>' + (g.stat === 1 ? 'In-Service' : 'Out') + '</span>' +
+                '<button style="font-size:10px; padding:2px 7px;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (g.stat === 1 ? '🟢 Online (Trip)' : '🔴 Offline (Close)') + '</button>' +
               '</div>' +
               '<div class="telemetry-grid" style="margin-top:4px;">' +
                 '<div class="telemetry-item"><span class="telemetry-label">Active Power Pg</span><span class="telemetry-val">' + g.pg.toFixed(1) + ' MW</span></div>' +
@@ -797,8 +860,8 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                 '<div class="telemetry-item"><span class="telemetry-label">Qmin / Qmax</span><span class="telemetry-val">' + g.qb.toFixed(1) + ' / ' + g.qt.toFixed(1) + '</span></div>' +
                 '<div class="telemetry-item"><span class="telemetry-label">MBASE</span><span class="telemetry-val">' + g.mbase.toFixed(1) + ' MVA</span></div>' +
               '</div>' +
-            '</div>'
-          ).join('') +
+            '</div>';
+          }).join('') +
         '</div>';
       }
 
@@ -806,18 +869,41 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
       if (loads.length > 0) {
         html += '<div class="card-panel">' +
           '<div class="panel-heading">🏭 Connected Loads (' + loads.length + ')</div>' +
-          loads.map(l =>
-            '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
-              '<div style="display:flex; justify-content:space-between; font-weight:600; font-size:12px; color:#fbbf24;">' +
+          loads.map(l => {
+            const cellId = "load_" + l.i + "_" + l.id.trim();
+            const nextSt = l.status === 1 ? 0 : 1;
+            return '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
+              '<div style="display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; color:#fbbf24;">' +
                 "<span>Load ID: '" + l.id + "'</span>" +
-                '<span>' + (l.status === 1 ? 'Online' : 'Offline') + '</span>' +
+                '<button style="font-size:10px; padding:2px 7px;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (l.status === 1 ? '🟢 Online (Shed)' : '🔴 Shed (Restore)') + '</button>' +
               '</div>' +
               '<div class="telemetry-grid" style="margin-top:4px;">' +
                 '<div class="telemetry-item"><span class="telemetry-label">Active Pl</span><span class="telemetry-val">' + l.pl.toFixed(1) + ' MW</span></div>' +
                 '<div class="telemetry-item"><span class="telemetry-label">Reactive Ql</span><span class="telemetry-val">' + l.ql.toFixed(1) + ' MVAr</span></div>' +
               '</div>' +
-            '</div>'
-          ).join('') +
+            '</div>';
+          }).join('') +
+        '</div>';
+      }
+
+      // Connected Shunt Banks
+      if (shunts.length > 0) {
+        html += '<div class="card-panel">' +
+          '<div class="panel-heading">🔋 Shunt Capacitor / Reactor Banks (' + shunts.length + ')</div>' +
+          shunts.map(s => {
+            const cellId = "shunt_" + s.i + "_" + s.id.trim();
+            const nextSt = s.status === 1 ? 0 : 1;
+            return '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
+              '<div style="display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; color:#67e8f9;">' +
+                "<span>Shunt ID: '" + s.id + "'</span>" +
+                '<button style="font-size:10px; padding:2px 7px;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (s.status === 1 ? '🟢 In-Service' : '🔴 Out') + '</button>' +
+              '</div>' +
+              '<div class="telemetry-grid" style="margin-top:4px;">' +
+                '<div class="telemetry-item"><span class="telemetry-label">Susceptance BL</span><span class="telemetry-val">' + s.bl.toFixed(1) + ' MVAr</span></div>' +
+                '<div class="telemetry-item"><span class="telemetry-label">Conductance GL</span><span class="telemetry-val">' + s.gl.toFixed(1) + ' MW</span></div>' +
+              '</div>' +
+            '</div>';
+          }).join('') +
         '</div>';
       }
 
@@ -833,8 +919,8 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             const pfBr = currentData.powerflow && currentData.powerflow.branches
               ? currentData.powerflow.branches.find(b => b.fromBus === br.i && b.toBus === br.j && b.ckt.trim() === br.ckt.trim())
               : null;
-            const mvaFlow = pfBr ? pfBr.mvaFlow : null;
-            const loadPct = pfBr && pfBr.loadingPercent !== undefined ? pfBr.loadingPercent : null;
+            const mvaFlow = pfBr && typeof pfBr.mvaFlow === 'number' ? pfBr.mvaFlow : null;
+            const loadPct = pfBr ? (pfBr.loadingPercent ?? pfBr.loadingPct ?? null) : null;
             const barColor = loadPct !== null && loadPct > 100 ? '#ef4444' : loadPct !== null && loadPct > 80 ? '#f59e0b' : '#22c55e';
             return '<div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);">' +
               '<div style="display:flex; justify-content:space-between; font-size:12px;">' +
@@ -886,16 +972,21 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
       document.getElementById("insp-title").innerText = "Branch " + fromBus + " → " + toBus + " (ckt " + ckt + ")";
       document.getElementById("insp-subtitle").innerText = (bFrom ? bFrom.name.trim() : '') + " to " + (bTo ? bTo.name.trim() : '');
 
-      const mva = pfBr ? pfBr.mvaFlow.toFixed(1) : '-';
-      const loadPct = pfBr && pfBr.loadingPercent !== undefined ? pfBr.loadingPercent : null;
+      const pFlowVal = pfBr ? (pfBr.pFromMw ?? pfBr.pFrom ?? pfBr.pFlow ?? 0) : null;
+      const qFlowVal = pfBr ? (pfBr.qFromMvar ?? pfBr.qFrom ?? pfBr.qFlow ?? 0) : null;
+      const mvaVal = pfBr ? (pfBr.mvaFlow ?? Math.hypot(pFlowVal || 0, qFlowVal || 0)) : null;
+      const mva = mvaVal !== null ? mvaVal.toFixed(1) : '-';
+      const loadPct = pfBr ? (pfBr.loadingPercent ?? pfBr.loadingPct ?? null) : null;
       const barColor = loadPct !== null && loadPct > 100 ? '#ef4444' : loadPct !== null && loadPct > 80 ? '#f59e0b' : '#22c55e';
+      const cellId = "branch_" + fromBus + "_" + toBus + "_" + ckt.trim();
+      const nextSt = br.st === 1 ? 0 : 1;
 
       let html =
         '<div class="card-panel">' +
           '<div class="panel-heading">Branch Power Flow</div>' +
           '<div class="telemetry-grid">' +
-            '<div class="telemetry-item"><span class="telemetry-label">Active Flow</span><span class="telemetry-val">' + (pfBr ? pfBr.pFlow.toFixed(1) + ' MW' : '-') + '</span></div>' +
-            '<div class="telemetry-item"><span class="telemetry-label">Reactive Flow</span><span class="telemetry-val">' + (pfBr ? pfBr.qFlow.toFixed(1) + ' MVAr' : '-') + '</span></div>' +
+            '<div class="telemetry-item"><span class="telemetry-label">Active Flow</span><span class="telemetry-val">' + (pFlowVal !== null ? pFlowVal.toFixed(1) + ' MW' : '-') + '</span></div>' +
+            '<div class="telemetry-item"><span class="telemetry-label">Reactive Flow</span><span class="telemetry-val">' + (qFlowVal !== null ? qFlowVal.toFixed(1) + ' MVAr' : '-') + '</span></div>' +
             '<div class="telemetry-item"><span class="telemetry-label">Apparent Flow</span><span class="telemetry-val">' + mva + ' MVA</span></div>' +
             '<div class="telemetry-item"><span class="telemetry-label">Thermal Rating A</span><span class="telemetry-val">' + (br.rateA > 0 ? br.rateA.toFixed(1) + ' MVA' : 'Unlimited') + '</span></div>' +
           '</div>' +
@@ -917,6 +1008,9 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             '<div class="telemetry-item"><span class="telemetry-label">Susceptance B</span><span class="telemetry-val">' + br.b.toFixed(5) + ' pu</span></div>' +
             '<div class="telemetry-item"><span class="telemetry-label">Status</span><span class="telemetry-val">' + (br.st === 1 ? 'In-Service' : 'Out-of-Service') + '</span></div>' +
           '</div>' +
+          '<div style="margin-top:8px;">' +
+            '<button style="width:100%; justify-content:center;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (br.st === 1 ? '⚡ Trip Branch Breaker (Open)' : '🔌 Close Branch Breaker (In-Service)') + '</button>' +
+          '</div>' +
         '</div>' +
         '<div style="display:flex; gap:8px;">' +
           '<button style="flex:1; justify-content:center;" onclick="selectBus(' + fromBus + ')">Jump to Bus ' + fromBus + '</button>' +
@@ -937,6 +1031,8 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
 
       document.getElementById("insp-title").innerText = "XFMR " + fromBus + " ⇄ " + toBus + " (ckt " + ckt + ")";
       document.getElementById("insp-subtitle").innerText = "Two-Winding Substation Power Transformer";
+      const cellId = "xfmr_" + fromBus + "_" + toBus + "_" + ckt.trim();
+      const nextSt = xfmr.stat === 1 ? 0 : 1;
 
       let html =
         '<div class="card-panel">' +
@@ -948,6 +1044,9 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             '<div class="telemetry-item"><span class="telemetry-label">Reactance X</span><span class="telemetry-val">' + xfmr.x12.toFixed(5) + ' pu</span></div>' +
             '<div class="telemetry-item"><span class="telemetry-label">Phase Shift</span><span class="telemetry-val">' + xfmr.ang1.toFixed(2) + '°</span></div>' +
             '<div class="telemetry-item"><span class="telemetry-label">Status</span><span class="telemetry-val">' + (xfmr.stat === 1 ? 'In-Service' : 'Out') + '</span></div>' +
+          '</div>' +
+          '<div style="margin-top:8px;">' +
+            '<button style="width:100%; justify-content:center;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (xfmr.stat === 1 ? '⚡ Trip Transformer Breaker' : '🔌 Energize Transformer') + '</button>' +
           '</div>' +
         '</div>' +
         '<div style="display:flex; gap:8px;">' +

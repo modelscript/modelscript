@@ -185,9 +185,26 @@ export function registerFormattingProvider(
   getDocumentTree: (uri: string) => any,
   isParserReady: () => boolean,
 ) {
-  connection.onDocumentFormatting((params): TextEdit[] => {
+  connection.onDocumentFormatting(async (params): Promise<TextEdit[]> => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
+
+    // PSS/E .raw and .dyr formatting
+    if (/\.(raw|dyr)$/i.test(params.textDocument.uri) || document.languageId === "psse") {
+      const { formatPsseDocument } = await import("@modelscript/psse");
+      const formatted = formatPsseDocument(document.getText(), params.textDocument.uri);
+      const lastLine = document.lineCount - 1;
+      const lastChar = document.getText().length - document.offsetAt({ line: lastLine, character: 0 });
+      return [
+        {
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: lastLine, character: lastChar },
+          },
+          newText: formatted,
+        },
+      ];
+    }
 
     // STEP formatting — one entity per line, consistent spacing
     if (params.textDocument.uri.match(/\.(step|stp|p21)$/i)) {

@@ -34,9 +34,17 @@ function joinPath(base: vscode.Uri, ...pathSegments: string[]): vscode.Uri {
   } as vscode.Uri;
 }
 
+export interface RemoteFileEntry {
+  path: string;
+  url: string;
+  size?: number | undefined;
+}
+
 export interface IMemoryFileSystemProvider {
   writeFile(uri: vscode.Uri, content: Uint8Array): void;
   writeFiles?(entries: [vscode.Uri, Uint8Array][]): void;
+  registerRemoteFiles?(workspaceUri: vscode.Uri, entries: RemoteFileEntry[]): void;
+  clearDirectory?(workspaceUri: vscode.Uri): void;
   delete?(uri: vscode.Uri, options?: { recursive?: boolean }): void | Promise<void>;
 }
 
@@ -46,6 +54,7 @@ export interface ArtifactWorkspaceDescriptor {
   viewType?: string | undefined;
   viewConfig?: Record<string, unknown> | undefined;
   files?: Record<string, string> | undefined;
+  remoteFiles?: RemoteFileEntry[] | undefined;
   primaryFile?: string | undefined;
 }
 
@@ -90,6 +99,7 @@ export interface ExampleWorkspaceDescriptor {
 }
 
 const artifactRegistry = new Map<string, ArtifactWorkspaceDescriptor>();
+const packageRegistry = new Map<string, ArtifactWorkspaceDescriptor>();
 
 export function registerArtifactDescriptor(descriptor: ArtifactWorkspaceDescriptor): void {
   artifactRegistry.set(String(descriptor.artifactId), descriptor);
@@ -99,8 +109,17 @@ export function getArtifactDescriptor(artifactId: string | number): ArtifactWork
   return artifactRegistry.get(String(artifactId));
 }
 
+export function registerPackageDescriptor(packageName: string, descriptor: ArtifactWorkspaceDescriptor): void {
+  packageRegistry.set(packageName, descriptor);
+}
+
+export function getPackageDescriptor(packageName: string): ArtifactWorkspaceDescriptor | undefined {
+  return packageRegistry.get(packageName);
+}
+
 export function clearArtifactRegistry(): void {
   artifactRegistry.clear();
+  packageRegistry.clear();
 }
 
 export function sanitizeModelicaIdentifier(name?: string, fallback = "ArtifactModel"): string {
@@ -230,6 +249,48 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     capabilities: STANDARD_CAPABILITIES,
     docsUrl: "https://modelscript.org/languages/owl2",
     defaultTemplateId: "owl2-units",
+  },
+  {
+    id: "oscal",
+    name: "NIST OSCAL 1.1",
+    badge: "OSC",
+    ext: ".oscal.json",
+    group: "core",
+    tone: "indigo",
+    role: "Cyber-Physical Security & Continuous ATO",
+    summary:
+      "NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS System Security Plans, profile resolution, CPS compliance auditing, and POA&M tracking.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/oscal",
+    defaultTemplateId: "oscal-smart-factory",
+  },
+  {
+    id: "qif",
+    name: "ISO 23952 QIF 3.0",
+    badge: "QIF",
+    ext: ".qif",
+    group: "geometry",
+    tone: "sky",
+    role: "MBD GD&T Metrology & Statistical Process Control",
+    summary:
+      "ISO 23952 / ANSI DMSC Quality Information Framework MBD tolerances, ASME Y14.5 MMC/LMC bonus evaluation, CMM plans, and SPC Cp/Cpk.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/qif",
+    defaultTemplateId: "qif-turbine-root",
+  },
+  {
+    id: "automationml",
+    name: "IEC 62714 AutomationML",
+    badge: "AML",
+    ext: ".aml",
+    group: "robotics",
+    tone: "teal",
+    role: "Smart Manufacturing CAEX Topology & Virtual Commissioning",
+    summary:
+      "IEC 62714 CAEX 2.15/3.0 Product-Process-Resource (PPR) hierarchies, 6-DOF frames, PLCopen/COLLADA links, and closed-loop virtual commissioning.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/automationml",
+    defaultTemplateId: "aml-battery-workcell",
   },
 
   // 2. 3D Geometry, FEA & CFD
@@ -2902,16 +2963,27 @@ export const EXAMPLE_TEMPLATES: ExampleWorkspaceDescriptor[] = [
     files: {
       "tank_level.st": [
         "PROGRAM TankLevelControl",
-        "VAR",
+        "VAR_INPUT",
         "  SetPoint : REAL := 75.0;",
+        "  HighLevelSwitch : BOOL := FALSE;",
+        "END_VAR",
+        "VAR_OUTPUT",
+        "  ValveCmd : REAL := 0.0;",
+        "  OverflowTrip : BOOL := FALSE;",
+        "END_VAR",
+        "VAR",
         "  Level : REAL := 50.0;",
         "  Error : REAL := 0.0;",
-        "  ValveCmd : REAL := 0.0;",
         "  Kp : REAL := 1.8;",
         "END_VAR",
         "",
+        "OverflowTrip := HighLevelSwitch OR (Level >= 95.0);",
         "Error := SetPoint - Level;",
-        "ValveCmd := Kp * Error;",
+        "IF OverflowTrip THEN",
+        "  ValveCmd := 0.0;",
+        "ELSE",
+        "  ValveCmd := Kp * Error;",
+        "END_IF;",
         "Level := Level + 0.05 * ValveCmd;",
         "END_PROGRAM",
         "",
@@ -3215,6 +3287,221 @@ export const EXAMPLE_TEMPLATES: ExampleWorkspaceDescriptor[] = [
       ].join("\n"),
     },
   },
+
+  // 45. ISO 23952 QIF 3.0 (.qif)
+  {
+    id: "qif-turbine-root",
+    languageId: "qif",
+    title: "Aerospace HPT Blade Fir-Tree Root MBD & CMM Inspection",
+    summary:
+      "ISO 23952 QIF 3.0 Model-Based Definition with ASME Y14.5 Datum Reference Frame A|B(M)|C(M), MMC bonus tolerances, and SPC Cp/Cpk actuals.",
+    badge: "QIF",
+    tone: "sky",
+    ext: ".qif",
+    primaryFile: "turbine_blade_root.qif",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "turbine_blade_root.qif": [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<QIFDocument versionQIF="3.0.0" qpId="f47ac10b-58cc-4372-a567-0e02b2c3d479">',
+        "  <Header>",
+        "    <Author><Name>Dr. Kenji Takahashi</Name></Author>",
+        "    <Application><Name>ModelScript QIF 3.0 Suite</Name></Application>",
+        "    <FileUnits><PrimaryUnits><LinearUnit><UnitName>mm</UnitName></LinearUnit></PrimaryUnits></FileUnits>",
+        "  </Header>",
+        "  <DatumDefinitions>",
+        '    <DatumDefinition id="D_A" label="A" featureId="F_BASE"/>',
+        '    <DatumDefinition id="D_B" label="B" featureId="F_BORE"/>',
+        "  </DatumDefinitions>",
+        "  <FeatureNominals>",
+        '    <PlaneFeatureNominal id="F_BASE">',
+        "      <Name>FirTreePlatformDatumPlaneA</Name>",
+        "      <Location>0 0 0</Location>",
+        "      <Normal>0 0 1</Normal>",
+        "      <StepEntityId>#101</StepEntityId>",
+        "      <ProbingPoints>6</ProbingPoints>",
+        "    </PlaneFeatureNominal>",
+        '    <CylinderFeatureNominal id="F_BORE">',
+        "      <Name>RootInternalCoolingBoreB</Name>",
+        "      <Diameter>12.000</Diameter>",
+        "      <Location>24 0 15</Location>",
+        "      <AxisVector>0 0 1</AxisVector>",
+        "      <StepEntityId>#108</StepEntityId>",
+        "      <ProbingPoints>8</ProbingPoints>",
+        "    </CylinderFeatureNominal>",
+        "  </FeatureNominals>",
+        "  <CharacteristicNominals>",
+        '    <PositionCharacteristicNominal id="CHAR_POS_BORE" balloonNumber="1">',
+        "      <Name>CoolingBore_TruePosition</Name>",
+        "      <ToleranceValue>0.050</ToleranceValue>",
+        "      <DiametricalZone>true</DiametricalZone>",
+        "      <MaterialCondition>MMC</MaterialCondition>",
+        "      <DatumReferenceFrame>",
+        '        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>',
+        '        <DatumReference precedence="2"><DatumLabel>B</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>',
+        "      </DatumReferenceFrame>",
+        "      <FeatureNominalIds><Id>F_BORE</Id></FeatureNominalIds>",
+        "      <MeasurementDeviceId>CMM_01</MeasurementDeviceId>",
+        "    </PositionCharacteristicNominal>",
+        "  </CharacteristicNominals>",
+        "  <MeasurementResources>",
+        '    <MeasurementDevice id="CMM_01" deviceType="CMM">',
+        "      <Name>Hexagon_Global_S</Name>",
+        "      <CalibrationUncertainty>0.0018</CalibrationUncertainty>",
+        "    </MeasurementDevice>",
+        "  </MeasurementResources>",
+        "  <Results>",
+        '    <GeometricCharacteristicActual id="ACT_01" characteristicNominalId="CHAR_POS_BORE" partSerialNumber="SN-001">',
+        "      <MeasuredValue>0.036</MeasuredValue>",
+        "      <ActualFeatureSize>12.012</ActualFeatureSize>",
+        "      <Status>PASS</Status>",
+        "    </GeometricCharacteristicActual>",
+        "  </Results>",
+        "</QIFDocument>",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 46. NIST OSCAL 1.1 (.oscal.json)
+  {
+    id: "oscal-smart-factory",
+    languageId: "oscal",
+    title: "Smart Manufacturing Workcell OT System Security Plan (SSP)",
+    summary:
+      "NIST OSCAL 1.1.2 System Security Plan enforcing NIST SP 800-82 Rev 3 OT/ICS & SP 800-53 Rev 5 controls (sc-7, ac-3, si-7, pe-3) with POA&M tracking.",
+    badge: "OSC",
+    tone: "indigo",
+    ext: ".oscal.json",
+    primaryFile: "smart_factory_ssp.oscal.json",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "smart_factory_ssp.oscal.json": JSON.stringify(
+        {
+          "system-security-plan": {
+            uuid: "770e8400-e29b-41d4-a716-446655440000",
+            metadata: {
+              title: "Smart Manufacturing Workcell OT SSP",
+              version: "1.0.0",
+              "oscal-version": "1.1.2",
+            },
+            "import-profile": {
+              href: "builtin://nist-sp-800-82-r3-ot",
+            },
+            "system-characteristics": {
+              "system-name": "SmartFactoryWorkcell_OT",
+              "security-sensitivity-level": "high",
+            },
+            "system-implementation": {
+              components: [
+                {
+                  uuid: "11111111-e29b-41d4-a716-446655440001",
+                  title: "SafetyCellControllerPLC",
+                  type: "plc",
+                  status: "operational",
+                },
+                {
+                  uuid: "22222222-e29b-41d4-a716-446655440002",
+                  title: "IndustrialDmzFirewall",
+                  type: "interconnection",
+                  status: "operational",
+                },
+              ],
+            },
+            "control-implementation": {
+              "implemented-requirements": [
+                {
+                  uuid: "55555555-e29b-41d4-a716-446655440011",
+                  "control-id": "sc-7",
+                  "by-components": [
+                    {
+                      uuid: "66666666-e29b-41d4-a716-446655440101",
+                      "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+                      description: "Enforces Purdue Level 3.5 DMZ conduit segmentation.",
+                    },
+                  ],
+                },
+                {
+                  uuid: "55555555-e29b-41d4-a716-446655440012",
+                  "control-id": "ac-3",
+                  "by-components": [
+                    {
+                      uuid: "66666666-e29b-41d4-a716-446655440102",
+                      "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+                      description: "Enforces X.509 mTLS and hardware RUN keyswitch.",
+                    },
+                  ],
+                },
+                {
+                  uuid: "55555555-e29b-41d4-a716-446655440013",
+                  "control-id": "si-7",
+                  "by-components": [
+                    {
+                      uuid: "66666666-e29b-41d4-a716-446655440103",
+                      "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+                      description: "Verifies signed PLCopen firmware digest at boot.",
+                    },
+                  ],
+                },
+                {
+                  uuid: "55555555-e29b-41d4-a716-446655440014",
+                  "control-id": "pe-3",
+                  "by-components": [
+                    {
+                      uuid: "66666666-e29b-41d4-a716-446655440104",
+                      "component-uuid": "11111111-e29b-41d4-a716-446655440001",
+                      description: "Interlocks physical safety cage and SIL-3 light curtains.",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    },
+  },
+
+  // 47. IEC 62714 AutomationML (.aml)
+  {
+    id: "aml-battery-workcell",
+    languageId: "automationml",
+    title: "800V EV Battery Module Laser-Weld Workcell (CAEX 3.0)",
+    summary:
+      "IEC 62714 AutomationML CAEX 3.0 hierarchy with PPR roles, 6-DOF spatial frames, PLCopen safety interlocks, and virtual commissioning.",
+    badge: "AML",
+    tone: "teal",
+    ext: ".aml",
+    primaryFile: "battery_laser_workcell.aml",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "battery_laser_workcell.aml": [
+        '<?xml version="1.0" encoding="utf-8"?>',
+        '<CAEXFile FileName="battery_laser_workcell.aml" SchemaVersion="3.0">',
+        '  <InstanceHierarchy Name="EVBatteryLaserWeldWorkcell">',
+        '    <InternalElement Name="BusbarWeldRobot_6DOF" ID="rob-01" PPRCategory="Resource">',
+        '      <Attribute Name="Frame">',
+        '        <Attribute Name="x"><Value>1.20</Value></Attribute>',
+        '        <Attribute Name="y"><Value>0.85</Value></Attribute>',
+        '        <Attribute Name="z"><Value>0.00</Value></Attribute>',
+        '        <Attribute Name="rx"><Value>0.0</Value></Attribute>',
+        '        <Attribute Name="ry"><Value>0.0</Value></Attribute>',
+        '        <Attribute Name="rz"><Value>45.0</Value></Attribute>',
+        "      </Attribute>",
+        '      <ExternalInterface Name="motionEnableIn" ID="rob-en" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />',
+        "    </InternalElement>",
+        '    <InternalElement Name="SafetyCellControllerPLC" ID="plc-01" PPRCategory="Resource">',
+        '      <ExternalInterface Name="robotEnableCmd" ID="plc-en" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />',
+        '      <InternalLink Name="Link_PLC_RobotEnable" RefPartnerSideA="plc-01:robotEnableCmd" RefPartnerSideB="rob-01:motionEnableIn" />',
+        "    </InternalElement>",
+        "  </InstanceHierarchy>",
+        "</CAEXFile>",
+        "",
+      ].join("\n"),
+    },
+  },
 ];
 
 // ── Lookup Maps & Empty Workspace Definition ───────────────────────────────
@@ -3428,6 +3715,11 @@ export const POLYGLOT_VIEW_TYPE_EXTENSIONS: Record<string, string> = {
   dss: ".dss",
   gcode: ".gcode",
   "cam-result": ".gcode",
+  qif: ".qif",
+  oscal: ".oscal.json",
+  automationml: ".aml",
+  aml: ".aml",
+  caex: ".caex",
   "aas-package": ".json",
   "cyber-physical-system": ".json",
   "hardware-project": ".json",
@@ -3435,6 +3727,10 @@ export const POLYGLOT_VIEW_TYPE_EXTENSIONS: Record<string, string> = {
 
 export function inferExtensionForArtifact(viewType?: string, dialect?: string, filename?: string): string {
   if (filename) {
+    const lower = filename.toLowerCase();
+    if (lower.endsWith(".oscal.json")) return ".oscal.json";
+    if (lower.endsWith(".oscal.yaml")) return ".oscal.yaml";
+    if (lower.endsWith(".oscal.xml")) return ".oscal.xml";
     const dot = filename.lastIndexOf(".");
     if (dot !== -1) return filename.slice(dot);
   }
@@ -3453,7 +3749,7 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
   const viewType = (descriptor.viewType || "").toLowerCase();
   const config = descriptor.viewConfig || {};
 
-  // 1. Multi-file workspace payload (e.g. from morsel / notebook / composite artifacts)
+  // 1. Multi-file workspace payload (e.g. from package, morsel, notebook, or composite artifacts)
   const customFiles =
     descriptor.files && typeof descriptor.files === "object" && Object.keys(descriptor.files).length > 0
       ? descriptor.files
@@ -3464,34 +3760,64 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
         ? (config["files"] as Record<string, string>)
         : undefined;
 
-  if (customFiles) {
-    const files: Record<string, string> = { ...customFiles };
+  if (customFiles || (descriptor.remoteFiles && descriptor.remoteFiles.length > 0)) {
+    const files: Record<string, string> = customFiles ? { ...customFiles } : {};
     let primaryFile =
       descriptor.primaryFile ||
       (typeof config["primaryFile"] === "string" ? config["primaryFile"] : "") ||
       (typeof config["filename"] === "string" ? config["filename"] : "") ||
       (typeof config["fileName"] === "string" ? config["fileName"] : "");
 
-    if (!primaryFile || !files[primaryFile]) {
+    if (!primaryFile || (!files[primaryFile] && !descriptor.remoteFiles?.some((r) => r.path === primaryFile))) {
       const nonReadme = Object.keys(files).find((f) => !f.toLowerCase().startsWith("readme") && f !== "package.json");
-      primaryFile = nonReadme || Object.keys(files)[0]!;
+      const remoteNonReadme = descriptor.remoteFiles?.find(
+        (r) => !r.path.toLowerCase().startsWith("readme") && r.path !== "package.json",
+      )?.path;
+      primaryFile =
+        nonReadme || remoteNonReadme || Object.keys(files)[0] || descriptor.remoteFiles?.[0]?.path || "package.mo";
     }
 
-    if (!files["README.md"]) {
-      files["README.md"] = [
-        `# ${descriptor.title || primaryFile}`,
-        ``,
-        `Mounted from ModelScript Artifact #${descriptor.artifactId}.`,
-        ``,
-        `- **Artifact ID**: #${descriptor.artifactId}`,
-        `- **Entrypoint**: \`${primaryFile}\``,
-        `- **Files**: ${Object.keys(files)
-          .filter((k) => k !== "README.md")
-          .map((k) => `\`${k}\``)
-          .join(", ")}`,
-      ].join("\n");
+    return { files, primaryFile };
+  }
+
+  // 1b. Package / Library artifact (when files have not yet been fetched from /api/v1/libraries/:name/:version/files)
+  if (viewType === "package" || viewType === "library") {
+    const rawTitle = (descriptor.title || "").trim();
+    const pkgName =
+      (typeof config["name"] === "string" && config["name"].trim()) ||
+      (typeof config["packageName"] === "string" && config["packageName"].trim()) ||
+      (rawTitle.includes("@") ? rawTitle.split("@")[0]!.trim() : rawTitle) ||
+      "Package";
+    const pkgVersion =
+      (typeof config["version"] === "string" && config["version"].trim()) ||
+      (typeof config["packageVersion"] === "string" && config["packageVersion"].trim()) ||
+      (rawTitle.includes("@") ? rawTitle.split("@")[1]!.trim() : "1.0.0");
+
+    const registeredPkg = packageRegistry.get(pkgName);
+    if (
+      registeredPkg &&
+      ((registeredPkg.files && Object.keys(registeredPkg.files).length > 0) ||
+        (registeredPkg.remoteFiles && registeredPkg.remoteFiles.length > 0))
+    ) {
+      const files = registeredPkg.files ? { ...registeredPkg.files } : {};
+      const primaryFile =
+        registeredPkg.primaryFile || Object.keys(files)[0] || registeredPkg.remoteFiles?.[0]?.path || "package.mo";
+      return { files, primaryFile };
     }
 
+    const safePkgName = sanitizeModelicaIdentifier(pkgName, "Package");
+    const descStr =
+      (typeof config["description"] === "string" && config["description"]) || rawTitle || `${pkgName}@${pkgVersion}`;
+    const primaryFile = "package.mo";
+    const files: Record<string, string> = {
+      [primaryFile]: [
+        `within ;`,
+        `package ${safePkgName} "${descStr.replace(/"/g, "'")}"`,
+        `  annotation(version = "${pkgVersion}");`,
+        `end ${safePkgName};`,
+        ``,
+      ].join("\n"),
+    };
     return { files, primaryFile };
   }
 
@@ -3558,15 +3884,6 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
     const files: Record<string, string> = {
       [primaryFile]: code,
       "simulate.mos": simScript,
-      "README.md": [
-        `# Simulation: ${descriptor.title || modelName}`,
-        ``,
-        `Mounted from ModelScript Simulation Artifact #${descriptor.artifactId}.`,
-        ``,
-        `- **Model**: \`${modelName}\``,
-        `- **Variables**: ${variables.map((v) => `\`${v}\``).join(", ")}`,
-        `- **Script**: \`simulate.mos\``,
-      ].join("\n"),
     };
 
     if (config["csvData"] || config["data"] || config["results"]) {
@@ -3607,31 +3924,10 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
     const stepFileName =
       explicitFilename.endsWith(".step") || explicitFilename.endsWith(".stp") ? explicitFilename : "geometry.step";
 
-    const modelName = sanitizeModelicaIdentifier(descriptor.title, `CADAssembly_${descriptor.artifactId}`);
-    const primaryFile = `${modelName}.mo`;
+    const primaryFile = stepFileName;
     const files: Record<string, string> = {
-      [primaryFile]: [
-        `// ModelScript 3D CAD Assembly bound to STEP geometry`,
-        `model ${modelName} "${descriptor.title || "CAD Model"}"`,
-        `  // Bound to local STEP geometry file`,
-        `  annotation(Shape(export = "${stepFileName}"));`,
-        `equation`,
-        `end ${modelName};`,
-        ``,
-      ].join("\n"),
       [stepFileName]: stepContent,
-      "README.md": [
-        `# 3D CAD: ${descriptor.title || modelName}`,
-        ``,
-        `Mounted from ModelScript CAD Artifact #${descriptor.artifactId}.`,
-        ``,
-        `- **Geometry Asset**: \`${stepFileName}\``,
-        `- **Modelica Wrapper**: \`${primaryFile}\``,
-      ].join("\n"),
     };
-    if (stepFileName !== "geometry.step") {
-      files["geometry.step"] = stepContent;
-    }
 
     return { files, primaryFile };
   }
@@ -3659,23 +3955,12 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
         `M84 ; disable motors`,
       ].join("\n");
 
-    const modelName = sanitizeModelicaIdentifier(descriptor.title, `Manufacturing_${descriptor.artifactId}`);
-    const primaryFile = "toolpath.gcode";
+    const explicitFilename =
+      (typeof config["filename"] === "string" ? config["filename"] : "") ||
+      (typeof config["fileName"] === "string" ? config["fileName"] : "");
+    const primaryFile = explicitFilename || "toolpath.gcode";
     const files: Record<string, string> = {
       [primaryFile]: gcodeContent,
-      [`${modelName}.mo`]: [
-        `// ModelScript CNC / CAM Manufacturing Process`,
-        `model ${modelName} "${descriptor.title || "Toolpath Process"}"`,
-        `  parameter String toolpath_file = "toolpath.gcode";`,
-        `end ${modelName};`,
-        ``,
-      ].join("\n"),
-      "README.md": [
-        `# CAM Toolpath: ${descriptor.title || modelName}`,
-        ``,
-        `- **G-Code File**: \`toolpath.gcode\``,
-        `- **Process Model**: \`${modelName}.mo\``,
-      ].join("\n"),
     };
 
     return { files, primaryFile };
@@ -3699,28 +3984,50 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
         ],
       };
 
-    const modelName = sanitizeModelicaIdentifier(descriptor.title, `AAS_${descriptor.artifactId}`);
     const primaryFile = "aas-manifest.json";
-    const idShortStr = typeof manifest["idShort"] === "string" && manifest["idShort"] ? manifest["idShort"] : modelName;
     const files: Record<string, string> = {
       [primaryFile]: JSON.stringify(manifest, null, 2),
-      [`${modelName}.mo`]: [
-        `// ModelScript Asset Administration Shell (AAS) Digital Twin`,
-        `model ${modelName} "${descriptor.title || "AAS Digital Twin"}"`,
-        `  parameter String manifest_path = "aas-manifest.json";`,
-        `  parameter String idShort = "${idShortStr}";`,
-        `end ${modelName};`,
-        ``,
-      ].join("\n"),
-      "README.md": [
-        `# AAS Digital Twin: ${descriptor.title || modelName}`,
-        ``,
-        `- **Manifest**: \`aas-manifest.json\``,
-        `- **Digital Twin Wrapper**: \`${modelName}.mo\``,
-      ].join("\n"),
     };
 
     return { files, primaryFile };
+  }
+
+  // 5b. Tabular CSV / Dataset (when headers/rows are present in viewConfig)
+  if (
+    (viewType === "csv" || viewType === "tsv" || viewType === "dataset" || viewType === "dataset-table") &&
+    (Array.isArray(config["headers"]) || Array.isArray(config["rows"]) || typeof config["csv"] === "string")
+  ) {
+    const explicitName =
+      (typeof config["filename"] === "string" && config["filename"]) ||
+      (typeof config["fileName"] === "string" && config["fileName"]) ||
+      "";
+    const baseName = sanitizeModelicaIdentifier(descriptor.title, `Dataset_${descriptor.artifactId}`);
+    const primaryFile = explicitName || `${baseName}.csv`;
+    let csvText = typeof config["csv"] === "string" ? config["csv"] : "";
+    if (!csvText) {
+      const lines: string[] = [];
+      if (Array.isArray(config["headers"]) && config["headers"].length > 0) {
+        lines.push(config["headers"].map((h) => String(h ?? "")).join(","));
+      }
+      if (Array.isArray(config["rows"])) {
+        for (const row of config["rows"]) {
+          if (Array.isArray(row)) {
+            lines.push(row.map((cell) => String(cell ?? "")).join(","));
+          } else if (row && typeof row === "object") {
+            lines.push(
+              Object.values(row as Record<string, unknown>)
+                .map((cell) => String(cell ?? ""))
+                .join(","),
+            );
+          }
+        }
+      }
+      csvText = lines.join("\n") + "\n";
+    }
+    return {
+      files: { [primaryFile]: csvText },
+      primaryFile,
+    };
   }
 
   // 6. Explicit filename & code provided (e.g. from post artifact seed or single-file upload)
@@ -3734,7 +4041,10 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
     (typeof config["code"] === "string" ? config["code"] : "") ||
     (typeof config["content"] === "string" ? config["content"] : "") ||
     (typeof config["source"] === "string" ? config["source"] : "") ||
-    (typeof config["modelicaCode"] === "string" ? config["modelicaCode"] : "");
+    (typeof config["modelicaCode"] === "string" ? config["modelicaCode"] : "") ||
+    (typeof config["xml"] === "string" ? config["xml"] : "") ||
+    (typeof config["svg"] === "string" ? config["svg"] : "") ||
+    (typeof config["text"] === "string" ? config["text"] : "");
 
   const dialect =
     (typeof config["dialect"] === "string" ? config["dialect"] : "") ||
@@ -3747,32 +4057,7 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
       rawCode || `// ModelScript Workspace for Artifact #${descriptor.artifactId}\n// File: ${primaryFile}\n`;
     const files: Record<string, string> = {
       [primaryFile]: code,
-      "README.md": [
-        `# ${descriptor.title || primaryFile}`,
-        ``,
-        `Mounted from ModelScript Artifact #${descriptor.artifactId}.`,
-        ``,
-        `- **Artifact ID**: #${descriptor.artifactId}`,
-        `- **Dialect / Language**: \`${dialect || "modelscript"}\``,
-        `- **Primary File**: \`${primaryFile}\``,
-      ].join("\n"),
     };
-
-    if (primaryFile.endsWith(".step") || primaryFile.endsWith(".stp")) {
-      const modelName = sanitizeModelicaIdentifier(descriptor.title, `CADAssembly_${descriptor.artifactId}`);
-      files[`${modelName}.mo`] = [
-        `// ModelScript 3D CAD Assembly bound to STEP geometry`,
-        `model ${modelName} "${descriptor.title || "CAD Model"}"`,
-        `  // Bound to local STEP geometry file`,
-        `  annotation(Shape(export = "${primaryFile}"));`,
-        `equation`,
-        `end ${modelName};`,
-        ``,
-      ].join("\n");
-      if (primaryFile !== "geometry.step") {
-        files["geometry.step"] = code;
-      }
-    }
 
     return { files, primaryFile };
   }
@@ -3797,15 +4082,6 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
     const primaryFile = `${modelName}${ext}`;
     const files: Record<string, string> = {
       [primaryFile]: rawCode,
-      "README.md": [
-        `# ${descriptor.title || modelName}`,
-        ``,
-        `Mounted from ModelScript Hub Community Feed & Physical Twin Workspace.`,
-        ``,
-        `- **Artifact ID**: #${descriptor.artifactId}`,
-        `- **View Type**: \`${viewType || dialect || "code"}\``,
-        `- **Primary File**: \`${primaryFile}\``,
-      ].join("\n"),
     };
     return { files, primaryFile };
   }
@@ -3854,13 +4130,6 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
 
   const files: Record<string, string> = {
     [primaryFile]: content,
-    "README.md": [
-      `# Artifact #${descriptor.artifactId}: ${descriptor.title || "Community Model"}`,
-      ``,
-      `Mounted in ModelScript IDE linear in-memory filesystem (\`memfs://\`).`,
-      ``,
-      `- **Entrypoint**: \`${primaryFile}\``,
-    ].join("\n"),
   };
 
   return { files, primaryFile };
@@ -3870,44 +4139,32 @@ export function generatePackageWorkspaceFiles(
   packageName: string,
   pkgInfo?: Record<string, unknown>,
 ): GeneratedWorkspace {
-  const safeName = sanitizeModelicaIdentifier(packageName, "PackageDemo");
-  const primaryFile = `${safeName}Demo.mo`;
-  const manifest = {
-    name: packageName,
-    version: typeof pkgInfo?.["version"] === "string" && pkgInfo["version"] ? pkgInfo["version"] : "1.0.0",
-    description:
-      typeof pkgInfo?.["description"] === "string" && pkgInfo["description"]
-        ? pkgInfo["description"]
-        : `ModelScript workspace for package ${packageName}`,
-    dependencies: pkgInfo?.["dependencies"] || {},
-  };
+  const registeredPkg = packageRegistry.get(packageName);
+  if (
+    registeredPkg &&
+    ((registeredPkg.files && Object.keys(registeredPkg.files).length > 0) ||
+      (registeredPkg.remoteFiles && registeredPkg.remoteFiles.length > 0))
+  ) {
+    const files = registeredPkg.files ? { ...registeredPkg.files } : {};
+    const primaryFile =
+      registeredPkg.primaryFile || Object.keys(files)[0] || registeredPkg.remoteFiles?.[0]?.path || "package.mo";
+    return { files, primaryFile };
+  }
 
+  const safeName = sanitizeModelicaIdentifier(packageName, "Package");
+  const version = typeof pkgInfo?.["version"] === "string" && pkgInfo["version"] ? pkgInfo["version"] : "1.0.0";
+  const description =
+    typeof pkgInfo?.["description"] === "string" && pkgInfo["description"]
+      ? pkgInfo["description"]
+      : `Library package for ${packageName}`;
+  const primaryFile = "package.mo";
   const files: Record<string, string> = {
-    "package.json": JSON.stringify(manifest, null, 2),
-    "package.mo": [
-      `package ${safeName}`,
-      `  "Library package for ${packageName}"`,
-      `  constant String version = "${manifest.version}";`,
+    [primaryFile]: [
+      `within ;`,
+      `package ${safeName} "${description.replace(/"/g, "'")}"`,
+      `  annotation(version = "${version}");`,
       `end ${safeName};`,
       ``,
-    ].join("\n"),
-    [primaryFile]: [
-      `// Test harness and simulation demo for ${packageName}`,
-      `model ${safeName}Demo "Testing ${packageName}"`,
-      `  // import ${safeName}.*;`,
-      `  Real time_val = time;`,
-      `equation`,
-      `end ${safeName}Demo;`,
-      ``,
-    ].join("\n"),
-    "README.md": [
-      `# ${packageName}`,
-      ``,
-      `ModelScript package workspace for \`${packageName}\`.`,
-      ``,
-      `- **Entrypoint**: \`${primaryFile}\``,
-      `- **Package Root**: \`package.mo\``,
-      `- **Registry Metadata**: \`package.json\``,
     ].join("\n"),
   };
 
@@ -3922,21 +4179,46 @@ export function mountArtifactToMemFs(
   registerArtifactDescriptor(descriptor);
   const encoder = new TextEncoder();
   const { files, primaryFile } = generateArtifactWorkspaceFiles(descriptor);
-  for (const [name, fileContent] of Object.entries(files)) {
-    const fileUri = joinPath(workspaceUri, name);
-    memFs.writeFile(fileUri, encoder.encode(fileContent));
-  }
-  // If a dummy ArtifactModel.mo was previously scaffolded and is not part of this artifact, clean it up!
-  if (primaryFile !== "ArtifactModel.mo" && !files["ArtifactModel.mo"]) {
-    try {
-      const dummyUri = joinPath(workspaceUri, "ArtifactModel.mo");
-      if (typeof memFs.delete === "function") {
-        memFs.delete(dummyUri);
+  descriptor.primaryFile = primaryFile;
+  registerArtifactDescriptor(descriptor);
+
+  // Clean up any previously scaffolded placeholder files in this workspace
+  if (typeof memFs.clearDirectory === "function") {
+    memFs.clearDirectory(workspaceUri);
+  } else if (typeof memFs.delete === "function") {
+    for (const staleName of [
+      "ArtifactModel.mo",
+      `ArtifactModel_${descriptor.artifactId}.mo`,
+      "README.md",
+      "HelloWorld.mo",
+    ]) {
+      if (!files[staleName]) {
+        try {
+          memFs.delete(joinPath(workspaceUri, staleName));
+        } catch {
+          // ignore
+        }
       }
-    } catch {
-      // ignore
     }
   }
+
+  const entries: [vscode.Uri, Uint8Array][] = [];
+  for (const [name, fileContent] of Object.entries(files)) {
+    const fileUri = joinPath(workspaceUri, name);
+    entries.push([fileUri, encoder.encode(fileContent)]);
+  }
+  if (typeof memFs.writeFiles === "function" && entries.length > 0) {
+    memFs.writeFiles(entries);
+  } else {
+    for (const [fileUri, bytes] of entries) {
+      memFs.writeFile(fileUri, bytes);
+    }
+  }
+
+  if (descriptor.remoteFiles && descriptor.remoteFiles.length > 0 && typeof memFs.registerRemoteFiles === "function") {
+    memFs.registerRemoteFiles(workspaceUri, descriptor.remoteFiles);
+  }
+
   return { files, primaryFile };
 }
 
@@ -3980,17 +4262,18 @@ export function scaffoldTemplateFiles(memFs: IMemoryFileSystemProvider, workspac
       registerArtifactDescriptor(registered);
     }
     const descriptor: ArtifactWorkspaceDescriptor = registered || { artifactId };
-    const { files } = generateArtifactWorkspaceFiles(descriptor);
-    for (const [name, fileContent] of Object.entries(files)) {
-      const fileUri = joinPath(workspaceUri, name);
-      memFs.writeFile(fileUri, encoder.encode(fileContent));
-    }
-    console.log(`[blank-project] Scaffolded ${Object.keys(files).length} artifact file(s) for #${artifactId}`);
+    mountArtifactToMemFs(memFs, workspaceUri, descriptor);
+    console.log(`[blank-project] Scaffolded artifact file(s) for #${artifactId}`);
     return;
   }
 
   if (template.startsWith("package-")) {
-    const pkgName = template.slice("package-".length);
+    const pkgName = decodeURIComponent(template.slice("package-".length));
+    const registeredPkg = packageRegistry.get(pkgName);
+    if (registeredPkg) {
+      mountArtifactToMemFs(memFs, workspaceUri, registeredPkg);
+      return;
+    }
     const { files } = generatePackageWorkspaceFiles(pkgName);
     for (const [name, fileContent] of Object.entries(files)) {
       const fileUri = joinPath(workspaceUri, name);
@@ -4090,7 +4373,7 @@ export function getTemplatePrimaryFile(rawTemplate: string): string {
   }
 
   if (template.startsWith("package-")) {
-    const pkgName = template.slice("package-".length);
+    const pkgName = decodeURIComponent(template.slice("package-".length));
     const { primaryFile } = generatePackageWorkspaceFiles(pkgName);
     return primaryFile;
   }

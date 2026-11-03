@@ -21,6 +21,8 @@ interface StepViewerProps {
   onSelect?: (id: number | null) => void;
   dark?: boolean;
   isLoading?: boolean;
+  onGenerateFeaStudy?: () => void;
+  onGenerateCfdStudy?: () => void;
 }
 
 class ErrorBoundary extends Component<
@@ -212,7 +214,15 @@ function SceneContents({
   );
 }
 
-export default function StepViewer({ meshes, selectedId, onSelect, dark = false, isLoading = false }: StepViewerProps) {
+export default function StepViewer({
+  meshes,
+  selectedId,
+  onSelect,
+  dark = false,
+  isLoading = false,
+  onGenerateFeaStudy,
+  onGenerateCfdStudy,
+}: StepViewerProps) {
   const [explosionFactor, setExplosionFactor] = useState(0);
 
   if (!meshes || meshes.length === 0) {
@@ -261,6 +271,62 @@ export default function StepViewer({ meshes, selectedId, onSelect, dark = false,
 
   return (
     <div style={{ height: "100%", position: "relative" }}>
+      {(onGenerateFeaStudy || onGenerateCfdStudy) && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            zIndex: 100,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            fontFamily: "system-ui, sans-serif",
+          }}
+        >
+          {onGenerateFeaStudy && (
+            <button
+              type="button"
+              onClick={onGenerateFeaStudy}
+              title="Generate a tetrahedral FEA study (.inp) from this exact CAD geometry for boundary condition and stress probe setup"
+              style={{
+                background: "#007acc",
+                color: "#fff",
+                border: "none",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+              }}
+            >
+              Generate FEA Study (.inp)
+            </button>
+          )}
+          {onGenerateCfdStudy && (
+            <button
+              type="button"
+              onClick={onGenerateCfdStudy}
+              title="Generate an SU2 CFD study (.cfg) from this exact CAD geometry"
+              style={{
+                background: dark ? "rgba(30, 41, 59, 0.9)" : "rgba(255, 255, 255, 0.9)",
+                color: dark ? "#e2e8f0" : "#1e293b",
+                border: dark ? "1px solid #475569" : "1px solid #cbd5e1",
+                padding: "6px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                backdropFilter: "blur(4px)",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+              }}
+            >
+              Generate CFD Study (.cfg)
+            </button>
+          )}
+        </div>
+      )}
       {isLoading && (
         <div
           style={{

@@ -448,6 +448,14 @@ html {
   scrollbar-gutter: stable;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 html,
 body {
   margin: 0;
@@ -457,14 +465,24 @@ body {
   font-family: var(--ms-font-sans);
   font-size: var(--text-md);
   line-height: var(--leading-md);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   font-synthesis: none;
-  transition:
-    background-color 0.3s ease,
-    color 0.3s ease;
   min-height: 100vh;
+}
+
+/* Smooth theme transition ONLY during interactive user theme toggle (never on initial page load) */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease !important;
 }
 
 button,
@@ -499,6 +517,22 @@ body {
     48px 48px;
   background-repeat: no-repeat, no-repeat, no-repeat, repeat, repeat;
   background-attachment: fixed;
+}
+
+/* Avoid costly scroll repaints on mobile WebKit/Blink caused by background-attachment: fixed,
+   and prevent iOS Safari automatic viewport zoom when focusing inputs with font-size < 16px. */
+@media (max-width: 768px), (pointer: coarse) {
+  body {
+    background-attachment: scroll;
+  }
+}
+
+@media (max-width: 768px) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
 }
 
 @keyframes shimmer {

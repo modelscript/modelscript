@@ -16,6 +16,7 @@ import { Button, SegmentedControl, Spinner } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -105,13 +106,13 @@ const PillBadge = styled.span<{ $variant?: "sima" | "dnv" | "warn" | "meta" }>`
       case "dnv":
         return `
           background: rgba(16, 185, 129, 0.15);
-          color: #34d399;
+          color: #10b981;
           border: 1px solid rgba(16, 185, 129, 0.35);
         `;
       case "warn":
         return `
           background: rgba(245, 158, 11, 0.15);
-          color: #fbbf24;
+          color: #d97706;
           border: 1px solid rgba(245, 158, 11, 0.35);
         `;
       case "meta":
@@ -123,7 +124,7 @@ const PillBadge = styled.span<{ $variant?: "sima" | "dnv" | "warn" | "meta" }>`
       default:
         return `
           background: rgba(6, 182, 212, 0.15);
-          color: #38bdf8;
+          color: #0284c7;
           border: 1px solid rgba(6, 182, 212, 0.35);
         `;
     }
@@ -136,7 +137,7 @@ const ContentArea = styled.div`
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  background: #070b14;
+  background: var(--color-canvas-default, #070b14);
 `;
 
 const FloatingControlBar = styled.div`
@@ -147,8 +148,8 @@ const FloatingControlBar = styled.div`
   align-items: center;
   gap: 6px;
   z-index: 5;
-  background: rgba(15, 23, 42, 0.88);
-  border: 1px solid rgba(51, 65, 85, 0.85);
+  background: var(--surface-hud, var(--color-canvas-subtle, rgba(15, 23, 42, 0.88)));
+  border: 1px solid var(--color-border-default, rgba(51, 65, 85, 0.85));
   border-radius: 6px;
   padding: 4px 8px;
   backdrop-filter: blur(8px);
@@ -159,7 +160,7 @@ const FloatingInspectorChip = styled.div`
   bottom: 10px;
   right: 12px;
   max-width: 340px;
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--surface-hud, var(--color-canvas-subtle, rgba(15, 23, 42, 0.92)));
   border: 1px solid rgba(56, 189, 248, 0.35);
   border-radius: 6px;
   padding: 8px 11px;
@@ -169,13 +170,13 @@ const FloatingInspectorChip = styled.div`
   gap: 4px;
   backdrop-filter: blur(8px);
   font-size: 11px;
-  color: #e2e8f0;
+  color: var(--color-fg-default, #e2e8f0);
 `;
 
 const SelectDropdown = styled.select`
-  background: #0f172a;
-  color: #f8fafc;
-  border: 1px solid #334155;
+  background: var(--color-canvas-default, #0f172a);
+  color: var(--color-fg-default, #f8fafc);
+  border: 1px solid var(--color-border-default, #334155);
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 11px;
@@ -189,9 +190,9 @@ const SelectDropdown = styled.select`
 `;
 
 const AlsToggleButton = styled.button<{ $active: boolean }>`
-  background: ${(p) => (p.$active ? "rgba(239, 68, 68, 0.22)" : "rgba(30, 41, 59, 0.8)")};
-  color: ${(p) => (p.$active ? "#fca5a5" : "#94a3b8")};
-  border: 1px solid ${(p) => (p.$active ? "rgba(239, 68, 68, 0.55)" : "#334155")};
+  background: ${(p) => (p.$active ? "rgba(239, 68, 68, 0.22)" : "var(--color-canvas-default, rgba(30, 41, 59, 0.8))")};
+  color: ${(p) => (p.$active ? "#ef4444" : "var(--color-fg-muted, #94a3b8)")};
+  border: 1px solid ${(p) => (p.$active ? "rgba(239, 68, 68, 0.55)" : "var(--color-border-default, #334155)")};
   border-radius: 4px;
   padding: 2px 7px;
   font-size: 10.5px;
@@ -203,8 +204,8 @@ const AlsToggleButton = styled.button<{ $active: boolean }>`
   transition: all 0.15s ease;
 
   &:hover {
-    color: ${(p) => (p.$active ? "#fecaca" : "#f8fafc")};
-    border-color: ${(p) => (p.$active ? "#ef4444" : "#475569")};
+    color: ${(p) => (p.$active ? "#ef4444" : "var(--color-fg-default, #f8fafc)")};
+    border-color: ${(p) => (p.$active ? "#ef4444" : "var(--color-fg-muted, #475569)")};
   }
 `;
 
@@ -212,8 +213,8 @@ const MatrixWrapper = styled.div`
   flex: 1;
   overflow: auto;
   padding: 12px 14px;
-  background: #070b14;
-  color: #e2e8f0;
+  background: var(--color-canvas-default, #070b14);
+  color: var(--color-fg-default, #e2e8f0);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -226,8 +227,8 @@ const SummaryStrip = styled.div`
 `;
 
 const SummaryMetric = styled.div`
-  background: #0f172a;
-  border: 1px solid #1e293b;
+  background: var(--color-canvas-subtle, #0f172a);
+  border: 1px solid var(--color-border-default, #1e293b);
   border-radius: 6px;
   padding: 8px 10px;
   display: flex;
@@ -238,7 +239,7 @@ const SummaryMetric = styled.div`
     font-size: 9.5px;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: #94a3b8;
+    color: var(--color-fg-muted, #94a3b8);
     font-weight: 600;
   }
 
@@ -246,7 +247,7 @@ const SummaryMetric = styled.div`
     font-size: 14px;
     font-weight: 700;
     font-family: var(--font-mono, monospace);
-    color: #f8fafc;
+    color: var(--color-fg-default, #f8fafc);
   }
 `;
 
@@ -259,7 +260,7 @@ const DnvTable = styled.table`
   td {
     padding: 6px 8px;
     text-align: left;
-    border-bottom: 1px solid #1e293b;
+    border-bottom: 1px solid var(--color-border-default, #1e293b);
     white-space: nowrap;
   }
 
@@ -267,8 +268,8 @@ const DnvTable = styled.table`
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: #94a3b8;
-    background: #0f172a;
+    color: var(--color-fg-muted, #94a3b8);
+    background: var(--color-canvas-subtle, #0f172a);
     position: sticky;
     top: 0;
     z-index: 2;
@@ -291,7 +292,7 @@ const DnvTable = styled.table`
 const UtilBarTrack = styled.div`
   width: 58px;
   height: 6px;
-  background: #1e293b;
+  background: var(--color-border-default, #1e293b);
   border-radius: 999px;
   overflow: hidden;
   display: inline-block;
@@ -308,6 +309,8 @@ const UtilBarFill = styled.div<{ $pct: number; $ok: boolean }>`
 
 export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const initialSource = (viewConfig.code || (viewConfig.source as string | undefined) || "") as string;
@@ -375,7 +378,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
     const { model, dnvReport, offsetReport } = analysis;
     if (!model || model.lines.length === 0) {
       if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-        return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+        return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
       }
       return "";
     }
@@ -431,8 +434,8 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
       }),
     });
 
-    return sanitizeSvgMarkup(rawSvg, { isFullScreen });
-  }, [analysis, viewConfig.svg, title, selectedLine, alsBrokenMode, clampedLineIdx, isFullScreen]);
+    return sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark });
+  }, [analysis, viewConfig.svg, title, selectedLine, alsBrokenMode, clampedLineIdx, isFullScreen, isDark]);
 
   // Dynamically generate the 2D Catenary Sag Profile SVG for the currently selected mooring line
   const liveCatenarySvg = useMemo(() => {
@@ -498,8 +501,8 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
       })),
     });
 
-    return sanitizeSvgMarkup(rawSvg, { isFullScreen });
-  }, [analysis, selectedLine, clampedLineIdx, alsBrokenMode, isFullScreen]);
+    return sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark });
+  }, [analysis, selectedLine, clampedLineIdx, alsBrokenMode, isFullScreen, isDark]);
 
   // Handle interactive clicking on mooring lines in the Polar Spread SVG
   const handleSpreadSvgClick = useCallback(
@@ -606,7 +609,9 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
           <>
             {activeLines.length > 0 && (
               <FloatingControlBar>
-                <span style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 600 }}>Inspect:</span>
+                <span style={{ fontSize: "10.5px", color: "var(--color-fg-muted, #94a3b8)", fontWeight: 600 }}>
+                  Inspect:
+                </span>
                 <SelectDropdown
                   aria-label="Select Mooring Line"
                   value={clampedLineIdx}
@@ -636,12 +641,12 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
             {selectedLine && selectedDnvLine && (
               <FloatingInspectorChip>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-                  <strong style={{ color: "#facc15", fontSize: "11.5px" }}>{selectedLine.name}</strong>
+                  <strong style={{ color: "#d97706", fontSize: "11.5px" }}>{selectedLine.name}</strong>
                   <span
                     style={{
                       fontFamily: "var(--font-mono, monospace)",
                       fontSize: "10px",
-                      color: alsBrokenMode ? "#f87171" : "#34d399",
+                      color: alsBrokenMode ? "#ef4444" : "#10b981",
                       fontWeight: 600,
                     }}
                   >
@@ -655,7 +660,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
                     display: "flex",
                     gap: "10px",
                     fontSize: "10.5px",
-                    color: "#cbd5e1",
+                    color: "var(--color-fg-muted, #cbd5e1)",
                     fontFamily: "var(--font-mono, monospace)",
                   }}
                 >
@@ -669,7 +674,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
                       marginLeft: "auto",
                       background: "transparent",
                       border: "none",
-                      color: "#38bdf8",
+                      color: "#0284c7",
                       cursor: "pointer",
                       fontSize: "10.5px",
                       fontWeight: 600,
@@ -686,7 +691,9 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
           <>
             {activeLines.length > 0 && (
               <FloatingControlBar>
-                <span style={{ fontSize: "10.5px", color: "#94a3b8", fontWeight: 600 }}>Line:</span>
+                <span style={{ fontSize: "10.5px", color: "var(--color-fg-muted, #94a3b8)", fontWeight: 600 }}>
+                  Line:
+                </span>
                 <SelectDropdown
                   aria-label="Select Line for Catenary Sag Profile"
                   value={clampedLineIdx}
@@ -710,7 +717,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
             <SummaryStrip>
               <SummaryMetric>
                 <span className="label">Standard</span>
-                <span className="val" style={{ color: "#38bdf8" }}>
+                <span className="val" style={{ color: "#0284c7" }}>
                   {analysis.dnvReport.standard}
                 </span>
               </SummaryMetric>
@@ -724,7 +731,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
                 <span className="label">Min Intact SF (≥1.67)</span>
                 <span
                   className="val"
-                  style={{ color: analysis.dnvReport.summary.minSafetyFactor >= 1.67 ? "#34d399" : "#f87171" }}
+                  style={{ color: analysis.dnvReport.summary.minSafetyFactor >= 1.67 ? "#10b981" : "#ef4444" }}
                 >
                   {analysis.dnvReport.summary.minSafetyFactor.toFixed(2)}
                 </span>
@@ -767,32 +774,38 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
                       }}
                       title="Click to inspect 2D Catenary Sag Profile for this line"
                     >
-                      <td style={{ fontWeight: 600, color: isSel ? "#facc15" : "#f8fafc" }}>{r.lineName}</td>
-                      <td style={{ fontFamily: "var(--font-mono, monospace)", color: "#94a3b8" }}>
+                      <td style={{ fontWeight: 600, color: isSel ? "#d97706" : "var(--color-fg-default, #f8fafc)" }}>
+                        {r.lineName}
+                      </td>
+                      <td
+                        style={{ fontFamily: "var(--font-mono, monospace)", color: "var(--color-fg-muted, #94a3b8)" }}
+                      >
                         {lineObj?.fairleadId ?? "—"}
                       </td>
                       <td>{lineObj ? `${lineObj.segments.length} (${lineObj.totalLength}m)` : "—"}</td>
                       <td style={{ fontFamily: "var(--font-mono, monospace)" }}>{(r.mbl / 1000).toFixed(0)}</td>
-                      <td style={{ fontFamily: "var(--font-mono, monospace)", color: "#38bdf8" }}>
+                      <td style={{ fontFamily: "var(--font-mono, monospace)", color: "#0284c7" }}>
                         {(r.tensionIntact / 1000).toFixed(0)}
                       </td>
                       <td
                         style={{
                           fontFamily: "var(--font-mono, monospace)",
                           fontWeight: 700,
-                          color: r.passedIntact ? "#34d399" : "#f87171",
+                          color: r.passedIntact ? "#10b981" : "#ef4444",
                         }}
                       >
                         {r.safetyFactorIntact.toFixed(2)}
                       </td>
-                      <td style={{ fontFamily: "var(--font-mono, monospace)", color: "#cbd5e1" }}>
+                      <td
+                        style={{ fontFamily: "var(--font-mono, monospace)", color: "var(--color-fg-muted, #cbd5e1)" }}
+                      >
                         {(r.tensionDamaged / 1000).toFixed(0)}
                       </td>
                       <td
                         style={{
                           fontFamily: "var(--font-mono, monospace)",
                           fontWeight: 700,
-                          color: r.passedDamaged ? "#34d399" : "#f87171",
+                          color: r.passedDamaged ? "#10b981" : "#ef4444",
                         }}
                       >
                         {r.safetyFactorDamaged.toFixed(2)}

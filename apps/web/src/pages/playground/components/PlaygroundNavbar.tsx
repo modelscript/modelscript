@@ -159,10 +159,11 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 }
               }}
               style={{
-                width: 170,
+                width: 150,
+                maxWidth: "38vw",
                 height: 28,
                 padding: "2px 8px",
-                fontSize: 12,
+                fontSize: 14,
                 fontWeight: 600,
                 borderRadius: 6,
                 border: "1px solid var(--color-accent-fg, #0969da)",
@@ -177,7 +178,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 <span
                   style={{
                     display: "inline-block",
-                    maxWidth: 180,
+                    maxWidth: "clamp(84px, 24vw, 180px)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -204,6 +205,22 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               </ActionMenu.Button>
               <ActionMenu.Overlay width="large">
                 <ActionList>
+                  {onTitleChange && (
+                    <>
+                      <ActionList.Item
+                        onSelect={() => {
+                          setDraftTitle(currentTitle);
+                          setIsEditingTitle(true);
+                        }}
+                      >
+                        <ActionList.LeadingVisual>
+                          <PencilIcon />
+                        </ActionList.LeadingVisual>
+                        Rename Model…
+                      </ActionList.Item>
+                      <ActionList.Divider />
+                    </>
+                  )}
                   <ActionList.Group title="Curated Starter Models">
                     {HERO_EXAMPLES.map((ex) => (
                       <ActionList.Item key={ex.id} onSelect={() => onSelectExample(ex)}>
@@ -238,8 +255,19 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         {/* Language / Dialect Selector */}
         {onSelectLang && (
           <ActionMenu>
-            <ActionMenu.Button size="small" leadingVisual={CodeIcon} className="nav-hide-sm">
-              <span>{currentLangOption.label}</span>
+            <ActionMenu.Button size="small" leadingVisual={CodeIcon} aria-label="Select engineering dialect">
+              <span
+                style={{
+                  display: "inline-block",
+                  maxWidth: "clamp(64px, 18vw, 140px)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  verticalAlign: "bottom",
+                }}
+              >
+                {currentLangOption.label}
+              </span>
             </ActionMenu.Button>
             <ActionMenu.Overlay width="medium" style={{ maxHeight: "360px", overflowY: "auto" }}>
               <ActionList selectionVariant="single">

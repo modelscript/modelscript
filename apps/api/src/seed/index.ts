@@ -261,6 +261,28 @@ export async function seedPolyglotSocialData(
   for (const spec of ALL_44_LANGUAGE_SEED_POSTS) {
     const existingArtifact = db.getArtifactViewByTitle(spec.title);
     if (existingArtifact && !options?.force) {
+      if (!existingArtifact.thumbnail_url) {
+        try {
+          const filePath = path.join(uploadDir, spec.filename);
+          if (!fs.existsSync(filePath)) {
+            fs.writeFileSync(filePath, spec.code, "utf8");
+          }
+          const pre = await pregenerateServerSvgThumbnail(filePath, spec.viewType, spec.filename, uploadDir);
+          if (pre.thumbnailUrl) {
+            db.updateArtifactThumbnail(existingArtifact.id, pre.thumbnailUrl, pre.thumbnailUrl);
+            if (pre.svg && existingArtifact.view_config) {
+              try {
+                const parsedVc = JSON.parse(existingArtifact.view_config) as Record<string, unknown>;
+                parsedVc["svg"] = pre.svg;
+                parsedVc["thumbnailUrl"] = pre.thumbnailUrl;
+                parsedVc["thumbnailUrlLight"] = pre.thumbnailUrl;
+                parsedVc["thumbnailUrlDark"] = pre.thumbnailUrl;
+                db.updateArtifactViewConfig(existingArtifact.id, JSON.stringify(parsedVc));
+              } catch {}
+            }
+          }
+        } catch {}
+      }
       continue;
     }
 

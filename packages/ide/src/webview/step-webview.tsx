@@ -74,12 +74,28 @@ function App() {
     vscode?.postMessage({ command: "cadFeatureSelected", id });
   };
 
+  const handleGenerateFeaStudy = () => {
+    vscode?.postMessage({ type: "generateFeaMesh" });
+  };
+
+  const handleGenerateCfdStudy = () => {
+    vscode?.postMessage({ type: "generateCfdMesh" });
+  };
+
   return (
     <div
       className="step-webview-container"
       style={{ width: "100%", height: "100vh", margin: 0, padding: 0, overflow: "hidden" }}
     >
-      <StepViewer meshes={meshes} selectedId={selectedId} onSelect={handleSelect} dark={isDark} isLoading={isLoading} />
+      <StepViewer
+        meshes={meshes}
+        selectedId={selectedId}
+        onSelect={handleSelect}
+        dark={isDark}
+        isLoading={isLoading}
+        onGenerateFeaStudy={handleGenerateFeaStudy}
+        onGenerateCfdStudy={handleGenerateCfdStudy}
+      />
     </div>
   );
 }

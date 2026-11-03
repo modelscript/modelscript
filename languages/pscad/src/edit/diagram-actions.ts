@@ -32,6 +32,27 @@ export type DiagramAction =
         edges?: DiagramEdge[];
       }[];
     }
+  | {
+      type: "resize";
+      item?: {
+        name: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        rotation?: number;
+        edges?: DiagramEdge[];
+      };
+      items?: {
+        name: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        rotation?: number;
+        edges?: DiagramEdge[];
+      }[];
+    }
   | { type: "rotate"; item: { name: string; rotation?: number } }
   | { type: "toggleDisable"; name: string; disabled?: boolean }
   | { type: "updateParameter"; name: string; parameter: string; value: unknown }
@@ -71,15 +92,81 @@ export interface PlannedDiagramEdits {
 }
 
 const stripPrefix = (raw: string): string =>
-  raw.startsWith("cmp_") || raw.startsWith("bus_") ? raw.slice(4) : raw.startsWith("wire_") ? raw.slice(5) : raw;
+  raw.startsWith("cmp_") || raw.startsWith("bus_")
+    ? raw.slice(4)
+    : raw.startsWith("wire_")
+      ? raw.slice(5)
+      : raw.startsWith("sticky_")
+        ? raw.slice(7)
+        : raw;
 
-/** Makes every segment axis-aligned by inserting elbows (horizontal-first). */
-export function orthogonalize(points: Pt[]): Pt[] {
-  const out: Pt[] = [];
+export interface ObstacleBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function segmentIntersectsBox(p1: Pt, p2: Pt, box: ObstacleBox): boolean {
+  const minX = box.x - box.w / 2;
+  const maxX = box.x + box.w / 2;
+  const minY = box.y - box.h / 2;
+  const maxY = box.y + box.h / 2;
+  const sx1 = Math.min(p1.x, p2.x);
+  const sx2 = Math.max(p1.x, p2.x);
+  const sy1 = Math.min(p1.y, p2.y);
+  const sy2 = Math.max(p1.y, p2.y);
+  // Strict interior intersection so endpoints on component boundary ports don't trigger false positives
+  return sx2 > minX + 2 && sx1 < maxX - 2 && sy2 > minY + 2 && sy1 < maxY - 2;
+}
+
+/**
+ * Makes every segment axis-aligned by inserting elbows (horizontal-first by default, or
+ * vertical-first / Z-bend when an obstacle box blocks the horizontal-first elbow), and
+ * collapses consecutive duplicate or collinear points.
+ */
+export function orthogonalize(points: Pt[], obstacles?: ObstacleBox[]): Pt[] {
+  const raw: Pt[] = [];
   for (const p of points) {
-    const prev = out[out.length - 1];
-    if (prev && prev.x !== p.x && prev.y !== p.y) out.push({ x: p.x, y: prev.y });
-    out.push({ x: p.x, y: p.y });
+    const prev = raw[raw.length - 1];
+    if (prev && prev.x !== p.x && prev.y !== p.y) {
+      const horizElbow: Pt = { x: p.x, y: prev.y };
+      const vertElbow: Pt = { x: prev.x, y: p.y };
+      if (obstacles && obstacles.length > 0) {
+        const horizBlocked = obstacles.some(
+          (b) => segmentIntersectsBox(prev, horizElbow, b) || segmentIntersectsBox(horizElbow, p, b),
+        );
+        const vertBlocked = obstacles.some(
+          (b) => segmentIntersectsBox(prev, vertElbow, b) || segmentIntersectsBox(vertElbow, p, b),
+        );
+        if (horizBlocked && !vertBlocked) {
+          raw.push(vertElbow);
+        } else if (horizBlocked && vertBlocked) {
+          const midX = Math.round((prev.x + p.x) / 2 / 18) * 18;
+          raw.push({ x: midX, y: prev.y }, { x: midX, y: p.y });
+        } else {
+          raw.push(horizElbow);
+        }
+      } else {
+        raw.push(horizElbow);
+      }
+    }
+    raw.push({ x: p.x, y: p.y });
+  }
+  // Collapse duplicate and collinear intermediate points
+  const out: Pt[] = [];
+  for (const pt of raw) {
+    const last = out[out.length - 1];
+    if (last && last.x === pt.x && last.y === pt.y) continue;
+    if (out.length >= 2) {
+      const prev2 = out[out.length - 2]!;
+      const prev1 = out[out.length - 1]!;
+      if ((prev2.x === prev1.x && prev1.x === pt.x) || (prev2.y === prev1.y && prev1.y === pt.y)) {
+        out[out.length - 1] = pt;
+        continue;
+      }
+    }
+    out.push(pt);
   }
   return out;
 }
@@ -94,6 +181,12 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
 
   const instances = [...model.definitions.values()].flatMap((d) => d.instances.map((i) => ({ d, i })));
   const wires = [...model.definitions.values()].flatMap((d) => d.wires.map((w) => ({ d, w })));
+  const obstacles: ObstacleBox[] = instances.map(({ i }) => ({
+    x: i.x,
+    y: i.y,
+    w: i.w > 0 ? i.w : 54,
+    h: i.h > 0 ? i.h : 36,
+  }));
 
   const ops: PscadEditOp[] = [];
   const unresolved: string[] = [];
@@ -155,7 +248,7 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
   const setPoints = (wid: string, pts: Pt[]) => {
     if (touchedWires.has(wid)) return;
     touchedWires.add(wid);
-    ops.push({ type: "setWirePoints", id: wid, points: orthogonalize(pts) });
+    ops.push({ type: "setWirePoints", id: wid, points: orthogonalize(pts, obstacles) });
   };
   const orientCode = (rotation: number): number => {
     const deg = ((Math.round(rotation) % 360) + 360) % 360;
@@ -167,6 +260,32 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
       case "move": {
         const a = action as Extract<DiagramAction, { type: "move" }>;
         for (const item of a.items) {
+          if (item.name.startsWith("bus_")) {
+            const busId = stripPrefix(item.name);
+            ops.push({
+              type: "resizeBus",
+              id: busId,
+              x: Math.round(item.x),
+              y: Math.round(item.y),
+              ...(item.width > 0 ? { w: Math.round(item.width) } : {}),
+              ...(item.height > 0 ? { h: Math.round(item.height) } : {}),
+            });
+            renderHint = "immediate";
+            continue;
+          }
+          if (item.name.startsWith("sticky_")) {
+            const stickyId = stripPrefix(item.name);
+            ops.push({
+              type: "editSticky",
+              id: stickyId,
+              x: Math.round(item.x),
+              y: Math.round(item.y),
+              ...(item.width > 0 ? { w: Math.round(item.width) } : {}),
+              ...(item.height > 0 ? { h: Math.round(item.height) } : {}),
+            });
+            renderHint = "immediate";
+            continue;
+          }
           const hit = findInst(item.name);
           if (!hit) {
             unresolved.push(item.name);
@@ -194,14 +313,78 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
               const startAttached = Boolean(lw.startPortId && ids.has(lw.startPortId));
               const endAttached = Boolean(lw.endPortId && ids.has(lw.endPortId));
               if (!startAttached && !endAttached) continue;
-              const pts = lw.vertices.map((v, idx) => {
-                if (idx === 0 && startAttached) return { x: v.x + dx, y: v.y + dy };
-                if (idx === lw.vertices.length - 1 && endAttached) return { x: v.x + dx, y: v.y + dy };
-                return { x: v.x, y: v.y };
-              });
+              const pts = lw.vertices.map((v) => ({ x: v.x, y: v.y }));
+              if (startAttached && pts.length >= 2) {
+                const oldStart = { ...pts[0]! };
+                pts[0] = { x: oldStart.x + dx, y: oldStart.y + dy };
+                if (pts.length >= 3) {
+                  // Adjust adjacent elbow so the interior segment stays orthogonal
+                  if (pts[1]!.x === oldStart.x) pts[1]!.x = pts[0]!.x;
+                  else if (pts[1]!.y === oldStart.y) pts[1]!.y = pts[0]!.y;
+                }
+              }
+              if (endAttached && pts.length >= 2) {
+                const lastIdx = pts.length - 1;
+                const oldEnd = { ...pts[lastIdx]! };
+                pts[lastIdx] = { x: oldEnd.x + dx, y: oldEnd.y + dy };
+                if (pts.length >= 3) {
+                  const prevIdx = lastIdx - 1;
+                  if (pts[prevIdx]!.x === oldEnd.x) pts[prevIdx]!.x = pts[lastIdx]!.x;
+                  else if (pts[prevIdx]!.y === oldEnd.y) pts[prevIdx]!.y = pts[lastIdx]!.y;
+                }
+              }
               if (wireIndex(lw.id)) setPoints(lw.id, pts);
             }
           }
+        }
+        break;
+      }
+      case "resize": {
+        const a = action as Extract<DiagramAction, { type: "resize" }>;
+        const resizeItems = a.items ?? (a.item ? [a.item] : []);
+        for (const item of resizeItems) {
+          const cleanId = stripPrefix(item.name);
+          const isBus =
+            item.name.startsWith("bus_") ||
+            [...model.definitions.values()].some((d) =>
+              d.wires.some((w) => (w.id === cleanId || w.id === item.name) && w.element.name === "Bus"),
+            );
+          if (isBus) {
+            ops.push({
+              type: "resizeBus",
+              id: cleanId,
+              x: Math.round(item.x),
+              y: Math.round(item.y),
+              ...(item.width > 0 ? { w: Math.round(item.width) } : {}),
+              ...(item.height > 0 ? { h: Math.round(item.height) } : {}),
+            });
+            renderHint = "immediate";
+            continue;
+          }
+          const isSticky =
+            item.name.startsWith("sticky_") ||
+            new RegExp(`<Sticky\\b[^>]*\\bid\\s*=\\s*["']${cleanId}["']`, "i").test(text);
+          if (isSticky) {
+            ops.push({
+              type: "editSticky",
+              id: cleanId,
+              x: Math.round(item.x),
+              y: Math.round(item.y),
+              ...(item.width > 0 ? { w: Math.round(item.width) } : {}),
+              ...(item.height > 0 ? { h: Math.round(item.height) } : {}),
+            });
+            renderHint = "immediate";
+            continue;
+          }
+          const hit = findInst(item.name);
+          if (!hit) {
+            unresolved.push(item.name);
+            continue;
+          }
+          const nx = Math.round(item.width > 0 ? item.x + item.width / 2 : item.x);
+          const ny = Math.round(item.height > 0 ? item.y + item.height / 2 : item.y);
+          ops.push({ type: "moveComponent", id: hit.i.id, x: nx, y: ny });
+          renderHint = "immediate";
         }
         break;
       }
@@ -253,12 +436,22 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           unresolved.push(a.oldName);
           break;
         }
-        ops.push({
-          type: "setParameter",
-          id: hit.i.id,
-          name: hit.i.params.has("name") ? "name" : "Name",
-          value: a.newName,
-        });
+        const isNetEndpoint = /datalabel|xnode|pgb|pin|port/i.test(hit.i.defnName);
+        const oldNetName = hit.i.params.get("Name") ?? hit.i.params.get("name");
+        if (isNetEndpoint && oldNetName) {
+          ops.push({
+            type: "renameNet",
+            oldName: oldNetName,
+            newName: a.newName,
+          });
+        } else {
+          ops.push({
+            type: "setParameter",
+            id: hit.i.id,
+            name: hit.i.params.has("name") ? "name" : "Name",
+            value: a.newName,
+          });
+        }
         renderHint = "immediate";
         break;
       }

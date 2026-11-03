@@ -368,7 +368,18 @@ export function registerDefinitionProvider(
 
     // ── PSCAD-specific go-to-definition (.pscx / .pslx) ──
     if (isPscadDocument(document)) {
-      const pscadLoc = getPscadDefinitionLocation(document.getText(), offset, document.uri);
+      const pscadDocs: Array<{ uri: string; text: string }> = [];
+      for (const d of documents.all()) {
+        if (isPscadDocument(d)) {
+          pscadDocs.push({ uri: d.uri, text: d.getText() });
+        }
+      }
+      for (const [tUri, tTree] of documentTrees.entries()) {
+        if (/\.(pscx|pslx|pswx|psmx)$/i.test(tUri) && tTree?.text && !pscadDocs.some((d) => d.uri === tUri)) {
+          pscadDocs.push({ uri: tUri, text: tTree.text });
+        }
+      }
+      const pscadLoc = getPscadDefinitionLocation(document.getText(), offset, document.uri, pscadDocs);
       if (pscadLoc) return pscadLoc as Definition;
     }
 

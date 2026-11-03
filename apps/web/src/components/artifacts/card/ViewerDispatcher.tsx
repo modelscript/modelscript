@@ -2,11 +2,14 @@
 
 import { Spinner } from "@primer/react";
 import React, { Suspense } from "react";
-import styled from "styled-components";
+import styledImport from "styled-components";
 import Box from "../../Box";
 import LazyHeavyViewer from "../LazyHeavyViewer";
 import type { AnySpatialPin } from "../spatial-pin";
 import ViewerErrorBoundary from "../ViewerErrorBoundary";
+
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 const EmbeddedViewerSlot = styled.div<{ $isFullScreen: boolean }>`
   width: 100%;
@@ -416,13 +419,18 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
           </LazyHeavyViewer>
         );
       case "cfd-config":
-      case "cfd-su2":
+      case "cfd-su2": {
+        const cfdFallbackThumb =
+          resolvedThumbnailUrl ||
+          (typeof viewConfig?.filename === "string" && viewConfig.filename.trim()
+            ? `/api/v1/storage/uploads/${viewConfig.filename.trim()}.thumb.svg`
+            : undefined);
         return (
           <LazyHeavyViewer
             artifactId={artifactId}
-            thumbnailUrl={resolvedThumbnailUrl}
-            thumbnailUrlLight={resolvedThumbnailUrlLight}
-            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            thumbnailUrl={cfdFallbackThumb}
+            thumbnailUrlLight={resolvedThumbnailUrlLight || cfdFallbackThumb}
+            thumbnailUrlDark={resolvedThumbnailUrlDark || cfdFallbackThumb}
             title="CFD Boundary & Mesh Viewer"
             placeholderType="cfd"
             isFullScreen={isFullScreen}
@@ -430,6 +438,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             <CfdConfigViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
+      }
       case "gensys":
       case "calc":
       case "run":
@@ -510,6 +519,10 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "spice":
       case "urdf":
       case "verilog-a":
+      case "qif":
+      case "oscal":
+      case "automationml":
+      case "aml":
       case "other":
         return (
           <PolyglotArtifactViewer

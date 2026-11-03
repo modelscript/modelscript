@@ -560,4 +560,52 @@ ENDDATA
     assert.ok(Math.abs(bdfProps.maxVonMisesPa - 1.0e6) < 2e4);
     assert.ok(bdfProps.naturalFrequenciesHz && bdfProps.naturalFrequenciesHz.length > 0);
   });
+
+  it("extracts 3D exterior surface triangles, quad perimeter edges, and *STEP metadata for C3D8 hexahedral decks", async () => {
+    const { extractCalculixInpMesh, parseInpDeck } = await import("../src/index.js");
+    const c3d8Deck = `*HEADING
+Aerospace Ti-6Al-4V Bracket C3D8 Test
+*NODE, NSET=NALL
+1, 0.0, 0.0, 0.0
+2, 40.0, 0.0, 0.0
+3, 40.0, 32.0, 0.0
+4, 0.0, 35.0, 0.0
+5, 0.0, 0.0, 18.0
+6, 40.0, 0.0, 18.0
+7, 40.0, 32.0, 18.0
+8, 0.0, 35.0, 18.0
+*ELEMENT, TYPE=C3D8, ELSET=E_BRACKET
+1, 1, 2, 3, 4, 5, 6, 7, 8
+*NSET, NSET=ROOT
+1, 4, 5, 8
+*NSET, NSET=LUG
+2, 3, 6, 7
+*MATERIAL, NAME=TI64
+*ELASTIC
+113800.0, 0.342
+*BOUNDARY
+ROOT, ENCASTRE
+*STEP, NLGEOM=NO
+*STATIC
+*CLOAD
+LUG, 2, -8000.0
+*END STEP
+`;
+    const parsed = parseInpDeck(c3d8Deck);
+    assert.strictEqual(parsed.steps?.length, 1);
+    assert.strictEqual(parsed.steps?.[0]?.analysisType, "STATIC");
+    assert.strictEqual(parsed.boundaries?.length, 1);
+    assert.strictEqual(parsed.cloads?.length, 1);
+    assert.strictEqual(parsed.fixedNodes.size, 4);
+    assert.strictEqual(parsed.nodalLoads.size, 4);
+
+    const mesh = extractCalculixInpMesh(parsed);
+    // 1 C3D8 brick has 6 exterior quad faces = 12 triangles = 36 indices, and 12 exterior edges = 24 edge indices
+    assert.strictEqual(mesh.surfaceIndices.length, 36);
+    assert.strictEqual(mesh.edgeIndices.length, 24);
+    assert.strictEqual(mesh.payload.stats.numNodes, 8);
+    assert.strictEqual(mesh.payload.stats.numElements, 1);
+    assert.strictEqual(mesh.fixedNodes.length, 4);
+    assert.strictEqual(mesh.loads.length, 4);
+  });
 });

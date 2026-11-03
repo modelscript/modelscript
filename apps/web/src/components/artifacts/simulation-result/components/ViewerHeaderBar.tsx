@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React from "react";
+import { useFeatureFlag } from "../../../../FeatureFlagContext";
 import type { VtuParseResult } from "../../../../util/vtu-parser";
 
 export interface ViewerHeaderBarProps {
@@ -10,6 +11,7 @@ export interface ViewerHeaderBarProps {
 }
 
 export const ViewerHeaderBar: React.FC<ViewerHeaderBarProps> = ({ vtuData, viewConfig, onThreadNodeSelected }) => {
+  const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   return (
     <div
       style={{
@@ -48,7 +50,7 @@ export const ViewerHeaderBar: React.FC<ViewerHeaderBarProps> = ({ vtuData, viewC
           {viewConfig.solverInfo.name}
         </span>
       )}
-      {(viewConfig.profile || viewConfig.hpc?.profile) && (
+      {hasCloudSolver && (viewConfig.profile || viewConfig.hpc?.profile) && (
         <span
           style={{
             fontSize: 10,

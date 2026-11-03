@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CodeIcon, FlameIcon, PlayIcon, WorkflowIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { CodeIcon, FlameIcon, WorkflowIcon } from "@primer/octicons-react";
+import { Button, Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
-import { runPhysicsJob } from "../../api";
+import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import { createDefaultCadStudyParameters, solveCadStudySync } from "./cad-study-solver";
 import {
   highlightPolyglotLine,
   InteractiveSvgStage,
@@ -55,7 +56,7 @@ const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   font-family: inherit;
 `;
 
-const Toolbar = styled.div`
+const Toolbar = styled.div<{ $isFullScreen?: boolean | undefined }>`
   height: 38px;
   min-height: 38px;
   background: var(--color-canvas-subtle);
@@ -63,7 +64,7 @@ const Toolbar = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: ${(props) => (props.$isFullScreen ? "0 12px" : "0 114px 0 12px")};
   gap: 8px;
   z-index: 10;
   overflow: hidden;
@@ -150,25 +151,13 @@ function parseSu2Client(text: string) {
   return { solver, turbModel, machNumber, aoaDeg, reynoldsNumber, markers };
 }
 
-function computeDeterministicHex64(input: string): string {
-  const seeds = [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x85ebca6b, 0xc2b2ae35, 0x27d4eb2f, 0x165667b1, 0xd3a2646c];
-  for (let i = 0; i < input.length; i++) {
-    const code = input.charCodeAt(i);
-    for (let j = 0; j < 8; j++) {
-      seeds[j] = Math.imul((seeds[j]! ^ code) + j, 0x01000193) >>> 0;
-    }
-  }
-  return seeds.map((s) => s.toString(16).padStart(8, "0")).join("");
-}
-
 export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, viewConfig, isFullScreen = false }) => {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
   const [loading, setLoading] = useState(false);
-  const [runningSim, setRunningSim] = useState(false);
-  const [simCompleted, setSimCompleted] = useState(false);
-  const [completedResultConfig, setCompletedResultConfig] = useState<any>(null);
   const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const [viewMode, setViewMode] = useState<"3d" | "diagram" | "code">("3d");
   const title = viewConfig.title || viewConfig.configName || "SU2 Aerodynamic Config (.cfg)";
 
   useEffect(() => {
@@ -194,14 +183,43 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
 
   const machNumber = viewConfig.machNumber ?? parsedCfg.machNumber;
   const aoaDeg = viewConfig.aoaDeg ?? viewConfig.aoa ?? parsedCfg.aoaDeg;
+  const solverLabel = viewConfig.solver || parsedCfg.solver || "RANS";
+  const turbLabel = viewConfig.turbulenceModel || parsedCfg.turbModel || "SA";
+
+  const default3dResultConfig = useMemo(() => {
+    const effectiveMach = machNumber ?? 0.82;
+    const effectiveAoa = aoaDeg ?? 2.75;
+    if (viewConfig.vtuInline) {
+      return {
+        ...viewConfig,
+        title: `${title} (M=${effectiveMach}, α=${effectiveAoa}°)`,
+        scalarField: (viewConfig.scalarField as string) || "PressureCoefficient",
+        height: "100%",
+      };
+    }
+    const params = createDefaultCadStudyParameters(title);
+    params.freestreamVelocityMs = Math.max(5, +(effectiveMach * 340.3).toFixed(1));
+    params.angleOfAttackDeg = effectiveAoa;
+    const solved = solveCadStudySync([], "steady-state-cfd", params, title);
+    return {
+      vtuInline: solved.vtuInline,
+      title: `${title} (M=${effectiveMach}, α=${effectiveAoa}°)`,
+      scalarField: "PressureCoefficient",
+      fieldUnits: solved.fieldUnits,
+      solverInfo: {
+        name: `SU2 ${solverLabel} (${turbLabel}) · M=${effectiveMach} · α=${effectiveAoa}°`,
+      },
+      height: "100%",
+    };
+  }, [viewConfig, title, machNumber, aoaDeg, solverLabel, turbLabel]);
 
   const sanitizedSvg = useMemo(() => {
     if (typeof viewConfig.svg === "string" && viewConfig.svg.includes("<svg")) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen });
+      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
     }
     if (rawText.trim()) {
       try {
-        const fallback = renderSourceToDiagramSvg(rawText, "cfd", title, true, isFullScreen);
+        const fallback = renderSourceToDiagramSvg(rawText, "cfd", title, isDark, isFullScreen);
         if (fallback.svg) {
           return fallback.svg;
         }
@@ -210,55 +228,17 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
       }
     }
     return "";
-  }, [viewConfig.svg, rawText, title, isFullScreen]);
+  }, [viewConfig.svg, rawText, title, isFullScreen, isDark]);
 
-  const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
-
-  const [simError, setSimError] = useState<string | null>(null);
-
-  const handleRunSimulationLocally = async () => {
-    setRunningSim(true);
-    setSimError(null);
-    try {
-      const geoHash = (viewConfig.geometryHash as string) || computeDeterministicHex64(rawText || title);
-      const studyConfig = {
-        type: "CFD",
-        workflowClass: "DroneCFDStudy",
-        mach: machNumber ?? 0.5,
-        aoa: aoaDeg ?? 0.0,
-      };
-
-      const result = await runPhysicsJob({ geometryHash: geoHash, config: studyConfig });
-      if (result?.jobId) {
-        setSimCompleted(true);
-        setCompletedResultConfig({
-          url: `/api/v1/physics/${result.jobId}/result`,
-          resultVtuUrl: `/api/v1/physics/${result.jobId}/result`,
-          title: `Solved: ${title}`,
-          scalarField: "Pressure",
-        });
-      } else {
-        throw new Error("No job ID returned from CFD solver service");
-      }
-    } catch (err: any) {
-      console.warn("[CfdConfigViewer] Local simulation failed:", err);
-      setSimError(err?.response?.data?.error || err.message || "CFD simulation failed");
-    } finally {
-      setRunningSim(false);
-    }
-  };
-
-  if (simCompleted && completedResultConfig) {
-    return (
-      <SimulationResultViewer artifactId={artifactId} viewConfig={completedResultConfig} isFullScreen={isFullScreen} />
-    );
-  }
+  const effectiveViewMode: "3d" | "diagram" | "code" =
+    viewMode === "3d" ? "3d" : viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
 
   const codeLines = rawText ? rawText.split(/\r?\n/) : [];
+  const active3dConfig = default3dResultConfig;
 
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
-      <Toolbar>
+      <Toolbar $isFullScreen={isFullScreen}>
         <HeaderLeft>
           <FlameIcon size={15} fill="var(--color-attention-fg, currentColor)" />
           <PillBadge>SU2 CFD</PillBadge>
@@ -266,14 +246,36 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
-          {sanitizedSvg && (
-            <Box
-              display="flex"
-              bg="var(--color-canvas-default)"
-              borderRadius="6px"
-              p="2px"
-              border="1px solid var(--color-border-default)"
+          <Box
+            display="flex"
+            bg="var(--color-canvas-default)"
+            borderRadius="6px"
+            p="2px"
+            border="1px solid var(--color-border-default)"
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode("3d")}
+              style={{
+                background: effectiveViewMode === "3d" ? "rgba(249, 115, 22, 0.18)" : "transparent",
+                color:
+                  effectiveViewMode === "3d"
+                    ? "var(--color-attention-fg, var(--color-fg-default))"
+                    : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
             >
+              <FlameIcon size={12} /> 3D Flow
+            </button>
+            {sanitizedSvg && (
               <button
                 type="button"
                 onClick={() => setViewMode("diagram")}
@@ -296,41 +298,30 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
               >
                 <WorkflowIcon size={12} /> Domain
               </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("code")}
-                style={{
-                  background: effectiveViewMode === "code" ? "rgba(249, 115, 22, 0.18)" : "transparent",
-                  color:
-                    effectiveViewMode === "code"
-                      ? "var(--color-attention-fg, var(--color-fg-default))"
-                      : "var(--color-fg-muted)",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "2px 8px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <CodeIcon size={12} /> Config
-              </button>
-            </Box>
-          )}
-          {(Boolean(viewConfig?.standalone) || isFullScreen) && (
-            <Button
-              size="small"
-              leadingVisual={runningSim ? Spinner : PlayIcon}
-              disabled={runningSim}
-              onClick={handleRunSimulationLocally}
+            )}
+            <button
+              type="button"
+              onClick={() => setViewMode("code")}
+              style={{
+                background: effectiveViewMode === "code" ? "rgba(249, 115, 22, 0.18)" : "transparent",
+                color:
+                  effectiveViewMode === "code"
+                    ? "var(--color-attention-fg, var(--color-fg-default))"
+                    : "var(--color-fg-muted)",
+                border: "none",
+                borderRadius: "4px",
+                padding: "2px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
             >
-              {runningSim ? "Solving..." : "Run Solver"}
-            </Button>
-          )}
-
+              <CodeIcon size={12} /> Config
+            </button>
+          </Box>
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
               size="small"
@@ -354,14 +345,12 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
         </Box>
       </Toolbar>
 
-      {simError && (
-        <Box px={3} py={2} bg="rgba(248, 81, 73, 0.15)" borderBottom="1px solid var(--color-danger-border)">
-          <Text style={{ fontSize: "12px", color: "var(--color-danger-fg)" }}>Simulation Error: {simError}</Text>
-        </Box>
-      )}
-
       <ContentArea>
-        {loading ? (
+        {effectiveViewMode === "3d" && active3dConfig ? (
+          <Box flex={1} width="100%" height="100%" position="relative" overflow="hidden">
+            <SimulationResultViewer artifactId={artifactId} viewConfig={active3dConfig} isFullScreen={isFullScreen} />
+          </Box>
+        ) : loading ? (
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
           </Box>

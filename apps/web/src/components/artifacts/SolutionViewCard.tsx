@@ -75,7 +75,7 @@ const InlineAppContainer = styled.div`
   margin-top: 10px;
   border-radius: 8px;
   border: 1px solid var(--color-border-default, #334155);
-  background: #090d16;
+  background: var(--color-canvas-default, #090d16);
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 `;
@@ -84,7 +84,7 @@ const IframeWrapper = styled.div<{ $isFullScreen?: boolean }>`
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "calc(100vh - 160px)" : "480px")};
   position: relative;
-  background: #090d16;
+  background: var(--color-canvas-default, #090d16);
 `;
 
 export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionViewCardProps) {
@@ -427,7 +427,7 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
             justifyContent="space-between"
             alignItems="center"
             style={{
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backgroundColor: "var(--color-canvas-subtle, rgba(0, 0, 0, 0.5))",
               borderBottom: "1px solid var(--color-border-default)",
             }}
           >
@@ -475,7 +475,7 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
                 width: "100%",
                 height: "100%",
                 border: "none",
-                backgroundColor: "#090d16",
+                backgroundColor: "var(--color-canvas-default, #090d16)",
               }}
             />
           </IframeWrapper>

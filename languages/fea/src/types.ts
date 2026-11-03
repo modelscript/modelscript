@@ -39,6 +39,34 @@ export interface CaeDiagnostic {
   expression?: string | undefined;
 }
 
+export interface FeaStep {
+  name?: string | undefined;
+  analysisType: "STATIC" | "FREQUENCY" | "BUCKLE" | "DYNAMIC" | "HEAT TRANSFER" | "COUPLED TEMP-DISPLACEMENT" | string;
+  nlgeom?: boolean | undefined;
+  line?: number | undefined;
+}
+
+export interface FeaBoundaryEntry {
+  target: string | number;
+  dofs: number[];
+  value?: number | undefined;
+  line?: number | undefined;
+}
+
+export interface FeaCloadEntry {
+  target: string | number;
+  dof: number;
+  magnitude: number;
+  line?: number | undefined;
+}
+
+export interface FeaDloadEntry {
+  target: string | number;
+  type: string;
+  magnitude: number;
+  line?: number | undefined;
+}
+
 export interface FeaModelData {
   heading?: string | undefined;
   dialect: string;
@@ -55,6 +83,10 @@ export interface FeaModelData {
   elsetMaterials?: Map<string, string> | undefined;
   sectionThickness?: Map<string, number> | undefined;
   beamAreas?: Map<string, number> | undefined;
+  steps?: FeaStep[] | undefined;
+  boundaries?: FeaBoundaryEntry[] | undefined;
+  cloads?: FeaCloadEntry[] | undefined;
+  dloads?: FeaDloadEntry[] | undefined;
   nodeLines?: Map<number, number> | undefined;
   elementLines?: Map<number, number> | undefined;
   materialLines?: Map<string, number> | undefined;

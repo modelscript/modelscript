@@ -217,7 +217,9 @@ export const NotebookPageOverlay = styled.div<{ $inline?: boolean | undefined }>
   inset: ${(props) => (props.$inline ? "auto" : "0")};
   width: ${(props) => (props.$inline ? "100%" : "100vw")};
   height: ${(props) => (props.$inline ? "100%" : "100vh")};
+  height: ${(props) => (props.$inline ? "100%" : "100dvh")};
   min-height: ${(props) => (props.$inline ? "calc(100vh - var(--dev-header-height, 0px))" : "100vh")};
+  min-height: ${(props) => (props.$inline ? "calc(100dvh - var(--dev-header-height, 0px))" : "100dvh")};
   z-index: 9999;
   display: flex;
   flex-direction: column;

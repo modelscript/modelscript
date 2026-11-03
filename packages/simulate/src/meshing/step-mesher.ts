@@ -269,161 +269,457 @@ export class StepMesher {
       });
     }
 
-    const oeRegex =
-      /#(\d+)\s*=\s*ORIENTED_EDGE\s*\(\s*'[^'\r\n]*'\s*,\s*(?:\*\s*)?,\s*(?:\*\s*)?,\s*#(\d+)\s*,\s*\.(T|F)\.\s*\)/g;
+    const oeRegex = /#(\d+)\s*=\s*ORIENTED_EDGE\s*\([^,]*,[^,]*,[^,]*,\s*#(\d+)\s*,\s*\.(T|F)\.\s*\)/gi;
     while ((m = oeRegex.exec(text)) !== null) {
       orientedEdges.set(parseInt(m[1]!, 10), {
         edge: parseInt(m[2]!, 10),
-        sense: m[3] === "T",
+        sense: m[3]!.toUpperCase() === "T",
       });
     }
 
-    const elRegex = /#(\d+)\s*=\s*(?:EDGE_LOOP|POLY_LOOP)\s*\(\s*'[^'\r\n]*'\s*,\s*\(([^()]*)\)\s*\)/g;
+    const bSplineCurves = new Map<number, number[]>();
+    const bscRegex = /#(\d+)\s*=\s*B_SPLINE_CURVE_WITH_KNOTS\s*\(\s*'[^'\r\n]*'\s*,\s*\d+\s*,\s*\(([^()]*)\)/gi;
+    while ((m = bscRegex.exec(text)) !== null) {
+      const curveId = parseInt(m[1]!, 10);
+      const ctrlPts = Array.from(m[2]!.matchAll(/#(\d+)/g), (r) => parseInt(r[1]!, 10));
+      if (ctrlPts.length >= 2) bSplineCurves.set(curveId, ctrlPts);
+    }
+
+    const surfaceTypes = new Map<number, { kind: string; placement?: number | undefined }>();
+    const surfRegex =
+      /#(\d+)\s*=\s*(PLANE|CYLINDRICAL_SURFACE|CONICAL_SURFACE|SPHERICAL_SURFACE|TOROIDAL_SURFACE|B_SPLINE_SURFACE_WITH_KNOTS)\s*\(\s*'[^'\r\n]*'\s*(?:,\s*#(\d+))?/gi;
+    while ((m = surfRegex.exec(text)) !== null) {
+      surfaceTypes.set(parseInt(m[1]!, 10), {
+        kind: m[2]!.toUpperCase(),
+        placement: m[3] ? parseInt(m[3], 10) : undefined,
+      });
+    }
+
+    const elRegex = /#(\d+)\s*=\s*(?:EDGE_LOOP|POLY_LOOP)\s*\(\s*'[^'\r\n]*'\s*,\s*\(([^()]*)\)\s*\)/gi;
     while ((m = elRegex.exec(text)) !== null) {
       const loopId = parseInt(m[1]!, 10);
       const refs = Array.from(m[2]!.matchAll(/#(\d+)/g), (r) => parseInt(r[1]!, 10));
       if (refs.length > 0) edgeLoops.set(loopId, refs);
     }
 
-    const fbRegex = /#(\d+)\s*=\s*(?:FACE_OUTER_BOUND|FACE_BOUND)\s*\(\s*'[^'\r\n]*'\s*,\s*#(\d+)/g;
+    const faceBoundOuter = new Map<number, boolean>();
+    const fbRegex = /#(\d+)\s*=\s*(FACE_OUTER_BOUND|FACE_BOUND)\s*\(\s*'[^'\r\n]*'\s*,\s*#(\d+)/gi;
     while ((m = fbRegex.exec(text)) !== null) {
-      faceBounds.set(parseInt(m[1]!, 10), parseInt(m[2]!, 10));
+      const bId = parseInt(m[1]!, 10);
+      faceBounds.set(bId, parseInt(m[3]!, 10));
+      faceBoundOuter.set(bId, m[2]!.toUpperCase() === "FACE_OUTER_BOUND");
     }
 
-    const afRegex = /#(\d+)\s*=\s*(?:ADVANCED_FACE|FACE_SURFACE)\s*\(\s*'[^'\r\n]*'\s*,\s*\(([^()]*)\)/g;
+    const ptIdToVertexIdx = new Map<number, number>();
+    const vertCoords: number[] = [];
+    const triIndices: number[] = [];
+
+    const getOrAddVertex = (ptId: number): number => {
+      let idx = ptIdToVertexIdx.get(ptId);
+      if (idx === undefined) {
+        idx = ptIdToVertexIdx.size;
+        ptIdToVertexIdx.set(ptId, idx);
+        const pt = cartesianPoints.get(ptId)!;
+        vertCoords.push(pt[0], pt[1], pt[2]);
+      }
+      return idx;
+    };
+
+    const sampleLoopPoints = (loopItems: number[]): { points: number[]; arcChains: number[][] } => {
+      const polyPointIds: number[] = [];
+      const arcChains: number[][] = [];
+      for (const itemId of loopItems) {
+        if (cartesianPoints.has(itemId)) {
+          polyPointIds.push(itemId);
+          continue;
+        }
+        const directVpPt = vertexToPoint.get(itemId);
+        if (directVpPt !== undefined && cartesianPoints.has(directVpPt)) {
+          polyPointIds.push(directVpPt);
+          continue;
+        }
+        const oe = orientedEdges.get(itemId);
+        if (!oe) continue;
+        const ec = edgeCurves.get(oe.edge);
+        if (!ec) continue;
+
+        const startVertex = oe.sense ? ec.vStart : ec.vEnd;
+        const endVertex = oe.sense ? ec.vEnd : ec.vStart;
+        const ptId = vertexToPoint.get(startVertex);
+        const endPtId = vertexToPoint.get(endVertex);
+        if (ptId !== undefined && cartesianPoints.has(ptId)) {
+          if (polyPointIds.length === 0 || polyPointIds[polyPointIds.length - 1] !== ptId) {
+            polyPointIds.push(ptId);
+          }
+        }
+
+        const circle = ec.curveId !== undefined ? circles.get(ec.curveId) : undefined;
+        if (circle) {
+          const ap = axisPlacements.get(circle.placement);
+          const center = ap ? cartesianPoints.get(ap.loc) : undefined;
+          if (center && circle.radius > 0) {
+            const axisDir = (ap?.axis ? directions.get(ap.axis) : undefined) ?? [0, 0, 1];
+            const nLen = Math.hypot(axisDir[0], axisDir[1], axisDir[2]) || 1;
+            const nx = axisDir[0] / nLen,
+              ny = axisDir[1] / nLen,
+              nz = axisDir[2] / nLen;
+            let ux = 1,
+              uy = 0,
+              uz = 0;
+            const startPt = ptId !== undefined ? cartesianPoints.get(ptId) : undefined;
+            if (startPt) {
+              const rx = startPt[0] - center[0],
+                ry = startPt[1] - center[1],
+                rz = startPt[2] - center[2];
+              const rLen = Math.hypot(rx, ry, rz);
+              if (rLen > 1e-9) {
+                ux = rx / rLen;
+                uy = ry / rLen;
+                uz = rz / rLen;
+              }
+            } else if (ap?.refDir && directions.has(ap.refDir)) {
+              const rd = directions.get(ap.refDir)!;
+              const rLen = Math.hypot(rd[0], rd[1], rd[2]) || 1;
+              ux = rd[0] / rLen;
+              uy = rd[1] / rLen;
+              uz = rd[2] / rLen;
+            } else if (Math.abs(nx) > 0.9) {
+              ux = 0;
+              uy = 1;
+              uz = 0;
+            }
+            const vx = ny * uz - nz * uy;
+            const vy = nz * ux - nx * uz;
+            const vz = nx * uy - ny * ux;
+
+            let sweep = 2.0 * Math.PI;
+            const endPt = endPtId !== undefined ? cartesianPoints.get(endPtId) : undefined;
+            if (startPt && endPt && ptId !== endPtId) {
+              const ex = endPt[0] - center[0],
+                ey = endPt[1] - center[1],
+                ez = endPt[2] - center[2];
+              const cosA = (ex * ux + ey * uy + ez * uz) / circle.radius;
+              const sinA = (ex * vx + ey * vy + ez * vz) / circle.radius;
+              let ang = Math.atan2(oe.sense ? sinA : -sinA, cosA);
+              if (ang <= 1e-6) ang += 2.0 * Math.PI;
+              sweep = ang;
+            }
+            const numSegs = Math.max(8, Math.round((sweep / (2.0 * Math.PI)) * 24));
+            const sign = oe.sense ? 1.0 : -1.0;
+            const chain: number[] = [];
+            if (ptId !== undefined && cartesianPoints.has(ptId)) chain.push(ptId);
+            for (let s = 1; s < numSegs; s++) {
+              const theta = (sign * (sweep * s)) / numSegs;
+              const c = Math.cos(theta),
+                sn = Math.sin(theta);
+              const px = center[0] + circle.radius * (c * ux + sn * vx);
+              const py = center[1] + circle.radius * (c * uy + sn * vy);
+              const pz = center[2] + circle.radius * (c * uz + sn * vz);
+              const sid = syntheticPtId++;
+              cartesianPoints.set(sid, [px, py, pz]);
+              polyPointIds.push(sid);
+              chain.push(sid);
+            }
+            if (endPtId !== undefined && cartesianPoints.has(endPtId)) {
+              chain.push(endPtId);
+            }
+            if (chain.length >= 3) arcChains.push(chain);
+          }
+        } else if (ec.curveId !== undefined && bSplineCurves.has(ec.curveId)) {
+          const ctrlPts = bSplineCurves.get(ec.curveId)!;
+          const ordered = oe.sense ? ctrlPts : [...ctrlPts].reverse();
+          const chain: number[] = [];
+          if (ptId !== undefined && cartesianPoints.has(ptId)) chain.push(ptId);
+          for (let i = 1; i < ordered.length - 1; i++) {
+            const cid = ordered[i]!;
+            if (cartesianPoints.has(cid)) {
+              polyPointIds.push(cid);
+              chain.push(cid);
+            }
+          }
+          if (endPtId !== undefined && cartesianPoints.has(endPtId)) chain.push(endPtId);
+          if (chain.length >= 3) arcChains.push(chain);
+        }
+      }
+      // Remove duplicate closing point if present
+      while (polyPointIds.length >= 2 && polyPointIds[0] === polyPointIds[polyPointIds.length - 1]) {
+        polyPointIds.pop();
+      }
+      return { points: polyPointIds, arcChains };
+    };
+
+    const triangulatePlanarWithHoles = (outerLoop: number[], holeLoops: number[][]): void => {
+      if (outerLoop.length < 3) return;
+      // Estimate polygon normal using Newell's method on outerLoop
+      let nx = 0,
+        ny = 0,
+        nz = 0;
+      for (let i = 0; i < outerLoop.length; i++) {
+        const p0 = cartesianPoints.get(outerLoop[i]!)!;
+        const p1 = cartesianPoints.get(outerLoop[(i + 1) % outerLoop.length]!)!;
+        nx += (p0[1] - p1[1]) * (p0[2] + p1[2]);
+        ny += (p0[2] - p1[2]) * (p0[0] + p1[0]);
+        nz += (p0[0] - p1[0]) * (p0[1] + p1[1]);
+      }
+      const nLen = Math.hypot(nx, ny, nz) || 1;
+      nx /= nLen;
+      ny /= nLen;
+      nz /= nLen;
+
+      // Build 2D basis (u, v) in plane
+      let ux = 1,
+        uy = 0,
+        uz = 0;
+      if (Math.abs(nx) > 0.9) {
+        ux = 0;
+        uy = 1;
+        uz = 0;
+      }
+      const dot = ux * nx + uy * ny + uz * nz;
+      ux -= dot * nx;
+      uy -= dot * ny;
+      uz -= dot * nz;
+      const uLen = Math.hypot(ux, uy, uz) || 1;
+      ux /= uLen;
+      uy /= uLen;
+      uz /= uLen;
+      const vx = ny * uz - nz * uy;
+      const vy = nz * ux - nx * uz;
+      const vz = nx * uy - ny * ux;
+
+      const project2D = (ptId: number): [number, number] => {
+        const p = cartesianPoints.get(ptId)!;
+        return [p[0] * ux + p[1] * uy + p[2] * uz, p[0] * vx + p[1] * vy + p[2] * vz];
+      };
+
+      const signedArea2D = (loop: number[]): number => {
+        let a = 0;
+        for (let i = 0; i < loop.length; i++) {
+          const [x0, y0] = project2D(loop[i]!);
+          const [x1, y1] = project2D(loop[(i + 1) % loop.length]!);
+          a += x0 * y1 - x1 * y0;
+        }
+        return 0.5 * a;
+      };
+
+      let poly = [...outerLoop];
+      if (signedArea2D(poly) < 0) poly.reverse();
+
+      // Bridge holes into outer polygon from rightmost hole vertex
+      const sortedHoles = holeLoops
+        .filter((h) => h.length >= 3)
+        .map((h) => {
+          const copy = [...h];
+          if (signedArea2D(copy) > 0) copy.reverse(); // holes must be CW in 2D
+          let maxU = -Infinity;
+          let maxIdx = 0;
+          for (let i = 0; i < copy.length; i++) {
+            const [u] = project2D(copy[i]!);
+            if (u > maxU) {
+              maxU = u;
+              maxIdx = i;
+            }
+          }
+          return { loop: copy, maxU, maxIdx };
+        })
+        .sort((a, b) => b.maxU - a.maxU);
+
+      for (const hole of sortedHoles) {
+        const hPtId = hole.loop[hole.maxIdx]!;
+        const [hu, hv] = project2D(hPtId);
+        let bestOuterIdx = 0;
+        let bestDist = Infinity;
+        for (let i = 0; i < poly.length; i++) {
+          const [ou, ov] = project2D(poly[i]!);
+          const d = Math.hypot(ou - hu, ov - hv);
+          if (d < bestDist) {
+            bestDist = d;
+            bestOuterIdx = i;
+          }
+        }
+        const rotatedHole: number[] = [];
+        for (let i = 0; i < hole.loop.length; i++) {
+          rotatedHole.push(hole.loop[(hole.maxIdx + i) % hole.loop.length]!);
+        }
+        poly = [
+          ...poly.slice(0, bestOuterIdx + 1),
+          ...rotatedHole,
+          rotatedHole[0]!,
+          poly[bestOuterIdx]!,
+          ...poly.slice(bestOuterIdx + 1),
+        ];
+      }
+
+      // Ear-clipping on merged 2D polygon
+      const coords = poly.map((ptId) => ({ ptId, uv: project2D(ptId) }));
+      const idxList = coords.map((_, i) => i);
+
+      const cross2D = (a: [number, number], b: [number, number], c: [number, number]): number =>
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+
+      const pointInTri2D = (
+        p: [number, number],
+        a: [number, number],
+        b: [number, number],
+        c: [number, number],
+      ): boolean => {
+        const c1 = cross2D(a, b, p);
+        const c2 = cross2D(b, c, p);
+        const c3 = cross2D(c, a, p);
+        return c1 >= -1e-9 && c2 >= -1e-9 && c3 >= -1e-9;
+      };
+
+      let guard = idxList.length * 4;
+      while (idxList.length > 3 && guard-- > 0) {
+        let earFound = false;
+        const n = idxList.length;
+        for (let i = 0; i < n; i++) {
+          const iPrev = idxList[(i + n - 1) % n]!;
+          const iCurr = idxList[i]!;
+          const iNext = idxList[(i + 1) % n]!;
+          const a = coords[iPrev]!.uv;
+          const b = coords[iCurr]!.uv;
+          const c = coords[iNext]!.uv;
+
+          if (cross2D(a, b, c) <= 1e-9) continue;
+
+          let hasInside = false;
+          for (let j = 0; j < n; j++) {
+            const idxJ = idxList[j]!;
+            if (
+              coords[idxJ]!.ptId === coords[iPrev]!.ptId ||
+              coords[idxJ]!.ptId === coords[iCurr]!.ptId ||
+              coords[idxJ]!.ptId === coords[iNext]!.ptId
+            ) {
+              continue;
+            }
+            if (pointInTri2D(coords[idxJ]!.uv, a, b, c)) {
+              hasInside = true;
+              break;
+            }
+          }
+          if (!hasInside) {
+            const v0 = getOrAddVertex(coords[iPrev]!.ptId);
+            const v1 = getOrAddVertex(coords[iCurr]!.ptId);
+            const v2 = getOrAddVertex(coords[iNext]!.ptId);
+            if (v0 !== v1 && v1 !== v2 && v2 !== v0) {
+              triIndices.push(v0, v1, v2);
+            }
+            idxList.splice(i, 1);
+            earFound = true;
+            break;
+          }
+        }
+        if (!earFound) {
+          // Fallback: clip sharpest remaining triangle so progress is guaranteed
+          const iPrev = idxList[0]!;
+          const iCurr = idxList[1]!;
+          const iNext = idxList[2]!;
+          const v0 = getOrAddVertex(coords[iPrev]!.ptId);
+          const v1 = getOrAddVertex(coords[iCurr]!.ptId);
+          const v2 = getOrAddVertex(coords[iNext]!.ptId);
+          if (v0 !== v1 && v1 !== v2 && v2 !== v0) {
+            triIndices.push(v0, v1, v2);
+          }
+          idxList.splice(1, 1);
+        }
+      }
+      if (idxList.length === 3) {
+        const v0 = getOrAddVertex(coords[idxList[0]!]!.ptId);
+        const v1 = getOrAddVertex(coords[idxList[1]!]!.ptId);
+        const v2 = getOrAddVertex(coords[idxList[2]!]!.ptId);
+        if (v0 !== v1 && v1 !== v2 && v2 !== v0) {
+          triIndices.push(v0, v1, v2);
+        }
+      }
+    };
+
+    const bridgeTwoArcChains = (chainA: number[], chainB: number[]): void => {
+      if (chainA.length < 2 || chainB.length < 2) return;
+      // Align chainB direction with chainA so quad strip doesn't twist
+      const a0 = cartesianPoints.get(chainA[0]!)!;
+      const aEnd = cartesianPoints.get(chainA[chainA.length - 1]!)!;
+      const b0 = cartesianPoints.get(chainB[0]!)!;
+      const bEnd = cartesianPoints.get(chainB[chainB.length - 1]!)!;
+      const distDirect =
+        Math.hypot(a0[0] - b0[0], a0[1] - b0[1], a0[2] - b0[2]) +
+        Math.hypot(aEnd[0] - bEnd[0], aEnd[1] - bEnd[1], aEnd[2] - bEnd[2]);
+      const distReversed =
+        Math.hypot(a0[0] - bEnd[0], a0[1] - bEnd[1], a0[2] - bEnd[2]) +
+        Math.hypot(aEnd[0] - b0[0], aEnd[1] - b0[1], aEnd[2] - b0[2]);
+      const alignedB = distReversed < distDirect ? [...chainB].reverse() : chainB;
+
+      const count = Math.min(chainA.length, alignedB.length);
+      for (let i = 0; i < count - 1; i++) {
+        const va0 = getOrAddVertex(chainA[i]!);
+        const va1 = getOrAddVertex(chainA[i + 1]!);
+        const vb0 = getOrAddVertex(alignedB[i]!);
+        const vb1 = getOrAddVertex(alignedB[i + 1]!);
+        if (va0 !== va1 && va1 !== vb1 && vb1 !== va0) {
+          triIndices.push(va0, va1, vb1);
+        }
+        if (va0 !== vb1 && vb1 !== vb0 && vb0 !== va0) {
+          triIndices.push(va0, vb1, vb0);
+        }
+      }
+    };
+
+    const afRegex =
+      /#(\d+)\s*=\s*(?:ADVANCED_FACE|FACE_SURFACE)\s*\(\s*'[^'\r\n]*'\s*,\s*\(([^()]*)\)\s*(?:,\s*#(\d+))?/gi;
     while ((m = afRegex.exec(text)) !== null) {
       const boundIds = Array.from(m[2]!.matchAll(/#(\d+)/g), (r) => parseInt(r[1]!, 10));
+      const surfId = m[3] ? parseInt(m[3], 10) : undefined;
+      const surfInfo = surfId !== undefined ? surfaceTypes.get(surfId) : undefined;
+      const isCurvedRevolution = surfInfo?.kind === "CYLINDRICAL_SURFACE" || surfInfo?.kind === "CONICAL_SURFACE";
+
+      const sampledBounds: { isOuter: boolean; points: number[]; arcChains: number[][] }[] = [];
       for (const bId of boundIds) {
         const loopId = faceBounds.get(bId);
         if (loopId === undefined) continue;
         const loopItems = edgeLoops.get(loopId);
         if (!loopItems || loopItems.length === 0) continue;
-        const polyPointIds: number[] = [];
-        for (const itemId of loopItems) {
-          if (cartesianPoints.has(itemId)) {
-            polyPointIds.push(itemId);
-            continue;
-          }
-          const oe = orientedEdges.get(itemId);
-          if (oe) {
-            const ec = edgeCurves.get(oe.edge);
-            if (ec) {
-              const startVertex = oe.sense ? ec.vStart : ec.vEnd;
-              const endVertex = oe.sense ? ec.vEnd : ec.vStart;
-              const ptId = vertexToPoint.get(startVertex);
-              const endPtId = vertexToPoint.get(endVertex);
-              if (ptId !== undefined && cartesianPoints.has(ptId)) {
-                polyPointIds.push(ptId);
-              }
-              const circle = ec.curveId !== undefined ? circles.get(ec.curveId) : undefined;
-              if (circle) {
-                const ap = axisPlacements.get(circle.placement);
-                const center = ap ? cartesianPoints.get(ap.loc) : undefined;
-                if (center && circle.radius > 0) {
-                  const axisDir = (ap?.axis ? directions.get(ap.axis) : undefined) ?? [0, 0, 1];
-                  const nLen = Math.hypot(axisDir[0], axisDir[1], axisDir[2]) || 1;
-                  const nx = axisDir[0] / nLen,
-                    ny = axisDir[1] / nLen,
-                    nz = axisDir[2] / nLen;
-                  let ux = 1,
-                    uy = 0,
-                    uz = 0;
-                  const startPt = ptId !== undefined ? cartesianPoints.get(ptId) : undefined;
-                  if (startPt) {
-                    const rx = startPt[0] - center[0],
-                      ry = startPt[1] - center[1],
-                      rz = startPt[2] - center[2];
-                    const rLen = Math.hypot(rx, ry, rz);
-                    if (rLen > 1e-9) {
-                      ux = rx / rLen;
-                      uy = ry / rLen;
-                      uz = rz / rLen;
-                    }
-                  } else if (ap?.refDir && directions.has(ap.refDir)) {
-                    const rd = directions.get(ap.refDir)!;
-                    const rLen = Math.hypot(rd[0], rd[1], rd[2]) || 1;
-                    ux = rd[0] / rLen;
-                    uy = rd[1] / rLen;
-                    uz = rd[2] / rLen;
-                  } else if (Math.abs(nx) > 0.9) {
-                    ux = 0;
-                    uy = 1;
-                    uz = 0;
-                  }
-                  // v = n x u
-                  const vx = ny * uz - nz * uy;
-                  const vy = nz * ux - nx * uz;
-                  const vz = nx * uy - ny * ux;
-
-                  let sweep = 2.0 * Math.PI;
-                  const endPt = endPtId !== undefined ? cartesianPoints.get(endPtId) : undefined;
-                  if (startPt && endPt && ptId !== endPtId) {
-                    const ex = endPt[0] - center[0],
-                      ey = endPt[1] - center[1],
-                      ez = endPt[2] - center[2];
-                    const cosA = (ex * ux + ey * uy + ez * uz) / circle.radius;
-                    const sinA = (ex * vx + ey * vy + ez * vz) / circle.radius;
-                    let ang = Math.atan2(oe.sense ? sinA : -sinA, cosA);
-                    if (ang <= 1e-6) ang += 2.0 * Math.PI;
-                    sweep = ang;
-                  }
-                  const numSegs = Math.max(4, Math.round((sweep / (2.0 * Math.PI)) * 12));
-                  const sign = oe.sense ? 1.0 : -1.0;
-                  for (let s = 1; s < numSegs; s++) {
-                    const theta = (sign * (sweep * s)) / numSegs;
-                    const c = Math.cos(theta),
-                      sn = Math.sin(theta);
-                    const px = center[0] + circle.radius * (c * ux + sn * vx);
-                    const py = center[1] + circle.radius * (c * uy + sn * vy);
-                    const pz = center[2] + circle.radius * (c * uz + sn * vz);
-                    const sid = syntheticPtId++;
-                    cartesianPoints.set(sid, [px, py, pz]);
-                    polyPointIds.push(sid);
-                  }
-                }
-              }
-            }
-          }
-        }
-        if (polyPointIds.length >= 3) {
-          faces.push(polyPointIds);
+        const sampled = sampleLoopPoints(loopItems);
+        if (sampled.points.length >= 3) {
+          sampledBounds.push({
+            isOuter: faceBoundOuter.get(bId) ?? sampledBounds.length === 0,
+            points: sampled.points,
+            arcChains: sampled.arcChains,
+          });
         }
       }
+
+      if (sampledBounds.length === 0) continue;
+
+      if (isCurvedRevolution) {
+        // Case 1: 1 loop containing 2 circular arc rims connected by seam edges
+        if (sampledBounds.length === 1 && sampledBounds[0]!.arcChains.length >= 2) {
+          bridgeTwoArcChains(sampledBounds[0]!.arcChains[0]!, sampledBounds[0]!.arcChains[1]!);
+          faces.push(sampledBounds[0]!.points);
+          continue;
+        }
+        // Case 2: 2 separate circular bound loops (top rim & bottom rim without seam edge)
+        if (sampledBounds.length === 2) {
+          const rimA = sampledBounds[0]!.arcChains[0] ?? [...sampledBounds[0]!.points, sampledBounds[0]!.points[0]!];
+          const rimB = sampledBounds[1]!.arcChains[0] ?? [...sampledBounds[1]!.points, sampledBounds[1]!.points[0]!];
+          bridgeTwoArcChains(rimA, rimB);
+          faces.push(sampledBounds[0]!.points);
+          continue;
+        }
+      }
+
+      // Planar or general face with optional inner hole bounds
+      const outerIdx = sampledBounds.findIndex((b) => b.isOuter);
+      const outer = sampledBounds[outerIdx >= 0 ? outerIdx : 0]!;
+      const holes = sampledBounds.filter((_, idx) => idx !== (outerIdx >= 0 ? outerIdx : 0)).map((b) => b.points);
+      triangulatePlanarWithHoles(outer.points, holes);
+      faces.push(outer.points);
     }
 
-    if (faces.length >= 4) {
-      const ptIdToVertexIdx = new Map<number, number>();
-      const vertCoords: number[] = [];
-      const triIndices: number[] = [];
-
-      const getOrAddVertex = (ptId: number): number => {
-        let idx = ptIdToVertexIdx.get(ptId);
-        if (idx === undefined) {
-          idx = ptIdToVertexIdx.size;
-          ptIdToVertexIdx.set(ptId, idx);
-          const pt = cartesianPoints.get(ptId)!;
-          vertCoords.push(pt[0], pt[1], pt[2]);
-        }
-        return idx;
+    if (faces.length >= 1 && triIndices.length >= 3 && ptIdToVertexIdx.size >= 3) {
+      return {
+        vertices: new Float32Array(vertCoords),
+        indices: new Uint32Array(triIndices),
       };
-
-      for (const poly of faces) {
-        const v0 = getOrAddVertex(poly[0]!);
-        for (let k = 1; k < poly.length - 1; k++) {
-          const v1 = getOrAddVertex(poly[k]!);
-          const v2 = getOrAddVertex(poly[k + 1]!);
-          if (v0 !== v1 && v1 !== v2 && v2 !== v0) {
-            triIndices.push(v0, v1, v2);
-          }
-        }
-      }
-
-      if (triIndices.length >= 12 && ptIdToVertexIdx.size >= 4) {
-        return {
-          vertices: new Float32Array(vertCoords),
-          indices: new Uint32Array(triIndices),
-        };
-      }
     }
 
     // 2. Look for unnumbered or arbitrary CARTESIAN_POINT coordinates in STEP ISO-10303-21 entity syntax

@@ -115,6 +115,22 @@ export const SortMenu = styled.div`
   }
 `;
 
+export const MobileFeedTopBar = styled.div`
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  height: 46px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--color-border-subtle, var(--color-border));
+  background: var(--surface-sticky);
+  backdrop-filter: var(--backdrop-sticky);
+  -webkit-backdrop-filter: var(--backdrop-sticky);
+
+  @media (max-width: 767px) {
+    display: flex;
+  }
+`;
+
 export const ComposePrompt = styled.div`
   display: flex;
   gap: 12px;
@@ -122,6 +138,34 @@ export const ComposePrompt = styled.div`
   background: var(--color-bg-primary);
   border-bottom: 1px solid var(--color-border);
   cursor: text;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
+`;
+
+export const MobileComposePromptBar = styled.button`
+  display: none;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--color-bg-primary);
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+
+  @media (max-width: 767px) {
+    display: flex;
+  }
+
+  &:active {
+    background: var(--surface-row-hover);
+  }
 `;
 
 export const FilterSection = styled.div<{ $scrolled?: boolean | undefined }>`

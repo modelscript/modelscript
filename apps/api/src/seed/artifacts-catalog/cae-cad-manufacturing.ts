@@ -462,4 +462,342 @@ OUTPUT_WRT_FREQ = 250
       },
     ],
   },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 45. QIF 3.0 (ISO 23952 / ANSI DMSC Quality Information Framework)
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "seed-post-qif-turbine-root",
+    language: "qif",
+    viewType: "qif",
+    title: "Aerospace HPT Blade Fir-Tree Root — ISO 23952 QIF 3.0 MBD & CMM Metrology",
+    filename: "TurbineBladeRoot_MBD_Inspection.qif",
+    authorUsername: "kenji_takahashi",
+    createdHoursAgo: 5,
+    postContent:
+      "Published our closed-loop ISO 23952 QIF 3.0 Model-Based Definition (`TurbineBladeRoot_MBD_Inspection.qif`) for a single-crystal CMSX-4 High-Pressure Turbine (HPT) blade fir-tree root & cooling bore. Links STEP AP242 B-Rep face IDs (`#101`–`#118`) to ASME Y14.5-2018 Datum Reference Frame `A | B(M) | C(M)`, composite position tolerances with `MMC` bonus tolerance evaluation, Hexagon Global S CMM calibration uncertainty ($U = 1.8\\,\\mu\\text{m}$, $\\text{TUR} \\ge 6.9:1$), and 5-part production SPC actuals ($C_{pk} = 1.68$). #QIF #ISO23952 #MBD #Metrology #NIST #ASMEY145 #DigitalThread",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument versionQIF="3.0.0" qpId="f47ac10b-58cc-4372-a567-0e02b2c3d479">
+  <Header>
+    <Author><Name>Dr. Kenji Takahashi — Precision Metrology Lab</Name></Author>
+    <Application><Name>ModelScript QIF 3.0 MBD &amp; SPC Engine</Name></Application>
+    <FileUnits>
+      <PrimaryUnits>
+        <LinearUnit><UnitName>mm</UnitName></LinearUnit>
+      </PrimaryUnits>
+    </FileUnits>
+  </Header>
+  <DatumDefinitions>
+    <DatumDefinition id="D_A" qpId="11000000-0000-4000-8000-000000000001">
+      <DatumLabel>A</DatumLabel>
+      <FeatureNominalIds><Id>F_ROOT_BASE</Id></FeatureNominalIds>
+    </DatumDefinition>
+    <DatumDefinition id="D_B" qpId="11000000-0000-4000-8000-000000000002">
+      <DatumLabel>B</DatumLabel>
+      <FeatureNominalIds><Id>F_COOLING_BORE</Id></FeatureNominalIds>
+    </DatumDefinition>
+    <DatumDefinition id="D_C" qpId="11000000-0000-4000-8000-000000000003">
+      <DatumLabel>C</DatumLabel>
+      <FeatureNominalIds><Id>F_RETENTION_SLOT</Id></FeatureNominalIds>
+    </DatumDefinition>
+  </DatumDefinitions>
+  <FeatureNominals>
+    <PlaneFeatureNominal id="F_ROOT_BASE" qpId="22000000-0000-4000-8000-000000000001">
+      <Name>FirTreePlatformDatumPlaneA</Name>
+      <Location>0.0 0.0 0.0</Location>
+      <Normal>0.0 0.0 1.0</Normal>
+      <StepEntityId>#101</StepEntityId>
+      <ProbingPoints>9</ProbingPoints>
+    </PlaneFeatureNominal>
+    <CylinderFeatureNominal id="F_COOLING_BORE" qpId="22000000-0000-4000-8000-000000000002">
+      <Name>RootInternalCoolingBoreB</Name>
+      <Diameter>12.000</Diameter>
+      <Location>24.0 0.0 15.0</Location>
+      <AxisVector>0.0 0.0 1.0</AxisVector>
+      <StepEntityId>#108</StepEntityId>
+      <ProbingPoints>12</ProbingPoints>
+    </CylinderFeatureNominal>
+    <SlotFeatureNominal id="F_RETENTION_SLOT" qpId="22000000-0000-4000-8000-000000000003">
+      <Name>AxialLockingPinSlotC</Name>
+      <Width>6.000</Width>
+      <Location>-18.0 0.0 8.0</Location>
+      <Normal>0.0 1.0 0.0</Normal>
+      <StepEntityId>#112</StepEntityId>
+      <ProbingPoints>8</ProbingPoints>
+    </SlotFeatureNominal>
+    <CylinderFeatureNominal id="F_PIN_HOLE" qpId="22000000-0000-4000-8000-000000000004">
+      <Name>DamperWirePinBore</Name>
+      <Diameter>4.500</Diameter>
+      <Location>42.0 12.5 15.0</Location>
+      <AxisVector>0.0 0.0 1.0</AxisVector>
+      <StepEntityId>#118</StepEntityId>
+      <ProbingPoints>10</ProbingPoints>
+    </CylinderFeatureNominal>
+  </FeatureNominals>
+  <CharacteristicNominals>
+    <FlatnessCharacteristicNominal id="CHAR_FLAT_A" qpId="33000000-0000-4000-8000-000000000001" balloonNumber="1">
+      <Name>PlatformBase_Flatness</Name>
+      <ToleranceValue>0.025</ToleranceValue>
+      <FeatureNominalIds><Id>F_ROOT_BASE</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM_HEXAGON_01</MeasurementDeviceId>
+    </FlatnessCharacteristicNominal>
+    <CylindricityCharacteristicNominal id="CHAR_CYL_B" qpId="33000000-0000-4000-8000-000000000002" balloonNumber="2">
+      <Name>CoolingBore_Cylindricity</Name>
+      <ToleranceValue>0.030</ToleranceValue>
+      <FeatureNominalIds><Id>F_COOLING_BORE</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM_HEXAGON_01</MeasurementDeviceId>
+    </CylindricityCharacteristicNominal>
+    <PositionCharacteristicNominal id="CHAR_POS_BORE" qpId="33000000-0000-4000-8000-000000000003" balloonNumber="3">
+      <Name>CoolingBore_TruePosition</Name>
+      <ToleranceValue>0.050</ToleranceValue>
+      <DiametricalZone>true</DiametricalZone>
+      <MaterialCondition>MMC</MaterialCondition>
+      <DatumReferenceFrame>
+        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>
+        <DatumReference precedence="2"><DatumLabel>C</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>
+      </DatumReferenceFrame>
+      <CompositeLowerTier toleranceZone="0.018" materialCondition="MMC">
+        <DatumReference><DatumLabel>A</DatumLabel></DatumReference>
+      </CompositeLowerTier>
+      <FeatureNominalIds><Id>F_COOLING_BORE</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM_HEXAGON_01</MeasurementDeviceId>
+    </PositionCharacteristicNominal>
+    <PositionCharacteristicNominal id="CHAR_POS_PIN" qpId="33000000-0000-4000-8000-000000000004" balloonNumber="4">
+      <Name>DamperPinBore_TruePosition</Name>
+      <ToleranceValue>0.040</ToleranceValue>
+      <DiametricalZone>true</DiametricalZone>
+      <MaterialCondition>MMC</MaterialCondition>
+      <DatumReferenceFrame>
+        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>
+        <DatumReference precedence="2"><DatumLabel>B</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>
+        <DatumReference precedence="3"><DatumLabel>C</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>
+      </DatumReferenceFrame>
+      <FeatureNominalIds><Id>F_PIN_HOLE</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM_HEXAGON_01</MeasurementDeviceId>
+    </PositionCharacteristicNominal>
+  </CharacteristicNominals>
+  <MeasurementResources>
+    <MeasurementDevice id="CMM_HEXAGON_01" deviceType="CMM">
+      <Name>Hexagon_Global_S_07_10_07</Name>
+      <CalibrationUncertainty>0.0018</CalibrationUncertainty>
+    </MeasurementDevice>
+  </MeasurementResources>
+  <Rules minTurRatio="4.0">
+    <FeatureRule featureType="Plane" minPoints="6"/>
+    <FeatureRule featureType="Cylinder" minPoints="8"/>
+    <FeatureRule featureType="Slot" minPoints="6"/>
+  </Rules>
+  <Plan>
+    <PlanStep id="STEP_01" stepNumber="1" featureId="F_ROOT_BASE" characteristicId="CHAR_FLAT_A" deviceId="CMM_HEXAGON_01" probingPointCount="9"/>
+    <PlanStep id="STEP_02" stepNumber="2" featureId="F_COOLING_BORE" characteristicId="CHAR_CYL_B" deviceId="CMM_HEXAGON_01" probingPointCount="12"/>
+    <PlanStep id="STEP_03" stepNumber="3" featureId="F_COOLING_BORE" characteristicId="CHAR_POS_BORE" deviceId="CMM_HEXAGON_01" probingPointCount="12"/>
+    <PlanStep id="STEP_04" stepNumber="4" featureId="F_PIN_HOLE" characteristicId="CHAR_POS_PIN" deviceId="CMM_HEXAGON_01" probingPointCount="10"/>
+  </Plan>
+  <Results>
+    <GeometricCharacteristicActual id="ACT_01" characteristicNominalId="CHAR_FLAT_A" partSerialNumber="HPT-2026-001">
+      <MeasuredValue>0.009</MeasuredValue>
+      <DeviationVector>0.0 0.0 0.009</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT_02" characteristicNominalId="CHAR_FLAT_A" partSerialNumber="HPT-2026-002">
+      <MeasuredValue>0.011</MeasuredValue>
+      <DeviationVector>0.0 0.0 0.011</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT_03" characteristicNominalId="CHAR_CYL_B" partSerialNumber="HPT-2026-001">
+      <MeasuredValue>0.012</MeasuredValue>
+      <ActualFeatureSize>12.015</ActualFeatureSize>
+      <DeviationVector>0.008 0.009 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT_04" characteristicNominalId="CHAR_POS_BORE" partSerialNumber="HPT-2026-001">
+      <MeasuredValue>0.048</MeasuredValue>
+      <ActualFeatureSize>12.018</ActualFeatureSize>
+      <DeviationVector>0.032 0.035 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT_05" characteristicNominalId="CHAR_POS_BORE" partSerialNumber="HPT-2026-002">
+      <MeasuredValue>0.034</MeasuredValue>
+      <ActualFeatureSize>12.012</ActualFeatureSize>
+      <DeviationVector>0.024 0.024 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT_06" characteristicNominalId="CHAR_POS_PIN" partSerialNumber="HPT-2026-001">
+      <MeasuredValue>0.022</MeasuredValue>
+      <ActualFeatureSize>4.510</ActualFeatureSize>
+      <DeviationVector>0.015 0.016 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+  </Results>
+</QIFDocument>`,
+    likedBy: ["omar", "david_kowalski", "sofia_rossi", "lukas_weber", "vikram_patel"],
+    repostedBy: ["omar", "david_kowalski"],
+    bookmarkedBy: ["sofia_rossi", "omar"],
+    comments: [
+      {
+        authorUsername: "david_kowalski",
+        createdHoursAgo: 4,
+        content:
+          "Notice how `ACT_04` on `CHAR_POS_BORE` has a measured position error of `0.048 mm` against the `0.050 mm` nominal zone, plus `+0.018 mm` MMC bonus tolerance from the `12.018 mm` actual bore size (`effectiveTolerance = 0.068 mm`). `@modelscript/qif` evaluates the bonus automatically!",
+        likedBy: ["kenji_takahashi", "omar"],
+        replies: [
+          {
+            authorUsername: "kenji_takahashi",
+            createdHoursAgo: 3,
+            content:
+              "Exactly—and because the Hexagon CMM uncertainty is $U = 1.8\\,\\mu\\text{m}$, the Test Uncertainty Ratio on `CHAR_FLAT_A` ($0.025\\,\\text{mm}$) is $\\text{TUR} = 6.94:1$, clearing our NIST `4.0:1` gate (`M8107`) with zero warnings.",
+            likedBy: ["david_kowalski", "omar", "sofia_rossi"],
+          },
+        ],
+      },
+    ],
+  },
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 46. AUTOMATIONML (IEC 62714 / CAEX 3.0 Smart Manufacturing Topology)
+  // ───────────────────────────────────────────────────────────────────────────
+  {
+    id: "seed-post-automationml-workcell",
+    language: "automationml",
+    viewType: "automationml",
+    title: "800V EV Battery Module Laser-Weld Cell — IEC 62714 AutomationML CAEX 3.0",
+    filename: "SmartBatteryModule_LaserWeldCell.aml",
+    authorUsername: "lukas_weber",
+    createdHoursAgo: 4,
+    postContent:
+      "Uploaded the IEC 62714 AutomationML (`SmartBatteryModule_LaserWeldCell.aml`) CAEX 3.0 digital thread container for our automated 800V EV Battery Module Busbar Laser-Welding Workcell. Unifies PPR roles (`Product`, `Process`, `Resource`), 6-DOF spatial `Frame` kinematics, `COLLADAInterface` 3D meshes, and `PLCopenXMLInterface` safety interlocks with closed-loop virtual commissioning. #AutomationML #IEC62714 #CAEX #SmartManufacturing #Industry40 #VirtualCommissioning #NIST",
+    code: `<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="SmartBatteryModule_LaserWeldCell.aml" SchemaVersion="3.0">
+  <InstanceHierarchy Name="EVBatteryLaserWeldWorkcell">
+    <Version>3.0.0</Version>
+    <InternalElement Name="BusbarWeldRobot_6DOF" ID="rob-kuka-01" RefBaseSystemUnitPath="SmartCellUnitLib/SixAxisLaserRobot" PPRCategory="Resource">
+      <Attribute Name="payloadKg" AttributeDataType="xs:double" Unit="kg">
+        <Value>16.0</Value>
+      </Attribute>
+      <Attribute Name="reachMm" AttributeDataType="xs:double" Unit="mm">
+        <Value>1610.0</Value>
+      </Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>1.20</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>0.85</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.00</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>45.0</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="motionEnableIn" ID="rob-en-in" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="weldSeamCompleteOut" ID="rob-done-out" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="kinematicMesh" ID="rob-collada" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/COLLADAInterface" RefURI="file://meshes/kr16_laser_head.dae" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+
+    <InternalElement Name="FiberLaserSource_4kW" ID="laser-ipg-01" RefBaseSystemUnitPath="SmartCellUnitLib/FiberLaserResonator" PPRCategory="Resource">
+      <Attribute Name="nominalPowerKw" AttributeDataType="xs:double" Unit="kW">
+        <Value>4.0</Value>
+      </Attribute>
+      <Attribute Name="wavelengthNm" AttributeDataType="xs:double" Unit="nm">
+        <Value>1070.0</Value>
+      </Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>2.40</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>1.60</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.00</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="emissionGateIn" ID="las-gate-in" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="beamPowerActualOut" ID="las-pwr-out" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="REAL" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+
+    <InternalElement Name="SafetyCellControllerPLC" ID="plc-safety-01" RefBaseSystemUnitPath="SmartCellUnitLib/SafetyPlcController" PPRCategory="Resource">
+      <Attribute Name="scanCycleMs" AttributeDataType="xs:double" Unit="ms">
+        <Value>2.0</Value>
+      </Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>0.25</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>2.10</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>1.10</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="robotEnableCmd" ID="plc-rob-en" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="laserGateCmd" ID="plc-las-gate" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="seamCompleteFb" ID="plc-seam-fb" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="beamPowerFb" ID="plc-pwr-fb" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="REAL" />
+      <ExternalInterface Name="safetyLogicPou" ID="plc-pou-ref" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/PLCopenXMLInterface" RefURI="file://plc/BatteryModule_LaserWeld_SafetyController.plcopen" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+      <InternalLink Name="Link_PLC_RobotEnable" RefPartnerSideA="plc-safety-01:robotEnableCmd" RefPartnerSideB="rob-kuka-01:motionEnableIn" />
+      <InternalLink Name="Link_PLC_LaserGate" RefPartnerSideA="plc-safety-01:laserGateCmd" RefPartnerSideB="laser-ipg-01:emissionGateIn" />
+      <InternalLink Name="Link_Robot_SeamDone" RefPartnerSideA="rob-kuka-01:weldSeamCompleteOut" RefPartnerSideB="plc-safety-01:seamCompleteFb" />
+      <InternalLink Name="Link_Laser_PowerFb" RefPartnerSideA="laser-ipg-01:beamPowerActualOut" RefPartnerSideB="plc-safety-01:beamPowerFb" />
+    </InternalElement>
+
+    <InternalElement Name="PrismaticCellModule_800V" ID="prod-pack-01" PPRCategory="Product">
+      <Attribute Name="cellCount" AttributeDataType="xs:integer">
+        <Value>24</Value>
+      </Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>1.20</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>0.00</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.75</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+      </Attribute>
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Product" />
+    </InternalElement>
+
+    <InternalElement Name="CopperBusbarSeamWeldProcess" ID="proc-weld-01" PPRCategory="Process">
+      <Attribute Name="weldSpeedMmPerSec" AttributeDataType="xs:double" Unit="mm/s">
+        <Value>185.0</Value>
+      </Attribute>
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Process" />
+    </InternalElement>
+  </InstanceHierarchy>
+
+  <SystemUnitClassLib Name="SmartCellUnitLib">
+    <SystemUnitClass Name="SixAxisLaserRobot" RefBaseClassPath="AutomationMLBaseSystemUnitClassLib/BaseUnit">
+      <SupportedRoleClass RefRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </SystemUnitClass>
+    <SystemUnitClass Name="FiberLaserResonator" RefBaseClassPath="AutomationMLBaseSystemUnitClassLib/BaseUnit">
+      <SupportedRoleClass RefRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </SystemUnitClass>
+    <SystemUnitClass Name="SafetyPlcController" RefBaseClassPath="AutomationMLBaseSystemUnitClassLib/BaseUnit">
+      <SupportedRoleClass RefRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </SystemUnitClass>
+  </SystemUnitClassLib>
+
+  <RoleClassLib Name="AutomationMLBaseRoleClassLib">
+    <RoleClass Name="AutomationMLBaseRole" />
+  </RoleClassLib>
+
+  <InterfaceClassLib Name="AutomationMLInterfaceClassLib">
+    <InterfaceClass Name="AutomationMLBaseInterface" />
+  </InterfaceClassLib>
+</CAEXFile>`,
+    likedBy: ["omar", "kenji_takahashi", "elena_vance", "claire_dubois", "alex_rivera"],
+    repostedBy: ["kenji_takahashi", "omar"],
+    bookmarkedBy: ["omar", "elena_vance"],
+    comments: [
+      {
+        authorUsername: "kenji_takahashi",
+        createdHoursAgo: 3,
+        content:
+          "Linking `SafetyCellControllerPLC` directly to `BatteryModule_LaserWeld_SafetyController.plcopen` via `PLCopenXMLInterface` and exporting the plant topology to SSP 1.0 (`.ssd`) with one click is a massive workflow upgrade.",
+        likedBy: ["lukas_weber", "omar"],
+        replies: [
+          {
+            authorUsername: "lukas_weber",
+            createdHoursAgo: 2,
+            content:
+              "All 4 `InternalLink` signal bindings pass IEC 62714 port-direction & data-type checks (`M8304`) with zero conflicts, and the closed-loop virtual commissioning runner confirms interlock stability across 100 scan cycles.",
+            likedBy: ["kenji_takahashi", "omar", "claire_dubois"],
+          },
+        ],
+      },
+    ],
+  },
 ];

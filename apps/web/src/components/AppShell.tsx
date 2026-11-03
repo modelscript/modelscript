@@ -18,6 +18,7 @@ import {
   RssIcon,
   SearchIcon,
   ShieldLockIcon,
+  SignOutIcon,
   SunIcon,
   ThreeBarsIcon,
 } from "@primer/octicons-react";
@@ -47,6 +48,7 @@ const ShellContainer = styled.div<{ $hasGuestBanner?: boolean | undefined }>`
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
+  min-height: 100dvh;
   background-color: transparent;
   color: var(--color-text-primary);
   padding-top: var(--dev-header-height, 0px);
@@ -57,7 +59,7 @@ const ShellContainer = styled.div<{ $hasGuestBanner?: boolean | undefined }>`
     --guest-banner-height: ${(props) => (props.$hasGuestBanner ? "var(--measured-guest-banner-height, 74px)" : "0px")};
   }
 
-  @media (max-width: 500px) {
+  @media (max-width: 767px) {
     --guest-banner-height: 0px;
   }
 `;
@@ -81,7 +83,7 @@ const SidebarWrapper = styled.div`
     flex-basis: auto;
   }
 
-  @media (max-width: 500px) {
+  @media (max-width: 767px) {
     display: none;
   }
 `;
@@ -114,15 +116,18 @@ const MainColumn = styled.main<{
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
   min-height: calc(100vh - var(--dev-header-height, 0px));
+  min-height: calc(100dvh - var(--dev-header-height, 0px));
   padding-bottom: ${(props) =>
     props.$isFullScreenLayout ? "var(--guest-banner-height, 0px)" : "calc(80px + var(--guest-banner-height, 0px))"};
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
 
-  @media (max-width: 500px) {
+  @media (max-width: 767px) {
     padding-bottom: ${(props) =>
-      props.$isFullScreenLayout ? "0px" : "120px"}; /* Leave space for bottom bar + banner */
+      props.$isFullScreenLayout
+        ? "0px"
+        : "calc(120px + env(safe-area-inset-bottom, 0px))"}; /* Leave space for bottom bar + banner */
     border-left: none;
     border-right: none;
   }
@@ -133,7 +138,8 @@ const BottomBarContainer = styled.div`
   bottom: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  min-height: 60px;
+  height: calc(60px + env(safe-area-inset-bottom, 0px));
   background-color: var(--surface-hud);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -146,7 +152,7 @@ const BottomBarContainer = styled.div`
   padding-bottom: env(safe-area-inset-bottom, 0px);
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
 
-  @media (max-width: 500px) {
+  @media (max-width: 767px) {
     display: flex;
   }
 `;
@@ -180,6 +186,8 @@ const MoreSheetBackdrop = styled.div`
 
 const MoreSheet = styled.div`
   width: 100%;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
   background: var(--ms-bg-elv);
   border-top: 1px solid var(--ms-border);
   border-radius: 16px 16px 0 0;
@@ -276,9 +284,9 @@ const Banner = styled.div`
     display: none;
   }
 
-  /* Sit above the mobile bottom bar (60px) instead of underneath it. */
-  @media (max-width: 500px) {
-    bottom: 60px;
+  /* Sit above the mobile bottom bar (60px + safe-area) instead of underneath it. */
+  @media (max-width: 767px) {
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
     padding: 10px 16px;
   }
 `;
@@ -296,7 +304,7 @@ const BannerContent = styled.div`
     padding: 0 8px;
   }
 
-  @media (max-width: 500px) {
+  @media (max-width: 767px) {
     padding: 0;
   }
 `;
@@ -306,7 +314,7 @@ const BannerTitle = styled.span`
   font-weight: 750;
   letter-spacing: -0.01em;
 
-  @media (max-width: 500px) {
+  @media (max-width: 767px) {
     font-size: 15px;
   }
 `;
@@ -315,7 +323,7 @@ const BannerSubtitle = styled.span`
   font-size: 14px;
   color: var(--color-text-muted);
 
-  @media (max-width: 500px) {
+  @media (max-width: 767px) {
     display: none;
   }
 `;
@@ -361,6 +369,7 @@ const AppShell: React.FC = () => {
   const hasCaeJobs = useFeatureFlag("cae_cloud_solver");
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasPackages = useFeatureFlag("package_browser");
+  const hasRepos = useFeatureFlag("git_repositories");
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
   const branding = useInstanceBranding();
@@ -433,7 +442,7 @@ const AppShell: React.FC = () => {
     };
   }, []);
 
-  // Make workbench layout only for multi-section Engineering Notebooks on /status/:id
+  // Make workbench layout only for multi-section Articles on /status/:id
   const isInspectorLayout = location.pathname.includes("/status/") && isNotebookInspector;
 
   // Make full screen layout for /packages/* and /repos/* detail pages
@@ -731,6 +740,58 @@ const AppShell: React.FC = () => {
                 <MoreSheet role="dialog" aria-label="More" onClick={(e) => e.stopPropagation()}>
                   {user && (
                     <>
+                      <Link
+                        to={`/${user.username}`}
+                        onClick={() => handleMoreLinkClick(`/${user.username}`)}
+                        style={{ height: "54px" }}
+                      >
+                        <div
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: "50%",
+                            backgroundColor: "var(--ms-brand-soft)",
+                            backgroundImage: user.avatar_url ? `url(${user.avatar_url})` : "none",
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: "var(--ms-brand)",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {user.avatar_url ? null : user.username.charAt(0).toUpperCase()}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.25 }}>
+                          <span
+                            style={{
+                              fontWeight: 650,
+                              fontSize: "14px",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {user.display_name || user.username}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "12px",
+                              color: "var(--color-text-muted)",
+                              fontWeight: 400,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            @{user.username}
+                          </span>
+                        </div>
+                      </Link>
+                      <hr />
                       <Link to="/bookmarks" onClick={() => handleMoreLinkClick("/bookmarks")}>
                         <BookmarkIcon size={20} /> Bookmarks
                       </Link>
@@ -805,7 +866,24 @@ const AppShell: React.FC = () => {
                     {theme === "dark" ? <SunIcon size={20} /> : <MoonIcon size={20} />}
                     {theme === "dark" ? "Light theme" : "Dark theme"}
                   </button>
-                  {!user && (
+                  {user ? (
+                    <>
+                      <hr />
+                      <button
+                        type="button"
+                        className="more-row"
+                        style={{ color: "var(--color-danger-fg, #ef4444)" }}
+                        onClick={() => {
+                          setIsMoreOpen(false);
+                          logout();
+                          navigate("/logout", { replace: true });
+                        }}
+                      >
+                        <SignOutIcon size={20} />
+                        Log out @{user.username}
+                      </button>
+                    </>
+                  ) : (
                     <div className="more-auth">
                       <Link
                         to="/login"

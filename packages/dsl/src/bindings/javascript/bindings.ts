@@ -4223,18 +4223,21 @@ export class LspFacade {
     const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
 
     let baseRoot =
-      oldRoot !== undefined && oldRoot !== 0
+      oldRoot !== undefined
         ? oldRoot
         : Array.isArray(editStartOrEdits) && typeof editOldEnd === "number" && editOldEnd > 0
           ? editOldEnd
           : prevAstRoot !== 0
             ? prevAstRoot
-            : this.lastAstRoot;
+            : 0;
+    if (baseRoot !== 0 && baseRoot !== this.lastAstRoot) {
+      baseRoot = 0;
+    }
 
     let newAstRoot = 0;
     if (Array.isArray(editStartOrEdits)) {
       const edits = editStartOrEdits;
-      if (edits.length > 0 && this.exports.parseWithEdits && this.exports.atomicChunkAlloc) {
+      if (baseRoot !== 0 && edits.length > 0 && this.exports.parseWithEdits && this.exports.atomicChunkAlloc) {
         // Reuse a scratch buffer: atomicChunkAlloc memory is never freed, so allocating
         // per call leaked 12 bytes per edit on every keystroke.
         if (this._editsScratchCapacity < edits.length) {
@@ -4251,7 +4254,7 @@ export class LspFacade {
         }
         newAstRoot = this.exports.parseWithEdits(baseRoot, editsPtr, edits.length);
       } else {
-        newAstRoot = this.exports.parse(baseRoot, 0, 0, inputLen);
+        newAstRoot = this.exports.parse(0, 0, 0, inputLen);
       }
     } else {
       let editStart = typeof editStartOrEdits === "number" ? editStartOrEdits : 0;

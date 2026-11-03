@@ -1265,18 +1265,27 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
       const isStream = req.query["stream"] === "true";
+      const isTree = req.query["tree"] === "true";
 
       if (typeof name !== "string" || typeof version !== "string") {
         res.status(400).json({ error: "Package name and version are required" });
         return;
       }
 
-      const extractedDir = storage.getExtractedPath(name, version);
+      let extractedDir = storage.getExtractedPath(name, version);
+      if (!fs.existsSync(extractedDir) && storage.exists(name, version)) {
+        try {
+          extractedDir = await storage.extractLibrary(name, version);
+        } catch {
+          // ignore
+        }
+      }
       if (!fs.existsSync(extractedDir)) {
         // FEDERATION: Proxy from upstream
         try {
+          const qs = isStream ? "?stream=true" : isTree ? "?tree=true" : "";
           const upstreamUrl = safeUpstreamUrl(
-            `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/files${isStream ? "?stream=true" : ""}`,
+            `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/files${qs}`,
           );
 
           const upstreamRes = await fetch(upstreamUrl.toString());
@@ -1297,6 +1306,103 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         }
 
         res.status(404).json({ error: "Library not extracted" });
+        return;
+      }
+
+      if (isTree) {
+        const rawEntries: Array<{ rawPath: string; size: number; fullPath: string }> = [];
+        const walkStats = (dir: string): void => {
+          let dirEntries: fs.Dirent[];
+          try {
+            dirEntries = fs.readdirSync(dir, { withFileTypes: true });
+          } catch {
+            return;
+          }
+          dirEntries.sort((a, b) => a.name.localeCompare(b.name));
+          for (const entry of dirEntries) {
+            if (
+              entry.name === ".git" ||
+              entry.name === "symbols.bin" ||
+              entry.name === "salsa-index.db" ||
+              entry.name === "lsp-bundle.zip"
+            ) {
+              continue;
+            }
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              walkStats(fullPath);
+            } else if (entry.isFile()) {
+              try {
+                const st = fs.statSync(fullPath);
+                const relPath = path.relative(extractedDir, fullPath).replace(/\\/g, "/");
+                rawEntries.push({ rawPath: relPath, size: st.size, fullPath });
+              } catch {
+                // ignore
+              }
+            }
+          }
+        };
+        walkStats(extractedDir);
+
+        // Strip common single top-level wrapper folder (e.g. "Modelica/", "SysML/", "@scope__pkg/", or "@scope/pkg/")
+        let stripPrefix = "";
+        if (rawEntries.length > 0 && rawEntries.every((e) => e.rawPath.includes("/"))) {
+          const firstParts = rawEntries[0]!.rawPath.split("/");
+          const candidate1 = `${firstParts[0]!}/`;
+          if (rawEntries.every((e) => e.rawPath.startsWith(candidate1))) {
+            stripPrefix = candidate1;
+            if (firstParts[0]!.startsWith("@") && firstParts.length > 2) {
+              const candidate2 = `${firstParts[0]!}/${firstParts[1]!}/`;
+              if (rawEntries.every((e) => e.rawPath.startsWith(candidate2))) {
+                stripPrefix = candidate2;
+              }
+            }
+          }
+        }
+
+        const tree = rawEntries.map((e) => ({
+          path: stripPrefix && e.rawPath.startsWith(stripPrefix) ? e.rawPath.slice(stripPrefix.length) : e.rawPath,
+          rawPath: e.rawPath,
+          size: e.size,
+        }));
+
+        const isCodeEntry = (p: string): boolean =>
+          /\.(mo|sysml|sysml2|kerml|msx|scad|step|stp|pscx|pslx|inp|cfg|spck|sim|calc|f90|c)$/i.test(p);
+        const primaryFile =
+          tree.find((t) => t.path === "package.mo")?.path ||
+          tree.find((t) => !t.path.includes("/") && isCodeEntry(t.path))?.path ||
+          tree.find((t) => isCodeEntry(t.path))?.path ||
+          tree.find((t) => t.path === "modelscript.json" || t.path === "datapackage.json" || t.path === "package.json")
+            ?.path ||
+          tree.find((t) => /^readme\.(md|txt|rst)$/i.test(t.path))?.path ||
+          tree[0]?.path ||
+          "";
+
+        const totalSize = rawEntries.reduce((acc, e) => acc + e.size, 0);
+        const inlineAllText = rawEntries.length <= 120 && totalSize <= 1024 * 1024;
+        const binaryExtRe = /\.(png|jpg|jpeg|gif|webp|ico|pdf|zip|gz|tar|wasm|bin|db|o|so|dll|dylib|exe|mat)$/i;
+
+        const files: Record<string, string> = {};
+        for (let i = 0; i < rawEntries.length; i++) {
+          const raw = rawEntries[i]!;
+          const mappedPath = tree[i]!.path;
+          if (binaryExtRe.test(mappedPath) || raw.size > 512 * 1024) continue;
+          const isRootOrPrimary =
+            mappedPath === primaryFile ||
+            !mappedPath.includes("/") ||
+            mappedPath === "README.md" ||
+            mappedPath === "modelscript.json" ||
+            mappedPath === "package.json";
+          if (inlineAllText || isRootOrPrimary) {
+            try {
+              files[mappedPath] = fs.readFileSync(raw.fullPath, "utf-8");
+            } catch {
+              // ignore unreadable file
+            }
+          }
+        }
+
+        res.json({ name, version, primaryFile, files, tree });
         return;
       }
 

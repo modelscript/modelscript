@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { CircleIconButton } from "./SharedStyles";
 
-const Root = styled.header<{ $divider: boolean; $scrolled: boolean }>`
+const Root = styled.header<{ $divider: boolean; $scrolled?: boolean | undefined }>`
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 50;
@@ -130,20 +130,9 @@ const PageHeader: React.FC<PageHeaderProps> = ({
 }) => {
   const navigate = useNavigate();
   const onBack = typeof back === "function" ? back : () => navigate(-1);
-  const [isScrolled, setIsScrolled] = React.useState(() => typeof window !== "undefined" && window.scrollY > 4);
-
-  React.useEffect(() => {
-    const onScroll = () => {
-      const next = window.scrollY > 4;
-      setIsScrolled((prev) => (prev === next ? prev : next));
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   return (
-    <Root $divider={divider} $scrolled={isScrolled}>
+    <Root $divider={divider}>
       <Row>
         {back && (
           <CircleIconButton type="button" onClick={onBack} aria-label="Go back">

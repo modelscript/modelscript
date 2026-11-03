@@ -32,7 +32,7 @@ describe("Polyglot 44-Language Social Seed Catalog", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("covers all 44 languages in languages/* with 1-to-1 fidelity", () => {
+  it("covers all 47 languages in languages/* with 1-to-1 fidelity", () => {
     const languagesDir = path.join(REPO_ROOT, "languages");
     const diskLanguages = fs
       .readdirSync(languagesDir, { withFileTypes: true })
@@ -40,8 +40,8 @@ describe("Polyglot 44-Language Social Seed Catalog", () => {
       .map((d) => d.name)
       .sort();
 
-    assert.equal(diskLanguages.length, 44);
-    assert.equal(ALL_44_LANGUAGE_SEED_POSTS.length, 44);
+    assert.equal(diskLanguages.length, 47);
+    assert.equal(ALL_44_LANGUAGE_SEED_POSTS.length, 47);
 
     const catalogLanguages = ALL_44_LANGUAGE_SEED_POSTS.map((p) => (p.language ?? p.languageId ?? "").trim()).sort();
     assert.deepEqual(catalogLanguages, diskLanguages);
@@ -58,13 +58,13 @@ describe("Polyglot 44-Language Social Seed Catalog", () => {
     }
   });
 
-  it("seeds 20 personas, 44 language artifacts + 1 fork, comments, likes, and is idempotent", async () => {
+  it("seeds 20 personas, 47 language artifacts + 1 fork, comments, likes, and is idempotent", async () => {
     const uploadDir = path.join(tmpDir, "uploads");
     const summary1 = await seedPolyglotSocialData(db, { uploadDir });
 
     assert.equal(summary1.usersSeeded, SEED_PERSONAS.length);
-    assert.equal(summary1.artifactsCreated, 45); // 44 languages + 1 forked Modelica post
-    assert.equal(summary1.postsCreated, 45);
+    assert.equal(summary1.artifactsCreated, 48); // 47 languages + 1 forked Modelica post
+    assert.equal(summary1.postsCreated, 48);
     assert.ok(summary1.commentsCreated >= 100, `Expected >= 100 comments+replies, got ${summary1.commentsCreated}`);
 
     const codeOnlyViewTypes = new Set([
@@ -78,7 +78,6 @@ describe("Polyglot 44-Language Social Seed Catalog", () => {
       "energyplus",
       "reqif",
       "autosar",
-      "cfd-config",
     ]);
 
     // Verify every diagram-capable artifact view has a generated SVG thumbnail

@@ -156,11 +156,11 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
       style={{
         position: "sticky",
         bottom: "0px",
-        backgroundColor: "var(--color-bg-primary)",
+        backgroundColor: isModal ? "transparent" : "var(--color-bg-primary)",
         zIndex: 10,
         paddingBottom: "0px",
         paddingTop: isExpanded ? "12px" : "4px",
-        borderTop: isModal || !isExpanded ? "none" : "1px solid var(--color-border)",
+        borderTop: !isExpanded ? "none" : "1px solid var(--color-border)",
         marginTop: isModal ? "auto" : undefined,
       }}
     >
@@ -448,12 +448,23 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
           )}
         </Box>
       )}
-      <Box display="flex" justifyContent="space-between" alignItems="center">
-        <Box display="flex" gap={2} alignItems="center">
+      <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+        <Box
+          display="flex"
+          gap={1.5}
+          alignItems="center"
+          style={{
+            minWidth: 0,
+            overflowX: "auto",
+            scrollbarWidth: "none",
+            WebkitOverflowScrolling: "touch",
+            padding: "2px 0",
+          }}
+        >
           <ActionIconButton
             onClick={() => setShowMorselModal(true)}
             aria-label="Add Morsel Diagram"
-            title="Add Morsel Diagram & Simulation (attach multiple to build a Notebook)"
+            title="Add Morsel Diagram & Simulation (attach multiple to build an Article)"
           >
             <PulseIcon size={20} />
           </ActionIconButton>
@@ -484,7 +495,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
             type="file"
             style={{ display: "none" }}
             ref={fileInputRef}
-            accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.tsv,.mo,.mos,.sysml,.sysml2,.kerml,.pscx,.pslx,.psout,.raw,.con,.inl,.opi,.key,.tpl,.olga,.ez5,.ezm,.roc,.deck,.lps,.tgx,.sima,.sys,.gtm,.gtd,.inp,.inpt,.bdf,.cfg,.cfgt,.su2,.fmu,.ssp,.ssd,.owl,.ttl,.ofn,.tei,.xml"
+            accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.tsv,.json,.yaml,.yml,.h5,.hdf5,.mo,.mos,.sysml,.sysml2,.kerml,.pscx,.pslx,.psout,.raw,.con,.inl,.opi,.key,.tpl,.olga,.ez5,.ezm,.roc,.deck,.lps,.tgx,.sima,.sys,.gtm,.gtd,.inp,.inpt,.bdf,.cfg,.cfgt,.su2,.fmu,.ssp,.ssd,.owl,.ttl,.ofn,.tei,.xml"
             onChange={handleFileUpload}
             disabled={uploadingFile}
           />
@@ -492,7 +503,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadingFile}
             aria-label="Upload media or CAD/FMU"
-            title="Upload media, CAD (STEP/USD/glTF), FMU/SSP, PDFs, CSV, TEI"
+            title="Upload media, CAD (STEP/USD/glTF), FMU/SSP, PDFs, Datasets (CSV/JSON/YAML/XML/HDF5), TEI"
           >
             <PaperclipIcon size={20} />
           </ActionIconButton>
@@ -528,7 +539,15 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
                     setShowEmojiPicker(false);
                   }}
                 />
-                <div style={{ position: "absolute", top: "100%", zIndex: 1000, marginTop: "8px" }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    top: isModal ? "auto" : "100%",
+                    bottom: isModal ? "calc(100% + 8px)" : "auto",
+                    zIndex: 1000,
+                    marginTop: isModal ? undefined : "8px",
+                  }}
+                >
                   <SimpleEmojiPicker
                     onEmojiClick={(emojiData) => {
                       if (onInsertEmoji) {
@@ -556,23 +575,84 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
             )}
           </div>
           {uploadingFile && (
-            <span style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginLeft: "8px" }}>Uploading...</span>
+            <span style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginLeft: "4px", whiteSpace: "nowrap" }}>
+              Uploading...
+            </span>
           )}
         </Box>
-        <TweetButton
-          onClick={handleSubmit}
-          disabled={(!content.trim() && !artifactId && !hasNotebookContent) || submitting}
-        >
-          {editPostId
-            ? isNotebookMode
-              ? "Update article"
-              : "Save changes"
-            : replyToPost
-              ? "Reply"
-              : isNotebookMode
-                ? "Publish article"
-                : "Post"}
-        </TweetButton>
+        <Box display="flex" alignItems="center" gap={2} flexShrink={0}>
+          {!isNotebookMode && content.length > 0 && (
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                userSelect: "none",
+              }}
+              title={
+                content.length > 500
+                  ? `${content.length}/500 characters (Exceeds standard 500 character limit)`
+                  : `${500 - content.length} characters remaining`
+              }
+            >
+              {content.length >= 480 && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: content.length > 500 ? "var(--ms-danger, #e11d48)" : "var(--ms-warning, #d97706)",
+                  }}
+                >
+                  {500 - content.length}
+                </span>
+              )}
+              <svg width="18" height="18" viewBox="0 0 20 20" style={{ transform: "rotate(-90deg)" }}>
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="7.5"
+                  fill="none"
+                  stroke="var(--ms-divider, rgba(148, 163, 184, 0.2))"
+                  strokeWidth="2"
+                />
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="7.5"
+                  fill="none"
+                  stroke={
+                    content.length > 500
+                      ? "var(--ms-danger, #e11d48)"
+                      : content.length >= 450
+                        ? "var(--ms-warning, #d97706)"
+                        : "var(--ms-brand, #0891b2)"
+                  }
+                  strokeWidth="2"
+                  strokeDasharray={2 * Math.PI * 7.5}
+                  strokeDashoffset={2 * Math.PI * 7.5 * (1 - Math.min(content.length / 500, 1))}
+                  strokeLinecap="round"
+                  style={{ transition: "stroke-dashoffset 0.1s linear, stroke 0.15s ease" }}
+                />
+              </svg>
+            </div>
+          )}
+          <TweetButton
+            onClick={handleSubmit}
+            disabled={(!content.trim() && !artifactId && !hasNotebookContent) || submitting}
+            title="Submit post (Ctrl+Enter)"
+          >
+            {editPostId
+              ? isNotebookMode
+                ? "Update article"
+                : "Save changes"
+              : replyToPost
+                ? "Reply"
+                : isNotebookMode
+                  ? "Publish article"
+                  : "Post"}
+          </TweetButton>
+        </Box>
       </Box>
     </Box>
   );

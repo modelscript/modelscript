@@ -67,7 +67,13 @@ export class StepEditorProvider extends BaseCustomEditorProvider {
           vscode.window.showInformationMessage(`Selected CAD Feature ID: ${message.id}`);
           break;
         case "generateMultiBody":
-          vscode.commands.executeCommand("modelscript.generateMultiBody");
+          vscode.commands.executeCommand("modelscript.generateMultiBody", document.uri);
+          break;
+        case "generateFeaMesh":
+          vscode.commands.executeCommand("modelscript.generateFeaMesh", document.uri);
+          break;
+        case "generateCfdMesh":
+          vscode.commands.executeCommand("modelscript.generateCfdMesh", document.uri);
           break;
       }
     });

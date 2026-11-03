@@ -379,4 +379,199 @@ Test Deck
     assert.ok(parsedSu2.positions.length >= 24, "Must extract surface vertex coordinates");
     assert.ok(parsedSu2.indices.length >= 36, "Must extract surface triangle indices");
   });
+
+  it("extracts exact B-Rep geometry from STEP files (cylinders, concave L-brackets, and ORIENTED_EDGE with vertex IDs) without falling back to a bounding box", () => {
+    // 1. Cylinder with 3 faces (top disk, bottom disk, cylindrical wall) and explicit vertex IDs in ORIENTED_EDGE
+    const cylinderStep = `ISO-10303-21;
+HEADER;
+FILE_NAME('Cylinder.step','2026-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));
+ENDSEC;
+DATA;
+#1 = CARTESIAN_POINT('',(0.0,0.0,0.0));
+#2 = DIRECTION('',(0.0,0.0,1.0));
+#3 = DIRECTION('',(1.0,0.0,0.0));
+#4 = AXIS2_PLACEMENT_3D('',#1,#2,#3);
+#5 = CARTESIAN_POINT('',(0.0,0.0,20.0));
+#6 = AXIS2_PLACEMENT_3D('',#5,#2,#3);
+#10 = CIRCLE('',#4,10.0);
+#11 = CIRCLE('',#6,10.0);
+#12 = CARTESIAN_POINT('',(10.0,0.0,0.0));
+#13 = CARTESIAN_POINT('',(10.0,0.0,20.0));
+#14 = VERTEX_POINT('',#12);
+#15 = VERTEX_POINT('',#13);
+#16 = LINE('',#12,#2);
+#20 = EDGE_CURVE('',#14,#14,#10,.T.);
+#21 = EDGE_CURVE('',#15,#15,#11,.T.);
+#22 = EDGE_CURVE('',#14,#15,#16,.T.);
+#30 = ORIENTED_EDGE('',#14,#14,#20,.T.);
+#31 = ORIENTED_EDGE('',#15,#15,#21,.T.);
+#32 = ORIENTED_EDGE('',#14,#15,#22,.T.);
+#33 = ORIENTED_EDGE('',#14,#15,#22,.F.);
+#40 = EDGE_LOOP('',(#30));
+#41 = EDGE_LOOP('',(#31));
+#42 = EDGE_LOOP('',(#30,#32,#31,#33));
+#50 = FACE_OUTER_BOUND('',#40,.T.);
+#51 = FACE_OUTER_BOUND('',#41,.T.);
+#52 = FACE_OUTER_BOUND('',#42,.T.);
+#60 = PLANE('',#4);
+#61 = PLANE('',#6);
+#62 = CYLINDRICAL_SURFACE('',#4,10.0);
+#70 = ADVANCED_FACE('',(#50),#60,.F.);
+#71 = ADVANCED_FACE('',(#51),#61,.T.);
+#72 = ADVANCED_FACE('',(#52),#62,.T.);
+ENDSEC;
+END-ISO-10303-21;`;
+
+    const cylSurf = StepMesher.extractSurfaceFromStep(cylinderStep);
+    // A fallback bounding box has only 8 vertices (24 floats) and 12 triangles (36 indices).
+    // A curved cylinder must have >= 48 vertices (>= 144 floats) and radial distance ~10.0.
+    assert.ok(
+      cylSurf.vertices.length >= 144,
+      `Cylinder STEP must be tessellated with curved circular arcs (>= 48 vertices), got ${cylSurf.vertices.length / 3}`,
+    );
+    assert.ok(
+      cylSurf.indices.length >= 180,
+      `Cylinder STEP must produce curved wall + cap triangles, got ${cylSurf.indices.length / 3}`,
+    );
+
+    // 2. Concave L-bracket planar polygon with explicit vertex refs in ORIENTED_EDGE
+    const lBracketStep = `ISO-10303-21;
+HEADER;
+ENDSEC;
+DATA;
+#1 = CARTESIAN_POINT('',(0.0,0.0,0.0));
+#2 = CARTESIAN_POINT('',(40.0,0.0,0.0));
+#3 = CARTESIAN_POINT('',(40.0,10.0,0.0));
+#4 = CARTESIAN_POINT('',(10.0,10.0,0.0));
+#5 = CARTESIAN_POINT('',(10.0,40.0,0.0));
+#6 = CARTESIAN_POINT('',(0.0,40.0,0.0));
+#11 = VERTEX_POINT('',#1);
+#12 = VERTEX_POINT('',#2);
+#13 = VERTEX_POINT('',#3);
+#14 = VERTEX_POINT('',#4);
+#15 = VERTEX_POINT('',#5);
+#16 = VERTEX_POINT('',#6);
+#21 = EDGE_CURVE('',#11,#12,#100,.T.);
+#22 = EDGE_CURVE('',#12,#13,#100,.T.);
+#23 = EDGE_CURVE('',#13,#14,#100,.T.);
+#24 = EDGE_CURVE('',#14,#15,#100,.T.);
+#25 = EDGE_CURVE('',#15,#16,#100,.T.);
+#26 = EDGE_CURVE('',#16,#11,#100,.T.);
+#31 = ORIENTED_EDGE('',#11,#12,#21,.T.);
+#32 = ORIENTED_EDGE('',#12,#13,#22,.T.);
+#33 = ORIENTED_EDGE('',#13,#14,#23,.T.);
+#34 = ORIENTED_EDGE('',#14,#15,#24,.T.);
+#35 = ORIENTED_EDGE('',#15,#16,#25,.T.);
+#36 = ORIENTED_EDGE('',#16,#11,#26,.T.);
+#40 = EDGE_LOOP('',(#31,#32,#33,#34,#35,#36));
+#50 = FACE_OUTER_BOUND('',#40,.T.);
+#60 = DIRECTION('',(0.0,0.0,1.0));
+#61 = DIRECTION('',(1.0,0.0,0.0));
+#62 = AXIS2_PLACEMENT_3D('',#1,#60,#61);
+#63 = PLANE('',#62);
+#70 = ADVANCED_FACE('',(#50),#63,.T.);
+ENDSEC;
+END-ISO-10303-21;`;
+
+    const lSurf = StepMesher.extractSurfaceFromStep(lBracketStep);
+    assert.strictEqual(lSurf.vertices.length / 3, 6, "Must preserve exact 6 L-bracket vertices");
+    assert.strictEqual(lSurf.indices.length / 3, 4, "6-vertex polygon must ear-clip into 4 triangles");
+
+    // Verify no triangle centroid falls in the concave cutout region (x > 12 && y > 12)
+    for (let i = 0; i < lSurf.indices.length; i += 3) {
+      const i0 = lSurf.indices[i]!;
+      const i1 = lSurf.indices[i + 1]!;
+      const i2 = lSurf.indices[i + 2]!;
+      const cx = (lSurf.vertices[i0 * 3]! + lSurf.vertices[i1 * 3]! + lSurf.vertices[i2 * 3]!) / 3;
+      const cy = (lSurf.vertices[i0 * 3 + 1]! + lSurf.vertices[i1 * 3 + 1]! + lSurf.vertices[i2 * 3 + 1]!) / 3;
+      assert.ok(
+        !(cx > 12 && cy > 12),
+        `Concave ear-clipping must not bridge across the L-bracket cutout (centroid=${cx},${cy})`,
+      );
+    }
+  });
+
+  it("projects FEA fields onto exact CAD surface geometry, evaluates stress probes, and exports valid .vtu XML for publishing", async () => {
+    const { evaluateStressProbes, exportCfdResultToVtu, exportFeaResultToVtu, projectFieldsToSurfaceMesh } =
+      await import("../src/utils/vtu-exporter.js");
+
+    // Tetrahedral solver nodes
+    const solverPositions = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const solverStress = [10e6, 80e6, 40e6, 120e6];
+    const solverDisp = [0, 0, 0, 0.001, 0, -0.002, 0, 0.001, -0.001, 0, 0, -0.005];
+
+    // High-resolution CAD surface vertices
+    const cadSurface = {
+      vertices: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, 0, 0.5],
+      indices: [0, 1, 2, 0, 1, 3, 1, 2, 3, 0, 2, 3, 0, 4, 3],
+    };
+
+    const projected = projectFieldsToSurfaceMesh(
+      solverPositions,
+      cadSurface.vertices,
+      { stress: solverStress },
+      { disp: solverDisp },
+    );
+    const projStress = projected.projectedScalars["stress"]!;
+    const projDisp = projected.projectedVectors["disp"]!;
+    assert.strictEqual(projStress.length, 5, "Projected stress must match CAD surface vertex count");
+    assert.strictEqual(projDisp.length, 15, "Projected displacements must match 3x CAD vertex count");
+    assert.ok(projStress[4]! > 10e6 && projStress[4]! <= 120e6);
+
+    // Evaluate Stress Probe Points
+    const probes = evaluateStressProbes(
+      [
+        {
+          id: "probe-1",
+          label: "Fillet Root P1",
+          nodeIndex: 3,
+          position: [0.02, 0.01, 0.98],
+        },
+      ],
+      cadSurface.vertices,
+      projStress,
+      projDisp,
+    );
+    assert.strictEqual(probes.length, 1);
+    assert.ok(Math.abs((probes[0]!.vonMisesStressPa ?? 0) / 1e6 - 120) < 1e-3, "Probe near node 3 must read 120 MPa");
+    assert.ok(
+      Math.abs((probes[0]!.displacementMagM ?? 0) * 1e3 - 5.0) < 1e-3,
+      "Probe near node 3 must read 5.0 mm displacement",
+    );
+
+    // Export FEA result to .vtu with companionCad and parse back with CaeCloudClient
+    const feaBundle = exportFeaResultToVtu({
+      title: "Bracket Static Structural Study",
+      nodes: solverPositions,
+      triangles: [0, 1, 2, 0, 1, 3, 1, 2, 3, 0, 2, 3],
+      nodalStress: solverStress,
+      nodalDisplacement: solverDisp,
+      maxStress: 120e6,
+      maxDisplacement: 0.005,
+      companionCad: cadSurface,
+      stressProbes: probes,
+    });
+    assert.ok(feaBundle.vtuXml.includes('<VTKFile type="UnstructuredGrid"'), "Must generate VTK UnstructuredGrid XML");
+    assert.ok(feaBundle.vtuXml.includes('Name="VonMisesStress"'), "Must include VonMisesStress DataArray");
+    assert.ok(feaBundle.vtuXml.includes('Name="Displacement"'), "Must include Displacement DataArray");
+    assert.ok(feaBundle.summaryMarkdown.includes("Fillet Root P1"), "Summary markdown must include Stress Probe table");
+
+    const client = new CaeCloudClient();
+    const roundtrip = client.parseVtuXmlToPayload(feaBundle.vtuXml);
+    assert.strictEqual(roundtrip.geometry.positions.length, cadSurface.vertices.length);
+    assert.strictEqual(roundtrip.fields.vonMisesStress.length, 5);
+
+    // Export CFD result to .vtu with companionCad
+    const cfdBundle = exportCfdResultToVtu({
+      title: "Airfoil SU2 RANS Study",
+      nodes: solverPositions,
+      triangles: [0, 1, 2, 0, 1, 3, 1, 2, 3, 0, 2, 3],
+      nodalPressure: [101325, 101500, 101100, 100900],
+      nodalVelocity: [25, 0, 0, 28, 0, 1, 30, 0, 2, 12, 0, -1],
+      companionCad: cadSurface,
+    });
+    assert.ok(cfdBundle.vtuXml.includes('Name="Pressure"'), "CFD VTU must include Pressure scalar field");
+    assert.ok(cfdBundle.vtuXml.includes('Name="Velocity"'), "CFD VTU must include 3D Velocity vector field");
+  });
 });

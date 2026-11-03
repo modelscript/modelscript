@@ -14,6 +14,7 @@ import {
   parseSimulinkTextToSystem,
   renderSimulinkSvg,
 } from "@modelscript/diagram/simulink-diagram-builder";
+import { adaptSvgMarkupForTheme } from "../src/components/artifacts/svg-theme.js";
 import {
   extractCadComponents,
   parseSourceCadVariables,
@@ -834,6 +835,167 @@ end DoublePendulum3D;
           visualizerPaneSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.Torus"),
         "MorselVisualizerPane must provide 3D MultiBody Visualizer drag-and-drop stencils",
       );
+    });
+  });
+
+  describe("8. Light-Mode Theme Adaptation Across Embedded Artifact Viewers", () => {
+    it("adapts dark AUTOSAR, Simulink, PSCAD, and PSS/E schematic SVGs to light mode idempotently", () => {
+      const autosarDarkSvg = [
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 420" style="background:#0b0f19;">',
+        '  <rect width="880" height="420" fill="#0b0f19" />',
+        '  <rect x="30" y="64" width="820" height="320" rx="10" fill="#0f172a" stroke="#1e293b" />',
+        '  <rect x="60" y="130" width="210" height="90" rx="8" fill="#111827" stroke="#06b6d4" stroke-width="1.8" />',
+        '  <text x="30" y="34" fill="#f8fafc" font-size="14" font-weight="700">ZonalBrakeByWireComposition — AUTOSAR VFB &amp; RTE Architecture</text>',
+        '  <text x="30" y="52" fill="#94a3b8" font-size="11">ISO 26262 ASIL-D · 3 SW-Components · 2 Assembly Connectors</text>',
+        "</svg>",
+      ].join("\n");
+
+      // Dark mode leaves SVG unchanged
+      assert.strictEqual(adaptSvgMarkupForTheme(autosarDarkSvg, true), autosarDarkSvg);
+
+      // Light mode converts dark canvas/node rects and light text to high-contrast light palette
+      const lightAutosar = adaptSvgMarkupForTheme(autosarDarkSvg, false);
+      assert.ok(
+        !lightAutosar.includes('fill="#0b0f19"') &&
+          !lightAutosar.includes('fill="#111827"') &&
+          lightAutosar.includes('<rect width="880" height="420" fill="#f8fafc" />') &&
+          lightAutosar.includes(
+            '<rect x="30" y="64" width="820" height="320" rx="10" fill="#ffffff" stroke="#cbd5e1" />',
+          ) &&
+          lightAutosar.includes('<rect x="60" y="130" width="210" height="90" rx="8" fill="#ffffff" stroke="#06b6d4"'),
+        "Must replace dark background and SWC box fills with light surfaces (#f8fafc / #ffffff)",
+      );
+      assert.ok(
+        lightAutosar.includes('<text x="30" y="34" fill="#0f172a"') &&
+          lightAutosar.includes('<text x="30" y="52" fill="#475569"'),
+        "Must convert light text labels (#f8fafc, #94a3b8) to dark slate (#0f172a, #475569)",
+      );
+      assert.ok(lightAutosar.includes('stroke="#06b6d4"'), "Must preserve semantic domain accent strokes (#06b6d4)");
+
+      // Must be idempotent when called multiple times
+      assert.strictEqual(
+        adaptSvgMarkupForTheme(lightAutosar, false),
+        lightAutosar,
+        "adaptSvgMarkupForTheme must be idempotent in light mode",
+      );
+    });
+
+    it("wires canonical useTheme (theme === 'dark') and SVG light-mode adaptation across artifact viewers", () => {
+      const viewers = [
+        "PolyglotArtifactViewer.tsx",
+        "ModelicaDiagramViewer.tsx",
+        "ModelicaCodeViewer.tsx",
+        "SspViewer.tsx",
+        "SysmlViewer.tsx",
+        "SimaViewer.tsx",
+        "Easy5Viewer.tsx",
+        "RocetsViewer.tsx",
+        "PipelineLpsViewer.tsx",
+        "GtSuiteViewer.tsx",
+        "CfdConfigViewer.tsx",
+        "CadStepViewer.tsx",
+        "VegaViewer.tsx",
+        "MermaidViewer.tsx",
+        "ArtifactViewCard.tsx",
+      ];
+
+      for (const file of viewers) {
+        const src = fs.readFileSync(path.resolve(import.meta.dirname, `../src/components/artifacts/${file}`), "utf8");
+        assert.ok(
+          src.includes('from "../../theme"'),
+          `${file} must import useTheme from ../../theme so light/dark mode state is consistent`,
+        );
+        assert.ok(
+          !src.includes('resolvedColorMode === "dark"'),
+          `${file} must not compare Primer resolvedColorMode against "dark" (Primer uses "night"/"day")`,
+        );
+      }
+    });
+  });
+
+  describe("10. Removal of Study Creation from Artifact Viewers & cae_cloud_solver Feature Flag Gating", () => {
+    it("removes study creation and inline solver execution from CadStepViewer, FeaDeckViewer, and CfdConfigViewer while gating Cloud/HPC UI behind useFeatureFlag('cae_cloud_solver')", () => {
+      const cadStepSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/CadStepViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        !cadStepSrc.includes("Create Simulation") &&
+          !cadStepSrc.includes('title="Create Physics Configuration"') &&
+          !cadStepSrc.includes("solveCadStudySync"),
+        "CadStepViewer must not expose study creation dialogs or inline simulation execution (moved to VS Code extension)",
+      );
+
+      const headerBarSrc = fs.readFileSync(
+        path.resolve(
+          import.meta.dirname,
+          "../src/components/artifacts/simulation-result/components/ViewerHeaderBar.tsx",
+        ),
+        "utf8",
+      );
+      assert.ok(
+        headerBarSrc.includes('useFeatureFlag("cae_cloud_solver")') &&
+          headerBarSrc.includes("hasCloudSolver && (viewConfig.profile || viewConfig.hpc?.profile)"),
+        "ViewerHeaderBar must gate HPC profile and credit badges behind useFeatureFlag('cae_cloud_solver')",
+      );
+
+      const inspectorSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/StudioInspectorSidebar.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        inspectorSrc.includes('useFeatureFlag("cae_cloud_solver")') && inspectorSrc.includes("hasCloudSolver"),
+        "StudioInspectorSidebar must gate HPC Telemetry section behind useFeatureFlag('cae_cloud_solver')",
+      );
+
+      const studyTemplateSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/StudyTemplateViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        studyTemplateSrc.includes('useFeatureFlag("cae_cloud_solver")') && studyTemplateSrc.includes("hasCloudSolver"),
+        "StudyTemplateViewer must gate Compute Node Profile behind useFeatureFlag('cae_cloud_solver')",
+      );
+
+      const feaDeckSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/FeaDeckViewer.tsx"),
+        "utf8",
+      );
+      const cfdConfigSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/CfdConfigViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        !feaDeckSrc.includes("Run Solver") &&
+          !feaDeckSrc.includes("solveCadStudySync") &&
+          !feaDeckSrc.includes("runPhysicsJob"),
+        "FeaDeckViewer must not expose inline solver execution buttons in the artifact viewer",
+      );
+      assert.ok(
+        !cfdConfigSrc.includes("Run Solver") &&
+          !cfdConfigSrc.includes("runPhysicsJob") &&
+          cfdConfigSrc.includes('useState<"3d" | "diagram" | "code">("3d")') &&
+          cfdConfigSrc.includes("<SimulationResultViewer"),
+        "CfdConfigViewer must default to the interactive 3D CFD overlay (SimulationResultViewer) without inline solver execution buttons",
+      );
+    });
+
+    it("tracks diagram drag mousemove/mouseup on window and guards e.buttons so mouseup outside the artifact box ends the drag", () => {
+      const pannableViewers = ["PolyglotArtifactViewer.tsx", "MermaidViewer.tsx", "PictureViewer.tsx", "SspViewer.tsx"];
+
+      for (const file of pannableViewers) {
+        const src = fs.readFileSync(path.resolve(import.meta.dirname, `../src/components/artifacts/${file}`), "utf8");
+        assert.ok(
+          src.includes('window.addEventListener("mousemove"') &&
+            src.includes('window.addEventListener("mouseup"') &&
+            src.includes('window.addEventListener("pointerup"'),
+          `${file} must attach window mousemove/mouseup/pointerup listeners during drag so releasing the mouse outside the artifact box terminates dragging`,
+        );
+        assert.ok(
+          src.includes("(e.buttons & 1) === 0") || src.includes("(ev.buttons & 1) === 0"),
+          `${file} must verify the primary mouse button is still pressed during move events to recover if mouseup occurred outside the window`,
+        );
+      }
     });
   });
 });

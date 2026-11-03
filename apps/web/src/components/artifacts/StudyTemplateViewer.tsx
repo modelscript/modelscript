@@ -13,7 +13,9 @@ import {
 import { Button, Heading, Label, Text } from "@primer/react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useFeatureFlag } from "../../FeatureFlagContext";
 import Box from "../Box";
+import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 export interface StudyTemplateViewerProps {
   viewConfig: {
@@ -43,6 +45,7 @@ export interface StudyTemplateViewerProps {
 
 export const StudyTemplateViewer: React.FC<StudyTemplateViewerProps> = ({ viewConfig, artifactPath }) => {
   const navigate = useNavigate();
+  const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   const [showRawSpec, setShowRawSpec] = useState(false);
 
   const studyDef = (viewConfig.studyDefinition || viewConfig) as Record<string, any>;
@@ -185,14 +188,16 @@ export const StudyTemplateViewer: React.FC<StudyTemplateViewerProps> = ({ viewCo
           <Button size="small" leadingVisual={CodeIcon} onClick={() => setShowRawSpec((prev) => !prev)}>
             {showRawSpec ? `Hide ${stdExt}` : `Inspect ${stdExt}`}
           </Button>
-          <Button
-            size="small"
-            variant="primary"
-            leadingVisual={PlayIcon}
-            onClick={() => navigate(`/jobs/templates/${encodeURIComponent(slug)}`)}
-          >
-            Open in Study Studio →
-          </Button>
+          {hasCloudSolver && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={PlayIcon}
+              onClick={() => navigate(`/jobs/templates/${encodeURIComponent(slug)}`)}
+            >
+              Open in Study Studio →
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -242,7 +247,7 @@ export const StudyTemplateViewer: React.FC<StudyTemplateViewerProps> = ({ viewCo
                 <ZapIcon size={12} /> Local WASM
               </span>
             )}
-            {targets.includes("hpc-cluster") && (
+            {hasCloudSolver && targets.includes("hpc-cluster") && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 3, color: "#f59e0b" }}>
                 <ServerIcon size={12} /> Slurm HPC
               </span>
@@ -291,30 +296,52 @@ export const StudyTemplateViewer: React.FC<StudyTemplateViewerProps> = ({ viewCo
         </Box>
       )}
 
-      {showRawSpec && (
-        <pre
-          style={{
-            marginTop: "12px",
-            padding: "12px",
-            borderRadius: "8px",
-            background: "var(--color-canvas-subtle)",
-            border: "1px solid var(--color-border-subtle)",
-            fontSize: "11px",
-            fontFamily: "var(--font-mono)",
-            maxHeight: "260px",
-            overflowY: "auto",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {typeof viewConfig.rawStandardSource === "string" && viewConfig.rawStandardSource.trim()
-            ? viewConfig.rawStandardSource
-            : stdFormat === "ssp-ssv"
-              ? `<?xml version="1.0" encoding="UTF-8"?>\n<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"\n                  version="2.0"\n                  name="${slug}">\n  <!-- ${title} -->\n  <ssv:Parameters>\n    <ssv:Parameter name="nominal_param">\n      <ssv:Real value="1.0" />\n    </ssv:Parameter>\n  </ssv:Parameters>\n</ssv:ParameterSet>`
-              : stdFormat === "dakota"
-                ? `# Sandia Dakota 6.19 Study — ${title} (${slug})\nenvironment\n  tabular_data\n    tabular_data_file = '${slug}_results.dat'\n\nmethod\n  sampling\n    sample_type lhs\n    samples = 64\n    variance_based_decomp\n\nvariables\n  continuous_design = 2\n    descriptors 'p1' 'p2'\n\nresponses\n  response_functions = ${Math.max(1, kpisRaw.length)}\n  no_gradients\n  no_hessians`
-                : `<?xml version="1.0" encoding="UTF-8"?>\n<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">\n  <!-- ${title} (${slug}) -->\n  <listOfModels>\n    <model id="model_primary" name="${title}" language="urn:sedml:language:${domains[0] || "modelica"}" source="${slug}.mo" />\n  </listOfModels>\n  <listOfSimulations>\n    <uniformTimeCourse id="sim_primary" initialTime="0.0" outputStartTime="0.0" outputEndTime="10.0" numberOfSteps="500">\n      <algorithm kisaoID="KISAO:0000019" />\n    </uniformTimeCourse>\n  </listOfSimulations>\n  <listOfTasks>\n    <task id="task_primary" modelReference="model_primary" simulationReference="sim_primary" />\n  </listOfTasks>\n</sedML>`}
-        </pre>
-      )}
+      {showRawSpec &&
+        (() => {
+          const rawSpecText =
+            typeof viewConfig.rawStandardSource === "string" && viewConfig.rawStandardSource.trim()
+              ? viewConfig.rawStandardSource
+              : stdFormat === "ssp-ssv"
+                ? `<?xml version="1.0" encoding="UTF-8"?>\n<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"\n                  version="2.0"\n                  name="${slug}">\n  <!-- ${title} -->\n  <ssv:Parameters>\n    <ssv:Parameter name="nominal_param">\n      <ssv:Real value="1.0" />\n    </ssv:Parameter>\n  </ssv:Parameters>\n</ssv:ParameterSet>`
+                : stdFormat === "dakota"
+                  ? `# Sandia Dakota 6.19 Study — ${title} (${slug})\nenvironment\n  tabular_data\n    tabular_data_file = '${slug}_results.dat'\n\nmethod\n  sampling\n    sample_type lhs\n    samples = 64\n    variance_based_decomp\n\nvariables\n  continuous_design = 2\n    descriptors 'p1' 'p2'\n\nresponses\n  response_functions = ${Math.max(1, kpisRaw.length)}\n  no_gradients\n  no_hessians`
+                  : `<?xml version="1.0" encoding="UTF-8"?>\n<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">\n  <!-- ${title} (${slug}) -->\n  <listOfModels>\n    <model id="model_primary" name="${title}" language="urn:sedml:language:${domains[0] || "modelica"}" source="${slug}.mo" />\n  </listOfModels>\n  <listOfSimulations>\n    <uniformTimeCourse id="sim_primary" initialTime="0.0" outputStartTime="0.0" outputEndTime="10.0" numberOfSteps="500">\n      <algorithm kisaoID="KISAO:0000019" />\n    </uniformTimeCourse>\n  </listOfSimulations>\n  <listOfTasks>\n    <task id="task_primary" modelReference="model_primary" simulationReference="sim_primary" />\n  </listOfTasks>\n</sedML>`;
+          const specDialect = stdFormat === "dakota" ? "cfd" : "ssp";
+          return (
+            <Box
+              mt={3}
+              p={2}
+              borderRadius="8px"
+              bg="var(--color-canvas-subtle)"
+              border="1px solid var(--color-border-subtle)"
+              style={{
+                fontSize: "11px",
+                fontFamily: "var(--font-mono)",
+                maxHeight: "260px",
+                overflow: "auto",
+                lineHeight: 1.55,
+              }}
+            >
+              {rawSpecText.split(/\r?\n/).map((line, i) => (
+                <div key={i} style={{ display: "flex", padding: "0 4px" }}>
+                  <span
+                    style={{
+                      userSelect: "none",
+                      width: 34,
+                      minWidth: 34,
+                      textAlign: "right",
+                      paddingRight: 12,
+                      color: "var(--color-fg-subtle)",
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <span style={{ whiteSpace: "pre" }}>{highlightPolyglotLine(line, specDialect)}</span>
+                </div>
+              ))}
+            </Box>
+          );
+        })()}
     </Box>
   );
 };

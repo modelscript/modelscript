@@ -451,12 +451,15 @@ const LATEX_SYMBOLS: Record<string, string> = {
   cap: "∩",
   forall: "∀",
   exists: "∃",
+  circ: "∘",
+  deg: "°",
   quad: "  ",
   qquad: "    ",
 };
 
 function formatLatexExpression(rawLatex: string): string {
   let out = escapeHtmlText(rawLatex.trim());
+  out = out.replace(/\^\{\\circ\}|\^\\circ/g, "°");
   out = out.replace(/\\ddot\{([^{}]+)\}/g, "$1&#776;");
   out = out.replace(/\\dot\{([^{}]+)\}/g, "$1&#775;");
   out = out.replace(/\\hat\{([^{}]+)\}/g, "$1&#770;");

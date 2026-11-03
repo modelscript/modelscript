@@ -78,7 +78,7 @@ export const VirtualPostList = <T extends PostListItem = PostListItem>({
   const rowVirtualizer = useWindowVirtualizer({
     count: posts.length,
     estimateSize: (index) => estimatePostHeight(posts[index]),
-    overscan: 5,
+    overscan: 10,
     scrollMargin,
   });
 

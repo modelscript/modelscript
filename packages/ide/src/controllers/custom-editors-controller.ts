@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { AmlEditorProvider } from "../aml-editor-provider.js";
 import { CfgEditorProvider } from "../cfg-editor-provider.js";
 import { DiagramEditorProvider } from "../diagram-editor-provider.js";
 import { Easy5EditorProvider } from "../easy5-editor-provider.js";
@@ -12,7 +13,9 @@ import { GtSuiteEditorProvider } from "../gtsuite-editor-provider.js";
 import { InpEditorProvider } from "../inp-editor-provider.js";
 import { LpsEditorProvider } from "../lps-editor-provider.js";
 import { OlgaEditorProvider } from "../olga-editor-provider.js";
+import { OscalEditorProvider } from "../oscal-editor-provider.js";
 import { PsoutEditorProvider } from "../psout-editor-provider.js";
+import { QifEditorProvider } from "../qif-editor-provider.js";
 import { RawEditorProvider } from "../raw-editor-provider.js";
 import { RequirementsEditorProvider } from "../requirements-editor-provider.js";
 import { RocetsEditorProvider } from "../rocets-editor-provider.js";
@@ -79,6 +82,9 @@ export function registerCustomEditors(
     "touchstone.diagramEditor",
     "urdf.diagramEditor",
     "verilog-a.diagramEditor",
+    "qif.diagramEditor",
+    "oscal.diagramEditor",
+    "automationml.diagramEditor",
   ];
   for (const vt of diagramViewTypes) {
     context.subscriptions.push(
@@ -210,6 +216,27 @@ export function registerCustomEditors(
   const gtsuiteEditor = new GtSuiteEditorProvider(context);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(GtSuiteEditorProvider.viewType, gtsuiteEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const qifEditor = new QifEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(QifEditorProvider.viewType, qifEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const oscalEditor = new OscalEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(OscalEditorProvider.viewType, oscalEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const amlEditor = new AmlEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(AmlEditorProvider.viewType, amlEditor, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );

@@ -238,7 +238,9 @@ export class CaeCloudClient {
       for (const v of vals) if (!Number.isNaN(v)) elements.push(v);
     }
 
-    const stressMatch = vtuXml.match(/<DataArray[^>]*Name="(?:Stress_VonMises|Pressure)"[^>]*>([\s\S]*?)<\/DataArray>/);
+    const stressMatch = vtuXml.match(
+      /<DataArray[^>]*Name="(?:Stress_VonMises|VonMisesStress|Pressure)"[^>]*>([\s\S]*?)<\/DataArray>/,
+    );
     const vonMisesStress: number[] = [];
     let maxStress = 0;
     if (stressMatch && stressMatch[1]) {

@@ -149,6 +149,32 @@ end MySystem;`;
       const pregen = await pregenerateServerSvgThumbnail(tmpFile, "modelica-diagram", "PartialBase.mo", tmpDir);
       assert.ok(pregen.svg?.includes('data-preview-mode="code"'));
       assert.strictEqual(pregen.metadata?.["previewMode"], "code");
+
+      // Verify PSS/E pregeneration handles parsed raw case and svg generation
+      const psseFile = path.join(tmpDir, "test.raw");
+      const psseRaw = `0, 100.0 / PSS/E RAW
+TEST CASE
+500 KV
+101, 'BUS 1', 500.0, 3, 1, 1, 1, 1.0, 0.0
+102, 'BUS 2', 500.0, 2, 1, 1, 1, 1.0, 0.0
+0 / END OF BUS
+0 / END OF LOAD
+0 / END OF FIXED SHUNT
+101, '1', 100.0, 20.0, 999.0, -999.0, 1.0, 0, 100.0, 0.0, 0.0, 1.0, 1, 100.0
+102, '1', 50.0, 10.0, 999.0, -999.0, 1.0, 0, 100.0, 0.0, 0.0, 1.0, 1, 100.0
+0 / END OF GEN
+101, 102, '1', 0.01, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1, 1
+0 / END OF BRANCH
+0 / END OF TRANSFORMER
+0 / END OF AREA
+0 / END OF TWO-TERMINAL DC
+0 / END OF VSC DC
+0 / END OF SWITCHED SHUNT
+Q`;
+      fs.writeFileSync(psseFile, psseRaw, "utf-8");
+      const pssePregen = await pregenerateServerSvgThumbnail(psseFile, "psse", "test.raw", tmpDir);
+      assert.ok(pssePregen.svg?.includes("<svg"));
+      assert.strictEqual(pssePregen.metadata?.["busCount"], 2);
     } finally {
       try {
         db.db.close();

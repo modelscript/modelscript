@@ -215,6 +215,7 @@ export interface AreaRecord {
  */
 export interface TwoTerminalDcRecord {
   i: number;
+  name?: string | undefined;
   mdc: number;
   rdc: number;
   setvl: number;

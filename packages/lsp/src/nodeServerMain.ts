@@ -1083,7 +1083,8 @@ export function startNodeServer(input?: any, output?: any) {
       customHandlers: {
         symbols: (treeWrapper: any) => {
           const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-          return getPsseDocumentSymbols(text);
+          const uri = typeof treeWrapper?.uri === "string" ? treeWrapper.uri : "model.raw";
+          return getPsseDocumentSymbols(text, uri);
         },
         hover: (offset: number, text: string, uri?: string) => {
           const lines = text.slice(0, offset).split("\n");
@@ -1106,7 +1107,7 @@ export function startNodeServer(input?: any, output?: any) {
           const lines = text.slice(0, offset).split("\n");
           const line = lines.length - 1;
           const character = lines[lines.length - 1]!.length;
-          return getPsseReferences(text, { line, character }, uri ?? "");
+          return getPsseReferences(text, { line, character }, uri ?? "", psseWsIndex);
         },
         complete: (offset: number, text: string, uri?: string) => {
           const lines = text.slice(0, offset).split("\n");

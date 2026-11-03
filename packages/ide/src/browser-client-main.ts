@@ -101,6 +101,19 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(hostBridgeService);
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "modelscript.publishSimulationResult",
+      (options: {
+        fileName: string;
+        title: string;
+        vtuXml: string;
+        summaryMarkdown?: string;
+        sourceUri?: vscode.Uri;
+      }) => hostBridgeService.publishSimulationResult(options),
+    ),
+  );
+
   // Register URI handler for vscode://modelscript.modelscript/install?package=xyz
   context.subscriptions.push(
     vscode.window.registerUriHandler({

@@ -9,18 +9,6 @@ export interface AiSearchHeaderProps {
 }
 
 export const AiSearchHeader: React.FC<AiSearchHeaderProps> = ({ onOpenCommandPalette }) => {
-  const [isScrolled, setIsScrolled] = React.useState(() => typeof window !== "undefined" && window.scrollY > 4);
-
-  React.useEffect(() => {
-    const onScroll = () => {
-      const next = window.scrollY > 4;
-      setIsScrolled((prev) => (prev === next ? prev : next));
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
   const isMac =
     typeof navigator !== "undefined" && /Mac|iPhone|iPod|iPad/i.test(navigator.platform || navigator.userAgent || "");
 
@@ -33,7 +21,7 @@ export const AiSearchHeader: React.FC<AiSearchHeaderProps> = ({ onOpenCommandPal
   };
 
   return (
-    <SearchContainer $scrolled={isScrolled}>
+    <SearchContainer>
       <AiSearchBar
         role="button"
         tabIndex={0}

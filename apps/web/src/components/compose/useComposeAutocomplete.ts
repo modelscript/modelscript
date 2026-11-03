@@ -52,23 +52,27 @@ export function useComposeAutocomplete({
   }, [replyToPost, user?.username]);
 
   useEffect(() => {
+    let cancelled = false;
     if (user?.username && token) {
       getUserFollowers(user.username)
         .then((d) => {
-          if (d.followers) setFollowers(d.followers);
+          if (!cancelled && d.followers) setFollowers(d.followers);
         })
         .catch(console.error);
       getUserFollowing(user.username)
         .then((d) => {
-          if (d.following) setFollowing(d.following);
+          if (!cancelled && d.following) setFollowing(d.following);
         })
         .catch(console.error);
     }
     getTrending(20)
       .then((d) => {
-        if (d.topics) setTrendingTopics(d.topics);
+        if (!cancelled && d.topics) setTrendingTopics(d.topics);
       })
       .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
   }, [user, token]);
 
   useEffect(() => {

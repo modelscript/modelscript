@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Heading } from "@primer/react";
 import React, { useRef } from "react";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 import Box from "../Box";
@@ -27,8 +26,7 @@ export const ConfirmSaveModal: React.FC<ConfirmSaveModalProps> = ({ onCancel, on
         onClick={(e) => e.stopPropagation()}
       >
         <Box p={4} pb={5} display="flex" flexDirection="column" alignItems="flex-start" gap={2}>
-          <Heading
-            as="h3"
+          <h3
             id="confirm-save-title"
             style={{
               margin: "4px 0 0 0",
@@ -38,7 +36,7 @@ export const ConfirmSaveModal: React.FC<ConfirmSaveModalProps> = ({ onCancel, on
             }}
           >
             {isEditing ? "Discard changes?" : "Save post?"}
-          </Heading>
+          </h3>
           <span style={{ color: "var(--color-text-muted)", fontSize: "15px", lineHeight: "1.4", marginBottom: "8px" }}>
             {isEditing
               ? "Your edits to this post have not been saved."

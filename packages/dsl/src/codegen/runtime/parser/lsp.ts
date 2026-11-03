@@ -59,6 +59,10 @@ let t_lspFindOffsetStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array
 let t_lspFindStackCapacity: u32 = 0;
 
 export let globalAstRoot: u32 = 0;
+export let lastParsedAstRoot: u32 = 0;
+export function setLastParsedAstRoot(root: u32): void {
+  lastParsedAstRoot = root;
+}
 export let globalEnclosingClassRoot: u32 = 0;
 export let globalEnclosingClassNode: u32 = 0;
 export let currentLintNode: u32 = 0;
@@ -739,12 +743,14 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
         } else {
           let exp1: u32 = 0;
           let exp2: u32 = 0;
-          for (let ei = 0; ei < errorCount; ei++) {
-            if (t_errorStarts[ei] <= dEnd && t_errorEnds[ei] >= dStart) {
-              if ((changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) || (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0)) {
-                exp1 = t_errorArg2[ei];
-                exp2 = t_errorArg3[ei];
-                break;
+          if (astRoot == lastParsedAstRoot) {
+            for (let ei = 0; ei < errorCount; ei++) {
+              if (t_errorStarts[ei] <= dEnd && t_errorEnds[ei] >= dStart) {
+                if ((changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) || (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0)) {
+                  exp1 = t_errorArg2[ei];
+                  exp2 = t_errorArg3[ei];
+                  break;
+                }
               }
             }
           }
@@ -757,12 +763,14 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
         if (fallbackEnd > fallbackStart) {
           let exp1: u32 = 0;
           let exp2: u32 = 0;
-          for (let ei = 0; ei < errorCount; ei++) {
-            if (t_errorStarts[ei] <= fallbackEnd && t_errorEnds[ei] >= fallbackStart) {
-              if ((changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) || (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0)) {
-                exp1 = t_errorArg2[ei];
-                exp2 = t_errorArg3[ei];
-                break;
+          if (astRoot == lastParsedAstRoot) {
+            for (let ei = 0; ei < errorCount; ei++) {
+              if (t_errorStarts[ei] <= fallbackEnd && t_errorEnds[ei] >= fallbackStart) {
+                if ((changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) || (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0)) {
+                  exp1 = t_errorArg2[ei];
+                  exp2 = t_errorArg3[ei];
+                  break;
+                }
               }
             }
           }
@@ -871,7 +879,7 @@ export function lsp_getDiagnosticsRange(astRoot: u32, rangeStart: u32, rangeEnd:
       }
     }
   }
-  if (extractedSyntaxCount == 0 && astRoot == globalAstRoot) {
+  if (extractedSyntaxCount == 0 && astRoot != 0 && astRoot == lastParsedAstRoot) {
     for (let i = 0; i < errorCount; i++) {
       let s = t_errorStarts[i];
       let e = t_errorEnds[i];
@@ -908,7 +916,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       }
     }
   }
-  if (extractedSyntaxCount == 0 && astRoot == globalAstRoot) {
+  if (extractedSyntaxCount == 0 && astRoot != 0 && astRoot == lastParsedAstRoot) {
     for (let i = 0; i < errorCount; i++) {
       let s = t_errorStarts[i];
       let e = t_errorEnds[i];

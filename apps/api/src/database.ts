@@ -561,6 +561,51 @@ export class LibraryDatabase {
         this.#db.exec(`ALTER TABLE classes ADD COLUMN diagram_hash TEXT;`);
       }
     } catch {}
+
+    // Sanitize any previously indexed class/component descriptions that leaked raw Modelica annotation(...) clauses
+    // or annotation-internal modifier rows (Placement, Dialog, Icon, Documentation, etc.).
+    try {
+      const stripAnno = (raw: string): string | null => {
+        const cleaned = raw
+          .replace(/\s*\bannotation\s*\([\s\S]*$/i, "")
+          .trim()
+          .replace(/^"|"$/g, "")
+          .trim();
+        return cleaned.length > 0 ? cleaned : null;
+      };
+      const dirtyClasses = this.#db
+        .prepare(
+          `SELECT id, description FROM classes WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
+        )
+        .all() as Array<{ id: number; description: string }>;
+      const dirtyComps = this.#db
+        .prepare(
+          `SELECT id, description FROM components WHERE description LIKE '%annotation(%' OR description LIKE '%annotation (%'`,
+        )
+        .all() as Array<{ id: number; description: string }>;
+      if (dirtyClasses.length > 0 || dirtyComps.length > 0) {
+        const updClass = this.#db.prepare(`UPDATE classes SET description = ? WHERE id = ?`);
+        const updComp = this.#db.prepare(`UPDATE components SET description = ? WHERE id = ?`);
+        this.#db.transaction(() => {
+          for (const row of dirtyClasses) {
+            updClass.run(stripAnno(row.description), row.id);
+          }
+          for (const row of dirtyComps) {
+            updComp.run(stripAnno(row.description), row.id);
+          }
+        })();
+      }
+      this.#db.exec(`
+        DELETE FROM modifiers
+        WHERE modifier_name IN (
+          'Placement', 'Dialog', 'Icon', 'Diagram', 'Documentation',
+          'Evaluate', 'HideResult', 'choices', 'DynamicSelect',
+          'Line', 'Text', 'Rectangle', 'Ellipse', 'Polygon', 'Bitmap',
+          'coordinateSystem', 'graphics', 'smoothOrder', 'version'
+        );
+        UPDATE components SET causality = NULL WHERE type_name = 'import' AND causality = 'connector';
+      `);
+    } catch {}
   }
 
   // ── User management ─────────────────────────────────────────────
@@ -8165,9 +8210,9 @@ export class LibraryDatabase {
   }
 
   getArtifactViewByTitle(title: string): ArtifactViewRow | undefined {
-    return this.#db.prepare(`SELECT id, view_type, title FROM artifact_views WHERE title = ? LIMIT 1`).get(title) as
-      | ArtifactViewRow
-      | undefined;
+    return this.#db
+      .prepare(`SELECT id, view_type, title, thumbnail_url, view_config FROM artifact_views WHERE title = ? LIMIT 1`)
+      .get(title) as ArtifactViewRow | undefined;
   }
 
   updateArtifactViewConfig(id: number, viewConfig: string): void {

@@ -48,7 +48,10 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
     };
 
     const handleWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) {
+      if (e.ctrlKey || e.metaKey) {
+        setIsZoomAllowed(true);
+      } else {
+        setIsZoomAllowed(false);
         // Feed scroll protection: show hint that Ctrl/Cmd is required to zoom model
         setShowHint(true);
         if (hintTimeoutRef.current) {

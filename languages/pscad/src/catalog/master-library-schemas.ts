@@ -2319,34 +2319,78 @@ export function getPscadHover(text: string, offset: number): { contents: string;
           md.push("");
         }
 
-        // Compute derived engineering values
+        // Compute derived engineering values (unit-aware for PSCAD strings like "280.0 [MVA]")
+        const parseNumericParam = (raw: unknown): number => {
+          if (raw === undefined || raw === null) return 0;
+          const cleaned = String(raw)
+            .replace(/\s*\[[^\]]*\]\s*/g, "")
+            .trim();
+          const n = Number.parseFloat(cleaned);
+          return Number.isFinite(n) ? n : 0;
+        };
+
         const p = cmp.parameters;
-        const mva = Number(p["MVA"] ?? p["mva"] ?? 0);
-        const vKv = Number(p["V"] ?? p["V1"] ?? p["v"] ?? 0);
-        const freq = project.settings.frequencyHz || 60;
+        const mva = parseNumericParam(p["MVA"] ?? p["Tmva"] ?? p["mva"] ?? p["rated_mva"] ?? p["Sbase"]);
+        let vKv = parseNumericParam(
+          p["V"] ?? p["Vm"] ?? p["V1"] ?? p["Vbase"] ?? p["v"] ?? p["rated_kv"] ?? p["BaseKV"],
+        );
+        if (vKv <= 0 && cmp.instanceName) {
+          const kvMatch = /(\d+(?:\.\d+)?)p?(\d*)\s*kV/i.exec(cmp.instanceName);
+          if (kvMatch) {
+            vKv = Number.parseFloat(kvMatch[2] ? `${kvMatch[1]}.${kvMatch[2]}` : kvMatch[1]!);
+          }
+        }
+        const f0Param = parseNumericParam(p["F0"] ?? p["f"] ?? p["Freq"]);
+        const freq = f0Param > 0 ? f0Param : project.settings.frequencyHz || 60;
         const omega = 2 * Math.PI * freq;
 
         if (mva > 0 && vKv > 0) {
           const zBase = (vKv * vKv) / mva;
           const iBase = (mva * 1e3) / (Math.sqrt(3) * vKv);
-          md.push(`**Derived Base Quantities (${freq} Hz):**`);
+          md.push(`**Derived Base Quantities (${mva} MVA, ${vKv} kV, ${freq} Hz):**`);
           md.push(
             `- $Z_{\\text{base}} = \\frac{V^2}{S} = \\mathbf{${zBase.toFixed(3)}\\,\\Omega}$ | $I_{\\text{rated}} = \\mathbf{${iBase.toFixed(1)}\\,\\text{A}}_{\\text{RMS}}$`,
           );
-          if (p["X"] !== undefined) {
-            const xOhm = Number(p["X"]) * zBase;
+          const xPu = parseNumericParam(p["X"] ?? p["Xl"] ?? p["x"] ?? p["X12"]);
+          if (xPu > 0) {
+            const xOhm = xPu * zBase;
             const lMh = (xOhm / omega) * 1e3;
             md.push(
               `- Leakage Impedance: $X_l = ${xOhm.toFixed(3)}\\,\\Omega$ ($L_l = ${lMh.toFixed(2)}\\,\\text{mH}$)`,
             );
           }
-          if (p["Xd_sub"] !== undefined || p["Xd"] !== undefined) {
-            const xdSub = Number(p["Xd_sub"] ?? 0.2);
+          if (p["Xd_sub"] !== undefined || p["Xd"] !== undefined || p["Xd_pp"] !== undefined) {
+            const xdSub = parseNumericParam(p["Xd_sub"] ?? p["Xd_pp"] ?? 0.2) || 0.2;
             const lSubMh = ((xdSub * zBase) / omega) * 1e3;
             md.push(
               `- Subtransient Inductance: $L_d'' = ${lSubMh.toFixed(2)}\\,\\text{mH}$ ($X_d'' = ${xdSub}\\,\\text{pu}$)`,
             );
           }
+          md.push("");
+        } else if (mva > 0) {
+          md.push(`**Apparatus Rating:** ${mva} MVA (${freq} Hz)`);
+          md.push("");
+        }
+
+        const lMhVal = parseNumericParam(p["L"] ?? p["l"]);
+        const cUfVal = parseNumericParam(p["C"] ?? p["c"]);
+        if (lMhVal > 0 && cUfVal > 0) {
+          const fRes = 1 / (2 * Math.PI * Math.sqrt(lMhVal * 1e-3 * cUfVal * 1e-6));
+          const zChar = Math.sqrt((lMhVal * 1e-3) / (cUfVal * 1e-6));
+          md.push(`**Harmonic LC Filter Characteristics:**`);
+          md.push(
+            `- LC Resonant Frequency: $f_{\\text{res}} = \\frac{1}{2\\pi\\sqrt{LC}} = \\mathbf{${fRes.toFixed(1)}\\,\\text{Hz}}$ | $Z_0 = \\mathbf{${zChar.toFixed(2)}\\,\\Omega}$`,
+          );
+          md.push("");
+        }
+
+        const hVirtVal = parseNumericParam(p["H_virt"] ?? p["H"]);
+        if (hVirtVal > 0) {
+          const sBaseMva = mva > 0 ? mva : 250;
+          md.push(`**Grid-Forming Virtual Inertia:**`);
+          md.push(
+            `- Stored Kinetic Energy Equivalent: $E_k = H \\cdot S_{\\text{base}} = \\mathbf{${(hVirtVal * sBaseMva).toFixed(1)}\\,\\text{MW}\\cdot\\text{s}}$`,
+          );
           md.push("");
         }
 
@@ -2451,12 +2495,14 @@ export function getPscadHover(text: string, offset: number): { contents: string;
 }
 
 /**
- * Resolves Go-to-Definition for sub-module `<User name="SubModule">` or `<call name="Main">` in `.pscx` files.
+ * Resolves Go-to-Definition for sub-module `<User name="SubModule">`, library `<User name="my_lib:CustomCmp">`,
+ * `<call name="Main">`, wireless net labels (`datalabel`/`xnode`), and `<Bus>` declarations across `.pscx`/`.pslx` files.
  */
 export function getPscadDefinitionLocation(
   text: string,
   offset: number,
   uri: string,
+  workspaceDocs?: Iterable<{ uri: string; text: string }>,
 ): {
   uri: string;
   range: { start: { line: number; character: number }; end: { line: number; character: number } };
@@ -2465,30 +2511,279 @@ export function getPscadDefinitionLocation(
   const lineEnd = text.indexOf("\n", offset);
   const lineText = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
 
+  // 1. Check if cursor is on <param name="Name" value="NetOrInstanceName"/>
+  const paramValMatch = /<param\b[^>]*\bname\s*=\s*["']Name["'][^>]*\bvalue\s*=\s*["']([^"']+)["']/i.exec(lineText);
+  if (paramValMatch?.[1]) {
+    const netName = paramValMatch[1];
+    const escapedNet = netName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i]!;
+      if (
+        new RegExp(`<param\\b[^>]*\\bname\\s*=\\s*["']Name["'][^>]*\\bvalue\\s*=\\s*["']${escapedNet}["']`, "i").test(l)
+      ) {
+        const col = Math.max(0, l.indexOf(netName));
+        return {
+          uri,
+          range: {
+            start: { line: i, character: col },
+            end: { line: i, character: col + netName.length },
+          },
+        };
+      }
+    }
+  }
+
   const nameMatch = /\b(?:name|defn)\s*=\s*["']([^"']+)["']/i.exec(lineText);
   if (!nameMatch?.[1]) return null;
 
   const rawTarget = nameMatch[1].includes(":") ? nameMatch[1].split(":").pop()! : nameMatch[1];
-  const lines = text.split(/\r?\n/);
+  const escapedTarget = rawTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const defAttrRe = new RegExp(`\\bname\\s*=\\s*["'](?:[^"']*:)?${escapedTarget}["']`, "i");
 
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i]!;
-    if (
-      /<Definition\b/i.test(l) &&
-      new RegExp(`\\bname\\s*=\\s*["'](?:[^"']*:)?${rawTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`, "i").test(l)
-    ) {
-      const col = Math.max(0, l.indexOf(rawTarget));
-      return {
-        uri,
-        range: {
-          start: { line: i, character: col },
-          end: { line: i, character: col + rawTarget.length },
-        },
-      };
+  const searchInDocument = (docText: string, docUri: string) => {
+    const lines = docText.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i]!;
+      if (/<Definition\b/i.test(l) && defAttrRe.test(l)) {
+        const col = Math.max(0, l.indexOf(rawTarget));
+        return {
+          uri: docUri,
+          range: {
+            start: { line: i, character: col },
+            end: { line: i, character: col + rawTarget.length },
+          },
+        };
+      }
+    }
+    return null;
+  };
+
+  // Search current file first, then linked workspace .pslx / .pscx files
+  const localHit = searchInDocument(text, uri);
+  if (localHit) return localHit;
+
+  if (workspaceDocs) {
+    for (const doc of workspaceDocs) {
+      if (doc.uri === uri) continue;
+      const hit = searchInDocument(doc.text, doc.uri);
+      if (hit) return hit;
     }
   }
 
   return null;
+}
+
+/**
+ * Finds all references to a PSCAD `<Definition>`, `<User>` component type, wireless net (`datalabel`/`xnode`),
+ * or `<Bus>` across the current document and workspace `.pscx`/`.pslx` files.
+ */
+export function getPscadReferences(
+  text: string,
+  offset: number,
+  uri: string,
+  workspaceDocs?: Iterable<{ uri: string; text: string }>,
+): {
+  uri: string;
+  range: { start: { line: number; character: number }; end: { line: number; character: number } };
+}[] {
+  const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
+  const lineEnd = text.indexOf("\n", offset);
+  const lineText = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
+  const colOffset = offset - lineStart;
+
+  // Check if cursor is directly inside a quoted attribute value on this line
+  let quotedAtCursor: string | undefined;
+  const quoteRe = /\b(?:defn|name|value|id)\s*=\s*["']([^"']+)["']/gi;
+  let qm: RegExpExecArray | null;
+  while ((qm = quoteRe.exec(lineText)) !== null) {
+    if (colOffset >= qm.index && colOffset <= qm.index + qm[0].length) {
+      quotedAtCursor = qm[1];
+      break;
+    }
+  }
+
+  const paramNameVal = /<param\b[^>]*\bname\s*=\s*["']Name["'][^>]*\bvalue\s*=\s*["']([^"']+)["']/i.exec(lineText)?.[1];
+  const defnOrNameVal = /\b(?:defn|name)\s*=\s*["']([^"']+)["']/i.exec(lineText)?.[1];
+  const idVal = /\bid\s*=\s*["']([^"']+)["']/i.exec(lineText)?.[1];
+  const targetRaw = quotedAtCursor ?? paramNameVal ?? defnOrNameVal ?? idVal;
+  if (!targetRaw) return [];
+
+  const cleanSymbol = targetRaw.includes(":") ? targetRaw.split(":").pop()! : targetRaw;
+  if (!cleanSymbol) return [];
+  const escaped = cleanSymbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matchRe = new RegExp(`(["':])(${escaped})(["'])`, "gi");
+
+  const results: {
+    uri: string;
+    range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  }[] = [];
+
+  const allDocs: { uri: string; text: string }[] = [{ uri, text }];
+  if (workspaceDocs) {
+    for (const d of workspaceDocs) {
+      if (d.uri !== uri) allDocs.push(d);
+    }
+  }
+
+  for (const doc of allDocs) {
+    const lines = doc.text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i]!;
+      matchRe.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = matchRe.exec(l)) !== null) {
+        const startCol = m.index + (m[1]?.length ?? 1);
+        results.push({
+          uri: doc.uri,
+          range: {
+            start: { line: i, character: startCol },
+            end: { line: i, character: startCol + cleanSymbol.length },
+          },
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Computes workspace-wide rename edits for a PSCAD `<Definition>`, wireless net (`datalabel`/`xnode`),
+ * `<Bus>`, or component instance name.
+ */
+export function getPscadRenameEdits(
+  text: string,
+  offset: number,
+  newName: string,
+  uri: string,
+  workspaceDocs?: Iterable<{ uri: string; text: string }>,
+): Record<
+  string,
+  { range: { start: { line: number; character: number }; end: { line: number; character: number } }; newText: string }[]
+> | null {
+  const refs = getPscadReferences(text, offset, uri, workspaceDocs);
+  if (refs.length === 0) return null;
+  const changes: Record<
+    string,
+    {
+      range: { start: { line: number; character: number }; end: { line: number; character: number } };
+      newText: string;
+    }[]
+  > = {};
+  for (const r of refs) {
+    const list = changes[r.uri] ?? (changes[r.uri] = []);
+    list.push({ range: r.range, newText: newName });
+  }
+  return changes;
+}
+
+/**
+ * Computes engineering Inlay Hints for `.pscx` files:
+ * - Per-unit (`[pu]`) reactance/resistance to ohmic ($\Omega$) and inductance ($\text{mH}$) conversions
+ * - Traveling-wave transmission line propagation delay $\tau$ and step ratio $\tau / \Delta t$
+ * - LC harmonic filter resonant frequency $f_{\text{res}}$
+ */
+export function getPscadInlayHints(
+  text: string,
+  range?: { start: { line: number; character: number }; end: { line: number; character: number } },
+): {
+  position: { line: number; character: number };
+  label: string;
+  kind?: "type" | "parameter";
+  paddingLeft?: boolean;
+}[] {
+  const hints: {
+    position: { line: number; character: number };
+    label: string;
+    kind?: "type" | "parameter";
+    paddingLeft?: boolean;
+  }[] = [];
+
+  try {
+    const project = parsePscx(text);
+    const lines = text.split(/\r?\n/);
+    const freq = project.settings.frequencyHz || 60;
+    const dtUs = project.settings.timeStepUs || 50;
+    const omega = 2 * Math.PI * freq;
+
+    const parseNum = (v: unknown): number => {
+      if (v === undefined || v === null) return 0;
+      const n = Number.parseFloat(
+        String(v)
+          .replace(/\s*\[[^\]]*\]\s*/g, "")
+          .trim(),
+      );
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const allComponents = [
+      ...project.rootModule.components,
+      ...Array.from(project.subModules.values()).flatMap((m) => m.components),
+    ];
+
+    for (const cmp of allComponents) {
+      if (!cmp.line) continue;
+      const p = cmp.parameters;
+      const mva = parseNum(p["MVA"] ?? p["Tmva"] ?? p["mva"] ?? p["rated_mva"]);
+      let vKv = parseNum(p["V"] ?? p["Vm"] ?? p["V1"] ?? p["Vbase"] ?? p["rated_kv"]);
+      if (vKv <= 0 && cmp.instanceName) {
+        const kvMatch = /(\d+(?:\.\d+)?)p?(\d*)\s*kV/i.exec(cmp.instanceName);
+        if (kvMatch) {
+          vKv = Number.parseFloat(kvMatch[2] ? `${kvMatch[1]}.${kvMatch[2]}` : kvMatch[1]!);
+        }
+      }
+      const zBase = mva > 0 && vKv > 0 ? (vKv * vKv) / mva : 0;
+
+      // Scan the component's XML lines for <param> tags
+      for (let i = cmp.line - 1; i < Math.min(lines.length, cmp.line + 18); i++) {
+        if (range && (i < range.start.line || i > range.end.line)) continue;
+        const l = lines[i]!;
+        if (i >= cmp.line && /<\/(?:User|Component)>/i.test(l)) break;
+
+        if (zBase > 0 && /<param\b[^>]*\bname\s*=\s*["'](?:Xl|X|Xd_sub|Xd_pp)["']/i.test(l)) {
+          const xPu = parseNum(p["Xl"] ?? p["X"] ?? p["Xd_sub"] ?? p["Xd_pp"]);
+          if (xPu > 0) {
+            const xOhm = xPu * zBase;
+            const lMh = (xOhm / omega) * 1e3;
+            hints.push({
+              position: { line: i, character: l.length },
+              label: `→ ${xOhm.toFixed(2)} Ω (${lMh.toFixed(1)} mH @ ${vKv} kV)`,
+              kind: "type",
+              paddingLeft: true,
+            });
+          }
+        } else if (/<param\b[^>]*\bname\s*=\s*["']Length["']/i.test(l)) {
+          const lenKm = parseNum(p["Length"] ?? p["length"]);
+          if (lenKm > 0) {
+            const tauUs = lenKm * 3.4; // ~3.4 us/km overhead traveling wave delay
+            hints.push({
+              position: { line: i, character: l.length },
+              label: `→ τ ≈ ${tauUs.toFixed(1)} μs (${(tauUs / dtUs).toFixed(1)}×Δt)`,
+              kind: "type",
+              paddingLeft: true,
+            });
+          }
+        } else if (/<param\b[^>]*\bname\s*=\s*["']C["']/i.test(l)) {
+          const lMh = parseNum(p["L"] ?? p["l"]);
+          const cUf = parseNum(p["C"] ?? p["c"]);
+          if (lMh > 0 && cUf > 0) {
+            const fRes = 1 / (2 * Math.PI * Math.sqrt(lMh * 1e-3 * cUf * 1e-6));
+            hints.push({
+              position: { line: i, character: l.length },
+              label: `→ f_res = ${fRes.toFixed(1)} Hz`,
+              kind: "type",
+              paddingLeft: true,
+            });
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore parse errors
+  }
+
+  return hints;
 }
 
 export interface PscadDocSymbol {
@@ -2580,7 +2875,7 @@ export function getPscadDocumentSymbols(text: string): PscadDocSymbol[] {
 }
 
 /**
- * Generates 1-click Quick-Fix Code Actions for PSCAD pre-flight lints (`M6003`, `M6006`, `M6007`, `M6008`).
+ * Generates 1-click Quick-Fix Code Actions for PSCAD pre-flight lints (`M6001`–`M6017`).
  */
 export function getPscadQuickFixes(text: string, uri: string) {
   const project = parsePscx(text);
@@ -2604,7 +2899,55 @@ export function getPscadQuickFixes(text: string, uri: string) {
     const lineIdx = Math.max(0, (d.line ?? 1) - 1);
     const lineText = lines[lineIdx] ?? "";
 
-    if (d.code === "M6003") {
+    if (d.code === "M6001") {
+      // Floating electrical node -> add a ground reference component or disable isolated probe
+      const cmp = project.rootModule.components.find((c) => c.id === d.componentId);
+      const gx = cmp ? cmp.position.x + 18 : 180;
+      const gy = cmp ? cmp.position.y : 180;
+      const gndSnippet = `\n        <User id="gnd_${d.componentId || "ref"}" name="master:ground" x="${gx}" y="${gy}"/>`;
+      actions.push({
+        title: `Fix M6001: Attach ground reference ('master:ground') at (${gx}, ${gy})`,
+        code: d.code,
+        edit: {
+          changes: {
+            [uri]: [
+              {
+                range: {
+                  start: { line: lineIdx, character: lineText.length },
+                  end: { line: lineIdx, character: lineText.length },
+                },
+                newText: gndSnippet,
+              },
+            ],
+          },
+        },
+      });
+    } else if (d.code === "M6002") {
+      // Transformer winding voltage mismatch -> align V1/V2 with bus voltage
+      const busKvMatch = /bus .*?\(([0-9.]+)\s*kV\)/i.exec(d.message);
+      const targetKv = busKvMatch?.[1] ?? "230.0";
+      for (let i = lineIdx; i < Math.min(lines.length, lineIdx + 12); i++) {
+        if (/name\s*=\s*["'](?:V1|V2|Tmva)["']/i.test(lines[i]!) && /name\s*=\s*["'](?:V1|V2)["']/i.test(lines[i]!)) {
+          const oldL = lines[i]!;
+          const newL = oldL.replace(/(value\s*=\s*["'])[^"']*(["'])/i, `$1${targetKv}$2`);
+          actions.push({
+            title: `Fix M6002: Align transformer winding nominal voltage to ${targetKv} kV`,
+            code: d.code,
+            edit: {
+              changes: {
+                [uri]: [
+                  {
+                    range: { start: { line: i, character: 0 }, end: { line: i, character: oldL.length } },
+                    newText: newL,
+                  },
+                ],
+              },
+            },
+          });
+          break;
+        }
+      }
+    } else if (d.code === "M6003") {
       // Negative/zero R, L, C, or MVA -> replace with positive magnitude
       const valMatch = /(value\s*=\s*["'])(-?[0-9.eE+-]+)(["'])/i.exec(lineText);
       if (valMatch) {
@@ -2626,6 +2969,52 @@ export function getPscadQuickFixes(text: string, uri: string) {
           },
         });
       }
+    } else if (d.code === "M6004") {
+      // Weak POI grid SCR < 3.0 -> switch IBR control_mode to grid_forming
+      for (let i = lineIdx; i < Math.min(lines.length, lineIdx + 14); i++) {
+        if (/name\s*=\s*["'](?:control_mode|controlMode)["']/i.test(lines[i]!)) {
+          const oldL = lines[i]!;
+          const newL = oldL.replace(/(value\s*=\s*["'])[^"']*(["'])/i, `$1grid_forming$2`);
+          actions.push({
+            title: `Fix M6004: Switch IBR control_mode to 'grid_forming' for weak-grid (SCR < 3.0) stability`,
+            code: d.code,
+            edit: {
+              changes: {
+                [uri]: [
+                  {
+                    range: { start: { line: i, character: 0 }, end: { line: i, character: oldL.length } },
+                    newText: newL,
+                  },
+                ],
+              },
+            },
+          });
+          break;
+        }
+      }
+    } else if (d.code === "M6005") {
+      // Unconnected CSMF control input -> insert constant source block
+      const cmp = project.rootModule.components.find((c) => c.id === d.componentId);
+      const cx = cmp ? cmp.position.x - 54 : 108;
+      const cy = cmp ? cmp.position.y : 180;
+      const constSnippet = `\n        <User id="const_${d.componentId || "in"}" name="master:const" x="${cx}" y="${cy}"><param name="Value" value="0.0"/></User>`;
+      actions.push({
+        title: `Fix M6005: Connect 'master:const' (0.0) to open CSMF control input`,
+        code: d.code,
+        edit: {
+          changes: {
+            [uri]: [
+              {
+                range: {
+                  start: { line: lineIdx, character: lineText.length },
+                  end: { line: lineIdx, character: lineText.length },
+                },
+                newText: constSnippet,
+              },
+            ],
+          },
+        },
+      });
     } else if (d.code === "M6006") {
       // Line travel time tau < dt -> switch line model_type to 'pi'
       for (let i = lineIdx; i < Math.min(lines.length, lineIdx + 12); i++) {
@@ -2677,7 +3066,7 @@ export function getPscadQuickFixes(text: string, uri: string) {
       const vbaseMatch = /bus voltage ([0-9.]+) kV/i.exec(d.message);
       const targetVref = vbaseMatch ? (parseFloat(vbaseMatch[1]!) * 1.15).toFixed(1) : "265.0";
       for (let i = lineIdx; i < Math.min(lines.length, lineIdx + 10); i++) {
-        if (/name\s*=\s*["'](?:Vref|protection_level_kv)["']/i.test(lines[i]!)) {
+        if (/name\s*=\s*["'](?:Vref|protection_level_kv|V)["']/i.test(lines[i]!)) {
           const oldL = lines[i]!;
           const newL = oldL.replace(/(value\s*=\s*["'])[^"']*(["'])/i, `$1${targetVref}$2`);
           actions.push({
@@ -2738,6 +3127,68 @@ export function getPscadQuickFixes(text: string, uri: string) {
             },
           },
         });
+      }
+    } else if (d.code === "M6012") {
+      // CSMF algebraic loop -> insert unit-delay lag block (realpole)
+      actions.push({
+        title: `Fix M6012: Insert 1-step feedback lag ('master:realpole', T = Δt) to break algebraic loop`,
+        code: d.code,
+        edit: {
+          changes: {
+            [uri]: [
+              {
+                range: {
+                  start: { line: lineIdx, character: lineText.length },
+                  end: { line: lineIdx, character: lineText.length },
+                },
+                newText: `\n        <User id="loop_delay_${d.componentId || "1"}" name="master:realpole" x="216" y="252"><param name="G" value="1.0"/><param name="T" value="0.00005"/></User>`,
+              },
+            ],
+          },
+        },
+      });
+    } else if (d.code === "M6013" || d.code === "M6014") {
+      // Parallel ideal voltage or inductive sources -> add 0.005 ohm damping resistance
+      actions.push({
+        title: `Fix ${d.code}: Add series damping resistance R = 0.005 Ω to regularize nodal conductance matrix`,
+        code: d.code,
+        edit: {
+          changes: {
+            [uri]: [
+              {
+                range: {
+                  start: { line: lineIdx, character: lineText.length },
+                  end: { line: lineIdx, character: lineText.length },
+                },
+                newText: `\n          <param name="R" value="0.005 [ohm]"/>`,
+              },
+            ],
+          },
+        },
+      });
+    } else if (d.code === "M6015") {
+      // Saturated limiter -> widen Max/Min limits
+      for (let i = lineIdx; i < Math.min(lines.length, lineIdx + 10); i++) {
+        if (/name\s*=\s*["'](?:Max|Min|UL|LL)["']/i.test(lines[i]!)) {
+          const oldL = lines[i]!;
+          const isMax = /Max|UL/i.test(oldL);
+          const newL = oldL.replace(/(value\s*=\s*["'])[^"']*(["'])/i, `$1${isMax ? "10.0" : "-10.0"}$2`);
+          actions.push({
+            title: `Fix M6015: Widen limiter ${isMax ? "upper" : "lower"} bound to ${isMax ? "10.0" : "-10.0"} pu`,
+            code: d.code,
+            edit: {
+              changes: {
+                [uri]: [
+                  {
+                    range: { start: { line: i, character: 0 }, end: { line: i, character: oldL.length } },
+                    newText: newL,
+                  },
+                ],
+              },
+            },
+          });
+          break;
+        }
       }
     }
   }

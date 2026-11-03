@@ -26,21 +26,10 @@ export const FeedFilterToolbar: React.FC<FeedFilterToolbarProps> = ({
 }) => {
   const navigate = useNavigate();
   const isFiltering = activeFilter !== "all" || activeTag !== null;
-  const [isScrolled, setIsScrolled] = React.useState(() => typeof window !== "undefined" && window.scrollY > 4);
-
-  React.useEffect(() => {
-    const onScroll = () => {
-      const next = window.scrollY > 4;
-      setIsScrolled((prev) => (prev === next ? prev : next));
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   return (
     <>
-      <FilterSection $scrolled={isScrolled}>
+      <FilterSection>
         <FilterChipsScroll role="toolbar" aria-label="Engineering Artifact Filters">
           {FILTER_CHIPS.map((chip) => {
             const isActive = activeFilter === chip.id;

@@ -248,6 +248,12 @@ export interface EmtTransmissionLine {
   isCable?: boolean | undefined;
   coreRadiusM?: number | undefined;
   insulationRadiusM?: number | undefined;
+  /** Optional ULM / J. Marti rational approximation real negative poles (rad/s) for frequency-dependent lines. */
+  poles?: number[] | undefined;
+  /** Optional ULM / J. Marti rational approximation residues corresponding to `poles`. */
+  residues?: number[] | undefined;
+  /** Optional ULM / J. Marti high-frequency direct feedthrough attenuation weight. */
+  d0?: number | undefined;
   insulationEpsR?: number | undefined;
   burialDepthM?: number | undefined;
   soilResistivityOhmM?: number | undefined;
