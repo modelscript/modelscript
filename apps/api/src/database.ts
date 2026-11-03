@@ -6523,6 +6523,14 @@ export class LibraryDatabase {
     };
   }
 
+  #resolveValidActorId(actorId: number | null = null): number | null {
+    if (typeof actorId !== "number" || !Number.isInteger(actorId) || actorId <= 0) {
+      return null;
+    }
+    const user = this.#db.prepare(`SELECT 1 FROM users WHERE id = ?`).get(actorId);
+    return user ? actorId : null;
+  }
+
   updateInstanceSettings(
     patch: Record<string, unknown>,
     actorId: number | null = null,
@@ -6640,12 +6648,14 @@ export class LibraryDatabase {
     );
     const deleteStmt = this.#db.prepare(`DELETE FROM instance_settings WHERE key = ?`);
 
+    const validActorId = this.#resolveValidActorId(actorId);
+
     const tx = this.#db.transaction(() => {
       for (const key of allowedKeys) {
         if (normalizedPatch[key] === undefined) continue;
         const val = normalizedPatch[key];
         const serialized = typeof val === "object" && val !== null ? JSON.stringify(val) : String(val);
-        upsertStmt.run(key, serialized, actorId);
+        upsertStmt.run(key, serialized, validActorId);
       }
       if (normalizedPatch["clearGithubClientSecret"] === true) {
         deleteStmt.run("githubClientSecretEncrypted");
@@ -6656,7 +6666,7 @@ export class LibraryDatabase {
         upsertStmt.run(
           "githubClientSecretEncrypted",
           encryptSecretAtRest(normalizedPatch["githubClientSecret"].trim()),
-          actorId,
+          validActorId,
         );
       }
       if (normalizedPatch["clearGitlabClientSecret"] === true) {
@@ -6668,7 +6678,7 @@ export class LibraryDatabase {
         upsertStmt.run(
           "gitlabClientSecretEncrypted",
           encryptSecretAtRest(normalizedPatch["gitlabClientSecret"].trim()),
-          actorId,
+          validActorId,
         );
       }
     });
@@ -6893,72 +6903,74 @@ export class LibraryDatabase {
       ...current.templateOverrides,
     };
 
+    const validActorId = this.#resolveValidActorId(actorId);
+
     const tx = this.#db.transaction(() => {
       if (typeof patch["driver"] === "string") {
-        upsertStmt.run("emailDriver", patch["driver"].trim().toLowerCase(), actorId);
+        upsertStmt.run("emailDriver", patch["driver"].trim().toLowerCase(), validActorId);
       }
       if (typeof patch["fromName"] === "string") {
-        upsertStmt.run("emailFromName", patch["fromName"].trim(), actorId);
+        upsertStmt.run("emailFromName", patch["fromName"].trim(), validActorId);
       }
       if (typeof patch["fromEmail"] === "string") {
-        upsertStmt.run("emailFromEmail", patch["fromEmail"].trim(), actorId);
+        upsertStmt.run("emailFromEmail", patch["fromEmail"].trim(), validActorId);
       }
       if (typeof patch["replyTo"] === "string") {
-        upsertStmt.run("emailReplyTo", patch["replyTo"].trim(), actorId);
+        upsertStmt.run("emailReplyTo", patch["replyTo"].trim(), validActorId);
       }
       if (typeof patch["smtpHost"] === "string") {
-        upsertStmt.run("smtpHost", patch["smtpHost"].trim(), actorId);
+        upsertStmt.run("smtpHost", patch["smtpHost"].trim(), validActorId);
       }
       if (patch["smtpPort"] !== undefined) {
         const port = Math.max(1, Math.min(65535, Number.parseInt(String(patch["smtpPort"]), 10) || 587));
-        upsertStmt.run("smtpPort", String(port), actorId);
+        upsertStmt.run("smtpPort", String(port), validActorId);
       }
       if (typeof patch["smtpUser"] === "string") {
-        upsertStmt.run("smtpUser", patch["smtpUser"].trim(), actorId);
+        upsertStmt.run("smtpUser", patch["smtpUser"].trim(), validActorId);
       }
       if (typeof patch["smtpTlsMode"] === "string") {
-        upsertStmt.run("smtpTlsMode", patch["smtpTlsMode"].trim().toLowerCase(), actorId);
+        upsertStmt.run("smtpTlsMode", patch["smtpTlsMode"].trim().toLowerCase(), validActorId);
       }
       if (patch["smtpTlsRejectUnauthorized"] !== undefined) {
-        upsertStmt.run("smtpTlsRejectUnauthorized", String(Boolean(patch["smtpTlsRejectUnauthorized"])), actorId);
+        upsertStmt.run("smtpTlsRejectUnauthorized", String(Boolean(patch["smtpTlsRejectUnauthorized"])), validActorId);
       }
       if (typeof patch["smtpCaCertPath"] === "string") {
-        upsertStmt.run("smtpCaCertPath", patch["smtpCaCertPath"].trim(), actorId);
+        upsertStmt.run("smtpCaCertPath", patch["smtpCaCertPath"].trim(), validActorId);
       }
 
       // Encrypted secrets at rest
       if (patch["clearSmtpPass"] === true) {
         deleteStmt.run("smtpPassEncrypted");
       } else if (typeof patch["smtpPass"] === "string" && patch["smtpPass"].trim()) {
-        upsertStmt.run("smtpPassEncrypted", encryptSecretAtRest(patch["smtpPass"].trim()), actorId);
+        upsertStmt.run("smtpPassEncrypted", encryptSecretAtRest(patch["smtpPass"].trim()), validActorId);
       }
 
       if (patch["clearSendgridApiKey"] === true) {
         deleteStmt.run("sendgridApiKeyEncrypted");
       } else if (typeof patch["sendgridApiKey"] === "string" && patch["sendgridApiKey"].trim()) {
-        upsertStmt.run("sendgridApiKeyEncrypted", encryptSecretAtRest(patch["sendgridApiKey"].trim()), actorId);
+        upsertStmt.run("sendgridApiKeyEncrypted", encryptSecretAtRest(patch["sendgridApiKey"].trim()), validActorId);
       }
 
       if (patch["clearResendApiKey"] === true) {
         deleteStmt.run("resendApiKeyEncrypted");
       } else if (typeof patch["resendApiKey"] === "string" && patch["resendApiKey"].trim()) {
-        upsertStmt.run("resendApiKeyEncrypted", encryptSecretAtRest(patch["resendApiKey"].trim()), actorId);
+        upsertStmt.run("resendApiKeyEncrypted", encryptSecretAtRest(patch["resendApiKey"].trim()), validActorId);
       }
 
       // Theme settings
       if (patch["theme"] && typeof patch["theme"] === "object") {
         const theme = patch["theme"] as Record<string, unknown>;
         if (typeof theme["headerBgColor"] === "string") {
-          upsertStmt.run("emailHeaderBgColor", theme["headerBgColor"].trim(), actorId);
+          upsertStmt.run("emailHeaderBgColor", theme["headerBgColor"].trim(), validActorId);
         }
         if (typeof theme["accentColor"] === "string") {
-          upsertStmt.run("emailAccentColor", theme["accentColor"].trim(), actorId);
+          upsertStmt.run("emailAccentColor", theme["accentColor"].trim(), validActorId);
         }
         if (typeof theme["logoUrl"] === "string") {
-          upsertStmt.run("emailLogoUrl", theme["logoUrl"].trim(), actorId);
+          upsertStmt.run("emailLogoUrl", theme["logoUrl"].trim(), validActorId);
         }
         if (typeof theme["footerText"] === "string") {
-          upsertStmt.run("emailFooterText", theme["footerText"].trim(), actorId);
+          upsertStmt.run("emailFooterText", theme["footerText"].trim(), validActorId);
         }
       }
 
@@ -6967,11 +6979,11 @@ export class LibraryDatabase {
         const resetId = patch["resetTemplateId"] as EmailTemplateId;
         const { [resetId]: _removed, ...rest } = nextOverrides;
         nextOverrides = rest;
-        upsertStmt.run("emailTemplatesJson", JSON.stringify(nextOverrides), actorId);
+        upsertStmt.run("emailTemplatesJson", JSON.stringify(nextOverrides), validActorId);
       }
       if (patch["resetAllTemplates"] === true) {
         nextOverrides = {};
-        upsertStmt.run("emailTemplatesJson", JSON.stringify(nextOverrides), actorId);
+        upsertStmt.run("emailTemplatesJson", JSON.stringify(nextOverrides), validActorId);
       }
       if (patch["templates"] && typeof patch["templates"] === "object") {
         const incoming = patch["templates"] as Record<string, EmailTemplateOverride>;
@@ -6995,7 +7007,7 @@ export class LibraryDatabase {
             ...(ov.enabled !== undefined ? { enabled: Boolean(ov.enabled) } : {}),
           };
         }
-        upsertStmt.run("emailTemplatesJson", JSON.stringify(nextOverrides), actorId);
+        upsertStmt.run("emailTemplatesJson", JSON.stringify(nextOverrides), validActorId);
       }
     });
 
@@ -7225,6 +7237,7 @@ export class LibraryDatabase {
   }
 
   resetSetupWizard(actorId: number | null = null): void {
+    const validActorId = this.#resolveValidActorId(actorId);
     this.#db
       .prepare(
         `INSERT INTO instance_settings (key, value, updated_by, updated_at)
@@ -7234,10 +7247,11 @@ export class LibraryDatabase {
            updated_by = excluded.updated_by,
            updated_at = datetime('now')`,
       )
-      .run(actorId);
+      .run(validActorId);
   }
 
   markSetupCompleted(actorId: number | null = null): void {
+    const validActorId = this.#resolveValidActorId(actorId);
     this.#db
       .prepare(
         `INSERT INTO instance_settings (key, value, updated_by, updated_at)
@@ -7247,7 +7261,7 @@ export class LibraryDatabase {
            updated_by = excluded.updated_by,
            updated_at = datetime('now')`,
       )
-      .run(actorId);
+      .run(validActorId);
   }
 
   isInstanceInitialized(): boolean {

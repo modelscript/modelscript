@@ -73,7 +73,6 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
 // Lazy-loaded pages for optimal initial bundle transfer
 const AdminPage = lazyWithRetry(() => import("./pages/AdminPage"));
 const BookmarksPage = lazyWithRetry(() => import("./pages/BookmarksPage"));
-const ClassDetailPage = lazyWithRetry(() => import("./pages/ClassDetailPage"));
 const EditProfilePage = lazyWithRetry(() => import("./pages/EditProfilePage"));
 const EmbedPlaygroundPage = lazyWithRetry(() => import("./pages/EmbedPlaygroundPage"));
 const ExplorePage = lazyWithRetry(() => import("./pages/ExplorePage"));
@@ -109,19 +108,6 @@ const TermsPage = lazyWithRetry(() => import("./pages/TermsPage"));
 const VerifyEmailPage = lazyWithRetry(() => import("./pages/VerifyEmailPage"));
 const TemplateDetailPage = lazyWithRetry(() => import("./pages/TemplateDetailPage"));
 const WorkspacePage = lazyWithRetry(() => import("./pages/WorkspacePage"));
-
-/**
- * Disambiguates two-segment package routes `/packages/:first/:second`:
- * - If `first` starts with `@` (e.g. `@scope/name`), it's a scoped package version list -> LibraryVersionPage.
- * - Otherwise (e.g. `Modelica/4.1.0`), it's an unscoped package detail page -> PackageDetailPage.
- */
-function PackageTwoSegmentRoute() {
-  const { first } = useParams<{ first?: string }>();
-  if (first?.startsWith("@")) {
-    return <LibraryVersionPage />;
-  }
-  return <PackageDetailPage />;
-}
 
 /**
  * Skeleton loading placeholder rendered while lazy-loaded route bundles are fetched.
@@ -635,10 +621,10 @@ function App() {
                     {/* Package browser (unscoped & @scope/name) */}
                     <Route path="/packages" element={<LibraryListPage />} />
                     <Route path="/packages/:name" element={<LibraryVersionPage />} />
-                    <Route path="/packages/:first/:second" element={<PackageTwoSegmentRoute />} />
+                    <Route path="/packages/:first/:second" element={<PackageDetailPage />} />
                     <Route path="/packages/:scope/:name/:version" element={<PackageDetailPage />} />
-                    <Route path="/packages/:name/:version/classes/:className" element={<ClassDetailPage />} />
-                    <Route path="/packages/:scope/:name/:version/classes/:className" element={<ClassDetailPage />} />
+                    <Route path="/packages/:name/:version/classes/:className" element={<PackageDetailPage />} />
+                    <Route path="/packages/:scope/:name/:version/classes/:className" element={<PackageDetailPage />} />
 
                     {/* ModelScript IDE Workbench */}
                     <Route path="/ide" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />

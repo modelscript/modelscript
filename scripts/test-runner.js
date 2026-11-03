@@ -40,6 +40,10 @@ export function runTests(argv = process.argv.slice(2)) {
   const repoRoot = path.resolve(__dirname, "..");
   const ctrfReporter = path.resolve(repoRoot, "scripts", "node-test-ctrf-reporter.cjs");
 
+  if (!process.env.NODE_ENV) {
+    process.env.NODE_ENV = "test";
+  }
+
   // 1. Detect coverage requirements (opt-in locally, default in CI)
   let enableCoverage =
     Boolean(process.env.CI) || process.env.COVERAGE === "true" || process.env.TEST_COVERAGE === "true";

@@ -31,7 +31,7 @@ fs.mkdirSync(fakeIdeDir, { recursive: true });
 
 fs.writeFileSync(
   path.join(fakeWebDir, "index.html"),
-  "<!DOCTYPE html><html><head><title>ModelScript Web</title></head><body><div id='root'>Appliance Web App</div></body></html>",
+  "<!DOCTYPE html><html><head><title>ModelScript Web</title></head><body><div id='root'>Appliance Web App (ModelScript Web)</div></body></html>",
 );
 fs.writeFileSync(path.join(fakeWebDir, "bundle.js"), "console.log('ModelScript SPA Asset');");
 fs.writeFileSync(
@@ -150,7 +150,7 @@ assert.ok(ideRes.text.includes("IDE Workbench"));
 // Test SPA wildcard fallback for deep client route (e.g. /solutions/@ercot/inverter-model)
 const spaRes = await request(app).get("/solutions/@ercot/inverter-model");
 assert.strictEqual(spaRes.status, 200);
-assert.ok(spaRes.text.includes("ModelScript Web"), "SPA route must fall back to index.html");
+assert.ok(spaRes.text.includes("Appliance Web App"), "SPA route must fall back to index.html");
 console.log("✓ Test 6 passed: Static Web SPA and IDE delivered with client-side SPA routing.");
 
 // Clean up temporary directory

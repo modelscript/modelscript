@@ -35,6 +35,7 @@ export interface PackageTreeSidebarProps {
   name: string;
   version: string;
   rootClassName?: string | undefined;
+  activeClassName?: string | undefined;
   mobileTreeOpen: boolean;
   setMobileTreeOpen: React.Dispatch<React.SetStateAction<boolean>>;
   availableDomains: {
@@ -71,6 +72,7 @@ function countTreeNodes(nodes: TreeNode[]): number {
 export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
   name,
   version,
+  activeClassName,
   mobileTreeOpen,
   setMobileTreeOpen,
   availableDomains,
@@ -253,6 +255,7 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
                   depth={0}
                   libraryName={name}
                   version={version}
+                  activeClassName={activeClassName}
                   isFiltered={Boolean(treeSearchFilter.trim())}
                 />
               ))}

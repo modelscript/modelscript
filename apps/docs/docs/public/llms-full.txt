@@ -6384,6 +6384,7 @@ Create an offline distribution zip archive from a package
 Options:
   - `--out, -o <string>`: Output directory for the generated archive
   - `--dry-run, -d <boolean>`: Inspect files and archive details without creating the file (default: false)
+  - `--pre-index <boolean>`: Pre-index package symbols, metadata, and diagrams into an .lsp-bundle.zip for instant O(1) loading (default: false)
   - `--json <boolean>`: Output archive metadata as JSON (default: false)
 
 ### CLI Command: `publish <path>`

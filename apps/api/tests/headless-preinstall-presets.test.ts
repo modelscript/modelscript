@@ -73,7 +73,7 @@ test("Headless Preinstall & Deployment Presets", async (t) => {
 
       // Verify setup/complete endpoint rejects subsequent calls with 403 Forbidden
       const storage = new LibraryStorage(path.join(tmpDir, "storage"));
-      app = createApp({ database: db, storage });
+      app = createApp({ database: db, storage, seedStdlibOnBoot: false, enableWorkers: false });
       const completeRes = await request(app).post("/api/v1/setup/complete").send({
         profileTier: "tier1_federated",
       });
@@ -89,6 +89,7 @@ test("Headless Preinstall & Deployment Presets", async (t) => {
       assert.equal(allUsers[0]?.username, "superadmin");
     } finally {
       if (app) {
+        if (app.locals.jobQueue) app.locals.jobQueue.clear();
         if (app.locals.decayWorkerInterval) clearInterval(app.locals.decayWorkerInterval);
         if (app.locals.rssWorkerInterval) clearInterval(app.locals.rssWorkerInterval);
         if (app.locals.logPurgeInterval) clearInterval(app.locals.logPurgeInterval);
@@ -114,7 +115,12 @@ test("Headless Preinstall & Deployment Presets", async (t) => {
       // Even if NODE_ENV is omitted or not "production", flagship preset must NEVER seed dev data
       delete process.env["NODE_ENV"];
 
-      app = createApp({ database: db, storage: new LibraryStorage(path.join(tmpDir, "storage")) });
+      app = createApp({
+        database: db,
+        storage: new LibraryStorage(path.join(tmpDir, "storage")),
+        seedStdlibOnBoot: false,
+        enableWorkers: false,
+      });
 
       // Ensure no mock dev data was seeded
       const postCount = (db.db.prepare("SELECT count(*) as c FROM posts").get() as { c: number }).c;
@@ -130,6 +136,7 @@ test("Headless Preinstall & Deployment Presets", async (t) => {
       else delete process.env["NODE_ENV"];
 
       if (app) {
+        if (app.locals.jobQueue) app.locals.jobQueue.clear();
         if (app.locals.decayWorkerInterval) clearInterval(app.locals.decayWorkerInterval);
         if (app.locals.rssWorkerInterval) clearInterval(app.locals.rssWorkerInterval);
         if (app.locals.logPurgeInterval) clearInterval(app.locals.logPurgeInterval);
@@ -158,7 +165,12 @@ test("Headless Preinstall & Deployment Presets", async (t) => {
         process.env["ALLOW_DEV_SEEDING"] = "true";
         process.env["SEED_EXAMPLES"] = "false";
 
-        app = createApp({ database: db, storage: new LibraryStorage(path.join(tmpDir, "storage")) });
+        app = createApp({
+          database: db,
+          storage: new LibraryStorage(path.join(tmpDir, "storage")),
+          seedStdlibOnBoot: false,
+          enableWorkers: false,
+        });
 
         // Verify that mock personas were seeded immediately
         const users = db.db.prepare("SELECT username FROM users").all() as { username: string }[];
@@ -173,6 +185,7 @@ test("Headless Preinstall & Deployment Presets", async (t) => {
         else delete process.env["SEED_EXAMPLES"];
 
         if (app) {
+          if (app.locals.jobQueue) app.locals.jobQueue.clear();
           if (app.locals.decayWorkerInterval) clearInterval(app.locals.decayWorkerInterval);
           if (app.locals.rssWorkerInterval) clearInterval(app.locals.rssWorkerInterval);
           if (app.locals.logPurgeInterval) clearInterval(app.locals.logPurgeInterval);

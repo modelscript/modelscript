@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./ClassDetailView";
 export * from "./components/ClassCodeTabs";
 export * from "./components/ClassDetailHeader";
 export * from "./components/ClassOverviewTab";

@@ -196,14 +196,30 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     currentPendingPin,
   ]);
 
-  const handleCloseClick = () => {
+  const handleCloseClick = useCallback(() => {
     if (hasUnsavedChanges()) {
       setPendingAction("close");
       setView("confirm_save");
     } else {
       onClose();
     }
-  };
+  }, [hasUnsavedChanges, onClose]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (view === "compose") {
+          e.preventDefault();
+          handleCloseClick();
+        } else if (view === "drafts") {
+          e.preventDefault();
+          setView("compose");
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [view, handleCloseClick]);
 
   const handleDraftsClick = () => {
     if (hasUnsavedChanges()) {

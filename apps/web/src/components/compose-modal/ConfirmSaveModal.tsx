@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Heading } from "@primer/react";
-import React from "react";
+import React, { useRef } from "react";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 import Box from "../Box";
-import { ModalPanel, Overlay } from "./styles";
+import { ConfirmModalPanel, NestedOverlay } from "./styles";
 
 interface ConfirmSaveModalProps {
   onCancel: () => void;
@@ -13,12 +14,22 @@ interface ConfirmSaveModalProps {
 }
 
 export const ConfirmSaveModal: React.FC<ConfirmSaveModalProps> = ({ onCancel, onSave, onDiscard, isEditing }) => {
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef, true, { onEscape: onCancel });
+
   return (
-    <Overlay style={{ zIndex: 1100, background: "rgba(0,0,0,0.6)" }} onClick={onCancel}>
-      <ModalPanel onClick={(e) => e.stopPropagation()} style={{ maxWidth: "320px", minHeight: "auto", margin: "auto" }}>
+    <NestedOverlay onClick={onCancel}>
+      <ConfirmModalPanel
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-save-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <Box p={4} pb={5} display="flex" flexDirection="column" alignItems="flex-start" gap={2}>
           <Heading
             as="h3"
+            id="confirm-save-title"
             style={{
               margin: "4px 0 0 0",
               fontSize: "20px",
@@ -36,6 +47,7 @@ export const ConfirmSaveModal: React.FC<ConfirmSaveModalProps> = ({ onCancel, on
           <Box display="flex" flexDirection="column" gap={3} width="100%" mt={2}>
             {!isEditing && (
               <button
+                type="button"
                 style={{
                   background: "var(--gradient-cta)",
                   color: "#ffffff",
@@ -53,6 +65,7 @@ export const ConfirmSaveModal: React.FC<ConfirmSaveModalProps> = ({ onCancel, on
               </button>
             )}
             <button
+              type="button"
               style={{
                 background: "transparent",
                 color: "var(--color-text-primary)",
@@ -69,6 +82,7 @@ export const ConfirmSaveModal: React.FC<ConfirmSaveModalProps> = ({ onCancel, on
             </button>
             {isEditing && (
               <button
+                type="button"
                 style={{
                   background: "transparent",
                   color: "var(--color-text-muted)",
@@ -86,7 +100,7 @@ export const ConfirmSaveModal: React.FC<ConfirmSaveModalProps> = ({ onCancel, on
             )}
           </Box>
         </Box>
-      </ModalPanel>
-    </Overlay>
+      </ConfirmModalPanel>
+    </NestedOverlay>
   );
 };

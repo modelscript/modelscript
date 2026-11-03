@@ -278,26 +278,66 @@ export const getLibraryDetail = async (name: string, version: string): Promise<L
   }
 };
 
-export const getClasses = async (name: string, version: string, kind?: string, q?: string) => {
-  try {
-    const { data } = await api.get<{ classes: ClassSummary[] }>(
-      `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes`,
-      {
-        params: { kind, q },
-      },
-    );
-    return data?.classes || [];
-  } catch (err) {
-    if (!isDevMode()) throw err;
-    return [];
+const classesCache = new Map<string, Promise<ClassSummary[]> | ClassSummary[]>();
+const classDetailCache = new Map<string, Promise<ClassDetail> | ClassDetail>();
+
+export function clearPackageClassesCache(name?: string, version?: string): void {
+  if (name && version) {
+    classesCache.delete(`${name}@${version}`);
+  } else {
+    classesCache.clear();
   }
+}
+
+export const getClasses = async (name: string, version: string, kind?: string, q?: string): Promise<ClassSummary[]> => {
+  const cacheKey = !kind && !q ? `${name}@${version}` : null;
+  if (cacheKey && classesCache.has(cacheKey)) {
+    return classesCache.get(cacheKey)!;
+  }
+
+  const promise = (async () => {
+    try {
+      const { data } = await api.get<{ classes: ClassSummary[] }>(
+        `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes`,
+        {
+          params: { kind, q },
+        },
+      );
+      const result = data?.classes || [];
+      if (cacheKey) classesCache.set(cacheKey, result);
+      return result;
+    } catch (err) {
+      if (cacheKey) classesCache.delete(cacheKey);
+      if (!isDevMode()) throw err;
+      return [];
+    }
+  })();
+
+  if (cacheKey) classesCache.set(cacheKey, promise);
+  return promise;
 };
 
-export const getClassDetail = async (name: string, version: string, className: string) => {
-  const { data } = await api.get<ClassDetail>(
-    `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes/${encodeURIComponent(className)}`,
-  );
-  return data;
+export const getClassDetail = async (name: string, version: string, className: string): Promise<ClassDetail> => {
+  const cacheKey = `${name}@${version}@${className}`;
+  if (classDetailCache.has(cacheKey)) {
+    return classDetailCache.get(cacheKey)!;
+  }
+
+  const promise = (async () => {
+    try {
+      const { data } = await api.get<ClassDetail>(
+        `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes/${encodeURIComponent(className)}`,
+      );
+      classDetailCache.set(cacheKey, data);
+      return data;
+    } catch (err) {
+      classDetailCache.delete(cacheKey);
+      throw err;
+    }
+  })();
+
+  classDetailCache.set(cacheKey, promise);
+  return promise;
 };
 
 export const getJobStatus = async (name: string, version: string) => {

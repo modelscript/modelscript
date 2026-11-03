@@ -4650,6 +4650,13 @@
         "default": false
       },
       {
+        "name": "pre-index",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Pre-index package symbols, metadata, and diagrams into an .lsp-bundle.zip for instant O(1) loading",
+        "default": false
+      },
+      {
         "name": "json",
         "aliases": [],
         "type": "boolean",
@@ -6633,6 +6640,96 @@
         "subcommands": []
       }
     ]
+  },
+  {
+    "name": "stdlib",
+    "specs": [
+      "stdlib [action] [pack]"
+    ],
+    "aliases": [],
+    "describe": "Manage, list, and synchronize polyglot standard libraries across 44 languages",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to execute: 'list' (default), 'sync', 'info', 'export', or 'import'",
+        "choices": [
+          "list",
+          "sync",
+          "info",
+          "export",
+          "import"
+        ],
+        "default": "list"
+      },
+      {
+        "name": "pack",
+        "aliases": [],
+        "type": "string",
+        "description": "Domain pack to target (e.g. 'core', 'power-energy', 'mobility-auto', 'all') or path to .msxpack for import",
+        "default": "core"
+      }
+    ],
+    "options": [
+      {
+        "name": "lang",
+        "aliases": [],
+        "type": "string",
+        "description": "Filter by language identifier (e.g. 'modelica', 'sysml2', 'spice')"
+      },
+      {
+        "name": "out-dir",
+        "aliases": [],
+        "type": "string",
+        "description": "Custom output directory for synchronized libraries"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output file path for exported .msxpack bundle"
+      },
+      {
+        "name": "from-dir",
+        "aliases": [],
+        "type": "string",
+        "description": "Source directory containing downloaded standard library archives"
+      },
+      {
+        "name": "file",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Path to .msxpack bundle file for import"
+      },
+      {
+        "name": "dest",
+        "aliases": [
+          "d"
+        ],
+        "type": "string",
+        "description": "Destination directory to extract imported standard libraries"
+      },
+      {
+        "name": "allow-placeholders",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Allow placeholder README archives when neither prebuilt archive nor workspace sources exist",
+        "default": false
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output results as formatted JSON",
+        "default": false
+      }
+    ],
+    "subcommands": []
   },
   {
     "name": "surrogate",

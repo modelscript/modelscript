@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BeakerIcon, BookIcon, FileCodeIcon, SlidersIcon, WorkflowIcon } from "@primer/octicons-react";
-import { Heading, Label, Text } from "@primer/react";
+import {
+  BeakerIcon,
+  BookIcon,
+  FileCodeIcon,
+  SidebarExpandIcon,
+  SlidersIcon,
+  WorkflowIcon,
+} from "@primer/octicons-react";
+import { Heading, IconButton, Label, Text } from "@primer/react";
 import React from "react";
 import Box from "../../../components/Box";
 import Breadcrumbs from "../../../components/Breadcrumbs";
@@ -21,6 +28,8 @@ export interface ClassDetailHeaderProps {
   equationsCount: number;
   studiesCount?: number | undefined;
   hasCae?: boolean | undefined;
+  treeCollapsed?: boolean | undefined;
+  onToggleTreeCollapse?: (() => void) | undefined;
 }
 
 export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
@@ -34,6 +43,8 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   equationsCount,
   studiesCount = 0,
   hasCae,
+  treeCollapsed,
+  onToggleTreeCollapse,
 }) => {
   const flagCae = useFeatureFlag("cae_cloud_solver");
   const showStudies = hasCae ?? flagCae;
@@ -52,7 +63,18 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   return (
     <>
       <HeaderBar>
-        <Box mb={3}>
+        <Box mb={3} display="flex" alignItems="center" flexWrap="wrap" gap="8px">
+          {treeCollapsed && onToggleTreeCollapse && (
+            <IconButton
+              icon={SidebarExpandIcon}
+              size="small"
+              variant="invisible"
+              onClick={onToggleTreeCollapse}
+              aria-label="Browse symbols"
+              title="Browse symbols"
+              style={{ color: "var(--color-accent-cyan, #06b6d4)" }}
+            />
+          )}
           <Breadcrumbs
             items={[
               { label: "Packages", href: "/packages" },

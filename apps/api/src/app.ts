@@ -96,6 +96,10 @@ export interface AppOptions {
   historianRecorder?: HistorianRecorder | null | undefined;
   /** Optional Enterprise Edition plugin override. */
   enterprisePlugin?: EnterprisePlugin | undefined;
+  /** Explicit override to control standard library background seeding on boot. */
+  seedStdlibOnBoot?: boolean | undefined;
+  /** Explicit override to control background periodic workers (decay, RSS, purge, auto-backup, bot mention). */
+  enableWorkers?: boolean | undefined;
 }
 
 /**
@@ -123,9 +127,16 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.locals["featureFlagService"] = featureFlagService;
 
   const isStartupAirgap = isStrictAirgapEnv();
+  const isTestEnv =
+    process.env["NODE_ENV"] === "test" ||
+    Boolean(process.env["CI"]) ||
+    Boolean(process.env["TEST_TIMEOUT"]) ||
+    Boolean(process.env["TEST_CONCURRENCY"]);
+  const shouldEnableWorkers = opts.enableWorkers ?? (!isTestEnv && process.env["NODE_ENV"] !== "test");
 
   const federationWorker = new FederationWorker(database);
   if (
+    shouldEnableWorkers &&
     !isStartupAirgap &&
     !isFederationDisabled(database.isOpen() ? database.getInstanceSettings() : undefined) &&
     featureFlagService.isEnabled("activitypub_federation")
@@ -181,7 +192,6 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     activePreset?.id === "tier1_federated" ||
     activePreset?.id === "tier2_corporate";
   const isProductionEnv = process.env["NODE_ENV"] === "production" || isProductionPreset;
-  const isTestEnv = process.env["NODE_ENV"] === "test";
 
   // Pre-seed bundled standard libraries (MSL, SysML v2 KerML, and polyglot domain libraries) in:
   // 1. DigitalOcean flagship deployment (isFlagship) ALWAYS — ensures flagship never has missing packages even after a database reset
@@ -200,12 +210,13 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   });
 
   const shouldSeedStdlibs =
-    process.env["SEED_STDLIB_ON_BOOT"] === "true" ||
-    (!isTestEnv &&
-      (isFlagship ||
-        (isStartupAirgap && process.env["SEED_STDLIB_ON_BOOT"] !== "false") ||
-        hasMissingStdlibs ||
-        (isProductionEnv && database.listPackages().length === 0)));
+    opts.seedStdlibOnBoot ??
+    (process.env["SEED_STDLIB_ON_BOOT"] === "true" ||
+      (!isTestEnv &&
+        (isFlagship ||
+          (isStartupAirgap && process.env["SEED_STDLIB_ON_BOOT"] !== "false") ||
+          hasMissingStdlibs ||
+          (isProductionEnv && database.listPackages().length === 0))));
 
   if (shouldSeedStdlibs) {
     void seedPrepackagedLibraries(libraryStorage, database, jobQueue).catch((err) => {
@@ -274,7 +285,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   }
 
   // ── Periodic Workers (disabled in test environment) ──
-  if (process.env["NODE_ENV"] !== "test") {
+  if (shouldEnableWorkers) {
     const decayWorkerInterval = setInterval(
       () => {
         try {

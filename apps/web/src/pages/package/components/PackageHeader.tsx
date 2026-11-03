@@ -10,7 +10,7 @@ import {
   SyncIcon,
   TrashIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Button, Flash, Heading, Label, Text } from "@primer/react";
+import { ActionList, ActionMenu, Button, Flash, Heading, IconButton, Label, Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { getIconUrl, type PackageCollaborator, type PendingPackageTransfer } from "../../../api";
@@ -40,7 +40,6 @@ export interface PackageHeaderProps {
   actionLoading: boolean;
   setActionError: (msg: string | null) => void;
   collaborators: PackageCollaborator[];
-  openCompose?: ((opts: { initialDialect: string; initialTitle: string; companionRepo: string }) => void) | null;
   setPublishModalOpen: (open: boolean) => void;
   setManageModal: (modal: ManageModalType) => void;
   onAcceptPendingTransfer: (transferId: number) => void;
@@ -70,7 +69,6 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
   actionLoading,
   setActionError,
   collaborators,
-  openCompose,
   setPublishModalOpen,
   setManageModal,
   onAcceptPendingTransfer,
@@ -85,7 +83,18 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
   return (
     <>
       <HeaderBar>
-        <Box mb={3} display="flex" alignItems="center" justifyContent="space-between">
+        <Box mb={3} display="flex" alignItems="center" gap="8px">
+          {treeCollapsed && onToggleTreeCollapse && (
+            <IconButton
+              icon={SidebarExpandIcon}
+              size="small"
+              variant="invisible"
+              onClick={onToggleTreeCollapse}
+              aria-label="Browse symbols"
+              title="Browse symbols"
+              style={{ color: "var(--color-accent-cyan, #06b6d4)" }}
+            />
+          )}
           <Breadcrumbs
             items={[
               { label: "Packages", href: "/packages" },
@@ -93,18 +102,6 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
               { label: `v${version}` },
             ]}
           />
-          {treeCollapsed && onToggleTreeCollapse && (
-            <Button
-              size="small"
-              variant="invisible"
-              leadingVisual={SidebarExpandIcon}
-              onClick={onToggleTreeCollapse}
-              title="Show symbol tree"
-              style={{ color: "var(--color-accent-cyan, #06b6d4)", fontSize: 12, padding: "2px 8px" }}
-            >
-              Browse Symbols
-            </Button>
-          )}
         </Box>
         <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap="16px" mb={3} flexWrap="wrap">
           <Box display="flex" alignItems="center" gap="16px" style={{ minWidth: 0, flex: 1 }}>
@@ -233,115 +230,98 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
             </Box>
           </Box>
 
-          {(openCompose || canManage) && (
+          {canManage && (
             <Box display="flex" alignItems="center" gap="8px" style={{ alignSelf: "center" }}>
-              {openCompose && (
-                <Button
-                  size="small"
-                  leadingVisual={PlusIcon}
-                  onClick={() =>
-                    openCompose({
-                      initialDialect: "modelica",
-                      initialTitle: `Package: ${name}`,
-                      companionRepo: name || "",
-                    })
-                  }
-                >
-                  New Post / Notebook
-                </Button>
-              )}
-              {canManage && (
-                <ActionMenu>
-                  <ActionMenu.Button size="small" leadingVisual={GearIcon}>
-                    Manage Release
-                  </ActionMenu.Button>
-                  <ActionMenu.Overlay align="end">
-                    <ActionList>
-                      <ActionList.Item
-                        onSelect={() => {
-                          setActionError(null);
-                          setPublishModalOpen(true);
-                        }}
-                      >
-                        <ActionList.LeadingVisual>
-                          <PlusIcon size={14} />
-                        </ActionList.LeadingVisual>
-                        Publish New Version
-                      </ActionList.Item>
+              <ActionMenu>
+                <ActionMenu.Button size="small" leadingVisual={GearIcon}>
+                  Manage Release
+                </ActionMenu.Button>
+                <ActionMenu.Overlay align="end">
+                  <ActionList>
+                    <ActionList.Item
+                      onSelect={() => {
+                        setActionError(null);
+                        setPublishModalOpen(true);
+                      }}
+                    >
+                      <ActionList.LeadingVisual>
+                        <PlusIcon size={14} />
+                      </ActionList.LeadingVisual>
+                      Publish New Version
+                    </ActionList.Item>
 
-                      <ActionList.Item
-                        onSelect={() => {
-                          setActionError(null);
-                          setManageModal("collaborators");
-                        }}
-                      >
-                        <ActionList.LeadingVisual>
-                          <PeopleIcon size={14} />
-                        </ActionList.LeadingVisual>
-                        Manage Collaborators ({collaborators.length})
-                      </ActionList.Item>
+                    <ActionList.Item
+                      onSelect={() => {
+                        setActionError(null);
+                        setManageModal("collaborators");
+                      }}
+                    >
+                      <ActionList.LeadingVisual>
+                        <PeopleIcon size={14} />
+                      </ActionList.LeadingVisual>
+                      Manage Collaborators ({collaborators.length})
+                    </ActionList.Item>
 
-                      <ActionList.Divider />
+                    <ActionList.Divider />
 
-                      <ActionList.Item
-                        onSelect={() => {
-                          setActionError(null);
-                          setManageModal("yank");
-                        }}
-                      >
-                        <ActionList.LeadingVisual>
-                          <AlertFillIcon
-                            size={14}
-                            fill={
-                              isCurrentYanked ? "var(--color-success-fg, #2da44e)" : "var(--color-danger-fg, #cf222e)"
-                            }
-                          />
-                        </ActionList.LeadingVisual>
-                        {isCurrentYanked ? "Restore (Unyank) Release" : "Yank Release"}
-                      </ActionList.Item>
+                    <ActionList.Item
+                      onSelect={() => {
+                        setActionError(null);
+                        setManageModal("yank");
+                      }}
+                    >
+                      <ActionList.LeadingVisual>
+                        <AlertFillIcon
+                          size={14}
+                          fill={
+                            isCurrentYanked ? "var(--color-success-fg, #2da44e)" : "var(--color-danger-fg, #cf222e)"
+                          }
+                        />
+                      </ActionList.LeadingVisual>
+                      {isCurrentYanked ? "Restore (Unyank) Release" : "Yank Release"}
+                    </ActionList.Item>
 
-                      <ActionList.Item
-                        onSelect={() => {
-                          setActionError(null);
-                          setManageModal("deprecate");
-                        }}
-                      >
-                        <ActionList.LeadingVisual>
-                          <AlertIcon size={14} fill="#d97706" />
-                        </ActionList.LeadingVisual>
-                        {isCurrentDeprecated ? "Remove Deprecation" : "Deprecate Release"}
-                      </ActionList.Item>
+                    <ActionList.Item
+                      onSelect={() => {
+                        setActionError(null);
+                        setManageModal("deprecate");
+                      }}
+                    >
+                      <ActionList.LeadingVisual>
+                        <AlertIcon size={14} fill="#d97706" />
+                      </ActionList.LeadingVisual>
+                      {isCurrentDeprecated ? "Remove Deprecation" : "Deprecate Release"}
+                    </ActionList.Item>
 
-                      <ActionList.Divider />
+                    <ActionList.Divider />
 
-                      <ActionList.Item
-                        onSelect={() => {
-                          setActionError(null);
-                          setManageModal("transfer");
-                        }}
-                      >
-                        <ActionList.LeadingVisual>
-                          <SyncIcon size={14} />
-                        </ActionList.LeadingVisual>
-                        Transfer Ownership
-                      </ActionList.Item>
+                    <ActionList.Item
+                      onSelect={() => {
+                        setActionError(null);
+                        setManageModal("transfer");
+                      }}
+                    >
+                      <ActionList.LeadingVisual>
+                        <SyncIcon size={14} />
+                      </ActionList.LeadingVisual>
+                      Transfer Ownership
+                    </ActionList.Item>
 
-                      <ActionList.Item
-                        variant="danger"
-                        onSelect={() => {
-                          setActionError(null);
-                          setManageModal("unpublish");
-                        }}
-                      >
-                        <ActionList.LeadingVisual>
-                          <TrashIcon size={14} />
-                        </ActionList.LeadingVisual>
-                        Unpublish Release (v{version})
-                      </ActionList.Item>
-                    </ActionList>
-                  </ActionMenu.Overlay>
-                </ActionMenu>
-              )}
+                    <ActionList.Item
+                      variant="danger"
+                      onSelect={() => {
+                        setActionError(null);
+                        setManageModal("unpublish");
+                      }}
+                    >
+                      <ActionList.LeadingVisual>
+                        <TrashIcon size={14} />
+                      </ActionList.LeadingVisual>
+                      Unpublish Release (v{version})
+                    </ActionList.Item>
+                  </ActionList>
+                </ActionMenu.Overlay>
+              </ActionMenu>
             </Box>
           )}
         </Box>

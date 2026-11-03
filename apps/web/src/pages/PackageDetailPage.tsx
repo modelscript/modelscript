@@ -2,16 +2,16 @@
 
 import { AlertIcon, ArrowLeftIcon } from "@primer/octicons-react";
 import { Heading, Label, Text } from "@primer/react";
-import React, { Suspense, useContext, useState } from "react";
+import React, { Suspense, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styledImport, { keyframes } from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import Box from "../components/Box";
-import { ComposeContext } from "../components/ComposeContext";
 import { TerminalLogViewer } from "../components/TerminalLogViewer";
 import { usePageTitle } from "../util/title";
 import { resolvePackageParams } from "../util/url";
+import { ClassDetailView } from "./class-detail";
 import { PackageHeader } from "./package/components/PackageHeader";
 import { PackageManageModals } from "./package/components/PackageManageModals";
 import { PackageRightSidebar } from "./package/components/PackageRightSidebar";
@@ -31,6 +31,7 @@ const styled: typeof styledImport =
   (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 const PublishPackageModal = React.lazy(() => import("../components/PublishPackageModal"));
+const LibraryVersionPage = React.lazy(() => import("./LibraryVersionPage"));
 
 /* ─── animations ─── */
 
@@ -178,17 +179,27 @@ const PackageDetailSkeleton: React.FC = () => (
 
 /* ─── main controller component ─── */
 
-const PackageDetailPage: React.FC = () => {
-  const rawParams = useParams<{
+interface PackageDetailContentProps {
+  rawParams: {
     scope?: string | undefined;
     name?: string | undefined;
     version?: string | undefined;
+    className?: string | undefined;
     first?: string | undefined;
     second?: string | undefined;
-  }>();
-  const { name, version } = resolvePackageParams(rawParams);
+  };
+}
+
+const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }) => {
+  const { name, version, className } = resolvePackageParams(rawParams);
   const navigate = useNavigate();
-  usePageTitle(name && version ? `${name}@${version}` : "Package Details");
+  usePageTitle(
+    className && name && version
+      ? `${className} | ${name}@${version}`
+      : name && version
+        ? `${name}@${version}`
+        : "Package Details",
+  );
   const hasCae = useFeatureFlag("cae_cloud_solver");
   const hasDigitalThread = useFeatureFlag("digital_thread_explorer");
   const hasArtifactsTab = useFeatureFlag("package_artifacts_tab");
@@ -205,7 +216,6 @@ const PackageDetailPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab") as TabId | null;
   const activeTab: TabId = rawTab && visibleTabs.some((t) => t.id === rawTab) ? rawTab : "readme";
-  const { openCompose } = useContext(ComposeContext);
   const { user } = useAuth();
 
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false);
@@ -296,6 +306,7 @@ const PackageDetailPage: React.FC = () => {
           name={name!}
           version={version!}
           rootClassName={pkg.rootClassName}
+          activeClassName={className}
           mobileTreeOpen={mobileTreeOpen}
           setMobileTreeOpen={setMobileTreeOpen}
           availableDomains={
@@ -319,217 +330,232 @@ const PackageDetailPage: React.FC = () => {
       )}
 
       <MainContentWrap>
-        {/* ── Header & Alerts ── */}
-        <PackageHeader
-          name={name!}
-          version={version!}
-          rootClassName={pkg.rootClassName}
-          description={pkg.description}
-          publishedAt={pkg.publishedAt}
-          license={pkg.libraryDetail?.license || pkg.packument?.license}
-          classCount={pkg.classes.length}
-          canManage={pkg.canManage}
-          isCurrentYanked={pkg.isCurrentYanked}
-          currentYankReason={pkg.currentYankReason}
-          isCurrentDeprecated={pkg.isCurrentDeprecated}
-          currentDeprecateReason={pkg.currentDeprecateReason}
-          pendingTransfers={pkg.pendingTransfers}
-          user={user}
-          actionSuccess={mgmt.actionSuccess}
-          setActionSuccess={mgmt.setActionSuccess}
-          actionLoading={mgmt.actionLoading}
-          setActionError={mgmt.setActionError}
-          collaborators={pkg.collaborators}
-          openCompose={openCompose}
-          setPublishModalOpen={setPublishModalOpen}
-          setManageModal={mgmt.setManageModal}
-          onAcceptPendingTransfer={mgmt.handleAcceptPendingTransfer}
-          onCancelPendingTransfer={mgmt.handleCancelPendingTransfer}
-          versionList={pkg.versionList}
-          treeCollapsed={treeCollapsed}
-          onToggleTreeCollapse={() => setTreeCollapsed((p) => !p)}
-        />
-
-        {/* ── Tab Bar ── */}
-        <TabBar role="tablist">
-          {visibleTabs.map((tab) => {
-            const depCount = Object.keys(pkg.dependencies || {}).length;
-            const studiesCount =
-              (pkg.linkedStudies?.bundledStudies?.length || 0) +
-              (pkg.linkedStudies?.linkedTemplates?.length || 0) +
-              (pkg.linkedStudies?.linkedJobs?.length || 0);
-            return (
-              <Tab
-                key={tab.id}
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                $active={activeTab === tab.id}
-                onClick={() => setTab(tab.id)}
-              >
-                {React.isValidElement(tab.icon)
-                  ? tab.icon
-                  : typeof tab.icon === "function" ||
-                      (typeof tab.icon === "object" && tab.icon !== null && "$$typeof" in tab.icon)
-                    ? React.createElement(tab.icon as unknown as React.ComponentType<{ size?: number }>, { size: 16 })
-                    : tab.icon}
-                <span>{tab.label}</span>
-                {tab.id === "artifacts" && pkg.artifactViewers.length > 0 && (
-                  <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
-                    {pkg.artifactViewers.length}
-                  </Label>
-                )}
-                {tab.id === "studies" && studiesCount > 0 && (
-                  <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
-                    {studiesCount}
-                  </Label>
-                )}
-                {tab.id === "versions" && pkg.versionList.length > 0 && (
-                  <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
-                    {pkg.versionList.length}
-                  </Label>
-                )}
-                {tab.id === "dependencies" && depCount > 0 && (
-                  <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
-                    {depCount}
-                  </Label>
-                )}
-              </Tab>
-            );
-          })}
-        </TabBar>
-
-        {/* ── Body ── */}
-        <ContentGrid $treeCollapsed={treeCollapsed}>
-          {/* ── Main column ── */}
-          <div>
-            {activeTab === "readme" && (
-              <PackageReadmeTab
-                name={name!}
-                version={version!}
-                rootClassName={pkg.rootClassName}
-                rootClass={pkg.rootClass}
-                packument={pkg.packument}
-                classes={pkg.classes}
-                availableDomains={pkg.availableDomains}
-                onNavigateToDigitalThread={() => setTab("digital-thread")}
-                jobStatus={pkg.jobStatus || undefined}
-              />
-            )}
-
-            {activeTab === "versions" && (
-              <PackageVersionsTab
-                name={name!}
-                version={version!}
-                versionList={pkg.versionList}
-                packument={pkg.packument}
-                onCompare={(v) => {
-                  setCompareTargetVersion(v);
-                  setTab("compare");
-                }}
-              />
-            )}
-
-            {hasCompareTab && activeTab === "compare" && name && version && (
-              <PackageCompareTab
-                name={name}
-                version={version}
-                versionList={pkg.versionList}
-                initialBaseVersion={compareTargetVersion}
-                baseVersion={compareTargetVersion}
-              />
-            )}
-
-            {hasDigitalThread && activeTab === "digital-thread" && (
-              <PackageDigitalThreadTab
-                name={name!}
-                version={version!}
-                classes={pkg.classes}
-                rootClass={pkg.rootClass}
-                artifactViewers={pkg.artifactViewers}
-                onOpenArtifact={handleOpenArtifact}
-                onNavigateToClass={(c) => {
-                  navigate(`/packages/${name}/${version}/classes/${c}`);
-                }}
-              />
-            )}
-
-            {hasArtifactsTab && activeTab === "artifacts" && (
-              <PackageArtifactsTab
-                name={name!}
-                version={version!}
-                availableDomains={pkg.availableDomains}
-                artifactTabDomainFilter={artifactTabDomainFilter}
-                setArtifactTabDomainFilter={setArtifactTabDomainFilter}
-                displayedArtifactViewers={pkg.displayedArtifactViewers}
-                fallbackArtifacts={pkg.artifacts}
-                linkedStudies={pkg.linkedStudies}
-                onViewArtifactStudies={
-                  hasCae
-                    ? (artifactPath) => {
-                        setSearchParams({ tab: "studies", artifact: artifactPath });
-                      }
-                    : undefined
-                }
-              />
-            )}
-
-            {hasCae && activeTab === "studies" && (
-              <PackageStudiesTab
-                name={name!}
-                version={version!}
-                rootClassName={pkg.rootClassName}
-                targetArtifactFilter={searchParams.get("artifact") || undefined}
-                targetModelFilter={searchParams.get("model") || undefined}
-                onClearArtifactFilter={() => {
-                  setSearchParams({ tab: "studies" });
-                }}
-                bundledStudies={pkg.linkedStudies.bundledStudies}
-                linkedTemplates={pkg.linkedStudies.linkedTemplates}
-                compatibleTemplates={pkg.linkedStudies.compatibleTemplates}
-                linkedJobs={pkg.linkedStudies.linkedJobs}
-                onRefresh={() => {
-                  pkg.fetchData();
-                }}
-              />
-            )}
-
-            {activeTab === "dependencies" && (
-              <PackageDependenciesTab
-                name={name}
-                version={version}
-                dependencies={pkg.dependencies}
-                devDependencies={pkg.currentManifest?.devDependencies}
-                resources={pkg.libraryDetail?.resources}
-              />
-            )}
-          </div>
-
-          {/* ── Sidebar ── */}
-          <PackageRightSidebar
+        {className ? (
+          <ClassDetailView
             name={name!}
             version={version!}
-            installCmd={pkg.installCmd}
-            packument={pkg.packument}
-            libraryDetail={pkg.libraryDetail}
-            currentManifest={pkg.currentManifest}
-            publishedAt={pkg.publishedAt}
-            contentHash={pkg.contentHash}
-            packageSignature={pkg.packageSignature}
-            availableDomains={pkg.availableDomains}
-            packageStats={pkg.packageStats}
-            dependents={pkg.dependents}
-            linkedStudies={pkg.linkedStudies}
-            onOpenStudiesTab={() => setTab("studies")}
-            packageOwner={pkg.packageOwner}
-            collaborators={pkg.collaborators}
-            canManage={pkg.canManage}
-            onOpenManageCollaborators={() => {
-              mgmt.setActionError(null);
-              mgmt.setManageModal("collaborators");
-            }}
-            hasSalsaIndex={Boolean(pkg.libraryDetail?.salsaIndexed)}
+            className={className}
+            allClasses={pkg.classes}
+            jobStatus={pkg.jobStatus || null}
+            treeCollapsed={treeCollapsed}
+            onToggleTreeCollapse={() => setTreeCollapsed((p) => !p)}
           />
-        </ContentGrid>
+        ) : (
+          <>
+            {/* ── Header & Alerts ── */}
+            <PackageHeader
+              name={name!}
+              version={version!}
+              rootClassName={pkg.rootClassName}
+              description={pkg.description}
+              publishedAt={pkg.publishedAt}
+              license={pkg.libraryDetail?.license || pkg.packument?.license}
+              classCount={pkg.classes.length}
+              canManage={pkg.canManage}
+              isCurrentYanked={pkg.isCurrentYanked}
+              currentYankReason={pkg.currentYankReason}
+              isCurrentDeprecated={pkg.isCurrentDeprecated}
+              currentDeprecateReason={pkg.currentDeprecateReason}
+              pendingTransfers={pkg.pendingTransfers}
+              user={user}
+              actionSuccess={mgmt.actionSuccess}
+              setActionSuccess={mgmt.setActionSuccess}
+              actionLoading={mgmt.actionLoading}
+              setActionError={mgmt.setActionError}
+              collaborators={pkg.collaborators}
+              setPublishModalOpen={setPublishModalOpen}
+              setManageModal={mgmt.setManageModal}
+              onAcceptPendingTransfer={mgmt.handleAcceptPendingTransfer}
+              onCancelPendingTransfer={mgmt.handleCancelPendingTransfer}
+              versionList={pkg.versionList}
+              treeCollapsed={treeCollapsed}
+              onToggleTreeCollapse={() => setTreeCollapsed((p) => !p)}
+            />
+
+            {/* ── Tab Bar ── */}
+            <TabBar role="tablist">
+              {visibleTabs.map((tab) => {
+                const depCount = Object.keys(pkg.dependencies || {}).length;
+                const studiesCount =
+                  (pkg.linkedStudies?.bundledStudies?.length || 0) +
+                  (pkg.linkedStudies?.linkedTemplates?.length || 0) +
+                  (pkg.linkedStudies?.linkedJobs?.length || 0);
+                return (
+                  <Tab
+                    key={tab.id}
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    $active={activeTab === tab.id}
+                    onClick={() => setTab(tab.id)}
+                  >
+                    {React.isValidElement(tab.icon)
+                      ? tab.icon
+                      : typeof tab.icon === "function" ||
+                          (typeof tab.icon === "object" && tab.icon !== null && "$$typeof" in tab.icon)
+                        ? React.createElement(tab.icon as unknown as React.ComponentType<{ size?: number }>, {
+                            size: 16,
+                          })
+                        : tab.icon}
+                    <span>{tab.label}</span>
+                    {tab.id === "artifacts" && pkg.artifactViewers.length > 0 && (
+                      <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
+                        {pkg.artifactViewers.length}
+                      </Label>
+                    )}
+                    {tab.id === "studies" && studiesCount > 0 && (
+                      <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
+                        {studiesCount}
+                      </Label>
+                    )}
+                    {tab.id === "versions" && pkg.versionList.length > 0 && (
+                      <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
+                        {pkg.versionList.length}
+                      </Label>
+                    )}
+                    {tab.id === "dependencies" && depCount > 0 && (
+                      <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", lineHeight: "14px" }}>
+                        {depCount}
+                      </Label>
+                    )}
+                  </Tab>
+                );
+              })}
+            </TabBar>
+
+            {/* ── Body ── */}
+            <ContentGrid $treeCollapsed={treeCollapsed}>
+              {/* ── Main column ── */}
+              <div>
+                {activeTab === "readme" && (
+                  <PackageReadmeTab
+                    name={name!}
+                    version={version!}
+                    rootClassName={pkg.rootClassName}
+                    rootClass={pkg.rootClass}
+                    packument={pkg.packument}
+                    classes={pkg.classes}
+                    availableDomains={pkg.availableDomains}
+                    onNavigateToDigitalThread={() => setTab("digital-thread")}
+                    jobStatus={pkg.jobStatus || undefined}
+                  />
+                )}
+
+                {activeTab === "versions" && (
+                  <PackageVersionsTab
+                    name={name!}
+                    version={version!}
+                    versionList={pkg.versionList}
+                    packument={pkg.packument}
+                    onCompare={(v) => {
+                      setCompareTargetVersion(v);
+                      setTab("compare");
+                    }}
+                  />
+                )}
+
+                {hasCompareTab && activeTab === "compare" && name && version && (
+                  <PackageCompareTab
+                    name={name}
+                    version={version}
+                    versionList={pkg.versionList}
+                    initialBaseVersion={compareTargetVersion}
+                    baseVersion={compareTargetVersion}
+                  />
+                )}
+
+                {hasDigitalThread && activeTab === "digital-thread" && (
+                  <PackageDigitalThreadTab
+                    name={name!}
+                    version={version!}
+                    classes={pkg.classes}
+                    rootClass={pkg.rootClass}
+                    artifactViewers={pkg.artifactViewers}
+                    onOpenArtifact={handleOpenArtifact}
+                    onNavigateToClass={(c) => {
+                      navigate(`/packages/${name}/${version}/classes/${c}`);
+                    }}
+                  />
+                )}
+
+                {hasArtifactsTab && activeTab === "artifacts" && (
+                  <PackageArtifactsTab
+                    name={name!}
+                    version={version!}
+                    availableDomains={pkg.availableDomains}
+                    artifactTabDomainFilter={artifactTabDomainFilter}
+                    setArtifactTabDomainFilter={setArtifactTabDomainFilter}
+                    displayedArtifactViewers={pkg.displayedArtifactViewers}
+                    fallbackArtifacts={pkg.artifacts}
+                    linkedStudies={pkg.linkedStudies}
+                    onViewArtifactStudies={
+                      hasCae
+                        ? (artifactPath) => {
+                            setSearchParams({ tab: "studies", artifact: artifactPath });
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+
+                {hasCae && activeTab === "studies" && (
+                  <PackageStudiesTab
+                    name={name!}
+                    version={version!}
+                    rootClassName={pkg.rootClassName}
+                    targetArtifactFilter={searchParams.get("artifact") || undefined}
+                    targetModelFilter={searchParams.get("model") || undefined}
+                    onClearArtifactFilter={() => {
+                      setSearchParams({ tab: "studies" });
+                    }}
+                    bundledStudies={pkg.linkedStudies.bundledStudies}
+                    linkedTemplates={pkg.linkedStudies.linkedTemplates}
+                    compatibleTemplates={pkg.linkedStudies.compatibleTemplates}
+                    linkedJobs={pkg.linkedStudies.linkedJobs}
+                    onRefresh={() => {
+                      pkg.fetchData();
+                    }}
+                  />
+                )}
+
+                {activeTab === "dependencies" && (
+                  <PackageDependenciesTab
+                    name={name}
+                    version={version}
+                    dependencies={pkg.dependencies}
+                    devDependencies={pkg.currentManifest?.devDependencies}
+                    resources={pkg.libraryDetail?.resources}
+                  />
+                )}
+              </div>
+
+              {/* ── Sidebar ── */}
+              <PackageRightSidebar
+                name={name!}
+                version={version!}
+                installCmd={pkg.installCmd}
+                packument={pkg.packument}
+                libraryDetail={pkg.libraryDetail}
+                currentManifest={pkg.currentManifest}
+                publishedAt={pkg.publishedAt}
+                contentHash={pkg.contentHash}
+                packageSignature={pkg.packageSignature}
+                availableDomains={pkg.availableDomains}
+                packageStats={pkg.packageStats}
+                dependents={pkg.dependents}
+                linkedStudies={pkg.linkedStudies}
+                onOpenStudiesTab={() => setTab("studies")}
+                packageOwner={pkg.packageOwner}
+                collaborators={pkg.collaborators}
+                canManage={pkg.canManage}
+                onOpenManageCollaborators={() => {
+                  mgmt.setActionError(null);
+                  mgmt.setManageModal("collaborators");
+                }}
+                hasSalsaIndex={Boolean(pkg.libraryDetail?.salsaIndexed)}
+              />
+            </ContentGrid>
+          </>
+        )}
       </MainContentWrap>
 
       {/* ── Modals ── */}
@@ -600,6 +626,27 @@ const PackageDetailPage: React.FC = () => {
         )}
     </PageWrap>
   );
+};
+
+const PackageDetailPage: React.FC = () => {
+  const rawParams = useParams<{
+    scope?: string | undefined;
+    name?: string | undefined;
+    version?: string | undefined;
+    className?: string | undefined;
+    first?: string | undefined;
+    second?: string | undefined;
+  }>();
+
+  if (rawParams.first?.startsWith("@")) {
+    return (
+      <Suspense fallback={<PackageDetailSkeleton />}>
+        <LibraryVersionPage />
+      </Suspense>
+    );
+  }
+
+  return <PackageDetailContent rawParams={rawParams} />;
 };
 
 export default PackageDetailPage;

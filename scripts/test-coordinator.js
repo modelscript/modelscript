@@ -158,7 +158,10 @@ export function partitionProjectsIntoShards(projects, totalShards, projectDirMap
     let weight = 1;
     if (pkgDir) {
       const testsCount = countTestFiles(path.join(pkgDir, "tests")) + countTestFiles(path.join(pkgDir, "validation"));
-      weight = Math.max(1, testsCount);
+      // Integration test suites with full Express server lifecycle, SQLite database migrations,
+      // and cryptography (@modelscript/api) have higher wall-clock duration per test file.
+      const multiplier = name === "@modelscript/api" ? 2 : 1;
+      weight = Math.max(1, Math.round(testsCount * multiplier));
     }
     return { name, weight };
   });
@@ -339,6 +342,7 @@ export function runCoordinator(argv = process.argv.slice(2)) {
   // Set environment for child test-runner processes
   const env = {
     ...process.env,
+    NODE_ENV: process.env.NODE_ENV || "test",
     NX_TUI: "false",
     TEST_CONCURRENCY: String(alloc.workers),
     SHARD_HANDLED_BY_COORDINATOR: "1",
