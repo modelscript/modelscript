@@ -2298,7 +2298,6 @@ export class ArenaDAEPrinter {
         uniqueFns.map((f) => f.name),
       );
     }
-    const hasSpecRecordCtor = isOldFrontend && uniqueFns.some((f) => f.name.includes("$"));
     const extObjClasses = new Map<string, number>();
     for (const fn of uniqueFns) {
       if (fn.name.endsWith(".constructor") || fn.name.endsWith(".destructor")) {
@@ -2327,12 +2326,8 @@ export class ArenaDAEPrinter {
       if (extObjClasses.size > 0 && fnUsesExtObj(fn)) {
         return [0, 0, name];
       }
-      const isRecordOrOp =
-        !hasSpecRecordCtor &&
-        (fn.description?.startsWith("Automatically generated record constructor") || name.includes(".'"));
       const baseRank = extObjClasses.size + 1;
-      const kindRank = isRecordOrOp ? baseRank : baseRank + 1;
-      return [kindRank, 0, name];
+      return [baseRank, 0, name];
     };
     const sortedFns = this.omcCompatibility
       ? uniqueFns.sort((a, b) => {

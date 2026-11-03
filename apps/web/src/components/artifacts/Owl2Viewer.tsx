@@ -100,7 +100,7 @@ function getShortLabel(iri: string): string {
   return clean;
 }
 
-export function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
+function parseOwl2Source(rawText: string, fallbackIri = ""): ParsedOwlOntology {
   const prefixes: Record<string, string> = {};
   const entities = new Map<string, ParsedOwlEntity>();
   let ontologyIri = fallbackIri;

@@ -127,6 +127,8 @@ export class HostBridgeService implements vscode.Disposable {
     title?: string | undefined;
     viewType?: string | undefined;
     viewConfig?: Record<string, unknown> | undefined;
+    files?: Record<string, string> | undefined;
+    primaryFile?: string | undefined;
   }): Promise<void> {
     if (!payload?.artifactId) return;
     this._mountedArtifactId = payload.artifactId;
@@ -147,6 +149,8 @@ export class HostBridgeService implements vscode.Disposable {
       title: payload.title,
       viewType: payload.viewType,
       viewConfig: payload.viewConfig,
+      files: payload.files,
+      primaryFile: payload.primaryFile,
     });
 
     try {
@@ -441,6 +445,11 @@ export class HostBridgeService implements vscode.Disposable {
           typeof msg["viewConfig"] === "object" && msg["viewConfig"] !== null
             ? (msg["viewConfig"] as Record<string, unknown>)
             : undefined,
+        files:
+          typeof msg["files"] === "object" && msg["files"] !== null && !Array.isArray(msg["files"])
+            ? (msg["files"] as Record<string, string>)
+            : undefined,
+        primaryFile: typeof msg["primaryFile"] === "string" ? msg["primaryFile"] : undefined,
       }).catch((e) => console.warn("[host-bridge] Mount artifact error:", e));
     } else if (msg["type"] === "MODELSCRIPT_INSTALL_PACKAGE" && typeof msg["name"] === "string") {
       this.handleInstallPackage({

@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Spinner } from "@primer/react";
-import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { followUser, getTimeline, unfollowUser } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import ComposeBox from "../components/ComposeBox";
 import { ComposeContext } from "../components/ComposeContext";
-import Post from "../components/Post";
 import PostSkeleton from "../components/PostSkeleton";
+import { VirtualPostList } from "../components/VirtualPostList";
 import { cacheTimelinePosts, getCachedTimelinePosts } from "../util/offline-storage";
 import { usePageTitle } from "../util/title";
 import type { FilterChip } from "./feed";
@@ -29,10 +28,7 @@ const HomeFeedPage: React.FC = () => {
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [scrollMargin, setScrollMargin] = useState(0);
   const headerRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const { openCompose } = React.useContext(ComposeContext);
   const [followedHandles, setFollowedHandles] = useState<Record<string, boolean>>({});
 
@@ -51,42 +47,6 @@ const HomeFeedPage: React.FC = () => {
       }
     }
   };
-
-  useEffect(() => {
-    const updateScrollMargin = () => {
-      if (listRef.current) {
-        setScrollMargin(listRef.current.offsetTop);
-      }
-    };
-    updateScrollMargin();
-
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => {
-      updateScrollMargin();
-    });
-    if (headerRef.current) {
-      ro.observe(headerRef.current);
-    }
-    const prevSibling = listRef.current?.previousElementSibling;
-    if (prevSibling) {
-      ro.observe(prevSibling);
-    }
-    if (listRef.current?.parentElement) {
-      ro.observe(listRef.current.parentElement);
-    }
-    window.addEventListener("resize", updateScrollMargin);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", updateScrollMargin);
-    };
-  }, [loading, activeFilter, activeTag, user]);
-
-  const rowVirtualizer = useWindowVirtualizer({
-    count: posts.length,
-    estimateSize: () => 180,
-    overscan: 5,
-    scrollMargin,
-  });
 
   useEffect(() => {
     if (!showSortMenu) return;
@@ -178,23 +138,6 @@ const HomeFeedPage: React.FC = () => {
   }, [loadingMore, hasMore, activeTab, followingSort, posts.length, activeFilter, activeTag]);
 
   useEffect(() => {
-    const sentinel = loadMoreSentinelRef.current;
-    if (!sentinel || loading || loadingMore || !hasMore || posts.length === 0) return;
-    if (typeof IntersectionObserver === "undefined") return;
-
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          void handleLoadMore();
-        }
-      },
-      { rootMargin: "300px 0px" },
-    );
-    io.observe(sentinel);
-    return () => io.disconnect();
-  }, [loading, loadingMore, hasMore, posts.length, handleLoadMore]);
-
-  useEffect(() => {
     const handlePostCreated = (e: any) => {
       const newPost = e.detail;
       if (newPost) {
@@ -247,43 +190,18 @@ const HomeFeedPage: React.FC = () => {
               <PostSkeleton />
             </Box>
           ) : (
-            <Box ref={listRef}>
-              {posts.length > 0 && (
-                <div
-                  style={{
-                    position: "relative",
-                    width: "100%",
-                    height: `${rowVirtualizer.getTotalSize()}px`,
-                  }}
-                >
-                  {rowVirtualizer.getVirtualItems().map((virtualItem) => {
-                    const post = posts[virtualItem.index];
-                    return (
-                      <div
-                        key={post.id || virtualItem.key}
-                        data-index={virtualItem.index}
-                        ref={rowVirtualizer.measureElement}
-                        style={{
-                          position: "absolute",
-                          top: `${virtualItem.start - (rowVirtualizer.options.scrollMargin ?? 0)}px`,
-                          left: 0,
-                          width: "100%",
-                        }}
-                      >
-                        <Post post={post} />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {posts.length > 0 && hasMore && (
-                <Box ref={loadMoreSentinelRef} p={3} display="flex" justifyContent="center">
-                  <SecondaryActionButton onClick={handleLoadMore} disabled={loadingMore}>
-                    {loadingMore ? <Spinner size="small" /> : "Load more posts"}
-                  </SecondaryActionButton>
-                </Box>
-              )}
-              {posts.length === 0 && (
+            <VirtualPostList
+              posts={posts}
+              hasMore={hasMore}
+              loadingMore={loadingMore}
+              onLoadMore={handleLoadMore}
+              headerRef={headerRef}
+              loadMoreAction={
+                <SecondaryActionButton onClick={handleLoadMore} disabled={loadingMore}>
+                  {loadingMore ? <Spinner size="small" /> : "Load more posts"}
+                </SecondaryActionButton>
+              }
+              emptyState={
                 <FeedEmptyState
                   isFiltering={isFiltering}
                   activeFilter={activeFilter}
@@ -296,8 +214,8 @@ const HomeFeedPage: React.FC = () => {
                   followedHandles={followedHandles}
                   onToggleFollow={handleToggleFollow}
                 />
-              )}
-            </Box>
+              }
+            />
           )}
         </div>
       </div>

@@ -331,22 +331,39 @@ export async function initWorkspaceAndTree(
           title?: string | undefined;
           viewType?: string | undefined;
           viewConfig?: Record<string, unknown> | undefined;
+          files?: Record<string, string> | undefined;
+          primaryFile?: string | undefined;
         }
         let cachedPayload: CachedArtifactPayload | null = null;
         try {
           const raw =
             typeof sessionStorage !== "undefined" ? sessionStorage.getItem(`modelscript.artifact_${artifactId}`) : null;
-          if (raw) cachedPayload = JSON.parse(raw) as CachedArtifactPayload;
+          const localRaw =
+            typeof localStorage !== "undefined"
+              ? localStorage.getItem(`modelscript.artifact_${artifactId}`) ||
+                localStorage.getItem(`modelscript:ide:memfs:artifact-${artifactId}`)
+              : null;
+          const scratchRaw =
+            template === "scratch"
+              ? (typeof sessionStorage !== "undefined"
+                  ? sessionStorage.getItem("modelscript.artifact_scratch")
+                  : null) ||
+                (typeof localStorage !== "undefined" ? localStorage.getItem("modelscript.artifact_scratch") : null)
+              : null;
+          const effectiveRaw = raw || localRaw || scratchRaw;
+          if (effectiveRaw) cachedPayload = JSON.parse(effectiveRaw) as CachedArtifactPayload;
         } catch {
           // ignore
         }
 
-        if (cachedPayload) {
+        if (cachedPayload && (cachedPayload.viewConfig || cachedPayload.viewType || cachedPayload.files)) {
           mountArtifactToMemFs(memFs, workspaceUri, {
             artifactId,
             title: cachedPayload.title,
             viewType: cachedPayload.viewType,
             viewConfig: cachedPayload.viewConfig,
+            files: cachedPayload.files,
+            primaryFile: cachedPayload.primaryFile,
           });
         } else {
           try {
@@ -356,12 +373,25 @@ export async function initWorkspaceAndTree(
               if (data?.artifactView) {
                 const av = data.artifactView;
                 const config = typeof av.view_config === "string" ? JSON.parse(av.view_config) : av.view_config || {};
-                mountArtifactToMemFs(memFs, workspaceUri, {
+                const descriptor = {
                   artifactId: av.id,
                   title: av.title || av.name,
                   viewType: av.view_type,
                   viewConfig: config,
-                });
+                  files: config.files,
+                  primaryFile: config.primaryFile || config.filename,
+                };
+                mountArtifactToMemFs(memFs, workspaceUri, descriptor);
+                try {
+                  if (typeof sessionStorage !== "undefined") {
+                    sessionStorage.setItem(`modelscript.artifact_${artifactId}`, JSON.stringify(descriptor));
+                  }
+                  if (typeof localStorage !== "undefined") {
+                    localStorage.setItem(`modelscript.artifact_${artifactId}`, JSON.stringify(descriptor));
+                  }
+                } catch {
+                  // ignore
+                }
               }
             }
           } catch (e) {

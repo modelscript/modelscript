@@ -96,7 +96,7 @@ export interface ExtendedCloudSimulationModalProps extends CloudSimulationModalP
   onResultsLoaded?: ((data: { t: number[]; y: number[][]; states: string[] }) => void) | undefined;
 }
 
-export function parseSimulationCsvTrajectory(csvText: string): { t: number[]; y: number[][]; states: string[] } | null {
+function parseSimulationCsvTrajectory(csvText: string): { t: number[]; y: number[][]; states: string[] } | null {
   const lines = csvText
     .trim()
     .split(/\r?\n/)

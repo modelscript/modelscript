@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   getExplore,
@@ -16,8 +16,28 @@ import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { usePageTitle } from "../util/title";
-import type { ExploreLandingTab, PackageData, PersonData, PostData, RepoData, TopicData } from "./explore";
+import type { ExploreLandingTab, PackageData, PersonData, PostData, RepoData, SearchTab, TopicData } from "./explore";
 import { ExploreLandingView, ExploreSearchResultsView, ExploreTopicView } from "./explore";
+
+const normalizeSearchTab = (param: string): SearchTab => {
+  const lower = param.toLowerCase();
+  switch (lower) {
+    case "latest":
+      return "Latest";
+    case "people":
+      return "People";
+    case "media":
+      return "Media";
+    case "packages":
+    case "artifacts":
+      return "Packages";
+    case "repositories":
+      return "Repositories";
+    case "top":
+    default:
+      return "Top";
+  }
+};
 
 const ExplorePage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -35,13 +55,12 @@ const ExplorePage: React.FC = () => {
 
   const [topicFilter, setTopicFilter] = useState<string>("all");
   const [copiedTopicLink, setCopiedTopicLink] = useState(false);
-  const templatesScrollRef = useRef<HTMLDivElement>(null);
 
   const [posts, setPosts] = useState<PostData[]>([]);
   const [topicPosts, setTopicPosts] = useState<PostData[]>([]);
   const [trending, setTrending] = useState<TopicData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("Top");
+  const [activeTab, setActiveTabState] = useState<SearchTab>(() => normalizeSearchTab(tabParam));
   const [landingTab, setLandingTabState] = useState<ExploreLandingTab>(() => {
     if (tabParam === "trending" || tabParam === "packages" || tabParam === "repositories") {
       return tabParam;
@@ -60,6 +79,24 @@ const ExplorePage: React.FC = () => {
   const [peopleLoading, setPeopleLoading] = useState(false);
 
   useEffect(() => {
+    if (query) {
+      setActiveTabState(normalizeSearchTab(tabParam));
+    }
+  }, [tabParam, query]);
+
+  const setActiveTab = (nextTab: string) => {
+    const valid = normalizeSearchTab(nextTab);
+    setActiveTabState(valid);
+    const next = new URLSearchParams(searchParams);
+    if (valid === "Top") {
+      next.delete("tab");
+    } else {
+      next.set("tab", valid.toLowerCase());
+    }
+    setSearchParams(next, { replace: true });
+  };
+
+  useEffect(() => {
     if (tabParam === "trending" || tabParam === "packages" || tabParam === "repositories" || tabParam === "explore") {
       setLandingTabState(tabParam);
     } else if (!tabParam) {
@@ -76,16 +113,6 @@ const ExplorePage: React.FC = () => {
       next.set("tab", nextTab);
     }
     setSearchParams(next, { replace: true });
-  };
-
-  const scrollTemplates = (direction: "left" | "right") => {
-    if (templatesScrollRef.current) {
-      const scrollAmount = 280;
-      templatesScrollRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
   };
 
   useEffect(() => {
@@ -168,7 +195,7 @@ const ExplorePage: React.FC = () => {
     };
   }, [query, topic]);
 
-  const shouldFetchPackages = hasPackages && !topic && (query ? activeTab === "Artifacts" : landingTab === "packages");
+  const shouldFetchPackages = hasPackages && !topic && (query ? activeTab === "Packages" : landingTab === "packages");
 
   useEffect(() => {
     if (!shouldFetchPackages) return;
@@ -176,8 +203,33 @@ const ExplorePage: React.FC = () => {
     async function fetchPackages() {
       setPackagesLoading(true);
       try {
-        const pkgs = await getLibraries(query);
-        if (active) setPackages(pkgs || []);
+        const [pkgs, searchComp] = await Promise.all([
+          getLibraries(query),
+          query ? getSearchCompletions(query, 50).catch(() => ({ packages: [] })) : Promise.resolve({ packages: [] }),
+        ]);
+        if (!active) return;
+        const searchCompRecord = searchComp as
+          | {
+              packages?: { name?: string; latest_version?: string; version?: string; description?: string }[];
+            }
+          | null
+          | undefined;
+        const searchCompPkgs = (searchCompRecord?.packages || []).map((p) => ({
+          name: p.name || "",
+          version: p.latest_version || p.version || "1.0.0",
+          latestVersion: p.latest_version || p.version || "1.0.0",
+          description: p.description,
+        }));
+        const byName = new Map<string, PackageData>();
+        for (const p of pkgs || []) {
+          if (p?.name) byName.set(p.name, p);
+        }
+        for (const p of searchCompPkgs) {
+          if (p?.name && !byName.has(p.name)) {
+            byName.set(p.name, p);
+          }
+        }
+        setPackages(Array.from(byName.values()));
       } catch (err) {
         console.error(err);
       } finally {
@@ -198,12 +250,17 @@ const ExplorePage: React.FC = () => {
     async function fetchRepos() {
       setReposLoading(true);
       try {
-        const [popularRes, userRes] = await Promise.all([
+        const [popularRes, userRes, searchComp] = await Promise.all([
           getPopularRepos(50).catch(() => ({ repos: [] })),
           token ? getRepos().catch(() => ({ repos: [] })) : Promise.resolve({ repos: [] }),
+          query
+            ? getSearchCompletions(query, 50).catch(() => ({ repositories: [] }))
+            : Promise.resolve({ repositories: [] }),
         ]);
         if (!active) return;
-        const allRepos: RepoData[] = [...(popularRes.repos || []), ...(userRes.repos || [])];
+        const searchCompRepos = ((searchComp as { repositories?: RepoData[] } | null | undefined)?.repositories ||
+          []) as RepoData[];
+        const allRepos: RepoData[] = [...searchCompRepos, ...(popularRes.repos || []), ...(userRes.repos || [])];
 
         const qTokens = query
           .trim()
@@ -242,27 +299,42 @@ const ExplorePage: React.FC = () => {
   useEffect(() => {
     if (!query) return;
     if (activeTab === "People") {
+      let active = true;
       async function fetchPeople() {
         setPeopleLoading(true);
         try {
-          const data = await getSearchCompletions(query, 30);
-          setMatchedPeople(
-            (data.suggestions || (data as { users?: PersonData[] | undefined }).users || []) as unknown as PersonData[],
-          );
+          const data = await getSearchCompletions(query, 50);
+          if (!active) return;
+          const compData = data as { users?: PersonData[]; suggestions?: PersonData[] } | null | undefined;
+          const users = Array.isArray(compData?.users)
+            ? compData.users
+            : Array.isArray(compData?.suggestions)
+              ? compData.suggestions
+              : [];
+          setMatchedPeople(users as PersonData[]);
         } catch (err) {
           console.error("Failed to fetch search users:", err);
         } finally {
-          setPeopleLoading(false);
+          if (active) setPeopleLoading(false);
         }
       }
       fetchPeople();
+      return () => {
+        active = false;
+      };
     }
   }, [query, activeTab]);
 
   const handleSearchSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      if (localQuery.trim()) {
-        setSearchParams({ q: localQuery.trim() });
+      const trimmed = localQuery.trim();
+      if (trimmed) {
+        const next: Record<string, string> = { q: trimmed };
+        const currentTab = (query ? activeTab : landingTab).toLowerCase();
+        if (["packages", "repositories", "people", "media", "latest"].includes(currentTab)) {
+          next.tab = currentTab;
+        }
+        setSearchParams(next);
       } else {
         setSearchParams({});
       }
@@ -309,20 +381,39 @@ const ExplorePage: React.FC = () => {
     return tokens.every((tok) => haystack.includes(tok));
   };
 
-  const topPosts = posts
-    .filter(matchesQuery)
-    .sort(
-      (a, b) =>
-        ((b.like_count as number) || 0) +
-        ((b.repost_count as number) || 0) -
-        (((a.like_count as number) || 0) + ((a.repost_count as number) || 0)),
-    );
+  const hasPostMedia = (p: PostData): boolean => {
+    if (p.artifact_view_id) return true;
+    const postRecord = p as unknown as {
+      media_url?: string;
+      media_urls?: string[];
+      metadata?: Record<string, unknown>;
+    };
+    if (postRecord.media_url || (Array.isArray(postRecord.media_urls) && postRecord.media_urls.length > 0)) return true;
+    const meta = postRecord.metadata;
+    if (meta && typeof meta === "object") {
+      if (meta.media || meta.images || meta.mediaUrls || meta.spatialPin) return true;
+    }
+    if (typeof p.content === "string" && /!\[.*?\]\(.*?\)|<img[\s>]/i.test(p.content)) return true;
+    return false;
+  };
+
+  const topPosts = posts.filter(matchesQuery).sort((a, b) => {
+    const scoreA = ((a.like_count as number) || 0) + ((a.repost_count as number) || 0);
+    const scoreB = ((b.like_count as number) || 0) + ((b.repost_count as number) || 0);
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    const engA = (a as unknown as { engagement_score?: number }).engagement_score || 0;
+    const engB = (b as unknown as { engagement_score?: number }).engagement_score || 0;
+    if (engB !== engA) return engB - engA;
+    return (new Date(b.created_at as string).getTime() || 0) - (new Date(a.created_at as string).getTime() || 0);
+  });
 
   const latestPosts = posts
     .filter(matchesQuery)
-    .sort((a, b) => new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime());
+    .sort(
+      (a, b) => (new Date(b.created_at as string).getTime() || 0) - (new Date(a.created_at as string).getTime() || 0),
+    );
 
-  const artifactPosts = posts.filter((p) => Boolean(p.artifact_view_id) && matchesQuery(p));
+  const mediaPosts = posts.filter((p) => matchesQuery(p) && hasPostMedia(p));
 
   if (topic) {
     return (
@@ -357,7 +448,8 @@ const ExplorePage: React.FC = () => {
         loading={loading || searchLoading}
         topPosts={topPosts}
         latestPosts={latestPosts}
-        artifactPosts={artifactPosts}
+        mediaPosts={mediaPosts}
+        artifactPosts={mediaPosts}
         matchedPeople={matchedPeople}
         peopleLoading={peopleLoading}
         packages={packages}
@@ -384,8 +476,6 @@ const ExplorePage: React.FC = () => {
       packagesLoading={packagesLoading}
       repos={repos}
       reposLoading={reposLoading}
-      scrollTemplates={scrollTemplates}
-      templatesScrollRef={templatesScrollRef}
       localQuery={localQuery}
       setLocalQuery={setLocalQuery}
       handleSearchSubmit={handleSearchSubmit}

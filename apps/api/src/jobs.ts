@@ -2,6 +2,7 @@
 
 import { fork, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import os from "node:os";
 
 import type { HpcUsageMetrics } from "./services/hpc/hpc-types.js";
 
@@ -42,9 +43,27 @@ export class JobQueue extends EventEmitter {
   constructor(options: JobQueueOptions = {}) {
     super();
     this.setMaxListeners(100);
-    const defaultConcurrency =
-      Number(process.env["JOB_QUEUE_CONCURRENCY"]) ||
-      (process.env["HPC_BACKEND"] === "slurm" || process.env["HPC_BACKEND"] === "slurm-rest" ? 16 : 4);
+    const envConcurrency = Number(process.env["JOB_QUEUE_CONCURRENCY"]);
+    let defaultConcurrency: number;
+    if (Number.isFinite(envConcurrency) && envConcurrency > 0) {
+      defaultConcurrency = envConcurrency;
+    } else if (process.env["HPC_BACKEND"] === "slurm" || process.env["HPC_BACKEND"] === "slurm-rest") {
+      defaultConcurrency = 16;
+    } else {
+      // Dynamic memory-aware concurrency default:
+      // High-memory workloads (AST parsing, SVG rendering, compilation) in publish-worker
+      // peak at 800MB-1.1GB for large libraries (e.g. Modelica Standard Library).
+      // On machines with <= 2.5GB RAM (e.g. 2GB DigitalOcean droplets), limit to 1 concurrent job.
+      // On machines with <= 4.5GB RAM, limit to 2 concurrent jobs. Otherwise default to 4.
+      const totalMemGb = os.totalmem() / (1024 * 1024 * 1024);
+      if (totalMemGb <= 2.5) {
+        defaultConcurrency = 1;
+      } else if (totalMemGb <= 4.5) {
+        defaultConcurrency = 2;
+      } else {
+        defaultConcurrency = 4;
+      }
+    }
     this.concurrency = Math.max(1, Math.floor(options.concurrency ?? defaultConcurrency));
   }
 
@@ -140,7 +159,14 @@ export class JobQueue extends EventEmitter {
       const parentNodeOptions = process.env["NODE_OPTIONS"] || "";
       const matchParent = parentNodeOptions.match(/--max-old-space-size=(\d+)/);
       const isDev = process.env["NODE_ENV"] !== "production";
-      const maxSpace = envMaxSpace ?? (matchParent ? matchParent[1] : isDev ? "4096" : "8192");
+      const totalMemMb = Math.round(os.totalmem() / (1024 * 1024));
+      let autoWorkerMaxSpace = isDev ? "4096" : "8192";
+      if (totalMemMb <= 2500) {
+        autoWorkerMaxSpace = "1200";
+      } else if (totalMemMb <= 4500) {
+        autoWorkerMaxSpace = "2500";
+      }
+      const maxSpace = envMaxSpace ?? (matchParent ? matchParent[1] : autoWorkerMaxSpace);
 
       const child: ChildProcess = fork(scriptPath, {
         stdio: ["pipe", "pipe", "pipe", "ipc"],

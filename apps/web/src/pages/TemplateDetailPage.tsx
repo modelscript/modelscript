@@ -281,8 +281,8 @@ const TemplateDetailPage: React.FC = () => {
         .then((res) => {
           if (Array.isArray(res?.models) && res.models.length > 0) {
             setCompatibleModels(res.models);
-            if (!selectedModelId && res.models[0]) {
-              setSelectedModelId(res.models[0].id);
+            if (res.models[0]) {
+              setSelectedModelId((curr) => curr || res.models[0].id);
             }
           }
         })
@@ -334,6 +334,7 @@ const TemplateDetailPage: React.FC = () => {
       setCustomCode(activeModel.code);
       setCustomModelName(activeModel.modelName || activeModel.qualifiedName || activeModel.name || "CustomModel");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeModel?.id, modelMode]);
 
   // Live-synthesize the concrete Open Standard Study Instance Artifact (.sedml / .ssv / .dakota)
@@ -376,6 +377,13 @@ const TemplateDetailPage: React.FC = () => {
     activeModel?.id,
     activeModel?.modelName,
     activeModel?.packageName,
+    activeModel?.dialect,
+    activeModel?.domain,
+    activeModel?.name,
+    activeModel?.packageVersion,
+    activeModel?.qualifiedName,
+    studyDef?.packageName,
+    studyDef?.packageVersion,
     inputValues,
     meshResolution,
     maxIterations,

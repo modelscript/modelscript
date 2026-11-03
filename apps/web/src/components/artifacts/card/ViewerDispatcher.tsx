@@ -346,7 +346,19 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "digital-twin-dashboard":
       case "digital_twin_dashboard":
       case "digital-twin":
-        return <DigitalTwinDashboardViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="Digital Twin Telemetry Dashboard"
+            placeholderType="plot"
+            isFullScreen={isFullScreen}
+          >
+            <DigitalTwinDashboardViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "pscad":
       case "pscx":
       case "pslx":
@@ -375,23 +387,83 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
         return <GtSuiteViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "ssp":
       case "ssd":
-        return <SspViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="SSP Architecture"
+            placeholderType="fmu"
+            isFullScreen={isFullScreen}
+          >
+            <SspViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "fea-deck":
       case "fea-inp":
-        return <FeaDeckViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="FEA Mesh & Deck Viewer"
+            placeholderType="fea"
+            isFullScreen={isFullScreen}
+          >
+            <FeaDeckViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "cfd-config":
       case "cfd-su2":
-        return <CfdConfigViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="CFD Boundary & Mesh Viewer"
+            placeholderType="cfd"
+            isFullScreen={isFullScreen}
+          >
+            <CfdConfigViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "gensys":
       case "calc":
       case "run":
       case "sub":
-        return <GensysViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="GENSYS Rail Dynamics"
+            placeholderType="cad"
+            isFullScreen={isFullScreen}
+          >
+            <GensysViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "simpack":
       case "spck":
       case "sim":
       case "mbs":
-        return <SimpackViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="SIMPACK Multibody Dynamics"
+            placeholderType="cad"
+            isFullScreen={isFullScreen}
+          >
+            <SimpackViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "owl":
       case "owl2":
         return <Owl2Viewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;

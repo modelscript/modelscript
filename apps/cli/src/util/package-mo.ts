@@ -23,13 +23,15 @@ export function parsePackageMo(content: string): {
 } {
   const clean = stripModelicaComments(content);
 
-  // Extract package name from `package <Name>` declaration
-  const nameMatch = clean.match(/^\s*(?:within\s+[^;]*;\s*)?(?:encapsulated\s+)?package\s+([A-Za-z_][A-Za-z0-9_]*)/m);
+  // Extract package/class name from `package <Name>`, `operator record <Name>`, etc. declaration
+  const nameMatch = clean.match(
+    /^\s*(?:within\s+[^;]*;\s*)?(?:encapsulated\s+|partial\s+)?(?:package|operator\s+record|record|model|class|block|connector|type|function)\s+([A-Za-z_][A-Za-z0-9_]*)/m,
+  );
   const name = nameMatch?.[1] ?? null;
 
-  // Extract description string: package Name "Some description"
+  // Extract description string: package/record Name "Some description"
   const descMatch = clean.match(
-    /^\s*(?:within\s+[^;]*;\s*)?(?:encapsulated\s+)?package\s+[A-Za-z_][A-Za-z0-9_]*\s+"([^"]*)"/m,
+    /^\s*(?:within\s+[^;]*;\s*)?(?:encapsulated\s+|partial\s+)?(?:package|operator\s+record|record|model|class|block|connector|type|function)\s+[A-Za-z_][A-Za-z0-9_]*\s+"([^"]*)"/m,
   );
   const description = descMatch?.[1] ?? null;
 

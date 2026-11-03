@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { execSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -94,9 +95,98 @@ export class LibraryStorage {
   }
 
   /**
+   * Automatically ensure MSL companion packages (Complex, ModelicaServices)
+   * exist in storage by extracting them from Modelica's zip if available.
+   */
+  ensureCompanionPackage(pkgName: string, targetVersion?: string): boolean {
+    if (pkgName !== "Complex" && pkgName !== "ModelicaServices") return false;
+    const modelicaDir = path.resolve(this.#dataDir, "Modelica");
+    if (!fs.existsSync(modelicaDir)) return false;
+
+    const versions = targetVersion
+      ? [targetVersion]
+      : fs
+          .readdirSync(modelicaDir)
+          .filter((f) => f.endsWith(".zip"))
+          .map((f) => f.replace(/\.zip$/, ""))
+          .filter((v) => semver.valid(v) !== null);
+
+    let createdAny = false;
+    for (const ver of versions) {
+      const targetZip = this.#filePath(pkgName, ver);
+      if (fs.existsSync(targetZip)) {
+        createdAny = true;
+        continue;
+      }
+
+      const mslZip = path.join(modelicaDir, `${ver}.zip`);
+      if (!fs.existsSync(mslZip)) continue;
+
+      try {
+        const pkgDir = path.dirname(targetZip);
+        fs.mkdirSync(pkgDir, { recursive: true });
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `msx-${pkgName}-`));
+        try {
+          if (pkgName === "Complex") {
+            try {
+              execSync(`unzip -q -p "${mslZip}" Complex.mo > "${path.join(tmpDir, "Complex.mo")}"`, { stdio: "pipe" });
+            } catch {
+              continue;
+            }
+            try {
+              execSync(`unzip -q -p "${mslZip}" LICENSE > "${path.join(tmpDir, "LICENSE")}"`, { stdio: "pipe" });
+            } catch {}
+            if (
+              fs.existsSync(path.join(tmpDir, "Complex.mo")) &&
+              fs.statSync(path.join(tmpDir, "Complex.mo")).size > 0
+            ) {
+              execSync(`cd "${tmpDir}" && zip -q -r "${targetZip}" .`, { stdio: "pipe" });
+            }
+          } else if (pkgName === "ModelicaServices") {
+            const svcSubDir = path.join(tmpDir, "ModelicaServices");
+            fs.mkdirSync(svcSubDir, { recursive: true });
+            try {
+              execSync(
+                `unzip -q -j "${mslZip}" "ModelicaServices ${ver}/*" -d "${svcSubDir}" 2>/dev/null || unzip -q -j "${mslZip}" "ModelicaServices/*" -d "${svcSubDir}"`,
+                { stdio: "pipe" },
+              );
+            } catch {
+              continue;
+            }
+            try {
+              execSync(`unzip -q -p "${mslZip}" LICENSE > "${path.join(tmpDir, "LICENSE")}"`, { stdio: "pipe" });
+            } catch {}
+            const files = fs.readdirSync(svcSubDir);
+            if (files.length > 0) {
+              execSync(`cd "${tmpDir}" && zip -q -r "${targetZip}" .`, { stdio: "pipe" });
+            }
+          }
+
+          if (fs.existsSync(targetZip) && fs.statSync(targetZip).size > 50) {
+            const hash = crypto.createHash("sha256").update(fs.readFileSync(targetZip)).digest("hex");
+            fs.writeFileSync(path.join(pkgDir, `${this.#safe(ver)}.sha256`), hash, "utf-8");
+            createdAny = true;
+          }
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+      } catch {
+        // Skip extraction failure for this version
+      }
+    }
+
+    return createdAny;
+  }
+
+  /**
    * Check if a library version already exists.
    */
   exists(name: string, version: string): boolean {
+    if (!fs.existsSync(this.#filePath(name, version))) {
+      if (name === "Complex" || name === "ModelicaServices") {
+        this.ensureCompanionPackage(name, version);
+      }
+    }
     return fs.existsSync(this.#filePath(name, version));
   }
 
@@ -106,6 +196,12 @@ export class LibraryStorage {
   list(query?: string): string[] {
     if (!fs.existsSync(this.#dataDir)) {
       return [];
+    }
+
+    const modelicaDir = path.resolve(this.#dataDir, "Modelica");
+    if (fs.existsSync(modelicaDir)) {
+      this.ensureCompanionPackage("Complex");
+      this.ensureCompanionPackage("ModelicaServices");
     }
 
     let names = fs
@@ -132,8 +228,12 @@ export class LibraryStorage {
    */
   versions(name: string): string[] {
     const dir = path.resolve(this.#dataDir, this.#safe(name));
-    if (!fs.existsSync(dir)) {
-      return [];
+    if (!fs.existsSync(dir) || fs.readdirSync(dir).filter((f) => f.endsWith(".zip")).length === 0) {
+      if (name === "Complex" || name === "ModelicaServices") {
+        this.ensureCompanionPackage(name);
+      } else {
+        return [];
+      }
     }
 
     return fs
@@ -149,7 +249,13 @@ export class LibraryStorage {
    * Returns null if the file does not exist.
    */
   read(name: string, version: string): { buffer: Buffer; size: number } | null {
-    const filePath = this.#filePath(name, version);
+    let filePath = this.#filePath(name, version);
+    if (!fs.existsSync(filePath)) {
+      if (name === "Complex" || name === "ModelicaServices") {
+        this.ensureCompanionPackage(name, version);
+        filePath = this.#filePath(name, version);
+      }
+    }
     if (!fs.existsSync(filePath)) {
       return null;
     }

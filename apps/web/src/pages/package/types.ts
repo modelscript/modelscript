@@ -164,10 +164,8 @@ export const GlassCard = styled.div<{ $interactive?: boolean | undefined }>`
     css`
       cursor: pointer;
       &:hover {
-        border-color: rgba(139, 92, 246, 0.35);
-        box-shadow:
-          0 8px 24px -6px rgba(0, 0, 0, 0.5),
-          0 0 16px rgba(139, 92, 246, 0.12);
+        border-color: var(--color-glass-border-hover, var(--color-border-glass));
+        box-shadow: var(--glow-card, 0 4px 20px rgba(0, 0, 0, 0.15));
       }
     `}
 `;

@@ -44,28 +44,164 @@ function listAllFiles(dir: string, relPrefix = ""): { fullPath: string; relPath:
 }
 
 /**
+ * Split Modelica section text into top-level statements, tracking strings,
+ * comments, delimiter nesting (), [], {}, and control blocks (if/when/for).
+ */
+function splitModelicaStatements(text: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let i = 0;
+  const n = text.length;
+
+  let inString = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let braceDepth = 0;
+  let blockDepth = 0;
+
+  while (i < n) {
+    const ch = text[i]!;
+    const next = i + 1 < n ? text[i + 1]! : "";
+
+    // Comments
+    if (inLineComment) {
+      current += ch;
+      if (ch === "\n") inLineComment = false;
+      i++;
+      continue;
+    }
+    if (inBlockComment) {
+      current += ch;
+      if (ch === "*" && next === "/") {
+        current += next;
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+
+    // Strings
+    if (inString) {
+      current += ch;
+      if (ch === "\\") {
+        if (i + 1 < n) {
+          current += next;
+          i += 2;
+          continue;
+        }
+      } else if (ch === '"') {
+        inString = false;
+      }
+      i++;
+      continue;
+    }
+
+    // Start comment or string
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      current += ch + next;
+      i += 2;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      current += ch + next;
+      i += 2;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      current += ch;
+      i++;
+      continue;
+    }
+
+    // Delimiters
+    if (ch === "(") parenDepth++;
+    else if (ch === ")" && parenDepth > 0) parenDepth--;
+    else if (ch === "[") bracketDepth++;
+    else if (ch === "]" && bracketDepth > 0) bracketDepth--;
+    else if (ch === "{") braceDepth++;
+    else if (ch === "}" && braceDepth > 0) braceDepth--;
+
+    // Block nesting (when ... end when; for ... end for; if ... end if;)
+    if (parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+      const isWordBoundary = (pos: number) => pos === 0 || !/[A-Za-z0-9_]/.test(text[pos - 1]!);
+      if (isWordBoundary(i)) {
+        const sub = text.slice(i);
+        const endBlockMatch = sub.match(/^end\s+(?:if|when|for)\b/i);
+        if (endBlockMatch) {
+          if (blockDepth > 0) blockDepth--;
+          current += text.slice(i, i + endBlockMatch[0].length);
+          i += endBlockMatch[0].length;
+          continue;
+        }
+        const startBlockMatch = sub.match(/^(?:if|when|for)\b/i);
+        if (startBlockMatch) {
+          blockDepth++;
+          current += text.slice(i, i + startBlockMatch[0].length);
+          i += startBlockMatch[0].length;
+          continue;
+        }
+      }
+    }
+
+    // Statement boundary: semicolon at top level
+    if (ch === ";" && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0 && blockDepth === 0) {
+      statements.push(current.trim());
+      current = "";
+      i++;
+      continue;
+    }
+
+    current += ch;
+    i++;
+  }
+
+  if (current.trim()) {
+    statements.push(current.trim());
+  }
+
+  return statements;
+}
+
+function stripTrailingModelicaAnnotation(stmt: string): string {
+  let clean = stmt
+    .replace(/\/\/.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .trim();
+
+  const annIndex = clean.search(/\bannotation\s*\(/i);
+  if (annIndex > 0) {
+    clean = clean.slice(0, annIndex).trim();
+  }
+  return clean;
+}
+
+/**
  * Extract equations and connect statements from a Modelica class body.
  */
 export function extractModelicaEquations(code: string): string[] {
   const equations: string[] = [];
   const eqSectionRegex =
-    /\b(?:initial\s+equation|equation)\b([\s\S]*?)(?=\b(?:initial\s+equation|equation|initial\s+algorithm|algorithm|public|protected|annotation|end\s+[A-Za-z0-9_]+)\b|$)/g;
+    /\b(?:initial\s+equation|equation|initial\s+algorithm|algorithm)\b([\s\S]*?)(?=\b(?:initial\s+equation|equation|initial\s+algorithm|algorithm|public|protected|end\s+(?!if\b|when\b|for\b)[A-Za-z0-9_]+)\b|$)/gi;
   let m: RegExpExecArray | null;
   while ((m = eqSectionRegex.exec(code)) !== null) {
     const body = m[1] ?? "";
-    const statements = body
-      .split(";")
-      .map((s) =>
-        s
-          .replace(/\/\/.*$/gm, "")
-          .replace(/\/\*[\s\S]*?\*\//g, "")
-          .trim(),
-      )
-      .filter((s) => s.length > 0 && !s.startsWith("annotation"));
+    const statements = splitModelicaStatements(body);
     for (const stmt of statements) {
-      const cleaned = stmt.replace(/\s*\bannotation\s*\([\s\S]*$/, "").trim();
+      const trimmed = stmt.trim();
+      if (!trimmed) continue;
+      // Skip standalone class-level annotations
+      if (/^annotation\b/i.test(trimmed)) continue;
+
+      const cleaned = stripTrailingModelicaAnnotation(trimmed);
       if (cleaned) {
-        equations.push(`${cleaned};`);
+        equations.push(cleaned.endsWith(";") ? cleaned : `${cleaned};`);
       }
     }
   }

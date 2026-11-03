@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-implied-eval */
 
 /**
  * Closed-Loop Compiler Verification Engine.
@@ -838,7 +837,7 @@ export async function verifyGate3Requirements(
 
     const clean = stripComments(code);
     const paramRegex =
-      /\b(?:(?:parameter|constant)\s+)?(?!parameter\b|constant\b)[A-Za-z_][A-Za-z0-9_.]*\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(([^()]*)\))?\s*(?:=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?))?\s*;/g;
+      /(?:^|[;{}])\s*(?:(?:parameter|constant)\s+)?(?!parameter\b|constant\b)[A-Za-z_][A-Za-z0-9_.]*\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(([^()]*)\))?(?:\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?))?\s*;/g;
     for (const pm of clean.matchAll(paramRegex)) {
       const vName = pm[1]!;
       const mods = pm[2] ?? "";
@@ -937,34 +936,131 @@ export async function verifyGate3Requirements(
 }
 
 function evaluateModelicaBooleanExpr(expr: string, boundVars: ReadonlyMap<string, number>): boolean | null {
-  const trimmed = expr.trim();
-  if (trimmed === "false") return false;
-  if (trimmed === "true") return true;
-
-  // Handle logical 'and' / 'or' / 'not'
-  let jsExpr = trimmed
-    .replace(/\band\b/g, "&&")
-    .replace(/\bor\b/g, "||")
-    .replace(/\bnot\b/g, "!")
-    .replace(/<>/g, "!==");
-
-  // Replace single '=' equality if not part of <=, >=, !=, ==
-  jsExpr = jsExpr.replace(/(?<![<>!=])=(?!=)/g, "===");
-
-  // Substitute bound variables; if an unknown identifier remains, only evaluate if purely numeric
-  const idRegex = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
-  let hasUnbound = false;
-  jsExpr = jsExpr.replace(idRegex, (id) => {
-    if (id === "true" || id === "false" || id === "Math") return id;
-    if (boundVars.has(id)) return `(${boundVars.get(id)})`;
-    hasUnbound = true;
-    return id;
-  });
-  if (hasUnbound) return null;
-
   try {
-    const fn = new Function(`return Boolean(${jsExpr});`) as () => boolean;
-    return fn();
+    const trimmed = expr.trim();
+    if (trimmed === "false") return false;
+    if (trimmed === "true") return true;
+
+    const tokens: string[] = [];
+    const tokenRegex =
+      /\s*(<=|>=|==|!=|<>|&&|\|\||[<>!=+\-*/%()]|\b(?:and|or|not|true|false)\b|[a-zA-Z_][a-zA-Z0-9_]*|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*/gy;
+    let match: RegExpExecArray | null;
+    let lastIndex = 0;
+    while ((match = tokenRegex.exec(expr)) !== null) {
+      tokens.push(match[1]!);
+      lastIndex = tokenRegex.lastIndex;
+    }
+    if (expr.slice(lastIndex).trim().length > 0) return null;
+
+    let pos = 0;
+    const peek = () => tokens[pos];
+    const consume = () => tokens[pos++];
+
+    function parseOr(): number | boolean {
+      let left = parseAnd();
+      while (peek() === "||" || peek() === "or") {
+        consume();
+        const right = parseAnd();
+        left = Boolean(left) || Boolean(right);
+      }
+      return left;
+    }
+
+    function parseAnd(): number | boolean {
+      let left = parseEquality();
+      while (peek() === "&&" || peek() === "and") {
+        consume();
+        const right = parseEquality();
+        left = Boolean(left) && Boolean(right);
+      }
+      return left;
+    }
+
+    function parseEquality(): number | boolean {
+      let left = parseRelational();
+      while (peek() === "==" || peek() === "=" || peek() === "!=" || peek() === "<>") {
+        const op = consume();
+        const right = parseRelational();
+        left = op === "!=" || op === "<>" ? left !== right : left === right;
+      }
+      return left;
+    }
+
+    function parseRelational(): number | boolean {
+      let left = parseAdd();
+      while (peek() === "<" || peek() === "<=" || peek() === ">" || peek() === ">=") {
+        const op = consume();
+        const right = parseAdd();
+        if (typeof left !== "number" || typeof right !== "number") return false;
+        if (op === "<") left = left < right;
+        else if (op === "<=") left = left <= right;
+        else if (op === ">") left = left > right;
+        else if (op === ">=") left = left >= right;
+      }
+      return left;
+    }
+
+    function parseAdd(): number | boolean {
+      let left = parseMul();
+      while (peek() === "+" || peek() === "-") {
+        const op = consume();
+        const right = parseMul();
+        if (typeof left !== "number" || typeof right !== "number") return false;
+        left = op === "+" ? left + right : left - right;
+      }
+      return left;
+    }
+
+    function parseMul(): number | boolean {
+      let left = parseUnary();
+      while (peek() === "*" || peek() === "/" || peek() === "%") {
+        const op = consume();
+        const right = parseUnary();
+        if (typeof left !== "number" || typeof right !== "number") return false;
+        if (op === "*") left = left * right;
+        else if (op === "/") left = right === 0 ? 0 : left / right;
+        else if (op === "%") left = right === 0 ? 0 : left % right;
+      }
+      return left;
+    }
+
+    function parseUnary(): number | boolean {
+      const tok = peek();
+      if (tok === "!" || tok === "not") {
+        consume();
+        return !parseUnary();
+      }
+      if (tok === "-") {
+        consume();
+        const val = parseUnary();
+        return typeof val === "number" ? -val : 0;
+      }
+      if (tok === "+") {
+        consume();
+        return parseUnary();
+      }
+      return parsePrimary();
+    }
+
+    function parsePrimary(): number | boolean {
+      const tok = consume();
+      if (!tok) throw new Error("Unexpected end of expression");
+      if (tok === "(") {
+        const res = parseOr();
+        if (consume() !== ")") throw new Error("Missing closing paren");
+        return res;
+      }
+      if (tok === "true") return true;
+      if (tok === "false") return false;
+      const num = Number(tok);
+      if (!Number.isNaN(num)) return num;
+      if (boundVars.has(tok)) return boundVars.get(tok)!;
+      throw new Error(`Unbound identifier ${tok}`);
+    }
+
+    const result = parseOr();
+    if (pos !== tokens.length) return null;
+    return Boolean(result);
   } catch {
     return null;
   }

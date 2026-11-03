@@ -589,4 +589,5 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   );
 };
 
-export default ArtifactViewCard;
+const MemoizedArtifactViewCard = React.memo(ArtifactViewCard);
+export default MemoizedArtifactViewCard;

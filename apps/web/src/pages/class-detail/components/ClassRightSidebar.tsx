@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BeakerIcon, CheckCircleFillIcon, CpuIcon, GearIcon, PackageIcon, PlayIcon } from "@primer/octicons-react";
-import { Button, Label, NavList, Text, Truncate } from "@primer/react";
+import { Button, Label, Text, Truncate } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { getDiagramUrl, getIconUrl } from "../../../api";
@@ -17,6 +17,8 @@ import {
   DetailValue,
   GlassCard,
   SectionTitle,
+  SidebarMemberList,
+  SidebarMemberRow,
   TypeLink,
 } from "../styles";
 import type { ClassDetail, ClassSummary, DigitalThreadTwinInfo } from "../types";
@@ -385,19 +387,18 @@ export const ClassRightSidebar: React.FC<ClassRightSidebarProps> = ({
             Declared Members ({cls.components.length})
           </SectionTitle>
           <GlassCard style={{ padding: "8px", maxHeight: "calc(100vh - 400px)", overflowY: "auto" }}>
-            <NavList>
+            <SidebarMemberList>
               {cls.components.map((comp) => {
                 const targetUrl = resolveTypeTargetUrl(comp.type_name, libraryName, version, allClasses, className);
                 return (
-                  <NavList.Item
+                  <SidebarMemberRow
                     key={comp.component_name}
-                    style={{ color: "var(--color-text-primary)", cursor: "pointer" }}
                     onClick={(e) => {
                       e.preventDefault();
                       onSelectMember(targetUrl, comp.component_name);
                     }}
                   >
-                    <NavList.LeadingVisual>
+                    <Box display="flex" alignItems="center" gap="10px" style={{ minWidth: 0, flex: 1 }}>
                       <ComponentIconWrap>
                         <InvertedSvg
                           src={getIconUrl(libraryName, version, comp.type_name)}
@@ -405,22 +406,51 @@ export const ClassRightSidebar: React.FC<ClassRightSidebarProps> = ({
                           alt=""
                         />
                       </ComponentIconWrap>
-                    </NavList.LeadingVisual>
-                    <Box fontWeight="bold" style={{ color: "var(--color-text-heading)" }}>
-                      {comp.component_name}
-                    </Box>
-                    <Box fontSize="12px" opacity={0.75} style={{ fontFamily: "var(--font-mono, monospace)" }}>
-                      <Truncate title={comp.type_name}>{comp.type_name}</Truncate>
-                    </Box>
-                    {comp.description && (
-                      <Box fontSize="12px" opacity={0.8} mt={1}>
-                        {comp.description}
+                      <Box display="flex" flexDirection="column" style={{ minWidth: 0, flex: 1 }}>
+                        <Box
+                          fontWeight="bold"
+                          fontSize="13px"
+                          style={{
+                            color: "var(--color-text-heading)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {comp.component_name}
+                        </Box>
+                        <Box
+                          fontSize="12px"
+                          style={{
+                            fontFamily: "var(--font-mono, monospace)",
+                            color: "var(--color-text-muted)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          <Truncate title={comp.type_name}>{comp.type_name}</Truncate>
+                        </Box>
+                        {comp.description && (
+                          <Box
+                            fontSize="11.5px"
+                            style={{
+                              color: "var(--color-text-tertiary, var(--color-text-muted))",
+                              marginTop: 2,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {comp.description}
+                          </Box>
+                        )}
                       </Box>
-                    )}
-                  </NavList.Item>
+                    </Box>
+                  </SidebarMemberRow>
                 );
               })}
-            </NavList>
+            </SidebarMemberList>
           </GlassCard>
         </>
       )}

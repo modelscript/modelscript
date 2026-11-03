@@ -18,12 +18,22 @@ function requireGitWriteAuth(req: Request, res: Response, next: NextFunction): v
   optionalAuth(req, res, next);
 }
 
+function trimSlashes(str: string): string {
+  let start = 0;
+  while (start < str.length && str.charCodeAt(start) === 47 /* '/' */) {
+    start++;
+  }
+  let end = str.length;
+  while (end > start && str.charCodeAt(end - 1) === 47 /* '/' */) {
+    end--;
+  }
+  return str.slice(start, end);
+}
+
 function parseActivityProjectId(rawId: string | undefined): { namespace: string } | null {
   if (!rawId) return null;
   try {
-    const decoded = decodeURIComponent(rawId)
-      .trim()
-      .replace(/^\/+|\/+$/g, "");
+    const decoded = trimSlashes(decodeURIComponent(rawId).trim());
     const parts = decoded.split("/");
     if (parts.length !== 2) return null;
     const [namespace, project] = parts;
@@ -48,7 +58,7 @@ function sanitizeActivityGitRef(ref: string | undefined): string {
 }
 
 function sanitizeActivityGitSubpath(subpath: string | undefined): string {
-  const clean = (subpath || "").trim().replace(/^\/+|\/+$/g, "");
+  const clean = trimSlashes((subpath || "").trim());
   // eslint-disable-next-line no-control-regex
   if (clean.startsWith("-") || clean.includes("..") || /[\x00-\x1f\x7f]/.test(clean)) {
     throw new Error("Invalid repository file path");

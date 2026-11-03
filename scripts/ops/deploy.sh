@@ -22,6 +22,18 @@ echo " Host:       $(hostname) (${TARGET_DIR})"
 echo " Time:       $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "================================================================================"
 
+# Step 0: Ensure low-memory hosts (<= 2.5GB RAM) have sufficient swap configured to prevent OOM
+TOTAL_RAM_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo 0)
+TOTAL_SWAP_MB=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}' || echo 0)
+if [ "${TOTAL_RAM_MB:-0}" -gt 0 ] && [ "${TOTAL_RAM_MB:-0}" -le 2500 ] && [ "${TOTAL_SWAP_MB:-0}" -lt 1000 ]; then
+  echo "⚠️  Detected low-memory host (${TOTAL_RAM_MB}MB RAM) with insufficient swap (${TOTAL_SWAP_MB}MB)."
+  SWAP_SCRIPT="${TARGET_DIR}/scripts/ops/setup-droplet-swap.sh"
+  if [ -f "${SWAP_SCRIPT}" ]; then
+    echo "==> Invoking setup-droplet-swap.sh to provision 2GB safety swap..."
+    bash "${SWAP_SCRIPT}" || echo "⚠️  Could not configure swap automatically (run 'sudo ${SWAP_SCRIPT}' manually)."
+  fi
+fi
+
 # Step 1: Detect and record currently active image tags for automated rollback
 PREV_API_IMAGE="$(${COMPOSE_CMD} images api --format '{{.Tag}}' 2>/dev/null | head -n1 || echo '')"
 PREV_WEB_IMAGE="$(${COMPOSE_CMD} images web --format '{{.Tag}}' 2>/dev/null | head -n1 || echo '')"

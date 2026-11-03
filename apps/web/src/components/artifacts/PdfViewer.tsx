@@ -2,7 +2,7 @@
 
 import { DownloadIcon, FileIcon, LinkExternalIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import { sanitizeHttpUrl } from "../../util/url";
 import Box from "../Box";
@@ -36,6 +36,33 @@ const Toolbar = styled.div`
 
 const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
   const url = sanitizeHttpUrl(viewConfig?.url, { allowRelative: true });
+  const [inlinePreview, setInlinePreview] = useState(Boolean(isFullScreen));
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isFullScreen) {
+      setInlinePreview(true);
+    }
+  }, [isFullScreen]);
+
+  // Hibernate inline PDF iframe when scrolled completely out of view
+  useEffect(() => {
+    if (!inlinePreview || isFullScreen) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            setInlinePreview(false);
+          }
+        });
+      },
+      { threshold: 0.0 },
+    );
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+    return () => observer.disconnect();
+  }, [inlinePreview, isFullScreen]);
 
   const isMobile = useMemo(() => {
     if (typeof window === "undefined" || typeof navigator === "undefined") return false;
@@ -53,7 +80,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
   const title = viewConfig?.title || url.split("/").pop() || "Technical Specification PDF";
 
   return (
-    <Wrapper $isFullScreen={isFullScreen}>
+    <Wrapper ref={containerRef} $isFullScreen={isFullScreen}>
       <Toolbar>
         <Box display="flex" alignItems="center" gap={2} overflow="hidden">
           <FileIcon size={16} fill="var(--color-accent-emphasis, #06b6d4)" />
@@ -67,6 +94,15 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
           </Text>
         </Box>
         <Box display="flex" alignItems="center" gap={2}>
+          {!isFullScreen && !isMobile && (
+            <Button
+              size="small"
+              variant={inlinePreview ? "default" : "primary"}
+              onClick={() => setInlinePreview((prev) => !prev)}
+            >
+              {inlinePreview ? "✕ Hide Preview" : "▶ Preview Inline"}
+            </Button>
+          )}
           <Button
             size="small"
             as="a"
@@ -113,6 +149,36 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
           >
             View Full PDF
           </Button>
+        </Box>
+      ) : !inlinePreview && !isFullScreen ? (
+        <Box
+          p={4}
+          display="flex"
+          flexDirection="column"
+          alignItems="center"
+          justifyContent="center"
+          flex={1}
+          textAlign="center"
+          gap={3}
+          bg="var(--color-canvas-subtle)"
+        >
+          <FileIcon size={48} fill="var(--color-accent-emphasis, #06b6d4)" />
+          <Box display="flex" flexDirection="column" gap={1} alignItems="center">
+            <Text fontSize="15px" fontWeight="600" color="var(--color-text-primary)">
+              {title}
+            </Text>
+            <Text fontSize="12.5px" color="var(--color-text-muted)">
+              PDF Engineering Document &middot; Click Preview Inline to load interactive viewer
+            </Text>
+          </Box>
+          <Box display="flex" gap={2}>
+            <Button variant="primary" onClick={() => setInlinePreview(true)}>
+              ▶ Preview Inline
+            </Button>
+            <Button as="a" href={url} target="_blank" rel="noopener noreferrer" leadingVisual={LinkExternalIcon}>
+              Open in Tab
+            </Button>
+          </Box>
         </Box>
       ) : (
         <Box flex={1} width="100%" height="100%" bg="var(--color-canvas-subtle)">

@@ -367,8 +367,18 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
     case "ModelicaIO_readRealMatrix": {
       const fileName = String(args[0] ?? "");
       const matrixName = String(args[1] ?? "");
-      const nrow = Math.max(1, Number(args[2] ?? 1));
-      const ncol = Math.max(1, Number(args[3] ?? 1));
+      const MAX_MATRIX_DIM = 100_000;
+      const MAX_MATRIX_ELEMENTS = 10_000_000;
+      const rawRow = Math.trunc(Number(args[2] ?? 1));
+      const rawCol = Math.trunc(Number(args[3] ?? 1));
+      if (!Number.isFinite(rawRow) || !Number.isFinite(rawCol) || rawRow <= 0 || rawCol <= 0) {
+        return [];
+      }
+      const nrow = Math.min(MAX_MATRIX_DIM, rawRow);
+      const ncol = Math.min(MAX_MATRIX_DIM, rawCol);
+      if (nrow * ncol > MAX_MATRIX_ELEMENTS) {
+        throw new Error(`Matrix dimensions ${nrow}x${ncol} exceed maximum allowed elements`);
+      }
       const stored = ioMatrixStore.get(`${fileName}::${matrixName}`);
       if (stored) {
         const out: number[][] = [];

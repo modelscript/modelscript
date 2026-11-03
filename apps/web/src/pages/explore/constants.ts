@@ -162,7 +162,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
 
 export type ExploreLandingTab = "explore" | "trending" | "packages" | "repositories";
 
-export const SEARCH_TABS = ["Top", "Latest", "Templates", "People", "Media", "Artifacts", "Repositories"] as const;
+export const SEARCH_TABS = ["Top", "Latest", "People", "Media", "Packages", "Repositories"] as const;
 
 export type SearchTab = (typeof SEARCH_TABS)[number];
 

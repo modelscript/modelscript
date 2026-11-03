@@ -5,9 +5,9 @@ import fs from "node:fs";
 import path from "node:path";
 import yauzl from "yauzl";
 
-const MAX_ZIP_ENTRIES = 10_000;
+const MAX_ZIP_ENTRIES = 50_000;
 const MAX_SINGLE_FILE_BYTES = 50 * 1024 * 1024; // 50 MB
-const MAX_TOTAL_UNCOMPRESSED_BYTES = 250 * 1024 * 1024; // 250 MB
+const MAX_TOTAL_UNCOMPRESSED_BYTES = 500 * 1024 * 1024; // 500 MB
 
 /**
  * Extract the content of the root-level package.mo file from a zip buffer.
@@ -40,14 +40,20 @@ export async function extractPackageMoFromZip(buffer: Buffer, preferredName?: st
 
         // Check if this entry is a package.mo file
         const segments = fileName.split("/").filter((s) => s.length > 0);
-        const baseName = segments[segments.length - 1];
+        const baseName = segments[segments.length - 1] ?? "";
 
-        if (baseName === "package.mo") {
+        if (
+          baseName === "package.mo" ||
+          (cleanPref && (baseName.toLowerCase() === `${cleanPref}.mo` || baseName.toLowerCase() === "package.mo"))
+        ) {
           const depth = segments.length;
           const topFolder = (segments[0] || "").toLowerCase();
           const matchesName = Boolean(
             cleanPref &&
-            (topFolder === cleanPref || topFolder.startsWith(`${cleanPref} `) || topFolder.startsWith(`${cleanPref}-`)),
+            (topFolder === cleanPref ||
+              topFolder.startsWith(`${cleanPref} `) ||
+              topFolder.startsWith(`${cleanPref}-`) ||
+              baseName.toLowerCase() === `${cleanPref}.mo`),
           );
           if (
             !bestMatch ||
@@ -317,9 +323,13 @@ export async function extractManifestFromZip(
   });
 }
 
-function hasDirectManifestInDir(dir: string): boolean {
+function hasDirectManifestInDir(dir: string, preferredName?: string): boolean {
   for (const name of RECOGNIZED_NATIVE_MANIFEST_FILES) {
     if (fs.existsSync(path.join(dir, name))) return true;
+  }
+  if (preferredName) {
+    const cleanPref = preferredName.split("/").pop()!;
+    if (fs.existsSync(path.join(dir, `${cleanPref}.mo`))) return true;
   }
   return false;
 }
@@ -329,7 +339,7 @@ function hasDirectManifestInDir(dir: string): boolean {
  * Looks for the shallowest `package.json`, `modelscript.json`, `package.mo`, or native manifest file.
  */
 export function findLibraryRoot(dir: string, preferredName?: string): string | null {
-  if (hasDirectManifestInDir(dir)) {
+  if (hasDirectManifestInDir(dir, preferredName)) {
     return dir;
   }
 
@@ -340,14 +350,14 @@ export function findLibraryRoot(dir: string, preferredName?: string): string | n
       const lower = e.name.toLowerCase();
       return lower === cleanPref || lower.startsWith(`${cleanPref} `) || lower.startsWith(`${cleanPref}-`);
     });
-    if (matchingDir && hasDirectManifestInDir(path.join(dir, matchingDir.name))) {
+    if (matchingDir && hasDirectManifestInDir(path.join(dir, matchingDir.name), preferredName)) {
       return path.join(dir, matchingDir.name);
     }
   }
 
   for (const entry of entries) {
     const subDir = path.join(dir, entry.name);
-    if (hasDirectManifestInDir(subDir)) {
+    if (hasDirectManifestInDir(subDir, preferredName)) {
       return subDir;
     }
   }

@@ -300,17 +300,21 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
     if (rawSvg && !isLegacyBogusModelicaSvg(rawSvg, previewMode)) {
       return sanitizeSvgMarkup(rawSvg, { isFullScreen });
     }
-    if (!rawThumbUrl && previewMode === "code") {
+    if (!rawThumbUrl) {
       return sanitizeSvgMarkup(buildClientCodeFallbackSvg(code, title), { isFullScreen });
     }
     return "";
   }, [rawSvg, rawThumbUrl, previewMode, code, title, isFullScreen]);
 
-  const hasPreviewThumbnail = Boolean(
-    validInlineSvg || (rawThumbUrl && !isLegacyBogusModelicaSvg(rawSvg, previewMode)),
-  );
+  const [interactive, setInteractive] = useState(isFullScreen);
+  const [hasBeenActive, setHasBeenActive] = useState(isFullScreen);
 
-  const [interactive, setInteractive] = useState(isFullScreen || !hasPreviewThumbnail);
+  useEffect(() => {
+    if (interactive) {
+      setHasBeenActive(true);
+    }
+  }, [interactive]);
+
   const [viewMode, setViewMode] = useState<CardTabMode>(() =>
     previewMode === "simulation" ? "simulation" : previewMode === "3d" ? "3d" : "diagram",
   );
@@ -326,6 +330,25 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
       setInteractive(true);
     }
   }, [isFullScreen]);
+
+  // Hibernate heavy Morsel runtime when scrolled out of view in feed mode
+  useEffect(() => {
+    if (!interactive || isFullScreen) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            setInteractive(false);
+          }
+        });
+      },
+      { threshold: 0.0 },
+    );
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+    return () => observer.disconnect();
+  }, [interactive, isFullScreen]);
 
   const handleActiveViewChange = useCallback((nextView: "diagram" | "simulation" | "3d" | "inspector" | "code") => {
     if (nextView === "simulation") {
@@ -404,8 +427,9 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
 
   const schematicTabLabel = previewMode === "icon" ? "Icon" : "Schematic";
 
-  const ctaLabel =
-    previewMode === "3d"
+  const ctaLabel = hasBeenActive
+    ? "▶ Resume Interactive Model"
+    : previewMode === "3d"
       ? "▶ Interactive 3D Animation"
       : previewMode === "simulation"
         ? "▶ Interactive Simulation"
@@ -562,7 +586,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
           </Box>
         )}
 
-        {(interactive || !hasPreviewThumbnail) && (
+        {interactive && (
           <div
             style={{
               width: "100%",
@@ -593,7 +617,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
           </div>
         )}
 
-        {!interactive && hasPreviewThumbnail && viewMode !== "code" && (
+        {!interactive && viewMode !== "code" && (
           <Box
             display="flex"
             alignItems="center"

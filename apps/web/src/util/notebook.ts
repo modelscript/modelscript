@@ -308,10 +308,33 @@ export function serializeCellsToMarkdown(cells: NotebookCell[], notebookTitle?: 
   return blocks.join("\n\n");
 }
 
+const notebookParseCache = new Map<string, NotebookMetadata>();
+const MAX_NOTEBOOK_CACHE_SIZE = 250;
+
 /**
  * Parses a post's Markdown content and optional metadata into structured NotebookCells.
+ * Results are cached in an in-memory LRU map to avoid re-parsing regexes on scroll.
  */
 export function parseNotebookFromContent(
+  content: string | null | undefined,
+  fallbackArtifactId?: number | null,
+  existingNotebookMeta?: Partial<NotebookMetadata> | null,
+): NotebookMetadata {
+  const cacheKey = `${content || ""}::${fallbackArtifactId ?? ""}::${existingNotebookMeta?.title ?? ""}::${existingNotebookMeta?.cells?.length ?? 0}`;
+  const cached = notebookParseCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  const result = parseNotebookFromContentUncached(content, fallbackArtifactId, existingNotebookMeta);
+  if (notebookParseCache.size >= MAX_NOTEBOOK_CACHE_SIZE) {
+    const oldestKey = notebookParseCache.keys().next().value;
+    if (oldestKey) notebookParseCache.delete(oldestKey);
+  }
+  notebookParseCache.set(cacheKey, result);
+  return result;
+}
+
+function parseNotebookFromContentUncached(
   content: string | null | undefined,
   fallbackArtifactId?: number | null,
   existingNotebookMeta?: Partial<NotebookMetadata> | null,

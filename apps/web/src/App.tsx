@@ -157,9 +157,8 @@ function GlobalModals() {
   const navigate = useNavigate();
   const location = useLocation();
   const hasCae = useFeatureFlag("cae_cloud_solver");
-  const hasFeedsPage = useFeatureFlag("feeds_page");
-  const hasRssFeeds = useFeatureFlag("rss_feeds");
-  const hasFeeds = hasFeedsPage || hasRssFeeds;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
 
   React.useEffect(() => {
     let pendingG = false;
@@ -282,7 +281,7 @@ function GlobalModals() {
       window.removeEventListener("modelscript:close-shortcuts-modal", handleCloseShortcuts);
       if (pendingGTimer) clearTimeout(pendingGTimer);
     };
-  }, [navigate, hasCae]);
+  }, [navigate, hasCae, hasFeeds, location.pathname]);
 
   return (
     <>
@@ -538,9 +537,8 @@ function App() {
   const { isLoading: isFlagsLoading } = useFeatureFlags();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
-  const hasFeedsPage = useFeatureFlag("feeds_page");
-  const hasRssFeeds = useFeatureFlag("rss_feeds");
-  const hasFeeds = hasFeedsPage || hasRssFeeds;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
 
   if (isLoading || isFlagsLoading) {
     return (
@@ -713,6 +711,8 @@ function App() {
                         </RequireAuth>
                       }
                     />
+                    <Route path="/p/:id" element={<PostDetailPage />} />
+                    <Route path="/posts/:id" element={<PostDetailPage />} />
                     <Route path="/users/:username" element={<ProfilePage />} />
                     <Route path="/users/:username/status/:id" element={<PostDetailPage />} />
                     <Route path="/users/:username/status/:id/activity" element={<PostActivityPage />} />

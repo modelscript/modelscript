@@ -188,10 +188,14 @@ export function parseSimulinkTextToSystem(source: string, fallbackTitle = "Simul
       const sid = /\bSID=["']([^"']+)["']/i.exec(attrs)?.[1];
       if (sid) sidToName.set(sid, bName);
       const params: Record<string, string> = {};
-      const pRe = /<P\b[^>]*Name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/P>/gi;
+      const pRe = /<P\b([^>]*)>([\s\S]*?)<\/P>/gi;
       let pm: RegExpExecArray | null;
       while ((pm = pRe.exec(body)) !== null) {
-        params[pm[1]!] = pm[2]!.trim();
+        const pAttrs = pm[1] || "";
+        const pName = /\bName=["']([^"']+)["']/i.exec(pAttrs)?.[1];
+        if (pName) {
+          params[pName] = pm[2]!.trim();
+        }
       }
       blocks.push({ name: bName, type: bType, id: sid || bName, parameters: params });
     }
@@ -200,10 +204,14 @@ export function parseSimulinkTextToSystem(source: string, fallbackTitle = "Simul
     while ((lm = lineRe.exec(source)) !== null) {
       const body = lm[1] || "";
       const pMap: Record<string, string> = {};
-      const pRe = /<P\b[^>]*Name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/P>/gi;
+      const pRe = /<P\b([^>]*)>([\s\S]*?)<\/P>/gi;
       let pm: RegExpExecArray | null;
       while ((pm = pRe.exec(body)) !== null) {
-        pMap[pm[1]!] = pm[2]!.trim();
+        const pAttrs = pm[1] || "";
+        const pName = /\bName=["']([^"']+)["']/i.exec(pAttrs)?.[1];
+        if (pName) {
+          pMap[pName] = pm[2]!.trim();
+        }
       }
       let srcBlock = pMap["SrcBlock"] || "";
       let srcPort = Number(pMap["SrcPort"] || 1);

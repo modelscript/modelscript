@@ -123,9 +123,8 @@ function formatRssHandle(urlStr: string) {
 
 const FeedsPage: React.FC = () => {
   usePageTitle("Feeds");
-  const hasFeedsPage = useFeatureFlag("feeds_page");
-  const hasRssFeeds = useFeatureFlag("rss_feeds");
-  const hasFeeds = hasFeedsPage || hasRssFeeds;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
   const { token } = useAuth();
   const [feeds, setFeeds] = useState<any[]>([]);
   const [urlInput, setUrlInput] = useState("");

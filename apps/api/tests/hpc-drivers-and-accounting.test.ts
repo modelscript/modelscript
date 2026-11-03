@@ -411,4 +411,27 @@ test("HPC Drivers & Cost Accounting", async (t) => {
     assert.strictEqual(peakActive, 3, "Peak concurrent jobs must match configured concurrency limit (3)");
     assert.strictEqual(queue.activeCount, 0, "All jobs should be finished");
   });
+
+  await t.test("JobQueue respects memory-aware and env-configured concurrency limits", () => {
+    const origEnv = process.env["JOB_QUEUE_CONCURRENCY"];
+    try {
+      process.env["JOB_QUEUE_CONCURRENCY"] = "1";
+      const queue1 = new JobQueue();
+      assert.strictEqual(queue1.concurrency, 1, "Must respect JOB_QUEUE_CONCURRENCY=1 for 2GB droplet profiles");
+
+      process.env["JOB_QUEUE_CONCURRENCY"] = "2";
+      const queue2 = new JobQueue();
+      assert.strictEqual(queue2.concurrency, 2, "Must respect JOB_QUEUE_CONCURRENCY=2");
+
+      delete process.env["JOB_QUEUE_CONCURRENCY"];
+      const autoQueue = new JobQueue();
+      assert.ok(autoQueue.concurrency >= 1, "Auto-detected concurrency must be at least 1");
+    } finally {
+      if (origEnv !== undefined) {
+        process.env["JOB_QUEUE_CONCURRENCY"] = origEnv;
+      } else {
+        delete process.env["JOB_QUEUE_CONCURRENCY"];
+      }
+    }
+  });
 });

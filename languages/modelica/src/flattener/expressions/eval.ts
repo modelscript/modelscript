@@ -929,17 +929,18 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
           return dimsCache.get(cacheKey)!;
         }
         const computeDbDims = (): number[] | null => {
-          const simpleName = vName.includes(".") ? vName.split(".").pop()! : vName;
+          const hasDot = vName.includes(".");
+          const simpleName = hasDot ? vName.split(".").pop()! : vName;
+          const cleanVName = vName.replace(/\[[^\]]*\]/g, "");
           let sym: any = null;
           if (currentScopeId) {
             const resolver = ((db as any).query("resolveName", currentScopeId) ??
               (db as any).query("resolveSimpleName", currentScopeId)) as any;
-            const res = resolver?.(vName) ?? resolver?.(simpleName);
+            const res = resolver?.(vName) ?? resolver?.(cleanVName) ?? (!hasDot ? resolver?.(simpleName) : null);
             if (res) sym = res;
           }
           const syms = sym ? [sym] : db.byName(simpleName);
-          const hasDot = vName.includes(".");
-          const parentSeg = hasDot ? vName.slice(0, vName.lastIndexOf(".")).split(".").pop()! : null;
+          const parentSeg = hasDot ? cleanVName.slice(0, cleanVName.lastIndexOf(".")).split(".").pop()! : null;
           for (const s of syms) {
             if (s.kind === "Component") {
               if (s !== sym) {
@@ -954,21 +955,45 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
               const matchesScope = !currentScopeId || s === sym || s.parentId === currentScopeId;
               if (s === sym || fullName === vName || (s.name === simpleName && matchesScope)) {
                 const rawDims = db.query("arrayDimensions", s.id);
-                const dims = normalizeDims(rawDims);
-                if (dims) return dims;
-                // Also check if the component's type alias itself carries array dimensions
-                const typeSpec = db.query("typeSpecifier", s.id);
-                if (typeSpec) {
-                  const typeMatches = db.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
-                  for (const tm of typeMatches) {
-                    if (tm.kind === "Class") {
-                      const rawTDims = db.query("arrayDimensions", tm.id);
-                      const tDims = normalizeDims(rawTDims);
-                      if (tDims) {
-                        return tDims;
+                let dims = normalizeDims(rawDims);
+                if (!dims) {
+                  // Also check if the component's type alias itself carries array dimensions
+                  const typeSpec = db.query("typeSpecifier", s.id);
+                  if (typeSpec) {
+                    const typeMatches = db.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
+                    for (const tm of typeMatches) {
+                      if (tm.kind === "Class") {
+                        const rawTDims = db.query("arrayDimensions", tm.id);
+                        const tDims = normalizeDims(rawTDims);
+                        if (tDims) {
+                          dims = tDims;
+                          break;
+                        }
                       }
                     }
                   }
+                }
+                if (dims) {
+                  const lastSeg = vName.split(".").pop()!;
+                  const subMatches = [...lastSeg.matchAll(/\[([^\]]*)\]/g)];
+                  if (subMatches.length > 0) {
+                    const remaining: number[] = [];
+                    let dIdx = 0;
+                    for (const m of subMatches) {
+                      const indices = m[1]!.split(",").map((idx: string) => idx.trim());
+                      for (const idx of indices) {
+                        if (idx === ":") {
+                          if (dIdx < dims.length) remaining.push(dims[dIdx]!);
+                        }
+                        dIdx++;
+                      }
+                    }
+                    for (let i = dIdx; i < dims.length; i++) {
+                      remaining.push(dims[i]!);
+                    }
+                    return remaining.length > 0 ? remaining : null;
+                  }
+                  return dims;
                 }
               }
             } else if (s.kind === "Class" || (s.metadata as any)?.classKind === "type") {

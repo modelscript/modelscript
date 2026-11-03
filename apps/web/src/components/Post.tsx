@@ -70,6 +70,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
   );
   const [isDeleted, setIsDeleted] = useState(false);
 
+  const legacyViewsCount = (displayPost as { views_count?: number }).views_count;
   useEffect(() => {
     setLiked(Boolean(displayPost.liked));
     setLikeCount(displayPost.like_count);
@@ -77,7 +78,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
     setRepostCount(displayPost.repost_count);
     setBookmarked(Boolean(displayPost.bookmarked));
     setBookmarkCount(displayPost.bookmark_count || 0);
-    setImpressions(displayPost.view_count ?? (displayPost as any).views_count ?? 0);
+    setImpressions(displayPost.view_count ?? legacyViewsCount ?? 0);
   }, [
     displayPost.id,
     displayPost.liked,
@@ -87,6 +88,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
     displayPost.bookmarked,
     displayPost.bookmark_count,
     displayPost.view_count,
+    legacyViewsCount,
   ]);
 
   const [showPostMenu, setShowPostMenu] = useState(false);
@@ -666,4 +668,23 @@ const PostWithErrorBoundary: React.FC<PostProps> = (props) => (
   </ErrorBoundary>
 );
 
-export default PostWithErrorBoundary;
+const MemoizedPost = React.memo(PostWithErrorBoundary, (prev, next) => {
+  return (
+    prev.isPinned === next.isPinned &&
+    prev.isDetail === next.isDetail &&
+    prev.isThread === next.isThread &&
+    prev.post?.id === next.post?.id &&
+    prev.post?.updated_at === next.post?.updated_at &&
+    prev.post?.like_count === next.post?.like_count &&
+    prev.post?.liked === next.post?.liked &&
+    prev.post?.repost_count === next.post?.repost_count &&
+    prev.post?.reposted === next.post?.reposted &&
+    prev.post?.bookmark_count === next.post?.bookmark_count &&
+    prev.post?.bookmarked === next.post?.bookmarked &&
+    (prev.post as { views_count?: number } | undefined)?.views_count ===
+      (next.post as { views_count?: number } | undefined)?.views_count &&
+    prev.post?.artifact_view_id === next.post?.artifact_view_id
+  );
+});
+
+export default MemoizedPost;

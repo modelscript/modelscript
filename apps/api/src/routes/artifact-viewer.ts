@@ -48,6 +48,37 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
     res.json({ types });
   });
 
+  // ── GET /artifacts/view/:id & GET /artifacts/:id ───────────────
+  // Fetch social artifact view by ID (supports direct workbench & viewer hydration)
+  router.get(["/artifacts/view/:id", "/artifacts/:id"], (req: Request, res: Response): void => {
+    const rawId = param(req, "id");
+    const id = Number(rawId);
+    if (isNaN(id) || !Number.isFinite(id)) {
+      res.status(400).json({ error: "Invalid artifact ID" });
+      return;
+    }
+
+    const embedToken =
+      (typeof req.query["embed_token"] === "string" ? req.query["embed_token"] : undefined) ||
+      (typeof req.headers["x-embed-token"] === "string" ? req.headers["x-embed-token"] : undefined);
+
+    if (embedToken) {
+      const verification = verifySignedEmbedToken(embedToken, String(id), req.headers.origin);
+      if (!verification.valid) {
+        res.status(403).json({ error: verification.reason || "Invalid embed token" });
+        return;
+      }
+    }
+
+    const artifactView = database.getArtifactView(id);
+    if (!artifactView) {
+      res.status(404).json({ error: "Artifact view not found" });
+      return;
+    }
+
+    res.json({ artifactView });
+  });
+
   // ── GET /cad/convert ───────────────────────────────────────────
   // Fetch a STEP file, convert it to JSON (web-optimized), and cache it.
   router.get("/cad/convert", async (req: Request, res: Response) => {

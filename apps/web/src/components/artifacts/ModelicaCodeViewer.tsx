@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-
-import Editor from "@monaco-editor/react";
 import { CheckIcon, CodeIcon, CopyIcon, GraphIcon, PlayIcon, StackIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, Spinner, Text, useTheme } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
@@ -8,8 +6,9 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
-import { sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
+const MonacoEditor = React.lazy(() => import("@monaco-editor/react"));
 const MorselEditor = React.lazy(() => import("../morsel/Morsel"));
 
 interface ModelicaCodeViewerProps {
@@ -82,6 +81,8 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const codeLines = useMemo(() => code.split(/\r?\n/), [code]);
 
   const usesMorselRuntime =
     viewMode === "simulate" ||
@@ -289,24 +290,65 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
             height="100%"
             dangerouslySetInnerHTML={{ __html: svgMarkup }}
           />
-        ) : (
-          <Editor
+        ) : !isFullScreen ? (
+          <Box
+            py={2}
             height="100%"
-            language="modelica"
-            theme={resolvedColorMode === "dark" ? "vs-dark" : "light"}
-            value={code}
-            options={{
-              readOnly: true,
-              minimap: { enabled: false },
-              lineNumbers: "on",
-              scrollBeyondLastLine: false,
-              fontSize: 13,
-              wordWrap: "on",
-              padding: { top: 12, bottom: 12 },
-              automaticLayout: true,
-              tabSize: 2,
+            overflow="auto"
+            bg="var(--color-canvas-default)"
+            style={{
+              fontFamily: '"JetBrains Mono", "Fira Code", var(--font-mono, monospace)',
+              fontSize: "12px",
+              lineHeight: 1.55,
             }}
-          />
+          >
+            {codeLines.map((line, idx) => (
+              <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
+                <span
+                  style={{
+                    userSelect: "none",
+                    width: "36px",
+                    minWidth: "36px",
+                    textAlign: "right",
+                    paddingRight: "12px",
+                    color: "var(--color-fg-subtle)",
+                    fontSize: "11px",
+                  }}
+                >
+                  {idx + 1}
+                </span>
+                <span style={{ whiteSpace: "pre", color: "var(--color-fg-default)" }}>
+                  {highlightPolyglotLine(line, dialect)}
+                </span>
+              </div>
+            ))}
+          </Box>
+        ) : (
+          <Suspense
+            fallback={
+              <Box display="flex" alignItems="center" justifyContent="center" height="100%">
+                <Spinner size="small" />
+              </Box>
+            }
+          >
+            <MonacoEditor
+              height="100%"
+              language="modelica"
+              theme={resolvedColorMode === "dark" ? "vs-dark" : "light"}
+              value={code}
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+                fontSize: 13,
+                wordWrap: "on",
+                padding: { top: 12, bottom: 12 },
+                automaticLayout: true,
+                tabSize: 2,
+              }}
+            />
+          </Suspense>
         )}
       </Box>
     </Wrapper>

@@ -36,7 +36,7 @@ export const THUMBNAIL_RADIAL_GREY_LIGHT = "radial-gradient(circle at center, #c
 export const THUMBNAIL_RADIAL_GREY_DARK = "radial-gradient(circle at center, #2b2e36 0%, #1f2229 55%, #14161b 100%)";
 export const THUMBNAIL_RADIAL_GREY_BG = THUMBNAIL_RADIAL_GREY_LIGHT;
 
-export function getThumbnailRadialBg(colorMode?: string): string {
+function getThumbnailRadialBg(colorMode?: string): string {
   return colorMode === "dark" ? THUMBNAIL_RADIAL_GREY_DARK : THUMBNAIL_RADIAL_GREY_LIGHT;
 }
 

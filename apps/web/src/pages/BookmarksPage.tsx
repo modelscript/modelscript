@@ -9,7 +9,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import EmptyState from "../components/EmptyState";
 import PageHeader from "../components/PageHeader";
-import Post from "../components/Post";
+import VirtualPostList from "../components/VirtualPostList";
 import type { PostItem } from "../types/api";
 import { usePageTitle } from "../util/title";
 
@@ -141,9 +141,7 @@ const BookmarksPage: React.FC = () => {
         </Box>
       ) : (
         <Box>
-          {filteredPosts.map((post) => (
-            <Post key={post.id} post={post} />
-          ))}
+          <VirtualPostList posts={filteredPosts} />
           {filteredPosts.length === 0 && posts.length > 0 && token && (
             <EmptyState
               icon={<SearchIcon size={24} />}

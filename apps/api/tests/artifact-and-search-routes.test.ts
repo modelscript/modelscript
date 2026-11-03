@@ -177,6 +177,19 @@ end RCFilter;`;
     assert.ok(eqs.some((e) => e.includes("connect(u, r1.p)")));
     assert.ok(eqs.some((e) => e.includes("C * der(y) = (u - y) / R")));
 
+    const moSourceWithAnnotations = `model Network
+  equation
+    connect(a.y, b.u) annotation (Line(points={{-79,70},{-68,70}}, color={255,0,255}));
+    connect(b.y, c.u) annotation (Line(points={{10,20},{30,40}}));
+    connect(c.y, d.u);
+    annotation (experiment(StopTime=10));
+end Network;`;
+    const annotatedEqs = extractModelicaEquations(moSourceWithAnnotations);
+    assert.strictEqual(annotatedEqs.length, 3);
+    assert.strictEqual(annotatedEqs[0], "connect(a.y, b.u);");
+    assert.strictEqual(annotatedEqs[1], "connect(b.y, c.u);");
+    assert.strictEqual(annotatedEqs[2], "connect(c.y, d.u);");
+
     const comps = extractModelicaComponentsFromSource(moSource);
     assert.ok(comps.length >= 5);
     const rParam = comps.find((c) => c.component_name === "R");
@@ -322,4 +335,33 @@ end RCFilter;`;
       }
     },
   );
+
+  await t.test("Artifacts: GET /api/v1/artifacts/view/:id and /api/v1/artifacts/:id alias endpoints", async () => {
+    const artViewId = db.createArtifactView(
+      user.id,
+      "sysml2",
+      "model",
+      JSON.stringify({
+        filename: "ArtemisLunarLanderGNC.sysml",
+        code: "package ArtemisLunarLanderGNC {}",
+      }),
+      "Artemis Lunar Lander GNC",
+    );
+
+    const res1 = await request(app).get(`/api/v1/artifacts/view/${artViewId}`);
+    assert.strictEqual(res1.status, 200);
+    assert.strictEqual(res1.body.artifactView.id, artViewId);
+    assert.strictEqual(res1.body.artifactView.view_type, "sysml2");
+    assert.strictEqual(res1.body.artifactView.title, "Artemis Lunar Lander GNC");
+
+    const res2 = await request(app).get(`/api/v1/artifacts/${artViewId}`);
+    assert.strictEqual(res2.status, 200);
+    assert.strictEqual(res2.body.artifactView.id, artViewId);
+
+    const notFound = await request(app).get("/api/v1/artifacts/view/999999");
+    assert.strictEqual(notFound.status, 404);
+
+    const invalid = await request(app).get("/api/v1/artifacts/view/invalid-id");
+    assert.strictEqual(invalid.status, 400);
+  });
 });

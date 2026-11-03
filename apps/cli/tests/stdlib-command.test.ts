@@ -4,10 +4,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test, { after, before, describe } from "node:test";
+import { fileURLToPath } from "node:url";
 import { Stdlib } from "../src/commands/stdlib.js";
 
 describe("msx stdlib CLI command suite", () => {
-  const testDir = path.join(process.cwd(), "apps/cli/tests/.tmp-stdlib-test");
+  const testDir = fileURLToPath(new URL(".tmp-stdlib-test", import.meta.url));
   const exportPackFile = path.join(testDir, "test-core-appliance.msxpack");
   const importDestDir = path.join(testDir, "imported-stdlibs");
 
@@ -76,6 +77,7 @@ describe("msx stdlib CLI command suite", () => {
       action: "export",
       pack: "core",
       out: exportPackFile,
+      allowPlaceholders: true,
     });
 
     assert.ok(fs.existsSync(exportPackFile), "Exported .msxpack should exist");

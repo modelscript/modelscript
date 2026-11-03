@@ -14,13 +14,30 @@ import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-a
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { normalizeSolutionBundleUrl } from "./solutions.js";
 
+function stripTrailingSlashes(str: string): string {
+  let end = str.length;
+  while (end > 0 && str.charCodeAt(end - 1) === 47 /* '/' */) {
+    end--;
+  }
+  return str.slice(0, end);
+}
+
+function isHubModelscriptUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    return parsed.hostname === "hub.modelscript.org";
+  } catch {
+    return false;
+  }
+}
+
 export function getRequestBaseUrl(req: Request): string {
   if (process.env["PUBLIC_URL"]) {
-    return process.env["PUBLIC_URL"].replace(/\/+$/, "");
+    return stripTrailingSlashes(process.env["PUBLIC_URL"]);
   }
   const originHeader = req.headers.origin;
   if (typeof originHeader === "string" && /^https?:\/\//i.test(originHeader)) {
-    return originHeader.replace(/\/+$/, "");
+    return stripTrailingSlashes(originHeader);
   }
   const forwardedProto =
     typeof req.headers["x-forwarded-proto"] === "string"
@@ -30,7 +47,7 @@ export function getRequestBaseUrl(req: Request): string {
     typeof req.headers["x-forwarded-host"] === "string"
       ? req.headers["x-forwarded-host"].split(",")[0]!.trim()
       : req.get("host") || "localhost:3001";
-  return `${forwardedProto}://${forwardedHost}`.replace(/\/+$/, "");
+  return stripTrailingSlashes(`${forwardedProto}://${forwardedHost}`);
 }
 
 export function resolveUserActorUrl(
@@ -43,7 +60,7 @@ export function resolveUserActorUrl(
     return storedActorUrl || "";
   }
   const baseUrl = getRequestBaseUrl(req);
-  if (!storedActorUrl || storedActorUrl.includes("://hub.modelscript.org")) {
+  if (!storedActorUrl || isHubModelscriptUrl(storedActorUrl)) {
     return `${baseUrl}/users/${username}`;
   }
   return storedActorUrl;

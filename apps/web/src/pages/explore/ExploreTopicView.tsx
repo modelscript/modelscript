@@ -6,8 +6,8 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getRelatedTopics } from "../../api";
 import Box from "../../components/Box";
-import Post from "../../components/Post";
 import { scrollToTop } from "../../components/ScrollToTop";
+import VirtualPostList from "../../components/VirtualPostList";
 import type { PostData, TopicData } from "./constants";
 import { TOPIC_ARTIFACT_TABS } from "./constants";
 import { ExploreSearchHeader } from "./ExploreSearchHeader";
@@ -263,9 +263,7 @@ export const ExploreTopicView: React.FC<ExploreTopicViewProps> = ({
         </Box>
       ) : (
         <Box>
-          {topicPosts.map((post) => (
-            <Post key={post.id} post={post} />
-          ))}
+          <VirtualPostList posts={topicPosts} />
           {topicPosts.length === 0 && (
             <Box p={6} textAlign="center">
               <TagIcon size={36} style={{ color: "var(--color-text-muted)", marginBottom: "12px" }} />

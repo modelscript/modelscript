@@ -49,11 +49,83 @@
       "pack": "core",
       "filename": "ModelicaStandardLibrary_v3.2.3.zip",
       "upstream": {
-        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v3.2.3%2Bbuild.4/Modelica%203.2.3.zip",
+        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v3.2.3%2Bbuild.4/ModelicaStandardLibrary_v3.2.3.zip",
         "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaStandardLibrary_v3.2.3.zip",
         "archiveType": "zip"
       },
       "minExpectedClasses": 5000
+    },
+    {
+      "id": "modelica-complex-4.1.0",
+      "language": "modelica",
+      "packageName": "Complex",
+      "version": "4.1.0",
+      "description": "Modelica Complex Numbers Standard Library v4.1.0",
+      "license": "BSD-3-Clause",
+      "tier": "tier1_core",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Complex_v4.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaStandardLibrary_v4.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 1
+    },
+    {
+      "id": "modelica-complex-4.0.0",
+      "language": "modelica",
+      "packageName": "Complex",
+      "version": "4.0.0",
+      "description": "Modelica Complex Numbers Standard Library v4.0.0",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Complex_v4.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.0.0/ModelicaStandardLibrary_v4.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaStandardLibrary_v4.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 1
+    },
+    {
+      "id": "modelica-services-4.1.0",
+      "language": "modelica",
+      "packageName": "ModelicaServices",
+      "version": "4.1.0",
+      "description": "Modelica Services Standard Library v4.1.0",
+      "license": "BSD-3-Clause",
+      "tier": "tier1_core",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaServices_v4.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.1.0/ModelicaStandardLibrary_v4.1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaStandardLibrary_v4.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 5
+    },
+    {
+      "id": "modelica-services-4.0.0",
+      "language": "modelica",
+      "packageName": "ModelicaServices",
+      "version": "4.0.0",
+      "description": "Modelica Services Standard Library v4.0.0",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaServices_v4.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/ModelicaStandardLibrary/releases/download/v4.0.0/ModelicaStandardLibrary_v4.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaStandardLibrary_v4.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 5
     },
     {
       "id": "sysml-v2-2026-03",

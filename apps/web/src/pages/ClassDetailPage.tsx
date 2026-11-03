@@ -14,6 +14,7 @@ import {
   categorizeClassComponents,
   type ClassDomain,
   classifyClassDomain,
+  extractModelicaEquations,
   filterClassTree,
   resolveTypeTargetUrl,
 } from "../components/classTreeUtils";
@@ -119,6 +120,19 @@ const ClassDetailPage: React.FC = () => {
   const categorized = useMemo(() => {
     if (!cls) return { parameters: [], connectors: [], submodels: [] };
     return categorizeClassComponents(cls.components || []);
+  }, [cls]);
+
+  const equations = useMemo(() => {
+    if (cls?.equations && cls.equations.length > 0) {
+      if (cls.equations.length === 1 && cls.sourceCode && (cls.sourceCode.match(/\bconnect\s*\(/g)?.length || 0) > 1) {
+        return extractModelicaEquations(cls.sourceCode);
+      }
+      return cls.equations;
+    }
+    if (cls?.sourceCode) {
+      return extractModelicaEquations(cls.sourceCode);
+    }
+    return [];
   }, [cls]);
 
   // Extract digital thread twin counterpart references
@@ -260,7 +274,6 @@ const ClassDetailPage: React.FC = () => {
     );
   }
 
-  const equations = cls.equations || [];
   const hasMultipleDomains =
     (domainCounts.modelica > 0 ? 1 : 0) + (domainCounts.sysml2 > 0 ? 1 : 0) + (domainCounts.cad > 0 ? 1 : 0) > 1;
 
@@ -349,7 +362,9 @@ const ClassDetailPage: React.FC = () => {
               </>
             )}
 
-            {activeTab === "equations" && <ClassEquationsTab equations={equations} className={className!} />}
+            {activeTab === "equations" && (
+              <ClassEquationsTab equations={equations} className={className!} components={cls.components} cls={cls} />
+            )}
 
             {hasCae && activeTab === "studies" && (
               <PackageStudiesTab

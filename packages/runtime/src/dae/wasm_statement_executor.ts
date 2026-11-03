@@ -1215,11 +1215,12 @@ function getSequenceElementsLocal(dae: DAEBuilder, baseExprId: number, count: nu
 
 function createDefaultArray(dims: number[], defaultScalar: ArenaValue = 0.0): ArenaValue {
   if (dims.length === 0) return defaultScalar;
+  const MAX_ARRAY_DIM = 1_000_000;
+  const rawLen = dims[0]! > 0 ? dims[0]! : 0;
+  const len = Math.min(rawLen, MAX_ARRAY_DIM);
   if (dims.length === 1) {
-    const len = dims[0]! > 0 ? dims[0]! : 0;
     return new Array(len).fill(defaultScalar);
   }
-  const len = dims[0]! > 0 ? dims[0]! : 0;
   const result: ArenaValue[] = [];
   for (let k = 0; k < len; k++) {
     result.push(createDefaultArray(dims.slice(1), defaultScalar));
@@ -1830,7 +1831,16 @@ export function lookupRecordConstructorArena(
   callerDae?: DAEBuilder,
   visited = new Set<string>(),
 ): DAEBuilder | undefined {
-  const cleanName = typeOrFnName.replace(/^\.+/, "").replace(/\.'constructor'\..*$/, "");
+  let start = 0;
+  while (start < typeOrFnName.length && typeOrFnName.charCodeAt(start) === 46 /* '.' */) {
+    start++;
+  }
+  let cleanName = typeOrFnName.slice(start);
+  const constructorSuffix = ".'constructor'.";
+  const cIdx = cleanName.indexOf(constructorSuffix);
+  if (cIdx !== -1) {
+    cleanName = cleanName.slice(0, cIdx);
+  }
   if (!cleanName || visited.has(cleanName)) return undefined;
   visited.add(cleanName);
 

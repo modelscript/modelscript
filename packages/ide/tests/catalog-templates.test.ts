@@ -187,5 +187,87 @@ describe("44-Language Catalog & 2-Level Example Templates Suite", () => {
     assert.ok(memFsScratch.files.has("/scratch/ScratchTest.mo"));
     const scratchContent = new TextDecoder().decode(memFsScratch.files.get("/scratch/ScratchTest.mo")!);
     assert.ok(scratchContent.includes("model ScratchTest"));
+
+    // 8. SysML v2 Artifact (e.g. ArtemisLunarLanderGNC artifact-3)
+    const memFsSysml = new MemoryFsMock();
+    const wsSysml = { scheme: "memfs", path: "/artifact-3" } as any;
+    const resSysml = mountArtifactToMemFs(memFsSysml, wsSysml, {
+      artifactId: 3,
+      title: "ArtemisLunarLanderGNC — OMG SysML v2 Descent & Touchdown Architecture",
+      viewType: "sysml2",
+      primaryFile: "ArtemisLunarLanderGNC.sysml",
+      viewConfig: {
+        filename: "ArtemisLunarLanderGNC.sysml",
+        code: "package ArtemisLunarLanderGNC {\n  part def Lander;\n}\n",
+      },
+    });
+
+    assert.strictEqual(resSysml.primaryFile, "ArtemisLunarLanderGNC.sysml");
+    assert.strictEqual(getTemplatePrimaryFile("artifact-3"), "ArtemisLunarLanderGNC.sysml");
+    assert.ok(memFsSysml.files.has("/artifact-3/ArtemisLunarLanderGNC.sysml"));
+    assert.ok(memFsSysml.files.has("/artifact-3/README.md"));
+    assert.ok(
+      !memFsSysml.files.has("/artifact-3/ArtifactModel.mo"),
+      "Must not create dummy ArtifactModel.mo for SysML v2",
+    );
+
+    // 9. Multi-file Artifact Workspace mounting
+    const memFsMulti = new MemoryFsMock();
+    const wsMulti = { scheme: "memfs", path: "/artifact-106" } as any;
+    const resMulti = mountArtifactToMemFs(memFsMulti, wsMulti, {
+      artifactId: 106,
+      title: "BatteryThermalManagement",
+      viewType: "modelscript",
+      files: {
+        "main.msx": "package Main;\nend Main;\n",
+        "battery.msx": "package Battery;\nend Battery;\n",
+        "thermal.msx": "package Thermal;\nend Thermal;\n",
+      },
+      primaryFile: "main.msx",
+    });
+
+    assert.strictEqual(resMulti.primaryFile, "main.msx");
+    assert.strictEqual(getTemplatePrimaryFile("artifact-106"), "main.msx");
+    assert.ok(memFsMulti.files.has("/artifact-106/main.msx"));
+    assert.ok(memFsMulti.files.has("/artifact-106/battery.msx"));
+    assert.ok(memFsMulti.files.has("/artifact-106/thermal.msx"));
+
+    // 10. Direct URL navigation (#memfs:artifact-777) hydrated via localStorage
+    const storageMap = new Map<string, string>();
+    const mockStorage = {
+      getItem: (k: string) => storageMap.get(k) ?? null,
+      setItem: (k: string, v: string) => storageMap.set(k, v),
+      removeItem: (k: string) => storageMap.delete(k),
+      clear: () => storageMap.clear(),
+      length: 0,
+      key: () => null,
+    };
+    const originalLocalStorage = (globalThis as any).localStorage;
+    try {
+      (globalThis as any).localStorage = mockStorage;
+      mockStorage.setItem(
+        "modelscript.artifact_777",
+        JSON.stringify({
+          artifactId: 777,
+          title: "HydratedFromLocalStorage",
+          viewType: "sysml2",
+          filename: "VehicleArchitecture.sysml",
+          viewConfig: {
+            filename: "VehicleArchitecture.sysml",
+            code: "package VehicleArchitecture {\n}\n",
+          },
+        }),
+      );
+
+      assert.strictEqual(getTemplatePrimaryFile("artifact-777"), "VehicleArchitecture.sysml");
+      const memFsHydrated = new MemoryFsMock();
+      const wsHydrated = { scheme: "memfs", path: "/artifact-777" } as any;
+      scaffoldTemplateFiles(memFsHydrated, wsHydrated);
+
+      assert.ok(memFsHydrated.files.has("/artifact-777/VehicleArchitecture.sysml"));
+      assert.ok(!memFsHydrated.files.has("/artifact-777/ArtifactModel.mo"));
+    } finally {
+      (globalThis as any).localStorage = originalLocalStorage;
+    }
   });
 });

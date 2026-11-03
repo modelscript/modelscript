@@ -57,6 +57,23 @@ function clearSessionCookie(res: Response): void {
   });
 }
 
+function stripTrailingSlashes(str: string): string {
+  let end = str.length;
+  while (end > 0 && str.charCodeAt(end - 1) === 47 /* '/' */) {
+    end--;
+  }
+  return str.slice(0, end);
+}
+
+function isHubModelscriptUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    return parsed.hostname === "hub.modelscript.org";
+  } catch {
+    return false;
+  }
+}
+
 export function authRouter(database: LibraryDatabase): Router {
   const router = createRouter();
 
@@ -1993,9 +2010,9 @@ export function authRouter(database: LibraryDatabase): Router {
                 ? req.headers["x-forwarded-host"].split(",")[0]!.trim()
                 : req.get("host") || "localhost:3001"
             }`);
-      const cleanBaseUrl = reqOrigin.replace(/\/+$/, "");
+      const cleanBaseUrl = stripTrailingSlashes(reqOrigin);
       const dynamicActorUrl =
-        !user.remote_domain && (!user.actor_url || user.actor_url.includes("://hub.modelscript.org"))
+        !user.remote_domain && (!user.actor_url || isHubModelscriptUrl(user.actor_url))
           ? `${cleanBaseUrl}/users/${user.username}`
           : user.actor_url;
 

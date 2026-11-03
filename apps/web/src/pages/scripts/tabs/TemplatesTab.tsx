@@ -450,7 +450,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
             onClick={() => setIsAuthorModalOpen(true)}
             style={{
               background: "rgba(255, 255, 255, 0.06)",
-              color: "#f0f6fc",
+              color: "var(--ms-text-1)",
               border: "1px solid rgba(255, 255, 255, 0.18)",
               borderRadius: "10px",
               padding: "10px 16px",
@@ -700,7 +700,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                   borderRadius: "8px",
                   border: "1px solid rgba(255, 255, 255, 0.15)",
                   background: "rgba(0, 0, 0, 0.25)",
-                  color: "#f0f6fc",
+                  color: "var(--ms-text-1)",
                   fontSize: "12px",
                   boxSizing: "border-box",
                 }}
@@ -1129,11 +1129,11 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
             }}
           >
             <div>
-              <Text fontSize="18px" fontWeight="700" color="#f0f6fc" display="block">
+              <Text fontSize="18px" fontWeight="700" color="var(--ms-text-1)" display="block">
                 Author or Import Reusable Study Template (<code>.sedml</code> · <code>.ssv</code> · <code>.dakota</code>
                 )
               </Text>
-              <Text fontSize="12px" color="#8b949e" display="block" mt={1}>
+              <Text fontSize="12px" color="var(--ms-text-3)" display="block" mt={1}>
                 Publish a standards-compliant SED-ML L1V4, ASAM SSP 2.0 Parameter Set, or Sandia Dakota study blueprint
                 that anyone can apply to compatible models across the platform.
               </Text>
@@ -1217,7 +1217,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                   borderRadius: "8px",
                   border: "1px solid rgba(255, 255, 255, 0.16)",
                   background: "rgba(0, 0, 0, 0.3)",
-                  color: "#f0f6fc",
+                  color: "var(--ms-text-1)",
                   fontSize: "13px",
                   boxSizing: "border-box",
                 }}
@@ -1248,7 +1248,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                     borderRadius: "8px",
                     border: "1px solid rgba(255, 255, 255, 0.16)",
                     background: "rgba(0, 0, 0, 0.3)",
-                    color: "#f0f6fc",
+                    color: "var(--ms-text-1)",
                     fontSize: "13px",
                   }}
                 >
@@ -1281,7 +1281,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                     borderRadius: "8px",
                     border: "1px solid rgba(255, 255, 255, 0.16)",
                     background: "rgba(0, 0, 0, 0.3)",
-                    color: "#f0f6fc",
+                    color: "var(--ms-text-1)",
                     fontSize: "13px",
                     boxSizing: "border-box",
                   }}
@@ -1330,7 +1330,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                         cursor: "pointer",
                         border: checked ? "1px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.12)",
                         background: checked ? "rgba(59, 130, 246, 0.2)" : "rgba(255, 255, 255, 0.03)",
-                        color: checked ? "#93c5fd" : "#8b949e",
+                        color: checked ? "#93c5fd" : "var(--ms-text-3)",
                         textTransform: "uppercase",
                       }}
                     >
@@ -1391,7 +1391,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                   borderRadius: "8px",
                   border: "1px solid rgba(255, 255, 255, 0.16)",
                   background: "rgba(0, 0, 0, 0.3)",
-                  color: "#f0f6fc",
+                  color: "var(--ms-text-1)",
                   fontSize: "13px",
                   boxSizing: "border-box",
                   resize: "vertical",
@@ -1415,7 +1415,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                   borderRadius: "8px",
                   border: "1px solid rgba(255, 255, 255, 0.16)",
                   background: "rgba(0, 0, 0, 0.3)",
-                  color: "#f0f6fc",
+                  color: "var(--ms-text-1)",
                   fontSize: "12px",
                   boxSizing: "border-box",
                 }}

@@ -225,10 +225,8 @@ export const glassCard = css`
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 
   &:hover {
-    border-color: rgba(139, 92, 246, 0.35);
-    box-shadow:
-      0 8px 24px -6px rgba(0, 0, 0, 0.5),
-      0 0 16px rgba(139, 92, 246, 0.12);
+    border-color: var(--color-glass-border-hover, var(--color-border-glass));
+    box-shadow: var(--glow-card, 0 4px 20px rgba(0, 0, 0, 0.15));
   }
 `;
 
@@ -270,6 +268,7 @@ export const JavadocTable = styled.table`
     border-bottom: 1px solid var(--color-border);
     vertical-align: top;
     color: var(--color-text-primary);
+    transition: background-color 0.15s ease;
   }
 
   tr:last-child td {
@@ -277,7 +276,7 @@ export const JavadocTable = styled.table`
   }
 
   tr:hover td {
-    background: rgba(255, 255, 255, 0.02);
+    background-color: var(--surface-row-hover);
   }
 `;
 
@@ -393,10 +392,18 @@ export const DetailRow = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 10px 0;
+  padding: 8px 10px;
+  margin: 0 -10px;
+  border-radius: 10px;
   border-bottom: 1px solid var(--color-border);
+  transition: background-color 0.15s ease;
+
   &:last-child {
     border-bottom: none;
+  }
+
+  &:hover {
+    background-color: var(--surface-row-hover);
   }
 `;
 
@@ -419,16 +426,30 @@ export const DiagramWrap = styled.div`
   ${glassCard}
   width: 100%;
   aspect-ratio: 2.4 / 1;
-  max-height: 320px;
-  min-height: 180px;
+  max-height: 380px;
+  min-height: 200px;
   padding: 16px 24px;
   margin-bottom: 24px;
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
+  position: relative;
+`;
 
-  > div {
+export const DiagramViewport = styled.div<{ $loaded: boolean; $zoom: number }>`
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transform: ${(p) => (p.$loaded ? `scale(${p.$zoom})` : "none")};
+  transform-origin: center center;
+  transition: transform 0.15s ease;
+  ${(p) => (!p.$loaded ? "position: absolute; opacity: 0; pointer-events: none;" : "")}
+
+  div[role="img"] {
     width: 100%;
     height: 100%;
     max-height: 100%;
@@ -437,17 +458,80 @@ export const DiagramWrap = styled.div`
     align-items: center;
   }
 
-  div[role="img"] {
-    width: 100%;
-    height: 100%;
-    max-height: 100%;
-  }
-
   svg {
     width: 100%;
     height: 100%;
     max-height: 100%;
     max-width: 100%;
+  }
+`;
+
+export const DiagramToolbar = styled.div`
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 10;
+  width: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  background: var(--color-bg-card, rgba(15, 23, 42, 0.75));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+`;
+
+export const DiagramToolbarButton = styled.button<{ $active?: boolean | undefined }>`
+  background: none;
+  border: none;
+  color: ${(p) => (p.$active ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)")};
+  cursor: pointer;
+  padding: 2px 6px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: var(--color-text-heading);
+    background-color: var(--surface-row-hover);
+  }
+`;
+
+export const SidebarMemberList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+`;
+
+export const SidebarMemberRow = styled.div<{ $active?: boolean | undefined }>`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  margin: 0;
+  cursor: pointer;
+  position: relative;
+  border-radius: 10px;
+  border: 1px solid ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "transparent")};
+  background: ${(props) => (props.$active ? "var(--ms-brand-soft)" : "transparent")};
+  text-decoration: none;
+  color: inherit;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    background-color: ${(props) => (props.$active ? "var(--ms-brand-soft)" : "var(--surface-row-hover)")};
   }
 `;
 

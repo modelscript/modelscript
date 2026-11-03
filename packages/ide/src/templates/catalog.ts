@@ -37,6 +37,7 @@ function joinPath(base: vscode.Uri, ...pathSegments: string[]): vscode.Uri {
 export interface IMemoryFileSystemProvider {
   writeFile(uri: vscode.Uri, content: Uint8Array): void;
   writeFiles?(entries: [vscode.Uri, Uint8Array][]): void;
+  delete?(uri: vscode.Uri, options?: { recursive?: boolean }): void | Promise<void>;
 }
 
 export interface ArtifactWorkspaceDescriptor {
@@ -44,6 +45,8 @@ export interface ArtifactWorkspaceDescriptor {
   title?: string | undefined;
   viewType?: string | undefined;
   viewConfig?: Record<string, unknown> | undefined;
+  files?: Record<string, string> | undefined;
+  primaryFile?: string | undefined;
 }
 
 export interface GeneratedWorkspace {
@@ -3300,73 +3303,206 @@ export function getTemplateFiles(template: string): Record<string, string> {
 
 // ── Artifact & Package Workspace Generators ────────────────────────────────
 
+export const POLYGLOT_VIEW_TYPE_EXTENSIONS: Record<string, string> = {
+  modelica: ".mo",
+  "modelica-code": ".mo",
+  "modelica-diagram": ".mo",
+  morsel: ".mo",
+  "polyglot-morsel": ".mo",
+  simulation: ".mo",
+  "simulation-plot": ".mo",
+  "simulation-result": ".mo",
+  sysml: ".sysml",
+  sysml2: ".sysml",
+  "sysml-architecture-viewer": ".sysml",
+  kerml: ".sysml",
+  scad: ".scad",
+  openscad: ".scad",
+  cad: ".step",
+  "cad-step": ".step",
+  cad_step: ".step",
+  "cad-3d-viewer": ".step",
+  step: ".step",
+  stp: ".step",
+  "3d-model": ".step",
+  owl: ".owl",
+  owl2: ".owl",
+  ofn: ".owl",
+  turtle: ".ttl",
+  csv: ".csv",
+  tsv: ".csv",
+  dataset: ".csv",
+  "dataset-table": ".csv",
+  cfd: ".cfg",
+  "cfd-config": ".cfg",
+  "cfd-su2": ".cfg",
+  "cfd-result": ".cfg",
+  "cfd-animation": ".cfg",
+  su2: ".cfg",
+  fea: ".inp",
+  "fea-deck": ".inp",
+  "fea-inp": ".inp",
+  "fea-result": ".inp",
+  inp: ".inp",
+  ssp: ".ssd",
+  ssd: ".ssd",
+  pscad: ".pscx",
+  pscx: ".pscx",
+  pslx: ".pslx",
+  psout: ".psout",
+  psse: ".raw",
+  raw: ".raw",
+  gensys: ".calc",
+  calc: ".calc",
+  run: ".run",
+  sub: ".sub",
+  tsimf: ".tsimf",
+  gpf: ".gpf",
+  simpack: ".spck",
+  spck: ".spck",
+  sim: ".sim",
+  mbs: ".mbs",
+  modelscript: ".msx",
+  msx: ".msx",
+  spice: ".sp",
+  sp: ".sp",
+  cir: ".cir",
+  "verilog-a": ".va",
+  va: ".va",
+  c: ".c",
+  h: ".h",
+  fortran: ".f90",
+  f90: ".f90",
+  f: ".f",
+  plcopen: ".st",
+  st: ".st",
+  autosar: ".arxml",
+  arxml: ".arxml",
+  simulink: ".mdl",
+  mdl: ".mdl",
+  reqif: ".reqif",
+  ccsds: ".oem",
+  oem: ".oem",
+  opendrive: ".xodr",
+  xodr: ".xodr",
+  openscenario: ".xosc",
+  xosc: ".xosc",
+  urdf: ".urdf",
+  adams: ".adm",
+  adm: ".adm",
+  acf: ".acf",
+  sima: ".sima",
+  sys: ".sys",
+  olga: ".opi",
+  opi: ".opi",
+  key: ".key",
+  lps: ".lps",
+  pipelinestudio: ".lps",
+  tgx: ".tgx",
+  swmm: ".swmm",
+  epanet: ".inp",
+  gtsuite: ".gtm",
+  gtm: ".gtm",
+  gtd: ".gtd",
+  easy5: ".ez5",
+  ez5: ".ez5",
+  ezm: ".ezm",
+  rocets: ".roc",
+  roc: ".roc",
+  deck: ".deck",
+  relap5: ".r5",
+  r5: ".r5",
+  energyplus: ".idf",
+  idf: ".idf",
+  aspen: ".aspen",
+  eclipse: ".data",
+  data: ".data",
+  sbml: ".sbml",
+  jsbsim: ".jsbsim",
+  touchstone: ".s2p",
+  s2p: ".s2p",
+  s1p: ".s1p",
+  ibis: ".ibs",
+  ibs: ".ibs",
+  opendss: ".dss",
+  dss: ".dss",
+  gcode: ".gcode",
+  "cam-result": ".gcode",
+  "aas-package": ".json",
+  "cyber-physical-system": ".json",
+  "hardware-project": ".json",
+};
+
+export function inferExtensionForArtifact(viewType?: string, dialect?: string, filename?: string): string {
+  if (filename) {
+    const dot = filename.lastIndexOf(".");
+    if (dot !== -1) return filename.slice(dot);
+  }
+  const cleanDialect = (dialect || "").toLowerCase().trim();
+  if (cleanDialect && POLYGLOT_VIEW_TYPE_EXTENSIONS[cleanDialect]) {
+    return POLYGLOT_VIEW_TYPE_EXTENSIONS[cleanDialect]!;
+  }
+  const cleanViewType = (viewType || "").toLowerCase().trim();
+  if (cleanViewType && POLYGLOT_VIEW_TYPE_EXTENSIONS[cleanViewType]) {
+    return POLYGLOT_VIEW_TYPE_EXTENSIONS[cleanViewType]!;
+  }
+  return ".mo";
+}
+
 export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDescriptor): GeneratedWorkspace {
   const viewType = (descriptor.viewType || "").toLowerCase();
   const config = descriptor.viewConfig || {};
 
-  // 1. Modelica Code / Schematic / Morsel
-  if (
-    viewType === "modelica-code" ||
-    viewType === "modelica-diagram" ||
-    viewType === "morsel" ||
-    (!viewType && config["code"])
-  ) {
-    const rawCode =
-      (typeof config["code"] === "string" ? config["code"] : "") ||
-      (typeof config["content"] === "string" ? config["content"] : "");
-    let modelName = "";
-    if (rawCode) {
-      const match = rawCode.match(/(?:model|class|block|connector|package)\s+([A-Za-z0-9_]+)/);
-      if (match?.[1]) {
-        modelName = match[1];
-      }
-    }
-    if (!modelName) {
-      modelName = sanitizeModelicaIdentifier(descriptor.title, `Artifact_${descriptor.artifactId}`);
+  // 1. Multi-file workspace payload (e.g. from morsel / notebook / composite artifacts)
+  const customFiles =
+    descriptor.files && typeof descriptor.files === "object" && Object.keys(descriptor.files).length > 0
+      ? descriptor.files
+      : config["files"] &&
+          typeof config["files"] === "object" &&
+          !Array.isArray(config["files"]) &&
+          Object.keys(config["files"]).length > 0
+        ? (config["files"] as Record<string, string>)
+        : undefined;
+
+  if (customFiles) {
+    const files: Record<string, string> = { ...customFiles };
+    let primaryFile =
+      descriptor.primaryFile ||
+      (typeof config["primaryFile"] === "string" ? config["primaryFile"] : "") ||
+      (typeof config["filename"] === "string" ? config["filename"] : "") ||
+      (typeof config["fileName"] === "string" ? config["fileName"] : "");
+
+    if (!primaryFile || !files[primaryFile]) {
+      const nonReadme = Object.keys(files).find((f) => !f.toLowerCase().startsWith("readme") && f !== "package.json");
+      primaryFile = nonReadme || Object.keys(files)[0]!;
     }
 
-    const code =
-      rawCode ||
-      [
-        `// ModelScript Workspace for Artifact #${descriptor.artifactId}`,
-        `// Title: ${descriptor.title || "Community Model"}`,
+    if (!files["README.md"]) {
+      files["README.md"] = [
+        `# ${descriptor.title || primaryFile}`,
         ``,
-        `model ${modelName} "${descriptor.title || "Community Model"}"`,
-        `  Real x(start = 1.0) "State variable";`,
-        `  Real y(start = 0.0) "Coupled variable";`,
-        `equation`,
-        `  der(x) = -y;`,
-        `  der(y) = x;`,
-        `end ${modelName};`,
-        ``,
-      ].join("\n");
-
-    const primaryFile = `${modelName}.mo`;
-    const files: Record<string, string> = {
-      [primaryFile]: code,
-      "README.md": [
-        `# ${descriptor.title || modelName}`,
-        ``,
-        `Mounted from ModelScript Hub Community Feed & Physical Twin Workspace.`,
+        `Mounted from ModelScript Artifact #${descriptor.artifactId}.`,
         ``,
         `- **Artifact ID**: #${descriptor.artifactId}`,
-        `- **View Type**: \`${viewType || "modelica-code"}\``,
-        `- **Primary Model**: \`${modelName}\``,
-        ``,
-        `To simulate, open \`${primaryFile}\` and press \`F5\` or click **Run Simulation**.`,
-      ].join("\n"),
-    };
+        `- **Entrypoint**: \`${primaryFile}\``,
+        `- **Files**: ${Object.keys(files)
+          .filter((k) => k !== "README.md")
+          .map((k) => `\`${k}\``)
+          .join(", ")}`,
+      ].join("\n");
+    }
 
     return { files, primaryFile };
   }
 
-  // 2. Simulation Plot / Result / CFD / FEA Result
+  // 2. Simulation Plot / Result / CFD / FEA Result (when simulation data or overrides exist)
   if (
-    viewType === "simulation-plot" ||
-    viewType === "simulation-result" ||
-    viewType === "cfd-result" ||
-    viewType === "fea-result" ||
-    viewType === "cfd-animation"
+    (viewType === "simulation-plot" ||
+      viewType === "simulation-result" ||
+      viewType === "cfd-result" ||
+      viewType === "fea-result" ||
+      viewType === "cfd-animation") &&
+    (config["variables"] || config["csvData"] || config["results"] || config["overrides"] || !config["code"])
   ) {
     const modelName =
       typeof config["model"] === "string" && config["model"]
@@ -3445,11 +3581,12 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
     return { files, primaryFile };
   }
 
-  // 3. 3D CAD STEP
+  // 3. 3D CAD STEP (when viewType is cad-step / cad_step / 3d-model and not a multi-file workspace)
   if (viewType === "cad-step" || viewType === "cad_step" || viewType === "3d-model") {
     const stepContent =
       (typeof config["step"] === "string" ? config["step"] : "") ||
       (typeof config["content"] === "string" ? config["content"] : "") ||
+      (typeof config["code"] === "string" ? config["code"] : "") ||
       (typeof config["data"] === "string" ? config["data"] : "") ||
       [
         `ISO-10303-21;`,
@@ -3464,6 +3601,12 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
         `END-ISO-10303-21;`,
       ].join("\n");
 
+    const explicitFilename =
+      (typeof config["filename"] === "string" ? config["filename"] : "") ||
+      (typeof config["fileName"] === "string" ? config["fileName"] : "");
+    const stepFileName =
+      explicitFilename.endsWith(".step") || explicitFilename.endsWith(".stp") ? explicitFilename : "geometry.step";
+
     const modelName = sanitizeModelicaIdentifier(descriptor.title, `CADAssembly_${descriptor.artifactId}`);
     const primaryFile = `${modelName}.mo`;
     const files: Record<string, string> = {
@@ -3471,21 +3614,24 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
         `// ModelScript 3D CAD Assembly bound to STEP geometry`,
         `model ${modelName} "${descriptor.title || "CAD Model"}"`,
         `  // Bound to local STEP geometry file`,
-        `  annotation(Shape(export = "geometry.step"));`,
+        `  annotation(Shape(export = "${stepFileName}"));`,
         `equation`,
         `end ${modelName};`,
         ``,
       ].join("\n"),
-      "geometry.step": stepContent,
+      [stepFileName]: stepContent,
       "README.md": [
         `# 3D CAD: ${descriptor.title || modelName}`,
         ``,
         `Mounted from ModelScript CAD Artifact #${descriptor.artifactId}.`,
         ``,
-        `- **Geometry Asset**: \`geometry.step\``,
+        `- **Geometry Asset**: \`${stepFileName}\``,
         `- **Modelica Wrapper**: \`${primaryFile}\``,
       ].join("\n"),
     };
+    if (stepFileName !== "geometry.step") {
+      files["geometry.step"] = stepContent;
+    }
 
     return { files, primaryFile };
   }
@@ -3495,6 +3641,7 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
     const gcodeContent =
       (typeof config["gcode"] === "string" ? config["gcode"] : "") ||
       (typeof config["content"] === "string" ? config["content"] : "") ||
+      (typeof config["code"] === "string" ? config["code"] : "") ||
       [
         `; GCode Toolpath for Artifact #${descriptor.artifactId}: ${descriptor.title || "CNC Job"}`,
         `G21 ; millimeters`,
@@ -3576,23 +3723,134 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
     return { files, primaryFile };
   }
 
-  // 6. Generic Default Artifact Fallback
+  // 6. Explicit filename & code provided (e.g. from post artifact seed or single-file upload)
+  const explicitFilename =
+    (typeof config["filename"] === "string" ? config["filename"] : "") ||
+    (typeof config["fileName"] === "string" ? config["fileName"] : "") ||
+    (typeof config["primaryFile"] === "string" ? config["primaryFile"] : "") ||
+    (typeof descriptor.primaryFile === "string" ? descriptor.primaryFile : "");
+
+  const rawCode =
+    (typeof config["code"] === "string" ? config["code"] : "") ||
+    (typeof config["content"] === "string" ? config["content"] : "") ||
+    (typeof config["source"] === "string" ? config["source"] : "") ||
+    (typeof config["modelicaCode"] === "string" ? config["modelicaCode"] : "");
+
+  const dialect =
+    (typeof config["dialect"] === "string" ? config["dialect"] : "") ||
+    (typeof config["language"] === "string" ? config["language"] : "") ||
+    viewType;
+
+  if (explicitFilename) {
+    const primaryFile = explicitFilename;
+    const code =
+      rawCode || `// ModelScript Workspace for Artifact #${descriptor.artifactId}\n// File: ${primaryFile}\n`;
+    const files: Record<string, string> = {
+      [primaryFile]: code,
+      "README.md": [
+        `# ${descriptor.title || primaryFile}`,
+        ``,
+        `Mounted from ModelScript Artifact #${descriptor.artifactId}.`,
+        ``,
+        `- **Artifact ID**: #${descriptor.artifactId}`,
+        `- **Dialect / Language**: \`${dialect || "modelscript"}\``,
+        `- **Primary File**: \`${primaryFile}\``,
+      ].join("\n"),
+    };
+
+    if (primaryFile.endsWith(".step") || primaryFile.endsWith(".stp")) {
+      const modelName = sanitizeModelicaIdentifier(descriptor.title, `CADAssembly_${descriptor.artifactId}`);
+      files[`${modelName}.mo`] = [
+        `// ModelScript 3D CAD Assembly bound to STEP geometry`,
+        `model ${modelName} "${descriptor.title || "CAD Model"}"`,
+        `  // Bound to local STEP geometry file`,
+        `  annotation(Shape(export = "${primaryFile}"));`,
+        `equation`,
+        `end ${modelName};`,
+        ``,
+      ].join("\n");
+      if (primaryFile !== "geometry.step") {
+        files["geometry.step"] = code;
+      }
+    }
+
+    return { files, primaryFile };
+  }
+
+  // 7. Single-file code present without explicit filename
+  if (rawCode) {
+    const ext = inferExtensionForArtifact(viewType, dialect);
+    let modelName = "";
+    if (ext === ".mo") {
+      const match = rawCode.match(/(?:model|class|block|connector|package)\s+([A-Za-z0-9_]+)/);
+      if (match?.[1]) modelName = match[1];
+    } else if (ext === ".sysml") {
+      const match = rawCode.match(/(?:package|part\s+def|attribute\s+def)\s+([A-Za-z0-9_]+)/);
+      if (match?.[1]) modelName = match[1];
+    } else if (ext === ".msx") {
+      const match = rawCode.match(/(?:model|package|struct)\s+([A-Za-z0-9_]+)/);
+      if (match?.[1]) modelName = match[1];
+    }
+    if (!modelName) {
+      modelName = sanitizeModelicaIdentifier(descriptor.title, `Artifact_${descriptor.artifactId}`);
+    }
+    const primaryFile = `${modelName}${ext}`;
+    const files: Record<string, string> = {
+      [primaryFile]: rawCode,
+      "README.md": [
+        `# ${descriptor.title || modelName}`,
+        ``,
+        `Mounted from ModelScript Hub Community Feed & Physical Twin Workspace.`,
+        ``,
+        `- **Artifact ID**: #${descriptor.artifactId}`,
+        `- **View Type**: \`${viewType || dialect || "code"}\``,
+        `- **Primary File**: \`${primaryFile}\``,
+      ].join("\n"),
+    };
+    return { files, primaryFile };
+  }
+
+  // 8. Generic Default Artifact Fallback (stub when no code or files exist)
+  const ext = inferExtensionForArtifact(viewType, dialect);
   const modelName = sanitizeModelicaIdentifier(descriptor.title, `ArtifactModel_${descriptor.artifactId}`);
-  const primaryFile = "ArtifactModel.mo";
-  const content = [
-    `// ModelScript Workspace for Social Artifact #${descriptor.artifactId}`,
-    `// Title: ${descriptor.title || "Community Artifact"}`,
-    `// Opened from Community Feed & Physical Twin Hub`,
-    ``,
-    `model ${modelName} "${descriptor.title || "Community Artifact"}"`,
-    `  Real x(start = 1.0) "State variable";`,
-    `  Real y(start = 0.0) "Coupled variable";`,
-    `equation`,
-    `  der(x) = -y;`,
-    `  der(y) = x;`,
-    `end ${modelName};`,
-    ``,
-  ].join("\n");
+  const primaryFile = `${modelName}${ext}`;
+  let content = "";
+  if (ext === ".sysml") {
+    content = [
+      `package ${modelName} {`,
+      `  doc /* ModelScript Architecture for Artifact #${descriptor.artifactId} */`,
+      `  part def System {`,
+      `    attribute status : String = "Active";`,
+      `  }`,
+      `}`,
+      ``,
+    ].join("\n");
+  } else if (ext === ".msx") {
+    content = [
+      `// ModelScript (.msx) for Artifact #${descriptor.artifactId}`,
+      `model ${modelName} {`,
+      `  Real x(start = 1.0);`,
+      `equation`,
+      `  der(x) = -x;`,
+      `}`,
+      ``,
+    ].join("\n");
+  } else {
+    content = [
+      `// ModelScript Workspace for Social Artifact #${descriptor.artifactId}`,
+      `// Title: ${descriptor.title || "Community Artifact"}`,
+      `// Opened from Community Feed & Physical Twin Hub`,
+      ``,
+      `model ${modelName} "${descriptor.title || "Community Artifact"}"`,
+      `  Real x(start = 1.0) "State variable";`,
+      `  Real y(start = 0.0) "Coupled variable";`,
+      `equation`,
+      `  der(x) = -y;`,
+      `  der(y) = x;`,
+      `end ${modelName};`,
+      ``,
+    ].join("\n");
+  }
 
   const files: Record<string, string> = {
     [primaryFile]: content,
@@ -3600,6 +3858,8 @@ export function generateArtifactWorkspaceFiles(descriptor: ArtifactWorkspaceDesc
       `# Artifact #${descriptor.artifactId}: ${descriptor.title || "Community Model"}`,
       ``,
       `Mounted in ModelScript IDE linear in-memory filesystem (\`memfs://\`).`,
+      ``,
+      `- **Entrypoint**: \`${primaryFile}\``,
     ].join("\n"),
   };
 
@@ -3666,6 +3926,17 @@ export function mountArtifactToMemFs(
     const fileUri = joinPath(workspaceUri, name);
     memFs.writeFile(fileUri, encoder.encode(fileContent));
   }
+  // If a dummy ArtifactModel.mo was previously scaffolded and is not part of this artifact, clean it up!
+  if (primaryFile !== "ArtifactModel.mo" && !files["ArtifactModel.mo"]) {
+    try {
+      const dummyUri = joinPath(workspaceUri, "ArtifactModel.mo");
+      if (typeof memFs.delete === "function") {
+        memFs.delete(dummyUri);
+      }
+    } catch {
+      // ignore
+    }
+  }
   return { files, primaryFile };
 }
 
@@ -3684,6 +3955,29 @@ export function scaffoldTemplateFiles(memFs: IMemoryFileSystemProvider, workspac
       } catch {
         // ignore
       }
+    }
+    if (!registered && typeof localStorage !== "undefined") {
+      try {
+        const raw =
+          localStorage.getItem(`modelscript.artifact_${artifactId}`) ||
+          localStorage.getItem(`modelscript:ide:memfs:artifact-${artifactId}`);
+        if (raw) registered = JSON.parse(raw);
+      } catch {
+        // ignore
+      }
+    }
+    if (!registered && template === "scratch") {
+      try {
+        const raw =
+          (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("modelscript.artifact_scratch") : null) ||
+          (typeof localStorage !== "undefined" ? localStorage.getItem("modelscript.artifact_scratch") : null);
+        if (raw) registered = JSON.parse(raw);
+      } catch {
+        // ignore
+      }
+    }
+    if (registered) {
+      registerArtifactDescriptor(registered);
     }
     const descriptor: ArtifactWorkspaceDescriptor = registered || { artifactId };
     const { files } = generateArtifactWorkspaceFiles(descriptor);
@@ -3767,7 +4061,28 @@ export function getTemplatePrimaryFile(rawTemplate: string): string {
         // ignore
       }
     }
+    if (!registered && typeof localStorage !== "undefined") {
+      try {
+        const raw =
+          localStorage.getItem(`modelscript.artifact_${artifactId}`) ||
+          localStorage.getItem(`modelscript:ide:memfs:artifact-${artifactId}`);
+        if (raw) registered = JSON.parse(raw);
+      } catch {
+        // ignore
+      }
+    }
+    if (!registered && template === "scratch") {
+      try {
+        const raw =
+          (typeof sessionStorage !== "undefined" ? sessionStorage.getItem("modelscript.artifact_scratch") : null) ||
+          (typeof localStorage !== "undefined" ? localStorage.getItem("modelscript.artifact_scratch") : null);
+        if (raw) registered = JSON.parse(raw);
+      } catch {
+        // ignore
+      }
+    }
     if (registered) {
+      registerArtifactDescriptor(registered);
       const { primaryFile } = generateArtifactWorkspaceFiles(registered);
       return primaryFile;
     }

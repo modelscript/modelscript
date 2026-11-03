@@ -173,6 +173,21 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
       assert.ok(!exploreLandingSrc.includes("📦"));
       assert.ok(!exploreLandingSrc.includes("{pkg.name} · v"));
 
+      // Verify unified search tabs and removal of templates
+      const { SEARCH_TABS } = await import("../src/pages/explore/constants.js");
+      assert.deepEqual(SEARCH_TABS, ["Top", "Latest", "People", "Media", "Packages", "Repositories"]);
+      assert.ok(!(SEARCH_TABS as readonly string[]).includes("Templates"));
+      assert.ok(!(SEARCH_TABS as readonly string[]).includes("Artifacts"));
+
+      const exploreSearchSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/pages/explore/ExploreSearchResultsView.tsx"),
+        "utf-8",
+      );
+      assert.ok(exploreSearchSrc.includes('activeTab === "Packages"'));
+      assert.ok(!exploreSearchSrc.includes('activeTab === "Artifacts"'));
+      assert.ok(!exploreSearchSrc.includes('activeTab === "Templates"'));
+      assert.ok(exploreSearchSrc.includes('tab === "Packages" && !hasPackages'));
+
       const { inferPackageDomains, splitScopedPackageName, formatDomainLabel } =
         await import("../src/pages/libraries/constants.js");
       assert.deepEqual(splitScopedPackageName("@examples/drone-chassis"), {

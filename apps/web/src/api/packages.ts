@@ -183,6 +183,12 @@ export interface LibraryListItem {
   [key: string]: any;
 }
 
+const isDevMode = (): boolean =>
+  Boolean(
+    (typeof import.meta !== "undefined" && (import.meta as { env?: { DEV?: boolean } }).env?.DEV) ||
+    (typeof process !== "undefined" && process.env?.["NODE_ENV"] !== "production"),
+  );
+
 export const getLibraries = async (q?: string, sort?: string) => {
   try {
     const params: { q?: string; sort?: string } = { q };
@@ -192,18 +198,32 @@ export const getLibraries = async (q?: string, sort?: string) => {
       return data.packages;
     }
   } catch (err) {
-    if (!import.meta.env.DEV) throw err;
+    if (!isDevMode()) throw err;
   }
 
   // Fallback to local standard libraries from catalog in development
-  const stdLibs: LibraryListItem[] = getStdlibCatalog().libraries.map((lib) => ({
-    name: lib.packageName,
-    versions: [lib.version],
-    latestVersion: lib.version,
-    description: lib.description,
-    license: lib.license,
-    domains: [lib.domain],
-  }));
+  const groupedLibs = new Map<string, LibraryListItem>();
+  for (const lib of getStdlibCatalog().libraries) {
+    const existing = groupedLibs.get(lib.packageName);
+    if (!existing) {
+      groupedLibs.set(lib.packageName, {
+        name: lib.packageName,
+        versions: [lib.version],
+        latestVersion: lib.version,
+        description: lib.description,
+        license: lib.license,
+        domains: [lib.domain],
+      });
+    } else {
+      if (!existing.versions.includes(lib.version)) {
+        existing.versions.push(lib.version);
+      }
+      if (lib.domain && !existing.domains?.includes(lib.domain)) {
+        existing.domains?.push(lib.domain);
+      }
+    }
+  }
+  const stdLibs: LibraryListItem[] = Array.from(groupedLibs.values());
 
   if (q) {
     return stdLibs.filter((lib) => lib.name.toLowerCase().includes(q.toLowerCase()));
@@ -211,26 +231,66 @@ export const getLibraries = async (q?: string, sort?: string) => {
   return stdLibs;
 };
 
-export const getLibraryVersions = async (name: string) => {
-  const { data } = await api.get<Library>(`/libraries/${encodePackagePath(name)}`);
-  return data;
+export const getLibraryVersions = async (name: string): Promise<Library> => {
+  try {
+    const { data } = await api.get<Library>(`/libraries/${encodePackagePath(name)}`);
+    return data;
+  } catch (err) {
+    if (!isDevMode()) throw err;
+    const matching = getStdlibCatalog().libraries.filter(
+      (lib) => lib.packageName === name || `@${lib.domain}/${lib.packageName}` === name,
+    );
+    if (matching.length > 0) {
+      const versions = Array.from(new Set(matching.map((lib) => lib.version)));
+      return {
+        name,
+        versions,
+      };
+    }
+    throw err;
+  }
 };
 
-export const getLibraryDetail = async (name: string, version: string) => {
-  const { data } = await api.get<LibraryVersion>(
-    `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}`,
-  );
-  return data;
+export const getLibraryDetail = async (name: string, version: string): Promise<LibraryVersion> => {
+  try {
+    const { data } = await api.get<LibraryVersion>(
+      `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}`,
+    );
+    return data;
+  } catch (err) {
+    if (!isDevMode()) throw err;
+    const stdLib = getStdlibCatalog().libraries.find(
+      (lib) =>
+        (lib.packageName === name || `@${lib.domain}/${lib.packageName}` === name) &&
+        (!version || lib.version === version),
+    );
+    if (stdLib) {
+      return {
+        name: stdLib.packageName,
+        version: stdLib.version,
+        description: stdLib.description,
+        modelicaVersion: stdLib.language === "modelica" ? "3.6" : null,
+        size: 0,
+        license: stdLib.license,
+      };
+    }
+    throw err;
+  }
 };
 
 export const getClasses = async (name: string, version: string, kind?: string, q?: string) => {
-  const { data } = await api.get<{ classes: ClassSummary[] }>(
-    `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes`,
-    {
-      params: { kind, q },
-    },
-  );
-  return data?.classes || [];
+  try {
+    const { data } = await api.get<{ classes: ClassSummary[] }>(
+      `/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes`,
+      {
+        params: { kind, q },
+      },
+    );
+    return data?.classes || [];
+  } catch (err) {
+    if (!isDevMode()) throw err;
+    return [];
+  }
 };
 
 export const getClassDetail = async (name: string, version: string, className: string) => {

@@ -56,8 +56,11 @@ export const AdminAnalyticsTab: React.FC<AdminAnalyticsTabProps> = ({
     [analytics?.regionBreakdown],
   );
 
+  const maxDailyViews = useMemo(
+    () => Math.max(...(analytics?.dailySeries || []).map((d) => d.views), 1),
+    [analytics?.dailySeries],
+  );
   const dailySeries = analytics?.dailySeries || [];
-  const maxDailyViews = useMemo(() => Math.max(...dailySeries.map((d) => d.views), 1), [dailySeries]);
 
   const topPages = analytics?.topPages || [];
 

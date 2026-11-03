@@ -520,7 +520,7 @@ export function extractEnumLiteralsFromCst(cstNode: any, targetMeta?: any): stri
     }
     if (lits.length > 0) return lits;
   }
-  const cstText = (cstNode?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
+  const cstText = stripComments(cstNode?.text ?? "").trim();
   const enumMatch =
     /^(?:(?:encapsulated|partial|final|replaceable|redeclare|inner|outer)\s+)*(?:type|class)\s+[A-Za-z_]\w*\s*=\s*enumeration\s*\(([^()]+)\)/.exec(
       cstText,

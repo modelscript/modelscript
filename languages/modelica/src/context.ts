@@ -676,7 +676,11 @@ export class Context {
     const stats = this.#fs.stat(path);
     if (stats?.isDirectory()) {
       const pkgPath = this.#fs.join(path, "package.mo");
-      if (!this.#fs.stat(pkgPath)?.isFile()) {
+      const baseName = path.split(/[/\\]/).filter(Boolean).pop();
+      const singleMoPath = baseName ? this.#fs.join(path, `${baseName}.mo`) : undefined;
+      const hasPkgMo = Boolean(this.#fs.stat(pkgPath)?.isFile());
+      const hasSingleMo = Boolean(singleMoPath && this.#fs.stat(singleMoPath)?.isFile());
+      if (!hasPkgMo && !hasSingleMo) {
         return null;
       }
     }
@@ -699,12 +703,14 @@ export class Context {
             parentFQN = parts.length > 0 ? parts.join(".") : undefined;
           }
 
-          // For single-file libraries (path IS the .mo file), the top-level
-          // class is a root class with no enclosing package. Setting parentFQN
-          // to the library name would create a self-referential parent in the
-          // symbol table (parentId === symbolId), causing infinite loops in
-          // the flattener's scope traversal.
-          if (dir === path && basename !== "package.mo") {
+          // For single-file libraries (path IS the .mo file, or directory containing
+          // the single .mo file matching the library name), the top-level class is a
+          // root class with no enclosing package.
+          if (
+            (dir === path ||
+              (basename && basename.endsWith(".mo") && basename.replace(/\.mo$/, "") === library.name)) &&
+            basename !== "package.mo"
+          ) {
             parentFQN = undefined;
           }
 

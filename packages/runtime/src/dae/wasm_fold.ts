@@ -4404,10 +4404,16 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     const isRhsCall = dae.getExprKind(rhsId) === ExprKind.Call;
     const isRhsComprehension = dae.getExprKind(rhsId) === ExprKind.Comprehension;
     const isRhsRecordCtor = isRhsCall && isRecordConstructorCall(dae, rhsId);
+    const isRhsBinary = dae.getExprKind(rhsId) === ExprKind.Binary;
+    const isRhsUnary = dae.getExprKind(rhsId) === ExprKind.Unary || dae.getExprKind(rhsId) === ExprKind.Negate;
 
-    // If LHS is a record, and RHS is a function call or comprehension returning a record (but NOT an auto-generated record constructor):
+    // If LHS is a record, and RHS is a function call, comprehension, or binary/unary operation returning a record (but NOT an auto-generated record constructor):
     // preserve the whole-record equation!
-    if (lhsRec && lhsRec.length > 0 && ((isRhsCall && !isRhsRecordCtor) || isRhsComprehension)) {
+    if (
+      lhsRec &&
+      lhsRec.length > 0 &&
+      ((isRhsCall && !isRhsRecordCtor) || isRhsComprehension || isRhsBinary || isRhsUnary)
+    ) {
       const newLhs = cloneExpr(lhsId, "", null);
       const newRhs = cloneExpr(rhsId, "", null);
       if (expandArrayEquations && isRecordConstructorCall(out, newRhs)) {

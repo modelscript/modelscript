@@ -375,10 +375,14 @@ export class MailerService {
 
   private parseMailboxAddress(raw: string): { email: string; name?: string } {
     const trimmed = raw.replace(/[\r\n]/g, "").trim();
-    const match = trimmed.match(/^(?:"?([^"<]*)"?\s*)?<([^>]+)>$/);
-    if (match) {
-      const name = match[1]?.trim();
-      const email = match[2]!.trim();
+    const ltIdx = trimmed.lastIndexOf("<");
+    const gtIdx = trimmed.endsWith(">") ? trimmed.length - 1 : -1;
+    if (ltIdx !== -1 && gtIdx > ltIdx) {
+      const email = trimmed.slice(ltIdx + 1, gtIdx).trim();
+      let name = trimmed.slice(0, ltIdx).trim();
+      if (name.startsWith('"') && name.endsWith('"') && name.length >= 2) {
+        name = name.slice(1, -1).trim();
+      }
       return name ? { email, name } : { email };
     }
     return { email: trimmed };

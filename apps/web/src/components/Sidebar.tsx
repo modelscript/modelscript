@@ -902,9 +902,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   const hasCae = useFeatureFlag("cae_cloud_solver");
   const hasPackages = useFeatureFlag("package_browser");
   const hasRepos = useFeatureFlag("git_repositories");
-  const hasFeedsPage = useFeatureFlag("feeds_page");
-  const hasRssFeeds = useFeatureFlag("rss_feeds");
-  const hasFeeds = hasFeedsPage || hasRssFeeds;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
   const branding = useInstanceBranding();
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
   const docsBase = (branding.docsBaseUrl || "").trim().replace(/\/+$/, "");

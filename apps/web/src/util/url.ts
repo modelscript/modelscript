@@ -110,13 +110,13 @@ export function resolvePackageParams(params: {
     }
   }
 
-  const rawScope = scope ? decodeURIComponent(scope) : undefined;
-  const rawName = name ? decodeURIComponent(name) : undefined;
+  const rawScope = scope ? decodeURIComponent(scope).replace(/\/+$/, "") : undefined;
+  const rawName = name ? decodeURIComponent(name).replace(/\/+$/, "") : undefined;
   const fullName = rawScope && rawName ? `${rawScope}/${rawName}` : rawName;
   return {
     name: fullName,
-    version: version ? decodeURIComponent(version) : undefined,
-    className: params.className ? decodeURIComponent(params.className) : undefined,
+    version: version ? decodeURIComponent(version).replace(/\/+$/, "") : undefined,
+    className: params.className ? decodeURIComponent(params.className).replace(/\/+$/, "") : undefined,
   };
 }
 

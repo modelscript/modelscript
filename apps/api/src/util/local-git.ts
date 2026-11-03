@@ -45,12 +45,24 @@ function sanitizeGitSubpath(subpath: string): string {
   return clean;
 }
 
+function trimSlashes(str: string): string {
+  let start = 0;
+  while (start < str.length && str.charCodeAt(start) === 47 /* '/' */) {
+    start++;
+  }
+  let end = str.length;
+  while (end > start && str.charCodeAt(end - 1) === 47 /* '/' */) {
+    end--;
+  }
+  return str.slice(start, end);
+}
+
 export class LocalGitProvider implements IGitProvider {
   private readonly mergeRequestsByProject = new Map<string, GitMergeRequestItem[]>();
 
   private async resolveHostedBareRepoPath(idOrUrl: string): Promise<string | null> {
     const reposDir = process.env["GIT_REPOS_DIR"] || path.resolve(process.cwd(), "data", "git-repos");
-    const trimmed = idOrUrl.trim().replace(/^\/+|\/+$/g, "");
+    const trimmed = trimSlashes(idOrUrl.trim());
     const parts = trimmed.split("/");
     if (parts.length === 2 && parts[0] && parts[1] && !parts[0].includes("..") && !parts[1].includes("..")) {
       const cleanNs = parts[0].replace(/[^a-zA-Z0-9_.-]/g, "");

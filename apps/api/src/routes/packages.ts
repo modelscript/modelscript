@@ -726,7 +726,27 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       return;
     }
 
-    const versions = storage.versions(name);
+    const storageVersions = storage.versions(name);
+    const pkgRecord = database.getPackage(name);
+    const dbVersions = pkgRecord ? database.getPackageVersions(pkgRecord.id).map((v) => v.version) : [];
+    let versions = Array.from(new Set([...storageVersions, ...dbVersions])).sort((a, b) => {
+      if (semver.valid(a) && semver.valid(b)) return semver.rcompare(a, b);
+      return b.localeCompare(a);
+    });
+
+    if (versions.length === 0) {
+      // Fallback to stdlib catalog
+      const catalogLibs = getStdlibCatalog().libraries.filter(
+        (lib) => lib.packageName === name || `@${lib.domain}/${lib.packageName}` === name,
+      );
+      if (catalogLibs.length > 0) {
+        versions = Array.from(new Set(catalogLibs.map((l) => l.version))).sort((a, b) => {
+          if (semver.valid(a) && semver.valid(b)) return semver.rcompare(a, b);
+          return b.localeCompare(a);
+        });
+      }
+    }
+
     if (versions.length === 0) {
       // FEDERATION: Proxy list from upstream
       try {

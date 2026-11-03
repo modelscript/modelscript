@@ -376,7 +376,7 @@ export const RepoAvatarBadge: React.FC<RepoAvatarBadgeProps> = ({
   );
 };
 
-export function parseRepositoryInput(
+function parseRepositoryInput(
   rawInput: string,
   fallbackProvider: "github" | "gitlab" | "local" = "github",
 ): { provider: string; repo_full_name: string } {

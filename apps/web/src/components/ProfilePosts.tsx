@@ -7,6 +7,7 @@ import { getUserPosts, updatePost } from "../api";
 import type { PostItem } from "../types/api";
 import Box from "./Box";
 import Post from "./Post";
+import VirtualPostList from "./VirtualPostList";
 
 function getStoredPinnedIds(username: string): { pinned: number[]; unpinned: number[] } {
   if (typeof window === "undefined" || !username) {
@@ -224,15 +225,10 @@ export default function ProfilePosts({
   }
 
   return (
-    <Box>
-      {sortedPosts.map((post) => {
-        const pinned = type === "posts" && isPostPinned(post);
-        return (
-          <Box key={post.id} position="relative" data-pinned-post={pinned ? "true" : undefined}>
-            <Post post={post} isPinned={pinned} />
-          </Box>
-        );
-      })}
-    </Box>
+    <VirtualPostList
+      posts={sortedPosts}
+      isPinnedEvaluator={(post) => type === "posts" && isPostPinned(post)}
+      renderItem={(post, _index, pinned) => <Post post={post} isPinned={pinned} />}
+    />
   );
 }

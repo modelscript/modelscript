@@ -295,7 +295,21 @@ export default defineConfig([
     },
   },
   {
-    files: ["apps/web/src/**/*Context.tsx"],
+    files: [
+      "apps/web/src/**/*Context.tsx",
+      "apps/web/src/components/ClassTree.tsx",
+      "apps/web/src/components/MaintenanceExperienceHost.tsx",
+      "apps/web/src/components/ProductTourOverlay.tsx",
+      "apps/web/src/components/ScrollToTop.tsx",
+      "apps/web/src/components/artifacts/AutoThumbnailCapture.tsx",
+      "apps/web/src/components/artifacts/ModelicaDiagramViewer.tsx",
+      "apps/web/src/components/artifacts/card/ViewerDispatcher.tsx",
+      "apps/web/src/components/morsel/ComponentList.tsx",
+      "apps/web/src/pages/RepositoryListPage.tsx",
+      "apps/web/src/pages/SettingsPage.tsx",
+      "apps/web/src/pages/legal/LegalLayout.tsx",
+      "apps/web/src/pages/settings/tabs/PrivacyTab.tsx",
+    ],
     rules: {
       "react-refresh/only-export-components": "off",
     },

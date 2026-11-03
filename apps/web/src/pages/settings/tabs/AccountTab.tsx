@@ -111,6 +111,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
       setNewPassword("");
       setNewPasswordConfirm("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subView]);
 
   // Sync profile fields from user only when entering accountInfo or while in gate mode

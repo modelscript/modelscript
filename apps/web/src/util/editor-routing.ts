@@ -606,14 +606,23 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
   };
 
   try {
-    const scratchMeta = {
+    const artifactMeta = {
       id: artifactId || "scratch",
+      artifactId: artifactId || "scratch",
       title: rawTitle,
       viewType,
       viewConfig: enrichedConfig,
+      files: enrichedConfig.files,
+      primaryFile: enrichedConfig.primaryFile || enrichedConfig.filename,
     };
-    sessionStorage.setItem("modelscript.artifact_scratch", JSON.stringify(scratchMeta));
-    localStorage.setItem("modelscript.artifact_scratch", JSON.stringify(scratchMeta));
+    sessionStorage.setItem("modelscript.artifact_scratch", JSON.stringify(artifactMeta));
+    localStorage.setItem("modelscript.artifact_scratch", JSON.stringify(artifactMeta));
+    if (artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
+      const artKey = `modelscript.artifact_${artifactId}`;
+      sessionStorage.setItem(artKey, JSON.stringify(artifactMeta));
+      localStorage.setItem(artKey, JSON.stringify(artifactMeta));
+      localStorage.setItem(`modelscript:ide:memfs:artifact-${artifactId}`, JSON.stringify(artifactMeta));
+    }
   } catch {
     // ignore storage quota errors
   }
@@ -629,6 +638,8 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
       title: string;
       viewType: string;
       viewConfig: any;
+      files?: Record<string, string>;
+      primaryFile?: string;
     } | null =
       Object.keys(parsedViewConfig).length > 0 || code !== undefined
         ? {
@@ -636,6 +647,8 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
             title: rawTitle,
             viewType,
             viewConfig: enrichedConfig,
+            files: enrichedConfig.files,
+            primaryFile: enrichedConfig.primaryFile || enrichedConfig.filename,
           }
         : null;
 
@@ -659,7 +672,7 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
 
     // If we only have artifactId and no inline viewConfig, fetch it in the background so it is ready to broadcast
     if (!resolvedPayload && artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
-      fetch(`/api/v1/artifacts/view/${encodeURIComponent(String(artifactId))}`)
+      fetch(`/api/v1/social/artifact-views/${encodeURIComponent(String(artifactId))}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           const av = data?.artifactView || data;
@@ -670,7 +683,15 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
             title: options.title || av.title || av.name || rawTitle,
             viewType: av.view_type || viewType,
             viewConfig: cfg,
+            files: cfg.files,
+            primaryFile: cfg.primaryFile || cfg.filename,
           };
+          try {
+            const artKey = `modelscript.artifact_${artifactId}`;
+            sessionStorage.setItem(artKey, JSON.stringify(resolvedPayload));
+            localStorage.setItem(artKey, JSON.stringify(resolvedPayload));
+            localStorage.setItem(`modelscript:ide:memfs:artifact-${artifactId}`, JSON.stringify(resolvedPayload));
+          } catch {}
           broadcastState();
         })
         .catch(() => {});

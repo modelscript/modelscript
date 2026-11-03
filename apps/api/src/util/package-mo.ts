@@ -15,12 +15,16 @@ export function parsePackageMo(content: string): {
   description: string | null;
   version: string | null;
 } {
-  // Extract package name from `package <Name>` declaration
-  const nameMatch = content.match(/^\s*(?:within\s+[^;]*;\s*)?package\s+(\w+)/m);
+  // Extract package/class name from `package <Name>`, `operator record <Name>`, etc.
+  const nameMatch = content.match(
+    /^\s*(?:within\s+[^;]*;\s*)?(?:encapsulated\s+|partial\s+)?(?:package|operator\s+record|record|model|class|block|connector|type|function)\s+(\w+)/m,
+  );
   const name = nameMatch?.[1] ?? null;
 
-  // Extract description string: package Name "Some description"
-  const descMatch = content.match(/^\s*(?:within\s+[^;]*;\s*)?package\s+\w+\s+"([^"]*)"/m);
+  // Extract description string: package/record Name "Some description"
+  const descMatch = content.match(
+    /^\s*(?:within\s+[^;]*;\s*)?(?:encapsulated\s+|partial\s+)?(?:package|operator\s+record|record|model|class|block|connector|type|function)\s+\w+\s+"([^"]*)"/m,
+  );
   const description = descMatch?.[1] ?? null;
 
   // Extract version from annotation(...) — handles various whitespace patterns and positions

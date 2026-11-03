@@ -35,7 +35,7 @@ const TreeItem = styled(Link)<{ $depth: number; $active?: boolean | undefined }>
   min-height: 28px;
   box-sizing: border-box;
   &:hover {
-    background: var(--color-glass-bg-hover, rgba(255, 255, 255, 0.05));
+    background-color: var(--surface-row-hover);
     color: var(--color-accent-cyan, #06b6d4);
   }
 `;

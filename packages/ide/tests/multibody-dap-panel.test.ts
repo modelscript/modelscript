@@ -300,10 +300,10 @@ describe("VS Code DAP Debugger & 3D Multibody Animation Panel", () => {
 
     it("should flatten and step actual Modelica .mo files on disk via WasmSimulationStepper", async () => {
       const fs = await import("node:fs");
-      const path = await import("node:path");
+      const { fileURLToPath } = await import("node:url");
       const { WasmSimulationStepper } = await import("../src/dap/simulation-debug-session.js");
 
-      const tmpMoPath = path.join(process.cwd(), "packages/ide/tests/.tmp-stepper-test.mo");
+      const tmpMoPath = fileURLToPath(new URL(".tmp-stepper-test.mo", import.meta.url));
       const moSource = [
         "model TankLevel",
         "  parameter Real c = 2.0;",

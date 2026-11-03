@@ -51,6 +51,7 @@ import {
   // packages
   getLibraries,
   getLibraryDetail,
+  getLibraryVersions,
   getNotifications,
   getNotificationSettings,
   getPackageCollaborators,
@@ -159,6 +160,15 @@ describe("Modular API Domain Resources Client Suite", () => {
 
       assert.equal(lastRequest?.url, "/libraries/PowerSystems/2.1.0");
       assert.equal(res.name, "PowerSystems");
+    });
+
+    it("getLibraryVersions fetches versions by package name", async () => {
+      mockApiCall("get", { name: "Modelica", versions: ["4.1.0", "4.0.0"] });
+      const res = await getLibraryVersions("Modelica");
+
+      assert.equal(lastRequest?.url, "/libraries/Modelica");
+      assert.equal(res.name, "Modelica");
+      assert.deepEqual(res.versions, ["4.1.0", "4.0.0"]);
     });
 
     it("package collaborators and transfers interact with package endpoints", async () => {

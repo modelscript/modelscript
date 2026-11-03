@@ -360,7 +360,7 @@ function formatConstraintMath(expr: string): string {
     .replace(/\bor\b/gi, "∨");
 }
 
-export function parseSysmlSource(code: string): {
+function parseSysmlSource(code: string): {
   packageName: string;
   rootPartDef: string;
   parts: SysmlPart[];

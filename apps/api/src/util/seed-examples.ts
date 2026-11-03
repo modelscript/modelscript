@@ -357,6 +357,10 @@ export async function seedPrepackagedLibraries(
       }
     }
 
+    if (pkg.name === "Complex" || pkg.name === "ModelicaServices") {
+      storage.ensureCompanionPackage(pkg.name, pkg.version);
+    }
+
     const candidateZipPaths = [
       path.resolve(storage.dataDir, pkg.name, `${pkg.version}.zip`),
       path.resolve(repoRoot, "scripts", pkg.filename),

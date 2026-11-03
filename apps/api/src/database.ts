@@ -551,6 +551,16 @@ export class LibraryDatabase {
         END;
       `);
     } catch {}
+
+    try {
+      const classCols = (this.#db.prepare(`PRAGMA table_info(classes)`).all() as { name: string }[]).map((c) => c.name);
+      if (!classCols.includes("icon_hash")) {
+        this.#db.exec(`ALTER TABLE classes ADD COLUMN icon_hash TEXT;`);
+      }
+      if (!classCols.includes("diagram_hash")) {
+        this.#db.exec(`ALTER TABLE classes ADD COLUMN diagram_hash TEXT;`);
+      }
+    } catch {}
   }
 
   // ── User management ─────────────────────────────────────────────
@@ -7818,7 +7828,15 @@ export class LibraryDatabase {
       packageCount: diag.counts.packages,
       userCount: diag.counts.users,
     };
-    const bundleSha256 = crypto.createHash("sha256").update(JSON.stringify(payloadWithoutHash)).digest("hex");
+    const integrityMetadata = {
+      formatVersion: 1,
+      exportedAt: payloadWithoutHash.exportedAt,
+      snapshotSha256: snapshot.sha256,
+      snapshotSizeBytes: snapshot.sizeBytes,
+      packageCount: diag.counts.packages,
+      userCount: diag.counts.users,
+    };
+    const bundleSha256 = crypto.createHash("sha256").update(JSON.stringify(integrityMetadata)).digest("hex");
 
     return {
       ...payloadWithoutHash,

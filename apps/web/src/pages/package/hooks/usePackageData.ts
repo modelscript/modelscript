@@ -96,7 +96,7 @@ export function usePackageData(
           getClassDetail(name, version, name)
             .catch(() => (rootClassName !== name ? getClassDetail(name, version, rootClassName) : null))
             .catch(() => null),
-          getClasses(name, version),
+          getClasses(name, version).catch(() => []),
           getPackument(name).catch(() => null),
           getArtifactViewers(name, version).catch(() => []),
           getPackageStats(name, 30).catch(() => null),

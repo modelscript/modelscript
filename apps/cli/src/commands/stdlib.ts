@@ -215,6 +215,20 @@ export const Stdlib: CommandModule<{}, StdlibArgs> = {
       const zip = new AdmZip();
       const manifestLibs: MsxpackManifest["libraries"] = [];
       const cwd = process.cwd();
+      let repoRoot = cwd;
+      let curr = cwd;
+      while (curr !== path.dirname(curr)) {
+        if (
+          fs.existsSync(path.join(curr, "pnpm-workspace.yaml")) ||
+          (fs.existsSync(path.join(curr, "package.json")) &&
+            fs.existsSync(path.join(curr, "packages")) &&
+            fs.existsSync(path.join(curr, "languages")))
+        ) {
+          repoRoot = curr;
+          break;
+        }
+        curr = path.dirname(curr);
+      }
 
       console.log(`📦 Exporting ${targets.length} standard libraries for pack(s) [${requestedPacks.join(", ")}]...`);
 
@@ -222,9 +236,13 @@ export const Stdlib: CommandModule<{}, StdlibArgs> = {
         const candidatePaths = [
           args.fromDir ? path.resolve(args.fromDir, lib.filename) : null,
           path.resolve(cwd, "scripts", lib.filename),
+          path.resolve(repoRoot, "scripts", lib.filename),
           path.resolve(cwd, "apps/api/data/libraries", lib.packageName, `${lib.version}.zip`),
+          path.resolve(repoRoot, "apps/api/data/libraries", lib.packageName, `${lib.version}.zip`),
           path.resolve(cwd, "apps/api/data/libraries", lib.filename),
+          path.resolve(repoRoot, "apps/api/data/libraries", lib.filename),
           path.resolve(cwd, "modelscript_libraries", lib.filename),
+          path.resolve(repoRoot, "modelscript_libraries", lib.filename),
           path.resolve(cwd, lib.filename),
         ].filter(Boolean) as string[];
 
@@ -244,10 +262,15 @@ export const Stdlib: CommandModule<{}, StdlibArgs> = {
           const localSourceRel = (lib as StdlibEntry & { localSourcePath?: string }).localSourcePath;
           const sourceDirs = [
             localSourceRel ? path.resolve(cwd, localSourceRel) : null,
+            localSourceRel ? path.resolve(repoRoot, localSourceRel) : null,
             path.resolve(cwd, "apps/api/data/libraries", lib.packageName, lib.version),
+            path.resolve(repoRoot, "apps/api/data/libraries", lib.packageName, lib.version),
             path.resolve(cwd, "apps/api/data/libraries", lib.packageName),
+            path.resolve(repoRoot, "apps/api/data/libraries", lib.packageName),
             path.resolve(cwd, `languages/${lib.language}/stdlib`),
+            path.resolve(repoRoot, `languages/${lib.language}/stdlib`),
             path.resolve(cwd, `languages/${lib.language}/examples`),
+            path.resolve(repoRoot, `languages/${lib.language}/examples`),
           ].filter((d): d is string => Boolean(d && fs.existsSync(d) && fs.statSync(d).isDirectory()));
 
           if (sourceDirs.length > 0) {

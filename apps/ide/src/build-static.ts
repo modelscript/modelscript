@@ -267,7 +267,7 @@ function renderStaticWorkbench(): string {
     originalWarn.apply(console, arguments);
   };
 
-  var hash = location.hash.slice(1);
+  var hash = location.hash.replace(/^[#/]+/, '');
   if (!hash) hash = 'modelscript/modelscript';
   var el = document.getElementById('vscode-workbench-web-configuration');
   if (!el) return;
@@ -299,12 +299,36 @@ function renderStaticWorkbench(): string {
   if (hash.startsWith('memfs')) {
     var rawSpec = hash.split(':')[1] || 'empty';
     var qIdx = rawSpec.indexOf('?');
-    var template = qIdx !== -1 ? (rawSpec.slice(0, qIdx) || 'empty') : rawSpec;
+    var templateAndAnchor = qIdx !== -1 ? (rawSpec.slice(0, qIdx) || 'empty') : rawSpec;
     var query = qIdx !== -1 ? rawSpec.slice(qIdx + 1) : '';
+    var templateParts = templateAndAnchor.split('&');
+    var template = templateParts[0];
+    var anchorParam = null;
+    for (var i = 1; i < templateParts.length; i++) {
+      if (templateParts[i].startsWith('anchor=')) {
+        anchorParam = decodeURIComponent(templateParts[i].slice(7));
+        try {
+          sessionStorage.setItem('modelscript.initialAnchor', anchorParam);
+          localStorage.setItem('modelscript.initialAnchor', anchorParam);
+        } catch (e) {}
+      }
+    }
     if (template.startsWith('artifact-')) {
-      document.title = 'Artifact #' + template.slice(9) + ' — ModelScript IDE';
+      var artId = template.slice(9);
+      var cachedTitle = null;
+      try {
+        var cached = sessionStorage.getItem('modelscript.artifact_' + artId) ||
+                     localStorage.getItem('modelscript.artifact_' + artId) ||
+                     sessionStorage.getItem('modelscript.artifact_scratch') ||
+                     localStorage.getItem('modelscript.artifact_scratch');
+        if (cached) {
+          var parsed = JSON.parse(cached);
+          if (parsed && parsed.title) cachedTitle = parsed.title;
+        }
+      } catch (e) {}
+      document.title = (cachedTitle || ('Artifact #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript IDE';
     } else if (template.startsWith('package-')) {
-      document.title = 'Package ' + template.slice(8) + ' — ModelScript IDE';
+      document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript IDE';
     } else {
       document.title = 'New Project — ModelScript IDE';
     }
@@ -328,32 +352,53 @@ function renderStaticWorkbench(): string {
   
   el.setAttribute('data-settings', JSON.stringify(config));
 
-  if (window.parent && window.parent !== window) {
-    try {
-      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, window.location.origin);
-    } catch (e) {}
-
-    window.addEventListener('message', function(ev) {
-      if (ev.origin !== window.location.origin && !ev.origin.endsWith('.modelscript.org')) return;
-      if (!ev.data || typeof ev.data !== 'object') return;
-      if (ev.data.type === 'MODELSCRIPT_AUTH_SYNC' && ev.data.token) {
-        try {
-          sessionStorage.setItem('modelscript.token', ev.data.token);
-          if (ev.data.user) {
-            sessionStorage.setItem('modelscript.user', JSON.stringify(ev.data.user));
-          }
-        } catch (e) {}
-      }
-      if (ev.data.type === 'MODELSCRIPT_MOUNT_ARTIFACT' && ev.data.artifactId) {
-        try {
-          sessionStorage.setItem('modelscript.artifact_' + ev.data.artifactId, JSON.stringify(ev.data));
-          if (ev.data.title) {
-            document.title = ev.data.title + ' — ModelScript IDE';
-          }
-        } catch (e) {}
-      }
-    });
+  function handleIncomingBridgeData(data) {
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'MODELSCRIPT_AUTH_SYNC' && data.token) {
+      try {
+        sessionStorage.setItem('modelscript.token', data.token);
+        localStorage.setItem('modelscript.token', data.token);
+        if (data.user) {
+          sessionStorage.setItem('modelscript.user', JSON.stringify(data.user));
+          localStorage.setItem('modelscript.user', JSON.stringify(data.user));
+        }
+      } catch (e) {}
+    }
+    if (data.type === 'MODELSCRIPT_MOUNT_ARTIFACT' && data.artifactId) {
+      try {
+        sessionStorage.setItem('modelscript.artifact_' + data.artifactId, JSON.stringify(data));
+        localStorage.setItem('modelscript.artifact_' + data.artifactId, JSON.stringify(data));
+        localStorage.setItem('modelscript:ide:memfs:artifact-' + data.artifactId, JSON.stringify(data));
+        if (data.title) {
+          document.title = data.title + ' — ModelScript IDE';
+        }
+      } catch (e) {}
+    }
   }
+
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'MODELSCRIPT_READY' }, '*');
+    }
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ type: 'MODELSCRIPT_READY' }, '*');
+    }
+  } catch (e) {}
+
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      var bridgeChannel = new BroadcastChannel('modelscript:host-bridge');
+      bridgeChannel.addEventListener('message', function(ev) {
+        handleIncomingBridgeData(ev.data);
+      });
+      bridgeChannel.postMessage({ type: 'MODELSCRIPT_READY' });
+    } catch (e) {}
+  }
+
+  window.addEventListener('message', function(ev) {
+    if (ev.origin !== window.location.origin && !ev.origin.endsWith('.modelscript.org')) return;
+    handleIncomingBridgeData(ev.data);
+  });
 })();
 </script>`;
 

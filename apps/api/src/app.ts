@@ -38,10 +38,12 @@ import { graphqlRouter } from "./routes/graphql.js";
 import { historianRouter } from "./routes/historian.js";
 import { ideWorkbenchRouter } from "./routes/ide-workbench.js";
 import { instancesRouter } from "./routes/instances.js";
+import { markdownMirrorRouter } from "./routes/markdown-mirror.js";
 import { mcpRouter } from "./routes/mcp.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
 import { npmRegistryRouter } from "./routes/npm-registry.js";
 import { oembedRouter, renderStandaloneEmbedBundle } from "./routes/oembed.js";
+import { ogRouter } from "./routes/og.js";
 import { organizationsRouter } from "./routes/organizations.js";
 import { packagesRouter } from "./routes/packages.js";
 import { physicsRouter } from "./routes/physics.js";
@@ -51,6 +53,7 @@ import { reposRouter } from "./routes/repos.js";
 import { scriptsRouter } from "./routes/scripts.js";
 import { searchRouter } from "./routes/search.js";
 import { simulateRouter } from "./routes/simulate.js";
+import { sitemapsRouter } from "./routes/sitemaps.js";
 import { socialRouter } from "./routes/social.js";
 import { renderSolutionBundleHtml, solutionsRouter } from "./routes/solutions.js";
 import { sparqlRouter } from "./routes/sparql.js";
@@ -74,6 +77,7 @@ import { LibraryStorage } from "./storage.js";
 import { SANCTIONED_COUNTRIES, SANCTIONED_REGIONS } from "./util/compliance.js";
 import { seedInitialAdmin } from "./util/seed-admin.js";
 import { seedExamplePackages, seedPrepackagedLibraries } from "./util/seed-examples.js";
+import { injectSeoIntoHtml, resolveSeoMetadata } from "./util/seo-injector.js";
 import { isFederationDisabled, isStrictAirgapEnv, resolveTierPreset } from "./util/tier-presets.js";
 
 /** Options for creating the Express application. */
@@ -708,6 +712,15 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   // Universal oEmbed provider route (/api/v1/oembed) & standalone intranet SDK bundle (/static/embed.js)
   app.use("/api/v1", oembedRouter(database));
+
+  // Dynamic OpenGraph image preview generation (/api/v1/og/post/:id, /api/v1/og/package/:name, /api/v1/og/class/:name/:version/:className)
+  app.use("/api/v1/og", ogRouter(database));
+
+  // Dynamic XML Sitemaps & robots.txt (/sitemap.xml, /sitemaps/packages.xml, /sitemaps/classes.xml, /sitemaps/posts.xml, /robots.txt)
+  app.use("/", sitemapsRouter(database));
+
+  // AI Bot Markdown Mirrors & llms.txt (/posts/:id.md, /package/:name.md, /package/:name/classes/:className.md, /packages/llms.txt)
+  app.use("/", markdownMirrorRouter(database));
   app.get("/static/embed.js", (req, res) => {
     const protocol = req.headers["x-forwarded-proto"] || req.protocol || "http";
     const hostHeader = req.headers["x-forwarded-host"] || req.headers.host || "localhost:3000";
@@ -997,10 +1010,56 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       }
       const indexPath = path.join(staticWebDir, "index.html");
       if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
+        try {
+          const rawHtml = fs.readFileSync(indexPath, "utf8");
+          const meta = resolveSeoMetadata(req, database);
+          const injectedHtml = injectSeoIntoHtml(rawHtml, meta);
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.send(injectedHtml);
+        } catch {
+          res.sendFile(indexPath);
+        }
       } else {
         next();
       }
+    });
+  }
+
+  // Dynamic SEO & OpenGraph HTML fallback for SPA routes (e.g. in test environments without staticWebDir)
+  const defaultBaseHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ansatz</title>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>`;
+
+  if (!staticWebDir || !fs.existsSync(staticWebDir)) {
+    app.use((req, res, next) => {
+      if (req.method !== "GET" && req.method !== "HEAD") return next();
+      if (!req.accepts("html")) return next();
+      if (
+        req.path.startsWith("/posts/") ||
+        req.path.startsWith("/p/") ||
+        req.path.startsWith("/packages") ||
+        req.path.startsWith("/package") ||
+        req.path.startsWith("/u/")
+      ) {
+        try {
+          const meta = resolveSeoMetadata(req, database);
+          const injectedHtml = injectSeoIntoHtml(defaultBaseHtml, meta);
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.send(injectedHtml);
+          return;
+        } catch {
+          // fall through
+        }
+      }
+      next();
     });
   }
 

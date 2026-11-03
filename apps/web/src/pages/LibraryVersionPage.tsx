@@ -122,7 +122,11 @@ const LibraryVersionPage: React.FC = () => {
 
   useEffect(() => {
     const fetchVersions = async () => {
-      if (!name) return;
+      if (!name) {
+        setLoading(false);
+        setError("Library not found");
+        return;
+      }
       try {
         setLoading(true);
         const data = await getLibraryVersions(name);

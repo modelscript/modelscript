@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CodeIcon, GitBranchIcon, MarkGithubIcon, RepoIcon, StarIcon } from "@primer/octicons-react";
+import { GitBranchIcon, MarkGithubIcon, RepoIcon, StarIcon } from "@primer/octicons-react";
 import { Heading, Label, Spinner, Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { getRepoFallbackStars } from "../../api";
 import Box from "../../components/Box";
 import FollowButton from "../../components/FollowButton";
-import Post from "../../components/Post";
 import { scrollToTop } from "../../components/ScrollToTop";
+import VirtualPostList from "../../components/VirtualPostList";
 import { safeCssImageUrl } from "../../util/url";
 import { PackageIcon } from "../libraries/components/PackageIcon";
 import { formatDomainLabel, inferPackageDomains, splitScopedPackageName } from "../libraries/constants";
 import { DomainBadge } from "../libraries/styles";
 import { GitlabSvgIcon, inferRepoDomainTags, RepoAvatarBadge } from "../RepositoryListPage";
 import type { PackageData, PersonData, PostData, RepoData } from "./constants";
-import { SEARCH_TABS, STARTER_TEMPLATES } from "./constants";
+import { SEARCH_TABS } from "./constants";
 import { ExploreSearchHeader } from "./ExploreSearchHeader";
 import { TabButton, TabContainer } from "./styles";
 
@@ -30,7 +30,8 @@ export interface ExploreSearchResultsViewProps {
   loading: boolean;
   topPosts: PostData[];
   latestPosts: PostData[];
-  artifactPosts: PostData[];
+  mediaPosts?: PostData[] | undefined;
+  artifactPosts?: PostData[] | undefined;
   matchedPeople: PersonData[];
   peopleLoading: boolean;
   packages: PackageData[];
@@ -52,6 +53,7 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
   loading,
   topPosts,
   latestPosts,
+  mediaPosts,
   artifactPosts,
   matchedPeople,
   peopleLoading,
@@ -62,8 +64,9 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
   hasPackages = true,
   hasRepos = true,
 }) => {
+  const displayMediaPosts = mediaPosts ?? artifactPosts ?? [];
   const visibleSearchTabs = SEARCH_TABS.filter((tab) => {
-    if (tab === "Artifacts" && !hasPackages) return false;
+    if (tab === "Packages" && !hasPackages) return false;
     if (tab === "Repositories" && !hasRepos) return false;
     return true;
   });
@@ -110,182 +113,25 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
       ) : (
         <Box>
           {activeTab === "Top" && (
-            <>
-              {topPosts.map((post) => (
-                <Post key={post.id} post={post} />
-              ))}
-              {topPosts.length === 0 && (
+            <VirtualPostList
+              posts={topPosts}
+              emptyState={
                 <Box p={6} textAlign="center" color="var(--color-text-muted)">
                   No posts matching "{query}" found.
                 </Box>
-              )}
-            </>
+              }
+            />
           )}
 
           {activeTab === "Latest" && (
-            <>
-              {latestPosts.map((post) => (
-                <Post key={post.id} post={post} />
-              ))}
-              {latestPosts.length === 0 && (
+            <VirtualPostList
+              posts={latestPosts}
+              emptyState={
                 <Box p={6} textAlign="center" color="var(--color-text-muted)">
                   No posts matching "{query}" found.
                 </Box>
-              )}
-            </>
-          )}
-
-          {activeTab === "Templates" && (
-            <Box p={3}>
-              {(() => {
-                const qTokens = query
-                  .trim()
-                  .toLowerCase()
-                  .split(/\s+/)
-                  .map((t) => t.replace(/^#/, ""))
-                  .filter(Boolean);
-                const blankHaystack =
-                  "blank project workspace clean workspace in-memory filesystem modelscript polyglot compiler modelica sysml step cad webassembly solvers";
-                const showBlank = qTokens.length === 0 || qTokens.every((tok) => blankHaystack.includes(tok));
-                const filteredTemplates =
-                  qTokens.length > 0
-                    ? STARTER_TEMPLATES.filter((t) => {
-                        const hay = `${t.title} ${t.description} ${t.category} ${t.badge} ${t.id}`.toLowerCase();
-                        return qTokens.every((tok) => hay.includes(tok));
-                      })
-                    : STARTER_TEMPLATES;
-                if (!showBlank && filteredTemplates.length === 0) {
-                  return (
-                    <Box p={6} textAlign="center" color="var(--color-text-muted)">
-                      No templates matching "{query}" found.
-                    </Box>
-                  );
-                }
-                return (
-                  <>
-                    {showBlank && (
-                      <Box
-                        p={4}
-                        mb={3}
-                        borderRadius="12px"
-                        style={{
-                          background:
-                            "linear-gradient(135deg, rgba(88, 166, 255, 0.08) 0%, rgba(163, 113, 247, 0.12) 100%)",
-                          border: "1px solid rgba(163, 113, 247, 0.35)",
-                          boxShadow: "0 0 20px rgba(163, 113, 247, 0.1)",
-                        }}
-                        display="flex"
-                        flexDirection={["column", "row"]}
-                        alignItems={["flex-start", "center"]}
-                        justifyContent="space-between"
-                        gap={3}
-                      >
-                        <Box>
-                          <Box display="flex" alignItems="center" gap={2} mb={2}>
-                            <span style={{ fontSize: "24px" }}>📁</span>
-                            <span
-                              style={{
-                                fontSize: "11px",
-                                fontFamily: "var(--font-mono)",
-                                padding: "2px 8px",
-                                borderRadius: "9999px",
-                                backgroundColor: "rgba(6, 182, 212, 0.15)",
-                                color: "var(--color-accent-cyan)",
-                                border: "1px solid rgba(6, 182, 212, 0.4)",
-                                fontWeight: 600,
-                              }}
-                            >
-                              Clean Workspace
-                            </span>
-                          </Box>
-                          <Heading
-                            as="h3"
-                            style={{
-                              fontSize: "18px",
-                              fontWeight: "bold",
-                              marginBottom: "6px",
-                              color: "var(--color-text-heading)",
-                            }}
-                          >
-                            Blank Project Workspace
-                          </Heading>
-                          <Text
-                            as="p"
-                            color="var(--color-text-muted)"
-                            style={{ fontSize: "14px", lineHeight: 1.5, margin: 0, maxWidth: "620px" }}
-                          >
-                            Start fresh with a clean in-memory filesystem workspace. Direct access to the full
-                            ModelScript polyglot compiler, Modelica 3.x, SysML v2, STEP CAD, and WebAssembly solvers
-                            with zero pre-loaded clutter.
-                          </Text>
-                        </Box>
-                        <Link to="/ide" className="ms-btn ms-btn-primary">
-                          <CodeIcon size={16} /> Launch blank workspace
-                        </Link>
-                      </Box>
-                    )}
-                    {filteredTemplates.map((tpl) => (
-                      <Box
-                        key={tpl.id}
-                        p={4}
-                        mb={3}
-                        borderRadius="12px"
-                        style={{
-                          background: "var(--color-bg-card)",
-                          border: "1px solid var(--ms-border)",
-                        }}
-                        display="flex"
-                        flexDirection={["column", "row"]}
-                        alignItems={["flex-start", "center"]}
-                        justifyContent="space-between"
-                        gap={3}
-                      >
-                        <Box>
-                          <Box display="flex" alignItems="center" gap={2} mb={2}>
-                            <span style={{ fontSize: "24px" }}>{tpl.icon}</span>
-                            <span
-                              style={{
-                                fontSize: "11px",
-                                fontFamily: "var(--font-mono)",
-                                padding: "2px 8px",
-                                borderRadius: "9999px",
-                                backgroundColor: "color-mix(in srgb, var(--hue-indigo) 12%, transparent)",
-                                color: "var(--hue-indigo)",
-                                border: "1px solid color-mix(in srgb, var(--hue-indigo) 35%, transparent)",
-                                fontWeight: 600,
-                              }}
-                            >
-                              {tpl.badge}
-                            </span>
-                          </Box>
-                          <Heading
-                            as="h3"
-                            style={{
-                              fontSize: "18px",
-                              fontWeight: "bold",
-                              marginBottom: "6px",
-                              color: "var(--color-text-heading)",
-                            }}
-                          >
-                            {tpl.title}
-                          </Heading>
-                          <Text
-                            as="p"
-                            color="var(--color-text-muted)"
-                            style={{ fontSize: "14px", lineHeight: 1.5, margin: 0, maxWidth: "620px" }}
-                          >
-                            {tpl.description}
-                          </Text>
-                        </Box>
-                        <Link to={`/ide/${tpl.id}`} className="ms-btn ms-btn-secondary">
-                          <CodeIcon size={16} /> Launch {tpl.title}
-                        </Link>
-                      </Box>
-                    ))}
-                  </>
-                );
-              })()}
-            </Box>
+              }
+            />
           )}
 
           {activeTab === "People" && (
@@ -333,7 +179,9 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                             flexShrink: 0,
                           }}
                         >
-                          {!u.avatar && !(u as any).avatar_url && u.username!.charAt(0).toUpperCase()}
+                          {!u.avatar &&
+                            !(u as { avatar_url?: string }).avatar_url &&
+                            (u.username || "U").charAt(0).toUpperCase()}
                         </Box>
                         <Box flex={1}>
                           <Heading
@@ -366,7 +214,7 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                         </Box>
                       </Link>
                       <FollowButton
-                        username={u.username!}
+                        username={u.username || ""}
                         initialIsFollowing={(u as any).isFollowing || false}
                         size="small"
                       />
@@ -383,19 +231,17 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
           )}
 
           {activeTab === "Media" && (
-            <>
-              {artifactPosts.map((post) => (
-                <Post key={post.id} post={post} />
-              ))}
-              {artifactPosts.length === 0 && (
+            <VirtualPostList
+              posts={displayMediaPosts}
+              emptyState={
                 <Box p={6} textAlign="center" color="var(--color-text-muted)">
                   No posts with media matching "{query}" found.
                 </Box>
-              )}
-            </>
+              }
+            />
           )}
 
-          {activeTab === "Artifacts" && (
+          {activeTab === "Packages" && (
             <>
               {packagesLoading ? (
                 <Box p={4} display="flex" justifyContent="center">

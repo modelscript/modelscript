@@ -15,6 +15,8 @@
 import "./setup.js";
 
 import { CosimMqttClient, HistorianRecorder, attachCosimWebSocket } from "@modelscript/exchange/cosim";
+import os from "node:os";
+import v8 from "node:v8";
 import { createApp } from "./app.js";
 import { attachCollabWebSocket } from "./routes/collab-ws.js";
 
@@ -99,16 +101,27 @@ const app = createApp({ mqttClient, dbPool, storage: undefined, historianRecorde
 // ── Start HTTP server ──
 
 const server = app.listen(port, () => {
+  const totalRamMb = Math.round(os.totalmem() / (1024 * 1024));
+  const queue = app.locals["jobQueue"] as import("./jobs.js").JobQueue | undefined;
+  const queueConcurrency = queue?.concurrency ?? 1;
+  const heapLimitMb = Math.round(v8.getHeapStatistics().heap_size_limit / (1024 * 1024));
+
   if (process.env["ENTERPRISE_APPLIANCE"] === "true") {
     console.log(`========================================================================`);
     console.log(`▲ Ansatz Enterprise Intranet Appliance (powered by ModelScript)`);
     console.log(`├── Port:       ${port} | Air-Gap Security: ENFORCED | FERC CEII Active`);
+    console.log(
+      `├── Memory:     ${totalRamMb} MB Host RAM | Heap Cap: ${heapLimitMb} MB | Job Concurrency: ${queueConcurrency}`,
+    );
     console.log(`└── Engine:     44 Polyglot Languages & WebAssembly Linear DAE Arena`);
     console.log(`========================================================================`);
   } else {
     console.log(`▲ Ansatz API Server (powered by ModelScript)`);
     console.log(`├── Local:      http://localhost:${port}`);
     console.log(`├── Federation: ActivityPub & NodeInfo 2.1 Enabled`);
+    console.log(
+      `├── Memory:     ${totalRamMb} MB Host RAM | Heap Cap: ${heapLimitMb} MB | Job Concurrency: ${queueConcurrency}`,
+    );
     console.log(`├── Endpoints:  REST (/api/v1), GraphQL (/graphql), SPARQL (/sparql)`);
     console.log(`└── Engine:     44 Polyglot Languages & WebAssembly Linear DAE Arena`);
   }

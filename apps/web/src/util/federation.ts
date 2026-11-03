@@ -50,19 +50,36 @@ export function getAcctUri(
   return `acct:${parsed.localUsername}@${domain}`;
 }
 
+function stripTrailingSlashes(str: string): string {
+  let end = str.length;
+  while (end > 0 && str.charCodeAt(end - 1) === 47 /* '/' */) {
+    end--;
+  }
+  return str.slice(0, end);
+}
+
+function isHubModelscriptUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    return parsed.hostname === "hub.modelscript.org";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Resolves a local user's ActivityPub actor URL dynamically based on the running instance origin,
  * replacing legacy hardcoded hub.modelscript.org URLs when running on another host.
  */
 export function resolveLocalActorUrl(username: string, rawActorUrl?: string | null, currentOrigin?: string): string {
-  const origin = (
-    currentOrigin || (typeof window !== "undefined" ? window.location.origin : "http://localhost:3001")
-  ).replace(/\/+$/, "");
+  const origin = stripTrailingSlashes(
+    currentOrigin || (typeof window !== "undefined" ? window.location.origin : "http://localhost:3001"),
+  );
   const cleanUser = (username || "username").replace(/^@/, "");
   if (!rawActorUrl || !rawActorUrl.trim()) {
     return `${origin}/users/${cleanUser}`;
   }
-  if (rawActorUrl.includes("://hub.modelscript.org") && !origin.includes("://hub.modelscript.org")) {
+  if (isHubModelscriptUrl(rawActorUrl) && !isHubModelscriptUrl(origin)) {
     return `${origin}/users/${cleanUser}`;
   }
   return rawActorUrl;

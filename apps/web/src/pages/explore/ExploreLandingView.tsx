@@ -16,8 +16,8 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { getRepoFallbackStars } from "../../api";
 import Box from "../../components/Box";
-import Post from "../../components/Post";
 import { scrollToTop } from "../../components/ScrollToTop";
+import VirtualPostList from "../../components/VirtualPostList";
 import { PackageIcon } from "../libraries/components/PackageIcon";
 import { formatDomainLabel, formatTimeAgo, inferPackageDomains, splitScopedPackageName } from "../libraries/constants";
 import { DomainBadge } from "../libraries/styles";
@@ -170,14 +170,14 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
               </Box>
             ) : (
               <>
-                {posts.map((post) => (
-                  <Post key={post.id} post={post} />
-                ))}
-                {posts.length === 0 && (
-                  <Box p={6} textAlign="center" color="var(--color-text-muted)">
-                    No posts to explore right now.
-                  </Box>
-                )}
+                <VirtualPostList
+                  posts={posts}
+                  emptyState={
+                    <Box p={6} textAlign="center" color="var(--color-text-muted)">
+                      No posts to explore right now.
+                    </Box>
+                  }
+                />
               </>
             )}
           </>
@@ -300,9 +300,7 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                   );
                 })}
 
-                {trendingFeedPosts.map((post) => (
-                  <Post key={post.id} post={post} />
-                ))}
+                {trendingFeedPosts.length > 0 && <VirtualPostList posts={trendingFeedPosts} />}
 
                 {activeTrendingTopics.length === 0 && trendingFeedPosts.length === 0 && (
                   <Box p={6} textAlign="center" color="var(--color-text-muted)">

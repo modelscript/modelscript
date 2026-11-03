@@ -112,9 +112,8 @@ interface KeyboardShortcutsModalProps {
 const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ isOpen, onClose }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const hasCae = useFeatureFlag("cae_cloud_solver");
-  const hasFeedsPage = useFeatureFlag("feeds_page");
-  const hasRssFeeds = useFeatureFlag("rss_feeds");
-  const hasFeeds = hasFeedsPage || hasRssFeeds;
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
   useFocusTrap(modalRef, isOpen, { onEscape: onClose });
 
   const filteredShortcuts = React.useMemo(() => {

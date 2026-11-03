@@ -30,6 +30,8 @@ import { getClassDiagRange } from "../support/range-utils.js";
 import type { ComponentInstanceData } from "../types.js";
 import { collectExtendsMods } from "./component-inst.js";
 
+type DaeWithParent = DAEBuilder & { parentDae?: DaeWithParent };
+
 export function isFunctionSym(db: QueryDB, sym: any): boolean {
   if (!sym) return false;
   if ((sym as any)._isFunction !== undefined) return (sym as any)._isFunction;
@@ -1506,9 +1508,9 @@ export function flattenFunction(
     const targetFnCst = (db.cstNode(targetSymId) as any) ?? cst;
     const fnRawText = targetFnCst?.text ?? "";
     const derivMatch = fnRawText.match(/\bderivative\s*(?:\([^)]*\))?\s*=\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/);
-    if (derivMatch && parentDae) {
+    if (derivMatch) {
       const derivRawName = derivMatch[1]!;
-      const scopeToSearch = enclosingScopeId ?? fnParentId ?? targetSymId;
+      const scopeToSearch = fnParentId ?? enclosingScopeId ?? targetSymId;
       const resolver = db.query<any>("resolveName", scopeToSearch) ?? db.query<any>("resolveSimpleName", scopeToSearch);
       const derivSym =
         (fnParentId
@@ -1520,17 +1522,27 @@ export function flattenFunction(
         db.byName(derivRawName.split(".").pop()!).find((e) => e.kind === "Class" && isFunctionSym(db, e));
       if (derivSym && !flattener.activeFlatteningFunctionIds.has(derivSym.id)) {
         const derivQualName = getSymbolQualifiedName(db, derivSym.id) || derivSym.name;
-        if (!parentDae.functions.has(derivQualName)) {
+        if (!parentDae?.functions.has(derivQualName) && !fn.functions.has(derivQualName)) {
           const derivFn = flattener.flattenFunction(
             derivSym.id,
             derivQualName,
             undefined,
-            parentDae,
+            parentDae ?? fn,
             fnParentId ?? undefined,
           );
           (derivFn as any).isDerivativeFunction = true;
           (derivFn as any).wasCalled = true;
-          parentDae.addFunction(derivQualName, derivFn);
+          fn.addFunction(derivQualName, derivFn);
+          if (parentDae) {
+            parentDae.addFunction(derivQualName, derivFn);
+          }
+          let rootDae: DaeWithParent | undefined =
+            (flattener as { currentRootDae?: DaeWithParent })?.currentRootDae ??
+            (parentDae as DaeWithParent | undefined);
+          while (rootDae?.parentDae) rootDae = rootDae.parentDae;
+          if (rootDae) {
+            rootDae.addFunction(derivQualName, derivFn);
+          }
         }
       }
     }

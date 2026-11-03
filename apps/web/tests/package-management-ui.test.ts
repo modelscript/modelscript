@@ -24,6 +24,7 @@ import {
   buildClassTree,
   categorizeClassComponents,
   classifyClassDomain,
+  extractModelicaEquations,
   filterClassTree,
   resolveTypeTargetUrl,
 } from "../src/components/classTreeUtils";
@@ -120,6 +121,15 @@ describe("Package Management UI & Scoped Package Routing", () => {
     assert.equal(scoped.name, "@alice/ThermalSystems");
     assert.equal(scoped.version, "1.2.0");
     assert.equal(scoped.className, "ThermalSystems.HeatPump");
+
+    const withTrailingSlash = resolvePackageParams({
+      name: "Modelica/",
+      version: "4.1.0/",
+      className: "Modelica.Electrical.Analog/",
+    });
+    assert.equal(withTrailingSlash.name, "Modelica");
+    assert.equal(withTrailingSlash.version, "4.1.0");
+    assert.equal(withTrailingSlash.className, "Modelica.Electrical.Analog");
   });
 
   test("encodePackagePath preserves scoped slash while URL-encoding segments", () => {
@@ -381,5 +391,34 @@ describe("Package Management UI & Scoped Package Routing", () => {
 
     // Primitive type returns null
     assert.equal(resolveTypeTargetUrl("Real", "DriveLib", "1.0.0", knownClasses), null);
+  });
+
+  test("extractModelicaEquations: extracts all equations and cleans annotations without premature termination", () => {
+    const source = `model BooleanNetwork1
+  extends Modelica.Icons.Example;
+  Modelica.Blocks.Interaction.Show.BooleanValue showValue;
+  MathBoolean.And and1(nu=3);
+  Sources.BooleanPulse booleanPulse1;
+equation
+  connect(booleanPulse1.y, and1.u[1]) annotation (Line(
+      points={{-79,70},{-68,70},{-68,72.8},{-58,72.8}}, color={255,0,255}));
+  connect(booleanStep.y, and1.u[2]) annotation (Line(
+      points={{-79,38},{-64,38},{-64,70},{-58,70}}, color={255,0,255}));
+  connect(booleanPulse2.y, and1.u[3]) annotation (Line(
+      points={{-79,6},{-62,6},{-62,67.2},{-58,67.2}}, color={255,0,255}));
+  when condition then
+    x = 1;
+    y = 2;
+  end when;
+  annotation (experiment(StopTime=10), Documentation(info="<html><p>Sample</p></html>"));
+end BooleanNetwork1;`;
+
+    const eqs = extractModelicaEquations(source);
+    assert.equal(eqs.length, 4);
+    assert.equal(eqs[0], "connect(booleanPulse1.y, and1.u[1]);");
+    assert.equal(eqs[1], "connect(booleanStep.y, and1.u[2]);");
+    assert.equal(eqs[2], "connect(booleanPulse2.y, and1.u[3]);");
+    assert.ok(eqs[3]?.includes("when condition then"));
+    assert.ok(eqs[3]?.includes("end when;"));
   });
 });
