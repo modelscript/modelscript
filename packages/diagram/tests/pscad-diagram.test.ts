@@ -615,4 +615,39 @@ const projA: PscadProjectLike = {
   console.log("   Test 8 passed: <Gfx> graphics and exact port coordinates verified.");
 }
 
+// Test 9: ReDoS Resilience on Pathological Unit Strings
+{
+  console.log("Test 9: ReDoS Resilience on Pathological Unit Strings");
+  const pathologicalRating = " ".repeat(100000);
+  const projH: PscadProjectLike = {
+    name: "PathologicalTest",
+    definitions: new Map(),
+    rootModule: {
+      name: "Main",
+      buses: [],
+      wires: [],
+      components: [
+        {
+          id: "cmp_redos",
+          definitionName: "Apparatus:Transformer",
+          position: { x: 100, y: 100 },
+          width: 50,
+          height: 50,
+          parameters: {
+            MVA: pathologicalRating,
+          },
+          ports: [],
+        },
+      ],
+    },
+  };
+  const start = Date.now();
+  const diagH = buildPscadDiagram(projH);
+  const elapsed = Date.now() - start;
+  assert.ok(elapsed < 100, `buildPscadDiagram took ${elapsed}ms, must take <100ms`);
+  const cmpCell = diagH.cells.find((c) => c.id === "cmp_redos");
+  assert.ok(cmpCell, "cmp_redos cell must exist");
+  console.log("   Test 9 passed: Pathological unit strings handled in linear time.");
+}
+
 console.log("ALL PSCAD DIAGRAM & DIFF TESTS PASSED SUCCESSFULLY! Milestone 2 verified.");

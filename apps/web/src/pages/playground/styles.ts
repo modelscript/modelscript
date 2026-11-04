@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Link } from "react-router-dom";
 import styled from "styled-components";
 
 export const PlaygroundContainer = styled.div`
@@ -52,6 +51,17 @@ export const NavLeft = styled.div`
   }
 `;
 
+export const NavCenter = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+
+  @media (max-width: 960px) {
+    display: none;
+  }
+`;
+
 export const NavRight = styled.div`
   display: flex;
   align-items: center;
@@ -63,7 +73,7 @@ export const NavRight = styled.div`
   }
 `;
 
-export const BrandLink = styled(Link)`
+export const BrandLink = styled.a`
   display: flex;
   align-items: center;
   gap: 8px;
@@ -71,9 +81,12 @@ export const BrandLink = styled(Link)`
   color: var(--color-fg-default);
   font-weight: 600;
   font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
 
   &:hover {
     text-decoration: none;
+    opacity: 0.85;
   }
 `;
 

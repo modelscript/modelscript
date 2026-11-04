@@ -45,6 +45,12 @@ You need it if any of these apply:
 2. You can't publish your application's source under the AGPL.
 3. Your company's legal policy prohibits AGPL dependencies.
 
+### What third-party dependencies are in the Commercial SDK, and are there copyleft terms?
+
+The core ModelScript compiler SDK (`@modelscript/dsl`, `@modelscript/runtime`, `@modelscript/simulate`, `@modelscript/diagram`, `@modelscript/react`, and polyglot languages) relies exclusively on permissive open-source dependencies (`MIT`, `Apache-2.0`, `BSD`, `ISC`, `zlib`) with zero copyleft obligations.
+
+If your product embeds the optional 3D CAD/STEP geometry engine (`@modelscript/cad`), it interfaces with Open CASCADE Technology WebAssembly binaries (`opencascade.js` and `occt-import-js`), which are licensed under the **GNU Lesser General Public License v2.1 (LGPL-2.1)**. Under LGPL-2.1 Section 6, commercial customers can embed `@modelscript/cad` within proprietary, closed-source applications provided that Open CASCADE is loaded as a dynamically linked WebAssembly module (as natively implemented via WebWorker isolation in `src/worker.ts`) and standard Open CASCADE attribution and LGPL-2.1 terms are passed through to end users.
+
 ### How is the Commercial SDK priced?
 
 It is priced per product per year. If you ship several distinct products, or have a large user base, [contact us](mailto:enterprise@modelscript.org?subject=%5BCommercial%20SDK%20Inquiry%5D%20Pricing) for a quote.

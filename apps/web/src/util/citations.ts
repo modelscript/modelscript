@@ -527,7 +527,7 @@ export function buildCitationFromPost(post: {
   const authorName = post.author_display_name || post.author_username || "Ansatz Author";
   const username = post.author_username || "user";
   const authors: CitationAuthor[] = [{ name: authorName, username }];
-  const postUrl = `/${username}/status/${postIdStr}`;
+  const postUrl = `/@${username}/status/${postIdStr}`;
 
   return {
     urn,

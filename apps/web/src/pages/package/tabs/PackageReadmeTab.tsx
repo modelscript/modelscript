@@ -18,7 +18,8 @@ import Box from "../../../components/Box";
 import { buildClassTree } from "../../../components/classTreeUtils";
 import InvertedSvg from "../../../components/InvertedSvg";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
-import { DiagramWrap, DocCard, GlassCard } from "../types";
+import { PackageDiagramViewer } from "../components/PackageDiagramViewer";
+import { DocCard, GlassCard } from "../types";
 
 export interface PackageReadmeTabProps {
   name: string;
@@ -125,19 +126,24 @@ export const PackageReadmeTab: React.FC<PackageReadmeTabProps> = ({
           </Box>
           {showDiagram && (
             <Box mt={3} pt={3} style={{ borderTop: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08))" }}>
-              <DiagramWrap style={{ margin: 0, border: "none", background: "transparent", padding: 0 }}>
-                <InvertedSvg
-                  src={`${getDiagramUrl(name, version, rootClassName || name)}?t=${retryCount}`}
-                  alt={`${name} diagram`}
-                  onError={() => {
-                    if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
-                      setTimeout(() => setRetryCount((p) => p + 1), 3000);
-                    } else {
-                      setDiagramError(true);
-                    }
-                  }}
-                />
-              </DiagramWrap>
+              <PackageDiagramViewer
+                src={`${getDiagramUrl(name, version, rootClassName || name)}?t=${retryCount}`}
+                alt={`${name} diagram`}
+                style={{
+                  margin: 0,
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  maxHeight: "440px",
+                }}
+                onError={() => {
+                  if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
+                    setTimeout(() => setRetryCount((p) => p + 1), 3000);
+                  } else {
+                    setDiagramError(true);
+                  }
+                }}
+              />
             </Box>
           )}
         </GlassCard>

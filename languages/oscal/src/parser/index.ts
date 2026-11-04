@@ -329,12 +329,61 @@ function escapeXml(str: string): string {
 
 function parseXmlAttributes(attrStr: string): Record<string, string> {
   const attrs: Record<string, string> = {};
-  const attrRe = /([A-Za-z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-  let m: RegExpExecArray | null;
-  while ((m = attrRe.exec(attrStr)) !== null) {
-    const key = m[1]!;
-    const val = m[2] ?? m[3] ?? "";
-    attrs[key] = unescapeXml(val);
+  if (!attrStr) return attrs;
+  let i = 0;
+  const len = attrStr.length;
+  while (i < len) {
+    // Skip whitespace
+    while (i < len && attrStr.charCodeAt(i) <= 32) {
+      i++;
+    }
+    if (i >= len) break;
+
+    // Attribute name
+    const startName = i;
+    while (i < len && attrStr.charCodeAt(i) > 32 && attrStr[i] !== "=" && attrStr[i] !== "/" && attrStr[i] !== ">") {
+      i++;
+    }
+    const key = attrStr.slice(startName, i);
+    if (!key) break;
+
+    // Skip whitespace before '='
+    while (i < len && attrStr.charCodeAt(i) <= 32) {
+      i++;
+    }
+    if (i >= len || attrStr[i] !== "=") {
+      attrs[key] = "";
+      continue;
+    }
+    i++; // consume '='
+
+    // Skip whitespace after '='
+    while (i < len && attrStr.charCodeAt(i) <= 32) {
+      i++;
+    }
+    if (i >= len) {
+      attrs[key] = "";
+      break;
+    }
+
+    const quote = attrStr[i];
+    if (quote === '"' || quote === "'") {
+      i++; // consume opening quote
+      const startVal = i;
+      const endQuote = attrStr.indexOf(quote, startVal);
+      if (endQuote === -1) {
+        attrs[key] = unescapeXml(attrStr.slice(startVal));
+        break;
+      }
+      attrs[key] = unescapeXml(attrStr.slice(startVal, endQuote));
+      i = endQuote + 1;
+    } else {
+      const startVal = i;
+      while (i < len && attrStr.charCodeAt(i) > 32 && attrStr[i] !== "/" && attrStr[i] !== ">") {
+        i++;
+      }
+      attrs[key] = unescapeXml(attrStr.slice(startVal, i));
+    }
   }
   return attrs;
 }
@@ -355,21 +404,58 @@ function stripXmlCommentsAndProlog(xml: string): string {
 
 function parseXmlTree(xml: string): XmlNode {
   const cleaned = stripXmlCommentsAndProlog(xml);
-  const tagRe = /<\/?([A-Za-z0-9_:-]+)([^>]*?)(\/?)>/g;
   const stack: XmlNode[] = [];
   let root: XmlNode | null = null;
   let lastIndex = 0;
+  let pos = 0;
+  const len = cleaned.length;
 
-  let match: RegExpExecArray | null;
-  while ((match = tagRe.exec(cleaned)) !== null) {
-    const fullMatch = match[0]!;
-    const isClosing = fullMatch.startsWith("</");
-    const rawTag = match[1]!;
+  while (pos < len) {
+    const tagStart = cleaned.indexOf("<", pos);
+    if (tagStart === -1) break;
+
+    // Find end of tag '>', taking quotes into account so '>' inside attribute values doesn't prematurely close the tag
+    let tagEnd = -1;
+    let inQuote: string | null = null;
+    for (let j = tagStart + 1; j < len; j++) {
+      const ch = cleaned[j];
+      if (inQuote) {
+        if (ch === inQuote) {
+          inQuote = null;
+        }
+      } else if (ch === '"' || ch === "'") {
+        inQuote = ch;
+      } else if (ch === ">") {
+        tagEnd = j + 1;
+        break;
+      }
+    }
+
+    if (tagEnd === -1) {
+      break;
+    }
+
+    pos = tagEnd;
+
+    const tagContent = cleaned.slice(tagStart + 1, tagEnd - 1).trim();
+    if (!tagContent) continue;
+
+    const isClosing = tagContent.startsWith("/");
+    const inner = isClosing ? tagContent.slice(1).trim() : tagContent;
+
+    const isSelfClosing = !isClosing && inner.endsWith("/");
+    const tagBody = isSelfClosing ? inner.slice(0, -1).trim() : inner;
+
+    // Extract tag name
+    let nameEnd = 0;
+    while (nameEnd < tagBody.length && tagBody.charCodeAt(nameEnd) > 32 && tagBody[nameEnd] !== "/") {
+      nameEnd++;
+    }
+    const rawTag = tagBody.slice(0, nameEnd);
+    if (!rawTag) continue;
+
     const localTag = rawTag.includes(":") ? rawTag.split(":")[1]! : rawTag;
-    const attrText = match[2] ?? "";
-    const isSelfClosing = match[3] === "/";
-    const tagStart = match.index;
-    const tagEnd = tagStart + fullMatch.length;
+    const attrText = tagBody.slice(nameEnd).trim();
 
     if (stack.length > 0 && tagStart > lastIndex) {
       const textSegment = cleaned.slice(lastIndex, tagStart).trim();

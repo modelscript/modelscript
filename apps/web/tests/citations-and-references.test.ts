@@ -49,8 +49,8 @@ test("Universal Citations, OpenAlex Scholarly Reference Manager & Source URN Res
         created_at: "2026-03-15T12:00:00Z",
       });
       assert.equal(postMeta.urn, "urn:ansatz:post:2117862858644525056");
-      assert.equal(postMeta.url, "/pantelides/status/2117862858644525056");
-      assert.equal(postMeta.sourcePageUrl, "/pantelides/status/2117862858644525056");
+      assert.equal(postMeta.url, "/@pantelides/status/2117862858644525056");
+      assert.equal(postMeta.sourcePageUrl, "/@pantelides/status/2117862858644525056");
       assert.ok(formatCitation(postMeta, "apa").includes("Pantelides"));
       assert.ok(formatCitation(postMeta, "mla").includes("Consistent initialization"));
       assert.ok(formatCitation(postMeta, "ieee").includes("[1]"));
@@ -184,7 +184,7 @@ test("Universal Citations, OpenAlex Scholarly Reference Manager & Source URN Res
       ),
     );
     assert.ok(postModalHtml.includes("View Post"));
-    assert.ok(postModalHtml.includes("/ada/status/263"));
+    assert.ok(postModalHtml.includes("/@ada/status/263"));
     assert.ok(!postModalHtml.includes("Save to References"));
 
     const snippetUrn = buildInsertedCitationSnippet(

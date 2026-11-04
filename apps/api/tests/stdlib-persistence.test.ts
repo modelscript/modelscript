@@ -168,5 +168,29 @@ describe("Standard Library Persistence, Self-Healing & Registry Parity", () => {
         `Library ${lib.packageName}@${lib.version} must be present in versions list`,
       );
     }
+
+    const modelicaPkg = res.body.packages.find((p: any) => p.name === "Modelica");
+    assert.ok(modelicaPkg, "Modelica package must exist");
+    assert.equal(modelicaPkg.latestVersion, "4.1.0");
+    assert.match(modelicaPkg.description, /v4\.1\.0/);
+    assert.doesNotMatch(modelicaPkg.description, /v3\.2\.3/);
+  });
+
+  it("4. Self-Healing: database initialization heals mismatched description and readme from outdated version", () => {
+    const pkg = db.getPackage("Modelica");
+    assert.ok(pkg);
+    // Artificially corrupt description to 3.2.3 to simulate legacy corrupted DB
+    db.updatePackageMeta(pkg.id, {
+      description: "Modelica Standard Library v3.2.3 (MSL)",
+    });
+    assert.equal(db.getPackage("Modelica")?.description, "Modelica Standard Library v3.2.3 (MSL)");
+
+    // Reopen database to trigger #initialize() self-healing
+    const healedDb = new LibraryDatabase(path.join(tmpDir, "persist.db"));
+    const healedPkg = healedDb.getPackage("Modelica");
+    assert.ok(healedPkg);
+    assert.match(healedPkg.description!, /v4\.1\.0/);
+    assert.doesNotMatch(healedPkg.description!, /v3\.2\.3/);
+    healedDb.close();
   });
 });

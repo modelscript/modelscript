@@ -153,7 +153,7 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                       borderBottom="1px solid var(--color-border)"
                     >
                       <Link
-                        to={`/${u.username}`}
+                        to={`/@${u.username}`}
                         style={{
                           textDecoration: "none",
                           color: "inherit",

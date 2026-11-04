@@ -116,4 +116,13 @@ system-security-plan:
     assert.strictEqual(sspDoc.controlImplementation?.implementedRequirements.length, 1);
     assert.strictEqual(sspDoc.controlImplementation?.implementedRequirements[0]?.controlId, "sc-7");
   });
+
+  it("handles potentially pathological repetitive XML structures linearly without ReDoS", () => {
+    const maliciousAttrs = `<catalog id="c1" ${"-".repeat(50000)}>\n</catalog>`;
+    const doc = parseOscal(maliciousAttrs);
+    assert.strictEqual(doc.kind, "catalog");
+
+    const pathologicalTag = `<-${"-".repeat(50000)}`;
+    assert.throws(() => parseOscal(pathologicalTag));
+  });
 });

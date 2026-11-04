@@ -156,12 +156,27 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   useImperativeHandle(ref, () => ({
     fitContent: () => {
       syncDiagramOptions();
-      const g =
-        getGraph(containerRef.current) ??
-        (containerRef.current ? initGraph(props.theme === "vs-dark", containerRef.current) : null);
-      if (g) {
+      const container = containerRef.current;
+      const g = getGraph(container) ?? (container ? initGraph(props.theme === "vs-dark", container) : null);
+      if (g && container) {
         try {
-          g.zoomToFit({ maxScale: 1, padding: 20 });
+          const cw = container.clientWidth > 0 ? container.clientWidth : 800;
+          const ch = container.clientHeight > 0 ? container.clientHeight : 600;
+          if (propsRef.current.diagramData?.coordinateSystem) {
+            const cs = propsRef.current.diagramData.coordinateSystem;
+            const expandedRect = {
+              x: cs.x - cs.width * 0.125,
+              y: cs.y - cs.height * 0.125,
+              width: cs.width * 1.25,
+              height: cs.height * 1.25,
+            };
+            const zoomable = g as unknown as {
+              zoomToRect?: (rect: unknown, options?: unknown) => void;
+            };
+            zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width: cw, height: ch } });
+          } else {
+            g.zoomToFit({ maxScale: 1, padding: 20 });
+          }
         } catch {
           // ignore if zoom fails before layout
         }
@@ -180,7 +195,46 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   useEffect(() => {
     const container = containerRef.current;
+    if (!container) return;
+
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (!entry) return;
+            const { width, height } = entry.contentRect;
+            if (width <= 0 || height <= 0) return;
+
+            if (resizeTimer) clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+              const g = getGraph(container);
+              const zoomable = g as unknown as {
+                isDisposed?: () => boolean;
+                zoomToRect?: (rect: unknown, options?: unknown) => void;
+              };
+              if (g && (typeof zoomable.isDisposed === "function" ? !zoomable.isDisposed() : true)) {
+                g.resize(Math.round(width), Math.round(height));
+                if (propsRef.current.diagramData?.coordinateSystem) {
+                  const cs = propsRef.current.diagramData.coordinateSystem;
+                  const expandedRect = {
+                    x: cs.x - cs.width * 0.125,
+                    y: cs.y - cs.height * 0.125,
+                    width: cs.width * 1.25,
+                    height: cs.height * 1.25,
+                  };
+                  zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width, height } });
+                }
+              }
+            }, 60);
+          })
+        : null;
+
+    ro?.observe(container);
+
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      ro?.disconnect();
       disposeDiagram(container);
     };
   }, []);

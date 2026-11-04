@@ -38,7 +38,6 @@ import {
   WindowDots,
 } from "./styles";
 
-/* ─── Main Component Props ─── */
 export interface TerminalLogViewerProps {
   packageName: string;
   packageVersion: string;
@@ -47,6 +46,8 @@ export interface TerminalLogViewerProps {
   initialJobInfo?: JobInfo | null | undefined;
   onJobCompleted?: (() => void) | undefined;
   defaultCollapsed?: boolean | undefined;
+  onClose?: (() => void) | undefined;
+  isModal?: boolean | undefined;
 }
 
 export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
@@ -55,6 +56,8 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
   initialJobInfo,
   onJobCompleted,
   defaultCollapsed = false,
+  onClose,
+  isModal = false,
 }) => {
   const [logs, setLogs] = useState<string[]>(initialJobInfo?.logs ?? []);
   const [status, setStatus] = useState<JobStatus>(initialJobInfo?.status ?? "pending");
@@ -73,6 +76,18 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
   useEffect(() => {
     onJobCompletedRef.current = onJobCompleted;
   }, [onJobCompleted]);
+
+  /* ─── Keyboard Listeners (Escape to close) ─── */
+  useEffect(() => {
+    if (!onClose) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
   const isTerminal = status === "completed" || status === "failed";
 
   /* ─── Server-Sent Events (SSE) with Polling Fallback ─── */
@@ -271,7 +286,17 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
         <CollapsedSummaryBar onClick={() => setIsCollapsed(false)}>
           <HeaderLeft>
             <WindowDots>
-              <Dot $color="#ff5f56" />
+              <Dot
+                $color="#ff5f56"
+                onClick={(e) => {
+                  if (onClose) {
+                    e.stopPropagation();
+                    onClose();
+                  }
+                }}
+                style={{ cursor: onClose ? "pointer" : "default" }}
+                title={onClose ? "Close logs" : undefined}
+              />
               <Dot $color="#ffbd2e" />
               <Dot $color="#27c93f" />
             </WindowDots>
@@ -285,6 +310,17 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
             <span style={{ fontSize: 11, color: "var(--color-text-muted)" }}>
               {logs.length} lines • Click to expand
             </span>
+            {onClose && (
+              <ToolbarButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClose();
+                }}
+                title="Dismiss"
+              >
+                <XIcon size={12} />
+              </ToolbarButton>
+            )}
           </HeaderRight>
         </CollapsedSummaryBar>
       </TerminalContainer>
@@ -297,7 +333,12 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
       <TerminalHeader>
         <HeaderLeft>
           <WindowDots>
-            <Dot $color="#ff5f56" />
+            <Dot
+              $color="#ff5f56"
+              onClick={onClose}
+              style={{ cursor: onClose ? "pointer" : "default" }}
+              title={onClose ? "Close logs (Esc)" : undefined}
+            />
             <Dot $color="#ffbd2e" />
             <Dot $color="#27c93f" />
           </WindowDots>
@@ -382,15 +423,21 @@ export const TerminalLogViewer: React.FC<TerminalLogViewerProps> = ({
             {isFullscreen ? <ScreenNormalIcon size={12} /> : <ScreenFullIcon size={12} />}
           </ToolbarButton>
 
-          {/* Collapse button */}
-          <ToolbarButton onClick={() => setIsCollapsed(true)} title="Collapse terminal">
-            <XIcon size={12} />
-          </ToolbarButton>
+          {/* Close or Collapse button */}
+          {onClose ? (
+            <ToolbarButton onClick={onClose} title="Close logs (Esc)">
+              <XIcon size={12} />
+            </ToolbarButton>
+          ) : (
+            <ToolbarButton onClick={() => setIsCollapsed(true)} title="Collapse terminal">
+              <XIcon size={12} />
+            </ToolbarButton>
+          )}
         </HeaderRight>
       </TerminalHeader>
 
       {/* ─── Log Scroll Area ─── */}
-      <TerminalScrollArea ref={scrollRef} onScroll={handleScroll} $isFullscreen={isFullscreen}>
+      <TerminalScrollArea ref={scrollRef} onScroll={handleScroll} $isFullscreen={isFullscreen} $isModal={isModal}>
         {filteredLogs.length === 0 ? (
           <div
             style={{

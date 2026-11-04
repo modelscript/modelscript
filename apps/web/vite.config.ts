@@ -185,6 +185,7 @@ const DOCS_ROUTE_PREFIXES = [
   "/reference",
   "/industries",
   "/pricing",
+  "/trademark",
   "/vp-icons",
 ];
 

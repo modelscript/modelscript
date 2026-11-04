@@ -4,16 +4,14 @@ import {
   ArrowRightIcon,
   BookIcon,
   CpuIcon,
-  DashIcon,
   PackageIcon,
   PlugIcon,
-  PlusIcon,
   SlidersIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
 import { Label, Text } from "@primer/react";
 import DOMPurify from "dompurify";
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { getDiagramUrl, getIconUrl, rewriteModelicaUris, type ClassSummary } from "../../../api";
 import CadStepViewer from "../../../components/artifacts/CadStepViewer";
@@ -21,19 +19,8 @@ import SysmlViewer from "../../../components/artifacts/SysmlViewer";
 import Box from "../../../components/Box";
 import type { CategorizedClassComponents } from "../../../components/classTreeUtils";
 import InvertedSvg from "../../../components/InvertedSvg";
-import {
-  DiagramToolbar,
-  DiagramToolbarButton,
-  DiagramViewport,
-  DiagramWrap,
-  DocCard,
-  GlassCard,
-  JavadocSection,
-  JavadocTable,
-  JavadocTableWrap,
-  SectionTitle,
-  TypeLink,
-} from "../styles";
+import { PackageDiagramViewer } from "../../package/components/PackageDiagramViewer";
+import { DocCard, GlassCard, JavadocSection, JavadocTable, JavadocTableWrap, SectionTitle, TypeLink } from "../styles";
 import type { ClassDetail, JobStatus } from "../types";
 
 export interface ClassOverviewTabProps {
@@ -70,7 +57,6 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
   categorized,
   onViewParameters,
 }) => {
-  const [diagramZoom, setDiagramZoom] = useState(1);
   const childClasses = useMemo(() => {
     const prefix = `${className}.`;
     const direct = allClasses.filter(
@@ -127,53 +113,20 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
         <div>
           <SectionTitle as="h3">Diagram</SectionTitle>
           <div style={{ position: "relative" }}>
-            <DiagramWrap>
-              {!diagramLoaded && !diagramError && (
-                <div className="skeleton" style={{ width: "100%", height: "100%", borderRadius: "8px" }} />
-              )}
-              {diagramLoaded && (
-                <DiagramToolbar>
-                  <DiagramToolbarButton
-                    type="button"
-                    onClick={() => setDiagramZoom((z) => Math.max(Number((z - 0.25).toFixed(2)), 0.5))}
-                    title="Zoom Out"
-                  >
-                    <DashIcon size={13} />
-                  </DiagramToolbarButton>
-                  <DiagramToolbarButton
-                    type="button"
-                    $active={diagramZoom !== 1}
-                    onClick={() => setDiagramZoom(1)}
-                    title="Reset Zoom"
-                  >
-                    {Math.round(diagramZoom * 100)}%
-                  </DiagramToolbarButton>
-                  <DiagramToolbarButton
-                    type="button"
-                    onClick={() => setDiagramZoom((z) => Math.min(Number((z + 0.25).toFixed(2)), 3))}
-                    title="Zoom In"
-                  >
-                    <PlusIcon size={13} />
-                  </DiagramToolbarButton>
-                </DiagramToolbar>
-              )}
-              <DiagramViewport $loaded={diagramLoaded} $zoom={diagramZoom}>
-                <InvertedSvg
-                  src={`${getDiagramUrl(libraryName, version, className)}?t=${retryCount}`}
-                  alt={`${className} diagram`}
-                  width="100%"
-                  height="100%"
-                  onLoad={() => setDiagramLoaded(true)}
-                  onError={() => {
-                    if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
-                      setTimeout(() => setRetryCount((p) => p + 1), 3000);
-                    } else {
-                      setDiagramError(true);
-                    }
-                  }}
-                />
-              </DiagramViewport>
-            </DiagramWrap>
+            <PackageDiagramViewer
+              src={`${getDiagramUrl(libraryName, version, className)}?t=${retryCount}`}
+              alt={`${className} diagram`}
+              loaded={diagramLoaded}
+              setLoaded={setDiagramLoaded}
+              isError={diagramError}
+              onError={() => {
+                if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
+                  setTimeout(() => setRetryCount((p) => p + 1), 3000);
+                } else {
+                  setDiagramError(true);
+                }
+              }}
+            />
           </div>
         </div>
       )}

@@ -38,7 +38,7 @@ export const TerminalContainer = styled.div<{
     css`
       position: fixed;
       inset: 20px;
-      z-index: 1000;
+      z-index: 1300;
       margin: 0;
       box-shadow: 0 12px 48px rgba(0, 0, 0, 0.75);
     `}
@@ -75,6 +75,14 @@ export const Dot = styled.span<{ $color: string }>`
   background: ${(props) => props.$color};
   display: inline-block;
   opacity: 0.85;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+
+  &:hover {
+    opacity: 1;
+    transform: scale(1.1);
+  }
 `;
 
 export const TerminalTitle = styled.div`
@@ -223,9 +231,13 @@ export const ClearFilterButton = styled.button`
   }
 `;
 
-export const TerminalScrollArea = styled.div<{ $isFullscreen?: boolean | undefined }>`
+export const TerminalScrollArea = styled.div<{
+  $isFullscreen?: boolean | undefined;
+  $isModal?: boolean | undefined;
+}>`
   flex: 1;
-  max-height: ${(props) => (props.$isFullscreen ? "calc(100vh - 120px)" : "360px")};
+  max-height: ${(props) =>
+    props.$isFullscreen ? "calc(100vh - 120px)" : props.$isModal ? "calc(82vh - 65px)" : "360px"};
   min-height: 180px;
   overflow-y: auto;
   overflow-x: auto;

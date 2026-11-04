@@ -88,6 +88,32 @@ export default function PrivacyPage() {
             </tr>
             <tr>
               <td>
+                <strong>Corporate SSO &amp; Identity</strong>
+              </td>
+              <td>
+                Corporate OIDC / SAML 2.0 Subject IDs (<InlineCode>sub</InlineCode>), institutional email claims, given
+                and family names, and Active Directory / IdP group-to-role mappings.
+              </td>
+              <td>
+                Enterprise single sign-on authentication and organization role-based access control (Art. 6(1)(b)
+                Contract &amp; Art. 6(1)(f) Legitimate Interest).
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Industrial &amp; Digital Twin Telemetry</strong>
+              </td>
+              <td>
+                TimescaleDB operational sensor time-series streams, physical asset hardware birth certificates / serial
+                numbers, and distributed MQTT co-simulation frames.
+              </td>
+              <td>
+                Executing operational digital twin monitoring and co-simulation workloads; treated as confidential
+                industrial data (Art. 6(1)(b) Contract).
+              </td>
+            </tr>
+            <tr>
+              <td>
                 <strong>First-Party Page &amp; Post Telemetry</strong>
               </td>
               <td>
@@ -104,12 +130,25 @@ export default function PrivacyPage() {
                 <strong>Security &amp; Audit Logs</strong>
               </td>
               <td>
-                Authentication events, admin/moderation actions, and client IP addresses in the security audit trail,
-                chained with SHA-256 integrity hashes.
+                Authentication events, admin/moderation actions, export control enforcement blocks, and client IP
+                addresses in the security audit trail, chained with SHA-256 integrity hashes.
               </td>
               <td>
                 Intrusion detection, rate-limiting, and regulatory compliance; automatically purged after 30 days (Art.
                 6(1)(c) &amp; Art. 6(1)(f)).
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <strong>Regulatory Compliance Attestations</strong>
+              </td>
+              <td>
+                Ed25519-signed FDA 21 CFR Part 11 Design History File (DHF) verification dossiers, NERC CIP / FERC CEII
+                / IEEE 2800 certificates, and audit ledger head hashes.
+              </td>
+              <td>
+                Statutory regulatory compliance; retained for the statutory lifecycle of the medical device or critical
+                infrastructure asset (Art. 6(1)(c) &amp; Art. 17(3)(b)).
               </td>
             </tr>
           </tbody>
@@ -262,9 +301,9 @@ export default function PrivacyPage() {
         </ul>
       </LegalSection>
 
-      {/* 5. Engineering Model Sovereignty & AI Policy */}
+      {/* 5. Engineering Model Sovereignty, AI & Model Context Protocol (MCP) Policy */}
       <LegalSection id="model-sovereignty">
-        <h2>5. Engineering Model Sovereignty &amp; Zero AI Training on Private Data</h2>
+        <h2>5. Engineering Model Sovereignty, AI &amp; Model Context Protocol (MCP) Governance</h2>
         <TldrBox>
           <p style={{ margin: 0 }}>
             <strong>In Plain English:</strong> Your private repositories, Modelica/SysML models, and simulation results
@@ -286,16 +325,40 @@ export default function PrivacyPage() {
             <strong>No Unauthorized AI Training:</strong> <strong>{brandName}</strong> does not train foundation models
             or public neural surrogates on private user repositories, private simulation traces, or direct messages.
           </li>
+          <li>
+            <strong>
+              Hosted Model Context Protocol (MCP) Gateways (<InlineCode>/api/v1/mcp</InlineCode>):
+            </strong>{" "}
+            When AI agents connect via Server-Sent Events (SSE) or client-side stdio MCP servers, operations execute
+            strictly within your authorized workspaces. Prompt contents and simulation outputs processed over MCP are
+            never retained to train upstream models.
+          </li>
+          <li>
+            <strong>Automated AI PR Reviews &amp; Composer AI:</strong> Pull request code reviews (
+            <InlineCode>/api/v1/repos/:id/reviews</InlineCode>) and workbench code synthesis operate under
+            zero-data-retention (ZDR) agreements in cloud environments. In Enterprise Appliance mode, all external AI
+            API calls are blocked; AI assistance runs strictly through private, self-hosted intranet models (such as
+            Ollama or vLLM).
+          </li>
+          <li>
+            <strong>
+              Public AI Mirrors &amp; <InlineCode>llms.txt</InlineCode>:
+            </strong>{" "}
+            Public package manifests, models, and open documentation are indexed into token-dense Markdown mirrors and{" "}
+            <InlineCode>llms.txt</InlineCode> catalogs for AI search crawlers. Private repositories and user accounts
+            are strictly excluded from AI search manifests and crawler endpoints.
+          </li>
         </ul>
       </LegalSection>
 
       {/* 6. Security Audit Logs & 30-Day Rotation */}
       <LegalSection id="retention-security">
-        <h2>6. Security Audit Log Rotation (30-Day TTL) &amp; Cryptographic Integrity</h2>
+        <h2>6. Security Audit Log Rotation (30-Day TTL) &amp; Regulatory Compliance Retention</h2>
         <TldrBox>
           <p style={{ margin: 0 }}>
-            <strong>In Plain English:</strong> Security and authentication logs are protected by a tamper-evident
-            SHA-256 hash chain and automatically purged after 30 days.
+            <strong>In Plain English:</strong> Standard operational security logs are protected by a tamper-evident
+            SHA-256 hash chain and automatically purged after 30 days. Formal regulatory compliance dossiers (FDA 21 CFR
+            Part 11, NERC CIP) are retained as required by statutory law.
           </p>
         </TldrBox>
         <ul>
@@ -310,31 +373,52 @@ export default function PrivacyPage() {
             <InlineCode>entry_hash</InlineCode>), allowing compliance auditors to verify log integrity without exposing
             personal user content.
           </li>
+          <li>
+            <strong>Statutory Regulatory Compliance Retention Carve-Out:</strong> Where users or organizations generate
+            Ed25519-signed regulatory compliance attestations (e.g., FDA 21 CFR Part 11 Design History Files, NERC CIP,
+            or IEEE 2800 grid compliance certificates), audit ledger head hashes and verification dossiers are retained
+            for the statutory lifespan of the engineering device or infrastructure asset pursuant to GDPR Art. 17(3)(b)
+            and Art. 6(1)(c).
+          </li>
         </ul>
       </LegalSection>
 
       {/* 7. Your Rights Under GDPR & CCPA */}
       <LegalSection id="gdpr-ccpa-rights">
-        <h2>7. Your Rights (GDPR / CCPA): Offline Data Archive &amp; Permanent Erasure</h2>
+        <h2>7. Your Rights (GDPR / CCPA): Offline Data Archive, Git Vault &amp; Permanent Erasure</h2>
         <TldrBox>
           <p style={{ margin: 0 }}>
             <strong>In Plain English:</strong> You have self-service tools to download a complete, offline-browsable ZIP
-            archive of your account or permanently erase your account at any time—no support ticket required.
+            archive, clone your personal activity via Git, or permanently erase your account at any time—no support
+            ticket required.
           </p>
         </TldrBox>
         <ul>
           <li>
             <strong>Right to Data Portability (GDPR Art. 20 / CCPA § 1798.100):</strong> Visit{" "}
-            <Link to="/settings/dataArchive">Account Settings &rarr; Data Archive</Link> to generate and download a
-            self-contained <InlineCode>.zip</InlineCode> archive containing your profile, ActivityPub social graph
-            (CSV/JSON), authored posts, repositories, models, and compute ledger, bundled with a standalone offline HTML
-            viewer with zero external CDN dependencies.
+            <Link to="/settings/dataArchive">Account Settings &rarr; Data Archive</Link> to exercise portability via two
+            independent channels:
+            <ul>
+              <li>
+                <strong>Offline Standalone ZIP Archive:</strong> Generate and download a self-contained{" "}
+                <InlineCode>.zip</InlineCode> bundle containing your profile, ActivityPub social graph (CSV/JSON),
+                authored posts, repositories, models, and compute ledger, bundled with a standalone offline HTML viewer
+                with zero external CDN dependencies.
+              </li>
+              <li>
+                <strong>Personal Activity Git Vault:</strong> Clone your entire personal activity, posts, simulation
+                studies, and security audit logs in real time via standard Git Smart HTTP (
+                <InlineCode>git clone</InlineCode>). Git vault caches have an ephemeral 24-hour TTL and can be instantly
+                purged via the self-service cache cleaner.
+              </li>
+            </ul>
           </li>
           <li>
             <strong>Right to Erasure / &ldquo;Right to be Forgotten&rdquo; (GDPR Art. 17 / CCPA § 1798.105):</strong>{" "}
             Visit <Link to="/settings/privacy">Account Settings &rarr; Privacy &amp; Data Protection</Link> to
             permanently anonymize and erase your account, email, credentials, posts, models, and personal records from
-            active databases.
+            active databases. Cryptographic actor keys are erased and signed <InlineCode>Delete</InlineCode> tombstones
+            are dispatched to federated ActivityPub peers.
           </li>
           <li>
             <strong>Data Protection Inquiries:</strong> For additional GDPR, CCPA, or institutional data processing

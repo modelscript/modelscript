@@ -560,7 +560,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
   };
 
   const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3001";
-  const profileUrl = `${origin}/${user?.username || "username"}`;
+  const profileUrl = `${origin}/@${user?.username || "username"}`;
   const actorUrl = resolveLocalActorUrl(user?.username || "username", privacy.actor_url, origin);
   const relMeSnippet = `<a rel="me" href="${profileUrl}">@${user?.username || "username"} on ${brandName}</a>`;
 

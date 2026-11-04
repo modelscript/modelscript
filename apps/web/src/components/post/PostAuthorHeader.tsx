@@ -58,7 +58,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
     return (
       <Box display="flex" alignItems="center" gap={3}>
         <ProfileHoverCard username={displayPost.username}>
-          <ProfileNameLink to={`/${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
+          <ProfileNameLink to={`/@${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
             <HoverAvatar $url={displayPost.avatar_url} style={{ width: "40px", height: "40px", fontSize: "17px" }}>
               {!displayPost.avatar_url && displayPost.username.charAt(0).toUpperCase()}
             </HoverAvatar>
@@ -68,7 +68,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
           <div style={{ width: "fit-content", maxWidth: "100%", display: "flex" }}>
             <ProfileHoverCard username={displayPost.username}>
               <ProfileNameLink
-                to={`/${displayPost.username}`}
+                to={`/@${displayPost.username}`}
                 onClick={(e) => e.stopPropagation()}
                 style={{ minWidth: 0, overflow: "hidden", display: "flex", maxWidth: "100%" }}
               >
@@ -181,7 +181,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
     >
       <ProfileHoverCard username={displayPost.username}>
         <ProfileNameLink
-          to={`/${displayPost.username}`}
+          to={`/@${displayPost.username}`}
           onClick={(e) => e.stopPropagation()}
           style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
         >
@@ -211,7 +211,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
       </ProfileHoverCard>
       {postMeta?.["aiVerified"] === true && <AiBadge $variant="verified">✨ AI Verified</AiBadge>}
       <Link
-        to={`/${displayPost.username}`}
+        to={`/@${displayPost.username}`}
         className="handle-text"
         style={{
           fontSize: "15px",

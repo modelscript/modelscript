@@ -930,6 +930,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       "/industries",
       "/ansatz",
       "/pricing",
+      "/trademark",
       "/llms.txt",
       "/llms-full.txt",
       "/sitemap.xml",
@@ -1050,7 +1051,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         req.path.startsWith("/docs") ||
         req.path.startsWith("/-/") ||
         req.path.includes("/-/") ||
-        req.path.startsWith("/@")
+        (/^\/@[^/]+\/[^/]+(?:\/|$)/.test(req.path) && !/^\/@[^/]+\/(?:status|followers|following)\b/.test(req.path))
       ) {
         next();
         return;
@@ -1093,7 +1094,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       if (
         /^\/(?:posts|p)\/\d+/.test(safePath) ||
         /^\/packages?\/(@[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|[a-zA-Z0-9_.-]+)/.test(safePath) ||
-        /^\/u\/[a-zA-Z0-9_.-]+/.test(safePath)
+        /^\/(?:@|u\/)[a-zA-Z0-9_.-]+/.test(safePath)
       ) {
         try {
           const meta = resolveSeoMetadata(req, database);

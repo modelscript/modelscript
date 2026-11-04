@@ -11,6 +11,7 @@ import {
   HomeIcon,
   MoonIcon,
   PackageIcon,
+  PaintbrushIcon,
   PersonAddIcon,
   PersonIcon,
   PlayIcon,
@@ -260,7 +261,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
   const navigate = useNavigate();
   const location = useLocation();
   const { isAdmin, user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, isOverridden, clearThemeOverride } = useTheme();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const hasIde = useFeatureFlag("heavy_vscode_ide");
@@ -778,6 +779,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
           onClose();
         },
       },
+      ...(isOverridden
+        ? [
+            {
+              id: "action-reset-theme",
+              category: "Actions" as const,
+              title: "Reset Theme to System Preference",
+              subtitle: "Match the preferred color scheme from your operating system/browser",
+              icon: <PaintbrushIcon size={16} />,
+              action: () => {
+                clearThemeOverride();
+                onClose();
+              },
+            },
+          ]
+        : []),
       ...devActionItems,
     ];
 
@@ -806,7 +822,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       subtitle: `@${u.username}`,
       icon: <PersonIcon size={16} />,
       action: () => {
-        navigate(`/${u.username}`);
+        navigate(`/@${u.username}`);
         onClose();
       },
     }));
@@ -855,6 +871,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     brandName,
     theme,
     toggleTheme,
+    isOverridden,
+    clearThemeOverride,
   ]);
 
   // Keyboard navigation

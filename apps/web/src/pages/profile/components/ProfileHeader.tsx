@@ -491,7 +491,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           <Box mt={1} mb={2}>
             <Text color="var(--color-fg-muted)" style={{ fontSize: "15px", lineHeight: "20px" }}>
               <HubotIcon size={14} style={{ marginRight: "4px" }} />
-              Managed by <Link to={`/${profile.owner_username}`}>@{profile.owner_username}</Link>
+              Managed by <Link to={`/@${profile.owner_username}`}>@{profile.owner_username}</Link>
             </Text>
           </Box>
         )}
@@ -540,7 +540,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         {profile.account_type !== "rss" && (
           <Box mt={3} display="flex" gap={4}>
             <Link
-              to={`/${profile.username}/following`}
+              to={`/@${profile.username}/following`}
               style={{
                 textDecoration: "none",
                 color: "var(--color-fg-default)",
@@ -554,7 +554,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               </Text>
             </Link>
             <Link
-              to={`/${profile.username}/followers`}
+              to={`/@${profile.username}/followers`}
               style={{
                 textDecoration: "none",
                 color: "var(--color-fg-default)",

@@ -30,6 +30,7 @@ export interface ClassDetailHeaderProps {
   hasCae?: boolean | undefined;
   treeCollapsed?: boolean | undefined;
   onToggleTreeCollapse?: (() => void) | undefined;
+  onOpenLogs?: (() => void) | undefined;
 }
 
 export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
@@ -45,6 +46,7 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   hasCae,
   treeCollapsed,
   onToggleTreeCollapse,
+  onOpenLogs,
 }) => {
   const flagCae = useFeatureFlag("cae_cloud_solver");
   const showStudies = hasCae ?? flagCae;
@@ -118,7 +120,14 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
                 </Label>
               )}
               {jobStatus && jobStatus !== "completed" && (
-                <Label variant="attention">{jobStatus === "processing" ? "Processing…" : "Pending"}</Label>
+                <Label
+                  variant={jobStatus === "failed" ? "danger" : "attention"}
+                  style={{ cursor: onOpenLogs ? "pointer" : "default" }}
+                  onClick={onOpenLogs}
+                  title={onOpenLogs ? "Click to view logs" : undefined}
+                >
+                  {jobStatus === "failed" ? "Ingestion Failed" : jobStatus === "processing" ? "Processing…" : "Pending"}
+                </Label>
               )}
             </Box>
             {cls.description && (

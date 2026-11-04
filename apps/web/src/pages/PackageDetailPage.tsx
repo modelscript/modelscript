@@ -177,6 +177,36 @@ const PackageDetailSkeleton: React.FC = () => (
   </PageWrap>
 );
 
+const LogsModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: ${fadeIn} 0.15s ease-out;
+`;
+
+const LogsModalContainer = styled.div`
+  width: 1000px;
+  max-width: 95vw;
+  height: 82vh;
+  max-height: 850px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85);
+
+  & > div {
+    height: 100%;
+    margin-bottom: 0;
+  }
+`;
+
 /* ─── main controller component ─── */
 
 interface PackageDetailContentProps {
@@ -225,6 +255,7 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
   const [artifactTabDomainFilter, setArtifactTabDomainFilter] = useState<PolyglotDomain>("all");
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [compareTargetVersion, setCompareTargetVersion] = useState<string | undefined>(undefined);
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
 
   const setTab = (tab: TabId) => {
     setSearchParams({ tab });
@@ -339,6 +370,7 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
             jobStatus={pkg.jobStatus || null}
             treeCollapsed={treeCollapsed}
             onToggleTreeCollapse={() => setTreeCollapsed((p) => !p)}
+            onOpenLogs={() => setLogsModalOpen(true)}
           />
         ) : (
           <>
@@ -370,6 +402,9 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
               versionList={pkg.versionList}
               treeCollapsed={treeCollapsed}
               onToggleTreeCollapse={() => setTreeCollapsed((p) => !p)}
+              jobStatus={pkg.jobStatus}
+              hasLogs={(pkg.jobInfo?.logs?.length ?? 0) > 0}
+              onOpenLogs={() => setLogsModalOpen(true)}
             />
 
             {/* ── Tab Bar ── */}
@@ -606,24 +641,31 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
         </Suspense>
       )}
 
-      {/* ── Background Ingestion & Indexer Logs ──
-          Only shown while a job is pending/running, or when a job failed and left logs behind.
-          A 404 from the job-status API is mapped to { status: "failed" } with no logs and must not open this. */}
-      {name &&
-        version &&
-        pkg.jobInfo &&
-        (pkg.jobStatus === "pending" ||
-          pkg.jobStatus === "running" ||
-          (pkg.jobStatus === "failed" && (pkg.jobInfo.logs?.length ?? 0) > 0)) && (
-          <TerminalLogViewer
-            packageName={name}
-            packageVersion={version}
-            jobId={pkg.jobInfo.id}
-            initialJobInfo={pkg.jobInfo}
-            isProcessing={pkg.jobStatus === "pending" || pkg.jobStatus === "running"}
-            defaultCollapsed={pkg.jobStatus === "failed"}
-          />
-        )}
+      {/* ── Background Ingestion & Indexer Logs Modal ──
+          Not shown by default as an unclosable sidebar.
+          Rendered as a sleek modal dialog when opened via header button or alert banner. */}
+      {logsModalOpen && name && version && (
+        <LogsModalOverlay
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setLogsModalOpen(false);
+            }
+          }}
+        >
+          <LogsModalContainer>
+            <TerminalLogViewer
+              packageName={name}
+              packageVersion={version}
+              jobId={pkg.jobInfo?.id}
+              initialJobInfo={pkg.jobInfo}
+              isProcessing={pkg.jobStatus === "pending" || pkg.jobStatus === "running"}
+              defaultCollapsed={false}
+              isModal={true}
+              onClose={() => setLogsModalOpen(false)}
+            />
+          </LogsModalContainer>
+        </LogsModalOverlay>
+      )}
     </PageWrap>
   );
 };

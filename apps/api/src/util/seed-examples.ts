@@ -164,13 +164,9 @@ export async function seedExamplePackages(
 
     // Register in database
     const { id: packageId } = database.getOrCreatePackage(name);
-    database.updatePackageMeta(packageId, {
-      description: typeof manifest["description"] === "string" ? manifest["description"] : null,
-      readme: fs.existsSync(path.join(pkgDir, "README.md"))
-        ? fs.readFileSync(path.join(pkgDir, "README.md"), "utf-8")
-        : null,
-      license: typeof manifest["license"] === "string" ? manifest["license"] : null,
-    });
+    const readmeText = fs.existsSync(path.join(pkgDir, "README.md"))
+      ? fs.readFileSync(path.join(pkgDir, "README.md"), "utf-8")
+      : null;
 
     const shasum = crypto.createHash("sha1").update(zipBuffer).digest("hex");
     const sha256 = crypto.createHash("sha256").update(zipBuffer).digest("hex");
@@ -188,13 +184,18 @@ export async function seedExamplePackages(
       );
     }
     const currentExampleLatest = database.getDistTags(packageId)["latest"];
-    if (
+    const isLatest =
       !currentExampleLatest ||
       !semver.valid(currentExampleLatest) ||
       !semver.valid(version) ||
-      semver.gte(version, currentExampleLatest)
-    ) {
+      semver.gte(version, currentExampleLatest);
+    if (isLatest) {
       database.setDistTag(packageId, "latest", version);
+      database.updatePackageMeta(packageId, {
+        description: typeof manifest["description"] === "string" ? manifest["description"] : null,
+        readme: readmeText,
+        license: typeof manifest["license"] === "string" ? manifest["license"] : null,
+      });
     }
     database.saveLibraryRelease({
       libraryName: name,
@@ -269,7 +270,9 @@ export async function seedPrepackagedLibraries(
         });
 
         // Backfill missing Modelica root README from indexed Modelica root class documentation if needed
-        if (pkg.name === "Modelica" && !existingPkg.readme) {
+        const currentLatestVer = database.getDistTags(existingPkg.id)["latest"];
+        const isLatestVer = !currentLatestVer || currentLatestVer === pkg.version;
+        if (pkg.name === "Modelica" && isLatestVer && !existingPkg.readme) {
           const rootModelica = database.getClass("Modelica", pkg.version, "Modelica");
           if (rootModelica?.documentation) {
             database.updatePackageMeta(existingPkg.id, {
@@ -307,11 +310,15 @@ export async function seedPrepackagedLibraries(
               const libPath = await storage.extractLibrary(pkg.name, pkg.version);
               const readmePath = path.join(stdlibDir, "README.md");
               const readmeText = fs.existsSync(readmePath) ? fs.readFileSync(readmePath, "utf-8") : null;
-              database.updatePackageMeta(existingPkg.id, {
-                description: pkg.description,
-                readme: readmeText,
-                license: pkg.license,
-              });
+              const currentLatestSysml = database.getDistTags(existingPkg.id)["latest"];
+              const isLatestSysml = !currentLatestSysml || currentLatestSysml === pkg.version;
+              if (isLatestSysml) {
+                database.updatePackageMeta(existingPkg.id, {
+                  description: pkg.description,
+                  readme: readmeText,
+                  license: pkg.license,
+                });
+              }
               const indexed = await indexSysmlFiles({
                 extractedDir: libPath,
                 packageName: pkg.name,
@@ -345,13 +352,21 @@ export async function seedPrepackagedLibraries(
         if (fs.existsSync(libraryPath)) {
           console.log(`[Seed] Re-enqueuing processing for prepackaged library: ${pkg.name}@${pkg.version}`);
           const jobKey = `${pkg.name}@${pkg.version}`;
-          jobQueue.enqueueProcess(jobKey, workerScript, {
-            name: pkg.name,
-            version: pkg.version,
-            libraryPath,
-            storageDir: storage.dataDir,
-            dbDir: database.dbDir,
-          });
+          const isMassiveLib = pkg.name === "Modelica" || (pkg.minExpectedClasses && pkg.minExpectedClasses > 1000);
+          const timeoutMs = isMassiveLib ? 40 * 60 * 1000 : 20 * 60 * 1000;
+          const maxTimeoutMs = isMassiveLib ? 60 * 60 * 1000 : 35 * 60 * 1000;
+          jobQueue.enqueueProcess(
+            jobKey,
+            workerScript,
+            {
+              name: pkg.name,
+              version: pkg.version,
+              libraryPath,
+              storageDir: storage.dataDir,
+              dbDir: database.dbDir,
+            },
+            { priority: "low", timeoutMs, maxTimeoutMs },
+          );
           continue;
         }
       }
@@ -462,11 +477,6 @@ export async function seedPrepackagedLibraries(
     const { id: packageId } = database.getOrCreatePackage(pkg.name);
     const readmeCandidate = path.join(libraryPath, "README.md");
     const readmeText = fs.existsSync(readmeCandidate) ? fs.readFileSync(readmeCandidate, "utf-8") : null;
-    database.updatePackageMeta(packageId, {
-      description: pkg.description,
-      readme: readmeText,
-      license: pkg.license,
-    });
 
     let isPreIndexed = false;
     const metadataCandidate = path.join(libraryPath, "metadata.json");
@@ -552,13 +562,18 @@ export async function seedPrepackagedLibraries(
       );
     }
     const currentLatest = database.getDistTags(packageId)["latest"];
-    if (
+    const isLatest =
       !currentLatest ||
       !semver.valid(currentLatest) ||
       !semver.valid(pkg.version) ||
-      semver.gte(pkg.version, currentLatest)
-    ) {
+      semver.gte(pkg.version, currentLatest);
+    if (isLatest) {
       database.setDistTag(packageId, "latest", pkg.version);
+      database.updatePackageMeta(packageId, {
+        description: pkg.description,
+        readme: readmeText,
+        license: pkg.license,
+      });
     }
     database.saveLibraryRelease({
       libraryName: pkg.name,
@@ -570,13 +585,21 @@ export async function seedPrepackagedLibraries(
 
     if (!isPreIndexed && !fs.existsSync(indexCandidate)) {
       const jobKey = `${pkg.name}@${pkg.version}`;
-      jobQueue.enqueueProcess(jobKey, workerScript, {
-        name: pkg.name,
-        version: pkg.version,
-        libraryPath,
-        storageDir: storage.dataDir,
-        dbDir: database.dbDir,
-      });
+      const isMassiveLib = pkg.name === "Modelica" || (pkg.minExpectedClasses && pkg.minExpectedClasses > 1000);
+      const timeoutMs = isMassiveLib ? 40 * 60 * 1000 : 20 * 60 * 1000;
+      const maxTimeoutMs = isMassiveLib ? 60 * 60 * 1000 : 35 * 60 * 1000;
+      jobQueue.enqueueProcess(
+        jobKey,
+        workerScript,
+        {
+          name: pkg.name,
+          version: pkg.version,
+          libraryPath,
+          storageDir: storage.dataDir,
+          dbDir: database.dbDir,
+        },
+        { priority: "low", timeoutMs, maxTimeoutMs },
+      );
     } else {
       console.log(`[Seed] Skipped background worker queue for ${pkg.name}@${pkg.version} (already pre-indexed).`);
     }

@@ -279,7 +279,8 @@ export function publishRouter(
           });
         }
 
-        if (initialDescription || initialLicense) {
+        const isLatest = database.getDistTags(packageId)["latest"] === version;
+        if (isLatest && (initialDescription || initialLicense)) {
           database.updatePackageMeta(packageId, {
             description: initialDescription,
             license: initialLicense,
@@ -318,13 +319,18 @@ export function publishRouter(
         const jobKey = `${name}@${version}`;
         const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
         const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
-        jobQueue.enqueueProcess(jobKey, workerScript, {
-          name,
-          version,
-          libraryPath,
-          storageDir: storage.dataDir,
-          dbDir: database.dbDir,
-        });
+        jobQueue.enqueueProcess(
+          jobKey,
+          workerScript,
+          {
+            name,
+            version,
+            libraryPath,
+            storageDir: storage.dataDir,
+            dbDir: database.dbDir,
+          },
+          { priority: "high" },
+        );
 
         database.logAudit({
           actorId: req.user?.id ?? null,

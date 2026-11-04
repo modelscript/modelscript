@@ -253,7 +253,7 @@ const FeedsPage: React.FC = () => {
                 }}
               >
                 <Box display="flex" alignItems="center" gap={2}>
-                  <Link to={`/${feed.username}`} style={{ color: "var(--color-fg-default)", textDecoration: "none" }}>
+                  <Link to={`/@${feed.username}`} style={{ color: "var(--color-fg-default)", textDecoration: "none" }}>
                     <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{feed.display_name}</Text>
                   </Link>
                   <Text color="var(--color-fg-muted)" fontSize="15px">

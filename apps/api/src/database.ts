@@ -656,6 +656,37 @@ export class LibraryDatabase {
       `);
     } catch {}
 
+    // Self-healing: Reconcile package description and readme with the latest tagged version
+    try {
+      this.#db.exec(`
+        UPDATE packages
+        SET description = (
+          SELECT json_extract(pv.manifest, '$.description')
+          FROM dist_tags dt
+          JOIN package_versions pv ON pv.package_id = dt.package_id AND pv.version = dt.version
+          WHERE dt.package_id = packages.id AND dt.tag = 'latest' AND json_extract(pv.manifest, '$.description') IS NOT NULL
+        )
+        WHERE EXISTS (
+          SELECT 1 FROM dist_tags dt
+          JOIN package_versions pv ON pv.package_id = dt.package_id AND pv.version = dt.version
+          WHERE dt.package_id = packages.id AND dt.tag = 'latest' AND json_extract(pv.manifest, '$.description') IS NOT NULL
+        );
+
+        UPDATE packages
+        SET readme = (
+          SELECT c.documentation
+          FROM dist_tags dt
+          JOIN classes c ON c.library_name = packages.name AND c.library_version = dt.version AND c.class_name = packages.name
+          WHERE dt.package_id = packages.id AND dt.tag = 'latest' AND c.documentation IS NOT NULL
+        )
+        WHERE packages.name = 'Modelica' AND EXISTS (
+          SELECT 1 FROM dist_tags dt
+          JOIN classes c ON c.library_name = packages.name AND c.library_version = dt.version AND c.class_name = packages.name
+          WHERE dt.package_id = packages.id AND dt.tag = 'latest' AND c.documentation IS NOT NULL
+        );
+      `);
+    } catch {}
+
     // Reconcile feature flags table with code-level definitions and reset legacy defaults
     try {
       const insertFlagStmt = this.#db.prepare(

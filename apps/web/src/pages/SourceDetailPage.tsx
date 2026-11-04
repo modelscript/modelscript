@@ -390,7 +390,7 @@ export const SourceDetailPage: React.FC = () => {
           {(work.authors || []).map((author, idx) => (
             <AuthorChip key={`${author.name}-${idx}`}>
               {author.username ? (
-                <Link to={`/${author.username}`} style={{ color: "var(--ms-brand)" }}>
+                <Link to={`/@${author.username}`} style={{ color: "var(--ms-brand)" }}>
                   {author.name} (@{author.username})
                 </Link>
               ) : (
@@ -870,7 +870,7 @@ export const SourceDetailPage: React.FC = () => {
         ) : (
           <Stack>
             {resolved.citedByPosts.map((post) => (
-              <TileLink key={post.id} to={`/${post.author.username}/status/${post.id}`}>
+              <TileLink key={post.id} to={`/@${post.author.username}/status/${post.id}`}>
                 <Row $between style={{ fontSize: 12.5, marginBottom: 4 }}>
                   <strong>
                     {post.author.displayName} <Muted style={{ fontWeight: 400 }}>@{post.author.username}</Muted>

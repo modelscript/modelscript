@@ -1,37 +1,65 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  ArrowLeftIcon,
+  BookmarkIcon,
   CodeIcon,
   CodeSquareIcon,
+  ColumnsIcon,
+  CrossReferenceIcon,
   DownloadIcon,
   FileIcon,
+  GraphIcon,
   PencilIcon,
+  PlayIcon,
+  PlusIcon,
   RepoForkedIcon,
+  RepoIcon,
   SearchIcon,
   ShareIcon,
   TerminalIcon,
+  WorkflowIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Button, IconButton } from "@primer/react";
+import { ActionList, ActionMenu, Button, IconButton, SegmentedControl } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { getExtensionForDialect } from "../../../util/editor-routing";
-import { HERO_EXAMPLES, useVisiblePlaygroundLanguages, type HeroExample } from "../constants";
-import { Badge, BrandLink, NavLeft, NavRight, NavText, PlaygroundNavbar as NavbarContainer } from "../styles";
+import {
+  DEFAULT_EMPTY_MODELICA_CODE,
+  HERO_EXAMPLES,
+  useVisiblePlaygroundLanguages,
+  type HeroExample,
+} from "../constants";
+import {
+  Badge,
+  BrandLink,
+  NavCenter,
+  NavLeft,
+  NavRight,
+  NavText,
+  PlaygroundNavbar as NavbarContainer,
+} from "../styles";
 
 export interface PlaygroundNavbarProps {
   fromArtifactParam: string | null;
   currentTitle: string;
   currentLang?: string;
+  currentView?: string;
   isDirty?: boolean;
   publishLabel?: string;
   onTitleChange?: (newTitle: string) => void;
   onSelectExample: (ex: HeroExample) => void;
   onSelectLang?: (lang: string) => void;
+  onViewChange?: (view: "diagram" | "code" | "split" | "simulation") => void;
+  onSimulate?: () => void;
   onOpenInVsCode?: () => void;
+  onOpenTemplates?: () => void;
+  onSaveToArtifact?: () => void;
+  onCreateRepo?: () => void;
   onDownloadModel: () => void;
   onCopyEmbed: () => void;
   onOpenShare: () => void;
@@ -42,12 +70,18 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   fromArtifactParam,
   currentTitle,
   currentLang = "modelica",
+  currentView = "diagram",
   isDirty = false,
   publishLabel,
   onTitleChange,
   onSelectExample,
   onSelectLang,
+  onViewChange,
+  onSimulate,
   onOpenInVsCode,
+  onOpenTemplates,
+  onSaveToArtifact,
+  onCreateRepo,
   onDownloadModel,
   onCopyEmbed,
   onOpenShare,
@@ -88,7 +122,13 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   return (
     <NavbarContainer>
       <NavLeft>
-        <BrandLink to={user ? "/home" : "/explore"} title="ModelScript Playground" aria-label="ModelScript Playground">
+        <BrandLink
+          href={branding.docsBaseUrl || "https://modelscript.org"}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="ModelScript Playground"
+          aria-label="ModelScript Homepage"
+        >
           <img
             src={customLogoSrc || (theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png")}
             alt="ModelScript"
@@ -106,6 +146,29 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             <CodeSquareIcon size={14} /> Playground
           </Badge>
         </BrandLink>
+
+        <Link
+          to={user ? "/home" : "/explore"}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "5px",
+            fontSize: "12px",
+            fontWeight: 500,
+            padding: "3px 8px",
+            borderRadius: "6px",
+            color: "var(--color-fg-muted)",
+            textDecoration: "none",
+            border: "1px solid var(--color-border-subtle, rgba(255,255,255,0.1))",
+            background: "var(--color-canvas-subtle)",
+            transition: "all 0.15s ease",
+          }}
+          title="Return to Ansatz Platform"
+          aria-label="Back to Ansatz Platform"
+        >
+          <ArrowLeftIcon size={12} />
+          <span className="nav-hide-sm">Ansatz</span>
+        </Link>
 
         {fromArtifactParam && (
           <Link
@@ -211,8 +274,35 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                       <ActionList.Divider />
                     </>
                   )}
+                  <ActionList.Item
+                    onSelect={() =>
+                      onSelectExample({
+                        id: "untitled",
+                        title: "Untitled Model",
+                        category: "General",
+                        lang: currentLang,
+                        code: DEFAULT_EMPTY_MODELICA_CODE,
+                      })
+                    }
+                  >
+                    <ActionList.LeadingVisual>
+                      <PlusIcon />
+                    </ActionList.LeadingVisual>
+                    New Blank Model
+                    <ActionList.Description variant="inline">Reset to empty canvas</ActionList.Description>
+                  </ActionList.Item>
+                  {onOpenTemplates && (
+                    <ActionList.Item onSelect={onOpenTemplates}>
+                      <ActionList.LeadingVisual>
+                        <CrossReferenceIcon />
+                      </ActionList.LeadingVisual>
+                      Browse Starter Templates…
+                      <ActionList.Description variant="inline">Explore multi-physics gallery</ActionList.Description>
+                    </ActionList.Item>
+                  )}
+                  <ActionList.Divider />
                   <ActionList.Group title="Curated Starter Models">
-                    {HERO_EXAMPLES.map((ex) => (
+                    {HERO_EXAMPLES.slice(0, 7).map((ex) => (
                       <ActionList.Item key={ex.id} onSelect={() => onSelectExample(ex)}>
                         <ActionList.LeadingVisual>
                           <FileIcon />
@@ -221,6 +311,16 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                         <ActionList.Description variant="inline">{ex.category}</ActionList.Description>
                       </ActionList.Item>
                     ))}
+                    {onOpenTemplates && (
+                      <ActionList.Item onSelect={onOpenTemplates}>
+                        <ActionList.LeadingVisual>
+                          <CrossReferenceIcon />
+                        </ActionList.LeadingVisual>
+                        <span style={{ color: "var(--color-accent-fg, #0969da)", fontWeight: 600 }}>
+                          View all in template gallery →
+                        </span>
+                      </ActionList.Item>
+                    )}
                   </ActionList.Group>
                 </ActionList>
               </ActionMenu.Overlay>
@@ -241,6 +341,20 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             />
           )}
         </div>
+
+        {/* Templates Gallery Button */}
+        {onOpenTemplates && (
+          <Button
+            size="small"
+            variant="invisible"
+            leadingVisual={CrossReferenceIcon}
+            onClick={onOpenTemplates}
+            title="Browse starter engineering templates"
+            className="nav-hide-sm"
+          >
+            <NavText>Templates</NavText>
+          </Button>
+        )}
 
         {/* Language / Dialect Selector */}
         {onSelectLang && (
@@ -279,7 +393,61 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         )}
       </NavLeft>
 
+      {onViewChange && (
+        <NavCenter>
+          <SegmentedControl size="small" aria-label="Workbench View">
+            <SegmentedControl.Button
+              selected={currentView === "diagram"}
+              leadingVisual={WorkflowIcon}
+              onClick={() => onViewChange("diagram")}
+            >
+              Diagram
+            </SegmentedControl.Button>
+            <SegmentedControl.Button
+              selected={currentView === "code"}
+              leadingVisual={CodeIcon}
+              onClick={() => onViewChange("code")}
+            >
+              Code
+            </SegmentedControl.Button>
+            <SegmentedControl.Button
+              selected={currentView === "split" || currentView === "split-columns" || currentView === "split-rows"}
+              leadingVisual={ColumnsIcon}
+              onClick={() => onViewChange("split")}
+            >
+              Split
+            </SegmentedControl.Button>
+            <SegmentedControl.Button
+              selected={currentView === "simulation" || currentView === "plot"}
+              leadingVisual={GraphIcon}
+              onClick={() => onViewChange("simulation")}
+            >
+              Simulation
+            </SegmentedControl.Button>
+          </SegmentedControl>
+        </NavCenter>
+      )}
+
       <NavRight>
+        {/* Primary Run Simulation CTA */}
+        {onSimulate && (
+          <Button
+            size="small"
+            variant="primary"
+            leadingVisual={PlayIcon}
+            onClick={onSimulate}
+            style={{
+              fontWeight: 600,
+              backgroundColor: "#059669",
+              borderColor: "#047857",
+              color: "#ffffff",
+            }}
+            title="Run Simulation (F5)"
+          >
+            Run
+          </Button>
+        )}
+
         {/* Global Search / Command Palette */}
         <Button
           size="small"
@@ -313,8 +481,27 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           <ActionMenu.Button size="small" leadingVisual={DownloadIcon}>
             <NavText>Export</NavText>
           </ActionMenu.Button>
-          <ActionMenu.Overlay>
+          <ActionMenu.Overlay width="medium">
             <ActionList>
+              {onSaveToArtifact && (
+                <ActionList.Item onSelect={onSaveToArtifact}>
+                  <ActionList.LeadingVisual>
+                    <BookmarkIcon />
+                  </ActionList.LeadingVisual>
+                  Save as Ansatz Artifact
+                  <ActionList.Description variant="inline">Store in your cloud library</ActionList.Description>
+                </ActionList.Item>
+              )}
+              {onCreateRepo && (
+                <ActionList.Item onSelect={onCreateRepo}>
+                  <ActionList.LeadingVisual>
+                    <RepoIcon />
+                  </ActionList.LeadingVisual>
+                  Create Ansatz Repository…
+                  <ActionList.Description variant="inline">Publish as git repo</ActionList.Description>
+                </ActionList.Item>
+              )}
+              {(onSaveToArtifact || onCreateRepo) && <ActionList.Divider />}
               <ActionList.Item onSelect={onDownloadModel}>
                 <ActionList.LeadingVisual>
                   <DownloadIcon />
@@ -336,11 +523,56 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           <NavText>Share</NavText>
         </Button>
 
-        {/* Publish / Save Edit / Reply / Fork to Feed */}
+        {/* Publish / Save Edit / Reply / Fork to Feed & Ansatz Profile Menu */}
         {user ? (
-          <Button size="small" variant="primary" leadingVisual={ZapIcon} onClick={onPublishToFeed}>
-            {effectivePublishLabel}
-          </Button>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <Button size="small" variant="primary" leadingVisual={ZapIcon} onClick={onPublishToFeed}>
+              {effectivePublishLabel}
+            </Button>
+            <ActionMenu>
+              <ActionMenu.Button
+                size="small"
+                variant="invisible"
+                style={{ padding: "0 4px", minWidth: 28 }}
+                aria-label="Ansatz Account & Workspaces"
+                title={`Ansatz Account (@${user.username || "user"})`}
+              >
+                <img
+                  src={user.avatar_url || (theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png")}
+                  alt={user.username || "User"}
+                  width={22}
+                  height={22}
+                  style={{ borderRadius: "50%", display: "block" }}
+                />
+              </ActionMenu.Button>
+              <ActionMenu.Overlay width="medium">
+                <ActionList>
+                  <ActionList.Item disabled>
+                    <ActionList.Description variant="block">
+                      Signed in as <strong>@{user.username || "user"}</strong>
+                    </ActionList.Description>
+                  </ActionList.Item>
+                  <ActionList.Divider />
+                  <ActionList.LinkItem as={Link} to="/home">
+                    Ansatz Feed
+                  </ActionList.LinkItem>
+                  <ActionList.LinkItem as={Link} to="/repos">
+                    My Workspaces & Repos
+                  </ActionList.LinkItem>
+                  <ActionList.LinkItem as={Link} to="/explore">
+                    Explore Community Models
+                  </ActionList.LinkItem>
+                  <ActionList.Divider />
+                  <ActionList.LinkItem as={Link} to="/settings">
+                    Settings
+                  </ActionList.LinkItem>
+                  <ActionList.LinkItem as={Link} to="/logout">
+                    Sign Out
+                  </ActionList.LinkItem>
+                </ActionList>
+              </ActionMenu.Overlay>
+            </ActionMenu>
+          </div>
         ) : (
           <div style={{ display: "flex", gap: "6px" }}>
             <Link to="/login" style={{ textDecoration: "none" }} className="nav-hide-sm">

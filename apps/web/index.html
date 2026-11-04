@@ -16,11 +16,22 @@
       (function () {
         try {
           var t = localStorage.getItem("ms-theme");
-          var isLight = t === "light";
-          var theme = isLight ? "light" : "dark";
+          var theme;
+          if (t === "light" || t === "dark") {
+            theme = t;
+          } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+            theme = "light";
+          } else {
+            theme = "dark";
+          }
           var root = document.documentElement;
           root.setAttribute("data-theme", theme);
+          root.setAttribute("data-color-mode", theme);
           root.style.colorScheme = theme;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta && theme === "light") {
+            meta.setAttribute("content", "#ffffff");
+          }
 
           var raw = localStorage.getItem("modelscript_display_accessibility");
           if (raw) {
@@ -34,8 +45,10 @@
             if (p.highContrast) root.setAttribute("data-high-contrast", "true");
           }
         } catch (e) {
-          document.documentElement.setAttribute("data-theme", "dark");
-          document.documentElement.style.colorScheme = "dark";
+          var fallback = (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+          document.documentElement.setAttribute("data-theme", fallback);
+          document.documentElement.setAttribute("data-color-mode", fallback);
+          document.documentElement.style.colorScheme = fallback;
         }
       })();
     </script>

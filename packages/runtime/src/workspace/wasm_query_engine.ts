@@ -334,6 +334,15 @@ export class WasmQueryEngine {
   }
 
   /**
+   * Purges all memoized query entries and reverse dependency tracking to bound memory.
+   */
+  public clearMemos(): void {
+    this.memos.clear();
+    this.inputReverseDependencies.clear();
+    this.byNameReverseDependencies.clear();
+  }
+
+  /**
    * Invalidates all cached memos that depend on `byName(name)` lookups, advancing
    * the name's revision to `currentRevision` and marking dependent symbols dirty for re-linting.
    */
@@ -1887,6 +1896,10 @@ export class WasmQueryEngine {
         engine.flushVolatile();
       },
 
+      clearMemos(): void {
+        engine.clearMemos();
+      },
+
       taxonomy: engine.taxonomy,
     };
   }
@@ -2379,6 +2392,10 @@ export class WasmQueryEngine {
 
       flushVolatile(): void {
         engine.flushVolatile();
+      },
+
+      clearMemos(): void {
+        engine.clearMemos();
       },
 
       taxonomy: engine.taxonomy,

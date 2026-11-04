@@ -350,6 +350,11 @@ export interface QueryDB {
    */
   flushVolatile(): void;
 
+  /**
+   * Purges all memoized query entries from memory.
+   */
+  clearMemos?(): void;
+
   /** Taxonomy index for O(1) subtype interval containment queries. */
   taxonomy?: any;
 }

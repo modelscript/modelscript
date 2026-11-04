@@ -599,7 +599,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
               <SecondaryButton
                 type="button"
                 style={{ padding: "6px 14px", fontSize: "13px" }}
-                onClick={() => navigate(`/${user.username}`)}
+                onClick={() => navigate(`/@${user.username}`)}
               >
                 View Public Profile
               </SecondaryButton>

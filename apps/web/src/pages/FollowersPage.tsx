@@ -127,13 +127,13 @@ export const FollowListPageLayout: React.FC<FollowListPageLayoutProps> = ({
 
   return (
     <Box>
-      <PageHeader back={() => navigate(`/${username}`)} title={`@${username}`} divider={false} />
+      <PageHeader back={() => navigate(`/@${username}`)} title={`@${username}`} divider={false} />
 
       <TabBar>
-        <TabButton to={`/${username}/followers`} $active={activeTab === "followers"}>
+        <TabButton to={`/@${username}/followers`} $active={activeTab === "followers"}>
           Followers
         </TabButton>
-        <TabButton to={`/${username}/following`} $active={activeTab === "following"}>
+        <TabButton to={`/@${username}/following`} $active={activeTab === "following"}>
           Following
         </TabButton>
       </TabBar>
@@ -152,7 +152,7 @@ export const FollowListPageLayout: React.FC<FollowListPageLayoutProps> = ({
             return (
               <UserRow key={u.id}>
                 <Link
-                  to={`/${u.username}`}
+                  to={`/@${u.username}`}
                   style={{
                     textDecoration: "none",
                     color: "inherit",

@@ -215,7 +215,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    navigator.clipboard.writeText(`${window.location.origin}/${displayPost.username}/status/${displayPost.id}`);
+    navigator.clipboard.writeText(`${window.location.origin}/@${displayPost.username}/status/${displayPost.id}`);
     toast.success("Link copied to clipboard");
   };
 
@@ -420,7 +420,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
         <ComposeModal
           quotePost={displayPost}
           onClose={() => setShowQuoteModal(false)}
-          onPostCreated={(reply) => navigate(`/${reply.author?.username || reply.username}/status/${reply.id}`)}
+          onPostCreated={(reply) => navigate(`/@${reply.author?.username || reply.username}/status/${reply.id}`)}
         />
       )}
       {showReplyModal && (
@@ -431,7 +431,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
             setShowReplyModal(false);
             setPendingPin(undefined);
           }}
-          onPostCreated={(reply) => navigate(`/${reply.author?.username || reply.username}/status/${reply.id}`)}
+          onPostCreated={(reply) => navigate(`/@${reply.author?.username || reply.username}/status/${reply.id}`)}
         />
       )}
       {showEditModal && (
@@ -554,7 +554,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("a, button")) return;
           if (showPostMenu) return;
-          navigate(`/${displayPost.username}/status/${displayPost.id}`);
+          navigate(`/@${displayPost.username}/status/${displayPost.id}`);
         }}
         style={{ textDecoration: "none", color: "inherit", display: "block" }}
       >
@@ -608,7 +608,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
                 </Box>
                 <Box flex={1} style={{ minWidth: 0 }}>
                   <Link
-                    to={`/${post.username}`}
+                    to={`/@${post.username}`}
                     style={{ color: "inherit", textDecoration: "none", fontWeight: 700 }}
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -620,7 +620,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
             <Box display="flex" gap={3} style={{ minWidth: 0, maxWidth: "100%", width: "100%" }}>
               <Box display="flex" flexDirection="column" alignItems="center" position="relative">
                 <ProfileHoverCard username={displayPost.username}>
-                  <ProfileNameLink to={`/${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
+                  <ProfileNameLink to={`/@${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
                     <HoverAvatar $url={displayPost.avatar_url}>
                       {!displayPost.avatar_url && displayPost.username.charAt(0).toUpperCase()}
                     </HoverAvatar>

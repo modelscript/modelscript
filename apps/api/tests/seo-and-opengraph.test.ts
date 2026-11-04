@@ -167,6 +167,16 @@ test("SEO, OpenGraph Previews, and AI Bot Discoverability Infrastructure", async
     assert.ok(res.text.includes("Tool center point (TCP) end-effector flange"));
   });
 
+  await t.test("GET /@:username injects dynamic profile OpenGraph and Twitter tags into HTML", async () => {
+    const res = await request(app).get(`/@${user.username}`).set("Accept", "text/html").expect(200);
+
+    assert.ok(res.headers["content-type"]?.includes("text/html"));
+    assert.ok(res.text.includes("<title>Elena Vance (@elena_vance) | Ansatz</title>"));
+    assert.ok(res.text.includes('<meta property="og:type" content="profile" />'));
+    assert.ok(res.text.includes('<link rel="canonical" href="https://ansatz.social/@elena_vance" />'));
+    assert.ok(res.text.includes('<meta property="og:title" content="Elena Vance (@elena_vance) | Ansatz" />'));
+  });
+
   // ─────────────────────────────────────────────────────────────
   // 3. AI Bot Content Negotiation & Markdown Mirrors (.md)
   // ─────────────────────────────────────────────────────────────

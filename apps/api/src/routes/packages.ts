@@ -1487,13 +1487,18 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
               const { fileURLToPath } = await import("node:url");
               const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
               const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
-              jobQueue.enqueueProcess(`${name}@${version}`, workerScript, {
-                name,
-                version,
-                libraryPath,
-                storageDir: storage.dataDir,
-                dbDir: database.dbDir,
-              });
+              jobQueue.enqueueProcess(
+                `${name}@${version}`,
+                workerScript,
+                {
+                  name,
+                  version,
+                  libraryPath,
+                  storageDir: storage.dataDir,
+                  dbDir: database.dbDir,
+                },
+                { priority: "normal" },
+              );
             } catch {
               // Ignore if it already exists or fails
             }

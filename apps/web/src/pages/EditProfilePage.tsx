@@ -150,7 +150,7 @@ const EditProfilePage: React.FC = () => {
 
       setSuccess(true);
       setTimeout(() => {
-        navigate(`/${user?.username}`);
+        navigate(`/@${user?.username}`);
       }, 700);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to save profile");

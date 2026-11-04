@@ -53,6 +53,24 @@ function getArtifactType(filename: string): string | null {
   return null;
 }
 
+process.on("uncaughtException", (err) => {
+  const msg = err instanceof Error ? err.stack || err.message : String(err);
+  console.error("[publish-worker] Uncaught Exception:", msg);
+  try {
+    process.send?.({ type: "error", error: msg });
+  } catch {}
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
+  console.error("[publish-worker] Unhandled Rejection:", msg);
+  try {
+    process.send?.({ type: "error", error: msg });
+  } catch {}
+  process.exit(1);
+});
+
 process.on(
   "message",
   async (data: {
@@ -61,8 +79,10 @@ process.on(
     libraryPath: string;
     storageDir?: string | undefined;
     dbDir?: string | undefined;
+    skipSvg?: boolean | undefined;
   }) => {
-    const { name, version, libraryPath, storageDir, dbDir } = data;
+    const { name, version, libraryPath, storageDir, dbDir, skipSvg } = data;
+    let exitCode = 0;
 
     const database = new LibraryDatabase(dbDir);
     const storage = new LibraryStorage(storageDir);
@@ -79,16 +99,6 @@ process.on(
       let classCount = processedClassNames.size;
 
       let rootMetadata: { description: string | null; documentation: string | null } | null = null;
-      const iconSvgs: Record<string, string> = {};
-
-      // Prepopulate iconSvgs from existing storage for the final lsp-bundle export
-      const classesWithSvgs = storage.listClasses(name, version);
-      for (const className of classesWithSvgs) {
-        if (processedClassNames.has(className)) {
-          const svg = storage.readSvg(name, version, className, "icon");
-          if (svg) iconSvgs[className] = svg;
-        }
-      }
 
       const ignorePath = path.join(libraryPath, ".modelscriptignore");
       const ignorePatterns = ["node_modules", "dist", ".git"];
@@ -237,9 +247,6 @@ process.on(
               rootMetadata = metadata;
             }
             storage.storeSvg(name, version, metadata.className, svgs.icon, svgs.diagram);
-            if (svgs.icon) {
-              iconSvgs[metadata.className] = svgs.icon;
-            }
 
             metadataBatch.push(metadata);
             if (metadataBatch.length >= 50) {
@@ -260,6 +267,7 @@ process.on(
           {
             dependencies: resolvedDeps,
             previousVersion,
+            skipSvg: Boolean(skipSvg),
           },
         );
 
@@ -396,9 +404,6 @@ process.on(
               rootMetadata = item.metadata;
             }
             storage.storeSvg(name, version, item.metadata.className, item.iconSvg, item.diagramSvg);
-            if (item.iconSvg) {
-              iconSvgs[item.metadata.className] = item.iconSvg;
-            }
             metadataBatch.push(item.metadata);
             processedClassNames.add(item.metadata.className);
           }
@@ -457,7 +462,6 @@ process.on(
               };
               const { iconSvg, diagramSvg } = renderPolyglotClassDiagramSvg(stepMeta, "STEP ISO 10303", "#0f766e");
               storage.storeSvg(name, version, stepMeta.className, iconSvg, diagramSvg);
-              if (iconSvg) iconSvgs[stepMeta.className] = iconSvg;
               metadataBatch.push(stepMeta);
               processedClassNames.add(entry.name);
             }
@@ -474,7 +478,6 @@ process.on(
       for (const item of polyglotItems) {
         if (!processedClassNames.has(item.metadata.className)) {
           storage.storeSvg(name, version, item.metadata.className, item.iconSvg, item.diagramSvg);
-          if (item.iconSvg) iconSvgs[item.metadata.className] = item.iconSvg;
           metadataBatch.push(item.metadata);
           processedClassNames.add(item.metadata.className);
         }
@@ -515,7 +518,12 @@ process.on(
       console.log(`[publish] ${name}@${version}: exporting polyglot lsp-bundle.zip...`);
       const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
       try {
-        await exportLspBundle(polyglotEngine, libraryPath, bundlePath, iconSvgs);
+        const bundleIcons: Record<string, string> = {};
+        for (const cls of storage.listClasses(name, version)) {
+          const svg = storage.readSvg(name, version, cls, "icon");
+          if (svg) bundleIcons[cls] = svg;
+        }
+        await exportLspBundle(polyglotEngine, libraryPath, bundlePath, bundleIcons);
       } catch (err) {
         console.warn(`[publish] ${name}@${version}: failed to export lsp-bundle:`, err);
       }
@@ -595,10 +603,14 @@ process.on(
       }
 
       if (rootMetadata) {
-        database.updatePackageMeta(packageId, {
-          description: rootMetadata.description,
-          readme: rootMetadata.documentation,
-        });
+        const currentLatest = database.getDistTags(packageId)["latest"];
+        const isLatest = !currentLatest || currentLatest === version;
+        if (isLatest) {
+          database.updatePackageMeta(packageId, {
+            description: rootMetadata.description,
+            readme: rootMetadata.documentation,
+          });
+        }
 
         try {
           const manifestObj = JSON.parse(manifestStr);
@@ -659,11 +671,17 @@ process.on(
       console.log(`[publish] ${name}@${version}: completed — ${classCount} classes processed.`);
       process.send?.({ type: "complete", classesProcessed: classCount });
     } catch (err) {
-      console.error(`[publish] Fatal error:`, err);
-      process.exit(1);
+      exitCode = 1;
+      const msg = err instanceof Error ? err.stack || err.message : String(err);
+      console.error(`[publish] Fatal error for ${name}@${version}:`, err);
+      try {
+        process.send?.({ type: "error", error: msg });
+      } catch {}
     } finally {
-      database.close();
-      process.exit(0);
+      try {
+        database.close();
+      } catch {}
+      process.exit(exitCode);
     }
   },
 );

@@ -117,7 +117,7 @@ export default defineConfig({
   title: "ModelScript",
   description: SITE_DESCRIPTION,
   lastUpdated: true,
-  appearance: "dark",
+  appearance: true,
   cleanUrls: true,
   sitemap: { hostname: "https://modelscript.org" },
   transformPageData(pageData) {

@@ -34,6 +34,8 @@ interface Palette {
   accent: number;
   grid: number;
   gridOpacity: number;
+  frameFill: number;
+  frameFillOpacity: number;
   nacelle: number;
   spinner: number;
   cowl: number;
@@ -54,6 +56,8 @@ const PALETTES: Record<"dark" | "light", Palette> = {
     accent: 0x67e8f9,
     grid: 0x22d3ee,
     gridOpacity: 0.22,
+    frameFill: 0x22d3ee,
+    frameFillOpacity: 0.14,
     nacelle: 0x828890,
     spinner: 0x646a74,
     cowl: 0x8a8e94,
@@ -72,6 +76,8 @@ const PALETTES: Record<"dark" | "light", Palette> = {
     accent: 0x0891b2,
     grid: 0x0e7490,
     gridOpacity: 0.2,
+    frameFill: 0x0891b2,
+    frameFillOpacity: 0.12,
     nacelle: 0x8a9098,
     spinner: 0x6e747e,
     cowl: 0x90949c,
@@ -90,6 +96,34 @@ interface PbrMaps {
   roughness: THREE.DataTexture;
   ao: THREE.DataTexture;
   iridescence: THREE.DataTexture;
+}
+
+function parseCssColor(val: string): { color: number; alpha: number } | null {
+  if (!val) return null;
+  val = val.trim();
+  const commaMatch = val.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+%?))?\s*\)$/i);
+  if (commaMatch) {
+    const r = parseInt(commaMatch[1]!, 10);
+    const g = parseInt(commaMatch[2]!, 10);
+    const b = parseInt(commaMatch[3]!, 10);
+    let a = 1.0;
+    if (commaMatch[4] !== undefined) {
+      a = commaMatch[4].endsWith("%") ? parseFloat(commaMatch[4]) / 100 : parseFloat(commaMatch[4]);
+    }
+    return { color: (r << 16) | (g << 8) | b, alpha: a };
+  }
+  const slashMatch = val.match(/^rgba?\(\s*(\d+)\s+(\d+)\s+(\d+)(?:\s*\/\s*([\d.]+%?))?\s*\)$/i);
+  if (slashMatch) {
+    const r = parseInt(slashMatch[1]!, 10);
+    const g = parseInt(slashMatch[2]!, 10);
+    const b = parseInt(slashMatch[3]!, 10);
+    let a = 1.0;
+    if (slashMatch[4] !== undefined) {
+      a = slashMatch[4].endsWith("%") ? parseFloat(slashMatch[4]) / 100 : parseFloat(slashMatch[4]);
+    }
+    return { color: (r << 16) | (g << 8) | b, alpha: a };
+  }
+  return null;
 }
 
 function hash2(x: number, y: number): number {
@@ -477,6 +511,7 @@ export class TurbineScene {
   private dragX = 0;
   private dragY = 0;
   private releasedAt = -Infinity;
+  private frameFillOpacity = 0.14;
 
   constructor(opts: TurbineSceneOptions) {
     this.callouts = opts.callouts;
@@ -514,6 +549,7 @@ export class TurbineScene {
     this.scene.add(keyLight, rimLight, fillLight, combustorLight);
 
     const pal = PALETTES[this.dark ? "dark" : "light"];
+    this.frameFillOpacity = pal.frameFillOpacity;
     const physical = (params: THREE.MeshPhysicalMaterialParameters) =>
       new THREE.MeshPhysicalMaterial({
         vertexColors: true,
@@ -621,7 +657,7 @@ export class TurbineScene {
       frame: new THREE.LineBasicMaterial({ transparent: true, opacity: 0.55, depthWrite: false, fog: false }),
       frameFill: new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: 0.16,
+        opacity: pal.frameFillOpacity,
         depthWrite: false,
         side: THREE.DoubleSide,
         fog: false,
@@ -794,7 +830,21 @@ export class TurbineScene {
     m.wireBlade.opacity = pal.wireBladeOpacity;
     m.contour.color.setHex(pal.accent);
     m.frame.color.setHex(pal.wire);
-    m.frameFill.color.setHex(this.dark ? 0x02050b : 0x1e293b);
+
+    // Section cross square background matching the beta badge (--ms-brand-soft)
+    let fillColor = pal.frameFill;
+    let fillOpacity = pal.frameFillOpacity;
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      const brandSoft = getComputedStyle(document.documentElement).getPropertyValue("--ms-brand-soft").trim();
+      const parsed = parseCssColor(brandSoft);
+      if (parsed) {
+        fillColor = parsed.color;
+        fillOpacity = parsed.alpha;
+      }
+    }
+    m.frameFill.color.setHex(fillColor);
+    this.frameFillOpacity = fillOpacity;
+
     this.capUniforms.uColor.value.setHex(pal.accent);
     this.gridUniforms.uColor.value.setHex(pal.grid);
     this.gridUniforms.uOpacity.value = pal.gridOpacity;
@@ -914,7 +964,7 @@ export class TurbineScene {
     const inside = smoothstep(-3.2, -2.75, s) * (1 - smoothstep(2.9, 3.35, s));
     this.section.visible = inside > 0.001;
     this.mats.frame.opacity = 0.55 * inside;
-    this.mats.frameFill.opacity = 0.16 * inside;
+    this.mats.frameFill.opacity = this.frameFillOpacity * inside;
     this.mats.contour.opacity = 0.95 * inside;
     this.capUniforms.uOpacity.value = inside;
 

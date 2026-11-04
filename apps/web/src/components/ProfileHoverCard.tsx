@@ -347,11 +347,11 @@ export default function ProfileHoverCard({
                   {data.bio && <BioText>{data.bio}</BioText>}
 
                   <Box display="flex" gap={3} mt={2}>
-                    <StatLink to={`/${data.username}/following`}>
+                    <StatLink to={`/@${data.username}/following`}>
                       <StatCount>{data.following_count}</StatCount>{" "}
                       <span style={{ color: "var(--color-fg-muted)" }}>Following</span>
                     </StatLink>
-                    <StatLink to={`/${data.username}/followers`}>
+                    <StatLink to={`/@${data.username}/followers`}>
                       <StatCount>{data.follower_count}</StatCount>{" "}
                       <span style={{ color: "var(--color-fg-muted)" }}>Followers</span>
                     </StatLink>
@@ -359,7 +359,7 @@ export default function ProfileHoverCard({
 
                   {showProfileSummaryBtn && (
                     <Box mt={3} pt={3} borderTop="1px solid var(--color-border-default)">
-                      <Link to={`/${data.username}`} style={{ textDecoration: "none" }}>
+                      <Link to={`/@${data.username}`} style={{ textDecoration: "none" }}>
                         <button
                           style={{
                             width: "100%",

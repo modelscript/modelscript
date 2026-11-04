@@ -46,9 +46,9 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
     const url =
       isFollowEvent || !notif.post_id
         ? primaryActor.username
-          ? `/${primaryActor.username}`
+          ? `/@${primaryActor.username}`
           : "/home"
-        : `/${postAuthor}/status/${notif.post_id}`;
+        : `/@${postAuthor}/status/${notif.post_id}`;
     navigate(url);
   };
 
@@ -69,7 +69,7 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
           <Box width={36} display="flex" justifyContent="flex-end" pt={1}>
             <ProfileHoverCard username={primaryActor.username || ""}>
               <Link
-                to={primaryActor.username ? `/${primaryActor.username}` : "/home"}
+                to={primaryActor.username ? `/@${primaryActor.username}` : "/home"}
                 style={{ textDecoration: "none" }}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -94,7 +94,7 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
                 <Box display="flex" alignItems="center" gap="4px" flexWrap="wrap">
                   <ProfileHoverCard username={primaryActor.username || ""}>
                     <Link
-                      to={`/${primaryActor.username}`}
+                      to={`/@${primaryActor.username}`}
                       style={{
                         fontWeight: 700,
                         color: "var(--color-fg-default)",
@@ -159,7 +159,7 @@ export const SocialNotificationRow: React.FC<SocialNotificationRowProps> = ({ no
                   return (
                     <ProfileHoverCard key={a.username} username={a.username}>
                       <Link
-                        to={`/${a.username}`}
+                        to={`/@${a.username}`}
                         style={{ textDecoration: "none" }}
                         onClick={(e) => e.stopPropagation()}
                       >

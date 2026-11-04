@@ -8,6 +8,7 @@ import {
   PlusIcon,
   SidebarExpandIcon,
   SyncIcon,
+  TerminalIcon,
   TrashIcon,
 } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button, Flash, Heading, IconButton, Label, Text } from "@primer/react";
@@ -49,6 +50,9 @@ export interface PackageHeaderProps {
   versionList?: string[] | undefined;
   treeCollapsed?: boolean | undefined;
   onToggleTreeCollapse?: (() => void) | undefined;
+  jobStatus?: string | null | undefined;
+  hasLogs?: boolean | undefined;
+  onOpenLogs?: (() => void) | undefined;
 }
 
 export const PackageHeader: React.FC<PackageHeaderProps> = ({
@@ -78,6 +82,9 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
   versionList,
   treeCollapsed,
   onToggleTreeCollapse,
+  jobStatus,
+  hasLogs,
+  onOpenLogs,
 }) => {
   const navigate = useNavigate();
   const isLatestVersion = Boolean(versionList && versionList.length > 0 && versionList[0] === version);
@@ -233,6 +240,27 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
           </Box>
 
           <Box display="flex" alignItems="center" gap="8px" style={{ alignSelf: "center" }}>
+            {onOpenLogs &&
+              (hasLogs || jobStatus === "failed" || jobStatus === "pending" || jobStatus === "running") && (
+                <Button
+                  size="small"
+                  leadingVisual={TerminalIcon}
+                  onClick={onOpenLogs}
+                  title="View background ingestion & indexing logs"
+                >
+                  Logs
+                  {jobStatus === "failed" && (
+                    <Label variant="danger" style={{ marginLeft: 6, fontSize: 10 }}>
+                      Failed
+                    </Label>
+                  )}
+                  {(jobStatus === "pending" || jobStatus === "running") && (
+                    <Label variant="attention" style={{ marginLeft: 6, fontSize: 10 }}>
+                      Live
+                    </Label>
+                  )}
+                </Button>
+              )}
             <CiteButton
               target={buildCitationFromPackage({
                 name,
@@ -343,6 +371,78 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
 
       {/* Alerts & Notifications */}
       <Box px={5} pt={2}>
+        {jobStatus === "failed" && (
+          <Box mb={3}>
+            <Flash
+              variant="danger"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <Box display="flex" alignItems="center" gap={2}>
+                <AlertFillIcon size={16} fill="var(--color-danger-fg, #cf222e)" />
+                <Text style={{ fontSize: 13, fontWeight: 500 }}>
+                  Background ingestion and symbol indexing failed for this release.
+                </Text>
+              </Box>
+              {onOpenLogs && (
+                <Button
+                  size="small"
+                  variant="invisible"
+                  leadingVisual={TerminalIcon}
+                  onClick={onOpenLogs}
+                  style={{
+                    color: "var(--color-danger-fg, #cf222e)",
+                    border: "1px solid rgba(207, 34, 46, 0.4)",
+                  }}
+                >
+                  View Ingestion Logs
+                </Button>
+              )}
+            </Flash>
+          </Box>
+        )}
+
+        {(jobStatus === "pending" || jobStatus === "running") && (
+          <Box mb={3}>
+            <Flash
+              variant="warning"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <Box display="flex" alignItems="center" gap={2}>
+                <SyncIcon size={16} fill="#d97706" />
+                <Text style={{ fontSize: 13, fontWeight: 500 }}>
+                  Background ingestion and indexing is currently in progress…
+                </Text>
+              </Box>
+              {onOpenLogs && (
+                <Button
+                  size="small"
+                  variant="invisible"
+                  leadingVisual={TerminalIcon}
+                  onClick={onOpenLogs}
+                  style={{
+                    color: "#d97706",
+                    border: "1px solid rgba(217, 119, 6, 0.4)",
+                  }}
+                >
+                  View Live Logs
+                </Button>
+              )}
+            </Flash>
+          </Box>
+        )}
+
         {actionSuccess && (
           <Box mb={3}>
             <Flash variant="success" onDismiss={() => setActionSuccess(null)}>

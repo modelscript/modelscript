@@ -107,7 +107,7 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
         author: {
           "@type": "Person",
           name: author,
-          url: `${host}/u/${post.username || ""}`,
+          url: `${host}/@${post.username || ""}`,
         },
         datePublished: post.created_at || new Date().toISOString(),
         url: canonical,
@@ -122,7 +122,7 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
       const prerenderBody = `
         <article>
           <h1>${escapeXml(title)}</h1>
-          <p class="author">By <a href="/u/${escapeXml(post.username || "")}">${escapeXml(author)}</a> on ${escapeXml(post.created_at || "")}</p>
+          <p class="author">By <a href="/@${escapeXml(post.username || "")}">${escapeXml(author)}</a> on ${escapeXml(post.created_at || "")}</p>
           <div class="content">${escapeXml(post.content || "")}</div>
           <p><a href="${escapeXml(markdown)}">View raw Markdown representation for AI agents</a></p>
         </article>
@@ -285,15 +285,15 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
     };
   }
 
-  // 4. User Profile Route: /u/:username
-  const userMatch = path.match(/^\/u\/([a-zA-Z0-9_.-]+)/);
+  // 4. User Profile Route: /@:username or /u/:username
+  const userMatch = path.match(/^\/(?:@|u\/)([a-zA-Z0-9_.-]+)/);
   if (userMatch && userMatch[1]) {
     const username = userMatch[1];
     const user = database.getUserByUsername(username);
     if (user) {
       const displayName = user.display_name || user.username;
       const bio = user.bio || `Engineer & physical systems modeler on ${brandName}.`;
-      const canonical = `${host}/u/${username}`;
+      const canonical = `${host}/@${username}`;
       const ogImg = user.avatar_url || `${host}/api/v1/og/post/1`;
 
       return {

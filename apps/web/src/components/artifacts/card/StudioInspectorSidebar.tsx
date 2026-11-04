@@ -3,13 +3,16 @@
 import { XIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
 import {
   buildEditorUrlForArtifact,
   isEditableCodeOrModelArtifact,
   isMultiFileArtifact,
+  openArtifactInVsCodeWindow,
 } from "../../../util/editor-routing";
+import { sanitizeHttpUrl } from "../../../util/url";
 import Box from "../../Box";
 
 const InspectorContainer = styled(Box)`
@@ -85,6 +88,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
   viewConfig,
   onClose,
 }) => {
+  const navigate = useNavigate();
   const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   if (!isOpen) return null;
 
@@ -97,13 +101,29 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
     view_type: artifact?.view_type,
     view_config: viewConfig,
   });
-  const editorUrl = buildEditorUrlForArtifact({
-    artifactId,
-    viewType: artifact?.view_type,
-    viewConfig,
-    title: artifact?.title || artifact?.name || viewConfig?.title,
-  });
-  const safeEditorUrl = typeof editorUrl === "string" && editorUrl.startsWith("/") ? editorUrl : "#";
+
+  const handleOpenEditor = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    e?.stopPropagation?.();
+    if (isMultiFile) {
+      openArtifactInVsCodeWindow({
+        artifactId,
+        viewType: artifact?.view_type,
+        viewConfig,
+        title: artifact?.title || artifact?.name || viewConfig?.title,
+      });
+      return;
+    }
+    const rawUrl = buildEditorUrlForArtifact({
+      artifactId,
+      viewType: artifact?.view_type,
+      viewConfig,
+      title: artifact?.title || artifact?.name || viewConfig?.title,
+    });
+    const safeUrl = sanitizeHttpUrl(rawUrl, { allowRelative: true });
+    if (safeUrl && (safeUrl.startsWith("/") || safeUrl.startsWith("#")) && !safeUrl.startsWith("//")) {
+      navigate(safeUrl);
+    }
+  };
 
   return (
     <InspectorContainer>
@@ -543,13 +563,23 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
             {isEditableCodeOrModelArtifact({ view_type: artifact?.view_type, view_config: viewConfig }) && (
               <>
                 &bull;{" "}
-                <a
-                  href={safeEditorUrl}
-                  style={{ color: "#38bdf8", textDecoration: "none" }}
+                <button
+                  type="button"
+                  onClick={handleOpenEditor}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    color: "#38bdf8",
+                    textDecoration: "none",
+                    cursor: "pointer",
+                    font: "inherit",
+                    display: "inline",
+                  }}
                   title={isMultiFile ? "Open in VS Code IDE (R)" : "Open in Playground (R)"}
                 >
                   [R] {isMultiFile ? "IDE" : "Playground"}
-                </a>{" "}
+                </button>{" "}
               </>
             )}
             &bull; [C] Copy Link

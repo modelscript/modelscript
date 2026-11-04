@@ -74,7 +74,7 @@ function applyDisplayPreferencesToDom(prefs: DisplayAccessibilityPrefs): void {
 }
 
 export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> = ({ subView = "display" }) => {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, setTheme, isOverridden, clearThemeOverride } = useTheme();
   const navigate = useNavigate();
   const branding = useInstanceBranding();
   const { tier, edition, airgapEnforced, capabilities } = useCapabilities();
@@ -495,14 +495,25 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
               <DetailSubtitle>Choose how {brandName} looks on this device.</DetailSubtitle>
             </DetailText>
             <Box display="flex" gap={1}>
+              <button
+                type="button"
+                className="ms-chip"
+                aria-pressed={!isOverridden}
+                title="Match user agent / system preferred color scheme"
+                onClick={() => {
+                  if (isOverridden) clearThemeOverride();
+                }}
+              >
+                Auto (System)
+              </button>
               {(["light", "dark"] as const).map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   className="ms-chip"
-                  aria-pressed={theme === mode}
+                  aria-pressed={isOverridden && theme === mode}
                   onClick={() => {
-                    if (theme !== mode) toggleTheme();
+                    setTheme(mode);
                   }}
                 >
                   {mode === "light" ? "Light" : "Dark"}

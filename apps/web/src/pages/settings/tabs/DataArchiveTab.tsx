@@ -361,7 +361,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
             <Box display="flex" gap={2} flexWrap="wrap">
               <SecondaryButton
                 type="button"
-                onClick={() => navigate(repoStatus?.webRepoPath || `/${username}/activity`)}
+                onClick={() => navigate(repoStatus?.webRepoPath || `/@${username}/activity`)}
                 style={{ padding: "5px 10px", fontSize: "12px" }}
               >
                 <FileDirectoryIcon size={14} />
@@ -369,7 +369,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
               </SecondaryButton>
               <SecondaryButton
                 type="button"
-                onClick={() => navigate(repoStatus?.webIdePath || `/${username}/activity?ide=1`)}
+                onClick={() => navigate(repoStatus?.webIdePath || `/@${username}/activity?ide=1`)}
                 style={{ padding: "5px 10px", fontSize: "12px" }}
               >
                 <CodeIcon size={14} />

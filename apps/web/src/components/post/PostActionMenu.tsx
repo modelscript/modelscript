@@ -454,7 +454,7 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
               e.stopPropagation();
               e.preventDefault();
               onClose();
-              navigate(`/${displayPost.username}/status/${displayPost.id}/activity`);
+              navigate(`/@${displayPost.username}/status/${displayPost.id}/activity`);
             }}
           >
             <GraphIcon size={16} /> View post activity

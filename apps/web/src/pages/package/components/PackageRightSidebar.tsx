@@ -819,7 +819,7 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
           {collaborators.map((c) => (
             <Link
               key={c.username}
-              to={`/${c.username}`}
+              to={`/@${c.username}`}
               style={{
                 display: "inline-flex",
                 alignItems: "center",

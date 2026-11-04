@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
 import {
   ALL_MORSEL_LANGUAGES,
@@ -9,6 +11,7 @@ import {
   MORSEL_LANGUAGES,
 } from "../src/components/morsel/constants.js";
 import { decompressMorselPayload } from "../src/components/morsel/util/permalink.js";
+import { DEFAULT_EMPTY_MODELICA_CODE, HERO_EXAMPLES, TEMPLATE_CATEGORIES } from "../src/pages/playground/constants.js";
 import {
   buildEditorUrlForArtifact,
   inferDialectFromArtifact,
@@ -16,6 +19,32 @@ import {
 } from "../src/util/editor-routing.js";
 
 describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Routing", () => {
+  it("verifies DEFAULT_EMPTY_MODELICA_CODE has coordinate systems and HERO_EXAMPLES cover multi-physics domains", () => {
+    assert.ok(DEFAULT_EMPTY_MODELICA_CODE.includes('model Untitled "Untitled engineering model"'));
+    assert.ok(DEFAULT_EMPTY_MODELICA_CODE.includes("Icon(coordinateSystem("));
+    assert.ok(DEFAULT_EMPTY_MODELICA_CODE.includes("Diagram(coordinateSystem("));
+
+    assert.ok(HERO_EXAMPLES.length >= 15);
+    assert.ok(TEMPLATE_CATEGORIES.includes("Electrical & RF"));
+    assert.ok(TEMPLATE_CATEGORIES.includes("Mechanics & Multibody"));
+    assert.ok(TEMPLATE_CATEGORIES.includes("Fluids & Process"));
+    assert.ok(TEMPLATE_CATEGORIES.includes("3D CAD & FEA"));
+    assert.ok(TEMPLATE_CATEGORIES.includes("Systems Biology"));
+
+    const rlc = HERO_EXAMPLES.find((ex) => ex.id === "rlc-circuit");
+    assert.ok(rlc);
+    assert.ok(rlc.code.includes("Modelica.Electrical.Analog.Basic.Resistor"));
+    assert.ok(rlc.code.includes("annotation(Placement("));
+
+    const epanet = HERO_EXAMPLES.find((ex) => ex.id === "epanet-water-network");
+    assert.ok(epanet);
+    assert.equal(epanet.domain, "Fluids & Process");
+
+    const sbml = HERO_EXAMPLES.find((ex) => ex.id === "sbml-enzymatic-cascade");
+    assert.ok(sbml);
+    assert.equal(sbml.domain, "Systems Biology");
+  });
+
   it("registers all 66 polyglot engineering languages in ALL_MORSEL_LANGUAGES with extensions, maturity tiers, and starter templates", () => {
     assert.ok(
       ALL_MORSEL_LANGUAGES.length >= 66,
@@ -148,5 +177,64 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
     assert.equal(inferDialectFromArtifact({}, "housing.scad"), "scad");
     assert.equal(inferDialectFromArtifact({}, "highway.xodr"), "opendrive");
     assert.equal(inferDialectFromArtifact({}, "cut_in.xosc"), "openscenario");
+  });
+
+  it("verifies apps/web/nginx.conf routes /playground, /ide, and /studio to the React SPA across all hosts including modelscript.org", () => {
+    const nginxConfPath = path.resolve(import.meta.dirname, "../nginx.conf");
+    const nginxConf = fs.readFileSync(nginxConfPath, "utf-8");
+
+    // Must have explicit location for /playground, /ide, /studio
+    assert.ok(
+      nginxConf.includes("location ~ ^/(playground|ide|studio)(/|$)"),
+      "nginx.conf must contain regex location block for playground, ide, and studio",
+    );
+    assert.ok(nginxConf.includes("root /usr/share/nginx/html;"), "nginx.conf must specify SPA root for web surfaces");
+
+    // Verify regex matches intended paths
+    const playgroundRegex = /^\/(playground|ide|studio)(\/|$)/;
+    assert.ok(playgroundRegex.test("/playground"), "Must match /playground");
+    assert.ok(playgroundRegex.test("/playground/"), "Must match /playground/");
+    assert.ok(playgroundRegex.test("/playground/subpath"), "Must match /playground/subpath");
+    assert.ok(playgroundRegex.test("/ide"), "Must match /ide");
+    assert.ok(playgroundRegex.test("/ide/"), "Must match /ide/");
+    assert.ok(playgroundRegex.test("/studio"), "Must match /studio");
+    assert.ok(playgroundRegex.test("/studio/"), "Must match /studio/");
+    assert.ok(!playgroundRegex.test("/playgrounds"), "Must not match /playgrounds");
+    assert.ok(!playgroundRegex.test("/identifier"), "Must not match /identifier");
+
+    // Verify docs regex includes trademark
+    assert.ok(nginxConf.includes("trademark"), "nginx.conf docs location block must include trademark");
+    const docsRegex =
+      /^\/(guide|ansatz|architecture|algorithms|cli|languages|reference|industries|pricing|trademark|vp-icons)(\/|$)/;
+    assert.ok(docsRegex.test("/trademark"), "Must match /trademark");
+    assert.ok(docsRegex.test("/guide/introduction"), "Must match /guide/introduction");
+    assert.ok(!docsRegex.test("/playground"), "Docs regex must not match /playground");
+  });
+
+  it("verifies /@username route isolation, LegacyUserRedirect, and UserRootRouteGuard in App.tsx", () => {
+    const appPath = path.resolve(import.meta.dirname, "../src/App.tsx");
+    const appSrc = fs.readFileSync(appPath, "utf-8");
+
+    // Must define LegacyUserRedirect and UserRootRouteGuard
+    assert.ok(appSrc.includes("function LegacyUserRedirect()"), "App.tsx must define LegacyUserRedirect");
+    assert.ok(appSrc.includes("function UserRootRouteGuard("), "App.tsx must define UserRootRouteGuard");
+
+    // Must mount LegacyUserRedirect for backward compatibility
+    assert.ok(
+      appSrc.includes('<Route path="/users/:username" element={<LegacyUserRedirect />} />'),
+      "App.tsx must redirect /users/:username to /@:username",
+    );
+
+    // Must guard root /:username with UserRootRouteGuard to prevent collisions with /playground or 404 swallowing
+    assert.ok(
+      appSrc.includes('<Route path="/:username" element={<UserRootRouteGuard element={<ProfilePage />} />} />'),
+      "App.tsx must guard /:username with UserRootRouteGuard",
+    );
+    assert.ok(
+      appSrc.includes(
+        '<Route path="/:username/status/:id" element={<UserRootRouteGuard element={<PostDetailPage />} />} />',
+      ),
+      "App.tsx must guard /:username/status/:id with UserRootRouteGuard",
+    );
   });
 });

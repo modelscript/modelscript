@@ -24,7 +24,7 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
     <QuoteWrapper
       onClick={(e) => {
         e.stopPropagation();
-        navigate(`/${quotePost.username}/status/${quotePost.id}`);
+        navigate(`/@${quotePost.username}/status/${quotePost.id}`);
       }}
     >
       <Box display="flex" alignItems="center" gap={1.5} mb={1} style={{ lineHeight: "20px" }}>

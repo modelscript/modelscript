@@ -155,6 +155,48 @@ export class Context {
   #fileTexts = new Map<string, string>();
   /** Byte-length delta of the most recent edit per document URI for fast DAE patching. */
   #fileDeltas = new Map<string, number>();
+
+  /**
+   * Caches a parsed CST tree with LRU eviction to prevent unbounded memory growth.
+   */
+  #cacheTree(uri: string, tree: Tree): void {
+    if (this.#trees.size >= 150) {
+      const oldestKey = this.#trees.keys().next().value;
+      if (oldestKey !== undefined) this.#trees.delete(oldestKey);
+    }
+    this.#trees.set(uri, tree);
+  }
+
+  /**
+   * Caches raw source text with LRU eviction to prevent unbounded memory growth.
+   */
+  #cacheFileText(uri: string, text: string): void {
+    if (this.#fileTexts.size >= 150) {
+      const oldestKey = this.#fileTexts.keys().next().value;
+      if (oldestKey !== undefined) this.#fileTexts.delete(oldestKey);
+    }
+    this.#fileTexts.set(uri, text);
+  }
+
+  /**
+   * Prunes cached CST trees and raw file texts to bound heap consumption.
+   */
+  pruneCaches(): void {
+    this.#fileTexts.clear();
+    for (const tree of this.#trees.values()) {
+      const rangeCache = (tree as unknown as { _rangeNodeCache?: Map<number, unknown> })._rangeNodeCache;
+      if (rangeCache) {
+        rangeCache.clear();
+      }
+    }
+    if (this.#trees.size > 50) {
+      const keys = Array.from(this.#trees.keys());
+      for (let i = 0; i < keys.length - 50; i++) {
+        this.#trees.delete(keys[i]!);
+      }
+    }
+  }
+
   /** Explicit override for `MODELICAPATH`, or `null` to fall back to `process.env.MODELICAPATH`. */
   #modelicaPath: string | null = null;
 
@@ -278,7 +320,7 @@ export class Context {
             const src = (existingTree as any).sourceCode as string | undefined;
             if (src !== undefined) {
               text = src;
-              this.#fileTexts.set(entry.resourceId, text);
+              this.#cacheFileText(entry.resourceId, text);
             } else {
               const offset = existingTree.rootNode.startIndex;
               return existingTree.rootNode.text.substring(startOffset - offset, endOffset - offset);
@@ -289,7 +331,7 @@ export class Context {
           if (missingResources.has(entry.resourceId)) return null;
           try {
             text = this.#fs.read(entry.resourceId);
-            this.#fileTexts.set(entry.resourceId, text);
+            this.#cacheFileText(entry.resourceId, text);
           } catch {
             missingResources.add(entry.resourceId);
             return null;
@@ -307,10 +349,10 @@ export class Context {
             let text = this.#fileTexts.get(entry.resourceId);
             if (text === undefined) {
               text = this.#fs.read(entry.resourceId);
-              this.#fileTexts.set(entry.resourceId, text);
+              this.#cacheFileText(entry.resourceId, text);
             }
             tree = this.parse(".mo", text);
-            this.#trees.set(entry.resourceId, tree);
+            this.#cacheTree(entry.resourceId, tree);
           } catch {
             missingResources.add(entry.resourceId);
             return null;
@@ -330,6 +372,8 @@ export class Context {
         if (!rangeCache) {
           rangeCache = new Map<number, any>();
           (tree as any)._rangeNodeCache = rangeCache;
+        } else if (rangeCache.size > 200) {
+          rangeCache.clear();
         }
         const endIdx = Math.max(startOffset, endOffset);
         const rangeKey = startOffset * 0x4000000 + endIdx;
@@ -408,7 +452,7 @@ export class Context {
       try {
         const text = this.#fs.read(uri);
         tree = this.parse(".mo", text);
-        this.#trees.set(uri, tree);
+        this.#cacheTree(uri, tree);
       } catch {
         // ignore
       }
@@ -466,7 +510,7 @@ export class Context {
             const src = (existingTree as any).sourceCode as string | undefined;
             if (src !== undefined) {
               text = src;
-              this.#fileTexts.set(entry.resourceId, text);
+              this.#cacheFileText(entry.resourceId, text);
             } else {
               const offset = existingTree.rootNode.startIndex;
               return existingTree.rootNode.text.substring(startOffset - offset, endOffset - offset);
@@ -477,7 +521,7 @@ export class Context {
           if (missingResources.has(entry.resourceId)) return null;
           try {
             text = this.#fs.read(entry.resourceId);
-            this.#fileTexts.set(entry.resourceId, text);
+            this.#cacheFileText(entry.resourceId, text);
           } catch {
             missingResources.add(entry.resourceId);
             return null;
@@ -494,10 +538,10 @@ export class Context {
             let text = this.#fileTexts.get(entry.resourceId);
             if (text === undefined) {
               text = this.#fs.read(entry.resourceId);
-              this.#fileTexts.set(entry.resourceId, text);
+              this.#cacheFileText(entry.resourceId, text);
             }
             tree = this.parse(".mo", text);
-            this.#trees.set(entry.resourceId, tree);
+            this.#cacheTree(entry.resourceId, tree);
           } catch {
             missingResources.add(entry.resourceId);
             return null;
@@ -508,6 +552,8 @@ export class Context {
         if (!rangeCache) {
           rangeCache = new Map<number, any>();
           (tree as any)._rangeNodeCache = rangeCache;
+        } else if (rangeCache.size > 200) {
+          rangeCache.clear();
         }
         const endIdx = Math.max(startOffset, endOffset);
         const rangeKey = startOffset * 0x4000000 + endIdx;
@@ -746,7 +792,7 @@ export class Context {
             () => {
               const text = this.#fs.read(dir);
               const tree = this.parse(".mo", text);
-              this.#trees.set(dir, tree);
+              this.#cacheTree(dir, tree);
               return tree.rootNode as any;
             },
             parentFQN,
@@ -758,7 +804,7 @@ export class Context {
             () => {
               const text = this.#fs.read(dir);
               const tree = this.parse(".csv", text);
-              this.#trees.set(dir, tree);
+              this.#cacheTree(dir, tree);
               return tree.rootNode as any;
             },
             parentFQN,
@@ -1178,7 +1224,7 @@ export class Context {
       editRanges = computeEditRanges(prevText, input);
       this.#fileDeltas.set(uri, input.length - prevText.length);
     }
-    this.#fileTexts.set(uri, input);
+    this.#cacheFileText(uri, input);
 
     const oldTree = this.#trees.get(uri);
     let editBounds:
@@ -1194,7 +1240,7 @@ export class Context {
     }
 
     const tree = this.parse(".mo", input, oldTree, editBounds);
-    this.#trees.set(uri, tree);
+    this.#cacheTree(uri, tree);
 
     this.#workspaceIndex.indexDocument(uri, () => tree.rootNode as any, undefined, editRanges, false);
     const unified = this.#workspaceIndex.toUnified();

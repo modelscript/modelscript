@@ -497,7 +497,7 @@ export function usersRouter(
     const baseUrl = getRequestBaseUrl(req);
     const actorUrl = resolveUserActorUrl(req, user.username, fedInfo?.actor_url, user.remote_domain);
     const profilePageUrl = `${baseUrl}/@${user.username}`;
-    const canonicalProfileUrl = `${baseUrl}/${user.username}`;
+    const canonicalProfileUrl = `${baseUrl}/@${user.username}`;
     const orcidRegex = /^(?:https?:\/\/orcid\.org\/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])$/i;
 
     const verifiedFields: Array<{ name: string; value: string; verified_at?: string | null }> = [];

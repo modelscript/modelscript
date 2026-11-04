@@ -112,7 +112,7 @@ function renderActorName(actor: NotificationActor | undefined, fallback: string)
   return (
     <ProfileHoverCard username={actor.username}>
       <Link
-        to={`/${actor.username}`}
+        to={`/@${actor.username}`}
         style={{
           fontWeight: 700,
           color: "var(--color-fg-default)",

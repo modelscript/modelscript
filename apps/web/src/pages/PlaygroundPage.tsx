@@ -3,7 +3,8 @@
 import { Button } from "@primer/react";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { getArtifactView } from "../api";
+import { createArtifactView, getArtifactView } from "../api";
+import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
@@ -24,6 +25,8 @@ import {
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
 import {
+  CreatePlaygroundRepoModal,
+  DEFAULT_EMPTY_MODELICA_CODE,
   EditorArea,
   HERO_EXAMPLES,
   type HeroExample,
@@ -32,6 +35,7 @@ import {
   PlaygroundContainer,
   PlaygroundNavbar,
   PlaygroundShareModal,
+  TemplateGalleryModal,
 } from "./playground";
 
 const TEMPLATE_ALIASES: Record<string, string> = {
@@ -67,6 +71,7 @@ export const PlaygroundPage: React.FC = () => {
   const navigate = useNavigate();
   const { openCompose } = useContext(ComposeContext);
   const toast = useToast();
+  const { user } = useAuth();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
 
   const modelParam = searchParams.get("model");
@@ -93,21 +98,35 @@ export const PlaygroundPage: React.FC = () => {
         /^#m=\d+/.test(location.hash))),
   );
 
+  const hasInitialTarget = Boolean(
+    hasInitialArtifactTarget ||
+    templateParam ||
+    modelParam ||
+    sourceParam ||
+    location.state ||
+    (location.hash && location.hash.length > 1),
+  );
+
+  const defaultInitialCode = hasInitialTarget ? "" : DEFAULT_EMPTY_MODELICA_CODE;
+  const defaultInitialTitle =
+    titleParam || (hasInitialArtifactTarget ? "Loading Artifact…" : hasInitialTarget ? "" : "Untitled Model");
+  const defaultInitialLang = langParam || "modelica";
+
   const [isLoadingArtifact, setIsLoadingArtifact] = useState<boolean>(hasInitialArtifactTarget);
-  const [currentCode, setCurrentCode] = useState<string>(hasInitialArtifactTarget ? "" : HERO_EXAMPLES[0]!.code);
+  const [currentCode, setCurrentCode] = useState<string>(defaultInitialCode);
   const [projectFiles, setProjectFiles] = useState<Record<string, string> | null>(null);
   const [activeFile, setActiveFile] = useState<string | null>(null);
-  const [currentTitle, setCurrentTitle] = useState<string>(
-    titleParam || (hasInitialArtifactTarget ? "Loading Artifact…" : HERO_EXAMPLES[0]!.title),
-  );
-  const [currentLang, setCurrentLang] = useState<string>(langParam || HERO_EXAMPLES[0]!.lang);
+  const [currentTitle, setCurrentTitle] = useState<string>(defaultInitialTitle);
+  const [currentLang, setCurrentLang] = useState<string>(defaultInitialLang);
   const [resolvedFromArtifact, setResolvedFromArtifact] = useState<string | null>(fromArtifactParam);
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
-  const baselineCodeRef = useRef<string>(hasInitialArtifactTarget ? "" : HERO_EXAMPLES[0]!.code);
+  const baselineCodeRef = useRef<string>(defaultInitialCode);
 
   usePageTitle(currentTitle ? `${currentTitle} — ModelScript Playground` : "ModelScript Playground");
   const [isShareModalOpen, setShareModalOpen] = useState(false);
+  const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
+  const [isCreateRepoModalOpen, setIsCreateRepoModalOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
   const [payload, setPayload] = useState<MorselDecodedPayload | null>(null);
@@ -605,6 +624,20 @@ export const PlaygroundPage: React.FC = () => {
       }
     } else if (titleParam) {
       setCurrentTitle(titleParam);
+    } else if (!hasInitialTarget) {
+      baselineCodeRef.current = DEFAULT_EMPTY_MODELICA_CODE;
+      setIsDirty(false);
+      setProjectFiles(null);
+      setActiveFile(null);
+      setCurrentCode(DEFAULT_EMPTY_MODELICA_CODE);
+      setCurrentTitle("Untitled Model");
+      setCurrentLang("modelica");
+      setPayload({
+        v: 1,
+        lang: "modelica",
+        code: DEFAULT_EMPTY_MODELICA_CODE,
+        title: "Untitled Model",
+      });
     }
 
     return () => {
@@ -832,6 +865,80 @@ export const PlaygroundPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleSaveToArtifact = async () => {
+    if (!user) {
+      toast.toast({
+        type: "warning",
+        title: "Sign in required",
+        message: "Please sign in to save models to your Ansatz artifacts library.",
+        action: {
+          label: "Sign In",
+          onClick: () => navigate("/login"),
+        },
+      });
+      return;
+    }
+    try {
+      const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
+      const created = await createArtifactView({
+        artifact_type: currentLang === "modelica" ? "modelica-diagram" : currentLang,
+        dialect: currentLang,
+        title: currentTitle || "Untitled Model",
+        view_config: JSON.stringify({
+          code: currentCode,
+          title: currentTitle,
+          dialect: currentLang,
+          view: currentView,
+          ...(isMulti && projectFiles ? { files: projectFiles } : {}),
+        }),
+      });
+      if (created?.id) {
+        setResolvedFromArtifact(String(created.id));
+        setIsDirty(false);
+        toast.toast({
+          type: "success",
+          title: "Saved to Ansatz",
+          message: `Saved "${currentTitle}" as Ansatz Artifact #${created.id}.`,
+          action: {
+            label: "Open Artifact",
+            onClick: () => navigate(`/playground?fromArtifact=${created.id}`),
+          },
+        });
+      }
+    } catch (err: any) {
+      console.error("Failed to save artifact:", err);
+      toast.error(err?.response?.data?.error || err?.message || "Failed to save artifact.");
+    }
+  };
+
+  const handleOpenCreateRepo = () => {
+    if (!user) {
+      toast.toast({
+        type: "warning",
+        title: "Sign in required",
+        message: "Please sign in to create version-controlled repositories.",
+        action: {
+          label: "Sign In",
+          onClick: () => navigate("/login"),
+        },
+      });
+      return;
+    }
+    setIsCreateRepoModalOpen(true);
+  };
+
+  const handleRepoCreated = (repoFullName: string) => {
+    toast.toast({
+      type: "success",
+      title: "Repository Created",
+      message: `Repository "${repoFullName}" is ready on Ansatz.`,
+      action: {
+        label: "Go to Repository",
+        onClick: () => navigate(`/repos/${repoFullName}`),
+      },
+    });
+  };
+
   const handleTitleChange = (nextTitle: string) => {
     setCurrentTitle(nextTitle);
     const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
@@ -882,7 +989,28 @@ export const PlaygroundPage: React.FC = () => {
     setCurrentLang(nextDialect);
   };
 
+  const [currentView, setCurrentView] = useState<"diagram" | "code" | "split" | "simulation">(
+    viewParam === "code" || viewParam === "simulation" || viewParam === "split" ? viewParam : "diagram",
+  );
+  const [simulateTriggerCount, setSimulateTriggerCount] = useState(0);
+
+  const handleViewChange = (nextView: "diagram" | "code" | "split" | "simulation") => {
+    setCurrentView(nextView);
+    handleActiveViewChange(nextView as any);
+  };
+
+  const handleRunSimulation = () => {
+    if (currentView !== "simulation" && currentView !== "split") {
+      setCurrentView("simulation");
+      handleActiveViewChange("simulation");
+    }
+    setSimulateTriggerCount((c) => c + 1);
+  };
+
   const handleActiveViewChange = (nextView: "diagram" | "simulation" | "3d" | "inspector" | "code") => {
+    if (nextView === "diagram" || nextView === "simulation" || nextView === "code") {
+      setCurrentView(nextView);
+    }
     setPayload((prev) => {
       if (prev?.view === nextView) return prev;
       return {
@@ -923,12 +1051,18 @@ export const PlaygroundPage: React.FC = () => {
         fromArtifactParam={resolvedFromArtifact}
         currentTitle={currentTitle}
         currentLang={currentLang}
+        currentView={currentView}
         isDirty={isDirty}
         publishLabel={publishLabel}
         onTitleChange={handleTitleChange}
         onSelectExample={handleSelectExample}
         onSelectLang={handleSelectLang}
+        onViewChange={handleViewChange}
+        onSimulate={handleRunSimulation}
         onOpenInVsCode={handleOpenInVsCode}
+        onOpenTemplates={() => setIsTemplatesModalOpen(true)}
+        onSaveToArtifact={handleSaveToArtifact}
+        onCreateRepo={handleOpenCreateRepo}
         onDownloadModel={handleDownloadModel}
         onCopyEmbed={() => handleCopy(getEmbedCode(), "Embed Code")}
         onOpenShare={() => setShareModalOpen(true)}
@@ -1017,9 +1151,10 @@ export const PlaygroundPage: React.FC = () => {
             initialCode={currentCode}
             embed={false}
             initialDialect={currentLang}
-            initialView={payload?.view || viewParam || undefined}
+            initialView={currentView}
             initialAnchor={payload?.anchor}
             externalParams={payload?.params}
+            simulateTriggerCount={simulateTriggerCount}
             onCodeChange={handleCodeChange}
             onActiveViewChange={handleActiveViewChange}
             onParametersChange={handleParametersChange}
@@ -1096,6 +1231,21 @@ export const PlaygroundPage: React.FC = () => {
         getEmbedCode={getEmbedCode}
         markdownBadge={getMarkdownBadge()}
         onCopy={handleCopy}
+      />
+
+      <TemplateGalleryModal
+        isOpen={isTemplatesModalOpen}
+        onClose={() => setIsTemplatesModalOpen(false)}
+        onSelectTemplate={handleSelectExample}
+      />
+
+      <CreatePlaygroundRepoModal
+        isOpen={isCreateRepoModalOpen}
+        onClose={() => setIsCreateRepoModalOpen(false)}
+        currentTitle={currentTitle}
+        currentCode={currentCode}
+        currentLangExt={getExtensionForDialect(currentLang)}
+        onSuccess={handleRepoCreated}
       />
     </PlaygroundContainer>
   );

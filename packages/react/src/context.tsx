@@ -24,9 +24,38 @@ export interface ModelScriptProviderProps {
   wasmPath?: string;
 }
 
-export function ModelScriptProvider({ children, theme = "dark" }: ModelScriptProviderProps) {
+export function ModelScriptProvider({ children, theme: propTheme }: ModelScriptProviderProps) {
   const [environment, setEnvironment] = useState<ModelScriptEnvironment>("web");
   const [isReady] = useState(true);
+  const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() => {
+    if (typeof window !== "undefined" && window.matchMedia) {
+      return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    }
+    return "dark";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      setSystemTheme(e.matches ? "dark" : "light");
+    };
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", handler);
+      return () => media.removeEventListener("change", handler);
+    }
+    const legacyMedia = media as unknown as {
+      addListener?: (h: (e: MediaQueryListEvent | MediaQueryList) => void) => void;
+      removeListener?: (h: (e: MediaQueryListEvent | MediaQueryList) => void) => void;
+    };
+    if (typeof legacyMedia.addListener === "function") {
+      legacyMedia.addListener(handler);
+      return () => legacyMedia.removeListener?.(handler);
+    }
+    return undefined;
+  }, []);
+
+  const theme = propTheme ?? systemTheme;
 
   useEffect(() => {
     // Detect host runtime environment

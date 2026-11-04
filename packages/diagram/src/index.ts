@@ -2968,7 +2968,6 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
         height: cs.height * 1.25,
       };
       g.zoomToRect(expandedRect, { viewportArea });
-      g.centerContent();
     } else {
       try {
         g.zoomToFit({ padding: 40, maxScale: 1.0, minScale: 0.2, viewportArea });
@@ -2988,7 +2987,16 @@ function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boole
           if (cw > 0 && ch > 0) {
             g.resize(cw, ch);
           }
-          if (!cs) {
+          if (cs) {
+            const currentViewport = { x: 0, y: 0, width: cw > 0 ? cw : containerW, height: ch > 0 ? ch : containerH };
+            const expandedRect = {
+              x: cs.x - cs.width * 0.125,
+              y: cs.y - cs.height * 0.125,
+              width: cs.width * 1.25,
+              height: cs.height * 1.25,
+            };
+            g.zoomToRect(expandedRect, { viewportArea: currentViewport });
+          } else {
             g.zoomToFit({ padding: 40, maxScale: 1.0, minScale: 0.2 });
             g.centerContent();
           }

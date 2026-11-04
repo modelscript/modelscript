@@ -121,7 +121,7 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
   };
 
   const handleCopyLink = () => {
-    const url = `${window.location.origin}/${post.username}/status/${post.id}`;
+    const url = `${window.location.origin}/@${post.username}/status/${post.id}`;
     navigator.clipboard.writeText(url).catch(() => {});
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);

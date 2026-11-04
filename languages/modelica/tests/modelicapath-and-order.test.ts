@@ -149,4 +149,34 @@ C
     const directChildFlattened = withinContext.flatten("WithinLib.DirectChild");
     assert.ok(directChildFlattened, "DirectChild should be resolvable under WithinLib due to within clause");
   });
+
+  it("bounds CST tree and text caches and supports pruneCaches()", async () => {
+    const cacheTestDir = path.join(testRoot, "CacheLib");
+    nodeFs.mkdirSync(cacheTestDir, { recursive: true });
+    nodeFs.writeFileSync(path.join(cacheTestDir, "package.mo"), `package CacheLib\nend CacheLib;`);
+
+    // Create 180 small models to exceed the 150 LRU limit
+    for (let i = 0; i < 180; i++) {
+      nodeFs.writeFileSync(
+        path.join(cacheTestDir, `M${i}.mo`),
+        `within CacheLib;\nmodel M${i}\n  parameter Real p = ${i};\nend M${i};`,
+      );
+    }
+
+    const ctx = new Context(fs);
+    await ctx.addLibrary(cacheTestDir);
+
+    // Access models to populate caches
+    for (let i = 0; i < 180; i++) {
+      const cls = ctx.queryEngine.toQueryDB().byName(`M${i}`);
+      assert.ok(cls.length > 0);
+    }
+
+    // Verify pruneCaches clears caches without error
+    ctx.pruneCaches();
+
+    // Verify models can still be resolved and flattened after pruning
+    const m179 = ctx.flatten("CacheLib.M179");
+    assert.ok(m179, "Model M179 should still flatten cleanly after cache pruning");
+  });
 });

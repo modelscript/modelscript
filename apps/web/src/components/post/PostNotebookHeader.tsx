@@ -318,7 +318,7 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
         >
           <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0, flex: 1 }}>
             <ProfileHoverCard username={displayPost.username}>
-              <ProfileNameLink to={`/${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
+              <ProfileNameLink to={`/@${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
                 <HoverAvatar $url={displayPost.avatar_url} style={{ width: "40px", height: "40px", fontSize: "16px" }}>
                   {!displayPost.avatar_url && displayPost.username.charAt(0).toUpperCase()}
                 </HoverAvatar>
@@ -339,7 +339,7 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
               >
                 <ProfileHoverCard username={displayPost.username}>
                   <ProfileNameLink
-                    to={`/${displayPost.username}`}
+                    to={`/@${displayPost.username}`}
                     onClick={(e) => e.stopPropagation()}
                     style={{
                       fontWeight: 700,
@@ -369,7 +369,7 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
                 </ProfileHoverCard>
 
                 <Link
-                  to={`/${displayPost.username}`}
+                  to={`/@${displayPost.username}`}
                   className="handle-text"
                   onClick={(e) => e.stopPropagation()}
                   style={{

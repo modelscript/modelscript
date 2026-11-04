@@ -70,6 +70,7 @@ export interface PreviousVersionCache {
 export interface ProcessLibraryOptions {
   dependencies?: DependencyLibrarySpec[] | undefined;
   previousVersion?: PreviousVersionCache | undefined;
+  skipSvg?: boolean | undefined;
 }
 
 interface CstNodeLike {
@@ -724,7 +725,7 @@ export async function processLibrary(
       collapseContent: true,
     });
 
-  const context = new Context(new NodeFileSystem());
+  const context = new Context(new NodeFileSystem(), undefined, 50_000);
 
   // 1. Hydrate cross-library dependencies before indexing the target library
   const externalIconHashes = new Map<string, string>();
@@ -812,6 +813,10 @@ export async function processLibrary(
     let cached = ownSourceCache.get(symbolId);
     if (cached === undefined) {
       cached = getOwnSourceExcludingNestedClasses(context, symbolId);
+      if (ownSourceCache.size >= 200) {
+        const oldestKey = ownSourceCache.keys().next().value;
+        if (oldestKey !== undefined) ownSourceCache.delete(oldestKey);
+      }
       ownSourceCache.set(symbolId, cached);
     }
     return cached;
@@ -1034,15 +1039,19 @@ export async function processLibrary(
                 }
               }
 
-              let causality: string | null = null;
-              try {
-                causality = queryDB.query("causality", child.id)?.toString() ?? null;
-              } catch {}
+              let causality: string | null = (child.metadata?.["causality"] as string) ?? null;
+              if (!causality) {
+                try {
+                  causality = queryDB.query("causality", child.id)?.toString() ?? null;
+                } catch {}
+              }
 
-              let variability: string | null = null;
-              try {
-                variability = queryDB.query("variability", child.id)?.toString() ?? null;
-              } catch {}
+              let variability: string | null = (child.metadata?.["variability"] as string) ?? null;
+              if (!variability) {
+                try {
+                  variability = queryDB.query("variability", child.id)?.toString() ?? null;
+                } catch {}
+              }
 
               const modifiers = extractModifiers(null, compCst);
 
@@ -1099,7 +1108,7 @@ export async function processLibrary(
           const memoryTight = isMemoryTight();
           let iconSvg: string | null = null;
           let diagramSvg: string | null = null;
-          const skipRendering = memoryTight || children.length > 300;
+          const skipRendering = Boolean(options?.skipSvg) || memoryTight || children.length > 300;
 
           if (!skipRendering) {
             try {
@@ -1135,11 +1144,25 @@ export async function processLibrary(
 
             const win = (
               globalThis as {
-                window?: { document?: { body?: { innerHTML: string } | undefined } | undefined } | undefined;
+                window?:
+                  | {
+                      document?:
+                        | {
+                            body?: { innerHTML: string } | undefined;
+                            documentElement?: { childNodes?: unknown[] } | undefined;
+                          }
+                        | undefined;
+                    }
+                  | undefined;
               }
             ).window;
-            if (win?.document?.body) {
-              win.document.body.innerHTML = "";
+            if (win?.document) {
+              if (win.document.documentElement?.childNodes) {
+                win.document.documentElement.childNodes.length = 0;
+              }
+              if (win.document.body) {
+                win.document.body.innerHTML = "";
+              }
             }
           }
 
@@ -1159,6 +1182,9 @@ export async function processLibrary(
         }
 
         if (classesProcessed % 50 === 0) {
+          context.pruneCaches();
+          queryDB.flushVolatile?.();
+          queryDB.clearMemos?.();
           tryGC();
         }
 

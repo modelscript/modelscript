@@ -262,7 +262,7 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
                       minWidth: 0,
                       cursor: "pointer",
                     }}
-                    onClick={() => navigate(`/${u.username}`)}
+                    onClick={() => navigate(`/@${u.username}`)}
                   >
                     <img
                       src={getAvatarUrl(u.username, u.avatar_url)}

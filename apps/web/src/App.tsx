@@ -312,6 +312,37 @@ function IdeFallbackNavigate() {
   return <Navigate to={`/playground${qs ? `?${qs}` : ""}${location.hash}`} replace />;
 }
 
+function LegacyUserRedirect() {
+  const { username } = useParams<{ username?: string | undefined }>();
+  const location = useLocation();
+  const cleanUsername = (username ? decodeURIComponent(username) : "").replace(/^@/, "");
+  const subPath = location.pathname.replace(new RegExp(`^/users/${username || ""}`), "");
+  const target = `/@${cleanUsername}${subPath}${location.search}${location.hash}`;
+  return <Navigate to={target} replace />;
+}
+
+function UserRootRouteGuard({ element }: { element: React.ReactElement }) {
+  const { username } = useParams<{ username?: string | undefined }>();
+  const location = useLocation();
+
+  if (!username) {
+    return <NotFoundPage />;
+  }
+
+  // Handle percent-encoded @ (%40) by redirecting to canonical /@...
+  if (username.startsWith("%40") || username.toLowerCase().startsWith("%40")) {
+    const cleanPath = location.pathname.replace(/^\/%40/i, "/@");
+    return <Navigate to={`${cleanPath}${location.search}${location.hash}`} replace />;
+  }
+
+  // All user profile and status routes MUST start with '@'
+  if (!username.startsWith("@")) {
+    return <NotFoundPage />;
+  }
+
+  return element;
+}
+
 function PageViewTracker() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -726,16 +757,22 @@ function App() {
                     />
                     <Route path="/p/:id" element={<PostDetailPage />} />
                     <Route path="/posts/:id" element={<PostDetailPage />} />
-                    <Route path="/users/:username" element={<ProfilePage />} />
-                    <Route path="/users/:username/status/:id" element={<PostDetailPage />} />
-                    <Route path="/users/:username/status/:id/activity" element={<PostActivityPage />} />
-                    <Route path="/users/:username/followers" element={<FollowersPage />} />
-                    <Route path="/users/:username/following" element={<FollowingPage />} />
-                    <Route path="/:username" element={<ProfilePage />} />
-                    <Route path="/:username/status/:id" element={<PostDetailPage />} />
-                    <Route path="/:username/status/:id/activity" element={<PostActivityPage />} />
-                    <Route path="/:username/followers" element={<FollowersPage />} />
-                    <Route path="/:username/following" element={<FollowingPage />} />
+                    {/* Backward-compatible redirects: /users/:username -> /@:username */}
+                    <Route path="/users/:username" element={<LegacyUserRedirect />} />
+                    <Route path="/users/:username/status/:id" element={<LegacyUserRedirect />} />
+                    <Route path="/users/:username/status/:id/activity" element={<LegacyUserRedirect />} />
+                    <Route path="/users/:username/followers" element={<LegacyUserRedirect />} />
+                    <Route path="/users/:username/following" element={<LegacyUserRedirect />} />
+
+                    {/* Canonical user profile and status routes with '@' guard */}
+                    <Route path="/:username" element={<UserRootRouteGuard element={<ProfilePage />} />} />
+                    <Route path="/:username/status/:id" element={<UserRootRouteGuard element={<PostDetailPage />} />} />
+                    <Route
+                      path="/:username/status/:id/activity"
+                      element={<UserRootRouteGuard element={<PostActivityPage />} />}
+                    />
+                    <Route path="/:username/followers" element={<UserRootRouteGuard element={<FollowersPage />} />} />
+                    <Route path="/:username/following" element={<UserRootRouteGuard element={<FollowingPage />} />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Route>
                 </Routes>

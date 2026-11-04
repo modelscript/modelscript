@@ -723,8 +723,10 @@ const AppShell: React.FC = () => {
                 )}
               </BottomBarButton>
               <BottomBarButton
-                $active={Boolean(user && location.pathname === `/${user.username}`)}
-                onClick={() => handleNavWithScroll(user ? `/${user.username}` : "/login")}
+                $active={Boolean(
+                  user && (location.pathname === `/@${user.username}` || location.pathname === `/${user.username}`),
+                )}
+                onClick={() => handleNavWithScroll(user ? `/@${user.username}` : "/login")}
                 aria-label="Profile"
               >
                 <PersonIcon size={24} />
@@ -745,8 +747,8 @@ const AppShell: React.FC = () => {
                   {user && (
                     <>
                       <Link
-                        to={`/${user.username}`}
-                        onClick={() => handleMoreLinkClick(`/${user.username}`)}
+                        to={`/@${user.username}`}
+                        onClick={() => handleMoreLinkClick(`/@${user.username}`)}
                         style={{ height: "54px" }}
                       >
                         <div

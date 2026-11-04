@@ -323,7 +323,7 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
                 e.stopPropagation();
                 e.preventDefault();
                 setShowShareMenu(false);
-                const postUrl = `${window.location.origin}/${displayPost.username || "post"}/status/${displayPost.id}`;
+                const postUrl = `${window.location.origin}/@${displayPost.username || "post"}/status/${displayPost.id}`;
                 navigator
                   .share({
                     title: `Post by @${displayPost.username || "user"} on Ansatz`,

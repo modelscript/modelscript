@@ -1008,7 +1008,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     if (hasFeeds) {
       communityLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
     }
-    communityLinks.push({ to: `/${user.username}`, icon: PersonIcon, label: "Profile" });
+    communityLinks.push({ to: `/@${user.username}`, icon: PersonIcon, label: "Profile" });
   }
 
   // 2. Primary in-shell registry & engineering hub links

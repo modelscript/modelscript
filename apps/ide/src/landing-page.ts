@@ -2791,7 +2791,7 @@ export function renderLandingPageHtml(): string {
       var themeBtn = document.getElementById('theme-toggle');
       var themeLabel = document.getElementById('theme-label');
 
-      function applyTheme(mode) {
+      function applyTheme(mode, persist) {
         if (mode === 'light') {
           rootEl.classList.remove('dark');
           rootEl.classList.add('light');
@@ -2801,20 +2801,36 @@ export function renderLandingPageHtml(): string {
           rootEl.classList.add('dark');
           if (themeLabel) themeLabel.textContent = 'Dark Blueprint';
         }
-        try {
-          localStorage.setItem('vitepress-theme-appearance', mode);
-        } catch (e) {}
+        if (persist) {
+          try {
+            localStorage.setItem('vitepress-theme-appearance', mode);
+          } catch (e) {}
+        }
       }
 
       try {
         var saved = localStorage.getItem('vitepress-theme-appearance');
-        if (saved === 'light') applyTheme('light');
+        if (saved === 'light' || saved === 'dark') {
+          applyTheme(saved, false);
+        } else {
+          var prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+          applyTheme(prefersLight ? 'light' : 'dark', false);
+          if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+              try {
+                if (!localStorage.getItem('vitepress-theme-appearance')) {
+                  applyTheme(e.matches ? 'dark' : 'light', false);
+                }
+              } catch (err) {}
+            });
+          }
+        }
       } catch (e) {}
 
       if (themeBtn) {
         themeBtn.addEventListener('click', function() {
           var isLight = rootEl.classList.contains('light');
-          applyTheme(isLight ? 'dark' : 'light');
+          applyTheme(isLight ? 'dark' : 'light', true);
         });
       }
 

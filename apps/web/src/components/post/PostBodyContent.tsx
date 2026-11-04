@@ -249,7 +249,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                navigate(`/${displayPost.username}/status/${displayPost.id}`);
+                navigate(`/@${displayPost.username}/status/${displayPost.id}`);
               }}
               style={{
                 padding: "8px 14px",

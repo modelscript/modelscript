@@ -922,7 +922,7 @@ export const PostMarkdownContent: React.FC<{
           createPortal(
             <ProfileHoverCard username={username}>
               <Link
-                to={`/${username}`}
+                to={`/@${username}`}
                 style={{ color: "var(--color-accent-cyan)", textDecoration: "none", fontWeight: "bold" }}
                 onMouseOver={(e) => ((e.target as any).style.textDecoration = "underline")}
                 onMouseOut={(e) => ((e.target as any).style.textDecoration = "none")}

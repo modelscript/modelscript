@@ -152,7 +152,7 @@ export default function SolutionPage() {
         <Text color="var(--color-fg-muted)" style={{ display: "block", marginBottom: "24px" }}>
           {error || "The requested engineering application does not exist or has been made private."}
         </Text>
-        <Button onClick={() => navigate(username ? `/${username}` : "/explore")}>
+        <Button onClick={() => navigate(username ? `/@${username}` : "/explore")}>
           <ArrowLeftIcon size={16} /> Return to Profile
         </Button>
       </Box>
@@ -164,7 +164,7 @@ export default function SolutionPage() {
       {/* Top Professional Header Bar */}
       <SolutionHeader>
         <Box display="flex" alignItems="center" gap={3}>
-          <Button size="small" onClick={() => navigate(`/${username}`)} title="Back to user profile">
+          <Button size="small" onClick={() => navigate(`/@${username}`)} title="Back to user profile">
             <ArrowLeftIcon size={14} /> Back
           </Button>
 
@@ -220,7 +220,7 @@ export default function SolutionPage() {
               </Box>
               <Text fontSize="12px" color="var(--color-fg-muted)">
                 by{" "}
-                <Link to={`/${username}`} style={{ color: "var(--color-accent-emphasis)", textDecoration: "none" }}>
+                <Link to={`/@${username}`} style={{ color: "var(--color-accent-emphasis)", textDecoration: "none" }}>
                   @{username}
                 </Link>
               </Text>

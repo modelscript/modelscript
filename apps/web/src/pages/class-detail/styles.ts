@@ -105,12 +105,12 @@ export const Divider = styled.hr`
   margin: 24px 0;
 `;
 
-export const ContentGrid = styled.div`
+export const ContentGrid = styled.div<{ $treeCollapsed?: boolean | undefined }>`
   max-width: none;
   margin: 0 auto;
   padding: 28px 40px 60px;
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: ${(props) => (props.$treeCollapsed ? "minmax(0, 1fr) 280px" : "1fr 320px")};
   gap: 40px;
   width: 100%;
   box-sizing: border-box;
@@ -422,31 +422,53 @@ export const DetailValue = styled.span`
   word-break: break-word;
 `;
 
-export const DiagramWrap = styled.div`
+export const DiagramWrap = styled.div<{ $isDragging?: boolean | undefined; $isFullScreen?: boolean | undefined }>`
   ${glassCard}
   width: 100%;
-  aspect-ratio: 2.4 / 1;
-  max-height: 380px;
-  min-height: 200px;
+  aspect-ratio: ${(p) => (p.$isFullScreen ? "none" : "2.4 / 1")};
+  max-height: ${(p) => (p.$isFullScreen ? "none" : "380px")};
+  min-height: ${(p) => (p.$isFullScreen ? "100%" : "200px")};
   padding: 16px 24px;
-  margin-bottom: 24px;
+  margin-bottom: ${(p) => (p.$isFullScreen ? "0" : "24px")};
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
-  position: relative;
+  position: ${(p) => (p.$isFullScreen ? "fixed" : "relative")};
+
+  ${(p) =>
+    p.$isFullScreen &&
+    css`
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      width: 100vw;
+      height: 100vh;
+      max-height: 100vh;
+      border-radius: 0;
+      border: none;
+      z-index: 1000;
+      background: var(--color-canvas-default, #0d1117);
+    `}
 `;
 
-export const DiagramViewport = styled.div<{ $loaded: boolean; $zoom: number }>`
+export const DiagramViewport = styled.div<{
+  $loaded: boolean;
+  $zoom: number;
+  $panX?: number | undefined;
+  $panY?: number | undefined;
+  $isDragging?: boolean | undefined;
+}>`
   width: 100%;
   height: 100%;
   max-height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  transform: ${(p) => (p.$loaded ? `scale(${p.$zoom})` : "none")};
+  transform: ${(p) => (p.$loaded ? `translate(${p.$panX || 0}px, ${p.$panY || 0}px) scale(${p.$zoom})` : "none")};
   transform-origin: center center;
-  transition: transform 0.15s ease;
+  transition: ${(p) => (p.$isDragging ? "none" : "transform 0.15s ease")};
   ${(p) => (!p.$loaded ? "position: absolute; opacity: 0; pointer-events: none;" : "")}
 
   div[role="img"] {
@@ -456,6 +478,7 @@ export const DiagramViewport = styled.div<{ $loaded: boolean; $zoom: number }>`
     display: flex;
     justify-content: center;
     align-items: center;
+    pointer-events: none;
   }
 
   svg {
@@ -463,6 +486,7 @@ export const DiagramViewport = styled.div<{ $loaded: boolean; $zoom: number }>`
     height: 100%;
     max-height: 100%;
     max-width: 100%;
+    pointer-events: none;
   }
 `;
 
@@ -486,23 +510,39 @@ export const DiagramToolbar = styled.div`
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 `;
 
-export const DiagramToolbarButton = styled.button<{ $active?: boolean | undefined }>`
+export const DiagramToolbarButton = styled.button<{
+  $active?: boolean | undefined;
+  $minWidth?: string | undefined;
+}>`
   background: none;
   border: none;
   color: ${(p) => (p.$active ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-text-muted)")};
   cursor: pointer;
   padding: 2px 6px;
-  display: flex;
+  height: 24px;
+  min-height: 24px;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
   font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-sizing: border-box;
+  ${(p) => (p.$minWidth ? `min-width: ${p.$minWidth}; width: ${p.$minWidth};` : "")}
   transition: all 0.15s ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     color: var(--color-text-heading);
     background-color: var(--surface-row-hover);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 `;
 

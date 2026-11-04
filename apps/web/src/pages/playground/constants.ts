@@ -10,7 +10,22 @@ export interface HeroExample {
   category: string;
   lang: string;
   code: string;
+  domain?: string;
+  description?: string;
+  tags?: string[];
 }
+
+export const TEMPLATE_CATEGORIES = [
+  "All",
+  "Electrical & RF",
+  "Mechanics & Multibody",
+  "Systems & Controls",
+  "Fluids & Process",
+  "3D CAD & FEA",
+  "Systems Biology",
+] as const;
+
+export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
 
 export interface PlaygroundLanguageOption {
   id: string;
@@ -91,23 +106,48 @@ export function useVisiblePlaygroundLanguages(): PlaygroundLanguageOption[] {
   return useMemo(() => getVisiblePlaygroundLanguages(isEnabled), [isEnabled]);
 }
 
+export const DEFAULT_EMPTY_MODELICA_CODE = `model Untitled "Untitled engineering model"
+  annotation(
+    Icon(coordinateSystem(preserveAspectRatio = false, extent = {{-100, -100}, {100, 100}})),
+    Diagram(coordinateSystem(preserveAspectRatio = false, extent = {{-100, -100}, {100, 100}}))
+  );
+end Untitled;
+`;
+
 export const HERO_EXAMPLES: HeroExample[] = [
   {
     id: "rlc-circuit",
     title: "RLC Resonant Circuit",
     category: "Electrical",
     lang: "modelica",
-    code: `model RLCCircuit "Second-order series RLC resonant circuit"
-  parameter Real R = 0.5 "Resistance (Ohm)";
-  parameter Real L = 0.1 "Inductance (H)";
-  parameter Real C = 0.01 "Capacitance (F)";
-  parameter Real V0 = 12.0 "Step Input Voltage (V)";
-
-  Real i(start = 0.0) "Inductor current (A)";
-  Real v_c(start = 0.0) "Capacitor voltage (V)";
+    code: `model RLCCircuit "RLC circuit with Modelica Standard Library components"
+  Modelica.Electrical.Analog.Sources.SineVoltage Vb(V = 10, f = 50)
+    annotation(Placement(transformation(origin = {-70, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));
+  Modelica.Electrical.Analog.Basic.Inductor L(L = 0.5)
+    annotation(Placement(transformation(origin = {0, 40}, extent = {{-10, -10}, {10, 10}})));
+  Modelica.Electrical.Analog.Basic.Capacitor C(C = 1e-4)
+    annotation(Placement(transformation(origin = {20, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));
+  Modelica.Electrical.Analog.Basic.Resistor R(R = 100)
+    annotation(Placement(transformation(origin = {60, 0}, extent = {{-10, -10}, {10, 10}}, rotation = 270)));
+  Modelica.Electrical.Analog.Basic.Ground ground
+    annotation(Placement(transformation(origin = {-70, -40}, extent = {{-10, -10}, {10, 10}})));
 equation
-  L * der(i) + R * i + v_c = V0;
-  C * der(v_c) = i;
+  connect(Vb.p, L.p)
+    annotation(Line(points = {{-70, 10}, {-70, 40}, {-10, 40}}, color = {0, 0, 255}));
+  connect(L.n, C.p)
+    annotation(Line(points = {{10, 40}, {20, 40}, {20, 10}}, color = {0, 0, 255}));
+  connect(L.n, R.p)
+    annotation(Line(points = {{10, 40}, {60, 40}, {60, 10}}, color = {0, 0, 255}));
+  connect(R.n, Vb.n)
+    annotation(Line(points = {{60, -10}, {60, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));
+  connect(C.n, Vb.n)
+    annotation(Line(points = {{20, -10}, {20, -30}, {-70, -30}, {-70, -10}}, color = {0, 0, 255}));
+  connect(Vb.n, ground.p)
+    annotation(Line(points = {{-70, -10}, {-70, -30}}, color = {0, 0, 255}));
+  annotation(
+    Icon(coordinateSystem(preserveAspectRatio = false, extent = {{-100, -100}, {100, 100}})),
+    Diagram(coordinateSystem(preserveAspectRatio = false, extent = {{-100, -100}, {100, 100}}))
+  );
 end RLCCircuit;`,
   },
   {
@@ -432,5 +472,92 @@ wheelset axle_2  1550.0  840.0  110.0  840.0  1.435  0.460  0.15  "S1002_UIC60.w
 spring k_prim_1  bogie_f  axle_1   15.0e6  5.5e6  1.1e6  10000.0  8000.0  16000.0
 spring k_prim_2  bogie_f  axle_2   15.0e6  5.5e6  1.1e6  10000.0  8000.0  16000.0
 spring k_sec_f   carbody  bogie_f   0.16e6  0.16e6 0.40e6 900000.0 25000.0 30000.0`,
+  },
+  {
+    id: "epanet-water-network",
+    title: "Municipal Water Distribution Loop",
+    category: "EPANET Hydraulics",
+    domain: "Fluids & Process",
+    description: "Two-loop municipal potable water distribution network with reservoirs, junctions, and pipes.",
+    tags: ["Water", "Hydraulics", "Pipes", "Civil"],
+    lang: "epanet",
+    code: `[TITLE]
+Municipal Water Distribution Network Two-Loop System
+
+[JUNCTIONS]
+;ID              Elev         Demand       Pattern
+ 2               210          0.00         
+ 3               215          150.00       
+ 4               210          200.00       
+ 5               200          150.00       
+ 6               210          0.00         
+
+[RESERVOIRS]
+;ID              Head         Pattern
+ 1               240          
+
+[PIPES]
+;ID              Node1        Node2        Length       Diameter     Roughness    MinorLoss    Status
+ 1               1            2            3000         14           100          0            Open
+ 2               2            3            5000         12           100          0            Open
+ 3               3            4            5000         8            100          0            Open
+ 4               4            5            5000         8            100          0            Open
+ 5               5            6            5000         8            100          0            Open
+ 6               6            2            5000         10           100          0            Open
+ 7               3            6            5000         10           100          0            Open
+
+[COORDINATES]
+;Node            X-Coord      Y-Coord
+ 1               100          300
+ 2               300          300
+ 3               700          300
+ 4               700          100
+ 5               300          100
+ 6               500          200
+
+[END]`,
+  },
+  {
+    id: "sbml-enzymatic-cascade",
+    title: "Michaelis-Menten Enzyme Cascade",
+    category: "SBML Pathways",
+    domain: "Systems Biology",
+    description: "Biochemical enzyme-substrate binding and catalytic product formation kinetic network.",
+    tags: ["Biochemical", "Enzymes", "Kinetics", "Pathways"],
+    lang: "sbml",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
+  <model id="EnzymeKineticsCascade" name="Michaelis-Menten Enzymatic Pathway">
+    <listOfCompartments>
+      <compartment id="cell" spatialDimensions="3" size="1e-15" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="Substrate" compartment="cell" initialConcentration="10.0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="Enzyme" compartment="cell" initialConcentration="1.0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="Complex" compartment="cell" initialConcentration="0.0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+      <species id="Product" compartment="cell" initialConcentration="0.0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+    </listOfSpecies>
+    <listOfReactions>
+      <reaction id="Binding" reversible="true">
+        <listOfReactants>
+          <speciesReference species="Substrate" stoichiometry="1" constant="true"/>
+          <speciesReference species="Enzyme" stoichiometry="1" constant="true"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="Complex" stoichiometry="1" constant="true"/>
+        </listOfProducts>
+      </reaction>
+      <reaction id="Catalysis" reversible="false">
+        <listOfReactants>
+          <speciesReference species="Complex" stoichiometry="1" constant="true"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="Product" stoichiometry="1" constant="true"/>
+          <speciesReference species="Enzyme" stoichiometry="1" constant="true"/>
+        </listOfProducts>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>`,
   },
 ];

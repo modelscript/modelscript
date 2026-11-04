@@ -35,6 +35,7 @@ export interface ClassDetailViewProps {
   jobStatus?: JobStatus | null | undefined;
   treeCollapsed?: boolean | undefined;
   onToggleTreeCollapse?: (() => void) | undefined;
+  onOpenLogs?: (() => void) | undefined;
 }
 
 export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
@@ -45,6 +46,7 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
   jobStatus: propJobStatus,
   treeCollapsed,
   onToggleTreeCollapse,
+  onOpenLogs,
 }) => {
   const navigate = useNavigate();
   const hasCae = useFeatureFlag("cae_cloud_solver");
@@ -299,6 +301,7 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
         }
         treeCollapsed={treeCollapsed}
         onToggleTreeCollapse={onToggleTreeCollapse}
+        onOpenLogs={onOpenLogs}
       />
 
       {/* ── Body ── */}

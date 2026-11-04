@@ -24,9 +24,9 @@ export const SuggestedUsersCard: React.FC<SuggestedUsersCardProps> = ({ suggesti
       </CardHeader>
       <PanelList>
         {filteredSuggestions.map((u) => (
-          <TrendingItem key={u.id} onClick={() => navigate(`/${u.username}`)}>
+          <TrendingItem key={u.id} onClick={() => navigate(`/@${u.username}`)}>
             <ProfileHoverCard username={u.username}>
-              <ProfileNameLink to={`/${u.username}`} style={{ flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+              <ProfileNameLink to={`/@${u.username}`} style={{ flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
               </ProfileNameLink>
             </ProfileHoverCard>
@@ -34,7 +34,7 @@ export const SuggestedUsersCard: React.FC<SuggestedUsersCardProps> = ({ suggesti
               <div style={{ maxWidth: "100%", width: "100%", display: "flex", minWidth: 0, overflow: "hidden" }}>
                 <ProfileHoverCard username={u.username}>
                   <ProfileNameLink
-                    to={`/${u.username}`}
+                    to={`/@${u.username}`}
                     onClick={(e) => e.stopPropagation()}
                     style={{
                       maxWidth: "100%",

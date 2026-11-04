@@ -157,7 +157,7 @@ const HomeFeedPage: React.FC = () => {
       <MobileFeedTopBar>
         {user ? (
           <Link
-            to={`/${user.username}`}
+            to={`/@${user.username}`}
             aria-label="Your profile"
             style={{
               width: 30,
