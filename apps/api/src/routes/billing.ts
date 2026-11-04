@@ -484,7 +484,8 @@ export function billingRouter(database: LibraryDatabase): Router {
     try {
       const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
       const isProd = process.env["NODE_ENV"] === "production";
-      if (isProd || webhookSecret) {
+      const isTest = process.env["NODE_ENV"] === "test";
+      if (!isTest || webhookSecret) {
         const sigHeader = req.headers["stripe-signature"];
         if (!webhookSecret || typeof sigHeader !== "string" || !sigHeader) {
           return res.status(400).json({ error: "Missing or unconfigured Stripe webhook signature" });

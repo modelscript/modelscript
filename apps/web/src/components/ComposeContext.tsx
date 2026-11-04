@@ -5,17 +5,17 @@ import type { NotebookCell, TutorialDifficulty } from "../util/notebook";
 import type { SpatialPin } from "./artifacts/spatial-pin";
 
 export interface ComposeInitialState {
-  editPostId?: number | null | undefined;
-  replyToPostId?: number | null | undefined;
+  editPostId?: number | string | null | undefined;
+  replyToPostId?: number | string | null | undefined;
   content?: string | undefined;
   initialContent?: string | undefined;
   defaultText?: string | undefined;
-  artifactId?: number | null | undefined;
-  artifactViewId?: number | null | undefined;
+  artifactId?: number | string | null | undefined;
+  artifactViewId?: number | string | null | undefined;
   quotePost?: any;
   replyToPost?: any;
   pendingPin?: SpatialPin | undefined;
-  forkedFromArtifactId?: number | null | undefined;
+  forkedFromArtifactId?: number | string | null | undefined;
   notebookMode?: boolean | undefined;
   isNotebookMode?: boolean | undefined;
   notebookTitle?: string | undefined;

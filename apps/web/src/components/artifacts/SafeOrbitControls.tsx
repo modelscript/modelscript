@@ -63,14 +63,32 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
       }
     };
 
+    canvas.setAttribute("style", `${canvas.getAttribute("style") || ""}; touch-action: none;`);
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        setIsZoomAllowed(true);
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2 && !isFullScreen) {
+        setIsZoomAllowed(false);
+      }
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     canvas.addEventListener("wheel", handleWheel, { passive: true });
+    canvas.addEventListener("touchstart", handleTouchStart, { passive: true });
+    canvas.addEventListener("touchend", handleTouchEnd, { passive: true });
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       canvas.removeEventListener("wheel", handleWheel);
+      canvas.removeEventListener("touchstart", handleTouchStart);
+      canvas.removeEventListener("touchend", handleTouchEnd);
       if (hintTimeoutRef.current) {
         clearTimeout(hintTimeoutRef.current);
       }
@@ -87,6 +105,10 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
         dampingFactor={dampingFactor}
         minDistance={minDistance}
         maxDistance={maxDistance}
+        touches={{
+          ONE: 0, // THREE.TOUCH.ROTATE
+          TWO: 1, // THREE.TOUCH.DOLLY_PAN
+        }}
       />
       {showHint && !isZoomAllowed && (
         <Html center style={{ pointerEvents: "none" }}>

@@ -48,7 +48,9 @@ import { organizationsRouter } from "./routes/organizations.js";
 import { packagesRouter } from "./routes/packages.js";
 import { physicsRouter } from "./routes/physics.js";
 import { publishRouter } from "./routes/publish.js";
+import { pushRouter } from "./routes/push.js";
 import { rdfRouter } from "./routes/rdf.js";
+import { referencesRouter } from "./routes/references.js";
 import { reposRouter } from "./routes/repos.js";
 import { scriptsRouter } from "./routes/scripts.js";
 import { searchRouter } from "./routes/search.js";
@@ -72,6 +74,7 @@ import { FeatureFlagService } from "./services/feature-flag-service.js";
 import { FederationWorker } from "./services/federation-worker.js";
 import { locationService } from "./services/location.js";
 import { defaultMailer } from "./services/mailer.js";
+import { preloadOpenAlexS3Slice } from "./services/openalex.js";
 import { SysML2OmgService } from "./services/sysml2-omg-service.js";
 import { LibraryStorage } from "./storage.js";
 import { SANCTIONED_COUNTRIES, SANCTIONED_REGIONS } from "./util/compliance.js";
@@ -98,6 +101,8 @@ export interface AppOptions {
   enterprisePlugin?: EnterprisePlugin | undefined;
   /** Explicit override to control standard library background seeding on boot. */
   seedStdlibOnBoot?: boolean | undefined;
+  /** Explicit override to control OpenAlex S3 first slice background preloading on boot. */
+  preloadOpenAlex?: boolean | undefined;
   /** Explicit override to control background periodic workers (decay, RSS, purge, auto-backup, bot mention). */
   enableWorkers?: boolean | undefined;
 }
@@ -135,12 +140,12 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const shouldEnableWorkers = opts.enableWorkers ?? (!isTestEnv && process.env["NODE_ENV"] !== "test");
 
   const federationWorker = new FederationWorker(database);
-  if (
-    shouldEnableWorkers &&
+  const instanceSettings = database.isOpen() ? database.getInstanceSettings() : undefined;
+  const isFederationActive =
     !isStartupAirgap &&
-    !isFederationDisabled(database.isOpen() ? database.getInstanceSettings() : undefined) &&
-    featureFlagService.isEnabled("activitypub_federation")
-  ) {
+    !isFederationDisabled(instanceSettings) &&
+    (instanceSettings?.federationMode === "open" || featureFlagService.isEnabled("activitypub_federation"));
+  if (shouldEnableWorkers && isFederationActive) {
     federationWorker.start();
   }
   app.locals["federationWorker"] = federationWorker;
@@ -239,6 +244,32 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     (process.env["SEED_EXAMPLES"] === "true" && !isProductionEnv && !isFlagship) ||
     (isExplicitDevOverride && process.env["SEED_EXAMPLES"] !== "false");
 
+  // Preload OpenAlex first slice from S3 into local openalex.db in flagship dev mode
+  const shouldPreloadOpenAlex =
+    opts.preloadOpenAlex ??
+    (process.env["SEED_OPENALEX_ON_BOOT"] === "true" ||
+      process.env["PRELOAD_OPENALEX_SLICE"] === "true" ||
+      (!isTestEnv &&
+        process.env["SEED_OPENALEX_ON_BOOT"] !== "false" &&
+        isFlagship &&
+        (allowDevSeeding || isExplicitDevOverride)));
+
+  if (shouldPreloadOpenAlex) {
+    void preloadOpenAlexS3Slice(database)
+      .then((res) => {
+        if (res.status === "already_loaded") {
+          console.log(`[OpenAlex] Local catalog already populated (${res.totalWorks} works).`);
+        } else {
+          console.log(
+            `[OpenAlex] Preloaded first slice (${res.importedCount} works in ${res.durationMs}ms) from ${res.fromCache ? "cache" : "S3"}.`,
+          );
+        }
+      })
+      .catch((err) => {
+        console.warn("[OpenAlex] Failed to preload OpenAlex slice on boot:", err instanceof Error ? err.message : err);
+      });
+  }
+
   if (allowDevSeeding || isExplicitDevSeed) {
     console.log("[DevServer] Development mode detected. Running auto-seeding...");
 
@@ -264,7 +295,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     })();
     app.locals["devSeedPromise"] = devSeedPromise;
 
-    if (!isProductionEnv || isExplicitDevOverride) {
+    if (!isProductionEnv && (isTestEnv || isExplicitDevOverride || process.env["ENABLE_DEV_RESET"] === "true")) {
       app.post("/api/v1/dev/reset", async (_req, res) => {
         console.log("[DevServer] Resetting database and re-seeding...");
         try {
@@ -607,6 +638,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/user", mountedUsersRouter);
   app.use("/api/v1/solutions", solutionsRouter(database));
   app.use("/api/v1/social", socialRouter(database, federationWorker, featureFlagService));
+  const mountedReferencesRouter = referencesRouter(database);
+  app.use("/api/v1/references", mountedReferencesRouter);
+  app.use("/api/v1/sources", mountedReferencesRouter);
+  app.use("/api/v1/citations", mountedReferencesRouter);
+  app.use("/api/v1", pushRouter(database));
 
   // FMU storage & open-standard FMU registry routes
   const fmuStorageDir = path.resolve(database.dbDir, "fmus");

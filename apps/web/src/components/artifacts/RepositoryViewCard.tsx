@@ -5,7 +5,9 @@ import { Button, Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { buildCitationFromRepo } from "../../util/citations";
 import Box from "../Box";
+import { CiteButton } from "../citations/CiteButton";
 
 interface RepositoryViewCardProps {
   viewConfig: {
@@ -138,7 +140,19 @@ export const RepositoryViewCard: React.FC<RepositoryViewCardProps> = ({ viewConf
             </Box>
           </Box>
         </Box>
-        <Box display="flex" gap={2}>
+        <Box display="flex" alignItems="center" gap={2}>
+          <CiteButton
+            target={buildCitationFromRepo({
+              provider,
+              namespace,
+              project,
+              description,
+              defaultBranch: branch,
+            })}
+            label="Cite"
+            variant="button"
+            testId="repo-card-cite-btn"
+          />
           <Button size="small" variant="default" onClick={handleBrowseRepo}>
             Browse
           </Button>

@@ -27,6 +27,8 @@ import {
   isEmailDomainAllowed,
   resolveBrandInstanceName,
 } from "../util/registration-policy.js";
+import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
+import { isFederationDisabled } from "../util/tier-presets.js";
 import {
   generateBackupCodes,
   generateTotpSecret,
@@ -88,7 +90,7 @@ export function authRouter(database: LibraryDatabase): Router {
       const airgapEnforced = process.env["AIRGAP_ENFORCED"] === "true";
       const turnstileEnabled = !airgapEnforced && Boolean(process.env["TURNSTILE_SECRET_KEY"]);
       const mailerConfigured = defaultMailer.isConfiguredForLiveDelivery();
-      const oauthProviders: ("github" | "gitlab")[] = [];
+      const oauthProviders: ("github" | "gitlab" | "fediverse")[] = [];
       if (!airgapEnforced) {
         const githubCreds = database.getOAuthCredentials("github");
         const gitlabCreds = database.getOAuthCredentials("gitlab");
@@ -97,6 +99,9 @@ export function authRouter(database: LibraryDatabase): Router {
         }
         if (gitlabCreds.clientId) {
           oauthProviders.push("gitlab");
+        }
+        if (!isFederationDisabled(settings)) {
+          oauthProviders.push("fediverse");
         }
       }
       res.json({
@@ -540,8 +545,6 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      defaultLoginLimiter.recordSuccess(clientIp, cleanEmail);
-
       // Check if user has Two-Factor Authentication enabled
       if (user.totp_enabled === 1) {
         const tempToken = jwt.sign(
@@ -565,6 +568,8 @@ export function authRouter(database: LibraryDatabase): Router {
         });
         return;
       }
+
+      defaultLoginLimiter.recordSuccess(clientIp, cleanEmail);
 
       const token = jwt.sign(
         { id: user.id, username: user.username, email: user.email, tokenVersion: user.token_version ?? 1 },
@@ -737,6 +742,7 @@ export function authRouter(database: LibraryDatabase): Router {
       );
 
       setSessionCookie(res, sessionToken);
+      defaultLoginLimiter.recordSuccess(clientIp, user.email);
 
       database.logAudit({
         actorId: user.id,
@@ -797,16 +803,29 @@ export function authRouter(database: LibraryDatabase): Router {
 
   const pendingTotpSecrets = new Map<number, string>();
 
+  const isScopedApiToken = (req: Request): boolean =>
+    Boolean(req.tokenScopes && !req.tokenScopes.includes("*") && !req.tokenScopes.includes("admin"));
+
   /**
    * POST /api/v1/auth/2fa/setup
    *
    * Generates a new TOTP secret and otpauth URI for the authenticated user.
    */
   router.post("/2fa/setup", requireAuth, (req: Request, res: Response): void => {
+    if (isScopedApiToken(req)) {
+      res.status(403).json({ error: "Personal access tokens cannot modify two-factor authentication settings" });
+      return;
+    }
     try {
       const user = database.getUserById(req.user!.id);
       if (!user) {
         res.status(404).json({ error: "User not found" });
+        return;
+      }
+      if (user.totp_enabled === 1) {
+        res.status(400).json({
+          error: "Two-factor authentication is already enabled. Disable 2FA first before configuring a new secret.",
+        });
         return;
       }
 
@@ -836,10 +855,21 @@ export function authRouter(database: LibraryDatabase): Router {
    * and generates 10 single-use emergency backup recovery codes.
    */
   router.post("/2fa/verify", requireAuth, express.json(), (req: Request, res: Response): void => {
+    if (isScopedApiToken(req)) {
+      res.status(403).json({ error: "Personal access tokens cannot modify two-factor authentication settings" });
+      return;
+    }
     const { secret, code } = req.body || {};
     const clientIp = getClientIp(req);
     const userId = req.user!.id;
     const userEmail = req.user!.email;
+    const existingUser = database.getUserById(userId);
+    if (existingUser?.totp_enabled === 1) {
+      res.status(400).json({
+        error: "Two-factor authentication is already enabled. Disable 2FA first before configuring a new secret.",
+      });
+      return;
+    }
     const bypassRateLimit = process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true";
 
     if (!bypassRateLimit) {
@@ -944,6 +974,10 @@ export function authRouter(database: LibraryDatabase): Router {
    * and current TOTP code or backup code confirmation.
    */
   router.post("/2fa/disable", requireAuth, express.json(), async (req: Request, res: Response): Promise<void> => {
+    if (isScopedApiToken(req)) {
+      res.status(403).json({ error: "Personal access tokens cannot modify two-factor authentication settings" });
+      return;
+    }
     const { password, code, revokeOtherSessions } = req.body || {};
     const clientIp = getClientIp(req);
     const userId = req.user!.id;
@@ -1082,6 +1116,10 @@ export function authRouter(database: LibraryDatabase): Router {
     requireAuth,
     express.json(),
     async (req: Request, res: Response): Promise<void> => {
+      if (isScopedApiToken(req)) {
+        res.status(403).json({ error: "Personal access tokens cannot modify two-factor authentication settings" });
+        return;
+      }
       const { password, code } = req.body || {};
       const clientIp = getClientIp(req);
       const userId = req.user!.id;
@@ -1242,8 +1280,8 @@ export function authRouter(database: LibraryDatabase): Router {
           });
       }
 
-      const isProduction = process.env["NODE_ENV"] === "production";
-      const tokenPayload = isProduction ? undefined : resetToken;
+      const isTest = process.env["NODE_ENV"] === "test";
+      const tokenPayload = isTest ? resetToken : undefined;
 
       res.status(200).json({
         success: true,
@@ -1384,6 +1422,135 @@ export function authRouter(database: LibraryDatabase): Router {
     const provider =
       typeof req.params["provider"] === "string" ? req.params["provider"] : String(req.params["provider"] ?? "");
     const frontendUrl = resolvePublicBaseUrl(req);
+
+    if (provider === "fediverse") {
+      const settings = database.getInstanceSettings();
+      const acceptHeader = typeof req.headers["accept"] === "string" ? req.headers["accept"] : "";
+      const wantsJson =
+        (acceptHeader.includes("application/json") && !acceptHeader.includes("text/html")) ||
+        req.query["format"] === "json";
+
+      if (isFederationDisabled(settings) || process.env["AIRGAP_ENFORCED"] === "true") {
+        if (wantsJson) {
+          res.status(403).json({ error: "Federation is disabled on this instance.", code: "FEDERATION_DISABLED" });
+          return;
+        }
+        res.redirect(`${frontendUrl}/login?error=FederationDisabled`);
+        return;
+      }
+      const rawTarget = String(req.query["handle"] || req.query["domain"] || "").trim();
+      if (!rawTarget) {
+        if (wantsJson) {
+          res
+            .status(400)
+            .json({ error: "Missing Fediverse handle or domain parameter.", code: "MISSING_FEDIVERSE_HANDLE" });
+          return;
+        }
+        res.redirect(`${frontendUrl}/login?error=MissingFediverseHandle`);
+        return;
+      }
+      let targetDomain = rawTarget;
+      if (targetDomain.startsWith("acct:")) targetDomain = targetDomain.slice(5);
+      if (targetDomain.startsWith("@")) targetDomain = targetDomain.slice(1);
+      if (targetDomain.includes("@")) {
+        const parts = targetDomain.split("@");
+        targetDomain = parts[1] || "";
+      }
+      targetDomain = targetDomain
+        .toLowerCase()
+        .trim()
+        .replace(/^https?:\/\//, "")
+        .replace(/\/.*$/, "");
+      if (!targetDomain || targetDomain.length > 255) {
+        if (wantsJson) {
+          res.status(400).json({ error: "Invalid Fediverse domain.", code: "INVALID_FEDIVERSE_DOMAIN" });
+          return;
+        }
+        res.redirect(`${frontendUrl}/login?error=InvalidFediverseDomain`);
+        return;
+      }
+      try {
+        assertSafePublicUrl(`https://${targetDomain}`);
+      } catch {
+        if (wantsJson) {
+          res
+            .status(400)
+            .json({ error: "Disallowed Fediverse domain (SSRF protection).", code: "SSRF_DISALLOWED_DOMAIN" });
+          return;
+        }
+        res.redirect(`${frontendUrl}/login?error=DisallowedFediverseDomain`);
+        return;
+      }
+
+      void (async () => {
+        try {
+          let client = database.getFederatedOAuthClient(targetDomain);
+          const publicBase = resolvePublicBaseUrl(req);
+          const redirectUri = `${publicBase.replace(/\/$/, "")}/api/v1/auth/callback/fediverse`;
+          if (!client) {
+            const appRes = await safePublicFetch(`https://${targetDomain}/api/v1/apps`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                client_name: settings.instanceName || "Ansatz",
+                redirect_uris: redirectUri,
+                scopes: "read:accounts",
+                website: publicBase,
+              }),
+            });
+            if (!appRes.ok) {
+              res.redirect(
+                `${frontendUrl}/login?error=FediverseRegistrationFailed&domain=${encodeURIComponent(targetDomain)}`,
+              );
+              return;
+            }
+            const appData = (await appRes.json()) as { client_id?: string; client_secret?: string };
+            if (!appData.client_id || !appData.client_secret) {
+              res.redirect(
+                `${frontendUrl}/login?error=FediverseRegistrationFailed&domain=${encodeURIComponent(targetDomain)}`,
+              );
+              return;
+            }
+            database.saveFederatedOAuthClient(targetDomain, appData.client_id, appData.client_secret);
+            client = {
+              domain: targetDomain,
+              client_id: appData.client_id,
+              client_secret: appData.client_secret,
+              registered_at: new Date().toISOString(),
+            };
+          }
+
+          const signedState = jwt.sign(
+            { action: "login", provider: "fediverse", domain: targetDomain, targetHandle: rawTarget },
+            JWT_SECRET,
+            { expiresIn: "10m" },
+          );
+          res.cookie("oauth_state", signedState, {
+            httpOnly: true,
+            secure: process.env["NODE_ENV"] === "production",
+            sameSite: "lax",
+            maxAge: 10 * 60 * 1000,
+            path: "/",
+          });
+
+          const authorizeParams = new URLSearchParams({
+            client_id: client.client_id,
+            redirect_uri: redirectUri,
+            response_type: "code",
+            scope: "read:accounts",
+            state: signedState,
+          });
+          res.redirect(`https://${targetDomain}/oauth/authorize?${authorizeParams.toString()}`);
+        } catch (err) {
+          console.error("[FediverseAuth] Dynamic client registration error:", err);
+          res.redirect(
+            `${frontendUrl}/login?error=FediverseRegistrationFailed&domain=${encodeURIComponent(targetDomain)}`,
+          );
+        }
+      })();
+      return;
+    }
+
     const oauthCreds = database.getOAuthCredentials(provider);
     const clientId = oauthCreds.clientId;
     if (!clientId) {
@@ -1576,6 +1743,11 @@ export function authRouter(database: LibraryDatabase): Router {
     let providerUserId = "";
     let accessToken = "";
     let refreshToken: string | null = null;
+    let remoteDisplayName = "";
+    let remoteAvatar = "";
+    let remoteBio = "";
+    let actorUrl = "";
+    let remoteDomain = "";
     const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
 
     // Validate OAuth state cookie and JWT signature first before making upstream requests
@@ -1588,7 +1760,10 @@ export function authRouter(database: LibraryDatabase): Router {
       res.redirect(`${frontendUrl}/settings?error=InvalidState`);
       return;
     }
-    if (isProductionEnv && !stateParam) {
+    if (
+      isProductionEnv &&
+      (!cookieState || !stateParam || (decodeURIComponent(stateParam) !== cookieState && stateParam !== cookieState))
+    ) {
       res.redirect(`${frontendUrl}/login?error=InvalidState`);
       return;
     }
@@ -1597,6 +1772,8 @@ export function authRouter(database: LibraryDatabase): Router {
       action?: string | undefined;
       userId?: number | undefined;
       provider?: string | undefined;
+      domain?: string | undefined;
+      targetHandle?: string | undefined;
     } | null = null;
     if (stateParam) {
       try {
@@ -1604,6 +1781,8 @@ export function authRouter(database: LibraryDatabase): Router {
           action?: string | undefined;
           userId?: number | undefined;
           provider?: string | undefined;
+          domain?: string | undefined;
+          targetHandle?: string | undefined;
         };
         if (stateData.provider && stateData.provider !== provider) {
           res.redirect(`${frontendUrl}/settings?error=InvalidState`);
@@ -1619,7 +1798,7 @@ export function authRouter(database: LibraryDatabase): Router {
     const clientId = oauthCreds.clientId;
     const clientSecret = oauthCreds.clientSecret;
 
-    if (!clientId || !clientSecret) {
+    if (provider !== "fediverse" && (!clientId || !clientSecret)) {
       if (isProductionEnv) {
         res.status(501).json({ error: `OAuth provider '${provider}' is not configured in production.` });
         return;
@@ -1635,7 +1814,82 @@ export function authRouter(database: LibraryDatabase): Router {
 
     try {
       let verifiedLiveProfile = false;
-      if (provider === "github") {
+
+      if (provider === "fediverse") {
+        const targetDomain = stateData?.domain?.toLowerCase().trim();
+        if (!targetDomain) {
+          res.redirect(`${frontendUrl}/login?error=InvalidState`);
+          return;
+        }
+        try {
+          assertSafePublicUrl(`https://${targetDomain}`);
+        } catch {
+          res.redirect(`${frontendUrl}/login?error=DisallowedFediverseDomain`);
+          return;
+        }
+        const client = database.getFederatedOAuthClient(targetDomain);
+        if (!client) {
+          res.redirect(`${frontendUrl}/login?error=OAuthNotConfigured&provider=fediverse`);
+          return;
+        }
+        const publicBase = resolvePublicBaseUrl(req);
+        const redirectUri = `${publicBase.replace(/\/$/, "")}/api/v1/auth/callback/fediverse`;
+        const tokenRes = await safePublicFetch(`https://${targetDomain}/oauth/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: client.client_id,
+            client_secret: client.client_secret,
+            code,
+            grant_type: "authorization_code",
+            redirect_uri: redirectUri,
+          }),
+        });
+        if (!tokenRes.ok) {
+          res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+          return;
+        }
+        const tokenData = (await tokenRes.json()) as { access_token?: string; refresh_token?: string };
+        if (!tokenData.access_token) {
+          res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+          return;
+        }
+        accessToken = tokenData.access_token;
+        if (tokenData.refresh_token) refreshToken = tokenData.refresh_token;
+
+        const verifyRes = await safePublicFetch(`https://${targetDomain}/api/v1/accounts/verify_credentials`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!verifyRes.ok) {
+          res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+          return;
+        }
+        const accountData = (await verifyRes.json()) as {
+          id?: string | number;
+          username?: string;
+          acct?: string;
+          display_name?: string;
+          avatar?: string;
+          note?: string;
+          url?: string;
+        };
+        if (!accountData.id || !accountData.username) {
+          res.redirect(`${frontendUrl}/login?error=OAuthExchangeFailed`);
+          return;
+        }
+        providerUserId = `${targetDomain}:${accountData.id}`;
+        const cleanUser = String(accountData.username)
+          .toLowerCase()
+          .replace(/[^a-z0-9_.-]/g, "");
+        username = cleanUser;
+        email = `${cleanUser}@${targetDomain}`;
+        remoteDomain = targetDomain;
+        remoteDisplayName = accountData.display_name || accountData.username;
+        remoteAvatar = accountData.avatar || "";
+        remoteBio = accountData.note || "";
+        actorUrl = accountData.url || `https://${targetDomain}/users/${cleanUser}`;
+        verifiedLiveProfile = true;
+      } else if (provider === "github") {
         const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -1776,7 +2030,8 @@ export function authRouter(database: LibraryDatabase): Router {
         database.updateOAuthTokens(userId, provider, accessToken, refreshToken, expiresAt);
       } else {
         // Ensure email/username are not already taken by a regular account
-        const existing = database.getUserByEmail(email);
+        const existingByActor = provider === "fediverse" && actorUrl ? database.getUserByActorUrl(actorUrl) : undefined;
+        const existing = existingByActor || database.getUserByEmail(email);
         if (existing) {
           if (isAccountBlocked(existing.status)) {
             res.status(403).json({ error: `Account is ${existing.status}. Please contact support.` });
@@ -1792,7 +2047,7 @@ export function authRouter(database: LibraryDatabase): Router {
           database.linkOAuthAccount(user.id, provider, providerUserId, accessToken, refreshToken, expiresAt);
         } else {
           const inviteParam = typeof req.query["invite"] === "string" ? req.query["invite"].trim() : undefined;
-          const policy = evaluateRegistrationPolicy(database, { email, inviteCode: inviteParam });
+          const policy = evaluateRegistrationPolicy(database, { email, inviteCode: inviteParam, provider });
           if (!policy.allowed) {
             const errCode = policy.errorCode || "RegistrationRestricted";
             res.redirect(
@@ -1800,7 +2055,25 @@ export function authRouter(database: LibraryDatabase): Router {
             );
             return;
           }
-          user = database.registerFederatedUser(username, email, provider, providerUserId);
+          let finalUsername = username;
+          if (database.getUserByUsername(finalUsername)) {
+            if (provider === "fediverse" && remoteDomain) {
+              finalUsername = `${username}_${remoteDomain.replace(/[^a-z0-9]/g, "_")}`;
+              if (database.getUserByUsername(finalUsername)) {
+                finalUsername = `${finalUsername}_${Math.floor(1000 + Math.random() * 9000)}`;
+              }
+            } else {
+              finalUsername = `${username}_${Math.floor(1000 + Math.random() * 9000)}`;
+            }
+          }
+          user = database.registerFederatedUser(finalUsername, email, provider, providerUserId, {
+            accountType: provider === "fediverse" ? "community_federated" : "user",
+            displayName: remoteDisplayName || username,
+            avatarUrl: remoteAvatar || undefined,
+            bio: remoteBio || undefined,
+            remoteDomain: remoteDomain || undefined,
+            actorUrl: actorUrl || undefined,
+          });
           database.updateOAuthTokens(user.id, provider, accessToken, refreshToken, expiresAt);
         }
       }
@@ -1892,6 +2165,13 @@ export function authRouter(database: LibraryDatabase): Router {
       maxAge: 10 * 60 * 1000,
       path: "/",
     });
+    res.cookie("oidc_nonce", nonce, {
+      httpOnly: true,
+      secure: process.env["NODE_ENV"] === "production",
+      sameSite: "lax",
+      maxAge: 10 * 60 * 1000,
+      path: "/",
+    });
     const authUrl = defaultOidcService.getAuthorizationUrl(state, nonce);
     res.redirect(authUrl);
   });
@@ -1908,12 +2188,19 @@ export function authRouter(database: LibraryDatabase): Router {
     const cookieState =
       req.cookies?.["oidc_state"] || (oidcCookieMatch?.[1] ? decodeURIComponent(oidcCookieMatch[1]) : undefined);
     res.clearCookie("oidc_state", { path: "/" });
+
+    const oidcNonceCookieMatch = cookieHeader.match(/(?:^|;\s*)oidc_nonce=([^;]+)/);
+    const cookieNonce =
+      req.cookies?.["oidc_nonce"] ||
+      (oidcNonceCookieMatch?.[1] ? decodeURIComponent(oidcNonceCookieMatch[1]) : undefined);
+    res.clearCookie("oidc_nonce", { path: "/" });
+
     if (cookieState && state !== cookieState) {
       res.status(400).json({ error: "Invalid OIDC state parameter" });
       return;
     }
-    if (process.env["NODE_ENV"] === "production" && !state) {
-      res.status(400).json({ error: "OIDC state parameter is required" });
+    if (process.env["NODE_ENV"] === "production" && (!state || !cookieState || state !== cookieState)) {
+      res.status(400).json({ error: "OIDC state parameter is required and must match session state" });
       return;
     }
 
@@ -1928,6 +2215,15 @@ export function authRouter(database: LibraryDatabase): Router {
         } catch {
           claims = defaultOidcService.extractClaims(tokenData.idToken);
         }
+      }
+      if (
+        cookieNonce &&
+        claims &&
+        (claims as { nonce?: string }).nonce &&
+        (claims as { nonce?: string }).nonce !== cookieNonce
+      ) {
+        res.status(400).json({ error: "Invalid OIDC nonce in idToken" });
+        return;
       }
       const result = await defaultOidcService.handleOidcLogin(database, claims, tokenData);
 
@@ -2042,6 +2338,10 @@ export function authRouter(database: LibraryDatabase): Router {
    * If the user authenticated via OAuth/SSO with no password hash, profile updates proceed directly.
    */
   router.put("/account", requireAuth, async (req: Request, res: Response): Promise<void> => {
+    if (isScopedApiToken(req)) {
+      res.status(403).json({ error: "Personal access tokens cannot modify account settings" });
+      return;
+    }
     const { password, totpCode, username, email, display_name, avatar_url, banner_url } = req.body;
     const userId = req.user!.id;
 
@@ -2163,8 +2463,17 @@ export function authRouter(database: LibraryDatabase): Router {
    * Increments token_version to invalidate all existing sessions and returns a refreshed token.
    */
   router.put("/password", requireAuth, async (req: Request, res: Response): Promise<void> => {
+    if (isScopedApiToken(req)) {
+      res.status(403).json({ error: "Personal access tokens cannot change account passwords" });
+      return;
+    }
     const { oldPassword, newPassword } = req.body;
     const userId = req.user!.id;
+    const currentUser = database.getUserById(userId);
+    if (currentUser?.account_type === "bot" || req.user?.accountType === "bot" || req.user?.account_type === "bot") {
+      res.status(403).json({ error: "Bot service accounts cannot set an interactive login password" });
+      return;
+    }
 
     if (!newPassword || typeof newPassword !== "string" || newPassword.length < 8) {
       res.status(400).json({ error: "New password must be at least 8 characters" });
@@ -2228,6 +2537,10 @@ export function authRouter(database: LibraryDatabase): Router {
    * Returns a fresh JWT for the current client.
    */
   router.post("/revoke-sessions", requireAuth, (req: Request, res: Response): void => {
+    if (isScopedApiToken(req)) {
+      res.status(403).json({ error: "Personal access tokens cannot revoke interactive user sessions" });
+      return;
+    }
     try {
       const newVersion = database.incrementTokenVersion(req.user!.id);
       const user = database.getUserById(req.user!.id);

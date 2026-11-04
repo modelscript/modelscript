@@ -10,14 +10,14 @@
  */
 
 export interface OgPostData {
-  id: number;
+  id: number | string;
   title?: string | null | undefined;
   content?: string | null | undefined;
   username?: string | null | undefined;
   display_name?: string | null | undefined;
   created_at?: string | null | undefined;
   thumbnail_url?: string | null | undefined;
-  artifact_view_id?: number | null | undefined;
+  artifact_view_id?: number | string | null | undefined;
   view_type?: string | null | undefined;
   like_count?: number | null | undefined;
   reply_count?: number | null | undefined;

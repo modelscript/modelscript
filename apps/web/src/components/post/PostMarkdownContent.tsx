@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { transformTextualCitationsToMarkdownLinks } from "../../util/citations";
 import { slugifyHeading } from "../../util/notebook";
 import { renderSourceToDiagramSvg } from "../artifacts/PolyglotArtifactViewer";
 import { compressMorselPayload } from "../morsel/util/permalink";
@@ -375,6 +376,30 @@ const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`
     color: #64748b;
     font-style: italic;
   }
+
+  a.msx-citation-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    margin: 0 2px;
+    border-radius: 999px;
+    font-size: 0.88em;
+    font-weight: 600;
+    font-family: var(--font-mono, monospace);
+    color: var(--color-accent-cyan, #06b6d4);
+    background: rgba(6, 182, 212, 0.12);
+    border: 1px solid rgba(6, 182, 212, 0.32);
+    text-decoration: none;
+    transition: all 0.15s ease;
+    vertical-align: baseline;
+
+    &:hover {
+      background: rgba(6, 182, 212, 0.22);
+      border-color: var(--color-accent-cyan, #06b6d4);
+      text-decoration: none;
+    }
+  }
 `;
 
 function escapeHtmlText(str: string): string {
@@ -604,6 +629,67 @@ function highlightCodeLine(line: string, lang = "modelica"): string {
   return html;
 }
 
+export function renderPostMarkdownHtml(text: string | null): string {
+  if (!text) return "";
+
+  // 1. Protect fenced code blocks and inline code spans before transforming math, citations, hashtags, and mentions
+  const codePlaceholders: string[] = [];
+  let safeText = text.replace(/```[\s\S]*?```|`[^`\n]+`/g, (match) => {
+    const idx = codePlaceholders.length;
+    codePlaceholders.push(match);
+    return `@@MSX_CODE_${idx}@@`;
+  });
+
+  // 2. Transform display math $$...$$ and inline math $...$ into HTML placeholders
+  const mathPlaceholders: string[] = [];
+  safeText = safeText.replace(/\$\$([\s\S]+?)\$\$/g, (_m, expr: string) => {
+    const idx = mathPlaceholders.length;
+    mathPlaceholders.push(`<div class="msx-math-block">${formatLatexExpression(expr)}</div>`);
+    return `\n\n@@MSX_MATH_${idx}@@\n\n`;
+  });
+  safeText = safeText.replace(/(^|[^$\\])\$([^\n$]+?)\$/g, (_m, prefix: string, expr: string) => {
+    if (/^\d/.test(expr.trim()) && !/[\\^_=+\-*/a-zA-Z]/.test(expr)) {
+      return `${prefix}$${expr}$`;
+    }
+    const idx = mathPlaceholders.length;
+    mathPlaceholders.push(`<span class="msx-math-inline">${formatLatexExpression(expr)}</span>`);
+    return `${prefix}@@MSX_MATH_${idx}@@`;
+  });
+
+  // 2.5. Transform textual citations ([@urn:...], [@doi:...], [@arxiv:...], \cite{...}, bare urn:...) into /sources/... links
+  safeText = transformTextualCitationsToMarkdownLinks(safeText);
+
+  // 3. Transform hashtags and @mentions outside code/math
+  safeText = safeText.replace(/(^|\s)#([a-zA-Z0-9_-]+)/g, "$1[#$2](/explore?q=$2)");
+  safeText = safeText.replace(
+    /(^|\s)@([a-zA-Z0-9_.-]*[a-zA-Z0-9_-](?:@[a-zA-Z0-9_.-]*[a-zA-Z0-9_-])?)/g,
+    "$1[@$2](/@$2)",
+  );
+
+  // 4. Restore fenced code and inline code before marked parsing
+  safeText = safeText.replace(/@@MSX_CODE_(\d+)@@/g, (_m, idxStr: string) => {
+    return codePlaceholders[Number(idxStr)] ?? "";
+  });
+
+  let rawHtml = marked.parse(safeText, { breaks: true, gfm: true }) as string;
+
+  // 5. Restore rendered math blocks
+  rawHtml = rawHtml.replace(/@@MSX_MATH_(\d+)@@/g, (_m, idxStr: string) => {
+    return mathPlaceholders[Number(idxStr)] ?? "";
+  });
+
+  // Mark /sources/* links with msx-citation-pill class
+  rawHtml = rawHtml.replace(/<a\s+href="(\/sources\/[^"]+)"/g, '<a href="$1" class="msx-citation-pill"');
+
+  if (typeof DOMPurify.sanitize === "function") {
+    return DOMPurify.sanitize(rawHtml, {
+      ADD_TAGS: ["sup", "sub"],
+      ADD_ATTR: ["class", "id"],
+    });
+  }
+  return rawHtml;
+}
+
 export const PostMarkdownContent: React.FC<{
   text: string | null;
   isLongForm?: boolean | undefined;
@@ -620,53 +706,7 @@ export const PostMarkdownContent: React.FC<{
       return;
     }
 
-    // 1. Protect fenced code blocks and inline code spans before transforming math, hashtags, and mentions
-    const codePlaceholders: string[] = [];
-    let safeText = text.replace(/```[\s\S]*?```|`[^`\n]+`/g, (match) => {
-      const idx = codePlaceholders.length;
-      codePlaceholders.push(match);
-      return `@@MSX_CODE_${idx}@@`;
-    });
-
-    // 2. Transform display math $$...$$ and inline math $...$ into HTML placeholders
-    const mathPlaceholders: string[] = [];
-    safeText = safeText.replace(/\$\$([\s\S]+?)\$\$/g, (_m, expr: string) => {
-      const idx = mathPlaceholders.length;
-      mathPlaceholders.push(`<div class="msx-math-block">${formatLatexExpression(expr)}</div>`);
-      return `\n\n@@MSX_MATH_${idx}@@\n\n`;
-    });
-    safeText = safeText.replace(/(^|[^$\\])\$([^\n$]+?)\$/g, (_m, prefix: string, expr: string) => {
-      if (/^\d/.test(expr.trim()) && !/[\\^_=+\-*/a-zA-Z]/.test(expr)) {
-        return `${prefix}$${expr}$`;
-      }
-      const idx = mathPlaceholders.length;
-      mathPlaceholders.push(`<span class="msx-math-inline">${formatLatexExpression(expr)}</span>`);
-      return `${prefix}@@MSX_MATH_${idx}@@`;
-    });
-
-    // 3. Transform hashtags and @mentions outside code/math
-    safeText = safeText.replace(/(^|\s)#([a-zA-Z0-9_-]+)/g, "$1[#$2](/explore?q=$2)");
-    safeText = safeText.replace(
-      /(^|\s)@([a-zA-Z0-9_.-]*[a-zA-Z0-9_-](?:@[a-zA-Z0-9_.-]*[a-zA-Z0-9_-])?)/g,
-      "$1[@$2](/@$2)",
-    );
-
-    // 4. Restore fenced code and inline code before marked parsing
-    safeText = safeText.replace(/@@MSX_CODE_(\d+)@@/g, (_m, idxStr: string) => {
-      return codePlaceholders[Number(idxStr)] ?? "";
-    });
-
-    let rawHtml = marked.parse(safeText, { breaks: true, gfm: true }) as string;
-
-    // 5. Restore rendered math blocks
-    rawHtml = rawHtml.replace(/@@MSX_MATH_(\d+)@@/g, (_m, idxStr: string) => {
-      return mathPlaceholders[Number(idxStr)] ?? "";
-    });
-
-    const sanitizedHtml = DOMPurify.sanitize(rawHtml, {
-      ADD_TAGS: ["sup", "sub"],
-      ADD_ATTR: ["class", "id"],
-    });
+    const sanitizedHtml = renderPostMarkdownHtml(text);
 
     containerRef.current.innerHTML = sanitizedHtml;
 
@@ -867,7 +907,7 @@ export const PostMarkdownContent: React.FC<{
       pre.appendChild(codeBody);
     });
 
-    // 9. Attach portals to user @mentions
+    // 9. Attach portals to user @mentions and route /sources/* citation pills
     const links = containerRef.current.querySelectorAll("a:not(.msx-heading-anchor)");
     const newPortals: React.ReactPortal[] = [];
     links.forEach((rawLink) => {
@@ -893,6 +933,14 @@ export const PostMarkdownContent: React.FC<{
             container,
           ),
         );
+      } else if (href && href.startsWith("/sources/")) {
+        link.classList.add("msx-citation-pill");
+        link.title = `View scholarly source on Ansatz (${decodeURIComponent(href.replace(/^\/sources\//, ""))})`;
+        link.onclick = (e: MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          navigate(href);
+        };
       } else if (href && href.startsWith("/explore?q=")) {
         link.style.color = "var(--color-accent-cyan)";
         link.style.textDecoration = "none";
@@ -931,9 +979,16 @@ export const PostMarkdownContent: React.FC<{
     return () => setPortals([]);
   }, [text, navigate, isLongForm]);
 
+  const ssrHtml = typeof window === "undefined" && text ? renderPostMarkdownHtml(text) : undefined;
+
   return (
     <>
-      <MarkdownContainer className="markdown-body" $isLongForm={isLongForm} ref={containerRef} />
+      <MarkdownContainer
+        className="markdown-body"
+        $isLongForm={isLongForm}
+        ref={containerRef}
+        dangerouslySetInnerHTML={ssrHtml !== undefined ? { __html: ssrHtml } : undefined}
+      />
       {portals}
     </>
   );

@@ -358,7 +358,7 @@ function parseNotebookFromContentUncached(
             content: typeof c.content === "string" ? c.content : "",
           };
         }
-        if (c.type === "artifact" && Number.isFinite(Number(c.artifactId))) {
+        if (c.type === "artifact" && c.artifactId !== null && c.artifactId !== undefined && Number(c.artifactId) > 0) {
           return {
             id: c.id || createCellId(`art-${idx}`),
             type: "artifact",
@@ -449,13 +449,17 @@ function parseNotebookFromContentUncached(
   }
 
   const artifactIds = extractArtifactIdsFromCells(cells);
-  if (fallbackArtifactId && !artifactIds.includes(fallbackArtifactId)) {
+  const validFallbackId =
+    fallbackArtifactId !== null && fallbackArtifactId !== undefined && Number(fallbackArtifactId) > 0
+      ? Number(fallbackArtifactId)
+      : null;
+  if (validFallbackId && !artifactIds.includes(validFallbackId)) {
     cells.push({
       id: createCellId("art"),
       type: "artifact",
-      artifactId: fallbackArtifactId,
+      artifactId: validFallbackId,
     });
-    artifactIds.push(fallbackArtifactId);
+    artifactIds.push(validFallbackId);
   }
 
   const isNotebook = Boolean(

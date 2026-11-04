@@ -80,6 +80,10 @@ export function scriptsRouter(db: LibraryDatabase) {
   router.post("/templates", optionalAuth, express.json(), (req, res) => {
     try {
       const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      if (process.env["NODE_ENV"] === "production" && !reqUser) {
+        return res.status(401).json({ error: "Authentication required to publish study templates." });
+      }
+      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const body = (req.body || {}) as Record<string, unknown>;
 
       // Optional raw standard document (.sedml, .ssv, .dakota) import
@@ -106,6 +110,11 @@ export function scriptsRouter(db: LibraryDatabase) {
         .replace(/-+/g, "-")
         .replace(/^-|-$/g, "");
       const slug = rawSlug || `custom-study-${Date.now()}`;
+      if (!isAdmin && BUILTIN_STUDY_DEFINITIONS.some((b) => b.slug === slug)) {
+        return res.status(403).json({
+          error: `Cannot overwrite built-in standard study template '${slug}'. Please choose a distinct slug.`,
+        });
+      }
       const description = String(
         body["description"] || parsedFromStandard.description || `Custom engineering study template: ${name}`,
       );
@@ -645,9 +654,16 @@ export function scriptsRouter(db: LibraryDatabase) {
     try {
       const paramId = req.params["id"] as string;
       const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      if (process.env["NODE_ENV"] === "production" && !reqUser) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
       if (!job) {
         return res.status(404).json({ error: "Job not found" });
+      }
+      if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+        return res.status(403).json({ error: "Forbidden: Not authorized to re-run this job" });
       }
       const meta = job.metadata ? (JSON.parse(job.metadata) as Record<string, unknown>) : {};
       const storedInstance = meta["studyInstance"] as Record<string, unknown> | undefined;
@@ -694,7 +710,8 @@ export function scriptsRouter(db: LibraryDatabase) {
         studyInstanceSource: req.body?.studyInstanceSource || (storedInstance?.["sourceContent"] as string | undefined),
       };
 
-      const runOutput = executeStudyRun(db, studyReq, reqUser?.id ?? job.user_id ?? null);
+      const billingUserId = reqUser?.id ?? (process.env["NODE_ENV"] === "test" ? (job.user_id ?? null) : null);
+      const runOutput = executeStudyRun(db, studyReq, billingUserId);
       return res.json({
         ...runOutput,
         previousJobId: job.id,
@@ -711,9 +728,16 @@ export function scriptsRouter(db: LibraryDatabase) {
     try {
       const paramId = req.params["id"] as string;
       const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      if (process.env["NODE_ENV"] === "production" && !reqUser) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
       if (!job) {
         return res.status(404).json({ error: "Job not found" });
+      }
+      if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+        return res.status(403).json({ error: "Forbidden: Not authorized to access this job" });
       }
       const meta = job.metadata ? (JSON.parse(job.metadata) as Record<string, unknown>) : {};
       const storedInstance = meta["studyInstance"] as Record<string, unknown> | undefined;
@@ -806,8 +830,13 @@ export function scriptsRouter(db: LibraryDatabase) {
   router.get("/:id/study-instance", optionalAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
+      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
       if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
         return res.status(404).json({ error: "Job not found" });
       }
       const meta = job.metadata ? (JSON.parse(job.metadata) as Record<string, unknown>) : {};

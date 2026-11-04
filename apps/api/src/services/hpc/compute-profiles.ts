@@ -65,8 +65,8 @@ export const COMPUTE_PROFILES: Record<string, ComputeProfile> = {
  * Retrieves a compute profile by ID, falling back to 'standard'.
  */
 export function getComputeProfile(id?: string): ComputeProfile {
-  if (id && COMPUTE_PROFILES[id]) {
-    return COMPUTE_PROFILES[id];
+  if (id && Object.hasOwn(COMPUTE_PROFILES, id)) {
+    return COMPUTE_PROFILES[id]!;
   }
   return COMPUTE_PROFILES["standard"]!;
 }

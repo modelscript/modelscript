@@ -190,6 +190,10 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
           sendJson(ws, { type: "error", message: "Maximum active collaboration rooms reached" });
           return;
         }
+        if (room.sockets.has(peerId) && room.sockets.get(peerId) !== ws) {
+          sendJson(ws, { type: "error", message: `PeerId '${peerId}' is already in use by another connection` });
+          return;
+        }
         if (!room.peers.has(peerId) && room.peers.size >= MAX_PEERS_PER_ROOM) {
           sendJson(ws, { type: "error", message: "Maximum peers per room reached" });
           return;
@@ -451,10 +455,7 @@ export function attachCollabWebSocket(server: Server, path = "/api/v1/collab/str
         }
       }
 
-      if (
-        (isStrictAirgapEnv() && process.env["NODE_ENV"] === "production") ||
-        process.env["COLLAB_REQUIRE_AUTH"] === "true"
-      ) {
+      if (process.env["NODE_ENV"] === "production" || process.env["COLLAB_REQUIRE_AUTH"] === "true") {
         let authenticated = false;
 
         // 1. Check trusted enterprise reverse-proxy header
@@ -556,7 +557,7 @@ let activeWss: WebSocketServer | null = null;
 export function broadcastBotTyping(event: {
   botId: number;
   botUsername: string;
-  postId: number;
+  postId: number | string;
   status: "thinking" | "simulating" | "done" | "failed";
 }): void {
   if (!activeWss) return;

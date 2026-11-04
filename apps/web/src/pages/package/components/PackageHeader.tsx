@@ -16,7 +16,9 @@ import { useNavigate } from "react-router-dom";
 import { getIconUrl, type PackageCollaborator, type PendingPackageTransfer } from "../../../api";
 import Box from "../../../components/Box";
 import Breadcrumbs from "../../../components/Breadcrumbs";
+import { CiteButton } from "../../../components/citations/CiteButton";
 import InvertedSvg from "../../../components/InvertedSvg";
+import { buildCitationFromPackage } from "../../../util/citations";
 import { HeaderBar, timeAgo } from "../types";
 import type { ManageModalType } from "./PackageManageModals";
 
@@ -230,8 +232,20 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
             </Box>
           </Box>
 
-          {canManage && (
-            <Box display="flex" alignItems="center" gap="8px" style={{ alignSelf: "center" }}>
+          <Box display="flex" alignItems="center" gap="8px" style={{ alignSelf: "center" }}>
+            <CiteButton
+              target={buildCitationFromPackage({
+                name,
+                version,
+                description,
+                license,
+                publishedAt,
+              })}
+              label="Cite Package"
+              variant="button"
+              testId="package-header-cite-btn"
+            />
+            {canManage && (
               <ActionMenu>
                 <ActionMenu.Button size="small" leadingVisual={GearIcon}>
                   Manage Release
@@ -322,8 +336,8 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
                   </ActionList>
                 </ActionMenu.Overlay>
               </ActionMenu>
-            </Box>
-          )}
+            )}
+          </Box>
         </Box>
       </HeaderBar>
 

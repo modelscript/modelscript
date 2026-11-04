@@ -11,7 +11,7 @@
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript)
 [![Open VSX](https://img.shields.io/open-vsx/v/modelscript/modelscript?label=Open%20VSX&logo=eclipseide)](https://open-vsx.org/extension/modelscript/modelscript)
 
-ModelScript is a Web-native, polyglot compiler & engineering intelligence platform that unifies **44 modern open standards** (SysML v2, Modelica, STEP, SSP, ReqIF, OWL 2, OpenDRIVE, OpenSCENARIO, AUTOSAR, PLCopen, URDF, SBML) and **industrial simulation formats** (PSCAD, PSS/E, OpenDSS, SPICE, Verilog-A, IBIS, Touchstone, OLGA, PipelineStudio, Aspen Plus, ECLIPSE, EPANET, SWMM, RELAP5, EnergyPlus, ADAMS, SIMPACK, GENSYS, GT-SUITE, SIMA, Simulink, EASY5, JSBSim, ROCETS, CCSDS, CalculiX FEA, SU2 CFD, Fortran, C) into a continuous digital thread for end-to-end design, simulation, formal verification, and compliance auditing.
+ModelScript is a Web-native, polyglot compiler & engineering intelligence platform that unifies **66 open standards and industrial simulation formats** — spanning systems engineering (SysML v2, Modelica, SSP, ReqIF, NIST OSCAL, OWL 2), power & electronics (PSCAD, PSS/E, OpenDSS, SPICE, Verilog-A, IBIS, Touchstone), fluid/process & nuclear (OLGA, PipelineStudio, Aspen Plus, gPROMS, ECLIPSE, EPANET, SWMM, RELAP5, EnergyPlus), multibody/automotive/robotics (ADAMS, SIMPACK, GENSYS, GT-SUITE, SIMA, URDF, OpenDRIVE, OpenSCENARIO, AUTOSAR, PLCopen, AutomationML), aerospace & controls (Simulink, EASY5, JSBSim, ROCETS, CCSDS), 3D CAD/CAE & metrology (STEP, ISO 23952 QIF, OpenSCAD, CalculiX FEA, SU2 CFD), chemistry & systems/synthetic biology (SBML, Antimony, Cantera, SMILES/SDF, NMTRAN, SBOL3, BioNetGen, SED-ML, PDB/mmCIF, GenBank/FASTA, PHREEQC, Fortran, C99), and radiology, radiation oncology & computer-assisted surgery (OpenSim, DICOM-RT, CellML, FEBio/SOFA, NIfTI/NRRD, TOPAS/GATE, 3MF Medical, OpenIGTLink/PLUS) — into a continuous digital thread for end-to-end design, simulation, formal verification, and compliance auditing.
 
 ---
 
@@ -21,8 +21,8 @@ ModelScript is a Web-native, polyglot compiler & engineering intelligence platfo
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
 │                                 ModelScript Digital Thread                               │
 ├──────────────────┬─────────────────┬─────────────────┬─────────────────┬─────────────────┤
-│ SysML v2 / ReqIF │ Modelica / SSP  │ STEP / CAD / CAE│ Power / Fluids  │ Multibody / Aero│
-│  OWL 2 / OSLC    │ Simulink / EASY5│  (OpenSCAD/FEA) │ (PSCAD/OLGA/+)  │ (GENSYS/ADAMS/+)│
+│ SysML v2 / ReqIF │ Modelica / SSP  │ STEP / QIF / CAD│ Power / Fluids  │ Bio / Medical / │
+│  OSCAL / OWL 2   │ Simulink / EASY5│  (OpenSCAD/FEA) │ (PSCAD/OLGA/+)  │ Aero / Robotics │
 └────────┬─────────┴────────┬────────┴────────┬────────┴────────┬────────┴────────┬────────┘
          │                  │                 │                 │                 │
          ▼                  ▼                 ▼                 ▼                 ▼
@@ -74,15 +74,15 @@ Inspired by Rust's Salsa, compilation, name resolution, and specialized class in
 
 ---
 
-## Supported Languages & Domain Capabilities (47 Languages)
+## Supported Languages & Domain Capabilities (66 Languages)
 
-ModelScript provides first-class support for **47 engineering languages and simulation formats** under `languages/`, organized across 7 domain clusters and powered by native WebAssembly parsers, linear-memory CST arenas, static pre-flight linters, and direct `DAEBuilder` lowering.
+ModelScript provides first-class support for **66 engineering languages and simulation formats** under `languages/`, organized across 8 domain clusters and powered by native WebAssembly parsers, linear-memory CST arenas, static pre-flight linters, and direct `DAEBuilder` lowering.
 
 > **Maturity Tiers** (enforced in `package.json#modelscript.tier` via `npm run lint:manifests`):
 >
 > - **`Stable` (14 languages)** — Production-ready with complete WASM GLR parser, static linter, DAE/solver lowering, and verified against standard industry benchmarks, standard library snapshots, or comprehensive unit test suites (e.g., OpenModelica & MSL 4.1.0, OMG KerML standard library, Manchester Benchmark / EN 14363, NIST AP242).
-> - **`Beta` (18 languages)** — Domain-complete with native WASM GLR parser, static domain linter, `DAEBuilder`/solver lowering, and $\ge 5$ unit/integration test suites.
-> - **`Preview` (15 languages)** — Specialized dialect support with native WASM parser, core AST/DAE lowering, and baseline verification suites.
+> - **`Beta` (26 languages)** — Domain-complete with native WASM GLR parser, static domain linter, `DAEBuilder`/solver lowering, and $\ge 5$ unit/integration test suites.
+> - **`Preview` (26 languages)** — Specialized dialect support with native WASM parser, core AST/DAE lowering, and baseline verification suites.
 
 ### 1. Native & Core Systems Engineering (8)
 
@@ -158,13 +158,37 @@ ModelScript provides first-class support for **47 engineering languages and simu
 | **FEA**<br>[`languages/fea/`](./languages/fea/)                | `.fea`, `.inp`, `.bdf`          | `Preview` | CalculiX/Abaqus (`.inp`), Nastran (`.bdf`), and declarative `.fea` structural mesh setup, Tet4/Tet10 thermo-elastic stiffness assembly, von Mises stress recovery, and CAE boundary contract verification.                             |
 | **CFD**<br>[`languages/cfd/`](./languages/cfd/)                | `.cfd`, `.cfg`, `.su2`, `.foam` | `Preview` | SU2 (`.cfg`/`.su2`), OpenFOAM (`.foam`), and declarative `.cfd` flow specification parsing, $y^+$ & Courant-Friedrichs-Lewy (CFL) mesh quality linting, WebGPU D3Q19 Lattice Boltzmann coupling, and aerodynamic drag/lift extraction. |
 
-### 7. Systems Biology & Scientific / Embedded Code (3)
+### 7. Chemistry, Systems/Synthetic Biology & Scientific Code (14)
 
-| Language & Directory                                        | Extensions                   | Maturity  | Domain & Core Capabilities                                                                                                                                                                                                   |
-| :---------------------------------------------------------- | :--------------------------- | :-------: | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **SBML**<br>[`languages/sbml/`](./languages/sbml/)          | `.sbml`, `.xml`              | `Preview` | Systems Biology Markup Language (Level 2 / Level 3) parsing, compartment/species/reaction stoichiometry matrix construction, MathML & infix kinetic law evaluation, RK4 concentration ODE solver, and DAE/Modelica lowering. |
-| **Fortran**<br>[`languages/fortran/`](./languages/fortran/) | `.f`, `.for`, `.f90`, `.f95` | `Preview` | Fixed-form Fortran 77 and free-form Fortran 90/95 legacy scientific code parsing, `COMMON` block & `EQUIVALENCE` symbol extraction, `DO`/`GOTO` control-flow lifting, and direct lowering into the WebAssembly DAE arena.    |
-| **C (ISO C99)**<br>[`languages/c/`](./languages/c/)         | `.c`, `.h`                   |  `Beta`   | Embedded flight/automotive control C99 source parsing, Static Single Assignment (SSA) control-flow graph construction, pointer/buffer safety linting, in-browser C-to-WASM compilation, and synchronous DAE lowering.        |
+| Language & Directory                                                | Extensions                        | Maturity  | Domain & Core Capabilities                                                                                                                                                                                                              |
+| :------------------------------------------------------------------ | :-------------------------------- | :-------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SBML**<br>[`languages/sbml/`](./languages/sbml/)                  | `.sbml`, `.xml`                   | `Preview` | Systems Biology Markup Language (Level 2 / Level 3) parsing, compartment/species/reaction stoichiometry matrix construction, MathML & infix kinetic law evaluation, RK4 concentration ODE solver, and DAE/Modelica lowering.            |
+| **Antimony**<br>[`languages/antimony/`](./languages/antimony/)      | `.ant`                            | `Preview` | Human-readable modular systems biology DSL (`model ... end`), submodel composition, rate/assignment rules, state-triggered events, RK4 integration, `DAEBuilder` lowering, and bidirectional SBML/Modelica projection.                  |
+| **Cantera**<br>[`languages/cantera/`](./languages/cantera/)         | `.yaml`, `.cti`                   | `Preview` | Gas-phase chemical kinetics & combustion mechanisms, NASA-7 thermochemical polynomials ($C_p^\circ, H^\circ, S^\circ$), modified Arrhenius & Troe falloff rates, batch reactor ODE solver, and `DAEBuilder`/Modelica lowering.          |
+| **SMILES / SDF**<br>[`languages/smiles/`](./languages/smiles/)      | `.smi`, `.smarts`, `.mol`, `.sdf` | `Preview` | Zero-regex SMILES/SMARTS & MDL Molfile V2000/SDF molecular graph parser, Hückel $4n+2$ aromaticity & valence linter, Joback & Reid group-contribution critical property estimator ($T_b, T_c, P_c, V_c, \omega$), and Aspen/DAE export. |
+| **NMTRAN (NONMEM)**<br>[`languages/nmtran/`](./languages/nmtran/)   | `.ctl`, `.mod`                    | `Preview` | Pharmacometrics & clinical PK/PD control stream parser (`$PROBLEM`, `$SUBROUTINES ADVAN1..13`, `$PK`, `$DES`, `$THETA`, `$OMEGA`), multi-dose (`II`/`ADDL`) AUC/$C_{\max}$/$t_{1/2}$ solver, and `DAEBuilder`/Modelica lowering.        |
+| **SBOL3**<br>[`languages/sbol/`](./languages/sbol/)                 | `.sbol`, `.ttl`                   | `Preview` | Synthetic Biology Open Language (SBOL3 RDF/XML & Turtle) genetic circuit parser, Sequence Ontology (`SO`) & SBO interaction verification, Hill transcriptional activation/repression ODE solver, and SBML/Modelica projection.          |
+| **BioNetGen (BNGL)**<br>[`languages/bngl/`](./languages/bngl/)      | `.bngl`                           | `Preview` | Rule-based biochemical modeling of multiprotein complexes and site-specific phosphorylation (`L(r!1).R(l!1,Y~P)`), automated rule-expansion reaction network generation, RK4/observable solver, and SBML/Modelica/DAE lowering.         |
+| **SED-ML**<br>[`languages/sedml/`](./languages/sedml/)              | `.sedml`                          | `Preview` | COMBINE Simulation Experiment Description Markup Language (L1V3/L1V4), KiSAO solver selection, uniform time-course & parameter-change execution, MathML `dataGenerator` post-processing, and Modelica experiment projection.            |
+| **PDB / mmCIF**<br>[`languages/pdb/`](./languages/pdb/)             | `.pdb`, `.cif`                    | `Preview` | 3D macromolecular structural biology (`ATOM`, `HETATM`, `HELIX`, `SHEET`, `SSBOND`, `CONECT`, mmCIF `_atom_site`), Ramachandran $(\phi, \psi)$ torsion & steric clash linter, Gaussian Network Model (GNM) solver, and DAE lowering.    |
+| **GenBank / FASTA**<br>[`languages/genbank/`](./languages/genbank/) | `.gb`, `.gbk`, `.fasta`           | `Preview` | Annotated nucleotide/plasmid sequence parser (`LOCUS`, `FEATURES`, `ORIGIN`), NCBI genetic code CDS translation linter, 6-frame ORF finder, restriction enzyme digestion mapper, CAI calculator, and SBOL3/Modelica/DAE export.         |
+| **gPROMS / PML**<br>[`languages/gproms/`](./languages/gproms/)      | `.gproms`, `.pml`                 | `Preview` | Equation-oriented dynamic chemical process & distributed parameter (`DISTRIBUTION_DOMAIN`, `PARTIAL`) modeling, Method-of-Lines (MOL) spatial finite-difference discretization, RK4 PDE-DAE solver, and `DAEBuilder`/Modelica export.   |
+| **PHREEQC**<br>[`languages/phreeqc/`](./languages/phreeqc/)         | `.pqi`, `.dat`                    | `Preview` | USGS PHREEQC aqueous geochemistry, Davies / Extended Debye-Hückel ionic activity coefficients, carbonate/redox ($pe$/pH) speciation, mineral Saturation Index ($\text{SI} = \log_{10}(\text{IAP}/K_{sp})$) solver, and DAE lowering.    |
+| **Fortran**<br>[`languages/fortran/`](./languages/fortran/)         | `.f`, `.for`, `.f90`, `.f95`      | `Preview` | Fixed-form Fortran 77 and free-form Fortran 90/95 legacy scientific code parsing, `COMMON` block & `EQUIVALENCE` symbol extraction, `DO`/`GOTO` control-flow lifting, and direct lowering into the WebAssembly DAE arena.               |
+| **C (ISO C99)**<br>[`languages/c/`](./languages/c/)                 | `.c`, `.h`                        |  `Beta`   | Embedded flight/automotive control C99 source parsing, Static Single Assignment (SSA) control-flow graph construction, pointer/buffer safety linting, in-browser C-to-WASM compilation, and synchronous DAE lowering.                   |
+
+### 8. Radiology, Radiation Oncology & Computer-Assisted Surgery (8)
+
+| Language & Directory                                              | Extensions                        | Maturity | Domain & Core Capabilities                                                                                                                                                                                                              |
+| :---------------------------------------------------------------- | :-------------------------------- | :------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OpenSim**<br>[`languages/opensim/`](./languages/opensim/)       | `.osim`                           |  `Beta`  | Musculoskeletal multibody kinematics, Hill-type muscle-tendon activation & contraction dynamics (`Thelen2003Muscle`, `Millard2012EquilibriumMuscle`), wrapping surfaces, `DAEBuilder` lowering, and Modelica/URDF projection.           |
+| **DICOM-RT**<br>[`languages/dicom-rt/`](./languages/dicom-rt/)    | `.rtplan`, `.rtstruct`, `.rtdose` |  `Beta`  | Radiotherapy treatment plan (`RTPLAN`), structure set (`RTSTRUCT`), and 3D dose (`RTDOSE`) parsing, cumulative/differential DVH evaluation, BED/EQD2 calculation, MLC leaf & gantry collision linting, and OpenSCAD/SysML v2 export.    |
+| **CellML**<br>[`languages/cellml/`](./languages/cellml/)          | `.cellml`                         |  `Beta`  | IUPS Physiome Project CellML 1.0/1.1/2.0 electrophysiology, cardiac action potential (Hodgkin-Huxley / Rush-Larsen gating), microvascular perfusion, SI dimensional unit verification, `DAEBuilder` lowering, and SBML/Modelica export. |
+| **FEBio / SOFA**<br>[`languages/febio/`](./languages/febio/)      | `.feb`, `.scn`                    |  `Beta`  | FEBio 3.x/4.x non-linear soft-tissue biomechanics (neo-Hookean, Mooney-Rivlin, Ogden, Holmes-Mow biphasic cartilage) and SOFA Framework surgical scene graphs (`.scn`), Jacobian/hyperelastic stability linting, and FEA lowering.      |
+| **NIfTI / NRRD**<br>[`languages/nifti/`](./languages/nifti/)      | `.nii`, `.nrrd`, `.nhdr`          |  `Beta`  | Volumetric medical imaging (`NIfTI-1/2` & `NRRD`), $4 \times 4$ `qform`/`sform` RAS affine coordinate transformations, anatomical segmentation labelmap extraction, Marching Tetrahedra iso-surfacing, and CAD/STEP projection.         |
+| **TOPAS / GATE**<br>[`languages/topas/`](./languages/topas/)      | `.topas`, `.mac`                  |  `Beta`  | Geant4-based TOPAS parameter hierarchies and GATE macros for proton/carbon-ion hadrontherapy beamlines, analytical Bortfeld Bragg peak depth-dose calculation, bounding-box hierarchy linting, and 3D CSG geometry synthesis.           |
+| **3MF Medical**<br>[`languages/three-mf/`](./languages/three-mf/) | `.3mf`                            |  `Beta`  | ISO/ASTM 52915 3MF Medical/Healthcare extension for 3D-printed patient-specific surgical cutting guides and cranial/orthopedic implants, half-edge manifold & wall-thickness verification, osteotomy plane validation, and STEP export. |
+| **OpenIGTLink / PLUS**<br>[`languages/igtl/`](./languages/igtl/)  | `.igtl`, `.plus.xml`              |  `Beta`  | OpenIGTLink surgical navigation messages and PLUS Toolkit optical/EM tracker & ultrasound calibration configurations, $SE(3)$ homogeneous transform graphs, stylus pivot calibration, and Fitzpatrick FRE/TRE error verification.       |
 
 ---
 
@@ -194,11 +218,11 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 | [`@modelscript/dsl`](./packages/dsl/)                     | Grammar DSL syntax combinators, WASM GLR parser compiler (`buildParser`), TGG rewriting compiler, CPA engine, term-rewriting         |
 | [`@modelscript/runtime`](./packages/runtime/)             | Linear-memory DAE arena, `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, Nelson-Oppen theory coordinator     |
 | [`@modelscript/simulate`](./packages/simulate/)           | Numerical simulation runner, SUNDIALS CVODE/IDA integration, WebGPU batched solver, 3D FEA/LBM CFD, surrogate ROMs, Monte Carlo      |
-| [`@modelscript/lsp`](./packages/lsp/)                     | Polyglot Language Server Protocol engine across all 44 languages, incremental Salsa workspace index, background worker pool          |
+| [`@modelscript/lsp`](./packages/lsp/)                     | Polyglot Language Server Protocol engine across all 66 languages, incremental Salsa workspace index, background worker pool          |
 | [`@modelscript/diagram`](./packages/diagram/)             | Polyglot diagram builder, Sugiyama/TSM auto-layout, Manhattan A\* port router, perceptual dark-mode SVG rendering, visual diffs      |
 | [`@modelscript/exchange`](./packages/exchange/)           | FMI 2.0/3.0 FMU export/import, SSP 1.0 toolkit, `CoSimMaster` orchestrator, AASX/DDP/OKH lenses, MDF4/MCAP binary telemetry          |
 | [`@modelscript/cad`](./packages/cad/)                     | MCAD & ECAD engine — CSG primitives, OpenCascade/Manifold B-Rep, STEP AP242 I/O, dynamic clearance, GD&T stack-up, Gerber/PCB DRC    |
-| [`@modelscript/mcp`](./packages/mcp/)                     | Model Context Protocol (MCP) server exposing 47 compilation, simulation, ontology, TGG, RTM, and domain tools to AI agents           |
+| [`@modelscript/mcp`](./packages/mcp/)                     | Model Context Protocol (MCP) server exposing 48 compilation, simulation, ontology, TGG, RTM, medical, and domain tools to AI agents  |
 | [`@modelscript/ide-client`](./packages/ide/)              | VS Code Desktop & Web Extension client, DAP equation debugger, 3-Tier AI Copilot, `.monb` notebooks, 18 custom editors, 20+ panels   |
 | [`@modelscript/embed`](./packages/embed/)                 | Embeddable `<modelscript-viewer>` Web Component, iframe postMessage RPC client, and compressed permalink URL codec                   |
 | [`@modelscript/design-tokens`](./packages/design-tokens/) | Shared CSS design tokens (`--ms-*`) and primitive `.ms-btn` / `.ms-chip` styles for the docs site, web app, and IDE webviews         |
@@ -207,14 +231,14 @@ ModelScript is managed with **Nx** and **npm workspaces**:
 
 ### Applications (`apps/`)
 
-| Package                                   | Responsibility                                                                                                               |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| [`@modelscript/cli`](./apps/cli/)         | `modelscript` (`msx`) unified command-line toolchain — 89 commands across compilation, simulation, verification, and domains |
-| [`@modelscript/api`](./apps/api/)         | Ansatz & ModelScript backend — REST, GraphQL, SPARQL, Git Smart HTTP, ActivityPub, SysML v2 REST, Slurm HPC, and MCP SSE     |
-| [`@modelscript/ide`](./apps/ide/)         | Browser-based VS Code Web engineering workbench with GitHub virtual filesystem (`github://`) and static CDN bundling         |
-| [`@modelscript/web`](./apps/web/)         | Ansatz (`ansatz.social`) web platform — package registry, federated engineering network, Cloud HPC studio, and `/playground` |
-| [`@modelscript/desktop`](./apps/desktop/) | Native cross-platform Desktop Studio (Tauri v2) with direct FFI `NativeFmuRunner` and NERC CIP / FERC CEII air-gap controls  |
-| [`@modelscript/docs`](./apps/docs/)       | Unified `modelscript.org` documentation portal (VitePress) and automated PDF Reference Manual generator                      |
+| Package                                   | Responsibility                                                                                                                                      |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@modelscript/cli`](./apps/cli/)         | `modelscript` (`msx`) unified command-line toolchain — 92+ commands across compilation, simulation, verification, medical/bio, and domains          |
+| [`@modelscript/api`](./apps/api/)         | Ansatz & ModelScript backend — REST, GraphQL, SPARQL, Git Smart HTTP, ActivityPub, SysML v2 REST, Slurm HPC, and MCP SSE                            |
+| [`@modelscript/ide`](./apps/ide/)         | Browser-based VS Code Web engineering workbench with GitHub virtual filesystem (`github://`) and static CDN bundling                                |
+| [`@modelscript/web`](./apps/web/)         | Ansatz (`ansatz.social`) web platform — package registry, federated engineering network, scholarly citations, Git vault, Cloud HPC, & `/playground` |
+| [`@modelscript/desktop`](./apps/desktop/) | Native cross-platform Desktop Studio (Tauri v2) with direct FFI `NativeFmuRunner` and NERC CIP / FERC CEII air-gap controls                         |
+| [`@modelscript/docs`](./apps/docs/)       | Unified `modelscript.org` documentation portal (VitePress) and automated PDF Reference Manual generator                                             |
 
 ### Enterprise Edition (`ee/`)
 

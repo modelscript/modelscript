@@ -151,3 +151,52 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 });
+
+// ── Web Push Event Handling (RFC 8030 / RFC 8292) ───────────────────
+self.addEventListener("push", (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      data = { body: event.data.text() };
+    }
+  }
+
+  const title = data.title || "Ansatz Notification";
+  const options = {
+    body: data.body || "New engineering event in Ansatz.",
+    icon: data.icon || "/favicon.ico",
+    badge: data.badge || "/favicon.ico",
+    data: data.data || { url: "/notifications" },
+    tag: data.tag || undefined,
+    renotify: Boolean(data.tag),
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// ── Notification Click Event Handling ───────────────────────────────
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || "/notifications";
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      // Focus existing tab if open
+      for (const client of clientList) {
+        if (client.url && "focus" in client) {
+          const clientUrl = new URL(client.url);
+          const target = new URL(targetUrl, self.location.origin);
+          if (clientUrl.pathname === target.pathname) {
+            return client.focus();
+          }
+        }
+      }
+      // Otherwise open new window
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    }),
+  );
+});

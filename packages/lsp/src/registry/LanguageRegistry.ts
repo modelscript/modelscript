@@ -109,11 +109,22 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   qif: "beta",
   oscal: "beta",
   automationml: "beta",
+  opensim: "beta",
+  "dicom-rt": "beta",
+  cellml: "beta",
+  febio: "beta",
+  nifti: "beta",
+  topas: "beta",
+  "three-mf": "beta",
+  igtl: "beta",
 
   // Experimental (Tier 3)
   aacl: "experimental",
+  antimony: "experimental",
   autosar: "experimental",
+  bngl: "experimental",
   c: "experimental",
+  cantera: "experimental",
   ccsds: "experimental",
   canary: "experimental",
   capella: "experimental",
@@ -124,6 +135,7 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   energyplus: "experimental",
   epanet: "experimental",
   fluent: "experimental",
+  genbank: "experimental",
   gproms: "experimental",
   htri: "experimental",
   ibis: "experimental",
@@ -135,12 +147,14 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   matpower: "experimental",
   modflow: "experimental",
   nastran: "experimental",
+  nmtran: "experimental",
   omnetpp: "experimental",
   opendrive: "experimental",
   opendss: "experimental",
   openscenario: "experimental",
   pandapower: "experimental",
   patran: "experimental",
+  pdb: "experimental",
   Petrel: "experimental",
   petrel: "experimental",
   phreeqc: "experimental",
@@ -152,9 +166,12 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   relap5: "experimental",
   ros2: "experimental",
   sbml: "experimental",
+  sbol: "experimental",
   scade: "experimental",
+  sedml: "experimental",
   simscape: "experimental",
   simulink: "experimental",
+  smiles: "experimental",
   structural: "experimental",
   swmm: "experimental",
   thermoflow: "experimental",
@@ -425,6 +442,7 @@ export class LanguageRegistry {
     if (lowerUri.endsWith(".jsbsim.xml")) return this.getPluginById("jsbsim");
     if (lowerUri.endsWith(".plcopen.xml")) return this.getPluginById("plcopen");
     if (lowerUri.endsWith(".sbml.xml")) return this.getPluginById("sbml");
+    if (lowerUri.endsWith(".plus.xml")) return this.getPluginById("igtl");
     if (
       lowerUri.endsWith(".oscal.json") ||
       lowerUri.endsWith(".oscal.yaml") ||
@@ -467,6 +485,10 @@ export class LanguageRegistry {
         if (/<project\b[^>]*plcopen/i.test(header)) return this.getPluginById("plcopen") ?? this.extMap.get(ext);
         if (/<QIFDocument\b/i.test(header)) return this.getPluginById("qif") ?? this.extMap.get(ext);
         if (/<CAEXFile\b/i.test(header)) return this.getPluginById("automationml") ?? this.extMap.get(ext);
+        if (/<OpenSimDocument\b/i.test(header)) return this.getPluginById("opensim") ?? this.extMap.get(ext);
+        if (/<DicomRtPlan\b/i.test(header)) return this.getPluginById("dicom-rt") ?? this.extMap.get(ext);
+        if (/<febio_spec\b/i.test(header)) return this.getPluginById("febio") ?? this.extMap.get(ext);
+        if (/<PlusConfiguration\b/i.test(header)) return this.getPluginById("igtl") ?? this.extMap.get(ext);
       }
     }
 

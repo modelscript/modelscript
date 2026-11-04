@@ -138,6 +138,19 @@ export function resolveCurrentThemeIsDark(explicitIsDark?: boolean): boolean {
   return true;
 }
 
+const LIGHT_THEME_SVG_CACHE_LIMIT = 256;
+const lightThemeSvgCache = new Map<string, string>();
+
+function setLightThemeSvgCache(key: string, value: string): void {
+  if (lightThemeSvgCache.size >= LIGHT_THEME_SVG_CACHE_LIMIT && !lightThemeSvgCache.has(key)) {
+    const oldestKey = lightThemeSvgCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      lightThemeSvgCache.delete(oldestKey);
+    }
+  }
+  lightThemeSvgCache.set(key, value);
+}
+
 /**
  * Adapts a dark-themed engineering SVG schematic into light mode when `isDark === false`.
  * Preserves semantic accent colors while converting dark canvas/card fills, dark grid lines,
@@ -145,6 +158,9 @@ export function resolveCurrentThemeIsDark(explicitIsDark?: boolean): boolean {
  */
 export function adaptSvgMarkupForTheme(svg: string, isDark: boolean): string {
   if (!svg || isDark) return svg;
+
+  const cached = lightThemeSvgCache.get(svg);
+  if (cached !== undefined) return cached;
 
   let out = svg;
 
@@ -235,5 +251,7 @@ export function adaptSvgMarkupForTheme(svg: string, isDark: boolean): string {
     return `<${rawTagName}${nextAttrs}>`;
   });
 
+  setLightThemeSvgCache(svg, out);
+  setLightThemeSvgCache(out, out);
   return out;
 }

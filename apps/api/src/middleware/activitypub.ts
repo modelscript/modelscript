@@ -245,6 +245,23 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           return;
         }
 
+        if (params["created"]) {
+          const createdSec = Number(params["created"]);
+          const nowSec = Math.floor(Date.now() / 1000);
+          if (Number.isNaN(createdSec) || Math.abs(nowSec - createdSec) > 300) {
+            res.status(401).json({ error: "Signature created timestamp outside acceptable window (±300s)" });
+            return;
+          }
+        }
+        if (params["expires"]) {
+          const expiresSec = Number(params["expires"]);
+          const nowSec = Math.floor(Date.now() / 1000);
+          if (Number.isNaN(expiresSec) || nowSec > expiresSec) {
+            res.status(401).json({ error: "Signature has expired" });
+            return;
+          }
+        }
+
         // Parse signature value from Signature header: label=:base64:
         const sigHeader = (req.headers["signature"] as string) || "";
         let signatureValue = "";
@@ -567,10 +584,22 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         }
       }
 
-      if (headersList.includes("date") && req.headers["date"]) {
-        const parsedDate = Date.parse(String(req.headers["date"]));
-        if (!Number.isNaN(parsedDate) && Math.abs(Date.now() - parsedDate) > 15 * 60 * 1000) {
-          res.status(401).json({ error: "Signature Date header is expired or too far in the future" });
+      if (process.env["NODE_ENV"] === "production" && !headersList.includes("date")) {
+        res
+          .status(401)
+          .json({ error: "Production HTTP signatures require 'date' in signed headers to prevent replay attacks" });
+        return;
+      }
+
+      if (headersList.includes("date")) {
+        const dateHeader = req.headers["date"];
+        if (!dateHeader) {
+          res.status(401).json({ error: "Missing Date header" });
+          return;
+        }
+        const parsedDate = Date.parse(String(dateHeader));
+        if (Number.isNaN(parsedDate) || Math.abs(Date.now() - parsedDate) > 15 * 60 * 1000) {
+          res.status(401).json({ error: "Signature Date header is invalid, expired, or too far in the future" });
           return;
         }
       }

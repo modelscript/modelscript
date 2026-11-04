@@ -6,13 +6,14 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots and subsea flowlines — require tight coordination across **44 engineering languages and file formats** spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **66 engineering languages and file formats** spanning **12 industry verticals**:
 
-- **System Architecture, Requirements & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
-- **Multi-Domain Acausal & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `MATLAB Simulink`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
-- **Power Grids, Electronics & Embedded Control** (`PSCAD EMT`, `Siemens PSS/E`, `SPICE`, `IBIS`, `Touchstone`, `Gerber`, `PLCopen IEC 61131-3`, `AUTOSAR ARXML`, `CAN DBC`, `ANSI C`)
-- **3D CAD Geometry, Multibody & Robotics** (`STEP AP214/AP242`, `OpenSCAD CSG`, `ROS URDF / Xacro`, `SIMPACK`, `MSC Adams`, `GENSYS`)
-- **Continuum CAE, Process, Thermal & Fluid Networks** (`CalculiX / Abaqus FEA`, `SU2 / OpenFOAM CFD`, `Gmsh`, `VTK`, `OLGA`, `PipelineStudio`, `Aspen Plus`, `EnergyPlus`, `EPANET`, `EPA SWMM`, `SBML`, `THERM`, `RADIANCE`)
+- **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
+- **Multi-Domain Acausal & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
+- **Power Grids, Electronics & Embedded Control** (`PSCAD EMT`, `Siemens PSS/E`, `OpenDSS`, `SPICE`, `Verilog-A`, `IBIS`, `Touchstone`, `PLCopen IEC 61131-3`, `AutomationML`, `AUTOSAR ARXML`, `ANSI C`, `Fortran`)
+- **3D CAD Geometry, Metrology, Multibody & Robotics** (`STEP AP214/AP242`, `ISO 23952 QIF`, `OpenSCAD CSG`, `ROS URDF / Xacro`, `SIMPACK`, `MSC Adams`, `GENSYS`, `OpenSim`, `ASAM OpenDRIVE / OpenSCENARIO`)
+- **Continuum CAE, Process, Chemistry, Thermal & Fluid Networks** (`CalculiX / Abaqus FEA`, `SU2 / OpenFOAM CFD`, `OLGA`, `PipelineStudio`, `ECLIPSE`, `Aspen Plus`, `gPROMS`, `Cantera`, `PHREEQC`, `SMILES / SDF`, `RELAP5-3D`, `EnergyPlus`, `EPANET`, `EPA SWMM`)
+- **Systems/Synthetic Biology, Radiology & Computer-Assisted Surgery** (`SBML`, `Antimony`, `BioNetGen`, `SBOL3`, `SED-ML`, `NONMEM NMTRAN`, `PDB / mmCIF`, `GenBank / FASTA`, `CellML`, `FEBio / SOFA`, `DICOM-RT`, `TOPAS / GATE`, `NIfTI / NRRD`, `3MF Medical`, `OpenIGTLink / PLUS`)
 
 Traditionally, these disciplines operate in disconnected silos. Enterprise "digital threads" have historically been **passive and descriptive** — composed of static document links, heavyweight PLM databases, and manual spreadsheets that drift out of sync the moment a parameter changes.
 
@@ -22,9 +23,9 @@ Instead of passive hyperlinks, ModelScript treats every engineering artifact as 
 
 ```mermaid
 flowchart LR
-    A["Architecture & Requirements<br/>(SysML v2 / ReqIF / OWL2)"] <-->|"Bidirectional TGG"| P["1D & Multibody Physics<br/>(Modelica / Simulink / PSCAD)"]
-    P <-->|"Dynamic Kinematic & CSG Binding"| G["3D CAD & Robotics<br/>(STEP / OpenSCAD / URDF)"]
-    P <-->|"ROM Surrogates & Field Coupling"| C["Continuum CAE & Flow<br/>(FEA / CFD / OLGA)"]
+    A["Architecture & Requirements<br/>(SysML v2 / ReqIF / OSCAL / OWL2)"] <-->|"Bidirectional TGG"| P["1D & Multibody Physics<br/>(Modelica / Simulink / PSCAD)"]
+    P <-->|"Dynamic Kinematic & CSG Binding"| G["3D CAD, Metrology & Robotics<br/>(STEP / QIF / OpenSCAD / URDF)"]
+    P <-->|"ROM Surrogates & Field Coupling"| C["Continuum CAE, Process & Bio/Med<br/>(FEA / CFD / OLGA / DICOM-RT)"]
     A & P & G & C -->|"13 Nelson-Oppen Theory Oracles"| V["SARIF Proof Manifests<br/>& Regulatory DHF Dossiers"]
     M["AI Agents (@modelscript/mcp)"] <-->|"Closed-Loop Synthesis"| P & V
 ```
@@ -35,7 +36,7 @@ flowchart LR
 | :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
 | **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
 | **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
-| **Static Analysis**          | Checked manually during design reviews                      | **794 static lint rules** across **44 languages** evaluated on every keystroke and CI push     |
+| **Static Analysis**          | Checked manually during design reviews                      | **1,018 static lint rules** across **65+ languages** evaluated on every keystroke and CI push  |
 | **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
 | **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
 | **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
@@ -44,7 +45,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 44 Languages
+### 1. Code-First Engineering Across 66 Languages (Stable, Beta & Preview Tiers)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 

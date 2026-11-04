@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { LANGUAGES } from "../data/languages";
+import { LANGUAGES, TIER_LABELS } from "../data/languages";
 
 const half = Math.ceil(LANGUAGES.length / 2);
 const rowA = LANGUAGES.slice(0, half);
@@ -18,11 +18,13 @@ const rowB = LANGUAGES.slice(half);
             :key="`${copy}-${l.slug}`"
             :href="`/languages/${l.slug}`"
             class="chip"
+            :title="`${l.name} (${l.ext}) — ${TIER_LABELS[l.tier]}`"
             :tabindex="copy === 2 ? -1 : 0"
             :aria-hidden="copy === 2 ? 'true' : undefined"
           >
-            <span class="chip-ext">{{ l.ext }}</span
-            >{{ l.name }}
+            <span class="chip-ext">{{ l.ext }}</span>
+            <span>{{ l.name }}</span>
+            <span class="chip-tier" :class="`chip-tier--${l.tier}`">{{ TIER_LABELS[l.tier] }}</span>
           </a>
         </template>
       </div>
@@ -35,11 +37,13 @@ const rowB = LANGUAGES.slice(half);
             :key="`${copy}-${l.slug}`"
             :href="`/languages/${l.slug}`"
             class="chip"
+            :title="`${l.name} (${l.ext}) — ${TIER_LABELS[l.tier]}`"
             :tabindex="copy === 2 ? -1 : 0"
             :aria-hidden="copy === 2 ? 'true' : undefined"
           >
-            <span class="chip-ext">{{ l.ext }}</span
-            >{{ l.name }}
+            <span class="chip-ext">{{ l.ext }}</span>
+            <span>{{ l.name }}</span>
+            <span class="chip-tier" :class="`chip-tier--${l.tier}`">{{ TIER_LABELS[l.tier] }}</span>
           </a>
         </template>
       </div>
@@ -90,7 +94,7 @@ const rowB = LANGUAGES.slice(half);
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px 8px 8px;
+  padding: 8px 12px 8px 8px;
   border-radius: 999px;
   border: 1px solid var(--vp-c-divider);
   background: var(--vp-c-bg-soft);
@@ -118,12 +122,35 @@ const rowB = LANGUAGES.slice(half);
   background: var(--vp-c-brand-soft);
 }
 
+.chip-tier {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.chip-tier--stable {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+.chip-tier--beta {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.28);
+}
+.chip-tier--preview {
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.28);
+}
+
 @keyframes scroll {
   from {
     transform: translateX(0);
   }
   to {
-    transform: translateX(calc(-50% - 5px));
+    transform: translateX(-50%);
   }
 }
 

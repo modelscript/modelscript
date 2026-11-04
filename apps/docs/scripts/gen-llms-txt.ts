@@ -142,16 +142,17 @@ function cleanMarkdown(raw: string): string {
   text = text.replace(/<CapabilityMatrix[^>]*\/>/g, () => {
     const lines = [
       "### Polyglot Language Capability Matrix",
-      "ModelScript supports 44 modeling, simulation, and engineering formats across 5 pipeline capabilities:",
-      "| Language | Extension | Role | Parse | Lint | DAE Arena | Simulate | Projections |",
-      "| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |",
+      `ModelScript supports ${LANGUAGES.length} modeling, simulation, and engineering formats across 5 pipeline capabilities:`,
+      "| Language | Tier | Extension | Role | Parse | Lint | DAE Arena | Simulate | Projections |",
+      "| :--- | :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: |",
     ];
     for (const l of langManifest) {
       const c = l.capabilities;
       const hasDae = Boolean(c.dae ?? c.arena);
       const hasProjections = Array.isArray(c.projections) ? c.projections.length > 0 : Boolean(c.projections);
+      const tierInfo = LANGUAGES.find((item) => item.slug === l.slug)?.tier ?? "preview";
       lines.push(
-        `| ${l.name} | \`${l.ext}\` | ${l.role} | ${c.parse ? "✓" : "—"} | ${c.lint ? "✓" : "—"} | ${
+        `| ${l.name} | \`${tierInfo}\` | \`${l.ext}\` | ${l.role} | ${c.parse ? "✓" : "—"} | ${c.lint ? "✓" : "—"} | ${
           hasDae ? "✓" : "—"
         } | ${c.simulate ? "✓" : "—"} | ${hasProjections ? "✓" : "—"} |`,
       );
@@ -193,10 +194,11 @@ function cleanMarkdown(raw: string): string {
 }
 
 function buildLlmsTxt(): string {
+  const totalRules = lintCatalogs.reduce((sum, c) => sum + c.rules.length, 0);
   const lines: string[] = [
     "# ModelScript",
     "",
-    "> Open-core computable digital thread for polyglot engineering and simulation. Imports 44 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.",
+    `> Open-core computable digital thread for polyglot engineering and simulation. Imports ${LANGUAGES.length} simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.`,
     "",
     "## Quick Links",
     "- [Official Website](https://modelscript.org/)",
@@ -215,7 +217,7 @@ function buildLlmsTxt(): string {
     "- [Administration](https://modelscript.org/guide/administration): Enterprise deployment, licensing, and security disclosures.",
     "",
     "## Ansatz Platform (`ansatz.social`)",
-    "- [Ansatz Platform Overview](https://modelscript.org/ansatz/overview): Federated social network, CAS package registry, and cloud HPC hub.",
+    "- [Ansatz Platform Overview](https://modelscript.org/ansatz/overview): Federated social network, CAS package registry, scholarly citations hub, personal activity Git vault, and cloud HPC hub.",
     "- [ActivityPub Federation](https://modelscript.org/ansatz/federation): W3C ActivityPub S2S federation, WebFinger, and peer verification.",
     "- [Package Registry](https://modelscript.org/ansatz/package-registry): Content-addressable package registry with Ed25519 signatures and multi-lens manifests.",
     "- [Cloud HPC Simulation](https://modelscript.org/ansatz/cloud-hpc): Slurm HPC offload, WebGPU batched sweeps, and compute credit billing.",
@@ -255,19 +257,19 @@ function buildLlmsTxt(): string {
     "",
     "## Command-Line Interface (`msx`)",
     "- [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.",
-    "- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 91 CLI commands and subcommands.",
+    `- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all ${cliCommands.length} CLI commands and subcommands.`,
     "",
-    "## Polyglot Languages (44 Formats)",
-    "- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 44 formats.",
+    `## Polyglot Languages (${LANGUAGES.length} Formats)`,
+    `- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all ${LANGUAGES.length} formats.`,
   );
 
   for (const l of LANGUAGES) {
-    lines.push(`- [${l.name} (${l.ext})](https://modelscript.org/languages/${l.slug}): ${l.role}.`);
+    lines.push(`- [${l.name} (${l.ext}) [${l.tier}]](https://modelscript.org/languages/${l.slug}): ${l.role}.`);
   }
 
-  lines.push("", "## Engineering Industries (12 Sectors)");
+  lines.push("", `## Engineering Industries (${INDUSTRIES.length} Sectors)`);
   lines.push(
-    "- [Industries Overview](https://modelscript.org/industries): Multi-domain solutions across 12 engineering sectors.",
+    `- [Industries Overview](https://modelscript.org/industries): Multi-domain solutions across ${INDUSTRIES.length} engineering sectors.`,
   );
   for (const ind of INDUSTRIES) {
     const stds = ind.standards.slice(0, 3).join(", ");
@@ -277,9 +279,10 @@ function buildLlmsTxt(): string {
   lines.push(
     "",
     "## Reference & Tooling",
-    "- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 770+ diagnostics across 41 engineering languages.",
+    `- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of ${totalRules} diagnostics across ${lintCatalogs.length} engineering languages.`,
     "- [Export Formats](https://modelscript.org/reference/export-formats): Exporting to FMI 2.0/3.0 FMUs, SSP, STEP, CSV, and C code.",
     "- [MCP & IDE Integration](https://modelscript.org/reference/mcp-and-ide): Model Context Protocol server for AI coding agents and VS Code integration.",
+    "- [Radiology & Surgical CAS](https://modelscript.org/reference/radiology-and-surgery): Radiation oncology, medical imaging, and computer-assisted surgery suite.",
     "",
   );
 
@@ -426,6 +429,11 @@ function buildLlmsFullTxt(): string {
   sections.push({ title: "Linter Rules Catalog", route: "reference/linter-rules", file: "reference/linter-rules.md" });
   sections.push({ title: "Export Formats", route: "reference/export-formats", file: "reference/export-formats.md" });
   sections.push({ title: "MCP & IDE Integration", route: "reference/mcp-and-ide", file: "reference/mcp-and-ide.md" });
+  sections.push({
+    title: "Radiology & Surgical CAS",
+    route: "reference/radiology-and-surgery",
+    file: "reference/radiology-and-surgery.md",
+  });
   sections.push({ title: "Pricing & Commercial Licensing", route: "pricing", file: "pricing.md" });
   sections.push({ title: "Trademark Policy", route: "trademark", file: "trademark.md" });
 

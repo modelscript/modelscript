@@ -80,7 +80,7 @@ export function markdownMirrorRouter(database: LibraryDatabase): Router {
 
     const { brandName, host, isCorporate } = getBaseContext(req);
     const post = database.getPost(postId);
-    if (!post) {
+    if (!post || (post.visibility && post.visibility !== "public" && post.visibility !== "unlisted")) {
       res.status(404).send("# 404 Not Found\n\nPost does not exist.");
       return;
     }

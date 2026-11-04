@@ -24,15 +24,16 @@ export interface PostAuthor {
 }
 
 export interface PostItem {
-  id: number;
+  id: number | string;
+  id_str?: string | undefined;
   author_id: number;
   username: string;
   display_name?: string | undefined;
   avatar_url?: string | undefined;
   content: string;
-  artifact_id?: number | null | undefined;
-  reply_to_id?: number | null | undefined;
-  repost_of_id?: number | null | undefined;
+  artifact_id?: number | string | null | undefined;
+  reply_to_id?: number | string | null | undefined;
+  repost_of_id?: number | string | null | undefined;
   created_at: string;
   updated_at?: string | undefined;
   like_count: number;
@@ -47,7 +48,7 @@ export interface PostItem {
 }
 
 export interface ArtifactViewDTO {
-  id: number;
+  id: number | string;
   view_type: string;
   config: Record<string, unknown> | string;
   view_config?: Record<string, unknown> | string | undefined;

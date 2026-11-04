@@ -23,6 +23,10 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
 });
 
+function isValidPackageName(name: string): boolean {
+  return /^(@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(name);
+}
+
 function resolvePackageParams(req: Request): { name: string; version: string; baseName: string } {
   const scope = req.params["scope"] as string | undefined;
   const nameParam = req.params["name"] as string | undefined;
@@ -59,8 +63,8 @@ export function publishRouter(
       const { name, version, baseName } = resolvePackageParams(req);
 
       // 1. Validate parameters
-      if (typeof name !== "string" || typeof version !== "string") {
-        res.status(400).json({ error: "Library name and version must be strings" });
+      if (typeof name !== "string" || typeof version !== "string" || !isValidPackageName(name)) {
+        res.status(400).json({ error: "Invalid library name or version format" });
         return;
       }
 

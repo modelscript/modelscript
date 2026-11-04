@@ -119,9 +119,9 @@ export class HostBridgeService implements vscode.Disposable {
     private readonly getTreeProvider: () => LibraryTreeProvider | undefined,
   ) {
     if (this.memfsRootUri?.path) {
-      const m = this.memfsRootUri.path.match(/^\/artifact-(\d+)/);
+      const m = this.memfsRootUri.path.match(/^\/(?:artifact-)?(\d+)/);
       if (m?.[1]) {
-        this._mountedArtifactId = Number(m[1]);
+        this._mountedArtifactId = m[1];
       }
     }
     this.register();
@@ -142,16 +142,15 @@ export class HostBridgeService implements vscode.Disposable {
       this._mountedTitle = payload.title;
     }
 
-    const targetUri =
-      this.memfsRootUri || vscode.Uri.from({ scheme: "memfs", path: `/artifact-${payload.artifactId}` });
+    const targetUri = this.memfsRootUri || vscode.Uri.from({ scheme: "memfs", path: `/${payload.artifactId}` });
 
     const mountKey = `${artIdStr}:${payload.viewType || ""}:${targetUri.path}`;
     if (this._lastMountedKey === mountKey) {
       return;
     }
 
-    // If initWorkspaceAndTree already mounted real (non-stub) files into /artifact-<id>, skip duplicate re-mount
-    if (targetUri.path === `/artifact-${artIdStr}`) {
+    // If initWorkspaceAndTree already mounted real (non-stub) files into /<id> or /artifact-<id>, skip duplicate re-mount
+    if (targetUri.path === `/${artIdStr}` || targetUri.path === `/artifact-${artIdStr}`) {
       try {
         const existingEntries = this.memFs.readDirectory(targetUri);
         const hasRealFiles = existingEntries.some(
@@ -215,7 +214,13 @@ export class HostBridgeService implements vscode.Disposable {
     }
     const stripped = rawPath.replace(/^\/+/, "");
     const parts = stripped.split("/");
-    if (parts.length > 1 && (parts[0]!.startsWith("artifact-") || parts[0] === "project" || parts[0] === "workspace")) {
+    if (
+      parts.length > 1 &&
+      (parts[0]!.startsWith("artifact-") ||
+        /^\d+$/.test(parts[0]!) ||
+        parts[0] === "project" ||
+        parts[0] === "workspace")
+    ) {
       return parts.slice(1).join("/");
     }
     return stripped;

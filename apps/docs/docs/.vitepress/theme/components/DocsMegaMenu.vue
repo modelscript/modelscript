@@ -1,9 +1,13 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
+import lintRules from "../data/lint-rules.generated.json";
 import mcpData from "../data/mcp-tools.generated.json";
 import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFooterLink } from "./NavMegaMenu.vue";
 
 const props = defineProps<{ screenMenu?: boolean }>();
+
+const totalRules = lintRules.totalRules.toLocaleString();
+const totalLangs = lintRules.totalLanguages;
 
 const columns: MegaMenuColumn[] = [
   {
@@ -94,10 +98,17 @@ const columns: MegaMenuColumn[] = [
       },
       {
         name: "Compiler Linter Rules",
-        tagline: "Searchable catalog of 794 static diagnostics across 41 formats",
+        tagline: `Searchable catalog of ${totalRules} static diagnostics across ${totalLangs} formats`,
         href: "/reference/linter-rules",
         icon: "check",
         accent: "#22d3ee",
+      },
+      {
+        name: "Radiology & Surgical CAS",
+        tagline: "DICOM-RT, TOPAS, NIfTI/NRRD, 3MF Medical & OpenIGTLink",
+        href: "/reference/radiology-and-surgery",
+        icon: "activity",
+        accent: "#fb7185",
       },
       {
         name: "Standards & Export Formats",
@@ -115,7 +126,7 @@ const columns: MegaMenuColumn[] = [
       },
       {
         name: "Ansatz Platform Overview",
-        tagline: "Federated social graph, CAS registry & cloud HPC architecture",
+        tagline: "Federated social graph, CAS registry, citations & cloud HPC",
         href: "/ansatz/overview",
         icon: "globe",
         accent: "#22d3ee",
@@ -160,4 +171,3 @@ const footerLinks: MegaMenuFooterLink[] = [
     :screen-menu="props.screenMenu"
   />
 </template>
-

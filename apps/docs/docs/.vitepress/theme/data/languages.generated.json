@@ -86,6 +86,38 @@
     "ruleCount": 10
   },
   {
+    "slug": "oscal",
+    "name": "NIST OSCAL",
+    "sidebar": "NIST OSCAL Security",
+    "ext": ".oscal.json",
+    "role": "Cyber-physical security controls & SP 800-53 assessment",
+    "group": "core",
+    "pkgName": "@modelscript/oscal",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx oscal",
+    "actions": [
+      "inspect",
+      "verify",
+      "resolve",
+      "audit-cps",
+      "convert",
+      "to-sysml",
+      "to-reqif"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": false,
+      "projections": [
+        "SysML v2",
+        "ReqIF"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
     "slug": "ssp",
     "name": "SSP",
     "sidebar": "SSP System Packaging",
@@ -156,6 +188,40 @@
       ]
     },
     "ruleCount": 8
+  },
+  {
+    "slug": "qif",
+    "name": "QIF (ISO 23952)",
+    "sidebar": "QIF Digital Metrology",
+    "ext": ".qif",
+    "role": "ASME Y14.5 / ISO 1101 GD&T metrology & SPC capability",
+    "group": "geometry",
+    "pkgName": "@modelscript/qif",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx qif",
+    "actions": [
+      "inspect",
+      "validate",
+      "spc",
+      "reconcile-step",
+      "from-step",
+      "to-sysml",
+      "to-modelica",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "SysML v2",
+        "Modelica",
+        "STEP"
+      ]
+    },
+    "ruleCount": 9
   },
   {
     "slug": "scad",
@@ -940,7 +1006,7 @@
       "parse": true,
       "lint": true,
       "dae": true,
-      "simulate": false,
+      "simulate": true,
       "projections": [
         "Modelica",
         "SSP",
@@ -1139,6 +1205,40 @@
     "ruleCount": 10
   },
   {
+    "slug": "automationml",
+    "name": "AutomationML (IEC 62714)",
+    "sidebar": "AutomationML Plant Topology",
+    "ext": ".aml",
+    "role": "CAEX mechatronic plant hierarchy & virtual commissioning",
+    "group": "robotics",
+    "pkgName": "@modelscript/automationml",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx aml",
+    "actions": [
+      "inspect",
+      "lint",
+      "commission",
+      "to-ssp",
+      "to-sysml",
+      "to-modelica",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "SSP",
+        "SysML v2",
+        "Modelica",
+        "URDF"
+      ]
+    },
+    "ruleCount": 7
+  },
+  {
     "slug": "adams",
     "name": "MSC Adams",
     "sidebar": "MSC Adams MBD",
@@ -1195,7 +1295,7 @@
       "parse": true,
       "lint": true,
       "dae": true,
-      "simulate": false,
+      "simulate": true,
       "projections": [
         "Modelica"
       ]
@@ -1292,6 +1392,102 @@
     "ruleCount": 15
   },
   {
+    "slug": "gproms",
+    "name": "gPROMS / PML",
+    "sidebar": "gPROMS Dynamic Process",
+    "ext": ".gproms",
+    "role": "Equation-oriented dynamic process & distributed PDEs",
+    "group": "process",
+    "pkgName": "@modelscript/gproms",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "cantera",
+    "name": "Cantera",
+    "sidebar": "Cantera Kinetics & Thermo",
+    "ext": ".yaml",
+    "role": "Gas-phase chemical kinetics & NASA-7 thermochemistry",
+    "group": "process",
+    "pkgName": "@modelscript/cantera",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "phreeqc",
+    "name": "PHREEQC",
+    "sidebar": "PHREEQC Geochemistry",
+    "ext": ".pqi",
+    "role": "Aqueous geochemistry, speciation & mineral saturation",
+    "group": "process",
+    "pkgName": "@modelscript/phreeqc",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "smiles",
+    "name": "SMILES / SDF",
+    "sidebar": "SMILES & Molfile Graphs",
+    "ext": ".smi",
+    "role": "Molecular graph parsing & Joback property estimation",
+    "group": "process",
+    "pkgName": "@modelscript/smiles",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "SBML",
+        "OWL2"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
     "slug": "sbml",
     "name": "SBML",
     "sidebar": "SBML Systems Biology",
@@ -1317,6 +1513,426 @@
       "simulate": true,
       "projections": [
         "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "antimony",
+    "name": "Antimony",
+    "sidebar": "Antimony Modular Bio",
+    "ext": ".ant",
+    "role": "Modular human-readable systems biology models",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/antimony",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "SBML",
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "bngl",
+    "name": "BioNetGen (BNGL)",
+    "sidebar": "BioNetGen Rule Networks",
+    "ext": ".bngl",
+    "role": "Rule-based multiprotein signaling & reaction expansion",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/bngl",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "SBML",
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "sbol",
+    "name": "SBOL3",
+    "sidebar": "SBOL3 Genetic Circuits",
+    "ext": ".sbol",
+    "role": "Synthetic biology genetic circuits & Hill kinetics",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/sbol",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "SBML",
+        "OWL2"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "sedml",
+    "name": "SED-ML",
+    "sidebar": "SED-ML Bio Experiments",
+    "ext": ".sedml",
+    "role": "COMBINE reproducible simulation experiment protocols",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/sedml",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "SBML",
+        "Modelica"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "nmtran",
+    "name": "NMTRAN (NONMEM)",
+    "sidebar": "NMTRAN Pharmacometrics",
+    "ext": ".ctl",
+    "role": "Clinical PK/PD compartmental dosing & exposure",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/nmtran",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "pdb",
+    "name": "PDB / mmCIF",
+    "sidebar": "PDB Macromolecular 3D",
+    "ext": ".pdb",
+    "role": "3D protein structures, Ramachandran & GNM dynamics",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/pdb",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "SBML",
+        "OWL2"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "genbank",
+    "name": "GenBank / FASTA",
+    "sidebar": "GenBank & FASTA DNA",
+    "ext": ".gb",
+    "role": "Annotated nucleotide sequences, ORFs & restriction maps",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/genbank",
+    "version": "0.1.0",
+    "tier": "preview",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "SBML",
+        "OWL2"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "cellml",
+    "name": "CellML",
+    "sidebar": "CellML Electrophysiology",
+    "ext": ".cellml",
+    "role": "Cellular electrophysiology & Physiome ODE models",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/cellml",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx cellml",
+    "actions": [
+      "inspect",
+      "validate",
+      "simulate",
+      "to-modelica",
+      "to-sbml",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "opensim",
+    "name": "OpenSim",
+    "sidebar": "OpenSim Biomechanics",
+    "ext": ".osim",
+    "role": "Musculoskeletal multibody & Hill-type muscle dynamics",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/opensim",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx opensim",
+    "actions": [
+      "inspect",
+      "validate",
+      "simulate",
+      "to-modelica",
+      "to-urdf",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "febio",
+    "name": "FEBio / SOFA",
+    "sidebar": "FEBio Soft-Tissue FEA",
+    "ext": ".feb",
+    "role": "Hyperelastic soft-tissue biomechanics & surgical scenes",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/febio",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx febio",
+    "actions": [
+      "inspect",
+      "validate",
+      "solve",
+      "to-inp",
+      "to-modelica",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "STEP",
+        "OpenSCAD"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "dicom-rt",
+    "name": "DICOM-RT",
+    "sidebar": "DICOM-RT Radiotherapy",
+    "ext": ".rtplan",
+    "role": "Clinical radiotherapy plans, DVH metrics & BED/EQD2",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/dicom-rt",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx dicom-rt",
+    "actions": [
+      "inspect",
+      "validate",
+      "dosimetry",
+      "to-scad",
+      "to-sysml",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "SysML v2",
+        "NIfTI",
+        "DICOM-RT"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "topas",
+    "name": "TOPAS / GATE",
+    "sidebar": "TOPAS Proton Therapy",
+    "ext": ".topas",
+    "role": "Proton & hadrontherapy nozzles and Bortfeld Bragg peaks",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/topas",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx topas",
+    "actions": [
+      "inspect",
+      "validate",
+      "bragg-peak",
+      "to-scad",
+      "to-modelica",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "NIfTI",
+        "DICOM-RT"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "nifti",
+    "name": "NIfTI / NRRD",
+    "sidebar": "NIfTI & NRRD Imaging",
+    "ext": ".nii",
+    "role": "Volumetric medical imaging, RAS affines & iso-surfacing",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/nifti",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx nifti",
+    "actions": [
+      "inspect",
+      "validate",
+      "mesh",
+      "to-scad",
+      "to-step",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "NIfTI",
+        "DICOM-RT"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "three-mf",
+    "name": "3MF Medical",
+    "sidebar": "3MF Surgical Guides",
+    "ext": ".3mf",
+    "role": "Patient-specific 3D-printed cutting guides & implants",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/three-mf",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx three-mf",
+    "actions": [
+      "inspect",
+      "validate",
+      "topology",
+      "to-step",
+      "to-scad",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "STEP",
+        "OpenSCAD"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "igtl",
+    "name": "OpenIGTLink / PLUS",
+    "sidebar": "OpenIGTLink Navigation",
+    "ext": ".igtl",
+    "role": "Image-guided surgical tracking, pivot calibration & TRE",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/igtl",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx igtl",
+    "actions": [
+      "inspect",
+      "validate",
+      "calibrate",
+      "to-urdf",
+      "to-modelica",
+      "to-dae"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "Modelica",
+        "URDF",
+        "DICOM-RT"
       ]
     },
     "ruleCount": 10

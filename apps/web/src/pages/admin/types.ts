@@ -54,6 +54,7 @@ export type AdminTab =
   | "dmca"
   | "audit"
   | "database"
+  | "openalex"
   | "flags"
   | "analytics"
   | "settings"

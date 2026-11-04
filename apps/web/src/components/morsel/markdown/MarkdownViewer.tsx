@@ -58,7 +58,16 @@ export function MarkdownViewer({ content, context, className }: MarkdownViewerPr
         return (
           <span
             {...rest}
-            className="morsel-var bg-blue-50 text-blue-700 px-1 py-0.5 rounded font-mono text-sm border border-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800"
+            className="morsel-var"
+            style={{
+              padding: "2px 4px",
+              borderRadius: 4,
+              border: "1px solid color-mix(in srgb, var(--ms-brand) 30%, transparent)",
+              background: "var(--ms-brand-soft)",
+              color: "var(--ms-brand)",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: "0.875em",
+            }}
             title={`Variable: ${name}`}
           >
             {displayValue}

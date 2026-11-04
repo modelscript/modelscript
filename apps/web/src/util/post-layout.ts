@@ -76,6 +76,9 @@ export function estimatePostHeight(post: PostLayoutTarget | null | undefined): n
         break;
 
       case "pdf":
+        height += 480;
+        break;
+
       case "ssp":
       case "ssd":
         height += 580;

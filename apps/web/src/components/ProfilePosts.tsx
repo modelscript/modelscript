@@ -9,7 +9,7 @@ import Box from "./Box";
 import Post from "./Post";
 import VirtualPostList from "./VirtualPostList";
 
-function getStoredPinnedIds(username: string): { pinned: number[]; unpinned: number[] } {
+function getStoredPinnedIds(username: string): { pinned: string[]; unpinned: string[] } {
   if (typeof window === "undefined" || !username) {
     return { pinned: [], unpinned: [] };
   }
@@ -18,18 +18,18 @@ function getStoredPinnedIds(username: string): { pinned: number[]; unpinned: num
     if (!raw) return { pinned: [], unpinned: [] };
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return { pinned: parsed.map(Number).filter(Number.isFinite), unpinned: [] };
+      return { pinned: parsed.map(String).filter(Boolean), unpinned: [] };
     }
     return {
-      pinned: Array.isArray(parsed?.pinned) ? parsed.pinned.map(Number).filter(Number.isFinite) : [],
-      unpinned: Array.isArray(parsed?.unpinned) ? parsed.unpinned.map(Number).filter(Number.isFinite) : [],
+      pinned: Array.isArray(parsed?.pinned) ? parsed.pinned.map(String).filter(Boolean) : [],
+      unpinned: Array.isArray(parsed?.unpinned) ? parsed.unpinned.map(String).filter(Boolean) : [],
     };
   } catch {
     return { pinned: [], unpinned: [] };
   }
 }
 
-function saveStoredPinnedIds(username: string, pinned: Set<number>, unpinned: Set<number>) {
+function saveStoredPinnedIds(username: string, pinned: Set<string>, unpinned: Set<string>) {
   if (typeof window === "undefined" || !username) return;
   try {
     window.localStorage.setItem(
@@ -49,7 +49,7 @@ export interface ProfilePostsProps {
   type?: "posts" | "replies" | "artifacts" | undefined;
   isOwnProfile?: boolean | undefined;
   pinnedPostId?: number | string | null | undefined;
-  onPinChange?: ((postId: number, pinned: boolean) => void) | undefined;
+  onPinChange?: ((postId: number | string, pinned: boolean) => void) | undefined;
 }
 
 export default function ProfilePosts({
@@ -63,18 +63,14 @@ export default function ProfilePosts({
   const canManagePins = isOwnProfile || Boolean(user?.username && user.username === username);
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pinnedIds, setPinnedIds] = useState<Set<number>>(() => new Set(getStoredPinnedIds(username).pinned));
-  const [unpinnedIds, setUnpinnedIds] = useState<Set<number>>(() => new Set(getStoredPinnedIds(username).unpinned));
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => new Set(getStoredPinnedIds(username).pinned));
+  const [unpinnedIds, setUnpinnedIds] = useState<Set<string>>(() => new Set(getStoredPinnedIds(username).unpinned));
 
   useEffect(() => {
     const stored = getStoredPinnedIds(username);
     const initialPinned = new Set(stored.pinned);
-    if (
-      pinnedPostId != null &&
-      Number.isFinite(Number(pinnedPostId)) &&
-      !stored.unpinned.includes(Number(pinnedPostId))
-    ) {
-      initialPinned.add(Number(pinnedPostId));
+    if (pinnedPostId != null && String(pinnedPostId).trim() !== "" && !stored.unpinned.includes(String(pinnedPostId))) {
+      initialPinned.add(String(pinnedPostId));
     }
     setPinnedIds(initialPinned);
     setUnpinnedIds(new Set(stored.unpinned));
@@ -105,10 +101,10 @@ export default function ProfilePosts({
 
   const isPostPinned = useCallback(
     (post: PostItem): boolean => {
-      const id = Number(post.id);
+      const id = String(post.id);
       if (unpinnedIds.has(id)) return false;
       if (pinnedIds.has(id)) return true;
-      if (pinnedPostId != null && Number(pinnedPostId) === id) return true;
+      if (pinnedPostId != null && String(pinnedPostId) === id) return true;
       const anyPost = post as Record<string, any>;
       return Boolean(anyPost.is_pinned || anyPost.pinned || post.metadata?.is_pinned || post.metadata?.pinned);
     },
@@ -117,7 +113,7 @@ export default function ProfilePosts({
 
   const handleTogglePin = useCallback(
     async (post: PostItem) => {
-      const id = Number(post.id);
+      const id = String(post.id);
       const currentlyPinned = isPostPinned(post);
       const nextPinned = !currentlyPinned;
 
@@ -138,7 +134,7 @@ export default function ProfilePosts({
 
       setPosts((prev) =>
         prev.map((p) =>
-          Number(p.id) === id
+          String(p.id) === id
             ? ({
                 ...p,
                 is_pinned: nextPinned,
@@ -177,9 +173,9 @@ export default function ProfilePosts({
     const onExternalPinEvent = (e: Event) => {
       const detail = (e as CustomEvent)?.detail;
       if (!detail || (detail.username && detail.username !== username)) return;
-      const postId = Number(detail.postId);
-      if (!Number.isFinite(postId)) return;
-      const targetPost = posts.find((p) => Number(p.id) === postId);
+      const postId = String(detail.postId || "");
+      if (!postId) return;
+      const targetPost = posts.find((p) => String(p.id) === postId);
       if (targetPost && typeof detail.pinned === "boolean" && isPostPinned(targetPost) !== detail.pinned) {
         void handleTogglePin(targetPost);
       }

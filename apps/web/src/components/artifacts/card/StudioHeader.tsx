@@ -18,13 +18,16 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
+import { buildCitationFromArtifact } from "../../../util/citations";
 import {
   buildEditorUrlForArtifact,
+  isEditableCodeOrModelArtifact,
   isMultiFileArtifact,
   openArtifactInVsCodeWindow,
 } from "../../../util/editor-routing";
 import { sanitizeHttpUrl } from "../../../util/url";
 import Box from "../../Box";
+import { CiteButton } from "../../citations/CiteButton";
 import { VsCodeIcon } from "../../icons/VsCodeIcon";
 
 const StudioHeaderBar = styled(Box)`
@@ -82,10 +85,12 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   const navigate = useNavigate();
   const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
 
-  const isMultiFile = isMultiFileArtifact({
+  const artifactDescriptor = {
     view_type: artifact?.view_type,
     view_config: viewConfig,
-  });
+  };
+  const isMultiFile = isMultiFileArtifact(artifactDescriptor);
+  const isEditable = isEditableCodeOrModelArtifact(artifactDescriptor);
 
   const handleOpenVsCode = (e?: React.MouseEvent | React.KeyboardEvent) => {
     e?.stopPropagation?.();
@@ -300,6 +305,21 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               {copiedLink ? <CheckIcon size={14} /> : <LinkIcon size={14} />}
               {copiedLink ? "Copied" : "Share"}
             </button>
+            <CiteButton
+              target={buildCitationFromArtifact({
+                id: Number(artifactId || artifact?.id || 0),
+                title: artifact?.title || artifact?.name || viewConfig?.title,
+                viewType: artifact?.view_type,
+                authorUsername: artifact?.username,
+                authorDisplayName: artifact?.display_name,
+                createdAt: artifact?.created_at,
+                description: viewConfig?.description || viewConfig?.caption,
+                localPdfUrl: String(artifact?.view_type || "").toLowerCase() === "pdf" ? downloadAssetUrl : null,
+              })}
+              label="Cite"
+              variant="button"
+              testId={`studio-header-cite-btn-${artifactId}`}
+            />
 
             {downloadAssetUrl && (
               <a
@@ -382,7 +402,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 ☁️ Run on HPC
               </button>
             )}
-            {!isMultiFile && (
+            {isEditable && !isMultiFile && (
               <button
                 className="studio-hide-mobile"
                 onClick={handleOpenEditor}
@@ -404,26 +424,28 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 <PlayIcon size={14} /> Open in Playground
               </button>
             )}
-            <button
-              className="studio-hide-mobile"
-              onClick={handleOpenVsCode}
-              style={{
-                background: "linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(59, 130, 246, 0.18))",
-                color: "#38bdf8",
-                border: "1px solid rgba(56, 189, 248, 0.4)",
-                borderRadius: "6px",
-                padding: "5px 10px",
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-              title="Open in VS Code (New Window)"
-            >
-              <VsCodeIcon size={14} color="#38bdf8" /> VS Code ↗
-            </button>
+            {isEditable && (
+              <button
+                className="studio-hide-mobile"
+                onClick={handleOpenVsCode}
+                style={{
+                  background: "linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(59, 130, 246, 0.18))",
+                  color: "#38bdf8",
+                  border: "1px solid rgba(56, 189, 248, 0.4)",
+                  borderRadius: "6px",
+                  padding: "5px 10px",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+                title="Open in VS Code (New Window)"
+              >
+                <VsCodeIcon size={14} color="#38bdf8" /> VS Code ↗
+              </button>
+            )}
           </>
         )}
         <button
@@ -482,7 +504,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                     </ActionList.LeadingVisual>
                     {copiedLink ? "Copied Link" : "Share / Copy Link"}
                   </ActionList.Item>
-                  {!isMultiFile && (
+                  {isEditable && !isMultiFile && (
                     <ActionList.Item onSelect={(e) => handleOpenEditor(e)}>
                       <ActionList.LeadingVisual>
                         <PlayIcon />
@@ -530,12 +552,14 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                       Download Asset
                     </ActionList.LinkItem>
                   )}
-                  <ActionList.Item onSelect={(e) => handleOpenVsCode(e)}>
-                    <ActionList.LeadingVisual>
-                      <VsCodeIcon size={14} color="#38bdf8" />
-                    </ActionList.LeadingVisual>
-                    Open in VS Code
-                  </ActionList.Item>
+                  {isEditable && (
+                    <ActionList.Item onSelect={(e) => handleOpenVsCode(e)}>
+                      <ActionList.LeadingVisual>
+                        <VsCodeIcon size={14} color="#38bdf8" />
+                      </ActionList.LeadingVisual>
+                      Open in VS Code
+                    </ActionList.Item>
+                  )}
                 </ActionList>
               </ActionMenu.Overlay>
             </ActionMenu>

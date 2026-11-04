@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export interface PostLocationItem {
-  postId: number;
+  postId: number | string;
   countryCode: string;
   regionCode: string | null;
   count: number;
@@ -31,7 +31,7 @@ export interface PackageDownloadItem {
 }
 
 export interface BatchAnalyticsPayload {
-  postViews: [number, number][]; // [postId, delta][]
+  postViews: [number | string, number][]; // [postId, delta][]
   postLocationViews: PostLocationItem[];
   pageViews: PageViewItem[];
   pageLocationViews: PageLocationItem[];
@@ -59,7 +59,7 @@ export interface AnalyticsBufferOptions {
  * upon threshold in a single atomic SQLite transaction, reducing disk writes by 99.9%.
  */
 export class AnalyticsBuffer {
-  private postViews = new Map<number, number>();
+  private postViews = new Map<number | string, number>();
   private postLocationViews = new Map<string, PostLocationItem>();
   private pageViews = new Map<string, PageViewItem>();
   private pageLocationViews = new Map<string, PageLocationItem>();
@@ -117,10 +117,10 @@ export class AnalyticsBuffer {
   /**
    * Checks whether the given post has any uncommitted view counts or location stats in memory.
    */
-  public hasPostPending(postId: number): boolean {
+  public hasPostPending(postId: number | string): boolean {
     if (this.postViews.has(postId)) return true;
     for (const item of this.postLocationViews.values()) {
-      if (item.postId === postId) return true;
+      if (item.postId === postId || String(item.postId) === String(postId)) return true;
     }
     return false;
   }
@@ -128,8 +128,14 @@ export class AnalyticsBuffer {
   /**
    * Buffers a social post view and optional geographic breakdown.
    */
-  public incrementPostView(postId: number, countryCode?: string, regionCode?: string): void {
-    if (!Number.isFinite(postId) || postId <= 0) return;
+  public incrementPostView(postId: number | string, countryCode?: string, regionCode?: string): void {
+    if (
+      !postId ||
+      (typeof postId === "number" && (!Number.isFinite(postId) || postId <= 0)) ||
+      (typeof postId === "string" && !postId.trim())
+    ) {
+      return;
+    }
 
     this.postViews.set(postId, (this.postViews.get(postId) ?? 0) + 1);
 

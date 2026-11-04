@@ -75,23 +75,18 @@ Source (.mo) → WASM GLR Parser → Linear Memory CST
 | `apps/docs/`              | Unified `modelscript.org` website and VitePress documentation portal (`@modelscript/docs`)                                                                                  |
 | `ee/`                     | Enterprise Edition (`@modelscript/ee`) — Ed25519 offline license verifier, NERC CIP / FERC CEII / FDA 21 CFR Part 11 compliance, SSO/SAML, RBAC, Slurm HPC, Digital Twin    |
 
-### Polyglot Languages (`languages/`)
+### Polyglot Languages (`languages/` — 66 Languages)
 
-ModelScript is a polyglot compiler supporting multiple engineering domains with unified querying and cross-language interoperability:
+ModelScript is a polyglot compiler supporting **66 engineering languages and simulation formats** across 8 domain clusters with unified querying, `DAEBuilder` lowering, and cross-language interoperability. Each package declares its maturity tier in `package.json#modelscript.tier` (`"stable"` [14], `"beta"` [26], or `"preview"` [26]), validated by `npm run lint:manifests`:
 
-- `languages/modelica/`: Modelica 3.x simulation and physical modeling
-- `languages/sysml2/`: SysML v2 AST querying, KerML standard library snapshot, and verification
-- `languages/step/`: STEP (ISO 10303) grammar and querying for CAD/CAE interoperability
-- `languages/owl2/`: OWL2 Functional Syntax parsing and ontological knowledge extraction
-- `languages/csv/`: CSV tabular data parsing and validation
-- `languages/cfd/`: CFD mesh & SU2 dialect support
-- `languages/fea/`: Finite element analysis configuration
-- `languages/scad/`: OpenSCAD language support and CSG evaluator
-- `languages/ssp/`: System Structure and Parameterization definitions
-- `languages/pscad/`: PSCAD power systems (`.pscx`, `.pslx`), EMT solver, IEEE 2800 verification, and COMTRADE support
-- `languages/gensys/`: GENSYS railway vehicle dynamics, track geometry/irregularities, FASTSIM contact, and EN 14363 acceptance
-- `languages/simpack/`: SIMPACK multibody dynamics (`.spck`, `.sim`), spatial kinematics, mobility analysis, and DAE lowering
-- `languages/modelscript/`: Native ModelScript (`.msx`) language syntax and compiler
+- **Native & Core Systems Engineering (8):** `modelscript` (`Stable`), `modelica` (`Stable`), `sysml2` (`Stable`), `ssp` (`Stable`), `reqif` (`Stable`), `oscal` (`Beta`), `owl2` (`Stable`), `csv` (`Stable`)
+- **Electrical Power Grids, RF & Electronics (7):** `pscad` (`Stable`), `psse` (`Preview`), `opendss` (`Preview`), `spice` (`Stable`), `verilog-a` (`Beta`), `ibis` (`Preview`), `touchstone` (`Preview`)
+- **Fluid, Process, Subsurface, Civil Water & Nuclear (8):** `olga` (`Stable`), `lps` (`Stable`), `aspen` (`Preview`), `eclipse` (`Preview`), `epanet` (`Beta`), `swmm` (`Preview`), `relap5` (`Preview`), `energyplus` (`Beta`)
+- **Multibody, Automotive, Robotics, Marine & Rail (9):** `adams` (`Beta`), `simpack` (`Beta`), `gensys` (`Stable`), `gtsuite` (`Beta`), `sima` (`Preview`), `urdf` (`Beta`), `opendrive` (`Beta`), `openscenario` (`Preview`), `autosar` (`Beta`)
+- **Aerospace, Flight Dynamics, Astrodynamics & Controls (7):** `simulink` (`Beta`), `easy5` (`Beta`), `jsbsim` (`Preview`), `rocets` (`Beta`), `ccsds` (`Beta`), `plcopen` (`Beta`), `automationml` (`Beta`)
+- **3D CAD, Digital Metrology & Continuum Physics (5):** `step` (`Stable`), `qif` (`Beta`), `scad` (`Stable`), `fea` (`Preview`), `cfd` (`Preview`)
+- **Chemistry, Systems/Synthetic Biology & Scientific Code (14):** `sbml` (`Preview`), `antimony` (`Preview`), `cantera` (`Preview`), `smiles` (`Preview`), `nmtran` (`Preview`), `sbol` (`Preview`), `bngl` (`Preview`), `sedml` (`Preview`), `pdb` (`Preview`), `genbank` (`Preview`), `gproms` (`Preview`), `phreeqc` (`Preview`), `fortran` (`Preview`), `c` (`Beta`)
+- **Radiology, Radiation Oncology & Computer-Assisted Surgery (8):** `opensim` (`Beta`), `dicom-rt` (`Beta`), `cellml` (`Beta`), `febio` (`Beta`), `nifti` (`Beta`), `topas` (`Beta`), `three-mf` (`Beta`), `igtl` (`Beta`)
 
 ### SymbolIndex Data Model
 

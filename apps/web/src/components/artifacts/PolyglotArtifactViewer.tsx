@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { renderDicomRtBevSvg, renderDicomRtDvhSvg } from "@modelscript/diagram/dicom-rt-diagram-builder";
+import { renderIgtlTransformTreeSvg } from "@modelscript/diagram/igtl-diagram-builder";
+import { renderOpenSimTopologySvg } from "@modelscript/diagram/opensim-diagram-builder";
 import { parsePlcopenTextToProject, renderPlcopenSvg } from "@modelscript/diagram/plcopen-diagram-builder";
 import { renderQifMbdHeatmapSvg } from "@modelscript/diagram/qif-diagram-builder";
 import { parseSimulinkTextToSystem, renderSimulinkSvg } from "@modelscript/diagram/simulink-diagram-builder";
 import { renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
+import { parseDicomRt } from "@modelscript/dicom-rt/parser";
+import { parseIgtl } from "@modelscript/igtl/parser";
+import { parseOpenSim } from "@modelscript/opensim/parser";
 import { parseQif } from "@modelscript/qif/parser";
 import {
   BeakerIcon,
@@ -49,42 +55,70 @@ import { adaptSvgMarkupForTheme, resolveCurrentThemeIsDark } from "./svg-theme";
 // eslint-disable-next-line react-refresh/only-export-components
 export { adaptSvgMarkupForTheme };
 
+const SANITIZE_SVG_CACHE_LIMIT = 256;
+const sanitizedBaseSvgCache = new Map<string, string>();
+const sanitizedThemedSvgCache = new Map<string, string>();
+
+function setBoundedMap<V>(map: Map<string, V>, key: string, value: V, limit = SANITIZE_SVG_CACHE_LIMIT): void {
+  if (map.size >= limit && !map.has(key)) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey !== undefined) {
+      map.delete(oldestKey);
+    }
+  }
+  map.set(key, value);
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions): string {
   if (!rawSvg) return "";
-  // Strip any @import rules from embedded SVG styles to prevent font-swapping and CSSOM reflows
-  const noImportSvg = rawSvg.replace(/@import\s+(?:url\([^)]+\)|['"][^'"]+['"])\s*;?/gi, "");
   const isDark = resolveCurrentThemeIsDark(options?.isDark);
-  const themedSvg = adaptSvgMarkupForTheme(noImportSvg, isDark);
-  const sanitized = DOMPurify.sanitize(themedSvg, {
-    USE_PROFILES: { svg: true, svgFilters: true },
-    ALLOW_DATA_ATTR: true,
-    ADD_TAGS: ["use", "foreignObject"],
-    ADD_ATTR: [
-      "target",
-      "xlink:href",
-      "viewBox",
-      "preserveAspectRatio",
-      "marker-end",
-      "marker-start",
-      "style",
-      "data-fmu",
-      "data-node",
-      "data-id",
-      "data-kind",
-      "data-line-index",
-      "data-reqif-id",
-    ],
-  });
   const maxH = options?.maxHeight ?? (options?.isFullScreen ? "none" : "360px");
-  return sanitized.replace(/<svg\b([^>]*)>/i, (_match, attrs: string) => {
-    const existingStyle = /\sstyle=["']([^"']*)["']/i.exec(attrs)?.[1] ?? "";
-    const bgMatch = /\bbackground(?:-color)?\s*:\s*([^;]+)/i.exec(existingStyle);
-    const preservedBg = bgMatch ? `background-color:${bgMatch[1]!.trim()};border-radius:6px;` : "";
-    const cleanedAttrs = attrs.replace(/\sstyle=["'][^"']*["']/i, "");
-    return `<svg${cleanedAttrs} style="${preservedBg}width:100%;max-width:100%;height:auto;max-height:${maxH};display:block;margin:0 auto;">`;
-  });
+  const themedCacheKey = `${isDark ? "d" : "l"}|${maxH}|${rawSvg}`;
+  const cachedThemed = sanitizedThemedSvgCache.get(themedCacheKey);
+  if (cachedThemed !== undefined) return cachedThemed;
+
+  const baseCacheKey = `${maxH}|${rawSvg}`;
+  let baseSanitized = sanitizedBaseSvgCache.get(baseCacheKey);
+  if (baseSanitized === undefined) {
+    // Strip any @import rules from embedded SVG styles to prevent font-swapping and CSSOM reflows
+    const noImportSvg = rawSvg.replace(/@import\s+(?:url\([^)]+\)|['"][^'"]+['"])\s*;?/gi, "");
+    const sanitized = DOMPurify.sanitize(noImportSvg, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+      ALLOW_DATA_ATTR: true,
+      ADD_TAGS: ["use", "foreignObject"],
+      ADD_ATTR: [
+        "target",
+        "xlink:href",
+        "viewBox",
+        "preserveAspectRatio",
+        "marker-end",
+        "marker-start",
+        "style",
+        "data-fmu",
+        "data-node",
+        "data-id",
+        "data-kind",
+        "data-line-index",
+        "data-reqif-id",
+      ],
+    });
+    baseSanitized = sanitized.replace(/<svg\b([^>]*)>/i, (_match, attrs: string) => {
+      const existingStyle = /\sstyle=["']([^"']*)["']/i.exec(attrs)?.[1] ?? "";
+      const bgMatch = /\bbackground(?:-color)?\s*:\s*([^;]+)/i.exec(existingStyle);
+      const preservedBg = bgMatch ? `background-color:${bgMatch[1]!.trim()};border-radius:6px;` : "";
+      const cleanedAttrs = attrs.replace(/\sstyle=["'][^"']*["']/i, "");
+      return `<svg${cleanedAttrs} style="${preservedBg}width:100%;max-width:100%;height:auto;max-height:${maxH};display:block;margin:0 auto;">`;
+    });
+    setBoundedMap(sanitizedBaseSvgCache, baseCacheKey, baseSanitized);
+  }
+
+  const out = adaptSvgMarkupForTheme(baseSanitized, isDark);
+  setBoundedMap(sanitizedThemedSvgCache, themedCacheKey, out);
+  return out;
 }
+
+const diagramSourceCache = new Map<string, { rawSvg: string; nodeCount: number; edgeCount: number }>();
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function renderSourceToDiagramSvg(
@@ -99,6 +133,23 @@ export function renderSourceToDiagramSvg(
   }
 
   const normalizedLang = dslLang.toLowerCase();
+  const usesThemeInBuilder =
+    normalizedLang !== "simulink" &&
+    normalizedLang !== "plcopen" &&
+    normalizedLang !== "qif" &&
+    normalizedLang !== "opensim" &&
+    normalizedLang !== "dicom-rt" &&
+    normalizedLang !== "igtl";
+  const cacheKey = `${normalizedLang}|${_fallbackTitle}|${usesThemeInBuilder ? (isDark ? "d" : "l") : "*"}|${content}`;
+  const cachedDiagram = diagramSourceCache.get(cacheKey);
+  if (cachedDiagram !== undefined) {
+    return {
+      svg: cachedDiagram.rawSvg ? sanitizeSvgMarkup(cachedDiagram.rawSvg, { isFullScreen, isDark }) : "",
+      nodeCount: cachedDiagram.nodeCount,
+      edgeCount: cachedDiagram.edgeCount,
+    };
+  }
+
   if (normalizedLang === "simulink") {
     try {
       const parsed = parseSimulinkTextToSystem(content, _fallbackTitle);
@@ -106,6 +157,11 @@ export function renderSourceToDiagramSvg(
       const linesArr = parsed.rootSystem.lines ?? [];
       if (blocksArr.length > 0) {
         const rawSvg = renderSimulinkSvg(parsed);
+        setBoundedMap(diagramSourceCache, cacheKey, {
+          rawSvg,
+          nodeCount: blocksArr.length,
+          edgeCount: linesArr.length,
+        });
         return {
           svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
           nodeCount: blocksArr.length,
@@ -125,10 +181,13 @@ export function renderSourceToDiagramSvg(
         const primaryPou = parsed.pous[0]!;
         const varCount = primaryPou.variables.length;
         const ioCount = primaryPou.variables.filter((v) => v.scope === "input" || v.scope === "output").length;
+        const nodeCount = Math.max(1, varCount);
+        const edgeCount = Math.max(1, ioCount);
+        setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
         return {
           svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
-          nodeCount: Math.max(1, varCount),
-          edgeCount: Math.max(1, ioCount),
+          nodeCount,
+          edgeCount,
         };
       }
     } catch {
@@ -141,14 +200,74 @@ export function renderSourceToDiagramSvg(
       const doc = parseQif(content, _fallbackTitle);
       if (doc.features.length > 0 || doc.characteristics.length > 0) {
         const rawSvg = renderQifMbdHeatmapSvg(doc);
+        const nodeCount = Math.max(1, doc.features.length);
+        const edgeCount = Math.max(1, doc.characteristics.length);
+        setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
         return {
           svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
-          nodeCount: Math.max(1, doc.features.length),
-          edgeCount: Math.max(1, doc.characteristics.length),
+          nodeCount,
+          edgeCount,
         };
       }
     } catch {
       // Fall through to generic polyglot extractor if QIF parse fails
+    }
+  }
+
+  if (normalizedLang === "opensim") {
+    try {
+      const doc = parseOpenSim(content, _fallbackTitle);
+      if (doc.bodies.length > 0 || doc.joints.length > 0 || doc.muscles.length > 0) {
+        const rawSvg = renderOpenSimTopologySvg(doc);
+        const nodeCount = Math.max(1, doc.bodies.length);
+        const edgeCount = Math.max(1, doc.joints.length + doc.muscles.length);
+        setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
+        return {
+          svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
+          nodeCount,
+          edgeCount,
+        };
+      }
+    } catch {
+      // Fall through to generic polyglot extractor if OpenSim parse fails
+    }
+  }
+
+  if (normalizedLang === "dicom-rt") {
+    try {
+      const doc = parseDicomRt(content, _fallbackTitle);
+      if (doc.beams.length > 0 || doc.dvhs.length > 0 || doc.structures.length > 0) {
+        const rawSvg = doc.beams.length > 0 ? renderDicomRtBevSvg(doc) : renderDicomRtDvhSvg(doc);
+        const nodeCount = Math.max(1, doc.structures.length);
+        const edgeCount = Math.max(1, doc.beams.length + doc.dvhs.length);
+        setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
+        return {
+          svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
+          nodeCount,
+          edgeCount,
+        };
+      }
+    } catch {
+      // Fall through to generic polyglot extractor if DICOM-RT parse fails
+    }
+  }
+
+  if (normalizedLang === "igtl") {
+    try {
+      const doc = parseIgtl(content, _fallbackTitle);
+      if (doc.transforms.length > 0 || doc.devices.length > 0 || doc.messages.length > 0) {
+        const rawSvg = renderIgtlTransformTreeSvg(doc);
+        const nodeCount = Math.max(1, doc.devices.length + doc.transforms.length);
+        const edgeCount = Math.max(1, doc.transforms.length);
+        setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
+        return {
+          svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
+          nodeCount,
+          edgeCount,
+        };
+      }
+    } catch {
+      // Fall through to generic polyglot extractor if IGTL parse fails
     }
   }
 
@@ -445,6 +564,7 @@ export function renderSourceToDiagramSvg(
   }
 
   if (nodes.length === 0 || (edges.length === 0 && nodes.length <= 1)) {
+    setBoundedMap(diagramSourceCache, cacheKey, { rawSvg: "", nodeCount: 0, edgeCount: 0 });
     return { svg: "", nodeCount: 0, edgeCount: 0 };
   }
 
@@ -458,6 +578,7 @@ export function renderSourceToDiagramSvg(
       } as any,
       { theme: isDark ? "dark" : "light" },
     );
+    setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount: nodes.length, edgeCount: edges.length });
     return {
       svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
       nodeCount: nodes.length,

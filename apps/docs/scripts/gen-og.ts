@@ -43,7 +43,7 @@ function renderOgSvg(title: string, subtitle: string, eyebrow = "MODELSCRIPT"): 
   <text x="112" y="156" fill="#22d3ee" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" letter-spacing="4">${escapeXml(eyebrow)}</text>
   <text x="112" y="260" fill="#f8fafc" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="800">${escapeXml(title)}</text>
   <text x="112" y="340" fill="#94a3b8" font-family="system-ui, -apple-system, sans-serif" font-size="30" font-weight="500">${escapeXml(subtitle.slice(0, 72))}</text>
-  <text x="112" y="505" fill="#64748b" font-family="ui-monospace, SFMono-Regular, monospace" font-size="22">modelscript.org · Computable Digital Thread · 44 Engineering Formats</text>
+  <text x="112" y="505" fill="#64748b" font-family="ui-monospace, SFMono-Regular, monospace" font-size="22">modelscript.org · Computable Digital Thread · ${LANGUAGES.length} Engineering Formats</text>
 </svg>
 `;
 }

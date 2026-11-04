@@ -14,10 +14,16 @@ const styled: typeof styledImport =
 const EmbeddedViewerSlot = styled.div<{ $isFullScreen: boolean }>`
   width: 100%;
   height: ${(p) => (p.$isFullScreen ? "100%" : "auto")};
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   & > * {
     border: none !important;
     border-radius: 0 !important;
     margin: 0 !important;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 `;
 
@@ -98,6 +104,7 @@ export function getViewerExpectedHeight(
     case "owl2":
       return "450px";
     case "pdf":
+      return "420px";
     case "ssp":
     case "ssd":
       return "520px";

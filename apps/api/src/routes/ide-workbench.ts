@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import type { LibraryDatabase } from "../database.js";
 import { optionalAuth } from "../middleware/auth-middleware.js";
 import { ensureUserActivityRepo } from "../services/activity-git.js";
+import { normalizeWorkspaceTemplate } from "../util/snowflake.js";
 
 const ROUTES_DIR = path.dirname(fileURLToPath(import.meta.url));
 const API_ROOT = path.resolve(ROUTES_DIR, "../..");
@@ -271,8 +272,8 @@ export function renderWorkbenchHtml(
           } catch (e) {}
         }
       }
-      if (template.startsWith('artifact-')) {
-        var artId = template.slice(9);
+      if (template.startsWith('artifact-') || /^\\d+$/.test(template)) {
+        var artId = template.startsWith('artifact-') ? template.slice(9) : template;
         var cachedTitle = null;
         try {
           var cached = sessionStorage.getItem('modelscript.artifact_' + artId) ||
@@ -284,7 +285,7 @@ export function renderWorkbenchHtml(
             if (parsed && parsed.title) cachedTitle = parsed.title;
           }
         } catch (e) {}
-        document.title = (cachedTitle || ('Artifact #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Ansatz IDE (Powered by ModelScript)';
+        document.title = (cachedTitle || ('Workspace #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Ansatz IDE (Powered by ModelScript)';
       } else if (template.startsWith('package-')) {
         document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Ansatz IDE (Powered by ModelScript)';
       } else {
@@ -326,6 +327,7 @@ export function renderWorkbenchHtml(
       try {
         sessionStorage.setItem('modelscript.artifact_' + data.artifactId, JSON.stringify(data));
         localStorage.setItem('modelscript.artifact_' + data.artifactId, JSON.stringify(data));
+        localStorage.setItem('modelscript:ide:memfs:' + data.artifactId, JSON.stringify(data));
         localStorage.setItem('modelscript:ide:memfs:artifact-' + data.artifactId, JSON.stringify(data));
         if (data.title) {
           document.title = data.title + ' — Ansatz IDE (Powered by ModelScript)';
@@ -1304,15 +1306,19 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
 
   // VS Code Web Workbench HTML endpoint
   router.get("/vscode/workbench", (req, res) => {
-    const folder = (req.query["folder"] as string) || "";
+    const rawFolder =
+      (req.query["folder"] as string) || (req.query["template"] ? `memfs:${req.query["template"]}` : "");
     let folderConfig: Record<string, unknown> | null = null;
 
-    if (folder) {
-      if (folder.startsWith("memfs:")) {
-        const template = folder.split(":")[1] || "empty";
+    if (rawFolder) {
+      if (rawFolder.startsWith("memfs:")) {
+        const rawTemplate = rawFolder.split(":")[1] || "empty";
+        const normalized = normalizeWorkspaceTemplate(rawTemplate);
+        const template =
+          normalized.isWorkspace && normalized.workspaceId !== "scratch" ? normalized.workspaceId : rawTemplate;
         folderConfig = { scheme: "memfs", authority: "", path: "/" + template };
       } else {
-        const match = folder.match(/^github:\/\/\/([^/]+)\/([^/?]+)(?:\?ref=(.+))?$/);
+        const match = rawFolder.match(/^github:\/\/\/([^/]+)\/([^/?]+)(?:\?ref=(.+))?$/);
         if (!match) {
           res.status(400).send("Invalid folder URI. Expected: github:///owner/repo?ref=branch or memfs:template");
           return;

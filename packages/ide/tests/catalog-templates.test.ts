@@ -28,14 +28,18 @@ class MemoryFsMock implements IMemoryFileSystemProvider {
   }
 }
 
-describe("47-Language Catalog & 2-Level Example Templates Suite", () => {
-  it("defines all 15 domain groups and all 47 polyglot language tiles", () => {
+describe("66-Language Catalog & 2-Level Example Templates Suite", () => {
+  it("defines all 15 domain groups and all 66 polyglot language tiles with maturity tiers", () => {
     assert.strictEqual(LANGUAGE_GROUPS.length, 15, "Must define 15 domain groups");
-    assert.strictEqual(LANGUAGE_TILES.length, 47, "Must define all 47 languages");
+    assert.strictEqual(LANGUAGE_TILES.length, 66, "Must define all 66 languages");
 
     const groupIds = new Set(LANGUAGE_GROUPS.map((g) => g.id));
     for (const lang of LANGUAGE_TILES) {
       assert.ok(groupIds.has(lang.group), `Language '${lang.id}' has unknown group '${lang.group}'`);
+      assert.ok(
+        ["stable", "beta", "preview"].includes(lang.tier),
+        `Language '${lang.id}' has invalid maturity tier '${lang.tier}'`,
+      );
       const examples = EXAMPLES_BY_LANGUAGE.get(lang.id) ?? [];
       assert.ok(examples.length >= 1, `Language '${lang.id}' must have at least 1 verified example workspace`);
     }

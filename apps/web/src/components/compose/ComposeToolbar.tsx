@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  BookIcon,
   ChevronDownIcon,
   CodeIcon,
   HistoryIcon,
@@ -30,6 +31,7 @@ export interface ComposeToolbarProps {
   setShowPackageRepoPicker: (show: boolean) => void;
   setShowCodeSnippetModal: (show: boolean) => void;
   setShowHpcPicker: (show: boolean) => void;
+  setShowCitationPicker?: ((show: boolean) => void) | undefined;
   hasHpc: boolean;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -66,6 +68,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
   setShowPackageRepoPicker,
   setShowCodeSnippetModal,
   setShowHpcPicker,
+  setShowCitationPicker,
   hasHpc,
   fileInputRef,
   handleFileUpload,
@@ -481,6 +484,15 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
             title="Insert Code Snippet or Executable Code Cell"
           >
             <CodeIcon size={20} />
+          </ActionIconButton>
+          <ActionIconButton
+            type="button"
+            onClick={() => setShowCitationPicker?.(true)}
+            aria-label="Insert Citation"
+            title="Insert Scholarly Citation (OpenAlex, DOI, ArXiv, URN)"
+            data-testid="composer-insert-citation-btn"
+          >
+            <BookIcon size={20} />
           </ActionIconButton>
           {hasHpc && (
             <ActionIconButton

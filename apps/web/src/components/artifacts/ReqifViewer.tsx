@@ -432,11 +432,11 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
   );
 
   // Build 2D Diagram model & SVG on demand
+  const diagramModel = useMemo(() => buildReqIfDiagram(xmlText), [xmlText]);
   const diagramData = useMemo(() => {
-    const model = buildReqIfDiagram(xmlText);
-    const svg = renderReqIfDiagramSvg(model, { isDark });
-    return { model, svg };
-  }, [xmlText, isDark]);
+    const svg = renderReqIfDiagramSvg(diagramModel, { isDark });
+    return { model: diagramModel, svg };
+  }, [diagramModel, isDark]);
 
   const isEdited = xmlText !== baselineXml;
 

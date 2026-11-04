@@ -22,7 +22,9 @@ import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-g
 import { prepareNativeSimulation, type NativeSimPrepResult } from "../services/simulation/native-sim-runner.js";
 import type { LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
+import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 import { resolveDataPackageLockfile } from "../util/datapackage-indexer.js";
+import { scanModelicaSource } from "../util/package-scanner.js";
 
 export interface CloudDispatchPayload {
   domain: "modelica" | "cfd" | "fea" | "monte-carlo";
@@ -339,7 +341,7 @@ getErrorString();
           let prep: NativeSimPrepResult | null = null;
           if (enginePreference !== "omc") {
             prep = await prepareNativeSimulation(tmpDir, {
-              modelName: name,
+              modelName: safeModelName,
               sourceFiles: [adhocMoPath],
               startTime,
               stopTime,
@@ -539,11 +541,36 @@ getErrorString();
         return;
       }
 
+      if ((domain === "modelica" || domain === "monte-carlo") && typeof payload.sourceContent === "string") {
+        const sourceViolations = scanModelicaSource(payload.sourceContent);
+        if (sourceViolations.length > 0) {
+          res.status(400).json({
+            error: `Security violation in sourceContent: ${sourceViolations.join(", ")}`,
+            violations: sourceViolations,
+          });
+          return;
+        }
+      }
+
       const profile = getComputeProfile(requestedProfile);
       const userId = database ? resolveRequestUserId(req, database) : null;
       if (process.env["NODE_ENV"] === "production" && !userId) {
         res.status(401).json({ error: "Authentication required" });
         return;
+      }
+
+      // Sandboxing check for federated community accounts
+      if (database && userId) {
+        const user = database.getUserById(userId);
+        const sandbox = checkComputeSandboxing(user);
+        if (sandbox.sandboxed) {
+          res.status(403).json({
+            error: sandbox.error,
+            code: sandbox.code,
+            fallbackAvailable: sandbox.fallbackAvailable,
+          });
+          return;
+        }
       }
 
       // Pre-flight quota check

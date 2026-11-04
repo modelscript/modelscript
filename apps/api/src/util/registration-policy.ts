@@ -3,6 +3,7 @@
 import type { LibraryDatabase } from "../database.js";
 import { defaultMailer } from "../services/mailer.js";
 import { isDisposableEmail } from "./email-filter.js";
+import { isFederationDisabled } from "./tier-presets.js";
 
 export interface RedeemedInviteInfo {
   id: number;
@@ -66,12 +67,31 @@ export function evaluateRegistrationPolicy(
   options: {
     email: string;
     inviteCode?: string | undefined;
+    provider?: string | undefined;
   },
 ): RegistrationPolicyResult {
   const email = String(options.email || "").trim();
   const inviteCode = typeof options.inviteCode === "string" ? options.inviteCode.trim() : "";
   const autoVerifiedByAirgap =
     process.env["AIRGAP_ENFORCED"] === "true" && !defaultMailer.isConfiguredForLiveDelivery();
+
+  const instanceSettings = database.getInstanceSettings();
+
+  if (options.provider === "fediverse") {
+    if (isFederationDisabled(instanceSettings)) {
+      return {
+        allowed: false,
+        status: 403,
+        errorCode: "FederationDisabled",
+        error: "Fediverse federation and authentication are disabled on this instance.",
+        autoVerifiedByAirgap,
+      };
+    }
+    return {
+      allowed: true,
+      autoVerifiedByAirgap: false,
+    };
+  }
 
   if (isDisposableEmail(email)) {
     return {
@@ -82,8 +102,6 @@ export function evaluateRegistrationPolicy(
       autoVerifiedByAirgap,
     };
   }
-
-  const instanceSettings = database.getInstanceSettings();
 
   if (instanceSettings.registrationMode === "closed" && !inviteCode) {
     return {

@@ -56,6 +56,7 @@ export interface MorselLanguageInfo {
   id: string;
   name: string;
   label?: string | undefined;
+  tier?: "stable" | "beta" | "preview" | undefined;
   ext: string;
   extensions: string[];
   family: MorselSyntaxFamily;
@@ -97,6 +98,7 @@ export const ALL_MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = [
   {
     id: "modelica",
     name: "Modelica",
+    tier: "stable",
     ext: "mo",
     extensions: [".mo", ".mos", ".msim"],
     family: "modelica",
@@ -112,6 +114,7 @@ export const ALL_MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = [
   {
     id: "modelscript",
     name: "ModelScript",
+    tier: "stable",
     ext: "msx",
     extensions: [".msx", ".modelscript"],
     family: "modelica",
@@ -137,6 +140,7 @@ end Oscillator;
   {
     id: "sysml2",
     name: "SysML v2",
+    tier: "stable",
     ext: "sysml",
     extensions: [".sysml", ".sysml2", ".kerml"],
     family: "sysml2",
@@ -167,6 +171,7 @@ end Oscillator;
   {
     id: "step",
     name: "STEP (ISO 10303-21)",
+    tier: "stable",
     ext: "step",
     extensions: [".step", ".stp", ".p21"],
     family: "step",
@@ -191,6 +196,7 @@ END-ISO-10303-21;
   {
     id: "owl2",
     name: "OWL 2 Functional",
+    tier: "stable",
     ext: "owl",
     extensions: [".owl", ".ofn", ".fss", ".owl2"],
     family: "owl2",
@@ -217,6 +223,7 @@ Ontology(<http://example.org/engineering>
   {
     id: "scad",
     name: "OpenSCAD",
+    tier: "stable",
     ext: "scad",
     extensions: [".scad"],
     family: "scad",
@@ -234,6 +241,7 @@ difference() {
   {
     id: "csv",
     name: "CSV",
+    tier: "stable",
     ext: "csv",
     extensions: [".csv", ".tsv"],
     family: "csv",
@@ -250,6 +258,7 @@ difference() {
   {
     id: "c",
     name: "C",
+    tier: "beta",
     ext: "c",
     extensions: [".c", ".h"],
     family: "c",
@@ -269,6 +278,7 @@ double pi_step(double setpoint, double measurement, double *integral, double dt)
   {
     id: "fortran",
     name: "Fortran",
+    tier: "preview",
     ext: "f90",
     extensions: [".f90", ".f95", ".f03", ".f08", ".f", ".for"],
     family: "fortran",
@@ -289,6 +299,7 @@ end program harmonic_oscillator
   {
     id: "spice",
     name: "SPICE",
+    tier: "stable",
     ext: "cir",
     extensions: [".cir", ".sp", ".net", ".lib", ".sub"],
     family: "spice",
@@ -306,6 +317,7 @@ C1 out 0 100n
   {
     id: "verilog-a",
     name: "Verilog-A",
+    tier: "beta",
     ext: "va",
     extensions: [".va", ".vams"],
     family: "verilog-a",
@@ -328,6 +340,7 @@ endmodule
   {
     id: "pscad",
     name: "PSCAD",
+    tier: "stable",
     ext: "pscx",
     extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
     family: "xml",
@@ -365,6 +378,7 @@ endmodule
   {
     id: "psse",
     name: "PSS/E",
+    tier: "preview",
     ext: "raw",
     extensions: [".raw", ".dyr", ".seq"],
     family: "spice",
@@ -382,6 +396,7 @@ endmodule
   {
     id: "opendss",
     name: "OpenDSS",
+    tier: "preview",
     ext: "dss",
     extensions: [".dss"],
     family: "spice",
@@ -398,6 +413,7 @@ Solve
   {
     id: "plcopen",
     name: "PLCopen / IEC 61131-3",
+    tier: "beta",
     ext: "st",
     extensions: [".st", ".plcopen", ".iec"],
     family: "plcopen",
@@ -433,6 +449,7 @@ END_PROGRAM
   {
     id: "simulink",
     name: "MATLAB Simulink",
+    tier: "beta",
     ext: "mdl",
     extensions: [".mdl", ".slx"],
     family: "simulink",
@@ -466,6 +483,7 @@ END_PROGRAM
   {
     id: "ssp",
     name: "SSP",
+    tier: "stable",
     ext: "ssd",
     extensions: [".ssd", ".ssv", ".ssm", ".ssp"],
     family: "xml",
@@ -486,6 +504,7 @@ END_PROGRAM
   {
     id: "urdf",
     name: "ROS URDF / SDFormat",
+    tier: "beta",
     ext: "urdf",
     extensions: [".urdf", ".sdf", ".xacro"],
     family: "xml",
@@ -509,6 +528,7 @@ END_PROGRAM
   {
     id: "adams",
     name: "MSC Adams",
+    tier: "beta",
     ext: "adm",
     extensions: [".adm", ".cmd", ".acf"],
     family: "ini",
@@ -528,6 +548,7 @@ END
   {
     id: "simpack",
     name: "SIMPACK",
+    tier: "beta",
     ext: "spck",
     extensions: [".spck", ".sim", ".sub"],
     family: "ini",
@@ -546,6 +567,7 @@ force.damper.c = 1800.0
   {
     id: "gensys",
     name: "GENSYS",
+    tier: "stable",
     ext: "tsimf",
     extensions: [".tsimf", ".gen", ".runf", ".mplotf", ".optif", ".fresf"],
     family: "ini",
@@ -561,6 +583,7 @@ coupl k_primary k_z  c_body c_bogie  1.2e6
   {
     id: "cfd",
     name: "CFD (SU2)",
+    tier: "preview",
     ext: "cfg",
     extensions: [".cfg", ".su2", ".cfd", ".cfgt"],
     family: "ini",
@@ -580,6 +603,7 @@ MESH_FILENAME= mesh_naca0012.su2
   {
     id: "fea",
     name: "FEA (Abaqus / Nastran)",
+    tier: "preview",
     ext: "inp",
     extensions: [".inp", ".fea", ".inpt", ".bdf", ".fem", ".k"],
     family: "ini",
@@ -602,6 +626,7 @@ Cantilever Beam Linear Static Analysis
   {
     id: "easy5",
     name: "EASY5",
+    tier: "beta",
     ext: "ez5",
     extensions: [".ez5", ".ezmf", ".easy5", ".ezm", ".ezd", ".eas"],
     family: "ini",
@@ -619,6 +644,7 @@ CONNECT TF01.S_OUT TO INT1.S_IN
   {
     id: "rocets",
     name: "ROCETS",
+    tier: "beta",
     ext: "roc",
     extensions: [".roc", ".rocets", ".deck"],
     family: "ini",
@@ -638,6 +664,7 @@ CONNECT TP_LOX.OUT -> MAIN_CC.LOX_IN
   {
     id: "olga",
     name: "OLGA",
+    tier: "stable",
     ext: "opi",
     extensions: [".opi", ".olga", ".genkey", ".key"],
     family: "ini",
@@ -654,6 +681,7 @@ GEOMETRY X = (0.0, 2500.0, 5000.0), Y = (-450.0, -420.0, -100.0)
   {
     id: "sima",
     name: "SIMA",
+    tier: "preview",
     ext: "sima",
     extensions: [".sima", ".stask"],
     family: "ini",
@@ -677,6 +705,7 @@ Task FloatingWindTurbine {
   {
     id: "gtsuite",
     name: "GT-SUITE",
+    tier: "beta",
     ext: "gtm",
     extensions: [".gtm", ".gtp"],
     family: "ini",
@@ -698,6 +727,7 @@ Object OrificeConn "Throttle" {
   {
     id: "lps",
     name: "LPS",
+    tier: "stable",
     ext: "lps",
     extensions: [".lps", ".lpsx"],
     family: "ini",
@@ -719,6 +749,7 @@ if tank_low at T1 then
   {
     id: "aspen",
     name: "Aspen Plus",
+    tier: "preview",
     ext: "bkp",
     extensions: [".bkp", ".apw"],
     family: "ini",
@@ -738,6 +769,7 @@ BLOCK FLASH1 FLASH2
   {
     id: "swmm",
     name: "EPA SWMM",
+    tier: "preview",
     ext: "swmm",
     extensions: [".swmm"],
     family: "ini",
@@ -760,6 +792,7 @@ C1               J1         J2         180.0      0.013
   {
     id: "epanet",
     name: "EPA EPANET",
+    tier: "beta",
     ext: "net",
     extensions: [".net"],
     family: "ini",
@@ -787,6 +820,7 @@ P2       J1      J2      600.0   250.0    110.0
   {
     id: "energyplus",
     name: "EnergyPlus",
+    tier: "beta",
     ext: "idf",
     extensions: [".idf", ".epjson"],
     family: "ini",
@@ -818,6 +852,7 @@ Zone,
   {
     id: "touchstone",
     name: "Touchstone (S-parameter)",
+    tier: "preview",
     ext: "s2p",
     extensions: [".s1p", ".s2p", ".s3p", ".s4p", ".snp"],
     family: "csv",
@@ -834,6 +869,7 @@ Zone,
   {
     id: "ibis",
     name: "IBIS",
+    tier: "preview",
     ext: "ibs",
     extensions: [".ibs", ".ebd", ".pkg"],
     family: "ini",
@@ -854,6 +890,7 @@ C_pkg 0.6p 0.4p 0.8p
   {
     id: "opendrive",
     name: "ASAM OpenDRIVE",
+    tier: "beta",
     ext: "xodr",
     extensions: [".xodr"],
     family: "xml",
@@ -876,6 +913,7 @@ C_pkg 0.6p 0.4p 0.8p
   {
     id: "openscenario",
     name: "ASAM OpenSCENARIO",
+    tier: "preview",
     ext: "xosc",
     extensions: [".xosc", ".osc"],
     family: "xml",
@@ -896,6 +934,7 @@ C_pkg 0.6p 0.4p 0.8p
   {
     id: "relap5",
     name: "RELAP5",
+    tier: "preview",
     ext: "r5",
     extensions: [".r5", ".relap", ".i"],
     family: "ini",
@@ -913,6 +952,7 @@ C_pkg 0.6p 0.4p 0.8p
   {
     id: "eclipse",
     name: "ECLIPSE",
+    tier: "preview",
     ext: "data",
     extensions: [".data", ".grdecl", ".inc"],
     family: "ini",
@@ -933,6 +973,7 @@ END
   {
     id: "sbml",
     name: "SBML",
+    tier: "preview",
     ext: "sbml",
     extensions: [".sbml"],
     family: "xml",
@@ -956,6 +997,7 @@ END
   {
     id: "jsbsim",
     name: "JSBSim",
+    tier: "preview",
     ext: "xml",
     extensions: [".xml"],
     family: "xml",
@@ -978,6 +1020,7 @@ END
   {
     id: "reqif",
     name: "OMG ReqIF",
+    tier: "stable",
     ext: "reqif",
     extensions: [".reqif", ".reqifz"],
     family: "xml",
@@ -1004,6 +1047,7 @@ END
   {
     id: "ccsds",
     name: "CCSDS",
+    tier: "beta",
     ext: "oem",
     extensions: [".oem", ".opm", ".omm", ".ocm", ".tdm", ".ndm", ".xtce"],
     family: "ini",
@@ -1028,6 +1072,7 @@ META_STOP
   {
     id: "autosar",
     name: "AUTOSAR",
+    tier: "beta",
     ext: "arxml",
     extensions: [".arxml"],
     family: "xml",
@@ -1052,6 +1097,7 @@ META_STOP
   {
     id: "qif",
     name: "QIF 3.0 (ISO 23952)",
+    tier: "beta",
     ext: "qif",
     extensions: [".qif", ".qif.xml"],
     family: "xml",
@@ -1119,6 +1165,7 @@ META_STOP
   {
     id: "oscal",
     name: "NIST OSCAL 1.1",
+    tier: "beta",
     ext: "oscal.json",
     extensions: [".oscal", ".oscal.json", ".oscal.yaml", ".oscal.yml", ".oscal.xml"],
     family: "xml",
@@ -1165,39 +1212,6 @@ META_STOP
               "description": "Enforces Purdue Level 3.5 DMZ segmentation."
             }
           ]
-        },
-        {
-          "uuid": "55555555-e29b-41d4-a716-446655440012",
-          "control-id": "ac-3",
-          "by-components": [
-            {
-              "uuid": "66666666-e29b-41d4-a716-446655440102",
-              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
-              "description": "Enforces X.509 mTLS and hardware RUN keyswitch."
-            }
-          ]
-        },
-        {
-          "uuid": "55555555-e29b-41d4-a716-446655440013",
-          "control-id": "si-7",
-          "by-components": [
-            {
-              "uuid": "66666666-e29b-41d4-a716-446655440103",
-              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
-              "description": "Verifies signed PLCopen firmware digest at boot."
-            }
-          ]
-        },
-        {
-          "uuid": "55555555-e29b-41d4-a716-446655440014",
-          "control-id": "pe-3",
-          "by-components": [
-            {
-              "uuid": "66666666-e29b-41d4-a716-446655440104",
-              "component-uuid": "11111111-e29b-41d4-a716-446655440001",
-              "description": "Interlocks physical safety cage and SIL-3 light curtains."
-            }
-          ]
         }
       ]
     }
@@ -1211,6 +1225,7 @@ META_STOP
   {
     id: "automationml",
     name: "AutomationML (IEC 62714)",
+    tier: "beta",
     ext: "aml",
     extensions: [".aml", ".caex"],
     family: "xml",
@@ -1222,9 +1237,6 @@ META_STOP
         <Attribute Name="x"><Value>1.2</Value></Attribute>
         <Attribute Name="y"><Value>0.8</Value></Attribute>
         <Attribute Name="z"><Value>0.0</Value></Attribute>
-        <Attribute Name="rx"><Value>0</Value></Attribute>
-        <Attribute Name="ry"><Value>0</Value></Attribute>
-        <Attribute Name="rz"><Value>45</Value></Attribute>
       </Attribute>
       <ExternalInterface Name="enableIn" ID="rob-en" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
     </InternalElement>
@@ -1234,6 +1246,466 @@ META_STOP
     </InternalElement>
   </InstanceHierarchy>
 </CAEXFile>
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: true,
+  },
+  {
+    id: "three-mf",
+    name: "3MF (ISO/IEC 25422)",
+    tier: "beta",
+    ext: "3mf",
+    extensions: [".3mf", ".3mf.xml"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <metadata name="Title">Titanium Craniotomy Surgical Guide</metadata>
+  <resources>
+    <object id="1" name="SurgicalGuide" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0" />
+          <vertex x="32" y="0" z="0" />
+          <vertex x="0" y="32" z="0" />
+          <vertex x="0" y="0" z="8" />
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="2" v3="1" />
+          <triangle v1="0" v2="1" v3="3" />
+          <triangle v1="1" v2="2" v3="3" />
+          <triangle v1="2" v2="0" v3="3" />
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1" />
+  </build>
+</model>
+`,
+    supportsDiagram: true,
+    supportsSimulation: false,
+    supports3d: true,
+  },
+  {
+    id: "gproms",
+    name: "gPROMS",
+    tier: "preview",
+    ext: "gproms",
+    extensions: [".gproms", ".gPJ"],
+    family: "modelica",
+    defaultCode: `MODEL JacketedCSTR
+  PARAMETER
+    V_reactor AS REAL DEFAULT 2.5 ;
+    k0        AS REAL DEFAULT 1200.0 ;
+  VARIABLE
+    C_A       AS Concentration ;
+    T_react   AS Temperature ;
+  EQUATION
+    V_reactor * $C_A = 1.0 * (2.0 - C_A) - V_reactor * k0 * C_A ;
+    $T_react = 0.05 * (310.0 - T_react) ;
+END
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
+    id: "cantera",
+    name: "Cantera Kinetics",
+    tier: "preview",
+    ext: "cti.yaml",
+    extensions: [".cti", ".cti.yaml", ".cantera.yaml"],
+    family: "ini",
+    defaultCode: `phases:
+  - name: h2_air_mix
+    thermo: ideal-gas
+    elements: [H, O, N]
+    species: [H2, O2, H2O, OH, H, O, N2]
+    kinetics: gas
+    state:
+      T: 1100.0
+      P: 101325.0
+reactions:
+  - equation: H + O2 <=> O + OH
+    rate-constant: {A: 3.55e+15, b: -0.41, Ea: 16600.0}
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
+    id: "phreeqc",
+    name: "USGS PHREEQC",
+    tier: "preview",
+    ext: "pqi",
+    extensions: [".pqi", ".phrq", ".phreeqc"],
+    family: "ini",
+    defaultCode: `TITLE Calcite Dissolution & Acid Mine Drainage Neutralization
+SOLUTION 1 Acidic Drainage Feed
+  temp      25.0
+  pH        3.8
+  pe        8.5
+  units     mmol/kgw
+  Ca        0.5
+  S(6)      12.0
+EQUILIBRIUM_PHASES 1
+  Calcite   0.0   10.0
+END
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
+    id: "smiles",
+    name: "SMILES / OpenSMILES",
+    tier: "preview",
+    ext: "smi",
+    extensions: [".smi", ".smiles", ".ism"],
+    family: "csv",
+    defaultCode: `# SMILES_STRING\tCOMPOUND_ID\tMW_G_MOL\tLOGP
+CC(=O)Oc1ccccc1C(=O)O\tAspirin_ASA\t180.16\t1.19
+CC(=O)Nc1ccc(O)cc1\tAcetaminophen_APAP\t151.16\t0.46
+CC(C)Cc1ccc(cc1)[C@@H](C)C(=O)O\tS_Ibuprofen\t206.28\t3.97
+`,
+    supportsDiagram: true,
+    supportsSimulation: false,
+    supports3d: true,
+  },
+  {
+    id: "antimony",
+    name: "Antimony",
+    tier: "preview",
+    ext: "ant",
+    extensions: [".ant", ".antimony"],
+    family: "modelica",
+    defaultCode: `model Repressilator()
+  compartment cell = 1.0;
+  species m_lacI in cell, m_tetR in cell, m_cI in cell;
+  J_tx1: -> m_lacI; alpha / (1 + (m_cI / K_d)^n);
+  J_deg1: m_lacI -> ; k_dm * m_lacI;
+  m_lacI = 2.0; m_tetR = 0.1; m_cI = 0.1;
+  alpha = 216.0; K_d = 40.0; n = 2.0; k_dm = 0.2;
+end
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
+    id: "bngl",
+    name: "BioNetGen (BNGL)",
+    tier: "preview",
+    ext: "bngl",
+    extensions: [".bngl"],
+    family: "ini",
+    defaultCode: `begin model
+begin parameters
+  kp_bind  0.01
+  km_bind  0.10
+end parameters
+begin molecule types
+  EGF(r)
+  EGFR(l,d,Y~U~P)
+end molecule types
+begin seed species
+  EGF(r)             120.0
+  EGFR(l,d,Y~U)      100.0
+end seed species
+begin reaction rules
+  R1_LigandBind: EGF(r) + EGFR(l,d) <-> EGF(r!1).EGFR(l!1,d) kp_bind, km_bind
+end reaction rules
+end model
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
+    id: "cellml",
+    name: "CellML 2.0",
+    tier: "beta",
+    ext: "cellml",
+    extensions: [".cellml"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<model xmlns="http://www.cellml.org/cellml/2.0#" name="HodgkinHuxleySquidAxon">
+  <component name="membrane">
+    <variable name="t" units="ms" interface="public" />
+    <variable name="V" units="mV" initial_value="-65.0" interface="public" />
+    <variable name="C_m" units="uF_per_cm2" initial_value="1.0" />
+    <variable name="I_stim" units="uA_per_cm2" initial_value="10.0" />
+  </component>
+</model>
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
+    id: "sedml",
+    name: "SED-ML (L1V4)",
+    tier: "preview",
+    ext: "sedml",
+    extensions: [".sedml"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model_glycolysis" language="urn:sedml:language:sbml" source="glycolysis_core.sbml" />
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim_timecourse" initialTime="0.0" outputStartTime="0.0" outputEndTime="20.0" numberOfSteps="400">
+      <algorithm kisaoID="KISAO:0000019" />
+    </uniformTimeCourse>
+  </listOfSimulations>
+</sedML>
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
+    id: "sbol",
+    name: "SBOL 3.1",
+    tier: "preview",
+    ext: "sbol",
+    extensions: [".sbol", ".sbol3"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sbol="http://sbols.org/v3#">
+  <sbol:Component rdf:about="https://modelscript.org/sbol/ToggleSwitchCassette">
+    <sbol:displayId>ToggleSwitchCassette</sbol:displayId>
+    <sbol:type rdf:resource="https://identifiers.org/SBO:0000251" />
+    <sbol:role rdf:resource="http://identifiers.org/so/SO:0000704" />
+  </sbol:Component>
+</rdf:RDF>
+`,
+    supportsDiagram: true,
+    supportsSimulation: false,
+    supports3d: false,
+  },
+  {
+    id: "genbank",
+    name: "GenBank / INSDC",
+    tier: "preview",
+    ext: "gb",
+    extensions: [".gb", ".gbk", ".genbank"],
+    family: "ini",
+    defaultCode: `LOCUS       pUC19_Vector              180 bp ds-DNA     circular SYN 14-APR-2026
+DEFINITION  Cloning vector pUC19 annotated origin and AmpR cassette.
+ACCESSION   MSX_PUC19
+FEATURES             Location/Qualifiers
+     rep_origin      1..60
+                     /label="pMB1_ori"
+     CDS             61..180
+                     /gene="bla"
+ORIGIN
+        1 tcgcgcgttt cggtgatgac ggtgaaaacc tctgacacat gcagctcccg gagacggtca
+       61 cagcttgtct gtaagcggat gccgggagca gacaagcccg tcagggcgcg tcagcgggtg
+      121 ttggcgggtg tcggggctgg cttaactatg cggcatcaga gcagattgta ctgagagtgc
+//
+`,
+    supportsDiagram: true,
+    supportsSimulation: false,
+    supports3d: false,
+  },
+  {
+    id: "pdb",
+    name: "PDB / mmCIF",
+    tier: "preview",
+    ext: "pdb",
+    extensions: [".pdb", ".ent", ".cif", ".mmcif"],
+    family: "csv",
+    defaultCode: `HEADER    ANTIMICROBIAL PEPTIDE                   14-APR-26   1MSX
+TITLE     ALPHA-HELICAL ANTIMICROBIAL PEPTIDE BACKBONE
+HELIX    1  H1 ALA A    1  ALA A    3  1                                   3
+ATOM      1  N   ALA A   1      11.104   6.134  -6.504  1.00 12.40           N
+ATOM      2  CA  ALA A   1      11.639   6.071  -5.147  1.00 11.80           C
+ATOM      3  C   ALA A   1      13.135   5.826  -5.161  1.00 11.50           C
+ATOM      4  O   ALA A   1      13.663   5.024  -5.932  1.00 12.10           O
+END
+`,
+    supportsDiagram: true,
+    supportsSimulation: false,
+    supports3d: true,
+  },
+  {
+    id: "nmtran",
+    name: "NONMEM NM-TRAN",
+    tier: "preview",
+    ext: "ctl",
+    extensions: [".ctl", ".mod", ".nmtran"],
+    family: "ini",
+    defaultCode: `$PROBLEM Two-Compartment Oral & IV Population PK Model
+$INPUT ID TIME AMT DV CMT EVID MDV WT
+$DATA oral_pk_study.csv IGNORE=@
+$SUBROUTINES ADVAN4 TRANS4
+$PK
+  CL = THETA(1) * EXP(ETA(1))
+  V2 = THETA(2) * EXP(ETA(2))
+  Q  = THETA(3)
+  V3 = THETA(4)
+  KA = THETA(5)
+$THETA
+  (0.1, 4.5, 25.0) ; POP_CL [L/h]
+  (1.0, 28.0, 120.0) ; POP_V2 [L]
+$OMEGA 0.09 0.06
+$SIGMA 0.04
+$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
+    id: "opensim",
+    name: "OpenSim 4.x",
+    tier: "beta",
+    ext: "osim",
+    extensions: [".osim"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8" ?>
+<OpenSimDocument Version="40000">
+  <Model name="Arm26_ElbowFlexion">
+    <gravity>0 -9.80665 0</gravity>
+    <BodySet>
+      <objects>
+        <Body name="humerus"><mass>1.864</mass></Body>
+        <Body name="radius_ulna"><mass>1.534</mass></Body>
+      </objects>
+    </BodySet>
+  </Model>
+</OpenSimDocument>
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: true,
+  },
+  {
+    id: "febio",
+    name: "FEBio 4.0",
+    tier: "beta",
+    ext: "feb",
+    extensions: [".feb"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="ISO-8859-1"?>
+<febio_spec version="4.0">
+  <Module type="solid" />
+  <Control>
+    <analysis>STATIC</analysis>
+    <time_steps>20</time_steps>
+    <step_size>0.05</step_size>
+  </Control>
+  <Material>
+    <material id="1" name="ArterialMedia" type="Mooney-Rivlin">
+      <density>1060.0</density>
+      <c1>32.0</c1>
+      <c2>8.5</c2>
+      <k>1500.0</k>
+    </material>
+  </Material>
+</febio_spec>
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: true,
+  },
+  {
+    id: "dicom-rt",
+    name: "DICOM-RT Plan",
+    tier: "beta",
+    ext: "dcm.json",
+    extensions: [".dcm.json", ".rtplan", ".dicom-rt"],
+    family: "xml",
+    defaultCode: `{
+  "Modality": "RTPLAN",
+  "RTPlanLabel": "PROSTATE_7F_IMRT_78GY",
+  "PrescriptionDescription": "78.0 Gy in 39 fractions to PTV_7800",
+  "FractionGroupSequence": [
+    {
+      "FractionGroupNumber": 1,
+      "NumberOfFractionsPlanned": 39,
+      "TargetPrescriptionDoseGy": 78.0,
+      "RadiobiologyAlphaBetaGy": 10.0
+    }
+  ]
+}
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: true,
+  },
+  {
+    id: "nifti",
+    name: "NIfTI-1 / NIfTI-2",
+    tier: "beta",
+    ext: "nii.json",
+    extensions: [".nii.json", ".nifti"],
+    family: "xml",
+    defaultCode: `{
+  "nifti_version": 1,
+  "magic": "n+1",
+  "descrip": "MNI152 T1w 1mm Isotropic Structural Brain Volume",
+  "dim": [3, 182, 218, 182, 1, 1, 1, 1],
+  "pixdim": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+  "datatype": "INT16",
+  "qform_code": 4,
+  "sform_code": 4,
+  "srow_x": [-1.0, 0.0, 0.0, 90.0],
+  "srow_y": [0.0, 1.0, 0.0, -126.0],
+  "srow_z": [0.0, 0.0, 1.0, -72.0]
+}
+`,
+    supportsDiagram: true,
+    supportsSimulation: false,
+    supports3d: true,
+  },
+  {
+    id: "topas",
+    name: "TOPAS / Geant4 MC",
+    tier: "beta",
+    ext: "topas",
+    extensions: [".topas", ".tps"],
+    family: "ini",
+    defaultCode: `# TOPAS Clinical Proton Pencil-Beam Bragg Peak in Water Phantom
+s:Ge/World/Material  = "Air"
+d:Ge/World/HLX       = 50.0 cm
+s:Ge/WaterPhantom/Type     = "TsBox"
+s:Ge/WaterPhantom/Parent   = "World"
+s:Ge/WaterPhantom/Material = "G4_WATER"
+d:Ge/WaterPhantom/HLZ      = 15.0 cm
+s:So/ProtonPencil/BeamParticle = "proton"
+d:So/ProtonPencil/BeamEnergy   = 150.0 MeV
+i:So/ProtonPencil/NumberOfHistoriesInRun = 50000
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: true,
+  },
+  {
+    id: "igtl",
+    name: "OpenIGTLink v3",
+    tier: "beta",
+    ext: "igtl.json",
+    extensions: [".igtl", ".igtl.json"],
+    family: "xml",
+    defaultCode: `{
+  "protocolVersion": "3.0",
+  "sessionName": "Stereotactic_Cranial_Biopsy_Navigation",
+  "coordinateFrames": [
+    { "id": "World", "type": "RAS" },
+    { "id": "OpticalTrackerBase", "parent": "World" },
+    { "id": "BiopsyNeedleTip", "parent": "OpticalTrackerBase" }
+  ],
+  "safetyInterlocks": {
+    "maxTrackingLatencyMs": 20.0,
+    "maxAllowedFreMm": 1.5,
+    "haltRobotOnLineOfSightLoss": true
+  }
+}
 `,
     supportsDiagram: true,
     supportsSimulation: true,

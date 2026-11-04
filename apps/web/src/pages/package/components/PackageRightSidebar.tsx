@@ -37,6 +37,8 @@ import {
   type PackageStats,
 } from "../../../api";
 import type { LinkedStudyJobItemPayload, StudyDefinitionPayload } from "../../../api/compute";
+import { CiteButton } from "../../../components/citations/CiteButton";
+import { buildCitationFromPackage } from "../../../util/citations";
 import {
   DependentBadge,
   Divider,
@@ -370,6 +372,20 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
             Download Source (.zip)
           </a>
         )}
+
+        <CiteButton
+          target={buildCitationFromPackage({
+            name,
+            version,
+            description: libraryDetail?.description || packument?.description,
+            author: packageOwner || currentManifest?.author?.name,
+            license: currentManifest?.license,
+            publishedAt,
+          })}
+          label="Cite Package (APA, BibTeX, CFF…)"
+          variant="sidebar"
+          testId="package-sidebar-cite-btn"
+        />
       </div>
 
       {/* ── Advanced Exports & Downloads (Feature-Gated by package_advanced_exports) ── */}

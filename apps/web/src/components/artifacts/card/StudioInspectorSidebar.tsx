@@ -5,7 +5,11 @@ import { Text } from "@primer/react";
 import React from "react";
 import styled from "styled-components";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
-import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../../util/editor-routing";
+import {
+  buildEditorUrlForArtifact,
+  isEditableCodeOrModelArtifact,
+  isMultiFileArtifact,
+} from "../../../util/editor-routing";
 import Box from "../../Box";
 
 const InspectorContainer = styled(Box)`
@@ -535,14 +539,19 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
         )}
         {!isCoarsePointer && (
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: "4px", paddingTop: "4px" }}>
-            ⌨️ <b>Hotkeys:</b> [Esc] Exit &bull; [I] Inspector &bull;{" "}
-            <a
-              href={safeEditorUrl}
-              style={{ color: "#38bdf8", textDecoration: "none" }}
-              title={isMultiFile ? "Open in VS Code IDE (R)" : "Open in Playground (R)"}
-            >
-              [R] {isMultiFile ? "IDE" : "Playground"}
-            </a>{" "}
+            ⌨️ <b>Hotkeys:</b> [Esc] Exit &bull; [I] Inspector{" "}
+            {isEditableCodeOrModelArtifact({ view_type: artifact?.view_type, view_config: viewConfig }) && (
+              <>
+                &bull;{" "}
+                <a
+                  href={safeEditorUrl}
+                  style={{ color: "#38bdf8", textDecoration: "none" }}
+                  title={isMultiFile ? "Open in VS Code IDE (R)" : "Open in Playground (R)"}
+                >
+                  [R] {isMultiFile ? "IDE" : "Playground"}
+                </a>{" "}
+              </>
+            )}
             &bull; [C] Copy Link
           </div>
         )}

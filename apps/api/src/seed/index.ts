@@ -260,7 +260,10 @@ export async function seedPolyglotSocialData(
   let artifactsCreated = 0;
   let commentsCreated = 0;
 
-  const createdPostByLanguage = new Map<string, { postId: number; artifactViewId: number; spec: SeedPostSpec }>();
+  const createdPostByLanguage = new Map<
+    string,
+    { postId: number | string; artifactViewId: number | string; spec: SeedPostSpec }
+  >();
 
   for (const spec of ALL_44_LANGUAGE_SEED_POSTS) {
     const specRec = spec as unknown as Record<string, unknown>;

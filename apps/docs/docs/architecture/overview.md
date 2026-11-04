@@ -8,21 +8,21 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (44 Formats)"]
+    subgraph Languages["Polyglot Source Languages (66 Formats — Stable, Beta & Preview)"]
         direction TB
         MO[".mo (Modelica 3.x)"]
-        SYS[".sysml / .kerml (SysML v2)"]
-        STEP[".step / .stp (ISO 10303)"]
+        SYS[".sysml / .kerml / .reqif / .oscal.json"]
+        STEP[".step / .qif / .scad / .3mf"]
         OWL[".owl / .ofn / .ttl (OWL2)"]
-        SCAD[".scad (OpenSCAD CSG)"]
         SSP[".ssp / .ssd / .ssv (SSP 1.0/2.0)"]
-        PSCAD[".pscx / .pslx / .cfg (PSCAD/EMT)"]
-        CAE[".cfd / .su2 / .fea / .inp / .bdf"]
-        MBD[".spck / .calc / .adm (SIMPACK/GENSYS/Adams)"]
-        FLOW[".opi / .lps / .inp (OLGA/Pipeline/EPANET)"]
-        AUTO[".arxml / .xml / .st (AUTOSAR/PLCopen)"]
-        SPACE[".oem / .opm / .xtce (CCSDS/XTCE)"]
-        BLD[".idf / .epjson (EnergyPlus)"]
+        PSCAD[".pscx / .raw / .dss / .cir / .va"]
+        CAE[".cfd / .su2 / .fea / .inp / .feb"]
+        MBD[".spck / .calc / .adm / .urdf / .osim"]
+        FLOW[".opi / .lps / .bkp / .gproms / .yaml / .pqi"]
+        AUTO[".arxml / .st / .aml / .slx / .ez5"]
+        SPACE[".oem / .opm / .xtce / .roc"]
+        BIO[".sbml / .ant / .bngl / .sbol / .ctl / .cellml"]
+        MED[".rtplan / .topas / .nii / .igtl"]
         MSX[".msx / .modelscript (ModelScript)"]
     end
 

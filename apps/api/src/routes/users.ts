@@ -174,10 +174,14 @@ export function usersRouter(
       }
 
       const note = typeof req.body?.note === "string" ? req.body.note.trim() : undefined;
-      const initialCredits =
-        typeof req.body?.initialCredits === "number" && req.body.initialCredits > 0
-          ? Math.min(500, req.body.initialCredits)
-          : 100;
+      let initialCredits = 100;
+      if (typeof req.body?.initialCredits === "number" && req.body.initialCredits > 0) {
+        if (req.user?.accountType !== "admin") {
+          res.status(403).json({ error: "Only administrators can configure custom initial credits on invite codes" });
+          return;
+        }
+        initialCredits = Math.min(500, req.body.initialCredits);
+      }
 
       const invite = database.generateUserGoldenTicket(req.user!.id, note, initialCredits);
       const status = database.getUserOnboardingStatus(req.user!.id);
@@ -506,7 +510,7 @@ export function usersRouter(
         .slice(0, 512);
       if (!name || !value) continue;
 
-      let verifiedAt: string | null = field.verified_at ?? null;
+      let verifiedAt: string | null = null;
 
       // 1. Check ORCID format
       if (orcidRegex.test(value)) {

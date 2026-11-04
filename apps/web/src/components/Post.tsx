@@ -187,13 +187,19 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
     });
   }, [displayPost?.id, isDetail, token]);
 
+  const validArtifactId =
+    displayPost.artifact_view_id !== null &&
+    displayPost.artifact_view_id !== undefined &&
+    Number(displayPost.artifact_view_id) > 0
+      ? Number(displayPost.artifact_view_id)
+      : undefined;
   const isNotebook = isNotebookPost(displayPost);
   const notebookData = useMemo(
     () =>
       isNotebook
-        ? parseNotebookFromContent(displayPost.content, displayPost.artifact_view_id, displayPost.metadata?.notebook)
+        ? parseNotebookFromContent(displayPost.content, validArtifactId, displayPost.metadata?.notebook)
         : null,
-    [isNotebook, displayPost.content, displayPost.artifact_view_id, displayPost.metadata?.notebook],
+    [isNotebook, displayPost.content, validArtifactId, displayPost.metadata?.notebook],
   );
   const notebookHeadings = useMemo(
     () => (notebookData ? extractNotebookHeadings(notebookData.cells) : []),
@@ -204,7 +210,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
     [notebookData],
   );
 
-  const hasAttachment = Boolean(displayPost.artifact_view_id || isNotebookPost(displayPost));
+  const hasAttachment = Boolean(validArtifactId || isNotebookPost(displayPost));
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();

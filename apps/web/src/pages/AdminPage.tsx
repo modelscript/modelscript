@@ -88,6 +88,7 @@ import {
   AdminFederationTab,
   AdminMenuSidebar,
   AdminModerationTab,
+  AdminOpenAlexTab,
   AdminSettingsTab,
   AdminSystemTab,
   AdminUsersTab,
@@ -126,6 +127,7 @@ export const AdminPage: React.FC = () => {
       raw === "dmca" ||
       raw === "audit" ||
       raw === "database" ||
+      raw === "openalex" ||
       raw === "settings" ||
       raw === "system" ||
       raw === "flags" ||
@@ -1163,6 +1165,7 @@ export const AdminPage: React.FC = () => {
             {activeTab === "dmca" && "DMCA Takedown Notices"}
             {activeTab === "audit" && "System Audit Log"}
             {activeTab === "database" && "Database Status & Migrations"}
+            {activeTab === "openalex" && "OpenAlex S3 Snapshot & FTS5 Catalog"}
             {activeTab === "settings" && "Instance Settings & Registration Invites"}
             {activeTab === "system" && "System Health & Diagnostics"}
             {activeTab === "flags" && "Feature Flags Switchboard"}
@@ -1409,6 +1412,8 @@ export const AdminPage: React.FC = () => {
               loading={loading}
             />
           )}
+
+          {activeTab === "openalex" && <AdminOpenAlexTab />}
 
           {activeTab === "settings" && (
             <AdminSettingsTab

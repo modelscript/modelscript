@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  BookIcon,
   ClockIcon,
   DatabaseIcon,
   GearIcon,
@@ -88,6 +89,10 @@ export const AdminMenuSidebar: React.FC<AdminMenuSidebarProps> = ({ activeTab, o
         <TabButton $active={activeTab === "database"} onClick={() => onSelectTab("database")}>
           <DatabaseIcon size={16} />
           <span>Database &amp; Migrations</span>
+        </TabButton>
+        <TabButton $active={activeTab === "openalex"} onClick={() => onSelectTab("openalex")}>
+          <BookIcon size={16} />
+          <span>OpenAlex S3 Catalog</span>
         </TabButton>
         <TabButton $active={activeTab === "settings"} onClick={() => onSelectTab("settings")}>
           <GearIcon size={16} />

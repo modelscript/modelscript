@@ -140,6 +140,20 @@ export const EXTENSION_TO_LANGUAGE_ID: Record<string, string> = {
   ".va": "verilog-a",
   ".vams": "verilog-a",
   ".ams": "verilog-a",
+  ".osim": "opensim",
+  ".rtplan": "dicom-rt",
+  ".rtstruct": "dicom-rt",
+  ".rtdose": "dicom-rt",
+  ".cellml": "cellml",
+  ".feb": "febio",
+  ".scn": "febio",
+  ".nii": "nifti",
+  ".nrrd": "nifti",
+  ".nhdr": "nifti",
+  ".topas": "topas",
+  ".mac": "topas",
+  ".3mf": "three-mf",
+  ".igtl": "igtl",
 };
 
 /**

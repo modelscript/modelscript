@@ -136,6 +136,33 @@ export const EXTENSION_TO_DIALECT: Record<string, string> = {
   ".oscal": "oscal",
   ".aml": "automationml",
   ".caex": "automationml",
+  ".3mf": "three-mf",
+  ".gproms": "gproms",
+  ".gPJ": "gproms",
+  ".cti": "cantera",
+  ".pqi": "phreeqc",
+  ".phrq": "phreeqc",
+  ".smi": "smiles",
+  ".smiles": "smiles",
+  ".ant": "antimony",
+  ".bngl": "bngl",
+  ".cellml": "cellml",
+  ".sedml": "sedml",
+  ".sbol": "sbol",
+  ".gb": "genbank",
+  ".gbk": "genbank",
+  ".genbank": "genbank",
+  ".pdb": "pdb",
+  ".ent": "pdb",
+  ".ctl": "nmtran",
+  ".mod": "nmtran",
+  ".nmtran": "nmtran",
+  ".osim": "opensim",
+  ".feb": "febio",
+  ".dcm": "dicom-rt",
+  ".nii": "nifti",
+  ".topas": "topas",
+  ".igtl": "igtl",
 };
 
 export const DIALECT_TO_EXTENSION: Record<string, string> = {
@@ -189,6 +216,25 @@ export const DIALECT_TO_EXTENSION: Record<string, string> = {
   oscal: ".oscal.json",
   automationml: ".aml",
   aml: ".aml",
+  "three-mf": ".3mf",
+  gproms: ".gproms",
+  cantera: ".cti.yaml",
+  phreeqc: ".pqi",
+  smiles: ".smi",
+  antimony: ".ant",
+  bngl: ".bngl",
+  cellml: ".cellml",
+  sedml: ".sedml",
+  sbol: ".sbol",
+  genbank: ".gb",
+  pdb: ".pdb",
+  nmtran: ".ctl",
+  opensim: ".osim",
+  febio: ".feb",
+  "dicom-rt": ".dcm.json",
+  nifti: ".nii.json",
+  topas: ".topas",
+  igtl: ".igtl.json",
 };
 
 export const VIEW_TYPE_TO_DIALECT: Record<string, string> = {
@@ -283,6 +329,26 @@ export const VIEW_TYPE_TO_DIALECT: Record<string, string> = {
   oscal: "oscal",
   automationml: "automationml",
   aml: "automationml",
+  "three-mf": "three-mf",
+  "3mf": "three-mf",
+  gproms: "gproms",
+  cantera: "cantera",
+  phreeqc: "phreeqc",
+  smiles: "smiles",
+  antimony: "antimony",
+  bngl: "bngl",
+  cellml: "cellml",
+  sedml: "sedml",
+  sbol: "sbol",
+  genbank: "genbank",
+  pdb: "pdb",
+  nmtran: "nmtran",
+  opensim: "opensim",
+  febio: "febio",
+  "dicom-rt": "dicom-rt",
+  nifti: "nifti",
+  topas: "topas",
+  igtl: "igtl",
 };
 
 export function getExtensionForDialect(dialect: string): string {
@@ -355,6 +421,27 @@ export function isMultiFileArtifact(artifactOrConfig: any): boolean {
   }
 
   return false;
+}
+
+export const NON_EDITABLE_MEDIA_VIEW_TYPES = new Set([
+  "pdf",
+  "picture",
+  "image",
+  "video",
+  "youtube_video",
+  "audio",
+  "link-preview",
+]);
+
+/**
+ * Determines whether an artifact represents an editable/simulatable engineering model,
+ * code snippet, dataset, or workspace that makes sense to open in Playground or VS Code,
+ * vs. static media/document assets (PDFs, images, videos, audio, link previews).
+ */
+export function isEditableCodeOrModelArtifact(artifactOrConfig: unknown): boolean {
+  const { viewType } = unwrapViewConfig(artifactOrConfig);
+  if (!viewType) return true;
+  return !NON_EDITABLE_MEDIA_VIEW_TYPES.has(viewType);
 }
 
 /**
@@ -503,9 +590,7 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
     }
     const qs = params.toString();
     const hash =
-      artifactId !== undefined && artifactId !== null && String(artifactId) !== ""
-        ? `#memfs:artifact-${artifactId}`
-        : "";
+      artifactId !== undefined && artifactId !== null && String(artifactId) !== "" ? `#memfs:${artifactId}` : "";
     return `/ide${qs ? `?${qs}` : ""}${hash}`;
   }
 
@@ -556,7 +641,7 @@ export function buildVsCodeWorkbenchUrlForArtifact(options: BuildEditorUrlOption
 
   const artifactId = options.artifactId ?? parsedViewConfig.artifactId ?? parsedViewConfig.id;
   if (artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
-    return `/vscode/workbench#memfs:artifact-${artifactId}`;
+    return `/vscode/workbench#memfs:${artifactId}`;
   }
 
   const templateId = parsedViewConfig.templateId || parsedViewConfig.template;
@@ -638,6 +723,7 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
         const artKey = `modelscript.artifact_${artifactId}`;
         sessionStorage.setItem(artKey, JSON.stringify(artifactMeta));
         localStorage.setItem(artKey, JSON.stringify(artifactMeta));
+        localStorage.setItem(`modelscript:ide:memfs:${artifactId}`, JSON.stringify(artifactMeta));
         localStorage.setItem(`modelscript:ide:memfs:artifact-${artifactId}`, JSON.stringify(artifactMeta));
       }
     } catch {
@@ -708,6 +794,7 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
             const artKey = `modelscript.artifact_${artifactId}`;
             sessionStorage.setItem(artKey, JSON.stringify(resolvedPayload));
             localStorage.setItem(artKey, JSON.stringify(resolvedPayload));
+            localStorage.setItem(`modelscript:ide:memfs:${artifactId}`, JSON.stringify(resolvedPayload));
             localStorage.setItem(`modelscript:ide:memfs:artifact-${artifactId}`, JSON.stringify(resolvedPayload));
           } catch {}
           broadcastState();

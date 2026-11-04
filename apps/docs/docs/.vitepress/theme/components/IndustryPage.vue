@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { INDUSTRIES, INDUSTRY_BY_SLUG } from "../data/industries";
-import { LANGUAGE_BY_SLUG } from "../data/languages";
+import { LANGUAGE_BY_SLUG, TIER_LABELS } from "../data/languages";
 import MsIcon from "./MsIcon.vue";
 
 const props = defineProps<{ slug: string }>();
@@ -124,7 +124,10 @@ const related = computed(() => {
           </header>
           <div class="fmt-grid">
             <a v-for="l in languages" :key="l!.slug" :href="`/languages/${l!.slug}`" class="fmt-card">
-              <span class="fmt-ext">{{ l!.ext }}</span>
+              <div class="fmt-head">
+                <span class="fmt-ext">{{ l!.ext }}</span>
+                <span class="fmt-tier" :class="`fmt-tier--${l!.tier}`">{{ TIER_LABELS[l!.tier] }}</span>
+              </div>
               <span class="fmt-name">{{ l!.name }}</span>
               <span class="fmt-role">{{ l!.role }}</span>
             </a>
@@ -533,6 +536,13 @@ const related = computed(() => {
   transform: translateY(-2px);
 }
 
+.fmt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .fmt-ext {
   align-self: flex-start;
   padding: 2px 8px;
@@ -541,6 +551,30 @@ const related = computed(() => {
   font-size: 11.5px;
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.fmt-tier {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.fmt-tier--stable {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+.fmt-tier--beta {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.28);
+}
+.fmt-tier--preview {
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.28);
 }
 
 .fmt-name {

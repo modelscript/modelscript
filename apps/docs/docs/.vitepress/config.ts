@@ -332,6 +332,7 @@ export default defineConfig({
             { text: "CLI Overview", link: "/cli/overview" },
             { text: "CLI Command Reference", link: "/cli/commands" },
             { text: "Compiler Linter Rules", link: "/reference/linter-rules" },
+            { text: "Radiology & Surgical CAS", link: "/reference/radiology-and-surgery" },
             { text: "Standards & Export Formats", link: "/reference/export-formats" },
             { text: "MCP Server & IDE Workbench", link: "/reference/mcp-and-ide" },
           ],

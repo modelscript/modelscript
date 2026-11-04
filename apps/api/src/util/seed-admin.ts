@@ -160,6 +160,12 @@ export async function seedInitialAdmin(
 
     database.updateInstanceSettings(mergedSettingsPatch, adminUserId);
     presetApplied = preset.id;
+
+    if (preset.federationMode === "open") {
+      database.setFeatureFlag("activitypub_federation", true, "admin,beta_tester,user,guest", 100);
+    } else if (preset.federationMode === "disabled") {
+      database.setFeatureFlag("activitypub_federation", false, "admin", 100);
+    }
   }
 
   // Self-lock setup wizard when bootstrapped with a preset or when explicitly requested

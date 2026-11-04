@@ -28,6 +28,7 @@ import Box from "./Box";
 import {
   Backdrop,
   ComposeAttachedArtifact,
+  ComposeCitationPickerModal,
   ComposeCodeSnippetModal,
   ComposeInput,
   ComposeMentionHashtagPopups,
@@ -151,6 +152,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const [showHpcPicker, setShowHpcPicker] = useState(false);
   const [showMorselModal, setShowMorselModal] = useState(false);
   const [showPackageRepoPicker, setShowPackageRepoPicker] = useState(false);
+  const [showCitationPicker, setShowCitationPicker] = useState(false);
   const hasHpc = useFeatureFlag("cae_cloud_solver");
   const hasComposerAiPolish = useFeatureFlag("composer_ai_polish");
   const hasAiPolishAlias = useFeatureFlag("ai_polish");
@@ -575,6 +577,60 @@ export default function ComposeBox(props: ComposeBoxProps) {
       setContent(content + emoji);
     }
   };
+
+  const handleInsertCitation = useCallback(
+    (citationSnippet: string) => {
+      if (notebook.isNotebookMode) {
+        const targetCell =
+          notebook.notebookCells.find((c) => c.id === notebook.activeCellId && c.type === "markdown") ||
+          [...notebook.notebookCells].reverse().find((c) => c.type === "markdown");
+        if (targetCell && targetCell.type === "markdown") {
+          const prefix =
+            targetCell.content.length > 0 && !/\s$/.test(targetCell.content)
+              ? `${targetCell.content} `
+              : targetCell.content;
+          notebook.updateMarkdownCell(targetCell.id, `${prefix}${citationSnippet} `);
+        }
+        return;
+      }
+      const el = textareaRef.current;
+      if (el) {
+        const start = el.selectionStart ?? content.length;
+        const end = el.selectionEnd ?? start;
+        const before = content.slice(0, start);
+        const after = content.slice(end);
+        const needsLeadingSpace = before.length > 0 && !/\s$/.test(before);
+        const inserted = `${needsLeadingSpace ? " " : ""}${citationSnippet} `;
+        const next = before + inserted + after;
+        setContent(next);
+        requestAnimationFrame(() => {
+          el.focus();
+          const cursor = start + inserted.length;
+          el.setSelectionRange(cursor, cursor);
+        });
+      } else {
+        const needsLeadingSpace = content.length > 0 && !/\s$/.test(content);
+        setContent(`${content}${needsLeadingSpace ? " " : ""}${citationSnippet} `);
+      }
+    },
+    [notebook, content, setContent],
+  );
+
+  // Support ?cite=<urn> query parameter from SourceDetailPage / ReferencesPage
+  const appliedCiteParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    const searchStr = locCtx?.location?.search || (typeof window !== "undefined" ? window.location.search : "");
+    if (!searchStr) return;
+    const params = new URLSearchParams(searchStr);
+    const citeUrn = params.get("cite")?.trim();
+    if (!citeUrn || appliedCiteParamRef.current === citeUrn) return;
+    appliedCiteParamRef.current = citeUrn;
+    const tokenTag = citeUrn.startsWith("[@") ? citeUrn : `[@${citeUrn}]`;
+    if (!content.trim()) {
+      setContent(`${tokenTag} `);
+      setIsInputFocused(true);
+    }
+  }, [locCtx?.location?.search, content, setContent]);
 
   // Composer AI (Local Browser AI + Remote AI) state & handlers
   const [aiBusy, setAiBusy] = useState<"drafting" | "polishing" | null>(null);
@@ -1012,6 +1068,16 @@ export default function ComposeBox(props: ComposeBoxProps) {
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <NotionGhostButton
             type="button"
+            onClick={() => setShowCitationPicker(true)}
+            title="Insert scholarly citation (OpenAlex, DOI, ArXiv, URN)"
+            data-testid="notebook-insert-citation-btn"
+          >
+            <BookIcon size={12} />
+            <span>Cite</span>
+          </NotionGhostButton>
+
+          <NotionGhostButton
+            type="button"
             onClick={notebook.handleToggleNotebookMode}
             title="Switch to standard short post composer"
           >
@@ -1351,19 +1417,19 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   <div style={{ position: "relative", width: "100%" }}>
                     <OverlayWrapper>
                       <Backdrop ref={backdropRef}>
-                        {content.split(/(@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/g).map((part, i) =>
-                          part.startsWith("@") ? (
-                            <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
-                              {part}
-                            </span>
-                          ) : part.startsWith("#") ? (
-                            <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
-                              {part}
-                            </span>
-                          ) : (
-                            part
-                          ),
-                        )}
+                        {content
+                          .split(
+                            /(\[@(?:urn|doi|arxiv|openalex|pmid|isbn|cite):[^\]]+\]|@[a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?|#[a-zA-Z0-9_-]+)/gi,
+                          )
+                          .map((part, i) =>
+                            part.startsWith("[@") || part.startsWith("@") || part.startsWith("#") ? (
+                              <span key={i} style={{ color: "var(--color-accent-cyan)" }}>
+                                {part}
+                              </span>
+                            ) : (
+                              part
+                            ),
+                          )}
                         {content.endsWith("\n") && <br />}
                       </Backdrop>
                       <ComposeInput
@@ -1542,6 +1608,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   setShowPackageRepoPicker={setShowPackageRepoPicker}
                   setShowCodeSnippetModal={setShowCodeSnippetModal}
                   setShowHpcPicker={setShowHpcPicker}
+                  setShowCitationPicker={setShowCitationPicker}
                   hasHpc={hasHpc}
                   fileInputRef={fileInputRef}
                   handleFileUpload={submitHandler.handleFileUpload}
@@ -1678,6 +1745,12 @@ export default function ComposeBox(props: ComposeBoxProps) {
               }
             : undefined
         }
+      />
+
+      <ComposeCitationPickerModal
+        isOpen={showCitationPicker}
+        onClose={() => setShowCitationPicker(false)}
+        onInsertCitation={handleInsertCitation}
       />
 
       <Suspense fallback={null}>

@@ -1100,6 +1100,10 @@ end DoublePendulum3D;
         qifViewerSrc.includes("Boolean(viewConfig?.standalone)"),
         "QifViewer must gate Open in Playground header button behind viewConfig.standalone",
       );
+      assert.ok(
+        !qifViewerSrc.includes('width="335px"') && !qifViewerSrc.includes("top={10} left={10}"),
+        "QifViewer 3D viewport must use full width without a docked 335px right panel or overlapping top-left layer toggles",
+      );
     });
   });
 });

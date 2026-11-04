@@ -10,6 +10,8 @@ export interface LandingLanguageGroup {
   tone: "teal" | "indigo" | "amber" | "emerald" | "rose" | "sky";
 }
 
+export type LandingMaturityTier = "stable" | "beta" | "preview";
+
 export interface LandingLanguageTile {
   id: string;
   name: string;
@@ -17,6 +19,7 @@ export interface LandingLanguageTile {
   ext: string;
   group: string;
   tone: "teal" | "indigo" | "amber" | "emerald" | "rose" | "sky";
+  tier: LandingMaturityTier;
   role: string;
   summary: string;
   docsUrl: string;
@@ -51,7 +54,7 @@ export const LANDING_LANGUAGE_GROUPS: LandingLanguageGroup[] = [
   { id: "robotics", label: "Robotics & Industrial Automation", tone: "emerald" },
   { id: "buildings", label: "Buildings, Water & Civil", tone: "teal" },
   { id: "process", label: "Chemical & Process Engineering", tone: "amber" },
-  { id: "life-sciences", label: "Systems Biology & Pharmacology", tone: "rose" },
+  { id: "life-sciences", label: "Life Sciences, Healthcare & Medical", tone: "rose" },
 ];
 
 const CAPS = [
@@ -70,6 +73,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".msx",
     group: "core",
     tone: "teal",
+    tier: "stable",
     role: "Polyglot Kernel & Coordination DSL",
     summary:
       "Typed struct, constant, and functional orchestration kernel coordinating cross-domain physics, contracts, and solvers.",
@@ -83,6 +87,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".mo",
     group: "core",
     tone: "teal",
+    tier: "stable",
     role: "Acausal Multi-Physics DAE Modeling",
     summary:
       "Continuous-time differential-algebraic equation (DAE) modeling with full Modelica Standard Library schematic diagrams and CVODE/IDA solvers.",
@@ -96,6 +101,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".sysml",
     group: "core",
     tone: "indigo",
+    tier: "stable",
     role: "Systems Architecture & Requirements",
     summary:
       "OMG SysML v2 textual architecture definitions, ports, connections, state machines, and formal requirement satisfaction.",
@@ -109,6 +115,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".reqif",
     group: "core",
     tone: "sky",
+    tier: "beta",
     role: "Requirements Interchange & Traceability",
     summary:
       "ISO/IEC 29148 and DO-178C requirements interchange specifications with traceability links, quality lints, and SysML v2 projection.",
@@ -122,6 +129,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".ssd",
     group: "core",
     tone: "emerald",
+    tier: "stable",
     role: "Co-Simulation Architecture",
     summary:
       "Modelica Association System Structure and Parameterization (SSP) multi-FMU co-simulation topology and master orchestration.",
@@ -135,11 +143,54 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".owl",
     group: "core",
     tone: "rose",
+    tier: "stable",
     role: "Ontological Reasoning & Units",
     summary:
       "W3C OWL 2 Functional-Style ontologies with tableau description logic consistency checking, subsumption, and SI unit verification.",
     docsUrl: "https://modelscript.org/languages/owl2",
     defaultTemplateId: "owl2-units",
+  },
+  {
+    id: "oscal",
+    name: "NIST OSCAL 1.1",
+    badge: "OSC",
+    ext: ".oscal.json",
+    group: "core",
+    tone: "indigo",
+    tier: "beta",
+    role: "Cyber-Physical Security & Continuous ATO",
+    summary:
+      "NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS System Security Plans, profile resolution, CPS compliance auditing, and POA&M tracking.",
+    docsUrl: "https://modelscript.org/languages/oscal",
+    defaultTemplateId: "oscal-smart-factory",
+  },
+  {
+    id: "qif",
+    name: "ISO 23952 QIF 3.0",
+    badge: "QIF",
+    ext: ".qif",
+    group: "geometry",
+    tone: "sky",
+    tier: "beta",
+    role: "MBD GD&T Metrology & Statistical Process Control",
+    summary:
+      "ISO 23952 / ANSI DMSC Quality Information Framework MBD tolerances, ASME Y14.5 MMC/LMC bonus evaluation, CMM plans, and SPC Cp/Cpk.",
+    docsUrl: "https://modelscript.org/languages/qif",
+    defaultTemplateId: "qif-turbine-root",
+  },
+  {
+    id: "automationml",
+    name: "IEC 62714 AutomationML",
+    badge: "AML",
+    ext: ".aml",
+    group: "robotics",
+    tone: "teal",
+    tier: "beta",
+    role: "Smart Manufacturing CAEX Topology & Virtual Commissioning",
+    summary:
+      "IEC 62714 CAEX 2.15/3.0 Product-Process-Resource (PPR) hierarchies, 6-DOF frames, PLCopen/COLLADA links, and closed-loop virtual commissioning.",
+    docsUrl: "https://modelscript.org/languages/automationml",
+    defaultTemplateId: "aml-battery-workcell",
   },
   {
     id: "step",
@@ -148,6 +199,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".step",
     group: "geometry",
     tone: "indigo",
+    tier: "stable",
     role: "B-Rep Solid CAD & Multibody Extraction",
     summary:
       "ISO 10303-21 AP203/AP214/AP242 boundary-representation CAD assemblies with 3D viewport inspection and multibody inertia extraction.",
@@ -161,6 +213,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".scad",
     group: "geometry",
     tone: "teal",
+    tier: "stable",
     role: "Parametric Constructive Solid Geometry",
     summary:
       "Programmatic CSG solid modeling with port tagging for automated FEA structural supports and CFD boundary patches.",
@@ -174,6 +227,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".cfg",
     group: "geometry",
     tone: "sky",
+    tier: "stable",
     role: "Computational Fluid Dynamics",
     summary:
       "RANS/LES aerodynamic and thermal fluid configuration decks with flowfield convergence verification and reduced-order drag polars.",
@@ -187,11 +241,26 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".inp",
     group: "geometry",
     tone: "amber",
+    tier: "stable",
     role: "Finite Element Structural Analysis",
     summary:
       "3D structural and thermal finite element input decks with nodal mesh inspection, von Mises stress slicing, and safety-margin contracts.",
     docsUrl: "https://modelscript.org/languages/fea",
     defaultTemplateId: "fea-chassis",
+  },
+  {
+    id: "three-mf",
+    name: "3MF Additive Manufacturing",
+    badge: "3MF",
+    ext: ".3mf",
+    group: "geometry",
+    tone: "emerald",
+    tier: "beta",
+    role: "Additive Manufacturing & Surgical Guides",
+    summary:
+      "3MF Consortium XML mesh packages with watertight 2-manifold Euler-Poincare verification, overhang support checks, and surgical guide QA.",
+    docsUrl: "https://modelscript.org/languages/three-mf",
+    defaultTemplateId: "three-mf-guide",
   },
   {
     id: "csv",
@@ -200,6 +269,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".csv",
     group: "integration",
     tone: "emerald",
+    tier: "stable",
     role: "Time-Series & Lookup Table Ingestion",
     summary:
       "Structured experimental time-series trajectories and CombiTimeTable lookup datasets with interactive plotting and schema validation.",
@@ -213,6 +283,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".c",
     group: "integration",
     tone: "sky",
+    tier: "stable",
     role: "Flight Software & Control Laws",
     summary:
       "MISRA-checked embedded C control algorithms with symbolic execution, formal safety verification, and Modelica external function bindings.",
@@ -226,6 +297,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".f90",
     group: "integration",
     tone: "indigo",
+    tier: "beta",
     role: "Scientific & Legacy Physics Kernels",
     summary:
       "Fortran 90/95/2008 numerical subroutines and scientific physics kernels with automatic DAE lowering and dimensional audits.",
@@ -239,6 +311,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".jsbsim",
     group: "aerospace",
     tone: "amber",
+    tier: "beta",
     role: "6-DOF Flight Dynamics & Trim",
     summary:
       "6-DOF nonlinear aircraft aerodynamics, propulsion, mass balance, and flight control system XML configurations.",
@@ -252,6 +325,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".roc",
     group: "aerospace",
     tone: "rose",
+    tier: "preview",
     role: "Liquid Rocket Engine Cycle Balance",
     summary:
       "Cryogenic turbopump, regenerative cooling jacket, preburner, and thrust chamber thermodynamic cycle decks.",
@@ -265,6 +339,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".oem",
     group: "aerospace",
     tone: "sky",
+    tier: "beta",
     role: "Spacecraft Orbit Ephemeris & Attitude",
     summary:
       "Consultative Committee for Space Data Systems (CCSDS) Orbit Ephemeris Messages (OEM/OPM/OMM) and keplerian trajectory propagation.",
@@ -278,6 +353,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".ez5",
     group: "aerospace",
     tone: "indigo",
+    tier: "preview",
     role: "Aerospace Flight Controls & Hydraulics",
     summary: "Multi-rate aerospace flight control, thermal management, and environmental control block diagrams.",
     docsUrl: "https://modelscript.org/languages/easy5",
@@ -290,6 +366,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".arxml",
     group: "automotive",
     tone: "emerald",
+    tier: "beta",
     role: "Automotive E/E Software Architecture",
     summary:
       "AUTOSAR ARXML software components (SWCs), sender-receiver/client-server ports, periodic timing events, and runnable schedules.",
@@ -303,6 +380,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".mdl",
     group: "automotive",
     tone: "teal",
+    tier: "beta",
     role: "Causal Control Block Diagrams",
     summary:
       "Hierarchical causal signal-flow block diagrams and state machines with algebraic-loop detection and Modelica block projection.",
@@ -316,6 +394,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".gtm",
     group: "automotive",
     tone: "amber",
+    tier: "preview",
     role: "1D Engine, xEV & Thermal Propulsion",
     summary:
       "1D compressible gas dynamics, turbocharged internal combustion cylinders, battery thermal circuits, and crank-angle simulation.",
@@ -329,6 +408,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".xodr",
     group: "automotive",
     tone: "sky",
+    tier: "beta",
     role: "High-Definition Road Networks",
     summary:
       "ASAM OpenDRIVE clothoid/arc/line road reference geometry, lane topology, elevation profiles, and curvature continuity checks.",
@@ -338,10 +418,11 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
   {
     id: "openscenario",
     name: "ASAM OpenSCENARIO",
-    badge: "OSC",
+    badge: "XOSC",
     ext: ".xosc",
     group: "automotive",
     tone: "rose",
+    tier: "beta",
     role: "ADAS & Autonomous Driving Maneuvers",
     summary:
       "Dynamic traffic storyboards, cut-in maneuvers, time-to-collision (TTC) safety verification, and RSS minimum distance envelopes.",
@@ -355,6 +436,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".calc",
     group: "rail",
     tone: "rose",
+    tier: "beta",
     role: "Rail Vehicle-Track Interaction & EN 14363",
     summary:
       "Railway carbody/bogie/wheelset multibody dynamics, FASTSIM wheel-rail creep contact, Nadine Nadal derailment ratio, and EN 14363 ride acceptance.",
@@ -368,6 +450,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".spck",
     group: "rail",
     tone: "indigo",
+    tier: "beta",
     role: "Spatial Multibody Kinematics & Dynamics",
     summary:
       "3D rigid/flexible bodies, kinematic joints, force elements, Grübler-Kutzbach mobility analysis, and DAE lowering.",
@@ -381,6 +464,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".pscx",
     group: "power",
     tone: "amber",
+    tier: "beta",
     role: "Electromagnetic Transients & IEEE 2800",
     summary:
       "Dommel companion-circuit EMT solver, Bergeron traveling-wave lines, COMTRADE waveform capture, and IEEE 2800-2022 IBR compliance.",
@@ -394,6 +478,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".raw",
     group: "power",
     tone: "teal",
+    tier: "beta",
     role: "Transmission Power Flow & Stability",
     summary:
       "Bulk transmission network buses, generators, branches, transformers, Newton-Raphson AC power flow, and N-1 contingency screening.",
@@ -407,6 +492,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".dss",
     group: "power",
     tone: "emerald",
+    tier: "beta",
     role: "Unbalanced Distribution Grids & DERs",
     summary:
       "Multi-phase unbalanced distribution feeders, step voltage regulators, rooftop solar PV inverters, and ANSI C84.1 voltage profile audits.",
@@ -420,6 +506,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".opi",
     group: "oil-gas",
     tone: "teal",
+    tier: "preview",
     role: "Multiphase Subsea Flow Assurance",
     summary:
       "Three-field gas-oil-water transient multiphase flowlines, terrain-induced slugging, hydrate subcooling margins, and API RP 14E erosion.",
@@ -433,6 +520,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".lps",
     group: "oil-gas",
     tone: "sky",
+    tier: "preview",
     role: "Transmission Pipeline Hydraulics",
     summary:
       "High-pressure natural gas and liquid transmission networks, centrifugal compressor stations, linepack inventory, and surge transients.",
@@ -446,6 +534,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".data",
     group: "oil-gas",
     tone: "amber",
+    tier: "preview",
     role: "Subsurface Black-Oil & CO₂ Reservoir",
     summary:
       "3D porous-media reservoir grids, PVT black-oil tables, relative permeability curves, Peaceman well models, and waterflood recovery.",
@@ -459,6 +548,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".r5",
     group: "nuclear",
     tone: "rose",
+    tier: "preview",
     role: "Nuclear Reactor Thermal-Hydraulics",
     summary:
       "Two-fluid non-equilibrium reactor coolant loops, six-group point reactor kinetics, heat structures, and 10 CFR 50.46 PCT safety limits.",
@@ -472,6 +562,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".sima",
     group: "marine",
     tone: "sky",
+    tier: "preview",
     role: "Offshore Hydrodynamics & Mooring",
     summary:
       "6-DOF floating offshore wind platforms, JONSWAP irregular wave spectra, Cummins radiation memory, and DNV-OS-E301 mooring tension checks.",
@@ -485,6 +576,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".cir",
     group: "electronics",
     tone: "indigo",
+    tier: "stable",
     role: "Analog & Mixed-Signal Circuit Simulation",
     summary:
       "Modified Nodal Analysis (MNA) circuit netlists with DC operating point, AC frequency sweep, transient integration, and floating-node lints.",
@@ -498,6 +590,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".va",
     group: "electronics",
     tone: "teal",
+    tier: "stable",
     role: "Compact Semiconductor Device Modeling",
     summary:
       "Behavioral analog compact device models (V(p,n) <+ ...) with symbolic Jacobian differentiation and Modelica connector lowering.",
@@ -511,6 +604,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".ibs",
     group: "electronics",
     tone: "amber",
+    tier: "beta",
     role: "High-Speed SerDes & I/O Buffer Integrity",
     summary:
       "I/O buffer pullup/pulldown I-V curves, rising/falling V-T waveforms, package parasitics, and monotonicity/passivity verification.",
@@ -524,6 +618,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".s2p",
     group: "electronics",
     tone: "rose",
+    tier: "beta",
     role: "RF & Microwave S-Parameter Networks",
     summary:
       "Multi-port frequency-domain scattering parameters (.s1p–.s4p) with passivity singular-value checks, reciprocity, and rational vector fitting.",
@@ -537,6 +632,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".urdf",
     group: "robotics",
     tone: "emerald",
+    tier: "stable",
     role: "Robotic Manipulator Kinematics & Dynamics",
     summary:
       "Articulated robot links, inertial tensors, revolute/prismatic joints, positive-definite triangle-inequality checks, and multibody lowering.",
@@ -550,6 +646,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".st",
     group: "robotics",
     tone: "teal",
+    tier: "beta",
     role: "Industrial PLC Control & Structured Text",
     summary:
       "IEC 61131-3 Structured Text programs, Function Block Diagrams, scan-cycle execution, and formal safety interlock verification.",
@@ -563,6 +660,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".adm",
     group: "robotics",
     tone: "indigo",
+    tier: "beta",
     role: "Mechanical Multibody Mechanisms",
     summary:
       "MSC Adams PARTS, MARKERS, kinematic JOINTS, SFORCE/BUSHING elements, and spatial multibody mechanism simulation.",
@@ -576,6 +674,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".idf",
     group: "buildings",
     tone: "amber",
+    tier: "beta",
     role: "Building Envelope & HVAC Energy",
     summary:
       "Multi-zone building thermal envelopes, fenestration, internal gains, HVAC air loops, and ASHRAE 90.1 / 55 comfort verification.",
@@ -589,6 +688,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".epanet",
     group: "buildings",
     tone: "sky",
+    tier: "beta",
     role: "Pressurized Water Distribution Networks",
     summary:
       "Todini-Pilati Global Gradient Algorithm (GGA) hydraulic head/flow solver, Hazen-Williams pipes, pumps, and chlorine decay.",
@@ -602,6 +702,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".swmm",
     group: "buildings",
     tone: "teal",
+    tier: "beta",
     role: "Urban Stormwater & Sanitary Sewer Routing",
     summary:
       "1D Saint-Venant dynamic wave open-channel and conduit routing, Green-Ampt catchment runoff, and node flooding verification.",
@@ -615,11 +716,68 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".bkp",
     group: "process",
     tone: "amber",
+    tier: "preview",
     role: "Chemical Process Flowsheets & VLE",
     summary:
       "Flash drums, CSTR/PFR reactors, distillation columns, Peng-Robinson/NRTL vapor-liquid equilibrium, and mass/energy balance checks.",
     docsUrl: "https://modelscript.org/languages/aspen",
     defaultTemplateId: "aspen-methanol",
+  },
+  {
+    id: "gproms",
+    name: "gPROMS Process",
+    badge: "GPR",
+    ext: ".gproms",
+    group: "process",
+    tone: "teal",
+    tier: "preview",
+    role: "Equation-Oriented Process Modeling & DAE",
+    summary:
+      "Equation-oriented chemical process models, degree-of-freedom audits, non-isothermal CSTR kinetics, and DAE arena lowering.",
+    docsUrl: "https://modelscript.org/languages/gproms",
+    defaultTemplateId: "gproms-cstr",
+  },
+  {
+    id: "cantera",
+    name: "Cantera Kinetics",
+    badge: "CTI",
+    ext: ".cti",
+    group: "process",
+    tone: "amber",
+    tier: "preview",
+    role: "Chemical Kinetics, Thermodynamics & Combustion",
+    summary:
+      "Gas-phase and surface elementary reaction mechanisms, NASA-7 polynomial continuity checks, and stiff Arrhenius kinetics.",
+    docsUrl: "https://modelscript.org/languages/cantera",
+    defaultTemplateId: "cantera-h2air",
+  },
+  {
+    id: "phreeqc",
+    name: "USGS PHREEQC",
+    badge: "PQI",
+    ext: ".pqi",
+    group: "process",
+    tone: "sky",
+    tier: "preview",
+    role: "Aqueous Geochemistry & Reactive Transport",
+    summary:
+      "Aqueous electrolyte speciation, electroneutrality charge-balance audits, mineral saturation indices, and 1D reactive transport.",
+    docsUrl: "https://modelscript.org/languages/phreeqc",
+    defaultTemplateId: "phreeqc-calcite",
+  },
+  {
+    id: "smiles",
+    name: "OpenSMILES",
+    badge: "SMI",
+    ext: ".smi",
+    group: "process",
+    tone: "emerald",
+    tier: "preview",
+    role: "Cheminformatics & Molecular Graph Topology",
+    summary:
+      "OpenSMILES molecular line notation with organic-subset valence checks, Huckel aromaticity, and Lipinski Rule-of-Five descriptors.",
+    docsUrl: "https://modelscript.org/languages/smiles",
+    defaultTemplateId: "smiles-library",
   },
   {
     id: "sbml",
@@ -628,11 +786,208 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".sbml",
     group: "life-sciences",
     tone: "rose",
+    tier: "preview",
     role: "Biochemical Reaction Networks & PBPK",
     summary:
       "Compartmental biochemical species, Michaelis-Menten and mass-action reaction kinetics, stoichiometry matrices, and conservation laws.",
     docsUrl: "https://modelscript.org/languages/sbml",
     defaultTemplateId: "sbml-enzyme",
+  },
+  {
+    id: "antimony",
+    name: "Antimony Bio-Networks",
+    badge: "ANT",
+    ext: ".ant",
+    group: "life-sciences",
+    tone: "teal",
+    tier: "preview",
+    role: "Modular Biological Reaction Networks",
+    summary:
+      "Human-readable modular gene-regulatory and metabolic pathways with bidirectional SBML Level 3 and Modelica DAE compilation.",
+    docsUrl: "https://modelscript.org/languages/antimony",
+    defaultTemplateId: "antimony-repressilator",
+  },
+  {
+    id: "bngl",
+    name: "BioNetGen (BNGL)",
+    badge: "BNG",
+    ext: ".bngl",
+    group: "life-sciences",
+    tone: "indigo",
+    tier: "preview",
+    role: "Rule-Based Intracellular Signaling",
+    summary:
+      "Rule-based multi-site phosphorylation and receptor dimerization networks with site-state validation and ODE/Gillespie SSA expansion.",
+    docsUrl: "https://modelscript.org/languages/bngl",
+    defaultTemplateId: "bngl-egfr",
+  },
+  {
+    id: "cellml",
+    name: "CellML 2.0",
+    badge: "CML",
+    ext: ".cellml",
+    group: "life-sciences",
+    tone: "rose",
+    tier: "preview",
+    role: "Cardiac Electrophysiology & Cellular Physiology",
+    summary:
+      "Component-based physiological ODE/DAE models with strict dimensional unit checking (mV, ms, uA/cm2) and Hodgkin-Huxley solvers.",
+    docsUrl: "https://modelscript.org/languages/cellml",
+    defaultTemplateId: "cellml-membrane",
+  },
+  {
+    id: "sedml",
+    name: "SED-ML (MIASE)",
+    badge: "SED",
+    ext: ".sedml",
+    group: "life-sciences",
+    tone: "sky",
+    tier: "preview",
+    role: "Reproducible Simulation Experiments",
+    summary:
+      "Simulation Experiment Description Markup Language binding KiSAO solver algorithms (KISAO:0000019) to SBML and CellML models.",
+    docsUrl: "https://modelscript.org/languages/sedml",
+    defaultTemplateId: "sedml-glycolysis",
+  },
+  {
+    id: "sbol",
+    name: "SBOL 3.1",
+    badge: "SBL",
+    ext: ".sbol",
+    group: "life-sciences",
+    tone: "emerald",
+    tier: "preview",
+    role: "Synthetic Biology Genetic Circuits",
+    summary:
+      "Synthetic Biology Open Language genetic constructs with Sequence Ontology (SO) and Systems Biology Ontology (SBO) validation.",
+    docsUrl: "https://modelscript.org/languages/sbol",
+    defaultTemplateId: "sbol-toggle",
+  },
+  {
+    id: "genbank",
+    name: "GenBank / INSDC",
+    badge: "GBK",
+    ext: ".gb",
+    group: "life-sciences",
+    tone: "teal",
+    tier: "preview",
+    role: "Annotated Genomic & Plasmid Sequences",
+    summary:
+      "INSDC flatfile DNA/RNA sequence records with coordinate bounds checking, open reading frame (ORF) phase verification, and GC analysis.",
+    docsUrl: "https://modelscript.org/languages/genbank",
+    defaultTemplateId: "genbank-plasmid",
+  },
+  {
+    id: "pdb",
+    name: "WWPDB Protein Data Bank",
+    badge: "PDB",
+    ext: ".pdb",
+    group: "life-sciences",
+    tone: "indigo",
+    tier: "preview",
+    role: "3D Macromolecular Structural Biology",
+    summary:
+      "Atomic coordinate records (ATOM, HETATM, HELIX, SHEET, CONECT) with steric clash detection and Ramachandran validation.",
+    docsUrl: "https://modelscript.org/languages/pdb",
+    defaultTemplateId: "pdb-peptide",
+  },
+  {
+    id: "nmtran",
+    name: "NONMEM NM-TRAN",
+    badge: "NMT",
+    ext: ".ctl",
+    group: "life-sciences",
+    tone: "amber",
+    tier: "preview",
+    role: "Pharmacometrics & Population PK/PD",
+    summary:
+      "NONMEM control streams ($PROBLEM, $PK, $DES, $THETA, $OMEGA, $SIGMA) with ADVAN/TRANS validation and compartment ODEs.",
+    docsUrl: "https://modelscript.org/languages/nmtran",
+    defaultTemplateId: "nmtran-pk",
+  },
+  {
+    id: "opensim",
+    name: "OpenSim Biomechanics",
+    badge: "OSM",
+    ext: ".osim",
+    group: "life-sciences",
+    tone: "emerald",
+    tier: "beta",
+    role: "Musculoskeletal Multibody & Hill Muscle Dynamics",
+    summary:
+      "OpenSim 4.x anatomical bodies, kinematic joints, Hill-type muscle-tendon actuators (Thelen2003Muscle), and inverse dynamics.",
+    docsUrl: "https://modelscript.org/languages/opensim",
+    defaultTemplateId: "opensim-elbow",
+  },
+  {
+    id: "febio",
+    name: "FEBio Biomechanics",
+    badge: "FEB",
+    ext: ".feb",
+    group: "life-sciences",
+    tone: "amber",
+    tier: "beta",
+    role: "Nonlinear Soft-Tissue & Biphasic FEA",
+    summary:
+      "FEBio 4.0 hyperelastic (Mooney-Rivlin, Ogden, Holzapfel-Gasser-Ogden), viscoelastic, and biphasic poroelastic soft-tissue FEA.",
+    docsUrl: "https://modelscript.org/languages/febio",
+    defaultTemplateId: "febio-artery",
+  },
+  {
+    id: "dicom-rt",
+    name: "DICOM-RT Oncology",
+    badge: "DCM",
+    ext: ".dcm.json",
+    group: "life-sciences",
+    tone: "rose",
+    tier: "preview",
+    role: "Radiation Therapy Plans, DVH & Gamma Index QA",
+    summary:
+      "DICOM Radiation Therapy (RTPLAN, RTDOSE, RTSTRUCT) with QUANTEC organ-at-risk DVH verification, BED/EQD2, and 3D Gamma Index QA.",
+    docsUrl: "https://modelscript.org/languages/dicom-rt",
+    defaultTemplateId: "dicom-rt-prostate",
+  },
+  {
+    id: "nifti",
+    name: "NIfTI-1 / NIfTI-2",
+    badge: "NII",
+    ext: ".nii.json",
+    group: "life-sciences",
+    tone: "sky",
+    tier: "preview",
+    role: "Volumetric Medical Imaging & RAS+ Registration",
+    summary:
+      "3D/4D CT, MRI, and fMRI neuroimaging headers with qform/sform affine determinant checks and voxel-to-RAS+ world transforms.",
+    docsUrl: "https://modelscript.org/languages/nifti",
+    defaultTemplateId: "nifti-brain",
+  },
+  {
+    id: "topas",
+    name: "TOPAS / Geant4 MC",
+    badge: "TPS",
+    ext: ".topas",
+    group: "life-sciences",
+    tone: "indigo",
+    tier: "preview",
+    role: "Proton & Photon Monte Carlo Radiation Transport",
+    summary:
+      "TOPAS clinical proton/carbon/photon beamline parameters with Bethe-Bloch stopping power and Bragg peak depth-dose scoring.",
+    docsUrl: "https://modelscript.org/languages/topas",
+    defaultTemplateId: "topas-proton",
+  },
+  {
+    id: "igtl",
+    name: "OpenIGTLink v3",
+    badge: "IGT",
+    ext: ".igtl.json",
+    group: "life-sciences",
+    tone: "teal",
+    tier: "preview",
+    role: "Surgical Navigation & Robotic Hand-Eye Calibration",
+    summary:
+      "Computer-assisted surgery TRANSFORM streams with SO(3) rotation matrix orthogonality checks, pivot calibration, and AX=XB hand-eye alignment.",
+    docsUrl: "https://modelscript.org/languages/igtl",
+    defaultTemplateId: "igtl-navigation",
   },
 ];
 
@@ -1240,6 +1595,292 @@ export const LANDING_EXAMPLE_TILES: LandingExampleTile[] = [
     fileList: ["enzyme_kinetics.sbml"],
     capabilities: CAPS,
   },
+  {
+    id: "oscal-smart-factory",
+    languageId: "oscal",
+    title: "Smart Factory NIST SP 800-53 System Security Plan",
+    summary:
+      "NIST OSCAL 1.1.2 System Security Plan, control catalog, and assessment plan with cryptographic traceability.",
+    badge: "OSC",
+    tone: "amber",
+    ext: ".oscal.json",
+    primaryFile: "smart_factory_ssp.oscal.json",
+    fileList: ["smart_factory_ssp.oscal.json"],
+    capabilities: CAPS,
+  },
+  {
+    id: "qif-turbine-root",
+    languageId: "qif",
+    title: "High-Pressure Turbine Blade Fir-Tree Root CMM Inspection",
+    summary:
+      "ISO 23952 QIF 3.0 digital metrology document with datum reference frames, ASME Y14.5 GD&T tolerances, and CMM results.",
+    badge: "QIF",
+    tone: "indigo",
+    ext: ".qif",
+    primaryFile: "turbine_blade_inspection.qif",
+    fileList: ["turbine_blade_inspection.qif"],
+    capabilities: CAPS,
+  },
+  {
+    id: "aml-battery-workcell",
+    languageId: "automationml",
+    title: "Robotic EV Battery Module Assembly Workcell",
+    summary:
+      "IEC 62714 AutomationML CAEX 3.0 plant hierarchy with 6-DOF robot arm, safety PLC interfaces, and role class libraries.",
+    badge: "AML",
+    tone: "sky",
+    ext: ".aml",
+    primaryFile: "battery_assembly_cell.aml",
+    fileList: ["battery_assembly_cell.aml"],
+    capabilities: CAPS,
+  },
+  {
+    id: "three-mf-guide",
+    languageId: "three-mf",
+    title: "Patient-Specific Titanium Craniotomy Surgical Guide",
+    summary:
+      "3MF additive manufacturing container with watertight Ti-6Al-4V surgical guide mesh, build tray transform, and lattice metadata.",
+    badge: "3MF",
+    tone: "indigo",
+    ext: ".3mf",
+    primaryFile: "surgical_guide_lattice.3mf",
+    fileList: ["surgical_guide_lattice.3mf"],
+    capabilities: CAPS,
+  },
+  {
+    id: "gproms-cstr",
+    languageId: "gproms",
+    title: "Non-Isothermal Jacketed CSTR Process Model",
+    summary:
+      "gPROMS declarative process model with Arrhenius reaction kinetics, energy balance equations, and cooling jacket control.",
+    badge: "GPR",
+    tone: "amber",
+    ext: ".gproms",
+    primaryFile: "jacketed_cstr.gproms",
+    fileList: ["jacketed_cstr.gproms"],
+    capabilities: CAPS,
+  },
+  {
+    id: "cantera-h2air",
+    languageId: "cantera",
+    title: "Hydrogen-Air Elementary Combustion Mechanism",
+    summary:
+      "Cantera YAML thermochemical mechanism with NASA-7 polynomials, Arrhenius rate parameters, and third-body efficiencies.",
+    badge: "CTI",
+    tone: "amber",
+    ext: ".cti.yaml",
+    primaryFile: "h2_air_ignition.cti.yaml",
+    fileList: ["h2_air_ignition.cti.yaml"],
+    capabilities: CAPS,
+  },
+  {
+    id: "phreeqc-calcite",
+    languageId: "phreeqc",
+    title: "Calcite Dissolution & Acid Mine Drainage Neutralization",
+    summary:
+      "USGS PHREEQC aqueous speciation and kinetic mineral dissolution script with pH, pe, and saturation index tracking.",
+    badge: "PHQ",
+    tone: "teal",
+    ext: ".pqi",
+    primaryFile: "calcite_dissolution.pqi",
+    fileList: ["calcite_dissolution.pqi"],
+    capabilities: CAPS,
+  },
+  {
+    id: "smiles-library",
+    languageId: "smiles",
+    title: "Analgesic & Cardiovascular Pharmacophore SMILES Library",
+    summary:
+      "OpenSMILES molecular line notation dataset with aromaticity, tetrahedral stereocenters, and Lipinski rule-of-five metrics.",
+    badge: "SMI",
+    tone: "emerald",
+    ext: ".smi",
+    primaryFile: "pharmacophore_library.smi",
+    fileList: ["pharmacophore_library.smi"],
+    capabilities: CAPS,
+  },
+  {
+    id: "antimony-repressilator",
+    languageId: "antimony",
+    title: "Elowitz-Leibler Synthetic Genetic Repressilator",
+    summary:
+      "Human-readable Antimony modular gene regulatory network with Hill repression kinetics and limit-cycle oscillations.",
+    badge: "ANT",
+    tone: "rose",
+    ext: ".ant",
+    primaryFile: "repressilator.ant",
+    fileList: ["repressilator.ant"],
+    capabilities: CAPS,
+  },
+  {
+    id: "bngl-egfr",
+    languageId: "bngl",
+    title: "EGFR Ligand Binding & Receptor Dimerization Network",
+    summary:
+      "BioNetGen rule-based signaling model with site-specific phosphorylation rules, compartments, and observable trajectories.",
+    badge: "BNG",
+    tone: "rose",
+    ext: ".bngl",
+    primaryFile: "egfr_signaling.bngl",
+    fileList: ["egfr_signaling.bngl"],
+    capabilities: CAPS,
+  },
+  {
+    id: "cellml-membrane",
+    languageId: "cellml",
+    title: "Hodgkin-Huxley Squid Giant Axon Action Potential",
+    summary:
+      "CellML 2.0 cellular electrophysiology model with sodium and potassium voltage-gated ion channels and SI unit verification.",
+    badge: "CML",
+    tone: "rose",
+    ext: ".cellml",
+    primaryFile: "hodgkin_huxley_axon.cellml",
+    fileList: ["hodgkin_huxley_axon.cellml"],
+    capabilities: CAPS,
+  },
+  {
+    id: "sedml-glycolysis",
+    languageId: "sedml",
+    title: "Glycolytic Oscillation Reproducible Simulation Experiment",
+    summary:
+      "SED-ML Level 1 Version 4 experiment description with KiSAO CVODE solver, uniform time course, and publication plot outputs.",
+    badge: "SED",
+    tone: "indigo",
+    ext: ".sedml",
+    primaryFile: "glycolysis_experiment.sedml",
+    fileList: ["glycolysis_experiment.sedml"],
+    capabilities: CAPS,
+  },
+  {
+    id: "sbol-toggle",
+    languageId: "sbol",
+    title: "Gardner-Collins Genetic Toggle Switch Construct",
+    summary:
+      "SBOL 3.1 synthetic biology design with SO-typed promoters, RBS, coding sequences, terminators, and repression interactions.",
+    badge: "SBL",
+    tone: "emerald",
+    ext: ".sbol",
+    primaryFile: "toggle_switch_cassette.sbol",
+    fileList: ["toggle_switch_cassette.sbol"],
+    capabilities: CAPS,
+  },
+  {
+    id: "genbank-plasmid",
+    languageId: "genbank",
+    title: "pUC19 Cloning Vector Annotated Plasmid Sequence",
+    summary:
+      "INSDC GenBank flatfile record with origin of replication, lacZ-alpha complementation cassette, and AmpR selectable marker.",
+    badge: "GBK",
+    tone: "emerald",
+    ext: ".gb",
+    primaryFile: "puc19_plasmid.gb",
+    fileList: ["puc19_plasmid.gb"],
+    capabilities: CAPS,
+  },
+  {
+    id: "pdb-peptide",
+    languageId: "pdb",
+    title: "Antimicrobial Alpha-Helical Peptide 3D Coordinates",
+    summary:
+      "WWPDB 3D macromolecular coordinate record with backbone atoms, secondary structure helix assignments, and disulfide bonds.",
+    badge: "PDB",
+    tone: "sky",
+    ext: ".pdb",
+    primaryFile: "alpha_helix_peptide.pdb",
+    fileList: ["alpha_helix_peptide.pdb"],
+    capabilities: CAPS,
+  },
+  {
+    id: "nmtran-pk",
+    languageId: "nmtran",
+    title: "Two-Compartment Oral & IV Population PK Control Stream",
+    summary:
+      "NONMEM NM-TRAN pharmacometric control stream with ADVAN4 TRANS4, inter-individual random effects, and FOCE-I estimation.",
+    badge: "NMT",
+    tone: "amber",
+    ext: ".ctl",
+    primaryFile: "two_compartment_pk.ctl",
+    fileList: ["two_compartment_pk.ctl"],
+    capabilities: CAPS,
+  },
+  {
+    id: "opensim-elbow",
+    languageId: "opensim",
+    title: "Human Elbow Flexion-Extension Hill-Type Musculoskeletal Model",
+    summary:
+      "OpenSim 4.x biomechanical model with humerus/radius/ulna segments, pin elbow joint, and biceps/triceps Hill-type muscles.",
+    badge: "OSM",
+    tone: "teal",
+    ext: ".osim",
+    primaryFile: "elbow_flexion_musculoskeletal.osim",
+    fileList: ["elbow_flexion_musculoskeletal.osim"],
+    capabilities: CAPS,
+  },
+  {
+    id: "febio-artery",
+    languageId: "febio",
+    title: "Hyperelastic Arterial Wall Inflation Biomechanics",
+    summary:
+      "FEBio 4.0 nonlinear finite element model of a pressurized arterial segment with Mooney-Rivlin tissue mechanics.",
+    badge: "FEB",
+    tone: "indigo",
+    ext: ".feb",
+    primaryFile: "arterial_wall_inflation.feb",
+    fileList: ["arterial_wall_inflation.feb"],
+    capabilities: CAPS,
+  },
+  {
+    id: "dicom-rt-prostate",
+    languageId: "dicom-rt",
+    title: "7-Beam Coplanar IMRT Prostate Radiation Therapy Plan",
+    summary:
+      "DICOM-RT radiation oncology descriptor with PTV/OAR dose-volume constraints, 6 MV photon beams, and BED10/EQD2 analysis.",
+    badge: "DRT",
+    tone: "rose",
+    ext: ".dcm.json",
+    primaryFile: "prostate_imrt_plan.dcm.json",
+    fileList: ["prostate_imrt_plan.dcm.json"],
+    capabilities: CAPS,
+  },
+  {
+    id: "nifti-brain",
+    languageId: "nifti",
+    title: "MNI152 T1-Weighted 1mm Isotropic Brain MRI Volume",
+    summary:
+      "NIfTI-1 neuroimaging volume descriptor with qform/sform RAS+ affine matrices and cortical parcellation ROIs.",
+    badge: "NII",
+    tone: "sky",
+    ext: ".nii.json",
+    primaryFile: "mni152_t1_brain.nii.json",
+    fileList: ["mni152_t1_brain.nii.json"],
+    capabilities: CAPS,
+  },
+  {
+    id: "topas-proton",
+    languageId: "topas",
+    title: "150 MeV Clinical Proton Pencil-Beam Water Phantom Bragg Peak",
+    summary:
+      "TOPAS Geant4 Monte Carlo parameter file modeling a 150 MeV proton pencil beam in a water phantom with 1 mm dose scoring.",
+    badge: "TPS",
+    tone: "amber",
+    ext: ".topas",
+    primaryFile: "proton_bragg_peak.topas",
+    fileList: ["proton_bragg_peak.topas"],
+    capabilities: CAPS,
+  },
+  {
+    id: "igtl-navigation",
+    languageId: "igtl",
+    title: "Stereotactic Neurosurgery Optical Tracker & Robotic Biopsy Bridge",
+    summary:
+      "OpenIGTLink v3 surgical navigation session with 120 Hz optical tracking, fiducial registration, and safety interlocks.",
+    badge: "IGT",
+    tone: "teal",
+    ext: ".igtl.json",
+    primaryFile: "cranial_biopsy_navigation.igtl.json",
+    fileList: ["cranial_biopsy_navigation.igtl.json"],
+    capabilities: CAPS,
+  },
 ];
 
 export function renderLandingPageHtml(): string {
@@ -1253,7 +1894,7 @@ export function renderLandingPageHtml(): string {
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
-  <title>ModelScript IDE — 44-Language Polyglot Engineering &amp; Simulation Environment</title>
+  <title>ModelScript IDE — 66-Language Polyglot Engineering &amp; Simulation Environment</title>
   <link rel="icon" href="/favicon.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -1735,6 +2376,36 @@ export function renderLandingPageHtml(): string {
     html.light .tone-rose { color: #be123c; }
     html.light .tone-sky { color: #0369a1; }
 
+    /* ── Maturity Tier Pills ── */
+    .ms-tile-tier {
+      font-family: var(--ms-font-mono);
+      font-size: 0.64rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.14rem 0.45rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+    }
+    .tier-stable {
+      background: rgba(16, 185, 129, 0.14);
+      color: #34d399;
+      border-color: rgba(52, 211, 153, 0.32);
+    }
+    .tier-beta {
+      background: rgba(56, 189, 248, 0.14);
+      color: #38bdf8;
+      border-color: rgba(56, 189, 248, 0.32);
+    }
+    .tier-preview {
+      background: rgba(245, 158, 11, 0.14);
+      color: #fbbf24;
+      border-color: rgba(251, 191, 36, 0.32);
+    }
+    html.light .tier-stable { color: #047857; }
+    html.light .tier-beta { color: #0369a1; }
+    html.light .tier-preview { color: #b45309; }
+
     /* ── Level 1 Controls: Search & Domain Filter Pills ── */
     .ms-section-bar {
       display: flex;
@@ -1986,7 +2657,7 @@ export function renderLandingPageHtml(): string {
         <span class="ms-brand-pill">Polyglot IDE</span>
       </a>
       <div class="ms-nav-actions">
-        <a href="https://modelscript.org/languages/" target="_blank" rel="noopener" class="ms-nav-link">44 Languages Docs</a>
+        <a href="https://modelscript.org/languages/" target="_blank" rel="noopener" class="ms-nav-link">66 Languages Docs</a>
         <a href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener" class="ms-nav-link">GitHub</a>
         <button id="theme-toggle" type="button" class="ms-theme-toggle" aria-label="Toggle color theme">
           <span id="theme-label">Dark Blueprint</span>
@@ -1999,11 +2670,11 @@ export function renderLandingPageHtml(): string {
     <section class="ms-hero-header">
       <div class="ms-eyebrow">
         <span class="ms-eyebrow-dot"></span>
-        <span>44 Polyglot Engineering Languages &bull; WebAssembly GLR &bull; Zero-Glue Simulation</span>
+        <span>66 Polyglot Engineering Languages &bull; WebAssembly GLR &bull; Zero-Glue Simulation</span>
       </div>
       <h1 class="ms-title">ModelScript Polyglot Engineering IDE</h1>
       <p class="ms-subtitle">
-        Start with a clean empty workspace or explore verified examples across all 44 systems, multi-physics, CAD/FEA/CFD, aerospace, automotive, power grid, subsurface, semiconductor, and biological languages.
+        Start with a clean empty workspace or explore verified examples across all 66 systems, multi-physics, CAD/FEA/CFD, aerospace, automotive, power grid, subsurface, semiconductor, biological, and clinical medical languages.
       </p>
     </section>
 
@@ -2016,7 +2687,7 @@ export function renderLandingPageHtml(): string {
             <div>
               <div class="ms-empty-heading">Empty Polyglot Workspace</div>
               <p class="ms-empty-desc">
-                Launch a clean in-memory workspace with all 44 language grammars, WebAssembly GLR parsers, real-time linters, CodeLens actions, interactive schematics, and numerical solvers ready out of the box.
+                Launch a clean in-memory workspace with all 66 language grammars, WebAssembly GLR parsers, real-time linters, CodeLens actions, interactive schematics, and numerical solvers ready out of the box.
               </p>
             </div>
           </div>
@@ -2050,12 +2721,12 @@ export function renderLandingPageHtml(): string {
       </div>
     </section>
 
-    <!-- LEVEL 1: 44 Language Tiles -->
+    <!-- LEVEL 1: 66 Language Tiles -->
     <section id="level-1-view" aria-label="Level 1 Language Catalog">
       <div class="ms-section-bar">
         <div class="ms-section-heading">
           <span>Step 1 &mdash; Select a Language</span>
-          <span id="lang-count-badge" class="ms-count-badge">44 Languages</span>
+          <span id="lang-count-badge" class="ms-count-badge">66 Languages</span>
         </div>
         <div class="ms-search-wrap">
           <input
@@ -2077,7 +2748,7 @@ export function renderLandingPageHtml(): string {
       <div class="ms-level2-header">
         <div class="ms-breadcrumb-row">
           <button type="button" class="ms-back-btn" onclick="window.showAllLanguages()">
-            &larr; All 44 Languages
+            &larr; All 66 Languages
           </button>
           <div style="display: flex; gap: 0.65rem; align-items: center;">
             <a id="level2-docs-link" href="https://modelscript.org/languages/" target="_blank" rel="noopener" class="ms-nav-link">
@@ -2165,7 +2836,7 @@ export function renderLandingPageHtml(): string {
       function renderFilterPills() {
         var container = document.getElementById('domain-filter-pills');
         if (!container) return;
-        var html = '<button type="button" class="ms-filter-pill ' + (activeGroup === 'all' ? 'active' : '') + '" data-group="all">All 44 Languages</button>';
+        var html = '<button type="button" class="ms-filter-pill ' + (activeGroup === 'all' ? 'active' : '') + '" data-group="all">All 66 Languages</button>';
         for (var i = 0; i < CATALOG.groups.length; i++) {
           var g = CATALOG.groups[i];
           var cls = activeGroup === g.id ? 'ms-filter-pill active' : 'ms-filter-pill';
@@ -2209,12 +2880,17 @@ export function renderLandingPageHtml(): string {
           var lang = filtered[i];
           var exList = getExamplesForLanguage(lang.id);
           var exCountLabel = exList.length + (exList.length === 1 ? ' Verified Example' : ' Verified Examples');
+          var tierKey = lang.tier || 'beta';
+          var tierLabel = tierKey.charAt(0).toUpperCase() + tierKey.slice(1);
           html +=
             '<button type="button" class="ms-tile" data-lang-id="' + lang.id + '">' +
               '<div>' +
                 '<div class="ms-tile-top">' +
                   '<span class="ms-tile-badge tone-' + lang.tone + '">' + lang.badge + '</span>' +
-                  '<span class="ms-tile-ext">' + lang.ext + '</span>' +
+                  '<div style="display: inline-flex; align-items: center; gap: 0.4rem;">' +
+                    '<span class="ms-tile-tier tier-' + tierKey + '">' + tierLabel + '</span>' +
+                    '<span class="ms-tile-ext">' + lang.ext + '</span>' +
+                  '</div>' +
                 '</div>' +
                 '<div class="ms-tile-title">' + lang.name + '</div>' +
                 '<div class="ms-tile-role">' + lang.role + '</div>' +

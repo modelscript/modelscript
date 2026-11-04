@@ -196,8 +196,8 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
     description: "Inter-server Fediverse actor federation, remote inboxes, and cryptographic signatures.",
     defaultValue: false,
     category: "social",
-    maturity: "alpha",
-    allowedRoles: ["admin"],
+    maturity: "production",
+    allowedRoles: ["admin", "beta_tester", "user", "guest"],
   },
   sysml2_omg_api: {
     key: "sysml2_omg_api",

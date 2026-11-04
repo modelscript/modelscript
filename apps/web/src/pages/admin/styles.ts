@@ -47,6 +47,16 @@ export const StatGrid = styled.div`
   margin-bottom: 24px;
 `;
 
+export const StatCard = styled.div`
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`;
+
 export const Header = styled.div`
   padding: 0 16px;
   min-height: 53px;

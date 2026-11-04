@@ -79,13 +79,17 @@ export const PlaygroundPage: React.FC = () => {
   const editPostIdParam = searchParams.get("editPostId");
   const replyToPostIdParam = searchParams.get("replyToPostId");
 
-  const editPostId = editPostIdParam ? Number(editPostIdParam) : undefined;
-  const replyToPostId = replyToPostIdParam ? Number(replyToPostIdParam) : undefined;
+  const editPostId = editPostIdParam || undefined;
+  const replyToPostId = replyToPostIdParam || undefined;
 
   const hasInitialArtifactTarget = Boolean(
     fromArtifactParam ||
     morselParam ||
-    (location.hash && (location.hash.startsWith("#memfs:artifact-") || location.hash.startsWith("#m=artifact-"))),
+    (location.hash &&
+      (location.hash.startsWith("#memfs:artifact-") ||
+        location.hash.startsWith("#m=artifact-") ||
+        /^#memfs:\d+/.test(location.hash) ||
+        /^#m=\d+/.test(location.hash))),
   );
 
   const [isLoadingArtifact, setIsLoadingArtifact] = useState<boolean>(hasInitialArtifactTarget);
@@ -122,12 +126,12 @@ export const PlaygroundPage: React.FC = () => {
       params.set("fromArtifact", String(artifactId));
       if (langParam) params.set("lang", langParam);
       if (titleParam) params.set("title", titleParam);
-      if (editPostId !== undefined && !Number.isNaN(editPostId)) params.set("editPostId", String(editPostId));
-      if (replyToPostId !== undefined && !Number.isNaN(replyToPostId)) {
+      if (editPostId) params.set("editPostId", String(editPostId));
+      if (replyToPostId) {
         params.set("replyToPostId", String(replyToPostId));
       }
       const qs = params.toString();
-      return `/ide${qs ? `?${qs}` : ""}#memfs:artifact-${artifactId}`;
+      return `/ide${qs ? `?${qs}` : ""}#memfs:${artifactId}`;
     };
 
     // 0a. Check ?morsel=<id> server-side short-link
@@ -181,6 +185,8 @@ export const PlaygroundPage: React.FC = () => {
     let hashArtifactId: string | null = null;
     if (location.hash && location.hash.startsWith("#m=artifact-")) {
       hashArtifactId = decodeURIComponent(location.hash.slice("#m=artifact-".length));
+    } else if (location.hash && /^#m=\d+/.test(location.hash)) {
+      hashArtifactId = decodeURIComponent(location.hash.slice("#m=".length));
     } else if (location.hash && location.hash.startsWith("#memfs:")) {
       const memfsTarget = decodeURIComponent(location.hash.slice("#memfs:".length));
       if (memfsTarget.startsWith("package-")) {
@@ -231,8 +237,8 @@ export const PlaygroundPage: React.FC = () => {
         } catch {
           // Ignore malformed localStorage package payload
         }
-      } else if (memfsTarget.startsWith("artifact-")) {
-        memfsArtifactId = memfsTarget.slice("artifact-".length);
+      } else if (memfsTarget.startsWith("artifact-") || /^\d+$/.test(memfsTarget)) {
+        memfsArtifactId = memfsTarget.startsWith("artifact-") ? memfsTarget.slice("artifact-".length) : memfsTarget;
         try {
           const scratchRaw = sessionStorage.getItem("modelscript.artifact_scratch");
           if (scratchRaw) {
@@ -250,7 +256,7 @@ export const PlaygroundPage: React.FC = () => {
             const firstFileName = scratchFiles ? Object.keys(scratchFiles)[0] : undefined;
             const firstFile = scratch.code || (firstFileName && scratchFiles ? scratchFiles[firstFileName] : undefined);
             if (firstFile && (!scratch.id || String(scratch.id) === memfsArtifactId)) {
-              const resolvedTitle = titleParam || scratch.title || `Artifact #${memfsArtifactId}`;
+              const resolvedTitle = titleParam || scratch.title || `Workspace #${memfsArtifactId}`;
               const detectedLang =
                 langParam || scratch.language || inferDialectFromFilename(firstFileName || resolvedTitle) || "modelica";
               setResolvedFromArtifact(memfsArtifactId);
@@ -292,7 +298,8 @@ export const PlaygroundPage: React.FC = () => {
       location.hash &&
       location.hash.length > 1 &&
       !location.hash.startsWith("#memfs:") &&
-      !location.hash.startsWith("#m=artifact-")
+      !location.hash.startsWith("#m=artifact-") &&
+      !/^#m=\d+/.test(location.hash)
     ) {
       const p = decompressMorselPayload(location.hash) as
         | (MorselDecodedPayload & {
@@ -707,10 +714,10 @@ export const PlaygroundPage: React.FC = () => {
     if (resolvedFromArtifact) {
       params.set("fromArtifact", resolvedFromArtifact);
     }
-    if (editPostId !== undefined && !Number.isNaN(editPostId)) {
+    if (editPostId) {
       params.set("editPostId", String(editPostId));
     }
-    if (replyToPostId !== undefined && !Number.isNaN(replyToPostId)) {
+    if (replyToPostId) {
       params.set("replyToPostId", String(replyToPostId));
     }
     navigate(`/ide?${params.toString()}`);
@@ -779,15 +786,14 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const handlePublishToFeed = () => {
-    const numericArtifactId =
-      resolvedFromArtifact && !Number.isNaN(Number(resolvedFromArtifact)) ? Number(resolvedFromArtifact) : null;
+    const effectiveArtifactId = resolvedFromArtifact || null;
 
     const defaultContent = editPostId
       ? undefined
       : replyToPostId
         ? `Here is my updated **${currentTitle}** (${currentLang.toUpperCase()}) model:`
-        : numericArtifactId
-          ? `Forked and modified **${currentTitle}** (from Artifact #${numericArtifactId})! 🚀`
+        : effectiveArtifactId
+          ? `Forked and modified **${currentTitle}** (from Workspace #${effectiveArtifactId})! 🚀`
           : `Check out my simulation model: **${currentTitle}**! 🚀`;
 
     const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
@@ -799,13 +805,11 @@ export const PlaygroundPage: React.FC = () => {
         dialect: currentLang,
         isMultiFile: isMulti,
         ...(isMulti && projectFiles ? { files: projectFiles } : {}),
-        ...(numericArtifactId ? { forkedFromArtifactId: numericArtifactId } : {}),
+        ...(effectiveArtifactId ? { forkedFromArtifactId: effectiveArtifactId } : {}),
       },
-      forkedFromArtifactId: numericArtifactId,
-      ...(editPostId !== undefined && !Number.isNaN(editPostId) ? { editPostId } : {}),
-      ...(replyToPostId !== undefined && !Number.isNaN(replyToPostId)
-        ? { replyToPostId, replyToPost: { id: replyToPostId } }
-        : {}),
+      forkedFromArtifactId: effectiveArtifactId,
+      ...(editPostId ? { editPostId } : {}),
+      ...(replyToPostId ? { replyToPostId, replyToPost: { id: replyToPostId } } : {}),
     };
 
     if (openCompose) {

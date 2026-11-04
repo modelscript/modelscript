@@ -85,7 +85,7 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
   if (postMatch && postMatch[1]) {
     const postId = Number(postMatch[1]);
     const post = database.getPost(postId);
-    if (post) {
+    if (post && (!post.visibility || post.visibility === "public" || post.visibility === "unlisted")) {
       const author = post.display_name || post.username || `${brandName} Engineer`;
       const title = extractPostTitle(post, `${brandName} Engineering Simulation`);
       const excerpt = post.content

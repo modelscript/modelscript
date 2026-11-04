@@ -18,7 +18,7 @@ function getDatabase(): LibraryDatabase {
 }
 
 interface ThumbnailTask {
-  artifactId: number;
+  artifactId: number | string;
   anchor?: string | undefined;
   resolve: (val: string | null) => void;
 }
@@ -46,11 +46,15 @@ async function processQueue(): Promise<void> {
 
 const MAX_THUMBNAIL_QUEUE = 100;
 
-export function generateThumbnail(artifactId: number, anchor?: string): Promise<string | null> {
+export function generateThumbnail(artifactId: number | string, anchor?: string): Promise<string | null> {
   if (process.env["NODE_ENV"] === "test") {
     return Promise.resolve(null);
   }
-  if (!Number.isSafeInteger(artifactId) || artifactId <= 0) {
+  const isValid =
+    typeof artifactId === "number"
+      ? Number.isFinite(artifactId) && artifactId > 0
+      : typeof artifactId === "string" && artifactId.trim().length > 0;
+  if (!isValid) {
     return Promise.resolve(null);
   }
   if (queue.length >= MAX_THUMBNAIL_QUEUE) {
@@ -71,7 +75,7 @@ import {
 } from "../services/artifact-preprocessor.js";
 import { resolveLocalUploadBuffer } from "../util/cad-converter.js";
 
-async function doGenerateThumbnail(artifactId: number, anchor?: string): Promise<string | null> {
+async function doGenerateThumbnail(artifactId: number | string, anchor?: string): Promise<string | null> {
   // Fast deterministic server-side 3D SVG thumbnail path for STEP, VTU, CFD Config, and CFD Animation artifacts
   try {
     const db = getDatabase();

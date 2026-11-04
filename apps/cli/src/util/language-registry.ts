@@ -150,6 +150,14 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   },
   { id: "urdf", name: "URDF / SDF", extensions: [".urdf", ".sdf", ".xacro"], isBuiltIn: true },
   { id: "verilog-a", name: "Verilog-A", extensions: [".va", ".vams"], isBuiltIn: true },
+  { id: "opensim", name: "OpenSim", extensions: [".osim"], isBuiltIn: true },
+  { id: "dicom-rt", name: "DICOM-RT", extensions: [".rtplan", ".rtstruct", ".rtdose"], isBuiltIn: true },
+  { id: "cellml", name: "CellML", extensions: [".cellml"], isBuiltIn: true },
+  { id: "febio", name: "FEBio / SOFA", extensions: [".feb", ".scn"], isBuiltIn: true },
+  { id: "nifti", name: "NIfTI / NRRD", extensions: [".nii", ".nrrd", ".nhdr"], isBuiltIn: true },
+  { id: "topas", name: "TOPAS / GATE", extensions: [".topas", ".mac"], isBuiltIn: true },
+  { id: "three-mf", name: "3MF Medical", extensions: [".3mf"], isBuiltIn: true },
+  { id: "igtl", name: "OpenIGTLink / PLUS", extensions: [".igtl", ".plus.xml"], isBuiltIn: true },
 ];
 
 /**

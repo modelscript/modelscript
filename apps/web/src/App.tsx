@@ -93,11 +93,13 @@ const PlaygroundPage = lazyWithRetry(() => import("./pages/PlaygroundPage"));
 const PostActivityPage = lazyWithRetry(() => import("./pages/PostActivityPage"));
 const PostDetailPage = lazyWithRetry(() => import("./pages/PostDetailPage"));
 const ProfilePage = lazyWithRetry(() => import("./pages/ProfilePage"));
+const ReferencesPage = lazyWithRetry(() => import("./pages/ReferencesPage"));
 const RenderArtifactPage = lazyWithRetry(() => import("./pages/RenderArtifactPage"));
 const RepositoryListPage = lazyWithRetry(() => import("./pages/RepositoryListPage"));
 const ScriptDetailPage = lazyWithRetry(() => import("./pages/ScriptDetailPage"));
 const ScriptsListPage = lazyWithRetry(() => import("./pages/ScriptsListPage"));
 const SolutionPage = lazyWithRetry(() => import("./pages/SolutionPage"));
+const SourceDetailPage = lazyWithRetry(() => import("./pages/SourceDetailPage"));
 const PrivacyPage = lazyWithRetry(() => import("./pages/PrivacyPage"));
 const CookiesPage = lazyWithRetry(() => import("./pages/CookiesPage"));
 const ResetPasswordPage = lazyWithRetry(() => import("./pages/ResetPasswordPage"));
@@ -634,6 +636,11 @@ function App() {
                       element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
                     />
                     <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
+
+                    {/* Scholarly Reference Manager & Source URN Resolver */}
+                    <Route path="/references" element={<ReferencesPage />} />
+                    <Route path="/sources/:identifier" element={<SourceDetailPage />} />
+                    <Route path="/sources/*" element={<SourceDetailPage />} />
 
                     {/* Cloud Jobs & HPC Queue */}
                     <Route path="/jobs" element={hasCae ? <ScriptsListPage /> : <Navigate to="/packages" replace />} />

@@ -15,10 +15,12 @@ import {
   SyncIcon,
 } from "@primer/octicons-react";
 import { Tooltip } from "@primer/react";
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useClickOutside } from "../../hooks/useClickOutside";
+import { buildCitationFromPost } from "../../util/citations";
 import AnimatedCount from "../AnimatedCount";
 import Box from "../Box";
+import { CitationModal } from "../citations/CitationModal";
 import { ActionButton, MenuButton, ViewsLink, formatNumber } from "./styles";
 
 export interface PostActionsBarProps {
@@ -70,12 +72,35 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
 }) => {
   const [showRepostMenu, setShowRepostMenu] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [showCitationModal, setShowCitationModal] = useState(false);
   const repostContainerRef = useRef<HTMLDivElement>(null);
   const shareContainerRef = useRef<HTMLDivElement>(null);
 
   const isLiked = Boolean(token && liked);
   const isReposted = Boolean(token && reposted);
   const isBookmarked = Boolean(token && bookmarked);
+
+  const citationTarget = useMemo(
+    () =>
+      buildCitationFromPost({
+        id: displayPost?.id || 0,
+        content: displayPost?.content,
+        author_username: displayPost?.username || displayPost?.author_username,
+        author_display_name: displayPost?.display_name || displayPost?.author_display_name,
+        created_at: displayPost?.created_at,
+        metadata: displayPost?.metadata,
+      }),
+    [
+      displayPost?.id,
+      displayPost?.content,
+      displayPost?.username,
+      displayPost?.author_username,
+      displayPost?.display_name,
+      displayPost?.author_display_name,
+      displayPost?.created_at,
+      displayPost?.metadata,
+    ],
+  );
 
   useClickOutside(repostContainerRef, () => setShowRepostMenu(false), showRepostMenu);
   useClickOutside(shareContainerRef, () => setShowShareMenu(false), showShareMenu);
@@ -318,6 +343,17 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
           >
             <LinkIcon size={16} /> Copy link to post
           </MenuButton>
+          <MenuButton
+            data-testid={`cite-post-menu-btn-${displayPost.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setShowShareMenu(false);
+              setShowCitationModal(true);
+            }}
+          >
+            <QuoteIcon size={16} /> Cite post (APA, BibTeX, RIS…)
+          </MenuButton>
           {hasAttachment && (
             <>
               <MenuButton
@@ -343,8 +379,30 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
     </Box>
   );
 
+  const citeButton = (
+    <Tooltip text="Cite post (APA, MLA, IEEE, BibTeX, RIS...)" direction="n">
+      <ActionButton
+        aria-label="Cite post"
+        data-testid={`cite-post-btn-${displayPost.id}`}
+        $color="var(--color-accent-cyan)"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          setShowRepostMenu(false);
+          setShowShareMenu(false);
+          setShowCitationModal(true);
+        }}
+      >
+        <div className="icon-wrapper">
+          <QuoteIcon size={17} />
+        </div>
+      </ActionButton>
+    </Tooltip>
+  );
+
   const bookmarkAndShareButtons = (
     <Box display="flex" gap={0} alignItems="center">
+      {citeButton}
       {bookmarkButton}
       {shareButtonAndMenu}
     </Box>
@@ -401,48 +459,61 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
           {replyButton}
           {repostButtonAndMenu}
           {likeButton}
+          {citeButton}
           {bookmarkButton}
           {shareButtonAndMenu}
         </Box>
+        {showCitationModal && (
+          <CitationModal
+            isOpen={showCitationModal}
+            onClose={() => setShowCitationModal(false)}
+            target={citationTarget}
+          />
+        )}
       </>
     );
   }
 
   return (
-    <Box
-      style={{ marginTop: "10px" }}
-      display="flex"
-      justifyContent="space-between"
-      alignItems="center"
-      width="100%"
-      maxWidth="100%"
-      onClick={(e) => e.preventDefault()}
-    >
-      {replyButton}
-      {repostButtonAndMenu}
-      {likeButton}
+    <>
+      <Box
+        style={{ marginTop: "10px" }}
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        width="100%"
+        maxWidth="100%"
+        onClick={(e) => e.preventDefault()}
+      >
+        {replyButton}
+        {repostButtonAndMenu}
+        {likeButton}
 
-      {/* Impressions / Analytics */}
-      <Tooltip text="View post analytics" direction="n">
-        <ActionButton
-          aria-label="View post analytics"
-          $color="var(--color-accent-cyan)"
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onOpenAnalytics();
-          }}
-        >
-          <div className="icon-wrapper">
-            <GraphBarHorizontalIcon size={18} />
-          </div>
-          <span className="action-count">
-            <AnimatedCount count={impressions} />
-          </span>
-        </ActionButton>
-      </Tooltip>
+        {/* Impressions / Analytics */}
+        <Tooltip text="View post analytics" direction="n">
+          <ActionButton
+            aria-label="View post analytics"
+            $color="var(--color-accent-cyan)"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onOpenAnalytics();
+            }}
+          >
+            <div className="icon-wrapper">
+              <GraphBarHorizontalIcon size={18} />
+            </div>
+            <span className="action-count">
+              <AnimatedCount count={impressions} />
+            </span>
+          </ActionButton>
+        </Tooltip>
 
-      {bookmarkAndShareButtons}
-    </Box>
+        {bookmarkAndShareButtons}
+      </Box>
+      {showCitationModal && (
+        <CitationModal isOpen={showCitationModal} onClose={() => setShowCitationModal(false)} target={citationTarget} />
+      )}
+    </>
   );
 };

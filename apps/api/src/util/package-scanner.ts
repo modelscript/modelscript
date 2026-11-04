@@ -36,7 +36,21 @@ export const PROHIBITED_FILE_EXTENSIONS = new Set<string>([
 
 export const PROHIBITED_MODELICA_CALLS = [
   { pattern: /\b(system|popen|exec|fork|dlopen)\s*\(/i, name: "Dangerous native process/library invocation" },
+  {
+    pattern: /\bannotation\s*\([\s\S]*?\b(Include|Library|IncludeDirectory|LibraryDirectory)\s*=/i,
+    name: "Untrusted external C Include/Library annotation",
+  },
 ];
+
+export function scanModelicaSource(code: string): string[] {
+  const violations: string[] = [];
+  for (const { pattern, name } of PROHIBITED_MODELICA_CALLS) {
+    if (pattern.test(code)) {
+      violations.push(name);
+    }
+  }
+  return violations;
+}
 
 export const SENSITIVE_CREDENTIAL_PATTERNS = [
   { pattern: /^\.env(\..+)?$/i, name: "Environment secret configuration file (.env)" },

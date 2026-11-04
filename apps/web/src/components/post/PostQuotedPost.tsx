@@ -54,9 +54,12 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
       <Box style={{ fontSize: "15px", lineHeight: "20px", wordBreak: "break-word" }}>
         <PostMarkdownContent text={quotePost.content} />
       </Box>
-      {quotePost.artifact_view_id && (
+      {quotePost.artifact_view_id && Number(quotePost.artifact_view_id) > 0 && (
         <Box mt={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
-          <ArtifactViewCard artifactId={quotePost.artifact_view_id} initialArtifactView={quotePost.artifact_view} />
+          <ArtifactViewCard
+            artifactId={Number(quotePost.artifact_view_id)}
+            initialArtifactView={quotePost.artifact_view}
+          />
         </Box>
       )}
     </QuoteWrapper>

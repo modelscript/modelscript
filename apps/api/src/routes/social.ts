@@ -23,7 +23,13 @@ const ARTIFACT_DIRECTIVE_RE = /::artifact(?:\[([^[\]\r\n]*)\])?\{([^{}\r\n]*)\}/
 
 type NormalizedNotebookCell =
   | { id: string; type: "markdown"; content: string }
-  | { id: string; type: "artifact"; artifactId: number; title?: string | undefined; caption?: string | undefined };
+  | {
+      id: string;
+      type: "artifact";
+      artifactId: number | string;
+      title?: string | undefined;
+      caption?: string | undefined;
+    };
 
 interface RawNotebookCell {
   id?: string | undefined;
@@ -50,7 +56,7 @@ interface RawNotebookInput {
 function parseNotebookPayload(
   rawContent: string | null | undefined,
   rawNotebook: RawNotebookInput | null | undefined,
-  fallbackArtifactId?: number,
+  fallbackArtifactId?: number | string,
 ): {
   effectiveContent: string | null | undefined;
   notebookMeta: {
@@ -64,7 +70,7 @@ function parseNotebookPayload(
     companionRepo?: string | undefined;
     estimatedReadMinutes?: number | undefined;
     cells: NormalizedNotebookCell[];
-    artifactIds: number[];
+    artifactIds: (number | string)[];
   } | null;
 } {
   const inputCells = Array.isArray(rawNotebook?.cells) ? rawNotebook.cells : null;
@@ -96,7 +102,7 @@ function parseNotebookPayload(
 
   if (inputCells && inputCells.length > 0) {
     const normalizedCells: NormalizedNotebookCell[] = [];
-    const artifactIds: number[] = [];
+    const artifactIds: (number | string)[] = [];
 
     inputCells.forEach((cell: RawNotebookCell, idx: number) => {
       if (cell?.type === "markdown") {
@@ -105,8 +111,8 @@ function parseNotebookPayload(
           type: "markdown",
           content: typeof cell.content === "string" ? cell.content : "",
         });
-      } else if (cell?.type === "artifact" && Number.isFinite(Number(cell.artifactId))) {
-        const aid = Number(cell.artifactId);
+      } else if (cell?.type === "artifact" && cell.artifactId != null && String(cell.artifactId).trim() !== "") {
+        const aid = String(cell.artifactId);
         normalizedCells.push({
           id: cell.id || `art-${idx}`,
           type: "artifact",
@@ -155,7 +161,7 @@ function parseNotebookPayload(
   if (typeof rawContent === "string" && rawContent.includes("::artifact")) {
     ARTIFACT_DIRECTIVE_RE.lastIndex = 0;
     const cells: NormalizedNotebookCell[] = [];
-    const artifactIds: number[] = [];
+    const artifactIds: (number | string)[] = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     let idx = 0;
@@ -170,7 +176,7 @@ function parseNotebookPayload(
       const idMatch = attrStr.match(/(?:^|\s)id\s*=\s*["']?(\d+)["']?/);
       const captionMatch = attrStr.match(/(?:^|\s)caption\s*=\s*(?:"([^"]*)"|'([^']*)')/);
       if (idMatch && idMatch[1]) {
-        const aid = Number(idMatch[1]);
+        const aid = idMatch[1];
         const caption = captionMatch ? (captionMatch[1] ?? captionMatch[2]) : undefined;
         cells.push({
           id: `art-${idx++}`,
@@ -214,9 +220,9 @@ function parseNotebookPayload(
         ...extraTutorialFields,
         cells: [
           ...(rawContent ? [{ id: "md-0", type: "markdown" as const, content: rawContent }] : []),
-          { id: "art-0", type: "artifact" as const, artifactId: Number(fallbackArtifactId) },
+          { id: "art-0", type: "artifact" as const, artifactId: fallbackArtifactId },
         ],
-        artifactIds: [Number(fallbackArtifactId)],
+        artifactIds: [fallbackArtifactId],
       },
     };
   }
@@ -306,6 +312,52 @@ export function socialRouter(
     next();
   };
 
+  const canViewPost = (
+    post: {
+      visibility?: string | null | undefined;
+      author_id?: number | undefined;
+      content?: string | null | undefined;
+    },
+    req: Request,
+  ): boolean => {
+    const currentUserId = req.user?.id;
+    const isAdmin = req.user?.role === "admin" || req.user?.accountType === "admin";
+    if (!post.visibility || post.visibility === "public" || post.visibility === "unlisted") return true;
+    if (isAdmin || (currentUserId !== undefined && currentUserId === post.author_id)) return true;
+    if (post.visibility === "followers") {
+      return Boolean(currentUserId && post.author_id && database.isFollowing(currentUserId, post.author_id));
+    }
+    if (post.visibility === "direct") {
+      return Boolean(req.user?.username && new RegExp(`@${req.user.username}\\b`, "i").test(post.content || ""));
+    }
+    return true;
+  };
+
+  const canAttachArtifactView = (artifactViewId: number | string, authorId: number, req: Request): boolean => {
+    const artifactRow = database.getArtifactView(artifactViewId);
+    if (!artifactRow) return true;
+    const artifactOwnerId = artifactRow.creator_id ?? artifactRow.author_id;
+    let isPrivateArtifact = false;
+    try {
+      const cfg =
+        typeof artifactRow.view_config === "string"
+          ? (JSON.parse(artifactRow.view_config) as Record<string, unknown>)
+          : (artifactRow.view_config as Record<string, unknown> | undefined);
+      if (cfg && (cfg["private"] === true || cfg["visibility"] === "private")) {
+        isPrivateArtifact = true;
+      }
+    } catch {}
+    if (
+      artifactOwnerId &&
+      artifactOwnerId !== authorId &&
+      req.user?.role !== "admin" &&
+      (isPrivateArtifact || process.env["NODE_ENV"] === "production")
+    ) {
+      return false;
+    }
+    return true;
+  };
+
   /**
    * POST /api/v1/social/posts
    */
@@ -371,29 +423,14 @@ export function socialRouter(
     }
 
     try {
-      if (artifact_view_id !== undefined && artifact_view_id !== null) {
-        const artifactRow = database.getArtifactView(Number(artifact_view_id));
-        if (artifactRow) {
-          const artifactOwnerId = artifactRow.creator_id ?? artifactRow.author_id;
-          let isPrivateArtifact = false;
-          try {
-            const cfg =
-              typeof artifactRow.view_config === "string"
-                ? (JSON.parse(artifactRow.view_config) as Record<string, unknown>)
-                : (artifactRow.view_config as Record<string, unknown> | undefined);
-            if (cfg && (cfg["private"] === true || cfg["visibility"] === "private")) {
-              isPrivateArtifact = true;
-            }
-          } catch {}
-          if (
-            artifactOwnerId &&
-            artifactOwnerId !== authorId &&
-            req.user?.role !== "admin" &&
-            (isPrivateArtifact || process.env["NODE_ENV"] === "production")
-          ) {
-            res.status(403).json({ error: "Forbidden: Cannot attach another user's artifact view" });
-            return;
-          }
+      const candidateArtifactIds = [
+        ...(artifact_view_id !== undefined && artifact_view_id !== null ? [artifact_view_id] : []),
+        ...(notebookMeta?.artifactIds ?? []),
+      ];
+      for (const aid of candidateArtifactIds) {
+        if (!canAttachArtifactView(aid, authorId, req)) {
+          res.status(403).json({ error: "Forbidden: Cannot attach another user's artifact view" });
+          return;
         }
       }
 
@@ -401,7 +438,7 @@ export function socialRouter(
         content,
         metadata,
         artifact_view_id,
-        artifact_view: artifact_view_id ? database.getArtifactView(Number(artifact_view_id)) : undefined,
+        artifact_view: artifact_view_id ? database.getArtifactView(artifact_view_id) : undefined,
       };
       if (!isPostLanguageAllowed(candidatePost, featureFlagService, req.user)) {
         res.status(403).json({ error: "The language for this post is currently disabled by a feature flag" });
@@ -410,7 +447,7 @@ export function socialRouter(
 
       if (reply_to_id) {
         const parentPost = database.getPost(reply_to_id, authorId);
-        if (!parentPost) {
+        if (!parentPost || !canViewPost(parentPost, req)) {
           res.status(404).json({ error: "Parent post not found" });
           return;
         }
@@ -418,9 +455,6 @@ export function socialRouter(
         const author = database.getUserById(authorId);
 
         if (parentPost.reply_visibility === "following") {
-          // The author of the parent post must follow the person replying
-          // Wait, is parentPost.author_id accessible? Yes.
-          // Or if they are the same user, it's allowed.
           if (parentPost.author_id !== authorId) {
             const isFollowedByAuthor = database.isFollowing(parentPost.author_id, authorId);
             if (!isFollowedByAuthor) {
@@ -438,6 +472,39 @@ export function socialRouter(
           }
         }
       }
+
+      if (quote_post_id) {
+        const quotedPost = database.getPost(quote_post_id, authorId);
+        if (!quotedPost || !canViewPost(quotedPost, req)) {
+          res.status(403).json({ error: "Cannot quote a private or restricted post" });
+          return;
+        }
+      }
+
+      if (repost_of_id) {
+        const repostedPost = database.getPost(repost_of_id, authorId);
+        if (!reportedOrVisible(repostedPost, req)) {
+          res.status(403).json({ error: "Cannot repost a private or restricted post" });
+          return;
+        }
+      }
+
+      function reportedOrVisible(
+        target:
+          | {
+              visibility?: string | null | undefined;
+              author_id?: number | undefined;
+              content?: string | null | undefined;
+            }
+          | null
+          | undefined,
+        r: Request,
+      ): boolean {
+        if (!target) return false;
+        if (target.visibility === "direct" && target.author_id !== authorId) return false;
+        return canViewPost(target, r);
+      }
+
       const { id } = database.createPost(
         authorId,
         content ?? null,
@@ -461,6 +528,9 @@ export function socialRouter(
         const expiresAt =
           Number.isFinite(expiresSec) && expiresSec > 0 ? new Date(Date.now() + expiresSec * 1000).toISOString() : null;
         database.createPostPoll(id, pollOptions, expiresAt, Boolean(pollInput?.multiple));
+      }
+      if (content) {
+        database.syncPostCitations(id, content);
       }
       const post = database.getPost(id, authorId);
 
@@ -744,7 +814,7 @@ export function socialRouter(
    * Updates an existing post or long-form notebook tutorial.
    */
   const handleUpdatePost = (req: Request, res: Response) => {
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     const userId = req.user!.id;
 
     try {
@@ -791,6 +861,17 @@ export function socialRouter(
           ? explicitArtifactId
           : (notebookMeta?.artifactIds?.[0] ?? existingPost.artifact_view_id);
 
+      const candidateArtifactIds = [
+        ...(artifact_view_id !== undefined && artifact_view_id !== null ? [artifact_view_id] : []),
+        ...(notebookMeta?.artifactIds ?? []),
+      ];
+      for (const aid of candidateArtifactIds) {
+        if (!canAttachArtifactView(aid, userId, req)) {
+          res.status(403).json({ error: "Forbidden: Cannot attach another user's artifact view" });
+          return;
+        }
+      }
+
       const existingMeta =
         typeof existingPost.metadata === "object" && existingPost.metadata !== null ? existingPost.metadata : {};
 
@@ -809,6 +890,7 @@ export function socialRouter(
         metadata: mergedMetadata,
         replyVisibility: reply_visibility ?? existingPost.reply_visibility,
       });
+      database.syncPostCitations(postId, content ?? existingPost.content);
 
       const updatedPost = database.getPost(postId, userId);
       res.json({ post: updatedPost });
@@ -825,7 +907,7 @@ export function socialRouter(
    * DELETE /api/v1/social/posts/:id
    */
   router.delete("/posts/:id", requireAuth, async (req: Request, res: Response) => {
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     const userId = req.user!.id;
 
     try {
@@ -891,10 +973,14 @@ export function socialRouter(
       return;
     }
 
-    const postId = Number(req.params["id"]);
-    const post = database.getPost(postId);
+    const postId = String(req.params["id"] || "");
+    const post = database.getPost(postId, req.user?.id);
     if (!post || !isPostLanguageAllowed(post, featureFlagService, req.user)) {
       res.status(404).send("Post not found");
+      return;
+    }
+    if (!canViewPost(post, req)) {
+      res.status(403).send("Forbidden: Post is not visible");
       return;
     }
 
@@ -947,7 +1033,7 @@ export function socialRouter(
    * GET /api/v1/social/posts/:id
    */
   router.get("/posts/:id", optionalAuth, (req: Request, res: Response): void => {
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     const userAgent = req.headers["user-agent"] || "";
     const isBot = /bot|spider|crawl|facebookexternalhit|whatsapp|slackbot|discordbot|twitterbot/i.test(userAgent);
 
@@ -995,8 +1081,8 @@ export function socialRouter(
    * POST /api/v1/social/posts/:id/view
    */
   router.post("/posts/:id/view", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params["id"]);
-    if (!Number.isFinite(postId) || postId <= 0) {
+    const postId = String(req.params["id"] || "");
+    if (!postId || !postId.trim()) {
       res.status(400).json({ error: "Invalid post ID" });
       return;
     }
@@ -1036,11 +1122,15 @@ export function socialRouter(
    * GET /api/v1/social/posts/:id/analytics
    */
   router.get("/posts/:id/analytics", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     try {
-      const post = database.getPost(postId);
+      const post = database.getPost(postId, req.user?.id);
       if (!post) {
         res.status(404).json({ error: "Post not found" });
+        return;
+      }
+      if (!canViewPost(post, req)) {
+        res.status(403).json({ error: "Forbidden" });
         return;
       }
       const locationStats = database.getPostLocationStats(postId);
@@ -1061,12 +1151,14 @@ export function socialRouter(
    * GET /api/v1/social/posts/:id/replies
    */
   router.get("/posts/:id/replies", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     const currentUserId = req.user?.id;
     const limit = Number(req.query["limit"]) || 50;
     try {
       const posts = database.getReplies(postId, currentUserId, limit);
-      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
+      res.json({
+        posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user) && canViewPost(p, req)),
+      });
     } catch {
       res.status(500).json({ error: "Failed to fetch replies" });
     }
@@ -1076,11 +1168,18 @@ export function socialRouter(
    * GET /api/v1/social/posts/:id/parents
    */
   router.get("/posts/:id/parents", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     const currentUserId = req.user?.id;
     try {
+      const targetPost = database.getPost(postId, currentUserId);
+      if (targetPost && !canViewPost(targetPost, req)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       const posts = database.getPostParents(postId, currentUserId);
-      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
+      res.json({
+        posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user) && canViewPost(p, req)),
+      });
     } catch {
       res.status(500).json({ error: "Failed to fetch parents" });
     }
@@ -1182,7 +1281,7 @@ export function socialRouter(
    */
   router.post("/posts/:id/like", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     try {
       const liked = database.toggleLike(userId, postId);
       res.json({ liked });
@@ -1196,7 +1295,7 @@ export function socialRouter(
    */
   router.post("/posts/:id/bookmark", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     try {
       const bookmarked = database.toggleBookmark(userId, postId);
       res.json({ bookmarked });
@@ -1210,7 +1309,7 @@ export function socialRouter(
    */
   router.post("/posts/:id/repost", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     try {
       const reposted = database.toggleRepost(userId, postId);
       res.json({ reposted });
@@ -1225,7 +1324,7 @@ export function socialRouter(
    */
   router.post("/posts/:id/report", requireAuth, (req: Request, res: Response) => {
     const reporterId = req.user!.id;
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     const { reason, details, forwardFederatedFlag, ruleIds, rule_ids, category } = req.body;
 
     if (!reason || typeof reason !== "string") {
@@ -1357,12 +1456,17 @@ export function socialRouter(
    * GET /api/v1/social/posts/:id/quotes
    */
   router.get("/posts/:id/quotes", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     const userId = req.user?.id;
     try {
+      const targetPost = database.getPost(postId, userId);
+      if (targetPost && !canViewPost(targetPost, req)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       const quotes = database
         .getQuotes(postId, userId)
-        .filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user));
+        .filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user) && canViewPost(p, req));
       res.json({ quotes, posts: quotes });
     } catch (err: unknown) {
       console.error("GET /posts/:id/quotes error:", err);
@@ -1374,12 +1478,17 @@ export function socialRouter(
    * GET /api/v1/social/posts/:id/reposts
    */
   router.get("/posts/:id/reposts", optionalAuth, (req: Request, res: Response) => {
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     const userId = req.user?.id;
     try {
+      const targetPost = database.getPost(postId, userId);
+      if (targetPost && !canViewPost(targetPost, req)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       const reposts = database
         .getReposts(postId, userId)
-        .filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user));
+        .filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user) && canViewPost(p, req));
       res.json({ reposts, posts: reposts });
     } catch (err: unknown) {
       console.error("GET /posts/:id/reposts error:", err);
@@ -1391,7 +1500,7 @@ export function socialRouter(
    * GET /api/v1/social/artifact-views/:id
    */
   router.get("/artifact-views/:id", optionalAuth, (req: Request, res: Response) => {
-    const id = Number(req.params["id"]);
+    const id = String(req.params["id"] || "");
     try {
       const embedToken =
         (typeof req.query["embed_token"] === "string" ? req.query["embed_token"] : undefined) ||
@@ -2120,7 +2229,7 @@ export function socialRouter(
    */
   router.post("/posts/:id/poll/vote", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const postId = Number(req.params["id"]);
+    const postId = String(req.params["id"] || "");
     const rawChoices = req.body?.choices ?? (req.body?.choice !== undefined ? [req.body.choice] : []);
     const choices = Array.isArray(rawChoices) ? rawChoices.map(Number).filter(Number.isFinite) : [];
 

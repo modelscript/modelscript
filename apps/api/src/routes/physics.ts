@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
+import { optionalAuth } from "../middleware/auth-middleware.js";
 import { getComputeProfile } from "../services/hpc/compute-profiles.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import type { HpcJobSpec } from "../services/hpc/hpc-types.js";
@@ -59,12 +60,16 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200
 
 export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = express.Router();
+  router.use(optionalAuth);
   const hpcEngine = new HpcEngine();
   ensureCacheDir();
 
   // ── Upload .step geometry with CAS deduplication ──
 
   router.post("/physics/upload", upload.single("file"), (req, res) => {
+    if (process.env["NODE_ENV"] === "production" && !req.user) {
+      return res.status(401).json({ error: "Authentication required to upload geometry." });
+    }
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded." });
     }
@@ -276,7 +281,8 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
         try {
           currentStepId = database.createJobStep(dbJobId, "Prepare Environment", "RUNNING");
-          tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-physics-${simType}-`));
+          const safeSimType = simType.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 32);
+          tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `modelscript-physics-${safeSimType}-`));
 
           // Write the study configuration to a temp file
           const studyPath = path.join(tmpDir, "study.json");
@@ -485,9 +491,9 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   const isAuthorizedForPhysicsJob = (req: express.Request, rawId: string): boolean => {
     if (process.env["NODE_ENV"] === "test") return true;
     const numericId = Number(String(rawId).replace(/^(physics|cam)-/, ""));
-    if (Number.isNaN(numericId)) return true;
-    const dbJob = database.getJob?.(numericId);
-    if (!dbJob || !dbJob.user_id) return true;
+    const dbJob = Number.isNaN(numericId) ? database.getJob?.(String(rawId)) : database.getJob?.(numericId);
+    if (!dbJob) return false;
+    if (!dbJob.user_id) return true;
     const reqAny = req as {
       user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
     };

@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 import * as apiModule from "../../api";
 import { useAuth } from "../../AuthContext";
 import { useClickOutside } from "../../hooks/useClickOutside";
-import { buildEditorUrlForArtifact } from "../../util/editor-routing";
+import { buildEditorUrlForArtifact, isEditableCodeOrModelArtifact } from "../../util/editor-routing";
 import Box from "../Box";
 import { useToast } from "../ToastContext";
 import { MenuButton } from "./styles";
@@ -295,27 +295,42 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
               <PencilIcon size={16} /> {isNotebook ? "Edit article" : "Edit post"}
             </MenuButton>
           )}
-          {isOwnPost && Boolean(displayPost?.artifact_view_id) && (
-            <MenuButton
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onClose();
-                navigate(
-                  buildEditorUrlForArtifact({
-                    artifactId: displayPost.artifact_view_id,
-                    viewType: (displayPost as any).artifact_type || (displayPost as any).artifact_view?.view_type,
-                    viewConfig: (displayPost as any).artifact_config || (displayPost as any).artifact_view?.view_config,
-                    title: (displayPost as any).artifact_title || (displayPost as any).artifact_view?.title,
-                    mode: "edit",
-                    editPostId: Number(displayPost.id),
-                  }),
-                );
-              }}
-            >
-              <CodeIcon size={16} /> Edit Artifact in Playground / VS Code
-            </MenuButton>
-          )}
+          {isOwnPost &&
+            Boolean(displayPost?.artifact_view_id) &&
+            isEditableCodeOrModelArtifact({
+              view_type:
+                (displayPost as { artifact_type?: string })?.artifact_type ||
+                (displayPost as { artifact_view?: { view_type?: string } })?.artifact_view?.view_type,
+              view_config:
+                (displayPost as { artifact_config?: unknown })?.artifact_config ||
+                (displayPost as { artifact_view?: { view_config?: unknown } })?.artifact_view?.view_config,
+            }) && (
+              <MenuButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onClose();
+                  navigate(
+                    buildEditorUrlForArtifact({
+                      artifactId: displayPost.artifact_view_id,
+                      viewType:
+                        (displayPost as { artifact_type?: string })?.artifact_type ||
+                        (displayPost as { artifact_view?: { view_type?: string } })?.artifact_view?.view_type,
+                      viewConfig:
+                        (displayPost as { artifact_config?: unknown })?.artifact_config ||
+                        (displayPost as { artifact_view?: { view_config?: unknown } })?.artifact_view?.view_config,
+                      title:
+                        (displayPost as { artifact_title?: string })?.artifact_title ||
+                        (displayPost as { artifact_view?: { title?: string } })?.artifact_view?.title,
+                      mode: "edit",
+                      editPostId: Number(displayPost.id),
+                    }),
+                  );
+                }}
+              >
+                <CodeIcon size={16} /> Edit Artifact in Playground / VS Code
+              </MenuButton>
+            )}
           {canDeletePost && (
             <MenuButton
               style={

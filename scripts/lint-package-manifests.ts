@@ -53,6 +53,14 @@ const BETA_LANGUAGES = new Set([
   "automationml",
   "oscal",
   "qif",
+  "opensim",
+  "dicom-rt",
+  "cellml",
+  "febio",
+  "nifti",
+  "topas",
+  "three-mf",
+  "igtl",
 ]);
 
 const CORE_FOUNDATIONAL_LANGUAGES = new Set(["ssp", "csv"]);

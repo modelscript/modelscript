@@ -240,7 +240,7 @@ const PostDetailPage: React.FC = () => {
   useEffect(() => {
     const handlePostUpdated = (e: Event) => {
       const updated = (e as CustomEvent<Partial<PostItem> | undefined>).detail;
-      if (updated && post && Number(updated.id ?? post.id) === Number(post.id)) {
+      if (updated && post && String(updated.id ?? post.id) === String(post.id)) {
         setPost((prev) => (prev ? { ...prev, ...updated } : prev));
       }
     };

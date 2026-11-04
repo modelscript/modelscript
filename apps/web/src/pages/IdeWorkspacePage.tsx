@@ -310,8 +310,15 @@ export const IdeWorkspacePage: React.FC = () => {
   const [reposLoading, setReposLoading] = useState<boolean>(true);
 
   const artifactIdFromHash = useMemo(() => {
-    if (location.hash && location.hash.startsWith("#memfs:artifact-")) {
+    if (!location.hash) return null;
+    if (location.hash.startsWith("#memfs:artifact-")) {
       return location.hash.slice("#memfs:artifact-".length).split("&")[0] || null;
+    }
+    if (location.hash.startsWith("#memfs:")) {
+      const rest = location.hash.slice("#memfs:".length).split("&")[0] || "";
+      if (/^\d+$/.test(rest)) {
+        return rest;
+      }
     }
     return null;
   }, [location.hash]);
@@ -443,12 +450,11 @@ export const IdeWorkspacePage: React.FC = () => {
       };
     }
 
-    const customHash =
-      location.hash || (effectiveArtifactId ? `#memfs:artifact-${effectiveArtifactId}` : "#memfs:empty");
+    const customHash = location.hash || (effectiveArtifactId ? `#memfs:${effectiveArtifactId}` : "#memfs:empty");
     let title = "Blank Workspace";
 
     if (effectiveArtifactId) {
-      title = artifactMetadata?.title || titleParam || `Artifact #${effectiveArtifactId}`;
+      title = artifactMetadata?.title || titleParam || `Workspace #${effectiveArtifactId}`;
     } else if (packageNameFromHash) {
       title = `Package: ${packageNameFromHash}`;
     }
@@ -522,11 +528,10 @@ export const IdeWorkspacePage: React.FC = () => {
     }
   }, [artifactMetadata, theme, token, user]);
 
-  const resolveForkedFromId = useCallback((): number | undefined => {
+  const resolveForkedFromId = useCallback((): number | string | undefined => {
     const raw = fromArtifactParam || artifactIdFromHash;
     if (!raw) return undefined;
-    const num = Number(raw);
-    return Number.isNaN(num) ? undefined : num;
+    return raw;
   }, [fromArtifactParam, artifactIdFromHash]);
 
   const pendingShareTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

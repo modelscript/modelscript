@@ -102,7 +102,7 @@ Provide accurate, technically rigorous answers. Use markdown formatting and vali
       const replyContent = response.content.trim();
 
       // Check if response contains a Modelica model or simulation request and synthesize an interactive artifact
-      let artifactViewId: number | undefined;
+      let artifactViewId: number | string | undefined;
       const modelicaMatch = /```modelica\s*([\s\S]*?)```/i.exec(replyContent);
       const isSimulationInquiry = /simulate|oscillator|trajectory|pendulum|dynamics/i.test(post.content || "");
 

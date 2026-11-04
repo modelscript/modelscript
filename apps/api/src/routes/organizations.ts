@@ -3,7 +3,7 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase, OrgRole } from "../database.js";
-import { requireAuth } from "../middleware/auth-middleware.js";
+import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 
 function isValidSlug(slug: string): boolean {
@@ -92,7 +92,7 @@ export function organizationsRouter(database: LibraryDatabase): Router {
    *
    * Get organization profile and details.
    */
-  router.get("/:slug", (req: Request, res: Response): void => {
+  router.get("/:slug", optionalAuth, (req: Request, res: Response): void => {
     const slug = String(req.params["slug"] ?? "")
       .trim()
       .toLowerCase();
@@ -102,7 +102,22 @@ export function organizationsRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    res.json({ organization: org });
+    const callerRole = req.user ? database.getOrganizationMemberRole(org.id, req.user.id) : null;
+    const isMemberOrAdmin = Boolean(callerRole || req.user?.accountType === "admin");
+
+    const safeOrg = isMemberOrAdmin
+      ? org
+      : {
+          id: org.id,
+          slug: org.slug,
+          name: org.name,
+          description: org.description,
+          avatar_url: org.avatar_url,
+          website: org.website,
+          created_at: org.created_at,
+        };
+
+    res.json({ organization: safeOrg });
   });
 
   /**

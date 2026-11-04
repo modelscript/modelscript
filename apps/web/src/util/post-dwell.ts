@@ -39,23 +39,23 @@ export const POST_VIEW_DWELL_TIME_MS = resolveDefaultDwellMs();
 
 export const VIEWED_POSTS_SESSION_KEY = "modelscript:viewed_post_ids";
 
-export const viewedPostIds: Set<number> = (() => {
+export const viewedPostIds: Set<string> = (() => {
   try {
     if (typeof window !== "undefined" && window.sessionStorage) {
       const raw = window.sessionStorage.getItem(VIEWED_POSTS_SESSION_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          return new Set<number>(parsed.filter((id): id is number => typeof id === "number"));
+          return new Set<string>(parsed.map(String).filter(Boolean));
         }
       }
     }
   } catch {}
-  return new Set<number>();
+  return new Set<string>();
 })();
 
-export function isPostViewedInSession(postId: number): boolean {
-  return viewedPostIds.has(postId);
+export function isPostViewedInSession(postId: number | string): boolean {
+  return viewedPostIds.has(String(postId));
 }
 
 export function clearViewedPostsSession(): void {
@@ -67,8 +67,8 @@ export function clearViewedPostsSession(): void {
   } catch {}
 }
 
-export function markPostViewedInSession(postId: number): void {
-  viewedPostIds.add(postId);
+export function markPostViewedInSession(postId: number | string): void {
+  viewedPostIds.add(String(postId));
   try {
     if (typeof window !== "undefined" && window.sessionStorage) {
       const arr = Array.from(viewedPostIds).slice(-500);
@@ -78,7 +78,7 @@ export function markPostViewedInSession(postId: number): void {
 }
 
 export interface PostDwellOptions {
-  postId: number;
+  postId: number | string;
   isDetail?: boolean | undefined;
   onView: () => void;
   dwellTimeMs?: number | undefined;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./ComposeAttachedArtifact";
+export * from "./ComposeCitationPickerModal";
 export * from "./ComposeCodeSnippetModal";
 export * from "./ComposeMentionHashtagPopups";
 export * from "./ComposeNotebookCellsEditor";

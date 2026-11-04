@@ -346,6 +346,25 @@ export function oembedRouter(database: LibraryDatabase): Router {
       res.status(400).json({ error: "Missing artifact ID" });
       return;
     }
+    const artifact = database.getArtifactView(artifactId);
+    if (artifact) {
+      let isPrivate = false;
+      try {
+        const cfg =
+          typeof artifact.view_config === "string"
+            ? (JSON.parse(artifact.view_config) as Record<string, unknown>)
+            : (artifact.view_config as Record<string, unknown> | undefined);
+        if (cfg && (cfg["private"] === true || cfg["visibility"] === "private")) {
+          isPrivate = true;
+        }
+      } catch {}
+      const ownerId = artifact.creator_id ?? artifact.author_id;
+      const isAdmin = req.user?.role === "admin" || req.user?.accountType === "admin";
+      if (isPrivate && !isAdmin && (!req.user || (ownerId && ownerId !== req.user.id))) {
+        res.status(403).json({ error: "Forbidden: Only the owner of a private artifact can generate an embed token" });
+        return;
+      }
+    }
     const { allowedOrigins, ttlSeconds } = req.body ?? {};
     const ttl = Math.min(Math.max(Number(ttlSeconds) || 86400 * 7, 60), 86400 * 365);
     const origins = Array.isArray(allowedOrigins)

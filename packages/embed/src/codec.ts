@@ -65,7 +65,7 @@ export function getLaunchUrl(
   const ideBase = baseUrl.ide ?? "/vscode/workbench";
 
   if (payload.isMultiFile && payload.artifactId) {
-    let ideUrl = `${ideBase}/#memfs:artifact-${payload.artifactId}`;
+    let ideUrl = `${ideBase}/#memfs:${payload.artifactId}`;
     if (payload.anchor?.elementId) {
       ideUrl += `&anchor=${encodeURIComponent(payload.anchor.elementId)}`;
     }

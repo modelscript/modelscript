@@ -1,248 +1,382 @@
-<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { withBase } from "vitepress";
+import {
+  LANGUAGES,
+  PLATFORM_GROUPS,
+  TIER_COUNTS,
+  TIER_LABELS,
+  type LanguageGroupId,
+  type LanguageMaturityTier,
+} from "../data/languages";
 import { INDUSTRIES } from "../data/industries";
-import { LANGUAGES, PLATFORM_GROUPS, type LanguageGroupId } from "../data/languages";
-import MsIcon from "./MsIcon.vue";
 
-const query = ref("");
-const filter = ref<"all" | string>("all");
-
-/** Filter chips: platform groups + industries (industry filter matches every language the industry lists). */
-const chips = computed(() => [
-  { id: "all", label: `All (${LANGUAGES.length})` },
-  ...PLATFORM_GROUPS.map((g) => ({ id: `group:${g.id}`, label: g.label })),
-  ...INDUSTRIES.map((i) => ({ id: `industry:${i.slug}`, label: i.name })),
-]);
-
-function inFilter(slug: string, group: LanguageGroupId): boolean {
-  const f = filter.value;
-  if (f === "all") return true;
-  if (f.startsWith("group:")) return group === f.slice(6);
-  const ind = INDUSTRIES.find((i) => `industry:${i.slug}` === f);
-  return !!ind && ind.languages.includes(slug);
+interface FilterChip {
+  id: "all" | LanguageGroupId;
+  label: string;
+  count: number;
 }
 
-const results = computed(() => {
+const activeGroup = ref<"all" | LanguageGroupId>("all");
+const activeTier = ref<"all" | LanguageMaturityTier>("all");
+const query = ref("");
+
+const industryGroupLabels: Partial<Record<LanguageGroupId, string>> = {
+  aerospace: "Aerospace",
+  automotive: "Automotive",
+  rail: "Rail",
+  power: "Power & Grid",
+  "oil-gas": "Oil & Gas",
+  nuclear: "Nuclear",
+  marine: "Marine",
+  electronics: "Electronics",
+  robotics: "Robotics & PLC",
+  buildings: "Buildings & Water",
+  process: "Chemical & Process",
+  "life-sciences": "Life Sciences & Medical",
+};
+
+const chips = computed<FilterChip[]>(() => {
+  const counts = new Map<LanguageGroupId, number>();
+  for (const l of LANGUAGES) {
+    counts.set(l.group, (counts.get(l.group) ?? 0) + 1);
+  }
+  const list: FilterChip[] = [{ id: "all", label: "All", count: LANGUAGES.length }];
+  for (const g of PLATFORM_GROUPS) {
+    list.push({ id: g.id, label: g.label, count: counts.get(g.id) ?? 0 });
+  }
+  for (const [id, label] of Object.entries(industryGroupLabels) as [LanguageGroupId, string][]) {
+    const c = counts.get(id) ?? 0;
+    if (c > 0) list.push({ id, label, count: c });
+  }
+  return list;
+});
+
+const tierChips = computed(() => [
+  { id: "all" as const, label: "All Tiers", count: LANGUAGES.length },
+  { id: "stable" as const, label: "Stable", count: TIER_COUNTS.stable },
+  { id: "beta" as const, label: "Beta", count: TIER_COUNTS.beta },
+  { id: "preview" as const, label: "Preview", count: TIER_COUNTS.preview },
+]);
+
+const filtered = computed(() => {
   const q = query.value.trim().toLowerCase();
   return LANGUAGES.filter((l) => {
-    if (!inFilter(l.slug, l.group)) return false;
+    if (activeGroup.value !== "all" && l.group !== activeGroup.value) return false;
+    if (activeTier.value !== "all" && l.tier !== activeTier.value) return false;
     if (!q) return true;
-    return [l.name, l.ext, l.role, l.slug].some((s) => s.toLowerCase().includes(q));
+    return (
+      l.name.toLowerCase().includes(q) ||
+      l.slug.toLowerCase().includes(q) ||
+      l.ext.toLowerCase().includes(q) ||
+      l.role.toLowerCase().includes(q) ||
+      l.tier.toLowerCase().includes(q)
+    );
   });
 });
 
-function industriesFor(slug: string): { name: string; accent: string }[] {
-  return INDUSTRIES.filter((i) => i.languages.includes(slug))
-    .slice(0, 3)
-    .map((i) => ({ name: i.name, accent: i.accent }));
-}
+// Quick lookup: which industries list a given language.
+const industriesByLang = computed(() => {
+  const map = new Map<string, string[]>();
+  for (const ind of INDUSTRIES) {
+    for (const slug of ind.languages) {
+      const arr = map.get(slug) ?? [];
+      arr.push(ind.name);
+      map.set(slug, arr);
+    }
+  }
+  return map;
+});
 </script>
 
 <template>
-  <div class="lx">
-    <div class="lx-search">
-      <MsIcon name="search" :size="16" class="lx-search-icon" />
-      <input
-        id="language-explorer-search"
-        v-model="query"
-        type="search"
-        placeholder="Search languages, extensions, or domains (e.g. .raw, multibody, EMT)"
-        aria-label="Search languages"
-      />
-      <span class="lx-count">{{ results.length }} / {{ LANGUAGES.length }}</span>
+  <div class="le">
+    <div class="le-toolbar">
+      <div class="le-search">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
+        <input
+          v-model="query"
+          type="search"
+          :placeholder="`Filter ${LANGUAGES.length} languages by name, extension, tier, or domain…`"
+          aria-label="Filter languages"
+        />
+      </div>
+      <div class="le-tiers" role="tablist" aria-label="Filter by maturity tier">
+        <button
+          v-for="t in tierChips"
+          :key="t.id"
+          type="button"
+          class="le-tier-btn"
+          :class="[`le-tier-btn--${t.id}`, { active: activeTier === t.id }]"
+          @click="activeTier = t.id"
+        >
+          <span v-if="t.id !== 'all'" class="le-tier-dot" :class="`le-tier-dot--${t.id}`" />
+          <span>{{ t.label }}</span>
+          <span class="le-chip-count">{{ t.count }}</span>
+        </button>
+      </div>
+      <div class="le-chips" role="tablist" aria-label="Filter by domain">
+        <button
+          v-for="c in chips"
+          :key="c.id"
+          type="button"
+          class="le-chip"
+          :class="{ active: activeGroup === c.id }"
+          @click="activeGroup = c.id"
+        >
+          <span>{{ c.label }}</span>
+          <span class="le-chip-count">{{ c.count }}</span>
+        </button>
+      </div>
     </div>
 
-    <div class="lx-chips" role="group" aria-label="Filter by group or industry">
-      <button
-        v-for="c in chips"
-        :key="c.id"
-        type="button"
-        class="lx-chip"
-        :class="{ active: filter === c.id }"
-        :aria-pressed="filter === c.id"
-        @click="filter = c.id"
+    <div class="le-grid">
+      <a
+        v-for="l in filtered"
+        :key="l.slug"
+        :href="withBase(`/languages/${l.slug}`)"
+        class="le-card"
       >
-        {{ c.label }}
-      </button>
-    </div>
-
-    <div v-if="results.length" class="lx-grid">
-      <a v-for="l in results" :key="l.slug" :href="`/languages/${l.slug}`" class="lx-card">
-        <span class="lx-top">
-          <span class="lx-ext">{{ l.ext }}</span>
-          <code class="lx-pkg">@modelscript/{{ l.slug }}</code>
-        </span>
-        <span class="lx-name">{{ l.name }}</span>
-        <span class="lx-role">{{ l.role }}</span>
-        <span class="lx-inds">
-          <span v-for="ind in industriesFor(l.slug)" :key="ind.name" class="lx-ind" :style="{ '--accent': ind.accent }">
-            {{ ind.name }}
-          </span>
-        </span>
+        <div class="le-top">
+          <span class="le-name">{{ l.name }}</span>
+          <div class="le-badges">
+            <span class="le-tier" :class="`le-tier--${l.tier}`">{{ TIER_LABELS[l.tier] }}</span>
+            <code class="le-ext">{{ l.ext }}</code>
+          </div>
+        </div>
+        <div class="le-role">{{ l.role }}</div>
+        <div v-if="industriesByLang.get(l.slug)?.length" class="le-tags">
+          <span v-for="ind in industriesByLang.get(l.slug)!.slice(0, 2)" :key="ind" class="le-tag">{{ ind }}</span>
+        </div>
       </a>
     </div>
-    <p v-else class="lx-empty">No languages match “{{ query }}”.</p>
+
+    <div v-if="filtered.length === 0" class="le-empty">
+      No languages match "{{ query }}".
+    </div>
   </div>
 </template>
 
 <style scoped>
-.lx {
-  margin: 24px 0 40px;
+.le {
+  margin: 24px 0 32px;
 }
 
-.lx-search {
-  position: relative;
+.le-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.le-search {
   display: flex;
   align-items: center;
-}
-
-.lx-search-icon {
-  position: absolute;
-  left: 14px;
-  color: var(--vp-c-text-3);
-}
-
-.lx-search input {
-  width: 100%;
-  height: 44px;
-  padding: 0 80px 0 40px;
-  border-radius: 12px;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
   border: 1px solid var(--vp-c-divider);
   background: var(--vp-c-bg-soft);
-  font-size: 14px;
-  color: var(--vp-c-text-1);
-  transition: border-color 0.2s;
+  color: var(--vp-c-text-2);
 }
-
-.lx-search input:focus {
-  outline: none;
+.le-search:focus-within {
   border-color: var(--vp-c-brand-1);
 }
-
-.lx-count {
-  position: absolute;
-  right: 14px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 12px;
-  color: var(--vp-c-text-3);
+.le-search input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--vp-c-text-1);
+  font-size: 14px;
+  outline: none;
 }
 
-.lx-chips {
+.le-tiers {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 14px 0 20px;
 }
 
-.lx-chip {
-  padding: 5px 12px;
+.le-tier-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
   border-radius: 999px;
   border: 1px solid var(--vp-c-divider);
-  font-size: 12.5px;
-  font-weight: 500;
+  background: var(--vp-c-bg);
   color: var(--vp-c-text-2);
-  transition:
-    border-color 0.2s,
-    color 0.2s,
-    background 0.2s;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-
-.lx-chip:hover {
-  color: var(--vp-c-text-1);
-  border-color: var(--vp-c-border);
-}
-
-.lx-chip.active {
-  color: var(--vp-c-brand-1);
+.le-tier-btn:hover {
   border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-text-1);
+}
+.le-tier-btn.active {
   background: var(--vp-c-brand-soft);
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
 }
 
-.lx-grid {
+.le-tier-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+.le-tier-dot--stable {
+  background: #10b981;
+}
+.le-tier-dot--beta {
+  background: #38bdf8;
+}
+.le-tier-dot--preview {
+  background: #a855f7;
+}
+
+.le-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.le-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-2);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.le-chip:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-text-1);
+}
+.le-chip.active {
+  background: var(--vp-c-brand-soft);
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+
+.le-chip-count {
+  font-size: 11px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.le-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
+  gap: 10px;
 }
 
-.lx-card {
+.le-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 16px;
-  border-radius: 12px;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 10px;
   border: 1px solid var(--vp-c-divider);
   background: var(--vp-c-bg-soft);
   text-decoration: none !important;
-  color: inherit;
-  transition:
-    border-color 0.2s,
-    transform 0.2s;
+  color: inherit !important;
+  transition: border-color 0.15s, transform 0.15s, background 0.15s;
 }
-
-.lx-card:hover {
+.le-card:hover {
   border-color: var(--vp-c-brand-1);
-  transform: translateY(-2px);
+  background: var(--vp-c-bg-elv);
+  transform: translateY(-1px);
 }
 
-.lx-top {
+.le-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.lx-ext {
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 11.5px;
-  color: var(--vp-c-brand-1);
-  background: var(--vp-c-brand-soft);
+.le-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
 }
 
-.lx-pkg {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10.5px !important;
-  color: var(--vp-c-text-3) !important;
-  background: none !important;
-  padding: 0 !important;
-}
-
-.lx-name {
-  margin-top: 8px;
-  font-size: 0.95rem;
-  font-weight: 650;
+.le-name {
+  font-size: 14px;
+  font-weight: 600;
   color: var(--vp-c-text-1);
 }
 
-.lx-role {
-  font-size: 0.82rem;
-  line-height: 1.45;
-  color: var(--vp-c-text-2);
+.le-tier {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.le-tier--stable {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+.le-tier--beta {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.28);
+}
+.le-tier--preview {
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.28);
 }
 
-.lx-inds {
+.le-ext {
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--vp-c-default-soft);
+  color: var(--vp-c-brand-1);
+}
+
+.le-role {
+  font-size: 12.5px;
+  color: var(--vp-c-text-2);
+  line-height: 1.45;
+}
+
+.le-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 8px;
+  margin-top: 4px;
 }
-
-.lx-ind {
-  padding: 1px 7px;
-  border-radius: 999px;
+.le-tag {
   font-size: 10.5px;
-  font-weight: 550;
-  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--vp-c-default-soft);
+  color: var(--vp-c-text-3);
 }
 
-.lx-empty {
-  padding: 24px;
+.le-empty {
+  padding: 32px;
   text-align: center;
   color: var(--vp-c-text-2);
+  font-size: 14px;
 }
 </style>

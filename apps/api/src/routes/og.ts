@@ -35,19 +35,23 @@ export function ogRouter(database: LibraryDatabase): Router {
   // ── Post OpenGraph Card ──
   const handlePostOg = (req: Request, res: Response): void => {
     const rawId = getParam(req.params["id"]).replace(/\.(svg|png)$/, "");
-    const postId = Number(rawId);
-    if (!postId || isNaN(postId)) {
+    if (!rawId || !rawId.trim()) {
       res.status(400).send("Invalid post ID");
       return;
     }
+    const postId = rawId.trim();
 
     const { brandName, host, isCorporate } = getBaseContext(req);
-    const post = database.getPost(postId);
+    const rawPost = database.getPost(postId);
+    const post =
+      rawPost && (!rawPost.visibility || rawPost.visibility === "public" || rawPost.visibility === "unlisted")
+        ? rawPost
+        : undefined;
 
     let viewType: string | null = null;
     if (post?.artifact_view_id) {
       try {
-        const art = database.getArtifactView(Number(post.artifact_view_id));
+        const art = database.getArtifactView(post.artifact_view_id);
         if (art?.view_type) viewType = art.view_type;
       } catch {
         // ignore

@@ -9,6 +9,8 @@ import type { Library } from "../api";
 import { getLibraryVersions } from "../api";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
+import { CiteButton } from "../components/citations/CiteButton";
+import { buildCitationFromPackage } from "../util/citations";
 import { usePageTitle } from "../util/title";
 import { resolvePackageParams } from "../util/url";
 
@@ -221,6 +223,15 @@ const LibraryVersionPage: React.FC = () => {
               >
                 {library.versions.length} version{library.versions.length !== 1 ? "s" : ""}
               </Label>
+              <CiteButton
+                target={buildCitationFromPackage({
+                  name: name || "",
+                  version: library.versions[0] || "1.0.0",
+                })}
+                label="Cite Package"
+                variant="button"
+                testId="library-versions-cite-btn"
+              />
             </Box>
             <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
               Select a version to view documentation and details.

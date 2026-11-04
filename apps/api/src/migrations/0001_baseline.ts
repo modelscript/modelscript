@@ -985,6 +985,13 @@ export const baselineMigration: Migration = {
       );
       CREATE INDEX IF NOT EXISTS idx_federation_relays_state ON federation_relays(state);
 
+      CREATE TABLE IF NOT EXISTS federated_oauth_clients (
+        domain        TEXT PRIMARY KEY,
+        client_id     TEXT NOT NULL,
+        client_secret TEXT NOT NULL,
+        registered_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
       CREATE TABLE IF NOT EXISTS content_reports (
         id                 INTEGER PRIMARY KEY AUTOINCREMENT,
         reporter_id        INTEGER NOT NULL,

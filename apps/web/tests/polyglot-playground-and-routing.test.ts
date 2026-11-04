@@ -15,15 +15,15 @@ import {
   isMultiFileArtifact,
 } from "../src/util/editor-routing.js";
 
-describe("44-Language Playground Registry & Single-File vs. Multi-File Editor Routing", () => {
-  it("registers all 44 polyglot engineering languages in ALL_MORSEL_LANGUAGES with extensions and starter templates", () => {
+describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Routing", () => {
+  it("registers all 66 polyglot engineering languages in ALL_MORSEL_LANGUAGES with extensions, maturity tiers, and starter templates", () => {
     assert.ok(
-      ALL_MORSEL_LANGUAGES.length >= 44,
-      `Expected at least 44 languages in ALL_MORSEL_LANGUAGES, found ${ALL_MORSEL_LANGUAGES.length}`,
+      ALL_MORSEL_LANGUAGES.length >= 66,
+      `Expected at least 66 languages in ALL_MORSEL_LANGUAGES, found ${ALL_MORSEL_LANGUAGES.length}`,
     );
     assert.ok(
-      MORSEL_LANGUAGES.length >= 43,
-      `Expected at least 43 active languages in MORSEL_LANGUAGES, found ${MORSEL_LANGUAGES.length}`,
+      MORSEL_LANGUAGES.length >= 65,
+      `Expected at least 65 active languages in MORSEL_LANGUAGES, found ${MORSEL_LANGUAGES.length}`,
     );
 
     const seenIds = new Set<string>();
@@ -33,6 +33,10 @@ describe("44-Language Playground Registry & Single-File vs. Multi-File Editor Ro
       seenIds.add(lang.id);
 
       assert.ok(lang.name && lang.name.length > 0, `Language ${lang.id} must have a display name`);
+      assert.ok(
+        lang.tier === "stable" || lang.tier === "beta" || lang.tier === "preview",
+        `Language ${lang.id} must have a valid maturity tier`,
+      );
       assert.ok(lang.ext && lang.ext.length > 0, `Language ${lang.id} must have a primary file extension`);
       assert.ok(lang.defaultCode && lang.defaultCode.trim().length > 0, `Language ${lang.id} must have starter code`);
       assert.equal(getLanguageExtension(lang.id), lang.ext);
@@ -130,7 +134,7 @@ describe("44-Language Playground Registry & Single-File vs. Multi-File Editor Ro
     assert.ok(multiFileUrl.includes("fromArtifact=99"));
     assert.ok(multiFileUrl.includes("editPostId=303"));
     assert.ok(multiFileUrl.includes("replyToPostId=404"));
-    assert.ok(multiFileUrl.endsWith("#memfs:artifact-99"));
+    assert.ok(multiFileUrl.endsWith("#memfs:99"));
   });
 
   it("infers canonical dialect IDs across polyglot extensions and view types", () => {

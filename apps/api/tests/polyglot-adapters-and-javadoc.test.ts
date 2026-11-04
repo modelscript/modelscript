@@ -75,14 +75,14 @@ describe("44-Language Package Adapters & Polyglot Javadoc Generation", () => {
     }
   });
 
-  it("maps all 47 languages under languages/ in EXTENSION_TO_LANGUAGE_ID", () => {
+  it("maps all languages under languages/ in EXTENSION_TO_LANGUAGE_ID", () => {
     const repoLanguagesDir = path.resolve(import.meta.dirname, "../../../languages");
     const languageDirs = fs
       .readdirSync(repoLanguagesDir, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name);
 
-    expect(languageDirs.length).toBe(47);
+    expect(languageDirs.length).toBeGreaterThanOrEqual(55);
     const mappedLanguageIds = new Set(Object.values(EXTENSION_TO_LANGUAGE_ID));
     for (const langId of languageDirs) {
       expect(mappedLanguageIds.has(langId), `Expected EXTENSION_TO_LANGUAGE_ID to cover language '${langId}'`).toBe(

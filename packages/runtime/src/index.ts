@@ -169,3 +169,4 @@ export * from "./formal/dae/taylor_domain.js";
 export * from "./formal/multidomain_coordinator.js";
 export * from "./formal/oracles/index.js";
 export * from "./formal/theory_coordinator.js";
+export * from "./util/snowflake.js";

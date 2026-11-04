@@ -204,7 +204,10 @@ export class StepMesher {
     const circles = new Map<number, { placement: number; radius: number }>();
     const vertexToPoint = new Map<number, number>();
     const edgeCurves = new Map<number, { vStart: number; vEnd: number; curveId?: number | undefined }>();
-    const orientedEdges = new Map<number, { edge: number; sense: boolean }>();
+    const orientedEdges = new Map<
+      number,
+      { edge: number; sense: boolean; vStart?: number | undefined; vEnd?: number | undefined }
+    >();
     const edgeLoops = new Map<number, number[]>();
     const faceBounds = new Map<number, number>();
     const faces: number[][] = [];
@@ -269,13 +272,28 @@ export class StepMesher {
       });
     }
 
-    const oeRegex =
-      /#(\d+)\s*=\s*ORIENTED_EDGE\s*\([^,()#\r\n]*,[^,()#\r\n]*,[^,()#\r\n]*,\s*#(\d+)\s*,\s*\.(T|F)\.\s*\)/gi;
+    const oeRegex = /#(\d+)\s*=\s*ORIENTED_EDGE\s*\(([^)]+)\)/gi;
     while ((m = oeRegex.exec(text)) !== null) {
-      orientedEdges.set(parseInt(m[1]!, 10), {
-        edge: parseInt(m[2]!, 10),
-        sense: m[3]!.toUpperCase() === "T",
-      });
+      const id = parseInt(m[1]!, 10);
+      const args = m[2]!.split(",").map((s) => s.trim());
+      if (args.length >= 2) {
+        const senseStr = args[args.length - 1]!;
+        const sense = senseStr.toUpperCase().includes("T");
+        const edgeIndex = args.length - 2;
+        const edgeMatch = args[edgeIndex]?.match(/#(\d+)/);
+        if (edgeMatch) {
+          const edge = parseInt(edgeMatch[1]!, 10);
+          let vStart: number | undefined;
+          let vEnd: number | undefined;
+          if (edgeIndex >= 2) {
+            const vsMatch = args[edgeIndex - 2]?.match(/#(\d+)/);
+            const veMatch = args[edgeIndex - 1]?.match(/#(\d+)/);
+            if (vsMatch) vStart = parseInt(vsMatch[1]!, 10);
+            if (veMatch) vEnd = parseInt(veMatch[1]!, 10);
+          }
+          orientedEdges.set(id, { edge, sense, vStart, vEnd });
+        }
+      }
     }
 
     const bSplineCurves = new Map<number, number[]>();
@@ -344,10 +362,16 @@ export class StepMesher {
         const ec = edgeCurves.get(oe.edge);
         if (!ec) continue;
 
-        const startVertex = oe.sense ? ec.vStart : ec.vEnd;
-        const endVertex = oe.sense ? ec.vEnd : ec.vStart;
-        const ptId = vertexToPoint.get(startVertex);
-        const endPtId = vertexToPoint.get(endVertex);
+        const rawStart = oe.sense ? (ec.vStart ?? oe.vStart) : (ec.vEnd ?? oe.vEnd);
+        const rawEnd = oe.sense ? (ec.vEnd ?? oe.vEnd) : (ec.vStart ?? oe.vStart);
+        const ptId =
+          rawStart !== undefined
+            ? (vertexToPoint.get(rawStart) ?? (cartesianPoints.has(rawStart) ? rawStart : undefined))
+            : undefined;
+        const endPtId =
+          rawEnd !== undefined
+            ? (vertexToPoint.get(rawEnd) ?? (cartesianPoints.has(rawEnd) ? rawEnd : undefined))
+            : undefined;
         if (ptId !== undefined && cartesianPoints.has(ptId)) {
           if (polyPointIds.length === 0 || polyPointIds[polyPointIds.length - 1] !== ptId) {
             polyPointIds.push(ptId);

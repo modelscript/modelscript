@@ -8,5 +8,6 @@ export * from "./language.js";
 export { default, default as owl2Language } from "./language.js";
 export * from "./lints.js";
 export * from "./parser/index.js";
+export * from "./profiles/ontospm.js";
 export * from "./reasoner/tableau.js";
 export * from "./workspace-index.js";

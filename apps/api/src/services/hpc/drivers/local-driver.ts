@@ -464,7 +464,8 @@ export class LocalProcessDriver implements HpcDriver {
   }
 
   public getLogPath(nativeJobId: string, workingDir: string): string {
-    return path.join(workingDir, `slurm-${nativeJobId}.out`);
+    const safeId = path.basename(String(nativeJobId)).replace(/[^a-zA-Z0-9_.-]/g, "_");
+    return path.join(workingDir, `slurm-${safeId}.out`);
   }
 
   private isExecutableInPath(name: string): boolean {

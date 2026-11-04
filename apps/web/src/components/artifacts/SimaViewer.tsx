@@ -374,11 +374,11 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
   const selectedDnvLine = analysis.dnvReport?.lines[clampedLineIdx];
 
   // Dynamically generate the Overhead Polar Mooring Spread SVG from parsed AST
-  const liveSpreadSvg = useMemo(() => {
+  const rawSpreadSvg = useMemo(() => {
     const { model, dnvReport, offsetReport } = analysis;
     if (!model || model.lines.length === 0) {
       if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-        return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
+        return viewConfig.svg;
       }
       return "";
     }
@@ -394,7 +394,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
       offY -= Math.sin(brokenAz) * 5.2;
     }
 
-    const rawSvg = renderSimaMooringSpreadSvg({
+    return renderSimaMooringSpreadSvg({
       title: vessel?.name ? `${vessel.name} Mooring Spread` : `${title} Mooring Spread`,
       waterDepth: model.environment.waterDepth,
       vesselName: vessel?.name ?? title,
@@ -433,12 +433,15 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
         };
       }),
     });
+  }, [analysis, viewConfig.svg, title, selectedLine, alsBrokenMode, clampedLineIdx]);
 
-    return sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark });
-  }, [analysis, viewConfig.svg, title, selectedLine, alsBrokenMode, clampedLineIdx, isFullScreen, isDark]);
+  const liveSpreadSvg = useMemo(
+    () => (rawSpreadSvg ? sanitizeSvgMarkup(rawSpreadSvg, { isFullScreen, isDark }) : ""),
+    [rawSpreadSvg, isFullScreen, isDark],
+  );
 
   // Dynamically generate the 2D Catenary Sag Profile SVG for the currently selected mooring line
-  const liveCatenarySvg = useMemo(() => {
+  const rawCatenarySvg = useMemo(() => {
     const { model, dnvReport } = analysis;
     if (!model || !selectedLine) return "";
 
@@ -472,7 +475,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
       : (dnvLine?.tensionIntact ?? catResult?.fairleadTotalTension);
     const activeSf = alsBrokenMode ? dnvLine?.safetyFactorDamaged : dnvLine?.safetyFactorIntact;
 
-    const rawSvg = renderSimaCatenaryProfileSvg({
+    return renderSimaCatenaryProfileSvg({
       title: `2D Catenary Sag Profile — ${selectedLine.name}`,
       waterDepth: h,
       horizontalSpan: span,
@@ -500,9 +503,12 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
         material: s.material,
       })),
     });
+  }, [analysis, selectedLine, clampedLineIdx, alsBrokenMode]);
 
-    return sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark });
-  }, [analysis, selectedLine, clampedLineIdx, alsBrokenMode, isFullScreen, isDark]);
+  const liveCatenarySvg = useMemo(
+    () => (rawCatenarySvg ? sanitizeSvgMarkup(rawCatenarySvg, { isFullScreen, isDark }) : ""),
+    [rawCatenarySvg, isFullScreen, isDark],
+  );
 
   // Handle interactive clicking on mooring lines in the Polar Spread SVG
   const handleSpreadSvgClick = useCallback(

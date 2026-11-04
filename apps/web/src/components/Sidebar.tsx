@@ -682,7 +682,7 @@ const ThemeToggleThumb = styled.span<{ $offsetPx: number; $dragging?: boolean | 
   background: var(--color-bg-elevated);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
   transform: translate3d(${(props) => props.$offsetPx}px, 0, 0);
-  transition: ${(props) => (props.$dragging ? "none" : "transform 0.18s cubic-bezier(0.16, 1, 0.3, 1)")};
+  transition: ${(props) => (props.$dragging ? "none" : "transform 0.14s cubic-bezier(0.16, 1, 0.3, 1)")};
   pointer-events: none;
   z-index: 0;
 `;
@@ -796,7 +796,7 @@ interface SidebarProps {
 }
 
 const THEME_THUMB_TRAVEL_PX = 26;
-const THEME_DRAG_THRESHOLD_PX = 3;
+const THEME_DRAG_THRESHOLD_PX = 6;
 
 const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   const { user, isAdmin, logout, unreadCount, setUnreadCount, adminPendingCount } = useAuth();
@@ -819,6 +819,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     startX: number;
     baseOffset: number;
     moved: boolean;
+    maxAbsDelta: number;
   } | null>(null);
   const suppressThemeClickRef = React.useRef(false);
 
@@ -938,6 +939,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   if (hasRepos) {
     registryLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
   }
+  registryLinks.push({ to: "/references", icon: BookIcon, label: "References" });
   if (hasCae) {
     registryLinks.push({ to: "/jobs", icon: ServerIcon, label: "Jobs" });
   }
@@ -1354,6 +1356,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                 startX: e.clientX,
                 baseOffset,
                 moved: false,
+                maxAbsDelta: 0,
               };
               try {
                 e.currentTarget.setPointerCapture(e.pointerId);
@@ -1365,7 +1368,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
               const drag = themeDragRef.current;
               if (!drag || drag.pointerId !== e.pointerId) return;
               const deltaX = e.clientX - drag.startX;
-              if (!drag.moved && Math.abs(deltaX) >= THEME_DRAG_THRESHOLD_PX) {
+              const absDelta = Math.abs(deltaX);
+              if (absDelta > drag.maxAbsDelta) {
+                drag.maxAbsDelta = absDelta;
+              }
+              if (!drag.moved && absDelta >= THEME_DRAG_THRESHOLD_PX) {
                 drag.moved = true;
               }
               if (drag.moved) {
@@ -1386,7 +1393,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                 const deltaX = e.clientX - drag.startX;
                 const finalOffset = Math.max(0, Math.min(THEME_THUMB_TRAVEL_PX, drag.baseOffset + deltaX));
                 const targetTheme = finalOffset >= THEME_THUMB_TRAVEL_PX / 2 ? "dark" : "light";
-                setTheme(targetTheme);
+                if (targetTheme === theme && drag.maxAbsDelta < THEME_THUMB_TRAVEL_PX / 2) {
+                  toggleTheme();
+                } else {
+                  setTheme(targetTheme);
+                }
                 suppressThemeClickRef.current = true;
               }
               setThemeDragOffset(null);
@@ -1411,7 +1422,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
               toggleTheme();
             }}
           >
-            <ThemeToggleThumb $offsetPx={effectiveThumbOffset} $dragging={themeDragOffset !== null} />
+            <ThemeToggleThumb
+              data-theme-thumb="true"
+              $offsetPx={effectiveThumbOffset}
+              $dragging={themeDragOffset !== null}
+            />
             <ThemeToggleIconSlot $active={activeVisualTheme === "light"} aria-hidden="true">
               <SunIcon size={13} />
             </ThemeToggleIconSlot>

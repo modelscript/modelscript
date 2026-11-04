@@ -106,7 +106,7 @@ export interface WaitlistSubmissionRow {
 }
 
 export interface ArtifactViewRow {
-  id: number;
+  id: number | string;
   creator_id?: number | undefined;
   author_id?: number | undefined;
   view_type: string;
@@ -160,7 +160,7 @@ export interface PostPollOption {
 
 export interface PostPollView {
   id: number;
-  post_id: number;
+  post_id: number | string;
   options: PostPollOption[];
   expires_at?: string | null | undefined;
   multiple: boolean;
@@ -185,13 +185,14 @@ export interface ContentFilterMatch {
 }
 
 export interface PostRow {
-  id: number;
+  id: number | string;
+  id_str?: string | undefined;
   author_id: number;
   content: string | null;
-  artifact_view_id?: number | null | undefined;
-  reply_to_id?: number | null | undefined;
-  quote_post_id?: number | null | undefined;
-  repost_of_id?: number | null | undefined;
+  artifact_view_id?: number | string | null | undefined;
+  reply_to_id?: number | string | null | undefined;
+  quote_post_id?: number | string | null | undefined;
+  repost_of_id?: number | string | null | undefined;
   view_count?: number | undefined;
   ap_id?: string | null | undefined;
   url?: string | null | undefined;
@@ -220,7 +221,7 @@ export interface PostRow {
   client_signature?: string | undefined;
   key_id_string?: string | undefined;
   artifact_view?: ArtifactViewRow | null | undefined;
-  artifact_views?: Record<number, ArtifactViewRow> | undefined;
+  artifact_views?: Record<string | number, ArtifactViewRow> | undefined;
   repost_post?: PostRow | null | undefined;
   quote_post?: PostRow | null | undefined;
   title?: string | null | undefined;
@@ -251,7 +252,7 @@ export interface NotificationRow {
   user_id: number;
   actor_id: number;
   type: string;
-  post_id: number | null;
+  post_id: number | string | null;
   metadata: Record<string, unknown> | string | null;
   read: number;
   created_at: string;
@@ -266,7 +267,7 @@ export interface NotificationRow {
 export interface ContentReportRow {
   id: number;
   reporter_id: number;
-  post_id: number | null;
+  post_id: number | string | null;
   target_user_id: number | null;
   target_type?: "post" | "user" | "package" | "repo" | "appeal" | string | undefined;
   target_resource_id?: string | null | undefined;

@@ -1120,16 +1120,14 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
     return parsedModel.states;
   }, [viewConfig.states, parsedModel.states]);
 
-  const svgMarkup = useMemo(() => {
+  const rawSvgMarkup = useMemo(() => {
     if (parts.length > 0) {
-      const raw =
-        diagramMode === "bdd"
-          ? buildBddDiagramSvg(systemName, rootPartDef, parts, parsedModel.portDefs, isFullScreen)
-          : buildIbdDiagramSvg(systemName, rootPartDef, parts, connections, states, requirements, isFullScreen);
-      return sanitizeSvgMarkup(raw, { isFullScreen, isDark });
+      return diagramMode === "bdd"
+        ? buildBddDiagramSvg(systemName, rootPartDef, parts, parsedModel.portDefs, isFullScreen)
+        : buildIbdDiagramSvg(systemName, rootPartDef, parts, connections, states, requirements, isFullScreen);
     }
     if (typeof viewConfig.svg === "string" && viewConfig.svg.trim()) {
-      return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
+      return viewConfig.svg;
     }
     return "";
   }, [
@@ -1143,8 +1141,12 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
     parsedModel.portDefs,
     viewConfig.svg,
     isFullScreen,
-    isDark,
   ]);
+
+  const svgMarkup = useMemo(
+    () => (rawSvgMarkup ? sanitizeSvgMarkup(rawSvgMarkup, { isFullScreen, isDark }) : ""),
+    [rawSvgMarkup, isFullScreen, isDark],
+  );
 
   const effectiveTab =
     activeTab === "diagram" && !svgMarkup

@@ -71,6 +71,8 @@ export interface LanguageGroupDescriptor {
   tone: CatalogTone;
 }
 
+export type LanguageMaturityTier = "stable" | "beta" | "preview";
+
 export interface LanguageTileDescriptor {
   id: string;
   name: string;
@@ -78,6 +80,7 @@ export interface LanguageTileDescriptor {
   ext: string;
   group: string;
   tone: CatalogTone;
+  tier: LanguageMaturityTier;
   role: string;
   summary: string;
   capabilities: string[];
@@ -151,7 +154,7 @@ export const LANGUAGE_GROUPS: LanguageGroupDescriptor[] = [
   { id: "robotics", label: "Robotics & Industrial Automation", tone: "emerald" },
   { id: "buildings", label: "Buildings, Water & Civil", tone: "teal" },
   { id: "process", label: "Chemical & Process Engineering", tone: "amber" },
-  { id: "life-sciences", label: "Systems Biology & Pharmacology", tone: "rose" },
+  { id: "life-sciences", label: "Life Sciences, Healthcare & Medical", tone: "rose" },
 ];
 
 const STANDARD_CAPABILITIES = [
@@ -162,7 +165,7 @@ const STANDARD_CAPABILITIES = [
   "Verification & Simulation",
 ];
 
-// ── Level 1: 44 Polyglot Language Tiles ────────────────────────────────────
+// ── Level 1: 66 Polyglot Language Tiles ────────────────────────────────────
 
 export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   // 1. Core Systems & Architecture
@@ -173,6 +176,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".msx",
     group: "core",
     tone: "teal",
+    tier: "stable",
     role: "Polyglot Kernel & Coordination DSL",
     summary:
       "Typed struct, constant, and functional orchestration kernel coordinating cross-domain physics, contracts, and solvers.",
@@ -187,6 +191,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".mo",
     group: "core",
     tone: "teal",
+    tier: "stable",
     role: "Acausal Multi-Physics DAE Modeling",
     summary:
       "Continuous-time differential-algebraic equation (DAE) modeling with full Modelica Standard Library schematic diagrams and CVODE/IDA solvers.",
@@ -201,6 +206,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".sysml",
     group: "core",
     tone: "indigo",
+    tier: "stable",
     role: "Systems Architecture & Requirements",
     summary:
       "OMG SysML v2 textual architecture definitions, ports, connections, state machines, and formal requirement satisfaction.",
@@ -215,6 +221,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".reqif",
     group: "core",
     tone: "sky",
+    tier: "beta",
     role: "Requirements Interchange & Traceability",
     summary:
       "ISO/IEC 29148 and DO-178C requirements interchange specifications with traceability links, quality lints, and SysML v2 projection.",
@@ -229,6 +236,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".ssd",
     group: "core",
     tone: "emerald",
+    tier: "stable",
     role: "Co-Simulation Architecture",
     summary:
       "Modelica Association System Structure and Parameterization (SSP) multi-FMU co-simulation topology and master orchestration.",
@@ -243,6 +251,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".owl",
     group: "core",
     tone: "rose",
+    tier: "stable",
     role: "Ontological Reasoning & Units",
     summary:
       "W3C OWL 2 Functional-Style ontologies with tableau description logic consistency checking, subsumption, and SI unit verification.",
@@ -257,6 +266,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".oscal.json",
     group: "core",
     tone: "indigo",
+    tier: "beta",
     role: "Cyber-Physical Security & Continuous ATO",
     summary:
       "NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS System Security Plans, profile resolution, CPS compliance auditing, and POA&M tracking.",
@@ -271,6 +281,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".qif",
     group: "geometry",
     tone: "sky",
+    tier: "beta",
     role: "MBD GD&T Metrology & Statistical Process Control",
     summary:
       "ISO 23952 / ANSI DMSC Quality Information Framework MBD tolerances, ASME Y14.5 MMC/LMC bonus evaluation, CMM plans, and SPC Cp/Cpk.",
@@ -285,6 +296,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".aml",
     group: "robotics",
     tone: "teal",
+    tier: "beta",
     role: "Smart Manufacturing CAEX Topology & Virtual Commissioning",
     summary:
       "IEC 62714 CAEX 2.15/3.0 Product-Process-Resource (PPR) hierarchies, 6-DOF frames, PLCopen/COLLADA links, and closed-loop virtual commissioning.",
@@ -301,6 +313,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".step",
     group: "geometry",
     tone: "indigo",
+    tier: "stable",
     role: "B-Rep Solid CAD & Multibody Extraction",
     summary:
       "ISO 10303-21 AP203/AP214/AP242 boundary-representation CAD assemblies with 3D viewport inspection and multibody inertia extraction.",
@@ -315,6 +328,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".scad",
     group: "geometry",
     tone: "teal",
+    tier: "stable",
     role: "Parametric Constructive Solid Geometry",
     summary:
       "Programmatic CSG solid modeling with port tagging for automated FEA structural supports and CFD boundary patches.",
@@ -329,6 +343,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".cfg",
     group: "geometry",
     tone: "sky",
+    tier: "stable",
     role: "Computational Fluid Dynamics",
     summary:
       "RANS/LES aerodynamic and thermal fluid configuration decks with flowfield convergence verification and reduced-order drag polars.",
@@ -343,12 +358,28 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".inp",
     group: "geometry",
     tone: "amber",
+    tier: "stable",
     role: "Finite Element Structural Analysis",
     summary:
       "3D structural and thermal finite element input decks with nodal mesh inspection, von Mises stress slicing, and safety-margin contracts.",
     capabilities: STANDARD_CAPABILITIES,
     docsUrl: "https://modelscript.org/languages/fea",
     defaultTemplateId: "fea-chassis",
+  },
+  {
+    id: "three-mf",
+    name: "3MF Additive Manufacturing",
+    badge: "3MF",
+    ext: ".3mf",
+    group: "geometry",
+    tone: "emerald",
+    tier: "beta",
+    role: "Additive Manufacturing & Surgical Guides",
+    summary:
+      "3MF Consortium XML mesh packages with watertight 2-manifold Euler-Poincare verification, overhang support checks, and surgical guide QA.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/three-mf",
+    defaultTemplateId: "three-mf-guide",
   },
 
   // 3. Embedded & Telemetry
@@ -359,6 +390,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".csv",
     group: "integration",
     tone: "emerald",
+    tier: "stable",
     role: "Time-Series & Lookup Table Ingestion",
     summary:
       "Structured experimental time-series trajectories and CombiTimeTable lookup datasets with interactive plotting and schema validation.",
@@ -373,6 +405,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".c",
     group: "integration",
     tone: "sky",
+    tier: "stable",
     role: "Flight Software & Control Laws",
     summary:
       "MISRA-checked embedded C control algorithms with symbolic execution, formal safety verification, and Modelica external function bindings.",
@@ -387,6 +420,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".f90",
     group: "integration",
     tone: "indigo",
+    tier: "beta",
     role: "Scientific & Legacy Physics Kernels",
     summary:
       "Fortran 90/95/2008 numerical subroutines and scientific physics kernels with automatic DAE lowering and dimensional audits.",
@@ -403,6 +437,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".jsbsim",
     group: "aerospace",
     tone: "amber",
+    tier: "beta",
     role: "6-DOF Flight Dynamics & Trim",
     summary:
       "6-DOF nonlinear aircraft aerodynamics, propulsion, mass balance, and flight control system XML configurations.",
@@ -417,6 +452,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".roc",
     group: "aerospace",
     tone: "rose",
+    tier: "preview",
     role: "Liquid Rocket Engine Cycle Balance",
     summary:
       "Cryogenic turbopump, regenerative cooling jacket, preburner, and thrust chamber thermodynamic cycle decks.",
@@ -431,6 +467,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".oem",
     group: "aerospace",
     tone: "sky",
+    tier: "beta",
     role: "Spacecraft Orbit Ephemeris & Attitude",
     summary:
       "Consultative Committee for Space Data Systems (CCSDS) Orbit Ephemeris Messages (OEM/OPM/OMM) and keplerian trajectory propagation.",
@@ -445,6 +482,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".ez5",
     group: "aerospace",
     tone: "indigo",
+    tier: "preview",
     role: "Aerospace Flight Controls & Hydraulics",
     summary: "Multi-rate aerospace flight control, thermal management, and environmental control block diagrams.",
     capabilities: STANDARD_CAPABILITIES,
@@ -460,6 +498,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".arxml",
     group: "automotive",
     tone: "emerald",
+    tier: "beta",
     role: "Automotive E/E Software Architecture",
     summary:
       "AUTOSAR ARXML software components (SWCs), sender-receiver/client-server ports, periodic timing events, and runnable schedules.",
@@ -474,6 +513,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".mdl",
     group: "automotive",
     tone: "teal",
+    tier: "beta",
     role: "Causal Control Block Diagrams",
     summary:
       "Hierarchical causal signal-flow block diagrams and state machines with algebraic-loop detection and Modelica block projection.",
@@ -488,6 +528,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".gtm",
     group: "automotive",
     tone: "amber",
+    tier: "preview",
     role: "1D Engine, xEV & Thermal Propulsion",
     summary:
       "1D compressible gas dynamics, turbocharged internal combustion cylinders, battery thermal circuits, and crank-angle simulation.",
@@ -502,6 +543,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".xodr",
     group: "automotive",
     tone: "sky",
+    tier: "beta",
     role: "High-Definition Road Networks",
     summary:
       "ASAM OpenDRIVE clothoid/arc/line road reference geometry, lane topology, elevation profiles, and curvature continuity checks.",
@@ -512,10 +554,11 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
   {
     id: "openscenario",
     name: "ASAM OpenSCENARIO",
-    badge: "OSC",
+    badge: "XOSC",
     ext: ".xosc",
     group: "automotive",
     tone: "rose",
+    tier: "beta",
     role: "ADAS & Autonomous Driving Maneuvers",
     summary:
       "Dynamic traffic storyboards, cut-in maneuvers, time-to-collision (TTC) safety verification, and RSS minimum distance envelopes.",
@@ -532,6 +575,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".calc",
     group: "rail",
     tone: "rose",
+    tier: "beta",
     role: "Rail Vehicle-Track Interaction & EN 14363",
     summary:
       "Railway carbody/bogie/wheelset multibody dynamics, FASTSIM wheel-rail creep contact, Nadine Nadal derailment ratio, and EN 14363 ride acceptance.",
@@ -546,6 +590,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".spck",
     group: "rail",
     tone: "indigo",
+    tier: "beta",
     role: "Spatial Multibody Kinematics & Dynamics",
     summary:
       "3D rigid/flexible bodies, kinematic joints, force elements, Grübler-Kutzbach mobility analysis, and DAE lowering.",
@@ -562,6 +607,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".pscx",
     group: "power",
     tone: "amber",
+    tier: "beta",
     role: "Electromagnetic Transients & IEEE 2800",
     summary:
       "Dommel companion-circuit EMT solver, Bergeron traveling-wave lines, COMTRADE waveform capture, and IEEE 2800-2022 IBR compliance.",
@@ -576,6 +622,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".raw",
     group: "power",
     tone: "teal",
+    tier: "beta",
     role: "Transmission Power Flow & Stability",
     summary:
       "Bulk transmission network buses, generators, branches, transformers, Newton-Raphson AC power flow, and N-1 contingency screening.",
@@ -590,6 +637,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".dss",
     group: "power",
     tone: "emerald",
+    tier: "beta",
     role: "Unbalanced Distribution Grids & DERs",
     summary:
       "Multi-phase unbalanced distribution feeders, step voltage regulators, rooftop solar PV inverters, and ANSI C84.1 voltage profile audits.",
@@ -606,6 +654,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".opi",
     group: "oil-gas",
     tone: "teal",
+    tier: "preview",
     role: "Multiphase Subsea Flow Assurance",
     summary:
       "Three-field gas-oil-water transient multiphase flowlines, terrain-induced slugging, hydrate subcooling margins, and API RP 14E erosion.",
@@ -620,6 +669,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".lps",
     group: "oil-gas",
     tone: "sky",
+    tier: "preview",
     role: "Transmission Pipeline Hydraulics",
     summary:
       "High-pressure natural gas and liquid transmission networks, centrifugal compressor stations, linepack inventory, and surge transients.",
@@ -634,6 +684,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".data",
     group: "oil-gas",
     tone: "amber",
+    tier: "preview",
     role: "Subsurface Black-Oil & CO₂ Reservoir",
     summary:
       "3D porous-media reservoir grids, PVT black-oil tables, relative permeability curves, Peaceman well models, and waterflood recovery.",
@@ -650,6 +701,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".r5",
     group: "nuclear",
     tone: "rose",
+    tier: "preview",
     role: "Nuclear Reactor Thermal-Hydraulics",
     summary:
       "Two-fluid non-equilibrium reactor coolant loops, six-group point reactor kinetics, heat structures, and 10 CFR 50.46 PCT safety limits.",
@@ -666,6 +718,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".sima",
     group: "marine",
     tone: "sky",
+    tier: "preview",
     role: "Offshore Hydrodynamics & Mooring",
     summary:
       "6-DOF floating offshore wind platforms, JONSWAP irregular wave spectra, Cummins radiation memory, and DNV-OS-E301 mooring tension checks.",
@@ -682,6 +735,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".cir",
     group: "electronics",
     tone: "indigo",
+    tier: "stable",
     role: "Analog & Mixed-Signal Circuit Simulation",
     summary:
       "Modified Nodal Analysis (MNA) circuit netlists with DC operating point, AC frequency sweep, transient integration, and floating-node lints.",
@@ -696,6 +750,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".va",
     group: "electronics",
     tone: "teal",
+    tier: "stable",
     role: "Compact Semiconductor Device Modeling",
     summary:
       "Behavioral analog compact device models (`V(p,n) <+ ...`) with symbolic Jacobian differentiation and Modelica connector lowering.",
@@ -710,6 +765,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".ibs",
     group: "electronics",
     tone: "amber",
+    tier: "beta",
     role: "High-Speed SerDes & I/O Buffer Integrity",
     summary:
       "I/O buffer pullup/pulldown I-V curves, rising/falling V-T waveforms, package parasitics, and monotonicity/passivity verification.",
@@ -724,6 +780,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".s2p",
     group: "electronics",
     tone: "rose",
+    tier: "beta",
     role: "RF & Microwave S-Parameter Networks",
     summary:
       "Multi-port frequency-domain scattering parameters (`.s1p`–`.s4p`) with passivity singular-value checks, reciprocity, and rational vector fitting.",
@@ -740,6 +797,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".urdf",
     group: "robotics",
     tone: "emerald",
+    tier: "stable",
     role: "Robotic Manipulator Kinematics & Dynamics",
     summary:
       "Articulated robot links, inertial tensors, revolute/prismatic joints, positive-definite triangle-inequality checks, and multibody lowering.",
@@ -754,6 +812,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".st",
     group: "robotics",
     tone: "teal",
+    tier: "beta",
     role: "Industrial PLC Control & Structured Text",
     summary:
       "IEC 61131-3 Structured Text programs, Function Block Diagrams, scan-cycle execution, and formal safety interlock verification.",
@@ -768,6 +827,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".adm",
     group: "robotics",
     tone: "indigo",
+    tier: "beta",
     role: "Mechanical Multibody Mechanisms",
     summary:
       "MSC Adams PARTS, MARKERS, kinematic JOINTS, SFORCE/BUSHING elements, and spatial multibody mechanism simulation.",
@@ -784,6 +844,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".idf",
     group: "buildings",
     tone: "amber",
+    tier: "beta",
     role: "Building Envelope & HVAC Energy",
     summary:
       "Multi-zone building thermal envelopes, fenestration, internal gains, HVAC air loops, and ASHRAE 90.1 / 55 comfort verification.",
@@ -798,6 +859,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".epanet",
     group: "buildings",
     tone: "sky",
+    tier: "beta",
     role: "Pressurized Water Distribution Networks",
     summary:
       "Todini-Pilati Global Gradient Algorithm (GGA) hydraulic head/flow solver, Hazen-Williams pipes, pumps, and chlorine decay.",
@@ -812,6 +874,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".swmm",
     group: "buildings",
     tone: "teal",
+    tier: "beta",
     role: "Urban Stormwater & Sanitary Sewer Routing",
     summary:
       "1D Saint-Venant dynamic wave open-channel and conduit routing, Green-Ampt catchment runoff, and node flooding verification.",
@@ -828,6 +891,7 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".bkp",
     group: "process",
     tone: "amber",
+    tier: "preview",
     role: "Chemical Process Flowsheets & VLE",
     summary:
       "Flash drums, CSTR/PFR reactors, distillation columns, Peng-Robinson/NRTL vapor-liquid equilibrium, and mass/energy balance checks.",
@@ -835,8 +899,68 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     docsUrl: "https://modelscript.org/languages/aspen",
     defaultTemplateId: "aspen-methanol",
   },
+  {
+    id: "gproms",
+    name: "gPROMS Process",
+    badge: "GPR",
+    ext: ".gproms",
+    group: "process",
+    tone: "teal",
+    tier: "preview",
+    role: "Equation-Oriented Process Modeling & DAE",
+    summary:
+      "Equation-oriented chemical process models, degree-of-freedom audits, non-isothermal CSTR kinetics, and DAE arena lowering.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/gproms",
+    defaultTemplateId: "gproms-cstr",
+  },
+  {
+    id: "cantera",
+    name: "Cantera Kinetics",
+    badge: "CTI",
+    ext: ".cti",
+    group: "process",
+    tone: "amber",
+    tier: "preview",
+    role: "Chemical Kinetics, Thermodynamics & Combustion",
+    summary:
+      "Gas-phase and surface elementary reaction mechanisms, NASA-7 polynomial continuity checks, and stiff Arrhenius kinetics.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/cantera",
+    defaultTemplateId: "cantera-h2air",
+  },
+  {
+    id: "phreeqc",
+    name: "USGS PHREEQC",
+    badge: "PQI",
+    ext: ".pqi",
+    group: "process",
+    tone: "sky",
+    tier: "preview",
+    role: "Aqueous Geochemistry & Reactive Transport",
+    summary:
+      "Aqueous electrolyte speciation, electroneutrality charge-balance audits, mineral saturation indices, and 1D reactive transport.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/phreeqc",
+    defaultTemplateId: "phreeqc-calcite",
+  },
+  {
+    id: "smiles",
+    name: "OpenSMILES",
+    badge: "SMI",
+    ext: ".smi",
+    group: "process",
+    tone: "emerald",
+    tier: "preview",
+    role: "Cheminformatics & Molecular Graph Topology",
+    summary:
+      "OpenSMILES molecular line notation with organic-subset valence checks, Huckel aromaticity, and Lipinski Rule-of-Five descriptors.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/smiles",
+    defaultTemplateId: "smiles-library",
+  },
 
-  // 15. Systems Biology & Pharmacology
+  // 15. Life Sciences, Healthcare & Medical
   {
     id: "sbml",
     name: "SBML Level 3",
@@ -844,12 +968,223 @@ export const LANGUAGE_TILES: LanguageTileDescriptor[] = [
     ext: ".sbml",
     group: "life-sciences",
     tone: "rose",
+    tier: "preview",
     role: "Biochemical Reaction Networks & PBPK",
     summary:
       "Compartmental biochemical species, Michaelis-Menten and mass-action reaction kinetics, stoichiometry matrices, and conservation laws.",
     capabilities: STANDARD_CAPABILITIES,
     docsUrl: "https://modelscript.org/languages/sbml",
     defaultTemplateId: "sbml-enzyme",
+  },
+  {
+    id: "antimony",
+    name: "Antimony Bio-Networks",
+    badge: "ANT",
+    ext: ".ant",
+    group: "life-sciences",
+    tone: "teal",
+    tier: "preview",
+    role: "Modular Biological Reaction Networks",
+    summary:
+      "Human-readable modular gene-regulatory and metabolic pathways with bidirectional SBML Level 3 and Modelica DAE compilation.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/antimony",
+    defaultTemplateId: "antimony-repressilator",
+  },
+  {
+    id: "bngl",
+    name: "BioNetGen (BNGL)",
+    badge: "BNG",
+    ext: ".bngl",
+    group: "life-sciences",
+    tone: "indigo",
+    tier: "preview",
+    role: "Rule-Based Intracellular Signaling",
+    summary:
+      "Rule-based multi-site phosphorylation and receptor dimerization networks with site-state validation and ODE/Gillespie SSA expansion.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/bngl",
+    defaultTemplateId: "bngl-egfr",
+  },
+  {
+    id: "cellml",
+    name: "CellML 2.0",
+    badge: "CML",
+    ext: ".cellml",
+    group: "life-sciences",
+    tone: "rose",
+    tier: "preview",
+    role: "Cardiac Electrophysiology & Cellular Physiology",
+    summary:
+      "Component-based physiological ODE/DAE models with strict dimensional unit checking (`mV`, `ms`, `uA/cm2`) and Hodgkin-Huxley solvers.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/cellml",
+    defaultTemplateId: "cellml-membrane",
+  },
+  {
+    id: "sedml",
+    name: "SED-ML (MIASE)",
+    badge: "SED",
+    ext: ".sedml",
+    group: "life-sciences",
+    tone: "sky",
+    tier: "preview",
+    role: "Reproducible Simulation Experiments",
+    summary:
+      "Simulation Experiment Description Markup Language binding KiSAO solver algorithms (`KISAO:0000019`) to SBML and CellML models.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/sedml",
+    defaultTemplateId: "sedml-glycolysis",
+  },
+  {
+    id: "sbol",
+    name: "SBOL 3.1",
+    badge: "SBL",
+    ext: ".sbol",
+    group: "life-sciences",
+    tone: "emerald",
+    tier: "preview",
+    role: "Synthetic Biology Genetic Circuits",
+    summary:
+      "Synthetic Biology Open Language genetic constructs with Sequence Ontology (SO) and Systems Biology Ontology (SBO) validation.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/sbol",
+    defaultTemplateId: "sbol-toggle",
+  },
+  {
+    id: "genbank",
+    name: "GenBank / INSDC",
+    badge: "GBK",
+    ext: ".gb",
+    group: "life-sciences",
+    tone: "teal",
+    tier: "preview",
+    role: "Annotated Genomic & Plasmid Sequences",
+    summary:
+      "INSDC flatfile DNA/RNA sequence records with coordinate bounds checking, open reading frame (ORF) phase verification, and GC analysis.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/genbank",
+    defaultTemplateId: "genbank-plasmid",
+  },
+  {
+    id: "pdb",
+    name: "WWPDB Protein Data Bank",
+    badge: "PDB",
+    ext: ".pdb",
+    group: "life-sciences",
+    tone: "indigo",
+    tier: "preview",
+    role: "3D Macromolecular Structural Biology",
+    summary:
+      "Atomic coordinate records (`ATOM`, `HETATM`, `HELIX`, `SHEET`, `CONECT`) with steric clash detection and Ramachandran validation.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/pdb",
+    defaultTemplateId: "pdb-peptide",
+  },
+  {
+    id: "nmtran",
+    name: "NONMEM NM-TRAN",
+    badge: "NMT",
+    ext: ".ctl",
+    group: "life-sciences",
+    tone: "amber",
+    tier: "preview",
+    role: "Pharmacometrics & Population PK/PD",
+    summary:
+      "NONMEM control streams (`$PROBLEM`, `$PK`, `$DES`, `$THETA`, `$OMEGA`, `$SIGMA`) with ADVAN/TRANS validation and compartment ODEs.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/nmtran",
+    defaultTemplateId: "nmtran-pk",
+  },
+  {
+    id: "opensim",
+    name: "OpenSim Biomechanics",
+    badge: "OSM",
+    ext: ".osim",
+    group: "life-sciences",
+    tone: "emerald",
+    tier: "beta",
+    role: "Musculoskeletal Multibody & Hill Muscle Dynamics",
+    summary:
+      "OpenSim 4.x anatomical bodies, kinematic joints, Hill-type muscle-tendon actuators (`Thelen2003Muscle`), and inverse dynamics.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/opensim",
+    defaultTemplateId: "opensim-elbow",
+  },
+  {
+    id: "febio",
+    name: "FEBio Biomechanics",
+    badge: "FEB",
+    ext: ".feb",
+    group: "life-sciences",
+    tone: "amber",
+    tier: "beta",
+    role: "Nonlinear Soft-Tissue & Biphasic FEA",
+    summary:
+      "FEBio 4.0 hyperelastic (`Mooney-Rivlin`, `Ogden`, `Holzapfel-Gasser-Ogden`), viscoelastic, and biphasic poroelastic soft-tissue FEA.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/febio",
+    defaultTemplateId: "febio-artery",
+  },
+  {
+    id: "dicom-rt",
+    name: "DICOM-RT Oncology",
+    badge: "DCM",
+    ext: ".dcm.json",
+    group: "life-sciences",
+    tone: "rose",
+    tier: "preview",
+    role: "Radiation Therapy Plans, DVH & Gamma Index QA",
+    summary:
+      "DICOM Radiation Therapy (`RTPLAN`, `RTDOSE`, `RTSTRUCT`) with QUANTEC organ-at-risk DVH verification, BED/EQD2, and 3D Gamma Index QA.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/dicom-rt",
+    defaultTemplateId: "dicom-rt-prostate",
+  },
+  {
+    id: "nifti",
+    name: "NIfTI-1 / NIfTI-2",
+    badge: "NII",
+    ext: ".nii.json",
+    group: "life-sciences",
+    tone: "sky",
+    tier: "preview",
+    role: "Volumetric Medical Imaging & RAS+ Registration",
+    summary:
+      "3D/4D CT, MRI, and fMRI neuroimaging headers with `qform`/`sform` affine determinant checks and voxel-to-RAS+ world transforms.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/nifti",
+    defaultTemplateId: "nifti-brain",
+  },
+  {
+    id: "topas",
+    name: "TOPAS / Geant4 MC",
+    badge: "TPS",
+    ext: ".topas",
+    group: "life-sciences",
+    tone: "indigo",
+    tier: "preview",
+    role: "Proton & Photon Monte Carlo Radiation Transport",
+    summary:
+      "TOPAS clinical proton/carbon/photon beamline parameters with Bethe-Bloch stopping power and Bragg peak depth-dose scoring.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/topas",
+    defaultTemplateId: "topas-proton",
+  },
+  {
+    id: "igtl",
+    name: "OpenIGTLink v3",
+    badge: "IGT",
+    ext: ".igtl.json",
+    group: "life-sciences",
+    tone: "teal",
+    tier: "preview",
+    role: "Surgical Navigation & Robotic Hand-Eye Calibration",
+    summary:
+      "Computer-assisted surgery `TRANSFORM` streams with $SO(3)$ rotation matrix orthogonality checks, pivot calibration, and $AX=XB$ hand-eye alignment.",
+    capabilities: STANDARD_CAPABILITIES,
+    docsUrl: "https://modelscript.org/languages/igtl",
+    defaultTemplateId: "igtl-navigation",
   },
 ];
 
@@ -3502,6 +3837,698 @@ export const EXAMPLE_TEMPLATES: ExampleWorkspaceDescriptor[] = [
       ].join("\n"),
     },
   },
+
+  // 48. 3MF Additive Manufacturing (.3mf)
+  {
+    id: "three-mf-guide",
+    languageId: "three-mf",
+    title: "3MF Patient-Specific Ti-6Al-4V Surgical Cutting Guide",
+    summary:
+      "3MF additive manufacturing mesh package with watertight 2-manifold Euler-Poincare verification and ASTM F136 titanium alloy assignment.",
+    badge: "3MF",
+    tone: "emerald",
+    ext: ".3mf",
+    primaryFile: "MandibularCuttingGuide.3mf",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "MandibularCuttingGuide.3mf": [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">',
+        "  <resources>",
+        '    <basematerials id="1">',
+        '      <base name="Ti-6Al-4V ELI (ASTM F136)" displaycolor="#94A3B8"/>',
+        "    </basematerials>",
+        '    <object id="2" name="MandibularCuttingGuide" type="model" pid="1" pindex="0">',
+        "      <mesh>",
+        "        <vertices>",
+        '          <vertex x="0.0"  y="0.0"  z="0.0"/>',
+        '          <vertex x="24.0" y="0.0"  z="0.0"/>',
+        '          <vertex x="12.0" y="20.0" z="0.0"/>',
+        '          <vertex x="12.0" y="8.0"  z="16.0"/>',
+        "        </vertices>",
+        "        <triangles>",
+        '          <triangle v1="0" v2="2" v3="1"/>',
+        '          <triangle v1="0" v2="1" v3="3"/>',
+        '          <triangle v1="1" v2="2" v3="3"/>',
+        '          <triangle v1="2" v2="0" v3="3"/>',
+        "        </triangles>",
+        "      </mesh>",
+        "    </object>",
+        "  </resources>",
+        '  <build><item objectid="2"/></build>',
+        "</model>",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 49. gPROMS Process Modeling (.gproms)
+  {
+    id: "gproms-cstr",
+    languageId: "gproms",
+    title: "gPROMS Non-Isothermal Jacketed CSTR Reactor",
+    summary:
+      "Equation-oriented process model coupling Arrhenius first-order reaction kinetics with jacketed heat transfer and DAE lowering.",
+    badge: "GPR",
+    tone: "teal",
+    ext: ".gproms",
+    primaryFile: "ExothermicCSTR.gproms",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "ExothermicCSTR.gproms": [
+        "PARAMETER",
+        "  k0   AS REAL DEFAULT 1.2e6 ;",
+        "  Ea_R AS REAL DEFAULT 4500.0 ;",
+        "  V    AS REAL DEFAULT 2.5 ;",
+        "VARIABLE",
+        "  Ca   AS Concentration ;",
+        "  T    AS Temperature ;",
+        "  r_A  AS ReactionRate ;",
+        "EQUATION",
+        "  r_A = k0 * EXP(-Ea_R / T) * Ca ;",
+        "  V * $Ca = 1.2 * (2.0 - Ca) - V * r_A ;",
+        "  V * 4184.0 * $T = 1.2 * 4184.0 * (300.0 - T) + 65000.0 * V * r_A ;",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 50. Cantera Chemical Kinetics (.cti)
+  {
+    id: "cantera-h2air",
+    languageId: "cantera",
+    title: "Cantera H2/O2 Elementary Reaction Mechanism",
+    summary:
+      "Gas-phase chemical kinetics mechanism with NASA-7 thermodynamic polynomials and modified Arrhenius rate coefficients.",
+    badge: "CTI",
+    tone: "amber",
+    ext: ".cti",
+    primaryFile: "HydrogenAirMechanism.cti",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "HydrogenAirMechanism.cti": [
+        'units(length="cm", time="s", quantity="mol", act_energy="cal/mol")',
+        "",
+        "ideal_gas(",
+        '    name="h2_air_mix",',
+        '    elements="H O N Ar",',
+        '    species="H2 O2 H O OH H2O N2",',
+        '    reactions="all",',
+        '    initial_state=state(temperature=1200.0, pressure=101325.0, mole_fractions="H2:2.0, O2:1.0, N2:3.76")',
+        ")",
+        "",
+        'reaction("H + O2 <=> O + OH", [3.547e15, -0.406, 16599.0])',
+        'reaction("O + H2 <=> H + OH", [5.080e04,  2.670,  6290.0])',
+        'reaction("H2 + OH <=> H2O + H", [2.160e08, 1.510, 3430.0])',
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 51. USGS PHREEQC (.pqi)
+  {
+    id: "phreeqc-calcite",
+    languageId: "phreeqc",
+    title: "PHREEQC Limestone Aquifer Speciation & Calcite Equilibrium",
+    summary:
+      "Hydrogeochemical input deck equilibrating a Ca-HCO3-Cl groundwater solution with calcite and CO2(g) partial pressure.",
+    badge: "PQI",
+    tone: "sky",
+    ext: ".pqi",
+    primaryFile: "CalciteEquilibrium.pqi",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "CalciteEquilibrium.pqi": [
+        "TITLE Calcite and CO2(g) Equilibrium Speciation",
+        "SOLUTION 1 Limestone Aquifer Water",
+        "    temp      25.0",
+        "    pH        7.35",
+        "    pe        4.0",
+        "    units     mmol/kgw",
+        "    Ca        1.85",
+        "    Mg        0.42",
+        "    Alkalinity 3.60 as HCO3",
+        "    Cl        1.10",
+        "EQUILIBRIUM_PHASES 1",
+        "    Calcite   0.0   10.0",
+        "    CO2(g)   -2.1   1.0",
+        "END",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 52. OpenSMILES (.smi)
+  {
+    id: "smiles-library",
+    languageId: "smiles",
+    title: "OpenSMILES Analgesic & CNS Molecular Library",
+    summary:
+      "Canonical OpenSMILES chemical structure table with aromaticity, stereochemistry, and Lipinski Rule-of-Five checks.",
+    badge: "SMI",
+    tone: "emerald",
+    ext: ".smi",
+    primaryFile: "AnalgesicLibrary.smi",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "AnalgesicLibrary.smi": [
+        "CC(=O)Oc1ccccc1C(=O)O\tAspirin",
+        "CC(=O)Nc1ccc(O)cc1\tParacetamol",
+        "CC(C)Cc1ccc(cc1)[C@@H](C)C(=O)O\tDexibuprofen",
+        "CN1C=NC2=C1C(=O)N(C(=O)N2C)C\tCaffeine",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 53. Antimony Bio-Networks (.ant)
+  {
+    id: "antimony-repressilator",
+    languageId: "antimony",
+    title: "Antimony Synthetic Transcriptional Repressilator",
+    summary:
+      "Modular biological network model of the three-gene TetR-LacI-cI synthetic oscillatory circuit with Hill repression kinetics.",
+    badge: "ANT",
+    tone: "teal",
+    ext: ".ant",
+    primaryFile: "RepressilatorCircuit.ant",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "RepressilatorCircuit.ant": [
+        "model RepressilatorCircuit()",
+        "  compartment cell = 1.0;",
+        "  species m_LacI in cell, m_TetR in cell, m_cI in cell;",
+        "  species p_LacI in cell, p_TetR in cell, p_cI in cell;",
+        "",
+        "  alpha = 216.0; alpha0 = 0.216; n = 2.0; beta = 0.2;",
+        "",
+        "  J_tx_LacI: => m_LacI; alpha0 + alpha / (1 + p_cI^n);",
+        "  J_deg_LacI: m_LacI => ; m_LacI;",
+        "  J_tl_LacI: => p_LacI; beta * m_LacI;",
+        "  J_pdeg_LacI: p_LacI => ; beta * p_LacI;",
+        "",
+        "  m_LacI = 0.0; m_TetR = 0.5; m_cI = 0.0;",
+        "  p_LacI = 5.0; p_TetR = 0.0; p_cI = 0.0;",
+        "end",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 54. BioNetGen (.bngl)
+  {
+    id: "bngl-egfr",
+    languageId: "bngl",
+    title: "BioNetGen Rule-Based EGFR Dimerization & Phosphorylation",
+    summary:
+      "Rule-based intracellular signaling model tracking ligand binding, receptor dimerization, and trans-autophosphorylation.",
+    badge: "BNG",
+    tone: "indigo",
+    ext: ".bngl",
+    primaryFile: "EgfrSignaling.bngl",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "EgfrSignaling.bngl": [
+        "begin model",
+        "begin parameters",
+        "  kp1  1.0e-3",
+        "  km1  0.10",
+        "  kp2  5.0e-3",
+        "  km2  0.05",
+        "  k_p  1.20",
+        "end parameters",
+        "begin molecule types",
+        "  EGF(r)",
+        "  EGFR(l,d,Y1068~U~P)",
+        "end molecule types",
+        "begin seed species",
+        "  EGF(r)               1200.0",
+        "  EGFR(l,d,Y1068~U)    1000.0",
+        "end seed species",
+        "begin reaction rules",
+        "  R_Bind:  EGF(r) + EGFR(l,d) <-> EGF(r!1).EGFR(l!1,d) kp1, km1",
+        "  R_Dimer: EGFR(l!+,d) + EGFR(l!+,d) <-> EGFR(l!+,d!2).EGFR(l!+,d!2) kp2, km2",
+        "  R_Phos:  EGFR(d!+,Y1068~U) -> EGFR(d!+,Y1068~P) k_p",
+        "end reaction rules",
+        "end model",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 55. CellML 2.0 (.cellml)
+  {
+    id: "cellml-membrane",
+    languageId: "cellml",
+    title: "CellML 2.0 Hodgkin-Huxley Excitable Membrane Action Potential",
+    summary:
+      "Component-based physiological electrophysiology model enforcing strict dimensional units (`mV`, `ms`) and ion channel currents.",
+    badge: "CML",
+    tone: "rose",
+    ext: ".cellml",
+    primaryFile: "HodgkinHuxleyMembrane.cellml",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "HodgkinHuxleyMembrane.cellml": [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<model xmlns="http://www.cellml.org/cellml/2.0#" name="HodgkinHuxleyMembrane">',
+        '  <units name="ms"><unit prefix="milli" units="second"/></units>',
+        '  <units name="mV"><unit prefix="milli" units="volt"/></units>',
+        '  <component name="membrane">',
+        '    <variable name="t" units="ms" interface="public"/>',
+        '    <variable name="V" units="mV" initial_value="-75.0" interface="public"/>',
+        '    <variable name="Cm" units="dimensionless" initial_value="1.0"/>',
+        '    <variable name="I_ion" units="dimensionless" initial_value="0.0" interface="public"/>',
+        "  </component>",
+        "</model>",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 56. SED-ML (.sedml)
+  {
+    id: "sedml-glycolysis",
+    languageId: "sedml",
+    title: "SED-ML Level 1 Version 4 Reproducible Time-Course Protocol",
+    summary:
+      "Simulation Experiment Description Markup Language protocol binding KiSAO:0000019 (CVODE) to an SBML pathway model.",
+    badge: "SED",
+    tone: "sky",
+    ext: ".sedml",
+    primaryFile: "GlycolysisExperiment.sedml",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "GlycolysisExperiment.sedml": [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">',
+        "  <listOfModels>",
+        '    <model id="model_glycolysis" language="urn:sedml:language:sbml" source="EnzymeFeedbackPathway.sbml"/>',
+        "  </listOfModels>",
+        "  <listOfSimulations>",
+        '    <uniformTimeCourse id="sim_timecourse" initialTime="0.0" outputStartTime="0.0" outputEndTime="120.0" numberOfSteps="600">',
+        '      <algorithm kisaoID="KISAO:0000019"/>',
+        "    </uniformTimeCourse>",
+        "  </listOfSimulations>",
+        "  <listOfTasks>",
+        '    <task id="task_baseline" modelReference="model_glycolysis" simulationReference="sim_timecourse"/>',
+        "  </listOfTasks>",
+        "</sedML>",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 57. SBOL 3.1 (.sbol)
+  {
+    id: "sbol-toggle",
+    languageId: "sbol",
+    title: "SBOL 3.1 Genetic Toggle Switch Cassette",
+    summary:
+      "Synthetic Biology Open Language RDF/XML design ordering Promoter, RBS, CDS, and Terminator SubComponents.",
+    badge: "SBL",
+    tone: "emerald",
+    ext: ".sbol",
+    primaryFile: "ToggleSwitchCassette.sbol",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "ToggleSwitchCassette.sbol": [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"',
+        '         xmlns:sbol="http://sbols.org/v3#">',
+        '  <sbol:Component rdf:about="https://modelscript.org/sbol/ToggleCassette">',
+        "    <sbol:displayId>ToggleCassette</sbol:displayId>",
+        '    <sbol:type rdf:resource="https://identifiers.org/SBO:0000251"/>',
+        '    <sbol:role rdf:resource="http://identifiers.org/SO:0005850"/>',
+        "    <sbol:hasFeature>",
+        '      <sbol:SubComponent rdf:about="https://modelscript.org/sbol/ToggleCassette/sc_pTet">',
+        "        <sbol:displayId>sc_pTet</sbol:displayId>",
+        '        <sbol:instanceOf rdf:resource="https://modelscript.org/sbol/pTet_Promoter"/>',
+        "      </sbol:SubComponent>",
+        "    </sbol:hasFeature>",
+        "  </sbol:Component>",
+        "</rdf:RDF>",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 58. GenBank (.gb)
+  {
+    id: "genbank-plasmid",
+    languageId: "genbank",
+    title: "GenBank T7-lac GFP Expression Plasmid Map",
+    summary:
+      "INSDC GenBank flatfile sequence record with promoter, RBS, His6-GFP coding sequence (CDS), and terminator features.",
+    badge: "GBK",
+    tone: "teal",
+    ext: ".gb",
+    primaryFile: "pET28a_GFP.gb",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "pET28a_GFP.gb": [
+        "LOCUS       pET28a_GFP               180 bp    DNA     circular SYN 01-JAN-2026",
+        "DEFINITION  Synthetic T7-lac inducible GFP reporter cassette.",
+        "ACCESSION   SYN_GFP_001",
+        "FEATURES             Location/Qualifiers",
+        "     promoter        1..20",
+        '                     /label="T7_promoter"',
+        "     RBS             25..36",
+        '                     /label="ribosome_binding_site"',
+        "     CDS             43..150",
+        '                     /gene="gfp"',
+        "                     /codon_start=1",
+        '                     /product="Green Fluorescent Protein"',
+        "     terminator      155..180",
+        '                     /label="T7_terminator"',
+        "ORIGIN",
+        "        1 taatacgact cactataggg agaccacaac ggtttccctc tagaaataat tttgtttaac",
+        "       61 tttaagaagg agatatacca tgggcagca gccatcatca tcatcatcac agcagcggcc",
+        "      121 tggtgccgcg cggcagccat atggctagct aactagcata accccttggg gcctctaaac",
+        "//",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 59. WWPDB Protein Data Bank (.pdb)
+  {
+    id: "pdb-peptide",
+    languageId: "pdb",
+    title: "WWPDB Alpha-Helical Peptide & Backbone Structure",
+    summary:
+      "Protein Data Bank macromolecular structure defining secondary structure HELIX ranges, ATOM coordinates, and Ramachandran checks.",
+    badge: "PDB",
+    tone: "indigo",
+    ext: ".pdb",
+    primaryFile: "AlphaHelixPeptide.pdb",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "AlphaHelixPeptide.pdb": [
+        "HEADER    DE NOVO PROTEIN                         01-JAN-26   1MSX",
+        "TITLE     COMPUTATIONAL ALPHA-HELICAL PEPTIDE FRAGMENT",
+        "HELIX    1  H1 ALA A    1  ALA A    5  1                                   5",
+        "ATOM      1  N   ALA A   1      10.120  12.450   8.310  1.00 14.20           N",
+        "ATOM      2  CA  ALA A   1      11.480  12.920   8.560  1.00 13.80           C",
+        "ATOM      3  C   ALA A   1      12.460  11.750   8.620  1.00 14.10           C",
+        "ATOM      4  O   ALA A   1      13.660  11.940   8.810  1.00 15.60           O",
+        "ATOM      5  CB  ALA A   1      11.880  13.940   7.490  1.00 14.90           C",
+        "TER       6      ALA A   1",
+        "END",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 60. NONMEM NM-TRAN (.ctl)
+  {
+    id: "nmtran-pk",
+    languageId: "nmtran",
+    title: "NONMEM NM-TRAN Two-Compartment Population PK Control Stream",
+    summary:
+      "Pharmacometric control stream (ADVAN4 TRANS4) with between-subject exponential random effects and proportional residual error.",
+    badge: "NMT",
+    tone: "amber",
+    ext: ".ctl",
+    primaryFile: "TwoCompOralPK.ctl",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "TwoCompOralPK.ctl": [
+        "$PROBLEM Oral Two-Compartment Population PK Analysis",
+        "$INPUT ID TIME AMT DV MDV EVID WT CRCL",
+        "$DATA ../data/pk_phase2.csv IGNORE=@",
+        "$SUBROUTINES ADVAN4 TRANS4",
+        "$PK",
+        "  TVCL = THETA(1) * (WT / 70.0)**0.75",
+        "  TVV2 = THETA(2) * (WT / 70.0)",
+        "  TVQ  = THETA(3)",
+        "  TVV3 = THETA(4)",
+        "  TVKA = THETA(5)",
+        "  CL   = TVCL * EXP(ETA(1))",
+        "  V2   = TVV2 * EXP(ETA(2))",
+        "  Q    = TVQ",
+        "  V3   = TVV3",
+        "  KA   = TVKA * EXP(ETA(3))",
+        "  S2   = V2",
+        "$ERROR",
+        "  IPRED = F",
+        "  Y = IPRED * (1.0 + ERR(1))",
+        "$THETA",
+        "  (0.1, 4.5, 25.0) ; POP_CL (L/h)",
+        "  (1.0, 32.0, 120.0) ; POP_V2 (L)",
+        "  (0.1, 2.8, 20.0) ; POP_Q  (L/h)",
+        "  (5.0, 48.0, 200.0) ; POP_V3 (L)",
+        "  (0.05, 1.1, 5.0) ; POP_KA (1/h)",
+        "$OMEGA 0.09 0.06 0.12",
+        "$SIGMA 0.04",
+        "$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 PRINT=5",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 61. OpenSim Biomechanics (.osim)
+  {
+    id: "opensim-elbow",
+    languageId: "opensim",
+    title: "OpenSim 4.0 Musculoskeletal Elbow Flexion & Hill Muscle",
+    summary:
+      "Biomechanical multibody model coupling humerus and radius-ulna rigid bodies via a revolute elbow joint and Thelen2003Muscle actuator.",
+    badge: "OSM",
+    tone: "emerald",
+    ext: ".osim",
+    primaryFile: "ElbowFlexionHill.osim",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "ElbowFlexionHill.osim": [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<OpenSimDocument Version="40000">',
+        '  <Model name="ElbowFlexionModel">',
+        "    <gravity>0 -9.80665 0</gravity>",
+        "    <BodySet>",
+        "      <objects>",
+        '        <Body name="humerus"><mass>1.85</mass></Body>',
+        '        <Body name="radius_ulna"><mass>1.12</mass></Body>',
+        "      </objects>",
+        "    </BodySet>",
+        "    <JointSet>",
+        "      <objects>",
+        '        <PinJoint name="elbow_joint">',
+        "          <socket_parent_frame>humerus</socket_parent_frame>",
+        "          <socket_child_frame>radius_ulna</socket_child_frame>",
+        "        </PinJoint>",
+        "      </objects>",
+        "    </JointSet>",
+        "    <ForceSet>",
+        "      <objects>",
+        '        <Thelen2003Muscle name="biceps_brachii">',
+        "          <max_isometric_force>624.3</max_isometric_force>",
+        "          <optimal_fiber_length>0.1157</optimal_fiber_length>",
+        "          <tendon_slack_length>0.1923</tendon_slack_length>",
+        "        </Thelen2003Muscle>",
+        "      </objects>",
+        "    </ForceSet>",
+        "  </Model>",
+        "</OpenSimDocument>",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 62. FEBio Biomechanics (.feb)
+  {
+    id: "febio-artery",
+    languageId: "febio",
+    title: "FEBio 4.0 Hyperelastic Arterial Wall Soft-Tissue Biomechanics",
+    summary:
+      "Nonlinear finite element specification modeling uncoupled Mooney-Rivlin soft tissue under physiological intraluminal pressure.",
+    badge: "FEB",
+    tone: "amber",
+    ext: ".feb",
+    primaryFile: "ArterialWallMooneyRivlin.feb",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "ArterialWallMooneyRivlin.feb": [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<febio_spec version="4.0">',
+        '  <Module type="solid"/>',
+        "  <Control>",
+        "    <analysis>STATIC</analysis>",
+        "    <time_steps>20</time_steps>",
+        "    <step_size>0.05</step_size>",
+        "  </Control>",
+        "  <Material>",
+        '    <material id="1" name="ArterialMedia" type="Mooney-Rivlin">',
+        "      <density>1060.0</density>",
+        "      <c1>18.5e3</c1>",
+        "      <c2>4.2e3</c2>",
+        "      <k>2.5e6</k>",
+        "    </material>",
+        "  </Material>",
+        "</febio_spec>",
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 63. DICOM-RT Oncology (.dcm.json)
+  {
+    id: "dicom-rt-prostate",
+    languageId: "dicom-rt",
+    title: "DICOM-RT IMRT Treatment Plan & OAR Dose-Volume Constraints",
+    summary:
+      "Radiation oncology treatment plan specifying PTV_7800 target prescription, OAR QUANTEC constraints, and 6 MV photon beams.",
+    badge: "DCM",
+    tone: "rose",
+    ext: ".dcm.json",
+    primaryFile: "ProstateIMRTPlan.dcm.json",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "ProstateIMRTPlan.dcm.json": JSON.stringify(
+        {
+          Modality: "RTPLAN",
+          RTPlanLabel: "PROSTATE_IMRT_78GY",
+          FractionGroupSequence: [
+            {
+              FractionGroupNumber: 1,
+              NumberOfFractionsPlanned: 39,
+              TargetPrescriptionDoseGy: 78.0,
+            },
+          ],
+          ROIContourSequence: [
+            { ROINumber: 1, ROIName: "PTV_7800", RTROIInterpretedType: "PTV", VolumeCc: 94.2 },
+            { ROINumber: 2, ROIName: "Rectum", RTROIInterpretedType: "ORGAN", VolumeCc: 68.5 },
+            { ROINumber: 3, ROIName: "Bladder", RTROIInterpretedType: "ORGAN", VolumeCc: 182.0 },
+          ],
+          BeamSequence: [
+            {
+              BeamNumber: 1,
+              BeamName: "LAO_45",
+              RadiationType: "PHOTON",
+              BeamEnergyMeV: 6.0,
+              GantryAngleDeg: 45.0,
+              BeamMetersetMU: 142.5,
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    },
+  },
+
+  // 64. NIfTI-1 / NIfTI-2 (.nii.json)
+  {
+    id: "nifti-brain",
+    languageId: "nifti",
+    title: "NIfTI-1 Neuroimaging Volume & RAS+ Affine Registration",
+    summary:
+      "3D T1-weighted MRI header manifest defining isotropic 1 mm voxel geometry and qform/sform affine world coordinate matrices.",
+    badge: "NII",
+    tone: "sky",
+    ext: ".nii.json",
+    primaryFile: "BrainT1wMNI152.nii.json",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "BrainT1wMNI152.nii.json": JSON.stringify(
+        {
+          sizeof_hdr: 348,
+          magic: "n+1",
+          datatype: "FLOAT32",
+          dim: [3, 192, 256, 256, 1, 1, 1, 1],
+          pixdim: [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+          xyzt_units: ["mm", "sec"],
+          qform_code: 1,
+          sform_code: 4,
+          srow_x: [-1.0, 0.0, 0.0, 96.0],
+          srow_y: [0.0, 1.0, 0.0, -128.0],
+          srow_z: [0.0, 0.0, 1.0, -128.0],
+        },
+        null,
+        2,
+      ),
+    },
+  },
+
+  // 65. TOPAS / Geant4 MC (.topas)
+  {
+    id: "topas-proton",
+    languageId: "topas",
+    title: "TOPAS 150 MeV Clinical Proton Beam & Water Phantom Scoring",
+    summary:
+      "Monte Carlo radiation transport parameter file configuring a 150 MeV proton pencil beam and 200-bin Bragg peak depth-dose scorer.",
+    badge: "TPS",
+    tone: "indigo",
+    ext: ".topas",
+    primaryFile: "ProtonBraggPeakWater.topas",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "ProtonBraggPeakWater.topas": [
+        's:Ge/World/Material  = "Air"',
+        "d:Ge/World/HLX       = 50.0 cm",
+        "d:Ge/World/HLY       = 50.0 cm",
+        "d:Ge/World/HLZ       = 50.0 cm",
+        "",
+        's:Ge/WaterPhantom/Type     = "TsBox"',
+        's:Ge/WaterPhantom/Parent   = "World"',
+        's:Ge/WaterPhantom/Material = "G4_WATER"',
+        "d:Ge/WaterPhantom/HLX      = 15.0 cm",
+        "d:Ge/WaterPhantom/HLY      = 15.0 cm",
+        "d:Ge/WaterPhantom/HLZ      = 20.0 cm",
+        "i:Ge/WaterPhantom/ZBins    = 200",
+        "",
+        's:So/ProtonBeam/BeamParticle = "proton"',
+        "d:So/ProtonBeam/BeamEnergy   = 150.0 MeV",
+        "i:So/ProtonBeam/NumberOfHistoriesInRun = 100000",
+        "",
+        's:Sc/BraggPeakDose/Quantity  = "DoseToMedium"',
+        's:Sc/BraggPeakDose/Component = "WaterPhantom"',
+        "",
+      ].join("\n"),
+    },
+  },
+
+  // 66. OpenIGTLink v3 (.igtl.json)
+  {
+    id: "igtl-navigation",
+    languageId: "igtl",
+    title: "OpenIGTLink v3 Optical Tracker & Robotic Hand-Eye Calibration",
+    summary:
+      "Computer-assisted surgery navigation stream coupling optical tracker TRANSFORM frames, PivotTip calibration, and AX=XB hand-eye alignment.",
+    badge: "IGT",
+    tone: "teal",
+    ext: ".igtl.json",
+    primaryFile: "CraniotomyNavSession.igtl.json",
+    capabilities: STANDARD_CAPABILITIES,
+    files: {
+      "CraniotomyNavSession.igtl.json": JSON.stringify(
+        {
+          protocolVersion: "3.0",
+          sessionName: "Craniotomy_OpticalNav_01",
+          coordinateFrames: [
+            { name: "TrackerBase", parent: "World" },
+            { name: "PatientReferenceStar", parent: "TrackerBase" },
+            { name: "SurgicalPointer", parent: "TrackerBase" },
+          ],
+          messages: [
+            {
+              type: "TRANSFORM",
+              deviceName: "SurgicalPointerToTracker",
+              timestampNs: 1767225600125000000,
+              matrix4x4: [
+                [0.9998, -0.0175, 0.0087, 124.5],
+                [0.0175, 0.9998, 0.0052, -42.15],
+                [-0.0088, -0.005, 0.9999, 618.3],
+                [0.0, 0.0, 0.0, 1.0],
+              ],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    },
+  },
 ];
 
 // ── Lookup Maps & Empty Workspace Definition ───────────────────────────────
@@ -3521,7 +4548,7 @@ export const EMPTY_WORKSPACE_FILES: Record<string, string> = {
     "",
     "Welcome to your clean ModelScript polyglot engineering workspace (`memfs://`).",
     "",
-    "- Create files in any of the **44 supported engineering languages** (`.mo`, `.sysml`, `.msx`, `.scad`, `.step`, `.inp`, `.cfg`, `.pscx`, `.raw`, `.dss`, `.opi`, `.lps`, `.data`, `.r5`, `.sima`, `.cir`, `.va`, `.ibs`, `.s2p`, `.urdf`, `.st`, `.adm`, `.idf`, `.epanet`, `.swmm`, `.bkp`, `.sbml`, etc.).",
+    "- Create files in any of the **66 supported engineering languages** (`.mo`, `.sysml`, `.msx`, `.scad`, `.step`, `.inp`, `.cfg`, `.pscx`, `.raw`, `.dss`, `.opi`, `.lps`, `.data`, `.r5`, `.sima`, `.cir`, `.va`, `.ibs`, `.s2p`, `.urdf`, `.st`, `.adm`, `.idf`, `.epanet`, `.swmm`, `.bkp`, `.sbml`, `.osim`, `.feb`, `.dcm.json`, `.nii.json`, `.topas`, `.3mf`, `.igtl.json`, etc.).",
     "- Click any **CodeLens** action above declarations to simulate, verify, or open interactive diagrams.",
     "",
   ].join("\n"),
@@ -3720,6 +4747,34 @@ export const POLYGLOT_VIEW_TYPE_EXTENSIONS: Record<string, string> = {
   automationml: ".aml",
   aml: ".aml",
   caex: ".caex",
+  "three-mf": ".3mf",
+  "3mf": ".3mf",
+  gproms: ".gproms",
+  cantera: ".cti",
+  cti: ".cti",
+  phreeqc: ".pqi",
+  pqi: ".pqi",
+  smiles: ".smi",
+  smi: ".smi",
+  antimony: ".ant",
+  ant: ".ant",
+  bngl: ".bngl",
+  cellml: ".cellml",
+  sedml: ".sedml",
+  sbol: ".sbol",
+  genbank: ".gb",
+  gb: ".gb",
+  pdb: ".pdb",
+  nmtran: ".ctl",
+  ctl: ".ctl",
+  opensim: ".osim",
+  osim: ".osim",
+  febio: ".feb",
+  feb: ".feb",
+  "dicom-rt": ".dcm.json",
+  nifti: ".nii.json",
+  topas: ".topas",
+  igtl: ".igtl.json",
   "aas-package": ".json",
   "cyber-physical-system": ".json",
   "hardware-project": ".json",
@@ -3731,6 +4786,9 @@ export function inferExtensionForArtifact(viewType?: string, dialect?: string, f
     if (lower.endsWith(".oscal.json")) return ".oscal.json";
     if (lower.endsWith(".oscal.yaml")) return ".oscal.yaml";
     if (lower.endsWith(".oscal.xml")) return ".oscal.xml";
+    if (lower.endsWith(".dcm.json")) return ".dcm.json";
+    if (lower.endsWith(".nii.json")) return ".nii.json";
+    if (lower.endsWith(".igtl.json")) return ".igtl.json";
     const dot = filename.lastIndexOf(".");
     if (dot !== -1) return filename.slice(dot);
   }
@@ -4227,8 +5285,14 @@ export function scaffoldTemplateFiles(memFs: IMemoryFileSystemProvider, workspac
   const rawTemplate = workspaceUri.path.substring(1) || "empty";
   const template = rawTemplate.split("?")[0] || "empty";
 
-  if (template === "scratch" || template.startsWith("artifact-")) {
-    const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
+  const isArtifact = template === "scratch" || template.startsWith("artifact-") || /^\d+$/.test(template);
+  if (isArtifact) {
+    const artifactId =
+      template === "scratch"
+        ? "scratch"
+        : template.startsWith("artifact-")
+          ? template.slice("artifact-".length)
+          : template;
     let registered = artifactRegistry.get(artifactId);
     if (!registered && typeof sessionStorage !== "undefined") {
       try {
@@ -4242,6 +5306,7 @@ export function scaffoldTemplateFiles(memFs: IMemoryFileSystemProvider, workspac
       try {
         const raw =
           localStorage.getItem(`modelscript.artifact_${artifactId}`) ||
+          localStorage.getItem(`modelscript:ide:memfs:${artifactId}`) ||
           localStorage.getItem(`modelscript:ide:memfs:artifact-${artifactId}`);
         if (raw) registered = JSON.parse(raw);
       } catch {
@@ -4333,8 +5398,14 @@ export function getTemplatePrimaryFile(rawTemplate: string): string {
   if (template === "stress-test") {
     return "MassiveModel.mo";
   }
-  if (template === "scratch" || template.startsWith("artifact-")) {
-    const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
+  const isArtifact = template === "scratch" || template.startsWith("artifact-") || /^\d+$/.test(template);
+  if (isArtifact) {
+    const artifactId =
+      template === "scratch"
+        ? "scratch"
+        : template.startsWith("artifact-")
+          ? template.slice("artifact-".length)
+          : template;
     let registered = artifactRegistry.get(artifactId);
     if (!registered && typeof sessionStorage !== "undefined") {
       try {
@@ -4348,6 +5419,7 @@ export function getTemplatePrimaryFile(rawTemplate: string): string {
       try {
         const raw =
           localStorage.getItem(`modelscript.artifact_${artifactId}`) ||
+          localStorage.getItem(`modelscript:ide:memfs:${artifactId}`) ||
           localStorage.getItem(`modelscript:ide:memfs:artifact-${artifactId}`);
         if (raw) registered = JSON.parse(raw);
       } catch {

@@ -5,7 +5,7 @@ import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import { requireAuth } from "../middleware/auth-middleware.js";
-import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
+import { pregenerateServerSvgThumbnail, preprocessPdfFile } from "../services/artifact-preprocessor.js";
 
 const uploadDir = path.join(process.cwd(), "data", "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -36,13 +36,41 @@ export function storageRouter(): Router {
   const router = createRouter();
 
   /**
-   * Serve static uploaded files with sandboxed CSP to prevent same-origin Stored XSS
+   * Serve static uploaded files with sandboxed CSP to prevent same-origin Stored XSS.
+   * Also lazily backfills .pdf.thumb.png and .pdf.meta.json for existing uploaded PDFs.
    */
   router.use(
     "/uploads",
-    (_req, res, next) => {
-      res.setHeader("Content-Security-Policy", "sandbox");
+    (req, res, next) => {
       res.setHeader("X-Content-Type-Options", "nosniff");
+
+      const reqBase = path.basename(req.path || "");
+      const lowerBase = reqBase.toLowerCase();
+
+      if (lowerBase.endsWith(".pdf")) {
+        // Chromium disables PDF plugins in sandboxed contexts.
+        // For PDFs, serve inline without sandbox directive so the native PDF reader can load.
+        res.setHeader("Content-Disposition", "inline");
+      } else {
+        res.setHeader("Content-Security-Policy", "sandbox");
+      }
+      if (lowerBase.endsWith(".pdf.thumb.png") || lowerBase.endsWith(".pdf.meta.json")) {
+        const resolvedDir = path.resolve(uploadDir);
+        const targetPath = path.resolve(resolvedDir, reqBase);
+        if (targetPath.startsWith(resolvedDir + path.sep) && !fs.existsSync(targetPath)) {
+          const suffixLen = lowerBase.endsWith(".pdf.thumb.png") ? ".thumb.png".length : ".meta.json".length;
+          const pdfFilename = reqBase.slice(0, reqBase.length - suffixLen);
+          const pdfPath = path.resolve(resolvedDir, path.basename(pdfFilename));
+          if (pdfPath.startsWith(resolvedDir + path.sep) && fs.existsSync(pdfPath)) {
+            try {
+              preprocessPdfFile(pdfPath, pdfFilename, resolvedDir);
+            } catch {
+              // Ignore on-demand generation error
+            }
+          }
+        }
+      }
+
       next();
     },
     express.static(uploadDir),

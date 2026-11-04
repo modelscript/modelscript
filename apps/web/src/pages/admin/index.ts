@@ -10,6 +10,7 @@ export * from "./tabs/AdminDmcaTab";
 export * from "./tabs/AdminFeatureFlagsTab";
 export * from "./tabs/AdminFederationTab";
 export * from "./tabs/AdminModerationTab";
+export * from "./tabs/AdminOpenAlexTab";
 export * from "./tabs/AdminSettingsTab";
 export * from "./tabs/AdminSystemTab";
 export * from "./tabs/AdminUsersTab";

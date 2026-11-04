@@ -890,6 +890,75 @@ await yargs(rawArgs)
       ["automationml", "caex"],
     ),
   )
+  .command(
+    lazy(
+      "opensim <action> [files..]",
+      "Inspect, validate musculoskeletal kinematics & Hill-type muscles (M9101–M9110), simulate muscle activation, and project OpenSim models (.osim)",
+      () => import("./commands/medical.js"),
+      "OpenSimCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "dicom-rt <action> [files..]",
+      "Inspect, verify QUANTEC OAR dose constraints & MLC leaf kinematics (M9201–M9210), compute DVH/BED/EQD2, and project DICOM-RT plans (.rtplan, .rtstruct, .rtdose)",
+      () => import("./commands/medical.js"),
+      "DicomRtCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "cellml <action> [files..]",
+      "Inspect, validate SI dimensional units & component connections (M9301–M9310), integrate electrophysiology ODEs, and project CellML models (.cellml)",
+      () => import("./commands/medical.js"),
+      "CellmlCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "febio <action> [files..]",
+      "Inspect, validate hyperelastic/biphasic tissue mechanics & SOFA surgical scenes (M9401–M9410), solve strain energy, and project FEBio/SOFA models (.feb, .scn)",
+      () => import("./commands/medical.js"),
+      "FebioCommand",
+      ["sofa"],
+    ),
+  )
+  .command(
+    lazy(
+      "nifti <action> [files..]",
+      "Inspect, validate qform/sform RAS affine transforms (M9501–M9510), extract iso-surface meshes, and project NIfTI/NRRD volumes (.nii, .nrrd, .nhdr)",
+      () => import("./commands/medical.js"),
+      "NiftiCommand",
+      ["nrrd"],
+    ),
+  )
+  .command(
+    lazy(
+      "topas <action> [files..]",
+      "Inspect, validate TOPAS/GATE hadrontherapy beamlines (M9601–M9610), compute analytical Bragg peak depth-dose curves, and project to OpenSCAD/Modelica (.topas, .mac)",
+      () => import("./commands/medical.js"),
+      "TopasCommand",
+      ["gate"],
+    ),
+  )
+  .command(
+    lazy(
+      "three-mf <action> [files..]",
+      "Inspect, verify 2-manifold topology, wall thickness & osteotomy guides (M9701–M9710), and project 3MF Medical surgical guides & implants (.3mf)",
+      () => import("./commands/medical.js"),
+      "ThreeMfCommand",
+      ["3mf"],
+    ),
+  )
+  .command(
+    lazy(
+      "igtl <action> [files..]",
+      "Inspect, validate SE(3) transforms & surgical navigation chains (M9801–M9810), solve stylus pivot calibration & TRE, and project OpenIGTLink/PLUS configs (.igtl, .plus.xml)",
+      () => import("./commands/medical.js"),
+      "IgtlCommand",
+      ["openigtlink"],
+    ),
+  )
   .strictCommands()
   .demandCommand()
   .help()

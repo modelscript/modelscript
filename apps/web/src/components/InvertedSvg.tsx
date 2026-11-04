@@ -260,6 +260,16 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
     };
   }, [src]);
 
+  const isDark = theme === "dark";
+  const sanitized = React.useMemo(() => {
+    if (!state.svgContent) return "";
+    const normalized = normalizeModelicaSvg(state.svgContent, `ms_${rawInstanceId}`);
+    const processed = invertSvgColors(normalized, isDark);
+    return DOMPurify.sanitize(processed, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+    });
+  }, [state.svgContent, rawInstanceId, isDark]);
+
   if (state.error || state.svgContent === null) {
     return fallback ? <>{fallback}</> : null;
   }
@@ -287,13 +297,6 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
       baseStroke = 1.15;
     }
   }
-
-  const isDark = theme === "dark";
-  const normalized = normalizeModelicaSvg(state.svgContent, `ms_${rawInstanceId}`);
-  const processed = invertSvgColors(normalized, isDark);
-  const sanitized = DOMPurify.sanitize(processed, {
-    USE_PROFILES: { svg: true, svgFilters: true },
-  });
 
   return (
     <SvgContainer

@@ -3,7 +3,7 @@
 import type { AnySpatialPin } from "../spatial-pin";
 
 export interface ArtifactViewCardProps {
-  artifactId: number;
+  artifactId: number | string;
   initialArtifactView?: any;
   forkedFromId?: number | string | undefined;
   figureNumber?: number | undefined;

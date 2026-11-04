@@ -135,6 +135,8 @@ export function fmuRouter(storage?: FmuStorage): express.Router {
     if (!xml) {
       return res.status(404).json({ error: "FMU not found" });
     }
+    res.setHeader("Content-Security-Policy", "sandbox");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.type("application/xml").send(xml);
     return;
   });

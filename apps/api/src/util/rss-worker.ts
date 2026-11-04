@@ -30,7 +30,7 @@ interface FeedItemProcessor {
     item: RssItemLike,
     feed: RssFeedRow,
     database: LibraryDatabase,
-  ): { content: string; artifactViewId?: number | undefined };
+  ): { content: string; artifactViewId?: number | string | undefined };
 }
 
 const feedProcessors: FeedItemProcessor[] = [
@@ -46,7 +46,7 @@ const feedProcessors: FeedItemProcessor[] = [
     },
     processItem: (item, feed, database) => {
       let content = `**${item.title}**\n\n`;
-      let artifactViewId: number | undefined;
+      let artifactViewId: number | string | undefined;
 
       if (item.mediaGroup) {
         const mg = item.mediaGroup;

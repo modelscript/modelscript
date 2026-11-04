@@ -5,8 +5,10 @@ import { Button, Text } from "@primer/react";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
+import { buildCitationFromPackage } from "../../util/citations";
 import { encodePackagePath } from "../../util/url";
 import Box from "../Box";
+import { CiteButton } from "../citations/CiteButton";
 
 interface PackageViewCardProps {
   viewConfig: {
@@ -127,9 +129,22 @@ export const PackageViewCard: React.FC<PackageViewCardProps> = ({ viewConfig }) 
             )}
           </Box>
         </Box>
-        <Button size="small" variant="default" onClick={handleView}>
-          View Package
-        </Button>
+        <Box display="flex" alignItems="center" gap={2}>
+          <CiteButton
+            target={buildCitationFromPackage({
+              name,
+              version,
+              description,
+              license: viewConfig.license,
+            })}
+            label="Cite"
+            variant="button"
+            testId="package-card-cite-btn"
+          />
+          <Button size="small" variant="default" onClick={handleView}>
+            View Package
+          </Button>
+        </Box>
       </Box>
 
       <Text as="p" style={{ fontSize: "13px", color: "var(--color-fg-muted)", margin: 0 }}>

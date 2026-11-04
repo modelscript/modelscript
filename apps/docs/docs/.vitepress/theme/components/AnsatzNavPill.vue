@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { inject, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, inject, onBeforeUnmount, onMounted, ref } from "vue";
+import { activeMenuId, cancelSharedMenuTimers } from "./NavMegaMenu.vue";
 
 const props = defineProps<{
   screenMenu?: boolean;
@@ -8,27 +9,57 @@ const props = defineProps<{
 
 const closeScreen = inject<(() => void) | undefined>("close-screen", undefined);
 
-const isOpen = ref(false);
+const MENU_ID = "ansatz";
+const isOpen = computed(() => activeMenuId.value === MENU_ID);
 const isHovered = ref(false);
 const isFocused = ref(false);
+
+const ansatzOrigin = ref("https://ansatz.social");
+const hostLabel = ref("ansatz.social");
+
+const exploreHref = computed(() => `${ansatzOrigin.value}/explore`);
+
+const quickLinks = computed(() => [
+  { label: "Explore", href: `${ansatzOrigin.value}/explore` },
+  { label: "Packages", href: `${ansatzOrigin.value}/packages` },
+  { label: "Repositories", href: `${ansatzOrigin.value}/repos` },
+]);
 
 let openTimer: ReturnType<typeof setTimeout> | undefined;
 let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
+function openCard(): void {
+  cancelSharedMenuTimers();
+  clearTimeout(closeTimer);
+  clearTimeout(openTimer);
+  activeMenuId.value = MENU_ID;
+}
+
+function closeCard(): void {
+  clearTimeout(openTimer);
+  if (activeMenuId.value === MENU_ID) {
+    activeMenuId.value = null;
+  }
+}
+
 function scheduleOpen(): void {
   clearTimeout(closeTimer);
-  openTimer = setTimeout(() => {
-    isOpen.value = true;
-  }, 90);
+  clearTimeout(openTimer);
+  if (activeMenuId.value !== null && activeMenuId.value !== MENU_ID) {
+    openCard();
+    return;
+  }
+  openTimer = setTimeout(openCard, 90);
 }
 
 function scheduleClose(): void {
   clearTimeout(openTimer);
+  clearTimeout(closeTimer);
   closeTimer = setTimeout(() => {
     if (!isHovered.value && !isFocused.value) {
-      isOpen.value = false;
+      closeCard();
     }
-  }, 160);
+  }, 150);
 }
 
 function onButtonEnter(): void {
@@ -43,8 +74,7 @@ function onButtonLeave(): void {
 
 function onTooltipEnter(): void {
   isHovered.value = true;
-  clearTimeout(closeTimer);
-  isOpen.value = true;
+  openCard();
 }
 
 function onTooltipLeave(): void {
@@ -54,8 +84,7 @@ function onTooltipLeave(): void {
 
 function onFocusIn(): void {
   isFocused.value = true;
-  clearTimeout(closeTimer);
-  isOpen.value = true;
+  openCard();
 }
 
 function onFocusOut(e: FocusEvent): void {
@@ -70,7 +99,7 @@ function onFocusOut(e: FocusEvent): void {
 
 function onKeydown(e: KeyboardEvent): void {
   if (e.key === "Escape" && isOpen.value) {
-    isOpen.value = false;
+    closeCard();
     isHovered.value = false;
     isFocused.value = false;
   }
@@ -81,6 +110,19 @@ function onScreenClick(): void {
 }
 
 onMounted(() => {
+  if (typeof window !== "undefined") {
+    const { hostname, port, protocol } = window.location;
+    const isLocal =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "[::1]" ||
+      hostname.endsWith(".localhost");
+    if (isLocal) {
+      const targetPort = port && port !== "5173" && port !== "4173" ? port : "3001";
+      ansatzOrigin.value = `${protocol}//${hostname}:${targetPort}`;
+      hostLabel.value = `${hostname}:${targetPort}`;
+    }
+  }
   document.addEventListener("keydown", onKeydown);
 });
 
@@ -95,7 +137,7 @@ onBeforeUnmount(() => {
   <!-- Mobile / tablet screen drawer navigation -->
   <div v-if="props.screenMenu" class="ansatz-screen-item">
     <a
-      href="https://ansatz.social"
+      :href="exploreHref"
       target="_blank"
       rel="noopener noreferrer"
       class="VPNavScreenMenuLink ansatz-screen-link"
@@ -109,12 +151,12 @@ onBeforeUnmount(() => {
         <span class="ansatz-screen-arrow" aria-hidden="true">↗</span>
       </div>
       <p class="ansatz-screen-desc">
-        Federated social engineering network &amp; package registry powered by ModelScript
+        Federated engineering network &amp; package registry
       </p>
     </a>
   </div>
 
-  <!-- Desktop nav bar pill button + informative tooltip -->
+  <!-- Desktop nav bar pill button + compact popover -->
   <div
     v-else
     class="ansatz-nav-wrapper"
@@ -124,13 +166,12 @@ onBeforeUnmount(() => {
     @focusout="onFocusOut"
   >
     <a
-      href="https://ansatz.social"
+      :href="exploreHref"
       target="_blank"
       rel="noopener noreferrer"
       class="VPNavBarMenuLink ansatz-nav-pill"
       :class="{ 'has-focus': isFocused, 'has-hover': isHovered }"
       aria-describedby="ansatz-nav-tooltip"
-      title="Ansatz — Federated Social Engineering Network & Package Registry"
     >
       <span class="ansatz-pip" aria-hidden="true" />
       <span class="ansatz-label">Explore on Ansatz</span>
@@ -151,7 +192,6 @@ onBeforeUnmount(() => {
       </svg>
     </a>
 
-    <!-- Explanatory Tooltip Card -->
     <Transition name="ansatz-tooltip-fade">
       <div
         v-if="isOpen"
@@ -164,44 +204,25 @@ onBeforeUnmount(() => {
         <div class="ansatz-tooltip-arrow" aria-hidden="true" />
 
         <div class="ansatz-tooltip-header">
-          <div class="ansatz-tooltip-badge">
-            <span class="ansatz-badge-pulse" aria-hidden="true" />
-            <span>ActivityPub Federation</span>
-          </div>
-          <span class="ansatz-tooltip-host">ansatz.social</span>
+          <span class="ansatz-tooltip-title">Ansatz</span>
+          <span class="ansatz-tooltip-host">{{ hostLabel }}</span>
         </div>
 
-        <div class="ansatz-tooltip-content">
-          <p class="ansatz-tooltip-title">Federated Social Engineering Network</p>
-          <p class="ansatz-tooltip-desc">
-            Ansatz is a federated social engineering network and package registry powered by ModelScript. Connect with systems engineers, share executable simulation models, and collaborate across decentralized nodes via ActivityPub.
-          </p>
-        </div>
+        <p class="ansatz-tooltip-desc">
+          Federated engineering network and package registry powered by ModelScript.
+        </p>
 
-        <div class="ansatz-tooltip-features">
-          <div class="ansatz-feature-tag">
-            <span class="ansatz-feature-icon" aria-hidden="true">🌐</span>
-            <span>Social Feeds</span>
-          </div>
-          <div class="ansatz-feature-tag">
-            <span class="ansatz-feature-icon" aria-hidden="true">📦</span>
-            <span>Package Registry</span>
-          </div>
-          <div class="ansatz-feature-tag">
-            <span class="ansatz-feature-icon" aria-hidden="true">⚡</span>
-            <span>Cloud HPC</span>
-          </div>
-        </div>
-
-        <div class="ansatz-tooltip-footer">
-          <span class="ansatz-footer-hint">Decentralized engineering</span>
+        <div class="ansatz-tooltip-links">
           <a
-            href="https://ansatz.social"
+            v-for="link in quickLinks"
+            :key="link.label"
+            :href="link.href"
             target="_blank"
             rel="noopener noreferrer"
-            class="ansatz-footer-link"
+            class="ansatz-quick-link"
+            @click="closeCard"
           >
-            Visit ansatz.social <span aria-hidden="true">↗</span>
+            {{ link.label }} <span aria-hidden="true">↗</span>
           </a>
         </div>
       </div>
@@ -272,6 +293,7 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 12px;
   line-height: 1.45;
+  white-space: normal;
   color: var(--vp-c-text-2);
 }
 
@@ -279,22 +301,23 @@ onBeforeUnmount(() => {
 .ansatz-tooltip {
   position: absolute;
   top: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: 326px;
-  padding: 14px 16px;
+  right: 0;
+  width: 264px;
+  padding: 12px 14px;
   border-radius: 12px;
   z-index: 100;
   pointer-events: auto;
   text-align: left;
+  white-space: normal;
+  line-height: 1.45;
+  font-weight: 400;
 
-  /* Light mode defaults */
-  background: #ffffff;
-  color: #0f172a;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: var(--vp-c-bg-elv, #ffffff);
+  color: var(--vp-c-text-1, #0f172a);
+  border: 1px solid var(--vp-c-divider, rgba(15, 23, 42, 0.12));
   box-shadow:
-    0 16px 36px -4px rgba(15, 23, 42, 0.16),
-    0 4px 14px -2px rgba(99, 102, 241, 0.12);
+    0 14px 32px -6px rgba(15, 23, 42, 0.16),
+    0 4px 12px -2px rgba(15, 23, 42, 0.08);
 }
 
 /* Hover bridge so mouse movement into tooltip is continuous */
@@ -310,197 +333,100 @@ onBeforeUnmount(() => {
 :global(.dark) .ansatz-tooltip {
   background: #0b1120;
   color: #f8fafc;
-  border: 1px solid rgba(129, 140, 248, 0.3);
-  box-shadow:
-    0 20px 48px -8px rgba(0, 0, 0, 0.8),
-    0 0 24px -4px rgba(34, 211, 238, 0.22);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 0 18px 40px -8px rgba(0, 0, 0, 0.75);
 }
 
 /* Triangle arrow pointer */
 .ansatz-tooltip-arrow {
   position: absolute;
   top: -6px;
-  left: 50%;
-  width: 11px;
-  height: 11px;
-  transform: translateX(-50%) rotate(45deg);
-  background: #ffffff;
-  border-left: 1px solid rgba(15, 23, 42, 0.12);
-  border-top: 1px solid rgba(15, 23, 42, 0.12);
+  right: 28px;
+  width: 10px;
+  height: 10px;
+  transform: rotate(45deg);
+  background: var(--vp-c-bg-elv, #ffffff);
+  border-left: 1px solid var(--vp-c-divider, rgba(15, 23, 42, 0.12));
+  border-top: 1px solid var(--vp-c-divider, rgba(15, 23, 42, 0.12));
 }
 
 :global(.dark) .ansatz-tooltip-arrow {
   background: #0b1120;
-  border-left: 1px solid rgba(129, 140, 248, 0.3);
-  border-top: 1px solid rgba(129, 140, 248, 0.3);
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
 }
 
 /* Header */
 .ansatz-tooltip-header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.ansatz-tooltip-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  background: rgba(99, 102, 241, 0.1);
-  color: #4f46e5;
-  border: 1px solid rgba(99, 102, 241, 0.22);
-}
-
-:global(.dark) .ansatz-tooltip-badge {
-  background: rgba(129, 140, 248, 0.18);
-  color: #a5b4fc;
-  border: 1px solid rgba(129, 140, 248, 0.35);
-}
-
-.ansatz-badge-pulse {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background-color: #059669;
-  box-shadow: 0 0 6px rgba(5, 150, 105, 0.7);
-}
-
-:global(.dark) .ansatz-badge-pulse {
-  background-color: #34d399;
-  box-shadow: 0 0 6px #34d399;
-}
-
-.ansatz-tooltip-host {
-  font-family: var(--ms-font-mono, monospace);
-  font-size: 11px;
-  font-weight: 550;
-  color: #0e7490;
-}
-
-:global(.dark) .ansatz-tooltip-host {
-  color: #22d3ee;
-}
-
-/* Content */
-.ansatz-tooltip-content {
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
 .ansatz-tooltip-title {
-  margin: 0 0 4px 0;
-  font-size: 13.5px;
-  font-weight: 700;
-  line-height: 1.35;
-  color: #0f172a;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--vp-c-text-1, #0f172a);
 }
 
-:global(.dark) .ansatz-tooltip-title {
-  color: #f8fafc;
+.ansatz-tooltip-host {
+  font-family: var(--vp-font-family-mono, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vp-c-brand-1, #0e7490);
 }
 
+/* Description */
 .ansatz-tooltip-desc {
-  margin: 0;
+  margin: 0 0 10px;
   font-size: 12px;
-  line-height: 1.5;
-  color: #475569;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: break-word;
+  color: var(--vp-c-text-2, #475569);
 }
 
-:global(.dark) .ansatz-tooltip-desc {
-  color: #cbd5e1;
-}
-
-/* Features */
-.ansatz-tooltip-features {
+/* Quick links */
+.ansatz-tooltip-links {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 11px;
+  align-items: center;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vp-c-divider, rgba(15, 23, 42, 0.08));
 }
 
-.ansatz-feature-tag {
+.ansatz-quick-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 550;
-  background: #f1f5f9;
-  color: #334155;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-:global(.dark) .ansatz-feature-tag {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e2e8f0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.ansatz-feature-icon {
-  font-size: 11px;
-}
-
-/* Footer */
-.ansatz-tooltip-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 8px;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
-  font-size: 11px;
-}
-
-:global(.dark) .ansatz-tooltip-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.ansatz-footer-hint {
-  color: #64748b;
-  font-size: 11px;
-}
-
-:global(.dark) .ansatz-footer-hint {
-  color: #94a3b8;
-}
-
-.ansatz-footer-link {
-  color: #0e7490;
-  font-weight: 650;
+  gap: 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--vp-c-brand-1, #0e7490);
   text-decoration: none;
-  transition: color 0.15s ease;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
 }
 
-.ansatz-footer-link:hover {
-  color: #0891b2;
+.ansatz-quick-link:hover {
   text-decoration: underline;
-}
-
-:global(.dark) .ansatz-footer-link {
-  color: #38bdf8;
-}
-
-:global(.dark) .ansatz-footer-link:hover {
-  color: #7dd3fc;
+  text-underline-offset: 3px;
 }
 
 /* Transition */
 .ansatz-tooltip-fade-enter-active,
 .ansatz-tooltip-fade-leave-active {
   transition:
-    opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    opacity 0.15s ease,
+    transform 0.15s ease;
 }
 
 .ansatz-tooltip-fade-enter-from,
 .ansatz-tooltip-fade-leave-to {
   opacity: 0;
-  transform: translate(-50%, -6px);
+  transform: translateY(-4px);
 }
 </style>

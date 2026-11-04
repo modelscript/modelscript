@@ -18,6 +18,7 @@ export * from "./fortran-fmu-exporter.js";
 export * from "./harness-codegen.js";
 export * from "./harness3-codegen.js";
 export * from "./hil-wrappers.js";
+export * from "./medical-fmu-exporter.js";
 export {
   parseModelDescription,
   parseTerminalsAndIcons,

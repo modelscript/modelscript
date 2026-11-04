@@ -343,6 +343,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         federationMode: fedDisabled ? "disabled" : settings.federationMode,
         registrationMode: settings.registrationMode,
         authorizedFetch: settings.authorizedFetchEnabled,
+        vapidPublicKey: corporateRestricted ? "" : db.getInstanceVapidKeys().publicKey,
       },
     });
   };
@@ -866,9 +867,15 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         return;
       }
 
+      const maxCacheBytes = 15 * 1024 * 1024; // 15 MB
+      const contentLengthHeader = upstream.headers.get("content-length");
+      if (contentLengthHeader && Number(contentLengthHeader) > maxCacheBytes) {
+        res.status(413).json({ error: "Remote media exceeds maximum proxy size limit (15 MB)" });
+        return;
+      }
+
       const arrayBuf = await upstream.arrayBuffer();
       const buffer = Buffer.from(arrayBuf);
-      const maxCacheBytes = 15 * 1024 * 1024; // 15 MB
       if (buffer.byteLength > maxCacheBytes) {
         res.status(413).json({ error: "Remote media exceeds maximum proxy size limit (15 MB)" });
         return;
@@ -941,7 +948,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     remoteDomain: string,
     isSilencedFlag: boolean,
     parentActivity?: Record<string, unknown>,
-  ): { id: number } | null => {
+  ): { id: number | string } | null => {
     const noteId = typeof note["id"] === "string" ? note["id"] : "";
     if (!noteId) return null;
 
@@ -952,7 +959,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     const domainPolicy = db.getDomainTier(remoteDomain);
     const isSilenced = isSilencedFlag || domainPolicy.tier === "silence" ? 1 : 0;
 
-    let artifactViewId: number | undefined;
+    let artifactViewId: number | string | undefined;
     if (!domainPolicy.rejectMedia) {
       const rawAttachments = Array.isArray(note["attachment"])
         ? note["attachment"]
@@ -1044,7 +1051,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       }
     }
 
-    let replyToId: number | undefined;
+    let replyToId: number | string | undefined;
     if (typeof note["inReplyTo"] === "string") {
       const parentPost = db.getPostByApId(note["inReplyTo"]);
       if (parentPost) {
@@ -1265,8 +1272,8 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
             const post = db.getPostByApId(targetApId);
             if (post) {
               const repostRow = db.db
-                .prepare(`SELECT id FROM posts WHERE author_id = ? AND repost_of_id = ?`)
-                .get(remoteUser.id, post.id) as { id: number } | undefined;
+                .prepare(`SELECT CAST(id AS TEXT) as id FROM posts WHERE author_id = ? AND repost_of_id = ?`)
+                .get(remoteUser.id, post.id) as { id: string } | undefined;
               if (repostRow) {
                 db.deletePost(repostRow.id);
               }
@@ -1296,35 +1303,35 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
               }
             | undefined;
 
-          if (typeof rawTarget === "object" && rawTarget !== null && Array.isArray(rawTarget.alsoKnownAs)) {
-            targetAlsoKnownAs = rawTarget.alsoKnownAs.map(String);
-            targetProfile = {
-              username: rawTarget.preferredUsername,
-              displayName: rawTarget.name,
-              inboxUrl: rawTarget.inbox,
-              sharedInboxUrl: rawTarget.endpoints?.sharedInbox || rawTarget.sharedInbox,
-              publicKey: rawTarget.publicKey?.publicKeyPem,
-            };
-          } else {
-            // Check if target is a local user or already known in DB
-            const localTarget = db.getUserByActorUrl(targetActorUrl);
-            if (localTarget) {
-              const info = db.getUserFederationInfo(localTarget.id);
-              if (info?.also_known_as) {
-                try {
-                  const parsed = JSON.parse(info.also_known_as);
-                  if (Array.isArray(parsed)) targetAlsoKnownAs = parsed.map(String);
-                } catch {}
-              }
-            } else {
+          // Authoritatively verify target actor's identity and alsoKnownAs claim per ActivityPub spec
+          const localTarget = db.getUserByActorUrl(targetActorUrl);
+          if (localTarget) {
+            const info = db.getUserFederationInfo(localTarget.id);
+            if (info?.also_known_as) {
               try {
-                const resolved = await resolveActorHandle(targetActorUrl, db);
+                const parsed = JSON.parse(info.also_known_as);
+                if (Array.isArray(parsed)) targetAlsoKnownAs = parsed.map(String);
+              } catch {}
+            }
+          } else {
+            try {
+              const resolved = await resolveActorHandle(targetActorUrl, db);
+              if (resolved && resolved.actor) {
                 const rawAliases = resolved.actor["alsoKnownAs"];
                 if (Array.isArray(rawAliases)) {
                   targetAlsoKnownAs = rawAliases.map(String);
                 }
-              } catch {}
-            }
+                const endpoints = resolved.actor["endpoints"] as Record<string, string> | undefined;
+                const pk = resolved.actor["publicKey"] as { publicKeyPem?: string } | undefined;
+                targetProfile = {
+                  username: resolved.actor["preferredUsername"] as string,
+                  displayName: resolved.actor["name"] as string,
+                  inboxUrl: resolved.actor["inbox"] as string,
+                  sharedInboxUrl: endpoints?.["sharedInbox"] || (resolved.actor["sharedInbox"] as string),
+                  publicKey: pk?.publicKeyPem,
+                };
+              }
+            } catch {}
           }
 
           db.executeInboundActorMove(remoteActorUrl, targetActorUrl, targetAlsoKnownAs, targetProfile);
@@ -1456,7 +1463,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
           typeof activity.content === "string" && activity.content.trim()
             ? activity.content.trim()
             : "Federated ActivityPub Flag report";
-        let reportedPostId: number | undefined;
+        let reportedPostId: number | string | undefined;
         let reportedUserId: number | undefined;
 
         for (const obj of rawObjects) {
@@ -1565,29 +1572,18 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     }
   };
 
-  router.post(
-    "/inbox",
-    inboxLimiter,
-    json({ type: ["application/activity+json", "application/json", "application/ld+json"] }),
-    verifier,
-    handleInboxActivity,
-  );
+  const activityJsonParser = json({
+    type: ["application/activity+json", "application/json", "application/ld+json"],
+    verify: (req: Request, _res, buf) => {
+      (req as Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  });
 
-  router.post(
-    "/actor/inbox",
-    inboxLimiter,
-    json({ type: ["application/activity+json", "application/json", "application/ld+json"] }),
-    verifier,
-    handleInboxActivity,
-  );
+  router.post("/inbox", inboxLimiter, activityJsonParser, verifier, handleInboxActivity);
 
-  router.post(
-    "/users/:username/inbox",
-    inboxLimiter,
-    json({ type: ["application/activity+json", "application/json", "application/ld+json"] }),
-    verifier,
-    handleInboxActivity,
-  );
+  router.post("/actor/inbox", inboxLimiter, activityJsonParser, verifier, handleInboxActivity);
+
+  router.post("/users/:username/inbox", inboxLimiter, activityJsonParser, verifier, handleInboxActivity);
 
   router.get("/federation/packages", (req: Request, res: Response) => {
     const limit = Math.min(Number(req.query["limit"]) || 50, 100);

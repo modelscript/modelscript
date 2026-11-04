@@ -17,6 +17,7 @@ import { SlurmRestDriver } from "../services/hpc/drivers/slurm-rest-driver.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
 import { enforceExportCompliance } from "../util/compliance.js";
+import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 
 const CAE_CACHE_DIR = path.join(process.cwd(), "data", "physics-cache");
 
@@ -157,6 +158,20 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         if (process.env["NODE_ENV"] === "production" && !userId) {
           return res.status(401).json({ error: "Authentication required" });
         }
+
+        // Sandboxing check for federated community accounts
+        if (database && userId) {
+          const user = database.getUserById(userId);
+          const sandbox = checkComputeSandboxing(user);
+          if (sandbox.sandboxed) {
+            return res.status(403).json({
+              error: sandbox.error,
+              code: sandbox.code,
+              fallbackAvailable: sandbox.fallbackAvailable,
+            });
+          }
+        }
+
         let estimatedCost = 0;
         if (userId) {
           const quota = checkComputeQuota(userId, profile, database);
@@ -846,7 +861,18 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      const userExists = userId ? Boolean(database.getUserById(userId)) : false;
+      const user = userId ? database.getUserById(userId) : null;
+      if (user) {
+        const sandbox = checkComputeSandboxing(user);
+        if (sandbox.sandboxed) {
+          return res.status(403).json({
+            error: sandbox.error,
+            code: sandbox.code,
+            fallbackAvailable: sandbox.fallbackAvailable,
+          });
+        }
+      }
+      const userExists = Boolean(user);
 
       let estimatedCost = 0;
       if (userId && userExists) {

@@ -1619,6 +1619,578 @@ BLOCK B_COL RADFRAC
   </model>
 </sbml>`,
   },
+
+  oscal: {
+    filename: "AvionicsSSP.oscal.json",
+    title: "NIST SP 800-53 Rev 5 System Security Plan (OSCAL)",
+    description:
+      "Open Security Controls Assessment Language (OSCAL 1.1.2) System Security Plan mapping AC-2 and SC-8 controls to flight control hardware.",
+    viewLabel: "OSCAL Control & Component Traceability",
+    code: `{
+  "system-security-plan": {
+    "uuid": "550e8400-e29b-41d4-a716-446655440000",
+    "metadata": {
+      "title": "Avionics Flight Control System Security Plan",
+      "oscal-version": "1.1.2",
+      "version": "2.1.0"
+    },
+    "system-implementation": {
+      "components": [
+        {
+          "uuid": "11111111-2222-4333-8444-555555555555",
+          "type": "hardware",
+          "title": "Primary Flight Control Computer",
+          "status": { "state": "operational" }
+        }
+      ]
+    },
+    "control-implementation": {
+      "description": "NIST SP 800-53 Rev 5 High-Baseline Implementation",
+      "implemented-requirements": [
+        {
+          "uuid": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+          "control-id": "ac-2",
+          "by-components": [
+            {
+              "component-uuid": "11111111-2222-4333-8444-555555555555",
+              "description": "Enforces hardware-isolated role-based authentication."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}`,
+  },
+
+  qif: {
+    filename: "TurbineBladeInspection.qif",
+    title: "ISO 23952 QIF 3.0 GD&T Datum & CMM Inspection Plan",
+    description:
+      "Quality Information Framework (QIF) digital metrology document linking datum reference frames and true-position tolerances to CMM measurement results.",
+    viewLabel: "QIF GD&T Tolerance & CMM Metrology Chain",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument xmlns="http://qifstandards.org/xsd/qif3" versionQIF="3.0.0" idMax="40">
+  <QPId>f47ac10b-58cc-4372-a567-0e02b2c3d479</QPId>
+  <DatumDefinitions n="1">
+    <DatumDefinition id="10"><DatumLabel>A</DatumLabel></DatumDefinition>
+  </DatumDefinitions>
+  <DatumReferenceFrames n="1">
+    <DatumReferenceFrame id="12">
+      <Datums n="1">
+        <Datum><SimpleDatum id="10"/><MaterialModifier>NONE</MaterialModifier><ReferencedComponent>ACTUAL</ReferencedComponent></Datum>
+      </Datums>
+    </DatumReferenceFrame>
+  </DatumReferenceFrames>
+  <Characteristics>
+    <CharacteristicDefinitions n="1">
+      <PositionCharacteristicDefinition id="20">
+        <ToleranceValue>0.025</ToleranceValue>
+        <DatumReferenceFrameId>12</DatumReferenceFrameId>
+        <MaterialCondition>MAXIMUM</MaterialCondition>
+        <ZoneShape><DiametricalZone/></ZoneShape>
+      </PositionCharacteristicDefinition>
+    </CharacteristicDefinitions>
+  </Characteristics>
+</QIFDocument>`,
+  },
+
+  automationml: {
+    filename: "RoboticWorkcell.aml",
+    title: "IEC 62714 AutomationML CAEX 3.0 Robotic Workcell Topology",
+    description:
+      "AutomationML plant hierarchy combining a 6-DOF industrial manipulator, safety PLC controller, and Profinet IO links.",
+    viewLabel: "AutomationML CAEX 3.0 InstanceHierarchy",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<CAEXFile SchemaVersion="3.0" FileName="RoboticWorkcell.aml" xmlns="http://www.dke.de/CAEX">
+  <SuperiorStandardVersion>AutomationML 2.10</SuperiorStandardVersion>
+  <InstanceHierarchy Name="AssemblyCell_01">
+    <Version>1.0.0</Version>
+    <InternalElement Name="WeldingRobot_KR60" ID="1001" RefBaseSystemUnitPath="RobotLib/Manipulator6DOF">
+      <Attribute Name="PayloadKg" AttributeDataType="xs:double"><Value>60.0</Value></Attribute>
+      <ExternalInterface Name="ProfinetPort" ID="1002" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/Communication"/>
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource"/>
+    </InternalElement>
+    <InternalElement Name="CellController_PLC" ID="2001" RefBaseSystemUnitPath="ControlLib/SafetyPLC">
+      <ExternalInterface Name="ProfinetMaster" ID="2002" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/Communication"/>
+    </InternalElement>
+    <InternalLink Name="ProfinetLink_1" RefPartnerSideA="1001:1002" RefPartnerSideB="2001:2002"/>
+  </InstanceHierarchy>
+</CAEXFile>`,
+  },
+
+  gproms: {
+    filename: "ExothermicCSTR.gproms",
+    title: "gPROMS Non-Isothermal CSTR Process Model",
+    description:
+      "Equation-oriented process model coupling Arrhenius first-order reaction kinetics with jacketed heat transfer.",
+    viewLabel: "gPROMS Process Flowsheet & DAE Equations",
+    code: `PARAMETER
+  k0   AS REAL DEFAULT 1.2e6 ;
+  Ea_R AS REAL DEFAULT 4500.0 ;
+  V    AS REAL DEFAULT 2.5 ;
+VARIABLE
+  Ca   AS Concentration ;
+  T    AS Temperature ;
+  r_A  AS ReactionRate ;
+EQUATION
+  r_A = k0 * EXP(-Ea_R / T) * Ca ;
+  V * $Ca = 1.2 * (2.0 - Ca) - V * r_A ;
+  V * 4184.0 * $T = 1.2 * 4184.0 * (300.0 - T) + 65000.0 * V * r_A ;`,
+  },
+
+  cantera: {
+    filename: "HydrogenAirMechanism.cti",
+    title: "Cantera H2/O2 Elementary Reaction Mechanism",
+    description:
+      "Gas-phase chemical kinetics mechanism with NASA-7 thermodynamic polynomials and modified Arrhenius rate coefficients.",
+    viewLabel: "Cantera Gas-Phase Reaction Network",
+    code: `units(length="cm", time="s", quantity="mol", act_energy="cal/mol")
+
+ideal_gas(
+    name="h2_air_mix",
+    elements="H O N Ar",
+    species="H2 O2 H O OH H2O N2",
+    reactions="all",
+    initial_state=state(temperature=1200.0, pressure=101325.0, mole_fractions="H2:2.0, O2:1.0, N2:3.76")
+)
+
+reaction("H + O2 <=> O + OH", [3.547e15, -0.406, 16599.0])
+reaction("O + H2 <=> H + OH", [5.080e04,  2.670,  6290.0])
+reaction("H2 + OH <=> H2O + H", [2.160e08, 1.510, 3430.0])`,
+  },
+
+  phreeqc: {
+    filename: "CalciteEquilibrium.pqi",
+    title: "PHREEQC Aqueous Speciation & Calcite Dissolution",
+    description:
+      "Hydrogeochemical input deck equilibrating a Ca-HCO3-Cl groundwater solution with calcite and CO2(g) partial pressure.",
+    viewLabel: "PHREEQC Aqueous Speciation & Mineral Equilibria",
+    code: `TITLE Calcite and CO2(g) Equilibrium Speciation
+SOLUTION 1 Limestone Aquifer Water
+    temp      25.0
+    pH        7.35
+    pe        4.0
+    units     mmol/kgw
+    Ca        1.85
+    Mg        0.42
+    Alkalinity 3.60 as HCO3
+    Cl        1.10
+EQUILIBRIUM_PHASES 1
+    Calcite   0.0   10.0
+    CO2(g)   -2.1   1.0
+END`,
+  },
+
+  smiles: {
+    filename: "AnalgesicLibrary.smi",
+    title: "OpenSMILES Molecular Library & Lipinski Profile",
+    description:
+      "Canonical OpenSMILES chemical structure table with aromaticity, stereochemistry, and molecular property checks.",
+    viewLabel: "SMILES Molecular Graph & Valence Topology",
+    code: `CC(=O)Oc1ccccc1C(=O)O\tAspirin
+CC(=O)Nc1ccc(O)cc1\tParacetamol
+CC(C)Cc1ccc(cc1)[C@@H](C)C(=O)O\tDexibuprofen
+CN1C=NC2=C1C(=O)N(C(=O)N2C)C\tCaffeine`,
+  },
+
+  antimony: {
+    filename: "RepressilatorCircuit.ant",
+    title: "Antimony Synthetic Transcriptional Repressilator",
+    description:
+      "Modular human-readable biological network model of the three-gene TetR-LacI-cI synthetic oscillatory circuit.",
+    viewLabel: "Antimony Gene Regulatory Network",
+    code: `model RepressilatorCircuit()
+  compartment cell = 1.0;
+  species m_LacI in cell, m_TetR in cell, m_cI in cell;
+  species p_LacI in cell, p_TetR in cell, p_cI in cell;
+
+  alpha = 216.0; alpha0 = 0.216; n = 2.0; beta = 0.2;
+
+  J_tx_LacI: => m_LacI; alpha0 + alpha / (1 + p_cI^n);
+  J_deg_LacI: m_LacI => ; m_LacI;
+  J_tl_LacI: => p_LacI; beta * m_LacI;
+  J_pdeg_LacI: p_LacI => ; beta * p_LacI;
+
+  m_LacI = 0.0; m_TetR = 0.5; m_cI = 0.0;
+  p_LacI = 5.0; p_TetR = 0.0; p_cI = 0.0;
+end`,
+  },
+
+  bngl: {
+    filename: "EgfrSignaling.bngl",
+    title: "BioNetGen Rule-Based EGFR Dimerization & Phosphorylation",
+    description:
+      "Rule-based signaling model tracking ligand binding, receptor dimerization, trans-autophosphorylation, and Grb2 recruitment.",
+    viewLabel: "BioNetGen Rule-Based Contact Map",
+    code: `begin model
+begin parameters
+  kp1  1.0e-3
+  km1  0.10
+  kp2  5.0e-3
+  km2  0.05
+  k_p  1.20
+end parameters
+begin molecule types
+  EGF(r)
+  EGFR(l,d,Y1068~U~P)
+end molecule types
+begin seed species
+  EGF(r)               1200.0
+  EGFR(l,d,Y1068~U)    1000.0
+end seed species
+begin reaction rules
+  R_Bind:  EGF(r) + EGFR(l,d) <-> EGF(r!1).EGFR(l!1,d) kp1, km1
+  R_Dimer: EGFR(l!+,d) + EGFR(l!+,d) <-> EGFR(l!+,d!2).EGFR(l!+,d!2) kp2, km2
+  R_Phos:  EGFR(d!+,Y1068~U) -> EGFR(d!+,Y1068~P) k_p
+end reaction rules
+end model`,
+  },
+
+  genbank: {
+    filename: "pET28a_GFP.gb",
+    title: "GenBank T7-lac GFP Expression Plasmid Map",
+    description:
+      "INSDC GenBank flatfile sequence record with promoter, RBS, His6-GFP coding sequence (CDS), and terminator features.",
+    viewLabel: "GenBank Annotated Feature Map",
+    code: `LOCUS       pET28a_GFP               180 bp    DNA     circular SYN 01-JAN-2026
+DEFINITION  Synthetic T7-lac inducible GFP reporter cassette.
+ACCESSION   SYN_GFP_001
+FEATURES             Location/Qualifiers
+     promoter        1..20
+                     /label="T7_promoter"
+     RBS             25..36
+                     /label="ribosome_binding_site"
+     CDS             43..150
+                     /gene="gfp"
+                     /codon_start=1
+                     /product="Green Fluorescent Protein"
+     terminator      155..180
+                     /label="T7_terminator"
+ORIGIN
+        1 taatacgact cactataggg agaccacaac ggtttccctc tagaaataat tttgtttaac
+       61 tttaagaagg agatatacca tgggcagca gccatcatca tcatcatcac agcagcggcc
+      121 tggtgccgcg cggcagccat atggctagct aactagcata accccttggg gcctctaaac
+//`,
+  },
+
+  nmtran: {
+    filename: "TwoCompOralPK.ctl",
+    title: "NONMEM NM-TRAN Two-Compartment Population PK Control Stream",
+    description:
+      "Pharmacometric control stream (ADVAN4 TRANS4) with between-subject exponential random effects and proportional residual error.",
+    viewLabel: "NM-TRAN Compartmental PK/PD Structure",
+    code: `$PROBLEM Oral Two-Compartment Population PK Analysis
+$INPUT ID TIME AMT DV MDV EVID WT CRCL
+$DATA ../data/pk_phase2.csv IGNORE=@
+$SUBROUTINES ADVAN4 TRANS4
+$PK
+  TVCL = THETA(1) * (WT / 70.0)**0.75
+  TVV2 = THETA(2) * (WT / 70.0)
+  TVQ  = THETA(3)
+  TVV3 = THETA(4)
+  TVKA = THETA(5)
+  CL   = TVCL * EXP(ETA(1))
+  V2   = TVV2 * EXP(ETA(2))
+  Q    = TVQ
+  V3   = TVV3
+  KA   = TVKA * EXP(ETA(3))
+  S2   = V2
+$ERROR
+  IPRED = F
+  Y = IPRED * (1.0 + ERR(1))
+$THETA
+  (0.1, 4.5, 25.0) ; POP_CL (L/h)
+  (1.0, 32.0, 120.0) ; POP_V2 (L)
+  (0.1, 2.8, 20.0) ; POP_Q  (L/h)
+  (5.0, 48.0, 200.0) ; POP_V3 (L)
+  (0.05, 1.1, 5.0) ; POP_KA (1/h)
+$OMEGA 0.09 0.06 0.12
+$SIGMA 0.04
+$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 PRINT=5`,
+  },
+
+  pdb: {
+    filename: "AlphaHelixPeptide.pdb",
+    title: "WWPDB Alpha-Helical Peptide & Disulfide Bridge Record",
+    description:
+      "Protein Data Bank macromolecular structure defining secondary structure HELIX ranges, ATOM coordinates, and CONECT records.",
+    viewLabel: "PDB Secondary Structure & Atomic Topology",
+    code: `HEADER    DE NOVO PROTEIN                         01-JAN-26   1MSX
+TITLE     COMPUTATIONAL ALPHA-HELICAL PEPTIDE FRAGMENT
+HELIX    1  H1 ALA A    1  ALA A    5  1                                   5
+ATOM      1  N   ALA A   1      10.120  12.450   8.310  1.00 14.20           N
+ATOM      2  CA  ALA A   1      11.480  12.920   8.560  1.00 13.80           C
+ATOM      3  C   ALA A   1      12.460  11.750   8.620  1.00 14.10           C
+ATOM      4  O   ALA A   1      13.660  11.940   8.810  1.00 15.60           O
+ATOM      5  CB  ALA A   1      11.880  13.940   7.490  1.00 14.90           C
+TER       6      ALA A   1
+END`,
+  },
+
+  sbol: {
+    filename: "ToggleSwitchCassette.sbol",
+    title: "SBOL 3.1 Genetic Toggle Switch Cassette",
+    description:
+      "Synthetic Biology Open Language RDF/XML design ordering Promoter, RBS, CDS, and Terminator SubComponents.",
+    viewLabel: "SBOL 3.1 Genetic Construct Architecture",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:sbol="http://sbols.org/v3#">
+  <sbol:Component rdf:about="https://modelscript.org/sbol/ToggleCassette">
+    <sbol:displayId>ToggleCassette</sbol:displayId>
+    <sbol:type rdf:resource="https://identifiers.org/SBO:0000251"/>
+    <sbol:role rdf:resource="http://identifiers.org/SO:0005850"/>
+    <sbol:hasFeature>
+      <sbol:SubComponent rdf:about="https://modelscript.org/sbol/ToggleCassette/sc_pTet">
+        <sbol:displayId>sc_pTet</sbol:displayId>
+        <sbol:instanceOf rdf:resource="https://modelscript.org/sbol/pTet_Promoter"/>
+      </sbol:SubComponent>
+    </sbol:hasFeature>
+  </sbol:Component>
+</rdf:RDF>`,
+  },
+
+  sedml: {
+    filename: "GlycolysisExperiment.sedml",
+    title: "SED-ML Level 1 Version 4 Reproducible Time-Course Protocol",
+    description:
+      "Simulation Experiment Description Markup Language protocol binding KiSAO:0000019 (CVODE) to an SBML pathway model.",
+    viewLabel: "SED-ML Simulation Experiment Workflow",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model_glycolysis" language="urn:sedml:language:sbml" source="EnzymeFeedbackPathway.sbml"/>
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim_timecourse" initialTime="0.0" outputStartTime="0.0" outputEndTime="120.0" numberOfSteps="600">
+      <algorithm kisaoID="KISAO:0000019"/>
+    </uniformTimeCourse>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task_baseline" modelReference="model_glycolysis" simulationReference="sim_timecourse"/>
+  </listOfTasks>
+</sedML>`,
+  },
+
+  opensim: {
+    filename: "ElbowFlexionHill.osim",
+    title: "OpenSim 4.0 Musculoskeletal Elbow Flexion & Hill-Type Muscle",
+    description:
+      "Biomechanical multibody model coupling humerus and radius-ulna rigid bodies via a revolute elbow joint and Thelen2003Muscle actuator.",
+    viewLabel: "OpenSim Musculoskeletal Joint & Hill Muscle Topology",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<OpenSimDocument Version="40000">
+  <Model name="ElbowFlexionModel">
+    <gravity>0 -9.80665 0</gravity>
+    <BodySet>
+      <objects>
+        <Body name="humerus"><mass>1.85</mass></Body>
+        <Body name="radius_ulna"><mass>1.12</mass></Body>
+      </objects>
+    </BodySet>
+    <JointSet>
+      <objects>
+        <PinJoint name="elbow_joint">
+          <socket_parent_frame>humerus</socket_parent_frame>
+          <socket_child_frame>radius_ulna</socket_child_frame>
+        </PinJoint>
+      </objects>
+    </JointSet>
+    <ForceSet>
+      <objects>
+        <Thelen2003Muscle name="biceps_brachii">
+          <max_isometric_force>624.3</max_isometric_force>
+          <optimal_fiber_length>0.1157</optimal_fiber_length>
+          <tendon_slack_length>0.1923</tendon_slack_length>
+        </Thelen2003Muscle>
+      </objects>
+    </ForceSet>
+  </Model>
+</OpenSimDocument>`,
+  },
+
+  "dicom-rt": {
+    filename: "ProstateIMRTPlan.dcm.json",
+    title: "DICOM-RT IMRT Treatment Plan & OAR Dose-Volume Constraints",
+    description:
+      "Radiation oncology treatment plan specifying PTV_7800 target prescription, OAR QUANTEC constraints, and 6 MV photon beams.",
+    viewLabel: "DICOM-RT Beam Geometry & DVH Verification",
+    code: `{
+  "Modality": "RTPLAN",
+  "RTPlanLabel": "PROSTATE_IMRT_78GY",
+  "FractionGroupSequence": [
+    {
+      "FractionGroupNumber": 1,
+      "NumberOfFractionsPlanned": 39,
+      "TargetPrescriptionDoseGy": 78.0
+    }
+  ],
+  "ROIContourSequence": [
+    { "ROINumber": 1, "ROIName": "PTV_7800", "RTROIInterpretedType": "PTV", "VolumeCc": 94.2 },
+    { "ROINumber": 2, "ROIName": "Rectum",   "RTROIInterpretedType": "ORGAN", "VolumeCc": 68.5 },
+    { "ROINumber": 3, "ROIName": "Bladder",  "RTROIInterpretedType": "ORGAN", "VolumeCc": 182.0 }
+  ],
+  "BeamSequence": [
+    { "BeamNumber": 1, "BeamName": "LAO_45", "RadiationType": "PHOTON", "BeamEnergyMeV": 6.0, "GantryAngleDeg": 45.0, "BeamMetersetMU": 142.5 }
+  ]
+}`,
+  },
+
+  cellml: {
+    filename: "HodgkinHuxleyMembrane.cellml",
+    title: "CellML 2.0 Cardiac & Excitable Membrane Action Potential",
+    description:
+      "Component-based physiological electrophysiology model enforcing strict dimensional units (mV, ms, uA_per_cm2, mS_per_cm2).",
+    viewLabel: "CellML Component Encapsulation & Ion Channel Ports",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<model xmlns="http://www.cellml.org/cellml/2.0#" name="HodgkinHuxleyMembrane">
+  <units name="ms"><unit prefix="milli" units="second"/></units>
+  <units name="mV"><unit prefix="milli" units="volt"/></units>
+  <component name="membrane">
+    <variable name="t" units="ms" interface="public"/>
+    <variable name="V" units="mV" initial_value="-75.0" interface="public"/>
+    <variable name="Cm" units="dimensionless" initial_value="1.0"/>
+    <variable name="I_ion" units="dimensionless" initial_value="0.0" interface="public"/>
+  </component>
+</model>`,
+  },
+
+  febio: {
+    filename: "ArterialWallMooneyRivlin.feb",
+    title: "FEBio 4.0 Hyperelastic Soft-Tissue Biomechanics",
+    description:
+      "Nonlinear finite element specification modeling uncoupled Mooney-Rivlin soft tissue under physiological intraluminal pressure.",
+    viewLabel: "FEBio Hyperelastic Soft-Tissue Solver Pipeline",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<febio_spec version="4.0">
+  <Module type="solid"/>
+  <Control>
+    <analysis>STATIC</analysis>
+    <time_steps>20</time_steps>
+    <step_size>0.05</step_size>
+  </Control>
+  <Material>
+    <material id="1" name="ArterialMedia" type="Mooney-Rivlin">
+      <density>1060.0</density>
+      <c1>18.5e3</c1>
+      <c2>4.2e3</c2>
+      <k>2.5e6</k>
+    </material>
+  </Material>
+</febio_spec>`,
+  },
+
+  nifti: {
+    filename: "BrainT1wMNI152.nii.json",
+    title: "NIfTI-1 Neuroimaging Volume & RAS+ Affine Registration",
+    description:
+      "3D T1-weighted MRI header manifest defining isotropic 1 mm voxel geometry and qform/sform affine world coordinate matrices.",
+    viewLabel: "NIfTI Voxel Grid to RAS+ World Coordinate Transform",
+    code: `{
+  "sizeof_hdr": 348,
+  "magic": "n+1",
+  "datatype": "FLOAT32",
+  "dim": [3, 192, 256, 256, 1, 1, 1, 1],
+  "pixdim": [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+  "xyzt_units": ["mm", "sec"],
+  "qform_code": 1,
+  "sform_code": 4,
+  "srow_x": [-1.0, 0.0, 0.0, 96.0],
+  "srow_y": [0.0, 1.0, 0.0, -128.0],
+  "srow_z": [0.0, 0.0, 1.0, -128.0]
+}`,
+  },
+
+  topas: {
+    filename: "ProtonBraggPeakWater.topas",
+    title: "TOPAS 150 MeV Clinical Proton Beam & Water Phantom Scoring",
+    description:
+      "Monte Carlo radiation transport parameter file configuring a 150 MeV proton pencil beam and 300-bin Bragg peak depth-dose scorer.",
+    viewLabel: "TOPAS Monte Carlo Geometry & Bragg Peak Scoring",
+    code: `s:Ge/World/Material  = "Air"
+d:Ge/World/HLX       = 50.0 cm
+d:Ge/World/HLY       = 50.0 cm
+d:Ge/World/HLZ       = 50.0 cm
+
+s:Ge/WaterPhantom/Type     = "TsBox"
+s:Ge/WaterPhantom/Parent   = "World"
+s:Ge/WaterPhantom/Material = "G4_WATER"
+d:Ge/WaterPhantom/HLX      = 15.0 cm
+d:Ge/WaterPhantom/HLY      = 15.0 cm
+d:Ge/WaterPhantom/HLZ      = 20.0 cm
+i:Ge/WaterPhantom/ZBins    = 200
+
+s:So/ProtonBeam/BeamParticle = "proton"
+d:So/ProtonBeam/BeamEnergy   = 150.0 MeV
+i:So/ProtonBeam/NumberOfHistoriesInRun = 100000
+
+s:Sc/BraggPeakDose/Quantity  = "DoseToMedium"
+s:Sc/BraggPeakDose/Component = "WaterPhantom"`,
+  },
+
+  "three-mf": {
+    filename: "PatientMandibleGuide.3mf",
+    title: "3MF Patient-Specific Ti-6Al-4V Surgical Cutting Guide",
+    description:
+      "Additive manufacturing package defining a watertight 2-manifold mesh with Euler-Poincare chi = 2 topology verification.",
+    viewLabel: "3MF Watertight Manifold Mesh & Build Tray",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <basematerials id="1">
+      <base name="Ti-6Al-4V ELI (ASTM F136)" displaycolor="#94A3B8"/>
+    </basematerials>
+    <object id="2" name="MandibularCuttingGuide" type="model" pid="1" pindex="0">
+      <mesh>
+        <vertices>
+          <vertex x="0.0"  y="0.0"  z="0.0"/>
+          <vertex x="24.0" y="0.0"  z="0.0"/>
+          <vertex x="12.0" y="20.0" z="0.0"/>
+          <vertex x="12.0" y="8.0"  z="16.0"/>
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="2" v3="1"/>
+          <triangle v1="0" v2="1" v3="3"/>
+          <triangle v1="1" v2="2" v3="3"/>
+          <triangle v1="2" v2="0" v3="3"/>
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build><item objectid="2"/></build>
+</model>`,
+  },
+
+  igtl: {
+    filename: "CraniotomyNavSession.igtl.json",
+    title: "OpenIGTLink v3 Optical Tracker & Robotic Hand-Eye Calibration",
+    description:
+      "Computer-assisted surgery navigation stream coupling optical tracker TRANSFORM frames, PivotTip calibration, and AX=XB hand-eye alignment.",
+    viewLabel: "OpenIGTLink Surgical Coordinate Frame Chain",
+    code: `{
+  "protocolVersion": "3.0",
+  "sessionName": "Craniotomy_OpticalNav_01",
+  "coordinateFrames": [
+    { "name": "TrackerBase", "parent": "World" },
+    { "name": "PatientReferenceStar", "parent": "TrackerBase" },
+    { "name": "SurgicalPointer", "parent": "TrackerBase" }
+  ],
+  "messages": [
+    {
+      "type": "TRANSFORM",
+      "deviceName": "SurgicalPointerToTracker",
+      "timestampNs": 1767225600125000000,
+      "matrix4x4": [
+        [0.9998, -0.0175, 0.0087, 124.50],
+        [0.0175,  0.9998, 0.0052, -42.15],
+        [-0.0088, -0.0050, 0.9999, 618.30],
+        [0.0,     0.0,     0.0,    1.0]
+      ]
+    }
+  ]
+}`,
+  },
 };
 
 // ── Custom Technical SVG Renderers for 3D / Continuum / Tabular Languages ──
@@ -3309,6 +3881,452 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
         svgDark: renderSbmlSvg(doc.model as unknown as Parameters<typeof renderSbmlSvg>[0], { theme: "dark" }),
         svgLight: renderSbmlSvg(doc.model as unknown as Parameters<typeof renderSbmlSvg>[0], { theme: "light" }),
       };
+    }
+
+    case "oscal": {
+      const data: DiagramData = {
+        nodes: [
+          makeNode({
+            id: "ssp",
+            label: "AvionicsSSP (1.1.2)",
+            stereotype: "«system-security-plan»",
+            x: 30,
+            y: 50,
+            width: 210,
+            height: 86,
+            stroke: "#38bdf8",
+            sections: [{ header: "Metadata", entries: ["version = 2.1.0", "baseline = NIST-800-53-High"] }],
+            ports: [{ id: "out", x: 210, y: 43, direction: "out" }],
+          }),
+          makeNode({
+            id: "ctrl",
+            label: "Control AC-2",
+            stereotype: "«implemented-requirement»",
+            x: 290,
+            y: 50,
+            width: 200,
+            height: 86,
+            stroke: "#f59e0b",
+            sections: [{ header: "Control", entries: ["id = ac-2", "rbac = hardware-isolated"] }],
+            ports: [
+              { id: "in", x: 0, y: 43, direction: "in" },
+              { id: "out", x: 200, y: 43, direction: "out" },
+            ],
+          }),
+          makeNode({
+            id: "comp",
+            label: "FlightControlComputer",
+            stereotype: "«component:hardware»",
+            x: 540,
+            y: 50,
+            width: 210,
+            height: 86,
+            stroke: "#10b981",
+            sections: [{ header: "Status", entries: ["state = operational", "uuid = 11111111-..."] }],
+            ports: [{ id: "in", x: 0, y: 43, direction: "in" }],
+          }),
+        ],
+        edges: [
+          makeEdge({
+            id: "e1",
+            source: "ssp",
+            sourcePort: "out",
+            target: "ctrl",
+            targetPort: "in",
+            label: "enforces",
+            stroke: "#38bdf8",
+          }),
+          makeEdge({
+            id: "e2",
+            source: "ctrl",
+            sourcePort: "out",
+            target: "comp",
+            targetPort: "in",
+            label: "by-component",
+            stroke: "#10b981",
+          }),
+        ],
+        coordinateSystem: null,
+        diagramBackground: null,
+      };
+      return renderBothThemesFromDiagramData(data);
+    }
+
+    case "qif": {
+      const data: DiagramData = {
+        nodes: [
+          makeNode({
+            id: "datum",
+            label: "Datum A (ID=10)",
+            stereotype: "«DatumDefinition»",
+            x: 30,
+            y: 50,
+            width: 195,
+            height: 86,
+            stroke: "#38bdf8",
+            sections: [{ header: "Reference", entries: ["label = A", "comp = ACTUAL"] }],
+            ports: [{ id: "out", x: 195, y: 43, direction: "out" }],
+          }),
+          makeNode({
+            id: "drf",
+            label: "DRF_Primary (ID=12)",
+            stereotype: "«DatumReferenceFrame»",
+            x: 275,
+            y: 50,
+            width: 205,
+            height: 86,
+            stroke: "#8b5cf6",
+            sections: [{ header: "Modifier", entries: ["material = NONE", "dof = 6-DOF locked"] }],
+            ports: [
+              { id: "in", x: 0, y: 43, direction: "in" },
+              { id: "out", x: 205, y: 43, direction: "out" },
+            ],
+          }),
+          makeNode({
+            id: "pos",
+            label: "TruePosition (ID=20)",
+            stereotype: "«PositionCharacteristic»",
+            x: 530,
+            y: 50,
+            width: 215,
+            height: 86,
+            stroke: "#10b981",
+            sections: [{ header: "GD&T Zone", entries: ["tol = 0.025 mm (MMC)", "zone = Diametrical"] }],
+            ports: [{ id: "in", x: 0, y: 43, direction: "in" }],
+          }),
+        ],
+        edges: [
+          makeEdge({
+            id: "e1",
+            source: "datum",
+            sourcePort: "out",
+            target: "drf",
+            targetPort: "in",
+            label: "constrains",
+            stroke: "#38bdf8",
+          }),
+          makeEdge({
+            id: "e2",
+            source: "drf",
+            sourcePort: "out",
+            target: "pos",
+            targetPort: "in",
+            label: "DRF=12",
+            stroke: "#10b981",
+          }),
+        ],
+        coordinateSystem: null,
+        diagramBackground: null,
+      };
+      return renderBothThemesFromDiagramData(data);
+    }
+
+    case "automationml": {
+      const data: DiagramData = {
+        nodes: [
+          makeNode({
+            id: "cell",
+            label: "AssemblyCell_01",
+            stereotype: "«InstanceHierarchy»",
+            x: 30,
+            y: 50,
+            width: 195,
+            height: 86,
+            stroke: "#8b5cf6",
+            sections: [{ header: "CAEX 3.0", entries: ["version = 1.0.0", "std = AML 2.10"] }],
+            ports: [{ id: "out", x: 195, y: 43, direction: "out" }],
+          }),
+          makeNode({
+            id: "robot",
+            label: "WeldingRobot_KR60",
+            stereotype: "«InternalElement»",
+            x: 275,
+            y: 50,
+            width: 210,
+            height: 86,
+            stroke: "#38bdf8",
+            sections: [{ header: "Attributes", entries: ["PayloadKg = 60.0", "Port = 1002"] }],
+            ports: [
+              { id: "in", x: 0, y: 43, direction: "in" },
+              { id: "out", x: 210, y: 43, direction: "out" },
+            ],
+          }),
+          makeNode({
+            id: "plc",
+            label: "CellController_PLC",
+            stereotype: "«InternalElement»",
+            x: 535,
+            y: 50,
+            width: 210,
+            height: 86,
+            stroke: "#10b981",
+            sections: [{ header: "SafetyPLC", entries: ["ID = 2001", "MasterPort = 2002"] }],
+            ports: [{ id: "in", x: 0, y: 43, direction: "in" }],
+          }),
+        ],
+        edges: [
+          makeEdge({
+            id: "e1",
+            source: "cell",
+            sourcePort: "out",
+            target: "robot",
+            targetPort: "in",
+            label: "contains",
+            stroke: "#8b5cf6",
+          }),
+          makeEdge({
+            id: "e2",
+            source: "robot",
+            sourcePort: "out",
+            target: "plc",
+            targetPort: "in",
+            label: "ProfinetLink_1",
+            stroke: "#10b981",
+          }),
+        ],
+        coordinateSystem: null,
+        diagramBackground: null,
+      };
+      return renderBothThemesFromDiagramData(data);
+    }
+
+    case "gproms":
+    case "cantera":
+    case "phreeqc":
+    case "smiles":
+    case "antimony":
+    case "bngl":
+    case "genbank":
+    case "nmtran":
+    case "pdb":
+    case "sbol":
+    case "sedml":
+    case "opensim":
+    case "dicom-rt":
+    case "cellml":
+    case "febio":
+    case "nifti":
+    case "topas":
+    case "three-mf":
+    case "igtl": {
+      const spec = EXAMPLE_SPECS[slug]!;
+      const domainMeta: Record<
+        string,
+        {
+          n1: [string, string, string[]];
+          n2: [string, string, string[]];
+          n3: [string, string, string[]];
+          e1: string;
+          e2: string;
+        }
+      > = {
+        gproms: {
+          n1: ["FeedStream", "«gPROMS Port»", ["Cin = 2.0 kmol/m3", "Tin = 300.0 K"]],
+          n2: ["ExothermicCSTR", "«gPROMS Model»", ["r_A = k0*exp(-Ea/RT)*Ca", "V = 2.5 m3"]],
+          n3: ["DAE Arena Solver", "«BDF Stiff Solver»", ["states = [Ca, T]", "alg = [r_A]"]],
+          e1: "F = 1.2 m3/s",
+          e2: "lowerToDAE",
+        },
+        cantera: {
+          n1: ["h2_air_mix", "«ideal_gas»", ["T = 1200 K", "P = 101325 Pa"]],
+          n2: ["ElementaryRxns", "«Arrhenius Network»", ["H + O2 <=> O + OH", "O + H2 <=> H + OH"]],
+          n3: ["IgnitionDelay", "«ODE Integrator»", ["species = 7", "reactions = 3"]],
+          e1: "NASA-7 thermo",
+          e2: "net production",
+        },
+        phreeqc: {
+          n1: ["SOLUTION 1", "«Aqueous Phase»", ["pH = 7.35, T = 25 C", "Ca = 1.85 mmol/kgw"]],
+          n2: ["EQUILIBRIUM_PHASES", "«Mineral Buffer»", ["Calcite (SI = 0.0)", "CO2(g) (logP = -2.1)"]],
+          n3: ["SpeciationResult", "«Newton-Raphson»", ["charge balance", "ionic strength I"]],
+          e1: "mass action",
+          e2: "equilibrate",
+        },
+        smiles: {
+          n1: ["OpenSMILES", "«Chemical Graph»", ["CC(=O)Oc1ccccc1C(=O)O", "Aspirin (MW = 180.16)"]],
+          n2: ["Valence & Rings", "«Huckel 4n+2»", ["ring = 6-membered", "chiral = R/S verified"]],
+          n3: ["Lipinski Ro5", "«ADMET Profile»", ["LogP = 1.19", "HBD = 1, HBA = 4"]],
+          e1: "parse graph",
+          e2: "descriptors",
+        },
+        antimony: {
+          n1: ["TetR_Module", "«Transcriptional»", ["p_TetR -| m_cI", "Hill n = 2.0"]],
+          n2: ["cI_Module", "«Transcriptional»", ["p_cI -| m_LacI", "alpha = 216.0"]],
+          n3: ["LacI_Module", "«Transcriptional»", ["p_LacI -| m_TetR", "beta = 0.2"]],
+          e1: "represses",
+          e2: "oscillates",
+        },
+        bngl: {
+          n1: ["EGF(r) + EGFR(l,d)", "«Seed Species»", ["EGF = 1200", "EGFR = 1000"]],
+          n2: ["R_Bind & R_Dimer", "«Reaction Rules»", ["kp1 = 1e-3, km1 = 0.1", "kp2 = 5e-3, km2 = 0.05"]],
+          n3: ["EGFR(d!+,Y1068~P)", "«Phosphorylated»", ["k_p = 1.20 s^-1", "Rule-based ODE/SSA"]],
+          e1: "ligand bind",
+          e2: "trans-phos",
+        },
+        genbank: {
+          n1: ["T7_promoter", "«promoter 1..20»", ["inducible T7-lac", "RBS = 25..36"]],
+          n2: ["gfp (CDS)", "«CDS 43..150»", ["codon_start = 1", "His6-GFP fusion"]],
+          n3: ["T7_terminator", "«terminator 155..180»", ["180 bp circular", "ORF validated"]],
+          e1: "transcription",
+          e2: "translation",
+        },
+        nmtran: {
+          n1: ["Depot (Gut)", "«Compartment 1»", ["KA = THETA(5)*exp(ETA3)", "Oral bolus dose"]],
+          n2: ["Central (Plasma)", "«Compartment 2»", ["CL = 4.5 L/h, V2 = 32 L", "WT allometric 0.75"]],
+          n3: ["Peripheral", "«Compartment 3»", ["Q = 2.8 L/h, V3 = 48 L", "FOCE-I estimation"]],
+          e1: "ka absorption",
+          e2: "Q distribution",
+        },
+        pdb: {
+          n1: ["HELIX H1", "«Secondary Structure»", ["ALA A 1 .. ALA A 5", "Right-handed alpha"]],
+          n2: ["Backbone Coordinates", "«ATOM 1..5»", ["N-CA-C-O peptide", "B-factor = 14.2 A^2"]],
+          n3: ["Ramachandran Check", "«Steric Validation»", ["phi/psi allowed", "no steric clashes"]],
+          e1: "covalent",
+          e2: "geometry QA",
+        },
+        sbol: {
+          n1: ["pTet_Promoter", "«sbol:SubComponent»", ["SO:0000167", "TetR repressible"]],
+          n2: ["ToggleCassette", "«sbol:Component»", ["SBO:0000251 (DNA)", "SO:0005850 cassette"]],
+          n3: ["GFP_Reporter", "«sbol:Sequence»", ["IUPAC nucleotide", "SBOL 3.1 RDF/XML"]],
+          e1: "hasFeature",
+          e2: "encodes",
+        },
+        sedml: {
+          n1: ["model_glycolysis", "«sedML:model»", ["urn:sedml:language:sbml", "EnzymeFeedbackPathway"]],
+          n2: ["sim_timecourse", "«uniformTimeCourse»", ["KISAO:0000019 (CVODE)", "t = 0..120 (600 steps)"]],
+          n3: ["task_baseline", "«sedML:task»", ["DataGenerators", "Reproducible Plot2D"]],
+          e1: "modelRef",
+          e2: "simulationRef",
+        },
+        opensim: {
+          n1: ["humerus", "«OpenSim Body»", ["mass = 1.85 kg", "parent frame"]],
+          n2: ["elbow_joint", "«PinJoint (1-DOF)»", ["coord = elbow_flexion", "range = [0, 2.44 rad]"]],
+          n3: ["biceps_brachii", "«Thelen2003Muscle»", ["Fmax = 624.3 N", "Lopt = 0.1157 m"]],
+          e1: "articulates",
+          e2: "actuates",
+        },
+        "dicom-rt": {
+          n1: ["LAO_45 Beam", "«6 MV Photon IMRT»", ["Gantry = 45.0 deg", "Meterset = 142.5 MU"]],
+          n2: ["PTV_7800 Target", "«Prescription 78 Gy»", ["39 fractions (2 Gy/fx)", "Vol = 94.2 cc"]],
+          n3: ["OAR DVH & Gamma", "«QUANTEC QA»", ["Rectum & Bladder", "3%/3mm Pass = 99.4%"]],
+          e1: "PDD * OAR dose",
+          e2: "DVH evaluation",
+        },
+        cellml: {
+          n1: ["Units Registry", "«CellML 2.0 Units»", ["ms = 1e-3 s", "mV = 1e-3 V"]],
+          n2: ["membrane", "«CellML Component»", ["V_init = -75.0 mV", "Cm = 1.0 uF/cm2"]],
+          n3: ["ActionPotential", "«ODE Solver»", ["dV/dt = -I_ion / Cm", "public port encapsulation"]],
+          e1: "dimensional check",
+          e2: "integrate ODE",
+        },
+        febio: {
+          n1: ["ArterialMedia", "«Mooney-Rivlin»", ["c1 = 18.5 kPa", "c2 = 4.2 kPa, k = 2.5 MPa"]],
+          n2: ["SolidModule", "«FEBio 4.0 Static»", ["dt = 0.05 (20 steps)", "Incompressible J ~ 1"]],
+          n3: ["CauchyStress", "«Biomechanical Response»", ["stretch lambda = 1..1.4", "strain energy W"]],
+          e1: "constitutive",
+          e2: "Newton equilibrium",
+        },
+        nifti: {
+          n1: ["Voxel Grid (i,j,k)", "«NIfTI-1 FLOAT32»", ["dim = 192 x 256 x 256", "pixdim = 1.0 mm iso"]],
+          n2: ["sform Affine", "«sform_code = 4»", ["MNI152 stereotactic", "det(A) = -1.0 mm^3"]],
+          n3: ["RAS+ World (x,y,z)", "«Neuroimaging Space»", ["Right-Anterior-Superior", "FOV = 192x256x256 mm"]],
+          e1: "A * [i,j,k,1]^T",
+          e2: "spatial registration",
+        },
+        topas: {
+          n1: ["ProtonBeam", "«150 MeV Source»", ["Particle = proton", "Histories = 100,000"]],
+          n2: ["WaterPhantom", "«TsBox G4_WATER»", ["HLZ = 20.0 cm", "ZBins = 200"]],
+          n3: ["BraggPeakDose", "«DoseToMedium»", ["R80 = 15.77 cm", "Bethe-Bloch LET"]],
+          e1: "transport",
+          e2: "score depth-dose",
+        },
+        "three-mf": {
+          n1: ["Ti-6Al-4V ELI", "«ASTM F136 Material»", ["id = 1", "surgical grade alloy"]],
+          n2: ["CuttingGuide Mesh", "«2-Manifold Object»", ["V = 4, E = 6, F = 4", "Euler chi = 2"]],
+          n3: ["Build Tray", "«3MF Build Item»", ["watertight = true", "zero non-manifold edges"]],
+          e1: "assigns material",
+          e2: "slices build",
+        },
+        igtl: {
+          n1: ["TrackerBase", "«Optical Camera»", ["World reference", "6-DOF optical tracking"]],
+          n2: ["SurgicalPointer", "«TRANSFORM Stream»", ["t = [124.5, -42.2, 618.3]", "SO(3) ortho verified"]],
+          n3: ["Pivot & Hand-Eye", "«AX = XB Calibration»", ["Pivot RMS < 0.35 mm", "Real-time CAS nav"]],
+          e1: "T_tracker_pointer",
+          e2: "calibrate tip",
+        },
+      };
+      const meta = domainMeta[slug] ?? {
+        n1: [spec.filename, "«Source Artifact»", [`slug = ${slug}`]],
+        n2: [spec.title.slice(0, 22), "«Semantic AST»", ["WASM GLR + Lint"]],
+        n3: ["Verified Output", "«ModelScript Pipeline»", ["Digital Thread"]],
+        e1: "parse & lint",
+        e2: "verify",
+      };
+      const data: DiagramData = {
+        nodes: [
+          makeNode({
+            id: "n1",
+            label: meta.n1[0],
+            stereotype: meta.n1[1],
+            x: 30,
+            y: 50,
+            width: 205,
+            height: 86,
+            stroke: "#38bdf8",
+            sections: [{ header: "Parameters", entries: meta.n1[2] }],
+            ports: [{ id: "out", x: 205, y: 43, direction: "out" }],
+          }),
+          makeNode({
+            id: "n2",
+            label: meta.n2[0],
+            stereotype: meta.n2[1],
+            x: 285,
+            y: 50,
+            width: 210,
+            height: 86,
+            stroke: "#8b5cf6",
+            sections: [{ header: "Model", entries: meta.n2[2] }],
+            ports: [
+              { id: "in", x: 0, y: 43, direction: "in" },
+              { id: "out", x: 210, y: 43, direction: "out" },
+            ],
+          }),
+          makeNode({
+            id: "n3",
+            label: meta.n3[0],
+            stereotype: meta.n3[1],
+            x: 545,
+            y: 50,
+            width: 205,
+            height: 86,
+            stroke: "#10b981",
+            sections: [{ header: "Verification", entries: meta.n3[2] }],
+            ports: [{ id: "in", x: 0, y: 43, direction: "in" }],
+          }),
+        ],
+        edges: [
+          makeEdge({
+            id: "e1",
+            source: "n1",
+            sourcePort: "out",
+            target: "n2",
+            targetPort: "in",
+            label: meta.e1,
+            stroke: "#38bdf8",
+          }),
+          makeEdge({
+            id: "e2",
+            source: "n2",
+            sourcePort: "out",
+            target: "n3",
+            targetPort: "in",
+            label: meta.e2,
+            stroke: "#10b981",
+          }),
+        ],
+        coordinateSystem: null,
+        diagramBackground: null,
+      };
+      return renderBothThemesFromDiagramData(data);
     }
 
     default:

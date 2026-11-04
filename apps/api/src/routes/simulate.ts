@@ -13,6 +13,8 @@ import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-g
 import { prepareNativeSimulation, type NativeSimPrepResult } from "../services/simulation/native-sim-runner.js";
 import type { LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
+import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
+import { scanModelicaSource } from "../util/package-scanner.js";
 
 /**
  * Creates the Express router handling `/api/v1/simulate` job submission, status polling
@@ -58,12 +60,36 @@ export function simulateRouter(
           .json({ error: "Either modelSource or (libraryName and libraryVersion) must be provided" });
       }
 
+      if (typeof modelSource === "string") {
+        const sourceViolations = scanModelicaSource(modelSource);
+        if (sourceViolations.length > 0) {
+          return res.status(400).json({
+            error: `Security violation in modelSource: ${sourceViolations.join(", ")}`,
+            violations: sourceViolations,
+          });
+        }
+      }
+
       // Pre-flight quota check
       const profile = getComputeProfile(req.body.profile as string | undefined);
       const userId = database ? resolveRequestUserId(req, database) : null;
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
+
+      // Compute sandboxing guard for community federated accounts
+      if (database && userId) {
+        const user = database.getUserById(userId);
+        const sandbox = checkComputeSandboxing(user);
+        if (sandbox.sandboxed) {
+          return res.status(403).json({
+            error: sandbox.error,
+            code: sandbox.code,
+            fallbackAvailable: sandbox.fallbackAvailable,
+          });
+        }
+      }
+
       let estimatedCost = 0;
       if (database && userId) {
         const quota = checkComputeQuota(userId, profile.id, database);
@@ -114,8 +140,10 @@ export function simulateRouter(
       // Deduplicate and join paths for MODELICAPATH
       const modelicaPath = Array.from(new Set(libraryPaths)).join(path.delimiter);
 
+      const safeLibNamePart = String(libraryName || "adhoc").replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const safeLibVerPart = String(libraryVersion || "0.0").replace(/[^a-zA-Z0-9_.-]/g, "_");
       const safeModelJobPart = String(modelName).replace(/[^a-zA-Z0-9_.-]/g, "_");
-      const jobId = `simulate-${libraryName || "adhoc"}-${libraryVersion || "0.0"}-${safeModelJobPart}-${Date.now()}`;
+      const jobId = `simulate-${safeLibNamePart}-${safeLibVerPart}-${safeModelJobPart}-${Date.now()}`;
       if (userId) {
         if (jobOwners.size >= 5000) {
           const oldest = jobOwners.keys().next().value;

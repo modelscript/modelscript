@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { getArtifactView } from "../../api";
 import { useFeatureFlag } from "../../FeatureFlagContext";
 import { useTheme } from "../../theme";
-import { buildEditorUrlForArtifact } from "../../util/editor-routing";
+import { buildEditorUrlForArtifact, isEditableCodeOrModelArtifact } from "../../util/editor-routing";
 import { safeJsonParse } from "../../util/json";
 import { parseModelicaParameters } from "../../util/modelica-params";
 import { cacheArtifact, getCachedArtifact } from "../../util/offline-storage";
@@ -36,8 +36,12 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   onPinCreated,
   onThreadNodeSelected,
 }) => {
+  const validArtifactId =
+    artifactId !== null && artifactId !== undefined && String(artifactId).trim() !== "" && String(artifactId) !== "0"
+      ? String(artifactId)
+      : null;
   const [artifact, setArtifact] = useState<any>(initialArtifactView || null);
-  const [loading, setLoading] = useState(!initialArtifactView);
+  const [loading, setLoading] = useState(Boolean(!initialArtifactView && validArtifactId));
   const [isLoaded] = useState(true);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isStudioSidebarOpen, setIsStudioSidebarOpen] = useState(false);
@@ -51,6 +55,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
 
   const viewConfig: any = useMemo(
     () => ({
+      ...(artifact?.title ? { title: artifact.title } : {}),
       ...(artifact?.thumbnail_url ? { thumbnail_url: artifact.thumbnail_url } : {}),
       ...safeJsonParse(artifact?.view_config, {}),
       artifactId,
@@ -89,7 +94,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       if (e.key === "i" || e.key === "I") {
         e.preventDefault();
         setIsStudioSidebarOpen((prev) => !prev);
-      } else if (e.key === "r" || e.key === "R") {
+      } else if ((e.key === "r" || e.key === "R") && isEditableCodeOrModelArtifact(artifact)) {
         e.preventDefault();
         navigate(
           buildEditorUrlForArtifact({
@@ -120,23 +125,34 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   ]);
 
   useEffect(() => {
-    if (initialArtifactView && initialArtifactView.id === artifactId) {
+    if (!validArtifactId) {
+      if (initialArtifactView) {
+        setArtifact(initialArtifactView);
+        cacheArtifact(initialArtifactView);
+      }
+      setLoading(false);
+      return;
+    }
+    if (initialArtifactView && (!validArtifactId || String(initialArtifactView.id) === String(validArtifactId))) {
       setArtifact(initialArtifactView);
       setLoading(false);
       cacheArtifact(initialArtifactView);
       return;
     }
     async function fetchArtifact() {
-      if (!artifactId) return;
+      if (!validArtifactId) {
+        setLoading(false);
+        return;
+      }
       try {
-        const data = await getArtifactView(artifactId);
+        const data = await getArtifactView(validArtifactId);
         if (data?.artifactView) {
           setArtifact(data.artifactView);
           cacheArtifact(data.artifactView);
         }
       } catch (err) {
         console.warn("[ArtifactViewCard] Network fetch failed, reading from offline cache:", err);
-        const cached = await getCachedArtifact(artifactId);
+        const cached = await getCachedArtifact(validArtifactId);
         if (cached) {
           setArtifact(cached);
         }
@@ -145,7 +161,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       }
     }
     fetchArtifact();
-  }, [artifactId, initialArtifactView]);
+  }, [validArtifactId, initialArtifactView]);
 
   const resolvedForkedFromId = useMemo<number | string | null>(() => {
     if (forkedFromId) return forkedFromId;
@@ -230,7 +246,15 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         background="var(--ms-brand-soft)"
         overflow="hidden"
         position="relative"
-        style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+        }}
       >
         <Box
           p={3}
@@ -239,6 +263,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
           alignItems="center"
           height={expectedViewerHeight}
           minHeight={expectedViewerHeight}
+          flex={1}
         >
           <Spinner size="small" />
         </Box>
@@ -247,6 +272,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
           minHeight="40px"
           borderTop="1px solid var(--color-accent-blue-border, var(--color-border-default))"
           backgroundColor="var(--ms-brand-soft, var(--color-canvas-subtle))"
+          style={{ flexShrink: 0, marginTop: "auto" }}
         />
         {loadingCaption && (
           <div
@@ -278,6 +304,10 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         )}
       </Box>
     );
+  }
+
+  if (!validArtifactId && !artifact) {
+    return null;
   }
 
   if (!artifact) {
@@ -533,7 +563,15 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       background="var(--ms-brand-soft)"
       overflow="hidden"
       position="relative"
-      style={{ width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        boxSizing: "border-box",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+      }}
       onClick={(e) => {
         e.stopPropagation();
       }}
@@ -558,6 +596,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
             display: "flex",
             alignItems: "center",
             gap: "6px",
+            flexShrink: 0,
           }}
         >
           {figureNumber !== undefined && (

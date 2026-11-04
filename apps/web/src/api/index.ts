@@ -12,6 +12,7 @@ export * from "./compute";
 export * from "./governance";
 export * from "./organizations";
 export * from "./packages";
+export * from "./references";
 export * from "./social";
 export * from "./vcs";
 

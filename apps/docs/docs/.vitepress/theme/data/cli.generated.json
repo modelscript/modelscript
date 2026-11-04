@@ -549,6 +549,39 @@
     "subcommands": []
   },
   {
+    "name": "cellml",
+    "specs": [
+      "cellml <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate SI dimensional units & component connections (M9301–M9310), integrate electrophysiology ODEs, and project CellML models (.cellml)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action: inspect | validate | simulate | to-modelica | to-sbml | to-dae",
+        "choices": [
+          "inspect",
+          "validate",
+          "simulate",
+          "to-modelica",
+          "to-sbml",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input CellML (.cellml) files",
+        "array": true
+      }
+    ],
+    "options": [],
+    "subcommands": []
+  },
+  {
     "name": "cfd",
     "specs": [
       "cfd <action> [files..]"
@@ -1333,6 +1366,39 @@
     "subcommands": []
   },
   {
+    "name": "dicom-rt",
+    "specs": [
+      "dicom-rt <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, verify QUANTEC OAR dose constraints & MLC leaf kinematics (M9201–M9210), compute DVH/BED/EQD2, and project DICOM-RT plans (.rtplan, .rtstruct, .rtdose)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action: inspect | validate | dosimetry | to-scad | to-sysml | to-dae",
+        "choices": [
+          "inspect",
+          "validate",
+          "dosimetry",
+          "to-scad",
+          "to-sysml",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input DICOM-RT (.rtplan, .rtstruct, .rtdose) files",
+        "array": true
+      }
+    ],
+    "options": [],
+    "subcommands": []
+  },
+  {
     "name": "diff",
     "specs": [
       "diff <file1> <file2>"
@@ -2015,6 +2081,41 @@
         "description": "Output file path (for code generation or DAE metadata)"
       }
     ],
+    "subcommands": []
+  },
+  {
+    "name": "febio",
+    "specs": [
+      "febio <action> [files..]"
+    ],
+    "aliases": [
+      "sofa"
+    ],
+    "describe": "Inspect, validate hyperelastic/biphasic tissue mechanics & SOFA surgical scenes (M9401–M9410), solve strain energy, and project FEBio/SOFA models (.feb, .scn)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action: inspect | validate | solve | to-inp | to-modelica | to-dae",
+        "choices": [
+          "inspect",
+          "validate",
+          "solve",
+          "to-inp",
+          "to-modelica",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input FEBio (.feb) or SOFA (.scn) files",
+        "array": true
+      }
+    ],
+    "options": [],
     "subcommands": []
   },
   {
@@ -3213,6 +3314,41 @@
     "subcommands": []
   },
   {
+    "name": "igtl",
+    "specs": [
+      "igtl <action> [files..]"
+    ],
+    "aliases": [
+      "openigtlink"
+    ],
+    "describe": "Inspect, validate SE(3) transforms & surgical navigation chains (M9801–M9810), solve stylus pivot calibration & TRE, and project OpenIGTLink/PLUS configs (.igtl, .plus.xml)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action: inspect | validate | calibrate | to-urdf | to-modelica | to-dae",
+        "choices": [
+          "inspect",
+          "validate",
+          "calibrate",
+          "to-urdf",
+          "to-modelica",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input OpenIGTLink (.igtl) or PLUS (.plus.xml) files",
+        "array": true
+      }
+    ],
+    "options": [],
+    "subcommands": []
+  },
+  {
     "name": "import-fmu",
     "specs": [
       "import-fmu <fmu>"
@@ -4005,6 +4141,41 @@
     "subcommands": []
   },
   {
+    "name": "nifti",
+    "specs": [
+      "nifti <action> [files..]"
+    ],
+    "aliases": [
+      "nrrd"
+    ],
+    "describe": "Inspect, validate qform/sform RAS affine transforms (M9501–M9510), extract iso-surface meshes, and project NIfTI/NRRD volumes (.nii, .nrrd, .nhdr)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action: inspect | validate | mesh | to-scad | to-step | to-dae",
+        "choices": [
+          "inspect",
+          "validate",
+          "mesh",
+          "to-scad",
+          "to-step",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input NIfTI (.nii) or NRRD (.nrrd, .nhdr) files",
+        "array": true
+      }
+    ],
+    "options": [],
+    "subcommands": []
+  },
+  {
     "name": "olga",
     "specs": [
       "olga <action> [files..]"
@@ -4483,6 +4654,39 @@
         "description": "Simulation duration in seconds (default: 10.0)"
       }
     ],
+    "subcommands": []
+  },
+  {
+    "name": "opensim",
+    "specs": [
+      "opensim <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate musculoskeletal kinematics & Hill-type muscles (M9101–M9110), simulate muscle activation, and project OpenSim models (.osim)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action: inspect | validate | simulate | to-modelica | to-urdf | to-dae",
+        "choices": [
+          "inspect",
+          "validate",
+          "simulate",
+          "to-modelica",
+          "to-urdf",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input OpenSim (.osim) files",
+        "array": true
+      }
+    ],
+    "options": [],
     "subcommands": []
   },
   {
@@ -7432,6 +7636,41 @@
     ]
   },
   {
+    "name": "three-mf",
+    "specs": [
+      "three-mf <action> [files..]"
+    ],
+    "aliases": [
+      "3mf"
+    ],
+    "describe": "Inspect, verify 2-manifold topology, wall thickness & osteotomy guides (M9701–M9710), and project 3MF Medical surgical guides & implants (.3mf)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action: inspect | validate | topology | to-step | to-scad | to-dae",
+        "choices": [
+          "inspect",
+          "validate",
+          "topology",
+          "to-step",
+          "to-scad",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input 3MF Medical (.3mf) files",
+        "array": true
+      }
+    ],
+    "options": [],
+    "subcommands": []
+  },
+  {
     "name": "token",
     "specs": [
       "token <action>"
@@ -7565,6 +7804,41 @@
         "subcommands": []
       }
     ]
+  },
+  {
+    "name": "topas",
+    "specs": [
+      "topas <action> [files..]"
+    ],
+    "aliases": [
+      "gate"
+    ],
+    "describe": "Inspect, validate TOPAS/GATE hadrontherapy beamlines (M9601–M9610), compute analytical Bragg peak depth-dose curves, and project to OpenSCAD/Modelica (.topas, .mac)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action: inspect | validate | bragg-peak | to-scad | to-modelica | to-dae",
+        "choices": [
+          "inspect",
+          "validate",
+          "bragg-peak",
+          "to-scad",
+          "to-modelica",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input TOPAS (.topas) or GATE (.mac) files",
+        "array": true
+      }
+    ],
+    "options": [],
+    "subcommands": []
   },
   {
     "name": "touchstone",

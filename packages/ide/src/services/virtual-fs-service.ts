@@ -565,9 +565,11 @@ export function registerVirtualFileSystems(
   if (memfsRootUri) {
     memFs.createDirectory(memfsRootUri);
     const rawTemplate = (memfsRootUri.path.substring(1) || "empty").split("?")[0] || "empty";
-    // Defer artifact-*, package-*, and scratch scaffolding to initWorkspaceAndTree so async API hydration
+    // Defer artifact-*, numeric/snowflake, package-*, and scratch scaffolding to initWorkspaceAndTree so async API hydration
     // completes first instead of populating placeholder stub files in the Extension Host worker.
-    if (!rawTemplate.startsWith("artifact-") && !rawTemplate.startsWith("package-") && rawTemplate !== "scratch") {
+    const isArtifactWorkspace =
+      rawTemplate.startsWith("artifact-") || /^\d+$/.test(rawTemplate) || rawTemplate === "scratch";
+    if (!isArtifactWorkspace && !rawTemplate.startsWith("package-")) {
       scaffoldTemplateFiles(memFs, memfsRootUri);
     }
   }
@@ -608,8 +610,14 @@ export async function initWorkspaceAndTree(
       const rawTemplate = workspaceUri.path.substring(1) || "empty";
       const template = rawTemplate.split("?")[0] || "empty";
 
-      if ((template === "scratch" || template.startsWith("artifact-")) && memFs) {
-        const artifactId = template === "scratch" ? "scratch" : template.slice("artifact-".length);
+      const isArtifact = template === "scratch" || template.startsWith("artifact-") || /^\d+$/.test(template);
+      if (isArtifact && memFs) {
+        const artifactId =
+          template === "scratch"
+            ? "scratch"
+            : template.startsWith("artifact-")
+              ? template.slice("artifact-".length)
+              : template;
         let descriptor: ArtifactWorkspaceDescriptor | null = null;
         try {
           const raw =
@@ -617,6 +625,7 @@ export async function initWorkspaceAndTree(
           const localRaw =
             typeof localStorage !== "undefined"
               ? localStorage.getItem(`modelscript.artifact_${artifactId}`) ||
+                localStorage.getItem(`modelscript:ide:memfs:${artifactId}`) ||
                 localStorage.getItem(`modelscript:ide:memfs:artifact-${artifactId}`)
               : null;
           const scratchRaw =
@@ -677,6 +686,8 @@ export async function initWorkspaceAndTree(
             }
             if (typeof localStorage !== "undefined") {
               localStorage.setItem(`modelscript.artifact_${artifactId}`, JSON.stringify(descriptor));
+              localStorage.setItem(`modelscript:ide:memfs:${artifactId}`, JSON.stringify(descriptor));
+              localStorage.setItem(`modelscript:ide:memfs:artifact-${artifactId}`, JSON.stringify(descriptor));
             }
           } catch {
             // ignore

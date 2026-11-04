@@ -35,9 +35,17 @@ export class LoginRateLimiter {
     const record = this.attempts.get(key);
     const ipRecord = this.attempts.get(ipKey);
 
-    // Check account-specific lockout
+    // Check account-specific lockout for this IP
     if (record && now < record.resetAt && record.failures >= this.maxFailures) {
       return { allowed: false, remaining: 0, resetInMs: record.resetAt - now };
+    }
+
+    // Check aggregate account lockout across rotating IPs (3x max failures)
+    if (email) {
+      const emailRecord = this.attempts.get(`email:${email.toLowerCase().trim()}`);
+      if (emailRecord && now < emailRecord.resetAt && emailRecord.failures >= this.maxFailures * 3) {
+        return { allowed: false, remaining: 0, resetInMs: emailRecord.resetAt - now };
+      }
     }
 
     // Check aggregate IP lockout (e.g. distributed credential stuffing from single IP, allow double max)
@@ -83,6 +91,17 @@ export class LoginRateLimiter {
       record.failures += 1;
     }
 
+    // Update aggregate account across IPs
+    if (email) {
+      const emailKey = `email:${email.toLowerCase().trim()}`;
+      const emailRecord = this.attempts.get(emailKey);
+      if (!emailRecord || now >= emailRecord.resetAt) {
+        this.attempts.set(emailKey, { failures: 1, resetAt: now + this.windowMs });
+      } else {
+        emailRecord.failures += 1;
+      }
+    }
+
     // Update aggregate IP
     if (key !== ipKey) {
       const ipRecord = this.attempts.get(ipKey);
@@ -97,6 +116,9 @@ export class LoginRateLimiter {
   public recordSuccess(ip: string, email?: string): void {
     const key = this.buildKey(ip, email);
     this.attempts.delete(key);
+    if (email) {
+      this.attempts.delete(`email:${email.toLowerCase().trim()}`);
+    }
   }
 
   public reset(ip?: string, email?: string): void {
@@ -106,6 +128,9 @@ export class LoginRateLimiter {
       }
       if (ip) {
         this.attempts.delete(this.buildKey(ip));
+      }
+      if (email) {
+        this.attempts.delete(`email:${email.toLowerCase().trim()}`);
       }
     } else {
       this.attempts.clear();

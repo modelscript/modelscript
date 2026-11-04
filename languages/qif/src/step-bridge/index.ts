@@ -1113,11 +1113,11 @@ export function buildQif3dMbdScene(doc: QifDocument, externalStepSource?: string
     const feat = doc.features.find((f) => f.id === datum.featureId) ?? doc.features[idx];
     const loc = (feat ? resolvedLocations.get(feat.id) : undefined) ?? [0, 0, 0];
     const norm = (feat ? resolvedNormals.get(feat.id) : undefined) ?? [0, 0, 1];
-    // Offset datum badges to the negative-Y / negative-X side of the part so they don't collide with right-side FCF callouts
+    // Anchor datum badges compactly near their datum feature within the viewport frustum
     const badgePos: [number, number, number] = [
-      loc[0] - 18 - idx * 10,
-      minY - 14 - (idx % 2) * 8,
-      loc[2] + (idx === 0 ? -10 : 12 + idx * 6),
+      loc[0] + (idx - 1) * 8,
+      Math.max(minY - 6, loc[1] - 12),
+      loc[2] + (idx === 0 ? -6 : 7),
     ];
     return {
       datumId: datum.id,
@@ -1199,15 +1199,18 @@ export function buildQif3dMbdScene(doc: QifDocument, externalStepSource?: string
       sampleCount,
     });
 
-    // Fan out callout cards in a clean vertical ladder on the +X/+Y side of the CAD model
-    const zSpan = Math.max(36, (maxZ - minZ) * 2.2);
-    const zTop = maxZ + 18;
-    const zStep = totalChars > 1 ? zSpan / (totalChars - 1) : 0;
-    const calloutZ = zTop - idx * zStep;
-    const calloutX = maxX + 26;
-    const calloutY = maxY * 0.4 + (idx - (totalChars - 1) / 2) * 10;
+    // Distribute callout pins horizontally across the part's top/front envelope so they never stack along the camera ray
+    const xSpan = Math.max(54, maxX - minX - 8);
+    const xStep = totalChars > 1 ? xSpan / (totalChars - 1) : 0;
+    const calloutX = totalChars > 1 ? minX + 4 + idx * xStep : surfaceAnchor[0] + 12;
+    const calloutY = (idx % 2 === 0 ? -1 : 1) * Math.max(8, maxY * 0.42);
+    const calloutZ = maxZ + 6 + (idx % 2) * 5;
 
-    const leaderElbow: [number, number, number] = [calloutX - 10, calloutY * 0.7, calloutZ];
+    const leaderElbow: [number, number, number] = [
+      (surfaceAnchor[0] + calloutX) * 0.5,
+      (surfaceAnchor[1] + calloutY) * 0.5,
+      calloutZ - 2,
+    ];
     const calloutPosition: [number, number, number] = [calloutX, calloutY, calloutZ];
 
     return {

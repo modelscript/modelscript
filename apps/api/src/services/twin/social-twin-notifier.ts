@@ -28,8 +28,8 @@ export class SocialTwinNotifier {
    * create an artifact view of type "digital-twin-dashboard", and register a Physics PR proposal.
    */
   async notifyDriftAndOpenProposal(payload: DriftAlertPayload): Promise<{
-    postId: number;
-    artifactViewId: number;
+    postId: number | string;
+    artifactViewId: number | string;
     proposalId?: number | undefined;
   }> {
     // 1. Determine author (e.g. system bot or user 1)
@@ -119,7 +119,7 @@ CC: @thermal-lead @powertrain-lead @maintenance-ops`;
       });
     }
 
-    const result: { postId: number; artifactViewId: number; proposalId?: number | undefined } = {
+    const result: { postId: number | string; artifactViewId: number | string; proposalId?: number | undefined } = {
       postId,
       artifactViewId,
     };

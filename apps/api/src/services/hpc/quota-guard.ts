@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type express from "express";
+import jwt from "jsonwebtoken";
 import type { LibraryDatabase } from "../../database.js";
 import { calculateCostCredits, getComputeProfile } from "./compute-profiles.js";
 import type { ComputeProfile, HpcResourceSpec } from "./hpc-types.js";
@@ -156,6 +157,31 @@ export function resolveRequestUserId(req: express.Request, database: LibraryData
   }
   if (reqAny.userId) {
     return reqAny.userId;
+  }
+
+  const authHeader = req.headers?.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    try {
+      const token = authHeader.slice(7).trim();
+      const secret = process.env["JWT_SECRET"] || "ansatz-dev-jwt-secret-do-not-use-in-prod";
+      const decoded = jwt.verify(token, secret) as { id?: number };
+      if (decoded?.id) {
+        return decoded.id;
+      }
+    } catch {}
+  }
+
+  const cookieHeader = req.headers?.cookie || "";
+  const cookieMatch = cookieHeader.match(/(?:^|;\s*)modelscript_token=([^;]+)/);
+  if (cookieMatch?.[1]) {
+    try {
+      const token = decodeURIComponent(cookieMatch[1]);
+      const secret = process.env["JWT_SECRET"] || "ansatz-dev-jwt-secret-do-not-use-in-prod";
+      const decoded = jwt.verify(token, secret) as { id?: number };
+      if (decoded?.id) {
+        return decoded.id;
+      }
+    } catch {}
   }
 
   if (process.env["NODE_ENV"] !== "test") {

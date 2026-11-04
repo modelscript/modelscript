@@ -67,6 +67,23 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
       else if (lang.slug === "modelscript") cliCmd = "compile";
       else if (lang.slug === "step") cliCmd = "csg";
       else if (lang.slug === "ssp") cliCmd = "fmu";
+      else if (lang.slug === "automationml") cliCmd = "aml";
+      else if (
+        [
+          "gproms",
+          "cantera",
+          "phreeqc",
+          "smiles",
+          "antimony",
+          "bngl",
+          "genbank",
+          "nmtran",
+          "pdb",
+          "sbol",
+          "sedml",
+        ].includes(lang.slug)
+      )
+        cliCmd = "lint";
       else cliCmd = "";
     }
 
@@ -77,12 +94,30 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
 
     // Capabilities
     const hasDaeDir = fs.existsSync(path.join(dir, "src/dae"));
+    const hasSolverDir = fs.existsSync(path.join(dir, "src/solver"));
     const hasDaeLowering =
       hasDaeDir ||
       actions.some((a) => a.includes("dae")) ||
-      ["modelica", "modelscript", "c", "simpack", "gensys", "adams", "urdf", "spice"].includes(lang.slug);
+      [
+        "modelica",
+        "modelscript",
+        "c",
+        "simpack",
+        "gensys",
+        "adams",
+        "urdf",
+        "spice",
+        "gproms",
+        "cantera",
+        "antimony",
+        "bngl",
+        "nmtran",
+        "opensim",
+        "cellml",
+      ].includes(lang.slug);
 
     const hasSimulate =
+      hasSolverDir ||
       actions.some((a) =>
         [
           "simulate",
@@ -95,6 +130,9 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
           "kinetics",
           "solve-flash",
           "route-flow",
+          "inverse-dynamics",
+          "dosimetry",
+          "bragg-peak",
         ].includes(a),
       ) ||
       [
@@ -114,6 +152,18 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
         "gensys",
         "simpack",
         "adams",
+        "gproms",
+        "cantera",
+        "phreeqc",
+        "antimony",
+        "bngl",
+        "nmtran",
+        "sedml",
+        "opensim",
+        "dicom-rt",
+        "cellml",
+        "febio",
+        "topas",
       ].includes(lang.slug) ||
       "@modelscript/simulate" in allDeps;
 
@@ -141,6 +191,27 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
     if (lang.slug === "owl2") projections.push("SPARQL", "SysML v2");
     if (lang.slug === "csv") projections.push("Modelica", "DAE");
     if (lang.slug === "simulink") projections.push("Modelica", "DAE");
+    if (lang.slug === "oscal") projections.push("SysML v2", "ReqIF");
+    if (lang.slug === "qif") projections.push("STEP", "SysML v2");
+    if (lang.slug === "automationml") projections.push("URDF", "Modelica", "SysML v2");
+    if (["gproms", "cantera", "phreeqc", "cellml", "opensim", "nmtran"].includes(lang.slug)) {
+      projections.push("Modelica", "DAE");
+    }
+    if (["antimony", "bngl", "sedml"].includes(lang.slug)) {
+      projections.push("SBML", "Modelica");
+    }
+    if (["genbank", "sbol", "smiles", "pdb"].includes(lang.slug)) {
+      projections.push("SBML", "OWL2");
+    }
+    if (["dicom-rt", "nifti", "topas"].includes(lang.slug)) {
+      projections.push("NIfTI", "DICOM-RT");
+    }
+    if (["febio", "three-mf"].includes(lang.slug)) {
+      projections.push("STEP", "OpenSCAD");
+    }
+    if (lang.slug === "igtl") {
+      projections.push("URDF", "DICOM-RT");
+    }
 
     const ruleCount = rulesBySlug[lang.slug] || 0;
     const hasLint =

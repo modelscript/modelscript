@@ -51,17 +51,17 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
       return null;
     }
 
-    const cleanNs = namespace.replace(/[^a-zA-Z0-9_.-]/g, "");
-    const cleanProj = project.replace(/\.git$/, "").replace(/[^a-zA-Z0-9_.-]/g, "");
+    const rawProj = project.replace(/\.git$/i, "");
     if (
-      !cleanNs ||
-      !cleanProj ||
-      cleanNs.toLowerCase() === "_activity_cache" ||
-      !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(cleanNs) ||
-      !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(cleanProj)
+      namespace.toLowerCase() === "_activity_cache" ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(namespace) ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(rawProj)
     ) {
       return null;
     }
+
+    const cleanNs = namespace;
+    const cleanProj = rawProj;
 
     const resolvedBase = path.resolve(baseDir);
     const resolved = path.resolve(resolvedBase, cleanNs, `${cleanProj}.git`);

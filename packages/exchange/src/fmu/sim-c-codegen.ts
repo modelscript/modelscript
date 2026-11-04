@@ -214,7 +214,9 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
       const ref = vrMap.get(name);
       const exprId = dae.getVarExpression(i);
       if (ref !== undefined && typeof exprId === "number" && exprId >= 0) {
-        initStatements.push(`  g_vars[${ref}] = ${exprToC(dae, exprId, varByName, derMap)};  /* ${name} */`);
+        initStatements.push(
+          `  g_vars[${ref}] = ${exprToC(dae, exprId, varByName, derMap)};  /* ${sanitizeCComment(name)} */`,
+        );
       }
     }
   }
@@ -230,11 +232,13 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
         const startAttr = dae.getVarAttrExprId(i, "start");
         const initExpr = typeof startAttr === "number" && startAttr >= 0 ? startAttr : dae.getVarExpression(i);
         if (typeof initExpr === "number" && initExpr >= 0) {
-          initStatements.push(`  g_vars[${ref}] = ${exprToC(dae, initExpr, varByName, derMap)};  /* ${name} */`);
+          initStatements.push(
+            `  g_vars[${ref}] = ${exprToC(dae, initExpr, varByName, derMap)};  /* ${sanitizeCComment(name)} */`,
+          );
         } else {
           const startVal = dae.getVarStartValue(i);
           if (startVal !== 0) {
-            initStatements.push(`  g_vars[${ref}] = ${formatCDouble(startVal)};  /* ${name} */`);
+            initStatements.push(`  g_vars[${ref}] = ${formatCDouble(startVal)};  /* ${sanitizeCComment(name)} */`);
           }
         }
       }
@@ -243,7 +247,7 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
 
   // Copy initial state values into g_states[]
   for (const sv of stateVarRefs) {
-    initStatements.push(`  g_states[${sv.idx}] = g_vars[${sv.vr}];  /* ${sv.name} */`);
+    initStatements.push(`  g_states[${sv.idx}] = g_vars[${sv.vr}];  /* ${sanitizeCComment(sv.name)} */`);
   }
 
   const initPreamble = [
@@ -272,12 +276,16 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
     if (lhsDer) {
       const idx = derMap.get(lhsDer);
       if (idx !== undefined) {
-        derStatements.push(`  g_derivatives[${idx}] = ${exprToC(dae, rhs, varByName, derMap)};  /* der(${lhsDer}) */`);
+        derStatements.push(
+          `  g_derivatives[${idx}] = ${exprToC(dae, rhs, varByName, derMap)};  /* der(${sanitizeCComment(lhsDer)}) */`,
+        );
       }
     } else if (rhsDer) {
       const idx = derMap.get(rhsDer);
       if (idx !== undefined) {
-        derStatements.push(`  g_derivatives[${idx}] = ${exprToC(dae, lhs, varByName, derMap)};  /* der(${rhsDer}) */`);
+        derStatements.push(
+          `  g_derivatives[${idx}] = ${exprToC(dae, lhs, varByName, derMap)};  /* der(${sanitizeCComment(rhsDer)}) */`,
+        );
       }
     }
   }
@@ -293,7 +301,9 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
       if (!targetName.startsWith("der(")) {
         const ref = vrMap.get(targetName);
         if (ref !== undefined) {
-          derStatements.push(`  g_vars[${ref}] = ${exprToC(dae, rhs, varByName, derMap)};  /* ${targetName} */`);
+          derStatements.push(
+            `  g_vars[${ref}] = ${exprToC(dae, rhs, varByName, derMap)};  /* ${sanitizeCComment(targetName)} */`,
+          );
         }
       }
     }
@@ -343,7 +353,7 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
               const sv = varByName.get(lhsName);
               if (sv) {
                 L.push(
-                  `    g_vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId, varByName, derMap)};  /* ${lhsName} */`,
+                  `    g_vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId, varByName, derMap)};  /* ${sanitizeCComment(lhsName)} */`,
                 );
                 const stateRef = stateRefByVr.get(sv.valueReference);
                 if (stateRef) L.push(`    g_states[${stateRef.idx}] = g_vars[${sv.valueReference}];`);
@@ -361,7 +371,7 @@ export function generateSimulationC(dae: DAEBuilder, fmuResult: FmuResult, optio
                   const sv = varByName.get(stateName);
                   if (sv) {
                     L.push(
-                      `    g_vars[${sv.valueReference}] = ${exprToC(dae, arg1, varByName, derMap)};  /* reinit(${stateName}) */`,
+                      `    g_vars[${sv.valueReference}] = ${exprToC(dae, arg1, varByName, derMap)};  /* reinit(${sanitizeCComment(stateName)}) */`,
                     );
                     const stateRef = stateRefByVr.get(sv.valueReference);
                     if (stateRef) L.push(`    g_states[${stateRef.idx}] = g_vars[${sv.valueReference}];`);

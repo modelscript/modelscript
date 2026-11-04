@@ -27,7 +27,7 @@ import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMo
 
 export interface QifViewerProps {
   artifactId?: string | number | undefined;
-  viewConfig: unknown;
+  viewConfig?: Record<string, unknown> | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 
@@ -189,31 +189,27 @@ function CameraController({
 }) {
   const { camera } = useThree();
   useEffect(() => {
+    camera.up.set(0, 0, 1);
+  }, [camera]);
+
+  useEffect(() => {
     if (!presetTrigger) return;
     const dist = 48;
+    camera.up.set(0, 0, 1);
     switch (presetTrigger.preset) {
       case "front":
         camera.position.set(0, -dist, 8);
         break;
-      case "back":
-        camera.position.set(0, dist, 8);
-        break;
       case "top":
         camera.position.set(0, -0.01, dist);
-        break;
-      case "bottom":
-        camera.position.set(0, 0.01, -dist);
-        break;
-      case "left":
-        camera.position.set(-dist, 0, 8);
         break;
       case "right":
         camera.position.set(dist, 0, 8);
         break;
       case "iso":
-      case "fit":
+      case "reset":
       default:
-        camera.position.set(34, -36, 28);
+        camera.position.set(36, -38, 28);
         break;
     }
     camera.lookAt(0, 0, 0);
@@ -308,7 +304,7 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
   const [showHeatmap, setShowHeatmap] = useState<boolean>(true);
-  const [showProbes, setShowProbes] = useState<boolean>(true);
+  const [showProbes, setShowProbes] = useState<boolean>(false);
   const [show3dLabels, setShow3dLabels] = useState<boolean>(true);
   const [renderMode, setRenderMode] = useState<RenderMode>("shaded");
   const [clipAxis, setClipAxis] = useState<ClipAxis>("none");
@@ -331,11 +327,11 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
     return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : undefined;
   }, [viewConfig]);
 
-  const parsedData = useMemo((): {
+  const baseParsedData = useMemo((): {
     doc: QifDocument;
     scene: Qif3dMbdScene;
-    spcSvg: string;
-    heatmapSvg: string;
+    rawSpcSvg: string;
+    rawHeatmapSvg: string;
   } => {
     let doc: QifDocument;
     try {
@@ -344,17 +340,26 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
       doc = parseQif(DEFAULT_QIF_XML);
     }
     const scene = buildQif3dMbdScene(doc, externalStepText);
-    const rawSpcSvg = renderQifSpcChartSvg(scene.spcSummary);
-    const rawHeatmapSvg = renderQifMbdHeatmapSvg(doc, scene.spcSummary);
+    const rawSpcSvg = DOMPurify.sanitize(renderQifSpcChartSvg(scene.spcSummary));
+    const rawHeatmapSvg = DOMPurify.sanitize(renderQifMbdHeatmapSvg(doc, scene.spcSummary));
     return {
       doc,
       scene,
-      spcSvg: DOMPurify.sanitize(adaptSvgMarkupForTheme(rawSpcSvg, isDark)),
-      heatmapSvg: DOMPurify.sanitize(adaptSvgMarkupForTheme(rawHeatmapSvg, isDark)),
+      rawSpcSvg,
+      rawHeatmapSvg,
     };
-  }, [rawQifText, externalStepText, isDark]);
+  }, [rawQifText, externalStepText]);
 
-  const { doc, scene, spcSvg, heatmapSvg } = parsedData;
+  const spcSvg = useMemo(
+    () => adaptSvgMarkupForTheme(baseParsedData.rawSpcSvg, isDark),
+    [baseParsedData.rawSpcSvg, isDark],
+  );
+  const heatmapSvg = useMemo(
+    () => adaptSvgMarkupForTheme(baseParsedData.rawHeatmapSvg, isDark),
+    [baseParsedData.rawHeatmapSvg, isDark],
+  );
+
+  const { doc, scene } = baseParsedData;
 
   const activeClippingPlanes = useMemo(() => {
     if (clipAxis === "none") return [];
@@ -366,7 +371,7 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
   }, [clipAxis, clipOffset]);
 
   const sceneScale = useMemo(() => {
-    return scene.boundingBox.radius > 0 ? 18 / scene.boundingBox.radius : 0.45;
+    return scene.boundingBox.radius > 0 ? 17 / scene.boundingBox.radius : 0.42;
   }, [scene.boundingBox.radius]);
 
   const sceneCenter = scene.boundingBox.center;
@@ -374,9 +379,21 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
   const title: string =
     viewConfig?.title || viewConfig?.filename || doc.header.partName || "TurbineBladeRoot_MBD_Inspection.qif";
 
+  const activeCallout = useMemo(() => {
+    if (selectedCharId) {
+      return scene.callouts.find((c) => c.characteristicId === selectedCharId) ?? null;
+    }
+    if (selectedFeatureId) {
+      return scene.callouts.find((c) => c.featureId === selectedFeatureId) ?? null;
+    }
+    return null;
+  }, [scene.callouts, selectedCharId, selectedFeatureId]);
+
   const handleSelectCallout = (callout: Qif3dCalloutAnchor) => {
     setSelectedCharId((prev) => (prev === callout.characteristicId ? null : callout.characteristicId));
-    setSelectedFeatureId(callout.featureId);
+    setSelectedFeatureId((prev) =>
+      selectedCharId === callout.characteristicId && prev === callout.featureId ? null : callout.featureId,
+    );
   };
 
   const handleCopySource = async () => {
@@ -430,72 +447,53 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
       bg="var(--color-canvas-default, #0d1117)"
       overflow="hidden"
     >
-      {/* Top Workbench Header */}
+      {/* Compact Single-Row Top Toolbar */}
       <Box
+        height="44px"
+        minHeight="44px"
         px={3}
-        py={2}
         display="flex"
         alignItems="center"
         justifyContent="space-between"
-        flexWrap="wrap"
         gap={2}
         borderBottom="1px solid var(--color-border-default, #30363d)"
-        bg="var(--color-canvas-subtle, #161b22)"
+        bg="var(--surface-hud, var(--color-canvas-subtle, #161b22))"
+        zIndex={20}
       >
-        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+        <Box display="flex" alignItems="center" gap={2} minWidth={0}>
+          {!isFullScreen && (
+            <Text
+              style={{
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "var(--color-fg-default, #e6edf3)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {title}
+            </Text>
+          )}
           <span
             style={{
               fontSize: "10px",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              padding: "2px 8px",
+              fontWeight: 600,
+              padding: "2px 7px",
               borderRadius: "999px",
-              background: "rgba(2, 132, 199, 0.16)",
+              background: "rgba(56, 189, 248, 0.15)",
               color: "#38bdf8",
               border: "1px solid rgba(56, 189, 248, 0.35)",
               fontFamily: "var(--font-mono, monospace)",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
             }}
           >
-            ISO 23952 QIF 3.0 + STEP AP242
-          </span>
-          <Text
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              color: "var(--color-fg-default, #e6edf3)",
-            }}
-          >
-            {title}
-          </Text>
-          <span
-            style={{
-              fontSize: "10px",
-              fontFamily: "var(--font-mono, monospace)",
-              padding: "1px 6px",
-              borderRadius: "4px",
-              background: "rgba(34, 197, 94, 0.14)",
-              color: "#4ade80",
-              border: "1px solid rgba(34, 197, 94, 0.3)",
-            }}
-          >
-            STEP B-Rep: {scene.reconciliation.matchedFeatures.length}/{doc.features.length} Faces
-          </span>
-          <span
-            style={{
-              fontSize: "10px",
-              fontFamily: "var(--font-mono, monospace)",
-              padding: "1px 6px",
-              borderRadius: "4px",
-              background: "rgba(56, 189, 248, 0.12)",
-              color: "#7dd3fc",
-              border: "1px solid rgba(56, 189, 248, 0.25)",
-            }}
-          >
-            Min Cpk: {scene.spcSummary.minCpk.toFixed(2)}
+            QIF 3.0 · STEP AP242
           </span>
         </Box>
 
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} flexShrink={0}>
           <div
             role="tablist"
             aria-label="QIF MBD Viewer Mode"
@@ -512,7 +510,7 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
               { id: "3d" as const, label: "3D CAD + GD&T" },
               { id: "boc" as const, label: `BoC (${doc.characteristics.length})` },
               { id: "spc" as const, label: "SPC & Heatmap" },
-              { id: "code" as const, label: `Code (${activeSourceLines.length}L)` },
+              { id: "code" as const, label: "Code" },
             ].map((tab) => {
               const active = viewTab === tab.id;
               return (
@@ -531,6 +529,7 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
                     fontSize: "11px",
                     fontWeight: 600,
                     cursor: "pointer",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {tab.label}
@@ -549,551 +548,443 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
       {/* Main Content Area */}
       <Box flex={1} position="relative" overflow="hidden" display="flex">
         {viewTab === "3d" && (
-          <Box flex={1} position="relative" display="flex" width="100%" height="100%">
-            {/* Left / Center 3D STEP AP242 + QIF Overlay Viewport */}
-            <Box
-              flex={1}
-              position="relative"
-              height="100%"
-              style={{
-                background: isDark
-                  ? "radial-gradient(circle at 42% 48%, #1e293b 0%, #090d16 100%)"
-                  : "radial-gradient(circle at 42% 48%, #f1f5f9 0%, #cbd5e1 100%)",
-              }}
-            >
-              <ViewportCameraControls
-                onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })}
-                renderMode={renderMode}
-                onRenderModeChange={setRenderMode}
-                clipAxis={clipAxis}
-                onClipAxisChange={setClipAxis}
-                clipOffset={clipOffset}
-                onClipOffsetChange={setClipOffset}
-              />
+          <Box
+            flex={1}
+            position="relative"
+            width="100%"
+            height="100%"
+            style={{
+              background: isDark
+                ? "radial-gradient(circle at 50% 48%, #1e293b 0%, #090d16 100%)"
+                : "radial-gradient(circle at 50% 48%, #f8fafc 0%, #cbd5e1 100%)",
+            }}
+          >
+            <ViewportCameraControls
+              onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })}
+              renderMode={renderMode}
+              onRenderModeChange={setRenderMode}
+              clipAxis={clipAxis}
+              onClipAxisChange={setClipAxis}
+              clipOffset={clipOffset}
+              onClipOffsetChange={setClipOffset}
+            />
 
-              {/* Top-left MBD Layer Toggles */}
-              <Box position="absolute" top={10} left={10} zIndex={10} display="flex" gap={1} flexWrap="wrap">
-                {[
-                  {
-                    label: "Deviation Heatmap",
-                    active: showHeatmap,
-                    toggle: () => setShowHeatmap((v) => !v),
-                  },
-                  {
-                    label: `CMM Hits (${scene.probeHits.length})`,
-                    active: showProbes,
-                    toggle: () => setShowProbes((v) => !v),
-                  },
-                  {
-                    label: "3D Callout Pins",
-                    active: show3dLabels,
-                    toggle: () => setShow3dLabels((v) => !v),
-                  },
-                ].map((btn) => (
-                  <button
-                    key={btn.label}
-                    type="button"
-                    onClick={btn.toggle}
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: 600,
-                      padding: "3px 8px",
-                      borderRadius: "5px",
-                      cursor: "pointer",
-                      background: btn.active ? "rgba(15, 23, 42, 0.88)" : "rgba(15, 23, 42, 0.55)",
-                      color: btn.active ? "#38bdf8" : "#94a3b8",
-                      border: btn.active ? "1px solid rgba(56, 189, 248, 0.45)" : "1px solid rgba(148, 163, 184, 0.2)",
-                    }}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </Box>
-
-              <Canvas
-                gl={{ preserveDrawingBuffer: true, localClippingEnabled: true }}
-                camera={{ position: [34, -36, 28], fov: 44 }}
-                onPointerMissed={() => {
-                  setSelectedFeatureId(null);
-                  setSelectedCharId(null);
-                }}
-              >
-                <AutoThumbnailCapture
-                  artifactId={typeof artifactId === "number" ? artifactId : undefined}
-                  hasThumbnail={Boolean(viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url)}
-                />
-                <ambientLight intensity={0.55} />
-                <directionalLight position={[30, -25, 40]} intensity={0.95} />
-                <directionalLight position={[-25, 25, -15]} intensity={0.4} />
-                <spotLight position={[10, 10, 35]} angle={0.3} penumbra={1} intensity={0.35} />
-
-                <Suspense fallback={null}>
-                  <Environment files="/hdri/studio.hdr" environmentIntensity={0.3} />
-                </Suspense>
-
-                <group
-                  scale={[sceneScale, sceneScale, sceneScale]}
-                  position={[-sceneCenter[0] * sceneScale, -sceneCenter[1] * sceneScale, -sceneCenter[2] * sceneScale]}
-                >
-                  {/* 1. 3D STEP AP242 B-Rep Solid & Individual Feature Topology Surfaces */}
-                  {scene.meshes.map((meshPayload) => (
-                    <QifFeatureMesh
-                      key={meshPayload.id}
-                      payload={meshPayload}
-                      isSelected={Boolean(meshPayload.featureId) && meshPayload.featureId === selectedFeatureId}
-                      showHeatmap={showHeatmap}
-                      renderMode={renderMode}
-                      clippingPlanes={activeClippingPlanes}
-                      onSelectFeature={(fid) => setSelectedFeatureId(fid ?? null)}
-                    />
-                  ))}
-
-                  {/* 2. Datum Reference Frame (DRF) Coordinate Axes at Origin */}
-                  <Line
-                    points={[
-                      [0, 0, 0],
-                      [36, 0, 0],
-                    ]}
-                    color="#ef4444"
-                    lineWidth={2}
-                  />
-                  <Line
-                    points={[
-                      [0, 0, 0],
-                      [0, 32, 0],
-                    ]}
-                    color="#22c55e"
-                    lineWidth={2}
-                  />
-                  <Line
-                    points={[
-                      [0, 0, 0],
-                      [0, 0, 34],
-                    ]}
-                    color="#3b82f6"
-                    lineWidth={2}
-                  />
-
-                  {/* 3. 3D CMM Touch-Probe Hit Spheres & Amplified Deviation Vectors */}
-                  {showProbes &&
-                    scene.probeHits.map((hit) => {
-                      const isHighlighted = !selectedFeatureId || hit.featureId === selectedFeatureId;
-                      const devScale = 120; // Amplify micron deviations for 3D visual clarity
-                      const tip: [number, number, number] = [
-                        hit.position[0] + hit.deviationVector[0] * devScale,
-                        hit.position[1] + hit.deviationVector[1] * devScale,
-                        hit.position[2] + hit.deviationVector[2] * devScale,
-                      ];
-                      return (
-                        <group key={hit.id}>
-                          <mesh position={hit.position}>
-                            <sphereGeometry args={[isHighlighted ? 0.95 : 0.6, 12, 12]} />
-                            <meshStandardMaterial
-                              color={isHighlighted ? "#38bdf8" : "#475569"}
-                              emissive={isHighlighted ? "#0284c7" : "#000000"}
-                              emissiveIntensity={0.4}
-                            />
-                          </mesh>
-                          {isHighlighted && <Line points={[hit.position, tip]} color="#38bdf8" lineWidth={1.5} />}
-                        </group>
-                      );
-                    })}
-
-                  {/* 4. Spatially Separated 3D ASME Datum Reference Frames ([ -A- ], [ -B- ], [ -C- ]) */}
-                  {show3dLabels &&
-                    scene.datumBadges.map((datum) => (
-                      <group key={datum.datumId}>
-                        <Line
-                          points={[datum.surfaceAnchor, datum.badgePosition]}
-                          color="#94a3b8"
-                          lineWidth={1.2}
-                          dashed
-                          dashSize={2}
-                          gapSize={1.5}
-                        />
-                        <Html position={datum.badgePosition} center>
-                          <div
-                            onClick={() => {
-                              if (datum.featureId) setSelectedFeatureId(datum.featureId);
-                            }}
-                            style={{
-                              background: "rgba(15, 23, 42, 0.92)",
-                              border: "1.5px solid #60a5fa",
-                              borderRadius: "4px",
-                              padding: "1px 6px",
-                              color: "#f8fafc",
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              fontFamily: "var(--font-mono, monospace)",
-                              whiteSpace: "nowrap",
-                              cursor: "pointer",
-                              boxShadow: "0 2px 6px rgba(0,0,0,0.45)",
-                            }}
-                            title={`Datum ${datum.datumLabel} (${datum.featureName ?? ""})`}
-                          >
-                            [{datum.datumLabel}]{" "}
-                            {datum.stepEntityId ? (
-                              <span style={{ color: "#38bdf8", fontSize: "9px" }}>{datum.stepEntityId}</span>
-                            ) : null}
-                          </div>
-                        </Html>
-                      </group>
-                    ))}
-
-                  {/* 5. Spatially Separated 3D Balloon Callouts & Leader Lines */}
-                  {show3dLabels &&
-                    scene.callouts.map((callout) => {
-                      const statusColor = getStatusHexColor(callout.status, callout.toleranceRatio);
-                      const isActive =
-                        selectedCharId === callout.characteristicId || selectedFeatureId === callout.featureId;
-                      return (
-                        <group key={callout.characteristicId}>
-                          <Line
-                            points={[callout.surfaceAnchor, callout.leaderElbow, callout.calloutPosition]}
-                            color={isActive ? "#38bdf8" : statusColor}
-                            lineWidth={isActive ? 2.2 : 1.3}
-                          />
-                          <mesh position={callout.surfaceAnchor}>
-                            <sphereGeometry args={[1.15, 12, 12]} />
-                            <meshBasicMaterial color={isActive ? "#38bdf8" : statusColor} />
-                          </mesh>
-                          <Html position={callout.calloutPosition} center>
-                            <div
-                              onClick={() => handleSelectCallout(callout)}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "5px",
-                                background: isActive ? "rgba(14, 116, 144, 0.95)" : "rgba(15, 23, 42, 0.92)",
-                                border: `1.5px solid ${isActive ? "#38bdf8" : statusColor}`,
-                                borderRadius: "6px",
-                                padding: "2px 7px",
-                                color: "#f8fafc",
-                                fontSize: "10px",
-                                fontWeight: 600,
-                                fontFamily: "var(--font-mono, monospace)",
-                                whiteSpace: "nowrap",
-                                cursor: "pointer",
-                                boxShadow: "0 3px 10px rgba(0,0,0,0.5)",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  width: "15px",
-                                  height: "15px",
-                                  borderRadius: "50%",
-                                  background: statusColor,
-                                  color: "#0f172a",
-                                  fontWeight: 800,
-                                  fontSize: "9.5px",
-                                }}
-                              >
-                                {callout.balloonNumber}
-                              </span>
-                              <span style={{ color: "#38bdf8", fontWeight: 700 }}>{callout.gdtSymbol}</span>
-                              <span>
-                                {callout.isDiametrical ? "⌀" : ""}
-                                {callout.toleranceZone}
-                                {formatMaterialModifier(callout.materialCondition)}
-                              </span>
-                              {callout.stepEntityId && (
-                                <span
-                                  style={{
-                                    color: "#94a3b8",
-                                    fontSize: "9px",
-                                    borderLeft: "1px solid #334155",
-                                    paddingLeft: "4px",
-                                  }}
-                                >
-                                  {callout.stepEntityId}
-                                </span>
-                              )}
-                            </div>
-                          </Html>
-                        </group>
-                      );
-                    })}
-                </group>
-
-                <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
-                <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
-              </Canvas>
-
-              {/* Bottom-left Deviation Heatmap Legend */}
+            {/* Floating Selected ASME Y14.5 Callout / Feature Inspector Pill (only visible when a feature/pin is clicked) */}
+            {activeCallout && (
               <Box
                 position="absolute"
-                bottom={10}
-                left={10}
+                top={12}
+                right={12}
                 zIndex={10}
                 px={2}
                 py={1}
-                borderRadius="6px"
-                bg="rgba(15, 23, 42, 0.86)"
-                border="1px solid rgba(51, 65, 85, 0.8)"
+                borderRadius="10px"
+                bg="rgba(15, 23, 42, 0.88)"
+                border={`1px solid ${getStatusHexColor(activeCallout.status, activeCallout.toleranceRatio)}`}
                 display="flex"
                 alignItems="center"
-                gap={3}
-                style={{ fontSize: "10.5px", color: "#cbd5e1" }}
+                gap={2}
+                style={{
+                  backdropFilter: "blur(10px)",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: "11px",
+                  color: "#f8fafc",
+                }}
               >
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: "#22c55e",
-                    }}
-                  />
-                  In-Spec (&lt;75%)
-                </span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: "#f59e0b",
-                    }}
-                  />
-                  Marginal (75–100%)
-                </span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: "#ef4444",
-                    }}
-                  />
-                  Out-of-Tol (&gt;100%)
-                </span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: "#38bdf8",
-                    }}
-                  />
-                  CMM Probe Hits
-                </span>
-              </Box>
-            </Box>
-
-            {/* Right Docked ASME Y14.5 Feature Control Frame Stack */}
-            <Box
-              width="335px"
-              minWidth="310px"
-              height="100%"
-              overflow="auto"
-              p={2}
-              borderLeft="1px solid var(--color-border-default, #30363d)"
-              bg="var(--color-canvas-subtle, #0f172a)"
-              display="flex"
-              flexDirection="column"
-              gap={2}
-            >
-              <Box
-                px={1}
-                py={1}
-                display="flex"
-                alignItems="center"
-                justifyContent="space-between"
-                borderBottom="1px solid rgba(51, 65, 85, 0.6)"
-              >
-                <Text
+                <span
                   style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    color: "#e2e8f0",
-                    letterSpacing: "0.02em",
+                    width: "16px",
+                    height: "16px",
+                    borderRadius: "50%",
+                    background: getStatusHexColor(activeCallout.status, activeCallout.toleranceRatio),
+                    color: "#0f172a",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "9.5px",
+                    fontWeight: 800,
                   }}
                 >
-                  ASME Y14.5 Feature Control Frames
-                </Text>
-                <Text style={{ fontSize: "10px", color: "#94a3b8" }}>Click to isolate 3D face</Text>
-              </Box>
-
-              {scene.callouts.map((callout) => {
-                const statusColor = getStatusHexColor(callout.status, callout.toleranceRatio);
-                const isSelected =
-                  selectedCharId === callout.characteristicId || selectedFeatureId === callout.featureId;
-                const datumsText =
-                  callout.datumReferences
+                  {activeCallout.balloonNumber}
+                </span>
+                <span style={{ color: "#38bdf8", fontWeight: 700 }}>{activeCallout.gdtSymbol}</span>
+                <span style={{ fontWeight: 700 }}>
+                  {activeCallout.isDiametrical ? "⌀" : ""}
+                  {activeCallout.toleranceZone}
+                  {formatMaterialModifier(activeCallout.materialCondition)}
+                </span>
+                <span style={{ color: "#cbd5e1", borderLeft: "1px solid #475569", paddingLeft: "6px" }}>
+                  {activeCallout.datumReferences
                     .map((d) => `${d.datumLabel}${formatMaterialModifier(d.materialCondition)}`)
-                    .join(" | ") || "Primary";
+                    .join(" | ") || "Primary"}
+                </span>
+                {activeCallout.stepEntityId && (
+                  <span style={{ color: "#38bdf8", borderLeft: "1px solid #475569", paddingLeft: "6px" }}>
+                    STEP {activeCallout.stepEntityId}
+                  </span>
+                )}
+                {activeCallout.measuredValue !== undefined && (
+                  <span style={{ color: "#94a3b8", borderLeft: "1px solid #475569", paddingLeft: "6px" }}>
+                    Act: <strong style={{ color: "#f8fafc" }}>{activeCallout.measuredValue.toFixed(3)}mm</strong>
+                  </span>
+                )}
+                {activeCallout.cpk !== undefined && (
+                  <span style={{ color: "#4ade80" }}>Cpk {activeCallout.cpk.toFixed(2)}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCharId(null);
+                    setSelectedFeatureId(null);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#94a3b8",
+                    cursor: "pointer",
+                    padding: "0 2px",
+                    fontSize: "11px",
+                  }}
+                  aria-label="Clear selected GD&T callout"
+                >
+                  ✕
+                </button>
+              </Box>
+            )}
 
-                return (
-                  <div
-                    key={callout.characteristicId}
-                    onClick={() => handleSelectCallout(callout)}
-                    style={{
-                      borderRadius: "6px",
-                      border: `1.5px solid ${isSelected ? "#38bdf8" : statusColor}`,
-                      background: isSelected ? "rgba(14, 116, 144, 0.18)" : "rgba(30, 41, 59, 0.78)",
-                      padding: "8px",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
+            <Canvas
+              gl={{ preserveDrawingBuffer: true, localClippingEnabled: true }}
+              camera={{ position: [36, -38, 28], up: [0, 0, 1], fov: 42 }}
+              onPointerMissed={() => {
+                setSelectedFeatureId(null);
+                setSelectedCharId(null);
+              }}
+            >
+              <AutoThumbnailCapture
+                artifactId={typeof artifactId === "number" ? artifactId : undefined}
+                hasThumbnail={Boolean(viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url)}
+              />
+              <ambientLight intensity={0.55} />
+              <directionalLight position={[30, -25, 40]} intensity={0.95} />
+              <directionalLight position={[-25, 25, -15]} intensity={0.4} />
+              <spotLight position={[10, 10, 35]} angle={0.3} penumbra={1} intensity={0.35} />
+
+              <Suspense fallback={null}>
+                <Environment files="/hdri/studio.hdr" environmentIntensity={0.3} />
+              </Suspense>
+
+              <group
+                scale={[sceneScale, sceneScale, sceneScale]}
+                position={[-sceneCenter[0] * sceneScale, -sceneCenter[1] * sceneScale, -sceneCenter[2] * sceneScale]}
+              >
+                {/* 1. 3D STEP AP242 B-Rep Solid & Individual Feature Topology Surfaces */}
+                {scene.meshes.map((meshPayload) => (
+                  <QifFeatureMesh
+                    key={meshPayload.id}
+                    payload={meshPayload}
+                    isSelected={Boolean(meshPayload.featureId) && meshPayload.featureId === selectedFeatureId}
+                    showHeatmap={showHeatmap}
+                    renderMode={renderMode}
+                    clippingPlanes={activeClippingPlanes}
+                    onSelectFeature={(fid) => {
+                      setSelectedFeatureId(fid ?? null);
+                      setSelectedCharId(null);
                     }}
-                  >
-                    {/* Top ASME Compartment Row */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "6px",
-                        borderBottom: "1px solid rgba(71, 85, 105, 0.5)",
-                        paddingBottom: "6px",
-                        marginBottom: "6px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          fontFamily: "var(--font-mono, monospace)",
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: "18px",
-                            height: "18px",
-                            borderRadius: "50%",
-                            border: `1.5px solid ${statusColor}`,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "10px",
-                            fontWeight: 700,
-                            color: "#f8fafc",
-                          }}
-                        >
-                          {callout.balloonNumber}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "15px",
-                            fontWeight: 700,
-                            color: "#38bdf8",
-                            padding: "0 4px",
-                          }}
-                          title={callout.gdtType}
-                        >
-                          {callout.gdtSymbol}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            fontWeight: 700,
-                            color: "#f8fafc",
-                            borderLeft: "1px solid #475569",
-                            paddingLeft: "6px",
-                          }}
-                        >
-                          {callout.isDiametrical ? "⌀" : ""}
-                          {callout.toleranceZone}
-                          {formatMaterialModifier(callout.materialCondition)}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            color: "#cbd5e1",
-                            borderLeft: "1px solid #475569",
-                            paddingLeft: "6px",
-                          }}
-                        >
-                          {datumsText}
-                        </span>
-                      </div>
+                  />
+                ))}
 
-                      <span
-                        style={{
-                          fontSize: "9.5px",
-                          fontWeight: 700,
-                          padding: "1px 7px",
-                          borderRadius: "999px",
-                          background: `${statusColor}22`,
-                          color: statusColor,
-                          border: `1px solid ${statusColor}`,
-                        }}
-                      >
-                        {callout.status}
-                      </span>
-                    </div>
+                {/* 2. Compact Datum Reference Frame (DRF) Coordinate Axes at Origin */}
+                <Line
+                  points={[
+                    [0, 0, 0],
+                    [10, 0, 0],
+                  ]}
+                  color="#ef4444"
+                  lineWidth={1.6}
+                />
+                <Line
+                  points={[
+                    [0, 0, 0],
+                    [0, 10, 0],
+                  ]}
+                  color="#22c55e"
+                  lineWidth={1.6}
+                />
+                <Line
+                  points={[
+                    [0, 0, 0],
+                    [0, 0, 10],
+                  ]}
+                  color="#3b82f6"
+                  lineWidth={1.6}
+                />
 
-                    {/* Feature Name & STEP Entity Row */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        fontSize: "10.5px",
-                        color: "#e2e8f0",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      <span style={{ fontWeight: 600 }}>{callout.featureName}</span>
-                      {callout.stepEntityId && (
-                        <span
+                {/* 3. 3D CMM Touch-Probe Hit Spheres & Amplified Deviation Vectors */}
+                {(showProbes || Boolean(selectedFeatureId)) &&
+                  scene.probeHits.map((hit) => {
+                    if (!showProbes && hit.featureId !== selectedFeatureId) return null;
+                    const isHighlighted = !selectedFeatureId || hit.featureId === selectedFeatureId;
+                    const devScale = 45;
+                    const tip: [number, number, number] = [
+                      hit.position[0] + hit.deviationVector[0] * devScale,
+                      hit.position[1] + hit.deviationVector[1] * devScale,
+                      hit.position[2] + hit.deviationVector[2] * devScale,
+                    ];
+                    return (
+                      <group key={hit.id}>
+                        <mesh position={hit.position}>
+                          <sphereGeometry args={[isHighlighted ? 0.55 : 0.35, 10, 10]} />
+                          <meshStandardMaterial
+                            color={isHighlighted ? "#38bdf8" : "#475569"}
+                            emissive={isHighlighted ? "#0284c7" : "#000000"}
+                            emissiveIntensity={0.4}
+                          />
+                        </mesh>
+                        {isHighlighted && <Line points={[hit.position, tip]} color="#38bdf8" lineWidth={1.2} />}
+                      </group>
+                    );
+                  })}
+
+                {/* 4. Compact 3D ASME Datum Reference Badges ([A], [B], [C]) */}
+                {show3dLabels &&
+                  scene.datumBadges.map((datum) => (
+                    <group key={datum.datumId}>
+                      <Line
+                        points={[datum.surfaceAnchor, datum.badgePosition]}
+                        color="#94a3b8"
+                        lineWidth={1}
+                        dashed
+                        dashSize={1.5}
+                        gapSize={1.5}
+                      />
+                      <Html position={datum.badgePosition} center zIndexRange={[1, 4]}>
+                        <div
+                          onClick={() => {
+                            if (datum.featureId) {
+                              setSelectedFeatureId((prev) => (prev === datum.featureId ? null : datum.featureId!));
+                              setSelectedCharId(null);
+                            }
+                          }}
                           style={{
-                            fontFamily: "var(--font-mono, monospace)",
-                            fontSize: "9.5px",
-                            color: "#38bdf8",
-                            background: "rgba(56, 189, 248, 0.12)",
-                            padding: "1px 5px",
+                            background: "rgba(15, 23, 42, 0.88)",
+                            border: "1px solid #60a5fa",
                             borderRadius: "4px",
-                            border: "1px solid rgba(56, 189, 248, 0.3)",
+                            padding: "1px 5px",
+                            color: "#f8fafc",
+                            fontSize: "9.5px",
+                            fontWeight: 700,
+                            fontFamily: "var(--font-mono, monospace)",
+                            whiteSpace: "nowrap",
+                            cursor: "pointer",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
                           }}
+                          title={`Datum ${datum.datumLabel} (${datum.featureName ?? ""} ${datum.stepEntityId ?? ""})`}
                         >
-                          STEP {callout.stepEntityId}
-                        </span>
-                      )}
-                    </div>
+                          [{datum.datumLabel}]
+                        </div>
+                      </Html>
+                    </group>
+                  ))}
 
-                    {/* Metrology Actuals & Bonus Tolerance Row */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        fontSize: "10px",
-                        fontFamily: "var(--font-mono, monospace)",
-                        color: "#94a3b8",
-                      }}
-                    >
-                      <span>
-                        Act:{" "}
-                        <strong style={{ color: "#f8fafc" }}>
-                          {callout.measuredValue !== undefined ? `${callout.measuredValue.toFixed(4)} mm` : "Pending"}
-                        </strong>
-                      </span>
-                      {callout.bonusTolerance > 0 && (
-                        <span style={{ color: "#38bdf8" }}>+Bonus: {callout.bonusTolerance.toFixed(3)}</span>
-                      )}
-                      {callout.cpk !== undefined && (
-                        <span>
-                          Cpk: <strong style={{ color: "#4ade80" }}>{callout.cpk.toFixed(2)}</strong>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                {/* 5. Spatially Separated 3D Balloon Callouts & Leader Lines */}
+                {show3dLabels &&
+                  scene.callouts.map((callout) => {
+                    const statusColor = getStatusHexColor(callout.status, callout.toleranceRatio);
+                    const isActive =
+                      selectedCharId === callout.characteristicId || selectedFeatureId === callout.featureId;
+                    return (
+                      <group key={callout.characteristicId}>
+                        <Line
+                          points={[callout.surfaceAnchor, callout.leaderElbow, callout.calloutPosition]}
+                          color={isActive ? "#38bdf8" : statusColor}
+                          lineWidth={isActive ? 2 : 1.1}
+                        />
+                        <mesh position={callout.surfaceAnchor}>
+                          <sphereGeometry args={[0.7, 10, 10]} />
+                          <meshBasicMaterial color={isActive ? "#38bdf8" : statusColor} />
+                        </mesh>
+                        <Html position={callout.calloutPosition} center zIndexRange={[1, 5]}>
+                          <div
+                            onClick={() => handleSelectCallout(callout)}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              background: isActive ? "rgba(14, 116, 144, 0.95)" : "rgba(15, 23, 42, 0.88)",
+                              border: `1.2px solid ${isActive ? "#38bdf8" : statusColor}`,
+                              borderRadius: "999px",
+                              padding: "1.5px 6px 1.5px 3px",
+                              color: "#f8fafc",
+                              fontSize: "9.5px",
+                              fontWeight: 600,
+                              fontFamily: "var(--font-mono, monospace)",
+                              whiteSpace: "nowrap",
+                              cursor: "pointer",
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                            }}
+                            title={`${callout.characteristicName} (${callout.featureName} ${callout.stepEntityId ?? ""}) — Click to inspect`}
+                          >
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: "14px",
+                                height: "14px",
+                                borderRadius: "50%",
+                                background: statusColor,
+                                color: "#0f172a",
+                                fontWeight: 800,
+                                fontSize: "9px",
+                              }}
+                            >
+                              {callout.balloonNumber}
+                            </span>
+                            <span style={{ color: "#38bdf8", fontWeight: 700 }}>{callout.gdtSymbol}</span>
+                            <span>
+                              {callout.isDiametrical ? "⌀" : ""}
+                              {callout.toleranceZone}
+                              {formatMaterialModifier(callout.materialCondition)}
+                            </span>
+                          </div>
+                        </Html>
+                      </group>
+                    );
+                  })}
+              </group>
+
+              <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
+              <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
+            </Canvas>
+
+            {/* Bottom-Left Unified MBD Overlay Pill Bar (non-overlapping with top-left camera controls) */}
+            <Box
+              position="absolute"
+              bottom={12}
+              left={12}
+              zIndex={10}
+              px={2}
+              py={1}
+              borderRadius="20px"
+              bg="rgba(15, 23, 42, 0.78)"
+              border="1px solid rgba(255, 255, 255, 0.12)"
+              display="flex"
+              alignItems="center"
+              gap={1}
+              style={{
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.35)",
+                userSelect: "none",
+              }}
+            >
+              {[
+                {
+                  label: "Heatmap",
+                  active: showHeatmap,
+                  toggle: () => setShowHeatmap((v) => !v),
+                  dotColor: "#22c55e",
+                },
+                {
+                  label: `CMM Hits (${scene.probeHits.length})`,
+                  active: showProbes,
+                  toggle: () => setShowProbes((v) => !v),
+                  dotColor: "#38bdf8",
+                },
+                {
+                  label: `GD&T Pins (${scene.callouts.length})`,
+                  active: show3dLabels,
+                  toggle: () => setShow3dLabels((v) => !v),
+                  dotColor: "#f59e0b",
+                },
+              ].map((btn) => (
+                <button
+                  key={btn.label}
+                  type="button"
+                  onClick={btn.toggle}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    fontFamily: "var(--font-mono, monospace)",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    cursor: "pointer",
+                    background: btn.active ? "rgba(6, 182, 212, 0.25)" : "transparent",
+                    color: btn.active ? "#38bdf8" : "#cbd5e1",
+                    border: btn.active ? "1px solid rgba(6, 182, 212, 0.4)" : "1px solid transparent",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: btn.active ? btn.dotColor : "#64748b",
+                    }}
+                  />
+                  {btn.label}
+                </button>
+              ))}
+            </Box>
+
+            {/* Bottom-Right Compact Metrology Status Pill */}
+            <Box
+              position="absolute"
+              bottom={12}
+              right={12}
+              zIndex={10}
+              px={2}
+              py={1}
+              borderRadius="20px"
+              bg="rgba(15, 23, 42, 0.78)"
+              border="1px solid rgba(255, 255, 255, 0.12)"
+              display="flex"
+              alignItems="center"
+              gap={2}
+              style={{
+                backdropFilter: "blur(10px)",
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: "10px",
+                color: "#cbd5e1",
+                userSelect: "none",
+              }}
+            >
+              <span style={{ color: "#4ade80", fontWeight: 700 }}>
+                B-Rep {scene.reconciliation.matchedFeatures.length}/{doc.features.length} Faces
+              </span>
+              <span style={{ color: "#64748b" }}>·</span>
+              <span style={{ color: "#38bdf8", fontWeight: 700 }}>Min Cpk {scene.spcSummary.minCpk.toFixed(2)}</span>
             </Box>
           </Box>
         )}
 
-        {/* Bill of Characteristics (BoC) & CMM Actuals Tab */}
+        {/* Bill of Characteristics (BoC) & ASME Y14.5 Feature Control Frames Tab */}
         {viewTab === "boc" && (
           <Box flex={1} overflow="auto" p={3} bg="var(--color-canvas-default, #0d1117)">
+            <Box
+              mb={2}
+              pb={2}
+              display="flex"
+              alignItems="center"
+              justifyContent="space-between"
+              borderBottom="1px solid var(--color-border-default, #30363d)"
+            >
+              <Text
+                style={{
+                  fontSize: "11.5px",
+                  fontWeight: 700,
+                  color: "var(--color-fg-default, #e6edf3)",
+                }}
+              >
+                ASME Y14.5 Feature Control Frames &amp; CMM Actuals
+              </Text>
+              <Text style={{ fontSize: "10.5px", color: "var(--color-fg-muted, #8b949e)" }}>
+                Click any row to isolate its 3D STEP B-Rep surface
+              </Text>
+            </Box>
             <table
               style={{
                 width: "100%",
@@ -1108,7 +999,7 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
                   style={{
                     borderBottom: "1px solid var(--color-border-default, #30363d)",
                     textAlign: "left",
-                    color: "#94a3b8",
+                    color: "var(--color-fg-muted, #8b949e)",
                   }}
                 >
                   <th style={{ padding: "8px" }}>#</th>
@@ -1134,13 +1025,13 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
                         setViewTab("3d");
                       }}
                       style={{
-                        borderBottom: "1px solid rgba(48, 54, 61, 0.6)",
+                        borderBottom: "1px solid var(--color-border-muted, rgba(48, 54, 61, 0.6))",
                         cursor: "pointer",
                       }}
                     >
                       <td style={{ padding: "8px", fontWeight: 700 }}>{c.balloonNumber}</td>
                       <td style={{ padding: "8px" }}>{c.characteristicName}</td>
-                      <td style={{ padding: "8px", color: "#38bdf8" }}>
+                      <td style={{ padding: "8px", color: "#0284c7" }}>
                         {c.stepEntityId ?? "—"} ({c.featureName})
                       </td>
                       <td style={{ padding: "8px", fontWeight: 700 }}>
@@ -1159,7 +1050,7 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
                         {c.effectiveTolerance.toFixed(4)} mm
                         {c.bonusTolerance > 0 ? ` (+${c.bonusTolerance.toFixed(3)})` : ""}
                       </td>
-                      <td style={{ padding: "8px", color: "#4ade80" }}>{c.cpk?.toFixed(2) ?? "—"}</td>
+                      <td style={{ padding: "8px", color: "#16a34a", fontWeight: 600 }}>{c.cpk?.toFixed(2) ?? "—"}</td>
                       <td style={{ padding: "8px" }}>
                         <span
                           style={{
@@ -1198,14 +1089,14 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
               border="1px solid var(--color-border-default, #30363d)"
               borderRadius="6px"
               p={2}
-              bg="#0f172a"
+              bg={isDark ? "#0f172a" : "#ffffff"}
               dangerouslySetInnerHTML={{ __html: spcSvg }}
             />
             <Box
               border="1px solid var(--color-border-default, #30363d)"
               borderRadius="6px"
               p={2}
-              bg="#0f172a"
+              bg={isDark ? "#0f172a" : "#ffffff"}
               dangerouslySetInnerHTML={{ __html: heatmapSvg }}
             />
           </Box>

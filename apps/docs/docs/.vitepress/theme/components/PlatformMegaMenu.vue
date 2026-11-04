@@ -1,9 +1,29 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
 import mcpData from "../data/mcp-tools.generated.json";
 import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFooterLink } from "./NavMegaMenu.vue";
 
 const props = defineProps<{ screenMenu?: boolean }>();
+
+const ansatzHref = ref("https://ansatz.social/explore");
+const ansatzLabel = ref("Ansatz Network (ansatz.social)");
+
+onMounted(() => {
+  if (typeof window !== "undefined") {
+    const { hostname, port, protocol } = window.location;
+    const isLocal =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "[::1]" ||
+      hostname.endsWith(".localhost");
+    if (isLocal) {
+      const targetPort = port && port !== "5173" && port !== "4173" ? port : "3001";
+      ansatzHref.value = `${protocol}//${hostname}:${targetPort}/explore`;
+      ansatzLabel.value = `Ansatz Network (${hostname}:${targetPort})`;
+    }
+  }
+});
 
 const columns: MegaMenuColumn[] = [
   {
@@ -130,8 +150,8 @@ const feature: MegaMenuFeature = {
   ctaHref: "/reference/mcp-and-ide",
 };
 
-const footerLinks: MegaMenuFooterLink[] = [
-  { label: "Ansatz Network (ansatz.social)", href: "https://ansatz.social", icon: "globe", target: "_blank" },
+const footerLinks = computed<MegaMenuFooterLink[]>(() => [
+  { label: ansatzLabel.value, href: ansatzHref.value, icon: "globe", target: "_blank" },
   { label: "Self-Hosting Guide", href: "/ansatz/self-hosting", icon: "database" },
   { label: "ActivityPub Federation", href: "/ansatz/federation", icon: "link" },
   { label: "Package Registry", href: "/ansatz/package-registry", icon: "box" },
@@ -139,7 +159,7 @@ const footerLinks: MegaMenuFooterLink[] = [
   { label: "Compiler Architecture", href: "/architecture/overview", icon: "cpu" },
   { label: "Algorithms Catalog (16 engines)", href: "/algorithms/overview", icon: "activity" },
   { label: "LLM Context (llms.txt)", href: "/llms.txt", icon: "sparkles", target: "_blank" },
-];
+]);
 </script>
 
 <template>

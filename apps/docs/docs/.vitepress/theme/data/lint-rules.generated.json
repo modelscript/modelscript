@@ -2224,6 +2224,65 @@
     ]
   },
   {
+    "slug": "oscal",
+    "name": "NIST OSCAL",
+    "packageName": "@modelscript/oscal",
+    "sources": [
+      "languages/oscal/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M8201",
+        "rule": "oscal-invalid-uuid",
+        "severity": "error",
+        "message": ""
+      },
+      {
+        "code": "M8202",
+        "rule": "oscal-unresolved-control-id",
+        "severity": "error",
+        "message": "Referenced control '<controlId>' does not exist in the catalog or built-in NIST SP 800-53 / 800-82 baseline."
+      },
+      {
+        "code": "M8203",
+        "rule": "oscal-unset-required-parameter",
+        "severity": "warning",
+        "message": "Required parameter '<paramId>' in '<contextName>' has no value assigned in 'set-parameter'."
+      },
+      {
+        "code": "M8204",
+        "rule": "oscal-unimplemented-baseline-control",
+        "severity": "error",
+        "message": "Control '<controlId>' required by baseline profile '<profileHref>' is missing an 'implemented-requirement' in 'control-implementation'."
+      },
+      {
+        "code": "M8205",
+        "rule": "oscal-orphaned-by-component",
+        "severity": "error",
+        "message": "Implementation 'by-component' in control '<controlId>' references component UUID '<componentUuid>' which is not declared in 'system-implementation.components'."
+      },
+      {
+        "code": "M8206",
+        "rule": "oscal-cps-unmapped-architecture-block",
+        "severity": "warning",
+        "message": "Architectural component '<blockName>' from linked SysML v2 / AutomationML model is missing from 'system-implementation.components'."
+      },
+      {
+        "code": "M8207",
+        "rule": "oscal-ot-ics-overlay-violation",
+        "severity": "error",
+        "message": "OT/ICS component '<componentTitle>' (type '<componentType>') is missing mandatory NIST SP 800-82 controls: '<missingControls>'."
+      },
+      {
+        "code": "M8208",
+        "rule": "oscal-unmitigated-high-finding",
+        "severity": "error",
+        "message": "Open '<severity>' finding '<findingTitle>' on control '<controlId>' lacks a linked remediation entry in POA&M."
+      }
+    ]
+  },
+  {
     "slug": "ssp",
     "name": "SSP",
     "packageName": "@modelscript/ssp",
@@ -2529,6 +2588,71 @@
         "rule": "unsupported-ap-schema",
         "severity": "warning",
         "message": "Application Protocol schema '<schema>' may not support complete PMI or B-Rep extraction."
+      }
+    ]
+  },
+  {
+    "slug": "qif",
+    "name": "QIF (ISO 23952)",
+    "packageName": "@modelscript/qif",
+    "sources": [
+      "languages/qif/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M8101",
+        "rule": "qif-unresolved-qpid",
+        "severity": "error",
+        "message": "Unresolved <refKind> reference '<refId>' in '<contextName>'."
+      },
+      {
+        "code": "M8102",
+        "rule": "qif-duplicate-qpid",
+        "severity": "error",
+        "message": "Duplicate identifier or QPId '<idOrQpId>' declared on '<elementName>'."
+      },
+      {
+        "code": "M8103",
+        "rule": "qif-invalid-datum-precedence",
+        "severity": "error",
+        "message": "Duplicate datum label '<datumLabel>' in DatumReferenceFrame of characteristic '<charName>'."
+      },
+      {
+        "code": "M8104",
+        "rule": "qif-invalid-material-modifier",
+        "severity": "error",
+        "message": "Material condition modifier '<modifier>' cannot be applied to '<targetDesc>' in characteristic '<charName>'."
+      },
+      {
+        "code": "M8105",
+        "rule": "qif-composite-frame-mismatch",
+        "severity": "error",
+        "message": "Composite lower-tier tolerance '<lowerTol>' must be strictly less than upper-tier tolerance '<upperTol>' in characteristic '<charName>'."
+      },
+      {
+        "code": "M8106",
+        "rule": "qif-insufficient-probing-points",
+        "severity": "error",
+        "message": "Probing point count '<actualPoints>' is below minimum required '<requiredPoints>' for '<featureType>' in '<targetName>'."
+      },
+      {
+        "code": "M8107",
+        "rule": "qif-tur-uncertainty-warning",
+        "severity": "warning",
+        "message": "Test Uncertainty Ratio '<tur>:1' is below required minimum '<minTur>:1' for device '<deviceName>' on characteristic '<charName>'."
+      },
+      {
+        "code": "M8108",
+        "rule": "qif-out-of-tolerance-actual",
+        "severity": "error",
+        "message": "Actual '<actualId>' has measured value '<measuredVal>' against effective tolerance '<effTol>' but is marked '<status>' for characteristic '<charName>'."
+      },
+      {
+        "code": "M8109",
+        "rule": "qif-unresolved-step-entity",
+        "severity": "error",
+        "message": "Referenced STEP AP242 entity '<stepEntityId>' on feature '<featureName>' was not found in the CAD model."
       }
     ]
   },
@@ -4783,6 +4907,59 @@
     ]
   },
   {
+    "slug": "automationml",
+    "name": "AutomationML (IEC 62714)",
+    "packageName": "@modelscript/automationml",
+    "sources": [
+      "languages/automationml/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M8301",
+        "rule": "aml-unresolved-base-class",
+        "severity": "error",
+        "message": "Base class reference '<path>' in '<elementName>' does not resolve to a declared or standard AutomationML class."
+      },
+      {
+        "code": "M8302",
+        "rule": "aml-inheritance-cycle",
+        "severity": "error",
+        "message": "Circular inheritance detected in class '<className>': '<cyclePath>'."
+      },
+      {
+        "code": "M8303",
+        "rule": "aml-invalid-internal-link",
+        "severity": "error",
+        "message": "InternalLink '<linkName>' endpoint '<partnerRef>' does not resolve to a valid InternalElement and ExternalInterface."
+      },
+      {
+        "code": "M8304",
+        "rule": "aml-port-direction-conflict",
+        "severity": "error",
+        "message": "InternalLink '<linkName>' connects incompatible ports: <detail>."
+      },
+      {
+        "code": "M8305",
+        "rule": "aml-unsatisfied-role-requirement",
+        "severity": "error",
+        "message": "InternalElement '<elementName>' is missing required <missingItem> mandated by RoleRequirement '<rolePath>'."
+      },
+      {
+        "code": "M8306",
+        "rule": "aml-broken-external-ref-uri",
+        "severity": "warning",
+        "message": "External reference URI '<uri>' on interface '<interfaceName>' in '<elementName>' is empty or unresolved."
+      },
+      {
+        "code": "M8307",
+        "rule": "aml-invalid-frame-transform",
+        "severity": "error",
+        "message": "Invalid 6-DOF Frame transformation on InternalElement '<elementName>': <reason>."
+      }
+    ]
+  },
+  {
     "slug": "adams",
     "name": "MSC Adams",
     "packageName": "@modelscript/adams",
@@ -5156,6 +5333,290 @@
     ]
   },
   {
+    "slug": "gproms",
+    "name": "gPROMS / PML",
+    "packageName": "@modelscript/gproms",
+    "sources": [
+      "languages/gproms/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9451",
+        "rule": "undeclared-variable-type",
+        "severity": "error",
+        "message": "Variable '<varName>' in model '<modelName>' references undeclared DECLARE TYPE '<typeName>'."
+      },
+      {
+        "code": "M9452",
+        "rule": "invalid-variable-bounds",
+        "severity": "error",
+        "message": "Variable type '<typeName>' specifies invalid bounds or default value (default=<defaultVal>, lower=<lower>, upper=<upper>); requires lower < upper and lower <= default <= upper."
+      },
+      {
+        "code": "M9453",
+        "rule": "invalid-distribution-domain",
+        "severity": "error",
+        "message": "Distribution domain '<domainName>' in model '<modelName>' specifies invalid domain [<lower> : <upper>] or grid points (<gridPoints>); requires lower < upper and gridPoints >= 2."
+      },
+      {
+        "code": "M9454",
+        "rule": "undeclared-equation-identifier",
+        "severity": "error",
+        "message": "Equation in model '<modelName>' references undeclared identifier '<identifier>'."
+      },
+      {
+        "code": "M9455",
+        "rule": "structural-dof-mismatch",
+        "severity": "warning",
+        "message": "Model '<modelName>' has a structural degrees-of-freedom mismatch: <eqCount> equations + <assignCount> ASSIGNed variables != <varCount> unknown variables."
+      },
+      {
+        "code": "M9456",
+        "rule": "uninitialized-differential-state",
+        "severity": "warning",
+        "message": "Differential state variable '$<varName>' lacks an INITIAL condition in PROCESS '<processName>'."
+      },
+      {
+        "code": "M9457",
+        "rule": "partial-on-non-distributed-variable",
+        "severity": "error",
+        "message": "Spatial derivative 'PARTIAL(<varName>, <domainName>)' in model '<modelName>' is applied to variable '<varName>' which is not distributed over domain '<domainName>'."
+      },
+      {
+        "code": "M9458",
+        "rule": "overassigned-parameter-or-variable",
+        "severity": "error",
+        "message": "Entity '<entityName>' in PROCESS '<processName>' is overassigned or misused: <detail>."
+      },
+      {
+        "code": "M9459",
+        "rule": "empty-gproms-model",
+        "severity": "error",
+        "message": "gPROMS model '<modelName>' is empty and defines no variables or equations."
+      },
+      {
+        "code": "M9460",
+        "rule": "duplicate-entity-declaration",
+        "severity": "error",
+        "message": "Duplicate <kind> declaration '<name>' in '<scope>'."
+      }
+    ]
+  },
+  {
+    "slug": "cantera",
+    "name": "Cantera",
+    "packageName": "@modelscript/cantera",
+    "sources": [
+      "languages/cantera/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9201",
+        "rule": "element-balance-violation",
+        "severity": "error",
+        "message": "Reaction '<equation>' is not elementally balanced for element '<element>' (reactants: <reactantCount>, products: <productCount>)."
+      },
+      {
+        "code": "M9202",
+        "rule": "charge-balance-violation",
+        "severity": "error",
+        "message": "Reaction '<equation>' violates net electrical charge conservation (reactants: <reactantCharge>, products: <productCharge>)."
+      },
+      {
+        "code": "M9203",
+        "rule": "undeclared-phase-species",
+        "severity": "error",
+        "message": "Reaction or phase '<equationOrPhase>' references species '<speciesName>' not declared in the mechanism species list."
+      },
+      {
+        "code": "M9204",
+        "rule": "nasa7-temperature-discontinuity",
+        "severity": "warning",
+        "message": "Species '<speciesName>' NASA-7 polynomial has a '<propName>' discontinuity (<value>) at midpoint temperature '<Tmid>' K."
+      },
+      {
+        "code": "M9205",
+        "rule": "invalid-nasa7-temperature-bounds",
+        "severity": "error",
+        "message": "Species '<speciesName>' specifies invalid NASA-7 temperature bounds [<Tmin>, <Tmid>, <Tmax>] K."
+      },
+      {
+        "code": "M9206",
+        "rule": "negative-pre-exponential-factor",
+        "severity": "error",
+        "message": "Reaction '<equation>' specifies a non-positive pre-exponential factor '<A>'."
+      },
+      {
+        "code": "M9207",
+        "rule": "missing-falloff-low-pressure-limit",
+        "severity": "error",
+        "message": "Falloff reaction '<equation>' is missing required 'low-P-rate-constant' definition."
+      },
+      {
+        "code": "M9208",
+        "rule": "duplicate-reaction-declaration",
+        "severity": "warning",
+        "message": "Identical non-duplicate reaction '<equation>' is declared multiple times without 'duplicate: true'."
+      },
+      {
+        "code": "M9209",
+        "rule": "negative-third-body-efficiency",
+        "severity": "error",
+        "message": "Third-body efficiency for '<speciesName>' in reaction '<equation>' is negative (<efficiency>)."
+      },
+      {
+        "code": "M9210",
+        "rule": "missing-species-thermo",
+        "severity": "warning",
+        "message": "Species '<speciesName>' is missing a 'thermo' polynomial definition."
+      }
+    ]
+  },
+  {
+    "slug": "phreeqc",
+    "name": "PHREEQC",
+    "packageName": "@modelscript/phreeqc",
+    "sources": [
+      "languages/phreeqc/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9551",
+        "rule": "ph-out-of-physical-bounds",
+        "severity": "error",
+        "message": "SOLUTION '<solutionNumber>' specifies pH '<pH>' outside standard aqueous bounds [0, 14]."
+      },
+      {
+        "code": "M9552",
+        "rule": "pe-out-of-redox-stability-bounds",
+        "severity": "warning",
+        "message": "SOLUTION '<solutionNumber>' specifies redox potential pe '<pe>' outside water stability bounds [-15, 25]."
+      },
+      {
+        "code": "M9553",
+        "rule": "non-physical-temperature",
+        "severity": "error",
+        "message": "SOLUTION '<solutionNumber>' specifies non-physical aqueous temperature '<tempC>' °C (valid range: [0, 350] °C)."
+      },
+      {
+        "code": "M9554",
+        "rule": "negative-solute-concentration",
+        "severity": "error",
+        "message": "Solute '<element>' in SOLUTION '<solutionNumber>' specifies negative concentration '<concentration>'."
+      },
+      {
+        "code": "M9555",
+        "rule": "charge-imbalance-exceeded",
+        "severity": "warning",
+        "message": "SOLUTION '<solutionNumber>' exhibits relative electrical charge imbalance '<value>%' (> 5%) without a 'charge' balance element."
+      },
+      {
+        "code": "M9556",
+        "rule": "unknown-aqueous-master-species",
+        "severity": "error",
+        "message": "SOLUTION '<solutionNumber>' references unrecognized aqueous master species '<element>'."
+      },
+      {
+        "code": "M9557",
+        "rule": "unknown-equilibrium-mineral-phase",
+        "severity": "error",
+        "message": "EQUILIBRIUM_PHASES '<blockNumber>' references unrecognized mineral phase '<mineralName>'."
+      },
+      {
+        "code": "M9558",
+        "rule": "negative-mineral-moles",
+        "severity": "error",
+        "message": "Equilibrium mineral phase '<mineralName>' specifies negative initial moles '<initialMoles>'."
+      },
+      {
+        "code": "M9559",
+        "rule": "unresolved-mix-solution",
+        "severity": "error",
+        "message": "MIX '<mixNumber>' references undefined SOLUTION '<solutionNumber>'."
+      },
+      {
+        "code": "M9560",
+        "rule": "empty-phreeqc-deck",
+        "severity": "error",
+        "message": "PHREEQC deck contains no SOLUTION, EQUILIBRIUM_PHASES, REACTION, KINETICS, MIX, or database definitions."
+      }
+    ]
+  },
+  {
+    "slug": "smiles",
+    "name": "SMILES / SDF",
+    "packageName": "@modelscript/smiles",
+    "sources": [
+      "languages/smiles/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9301",
+        "rule": "unclosed-ring-digit",
+        "severity": "error",
+        "message": "Ring closure digit '<ringId>' in '<moleculeName>' has no matching closing bond."
+      },
+      {
+        "code": "M9302",
+        "rule": "unbalanced-branch-parenthesis",
+        "severity": "error",
+        "message": "Branch parenthesis in '<moleculeName>' is unbalanced."
+      },
+      {
+        "code": "M9303",
+        "rule": "valence-exceeded",
+        "severity": "error",
+        "message": "Atom '<element>' (index '<atomIndex>') in '<moleculeName>' has bond order sum '<actualValence>' exceeding maximum allowed valence '<maxValence>'."
+      },
+      {
+        "code": "M9304",
+        "rule": "invalid-aromatic-kekule-ring",
+        "severity": "error",
+        "message": "Aromatic ring in '<moleculeName>' violates Hückel's 4n+2 pi-electron rule or cannot be Kekulized."
+      },
+      {
+        "code": "M9305",
+        "rule": "unknown-chemical-element",
+        "severity": "error",
+        "message": "Atomic symbol '<symbol>' in '<moleculeName>' is not a valid IUPAC element."
+      },
+      {
+        "code": "M9306",
+        "rule": "conflicting-ring-bond-order",
+        "severity": "error",
+        "message": "Ring closure '<ringId>' in '<moleculeName>' specifies conflicting bond orders at opening and closing atoms."
+      },
+      {
+        "code": "M9307",
+        "rule": "self-loop-bond",
+        "severity": "error",
+        "message": "Bond in '<moleculeName>' connects atom '<atomIndex>' to itself."
+      },
+      {
+        "code": "M9308",
+        "rule": "duplicate-atom-bond",
+        "severity": "error",
+        "message": "Multiple bonds declared between identical atom pair ('<atomA>', '<atomB>') in '<moleculeName>'."
+      },
+      {
+        "code": "M9309",
+        "rule": "invalid-tetrahedral-chirality",
+        "severity": "warning",
+        "message": "Chiral center '<atomIndex>' in '<moleculeName>' has fewer than 4 distinct substituents."
+      },
+      {
+        "code": "M9310",
+        "rule": "empty-molecular-graph",
+        "severity": "error",
+        "message": "Molecule entry '<moleculeName>' contains zero atoms."
+      }
+    ]
+  },
+  {
     "slug": "sbml",
     "name": "SBML",
     "packageName": "@modelscript/sbml",
@@ -5227,55 +5688,1067 @@
     ]
   },
   {
-    "slug": "automationml",
-    "name": "automationml",
-    "packageName": "@modelscript/automationml",
+    "slug": "antimony",
+    "name": "Antimony",
+    "packageName": "@modelscript/antimony",
     "sources": [
-      "languages/automationml/src/lints/rules.ts"
+      "languages/antimony/src/errors.ts"
     ],
     "cli": null,
     "rules": [
       {
-        "code": "M8301",
-        "rule": "aml-unresolved-base-class",
+        "code": "M9001",
+        "rule": "empty-antimony-module",
         "severity": "error",
-        "message": "Base class reference '<path>' in '<elementName>' does not resolve to a declared or standard AutomationML class."
+        "message": "Antimony module '<moduleName>' contains no species, reactions, or rules."
       },
       {
-        "code": "M8302",
-        "rule": "aml-inheritance-cycle",
+        "code": "M9002",
+        "rule": "undefined-compartment-in-species",
         "severity": "error",
-        "message": "Circular inheritance detected in class '<className>': '<cyclePath>'."
+        "message": "Species '<speciesId>' is placed in undeclared compartment '<compartmentId>'."
       },
       {
-        "code": "M8303",
-        "rule": "aml-invalid-internal-link",
-        "severity": "error",
-        "message": "InternalLink '<linkName>' endpoint '<partnerRef>' does not resolve to a valid InternalElement and ExternalInterface."
-      },
-      {
-        "code": "M8304",
-        "rule": "aml-port-direction-conflict",
-        "severity": "error",
-        "message": "InternalLink '<linkName>' connects incompatible ports: <detail>."
-      },
-      {
-        "code": "M8305",
-        "rule": "aml-unsatisfied-role-requirement",
-        "severity": "error",
-        "message": "InternalElement '<elementName>' is missing required <missingItem> mandated by RoleRequirement '<rolePath>'."
-      },
-      {
-        "code": "M8306",
-        "rule": "aml-broken-external-ref-uri",
+        "code": "M9003",
+        "rule": "missing-reaction-rate-law",
         "severity": "warning",
-        "message": "External reference URI '<uri>' on interface '<interfaceName>' in '<elementName>' is empty or unresolved."
+        "message": "Reaction '<reactionId>' has no kinetic rate expression."
       },
       {
-        "code": "M8307",
-        "rule": "aml-invalid-frame-transform",
+        "code": "M9004",
+        "rule": "negative-stoichiometric-coefficient",
         "severity": "error",
-        "message": "Invalid 6-DOF Frame transformation on InternalElement '<elementName>': <reason>."
+        "message": "Species '<speciesId>' in reaction '<reactionId>' has non-positive stoichiometry '<stoichiometry>'."
+      },
+      {
+        "code": "M9005",
+        "rule": "undefined-rate-law-symbol",
+        "severity": "warning",
+        "message": "Rate expression in '<reactionId>' references undeclared identifier '<symbol>'."
+      },
+      {
+        "code": "M9006",
+        "rule": "duplicate-reaction-id",
+        "severity": "error",
+        "message": "Reaction identifier '<reactionId>' is defined multiple times in module '<moduleName>'."
+      },
+      {
+        "code": "M9007",
+        "rule": "circular-submodel-instantiation",
+        "severity": "error",
+        "message": "Submodel hierarchy contains a cycle involving '<moduleName>'."
+      },
+      {
+        "code": "M9008",
+        "rule": "conflicting-species-variability",
+        "severity": "error",
+        "message": "Species '<speciesId>' is declared both 'const' and modified by a rate rule or non-boundary reaction."
+      },
+      {
+        "code": "M9009",
+        "rule": "negative-compartment-volume",
+        "severity": "error",
+        "message": "Compartment '<compartmentId>' initialized with non-positive volume '<volume>'."
+      },
+      {
+        "code": "M9010",
+        "rule": "invalid-event-trigger",
+        "severity": "error",
+        "message": "Event '<eventId>' trigger condition is not a relational/boolean expression."
+      }
+    ]
+  },
+  {
+    "slug": "bngl",
+    "name": "BioNetGen (BNGL)",
+    "packageName": "@modelscript/bngl",
+    "sources": [
+      "languages/bngl/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9051",
+        "rule": "molecule-type-undeclared",
+        "severity": "error",
+        "message": "Molecule type '<moleculeName>' referenced in '<context>' is not declared in 'molecule types'."
+      },
+      {
+        "code": "M9052",
+        "rule": "component-site-undeclared",
+        "severity": "error",
+        "message": "Component site '<siteName>' is not declared on molecule type '<moleculeName>'."
+      },
+      {
+        "code": "M9053",
+        "rule": "invalid-internal-state",
+        "severity": "error",
+        "message": "Internal state '~<stateName>' is not allowed for component '<siteName>' of molecule type '<moleculeName>'."
+      },
+      {
+        "code": "M9054",
+        "rule": "dangling-bond-label",
+        "severity": "error",
+        "message": "Bond label '!<bondLabel>' in complex pattern '<patternText>' appears '<count>' times; each bond must connect exactly 2 sites."
+      },
+      {
+        "code": "M9055",
+        "rule": "undefined-rate-parameter",
+        "severity": "warning",
+        "message": "Reaction rule '<ruleId>' references undeclared rate parameter '<parameterName>'."
+      },
+      {
+        "code": "M9056",
+        "rule": "reversible-rule-missing-reverse-rate",
+        "severity": "error",
+        "message": "Reversible reaction rule '<ruleId>' ('<->') is missing a reverse rate constant."
+      },
+      {
+        "code": "M9057",
+        "rule": "negative-seed-concentration",
+        "severity": "error",
+        "message": "Seed species '<speciesPattern>' has negative initial concentration '<concentration>'."
+      },
+      {
+        "code": "M9058",
+        "rule": "empty-bionetgen-model",
+        "severity": "error",
+        "message": "BioNetGen model '<modelName>' contains no molecule types, seed species, or reaction rules."
+      },
+      {
+        "code": "M9059",
+        "rule": "duplicate-observable-name",
+        "severity": "error",
+        "message": "Observable '<observableName>' is defined multiple times in 'observables'."
+      },
+      {
+        "code": "M9060",
+        "rule": "unbounded-polymerization-rule",
+        "severity": "warning",
+        "message": "Reaction rule '<ruleId>' forms intermolecular bonds on multi-site molecule '<moleculeName>' that can cause unbounded polymerization."
+      }
+    ]
+  },
+  {
+    "slug": "sbol",
+    "name": "SBOL3",
+    "packageName": "@modelscript/sbol",
+    "sources": [
+      "languages/sbol/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9501",
+        "rule": "invalid-nucleotide-sequence",
+        "severity": "error",
+        "message": "Sequence '<seqId>' contains characters outside the IUPAC nucleic acid alphabet ('<invalidChar>')."
+      },
+      {
+        "code": "M9502",
+        "rule": "sequence-range-out-of-bounds",
+        "severity": "error",
+        "message": "Feature '<featureId>' location '[<start>..<end>]' exceeds sequence '<seqId>' length '<seqLength>'."
+      },
+      {
+        "code": "M9503",
+        "rule": "cds-length-not-multiple-of-three",
+        "severity": "warning",
+        "message": "Coding sequence (CDS) '<cdsId>' nucleotide length ('<length>') is not divisible by 3 or lacks a valid start/stop codon."
+      },
+      {
+        "code": "M9504",
+        "rule": "unresolved-subcomponent-reference",
+        "severity": "error",
+        "message": "SubComponent '<subId>' in '<compId>' references undefined Component '<instanceOf>'."
+      },
+      {
+        "code": "M9505",
+        "rule": "invalid-transcriptional-unit-order",
+        "severity": "error",
+        "message": "Engineered region '<compId>' places terminator '<termId>' upstream of promoter '<promId>' without an intervening CDS."
+      },
+      {
+        "code": "M9506",
+        "rule": "dangling-interaction-participant",
+        "severity": "error",
+        "message": "Interaction '<intId>' participant references undefined component '<participantId>'."
+      },
+      {
+        "code": "M9507",
+        "rule": "missing-interaction-role",
+        "severity": "warning",
+        "message": "Participant '<participantId>' in interaction '<intId>' lacks a Systems Biology Ontology (SBO) role (inhibitor, stimulator, template, product)."
+      },
+      {
+        "code": "M9508",
+        "rule": "circular-component-hierarchy",
+        "severity": "error",
+        "message": "SubComponent hierarchy contains a circular containment reference involving '<compId>'."
+      },
+      {
+        "code": "M9509",
+        "rule": "duplicate-display-id",
+        "severity": "error",
+        "message": "displayId '<id>' is declared multiple times within the '<namespace>' namespace."
+      },
+      {
+        "code": "M9510",
+        "rule": "missing-cds-ribosome-binding-site",
+        "severity": "warning",
+        "message": "Bacterial transcriptional unit '<compId>' contains CDS '<cdsId>' without an upstream RBS ('SO:0000139')."
+      }
+    ]
+  },
+  {
+    "slug": "sedml",
+    "name": "SED-ML",
+    "packageName": "@modelscript/sedml",
+    "sources": [
+      "languages/sedml/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9151",
+        "rule": "invalid-time-course-bounds",
+        "severity": "error",
+        "message": "UniformTimeCourse simulation '<simId>' defines invalid time course bounds ('<details>')."
+      },
+      {
+        "code": "M9152",
+        "rule": "invalid-kisao-id",
+        "severity": "error",
+        "message": "Simulation '<simId>' specifies missing or malformed algorithm KiSAO identifier '<kisaoId>'; expected 'KISAO:xxxxxxx'."
+      },
+      {
+        "code": "M9153",
+        "rule": "unresolved-model-reference",
+        "severity": "error",
+        "message": "SED-ML element '<ownerId>' references undefined model '<modelRef>'."
+      },
+      {
+        "code": "M9154",
+        "rule": "unresolved-simulation-reference",
+        "severity": "error",
+        "message": "Task '<taskId>' references undefined simulation '<simRef>'."
+      },
+      {
+        "code": "M9155",
+        "rule": "unresolved-task-reference",
+        "severity": "error",
+        "message": "SED-ML variable or subTask in '<ownerId>' references undefined task '<taskRef>'."
+      },
+      {
+        "code": "M9156",
+        "rule": "unresolved-data-generator-reference",
+        "severity": "error",
+        "message": "Output '<outputId>' element '<itemId>' references undefined dataGenerator '<dataGenRef>'."
+      },
+      {
+        "code": "M9157",
+        "rule": "circular-model-source",
+        "severity": "error",
+        "message": "Model '<modelId>' source reference chain '<chain>' forms a circular dependency."
+      },
+      {
+        "code": "M9158",
+        "rule": "undefined-data-generator-math-variable",
+        "severity": "warning",
+        "message": "DataGenerator '<dataGenId>' math expression references identifier '<symbolName>' not declared in listOfVariables or listOfParameters."
+      },
+      {
+        "code": "M9159",
+        "rule": "empty-sedml-experiment",
+        "severity": "warning",
+        "message": "SED-ML document defines an empty experiment with no simulations or tasks."
+      },
+      {
+        "code": "M9160",
+        "rule": "duplicate-sedml-id",
+        "severity": "error",
+        "message": "SED-ML identifier '<id>' on '<elementKind>' is declared multiple times within the document."
+      }
+    ]
+  },
+  {
+    "slug": "nmtran",
+    "name": "NMTRAN (NONMEM)",
+    "packageName": "@modelscript/nmtran",
+    "sources": [
+      "languages/nmtran/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9401",
+        "rule": "missing-problem-record",
+        "severity": "error",
+        "message": "NMTRAN control stream is missing the required '$PROBLEM' record."
+      },
+      {
+        "code": "M9402",
+        "rule": "theta-bounds-violation",
+        "severity": "error",
+        "message": "$THETA parameter 'THETA(<thetaIndex>)' violates bounds (lower=<lower>, init=<init>, upper=<upper>)."
+      },
+      {
+        "code": "M9403",
+        "rule": "missing-des-block-for-general-advan",
+        "severity": "error",
+        "message": "Subroutine '<advan>' requires a '$DES' differential equation block."
+      },
+      {
+        "code": "M9404",
+        "rule": "undefined-theta-reference",
+        "severity": "error",
+        "message": "Block references 'THETA(<thetaIndex>)' beyond the number of declared '$THETA' parameters ('<maxTheta>')."
+      },
+      {
+        "code": "M9405",
+        "rule": "undefined-eta-reference",
+        "severity": "error",
+        "message": "Block references 'ETA(<etaIndex>)' beyond the dimension of declared '$OMEGA' variance entries ('<maxOmega>')."
+      },
+      {
+        "code": "M9406",
+        "rule": "non-positive-omega-variance",
+        "severity": "error",
+        "message": "$OMEGA diagonal variance entry 'OMEGA(<omegaIndex>)' must be positive (> 0) unless FIXED to 0 (got '<variance>')."
+      },
+      {
+        "code": "M9407",
+        "rule": "compartment-index-out-of-bounds",
+        "severity": "error",
+        "message": "Compartment reference '<cmtIndex>' exceeds declared compartment count ('<maxCmt>')."
+      },
+      {
+        "code": "M9408",
+        "rule": "missing-error-prediction-y",
+        "severity": "error",
+        "message": "$ERROR block does not define the required dependent prediction variable 'Y'."
+      },
+      {
+        "code": "M9409",
+        "rule": "missing-required-trans-parameter",
+        "severity": "error",
+        "message": "Subroutine '<advan>' with '<trans>' requires pharmacokinetic parameter '<paramName>' in '$PK'."
+      },
+      {
+        "code": "M9410",
+        "rule": "negative-dosing-amount",
+        "severity": "error",
+        "message": "Dosing record specifies a negative '<field>' value ('<value>')."
+      }
+    ]
+  },
+  {
+    "slug": "pdb",
+    "name": "PDB / mmCIF",
+    "packageName": "@modelscript/pdb",
+    "sources": [
+      "languages/pdb/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9251",
+        "rule": "steric-clash",
+        "severity": "error",
+        "message": "Severe steric clash between non-bonded atoms '<atomA>' (serial '<serialA>') and '<atomB>' (serial '<serialB>') at distance '<distance>' Å (< 1.20 Å)."
+      },
+      {
+        "code": "M9252",
+        "rule": "broken-peptide-backbone",
+        "severity": "warning",
+        "message": "Broken peptide backbone in chain '<chainId>' between '<resA><seqA>' (C) and '<resB><seqB>' (N) at distance '<distance>' Å (> 2.00 Å)."
+      },
+      {
+        "code": "M9253",
+        "rule": "invalid-occupancy",
+        "severity": "error",
+        "message": "Atom '<atomName>' (serial '<serial>') has invalid occupancy '<occupancy>' outside allowed bounds [0.0, 1.0]."
+      },
+      {
+        "code": "M9254",
+        "rule": "non-positive-b-factor",
+        "severity": "warning",
+        "message": "Atom '<atomName>' (serial '<serial>') has non-positive isotropic temperature factor (B-factor) '<bFactor>' Å^2 (<= 0.0)."
+      },
+      {
+        "code": "M9255",
+        "rule": "ramachandran-outlier",
+        "severity": "warning",
+        "message": "Residue '<resName><resSeq>' in chain '<chainId>' has Ramachandran backbone torsion angles (phi='<phi>' deg, psi='<psi>' deg) in a disallowed steric region."
+      },
+      {
+        "code": "M9256",
+        "rule": "missing-backbone-atoms",
+        "severity": "error",
+        "message": "Standard amino acid residue '<resName><resSeq>' in chain '<chainId>' is missing required main-chain backbone atoms '<missingAtoms>'."
+      },
+      {
+        "code": "M9257",
+        "rule": "invalid-disulfide-distance",
+        "severity": "warning",
+        "message": "Disulfide bond (SSBOND) between 'CYS<seq1>' (chain '<chain1>') and 'CYS<seq2>' (chain '<chain2>') has invalid SG-SG distance '<distance>' Å outside [1.80, 2.50] Å."
+      },
+      {
+        "code": "M9258",
+        "rule": "unresolved-conect-serial",
+        "severity": "error",
+        "message": "CONECT record for atom serial '<conectSerial>' references unresolved atom serial '<missingSerial>'."
+      },
+      {
+        "code": "M9259",
+        "rule": "duplicate-atom-serial",
+        "severity": "error",
+        "message": "Duplicate atom serial number '<serial>' declared on atom '<atomName>'."
+      },
+      {
+        "code": "M9260",
+        "rule": "empty-pdb-structure",
+        "severity": "error",
+        "message": "Macromolecular structure '<structureId>' contains zero atomic coordinate records."
+      }
+    ]
+  },
+  {
+    "slug": "genbank",
+    "name": "GenBank / FASTA",
+    "packageName": "@modelscript/genbank",
+    "sources": [
+      "languages/genbank/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9351",
+        "rule": "locus-length-mismatch",
+        "severity": "error",
+        "message": "LOCUS '<locus>' declares length '<declaredLength>' bp, but ORIGIN sequence has '<actualLength>' bp."
+      },
+      {
+        "code": "M9352",
+        "rule": "invalid-sequence-character",
+        "severity": "error",
+        "message": "Sequence '<locus>' contains non-IUPAC character '<invalidChar>' at position '<position>'."
+      },
+      {
+        "code": "M9353",
+        "rule": "feature-location-out-of-bounds",
+        "severity": "error",
+        "message": "Feature '<featureName>' location '[<start>..<end>]' is out of bounds for sequence '<locus>' of length '<seqLength>' bp."
+      },
+      {
+        "code": "M9354",
+        "rule": "cds-missing-start-codon",
+        "severity": "warning",
+        "message": "Coding sequence (CDS) '<cdsName>' begins with '<actualCodon>' instead of a valid start codon ('ATG', 'GTG', or 'TTG')."
+      },
+      {
+        "code": "M9355",
+        "rule": "cds-missing-stop-codon",
+        "severity": "warning",
+        "message": "Coding sequence (CDS) '<cdsName>' ends with '<actualCodon>' instead of a valid stop codon ('TAA', 'TAG', or 'TGA')."
+      },
+      {
+        "code": "M9356",
+        "rule": "cds-internal-premature-stop",
+        "severity": "error",
+        "message": "Coding sequence (CDS) '<cdsName>' contains an internal premature stop codon '<stopCodon>' at codon '<codonIndex>'."
+      },
+      {
+        "code": "M9357",
+        "rule": "cds-translation-mismatch",
+        "severity": "error",
+        "message": "Coding sequence (CDS) '<cdsName>' /translation qualifier '<actualTranslation>' does not match translated sequence '<expectedTranslation>'."
+      },
+      {
+        "code": "M9358",
+        "rule": "empty-genbank-origin",
+        "severity": "error",
+        "message": "GenBank record '<locus>' has an empty or missing ORIGIN nucleotide sequence."
+      },
+      {
+        "code": "M9359",
+        "rule": "inverted-feature-span",
+        "severity": "error",
+        "message": "Feature '<featureName>' in non-circular sequence '<locus>' has inverted span '[<start>..<end>]' ('start > end')."
+      },
+      {
+        "code": "M9360",
+        "rule": "duplicate-locus-identifier",
+        "severity": "error",
+        "message": "LOCUS or FASTA identifier '<locus>' is declared multiple times in the document."
+      }
+    ]
+  },
+  {
+    "slug": "cellml",
+    "name": "CellML",
+    "packageName": "@modelscript/cellml",
+    "sources": [
+      "languages/cellml/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9301",
+        "rule": "cellml-missing-model-name",
+        "severity": "error",
+        "message": "CellML '<model>' element is missing a non-empty 'name' attribute."
+      },
+      {
+        "code": "M9302",
+        "rule": "cellml-unresolved-units",
+        "severity": "error",
+        "message": "Variable '<targetName>' in component '<componentName>' references unresolved units '<unitName>'."
+      },
+      {
+        "code": "M9303",
+        "rule": "cellml-interface-direction-conflict",
+        "severity": "error",
+        "message": "Variable mapping between '<comp1>.<var1>' (interface '<iface1>') and '<comp2>.<var2>' (interface '<iface2>') has incompatible interface directions."
+      },
+      {
+        "code": "M9304",
+        "rule": "cellml-unit-dimensional-mismatch",
+        "severity": "warning",
+        "message": "Connected variables '<comp1>.<var1>' ('<units1>') and '<comp2>.<var2>' ('<units2>') have incompatible physical SI base dimensions."
+      },
+      {
+        "code": "M9305",
+        "rule": "cellml-uninitialized-state-variable",
+        "severity": "warning",
+        "message": "Differential state variable '<varName>' in component '<compName>' has no 'initial_value' attribute."
+      },
+      {
+        "code": "M9306",
+        "rule": "cellml-encapsulation-hierarchy-cycle",
+        "severity": "error",
+        "message": "Circular component reference '<compName>' detected in '<encapsulation>' hierarchy."
+      },
+      {
+        "code": "M9307",
+        "rule": "cellml-unresolved-connection-member",
+        "severity": "error",
+        "message": "Connection references unknown <memberKind> '<memberName>' in '<contextName>'."
+      },
+      {
+        "code": "M9308",
+        "rule": "cellml-overconstrained-variable",
+        "severity": "error",
+        "message": "Variable '<varName>' in component '<compName>' has an 'in' interface or prior assignment and cannot be assigned by an equation or ODE."
+      },
+      {
+        "code": "M9309",
+        "rule": "cellml-undefined-math-ci",
+        "severity": "error",
+        "message": "Equation in component '<compName>' references undeclared variable identifier '<ciName>'."
+      },
+      {
+        "code": "M9310",
+        "rule": "cellml-duplicate-variable-or-component",
+        "severity": "error",
+        "message": "Duplicate <entityKind> '<name>' declared in component '<compName>'."
+      }
+    ]
+  },
+  {
+    "slug": "opensim",
+    "name": "OpenSim",
+    "packageName": "@modelscript/opensim",
+    "sources": [
+      "languages/opensim/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9101",
+        "rule": "opensim-unresolved-body-frame",
+        "severity": "error",
+        "message": "<componentKind> '<componentName>' references undefined body frame '<frameName>'."
+      },
+      {
+        "code": "M9102",
+        "rule": "opensim-non-positive-body-mass",
+        "severity": "error",
+        "message": "Body '<bodyName>' specifies invalid mass or principal inertia (<detail>)."
+      },
+      {
+        "code": "M9103",
+        "rule": "opensim-kinematic-tree-cycle",
+        "severity": "error",
+        "message": "Kinematic tree topology error at joint '<jointName>': <detail>."
+      },
+      {
+        "code": "M9104",
+        "rule": "opensim-invalid-coordinate-range",
+        "severity": "error",
+        "message": "Coordinate '<coordName>' has invalid range ['<rangeMin>', '<rangeMax>'] or default value '<defaultValue>' outside range."
+      },
+      {
+        "code": "M9105",
+        "rule": "opensim-invalid-muscle-parameters",
+        "severity": "error",
+        "message": "Muscle '<muscleName>' has non-positive Hill parameter (<detail>)."
+      },
+      {
+        "code": "M9106",
+        "rule": "opensim-excessive-pennation-angle",
+        "severity": "error",
+        "message": "Muscle '<muscleName>' has invalid pennation angle '<angleRad>' rad (must be in [0, pi/2))."
+      },
+      {
+        "code": "M9107",
+        "rule": "opensim-insufficient-muscle-path-points",
+        "severity": "error",
+        "message": "Muscle '<muscleName>' has invalid geometry path (<detail>)."
+      },
+      {
+        "code": "M9108",
+        "rule": "opensim-unresolved-wrap-object",
+        "severity": "error",
+        "message": "Muscle '<muscleName>' references undefined WrapObject '<wrapName>'."
+      },
+      {
+        "code": "M9109",
+        "rule": "opensim-invalid-time-constants",
+        "severity": "warning",
+        "message": "Muscle '<muscleName>' has invalid activation/deactivation time constants (tau_act='<tauAct>', tau_deact='<tauDeact>')."
+      },
+      {
+        "code": "M9110",
+        "rule": "opensim-duplicate-component-name",
+        "severity": "error",
+        "message": "Duplicate <componentKind> name '<name>' declared in OpenSim model."
+      }
+    ]
+  },
+  {
+    "slug": "febio",
+    "name": "FEBio / SOFA",
+    "packageName": "@modelscript/febio",
+    "sources": [
+      "languages/febio/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9401",
+        "rule": "febio-invalid-material-constant",
+        "severity": "error",
+        "message": "Non-physical material constant <paramDesc> in material '<materialName>'."
+      },
+      {
+        "code": "M9402",
+        "rule": "febio-inverted-element-jacobian",
+        "severity": "error",
+        "message": "Element '<elemId>' (<elemType>) has non-positive Jacobian determinant det(J) = '<detJ>'."
+      },
+      {
+        "code": "M9403",
+        "rule": "febio-unresolved-node-or-set",
+        "severity": "error",
+        "message": "Unresolved <refKind> reference '<refId>' in '<contextName>'."
+      },
+      {
+        "code": "M9404",
+        "rule": "febio-unconstrained-rigid-body",
+        "severity": "warning",
+        "message": "Model '<modelTitle>' has no fixed or prescribed displacement boundary conditions to prevent rigid-body motion."
+      },
+      {
+        "code": "M9405",
+        "rule": "febio-invalid-biphasic-permeability",
+        "severity": "error",
+        "message": "Invalid biphasic/poroelastic parameter (<reason>) in material '<materialName>'."
+      },
+      {
+        "code": "M9406",
+        "rule": "febio-invalid-time-stepper",
+        "severity": "error",
+        "message": "Invalid <Control> time-stepper configuration: time_steps='<timeSteps>', step_size='<stepSize>' (both must be > 0)."
+      },
+      {
+        "code": "M9407",
+        "rule": "febio-unresolved-material-id",
+        "severity": "error",
+        "message": "Unresolved material ID '<matId>' referenced in '<contextName>'."
+      },
+      {
+        "code": "M9408",
+        "rule": "febio-contact-penalty-invalid",
+        "severity": "error",
+        "message": "Contact interface '<contactName>' has invalid configuration: <detail>."
+      },
+      {
+        "code": "M9409",
+        "rule": "febio-sofa-missing-mechanical-object",
+        "severity": "error",
+        "message": "SOFA <Node> '<nodeName>' contains '<<forceFieldType>>' without a '<MechanicalObject>' state container."
+      },
+      {
+        "code": "M9410",
+        "rule": "febio-duplicate-entity-id",
+        "severity": "error",
+        "message": "Duplicate <entityKind> identifier '<id>'."
+      }
+    ]
+  },
+  {
+    "slug": "dicom-rt",
+    "name": "DICOM-RT",
+    "packageName": "@modelscript/dicom-rt",
+    "sources": [
+      "languages/dicom-rt/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9201",
+        "rule": "dicom-rt-missing-target-volume",
+        "severity": "error",
+        "message": "Treatment plan '<planLabel>' contains no clinical target volume ROI ('PTV', 'CTV', or 'GTV')."
+      },
+      {
+        "code": "M9202",
+        "rule": "dicom-rt-mlc-leaf-overlap",
+        "severity": "error",
+        "message": "MLC leaf pair '<pairIndex>' on beam '<beamName>' control point '<cpIndex>' has bankA='<bankA> mm', bankB='<bankB> mm' (gap '<value> mm' < minimum '<MIN_MLC_LEAF_GAP_MM> mm')."
+      },
+      {
+        "code": "M9203",
+        "rule": "dicom-rt-mlc-speed-exceeded",
+        "severity": "error",
+        "message": "MLC leaf pair '<pairIndex>' on beam '<beamName>' between control points '<cpFrom>' and '<cpTo>' travels at '<value> mm/s', exceeding physical motor limit '<value> mm/s'."
+      },
+      {
+        "code": "M9204",
+        "rule": "dicom-rt-gantry-couch-collision",
+        "severity": "error",
+        "message": "Gantry angle '<gantryDeg> deg' and non-coplanar couch angle '<couchDeg> deg' on beam '<beamName>' control point '<cpIndex>' enter the gantry-couch collision hazard zone."
+      },
+      {
+        "code": "M9205",
+        "rule": "dicom-rt-oar-dose-constraint-violated",
+        "severity": "error",
+        "message": "Organ-at-Risk '<roiName>' <metricKind> dose '<value> Gy' exceeds QUANTEC clinical constraint '<value> Gy'."
+      },
+      {
+        "code": "M9206",
+        "rule": "dicom-rt-non-monotonic-cum-meterset",
+        "severity": "error",
+        "message": "Control point cumulativeMetersetWeight sequence on beam '<beamName>' is invalid: <detail>."
+      },
+      {
+        "code": "M9207",
+        "rule": "dicom-rt-unclosed-roi-contour",
+        "severity": "error",
+        "message": "CLOSED_PLANAR contour slice at z='<zSlice> mm' in ROI '<roiName>' has '<vertexCount>' vertices (minimum 3 required)."
+      },
+      {
+        "code": "M9208",
+        "rule": "dicom-rt-unresolved-frame-of-reference",
+        "severity": "error",
+        "message": "<modalitySource> FrameOfReferenceUID '<sourceUid>' does not match plan FrameOfReferenceUID '<planUid>'."
+      },
+      {
+        "code": "M9209",
+        "rule": "dicom-rt-invalid-beam-meterset",
+        "severity": "error",
+        "message": "TREATMENT beam '<beamName>' has invalid delivery parameters (metersetMu='<metersetMu>', energyMeV='<energyMeV>'); both must be > 0."
+      },
+      {
+        "code": "M9210",
+        "rule": "dicom-rt-ptv-underdosage",
+        "severity": "warning",
+        "message": "Target volume '<roiName>' D95% '<value> Gy' is below 95% of prescribed dose '<value> Gy' (minimum '<value> Gy')."
+      }
+    ]
+  },
+  {
+    "slug": "topas",
+    "name": "TOPAS / GATE",
+    "packageName": "@modelscript/topas",
+    "sources": [
+      "languages/topas/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9601",
+        "rule": "topas-type-prefix-mismatch",
+        "severity": "error",
+        "message": "Parameter '<fullPath>' value '<rawVal>' does not match declared TOPAS type prefix '<typePrefix>:'."
+      },
+      {
+        "code": "M9602",
+        "rule": "topas-unresolved-parent-component",
+        "severity": "error",
+        "message": "Geometry component '<compName>' references undeclared parent volume '<parentName>'."
+      },
+      {
+        "code": "M9603",
+        "rule": "topas-non-positive-geometry-dimension",
+        "severity": "error",
+        "message": "Geometry component '<compName>' has invalid dimension: <detail>."
+      },
+      {
+        "code": "M9604",
+        "rule": "topas-child-exceeds-parent-bounds",
+        "severity": "error",
+        "message": "Child geometry '<childName>' protrudes outside parent '<parentName>' along <axis>-axis ('<childExtent> mm' > '<parentHalfExtent> mm')."
+      },
+      {
+        "code": "M9605",
+        "rule": "topas-undefined-material",
+        "severity": "error",
+        "message": "Component '<compName>' references unknown material '<materialName>' not found in Geant4/NIST materials or custom 'Ma/' definitions."
+      },
+      {
+        "code": "M9606",
+        "rule": "topas-invalid-beam-energy",
+        "severity": "error",
+        "message": "Particle source '<sourceName>' has invalid beam energy specification: <detail>."
+      },
+      {
+        "code": "M9607",
+        "rule": "topas-circular-include-file",
+        "severity": "error",
+        "message": "Circular or self-referential includeFile chain detected: '<cycleChain>'."
+      },
+      {
+        "code": "M9608",
+        "rule": "topas-scorer-missing-component",
+        "severity": "error",
+        "message": "Scorer '<scorerName>' has invalid configuration: <detail>."
+      },
+      {
+        "code": "M9609",
+        "rule": "topas-vector-length-mismatch",
+        "severity": "error",
+        "message": "Vector parameter '<fullPath>' declares length '<declaredCount>' but provides '<actualCount>' elements."
+      },
+      {
+        "code": "M9610",
+        "rule": "topas-duplicate-parameter-assignment",
+        "severity": "warning",
+        "message": "Parameter '<fullPath>' is assigned multiple times in the same file without 'change' override prefix."
+      }
+    ]
+  },
+  {
+    "slug": "nifti",
+    "name": "NIfTI / NRRD",
+    "packageName": "@modelscript/nifti",
+    "sources": [
+      "languages/nifti/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9501",
+        "rule": "nifti-invalid-dimensions",
+        "severity": "error",
+        "message": "Invalid NIfTI/NRRD volume dimensions: dim[0]='<ndim>', spatial size=(<nx>, <ny>, <nz>)."
+      },
+      {
+        "code": "M9502",
+        "rule": "nifti-non-positive-voxel-spacing",
+        "severity": "error",
+        "message": "Non-positive voxel spacing pixdim=(<dx>, <dy>, <dz>) mm (all spatial spacings must be > 0)."
+      },
+      {
+        "code": "M9503",
+        "rule": "nifti-singular-affine-transform",
+        "severity": "error",
+        "message": "4x4 sform affine transformation matrix is singular or degenerate with det(A) = '<detA>'."
+      },
+      {
+        "code": "M9504",
+        "rule": "nifti-invalid-quaternion-norm",
+        "severity": "error",
+        "message": "Invalid qform quaternion parameters (<b>, <c>, <d>): b^2 + c^2 + d^2 = '<normSq>' exceeds 1.0."
+      },
+      {
+        "code": "M9505",
+        "rule": "nifti-qform-sform-handedness-mismatch",
+        "severity": "error",
+        "message": "Coordinate handedness mismatch between active qform (qfac sign '<qfacSign>') and sform (det sign '<sformDetSign>')."
+      },
+      {
+        "code": "M9506",
+        "rule": "nifti-zero-intensity-scale-slope",
+        "severity": "error",
+        "message": "Intensity scaling has scl_slope='<sclSlope>' with active scaling (scl_inter='<sclInter>'), zeroing all voxel intensities."
+      },
+      {
+        "code": "M9507",
+        "rule": "nifti-unsupported-datatype",
+        "severity": "error",
+        "message": "Unsupported or invalid NIfTI/NRRD voxel datatype '<datatypeName>' (code='<datatypeCode>')."
+      },
+      {
+        "code": "M9508",
+        "rule": "nifti-voxel-data-size-mismatch",
+        "severity": "error",
+        "message": "Voxel payload count '<actualCount>' does not match expected '<expectedCount>' for dimensions <dimsDesc>."
+      },
+      {
+        "code": "M9509",
+        "rule": "nifti-empty-segmentation-mask",
+        "severity": "warning",
+        "message": "Segmentation labelmap '<title>' contains zero foreground voxels across all anatomical labels."
+      },
+      {
+        "code": "M9510",
+        "rule": "nifti-anisotropic-slice-gap-warning",
+        "severity": "warning",
+        "message": "Slice thickness dz='<dz>' mm exceeds in-plane resolution '<minInPlane>' mm by '<ratio>x' (> 5x threshold), risking severe 3D stair-step artifacts."
+      }
+    ]
+  },
+  {
+    "slug": "three-mf",
+    "name": "3MF Medical",
+    "packageName": "@modelscript/three-mf",
+    "sources": [
+      "languages/three-mf/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9701",
+        "rule": "three-mf-non-manifold-edge",
+        "severity": "error",
+        "message": "Mesh in object '<objId>' is not a closed 2-manifold ('<openEdges>' open boundary edges, '<nonManifoldEdges>' non-manifold edges)."
+      },
+      {
+        "code": "M9702",
+        "rule": "three-mf-degenerate-triangle",
+        "severity": "error",
+        "message": "Triangle #<triIndex> (<v1>, <v2>, <v3>) in object '<objId>' is degenerate (duplicate vertex indices or zero area)."
+      },
+      {
+        "code": "M9703",
+        "rule": "three-mf-negative-mesh-volume",
+        "severity": "error",
+        "message": "Mesh in object '<objId>' has non-positive signed volume '<signedVol> mm^3' (inverted outward face normals)."
+      },
+      {
+        "code": "M9704",
+        "rule": "three-mf-unresolved-build-object",
+        "severity": "error",
+        "message": "Build '<item>' references undefined resource '<object id=\"<objectId>\">'."
+      },
+      {
+        "code": "M9705",
+        "rule": "three-mf-wall-thickness-violation",
+        "severity": "error",
+        "message": "Surgical guide or cannula '<targetName>' has wall thickness '<actualMm> mm' below minimum additive manufacturing threshold '<minMm> mm'."
+      },
+      {
+        "code": "M9706",
+        "rule": "three-mf-invalid-osteotomy-guide-axis",
+        "severity": "error",
+        "message": "Osteotomy plane or drill sleeve '<guideFeatureId>' on object '<objId>' has a zero-length normal/axis vector."
+      },
+      {
+        "code": "M9707",
+        "rule": "three-mf-missing-biocompatible-material",
+        "severity": "error",
+        "message": "Medical object '<objId>' lacks an approved ISO 10993 / USP Class VI biocompatible material (found '<matName>')."
+      },
+      {
+        "code": "M9708",
+        "rule": "three-mf-singular-item-transform",
+        "severity": "error",
+        "message": "Build '<item objectid=\"<objectId>\">' has singular or reflection 4x3 affine transform with determinant '<det>'."
+      },
+      {
+        "code": "M9709",
+        "rule": "three-mf-out-of-bounds-vertex-index",
+        "severity": "error",
+        "message": "Triangle #<triIndex> (<v1>, <v2>, <v3>) in object '<objId>' references vertex index outside [0, <value>]."
+      },
+      {
+        "code": "M9710",
+        "rule": "three-mf-duplicate-object-id",
+        "severity": "error",
+        "message": "Duplicate '<object id=\"<objId>\">' declared in '<resources>'."
+      }
+    ]
+  },
+  {
+    "slug": "igtl",
+    "name": "OpenIGTLink / PLUS",
+    "packageName": "@modelscript/igtl",
+    "sources": [
+      "languages/igtl/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9801",
+        "rule": "igtl-non-orthogonal-rotation",
+        "severity": "error",
+        "message": "Transform '<from> -> <to>' has non-orthogonal or reflection 3x3 rotation block (||R^T R - I||_F = <frobErr>, det(R) = <det>)."
+      },
+      {
+        "code": "M9802",
+        "rule": "igtl-invalid-homogeneous-bottom-row",
+        "severity": "error",
+        "message": "Transform '<from> -> <to>' has invalid 4x4 homogeneous bottom row '[<rowStr>]' (expected '[0, 0, 0, 1]')."
+      },
+      {
+        "code": "M9803",
+        "rule": "igtl-disconnected-coordinate-frame",
+        "severity": "error",
+        "message": "Coordinate frame graph is disconnected: <detail>."
+      },
+      {
+        "code": "M9804",
+        "rule": "igtl-cyclic-transform-chain",
+        "severity": "error",
+        "message": "Directed cycle detected in coordinate transform definitions: '<cycleStr>'."
+      },
+      {
+        "code": "M9805",
+        "rule": "igtl-excessive-registration-error",
+        "severity": "warning",
+        "message": "Registration or calibration RMS error '<errorMm> mm' on '<contextName>' exceeds clinical safety threshold '<thresholdMm> mm'."
+      },
+      {
+        "code": "M9806",
+        "rule": "igtl-invalid-acquisition-rate",
+        "severity": "error",
+        "message": "Device '<deviceId>' has invalid AcquisitionRate '<rateHz> Hz' (must be > 0 Hz)."
+      },
+      {
+        "code": "M9807",
+        "rule": "igtl-unresolved-device-or-channel",
+        "severity": "error",
+        "message": "'<contextName>' references undeclared <refKind> '<refId>'."
+      },
+      {
+        "code": "M9808",
+        "rule": "igtl-self-transform-identity-mismatch",
+        "severity": "error",
+        "message": "Self-transform '<frameName> -> <frameName>' must be the 4x4 identity matrix."
+      },
+      {
+        "code": "M9809",
+        "rule": "igtl-invalid-server-port",
+        "severity": "error",
+        "message": "OpenIGTLink server '<serverId>' ListeningPort '<port>' is outside valid TCP port range [1024, 65535]."
+      },
+      {
+        "code": "M9810",
+        "rule": "igtl-duplicate-transform-edge",
+        "severity": "error",
+        "message": "Duplicate '<Transform>' defined for coordinate frame pair '(<from>, <to>)'."
       }
     ]
   },
@@ -5347,130 +6820,6 @@
         "rule": "unknown-struct-field",
         "severity": "error",
         "message": "Struct '<structName>' has no field named '<fieldName>'."
-      }
-    ]
-  },
-  {
-    "slug": "oscal",
-    "name": "oscal",
-    "packageName": "@modelscript/oscal",
-    "sources": [
-      "languages/oscal/src/lints/rules.ts"
-    ],
-    "cli": null,
-    "rules": [
-      {
-        "code": "M8201",
-        "rule": "oscal-invalid-uuid",
-        "severity": "error",
-        "message": ""
-      },
-      {
-        "code": "M8202",
-        "rule": "oscal-unresolved-control-id",
-        "severity": "error",
-        "message": "Referenced control '<controlId>' does not exist in the catalog or built-in NIST SP 800-53 / 800-82 baseline."
-      },
-      {
-        "code": "M8203",
-        "rule": "oscal-unset-required-parameter",
-        "severity": "warning",
-        "message": "Required parameter '<paramId>' in '<contextName>' has no value assigned in 'set-parameter'."
-      },
-      {
-        "code": "M8204",
-        "rule": "oscal-unimplemented-baseline-control",
-        "severity": "error",
-        "message": "Control '<controlId>' required by baseline profile '<profileHref>' is missing an 'implemented-requirement' in 'control-implementation'."
-      },
-      {
-        "code": "M8205",
-        "rule": "oscal-orphaned-by-component",
-        "severity": "error",
-        "message": "Implementation 'by-component' in control '<controlId>' references component UUID '<componentUuid>' which is not declared in 'system-implementation.components'."
-      },
-      {
-        "code": "M8206",
-        "rule": "oscal-cps-unmapped-architecture-block",
-        "severity": "warning",
-        "message": "Architectural component '<blockName>' from linked SysML v2 / AutomationML model is missing from 'system-implementation.components'."
-      },
-      {
-        "code": "M8207",
-        "rule": "oscal-ot-ics-overlay-violation",
-        "severity": "error",
-        "message": "OT/ICS component '<componentTitle>' (type '<componentType>') is missing mandatory NIST SP 800-82 controls: '<missingControls>'."
-      },
-      {
-        "code": "M8208",
-        "rule": "oscal-unmitigated-high-finding",
-        "severity": "error",
-        "message": "Open '<severity>' finding '<findingTitle>' on control '<controlId>' lacks a linked remediation entry in POA&M."
-      }
-    ]
-  },
-  {
-    "slug": "qif",
-    "name": "qif",
-    "packageName": "@modelscript/qif",
-    "sources": [
-      "languages/qif/src/lints/rules.ts"
-    ],
-    "cli": null,
-    "rules": [
-      {
-        "code": "M8101",
-        "rule": "qif-unresolved-qpid",
-        "severity": "error",
-        "message": "Unresolved <refKind> reference '<refId>' in '<contextName>'."
-      },
-      {
-        "code": "M8102",
-        "rule": "qif-duplicate-qpid",
-        "severity": "error",
-        "message": "Duplicate identifier or QPId '<idOrQpId>' declared on '<elementName>'."
-      },
-      {
-        "code": "M8103",
-        "rule": "qif-invalid-datum-precedence",
-        "severity": "error",
-        "message": "Duplicate datum label '<datumLabel>' in DatumReferenceFrame of characteristic '<charName>'."
-      },
-      {
-        "code": "M8104",
-        "rule": "qif-invalid-material-modifier",
-        "severity": "error",
-        "message": "Material condition modifier '<modifier>' cannot be applied to '<targetDesc>' in characteristic '<charName>'."
-      },
-      {
-        "code": "M8105",
-        "rule": "qif-composite-frame-mismatch",
-        "severity": "error",
-        "message": "Composite lower-tier tolerance '<lowerTol>' must be strictly less than upper-tier tolerance '<upperTol>' in characteristic '<charName>'."
-      },
-      {
-        "code": "M8106",
-        "rule": "qif-insufficient-probing-points",
-        "severity": "error",
-        "message": "Probing point count '<actualPoints>' is below minimum required '<requiredPoints>' for '<featureType>' in '<targetName>'."
-      },
-      {
-        "code": "M8107",
-        "rule": "qif-tur-uncertainty-warning",
-        "severity": "warning",
-        "message": "Test Uncertainty Ratio '<tur>:1' is below required minimum '<minTur>:1' for device '<deviceName>' on characteristic '<charName>'."
-      },
-      {
-        "code": "M8108",
-        "rule": "qif-out-of-tolerance-actual",
-        "severity": "error",
-        "message": "Actual '<actualId>' has measured value '<measuredVal>' against effective tolerance '<effTol>' but is marked '<status>' for characteristic '<charName>'."
-      },
-      {
-        "code": "M8109",
-        "rule": "qif-unresolved-step-entity",
-        "severity": "error",
-        "message": "Referenced STEP AP242 entity '<stepEntityId>' on feature '<featureName>' was not found in the CAD model."
       }
     ]
   }

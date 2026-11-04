@@ -48,6 +48,7 @@ const selectedFilter = ref<string>(
   props.group ? `group:${props.group}` : props.industry ? `industry:${props.industry}` : "all",
 );
 const capabilityFilter = ref<"all" | "simulate" | "dae" | "projections">("all");
+const tierFilter = ref<"all" | "stable" | "beta" | "preview">("all");
 
 const filterOptions = computed(() => {
   if (props.industry || props.group) return [];
@@ -79,9 +80,11 @@ function matchesScope(lang: LanguageManifest): boolean {
 const filteredLanguages = computed(() => {
   const q = search.value.trim().toLowerCase();
   const cap = capabilityFilter.value;
+  const tier = tierFilter.value;
 
   return allLanguages.filter((lang) => {
     if (!matchesScope(lang)) return false;
+    if (tier !== "all" && lang.tier !== tier) return false;
 
     if (cap === "simulate" && !lang.capabilities.simulate) return false;
     if (cap === "dae" && !lang.capabilities.dae) return false;
@@ -129,6 +132,42 @@ const filteredLanguages = computed(() => {
             @click="selectedFilter = opt.id"
           >
             {{ opt.label }}
+          </button>
+        </div>
+
+        <!-- Maturity Tier Toggles -->
+        <div class="cap-toggles" role="group" aria-label="Maturity tier filter">
+          <button
+            type="button"
+            class="toggle-btn"
+            :class="{ active: tierFilter === 'all' }"
+            @click="tierFilter = 'all'"
+          >
+            All Tiers
+          </button>
+          <button
+            type="button"
+            class="toggle-btn"
+            :class="{ active: tierFilter === 'stable' }"
+            @click="tierFilter = 'stable'"
+          >
+            Stable
+          </button>
+          <button
+            type="button"
+            class="toggle-btn"
+            :class="{ active: tierFilter === 'beta' }"
+            @click="tierFilter = 'beta'"
+          >
+            Beta
+          </button>
+          <button
+            type="button"
+            class="toggle-btn"
+            :class="{ active: tierFilter === 'preview' }"
+            @click="tierFilter = 'preview'"
+          >
+            Preview
           </button>
         </div>
 

@@ -35,7 +35,23 @@ const SliderContainer = styled.div`
   overflow: visible;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+`;
+
+const SliderHeaderBar = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 2px;
+  box-sizing: border-box;
+`;
+
+const TrackStage = styled.div`
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
 `;
 
 const TrackViewport = styled.div`
@@ -49,6 +65,7 @@ const TrackViewport = styled.div`
 const Track = styled.div`
   display: flex;
   flex-direction: row;
+  align-items: stretch;
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
@@ -67,24 +84,79 @@ const SlideWrapper = styled.div`
   flex: 0 0 100%;
   min-width: 100%;
   max-width: 100%;
+  align-self: stretch;
+  height: 100%;
   scroll-snap-align: start;
   scroll-snap-stop: always;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 
-  /* Ensure cards inside slides don't add redundant outer top margins */
+  /* Ensure cards and code blocks inside slides take full height without redundant outer vertical margins */
   & > div {
     margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  & > .markdown-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  pre.msx-code-pre {
+    margin: 0 !important;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    border-radius: 12px;
+  }
+
+  .msx-code-header {
+    flex: 0 0 auto !important;
+  }
+
+  .msx-code-body {
+    flex: 1 1 auto !important;
+    overflow-y: auto;
+  }
+
+  .msx-code-diagram {
+    flex: 1 1 auto !important;
+  }
+
+  /* Stretch artifact cards and nested viewers to take full height */
+  & > div > :first-child {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  & > div > :first-child > * {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 `;
 
 const NavButton = styled.button<{ $direction: "left" | "right" }>`
   position: absolute;
   top: 50%;
-  ${(props) => (props.$direction === "left" ? "left: 10px;" : "right: 10px;")}
+  ${(props) => (props.$direction === "left" ? "left: -16px;" : "right: -16px;")}
   transform: translateY(-50%);
   z-index: 5;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.15));
   background: rgba(15, 23, 42, 0.78);
@@ -112,33 +184,28 @@ const NavButton = styled.button<{ $direction: "left" | "right" }>`
 `;
 
 const SlideCounterBadge = styled.div`
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  z-index: 5;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
+  padding: 2px 8px;
   border-radius: 999px;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   font-weight: 600;
-  color: #ffffff;
-  background: rgba(15, 23, 42, 0.72);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--color-fg-muted, #8b949e);
+  background: var(--color-canvas-subtle, rgba(15, 23, 42, 0.06));
+  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.12));
   pointer-events: none;
   user-select: none;
+  line-height: 1.4;
 `;
 
 const BubbleSliderContainer = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 7px;
-  padding: 4px 0 2px 0;
+  padding: 2px 0;
   user-select: none;
 `;
 
@@ -264,34 +331,66 @@ export const PostArtifactSlider: React.FC<PostArtifactSliderProps> = ({ slides, 
         e.stopPropagation();
       }}
     >
-      <TrackViewport>
-        <Track ref={trackRef} data-testid="artifact-slider-track">
-          {effectiveSlides.map((slide, idx) => (
-            <SlideWrapper key={slide.id || `slide-${idx}`} data-slide-index={idx}>
-              {slide.type === "code" ? (
-                <PostMarkdownContent
-                  text={slide.rawBlock || `\`\`\`${slide.lang || "modelica"}\n${slide.code}\n\`\`\``}
-                />
-              ) : (
-                <ArtifactViewCard
-                  artifactId={slide.artifactId!}
-                  initialArtifactView={slide.initialArtifactView}
-                  figureNumber={slide.figureNumber ?? idx + 1}
-                  caption={slide.caption}
-                  forkedFromId={forkedFromId}
-                  onPinCreated={onPinCreated}
-                />
-              )}
-            </SlideWrapper>
-          ))}
-        </Track>
+      {/* Top Bar above content: Skeleton Bubble Slider (top-left) + Page Number (top-right) */}
+      <SliderHeaderBar data-testid="artifact-slider-header">
+        <BubbleSliderContainer
+          role="tablist"
+          aria-label="Artifact slide navigation"
+          data-testid="artifact-skeleton-bubble-slider"
+        >
+          {effectiveSlides.map((slide, idx) => {
+            const isActive = activeIndex === idx;
+            return (
+              <SkeletonBubble
+                key={slide.id || `bubble-${idx}`}
+                type="button"
+                role="tab"
+                $active={isActive}
+                aria-selected={isActive}
+                aria-label={`Slide ${idx + 1} of ${totalSlides}`}
+                data-testid={`artifact-bubble-${idx}`}
+                data-active={isActive ? "true" : "false"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  scrollToSlide(idx);
+                }}
+              />
+            );
+          })}
+        </BubbleSliderContainer>
 
         {/* Counter Badge */}
         <SlideCounterBadge data-testid="artifact-slider-counter">
           {activeIndex + 1} / {totalSlides}
         </SlideCounterBadge>
+      </SliderHeaderBar>
 
-        {/* Navigation Arrows */}
+      <TrackStage>
+        <TrackViewport>
+          <Track ref={trackRef} data-testid="artifact-slider-track">
+            {effectiveSlides.map((slide, idx) => (
+              <SlideWrapper key={slide.id || `slide-${idx}`} data-slide-index={idx}>
+                {slide.type === "code" ? (
+                  <PostMarkdownContent
+                    text={slide.rawBlock || `\`\`\`${slide.lang || "modelica"}\n${slide.code}\n\`\`\``}
+                  />
+                ) : (
+                  <ArtifactViewCard
+                    artifactId={slide.artifactId!}
+                    initialArtifactView={slide.initialArtifactView}
+                    figureNumber={slide.figureNumber ?? idx + 1}
+                    caption={slide.caption}
+                    forkedFromId={forkedFromId}
+                    onPinCreated={onPinCreated}
+                  />
+                )}
+              </SlideWrapper>
+            ))}
+          </Track>
+        </TrackViewport>
+
+        {/* Navigation Arrows split in the center of the left/right artifact borders */}
         {activeIndex > 0 && (
           <NavButton
             type="button"
@@ -323,35 +422,7 @@ export const PostArtifactSlider: React.FC<PostArtifactSliderProps> = ({ slides, 
             <ChevronRightIcon size={18} />
           </NavButton>
         )}
-      </TrackViewport>
-
-      {/* Skeleton Bubble Slider */}
-      <BubbleSliderContainer
-        role="tablist"
-        aria-label="Artifact slide navigation"
-        data-testid="artifact-skeleton-bubble-slider"
-      >
-        {effectiveSlides.map((slide, idx) => {
-          const isActive = activeIndex === idx;
-          return (
-            <SkeletonBubble
-              key={slide.id || `bubble-${idx}`}
-              type="button"
-              role="tab"
-              $active={isActive}
-              aria-selected={isActive}
-              aria-label={`Slide ${idx + 1} of ${totalSlides}`}
-              data-testid={`artifact-bubble-${idx}`}
-              data-active={isActive ? "true" : "false"}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                scrollToSlide(idx);
-              }}
-            />
-          );
-        })}
-      </BubbleSliderContainer>
+      </TrackStage>
     </SliderContainer>
   );
 };
@@ -404,20 +475,24 @@ export function extractShortPostSlides(
     });
   }
 
-  // 2. Extract artifact IDs and views
+  // 2. Extract artifact IDs and views (must be valid positive numeric IDs)
   const metaArtIds: number[] = Array.isArray(postMeta?.["artifactIds"])
-    ? (postMeta["artifactIds"] as unknown[]).filter((id: unknown) => Number.isFinite(Number(id))).map(Number)
+    ? (postMeta["artifactIds"] as unknown[])
+        .filter((id: unknown) => id !== null && id !== undefined && Number(id) > 0)
+        .map(Number)
     : [];
 
   const nbObj = (notebookData && typeof notebookData === "object" ? notebookData : {}) as Record<string, unknown>;
   const notebookCells = Array.isArray(nbObj["cells"])
     ? (nbObj["cells"] as { id?: string; type?: string; artifactId?: unknown; title?: string; caption?: string }[])
     : [];
-  const notebookArtCells = notebookCells.filter((c) => c.type === "artifact" && Number.isFinite(Number(c.artifactId)));
+  const notebookArtCells = notebookCells.filter(
+    (c) => c.type === "artifact" && c.artifactId !== null && c.artifactId !== undefined && Number(c.artifactId) > 0,
+  );
 
-  const primaryArtId = Number.isFinite(Number(postObj["artifact_view_id"]))
-    ? Number(postObj["artifact_view_id"])
-    : null;
+  const rawPrimary = postObj["artifact_view_id"];
+  const primaryArtId =
+    rawPrimary !== null && rawPrimary !== undefined && Number(rawPrimary) > 0 ? Number(rawPrimary) : null;
 
   // Directives in content
   const directiveRegex = /::artifact(?:\[([^\]]*)\])?\{([^}]*)\}/g;
@@ -426,7 +501,7 @@ export function extractShortPostSlides(
   while ((dirMatch = directiveRegex.exec(rawContent)) !== null) {
     const idM = (dirMatch[2] || "").match(/(?:^|\s)id\s*=\s*["']?(\d+)["']?/);
     const capM = (dirMatch[2] || "").match(/(?:^|\s)caption\s*=\s*(?:"([^"]*)"|'([^']*)')/);
-    if (idM && idM[1]) {
+    if (idM && idM[1] && Number(idM[1]) > 0) {
       directiveArtIds.push({
         id: Number(idM[1]),
         title: dirMatch[1]?.trim(),
@@ -438,10 +513,10 @@ export function extractShortPostSlides(
   const combinedArtifacts: { id: number; title?: string; caption?: string; initialView?: unknown }[] = [];
 
   const addArtifact = (id: number, title?: string, caption?: string) => {
-    if (seenArtifactIds.has(id)) return;
+    if (!id || id <= 0 || seenArtifactIds.has(id)) return;
     seenArtifactIds.add(id);
     const artViews = postObj["artifact_views"] as Record<number, unknown> | undefined;
-    const initialView = artViews?.[id] || (id === postObj["artifact_view_id"] ? postObj["artifact_view"] : undefined);
+    const initialView = artViews?.[id] || (id === primaryArtId ? postObj["artifact_view"] : undefined);
     combinedArtifacts.push({ id, title, caption, initialView });
   };
 

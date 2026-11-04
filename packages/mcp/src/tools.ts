@@ -5106,4 +5106,174 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       };
     },
   );
+
+  // ---------------------------------------------------------------------------
+  // Radiology, Radiation Oncology & Computer-Assisted Surgery Tools
+  // ---------------------------------------------------------------------------
+
+  server.tool(
+    "opensim_analyze",
+    "Parses an OpenSim (.osim) musculoskeletal biomechanics model, runs pre-flight kinematic and Hill-type muscle diagnostics (M9101–M9110), and simulates muscle activation/contraction dynamics.",
+    {
+      opensimContent: z.string().describe("OpenSim .osim XML model content"),
+      duration: z.number().optional().default(0.5).describe("Simulation duration in seconds"),
+      dt: z.number().optional().default(0.01).describe("Integration time step in seconds"),
+    },
+    async ({ opensimContent, duration, dt }) => {
+      const { lintOpenSimDocument, lowerOpenSimToDae, parseOpenSim, simulateMuscleDynamics } =
+        await import("@modelscript/opensim");
+      const doc = parseOpenSim(opensimContent);
+      const diagnostics = lintOpenSimDocument(doc);
+      const simulation = simulateMuscleDynamics(doc, { duration, dt });
+      const dae = lowerOpenSimToDae(doc);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                modelName: doc.modelName,
+                diagnostics,
+                daeVariableCount: dae.getVarCount(),
+                daeEquationCount: dae.getEqCount(),
+                simulation,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "dicom_rt_verify_dvh",
+    "Evaluates a DICOM-RT treatment plan (RTPLAN, RTSTRUCT, RTDOSE), verifies QUANTEC OAR dose constraints, MLC leaf kinematics, and gantry/couch collision clearance (M9201–M9210), and computes DVH, CI, HI, BED, and EQD2 metrics.",
+    {
+      dicomRtContent: z.string().describe("DICOM-RT XML, JSON, or declarative plan content"),
+    },
+    async ({ dicomRtContent }) => {
+      const { evaluateDicomRtDosimetry, lintDicomRtDocument, parseDicomRt } = await import("@modelscript/dicom-rt");
+      const doc = parseDicomRt(dicomRtContent);
+      const diagnostics = lintDicomRtDocument(doc);
+      const dosimetry = evaluateDicomRtDosimetry(doc);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                planId: doc.planId,
+                prescribedDoseGy: doc.prescribedDoseGy,
+                fractions: doc.fractions,
+                diagnostics,
+                dosimetry,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "cellml_simulate",
+    "Parses a CellML 1.0/1.1/2.0 electrophysiology or microvascular perfusion model, verifies SI dimensional consistency and component interfaces (M9301–M9310), and integrates action potential / gating ODEs.",
+    {
+      cellmlContent: z.string().describe("CellML .cellml XML model content"),
+      duration: z.number().optional().default(1.0).describe("Simulation duration"),
+      dt: z.number().optional().default(0.01).describe("Integration step size"),
+    },
+    async ({ cellmlContent, duration, dt }) => {
+      const { lintCellmlDocument, lowerCellmlToDae, parseCellml, solveCellml } = await import("@modelscript/cellml");
+      const doc = parseCellml(cellmlContent);
+      const diagnostics = lintCellmlDocument(doc);
+      const simulation = solveCellml(doc, { duration, dt });
+      const dae = lowerCellmlToDae(doc);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                modelName: doc.name,
+                diagnostics,
+                daeVariableCount: dae.getVarCount(),
+                daeEquationCount: dae.getEqCount(),
+                simulation,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "igtl_verify_calibration",
+    "Parses an OpenIGTLink / PLUS surgical navigation configuration, verifies SE(3) rotation orthogonality and coordinate frame connectivity (M9801–M9810), and solves stylus pivot calibration and Fitzpatrick Target Registration Error (TRE).",
+    {
+      igtlContent: z.string().describe("PLUS .plus.xml or OpenIGTLink .igtl content"),
+    },
+    async ({ igtlContent }) => {
+      const { lintIgtlDocument, parseIgtl, solveTransformChainAndPivot } = await import("@modelscript/igtl");
+      const doc = parseIgtl(igtlContent);
+      const diagnostics = lintIgtlDocument(doc);
+      const navigation = solveTransformChainAndPivot(doc);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                diagnostics,
+                navigation,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.tool(
+    "three_mf_verify_guide",
+    "Verifies an ISO/ASTM 52915 3MF Medical patient-specific surgical cutting guide or implant mesh for 2-manifold watertightness, outward normal volume, wall thickness, osteotomy plane normals, and biocompatibility (M9701–M9710).",
+    {
+      threeMfContent: z.string().describe("3MF XML .3mf / .model content"),
+    },
+    async ({ threeMfContent }) => {
+      const { lintThreeMfDocument, parseThreeMf, verifyMeshTopology } = await import("@modelscript/three-mf");
+      const doc = parseThreeMf(threeMfContent);
+      const diagnostics = lintThreeMfDocument(doc);
+      const topology = verifyMeshTopology(doc);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                success: true,
+                diagnostics,
+                topology,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
 }

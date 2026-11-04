@@ -1,5 +1,5 @@
 {
-  "toolCount": 55,
+  "toolCount": 60,
   "tools": [
     {
       "name": "modelica_load",
@@ -274,6 +274,31 @@
     {
       "name": "aml_run_virtual_commissioning",
       "description": "Parses an IEC 62714 AutomationML / CAEX workcell topology, runs semantic port & PPR role verification, and executes closed-loop virtual commissioning coupling VirtualPlc logic and mechatronic plant dynamics.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "opensim_analyze",
+      "description": "Parses an OpenSim (.osim) musculoskeletal biomechanics model, runs pre-flight kinematic and Hill-type muscle diagnostics (M9101–M9110), and simulates muscle activation/contraction dynamics.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "dicom_rt_verify_dvh",
+      "description": "Evaluates a DICOM-RT treatment plan (RTPLAN, RTSTRUCT, RTDOSE), verifies QUANTEC OAR dose constraints, MLC leaf kinematics, and gantry/couch collision clearance (M9201–M9210), and computes DVH, CI, HI, BED, and EQD2 metrics.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "cellml_simulate",
+      "description": "Parses a CellML 1.0/1.1/2.0 electrophysiology or microvascular perfusion model, verifies SI dimensional consistency and component interfaces (M9301–M9310), and integrates action potential / gating ODEs.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "igtl_verify_calibration",
+      "description": "Parses an OpenIGTLink / PLUS surgical navigation configuration, verifies SE(3) rotation orthogonality and coordinate frame connectivity (M9801–M9810), and solves stylus pivot calibration and Fitzpatrick Target Registration Error (TRE).",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "three_mf_verify_guide",
+      "description": "Verifies an ISO/ASTM 52915 3MF Medical patient-specific surgical cutting guide or implant mesh for 2-manifold watertightness, outward normal volume, wall thickness, osteotomy plane normals, and biocompatibility (M9701–M9710).",
       "category": "OWL2 Ontology & Fault Diagnostics"
     }
   ]

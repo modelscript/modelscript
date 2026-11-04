@@ -165,6 +165,47 @@ end X;
       assert.strictEqual(result.isShortPost, false);
       assert.strictEqual(result.slides.length, 0);
     });
+
+    it("returns zero slides and clean prose text for posts without artifacts (null, 0, or undefined artifact_view_id)", () => {
+      const postWithNullArtifact = {
+        id: 204,
+        content: "test",
+        artifact_view_id: null,
+      };
+      const resNull = extractShortPostSlides(postWithNullArtifact);
+      assert.strictEqual(resNull.isShortPost, true);
+      assert.strictEqual(resNull.proseText, "test");
+      assert.strictEqual(resNull.slides.length, 0);
+
+      const postWithZeroArtifact = {
+        id: 205,
+        content: "test",
+        artifact_view_id: 0,
+      };
+      const resZero = extractShortPostSlides(postWithZeroArtifact);
+      assert.strictEqual(resZero.isShortPost, true);
+      assert.strictEqual(resZero.proseText, "test");
+      assert.strictEqual(resZero.slides.length, 0);
+
+      const postWithUndefinedArtifact = {
+        id: 206,
+        content: "test",
+      };
+      const resUndefined = extractShortPostSlides(postWithUndefinedArtifact);
+      assert.strictEqual(resUndefined.isShortPost, true);
+      assert.strictEqual(resUndefined.proseText, "test");
+      assert.strictEqual(resUndefined.slides.length, 0);
+
+      const postWithInvalidMeta = {
+        id: 207,
+        content: "test",
+        metadata: {
+          artifactIds: [null, 0, undefined, "not-a-number"],
+        },
+      };
+      const resMeta = extractShortPostSlides(postWithInvalidMeta);
+      assert.strictEqual(resMeta.slides.length, 0);
+    });
   });
 
   describe("3. PostArtifactSlider & Skeleton Bubble Slider Component Invariants", () => {
@@ -201,6 +242,65 @@ end X;
       assert.ok(
         sliderSrc.includes('data-testid="artifact-slider-counter"'),
         "Slider must render slide counter badge showing '1 / N'",
+      );
+    });
+
+    it("places bubble skeleton at top-left and page counter above the artifact content, and splits left/right arrows on the artifact border", () => {
+      const headerIdx = sliderSrc.indexOf('data-testid="artifact-slider-header"');
+      const bubbleIdx = sliderSrc.indexOf('data-testid="artifact-skeleton-bubble-slider"');
+      const counterIdx = sliderSrc.indexOf('data-testid="artifact-slider-counter"');
+      const trackIdx = sliderSrc.indexOf('data-testid="artifact-slider-track"');
+
+      assert.ok(headerIdx !== -1, "Slider must render SliderHeaderBar above content");
+      assert.ok(
+        bubbleIdx > headerIdx && bubbleIdx < trackIdx,
+        "Skeleton bubble slider must be rendered above the artifact track content",
+      );
+      assert.ok(
+        counterIdx > headerIdx && counterIdx < trackIdx,
+        "Page counter badge must be rendered above the artifact track content",
+      );
+      assert.ok(
+        sliderSrc.includes("justify-content: flex-start"),
+        "BubbleSliderContainer must align bubbles to the top-left (flex-start)",
+      );
+      assert.ok(
+        sliderSrc.includes("left: -16px;") && sliderSrc.includes("right: -16px;"),
+        "Navigation arrows must be split on the center of the left/right border of the artifact (-16px offset for 32px button)",
+      );
+    });
+
+    it("extends short artifact boxes and code blocks to take full height in multi-artifact posts to eliminate white space under artifacts", () => {
+      // 1. Track aligns items with stretch
+      assert.ok(
+        sliderSrc.includes("align-items: stretch"),
+        "Track must use align-items: stretch so all slides in the slider share the same uniform height",
+      );
+
+      // 2. SlideWrapper stretches and acts as a flex column container
+      assert.ok(
+        sliderSrc.includes("align-self: stretch") && sliderSrc.includes("height: 100%"),
+        "SlideWrapper must stretch to 100% height of the track",
+      );
+
+      // 3. Child containers (div / markdown-body) flex to full height
+      assert.ok(
+        sliderSrc.includes("& > .markdown-body") && sliderSrc.includes("flex: 1 1 auto"),
+        "SlideWrapper must extend markdown-body to flex: 1 1 auto and height: 100%",
+      );
+
+      // 4. Code block (pre.msx-code-pre) extends to full height with flex body
+      assert.ok(
+        sliderSrc.includes("pre.msx-code-pre") &&
+          sliderSrc.includes(".msx-code-body") &&
+          sliderSrc.includes(".msx-code-header"),
+        "SlideWrapper must extend pre.msx-code-pre to full height with flex: 1 1 auto body and pinned header",
+      );
+
+      // 5. Artifact card viewers extend to full height
+      assert.ok(
+        sliderSrc.includes("& > div > :first-child"),
+        "SlideWrapper must extend artifact card viewers to flex: 1 1 auto so cards take full height",
       );
     });
   });
@@ -254,6 +354,10 @@ end X;
       assert.ok(
         postBodySrc.includes("isArticle && notebookData && notebookData.cells.length > 0"),
         "PostBodyContent must only run the vertical article reader branch when isArticle is true",
+      );
+      assert.ok(
+        postBodySrc.includes("displayPost.artifact_view_id && Number(displayPost.artifact_view_id) > 0"),
+        "PostBodyContent must ensure artifact_view_id is a positive number before rendering ArtifactViewCard",
       );
     });
   });

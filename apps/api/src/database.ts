@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import semver from "semver";
+import webpush from "web-push";
 import {
   BillingRepository,
   PackageRepository,
@@ -65,9 +66,12 @@ import {
   type MailerDriverPreference,
   type SmtpTlsMode,
 } from "./services/mailer.js";
+import { extractCitationUrnsFromText, normalizeCitationUrn, type ScholarlyWorkRecord } from "./services/openalex.js";
+import { WebPushService } from "./services/web-push-service.js";
 import { S3StorageDriver } from "./storage/s3-driver.js";
 import { canonicalizeEmail, hashCanonicalEmail, ipMatchesCidr, redactEmailHint } from "./util/email-filter.js";
 import { PERSONA_SEED_TOPICS, extractHashtags } from "./util/extract-topics.js";
+import { generateSnowflakeId } from "./util/snowflake.js";
 import {
   decryptSecretAtRest,
   decryptTotpSecret,
@@ -402,6 +406,8 @@ export interface RawContentFilterRow {
 export class LibraryDatabase {
   readonly #db: Database.Database;
   readonly #dbPath: string;
+  readonly #openalexDb: Database.Database;
+  readonly #openalexDbPath: string;
   readonly #runner: SqliteMigrationRunner;
   #auditChainCache: {
     valid: boolean;
@@ -417,6 +423,14 @@ export class LibraryDatabase {
   readonly packages: PackageRepository;
   readonly billing: BillingRepository;
   readonly analyticsBuffer: AnalyticsBuffer;
+  #webPushService: WebPushService | null = null;
+
+  get webPushService(): WebPushService {
+    if (!this.#webPushService) {
+      this.#webPushService = new WebPushService(this);
+    }
+    return this.#webPushService;
+  }
 
   constructor(dbDir?: string) {
     const dir = dbDir ?? resolveDefaultDbDir();
@@ -427,6 +441,13 @@ export class LibraryDatabase {
     // Ensure directory exists
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
+    }
+
+    const openalexDbPath = process.env["OPENALEX_DB_PATH"] || path.join(parentDir, "openalex.db");
+    this.#openalexDbPath = openalexDbPath;
+    const openalexParentDir = path.dirname(openalexDbPath);
+    if (!fs.existsSync(openalexParentDir)) {
+      fs.mkdirSync(openalexParentDir, { recursive: true });
     }
 
     this.#db = new Database(dbPath);
@@ -441,6 +462,15 @@ export class LibraryDatabase {
       this.#auditChainCache = null;
       return 0;
     });
+
+    this.#openalexDb = new Database(openalexDbPath);
+    this.#openalexDb.pragma("journal_mode = WAL");
+    this.#openalexDb.pragma("synchronous = NORMAL");
+    this.#openalexDb.pragma("temp_store = MEMORY");
+    this.#openalexDb.pragma("mmap_size = 536870912"); // 512 MB memory-mapped I/O for fast FTS5 scans
+    this.#openalexDb.pragma("cache_size = -64000"); // 64 MB RAM cache
+    this.#openalexDb.pragma("busy_timeout = 5000");
+
     this.#runner = new SqliteMigrationRunner(this.#db, dbPath);
     this.#runner.runPendingSync(allMigrations);
     this.#initialize();
@@ -459,6 +489,14 @@ export class LibraryDatabase {
 
   get dbPath(): string {
     return this.#dbPath;
+  }
+
+  get openalexDb(): Database.Database {
+    return this.#openalexDb;
+  }
+
+  get openalexDbPath(): string {
+    return this.#openalexDbPath;
   }
 
   get dbDir(): string {
@@ -482,6 +520,16 @@ export class LibraryDatabase {
         this.#db.exec(`DROP TABLE IF EXISTS "${safeName}";`);
       }
     })();
+    try {
+      this.#openalexDb.exec(`
+        DROP TRIGGER IF EXISTS trg_scholarly_works_fts_ai;
+        DROP TRIGGER IF EXISTS trg_scholarly_works_fts_ad;
+        DROP TRIGGER IF EXISTS trg_scholarly_works_fts_au;
+        DROP TABLE IF EXISTS scholarly_works_fts;
+        DROP TABLE IF EXISTS scholarly_works;
+        DROP TABLE IF EXISTS openalex_s3_partitions;
+      `);
+    } catch {}
     this.#runner.runPendingSync(allMigrations, { silent: true });
     this.#initialize();
     this.#db.exec("PRAGMA foreign_keys = ON;");
@@ -607,6 +655,391 @@ export class LibraryDatabase {
         UPDATE components SET causality = NULL WHERE type_name = 'import' AND causality = 'connector';
       `);
     } catch {}
+
+    // Initialize Dedicated OpenAlex Database (openalex.db) with FTS5 & S3 Partition Manager
+    try {
+      this.#openalexDb.exec(`
+        CREATE TABLE IF NOT EXISTS scholarly_works (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          urn TEXT NOT NULL UNIQUE,
+          openalex_id TEXT,
+          doi TEXT,
+          arxiv_id TEXT,
+          pmid TEXT,
+          isbn TEXT,
+          ansatz_entity_type TEXT,
+          ansatz_entity_id TEXT,
+          title TEXT NOT NULL,
+          subtitle TEXT,
+          abstract TEXT,
+          work_type TEXT NOT NULL DEFAULT 'article',
+          publication_year INTEGER,
+          publication_date TEXT,
+          venue_name TEXT,
+          venue_issn TEXT,
+          publisher TEXT,
+          volume TEXT,
+          issue TEXT,
+          pages TEXT,
+          language TEXT DEFAULT 'en',
+          license TEXT,
+          is_oa INTEGER NOT NULL DEFAULT 0,
+          oa_status TEXT,
+          oa_url TEXT,
+          local_pdf_url TEXT,
+          local_artifact_id INTEGER,
+          external_locations_json TEXT NOT NULL DEFAULT '[]',
+          authors_json TEXT NOT NULL DEFAULT '[]',
+          concepts_json TEXT NOT NULL DEFAULT '[]',
+          cited_by_count INTEGER NOT NULL DEFAULT 0,
+          references_count INTEGER NOT NULL DEFAULT 0,
+          counts_by_year_json TEXT NOT NULL DEFAULT '[]',
+          referenced_urns_json TEXT NOT NULL DEFAULT '[]',
+          related_urns_json TEXT NOT NULL DEFAULT '[]',
+          citation_key TEXT NOT NULL,
+          canonical_url TEXT,
+          fwci REAL,
+          partition_url TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_scholarly_works_openalex ON scholarly_works(openalex_id);
+        CREATE INDEX IF NOT EXISTS idx_scholarly_works_doi ON scholarly_works(doi);
+        CREATE INDEX IF NOT EXISTS idx_scholarly_works_arxiv ON scholarly_works(arxiv_id);
+        CREATE INDEX IF NOT EXISTS idx_scholarly_works_cite_key ON scholarly_works(citation_key);
+        CREATE INDEX IF NOT EXISTS idx_scholarly_works_year ON scholarly_works(publication_year);
+        CREATE INDEX IF NOT EXISTS idx_scholarly_works_partition ON scholarly_works(partition_url);
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS scholarly_works_fts USING fts5(
+          urn UNINDEXED,
+          title,
+          subtitle,
+          abstract,
+          authors_json,
+          concepts_json,
+          venue_name,
+          citation_key,
+          doi,
+          content='scholarly_works',
+          content_rowid='id',
+          tokenize='porter unicode61'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS trg_scholarly_works_fts_ai AFTER INSERT ON scholarly_works BEGIN
+          INSERT INTO scholarly_works_fts(rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
+          VALUES (
+            new.id,
+            new.urn,
+            COALESCE(new.title, ''),
+            COALESCE(new.subtitle, ''),
+            COALESCE(new.abstract, ''),
+            COALESCE(new.authors_json, ''),
+            COALESCE(new.concepts_json, ''),
+            COALESCE(new.venue_name, ''),
+            COALESCE(new.citation_key, ''),
+            COALESCE(new.doi, '')
+          );
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_scholarly_works_fts_ad AFTER DELETE ON scholarly_works BEGIN
+          INSERT INTO scholarly_works_fts(scholarly_works_fts, rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
+          VALUES (
+            'delete',
+            old.id,
+            old.urn,
+            COALESCE(old.title, ''),
+            COALESCE(old.subtitle, ''),
+            COALESCE(old.abstract, ''),
+            COALESCE(old.authors_json, ''),
+            COALESCE(old.concepts_json, ''),
+            COALESCE(old.venue_name, ''),
+            COALESCE(old.citation_key, ''),
+            COALESCE(old.doi, '')
+          );
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_scholarly_works_fts_au AFTER UPDATE ON scholarly_works BEGIN
+          INSERT INTO scholarly_works_fts(scholarly_works_fts, rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
+          VALUES (
+            'delete',
+            old.id,
+            old.urn,
+            COALESCE(old.title, ''),
+            COALESCE(old.subtitle, ''),
+            COALESCE(old.abstract, ''),
+            COALESCE(old.authors_json, ''),
+            COALESCE(old.concepts_json, ''),
+            COALESCE(old.venue_name, ''),
+            COALESCE(old.citation_key, ''),
+            COALESCE(old.doi, '')
+          );
+          INSERT INTO scholarly_works_fts(rowid, urn, title, subtitle, abstract, authors_json, concepts_json, venue_name, citation_key, doi)
+          VALUES (
+            new.id,
+            new.urn,
+            COALESCE(new.title, ''),
+            COALESCE(new.subtitle, ''),
+            COALESCE(new.abstract, ''),
+            COALESCE(new.authors_json, ''),
+            COALESCE(new.concepts_json, ''),
+            COALESCE(new.venue_name, ''),
+            COALESCE(new.citation_key, ''),
+            COALESCE(new.doi, '')
+          );
+        END;
+
+        CREATE TABLE IF NOT EXISTS openalex_s3_partitions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entity_type TEXT NOT NULL DEFAULT 'works',
+          s3_url TEXT NOT NULL UNIQUE,
+          https_url TEXT NOT NULL,
+          updated_date TEXT,
+          part_name TEXT NOT NULL,
+          content_length INTEGER NOT NULL DEFAULT 0,
+          record_count INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'unloaded',
+          imported_count INTEGER NOT NULL DEFAULT 0,
+          scanned_count INTEGER NOT NULL DEFAULT 0,
+          skipped_count INTEGER NOT NULL DEFAULT 0,
+          filter_config_json TEXT NOT NULL DEFAULT '{}',
+          last_loaded_at TEXT,
+          last_duration_ms INTEGER,
+          error_message TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_openalex_partitions_status ON openalex_s3_partitions(status);
+        CREATE INDEX IF NOT EXISTS idx_openalex_partitions_date ON openalex_s3_partitions(updated_date);
+      `);
+    } catch {}
+
+    // Initialize user-scoped Reference Collections & Post Citations in primary DB (modelscript.db)
+    try {
+      const refLibMaster = this.#db
+        .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'reference_library_items'`)
+        .get() as { sql?: string } | undefined;
+      if (refLibMaster?.sql && refLibMaster.sql.includes("REFERENCES scholarly_works")) {
+        this.#db.pragma("foreign_keys = OFF");
+        this.#db.exec(`
+          DROP TABLE IF EXISTS reference_library_items;
+          DROP TABLE IF EXISTS post_citations;
+          DROP TABLE IF EXISTS scholarly_works;
+        `);
+        this.#db.pragma("foreign_keys = ON");
+      }
+
+      this.#db.exec(`
+        CREATE TABLE IF NOT EXISTS reference_collections (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          slug TEXT NOT NULL,
+          description TEXT,
+          color TEXT NOT NULL DEFAULT '#1d9bf0',
+          icon TEXT NOT NULL DEFAULT 'folder',
+          is_public INTEGER NOT NULL DEFAULT 0,
+          parent_id INTEGER REFERENCES reference_collections(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(user_id, slug)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_reference_collections_user ON reference_collections(user_id);
+
+        CREATE TABLE IF NOT EXISTS reference_library_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          work_id INTEGER NOT NULL,
+          collection_id INTEGER REFERENCES reference_collections(id) ON DELETE SET NULL,
+          reading_status TEXT NOT NULL DEFAULT 'to_read',
+          rating INTEGER,
+          is_favorite INTEGER NOT NULL DEFAULT 0,
+          notes TEXT NOT NULL DEFAULT '',
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          custom_citation_key TEXT,
+          local_pdf_url TEXT,
+          added_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(user_id, work_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_reference_library_user ON reference_library_items(user_id);
+        CREATE INDEX IF NOT EXISTS idx_reference_library_collection ON reference_library_items(collection_id);
+
+        CREATE TABLE IF NOT EXISTS post_citations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+          work_id INTEGER,
+          urn TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(post_id, urn)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_post_citations_urn ON post_citations(urn);
+        CREATE INDEX IF NOT EXISTS idx_post_citations_work ON post_citations(work_id);
+
+        CREATE TABLE IF NOT EXISTS federated_oauth_clients (
+          domain TEXT PRIMARY KEY,
+          client_id TEXT NOT NULL,
+          client_secret TEXT NOT NULL,
+          registered_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    } catch {}
+  }
+
+  /**
+   * Synchronizes `post_citations` rows for a given post by extracting all citation URNs from its content.
+   */
+  syncPostCitations(postId: number | string, content: string | null | undefined): void {
+    try {
+      const urns = extractCitationUrnsFromText(content);
+      this.#db.prepare(`DELETE FROM post_citations WHERE post_id = ?`).run(postId);
+      if (urns.length === 0) return;
+
+      const findWorkStmt = this.#openalexDb.prepare(`
+        SELECT id, urn FROM scholarly_works
+        WHERE urn = ? COLLATE NOCASE
+           OR (doi IS NOT NULL AND 'urn:doi:' || LOWER(doi) = LOWER(?))
+           OR (arxiv_id IS NOT NULL AND 'urn:arxiv:' || LOWER(arxiv_id) = LOWER(?))
+           OR (openalex_id IS NOT NULL AND 'urn:openalex:' || UPPER(openalex_id) = UPPER(?))
+           OR ('urn:cite:' || LOWER(citation_key) = LOWER(?))
+        LIMIT 1
+      `);
+      const insertStmt = this.#db.prepare(`
+        INSERT OR IGNORE INTO post_citations (post_id, work_id, urn)
+        VALUES (?, ?, ?)
+      `);
+
+      this.#db.transaction(() => {
+        for (const rawUrn of urns) {
+          const norm = normalizeCitationUrn(rawUrn);
+          const match = findWorkStmt.get(norm, norm, norm, norm, norm) as { id: number; urn: string } | undefined;
+          insertStmt.run(postId, match?.id ?? null, match?.urn ?? norm);
+        }
+      })();
+    } catch {}
+  }
+
+  /**
+   * Upserts a `ScholarlyWorkRecord` into `openalex.db`'s `scholarly_works` (automatically indexed in FTS5)
+   * and returns the hydrated record with `id`.
+   */
+  upsertScholarlyWork(work: ScholarlyWorkRecord): ScholarlyWorkRecord {
+    const normUrn = normalizeCitationUrn(work.urn);
+    if (normUrn.startsWith("urn:ansatz:")) {
+      return work;
+    }
+    this.#openalexDb
+      .prepare(
+        `
+      INSERT INTO scholarly_works (
+        urn, openalex_id, doi, arxiv_id, pmid, isbn, ansatz_entity_type, ansatz_entity_id,
+        title, subtitle, abstract, work_type, publication_year, publication_date,
+        venue_name, venue_issn, publisher, volume, issue, pages, language, license,
+        is_oa, oa_status, oa_url, local_pdf_url, local_artifact_id,
+        external_locations_json, authors_json, concepts_json,
+        cited_by_count, references_count, counts_by_year_json,
+        referenced_urns_json, related_urns_json, citation_key, canonical_url, fwci, partition_url, updated_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, datetime('now')
+      )
+      ON CONFLICT(urn) DO UPDATE SET
+        openalex_id = COALESCE(excluded.openalex_id, scholarly_works.openalex_id),
+        doi = COALESCE(excluded.doi, scholarly_works.doi),
+        arxiv_id = COALESCE(excluded.arxiv_id, scholarly_works.arxiv_id),
+        pmid = COALESCE(excluded.pmid, scholarly_works.pmid),
+        isbn = COALESCE(excluded.isbn, scholarly_works.isbn),
+        title = excluded.title,
+        subtitle = COALESCE(excluded.subtitle, scholarly_works.subtitle),
+        abstract = COALESCE(excluded.abstract, scholarly_works.abstract),
+        work_type = excluded.work_type,
+        publication_year = COALESCE(excluded.publication_year, scholarly_works.publication_year),
+        publication_date = COALESCE(excluded.publication_date, scholarly_works.publication_date),
+        venue_name = COALESCE(excluded.venue_name, scholarly_works.venue_name),
+        publisher = COALESCE(excluded.publisher, scholarly_works.publisher),
+        volume = COALESCE(excluded.volume, scholarly_works.volume),
+        issue = COALESCE(excluded.issue, scholarly_works.issue),
+        pages = COALESCE(excluded.pages, scholarly_works.pages),
+        is_oa = MAX(excluded.is_oa, scholarly_works.is_oa),
+        oa_status = COALESCE(excluded.oa_status, scholarly_works.oa_status),
+        oa_url = COALESCE(excluded.oa_url, scholarly_works.oa_url),
+        local_pdf_url = COALESCE(excluded.local_pdf_url, scholarly_works.local_pdf_url),
+        local_artifact_id = COALESCE(excluded.local_artifact_id, scholarly_works.local_artifact_id),
+        external_locations_json = excluded.external_locations_json,
+        authors_json = excluded.authors_json,
+        concepts_json = excluded.concepts_json,
+        cited_by_count = MAX(excluded.cited_by_count, scholarly_works.cited_by_count),
+        references_count = MAX(excluded.references_count, scholarly_works.references_count),
+        counts_by_year_json = CASE WHEN excluded.counts_by_year_json != '[]' THEN excluded.counts_by_year_json ELSE scholarly_works.counts_by_year_json END,
+        referenced_urns_json = CASE WHEN excluded.referenced_urns_json != '[]' THEN excluded.referenced_urns_json ELSE scholarly_works.referenced_urns_json END,
+        related_urns_json = CASE WHEN excluded.related_urns_json != '[]' THEN excluded.related_urns_json ELSE scholarly_works.related_urns_json END,
+        citation_key = excluded.citation_key,
+        canonical_url = COALESCE(excluded.canonical_url, scholarly_works.canonical_url),
+        fwci = COALESCE(excluded.fwci, scholarly_works.fwci),
+        partition_url = COALESCE(excluded.partition_url, scholarly_works.partition_url),
+        updated_at = datetime('now')
+    `,
+      )
+      .run(
+        normUrn,
+        work.openalexId ?? null,
+        work.doi ? work.doi.toLowerCase() : null,
+        work.arxivId ?? null,
+        work.pmid ?? null,
+        work.isbn ?? null,
+        work.ansatzEntityType ?? "work",
+        work.ansatzEntityId ?? work.openalexId ?? null,
+        work.title,
+        work.subtitle ?? null,
+        work.abstract ?? null,
+        work.workType || "article",
+        work.publicationYear ?? null,
+        work.publicationDate ?? null,
+        work.venueName ?? null,
+        work.venueIssn ?? null,
+        work.publisher ?? null,
+        work.volume ?? null,
+        work.issue ?? null,
+        work.pages ?? null,
+        work.language ?? "en",
+        work.license ?? null,
+        work.isOa ? 1 : 0,
+        work.oaStatus ?? null,
+        work.oaUrl ?? null,
+        work.localPdfUrl ?? null,
+        work.localArtifactId ?? null,
+        JSON.stringify(work.externalLocations || []),
+        JSON.stringify(work.authors || []),
+        JSON.stringify(work.concepts || []),
+        work.citedByCount ?? 0,
+        work.referencesCount ?? 0,
+        JSON.stringify(work.countsByYear || []),
+        JSON.stringify(work.referencedUrns || []),
+        JSON.stringify(work.relatedUrns || []),
+        work.citationKey,
+        work.canonicalUrl ?? null,
+        work.fwci ?? null,
+        work.partitionUrl ?? null,
+      );
+
+    const row = this.#openalexDb.prepare(`SELECT id FROM scholarly_works WHERE urn = ?`).get(normUrn) as
+      | { id: number }
+      | undefined;
+    return {
+      ...work,
+      id: row?.id ?? work.id,
+      urn: normUrn,
+      sourcePageUrl: `/sources/${encodeURIComponent(normUrn)}`,
+    };
   }
 
   // ── User management ─────────────────────────────────────────────
@@ -738,9 +1171,9 @@ export class LibraryDatabase {
   }
 
   updateRemoteActorProfile(actorUrl: string, profileData: RemoteActorProfile): boolean {
-    const existing = this.#db.prepare(`SELECT id FROM users WHERE actor_url = ?`).get(actorUrl) as
-      | { id: number }
-      | undefined;
+    const existing = this.#db
+      .prepare(`SELECT id FROM users WHERE actor_url = ? AND (account_type = 'remote' OR remote_domain IS NOT NULL)`)
+      .get(actorUrl) as { id: number } | undefined;
     if (!existing) return false;
 
     const updates: string[] = [];
@@ -857,6 +1290,26 @@ export class LibraryDatabase {
     this.#db
       .prepare(`INSERT INTO settings (key, value) VALUES (?, ?)`)
       .run("instance_ed25519_keys", JSON.stringify(keys));
+    return keys;
+  }
+
+  getInstanceVapidKeys(): { publicKey: string; privateKey: string } {
+    if (process.env["VAPID_PUBLIC_KEY"] && process.env["VAPID_PRIVATE_KEY"]) {
+      return {
+        publicKey: process.env["VAPID_PUBLIC_KEY"],
+        privateKey: process.env["VAPID_PRIVATE_KEY"],
+      };
+    }
+    const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_vapid_keys'`).get() as
+      | { value: string }
+      | undefined;
+    if (existing) {
+      return JSON.parse(existing.value) as { publicKey: string; privateKey: string };
+    }
+    const keys = webpush.generateVAPIDKeys();
+    this.#db
+      .prepare(`INSERT INTO settings (key, value) VALUES (?, ?)`)
+      .run("instance_vapid_keys", JSON.stringify(keys));
     return keys;
   }
 
@@ -1238,7 +1691,7 @@ export class LibraryDatabase {
         scopes,
         systemPrompt,
         model,
-        apiKey,
+        apiKey ? encryptSecretAtRest(apiKey) : null,
         endpointUrl,
         keys.privateKey,
         keys.publicKey,
@@ -1263,7 +1716,7 @@ export class LibraryDatabase {
     bot_last_used_at?: string | undefined;
     created_at: string;
   }[] {
-    return this.#db
+    const rows = this.#db
       .prepare(
         `SELECT id, username, display_name, avatar_url, bio, bot_scopes, bot_system_prompt, bot_model, bot_api_key, bot_endpoint_url, bot_last_used_at, created_at FROM users WHERE owner_id = ? AND account_type = 'bot' ORDER BY created_at DESC`,
       )
@@ -1281,6 +1734,10 @@ export class LibraryDatabase {
       bot_last_used_at?: string | undefined;
       created_at: string;
     }[];
+    return rows.map((r) => ({
+      ...r,
+      bot_api_key: r.bot_api_key ? decryptSecretAtRest(r.bot_api_key) : undefined,
+    }));
   }
 
   getBotById(botId: number): {
@@ -1317,7 +1774,11 @@ export class LibraryDatabase {
           bot_last_used_at: string | null;
         }
       | undefined;
-    return row || null;
+    if (!row) return null;
+    return {
+      ...row,
+      bot_api_key: row.bot_api_key ? decryptSecretAtRest(row.bot_api_key) : null,
+    };
   }
 
   updateBotSettings(
@@ -1335,7 +1796,7 @@ export class LibraryDatabase {
     },
   ): void {
     const fields: string[] = [];
-    const values: (string | number)[] = [];
+    const values: (string | number | null)[] = [];
     if (updates.displayName !== undefined) {
       fields.push("display_name = ?");
       values.push(updates.displayName);
@@ -1362,7 +1823,7 @@ export class LibraryDatabase {
     }
     if (updates.apiKey !== undefined) {
       fields.push("bot_api_key = ?");
-      values.push(updates.apiKey);
+      values.push(updates.apiKey ? encryptSecretAtRest(updates.apiKey) : null);
     }
     if (updates.endpointUrl !== undefined) {
       fields.push("bot_endpoint_url = ?");
@@ -1482,21 +1943,49 @@ export class LibraryDatabase {
     email: string,
     provider: string,
     providerUserId: string,
+    options?: {
+      accountType?: string | undefined;
+      displayName?: string | undefined;
+      avatarUrl?: string | undefined;
+      bio?: string | undefined;
+      remoteDomain?: string | undefined;
+      actorUrl?: string | undefined;
+    },
   ): { id: number; username: string; email: string } {
     const transaction = this.#db.transaction(() => {
-      const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
+      const avatarUrl =
+        options?.avatarUrl ||
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
       const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
       const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
-      const actorUrl = `${publicUrl}/users/${username}`;
+      const actorUrl = options?.actorUrl || `${publicUrl}/users/${username}`;
       const inboxUrl = `${actorUrl}/inbox`;
       const outboxUrl = `${actorUrl}/outbox`;
+      const accountType = options?.accountType || (provider === "fediverse" ? "community_federated" : "user");
+      const displayName = options?.displayName || username;
+      const bio = options?.bio || "";
+      const remoteDomain = options?.remoteDomain || null;
 
       const userResult = this.#db
         .prepare(
-          `INSERT INTO users (username, email, avatar_url, banner_url, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO users (username, email, account_type, display_name, bio, avatar_url, banner_url, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url, remote_domain) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(username, email, avatarUrl, bannerUrl, null, null, actorUrl, inboxUrl, outboxUrl);
+        .run(
+          username,
+          email,
+          accountType,
+          displayName,
+          bio,
+          avatarUrl,
+          bannerUrl,
+          null,
+          null,
+          actorUrl,
+          inboxUrl,
+          outboxUrl,
+          remoteDomain,
+        );
       const userId = Number(userResult.lastInsertRowid);
 
       this.#db
@@ -1608,6 +2097,29 @@ export class LibraryDatabase {
     this.#db.prepare(`DELETE FROM oauth_accounts WHERE user_id = ? AND provider = ?`).run(userId, provider);
   }
 
+  getFederatedOAuthClient(
+    domain: string,
+  ): { domain: string; client_id: string; client_secret: string; registered_at: string } | undefined {
+    return this.#db
+      .prepare(`SELECT domain, client_id, client_secret, registered_at FROM federated_oauth_clients WHERE domain = ?`)
+      .get(domain.toLowerCase().trim()) as
+      | { domain: string; client_id: string; client_secret: string; registered_at: string }
+      | undefined;
+  }
+
+  saveFederatedOAuthClient(domain: string, clientId: string, clientSecret: string): void {
+    this.#db
+      .prepare(
+        `INSERT INTO federated_oauth_clients (domain, client_id, client_secret, registered_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(domain) DO UPDATE SET
+           client_id = excluded.client_id,
+           client_secret = excluded.client_secret,
+           registered_at = excluded.registered_at`,
+      )
+      .run(domain.toLowerCase().trim(), clientId, clientSecret);
+  }
+
   getUserByEmail(email: string): UserRow | undefined {
     return this.#db
       .prepare(
@@ -1627,7 +2139,7 @@ export class LibraryDatabase {
   getUserById(id: number): UserRow | undefined {
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE id = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility, invites_remaining FROM users WHERE id = ?`,
       )
       .get(id) as UserRow | undefined;
   }
@@ -2287,10 +2799,10 @@ export class LibraryDatabase {
   createPost(
     authorId: number,
     content: string | null,
-    artifactViewId?: number,
-    replyToId?: number,
-    quotePostId?: number,
-    repostOfId?: number,
+    artifactViewId?: number | string,
+    replyToId?: number | string,
+    quotePostId?: number | string,
+    repostOfId?: number | string,
     apId?: string,
     url?: string,
     createdAt?: string,
@@ -2301,14 +2813,33 @@ export class LibraryDatabase {
     isSensitiveOrVisibility?: boolean | number | PostVisibility | string,
     contentWarning?: string | null,
     visibility?: PostVisibility | string,
+    explicitId?: number | string,
   ): {
     id: number;
+    id_str?: string;
     visibility: PostVisibility;
     autoFiltered?: boolean;
     autoFilterAction?: string;
     is_sensitive?: number;
     content_warning?: string | null;
   } {
+    if (typeof artifactViewId === "object" && artifactViewId !== null) {
+      const opts = artifactViewId as {
+        artifactViewId?: number | string;
+        replyToId?: number | string;
+        quotePostId?: number | string;
+        repostOfId?: number | string;
+        explicitId?: number | string;
+        visibility?: PostVisibility | string;
+      };
+      if (opts.explicitId !== undefined) explicitId = opts.explicitId;
+      if (opts.replyToId !== undefined) replyToId = opts.replyToId;
+      if (opts.quotePostId !== undefined) quotePostId = opts.quotePostId;
+      if (opts.repostOfId !== undefined) repostOfId = opts.repostOfId;
+      if (opts.visibility !== undefined) visibility = opts.visibility;
+      artifactViewId = opts.artifactViewId;
+    }
+
     const resolvedVisibilityArg =
       visibility ?? (typeof isSensitiveOrVisibility === "string" ? isSensitiveOrVisibility : undefined);
     const resolvedIsSensitive =
@@ -2341,20 +2872,23 @@ export class LibraryDatabase {
       }
     }
 
-    const res = this.#db
+    const snowflakeId = explicitId !== undefined && explicitId !== null ? String(explicitId) : generateSnowflakeId();
+
+    this.#db
       .prepare(
         `
-      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, ap_id, url, metadata, visibility, reply_visibility, is_silenced, is_sensitive, content_warning, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'everyone'), ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
+      INSERT INTO posts (id, author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, ap_id, url, metadata, visibility, reply_visibility, is_silenced, is_sensitive, content_warning, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'everyone'), ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
     `,
       )
       .run(
+        snowflakeId,
         authorId,
         content,
-        artifactViewId ?? null,
-        replyToId ?? null,
-        quotePostId ?? null,
-        repostOfId ?? null,
+        artifactViewId !== undefined && artifactViewId !== null ? String(artifactViewId) : null,
+        replyToId !== undefined && replyToId !== null ? String(replyToId) : null,
+        quotePostId !== undefined && quotePostId !== null ? String(quotePostId) : null,
+        repostOfId !== undefined && repostOfId !== null ? String(repostOfId) : null,
         apId ?? null,
         url ?? null,
         metadata ? (typeof metadata === "string" ? metadata : JSON.stringify(metadata)) : null,
@@ -2366,7 +2900,7 @@ export class LibraryDatabase {
         createdAt ?? null,
         updatedAt ?? null,
       );
-    const postId = Number(res.lastInsertRowid);
+    const postId = snowflakeId;
 
     if (content && content.trim().length > 0) {
       try {
@@ -2416,7 +2950,8 @@ export class LibraryDatabase {
               this.markPostSensitive(postId, true, cwText);
             }
             return {
-              id: postId,
+              id: postId as unknown as number,
+              id_str: String(postId),
               autoFiltered: true,
               autoFilterAction: action,
               is_sensitive: isSensitive,
@@ -2435,28 +2970,30 @@ export class LibraryDatabase {
       }
     }
 
-    return { id: postId, visibility: effectiveVisibility };
+    return { id: postId as unknown as number, id_str: String(postId), visibility: effectiveVisibility };
   }
 
-  updatePostArtifactViewId(postId: number, artifactViewId: number) {
-    this.#db.prepare(`UPDATE posts SET artifact_view_id = ? WHERE id = ?`).run(artifactViewId, postId);
+  updatePostArtifactViewId(postId: number | string, artifactViewId: number | string) {
+    this.#db.prepare(`UPDATE posts SET artifact_view_id = ? WHERE id = ?`).run(String(artifactViewId), String(postId));
   }
 
   updatePost(
-    postId: number,
+    postId: number | string,
     updates: {
       content?: string | null | undefined;
-      artifactViewId?: number | null | undefined;
+      artifactViewId?: number | string | null | undefined;
       metadata?: PostMetadata | string | null | undefined;
       replyVisibility?: string | undefined;
     },
   ): void {
     const existing = this.#db
-      .prepare(`SELECT content, artifact_view_id, metadata, reply_visibility FROM posts WHERE id = ?`)
-      .get(postId) as
+      .prepare(
+        `SELECT content, CAST(artifact_view_id AS TEXT) as artifact_view_id, metadata, reply_visibility FROM posts WHERE id = ?`,
+      )
+      .get(String(postId)) as
       | {
           content: string | null;
-          artifact_view_id: number | null;
+          artifact_view_id: string | null;
           metadata: string | null;
           reply_visibility: string;
         }
@@ -2465,7 +3002,11 @@ export class LibraryDatabase {
 
     const nextContent = updates.content !== undefined ? updates.content : existing.content;
     const nextArtifactViewId =
-      updates.artifactViewId !== undefined ? updates.artifactViewId : existing.artifact_view_id;
+      updates.artifactViewId !== undefined
+        ? updates.artifactViewId !== null
+          ? String(updates.artifactViewId)
+          : null
+        : existing.artifact_view_id;
     const nextMetadata =
       updates.metadata !== undefined
         ? typeof updates.metadata === "string"
@@ -2568,7 +3109,7 @@ export class LibraryDatabase {
     tx();
   }
 
-  incrementPostView(postId: number, countryCode?: string, regionCode?: string) {
+  incrementPostView(postId: number | string, countryCode?: string, regionCode?: string) {
     if (this.analyticsBuffer) {
       this.analyticsBuffer.incrementPostView(postId, countryCode, regionCode);
       return;
@@ -2592,7 +3133,7 @@ export class LibraryDatabase {
     }
   }
 
-  getPostLocationStats(postId: number): { country: string; views: number }[] {
+  getPostLocationStats(postId: number | string): { country: string; views: number }[] {
     if (this.analyticsBuffer?.hasPostPending(postId)) {
       this.analyticsBuffer.flushSync();
     }
@@ -2609,7 +3150,7 @@ export class LibraryDatabase {
       .all(postId) as { country: string; views: number }[];
   }
 
-  getPostRegionStats(postId: number): { country: string; region: string; views: number }[] {
+  getPostRegionStats(postId: number | string): { country: string; region: string; views: number }[] {
     if (this.analyticsBuffer?.hasPostPending(postId)) {
       this.analyticsBuffer.flushSync();
     }
@@ -2845,6 +3386,22 @@ export class LibraryDatabase {
     depth: number = 0,
   ): PostRow | null {
     if (!p) return null;
+    if (p.id !== undefined && p.id !== null) {
+      p.id = String(p.id);
+      p.id_str = String(p.id);
+    }
+    if (p.artifact_view_id !== undefined && p.artifact_view_id !== null) {
+      p.artifact_view_id = String(p.artifact_view_id);
+    }
+    if (p.reply_to_id !== undefined && p.reply_to_id !== null) {
+      p.reply_to_id = String(p.reply_to_id);
+    }
+    if (p.quote_post_id !== undefined && p.quote_post_id !== null) {
+      p.quote_post_id = String(p.quote_post_id);
+    }
+    if (p.repost_of_id !== undefined && p.repost_of_id !== null) {
+      p.repost_of_id = String(p.repost_of_id);
+    }
     if (p.metadata && typeof p.metadata === "string") {
       try {
         p.metadata = JSON.parse(p.metadata) as PostMetadata | string;
@@ -2871,25 +3428,32 @@ export class LibraryDatabase {
     if (p.artifact_view_id && !p.artifact_view) {
       p.artifact_view = this.getArtifactView(p.artifact_view_id) ?? null;
     }
-    const extraArtifactIds = new Set<number>();
-    if (p.artifact_view_id) {
-      extraArtifactIds.add(Number(p.artifact_view_id));
+    const extraArtifactIds = new Set<string>();
+    if (p.artifact_view_id !== undefined && p.artifact_view_id !== null) {
+      extraArtifactIds.add(String(p.artifact_view_id));
     }
     const customArtifactIds = meta?.["artifactIds"];
     if (Array.isArray(customArtifactIds)) {
       for (const aid of customArtifactIds) {
-        if (Number.isFinite(Number(aid))) extraArtifactIds.add(Number(aid));
+        if (aid !== undefined && aid !== null && String(aid).trim().length > 0)
+          extraArtifactIds.add(String(aid).trim());
       }
     }
     if (Array.isArray(meta?.notebook?.artifactIds)) {
       for (const aid of meta.notebook.artifactIds) {
-        if (Number.isFinite(Number(aid))) extraArtifactIds.add(Number(aid));
+        if (aid !== undefined && aid !== null && String(aid).trim().length > 0)
+          extraArtifactIds.add(String(aid).trim());
       }
     }
     if (Array.isArray(meta?.notebook?.cells)) {
       for (const cell of meta.notebook.cells) {
-        if (cell?.type === "artifact" && Number.isFinite(Number(cell.artifactId))) {
-          extraArtifactIds.add(Number(cell.artifactId));
+        if (
+          cell?.type === "artifact" &&
+          cell.artifactId !== undefined &&
+          cell.artifactId !== null &&
+          String(cell.artifactId).trim().length > 0
+        ) {
+          extraArtifactIds.add(String(cell.artifactId).trim());
         }
       }
     }
@@ -2899,14 +3463,15 @@ export class LibraryDatabase {
       while ((match = directiveRe.exec(p.content)) !== null) {
         const idMatch = (match[1] || "").match(/(?:^|\s)id\s*=\s*["']?(\d+)["']?/);
         if (idMatch && idMatch[1]) {
-          extraArtifactIds.add(Number(idMatch[1]));
+          extraArtifactIds.add(String(idMatch[1]));
         }
       }
     }
     if (extraArtifactIds.size > 0) {
-      const viewsMap: Record<number, ArtifactViewRow> = {};
+      const viewsMap: Record<string, ArtifactViewRow> = {};
       for (const aid of extraArtifactIds) {
-        const view = aid === p.artifact_view_id && p.artifact_view ? p.artifact_view : this.getArtifactView(aid);
+        const view =
+          String(aid) === String(p.artifact_view_id) && p.artifact_view ? p.artifact_view : this.getArtifactView(aid);
         if (view) {
           viewsMap[aid] = view;
         }
@@ -2935,7 +3500,7 @@ export class LibraryDatabase {
     return p as PostRow;
   }
 
-  getPost(id: number, currentUserId?: number, depth: number = 0): PostRow | null {
+  getPost(id: number | string, currentUserId?: number, depth: number = 0): PostRow | null {
     if (this.analyticsBuffer?.hasPostPending(id)) {
       this.analyticsBuffer.flushSync();
     }
@@ -2943,7 +3508,13 @@ export class LibraryDatabase {
     const p = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -2961,14 +3532,20 @@ export class LibraryDatabase {
     return this.hydratePost(p, currentUserId, depth);
   }
 
-  getReplies(postId: number, currentUserId?: number, limit: number = 50): PostRow[] {
+  getReplies(postId: number | string, currentUserId?: number, limit: number = 50): PostRow[] {
     const uid = currentUserId || -1;
     const modFilter = this.buildMuteBlockFilter(currentUserId);
     const visFilter = this.buildVisibilityFilter(currentUserId, "thread");
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -2990,12 +3567,18 @@ export class LibraryDatabase {
     return this.applyContentFiltersToPosts(hydrated, "thread", currentUserId);
   }
 
-  getQuotes(postId: number, currentUserId?: number, limit: number = 50): PostRow[] {
+  getQuotes(postId: number | string, currentUserId?: number, limit: number = 50): PostRow[] {
     const uid = currentUserId || -1;
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3014,12 +3597,18 @@ export class LibraryDatabase {
     return posts.map((p) => this.hydratePost(p, currentUserId)!);
   }
 
-  getReposts(postId: number, currentUserId?: number, limit: number = 50): PostRow[] {
+  getReposts(postId: number | string, currentUserId?: number, limit: number = 50): PostRow[] {
     const uid = currentUserId || -1;
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3038,15 +3627,15 @@ export class LibraryDatabase {
     return posts.map((p) => this.hydratePost(p, currentUserId)!);
   }
 
-  getPostParents(postId: number, currentUserId?: number, depth: number = 5): PostRow[] {
+  getPostParents(postId: number | string, currentUserId?: number, depth: number = 5): PostRow[] {
     const parents: PostRow[] = [];
     let currentId = postId;
     let currentDepth = 0;
 
     while (currentDepth < depth) {
-      const p = this.#db.prepare(`SELECT reply_to_id FROM posts WHERE id = ?`).get(currentId) as
-        | { reply_to_id: number | null }
-        | undefined;
+      const p = this.#db
+        .prepare(`SELECT CAST(reply_to_id AS TEXT) as reply_to_id FROM posts WHERE id = ?`)
+        .get(currentId) as { reply_to_id: string | null } | undefined;
       if (!p || !p.reply_to_id) break;
 
       const parentPost = this.getPost(p.reply_to_id, currentUserId);
@@ -3210,7 +3799,13 @@ export class LibraryDatabase {
       .prepare(
         `
       WITH viewer AS (SELECT ? AS uid)
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3360,7 +3955,13 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3465,7 +4066,13 @@ export class LibraryDatabase {
       .prepare(
         `
       WITH viewer AS (SELECT ? AS uid)
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3547,7 +4154,13 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3590,7 +4203,13 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3643,7 +4262,7 @@ export class LibraryDatabase {
     return Boolean(row);
   }
 
-  toggleLike(userId: number, postId: number): boolean {
+  toggleLike(userId: number, postId: number | string): boolean {
     const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
     if (existing) {
       this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
@@ -3669,7 +4288,7 @@ export class LibraryDatabase {
     }
   }
 
-  likePost(userId: number, postId: number): boolean {
+  likePost(userId: number, postId: number | string): boolean {
     const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
     if (!existing) {
       this.#db.prepare(`INSERT INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
@@ -3690,7 +4309,7 @@ export class LibraryDatabase {
     return false;
   }
 
-  unlikePost(userId: number, postId: number): boolean {
+  unlikePost(userId: number, postId: number | string): boolean {
     const res = this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
     if (res.changes > 0) {
       this.#db
@@ -3701,7 +4320,7 @@ export class LibraryDatabase {
     return false;
   }
 
-  toggleBookmark(userId: number, postId: number): boolean {
+  toggleBookmark(userId: number, postId: number | string): boolean {
     const existing = this.#db.prepare(`SELECT 1 FROM bookmarks WHERE user_id = ? AND post_id = ?`).get(userId, postId);
     if (existing) {
       this.#db.prepare(`DELETE FROM bookmarks WHERE user_id = ? AND post_id = ?`).run(userId, postId);
@@ -3721,10 +4340,10 @@ export class LibraryDatabase {
     }
   }
 
-  toggleRepost(userId: number, postId: number): boolean {
+  toggleRepost(userId: number, postId: number | string): boolean {
     const existing = this.#db
-      .prepare(`SELECT id FROM posts WHERE author_id = ? AND repost_of_id = ?`)
-      .get(userId, postId) as { id: number } | undefined;
+      .prepare(`SELECT CAST(id AS TEXT) as id FROM posts WHERE author_id = ? AND repost_of_id = ?`)
+      .get(userId, postId) as { id: string } | undefined;
     if (existing) {
       this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(existing.id);
       this.#db
@@ -3753,7 +4372,13 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -3778,7 +4403,7 @@ export class LibraryDatabase {
     userId: number,
     actorId: number,
     type: string,
-    postId?: number | null,
+    postId?: number | string | null,
     metadata?: Record<string, unknown> | string | null,
   ): void {
     const isSystemNotification = [
@@ -3967,12 +4592,31 @@ export class LibraryDatabase {
         }
       }
     } catch {}
+
+    // Dispatch instant Web Push notification when opted in and push subscriptions exist
+    try {
+      const browserPushEnabled = channels?.browserPush !== false;
+      if (browserPushEnabled) {
+        const rawInstanceName = this.getInstanceSettings().instanceName?.trim();
+        const instanceName = rawInstanceName || "Ansatz";
+        const richCopy = this.formatSocialNotificationCopy(type, actorId, postId ?? null, metadataObj, instanceName);
+        void this.webPushService
+          .dispatchUserPush(userId, {
+            title: richCopy.title,
+            body: richCopy.body,
+            icon: "/favicon.ico",
+            badge: "/favicon.ico",
+            data: { url: richCopy.link },
+          })
+          .catch(() => {});
+      }
+    } catch {}
   }
 
   private formatSocialNotificationCopy(
     type: string,
     actorId: number,
-    postId: number | null,
+    postId: number | string | null,
     metadataObj: Record<string, unknown> | null,
     instanceName: string,
   ): {
@@ -4919,22 +5563,51 @@ export class LibraryDatabase {
   }
 
   getPostByApId(apId: string): PostRow | undefined {
-    const direct = this.#db.prepare(`SELECT * FROM posts WHERE ap_id = ?`).get(apId) as PostRow | undefined;
+    const direct = this.#db
+      .prepare(
+        `SELECT p.*,
+          CAST(p.id AS TEXT) as id,
+          CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+          CAST(p.reply_to_id AS TEXT) as reply_to_id,
+          CAST(p.quote_post_id AS TEXT) as quote_post_id,
+          CAST(p.repost_of_id AS TEXT) as repost_of_id
+         FROM posts p WHERE p.ap_id = ?`,
+      )
+      .get(apId) as PostRow | undefined;
     if (direct) return direct;
-    const localMatch = apId.match(/\/users\/[^/]+\/posts\/(\d+)\/?$/) || apId.match(/\/posts\/(\d+)\/?$/);
+    const localMatch =
+      apId.match(/\/users\/[^/]+\/posts\/([a-zA-Z0-9_-]+)\/?$/) || apId.match(/\/posts\/([a-zA-Z0-9_-]+)\/?$/);
     if (localMatch && localMatch[1]) {
-      const localId = Number(localMatch[1]);
-      if (Number.isFinite(localId)) {
-        return this.#db.prepare(`SELECT * FROM posts WHERE id = ?`).get(localId) as PostRow | undefined;
-      }
+      const localId = localMatch[1];
+      const localPost = this.#db
+        .prepare(
+          `SELECT p.*,
+            CAST(p.id AS TEXT) as id,
+            CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+            CAST(p.reply_to_id AS TEXT) as reply_to_id,
+            CAST(p.quote_post_id AS TEXT) as quote_post_id,
+            CAST(p.repost_of_id AS TEXT) as repost_of_id
+           FROM posts p WHERE p.id = ?`,
+        )
+        .get(localId) as PostRow | undefined;
+      if (localPost) return localPost;
     }
     return undefined;
   }
 
   deletePostByApId(apId: string, expectedAuthorId?: number): boolean {
-    const post = this.#db.prepare(`SELECT id, author_id FROM posts WHERE ap_id = ?`).get(apId) as
-      | { id: number; author_id: number }
+    let post = this.#db.prepare(`SELECT CAST(id AS TEXT) as id, author_id FROM posts WHERE ap_id = ?`).get(apId) as
+      | { id: string | number; author_id: number }
       | undefined;
+    if (!post) {
+      const localMatch =
+        apId.match(/\/users\/[^/]+\/posts\/([a-zA-Z0-9_-]+)\/?$/) || apId.match(/\/posts\/([a-zA-Z0-9_-]+)\/?$/);
+      if (localMatch && localMatch[1]) {
+        post = this.#db
+          .prepare(`SELECT CAST(id AS TEXT) as id, author_id FROM posts WHERE id = ?`)
+          .get(localMatch[1]) as { id: string | number; author_id: number } | undefined;
+      }
+    }
     if (!post) return false;
     if (expectedAuthorId !== undefined && post.author_id !== expectedAuthorId) {
       return false;
@@ -4947,12 +5620,28 @@ export class LibraryDatabase {
       const res = this.#db
         .prepare(`UPDATE posts SET content = ?, updated_at = datetime('now') WHERE ap_id = ? AND author_id = ?`)
         .run(content, apId, expectedAuthorId);
+      if (res.changes > 0) return true;
+    } else {
+      const res = this.#db
+        .prepare(`UPDATE posts SET content = ?, updated_at = datetime('now') WHERE ap_id = ?`)
+        .run(content, apId);
+      if (res.changes > 0) return true;
+    }
+    const localMatch =
+      apId.match(/\/users\/[^/]+\/posts\/([a-zA-Z0-9_-]+)\/?$/) || apId.match(/\/posts\/([a-zA-Z0-9_-]+)\/?$/);
+    if (localMatch && localMatch[1]) {
+      if (expectedAuthorId !== undefined) {
+        const res = this.#db
+          .prepare(`UPDATE posts SET content = ?, updated_at = datetime('now') WHERE id = ? AND author_id = ?`)
+          .run(content, localMatch[1], expectedAuthorId);
+        return res.changes > 0;
+      }
+      const res = this.#db
+        .prepare(`UPDATE posts SET content = ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(content, localMatch[1]);
       return res.changes > 0;
     }
-    const res = this.#db
-      .prepare(`UPDATE posts SET content = ?, updated_at = datetime('now') WHERE ap_id = ?`)
-      .run(content, apId);
-    return res.changes > 0;
+    return false;
   }
 
   // ── Moderation & Content Reports ─────────────────────────────────
@@ -5017,7 +5706,7 @@ export class LibraryDatabase {
   createContentReport(
     reporterId: number,
     data: {
-      postId?: number | undefined;
+      postId?: number | string | undefined;
       targetUserId?: number | undefined;
       targetType?: "post" | "user" | "package" | "repo" | "appeal" | string | undefined;
       targetResourceId?: string | undefined;
@@ -5046,14 +5735,14 @@ export class LibraryDatabase {
     if (data.postId) {
       const postInfo = this.#db
         .prepare(
-          `SELECT p.id, p.content, p.author_id, p.ap_id, p.created_at, u.username, u.remote_domain
+          `SELECT CAST(p.id AS TEXT) as id, p.content, p.author_id, p.ap_id, p.created_at, u.username, u.remote_domain
            FROM posts p
            LEFT JOIN users u ON p.author_id = u.id
            WHERE p.id = ?`,
         )
         .get(data.postId) as
         | {
-            id: number;
+            id: string | number;
             content: string | null;
             author_id: number;
             ap_id: string | null;
@@ -5176,6 +5865,7 @@ export class LibraryDatabase {
     const row = this.#db
       .prepare(
         `SELECT r.*, 
+                CAST(r.post_id AS TEXT) as post_id,
                 u.username as reporter_username, 
                 p.content as post_content,
                 p.author_id as post_author_id,
@@ -5202,6 +5892,7 @@ export class LibraryDatabase {
   ): ContentReportRow[] {
     const baseQuery = `
       SELECT r.*, 
+             CAST(r.post_id AS TEXT) as post_id,
              u.username as reporter_username, 
              p.content as post_content,
              p.author_id as post_author_id,
@@ -5332,14 +6023,14 @@ export class LibraryDatabase {
     return res.changes > 0;
   }
 
-  silencePost(postId: number, silenced: boolean = true): boolean {
+  silencePost(postId: number | string, silenced: boolean = true): boolean {
     const res = this.#db
       .prepare(`UPDATE posts SET is_silenced = ?, updated_at = datetime('now') WHERE id = ?`)
       .run(silenced ? 1 : 0, postId);
     return res.changes > 0;
   }
 
-  markPostSensitive(postId: number, isSensitive: boolean = true, contentWarning?: string | null): boolean {
+  markPostSensitive(postId: number | string, isSensitive: boolean = true, contentWarning?: string | null): boolean {
     const cw = isSensitive ? contentWarning?.trim() || "Sensitive content flagged by moderation" : null;
     const res = this.#db
       .prepare(
@@ -5353,17 +6044,17 @@ export class LibraryDatabase {
     return res.changes > 0;
   }
 
-  deletePost(postId: number): { success: boolean; apId?: string | undefined; authorId?: number | undefined } {
+  deletePost(postId: number | string): { success: boolean; apId?: string | undefined; authorId?: number | undefined } {
     const post = this.#db
       .prepare(
-        `SELECT p.id, p.author_id, p.ap_id, p.content, p.created_at, u.username, u.remote_domain
+        `SELECT CAST(p.id AS TEXT) as id, p.author_id, p.ap_id, p.content, p.created_at, u.username, u.remote_domain
          FROM posts p
          LEFT JOIN users u ON p.author_id = u.id
          WHERE p.id = ?`,
       )
       .get(postId) as
       | {
-          id: number;
+          id: string | number;
           author_id: number;
           ap_id: string | null;
           content: string | null;
@@ -8189,8 +8880,10 @@ export class LibraryDatabase {
       .run(lastFetchedAt, lastGuid, rssFeedId);
   }
 
-  getArtifactView(id: number): ArtifactViewRow | undefined {
-    return this.#db.prepare(`SELECT * FROM artifact_views WHERE id = ?`).get(id) as ArtifactViewRow | undefined;
+  getArtifactView(id: number | string): ArtifactViewRow | undefined {
+    return this.#db.prepare(`SELECT *, CAST(id AS TEXT) as id FROM artifact_views WHERE id = ?`).get(id) as
+      | ArtifactViewRow
+      | undefined;
   }
 
   createArtifactView(
@@ -8201,32 +8894,47 @@ export class LibraryDatabase {
     title?: string | null | undefined,
     thumbnailUrl?: string | null | undefined,
     remoteOriginUrl?: string | null | undefined,
-  ): number {
-    const res = this.#db
+    explicitId?: number | string | null | undefined,
+  ): string {
+    const idToUse = explicitId !== undefined && explicitId !== null ? String(explicitId) : generateSnowflakeId();
+    this.#db
       .prepare(
         `
-      INSERT INTO artifact_views (creator_id, view_type, source_type, view_config, title, thumbnail_url, remote_origin_url) VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO artifact_views (id, creator_id, view_type, source_type, view_config, title, thumbnail_url, remote_origin_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
-      .run(creatorId, type, source_type, viewConfig, title || null, thumbnailUrl || null, remoteOriginUrl || null);
-    return Number(res.lastInsertRowid);
+      .run(
+        idToUse,
+        creatorId,
+        type,
+        source_type,
+        viewConfig,
+        title || null,
+        thumbnailUrl || null,
+        remoteOriginUrl || null,
+      );
+    return idToUse;
   }
 
   getAllArtifactViews(): ArtifactViewRow[] {
-    return this.#db.prepare(`SELECT id, view_type, view_config FROM artifact_views`).all() as ArtifactViewRow[];
+    return this.#db
+      .prepare(`SELECT CAST(id AS TEXT) as id, view_type, view_config FROM artifact_views`)
+      .all() as ArtifactViewRow[];
   }
 
   getArtifactViewByTitle(title: string): ArtifactViewRow | undefined {
     return this.#db
-      .prepare(`SELECT id, view_type, title, thumbnail_url, view_config FROM artifact_views WHERE title = ? LIMIT 1`)
+      .prepare(
+        `SELECT CAST(id AS TEXT) as id, view_type, title, thumbnail_url, view_config FROM artifact_views WHERE title = ? LIMIT 1`,
+      )
       .get(title) as ArtifactViewRow | undefined;
   }
 
-  updateArtifactViewConfig(id: number, viewConfig: string): void {
+  updateArtifactViewConfig(id: number | string, viewConfig: string): void {
     this.#db.prepare(`UPDATE artifact_views SET view_config = ? WHERE id = ?`).run(viewConfig, id);
   }
 
-  updateArtifactThumbnail(id: number, thumbnailUrl: string, thumbnailUrlDark?: string): void {
+  updateArtifactThumbnail(id: number | string, thumbnailUrl: string, thumbnailUrlDark?: string): void {
     const darkUrl = thumbnailUrlDark || thumbnailUrl;
     try {
       this.#db
@@ -8502,7 +9210,7 @@ export class LibraryDatabase {
     }
   }
 
-  linkPostToTopic(postId: number, topicId: number): void {
+  linkPostToTopic(postId: number | string, topicId: number): void {
     try {
       this.#db.prepare(`INSERT INTO post_topics (post_id, topic_id) VALUES (?, ?)`).run(postId, topicId);
     } catch {
@@ -8546,7 +9254,7 @@ export class LibraryDatabase {
       .run();
   }
 
-  boostPostTopics(postId: number, weight: number): void {
+  boostPostTopics(postId: number | string, weight: number): void {
     if (weight <= 0) return;
     const linked = this.#db
       .prepare(
@@ -8561,12 +9269,12 @@ export class LibraryDatabase {
     }
   }
 
-  syncPostTopics(postId: number): void {
+  syncPostTopics(postId: number | string): void {
     const post = this.#db
-      .prepare(`SELECT id, author_id, content, visibility, is_silenced FROM posts WHERE id = ?`)
+      .prepare(`SELECT CAST(id AS TEXT) as id, author_id, content, visibility, is_silenced FROM posts WHERE id = ?`)
       .get(postId) as
       | {
-          id: number;
+          id: string | number;
           author_id: number;
           content: string | null;
           visibility: string | null;
@@ -8878,7 +9586,13 @@ export class LibraryDatabase {
         : "p.created_at DESC";
 
     const query = `
-      SELECT DISTINCT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
+      SELECT DISTINCT p.*,
+        CAST(p.id AS TEXT) as id,
+        CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
+        CAST(p.reply_to_id AS TEXT) as reply_to_id,
+        CAST(p.quote_post_id AS TEXT) as quote_post_id,
+        CAST(p.repost_of_id AS TEXT) as repost_of_id,
+        u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -12350,6 +13064,9 @@ export class LibraryDatabase {
       return this.#db.prepare(`SELECT * FROM jobs WHERE id = ?`).get(numericId) as JobRow | undefined;
     }
     const strId = String(jobId);
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(strId)) {
+      return undefined;
+    }
     return this.#db
       .prepare(`SELECT * FROM jobs WHERE metadata LIKE ? ORDER BY id DESC LIMIT 1`)
       .get(`%"jobId":"${strId}"%`) as JobRow | undefined;
@@ -12434,7 +13151,7 @@ export class LibraryDatabase {
     userId: number,
     jobId: number,
     options?: { colormap?: string | undefined; title?: string | undefined; activeField?: string | undefined },
-  ): { artifactId: number; suggestedCaption: string; viewConfig: Record<string, unknown> } {
+  ): { artifactId: number | string; suggestedCaption: string; viewConfig: Record<string, unknown> } {
     const job = this.getJob(jobId);
     if (!job) {
       throw new Error(`Job #${jobId} not found`);
@@ -13017,7 +13734,11 @@ export class LibraryDatabase {
       .all(twinId, limit) as TwinAdaptationRow[];
   }
 
-  createTwinProposal(data: { twinId: number; postId?: number | null | undefined; adaptationId: number }): number {
+  createTwinProposal(data: {
+    twinId: number;
+    postId?: number | string | null | undefined;
+    adaptationId: number;
+  }): number {
     const result = this.#db
       .prepare(
         `INSERT INTO twin_proposals (twin_id, post_id, adaptation_id, status)
@@ -14997,7 +15718,7 @@ export class LibraryDatabase {
   // ── Federated Polls (`Question`) ─────────────────────────────────
 
   createPostPoll(
-    postId: number,
+    postId: number | string,
     options: (string | { title: string; votes_count?: number })[],
     expiresAt?: string | null,
     multiple: boolean = false,
@@ -15030,12 +15751,12 @@ export class LibraryDatabase {
     return this.getPostPoll(postId)!;
   }
 
-  getPostPoll(postId: number, currentUserId?: number): PostPollView | null {
+  getPostPoll(postId: number | string, currentUserId?: number): PostPollView | null {
     try {
       const row = this.#db.prepare(`SELECT * FROM post_polls WHERE post_id = ?`).get(postId) as
         | {
             id: number;
-            post_id: number;
+            post_id: number | string;
             options_json: string;
             expires_at: string | null;
             multiple: number;
@@ -15069,7 +15790,7 @@ export class LibraryDatabase {
       const expired = Boolean(row.expires_at && new Date(row.expires_at).getTime() <= Date.now());
       return {
         id: row.id,
-        post_id: row.post_id,
+        post_id: String(row.post_id),
         expires_at: row.expires_at,
         expired,
         multiple: Boolean(row.multiple),
@@ -15085,7 +15806,7 @@ export class LibraryDatabase {
   }
 
   votePostPoll(
-    postId: number,
+    postId: number | string,
     choices: number[],
     voterUserId?: number | null,
     voterActorUrl?: string | null,
@@ -15518,6 +16239,19 @@ export class LibraryDatabase {
       .replace("T", " ")
       .slice(0, 19);
 
+    try {
+      const countRow = this.#db.prepare(`SELECT COUNT(*) as c FROM remote_artifact_cache`).get() as
+        | { c: number }
+        | undefined;
+      if (countRow && countRow.c >= 5000) {
+        this.#db
+          .prepare(
+            `DELETE FROM remote_artifact_cache WHERE id IN (SELECT id FROM remote_artifact_cache ORDER BY last_accessed_at ASC LIMIT 100)`,
+          )
+          .run();
+      }
+    } catch {}
+
     this.#db
       .prepare(
         `INSERT INTO remote_artifact_cache (source_url, remote_domain, media_type, byte_size, sha256, data_blob, last_accessed_at, created_at, expires_at)
@@ -15649,10 +16383,57 @@ export class LibraryDatabase {
 
   // ── Web Push Subscriptions (RFC 8030) ────────────────────────────
 
+  #mapPushSubscription(row: {
+    id: number;
+    user_id: number;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    alerts_json?: string | null;
+    policy?: string | null;
+    created_at: string;
+    updated_at?: string | null;
+  }): PushSubscriptionRow {
+    let alerts: Record<string, boolean> = {
+      mention: true,
+      follow: true,
+      reblog: true,
+      favourite: true,
+      poll: true,
+    };
+    if (row?.alerts_json) {
+      try {
+        alerts = JSON.parse(row.alerts_json);
+      } catch {}
+    }
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      endpoint: row.endpoint,
+      p256dh: row.p256dh,
+      auth: row.auth,
+      alerts,
+      policy: (row.policy as "all" | "followed" | "follower" | "none") || "all",
+      created_at: row.created_at,
+      updated_at: row.updated_at || row.created_at,
+    };
+  }
+
   listPushSubscriptions(userId: number): PushSubscriptionRow[] {
-    return this.#db
+    const rows = this.#db
       .prepare(`SELECT * FROM push_subscriptions WHERE user_id = ? ORDER BY id DESC`)
-      .all(userId) as PushSubscriptionRow[];
+      .all(userId) as Array<{
+      id: number;
+      user_id: number;
+      endpoint: string;
+      p256dh: string;
+      auth: string;
+      alerts_json?: string | null;
+      policy?: string | null;
+      created_at: string;
+      updated_at?: string | null;
+    }>;
+    return rows.map((r) => this.#mapPushSubscription(r));
   }
 
   upsertPushSubscription(
@@ -15686,9 +16467,25 @@ export class LibraryDatabase {
       )
       .run(userId, cleanEndpoint, p256dh, auth, JSON.stringify(alerts), policy);
 
-    return this.#db
+    const row = this.#db
       .prepare(`SELECT * FROM push_subscriptions WHERE user_id = ? AND endpoint = ?`)
-      .get(userId, cleanEndpoint) as PushSubscriptionRow;
+      .get(userId, cleanEndpoint) as
+      | {
+          id: number;
+          user_id: number;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          alerts_json?: string | null;
+          policy?: string | null;
+          created_at: string;
+          updated_at?: string | null;
+        }
+      | undefined;
+    if (!row) {
+      throw new Error("Failed to retrieve upserted push subscription");
+    }
+    return this.#mapPushSubscription(row);
   }
 
   deletePushSubscription(userId: number, idOrEndpoint: number | string): boolean {
@@ -15709,6 +16506,9 @@ export class LibraryDatabase {
       this.analyticsBuffer.stop();
       this.analyticsBuffer.flushSync();
     }
+    try {
+      this.#openalexDb.close();
+    } catch {}
     this.#db.close();
   }
 }

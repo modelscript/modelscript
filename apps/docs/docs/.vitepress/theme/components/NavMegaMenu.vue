@@ -35,9 +35,14 @@ export interface MegaMenuFooterLink {
 }
 
 /** Shared state across all topnav mega menus so sliding across triggers switches cleanly. */
-const activeMenuId = ref<string | null>(null);
+export const activeMenuId = ref<string | null>(null);
 let sharedCloseTimer: ReturnType<typeof setTimeout> | undefined;
 let sharedOpenTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function cancelSharedMenuTimers(): void {
+  clearTimeout(sharedCloseTimer);
+  clearTimeout(sharedOpenTimer);
+}
 </script>
 
 <script setup lang="ts">

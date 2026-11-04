@@ -1,17 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { KebabHorizontalIcon, PlayIcon, RepoForkedIcon, ScreenFullIcon, ServerIcon } from "@primer/octicons-react";
+import {
+  DownloadIcon,
+  KebabHorizontalIcon,
+  LinkExternalIcon,
+  PlayIcon,
+  RepoForkedIcon,
+  ScreenFullIcon,
+  ServerIcon,
+} from "@primer/octicons-react";
 import { ActionList, ActionMenu, IconButton, Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
+import { buildCitationFromArtifact } from "../../../util/citations";
 import {
   buildEditorUrlForArtifact,
+  isEditableCodeOrModelArtifact,
   isMultiFileArtifact,
   openArtifactInVsCodeWindow,
 } from "../../../util/editor-routing";
+import { sanitizeHttpUrl } from "../../../util/url";
 import Box from "../../Box";
+import { CiteButton } from "../../citations/CiteButton";
 import { VsCodeIcon } from "../../icons/VsCodeIcon";
 
 const CardFooterBar = styled(Box)`
@@ -57,10 +69,12 @@ export const CardFooter: React.FC<CardFooterProps> = ({
   const navigate = useNavigate();
   const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
 
-  const isMultiFile = isMultiFileArtifact({
+  const artifactDescriptor = {
     view_type: artifact?.view_type,
     view_config: viewConfig,
-  });
+  };
+  const isMultiFile = isMultiFileArtifact(artifactDescriptor);
+  const isEditable = isEditableCodeOrModelArtifact(artifactDescriptor);
 
   const handleOpenEditor = (e?: React.MouseEvent | React.KeyboardEvent) => {
     e?.stopPropagation?.();
@@ -103,6 +117,8 @@ export const CardFooter: React.FC<CardFooterProps> = ({
   };
 
   const rawViewType = String(artifact?.view_type || "").toLowerCase();
+  const isPdf = rawViewType === "pdf";
+  const pdfUrl = isPdf ? sanitizeHttpUrl(viewConfig?.url, { allowRelative: true }) : null;
   const isUntitledMediaOr3dViewer = [
     "picture",
     "video",
@@ -138,9 +154,30 @@ export const CardFooter: React.FC<CardFooterProps> = ({
       display="flex"
       justifyContent="space-between"
       alignItems="center"
-      style={{ gap: "8px", minHeight: "40px" }}
+      style={{ gap: "8px", minHeight: "40px", flexShrink: 0, marginTop: "auto" }}
     >
       <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0, flex: 1 }}>
+        {isPdf && (
+          <span
+            style={{
+              fontSize: "10px",
+              lineHeight: "14px",
+              background: "var(--color-canvas-default)",
+              color: "var(--ms-brand, #0e7490)",
+              border: "1px solid var(--color-border-default)",
+              padding: "1px 6px",
+              borderRadius: "9999px",
+              fontWeight: 700,
+              fontFamily: "var(--font-mono, monospace)",
+              whiteSpace: "nowrap",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              flexShrink: 0,
+            }}
+          >
+            PDF
+          </span>
+        )}
         {isUntitledMediaOr3dViewer ? (
           <Text
             style={{
@@ -253,7 +290,63 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             Run on HPC
           </button>
         )}
-        {!isMultiFile && (
+        {isPdf && pdfUrl && (
+          <>
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "var(--color-canvas-default)",
+                color: "var(--color-fg-default)",
+                border: "1px solid var(--color-border-default)",
+                borderRadius: "6px",
+                height: "28px",
+                padding: "0 10px",
+                fontSize: "12px",
+                lineHeight: "16px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                whiteSpace: "nowrap",
+                textDecoration: "none",
+              }}
+              title="Open PDF in a new browser tab"
+            >
+              <LinkExternalIcon size={12} /> Open in Tab
+            </a>
+            <a
+              href={pdfUrl}
+              download
+              className="card-footer-hide-mobile"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "var(--color-canvas-default)",
+                color: "var(--color-fg-default)",
+                border: "1px solid var(--color-border-default)",
+                borderRadius: "6px",
+                height: "28px",
+                padding: "0 10px",
+                fontSize: "12px",
+                lineHeight: "16px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                whiteSpace: "nowrap",
+                textDecoration: "none",
+              }}
+              title="Download PDF document"
+            >
+              <DownloadIcon size={12} /> Download
+            </a>
+          </>
+        )}
+        {isEditable && !isMultiFile && (
           <button
             type="button"
             onClick={handleOpenEditor}
@@ -279,30 +372,47 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             <PlayIcon size={12} /> <span className="card-footer-playground-label-full">Open in </span>Playground
           </button>
         )}
-        <button
-          type="button"
-          className="card-footer-hide-mobile"
-          onClick={handleOpenVsCode}
-          style={{
-            background: "var(--color-canvas-default)",
-            color: "var(--color-fg-default)",
-            border: "1px solid var(--color-border-default)",
-            borderRadius: "6px",
-            height: "28px",
-            padding: "0 10px",
-            fontSize: "12px",
-            lineHeight: "16px",
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "5px",
-            whiteSpace: "nowrap",
-          }}
-          title="Open in VS Code (New Window)"
-        >
-          <VsCodeIcon size={12} color="#0284c7" /> VS Code ↗
-        </button>
+        {isEditable && (
+          <button
+            type="button"
+            className="card-footer-hide-mobile"
+            onClick={handleOpenVsCode}
+            style={{
+              background: "var(--color-canvas-default)",
+              color: "var(--color-fg-default)",
+              border: "1px solid var(--color-border-default)",
+              borderRadius: "6px",
+              height: "28px",
+              padding: "0 10px",
+              fontSize: "12px",
+              lineHeight: "16px",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              whiteSpace: "nowrap",
+            }}
+            title="Open in VS Code (New Window)"
+          >
+            <VsCodeIcon size={12} color="#0284c7" /> VS Code ↗
+          </button>
+        )}
+        <CiteButton
+          target={buildCitationFromArtifact({
+            id: Number(artifactId || artifact?.id || 0),
+            title: artifact?.title || viewConfig?.title,
+            viewType: artifact?.view_type,
+            authorUsername: artifact?.username,
+            authorDisplayName: artifact?.display_name,
+            createdAt: artifact?.created_at,
+            description: viewConfig?.description || viewConfig?.caption,
+            localPdfUrl: pdfUrl,
+          })}
+          label="Cite"
+          variant="button"
+          testId={`artifact-card-cite-btn-${artifactId}`}
+        />
         {isLoaded && (
           <button
             type="button"
@@ -353,7 +463,23 @@ export const CardFooter: React.FC<CardFooterProps> = ({
                     Full Screen Studio
                   </ActionList.Item>
                 )}
-                {!isMultiFile && (
+                {isPdf && pdfUrl && (
+                  <>
+                    <ActionList.LinkItem href={pdfUrl} target="_blank" rel="noopener noreferrer">
+                      <ActionList.LeadingVisual>
+                        <LinkExternalIcon />
+                      </ActionList.LeadingVisual>
+                      Open PDF in Tab
+                    </ActionList.LinkItem>
+                    <ActionList.LinkItem href={pdfUrl} download>
+                      <ActionList.LeadingVisual>
+                        <DownloadIcon />
+                      </ActionList.LeadingVisual>
+                      Download PDF
+                    </ActionList.LinkItem>
+                  </>
+                )}
+                {isEditable && !isMultiFile && (
                   <ActionList.Item onSelect={(e) => handleOpenEditor(e)}>
                     <ActionList.LeadingVisual>
                       <PlayIcon />
@@ -377,12 +503,14 @@ export const CardFooter: React.FC<CardFooterProps> = ({
                     Fork &amp; Reproduce
                   </ActionList.Item>
                 )}
-                <ActionList.Item onSelect={(e) => handleOpenVsCode(e)}>
-                  <ActionList.LeadingVisual>
-                    <VsCodeIcon size={14} color="#0284c7" />
-                  </ActionList.LeadingVisual>
-                  Open in VS Code
-                </ActionList.Item>
+                {isEditable && (
+                  <ActionList.Item onSelect={(e) => handleOpenVsCode(e)}>
+                    <ActionList.LeadingVisual>
+                      <VsCodeIcon size={14} color="#0284c7" />
+                    </ActionList.LeadingVisual>
+                    Open in VS Code
+                  </ActionList.Item>
+                )}
               </ActionList>
             </ActionMenu.Overlay>
           </ActionMenu>

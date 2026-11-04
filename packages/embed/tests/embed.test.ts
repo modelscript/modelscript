@@ -56,7 +56,7 @@ async function runTests() {
 
   const launch2 = getLaunchUrl(multiFilePayload);
   assert.strictEqual(launch2.target, "ide");
-  assert.strictEqual(launch2.url, "/vscode/workbench/#memfs:artifact-42&anchor=SubComponentA");
+  assert.strictEqual(launch2.url, "/vscode/workbench/#memfs:42&anchor=SubComponentA");
 
   // 4. Test polyglot dialect support
   const stepPayload: UniversalEmbedPayload = {
