@@ -20,7 +20,8 @@ describe("Feeds Page Feature Flag Gating", () => {
     const content = fs.readFileSync(sidebarPath, "utf-8");
 
     assert.ok(
-      content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
+      content.includes('const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);') ||
+        content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
       "Sidebar.tsx must check hasFeeds using feeds_page and rss_feeds feature flags",
     );
     assert.ok(
@@ -35,7 +36,8 @@ describe("Feeds Page Feature Flag Gating", () => {
     const content = fs.readFileSync(appShellPath, "utf-8");
 
     assert.ok(
-      content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
+      content.includes('const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);') ||
+        content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
       "AppShell.tsx must evaluate hasFeeds flag",
     );
     assert.ok(
@@ -49,7 +51,8 @@ describe("Feeds Page Feature Flag Gating", () => {
     const content = fs.readFileSync(appPath, "utf-8");
 
     assert.ok(
-      content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
+      content.includes('const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);') ||
+        content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
       "App.tsx must evaluate hasFeeds flag in App() and GlobalModals",
     );
     assert.ok(
@@ -69,7 +72,8 @@ describe("Feeds Page Feature Flag Gating", () => {
     const content = fs.readFileSync(modalPath, "utf-8");
 
     assert.ok(
-      content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
+      content.includes('const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);') ||
+        content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
       "KeyboardShortcutsModal.tsx must evaluate hasFeeds",
     );
     assert.ok(
@@ -83,7 +87,8 @@ describe("Feeds Page Feature Flag Gating", () => {
     const content = fs.readFileSync(feedsPagePath, "utf-8");
 
     assert.ok(
-      content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
+      content.includes('const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);') ||
+        content.includes('const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");'),
       "FeedsPage.tsx must check hasFeeds",
     );
     assert.ok(

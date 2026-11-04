@@ -38,7 +38,8 @@ describe("Trending Topic Dismissal Menu Feature Flag & Auth Gating", () => {
     assert.ok(content.includes("useFeatureFlag"), "TrendingTopicsCard must import useFeatureFlag");
 
     assert.ok(
-      content.includes('useFeatureFlag("topic_dismissal") || useFeatureFlag("trending_topic_dismissal")'),
+      content.includes('useFeatureFlag(["topic_dismissal", "trending_topic_dismissal"])') ||
+        content.includes('useFeatureFlag("topic_dismissal") || useFeatureFlag("trending_topic_dismissal")'),
       "TrendingTopicsCard must check topic_dismissal flag with alias",
     );
     assert.ok(

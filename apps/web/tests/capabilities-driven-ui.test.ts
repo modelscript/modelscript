@@ -168,7 +168,10 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
         "utf-8",
       );
       assert.ok(explorePageSrc.includes('useFeatureFlag("package_browser")'));
-      assert.ok(explorePageSrc.includes('useFeatureFlag("git_repositories")'));
+      assert.ok(
+        explorePageSrc.includes('useFeatureFlag("git_repositories")') ||
+          explorePageSrc.includes('useFeatureFlag(["git_repositories", "repositories"])'),
+      );
 
       // Verify Packages and Repositories lists use domain icons and do not repeat package/repo paths
       assert.ok(exploreLandingSrc.includes("<PackageIcon"));

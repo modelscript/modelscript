@@ -947,8 +947,8 @@ end DoublePendulum3D;
       for (const file of viewers) {
         const src = fs.readFileSync(path.resolve(import.meta.dirname, `../src/components/artifacts/${file}`), "utf8");
         assert.ok(
-          src.includes('from "../../theme"'),
-          `${file} must import useTheme from ../../theme so light/dark mode state is consistent`,
+          src.includes('from "../../theme"') || src.includes('from "../../theme-tokens"'),
+          `${file} must import useTheme from ../../theme or useThemeTokens from ../../theme-tokens so light/dark mode state is consistent`,
         );
         assert.ok(
           !src.includes('resolvedColorMode === "dark"'),
