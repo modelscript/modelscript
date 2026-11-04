@@ -5,7 +5,8 @@
 
 [![CI/CD](https://github.com/modelscript/modelscript/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/modelscript/modelscript/actions/workflows/ci.yml)
 [![npm @modelscript/cli](https://img.shields.io/npm/v/@modelscript/cli?label=cli)](https://www.npmjs.com/package/@modelscript/cli)
-[![Docker API](https://img.shields.io/badge/ghcr.io-api-blue?logo=docker)](https://ghcr.io/modelscript/api)
+[![Docker API CE](https://img.shields.io/badge/ghcr.io-api--ce-blue?logo=docker)](https://ghcr.io/modelscript/api-ce)
+[![Docker API EE](https://img.shields.io/badge/ghcr.io-api--ee-blue?logo=docker)](https://ghcr.io/modelscript/api-ee)
 [![Docker Web](https://img.shields.io/badge/ghcr.io-web-blue?logo=docker)](https://ghcr.io/modelscript/web)
 [![Docker Appliance](https://img.shields.io/badge/ghcr.io-appliance-blue?logo=docker)](https://ghcr.io/modelscript/appliance)
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript)

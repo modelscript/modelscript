@@ -2,7 +2,7 @@
 import { ref } from "vue";
 
 const dockerSnippet = `# Pull the pre-built multi-arch images
-docker pull ghcr.io/modelscript/api:latest
+docker pull ghcr.io/modelscript/api-ce:latest
 docker pull ghcr.io/modelscript/web:latest
 
 # Launch backend simulation server & interactive web UI

@@ -55,11 +55,11 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/modelscript/api:latest
+    image: ghcr.io/modelscript/api-ee:latest
     profiles: ["standalone", "internal", "federated", "flagship", "federated-lite", "corporate", "quick-tunnel"]
     build:
       context: .
-      target: api
+      target: api-ee
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
@@ -231,11 +231,11 @@ services:
     restart: unless-stopped
 
   cli:
-    image: ghcr.io/modelscript/cli:latest
+    image: ghcr.io/modelscript/cli-ee:latest
     profiles: ["cli"]
     build:
       context: .
-      target: cli
+      target: cli-ee
     environment:
       - MSX_EDITION=${MSX_EDITION:-ee}
       - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-true}

@@ -92,7 +92,7 @@ docker pull ghcr.io/modelscript/api-ce:latest
 docker pull ghcr.io/modelscript/web:latest
 
 # Option B: Enterprise Edition & Air-Gapped Intranet Appliance (requires MSX_LICENSE_KEY in production)
-docker pull ghcr.io/modelscript/api:latest
+docker pull ghcr.io/modelscript/api-ee:latest
 docker pull ghcr.io/modelscript/appliance:latest
 
 # Launch backend simulation cluster and web IDE

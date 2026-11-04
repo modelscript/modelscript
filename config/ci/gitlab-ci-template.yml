@@ -11,7 +11,7 @@
 
 variables:
   # The Docker image containing the ModelScript CLI and co-simulation engine.
-  MODELSCRIPT_IMAGE: "ghcr.io/modelscript/cli:latest"
+  MODELSCRIPT_IMAGE: "ghcr.io/modelscript/cli-ee:latest"
 
 stages:
   - lint

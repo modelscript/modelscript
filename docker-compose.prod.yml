@@ -22,7 +22,7 @@ services:
     restart: always
 
   api:
-    image: ghcr.io/modelscript/api:${IMAGE_TAG:-latest}
+    image: ghcr.io/modelscript/api-ee:${IMAGE_TAG:-latest}
     pull_policy: always
     environment:
       - NODE_ENV=production

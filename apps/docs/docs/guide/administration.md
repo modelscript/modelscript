@@ -199,14 +199,14 @@ Enterprise teams can connect cloud AI agents and internal copilot orchestrators 
 
 ## 9. Deployment & Self-Hosting Runbook
 
-ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Edition (`ee`)** container images to GitHub Container Registry (`ghcr.io/modelscript/*`). Choose the deployment scenario below that matches your environment.
+ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Edition (`-ee`)** container images to GitHub Container Registry (`ghcr.io/modelscript/*`). Choose the deployment scenario below that matches your environment.
 
 | Container Image                 |                   Edition                    |      `/app/ee` Included?      | Default Environment                                                                               | Target Scenario                                          |
 | :------------------------------ | :------------------------------------------: | :---------------------------: | :------------------------------------------------------------------------------------------------ | :------------------------------------------------------- |
 | `ghcr.io/modelscript/api-ce`    |         **CE** (`AGPL-3.0-or-later`)         | **No** _(physically omitted)_ | `MSX_EDITION=ce`                                                                                  | Self-Hosted Community Edition                            |
 | `ghcr.io/modelscript/cli-ce`    |         **CE** (`AGPL-3.0-or-later`)         | **No** _(physically omitted)_ | `MSX_EDITION=ce`                                                                                  | Open-core CI/CD runner                                   |
-| `ghcr.io/modelscript/api`       | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Corporate EE Cluster & `modelscript.org` Cloud           |
-| `ghcr.io/modelscript/cli`       | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Licensed Enterprise CI/CD & HIL codegen runner           |
+| `ghcr.io/modelscript/api-ee`    | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Corporate EE Cluster & `modelscript.org` Cloud           |
+| `ghcr.io/modelscript/cli-ee`    | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Licensed Enterprise CI/CD & HIL codegen runner           |
 | `ghcr.io/modelscript/appliance` | **EE** (`LicenseRef-ModelScript-Enterprise`) |            **Yes**            | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`, `ENTERPRISE_APPLIANCE=true`, `AIRGAP_ENFORCED=true` | Single-container Air-Gapped Intranet Appliance (`:8080`) |
 | `ghcr.io/modelscript/web`       |                    Shared                    |              N/A              | Nginx SPA (`/`) + VitePress Docs (`/docs`) + IDE (`/ide`)                                         | Web UI, IDE Launcher & Unified Documentation Portal      |
 
@@ -353,7 +353,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml \
 
 #### C.2 Automated CI/CD Rollouts (`.github/workflows/ci.yml` & `.github/workflows/release.yml`)
 
-Every push to `main` and every tagged release in GitHub Actions builds and pushes all 6 Docker images (`api`, `api-ce`, `web`, `cli`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` (tagged with both `:sha-<commit>` / `:<version>` and `:latest`) and triggers the `deploy_production` rollout job under a shared `production-deploy` concurrency lock. Before rolling out new containers, the deployment job executes an online SQLite `VACUUM INTO` snapshot inside the running `api` container (`/app/apps/api/data/backups/pre-deploy-<timestamp>.db`). Configure either SSH or Webhook secrets in GitHub repository settings:
+Every push to `main` and every tagged release in GitHub Actions builds and pushes all 6 Docker images (`api-ee`, `api-ce`, `web`, `cli-ee`, `cli-ce`, `appliance`) to `ghcr.io/modelscript/*` (tagged with both `:sha-<commit>` / `:<version>` and `:latest`) and triggers the `deploy_production` rollout job under a shared `production-deploy` concurrency lock. Before rolling out new containers, the deployment job executes an online SQLite `VACUUM INTO` snapshot inside the running `api` container (`/app/apps/api/data/backups/pre-deploy-<timestamp>.db`). Configure either SSH or Webhook secrets in GitHub repository settings:
 
 | GitHub Secret                          | Description                                                                                  |
 | :------------------------------------- | :------------------------------------------------------------------------------------------- |

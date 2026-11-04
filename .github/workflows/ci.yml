@@ -521,14 +521,14 @@ jobs:
           set: |
             *.cache-from=type=gha
             *.args.PREBUILT=true
-            api.tags=ghcr.io/modelscript/api:latest
-            api.tags=ghcr.io/modelscript/api:sha-${{ github.sha }}
+            api.tags=ghcr.io/modelscript/api-ee:latest
+            api.tags=ghcr.io/modelscript/api-ee:sha-${{ github.sha }}
             api-ce.tags=ghcr.io/modelscript/api-ce:latest
             api-ce.tags=ghcr.io/modelscript/api-ce:sha-${{ github.sha }}
             web.tags=ghcr.io/modelscript/web:latest
             web.tags=ghcr.io/modelscript/web:sha-${{ github.sha }}
-            cli.tags=ghcr.io/modelscript/cli:latest
-            cli.tags=ghcr.io/modelscript/cli:sha-${{ github.sha }}
+            cli.tags=ghcr.io/modelscript/cli-ee:latest
+            cli.tags=ghcr.io/modelscript/cli-ee:sha-${{ github.sha }}
             cli-ce.tags=ghcr.io/modelscript/cli-ce:latest
             cli-ce.tags=ghcr.io/modelscript/cli-ce:sha-${{ github.sha }}
             appliance.tags=ghcr.io/modelscript/appliance:latest

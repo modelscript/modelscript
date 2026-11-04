@@ -55,14 +55,14 @@ npm run ee:verify-license -- msx_lic_...
 
 ## Container Images & Deployment Scenarios
 
-CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) and Release ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) build and publish both **Community Edition (`-ce`)** and **Enterprise Edition** Docker images from the root [`Dockerfile`](../Dockerfile):
+CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) and Release ([`.github/workflows/release.yml`](../.github/workflows/release.yml)) build and publish both **Community Edition (`-ce`)** and **Enterprise Edition (`-ee`)** Docker images from the root [`Dockerfile`](../Dockerfile):
 
 | Image                           | Target           |      `/app/ee` Included?       | Default Environment                                                                               | Use Case                                                            |
 | :------------------------------ | :--------------- | :----------------------------: | :------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------ |
 | `ghcr.io/modelscript/api-ce`    | `api-ce`         | **No** _(physically stripped)_ | `MSX_EDITION=ce` + integrated VS Code Web IDE host                                                | Self-hosted AGPL-3.0 Community Edition API & Web IDE                |
 | `ghcr.io/modelscript/cli-ce`    | `cli-ce`         | **No** _(physically stripped)_ | `MSX_EDITION=ce`                                                                                  | Open-core AGPL-3.0 CI/CD CLI runner                                 |
-| `ghcr.io/modelscript/api`       | `api` (`api-ee`) |            **Yes**             | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true` + integrated VS Code Web IDE host                    | `modelscript.org` Cloud & Corporate EE multi-container self-hosting |
-| `ghcr.io/modelscript/cli`       | `cli` (`cli-ee`) |            **Yes**             | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Licensed Enterprise CI/CD & HIL codegen runner                      |
+| `ghcr.io/modelscript/api-ee`    | `api-ee` (`api`) |            **Yes**             | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true` + integrated VS Code Web IDE host                    | `modelscript.org` Cloud & Corporate EE multi-container self-hosting |
+| `ghcr.io/modelscript/cli-ee`    | `cli-ee` (`cli`) |            **Yes**             | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`                                                      | Licensed Enterprise CI/CD & HIL codegen runner                      |
 | `ghcr.io/modelscript/appliance` | `appliance`      |            **Yes**             | `MSX_EDITION=ee`, `MSX_LICENSE_ENFORCE=true`, `ENTERPRISE_APPLIANCE=true`, `AIRGAP_ENFORCED=true` | Single-container air-gapped Enterprise Intranet Appliance (`:8080`) |
 | `ghcr.io/modelscript/web`       | `web`            |              N/A               | Nginx SPA (`/`) + VitePress Docs (`/docs`) + IDE Reverse Proxy (`/vscode`)                        | Unified Web UI, IDE Shell & Documentation Portal                    |
 

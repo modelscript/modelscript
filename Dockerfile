@@ -1,6 +1,6 @@
 # ==============================================================================
 # Unified multi-stage Dockerfile for ModelScript & Ansatz services.
-# Named targets: api (api-ee), api-ce, web, cli (cli-ee), cli-ce, appliance.
+# Named targets: api-ee (api), api-ce, web, cli-ee (cli), cli-ce, appliance.
 # Usage: docker compose build (targets configured in docker-compose.yml)
 #
 # Optimization: Set PREBUILT=true when the build context already contains
@@ -188,7 +188,7 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
 CMD ["node", "apps/api/dist/main.js"]
 
 # ---- Enterprise Edition API (bundles /app/ee with Ed25519 license enforcement) ----
-FROM node:24-alpine AS api
+FROM node:24-alpine AS api-ee
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/api/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
@@ -218,7 +218,7 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1
 CMD ["node", "apps/api/dist/main.js"]
 
-FROM api AS api-ee
+FROM api-ee AS api
 
 # ==============================================================================
 # Web & Unified Documentation Portal (modelscript.org)
@@ -281,7 +281,7 @@ ENV NODE_ENV=production \
 ENTRYPOINT ["node", "apps/cli/dist/main.js"]
 
 # ---- Enterprise Edition CLI (bundles /app/ee with Ed25519 license enforcement) ----
-FROM node:24-alpine AS cli
+FROM node:24-alpine AS cli-ee
 WORKDIR /app
 COPY --from=deps /app/package.json /app/package-lock.json ./
 COPY --from=deps /app/node_modules ./node_modules
@@ -294,7 +294,7 @@ ENV NODE_ENV=production \
     MSX_LICENSE_ENFORCE=true
 ENTRYPOINT ["node", "apps/cli/dist/main.js"]
 
-FROM cli AS cli-ee
+FROM cli-ee AS cli
 
 # ==============================================================================
 # Hardened Enterprise Intranet Appliance (Single Container for Regulated Utilities)
