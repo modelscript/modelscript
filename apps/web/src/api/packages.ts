@@ -189,10 +189,11 @@ const isDevMode = (): boolean =>
     (typeof process !== "undefined" && process.env?.["NODE_ENV"] !== "production"),
   );
 
-export const getLibraries = async (q?: string, sort?: string) => {
+export const getLibraries = async (q?: string, sort?: string, author?: string) => {
   try {
-    const params: { q?: string; sort?: string } = { q };
+    const params: { q?: string; sort?: string; author?: string } = { q };
     if (sort !== undefined) params.sort = sort;
+    if (author !== undefined) params.author = author;
     const { data } = await api.get<{ packages: LibraryListItem[] }>("/libraries", { params });
     if (Array.isArray(data.packages)) {
       return data.packages;
@@ -223,7 +224,16 @@ export const getLibraries = async (q?: string, sort?: string) => {
       }
     }
   }
-  const stdLibs: LibraryListItem[] = Array.from(groupedLibs.values());
+  let stdLibs: LibraryListItem[] = Array.from(groupedLibs.values());
+
+  if (author) {
+    const target = author.replace(/^@/, "").toLowerCase();
+    stdLibs = stdLibs.filter((lib) => {
+      const auth = lib.author ? lib.author.replace(/^@/, "").toLowerCase() : undefined;
+      const scp = lib.scope ? lib.scope.replace(/^@/, "").toLowerCase() : undefined;
+      return auth === target || scp === target;
+    });
+  }
 
   if (q) {
     return stdLibs.filter((lib) => lib.name.toLowerCase().includes(q.toLowerCase()));

@@ -1068,10 +1068,17 @@ function parseExperimentFromSource(content: string): {
  * 3. Simulation Thumbnail (if simulatable, and no diagram and no icon is available)
  * 4. Code Snippet Thumbnail (fallback for partial models, packages, unsimulatable snippets)
  */
+export interface ModelicaPreprocessOptions {
+  /** Class to render (simple or dotted name; the last segment is matched). Defaults to the first class in the file. */
+  primaryClass?: string | undefined;
+}
+
 export async function preprocessModelicaArtifact(
   content: string,
   fallbackTitle: string,
+  options: ModelicaPreprocessOptions = {},
 ): Promise<ModelicaArtifactPreprocessResult> {
+  const wantedClass = options.primaryClass?.split(".").pop() || undefined;
   // Quick regex fallback info in case of severe syntax errors
   const headerMatch = content.match(
     /\b(partial\s+)?(model|class|block|connector|record|package|function|type)\s+([A-Za-z_][A-Za-z0-9_]*)/,
@@ -1112,15 +1119,20 @@ export async function preprocessModelicaArtifact(
     // Locate the primary top-level class defined in virtualPath
     const symIndex = context.queryEngine.index;
     let targetSymbolId: number | undefined;
-    for (const [id, sym] of symIndex.symbols.entries()) {
-      if (sym.kind === "Class" && sym.resourceId === virtualPath) {
-        targetSymbolId = id;
-        className = sym.name || className;
-        classKind = classKindFromEntry(sym as unknown as { metadata?: Record<string, unknown> });
-        isPartial = isEntryPartial(sym as unknown as { metadata?: Record<string, unknown> }, content, className);
-        break;
+    const findInFile = (wanted: string | undefined): void => {
+      for (const [id, sym] of symIndex.symbols.entries()) {
+        if (sym.kind === "Class" && sym.resourceId === virtualPath && (!wanted || sym.name === wanted)) {
+          targetSymbolId = id;
+          className = sym.name || className;
+          classKind = classKindFromEntry(sym as unknown as { metadata?: Record<string, unknown> });
+          isPartial = isEntryPartial(sym as unknown as { metadata?: Record<string, unknown> }, content, className);
+          return;
+        }
       }
-    }
+    };
+    findInFile(wantedClass);
+    // An unknown hint falls back to the first class declared in this file.
+    if (targetSymbolId === undefined && wantedClass) findInFile(undefined);
 
     if (targetSymbolId === undefined && context.classes.length > 0) {
       const firstCls = context.classes[0]!;

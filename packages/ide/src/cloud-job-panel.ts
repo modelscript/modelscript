@@ -301,7 +301,7 @@ export class CloudJobPanel {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:; connect-src http: https:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ModelScript Cloud HPC Dispatch</title>
   <style>

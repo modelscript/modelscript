@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckIcon, GitPullRequestIcon, HistoryIcon, SyncIcon, VerifiedIcon, XIcon } from "@primer/octicons-react";
-import { Button, Dialog, Label, SegmentedControl, Spinner, Text } from "@primer/react";
+import { Button, Dialog, Label, SegmentedControl, Text } from "@primer/react";
 import React from "react";
 import type { ThreadAuditLogDto, ThreadProposalDto } from "../../../api";
 import Box from "../../Box";
+import Spinner from "../../Spinner";
 
 export interface ThreadGovernanceModalProps {
   isOpen: boolean;

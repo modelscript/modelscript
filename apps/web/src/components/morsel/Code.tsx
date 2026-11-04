@@ -13,6 +13,7 @@ import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import React, { useCallback, useEffect, useRef } from "react";
 import styledImport from "styled-components";
 import { useModelingPreferences } from "../../ModelingPreferencesContext";
+import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
 import { didChange, didChangeVisibleRanges, didOpen } from "./util/lsp-bridge";
 import { getLsp, startLsp } from "./util/lsp-worker";
 import { registerAllModelscriptLanguages, setupMonacoLspAdapter } from "./util/monaco-lsp-adapter";
@@ -474,11 +475,12 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       )}
       <EditorSurfaceWrapper>
         <Editor
-          theme={props.theme}
+          theme={getMonacoThemeName(props.theme)}
           defaultValue={props.content}
           language={props.languageId ?? "modelica"}
           path={props.uri}
           beforeMount={(m) => {
+            ensureMonacoThemesDefined(m);
             registerAllModelscriptLanguages(m);
           }}
           onChange={handleDidChangeContent}

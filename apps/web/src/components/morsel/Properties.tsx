@@ -2,9 +2,10 @@
 
 import { evaluatePropertyPredicate, validatePropertyValue } from "@modelscript/diagram";
 import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
-import { Button, Spinner, Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
+import { Button, Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import { useEffect, useState } from "react";
+import Spinner from "../Spinner";
 import { ComponentIcon } from "./ComponentList";
 import type { Translations } from "./util/i18n";
 import type { ComponentProperties, PropertyData } from "./util/lsp-bridge";

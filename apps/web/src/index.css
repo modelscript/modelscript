@@ -95,17 +95,28 @@
   --surface-row-hover: var(--ms-surface-hover);
   --surface-selected: var(--ms-surface-selected);
 
-  --status-verified-bg: color-mix(in srgb, var(--ms-success) 12%, transparent);
-  --status-verified-border: color-mix(in srgb, var(--ms-success) 30%, transparent);
-  --status-solver-bg: color-mix(in srgb, var(--hue-cyan) 12%, transparent);
-  --status-solver-border: color-mix(in srgb, var(--hue-cyan) 30%, transparent);
-  --status-fmu-bg: color-mix(in srgb, var(--hue-indigo) 12%, transparent);
-  --status-fmu-border: color-mix(in srgb, var(--hue-indigo) 30%, transparent);
-  --status-warning-bg: color-mix(in srgb, var(--ms-warning) 12%, transparent);
-  --status-warning-border: color-mix(in srgb, var(--ms-warning) 30%, transparent);
-  --status-unstable-bg: color-mix(in srgb, var(--ms-warning) 12%, transparent);
-  --status-unstable-border: color-mix(in srgb, var(--ms-warning) 30%, transparent);
-  --status-unstable-fg: var(--ms-warning);
+  --status-verified-fg: var(--ms-status-pass-fg);
+  --status-verified-bg: var(--ms-status-pass-bg);
+  --status-verified-border: var(--ms-status-pass-border);
+  --color-status-verified: var(--ms-status-pass-fg);
+
+  --status-solver-bg: var(--domain-fluid-bg);
+  --status-solver-border: var(--domain-fluid-border);
+  --status-fmu-bg: var(--domain-aero-bg);
+  --status-fmu-border: var(--domain-aero-border);
+
+  --status-warning-fg: var(--ms-status-warn-fg);
+  --status-warning-bg: var(--ms-status-warn-bg);
+  --status-warning-border: var(--ms-status-warn-border);
+  --color-status-warning: var(--ms-status-warn-fg);
+
+  --status-unstable-fg: var(--ms-status-warn-fg);
+  --status-unstable-bg: var(--ms-status-warn-bg);
+  --status-unstable-border: var(--ms-status-warn-border);
+
+  --status-danger-fg: var(--ms-status-fail-fg);
+  --status-danger-bg: var(--ms-status-fail-bg);
+  --status-danger-border: var(--ms-status-fail-border);
 
   /* Legacy Primer (--color-*) names */
   --color-canvas-default: var(--ms-bg);
@@ -121,16 +132,16 @@
   --color-accent-subtle: var(--ms-brand-soft);
   --color-accent-muted: color-mix(in srgb, var(--ms-brand) 20%, transparent);
   --color-danger-emphasis: var(--ms-danger);
-  --color-danger-subtle: color-mix(in srgb, var(--ms-danger) 12%, transparent);
-  --color-danger-muted: color-mix(in srgb, var(--ms-danger) 30%, transparent);
-  --color-success-fg: var(--ms-success);
+  --color-danger-subtle: var(--ms-status-fail-bg);
+  --color-danger-muted: var(--ms-status-fail-border);
+  --color-success-fg: var(--ms-status-pass-fg);
   --color-success-emphasis: var(--ms-success);
-  --color-success-subtle: color-mix(in srgb, var(--ms-success) 12%, transparent);
-  --color-success-muted: color-mix(in srgb, var(--ms-success) 30%, transparent);
-  --color-attention-fg: var(--ms-warning);
+  --color-success-subtle: var(--ms-status-pass-bg);
+  --color-success-muted: var(--ms-status-pass-border);
+  --color-attention-fg: var(--ms-status-warn-fg);
   --color-attention-emphasis: var(--ms-warning);
-  --color-attention-subtle: color-mix(in srgb, var(--ms-warning) 12%, transparent);
-  --color-attention-muted: color-mix(in srgb, var(--ms-warning) 30%, transparent);
+  --color-attention-subtle: var(--ms-status-warn-bg);
+  --color-attention-muted: var(--ms-status-warn-border);
   --color-done-fg: var(--hue-indigo);
   --color-done-emphasis: var(--hue-indigo);
   --color-done-subtle: color-mix(in srgb, var(--hue-indigo) 12%, transparent);
@@ -171,6 +182,8 @@
   --color-map-land: #e2e8f0;
   --color-map-land-hover: #cbd5e1;
   --color-map-stroke: #cbd5e1;
+  --color-card-border: rgba(15, 23, 42, 0.12);
+  --color-card-border-hover: rgba(14, 116, 144, 0.45);
 }
 
 [data-theme="dark"] {
@@ -190,6 +203,8 @@
   --color-map-land: rgba(148, 163, 184, 0.12);
   --color-map-land-hover: rgba(148, 163, 184, 0.24);
   --color-map-stroke: rgba(148, 163, 184, 0.22);
+  --color-card-border: rgba(148, 163, 184, 0.16);
+  --color-card-border-hover: rgba(34, 211, 238, 0.45);
 }
 
 /* ─── Ansatz mark (counter-themed squircle tile: obsidian on light, platinum on dark) ─── */

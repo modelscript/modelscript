@@ -465,15 +465,35 @@ export class LanguageRegistry {
     if (dotIdx === -1) return undefined;
     const ext = cleanUri.slice(dotIdx).toLowerCase();
 
-    if (!text && (ext === ".inp" || ext === ".xml" || ext === ".net")) {
+    // Multi-port S-parameter files (.s1p, .s2p, .s3p, etc.) belong to Touchstone
+    if (/^\.s\d+p$/i.test(ext)) {
+      return this.getPluginById("touchstone");
+    }
+
+    const sniffExtensions = new Set([
+      ".inp",
+      ".xml",
+      ".net",
+      ".in",
+      ".i",
+      ".data",
+      ".inc",
+      ".st",
+      ".raw",
+      ".cmd",
+      ".sim",
+      ".ts",
+    ]);
+
+    if (!text && sniffExtensions.has(ext)) {
       const openDoc = (globalThis as any).documents?.get?.(uri);
       if (openDoc && typeof openDoc.getText === "function") {
         text = openDoc.getText();
       }
     }
 
-    if (text && (ext === ".inp" || ext === ".xml" || ext === ".net")) {
-      const header = text.slice(0, 2048);
+    if (text && sniffExtensions.has(ext)) {
+      const header = text.slice(0, 4096);
       if (ext === ".inp" || ext === ".net") {
         if (/^\s*\[(?:SUBCATCHMENTS|RAINGAGES|INFILTRATION|CONDUITS|OUTFALLS)\]/im.test(header)) {
           return this.getPluginById("swmm") ?? this.extMap.get(ext);
@@ -483,6 +503,15 @@ export class LanguageRegistry {
         }
         if (/^\s*\*(?:HEADING|NODE|ELEMENT|MATERIAL|STEP|SOLID SECTION)/im.test(header)) {
           return this.getPluginById("fea") ?? this.extMap.get(ext);
+        }
+        if (/^\s*(?:TITLE|IN-UNITS|RUN-CONTROL|FLOWSHEET|BLOCK|DEF-STREAMS)\b/im.test(header)) {
+          return this.getPluginById("aspen") ?? this.extMap.get(ext);
+        }
+        if (/^\s*(?:TIME-SERIES|SIMA|TASK|CONDITION)\b/im.test(header)) {
+          return this.getPluginById("sima") ?? this.extMap.get(ext);
+        }
+        if (/^\s*(?:=|\*|\d{3,9})\s+/m.test(header) || /relap5/i.test(header)) {
+          return this.getPluginById("relap5") ?? this.extMap.get(ext);
         }
       } else if (ext === ".xml") {
         if (/<REQ-IF\b/i.test(header)) return this.getPluginById("reqif") ?? this.extMap.get(ext);
@@ -498,6 +527,41 @@ export class LanguageRegistry {
         if (/<DicomRtPlan\b/i.test(header)) return this.getPluginById("dicom-rt") ?? this.extMap.get(ext);
         if (/<febio_spec\b/i.test(header)) return this.getPluginById("febio") ?? this.extMap.get(ext);
         if (/<PlusConfiguration\b/i.test(header)) return this.getPluginById("igtl") ?? this.extMap.get(ext);
+      } else if (ext === ".in") {
+        if (/^\s*(?:TITLE|IN-UNITS|RUN-CONTROL|FLOWSHEET|BLOCK|PROPERTIES|DEF-STREAMS)\b/im.test(header)) {
+          return this.getPluginById("aspen") ?? this.extMap.get(ext);
+        }
+      } else if (ext === ".i") {
+        if (/^\s*(?:=|\*|\d{3,9})\s+/m.test(header) || /relap5/i.test(header)) {
+          return this.getPluginById("relap5") ?? this.extMap.get(ext);
+        }
+      } else if (ext === ".data" || ext === ".inc") {
+        if (/^\s*(?:RUNSPEC|GRID|PROPS|REGIONS|SOLUTION|SUMMARY|SCHEDULE|DIMENS|OIL|WATER|GAS)\b/im.test(header)) {
+          return this.getPluginById("eclipse") ?? this.extMap.get(ext);
+        }
+      } else if (ext === ".st") {
+        if (/^\s*(?:FUNCTION_BLOCK|PROGRAM|CONFIGURATION|TYPE|VAR|VAR_INPUT)\b/im.test(header)) {
+          return this.getPluginById("plcopen") ?? this.extMap.get(ext);
+        }
+      } else if (ext === ".raw") {
+        if (/^\s*\d+\s*,\s*[^,]+\s*,\s*[\d.]+/m.test(header) || /^\s*0\s*,\s*[\d.]+/m.test(header)) {
+          return this.getPluginById("psse") ?? this.extMap.get(ext);
+        }
+      } else if (ext === ".cmd") {
+        if (/^\s*!(?:ADAMS|MDI)|\b(?:part|marker|model)\s+create\b/im.test(header)) {
+          return this.getPluginById("adams") ?? this.extMap.get(ext);
+        }
+      } else if (ext === ".sim") {
+        if (/^\s*!\s*SIMPACK|\$(?:MODEL|SUBSTRUCTURE)\b/im.test(header)) {
+          return this.getPluginById("simpack") ?? this.extMap.get(ext);
+        }
+      } else if (ext === ".ts") {
+        // Touchstone network analyzer header: # [freq unit] [parameter] [format] [R n]
+        if (/^#[ \t]*(?:GHZ|MHZ|KHZ|HZ)\b/im.test(header)) {
+          return this.getPluginById("touchstone");
+        }
+        // Do not match TypeScript as Touchstone!
+        return undefined;
       }
     }
 

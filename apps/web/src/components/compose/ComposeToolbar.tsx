@@ -18,6 +18,7 @@ import { useFeatureFlag } from "../../FeatureFlagContext";
 import type { ComposerAiEngineMode } from "../../util/composer-ai";
 import Box from "../Box";
 import SimpleEmojiPicker from "../SimpleEmojiPicker";
+import { getAttachAcceptList } from "./attach";
 import { ActionIconButton, CommandPill, TweetButton } from "./styles";
 
 export interface ComposeToolbarProps {
@@ -143,6 +144,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
   const hasComposerAiPolish = useFeatureFlag("composer_ai_polish");
   const hasAiPolishAlias = useFeatureFlag("ai_polish");
   const isAiPolishFeatureEnabled = hasComposerAiPolish || hasAiPolishAlias;
+  const hasReferences = useFeatureFlag(["references", "scientific_references"]);
   const hasTextToPolish = Boolean(content.trim() || hasNotebookContent);
   const isAiRunning = Boolean(aiBusy);
   const hasEnteredContent = Boolean(content.trim() || artifactId !== null || hasNotebookContent);
@@ -485,15 +487,17 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
           >
             <CodeIcon size={20} />
           </ActionIconButton>
-          <ActionIconButton
-            type="button"
-            onClick={() => setShowCitationPicker?.(true)}
-            aria-label="Insert Citation"
-            title="Insert Scholarly Citation (OpenAlex, DOI, ArXiv, URN)"
-            data-testid="composer-insert-citation-btn"
-          >
-            <BookIcon size={20} />
-          </ActionIconButton>
+          {hasReferences && (
+            <ActionIconButton
+              type="button"
+              onClick={() => setShowCitationPicker?.(true)}
+              aria-label="Insert Citation"
+              title="Insert Scholarly Citation (OpenAlex, DOI, ArXiv, URN)"
+              data-testid="composer-insert-citation-btn"
+            >
+              <BookIcon size={20} />
+            </ActionIconButton>
+          )}
           {hasHpc && (
             <ActionIconButton
               onClick={() => setShowHpcPicker(true)}
@@ -507,7 +511,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
             type="file"
             style={{ display: "none" }}
             ref={fileInputRef}
-            accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.tsv,.json,.yaml,.yml,.h5,.hdf5,.mo,.mos,.sysml,.sysml2,.kerml,.pscx,.pslx,.psout,.raw,.con,.inl,.opi,.key,.tpl,.olga,.ez5,.ezm,.roc,.deck,.lps,.tgx,.sima,.sys,.gtm,.gtd,.inp,.inpt,.bdf,.cfg,.cfgt,.su2,.fmu,.ssp,.ssd,.owl,.ttl,.ofn,.tei,.xml"
+            accept={getAttachAcceptList()}
             onChange={handleFileUpload}
             disabled={uploadingFile}
           />

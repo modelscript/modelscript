@@ -1449,7 +1449,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       {
         id: "modelscript-sidebar",
         title: "ModelScript",
-        icon: "$(circuit-board)",
+        icon: "assets/modelscript/icon.svg",
       },
     ],
   };

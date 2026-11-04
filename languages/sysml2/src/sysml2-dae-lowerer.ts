@@ -54,6 +54,7 @@ export function getSysmlParser(): SysmlWasmParser | null {
     const candidatePaths = [
       path.resolve(currentDir, "../dist/parser.wasm"),
       path.resolve(currentDir, "../parser.wasm"),
+      path.resolve(currentDir, "../.cache/parser.wasm"),
       path.resolve(currentDir, "../../dist/parser.wasm"),
       path.resolve(currentDir, "../../parser.wasm"),
     ];

@@ -108,10 +108,27 @@ export class CancellationTokenSource {
 }
 
 export class TreeItem {
+  public id?: string;
+  public tooltip?: string;
+  public description?: string;
+  public contextValue?: string;
+  public iconPath?: any;
+  public command?: any;
   constructor(
     public label: string,
     public collapsibleState?: number,
   ) {}
+}
+
+export class ThemeIcon {
+  constructor(
+    public readonly id: string,
+    public readonly color?: any,
+  ) {}
+}
+
+export class ThemeColor {
+  constructor(public readonly id: string) {}
 }
 
 export const TreeItemCollapsibleState = {

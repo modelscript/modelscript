@@ -6,7 +6,11 @@ import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFo
 
 const props = defineProps<{ screenMenu?: boolean }>();
 
-const totalRules = lintRules.totalRules.toLocaleString();
+const totalRules = (
+  Array.isArray(lintRules)
+    ? lintRules.reduce((acc, l) => acc + (l.rules?.length || 0), 0)
+    : (lintRules as any)?.totalRules ?? 0
+).toLocaleString();
 
 const systemsItems = [
   ...(isModelScriptLangVisible

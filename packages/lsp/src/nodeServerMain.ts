@@ -294,7 +294,7 @@ import { DiagramService } from "./services/diagram-service.js";
 import { DocumentManager } from "./services/document-manager.js";
 import { HierarchyService } from "./services/hierarchy-service.js";
 import { ParserService } from "./services/parser-service.js";
-import { ValidationService } from "./services/validation-service.js";
+import { deduplicateAllDiagnostics, ValidationService } from "./services/validation-service.js";
 import { WorkspaceManager } from "./services/workspace-manager.js";
 import { computeTreeEdit } from "./utils/ast-utils.js";
 import {
@@ -3504,6 +3504,20 @@ export function startNodeServer(input?: any, output?: any) {
     }
   });
 
+  let projectTreeChangedTimer: ReturnType<typeof setTimeout> | null = null;
+  let projectTreeChangedPending = false;
+
+  Object.defineProperty(globalThis, "projectTreeChangedTimer", {
+    get: () => projectTreeChangedTimer,
+    set: (v) => (projectTreeChangedTimer = v),
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "projectTreeChangedPending", {
+    get: () => projectTreeChangedPending,
+    set: (v) => (projectTreeChangedPending = v),
+    configurable: true,
+  });
+
   const activeSemanticTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const activeShortDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const activeSyntaxDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -3601,23 +3615,40 @@ export function startNodeServer(input?: any, output?: any) {
             oldCached.tree.delete?.();
           }
           documentManager.documentTrees.set(uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
-          const { syntaxDiags } = validationService.collectSyntaxErrors(tree.rootNode, change.document, plugin);
+          const { syntaxDiags, wasmLintDiags } = validationService.collectSyntaxErrors(
+            tree.rootNode,
+            change.document,
+            plugin,
+          );
+          const wasmLspDiags = validationService.convertWasmLintDiagnostics(
+            wasmLintDiags,
+            change.document,
+            plugin,
+            text,
+          );
+          const fastDiags = deduplicateAllDiagnostics([...syntaxDiags, ...wasmLspDiags]);
           const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
 
-          // Surface syntax errors: clear immediately when 0, debounce by 180ms when editing
-          if (syntaxDiags.length === 0 && lastCount > 0) {
+          // Surface fast syntax and WASM CST lint errors: clear immediately when 0, debounce by 180ms when editing
+          if (fastDiags.length === 0 && lastCount > 0) {
             lastSyntaxErrorsCount.set(uri, 0);
-            const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
+            const cachedSemantic = (validationService.lastSemanticDiagnostics.get(uri) || []).filter(
+              (d) => typeof d.code !== "number" || d.code < 1000 || d.code >= 6000,
+            );
+            validationService.lastSemanticDiagnostics.set(uri, cachedSemantic);
             connection.sendDiagnostics({ uri, diagnostics: cachedSemantic });
-          } else if (syntaxDiags.length > 0) {
+          } else if (fastDiags.length > 0) {
             activeSyntaxDebounceTimers.set(
               uri,
               setTimeout(() => {
                 activeSyntaxDebounceTimers.delete(uri);
                 if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
-                lastSyntaxErrorsCount.set(uri, syntaxDiags.length);
-                const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
-                const allDiags = [...syntaxDiags, ...cachedSemantic];
+                lastSyntaxErrorsCount.set(uri, fastDiags.length);
+                const cachedSemantic = (validationService.lastSemanticDiagnostics.get(uri) || []).filter(
+                  (d) => typeof d.code !== "number" || d.code < 1000 || d.code >= 6000,
+                );
+                const allDiags = deduplicateAllDiagnostics([...fastDiags, ...cachedSemantic]);
+                validationService.lastSemanticDiagnostics.set(uri, allDiags);
                 if (allDiags.length > 1000) allDiags.length = 1000;
                 connection.sendDiagnostics({ uri, diagnostics: allDiags });
               }, 180),
@@ -3685,6 +3716,7 @@ export function startNodeServer(input?: any, output?: any) {
                 activeEngine.disposeDocument(effectiveUri);
                 if (uri !== effectiveUri) activeEngine.disposeDocument(uri);
               }
+              validationService.sendProjectTreeChanged();
             }
           }
         }

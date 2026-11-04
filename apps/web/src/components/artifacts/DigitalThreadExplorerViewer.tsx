@@ -10,12 +10,13 @@
  */
 
 import { AlertIcon, CheckCircleIcon, ClockIcon, GitBranchIcon, PlayIcon, SyncIcon } from "@primer/octicons-react";
-import { Button, Heading, Spinner, Text } from "@primer/react";
+import { Button, Heading, Text } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../api";
 import type { DigitalThreadTwin } from "../../util/digitalThread";
 import Box from "../Box";
 import { DigitalThreadTwinCard, MetricCard } from "../digital-thread";
+import Spinner from "../Spinner";
 
 export interface ThreadNode {
   domain: string;

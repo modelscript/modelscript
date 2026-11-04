@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DiffIcon, SlidersIcon, SyncIcon, XIcon } from "@primer/octicons-react";
-import { Button, IconButton, SegmentedControl, Spinner, Text } from "@primer/react";
+import { Button, IconButton, SegmentedControl, Text } from "@primer/react";
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import * as THREE from "three";
 import { convertCadGeometry } from "../../api";
+import { useThemeTokens } from "../../theme-tokens";
+import Spinner from "../Spinner";
 import { SafeOrbitControls } from "./SafeOrbitControls";
 
 export interface CadDiffViewerProps {
@@ -179,12 +181,13 @@ function CadMeshModels({
   clippingPlane: THREE.Plane | null;
   assemblySpan: number;
 }) {
+  const tokens = useThemeTokens();
   const clippingPlanes = useMemo(() => (clippingPlane ? [clippingPlane] : []), [clippingPlane]);
 
-  // Base Material (Crimson Red #cf222e for removed / base geometry)
+  // Base Material (Status fail color for removed / base geometry)
   const baseMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#cf222e"),
+      color: new THREE.Color(tokens.status.fail.fg),
       roughness: 0.35,
       metalness: 0.15,
       transparent: true,
@@ -194,12 +197,12 @@ function CadMeshModels({
       clippingPlanes,
       clipShadows: true,
     });
-  }, [mode, blendRatio, clippingPlanes]);
+  }, [mode, blendRatio, clippingPlanes, tokens.status.fail.fg]);
 
-  // Head Material (Emerald Green #2da44e for new / added geometry)
+  // Head Material (Status pass color for new / added geometry)
   const headMaterial = useMemo(() => {
     return new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#2da44e"),
+      color: new THREE.Color(tokens.status.pass.fg),
       roughness: 0.3,
       metalness: 0.2,
       transparent: true,
@@ -209,7 +212,7 @@ function CadMeshModels({
       clippingPlanes,
       clipShadows: true,
     });
-  }, [mode, blendRatio, clippingPlanes]);
+  }, [mode, blendRatio, clippingPlanes, tokens.status.pass.fg]);
 
   useEffect(() => {
     return () => {
@@ -259,6 +262,7 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
   height,
   onClose,
 }) => {
+  const tokens = useThemeTokens();
   const [baseGeometries, setBaseGeometries] = useState<THREE.BufferGeometry[] | null>(null);
   const [headGeometries, setHeadGeometries] = useState<THREE.BufferGeometry[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -543,6 +547,7 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
               localClippingEnabled: true,
             }}
           >
+            <color attach="background" args={[tokens.bgInset]} />
             <ambientLight intensity={0.7} />
             <directionalLight position={[combinedSpan, combinedSpan * 2, combinedSpan]} intensity={1.2} castShadow />
             <directionalLight position={[-combinedSpan, -combinedSpan, -combinedSpan]} intensity={0.4} />
@@ -565,9 +570,9 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
         {/* ── Floating Metrics & Legend ── */}
         <FloatingMetricsBar>
           <MetricsCard>
-            <LegendItem $color="#cf222e">v{baseVersion} (Removed)</LegendItem>
-            <LegendItem $color="#2da44e">v{headVersion} (Added)</LegendItem>
-            {mode === "diff" && <LegendItem $color="#d29922">Intersection (Overlapping)</LegendItem>}
+            <LegendItem $color={tokens.status.fail.fg}>v{baseVersion} (Removed)</LegendItem>
+            <LegendItem $color={tokens.status.pass.fg}>v{headVersion} (Added)</LegendItem>
+            {mode === "diff" && <LegendItem $color={tokens.status.warn.fg}>Intersection (Overlapping)</LegendItem>}
           </MetricsCard>
 
           {baseStats && headStats && (
@@ -578,7 +583,9 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
               <span>
                 Head: <strong>{headStats.triangles.toLocaleString()}</strong> △
               </span>
-              <span style={{ color: triangleDelta >= 0 ? "#3fb950" : "#f85149", fontWeight: 600 }}>
+              <span
+                style={{ color: triangleDelta >= 0 ? tokens.status.pass.fg : tokens.status.fail.fg, fontWeight: 600 }}
+              >
                 {triangleDelta >= 0 ? `+${triangleDelta.toLocaleString()}` : triangleDelta.toLocaleString()} △
               </span>
             </MetricsCard>

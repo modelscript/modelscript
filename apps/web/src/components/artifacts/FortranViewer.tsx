@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckIcon, CodeIcon, CopyIcon, PlayIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 
 export interface FortranViewerProps {
   artifactId?: string | number | undefined;

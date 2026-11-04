@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlayIcon, PlusIcon, RepoIcon, SearchIcon, ShareAndroidIcon } from "@primer/octicons-react";
-import { Heading, Spinner, Text } from "@primer/react";
+import { MarkGithubIcon, PlayIcon, PlusIcon, RepoIcon, SearchIcon, ShareAndroidIcon } from "@primer/octicons-react";
+import { Heading, Text } from "@primer/react";
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
@@ -10,6 +10,8 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { ComposeContext } from "../components/ComposeContext";
 import { VsCodeIcon } from "../components/icons/VsCodeIcon";
+import Spinner from "../components/Spinner";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { useTheme } from "../theme";
 import type { RepositoryDTO } from "../types/api";
@@ -24,117 +26,9 @@ import {
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
 import { TEMPLATE_NAMES, type IdeArtifactMetadata } from "./ide";
+import { GitlabSvgIcon, inferRepoDomainTags } from "./RepositoryListPage";
 
-interface WorkspaceTemplateItem {
-  id: string;
-  name: string;
-  category: "featured" | "cad-cae" | "cosim" | "sysml-owl" | "simulation";
-  badge: string;
-  description: string;
-}
-
-const WORKSPACE_CATALOG: WorkspaceTemplateItem[] = [
-  {
-    id: "drone-chassis",
-    name: TEMPLATE_NAMES["drone-chassis"] || "Drone Chassis Thread",
-    category: "featured",
-    badge: "CAD · FEA · CFD",
-    description:
-      "End-to-end digital thread linking SysML v2 requirements, STEP geometry, CalculiX FEA, and SU2 aerodynamics.",
-  },
-  {
-    id: "bouncing-ball",
-    name: TEMPLATE_NAMES["bouncing-ball"] || "Bouncing Ball",
-    category: "simulation",
-    badge: "Modelica",
-    description: "Hybrid continuous-discrete contact dynamics simulation with event detection and trajectory plots.",
-  },
-  {
-    id: "rlc",
-    name: TEMPLATE_NAMES["rlc"] || "RLC Circuit",
-    category: "simulation",
-    badge: "Modelica",
-    description: "Analogue electrical circuit schematic and transient frequency response workspace.",
-  },
-  {
-    id: "sysml2",
-    name: TEMPLATE_NAMES["sysml2"] || "SysML v2 Vehicle Architecture",
-    category: "sysml-owl",
-    badge: "SysML v2",
-    description: "Systems engineering architecture decomposition, port definitions, and constraint verification.",
-  },
-  {
-    id: "cad",
-    name: TEMPLATE_NAMES["cad"] || "3D CAD Polyglot Modeler",
-    category: "cad-cae",
-    badge: "STEP / OpenSCAD",
-    description: "Parametric 3D solid modeling, CSG boolean operations, and ISO 10303 STEP assembly inspection.",
-  },
-  {
-    id: "drone-fea",
-    name: TEMPLATE_NAMES["drone-fea"] || "Drone Finite Element Analysis",
-    category: "cad-cae",
-    badge: "CalculiX FEA",
-    description: "Structural stress and displacement solver deck (.inp) with 3D VTU Von Mises contour visualization.",
-  },
-  {
-    id: "drone-cfd",
-    name: TEMPLATE_NAMES["drone-cfd"] || "Drone Computational Fluid Dynamics",
-    category: "cad-cae",
-    badge: "SU2 CFD",
-    description: "External aerodynamics config (.cfg) and surface pressure coefficient / streamline field analysis.",
-  },
-  {
-    id: "injection-molding-cosim",
-    name: TEMPLATE_NAMES["injection-molding-cosim"] || "Injection Molding Co-Simulation",
-    category: "cosim",
-    badge: "SSP / FMI 2.0",
-    description:
-      "Multi-domain thermal-hydraulic FMI co-simulation orchestrated via System Structure & Parameterization.",
-  },
-  {
-    id: "cosim",
-    name: TEMPLATE_NAMES["cosim"] || "Multi-FMU Co-Simulation Master",
-    category: "cosim",
-    badge: "FMI 2.0 / 3.0",
-    description: "Coupled Functional Mock-up Unit master topology with adaptive step-size control.",
-  },
-  {
-    id: "surrogate",
-    name: TEMPLATE_NAMES["surrogate"] || "AI Surrogate ROMs",
-    category: "featured",
-    badge: "WASM Neural",
-    description: "Reduced-order neural surrogate training and real-time inference calibrated against physics solvers.",
-  },
-  {
-    id: "calibration",
-    name: TEMPLATE_NAMES["calibration"] || "Parameter Calibration & Fitting",
-    category: "simulation",
-    badge: "Optimization",
-    description: "Automated parameter estimation against experimental CSV telemetry traces.",
-  },
-  {
-    id: "uncertainty",
-    name: TEMPLATE_NAMES["uncertainty"] || "Monte Carlo Uncertainty Analysis",
-    category: "simulation",
-    badge: "Stochastic",
-    description: "Batched sensitivity dispersion and confidence band quantification across parameter distributions.",
-  },
-  {
-    id: "owl2-fmea",
-    name: TEMPLATE_NAMES["owl2-fmea"] || "OWL2 FMEA Fault Propagation",
-    category: "sysml-owl",
-    badge: "OWL2 Ontology",
-    description: "Formal ontological reasoning for Failure Modes and Effects Analysis across hardware hierarchies.",
-  },
-  {
-    id: "notebook",
-    name: TEMPLATE_NAMES["notebook"] || "Interactive Engineering Article",
-    category: "featured",
-    badge: "Article",
-    description: "Literate engineering document combining executable simulations, equations, and live 3D views.",
-  },
-];
+import { parseStudioGitTarget } from "./workspace/utils";
 
 const HeaderSection = styled.div`
   padding: 20px 20px 16px;
@@ -144,14 +38,197 @@ const HeaderSection = styled.div`
   gap: 14px;
 `;
 
-const SearchRow = styled.div`
+const ActionTilesGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+  padding: 16px 20px;
+`;
+
+const ActionTile = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-canvas-subtle);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--color-accent-cyan, #38bdf8);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ms-brand, #0891b2);
+    outline-offset: 2px;
+  }
+`;
+
+const GitRowContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  width: 100%;
+  min-width: 0;
+`;
+
+const ProviderSelectWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-canvas-default, #0d1117);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0 8px;
+  height: 36px;
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  transition: border-color 0.15s ease;
+
+  &:focus-within {
+    border-color: var(--ms-brand, #0891b2);
+    color: var(--color-text-primary);
+  }
+`;
+
+const ProviderSelect = styled.select`
+  background: transparent;
+  color: var(--color-text-primary);
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  padding: 0;
+
+  option {
+    background: var(--color-canvas-overlay, #161b22);
+    color: var(--color-text-primary);
+  }
+`;
+
+const RepoPathInputWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  background: var(--color-canvas-default, #0d1117);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:focus-within {
+    border-color: var(--ms-brand, #0891b2);
+    box-shadow: 0 0 0 1px var(--ms-brand, #0891b2);
+  }
+`;
+
+const PathSegmentInput = styled.input`
+  flex: 1;
+  min-width: 48px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+  outline: none;
+  padding: 0;
+
+  &::placeholder {
+    color: var(--color-text-muted);
+    opacity: 0.7;
+    font-family: var(--font-sans, sans-serif);
+    font-size: 12px;
+  }
+`;
+
+const BranchInputWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  background: var(--color-canvas-default, #0d1117);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
+
+  &:focus-within {
+    border-color: var(--ms-brand, #0891b2);
+  }
+
+  input {
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: 13px;
+    outline: none;
+    font-family: var(--font-mono, monospace);
+    width: 46px;
+
+    &::placeholder {
+      color: var(--color-text-muted);
+      opacity: 0.7;
+    }
+  }
+`;
+
+const PrimaryOpenButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--ms-brand, #0891b2);
+  background: var(--ms-brand, #0891b2);
+  color: var(--ms-brand-contrast, #ffffff);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover {
+    background: var(--ms-brand-hover, #06b6d4);
+    border-color: var(--ms-brand-hover, #06b6d4);
+    box-shadow: 0 2px 10px rgba(6, 182, 212, 0.35);
+  }
+
+  &:active {
+    background: var(--ms-brand-active, #0e7490);
+    border-color: var(--ms-brand-active, #0e7490);
+  }
+`;
+
+const RepoSearchRow = styled.div`
   display: flex;
   align-items: center;
   gap: 10px;
   background: var(--color-canvas-subtle);
   border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 8px 12px;
+  border-radius: 8px;
+  padding: 6px 10px;
 
   &:focus-within {
     border-color: var(--color-accent-cyan, #38bdf8);
@@ -162,65 +239,8 @@ const SearchRow = styled.div`
     border: none;
     background: transparent;
     color: var(--color-text-primary);
-    font-size: 14px;
+    font-size: 13px;
     outline: none;
-  }
-`;
-
-const CategoryPills = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-`;
-
-const CategoryPill = styled.button<{ $active: boolean }>`
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  border: 1px solid ${(props) => (props.$active ? "rgba(56, 189, 248, 0.5)" : "var(--color-border)")};
-  background: ${(props) =>
-    props.$active
-      ? "linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(59, 130, 246, 0.15))"
-      : "var(--color-canvas-subtle)"};
-  color: ${(props) => (props.$active ? "#38bdf8" : "var(--color-text-secondary)")};
-  transition: all 0.15s ease;
-
-  &:hover {
-    border-color: rgba(56, 189, 248, 0.4);
-    color: var(--color-text-primary);
-  }
-`;
-
-const WorkspaceGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
-  gap: 12px;
-  padding: 16px 20px;
-`;
-
-const WorkspaceCard = styled.div`
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 16px;
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
-  background: var(--color-canvas-subtle);
-  cursor: pointer;
-  transition:
-    transform 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-
-  &:hover {
-    transform: translateY(-1px);
-    border-color: rgba(56, 189, 248, 0.45);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
   }
 `;
 
@@ -240,20 +260,29 @@ const LaunchButton = styled.button`
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(59, 130, 246, 0.2));
-  color: #38bdf8;
+  border: 1px solid var(--ms-brand, #0891b2);
+  background: var(--ms-brand, #0891b2);
+  color: var(--ms-brand-contrast, #ffffff);
   font-size: 13px;
   font-weight: 600;
-  font-family: var(--font-mono, monospace);
   cursor: pointer;
-  transition: all 0.15s ease;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 
   &:hover {
-    background: linear-gradient(135deg, rgba(14, 165, 233, 0.32), rgba(59, 130, 246, 0.3));
-    border-color: rgba(56, 189, 248, 0.7);
+    background: var(--ms-brand-hover, #06b6d4);
+    border-color: var(--ms-brand-hover, #06b6d4);
+    box-shadow: 0 2px 10px rgba(6, 182, 212, 0.35);
+  }
+
+  &:active {
+    background: var(--ms-brand-active, #0e7490);
+    border-color: var(--ms-brand-active, #0e7490);
   }
 `;
 
@@ -292,6 +321,9 @@ export const IdeWorkspacePage: React.FC = () => {
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const { openCompose } = useContext(ComposeContext);
+  const hasGitRepos = useFeatureFlag("git_repositories");
+  const hasLegacyRepos = useFeatureFlag("repositories");
+  const hasRepos = Boolean(hasGitRepos || hasLegacyRepos);
 
   const sourceParam = searchParams.get("source");
   const titleParam = searchParams.get("title");
@@ -304,8 +336,12 @@ export const IdeWorkspacePage: React.FC = () => {
   const replyToPostId = replyToPostIdParam ? Number(replyToPostIdParam) : undefined;
 
   const [artifactMetadata, setArtifactMetadata] = useState<IdeArtifactMetadata | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [repoSearchQuery, setRepoSearchQuery] = useState("");
+  const [gitProvider, setGitProvider] = useState<"github" | "gitlab">("github");
+  const [gitOwner, setGitOwner] = useState("");
+  const [gitProject, setGitProject] = useState("");
+  const [gitBranch, setGitBranch] = useState("");
+  const [gitUrlError, setGitUrlError] = useState<string | null>(null);
   const [repos, setRepos] = useState<RepositoryDTO[]>([]);
   const [reposLoading, setReposLoading] = useState<boolean>(true);
 
@@ -385,6 +421,11 @@ export const IdeWorkspacePage: React.FC = () => {
   }, [effectiveArtifactId, fromArtifactParam, langParam, sourceParam, titleParam]);
 
   useEffect(() => {
+    if (!hasRepos) {
+      setRepos([]);
+      setReposLoading(false);
+      return;
+    }
     let active = true;
     setReposLoading(true);
     const loadRepos = async () => {
@@ -408,7 +449,7 @@ export const IdeWorkspacePage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, hasRepos]);
 
   const hasSpecificHandoff = Boolean(
     (namespace && project) ||
@@ -477,7 +518,7 @@ export const IdeWorkspacePage: React.FC = () => {
     titleParam,
   ]);
 
-  usePageTitle(hasSpecificHandoff ? `${displayTitle} — ${brandName} IDE` : `${brandName} IDE — Select Workspace`);
+  usePageTitle(hasSpecificHandoff ? `${displayTitle} — ModelScript Studio` : "ModelScript Studio");
 
   const workbenchUrl = useMemo(() => `/vscode/workbench${folderHash}`, [folderHash]);
 
@@ -572,8 +613,8 @@ export const IdeWorkspacePage: React.FC = () => {
           ? `Here is my updated **${cleanTitle}** workspace:`
           : incomingPayload?.content ||
             (forkedId
-              ? `Forked and modified **${cleanTitle}** (from Artifact #${forkedId}) in ${brandName} IDE! 🚀`
-              : `Check out my workspace in the ${brandName} IDE: **${cleanTitle}** 🚀`);
+              ? `Forked and modified **${cleanTitle}** (from Artifact #${forkedId}) in ModelScript Studio! 🚀`
+              : `Check out my workspace in ModelScript Studio: **${cleanTitle}** 🚀`);
 
       const composeInit: any = {
         ...(defaultContent !== undefined ? { content: defaultContent } : {}),
@@ -688,94 +729,123 @@ export const IdeWorkspacePage: React.FC = () => {
     navigate(url);
   };
 
-  const filteredTemplates = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return WORKSPACE_CATALOG.filter((item) => {
-      if (selectedCategory !== "all" && item.category !== selectedCategory) {
-        return false;
+  const handleOpenBlankWorkspace = () => {
+    handleLaunchVsCodeUrl("/vscode/workbench#memfs:empty");
+  };
+
+  const handleOwnerChange = (val: string) => {
+    if (gitUrlError) setGitUrlError(null);
+    const trimmed = val.trim();
+    if (trimmed.includes("/") || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      try {
+        const target = parseStudioGitTarget(trimmed, gitBranch);
+        if (target.provider === "github" || target.provider === "gitlab") {
+          setGitProvider(target.provider);
+        }
+        setGitOwner(target.owner);
+        setGitProject(target.repo);
+        if (target.ref && target.ref !== "main") {
+          setGitBranch(target.ref);
+        }
+        return;
+      } catch {
+        // Fall back to standard input
       }
-      if (!q) return true;
+    }
+    setGitOwner(val);
+  };
+
+  const handleProjectChange = (val: string) => {
+    if (gitUrlError) setGitUrlError(null);
+    const trimmed = val.trim();
+    if (trimmed.includes("/") || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      try {
+        const target = parseStudioGitTarget(trimmed, gitBranch);
+        if (target.provider === "github" || target.provider === "gitlab") {
+          setGitProvider(target.provider);
+        }
+        setGitOwner(target.owner);
+        setGitProject(target.repo);
+        if (target.ref && target.ref !== "main") {
+          setGitBranch(target.ref);
+        }
+        return;
+      } catch {
+        // Fall back to standard input
+      }
+    }
+    setGitProject(val);
+  };
+
+  const handleOpenGitRepo = () => {
+    const owner = gitOwner.trim();
+    const proj = gitProject.trim();
+    if (!owner && !proj) {
+      setGitUrlError("Please enter a repository owner/scope and project name.");
+      return;
+    }
+    if (!owner) {
+      setGitUrlError("Please enter the repository owner or organization.");
+      return;
+    }
+    if (!proj) {
+      setGitUrlError("Please enter the project or repository name.");
+      return;
+    }
+    try {
+      const combined = `${owner}/${proj}`;
+      const target = parseStudioGitTarget(combined, gitBranch, gitProvider);
+      setGitUrlError(null);
+      handleLaunchVsCodeUrl(target.workbenchUrl);
+    } catch (err: unknown) {
+      setGitUrlError(err instanceof Error ? err.message : "Invalid repository specification");
+    }
+  };
+
+  const filteredRepos = useMemo(() => {
+    const q = repoSearchQuery.trim().toLowerCase();
+    if (!q) return repos;
+    return repos.filter((r) => {
+      const domainTags = inferRepoDomainTags(r);
       return (
-        item.name.toLowerCase().includes(q) ||
-        item.badge.toLowerCase().includes(q) ||
-        item.description.toLowerCase().includes(q) ||
-        item.id.toLowerCase().includes(q)
+        r.project.toLowerCase().includes(q) ||
+        r.namespace.toLowerCase().includes(q) ||
+        r.provider.toLowerCase().includes(q) ||
+        Boolean(r.description && r.description.toLowerCase().includes(q)) ||
+        domainTags.some((t) => t.label.toLowerCase().includes(q))
       );
     });
-  }, [searchQuery, selectedCategory]);
+  }, [repoSearchQuery, repos]);
 
   return (
     <Box display="flex" flexDirection="column" style={{ minHeight: "100%" }}>
       <HeaderSection>
         <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-          <Box display="flex" alignItems="center" gap={2.5}>
-            <div
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 10,
-                background: "linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(59, 130, 246, 0.15))",
-                border: "1px solid rgba(56, 189, 248, 0.35)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <VsCodeIcon size={20} color="#38bdf8" />
-            </div>
-            <Box display="flex" flexDirection="column">
-              <Heading as="h1" style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>
-                {brandName} IDE
-              </Heading>
-              <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-                Select a workspace to launch in a dedicated VS Code window (powered by ModelScript)
-              </Text>
+          <Box display="flex" flexDirection="column">
+            <Heading as="h1" style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>
+              ModelScript Studio
+            </Heading>
+            <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
+              Launch a dedicated engineering workspace in VS Code Web (powered by ModelScript)
+            </Text>
+          </Box>
+
+          {hasRepos && (
+            <Box display="flex" alignItems="center" gap={2}>
+              <Link
+                to="/repos"
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  color: "var(--color-accent-cyan, #38bdf8)",
+                  textDecoration: "none",
+                }}
+              >
+                Browse all repositories →
+              </Link>
             </Box>
-          </Box>
-
-          <Box display="flex" alignItems="center" gap={2}>
-            <LaunchButton
-              type="button"
-              onClick={() => handleLaunchVsCodeUrl("/vscode/workbench#memfs:empty")}
-              title="Open a fresh blank workspace in a new VS Code window"
-            >
-              <PlusIcon size={14} />
-              <span>New Blank Workspace</span>
-              <span style={{ opacity: 0.75 }}>↗</span>
-            </LaunchButton>
-          </Box>
+          )}
         </Box>
-
-        <SearchRow>
-          <SearchIcon size={16} fill="var(--color-text-muted)" />
-          <input
-            type="text"
-            placeholder="Filter workspaces by domain, solver, or language (e.g. Drone, Modelica, SysML, FEA, CFD)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Filter workspaces"
-          />
-        </SearchRow>
-
-        <CategoryPills>
-          {[
-            { id: "all", label: "All Workspaces" },
-            { id: "featured", label: "Digital Threads & Featured" },
-            { id: "cad-cae", label: "3D CAD · FEA · CFD" },
-            { id: "cosim", label: "FMI / SSP Co-Simulation" },
-            { id: "sysml-owl", label: "SysML v2 & Ontologies" },
-            { id: "simulation", label: "System Simulation" },
-          ].map((cat) => (
-            <CategoryPill
-              key={cat.id}
-              type="button"
-              $active={selectedCategory === cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-            >
-              {cat.label}
-            </CategoryPill>
-          ))}
-        </CategoryPills>
       </HeaderSection>
 
       {hasSpecificHandoff && (
@@ -815,15 +885,15 @@ export const IdeWorkspacePage: React.FC = () => {
                 {displayTitle}
               </Heading>
               <Text style={{ fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                Launch this workspace in a standalone VS Code window for full screen real estate and multi-file LSP
+                Launch this workspace in a standalone Studio window for full screen real estate and multi-file LSP
                 support.
               </Text>
             </Box>
 
             <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
               <LaunchButton type="button" onClick={handleLaunchHandoffInVsCode}>
-                <VsCodeIcon size={15} color="#38bdf8" />
-                <span>Launch in VS Code Window</span>
+                <VsCodeIcon size={15} color="#ffffff" />
+                <span>Launch in Studio Window</span>
                 <span>↗</span>
               </LaunchButton>
 
@@ -885,26 +955,43 @@ export const IdeWorkspacePage: React.FC = () => {
             color: "var(--color-text-muted)",
           }}
         >
-          Starter Workspaces &amp; Digital Threads ({filteredTemplates.length})
+          Start a Workspace
         </Text>
       </Box>
 
-      <WorkspaceGrid>
-        {filteredTemplates.map((tpl) => (
-          <WorkspaceCard
-            key={tpl.id}
-            onClick={() => handleLaunchVsCodeUrl(`/vscode/workbench#memfs:${tpl.id}`)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                handleLaunchVsCodeUrl(`/vscode/workbench#memfs:${tpl.id}`);
-              }
-            }}
-          >
-            <Box display="flex" flexDirection="column" gap={1.5}>
-              <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+      <ActionTilesGrid>
+        {/* Tile 1: New Blank Workspace */}
+        <ActionTile
+          role="button"
+          tabIndex={0}
+          onClick={handleOpenBlankWorkspace}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleOpenBlankWorkspace();
+            }
+          }}
+          style={{ cursor: "pointer" }}
+          aria-label="Launch New Blank Workspace in Studio"
+        >
+          <Box display="flex" flexDirection="column" gap={1.5}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(59, 130, 246, 0.15))",
+                  border: "1px solid rgba(56, 189, 248, 0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#38bdf8",
+                }}
+              >
+                <PlusIcon size={20} />
+              </div>
+              <Box display="flex" alignItems="center" gap={1.5}>
                 <span
                   style={{
                     fontSize: "10px",
@@ -917,126 +1004,362 @@ export const IdeWorkspacePage: React.FC = () => {
                     border: "1px solid rgba(56, 189, 248, 0.3)",
                   }}
                 >
-                  {tpl.badge}
+                  Blank Canvas
                 </span>
                 <span
                   style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    fontFamily: "var(--font-mono, monospace)",
-                    color: "#38bdf8",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    color: "var(--color-accent-cyan, #38bdf8)",
                   }}
                 >
-                  <VsCodeIcon size={13} color="#38bdf8" />
-                  <span>Open ↗</span>
+                  ↗
                 </span>
               </Box>
-
-              <Text style={{ fontSize: "14px", fontWeight: 700, color: "var(--color-text-primary)" }}>{tpl.name}</Text>
-
-              <Text style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.45 }}>
-                {tpl.description}
-              </Text>
             </Box>
-          </WorkspaceCard>
-        ))}
-      </WorkspaceGrid>
 
-      <Box
-        px={3}
-        pt={3}
-        pb={2}
-        borderTop="1px solid var(--color-border)"
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-      >
-        <Box display="flex" alignItems="center" gap={1.5}>
-          <RepoIcon size={15} />
-          <Text
-            style={{
-              fontSize: "12px",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: "var(--color-text-muted)",
-            }}
-          >
-            Git Repositories
-          </Text>
-        </Box>
-        <Link
-          to="/repos"
-          style={{
-            fontSize: "12px",
-            fontWeight: 600,
-            color: "var(--color-accent-cyan, #38bdf8)",
-            textDecoration: "none",
-          }}
-        >
-          Browse all repositories →
-        </Link>
-      </Box>
+            <Heading as="h3" style={{ fontSize: "16px", fontWeight: 700, margin: "8px 0 2px" }}>
+              New Blank Workspace
+            </Heading>
 
-      {reposLoading ? (
-        <Box p={4} display="flex" justifyContent="center">
-          <Spinner size="small" />
-        </Box>
-      ) : repos.length === 0 ? (
-        <Box p={4} color="var(--color-text-muted)" style={{ fontSize: "13px" }}>
-          No repositories found. Visit <Link to="/repos">Repositories</Link> to create or import a project.
-        </Box>
-      ) : (
-        <Box display="flex" flexDirection="column">
-          {repos.map((repo) => {
-            const fullPath = `${repo.namespace}/${repo.project}`;
-            const branch = repo.default_branch || "main";
-            const wsUrl = `/vscode/workbench#${fullPath}@${branch}`;
-            return (
-              <RepoRow key={`${repo.provider}-${fullPath}`}>
-                <Box display="flex" flexDirection="column" gap={0.5} style={{ minWidth: 0 }}>
-                  <Text
+            <Text style={{ fontSize: "13px", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+              Launch an empty, standalone workspace in a dedicated VS Code window with language servers, simulation
+              runners, and live diagramming.
+            </Text>
+          </Box>
+
+          <Box mt={3} display="flex" alignItems="center" justifyContent="space-between">
+            <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+              Instant start · No setup required
+            </Text>
+            <Text
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "var(--color-accent-cyan, #38bdf8)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <span>Launch Workspace</span>
+              <span>↗</span>
+            </Text>
+          </Box>
+        </ActionTile>
+
+        {/* Tile 2: Open Git Repository */}
+        <ActionTile onClick={(e) => e.stopPropagation()}>
+          <Box display="flex" flexDirection="column" gap={1.5}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(59, 130, 246, 0.15))",
+                  border: "1px solid rgba(139, 92, 246, 0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#a855f7",
+                }}
+              >
+                <RepoIcon size={20} />
+              </div>
+              <span
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  fontFamily: "var(--font-mono, monospace)",
+                  padding: "2px 7px",
+                  borderRadius: "6px",
+                  background: "rgba(139, 92, 246, 0.14)",
+                  color: "#a855f7",
+                  border: "1px solid rgba(139, 92, 246, 0.3)",
+                }}
+              >
+                GitHub · GitLab
+              </span>
+            </Box>
+
+            <Heading as="h3" style={{ fontSize: "16px", fontWeight: 700, margin: "8px 0 2px" }}>
+              Open Git Repository
+            </Heading>
+
+            <Text style={{ fontSize: "13px", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+              Mount any repository directly in Studio by provider, owner/scope, and repository name without cloning.
+            </Text>
+
+            <Box display="flex" flexDirection="column" gap={1.5} mt={1}>
+              <GitRowContainer>
+                <ProviderSelectWrapper>
+                  {gitProvider === "github" ? (
+                    <MarkGithubIcon size={14} fill="currentColor" />
+                  ) : (
+                    <GitlabSvgIcon size={14} />
+                  )}
+                  <ProviderSelect
+                    value={gitProvider}
+                    onChange={(e) => setGitProvider(e.target.value as "github" | "gitlab")}
+                    aria-label="Git provider"
+                  >
+                    <option value="github">GitHub</option>
+                    <option value="gitlab">GitLab</option>
+                  </ProviderSelect>
+                </ProviderSelectWrapper>
+
+                <RepoPathInputWrapper>
+                  <RepoIcon size={14} fill="var(--color-text-muted)" style={{ flexShrink: 0 }} />
+                  <PathSegmentInput
+                    type="text"
+                    placeholder="owner / org"
+                    value={gitOwner}
+                    onChange={(e) => handleOwnerChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleOpenGitRepo();
+                      }
+                    }}
+                    aria-label="Repository owner or scope"
+                  />
+                  <span
                     style={{
+                      color: "var(--color-text-muted)",
                       fontSize: "14px",
                       fontWeight: 600,
-                      color: "var(--color-text-primary)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      fontFamily: "var(--font-mono, monospace)",
+                      userSelect: "none",
+                      flexShrink: 0,
                     }}
                   >
-                    {fullPath}
-                  </Text>
-                  {repo.description && (
-                    <Text
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--color-text-muted)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
+                    /
+                  </span>
+                  <PathSegmentInput
+                    type="text"
+                    placeholder="repository"
+                    value={gitProject}
+                    onChange={(e) => handleProjectChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleOpenGitRepo();
+                      }
+                    }}
+                    aria-label="Repository or project name"
+                    style={{ flex: 1.2 }}
+                  />
+                </RepoPathInputWrapper>
+
+                <BranchInputWrapper title="Branch, tag, or ref (optional, defaults to main)">
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--color-text-muted)",
+                      fontFamily: "var(--font-mono, monospace)",
+                      userSelect: "none",
+                    }}
+                  >
+                    @
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="main"
+                    value={gitBranch}
+                    onChange={(e) => setGitBranch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleOpenGitRepo();
+                      }
+                    }}
+                    aria-label="Git branch or ref"
+                  />
+                </BranchInputWrapper>
+
+                <PrimaryOpenButton type="button" onClick={handleOpenGitRepo} aria-label="Open repository in Studio">
+                  <span>Open</span>
+                  <span>↗</span>
+                </PrimaryOpenButton>
+              </GitRowContainer>
+
+              {gitUrlError && (
+                <Text style={{ fontSize: "12px", color: "#f87171", margin: "2px 0 0" }}>{gitUrlError}</Text>
+              )}
+            </Box>
+          </Box>
+        </ActionTile>
+      </ActionTilesGrid>
+
+      {hasRepos && (
+        <>
+          <Box
+            px={3}
+            pt={3}
+            pb={2}
+            borderTop="1px solid var(--color-border)"
+            display="flex"
+            justifyContent="space-between"
+            alignItems="center"
+            flexWrap="wrap"
+            gap={2}
+          >
+            <Box display="flex" alignItems="center" gap={1.5}>
+              <RepoIcon size={15} />
+              <Text
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  color: "var(--color-text-muted)",
+                }}
+              >
+                Repositories &amp; Projects ({filteredRepos.length})
+              </Text>
+            </Box>
+
+            <Link
+              to="/repos"
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "var(--color-accent-cyan, #38bdf8)",
+                textDecoration: "none",
+              }}
+            >
+              Browse all repositories →
+            </Link>
+          </Box>
+
+          {repos.length > 0 && (
+            <Box px={3} pb={2}>
+              <RepoSearchRow>
+                <SearchIcon size={14} fill="var(--color-text-muted)" />
+                <input
+                  type="text"
+                  placeholder="Filter repositories by name, owner, or domain tag (e.g. Modelica, SysML, FMI)..."
+                  value={repoSearchQuery}
+                  onChange={(e) => setRepoSearchQuery(e.target.value)}
+                  aria-label="Filter repositories"
+                />
+              </RepoSearchRow>
+            </Box>
+          )}
+
+          {reposLoading ? (
+            <Box p={4} display="flex" justifyContent="center">
+              <Spinner size="small" />
+            </Box>
+          ) : filteredRepos.length === 0 ? (
+            <Box p={4} color="var(--color-text-muted)" style={{ fontSize: "13px" }}>
+              {repoSearchQuery
+                ? `No repositories match "${repoSearchQuery}". Try clearing the search filter.`
+                : `No repositories found. Enter a GitHub or GitLab URL above, or visit Repositories to connect a project.`}
+            </Box>
+          ) : (
+            <Box display="flex" flexDirection="column">
+              {filteredRepos.map((repo) => {
+                const fullPath = `${repo.namespace}/${repo.project}`;
+                const branch = repo.default_branch || "main";
+                const wsUrl = `/vscode/workbench#${fullPath}@${branch}`;
+                const domainTags = inferRepoDomainTags(repo);
+                return (
+                  <RepoRow key={`${repo.provider}-${fullPath}`}>
+                    <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 6,
+                          background: "var(--color-canvas-subtle)",
+                          border: "1px solid var(--color-border)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {repo.provider === "gitlab" ? (
+                          <GitlabSvgIcon size={16} />
+                        ) : (
+                          <RepoIcon size={16} fill="var(--color-text-muted)" />
+                        )}
+                      </div>
+
+                      <Box display="flex" flexDirection="column" gap={0.5} style={{ minWidth: 0 }}>
+                        <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+                          <Text
+                            style={{
+                              fontSize: "14px",
+                              fontWeight: 600,
+                              color: "var(--color-text-primary)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {fullPath}
+                          </Text>
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontFamily: "var(--font-mono, monospace)",
+                              color: "var(--color-text-muted)",
+                            }}
+                          >
+                            @{branch}
+                          </span>
+                          {domainTags.map((dt) => (
+                            <span
+                              key={dt.label}
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                fontFamily: "var(--font-mono, monospace)",
+                                padding: "1px 6px",
+                                borderRadius: "4px",
+                                background: `${dt.color}1f`,
+                                color: dt.color,
+                                border: `1px solid ${dt.color}40`,
+                              }}
+                            >
+                              {dt.label}
+                            </span>
+                          ))}
+                        </Box>
+                        {repo.description && (
+                          <Text
+                            style={{
+                              fontSize: "12px",
+                              color: "var(--color-text-muted)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {repo.description}
+                          </Text>
+                        )}
+                      </Box>
+                    </Box>
+
+                    <LaunchButton
+                      type="button"
+                      onClick={() => handleLaunchVsCodeUrl(wsUrl)}
+                      style={{ padding: "5px 10px", fontSize: "12px", flexShrink: 0 }}
+                      title={`Open ${fullPath} in a new Studio window`}
                     >
-                      {repo.description}
-                    </Text>
-                  )}
-                </Box>
-                <LaunchButton
-                  type="button"
-                  onClick={() => handleLaunchVsCodeUrl(wsUrl)}
-                  style={{ padding: "5px 10px", fontSize: "12px", flexShrink: 0 }}
-                  title={`Open ${fullPath} in a new VS Code window`}
-                >
-                  <VsCodeIcon size={13} color="#38bdf8" />
-                  <span>Open in VS Code ↗</span>
-                </LaunchButton>
-              </RepoRow>
-            );
-          })}
-        </Box>
+                      <VsCodeIcon size={13} color="#ffffff" />
+                      <span>Open in Studio ↗</span>
+                    </LaunchButton>
+                  </RepoRow>
+                );
+              })}
+            </Box>
+          )}
+        </>
       )}
     </Box>
   );

@@ -12,13 +12,14 @@ import {
   type SimaModel,
 } from "@modelscript/sima";
 import { AlertIcon, CheckCircleIcon, CheckIcon, CopyIcon, PlayIcon, ShieldCheckIcon } from "@primer/octicons-react";
-import { Button, SegmentedControl, Spinner } from "@primer/react";
+import { Button, SegmentedControl } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface SimaViewerProps {

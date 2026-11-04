@@ -2,10 +2,11 @@
 
 /* eslint-disable @typescript-eslint/no-namespace */
 import { DownloadIcon, PackageIcon, SyncIcon } from "@primer/octicons-react";
-import { Button, IconButton, Spinner, Text } from "@primer/react";
+import { Button, IconButton, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
+import Spinner from "../Spinner";
 
 interface UsdViewerProps {
   viewConfig: any;

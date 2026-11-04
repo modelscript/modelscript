@@ -33,7 +33,7 @@ import {
 } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import {
   createCustomScholarlyWork,
   createReferenceCollection,
@@ -56,6 +56,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CiteButton } from "../components/citations/CiteButton";
 import { ToastContext } from "../components/ToastContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import {
   buildCitationFromScholarlyWork,
   buildSourcePageUrl,
@@ -132,6 +133,7 @@ import {
 
 export const ReferencesPage: React.FC = () => {
   usePageTitle("Scholarly References & OpenAlex Catalog — Ansatz");
+  const hasReferences = useFeatureFlag(["references", "scientific_references"]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -274,18 +276,21 @@ export const ReferencesPage: React.FC = () => {
   }, [token, selectedCollectionId, statusFilter, favoritesOnly, librarySearch, addToast]);
 
   useEffect(() => {
+    if (!hasReferences) return;
     void runDiscoverSearch();
-  }, [runDiscoverSearch]);
+  }, [hasReferences, runDiscoverSearch]);
 
   useEffect(() => {
+    if (!hasReferences) return;
     void loadFacets();
-  }, [loadFacets]);
+  }, [hasReferences, loadFacets]);
 
   useEffect(() => {
+    if (!hasReferences) return;
     if (activeTab === "library" && token) {
       void loadPersonalLibrary();
     }
-  }, [activeTab, token, loadPersonalLibrary]);
+  }, [hasReferences, activeTab, token, loadPersonalLibrary]);
 
   const applyFacetFilter = (patch: {
     topic?: string | null;
@@ -574,7 +579,7 @@ export const ReferencesPage: React.FC = () => {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [hasReferences]);
 
   const searchValue =
     activeTab === "discover" ? searchQuery : activeTab === "browse" ? browseFilterQuery : librarySearch;
@@ -601,6 +606,10 @@ export const ReferencesPage: React.FC = () => {
       : activeTab === "library"
         ? libraryItems.length
         : null;
+
+  if (!hasReferences) {
+    return <Navigate to="/packages" replace />;
+  }
 
   return (
     <Box data-testid="references-page">

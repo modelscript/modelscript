@@ -40,7 +40,6 @@ import {
   SlashMenuPopover,
   SlashMenuSectionTitle,
 } from "./styles";
-import { VegaWizardModal } from "./VegaWizardModal";
 
 export interface ComposeNotebookCellsEditorProps {
   notebookCells: NotebookCell[];
@@ -53,7 +52,8 @@ export interface ComposeNotebookCellsEditorProps {
   removeCell: (cellId: string) => void;
   updateMarkdownCell: (cellId: string, content: string) => void;
   updateArtifactCellCaption: (cellId: string, caption: string) => void;
-  onReplaceArtifactCell?: ((cellId: string, newArtifactId: number, newTitle?: string) => void) | undefined;
+  /** Open the chart wizard for the artifact in this cell; the caller replaces the cell with the result. */
+  onVisualizeCell?: ((cellId: string, artifactId: number) => void) | undefined;
   updateTokenState: (value: string, cursorPosition: number) => void;
   handleInteraction: (e: React.SyntheticEvent<HTMLTextAreaElement>) => void;
   handleSubmit: () => void;
@@ -262,7 +262,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
   removeCell,
   updateMarkdownCell,
   updateArtifactCellCaption,
-  onReplaceArtifactCell,
+  onVisualizeCell,
   updateTokenState,
   handleInteraction,
   handleSubmit,
@@ -290,7 +290,6 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
   } | null>(null);
   const [blockActionMenuCellId, setBlockActionMenuCellId] = useState<string | null>(null);
   const [pendingFileOpen, setPendingFileOpen] = useState(false);
-  const [vegaWizardCell, setVegaWizardCell] = useState<{ cellId: string; artifactId: number } | null>(null);
   const menuContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1049,10 +1048,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                       data-testid={`notebook-cell-vega-btn-${cell.id}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setVegaWizardCell({
-                          cellId: cell.id,
-                          artifactId: (cell as { artifactId: number }).artifactId,
-                        });
+                        onVisualizeCell?.(cell.id, (cell as { artifactId: number }).artifactId);
                       }}
                       title="Open Vega-Lite Visualization Wizard for this dataset"
                     >
@@ -1388,18 +1384,6 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
           </NotionGhostButton>
         </div>
       </div>
-
-      {vegaWizardCell && (
-        <VegaWizardModal
-          isOpen={true}
-          onClose={() => setVegaWizardCell(null)}
-          artifactId={vegaWizardCell.artifactId}
-          onApplyVisualization={(newArtifactId, title) => {
-            onReplaceArtifactCell?.(vegaWizardCell.cellId, newArtifactId, `📊 ${title}`);
-            setVegaWizardCell(null);
-          }}
-        />
-      )}
     </div>
   );
 };

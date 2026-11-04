@@ -569,7 +569,12 @@ export function registerVirtualFileSystems(
     // completes first instead of populating placeholder stub files in the Extension Host worker.
     const isArtifactWorkspace =
       rawTemplate.startsWith("artifact-") || /^\d+$/.test(rawTemplate) || rawTemplate === "scratch";
-    if (!isArtifactWorkspace && !rawTemplate.startsWith("package-")) {
+    if (
+      !isArtifactWorkspace &&
+      !rawTemplate.startsWith("package-") &&
+      rawTemplate !== "empty" &&
+      rawTemplate !== "blank"
+    ) {
       scaffoldTemplateFiles(memFs, memfsRootUri);
     }
   }
@@ -606,6 +611,11 @@ export async function initWorkspaceAndTree(
   }
 
   if (workspaceUri && workspaceUri.scheme === "memfs") {
+    try {
+      await vscode.commands.executeCommand("workbench.view.explorer");
+    } catch {
+      // ignore
+    }
     try {
       const rawTemplate = workspaceUri.path.substring(1) || "empty";
       const template = rawTemplate.split("?")[0] || "empty";
@@ -709,14 +719,18 @@ export async function initWorkspaceAndTree(
       }
 
       const primaryFile = getTemplatePrimaryFile(template);
-      const fileUri = Uri.joinPath(workspaceUri, ...primaryFile.split("/"));
+      const fileUri = primaryFile ? Uri.joinPath(workspaceUri, ...primaryFile.split("/")) : undefined;
 
       if (memFs) {
-        try {
-          memFs.stat(fileUri);
-        } catch {
+        if (fileUri) {
+          try {
+            memFs.stat(fileUri);
+          } catch {
+            memFs.createDirectory(workspaceUri);
+            scaffoldTemplateFiles(memFs, workspaceUri);
+          }
+        } else {
           memFs.createDirectory(workspaceUri);
-          scaffoldTemplateFiles(memFs, workspaceUri);
         }
       }
 
@@ -747,36 +761,38 @@ export async function initWorkspaceAndTree(
         // ignore
       }
 
-      try {
-        if (primaryFile.endsWith(".monb")) {
-          await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
-        } else {
-          const doc = await workspace.openTextDocument(fileUri);
-          const editor = await vscode.window.showTextDocument(doc);
-          treeProvider.setDocumentUri(fileUri.toString());
+      if (primaryFile && fileUri) {
+        try {
+          if (primaryFile.endsWith(".monb")) {
+            await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
+          } else {
+            const doc = await workspace.openTextDocument(fileUri);
+            const editor = await vscode.window.showTextDocument(doc);
+            treeProvider.setDocumentUri(fileUri.toString());
 
-          // Deep-link anchor auto-reveal from embed launch
-          try {
-            const initialAnchor =
-              typeof sessionStorage !== "undefined" ? sessionStorage.getItem("modelscript.initialAnchor") : null;
-            if (initialAnchor && editor) {
-              sessionStorage.removeItem("modelscript.initialAnchor");
-              const text = doc.getText();
-              const regex = new RegExp(`\\b${initialAnchor}\\b`);
-              const match = regex.exec(text);
-              if (match) {
-                const pos = doc.positionAt(match.index);
-                const range = new vscode.Range(pos, pos.translate(0, initialAnchor.length));
-                editor.selection = new vscode.Selection(pos, pos.translate(0, initialAnchor.length));
-                editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+            // Deep-link anchor auto-reveal from embed launch
+            try {
+              const initialAnchor =
+                typeof sessionStorage !== "undefined" ? sessionStorage.getItem("modelscript.initialAnchor") : null;
+              if (initialAnchor && editor) {
+                sessionStorage.removeItem("modelscript.initialAnchor");
+                const text = doc.getText();
+                const regex = new RegExp(`\\b${initialAnchor}\\b`);
+                const match = regex.exec(text);
+                if (match) {
+                  const pos = doc.positionAt(match.index);
+                  const range = new vscode.Range(pos, pos.translate(0, initialAnchor.length));
+                  editor.selection = new vscode.Selection(pos, pos.translate(0, initialAnchor.length));
+                  editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+                }
               }
+            } catch {
+              // ignore if sessionStorage is unavailable in extension host
             }
-          } catch {
-            // ignore if sessionStorage is unavailable in extension host
           }
+        } catch (e: unknown) {
+          console.error("[blank-project] Failed to open primary template file:", e);
         }
-      } catch (e: unknown) {
-        console.error("[blank-project] Failed to open primary template file:", e);
       }
 
       if (template === "mbse-verification") {
@@ -803,6 +819,7 @@ export async function initWorkspaceAndTree(
     // Auto-expand root items after tree data loads
     const expandTreeRoots = async () => {
       try {
+        if (!treeView?.visible) return;
         const rootItems = await treeProvider.getChildren();
         for (const item of rootItems) {
           await treeView?.reveal(item, { expand: true, select: false, focus: false });
@@ -850,6 +867,7 @@ export async function initWorkspaceAndTree(
   // Auto-expand root items after tree data loads
   setTimeout(async () => {
     try {
+      if (!treeView?.visible) return;
       const rootItems = await treeProvider.getChildren();
       for (const item of rootItems) {
         await treeView?.reveal(item, { expand: true, select: false, focus: false });

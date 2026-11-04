@@ -17,6 +17,7 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 const MorselEditorLazy = React.lazy(() => import("../morsel/Morsel"));
@@ -454,6 +455,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
             ? "code"
             : "diagram";
 
+  const hasFooter = useHasFooterSlot();
   const navTabs: Array<{ id: CardTabMode; label: string; icon: React.ReactNode }> = [
     { id: "diagram", label: schematicTabLabel, icon: <WorkflowIcon size={12} /> },
     { id: "simulation", label: "Simulate", icon: <PulseIcon size={12} /> },
@@ -462,9 +464,54 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
     { id: "code", label: "Code", icon: <CodeIcon size={12} /> },
   ];
 
+  const selectTab = (id: CardTabMode) => {
+    setViewMode(id);
+    if (id === "simulation" || id === "3d") {
+      setInteractive(true);
+      setSimTriggerCount((c) => Math.max(1, c));
+    } else if (id === "inspector") {
+      setInteractive(true);
+    } else if (id === "diagram" && previewMode !== "diagram" && previewMode !== "icon") {
+      setInteractive(true);
+    }
+  };
+
   return (
     <CardWrapper $isFullScreen={isFullScreen} $standalone={Boolean(viewConfig?.standalone)}>
-      {!isFullScreen && (
+      {!isFullScreen && hasFooter && (
+        <>
+          <FooterTabs>
+            <CompactTabStrip
+              ariaLabel={`${dialect.toUpperCase()} views`}
+              active={viewMode}
+              onChange={(id) => selectTab(id as CardTabMode)}
+              tabs={navTabs.map((t) => ({
+                id: t.id,
+                label: t.id === "diagram" ? "Schematic" : t.label,
+                icon: t.icon,
+                title: t.label,
+              }))}
+            />
+          </FooterTabs>
+          <FloatingTools>
+            {viewMode === "diagram" && (
+              <FloatingToolBtn type="button" title="Download SVG" aria-label="Download SVG" onClick={handleExportSvg}>
+                {copiedSvg ? <CheckIcon size={14} /> : <DownloadIcon size={14} />}
+              </FloatingToolBtn>
+            )}
+            <FloatingToolBtn
+              type="button"
+              $success={copied}
+              title={copied ? "Copied" : "Copy source code"}
+              aria-label="Copy source code"
+              onClick={handleCopy}
+            >
+              {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+            </FloatingToolBtn>
+          </FloatingTools>
+        </>
+      )}
+      {!isFullScreen && !hasFooter && (
         <CardToolbar>
           <ToolbarLeft>
             <Badge>⚡ {dialect.toUpperCase()}</Badge>
@@ -610,6 +657,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
                 initialCode={baseCode}
                 initialDialect={dialect}
                 initialView={activeMorselView}
+                initialClassName={typeof viewConfig.primaryClass === "string" ? viewConfig.primaryClass : undefined}
                 hideCenterFloatingToolbar={!isFullScreen}
                 defaultRibbonExpanded={Boolean(isFullScreen && (viewMode === "simulation" || viewMode === "3d"))}
                 simulateTriggerCount={simTriggerCount > 0 ? simTriggerCount : undefined}

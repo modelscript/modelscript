@@ -5,6 +5,7 @@ import { Canvas } from "@react-three/fiber";
 import React, { useEffect, useMemo } from "react";
 import styled from "styled-components";
 import * as THREE from "three";
+import { resolveCssColor, useThemeTokens } from "../../theme-tokens";
 import SafeOrbitControls from "./SafeOrbitControls";
 
 export interface MultibodyNode3D {
@@ -58,6 +59,7 @@ const FallbackContainer = styled.div`
 `;
 
 const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[] }> = ({ nodes, links }) => {
+  const tokens = useThemeTokens();
   const linkGeometries = useMemo(() => {
     return links.map((link) => {
       const [x1, y1, z1] = link.from;
@@ -88,8 +90,8 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
         infiniteGrid
         cellSize={0.5}
         sectionSize={2.0}
-        cellColor="#1e293b"
-        sectionColor="#334155"
+        cellColor={tokens.gridLine}
+        sectionColor={tokens.borderStrong}
         fadeDistance={40}
         position={[0, 0, 0]}
       />
@@ -98,9 +100,13 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
       {nodes.map((node) => {
         const [x, y, z] = node.position;
         const [dx, dy, dz] = node.dimensions || (node.type === "body" ? [1.2, 0.6, 0.4] : [0.15, 0.15, 0.15]);
-        const rawColor =
-          node.color || (node.type === "body" ? "#58a6ff" : node.type === "wheelset" ? "#d29922" : "#22c55e");
-        const color = rawColor.startsWith("var(") ? "#94a3b8" : rawColor;
+        const defaultColor =
+          node.type === "body"
+            ? tokens.domains.mechanics.color
+            : node.type === "wheelset"
+              ? tokens.status.warn.fg
+              : tokens.status.pass.fg;
+        const color = resolveCssColor(node.color || defaultColor, tokens, defaultColor);
 
         return (
           <group key={node.id} position={[x, z, -y]}>
@@ -122,8 +128,8 @@ const SceneContent: React.FC<{ nodes: MultibodyNode3D[]; links: MultibodyLink3D[
 
       {/* Render Joint/Spring links */}
       {linkGeometries.map(({ link, geom }) => {
-        const rawLinkColor = link.color || (link.type === "joint" ? "#f0883e" : "#a371f7");
-        const linkColor = rawLinkColor.startsWith("var(") ? "#94a3b8" : rawLinkColor;
+        const defaultLinkColor = link.type === "joint" ? tokens.status.warn.fg : tokens.brand;
+        const linkColor = resolveCssColor(link.color || defaultLinkColor, tokens, defaultLinkColor);
         return (
           <mesh key={link.id} geometry={geom}>
             <meshStandardMaterial color={linkColor} roughness={0.3} />

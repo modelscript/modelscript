@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CpuIcon, HubotIcon, ZapIcon } from "@primer/octicons-react";
-import { Spinner } from "@primer/react";
 import React from "react";
+import Spinner from "../../../components/Spinner";
 import { BotAgentBadge, BotHeaderRow, BotIdentity, BotStatusText, BotTypingContainer } from "../styles";
 
 export interface BotTypingBubbleProps {

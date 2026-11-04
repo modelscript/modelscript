@@ -2,6 +2,7 @@
 
 import {
   BellIcon,
+  BookIcon,
   BookmarkIcon,
   CodeIcon,
   CpuIcon,
@@ -264,6 +265,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
   const brandName = branding.instanceName || "Ansatz";
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
+  const hasReferences = useFeatureFlag(["references", "scientific_references"]);
   const [query, setQuery] = useState("");
   const [completions, setCompletions] = useState<{
     users: UserCompletion[];
@@ -302,7 +305,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         setCompletions({
           users: res.users || [],
           packages: res.packages || [],
-          repositories: res.repositories || [],
+          repositories: hasRepos ? res.repositories || [] : [],
         });
         setActiveIndex(0);
       } catch {
@@ -311,7 +314,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, hasRepos]);
 
   // Build items list
   const allItems: CommandItem[] = useMemo(() => {
@@ -386,17 +389,36 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
           onClose();
         },
       },
-      {
-        id: "nav-repos",
-        category: "Navigation",
-        title: "Git Repositories",
-        subtitle: "Manage connected engineering repositories",
-        icon: <RepoIcon size={16} />,
-        action: () => {
-          navigate("/repos");
-          onClose();
-        },
-      },
+      ...(hasRepos
+        ? [
+            {
+              id: "nav-repos",
+              category: "Navigation" as const,
+              title: "Git Repositories",
+              subtitle: "Manage connected engineering repositories",
+              icon: <RepoIcon size={16} />,
+              action: () => {
+                navigate("/repos");
+                onClose();
+              },
+            },
+          ]
+        : []),
+      ...(hasReferences
+        ? [
+            {
+              id: "nav-references",
+              category: "Navigation" as const,
+              title: "Scientific References & Citations",
+              subtitle: "Browse bibliography, DOI sources, and BibTeX citations",
+              icon: <BookIcon size={16} />,
+              action: () => {
+                navigate("/references");
+                onClose();
+              },
+            },
+          ]
+        : []),
       ...(hasIde
         ? [
             {
@@ -801,17 +823,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       },
     }));
 
-    const repoItems: CommandItem[] = (completions.repositories || []).map((r) => ({
-      id: `repo-${r.id || r.project}`,
-      category: "Repositories",
-      title: r.project || r.name || "",
-      subtitle: `${r.provider}/${r.namespace}`,
-      icon: <RepoIcon size={16} />,
-      action: () => {
-        navigate(`/repos/${r.provider}/${r.namespace}/${r.project || r.name}`);
-        onClose();
-      },
-    }));
+    const repoItems: CommandItem[] = hasRepos
+      ? (completions.repositories || []).map((r) => ({
+          id: `repo-${r.id || r.project}`,
+          category: "Repositories",
+          title: r.project || r.name || "",
+          subtitle: `${r.provider}/${r.namespace}`,
+          icon: <RepoIcon size={16} />,
+          action: () => {
+            navigate(`/repos/${r.provider}/${r.namespace}/${r.project || r.name}`);
+            onClose();
+          },
+        }))
+      : [];
 
     return [...matchingNav, ...actionItems, ...userItems, ...packageItems, ...repoItems];
   }, [
@@ -826,6 +850,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
     logout,
     hasIde,
     hasCae,
+    hasRepos,
+    hasReferences,
     brandName,
     theme,
     toggleTheme,

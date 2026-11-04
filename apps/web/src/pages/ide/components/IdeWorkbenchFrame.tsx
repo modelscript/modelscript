@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CodeIcon, SyncIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
+import Spinner from "../../../components/Spinner";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { IframeWrapper, LoadingOverlay } from "../styles";
 

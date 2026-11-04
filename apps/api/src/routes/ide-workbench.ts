@@ -119,8 +119,8 @@ export function renderWorkbenchHtml(
 
   const productConfiguration: Record<string, unknown> = {
     enableTelemetry: false,
-    nameShort: "Ansatz",
-    nameLong: "Ansatz IDE (Powered by ModelScript)",
+    nameShort: "ModelScript",
+    nameLong: "ModelScript Studio",
     webEndpointUrlTemplate: webEndpoint,
     chatParticipantRegistry: "",
     extensionAllowedProposedApi: ["modelscript.modelscript", "vscode.mermaid-markdown-features"],
@@ -285,11 +285,11 @@ export function renderWorkbenchHtml(
             if (parsed && parsed.title) cachedTitle = parsed.title;
           }
         } catch (e) {}
-        document.title = (cachedTitle || ('Workspace #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Ansatz IDE (Powered by ModelScript)';
+        document.title = (cachedTitle || ('Workspace #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript Studio';
       } else if (template.startsWith('package-')) {
-        document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Ansatz IDE (Powered by ModelScript)';
+        document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript Studio';
       } else {
-        document.title = 'New Project — Ansatz IDE (Powered by ModelScript)';
+        document.title = 'New Project — ModelScript Studio';
       }
       config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template };
     } else {
@@ -299,7 +299,7 @@ export function renderWorkbenchHtml(
       var p = ownerRepo.split('/');
       var owner = p[0] || 'modelscript';
       var repo = p[1] || 'modelscript';
-      document.title = owner + '/' + repo + ' — Ansatz IDE (Powered by ModelScript)';
+      document.title = owner + '/' + repo + ' — ModelScript Studio';
       config.folderUri = { scheme: 'github', authority: '', path: '/' + owner + '/' + repo, query: 'ref=' + ref };
     }
   }
@@ -330,7 +330,7 @@ export function renderWorkbenchHtml(
         localStorage.setItem('modelscript:ide:memfs:' + data.artifactId, JSON.stringify(data));
         localStorage.setItem('modelscript:ide:memfs:artifact-' + data.artifactId, JSON.stringify(data));
         if (data.title) {
-          document.title = data.title + ' — Ansatz IDE (Powered by ModelScript)';
+          document.title = data.title + ' — ModelScript Studio';
         }
       } catch (e) {}
     }
@@ -450,7 +450,7 @@ function renderWrapper(provider: string, owner: string, repo: string, ref: strin
 
   return `<!DOCTYPE html>
 <html><head>
-<title>${safeOwner}/${safeRepo} — Ansatz IDE (Powered by ModelScript)</title>
+<title>${safeOwner}/${safeRepo} — ModelScript Studio</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1359,6 +1359,28 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
   router.get("/github.com/:owner/:repo/tree/:ref/*subpath", (req, res) => {
     const { owner, repo, ref } = req.params;
     res.send(renderWrapper("github", owner, repo, ref));
+  });
+
+  // Direct GitLab repository wrapper routes
+  router.get("/gitlab.com/:owner/:repo", (req, res) => {
+    const { owner, repo } = req.params;
+    const ref = (req.query["ref"] as string) || "main";
+    res.send(renderWrapper("gitlab", owner, repo, ref));
+  });
+
+  router.get("/gitlab.com/:owner/:repo/tree/:ref", (req, res) => {
+    const { owner, repo, ref } = req.params;
+    res.send(renderWrapper("gitlab", owner, repo, ref));
+  });
+
+  router.get("/gitlab.com/:owner/:repo/-/tree/:ref", (req, res) => {
+    const { owner, repo, ref } = req.params;
+    res.send(renderWrapper("gitlab", owner, repo, ref));
+  });
+
+  router.get("/gitlab.com/:owner/:repo/-/tree/:ref/*subpath", (req, res) => {
+    const { owner, repo, ref } = req.params;
+    res.send(renderWrapper("gitlab", owner, repo, ref));
   });
 
   return router;

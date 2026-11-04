@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckIcon, CodeIcon, CopyIcon, PlayIcon, SearchIcon, ZapIcon } from "@primer/octicons-react";
-import { Button, Heading, Spinner, Text, TextInput } from "@primer/react";
+import { Button, Heading, Text, TextInput } from "@primer/react";
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import api from "../../api";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 
 export interface FmuScalarVariable {
   name: string;
@@ -497,7 +498,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               size="small"
               variant="primary"
               onClick={handleOpenInPlayground}
-              title="Open FMU interface wrapper in Ansatz Playground (powered by ModelScript)"
+              title="Open FMU interface wrapper in ModelScript Playground"
             >
               <CodeIcon size={14} />
               <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>

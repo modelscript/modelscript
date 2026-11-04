@@ -48,6 +48,8 @@ export interface MorselEditorProps {
   initialDialect?: string | undefined;
   initialLanguage?: string | undefined;
   initialView?: string | undefined;
+  /** Modelica: class to select initially (otherwise the file's primary class). */
+  initialClassName?: string | undefined;
   initialAnchor?:
     | {
         elementId?: string | undefined;
@@ -149,7 +151,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isPropertiesLoading, setIsPropertiesLoading] = useState(false);
   const [diagramData, setDiagramData] = useState<any>(null);
   const [selectedTreeClassName, setSelectedTreeClassName] = useState<string | null>(() =>
-    dialect === "modelica" || !dialect ? extractPrimaryModelicaClassName(content) : null,
+    dialect === "modelica" || !dialect ? (props.initialClassName ?? extractPrimaryModelicaClassName(content)) : null,
   );
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const [documentModels, setDocumentModels] = useState<{ name: string; kind: string }[]>([]);

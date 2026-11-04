@@ -126,8 +126,10 @@ END-ISO-10303-21;
     const scene = buildQif3dMbdScene(doc);
     assert.strictEqual(scene.reconciliation.unresolvedFeatures.length, 0);
     assert.strictEqual(scene.reconciliation.matchedFeatures.length, 2);
-    // 1 body envelope + 2 feature topology meshes
-    assert.strictEqual(scene.meshes.length, 3);
+    // 2 feature topology meshes; no fabricated body envelope without a paired STEP
+    assert.strictEqual(scene.meshes.length, 2);
+    assert(!scene.meshes.some((m) => m.isBodyEnvelope));
+    assert.strictEqual(scene.geometry, "none");
     assert.strictEqual(scene.probeHits.length, 21); // 9 + 12 probe hits
     assert.strictEqual(scene.callouts.length, 2);
     assert.strictEqual(scene.datumBadges.length, 2);

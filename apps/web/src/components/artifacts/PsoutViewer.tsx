@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CodeIcon, PlayIcon, PulseIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
 
 export interface PsoutViewerProps {

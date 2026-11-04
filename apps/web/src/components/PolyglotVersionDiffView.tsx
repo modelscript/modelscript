@@ -10,13 +10,14 @@ import {
   GitCompareIcon,
   PackageIcon,
 } from "@primer/octicons-react";
-import { Button, Flash, Label, Spinner } from "@primer/react";
+import { Button, Flash, Label } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { comparePackageVersions, type VersionComparisonResult } from "../api";
 import { encodePackagePath } from "../util/url";
 import { CadDiffViewer } from "./artifacts/CadDiffViewer";
+import Spinner from "./Spinner";
 
 interface PolyglotVersionDiffViewProps {
   packageName: string;

@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { useState } from "react";
-import { createArtifactView, createPost, updatePost, uploadStorageFile } from "../../api";
+import React, { useMemo, useState } from "react";
+import {
+  createArtifactView,
+  createPost,
+  getArtifactView,
+  listMyArtifactViews,
+  updateArtifactView,
+  updatePost,
+  uploadStorageFile,
+} from "../../api";
 import { getAllPrivateKeyIds, getPrivateKey, migrateLegacyKeys } from "../../util/keystore";
 import {
   estimateReadingTimeMinutes,
@@ -11,8 +19,8 @@ import {
   parseNotebookFromContent,
   serializeCellsToMarkdown,
 } from "../../util/notebook";
-import { parseBinaryHdf5Buffer } from "../../util/tabular-data-parser";
 import type { SpatialPin } from "../artifacts/spatial-pin";
+import { type AttachContext, extractArtifactSourceText, toEditableView, useAttachFlow } from "./attach";
 
 export interface AttachedMorselDraft {
   id?: number | undefined;
@@ -42,6 +50,8 @@ export interface UseComposeSubmitParams {
   notebookDialect: string;
   notebookCompanionRepo: string;
   setNotebookCompanionRepo: (val: string) => void;
+  notebookTopics: string[];
+  setNotebookTopics: (val: string[]) => void;
   notebookCells: NotebookCell[];
   setNotebookCells: (cells: NotebookCell[]) => void;
   attachArtifactToComposer: (newArtifactId: number, title?: string, suggestedCaption?: string) => void;
@@ -58,6 +68,8 @@ export interface UseComposeSubmitParams {
   excludedUsers?: Set<string> | undefined;
   onPostCreated?: ((post: any) => void) | undefined;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
+  /** Called after the attach wizard saved a customization to an existing artifact. */
+  onArtifactEdited?: ((artifactId: number | string) => void) | undefined;
 }
 
 export function useComposeSubmit({
@@ -80,6 +92,8 @@ export function useComposeSubmit({
   notebookDialect,
   notebookCompanionRepo,
   setNotebookCompanionRepo,
+  notebookTopics,
+  setNotebookTopics,
   notebookCells,
   setNotebookCells,
   attachArtifactToComposer,
@@ -96,76 +110,59 @@ export function useComposeSubmit({
   excludedUsers,
   onPostCreated,
   fileInputRef,
+  onArtifactEdited,
 }: UseComposeSubmitParams) {
   const [submitting, setSubmitting] = useState(false);
-  const [uploadingFile, setUploadingFile] = useState(false);
 
+  const attachCtx = useMemo<AttachContext>(
+    () => ({
+      uploadFile: async (file, options) => {
+        const formData = new FormData();
+        for (const [key, value] of Object.entries(options?.fields ?? {})) formData.append(key, value);
+        formData.append("file", file);
+        return uploadStorageFile(formData);
+      },
+      createArtifact: async (input) => {
+        const created = await createArtifactView({
+          artifact_type: input.artifact_type,
+          view_config: JSON.stringify(input.view_config),
+          title: input.title,
+        });
+        return { id: created.id };
+      },
+      listArtifacts: async ({ types }) => {
+        const rows = await listMyArtifactViews({ types, limit: 100 });
+        return rows.map((r) => ({
+          id: r.id,
+          title: r.title || `Artifact ${r.id}`,
+          viewType: r.view_type,
+          ...(r.thumbnail_url ? { thumbnailUrl: r.thumbnail_url } : {}),
+        }));
+      },
+      loadArtifactSource: async (id) => {
+        const view = await getArtifactView(id);
+        return extractArtifactSourceText(view);
+      },
+      loadArtifactView: async (id) => toEditableView(await getArtifactView(id)),
+      updateArtifact: async (id, patch) => {
+        await updateArtifactView(id, { view_config: patch.view_config });
+      },
+    }),
+    [],
+  );
+
+  const attachFlow = useAttachFlow({
+    ctx: attachCtx,
+    onAttached: attachArtifactToComposer,
+    onEdited: onArtifactEdited,
+  });
+  const uploadingFile = attachFlow.busy;
+
+  /** Entry point for the file picker, drag-drop and paste: hands each file to its language's attach profile. */
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!token || !e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0]!;
-    setUploadingFile(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const lowerName = file.name.toLowerCase();
-      const isTextDatasetFile =
-        lowerName.endsWith(".csv") ||
-        lowerName.endsWith(".tsv") ||
-        lowerName.endsWith(".json") ||
-        lowerName.endsWith(".yaml") ||
-        lowerName.endsWith(".yml") ||
-        lowerName.endsWith(".xml");
-      const isHdf5File = lowerName.endsWith(".h5") || lowerName.endsWith(".hdf5");
-
-      let clientTextSnippet: string | undefined;
-      let clientHdf5Rows: Record<string, unknown>[] | undefined;
-      if (isTextDatasetFile && file.size <= 1_500_000 && typeof file.text === "function") {
-        try {
-          clientTextSnippet = await file.text();
-        } catch {
-          clientTextSnippet = undefined;
-        }
-      } else if (isHdf5File && file.size <= 2_500_000 && typeof file.arrayBuffer === "function") {
-        try {
-          const buf = await file.arrayBuffer();
-          const parsedH5 = parseBinaryHdf5Buffer(buf, file.name);
-          if (parsedH5.rows.length > 0) {
-            clientHdf5Rows = parsedH5.rows;
-          }
-        } catch {
-          clientHdf5Rows = undefined;
-        }
-      }
-
-      const uploadData = await uploadStorageFile(formData);
-      let resolvedViewType = uploadData.view_type;
-      if ((!resolvedViewType || resolvedViewType === "other") && (isTextDatasetFile || isHdf5File)) {
-        resolvedViewType = isHdf5File ? "dataset-table" : lowerName.endsWith(".json") ? "json-table" : "dataset-table";
-      }
-
-      const view_config = JSON.stringify({
-        url: uploadData.url,
-        ...(clientTextSnippet ? { rawData: clientTextSnippet, data: clientTextSnippet } : {}),
-        ...(clientHdf5Rows ? { data: clientHdf5Rows, format: "hdf5" } : {}),
-        ...(uploadData.svg ? { svg: uploadData.svg } : {}),
-        ...(uploadData.thumbnail_url ? { thumbnailUrl: uploadData.thumbnail_url } : {}),
-        ...(uploadData.view_config_additions || {}),
-        ...(uploadData.metadata || {}),
-      });
-
-      const artifactData = await createArtifactView({
-        artifact_type: resolvedViewType,
-        view_config,
-        title: file.name,
-      });
-      attachArtifactToComposer(artifactData.id, file.name);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setUploadingFile(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+    attachFlow.startMany(Array.from(e.target.files));
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const signContent = async (text: string) => {
@@ -257,6 +254,7 @@ export function useComposeSubmit({
               ...(notebookSeries.trim() ? { series: notebookSeries.trim() } : {}),
               ...(notebookDialect.trim() ? { dialect: notebookDialect.trim() } : {}),
               ...(notebookCompanionRepo.trim() ? { companionRepo: notebookCompanionRepo.trim() } : {}),
+              ...(notebookTopics.length > 0 ? { topics: notebookTopics } : {}),
               estimatedReadMinutes: estimateReadingTimeMinutes(effectiveCells),
               cells: effectiveCells,
               artifactIds: effectiveArtIds,
@@ -300,6 +298,7 @@ export function useComposeSubmit({
       setNotebookSummary("");
       setNotebookSeries("");
       setNotebookCompanionRepo("");
+      setNotebookTopics([]);
       setNotebookCells([{ id: "md-1", type: "markdown", content: "" }]);
       setIsNotebookMode(false);
       onPostCreated?.(data.post);
@@ -316,5 +315,6 @@ export function useComposeSubmit({
     hasNotebookContent,
     handleSubmit,
     handleFileUpload,
+    attachFlow,
   };
 }

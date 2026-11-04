@@ -3,10 +3,10 @@
 import { CheckCircleIcon, XCircleIcon } from "@primer/octicons-react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import styled, { keyframes } from "styled-components";
 import { resendVerificationEmail, verifyEmail } from "../api";
 import { useAuth } from "../AuthContext";
 import { AnsatzMark } from "../components/AnsatzLogo";
+import Spinner from "../components/Spinner";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { usePageTitle } from "../util/title";
 import {
@@ -22,21 +22,6 @@ import {
   Subtitle,
   Title,
 } from "./login/styles";
-
-const spin = keyframes`
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-`;
-
-const Spinner = styled.div`
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(6, 182, 212, 0.2);
-  border-top-color: var(--color-accent-cyan, #06b6d4);
-  border-radius: 50%;
-  animation: ${spin} 0.8s linear infinite;
-  margin: 20px 0;
-`;
 
 export default function VerifyEmailPage() {
   usePageTitle("Verify Email");
@@ -117,7 +102,7 @@ export default function VerifyEmailPage() {
             <Subtitle style={{ fontSize: "14px", lineHeight: 1.5 }}>
               Please wait while we validate your security token and activate your account.
             </Subtitle>
-            <Spinner />
+            <Spinner size="large" style={{ margin: "20px 0" }} />
           </>
         )}
 

@@ -71,14 +71,15 @@ export const DetailSubtitle = styled.span`
 export const SaveButton = styled.button<{ $variant?: "primary" | "danger" | "secondary" | undefined }>`
   background-color: ${(props) =>
     props.$variant === "danger"
-      ? "var(--color-danger-fg, #cf222e)"
+      ? "var(--ms-danger)"
       : props.$variant === "secondary"
-        ? "var(--color-canvas-subtle, rgba(255, 255, 255, 0.06))"
-        : "var(--color-accent-fg, #8b5cf6)"};
+        ? "var(--ms-surface-hover)"
+        : "var(--ms-brand)"};
   background-image: ${(props) =>
     props.$variant === "danger" || props.$variant === "secondary" ? "none" : "var(--gradient-cta)"};
-  color: ${(props) => (props.$variant === "secondary" ? "var(--color-text-primary)" : "white")};
-  border: ${(props) => (props.$variant === "secondary" ? "1px solid var(--color-border-default)" : "none")};
+  color: ${(props) =>
+    props.$variant === "secondary" ? "var(--color-text-primary)" : "var(--ms-brand-contrast, #ffffff)"};
+  border: ${(props) => (props.$variant === "secondary" ? "1px solid var(--ms-border)" : "none")};
   border-radius: 9999px;
   padding: 8px 16px;
   font-weight: bold;
@@ -87,10 +88,10 @@ export const SaveButton = styled.button<{ $variant?: "primary" | "danger" | "sec
   align-self: flex-end;
   box-shadow: ${(props) =>
     props.$variant === "danger"
-      ? "0 2px 8px rgba(207, 34, 46, 0.25)"
+      ? "0 2px 8px color-mix(in srgb, var(--ms-danger) 35%, transparent)"
       : props.$variant === "secondary"
         ? "none"
-        : "0 2px 8px rgba(139, 92, 246, 0.25)"};
+        : "var(--ms-brand-shadow)"};
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
   &[style*="background-color"],
@@ -103,10 +104,10 @@ export const SaveButton = styled.button<{ $variant?: "primary" | "danger" | "sec
     transform: translateY(-1px);
     box-shadow: ${(props) =>
       props.$variant === "danger"
-        ? "0 4px 12px rgba(207, 34, 46, 0.35)"
+        ? "0 4px 12px color-mix(in srgb, var(--ms-danger) 50%, transparent)"
         : props.$variant === "secondary"
-          ? "0 2px 6px rgba(0, 0, 0, 0.15)"
-          : "0 4px 12px rgba(139, 92, 246, 0.35)"};
+          ? "var(--ms-shadow-card)"
+          : "var(--ms-brand-shadow)"};
   }
   &:disabled {
     opacity: 0.5;

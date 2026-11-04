@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner } from "@primer/react";
 import React, { Suspense } from "react";
 import styledImport from "styled-components";
 import Box from "../../Box";
+import Spinner from "../../Spinner";
 import LazyHeavyViewer from "../LazyHeavyViewer";
 import type { AnySpatialPin } from "../spatial-pin";
 import ViewerErrorBoundary from "../ViewerErrorBoundary";

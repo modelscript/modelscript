@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Button, Spinner } from "@primer/react";
+import { Button } from "@primer/react";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { getArtifactView } from "../api";
@@ -12,6 +12,7 @@ import {
   decompressMorselPayload,
   resolveMorselShortlink,
 } from "../components/morsel/util/permalink";
+import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import {
@@ -105,7 +106,7 @@ export const PlaygroundPage: React.FC = () => {
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
   const baselineCodeRef = useRef<string>(hasInitialArtifactTarget ? "" : HERO_EXAMPLES[0]!.code);
 
-  usePageTitle(currentTitle ? `${currentTitle} — Playground` : "Playground");
+  usePageTitle(currentTitle ? `${currentTitle} — ModelScript Playground` : "ModelScript Playground");
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
@@ -771,7 +772,7 @@ export const PlaygroundPage: React.FC = () => {
 
   const getMarkdownBadge = () => {
     const url = getShareUrl();
-    return `[![Open in Ansatz Playground](https://img.shields.io/badge/Ansatz-Playground-06b6d4?style=flat&logo=atom)](${url})`;
+    return `[![Open in ModelScript Playground](https://img.shields.io/badge/ModelScript-Playground-0284c7?style=flat&logo=codefactor)](${url})`;
   };
 
   const handleCopy = async (text: string, label: string) => {

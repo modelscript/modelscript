@@ -108,6 +108,15 @@ end P;
       );
     });
 
+    it("isolates M2005 identifier-mismatch error to the end identifier (not the entire class)", () => {
+      const code = `class A1\n  Integer x;\nequation\n  x = 1;\nend A2;`;
+      const diags = getCstDiagnostics(code);
+      const mismatch = diags.find((d) => d.code === ModelicaErrorCode.IDENTIFIER_MISMATCH.code);
+      assert.ok(mismatch, `Expected M2005 in ${JSON.stringify(diags)}`);
+      assert.equal((mismatch as any).startOffset, code.lastIndexOf("A2"));
+      assert.equal((mismatch as any).endOffset, code.lastIndexOf("A2") + 2);
+    });
+
     it("detects extending a replaceable base class (M4034)", () => {
       const diags = getCstDiagnostics(`
 model M

@@ -166,6 +166,10 @@ export const SEARCH_TABS = ["Top", "Latest", "People", "Media", "Packages", "Rep
 
 export type SearchTab = (typeof SEARCH_TABS)[number];
 
+export const TOPIC_TABS = ["Top", "Latest"] as const;
+
+export type TopicTab = (typeof TOPIC_TABS)[number];
+
 export const TOPIC_ARTIFACT_TABS: {
   id: string;
   label: string;

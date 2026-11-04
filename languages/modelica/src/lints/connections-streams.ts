@@ -319,7 +319,14 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: any) => {
       // Check if an `outer` component lacks a matching `inner` declaration in the document hierarchy
       if (isMissingInnerInDocument(db, node, $)) {
-        db.diagnostic(node);
+        let nameNode: u32 = 0;
+        if ($.declaration != 0) {
+          for (const decl of db.ast.getDescendants(node, $.declaration)) {
+            nameNode = db.ast.getChildByFieldId(decl, "name");
+            if (nameNode != 0) break;
+          }
+        }
+        db.diagnostic(nameNode != 0 ? nameNode : node);
       }
     },
   },

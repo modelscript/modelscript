@@ -70,7 +70,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const endId = db.ast.getChildByFieldId(node, "end_name");
       if (startId != 0 && endId != 0) {
         if (!db.ast.textEqualsNode(startId, endId)) {
-          db.diagnostic(node);
+          db.diagnostic(endId);
         }
       }
     },
@@ -1837,7 +1837,14 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: any) => {
       // Disallow non-replaceable component declarations whose resolved type is `partial` in a concrete class
       if (isPartialTypeComponentInScope(db, node, $)) {
-        db.diagnostic(node);
+        let nameNode: u32 = 0;
+        if ($.declaration != 0) {
+          for (const decl of db.ast.getDescendants(node, $.declaration)) {
+            nameNode = db.ast.getChildByFieldId(decl, "name");
+            if (nameNode != 0) break;
+          }
+        }
+        db.diagnostic(nameNode != 0 ? nameNode : node);
       }
     },
   },
@@ -2261,7 +2268,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       for (const decl of db.ast.getDescendants(node, $.declaration)) {
         const nameNode = db.ast.getChildByFieldId(decl, "name");
         if (nameNode != 0 && db.ast.textEquals(nameNode, "time")) {
-          db.diagnostic(node);
+          db.diagnostic(nameNode);
           return;
         }
       }

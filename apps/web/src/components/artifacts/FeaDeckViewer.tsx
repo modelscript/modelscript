@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CodeIcon, EyeIcon, VersionsIcon, WorkflowIcon, ZapIcon } from "@primer/octicons-react";
-import { Button, Spinner } from "@primer/react";
+import { Button } from "@primer/react";
 import { Html } from "@react-three/drei";
 import { Canvas, type ThreeEvent } from "@react-three/fiber";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -12,6 +12,7 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 import SafeOrbitControls from "./SafeOrbitControls";
@@ -178,9 +179,9 @@ const PillBadge = styled.span`
   font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
-  background: rgba(14, 165, 233, 0.15);
-  color: #38bdf8;
-  border: 1px solid rgba(14, 165, 233, 0.35);
+  background: var(--domain-cad-bg, rgba(234, 88, 12, 0.12));
+  color: var(--domain-cad, #ea580c);
+  border: 1px solid var(--domain-cad-border, rgba(234, 88, 12, 0.35));
 `;
 
 const ContentArea = styled.div`
@@ -1319,11 +1320,10 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                   type="button"
                   onClick={() => setViewMode("3d")}
                   style={{
-                    background: effectiveViewMode === "3d" ? "rgba(14, 165, 233, 0.18)" : "transparent",
+                    background:
+                      effectiveViewMode === "3d" ? "var(--ms-brand-soft, rgba(14, 165, 233, 0.18))" : "transparent",
                     color:
-                      effectiveViewMode === "3d"
-                        ? "var(--color-accent-fg, var(--color-fg-default))"
-                        : "var(--color-fg-muted)",
+                      effectiveViewMode === "3d" ? "var(--ms-brand, var(--color-accent-fg))" : "var(--color-fg-muted)",
                     border: "none",
                     borderRadius: "4px",
                     padding: "2px 8px",
@@ -1343,10 +1343,13 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                   type="button"
                   onClick={() => setViewMode("diagram")}
                   style={{
-                    background: effectiveViewMode === "diagram" ? "rgba(14, 165, 233, 0.18)" : "transparent",
+                    background:
+                      effectiveViewMode === "diagram"
+                        ? "var(--ms-brand-soft, rgba(14, 165, 233, 0.18))"
+                        : "transparent",
                     color:
                       effectiveViewMode === "diagram"
-                        ? "var(--color-accent-fg, var(--color-fg-default))"
+                        ? "var(--ms-brand, var(--color-accent-fg))"
                         : "var(--color-fg-muted)",
                     border: "none",
                     borderRadius: "4px",
@@ -1366,11 +1369,10 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                 type="button"
                 onClick={() => setViewMode("code")}
                 style={{
-                  background: effectiveViewMode === "code" ? "rgba(14, 165, 233, 0.18)" : "transparent",
+                  background:
+                    effectiveViewMode === "code" ? "var(--ms-brand-soft, rgba(14, 165, 233, 0.18))" : "transparent",
                   color:
-                    effectiveViewMode === "code"
-                      ? "var(--color-accent-fg, var(--color-fg-default))"
-                      : "var(--color-fg-muted)",
+                    effectiveViewMode === "code" ? "var(--ms-brand, var(--color-accent-fg))" : "var(--color-fg-muted)",
                   border: "none",
                   borderRadius: "4px",
                   padding: "2px 8px",

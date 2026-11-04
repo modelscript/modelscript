@@ -516,7 +516,10 @@ export function registerHoverProvider(
         validationService?.workspaceManager?.getQueryEngine?.("sysml2") ??
         globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
 
-      if (qe && fullToken && typeof qe.resolvePolyglotSymbol === "function") {
+      const isCrossLangRef =
+        fullToken.includes("::") || fullToken.includes("//") || (fullToken.includes(".") && !fullToken.startsWith("."));
+
+      if (qe && fullToken && isCrossLangRef && typeof qe.resolvePolyglotSymbol === "function") {
         const symId = qe.resolvePolyglotSymbol(fullToken);
         if (symId !== null && symId !== undefined) {
           const entry = qe.resolveEntry(symId);

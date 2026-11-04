@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { AlertFillIcon, AlertIcon, DownloadIcon, HourglassIcon, LawIcon, SyncIcon } from "@primer/octicons-react";
+import { AlertFillIcon, AlertIcon, DownloadIcon, HourglassIcon, LawIcon } from "@primer/octicons-react";
 import { Heading, Label, Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
 import type { LibraryListItem } from "../../../api";
 import Box from "../../../components/Box";
+import Spinner from "../../../components/Spinner";
 import { formatDomainLabel, formatTimeAgo, inferPackageDomains, splitScopedPackageName } from "../constants";
 import { DomainBadge } from "../styles";
 import { PackageIcon } from "./PackageIcon";
@@ -162,7 +163,7 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib }) => {
               {lib.jobStatus.status === "pending" ? (
                 <HourglassIcon size={16} fill="var(--color-text-muted)" />
               ) : (
-                <SyncIcon size={16} className="spinner-spin" fill="var(--color-text-muted)" />
+                <Spinner size="small" />
               )}
               <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
                 {lib.jobStatus.status === "pending"

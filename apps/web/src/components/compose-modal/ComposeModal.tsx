@@ -50,6 +50,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
   const [notebookCompanionRepo, setNotebookCompanionRepo] = useState<string>(
     initialState?.notebookCompanionRepo || initialState?.companionRepo || "",
   );
+  const [notebookTopics, setNotebookTopics] = useState<string[]>(initialState?.notebookTopics || []);
   const [notebookCells, setNotebookCells] = useState<NotebookCell[]>(
     initialState?.notebookCells || [{ id: createCellId("md"), type: "markdown", content: "" }],
   );
@@ -85,6 +86,9 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     }
     if (initialState.notebookCompanionRepo !== undefined || initialState.companionRepo !== undefined) {
       setNotebookCompanionRepo(initialState.notebookCompanionRepo || initialState.companionRepo || "");
+    }
+    if (initialState.notebookTopics !== undefined) {
+      setNotebookTopics(initialState.notebookTopics);
     }
     if (initialState.notebookCells && initialState.notebookCells.length > 0) {
       setNotebookCells(initialState.notebookCells);
@@ -266,6 +270,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
         notebookSeries,
         notebookDialect,
         notebookCompanionRepo,
+        notebookTopics,
         notebookCells,
         quotePost: currentQuotePost,
         replyToPost: currentReplyToPost,
@@ -281,6 +286,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     setNotebookSummary("");
     setNotebookSeries("");
     setNotebookCompanionRepo("");
+    setNotebookTopics([]);
     setNotebookCells([{ id: createCellId("md"), type: "markdown", content: "" }]);
     setCurrentQuotePost(initialQuotePost);
     setCurrentReplyToPost(initialReplyToPost);
@@ -303,6 +309,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     setNotebookSummary("");
     setNotebookSeries("");
     setNotebookCompanionRepo("");
+    setNotebookTopics([]);
     setNotebookCells([{ id: createCellId("md"), type: "markdown", content: "" }]);
     setCurrentQuotePost(initialQuotePost);
     setCurrentReplyToPost(initialReplyToPost);
@@ -327,6 +334,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     setNotebookSeries(draft.notebookSeries || "");
     setNotebookDialect(draft.notebookDialect || "Modelica 3.4");
     setNotebookCompanionRepo(draft.notebookCompanionRepo || "");
+    setNotebookTopics(draft.notebookTopics || []);
     setNotebookCells(draft.notebookCells || [{ id: createCellId("md"), type: "markdown", content: draft.content }]);
     setCurrentQuotePost(draft.quotePost);
     setCurrentReplyToPost(draft.replyToPost);
@@ -403,6 +411,8 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
               setNotebookDialect={setNotebookDialect}
               notebookCompanionRepo={notebookCompanionRepo}
               setNotebookCompanionRepo={setNotebookCompanionRepo}
+              notebookTopics={notebookTopics}
+              setNotebookTopics={setNotebookTopics}
               notebookCells={notebookCells}
               setNotebookCells={setNotebookCells}
               onCloseModal={handleCloseClick}
@@ -639,6 +649,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                         notebookDifficulty={notebookDifficulty}
                         notebookSeries={notebookSeries}
                         notebookDialect={notebookDialect}
+                        notebookTopics={notebookTopics}
                         notebookCells={notebookCells}
                         content={content}
                       />
@@ -666,6 +677,8 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                       setNotebookDialect={setNotebookDialect}
                       notebookCompanionRepo={notebookCompanionRepo}
                       setNotebookCompanionRepo={setNotebookCompanionRepo}
+                      notebookTopics={notebookTopics}
+                      setNotebookTopics={setNotebookTopics}
                       notebookCells={notebookCells}
                       setNotebookCells={setNotebookCells}
                       onCloseModal={handleCloseClick}
@@ -698,6 +711,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
                         notebookDifficulty={notebookDifficulty}
                         notebookSeries={notebookSeries}
                         notebookDialect={notebookDialect}
+                        notebookTopics={notebookTopics}
                         notebookCells={notebookCells}
                         content={content}
                       />

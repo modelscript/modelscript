@@ -51,9 +51,9 @@ const ExplorePage: React.FC = () => {
   const { token } = useAuth();
   const { openCompose } = React.useContext(ComposeContext);
   const hasPackages = useFeatureFlag("package_browser");
-  const hasRepos = useFeatureFlag("git_repositories");
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
 
-  const [topicFilter, setTopicFilter] = useState<string>("all");
+  const [topicFilter, setTopicFilter] = useState<string>(() => (tabParam === "latest" ? "latest" : "top"));
   const [copiedTopicLink, setCopiedTopicLink] = useState(false);
 
   const [posts, setPosts] = useState<PostData[]>([]);
@@ -62,7 +62,7 @@ const ExplorePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTabState] = useState<SearchTab>(() => normalizeSearchTab(tabParam));
   const [landingTab, setLandingTabState] = useState<ExploreLandingTab>(() => {
-    if (tabParam === "trending" || tabParam === "packages" || tabParam === "repositories") {
+    if (tabParam === "trending" || tabParam === "packages" || (hasRepos && tabParam === "repositories")) {
       return tabParam;
     }
     return "explore";
@@ -116,6 +116,24 @@ const ExplorePage: React.FC = () => {
   };
 
   useEffect(() => {
+    if (topic) {
+      setTopicFilter(tabParam === "latest" ? "latest" : "top");
+    }
+  }, [topic, tabParam]);
+
+  const handleSelectTopicTab = (nextTab: string) => {
+    const normalized = nextTab.toLowerCase() === "latest" ? "latest" : "top";
+    setTopicFilter(normalized);
+    const next = new URLSearchParams(searchParams);
+    if (normalized === "top") {
+      next.delete("tab");
+    } else {
+      next.set("tab", "latest");
+    }
+    setSearchParams(next, { replace: true });
+  };
+
+  useEffect(() => {
     setLocalQuery(query);
   }, [query]);
 
@@ -125,7 +143,7 @@ const ExplorePage: React.FC = () => {
         setLoading(true);
         try {
           const data = await getTopicPosts(topic, {
-            artifactType: topicFilter !== "all" ? topicFilter : undefined,
+            sort: topicFilter === "latest" ? "recent" : "top",
           });
           setTopicPosts(data.posts || []);
         } catch (err) {
@@ -424,7 +442,7 @@ const ExplorePage: React.FC = () => {
         handleSearchSubmit={handleSearchSubmit}
         handleBack={handleBack}
         topicFilter={topicFilter}
-        setTopicFilter={setTopicFilter}
+        setTopicFilter={handleSelectTopicTab}
         loading={loading}
         topicPosts={topicPosts}
         trending={trending}

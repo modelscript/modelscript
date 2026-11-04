@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner } from "@primer/react";
 import { useCallback, useEffect, useState } from "react";
 import { Route, Routes, useLocation, useParams, useSearchParams } from "react-router-dom";
 import type { GitlabProject } from "../api";
 import { getGitlabIssues, getGitlabMergeRequests, getGitlabPipelines, getGitlabProject } from "../api";
 import Box from "../components/Box";
+import Spinner from "../components/Spinner";
 import { usePageTitle } from "../util/title";
 import { ActionsTab, CodeTab, IssuesTab, PullRequestsTab, SettingsTab, WorkspaceHeader } from "./workspace";
 

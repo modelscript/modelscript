@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckCircleIcon, ClockIcon, DownloadIcon, ServerIcon, TerminalIcon } from "@primer/octicons-react";
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React from "react";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import type { HpcWizardTemplate } from "./hpcTemplates";
 import { StepItem } from "./styles";
 import type { SimPhase } from "./types";

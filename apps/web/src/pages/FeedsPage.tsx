@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { PlusIcon, RssIcon, SyncIcon, TrashIcon } from "@primer/octicons-react";
-import { Button, Dialog, Spinner, Text } from "@primer/react";
+import { Button, Dialog, Text } from "@primer/react";
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import styled from "styled-components";
@@ -10,6 +10,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import PageHeader from "../components/PageHeader";
 import { CircleIconButton } from "../components/SharedStyles";
+import Spinner from "../components/Spinner";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
@@ -123,8 +124,7 @@ function formatRssHandle(urlStr: string) {
 
 const FeedsPage: React.FC = () => {
   usePageTitle("Feeds");
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
+  const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);
   const { token } = useAuth();
   const [feeds, setFeeds] = useState<any[]>([]);
   const [urlInput, setUrlInput] = useState("");

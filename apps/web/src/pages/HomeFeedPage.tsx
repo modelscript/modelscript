@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { PlayIcon } from "@primer/octicons-react";
-import { Spinner } from "@primer/react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getTimeline } from "../api";
@@ -12,6 +11,7 @@ import ComposeBox from "../components/ComposeBox";
 import { ComposeContext } from "../components/ComposeContext";
 import PostSkeleton from "../components/PostSkeleton";
 import { scrollToTop } from "../components/ScrollToTop";
+import Spinner from "../components/Spinner";
 import { VirtualPostList } from "../components/VirtualPostList";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { useTheme } from "../theme";

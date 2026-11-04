@@ -28,16 +28,15 @@ function formatFileSize(bytes?: number): string | null {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined; $expanded?: boolean | undefined }>`
+const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
-  height: ${(props) => (props.$isFullScreen ? "100%" : props.$expanded ? "580px" : "420px")};
+  height: ${(props) => (props.$isFullScreen ? "100%" : "420px")};
   background: var(--color-canvas-default, #0d1117);
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: height 0.2s ease;
 `;
 
 const Toolbar = styled.div`
@@ -319,7 +318,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
   };
 
   return (
-    <Wrapper ref={containerRef} $isFullScreen={isFullScreen} $expanded={inlinePreview}>
+    <Wrapper ref={containerRef} $isFullScreen={isFullScreen}>
       {showTopToolbar && (
         <Toolbar>
           <Box display="flex" alignItems="center" gap={2} overflow="hidden" style={{ minWidth: 0, flex: 1 }}>

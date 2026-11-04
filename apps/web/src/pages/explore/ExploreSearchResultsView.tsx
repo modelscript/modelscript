@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { GitBranchIcon, MarkGithubIcon, RepoIcon, StarIcon } from "@primer/octicons-react";
-import { Heading, Label, Spinner, Text } from "@primer/react";
+import { Heading, Label, Text } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
 import { getRepoFallbackStars } from "../../api";
 import Box from "../../components/Box";
 import FollowButton from "../../components/FollowButton";
 import { scrollToTop } from "../../components/ScrollToTop";
+import Spinner from "../../components/Spinner";
 import VirtualPostList from "../../components/VirtualPostList";
 import { safeCssImageUrl } from "../../util/url";
 import { PackageIcon } from "../libraries/components/PackageIcon";
@@ -62,7 +63,7 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
   repos,
   reposLoading,
   hasPackages = true,
-  hasRepos = true,
+  hasRepos = false,
 }) => {
   const displayMediaPosts = mediaPosts ?? artifactPosts ?? [];
   const visibleSearchTabs = SEARCH_TABS.filter((tab) => {

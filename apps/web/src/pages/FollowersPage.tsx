@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
@@ -10,6 +10,7 @@ import Box from "../components/Box";
 import FederatedDomainPill from "../components/FederatedDomainPill";
 import FollowButton from "../components/FollowButton";
 import PageHeader from "../components/PageHeader";
+import Spinner from "../components/Spinner";
 import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";

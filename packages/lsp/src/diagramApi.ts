@@ -4922,12 +4922,19 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         coordinateSystem: null,
         diagramBackground: null,
         cells: cells.length > 0 ? cells : [...nodes, ...edges],
-        metadata: rawDiagram?.metadata,
+        readOnly: true,
+        metadata: {
+          ...rawDiagram?.metadata,
+          readOnly: true,
+        },
       } as any;
     };
 
+    const domainBackendCache = new Map<string, DiagramBackend>();
+
     const createDomainBuilderBackend = (
       buildFn: (text: string, params: DiagramGetDataParams) => Promise<any>,
+      domainName?: string,
     ): DiagramBackend => ({
       async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
         try {
@@ -4940,8 +4947,20 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
               return formatted;
             }
           }
-        } catch {
-          // fall back to generic backend
+        } catch (err) {
+          console.error(`[Diagram] Error building diagram for ${params.uri} (${domainName ?? "domain"}):`, err);
+          return {
+            nodes: [],
+            edges: [],
+            coordinateSystem: null,
+            diagramBackground: null,
+            readOnly: true,
+            metadata: {
+              error: err instanceof Error ? err.message : String(err),
+              readOnly: true,
+              domain: domainName,
+            },
+          } as any;
         }
         return backends.generic ? await backends.generic.getData(params) : null;
       },
@@ -4949,127 +4968,77 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         return backends.generic ? await backends.generic.getComponentProperties(params) : null;
       },
       async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-        if (backends.generic) {
-          return await backends.generic.applyEdits(params);
-        }
+        console.warn(
+          `[Diagram] Cannot apply visual edits: ${domainName ?? "domain"} diagram for ${params.uri} is read-only.`,
+        );
         return { seq: params.seq, edits: [], renderHint: "none" };
       },
     });
 
-    if (uri.endsWith(".spck") || uri.endsWith(".sim") || uri.endsWith(".mbs") || plugin?.id === "simpack") {
-      if (backends.simpack) return backends.simpack;
-      return createDomainBuilderBackend(async (text) => {
+    const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParams) => Promise<unknown>> = {
+      simpack: async (text) => {
         const { parseSpckXml, parseSimDeck, buildSimpackDiagram } = await import("@modelscript/simpack");
         const isXml = text.trimStart().startsWith("<");
         const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
         return buildSimpackDiagram(model);
-      });
-    }
-
-    if (uri.endsWith(".calc") || uri.endsWith(".trax") || uri.endsWith(".run") || plugin?.id === "gensys") {
-      if (backends.gensys) return backends.gensys;
-      return createDomainBuilderBackend(async (text) => {
+      },
+      gensys: async (text) => {
         const { parseGensysDeck, buildGensysDiagram } = await import("@modelscript/gensys");
-        const model = parseGensysDeck(text);
-        return buildGensysDiagram(model);
-      });
-    }
-
-    if (
-      uri.endsWith(".adm") ||
-      uri.endsWith(".cmd") ||
-      uri.endsWith(".mnf") ||
-      uri.endsWith(".acf") ||
-      plugin?.id === "adams"
-    ) {
-      if (backends.adams) return backends.adams;
-      return createDomainBuilderBackend(async (text) => {
+        return buildGensysDiagram(parseGensysDeck(text));
+      },
+      adams: async (text) => {
         const { parseAdams, buildAdamsDiagram } = await import("@modelscript/adams");
-        const model = parseAdams(text);
-        return buildAdamsDiagram(model);
-      });
-    }
-
-    if (uri.endsWith(".urdf") || uri.endsWith(".xacro") || uri.endsWith(".sdf") || plugin?.id === "urdf") {
-      if (backends.urdf) return backends.urdf;
-      return createDomainBuilderBackend(async (text) => {
+        return buildAdamsDiagram(parseAdams(text));
+      },
+      urdf: async (text) => {
         const { parseUrdf, buildUrdfDiagram } = await import("@modelscript/urdf");
-        const model = parseUrdf(text);
-        return buildUrdfDiagram(model);
-      });
-    }
-
-    if (plugin?.id === "aspen" || uri.endsWith(".bkp") || uri.endsWith(".in") || uri.endsWith(".aspen.inp")) {
-      return createDomainBuilderBackend(async (text) => {
+        return buildUrdfDiagram(parseUrdf(text));
+      },
+      aspen: async (text) => {
         const { parseAspen } = await import("@modelscript/aspen");
         const { buildAspenDiagram } = await import("@modelscript/diagram/aspen-diagram-builder");
         return buildAspenDiagram(parseAspen(text) as any);
-      });
-    }
-
-    if (plugin?.id === "swmm" || uri.endsWith(".swmm") || uri.endsWith(".swmm.inp")) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      swmm: async (text) => {
         const { parseSwmm } = await import("@modelscript/swmm");
         const { buildSwmmDiagram } = await import("@modelscript/diagram/swmm-diagram-builder");
         return buildSwmmDiagram(parseSwmm(text) as any);
-      });
-    }
-
-    if (plugin?.id === "eclipse" || uri.endsWith(".data") || uri.endsWith(".inc")) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      eclipse: async (text) => {
         const { parseEclipse } = await import("@modelscript/eclipse");
         const { buildEclipseDiagram } = await import("@modelscript/diagram/eclipse-diagram-builder");
         return buildEclipseDiagram(parseEclipse(text) as any);
-      });
-    }
-
-    if (plugin?.id === "jsbsim" || uri.endsWith(".jsbsim") || uri.endsWith(".jsbsim.xml")) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      jsbsim: async (text) => {
         const { parseJsbsim } = await import("@modelscript/jsbsim");
         const { buildJsbsimDiagram } = await import("@modelscript/diagram/jsbsim-diagram-builder");
         const doc = parseJsbsim(text) as any;
         return buildJsbsimDiagram(doc.fdm ?? doc);
-      });
-    }
-
-    if (plugin?.id === "lps" || uri.endsWith(".lps") || uri.endsWith(".tgx") || uri.endsWith(".tlx")) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      lps: async (text) => {
         const { parseLps } = await import("@modelscript/lps");
         const { buildLpsDiagram } = await import("@modelscript/diagram/lps-diagram-builder");
         return buildLpsDiagram(parseLps(text) as any);
-      });
-    }
-
-    if (plugin?.id === "olga" || uri.endsWith(".opi") || uri.endsWith(".olga") || uri.endsWith(".genkey")) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      olga: async (text) => {
         const { parseOpi } = await import("@modelscript/olga");
         const { buildOlgaDiagram } = await import("@modelscript/diagram/olga-diagram-builder");
         return buildOlgaDiagram(parseOpi(text) as any);
-      });
-    }
-
-    if (plugin?.id === "opendss" || uri.endsWith(".dss")) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      opendss: async (text) => {
         const { parseOpenDss } = await import("@modelscript/opendss");
         const { buildOpenDssDiagram } = await import("@modelscript/diagram/opendss-diagram-builder");
         return buildOpenDssDiagram(parseOpenDss(text) as any);
-      });
-    }
-
-    if (plugin?.id === "openscenario" || uri.endsWith(".xosc")) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      openscenario: async (text) => {
         const { parseOpenScenario } = await import("@modelscript/openscenario");
         const { buildOpenScenarioDiagram } = await import("@modelscript/diagram/openscenario-diagram-builder");
-        const doc = parseOpenScenario(text) as any;
-        return buildOpenScenarioDiagram(doc);
-      });
-    }
-
-    if (plugin?.id === "psse" || uri.endsWith(".raw") || uri.endsWith(".dyr")) {
-      return createDomainBuilderBackend(async (text) => {
+        return buildOpenScenarioDiagram(parseOpenScenario(text) as any);
+      },
+      psse: async (text, params) => {
         const { parseRaw, solvePowerFlow, isLikelyDyrContent, parseDyr } = await import("@modelscript/psse");
         const { buildPsseDiagram } = await import("@modelscript/diagram/psse-diagram-builder");
-        if (uri.endsWith(".dyr") || isLikelyDyrContent(text)) {
+        if (params.uri.endsWith(".dyr") || isLikelyDyrContent(text)) {
           const dyr = parseDyr(text);
           if (dyr.records.length > 0) {
             const buses = new Map<number, any>();
@@ -5078,7 +5047,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
               if (!buses.has(rec.ibus)) {
                 buses.set(rec.ibus, {
                   i: rec.ibus,
-                  name: `GEN BUS ${rec.ibus}`,
+                  name: `BUS ${rec.ibus}`,
                   baseKv: 138,
                   ide: 2,
                   vm: 1.0,
@@ -5103,85 +5072,73 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         const parsed = parseRaw(text);
         const pf = parsed.buses.size > 0 ? solvePowerFlow(parsed) : undefined;
         return buildPsseDiagram(parsed as any, pf as any);
-      });
-    }
-
-    if (plugin?.id === "relap5" || uri.endsWith(".r5") || uri.endsWith(".i") || uri.endsWith(".relap5.inp")) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      relap5: async (text) => {
         const { parseRelap5 } = await import("@modelscript/relap5");
         const { buildRelap5Diagram } = await import("@modelscript/diagram/relap5-diagram-builder");
         return buildRelap5Diagram(parseRelap5(text) as any);
-      });
-    }
-
-    if (plugin?.id === "sbml" || uri.endsWith(".sbml") || uri.endsWith(".sbml.xml")) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      sbml: async (text) => {
         const { parseSbml } = await import("@modelscript/sbml");
         const { buildSbmlDiagram } = await import("@modelscript/diagram/sbml-diagram-builder");
         const doc = parseSbml(text) as any;
         return buildSbmlDiagram(doc.model ?? doc);
-      });
-    }
-
-    if (plugin?.id === "touchstone" || /\.(s\d+p|ts)$/i.test(uri)) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      touchstone: async (text) => {
         const { parseTouchstone } = await import("@modelscript/touchstone");
         const { buildTouchstoneDiagram } = await import("@modelscript/diagram/touchstone-diagram-builder");
         const doc = parseTouchstone(text) as any;
         return buildTouchstoneDiagram({ portCount: doc.numPorts ?? doc.portCount ?? 2, ...doc });
-      });
-    }
-
-    if (plugin?.id === "easy5" || /\.(ezmf|ez5|ezm|ezd|eas)$/i.test(uri)) {
-      return createDomainBuilderBackend(async (text) => {
-        const { parseEasy5, buildEasy5DiagramData } = await import("@modelscript/easy5");
-        return buildEasy5DiagramData(parseEasy5(text));
-      });
-    }
-
-    if (plugin?.id === "rocets" || /\.(roc|deck)$/i.test(uri)) {
-      return createDomainBuilderBackend(async (text) => {
-        const { parseRocetsDeck, buildRocetsDiagramData } = await import("@modelscript/rocets");
-        return buildRocetsDiagramData(parseRocetsDeck(text));
-      });
-    }
-
-    if (plugin?.id === "gtsuite" || /\.(gtm|gtd|gtx|gt)$/i.test(uri)) {
-      return createDomainBuilderBackend(async (text, params) => {
+      },
+      easy5: async (text) => {
+        const { parseEasy5 } = await import("@modelscript/easy5");
+        const { buildEasy5Diagram } = await import("@modelscript/diagram/easy5-diagram-builder");
+        return buildEasy5Diagram(parseEasy5(text));
+      },
+      rocets: async (text) => {
+        const { parseRocetsDeck } = await import("@modelscript/rocets");
+        const { buildRocetsDiagram } = await import("@modelscript/diagram/rocets-diagram-builder");
+        return buildRocetsDiagram(parseRocetsDeck(text));
+      },
+      gtsuite: async (text, params) => {
         const { parseGtmModel, buildGtSuiteDiagramData } = await import("@modelscript/gtsuite");
         return buildGtSuiteDiagramData(parseGtmModel(text, params.uri));
-      });
-    }
-
-    if (plugin?.id === "ssp" || /\.(ssd|ssp|ssv)$/i.test(uri)) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      ssp: async (text) => {
         const { parseSsd, buildSspDiagramData } = (await import("@modelscript/ssp")) as any;
         return typeof buildSspDiagramData === "function" ? buildSspDiagramData(parseSsd(text)) : null;
-      });
-    }
-
-    if (plugin?.id === "autosar" || /\.arxml$/i.test(uri)) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      autosar: async (text) => {
         const { parseArxml } = await import("@modelscript/autosar");
         const { buildAutosarDiagram } = await import("@modelscript/diagram/autosar-diagram-builder");
         return buildAutosarDiagram(parseArxml(text) as never);
-      });
-    }
-
-    if (plugin?.id === "verilog-a" || /\.(va|vams)$/i.test(uri)) {
-      return createDomainBuilderBackend(async (text) => {
+      },
+      "verilog-a": async (text) => {
         const { parseVerilogA } = await import("@modelscript/verilog-a");
         const { buildVerilogADiagram } = await import("@modelscript/diagram/verilog-a-diagram-builder");
         return buildVerilogADiagram(parseVerilogA(text) as never);
-      });
-    }
-
-    if (plugin?.id === "plcopen" || /\.(plcopen|st|iec|pou)$/i.test(uri)) {
-      return createDomainBuilderBackend(async (text, params) => {
+      },
+      plcopen: async (text, params) => {
         const { parsePlcopen } = await import("@modelscript/plcopen");
         const { buildPlcopenDiagram } = await import("@modelscript/diagram/plcopen-diagram-builder");
         return buildPlcopenDiagram(parsePlcopen(text, params.uri) as never).diagram;
-      });
+      },
+    };
+
+    const pluginId = plugin?.id?.toLowerCase();
+    if (pluginId) {
+      if ((backends as Record<string, unknown>)[pluginId]) {
+        return (backends as Record<string, unknown>)[pluginId] as DiagramBackend;
+      }
+      const builder = DOMAIN_BUILDERS[pluginId];
+      if (builder) {
+        let cached = domainBackendCache.get(pluginId);
+        if (!cached) {
+          cached = createDomainBuilderBackend(builder, pluginId);
+          domainBackendCache.set(pluginId, cached);
+        }
+        return cached;
+      }
     }
 
     return backends.generic ?? backends.modelica ?? (backends.sysml2 as any);

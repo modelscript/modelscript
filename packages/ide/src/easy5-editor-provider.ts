@@ -171,6 +171,7 @@ export class Easy5EditorProvider extends BaseCustomEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EASY5 Model Editor</title>
   <style>
@@ -616,6 +617,16 @@ export class Easy5EditorProvider extends BaseCustomEditorProvider {
   <script>
     const vscode = acquireVsCodeApi();
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
     // Zoom state
     let zoomLevel = 1.0;
     const svgContainer = document.getElementById("svg-container");
@@ -755,15 +766,15 @@ export class Easy5EditorProvider extends BaseCustomEditorProvider {
             item.className = "diag-item";
             const tagClass = d.severity === "error" ? "tag-unstable" : "tag-warn";
             item.innerHTML =
-              '<span class="tag ' + tagClass + '">' + (d.code || "M7000") + '</span>' +
-              '<span><strong>Line ' + (d.line || 1) + ':</strong> ' + d.message + '</span>';
+              '<span class="tag ' + tagClass + '">' + escapeHtml(d.code || "M7000") + '</span>' +
+              '<span><strong>Line ' + escapeHtml(d.line || 1) + ':</strong> ' + escapeHtml(d.message) + '</span>';
             diagList.appendChild(item);
           });
         }
 
         // Matrices
         if (msg.sys) {
-          const fmtMat = (M) => (M || []).map((r) => "[ " + r.map((v) => v.toFixed(4).padStart(8)).join(" ") + " ]").join("\\n");
+          const fmtMat = (M) => (M || []).map((r) => "[ " + r.map((v) => v.toFixed(4).padStart(8)).join(" ") + " ]").join("\n");
           document.getElementById("matrix-a").textContent = fmtMat(msg.sys.A);
           document.getElementById("matrix-b").textContent = fmtMat(msg.sys.B);
           document.getElementById("matrix-c").textContent = fmtMat(msg.sys.C);
@@ -809,11 +820,11 @@ export class Easy5EditorProvider extends BaseCustomEditorProvider {
           const pStr = Object.entries(c.parameters || {}).map(([k, v]) => k + '=' + JSON.stringify(v)).join(", ") || "-";
           const sStr = Object.entries(c.initialStates || {}).map(([k, v]) => k + '=' + v).join(", ") || "-";
           tr.innerHTML =
-            '<td><strong>' + c.id + '</strong></td>' +
-            '<td><span class="tag tag-stable">' + c.type + '</span></td>' +
-            '<td>' + (c.title || "-") + '</td>' +
-            '<td style="font-family:monospace; font-size:11px;">' + pStr + '</td>' +
-            '<td style="font-family:monospace; font-size:11px;">' + sStr + '</td>';
+            '<td><strong>' + escapeHtml(c.id) + '</strong></td>' +
+            '<td><span class="tag tag-stable">' + escapeHtml(c.type) + '</span></td>' +
+            '<td>' + escapeHtml(c.title || "-") + '</td>' +
+            '<td style="font-family:monospace; font-size:11px;">' + escapeHtml(pStr) + '</td>' +
+            '<td style="font-family:monospace; font-size:11px;">' + escapeHtml(sStr) + '</td>';
           compTbody.appendChild(tr);
         });
 
@@ -823,11 +834,11 @@ export class Easy5EditorProvider extends BaseCustomEditorProvider {
         (msg.connections || []).forEach((c) => {
           const tr = document.createElement("tr");
           tr.innerHTML =
-            '<td><strong>' + c.fromComponent + '</strong></td>' +
-            '<td>' + c.fromPort + '</td>' +
+            '<td><strong>' + escapeHtml(c.fromComponent) + '</strong></td>' +
+            '<td>' + escapeHtml(c.fromPort) + '</td>' +
             '<td style="color:var(--text-dim); text-align:center;">➔</td>' +
-            '<td><strong>' + c.toComponent + '</strong></td>' +
-            '<td>' + c.toPort + '</td>';
+            '<td><strong>' + escapeHtml(c.toComponent) + '</strong></td>' +
+            '<td>' + escapeHtml(c.toPort) + '</td>';
           connTbody.appendChild(tr);
         });
 

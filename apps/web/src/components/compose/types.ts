@@ -33,6 +33,8 @@ export interface ComposeBoxProps {
   setNotebookDialect?: ((val: string) => void) | undefined;
   notebookCompanionRepo?: string | undefined;
   setNotebookCompanionRepo?: ((val: string) => void) | undefined;
+  notebookTopics?: string[] | undefined;
+  setNotebookTopics?: ((val: string[]) => void) | undefined;
   notebookCells?: NotebookCell[] | undefined;
   setNotebookCells?: ((cells: NotebookCell[]) => void) | undefined;
   onCloseModal?: (() => void) | undefined;

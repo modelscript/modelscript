@@ -8,7 +8,7 @@ import {
   PlusIcon,
   SearchIcon,
 } from "@primer/octicons-react";
-import { Avatar, Button, Dialog, Flash, Heading, Label, Spinner, Text, TextInput, Textarea } from "@primer/react";
+import { Avatar, Button, Dialog, Flash, Heading, Label, Text, TextInput, Textarea } from "@primer/react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useEffect, useMemo, useState } from "react";
@@ -16,6 +16,7 @@ import type { GitlabIssue } from "../../../api";
 import { addGitlabIssueComment, createGitlabIssue, getGitlabIssues, updateGitlabIssueState } from "../../../api";
 import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
+import Spinner from "../../../components/Spinner";
 import { useToast } from "../../../components/ToastContext";
 import { getAvatarUrl } from "../../../util/avatar";
 import { CommitRow, MarkdownBody, StyledBox } from "../styles";

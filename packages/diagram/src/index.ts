@@ -418,6 +418,9 @@ let lastRenderedModule: string | null = null;
 
 const propertyCache = new Map<string, unknown>();
 
+/** Whether the currently rendered diagram is read-only (disables canvas node/edge mutations) */
+let isCurrentDiagramReadOnly = false;
+
 export { translateConnectedEdgeStubs };
 
 /**
@@ -605,16 +608,19 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       if (isEphemeralDiagramNode(cellView.cell.id)) {
         return false;
       }
+      if (isCurrentDiagramReadOnly) {
+        return false;
+      }
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
     },
     connecting: {
       snap: { radius: 32 },
       allowBlank: false,
-      allowMulti: () => true,
+      allowMulti: () => !isCurrentDiagramReadOnly,
       allowLoop: false,
-      allowNode: currentOptions?.allowNodeConnection ?? true,
+      allowNode: () => !isCurrentDiagramReadOnly && (currentOptions?.allowNodeConnection ?? true),
       allowEdge: false,
-      allowPort: true,
+      allowPort: () => !isCurrentDiagramReadOnly,
       highlight: true,
       highlighting: {
         magnetAvailable: {
@@ -1978,10 +1984,12 @@ export interface RenderDiagramInput {
     | {
         breadcrumbs?: { id: string; label: string }[] | undefined;
         currentModule?: string | undefined;
+        readOnly?: boolean | undefined;
       }
     | undefined;
   className?: string | undefined;
   isLoading?: boolean | undefined;
+  readOnly?: boolean | undefined;
 }
 
 interface RenderNodeData {
@@ -2082,6 +2090,8 @@ export function renderDiagram(data: RenderDiagramInput, isDark: boolean) {
 }
 
 function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boolean) {
+  isCurrentDiagramReadOnly = Boolean(data.readOnly || data.metadata?.readOnly);
+
   // Clean up any remaining drop placeholder or placement ghost when real diagram data arrives.
   // Retain the drop placeholder if incoming data does not yet contain the newly dropped component
   // (e.g. while language server is still indexing), preventing any visual gap where the component disappears.
@@ -3666,6 +3676,7 @@ export * from "./autosar-diagram-builder.js";
 export * from "./collab-manager.js";
 export * from "./collab-overlay.js";
 export * from "./color-inversion.js";
+export * from "./easy5-diagram-builder.js";
 export * from "./eclipse-diagram-builder.js";
 export * from "./fault-tree.js";
 export * from "./glyphs.js";
@@ -3691,6 +3702,7 @@ export type { ReactiveAnimationBinding, X6Markup } from "./protocol.js";
 export * from "./pscad-diagram-builder.js";
 export * from "./psse-diagram-builder.js";
 export * from "./relap5-diagram-builder.js";
+export * from "./rocets-diagram-builder.js";
 export * from "./sbml-diagram-builder.js";
 export * from "./sima-diagram-builder.js";
 export * from "./simulink-diagram-builder.js";

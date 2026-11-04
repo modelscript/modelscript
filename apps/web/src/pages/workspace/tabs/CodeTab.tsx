@@ -51,6 +51,7 @@ import { useToast } from "../../../components/ToastContext";
 import { useFeatureFlag, useLanguageEnabled } from "../../../FeatureFlagContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
+import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../../util/monaco-theme";
 import CommitInfoBar from "../components/CommitInfoBar";
 import RepoAboutSidebar from "../components/RepoAboutSidebar";
 import { FileRow, MarkdownBody, StyledBox } from "../styles";
@@ -976,7 +977,8 @@ git push -u origin ${defaultBranch}`}
                       <Editor
                         height="100%"
                         language={getLanguageFromFileName(currentFile)}
-                        theme={theme === "dark" ? "vs-dark" : "light"}
+                        theme={getMonacoThemeName(theme)}
+                        beforeMount={ensureMonacoThemesDefined}
                         value={editBuffer}
                         onChange={(val) => setEditBuffer(val ?? "")}
                         options={{
@@ -1019,7 +1021,8 @@ git push -u origin ${defaultBranch}`}
                     <Editor
                       height="100%"
                       language={getLanguageFromFileName(currentFile)}
-                      theme={theme === "dark" ? "vs-dark" : "light"}
+                      theme={getMonacoThemeName(theme)}
+                      beforeMount={ensureMonacoThemesDefined}
                       value={fileContent}
                       options={{
                         readOnly: true,
@@ -1289,7 +1292,8 @@ git push -u origin ${defaultBranch}`}
                 <Editor
                   height="100%"
                   language={getLanguageFromFileName(newFileName || "model.mo")}
-                  theme={theme === "dark" ? "vs-dark" : "light"}
+                  theme={getMonacoThemeName(theme)}
+                  beforeMount={ensureMonacoThemesDefined}
                   value={newFileContent}
                   onChange={(val) => setNewFileContent(val ?? "")}
                   options={{

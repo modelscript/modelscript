@@ -17,4 +17,3 @@ export * from "./useComposeAutocomplete";
 export * from "./useComposeNotebookState";
 export * from "./useComposeSubmit";
 export * from "./vega-wizard-templates";
-export * from "./VegaWizardModal";

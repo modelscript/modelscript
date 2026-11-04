@@ -3,8 +3,9 @@
 import { CheckCircleIcon, EyeClosedIcon, EyeIcon, KeyIcon, LockIcon, XCircleIcon } from "@primer/octicons-react";
 import React, { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import styled, { keyframes } from "styled-components";
+import styled from "styled-components";
 import { requestPasswordReset, resetPassword } from "../api";
+import Spinner from "../components/Spinner";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { usePageTitle } from "../util/title";
 import {
@@ -29,11 +30,6 @@ import {
   Title,
 } from "./login/styles";
 
-const spin = keyframes`
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-`;
-
 const SuccessCard = styled.div`
   display: flex;
   flex-direction: column;
@@ -54,15 +50,6 @@ const SuccessBadge = styled.div`
   border-radius: 9999px;
   font-size: 14px;
   font-weight: 600;
-`;
-
-const InlineSpinner = styled.div`
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #ffffff;
-  border-radius: 50%;
-  animation: ${spin} 0.8s linear infinite;
 `;
 
 export default function ResetPasswordPage() {
@@ -239,7 +226,7 @@ export default function ResetPasswordPage() {
             <Button type="submit" disabled={loading || !newPassword || !confirmPassword}>
               {loading ? (
                 <>
-                  <InlineSpinner /> Resetting…
+                  <Spinner size="small" fill="#ffffff" /> Resetting…
                 </>
               ) : (
                 <>
@@ -297,7 +284,7 @@ export default function ResetPasswordPage() {
                 <Button type="submit" disabled={requestLoading || !requestEmail}>
                   {requestLoading ? (
                     <>
-                      <InlineSpinner /> Sending link…
+                      <Spinner size="small" fill="#ffffff" /> Sending link…
                     </>
                   ) : (
                     "Send Reset Link"

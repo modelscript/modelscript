@@ -685,4 +685,115 @@ end CyclicA;`;
       assert.strictEqual(hoverUnres, null);
     },
   );
+
+  await t.test(
+    "Scope Context Filtering: Undeclared variable in equation does not match unrelated nested library symbols",
+    () => {
+      const testUri = "file:///workspace/test.mo";
+      const testText = `class A
+
+  Integer x;
+
+equation
+  x1 = 1;
+
+end A;`;
+
+      const testSymbols = new Map<number, any>([
+        // class A
+        [
+          1,
+          {
+            id: 1,
+            kind: "Class",
+            name: "A",
+            ruleName: "class_definition",
+            parentId: null,
+            resourceId: testUri,
+            startOffset: 0,
+            endOffset: testText.length,
+          },
+        ],
+        // Integer x;
+        [
+          2,
+          {
+            id: 2,
+            kind: "Component",
+            name: "x",
+            ruleName: "component_declaration",
+            parentId: 1,
+            resourceId: testUri,
+            startOffset: testText.indexOf("Integer x"),
+            endOffset: testText.indexOf("Integer x") + "Integer x;".length,
+            metadata: { typeSpecifier: "Integer" },
+          },
+        ],
+        // Unrelated MSL function: Modelica.Math.Vectors.interpolate
+        [
+          100,
+          {
+            id: 100,
+            kind: "Class",
+            name: "interpolate",
+            ruleName: "class_definition",
+            parentId: 99,
+            resourceId: "file:///modelscript_registry/Modelica/Math/Vectors.mo",
+            startOffset: 0,
+            endOffset: 200,
+            metadata: { classPrefixes: "function" },
+          },
+        ],
+        // input Real x1 inside interpolate
+        [
+          101,
+          {
+            id: 101,
+            kind: "Component",
+            name: "x1",
+            ruleName: "component_declaration",
+            parentId: 100,
+            resourceId: "file:///modelscript_registry/Modelica/Math/Vectors.mo",
+            startOffset: 10,
+            endOffset: 50,
+            metadata: { typeSpecifier: "Real" },
+          },
+        ],
+      ]);
+
+      const testIndex: any = {
+        symbols: testSymbols,
+        byName: new Map([
+          ["A", [1]],
+          ["x", [2]],
+          ["interpolate", [100]],
+          ["x1", [101]],
+        ]),
+        childrenOf: new Map<number | null, number[]>([
+          [null, [1]],
+          [1, [2]],
+          [100, [101]],
+        ]),
+        symbolsByResource: new Map([[testUri, [1, 2]]]),
+      };
+
+      const testEngine: any = {
+        index: testIndex,
+        cstText: (s: number, e: number) => testText.slice(s, Math.min(e, testText.length)),
+      };
+
+      const testBridge = new LSPBridge(testIndex, testEngine, new PositionIndex(testText), testUri);
+
+      // 1. Hover on declared variable `x` should succeed
+      const declXOffset = testText.indexOf("Integer x") + "Integer ".length;
+      const hoverX = testBridge.hover(declXOffset, testText);
+      assert.ok(hoverX, "Expected hover for declared variable 'x'");
+      assert.ok(hoverX.contents.includes("x"));
+
+      // 2. Hover on undeclared variable `x1` in equation must return null (not match x1 from interpolate)
+      const x1Offset = testText.indexOf("x1") + 1;
+      const hoverX1 = testBridge.hover(x1Offset, testText);
+      assert.strictEqual(hoverX1, null, "Undeclared variable 'x1' must return null, not match MSL interpolate.x1");
+    },
+  );
 });

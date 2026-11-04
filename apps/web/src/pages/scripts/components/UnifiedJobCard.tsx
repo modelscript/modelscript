@@ -45,13 +45,13 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
       style={{
         padding: "16px 20px",
         borderRadius: "12px",
-        backgroundColor: isRunning ? "rgba(6, 182, 212, 0.05)" : "var(--color-bg-card, rgba(255, 255, 255, 0.025))",
+        backgroundColor: isRunning ? "var(--domain-core-bg)" : "var(--color-bg-card)",
         border: `1px solid ${
           isRunning
-            ? "rgba(6, 182, 212, 0.35)"
+            ? "var(--domain-core-border)"
             : isFailed
-              ? "rgba(239, 68, 68, 0.25)"
-              : "var(--color-border-glass, rgba(255, 255, 255, 0.08))"
+              ? "var(--ms-status-fail-border)"
+              : "var(--color-card-border)"
         }`,
         cursor: "pointer",
         display: "flex",
@@ -60,15 +60,15 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
         transition: "all 0.15s ease",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = isRunning ? "var(--color-accent-cyan)" : "rgba(255, 255, 255, 0.25)";
+        e.currentTarget.style.borderColor = isRunning ? "var(--ms-brand-hover)" : "var(--color-card-border-hover)";
         e.currentTarget.style.transform = "translateY(-1px)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = isRunning
-          ? "rgba(6, 182, 212, 0.35)"
+          ? "var(--domain-core-border)"
           : isFailed
-            ? "rgba(239, 68, 68, 0.25)"
-            : "var(--color-border-glass, rgba(255, 255, 255, 0.08))";
+            ? "var(--ms-status-fail-border)"
+            : "var(--color-card-border)";
         e.currentTarget.style.transform = "none";
       }}
     >
@@ -79,16 +79,16 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
             <PulseIcon
               size={18}
               style={{
-                color: "var(--color-accent-cyan)",
+                color: "var(--ms-brand)",
                 animation: "ms-pulse 1.5s infinite",
               }}
             />
           ) : isDone ? (
-            <CheckCircleFillIcon size={18} fill="var(--color-status-verified, #10b981)" />
+            <CheckCircleFillIcon size={18} fill="var(--ms-status-pass-fg)" />
           ) : isFailed ? (
-            <XCircleFillIcon size={18} fill="#ef4444" />
+            <XCircleFillIcon size={18} fill="var(--ms-status-fail-fg)" />
           ) : (
-            <ClockIcon size={18} style={{ color: "#f59e0b" }} />
+            <ClockIcon size={18} style={{ color: "var(--ms-status-warn-fg)" }} />
           )}
 
           <div style={{ minWidth: 0 }}>
@@ -97,7 +97,7 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
                 style={{
                   fontWeight: 700,
                   fontSize: "15px",
-                  color: "var(--color-text-primary, #ffffff)",
+                  color: "var(--color-text-primary)",
                 }}
               >
                 {job.name}
@@ -106,8 +106,8 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
                 style={{
                   fontSize: "11px",
                   fontFamily: "var(--font-mono, monospace)",
-                  backgroundColor: "rgba(255, 255, 255, 0.08)",
-                  color: "var(--color-text-muted, #8b949e)",
+                  backgroundColor: "var(--ms-surface-hover)",
+                  color: "var(--color-text-muted)",
                   padding: "1px 6px",
                   borderRadius: "4px",
                 }}

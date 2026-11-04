@@ -2,15 +2,18 @@
 
 /* eslint-disable react-hooks/exhaustive-deps */
 import { CodeIcon, GitBranchIcon, PlusIcon, RepoForkedIcon, RepoIcon, StarIcon } from "@primer/octicons-react";
-import { Button, Dialog, Heading, Label, Spinner, Text, TextInput } from "@primer/react";
+import { Button, Dialog, Heading, Label, Text, TextInput } from "@primer/react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { createRepo, getRepos } from "../api";
 import Box from "./Box";
+import Spinner from "./Spinner";
 
 export default function ProfileRepos({ username, isOwnProfile }: { username: string; isOwnProfile: boolean }) {
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const { token } = useAuth();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
@@ -24,6 +27,7 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
   const [linkError, setLinkError] = useState<string | null>(null);
 
   const fetchRepos = async () => {
+    if (!hasRepos) return;
     try {
       const data = await getRepos(isOwnProfile ? undefined : username);
       setRepos(data.repos || []);
@@ -36,8 +40,16 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
   };
 
   useEffect(() => {
+    if (!hasRepos) {
+      setLoading(false);
+      return;
+    }
     fetchRepos();
-  }, [username, isOwnProfile, token]);
+  }, [username, isOwnProfile, token, hasRepos]);
+
+  if (!hasRepos) {
+    return null;
+  }
 
   const handleAddRepo = async () => {
     if (!repoUrl) return;

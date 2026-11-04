@@ -2,10 +2,10 @@
 
 import { globalContextPool } from "@modelscript/embed";
 import { PlayIcon } from "@primer/octicons-react";
-import { Spinner } from "@primer/react";
 import React, { Suspense, useEffect, useRef, useState } from "react";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import ArtifactPlaceholder from "./ArtifactPlaceholder";
 import { captureCompositeCanvasDataUrl } from "./AutoThumbnailCapture";
 

@@ -25,6 +25,7 @@ export interface ProductTourStep {
 export interface ProductTourFlagConfig {
   package_browser?: boolean | undefined;
   git_repositories?: boolean | undefined;
+  repositories?: boolean | undefined;
   heavy_vscode_ide?: boolean | undefined;
   cae_cloud_solver?: boolean | undefined;
   activitypub_federation?: boolean | undefined;
@@ -32,7 +33,7 @@ export interface ProductTourFlagConfig {
 
 export function getProductTourSteps(flags: ProductTourFlagConfig = DEFAULT_FRONTEND_FLAGS): ProductTourStep[] {
   const hasPackages = flags.package_browser !== false;
-  const hasRepos = flags.git_repositories !== false;
+  const hasRepos = Boolean(flags.git_repositories || flags.repositories);
   const hasIde = flags.heavy_vscode_ide !== false;
   const hasCloudSolver = Boolean(flags.cae_cloud_solver);
   const hasFederation = Boolean(flags.activitypub_federation);
@@ -336,7 +337,7 @@ export const ProductTourOverlay: React.FC<ProductTourOverlayProps> = ({
   const navigate = useNavigate();
 
   const hasPackages = useFeatureFlag("package_browser");
-  const hasRepos = useFeatureFlag("git_repositories");
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   const hasFederation = useFeatureFlag("activitypub_federation");

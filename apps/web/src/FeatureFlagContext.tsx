@@ -103,7 +103,10 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   modelica_simulation: true,
   morsel_playground: true,
   package_browser: true,
-  git_repositories: true,
+  git_repositories: false,
+  repositories: false,
+  references: false,
+  scientific_references: false,
   community_social: true,
   cad_step_viewer: true,
   cae_cloud_solver: false,
@@ -126,15 +129,18 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   ai_polish: false,
   feeds_page: false,
   rss_feeds: false,
+  topic_dismissal: false,
+  trending_topic_dismissal: false,
   ...DEFAULT_LANGUAGE_FLAGS,
   lang_modelscript_msx: false,
 };
 
-const FLAGS_CACHE_KEY = "modelscript:cached-feature-flags";
+const FLAGS_CACHE_KEY = "modelscript:cached-feature-flags-v2";
 
 function readCachedFlags(): FeatureFlags {
   if (typeof window === "undefined" || !window.localStorage) return DEFAULT_FRONTEND_FLAGS;
   try {
+    localStorage.removeItem("modelscript:cached-feature-flags");
     const raw = localStorage.getItem(FLAGS_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
@@ -254,19 +260,71 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
       if (key in overrides) {
         return overrides[key]!;
       }
+      if (key === "repositories" && "git_repositories" in overrides) {
+        return overrides["git_repositories"]!;
+      }
+      if (key === "git_repositories" && "repositories" in overrides) {
+        return overrides["repositories"]!;
+      }
+      if (key === "scientific_references" && "references" in overrides) {
+        return overrides["references"]!;
+      }
+      if (key === "references" && "scientific_references" in overrides) {
+        return overrides["scientific_references"]!;
+      }
       if (key === "feeds_page" && "rss_feeds" in overrides) {
         return overrides["rss_feeds"]!;
       }
       if (key === "rss_feeds" && "feeds_page" in overrides) {
         return overrides["feeds_page"]!;
       }
+      if (key === "topic_dismissal" && "trending_topic_dismissal" in overrides) {
+        return overrides["trending_topic_dismissal"]!;
+      }
+      if (key === "trending_topic_dismissal" && "topic_dismissal" in overrides) {
+        return overrides["topic_dismissal"]!;
+      }
 
       // 3. Fall back to evaluated flags or default
+      if (key === "repositories" && flags["repositories"] === undefined && flags["git_repositories"] !== undefined) {
+        return flags["git_repositories"]!;
+      }
+      if (
+        key === "git_repositories" &&
+        flags["git_repositories"] === undefined &&
+        flags["repositories"] !== undefined
+      ) {
+        return flags["repositories"]!;
+      }
+      if (
+        key === "scientific_references" &&
+        flags["scientific_references"] === undefined &&
+        flags["references"] !== undefined
+      ) {
+        return flags["references"]!;
+      }
+      if (key === "references" && flags["references"] === undefined && flags["scientific_references"] !== undefined) {
+        return flags["scientific_references"]!;
+      }
       if (key === "feeds_page" && flags["feeds_page"] === undefined && flags["rss_feeds"] !== undefined) {
         return flags["rss_feeds"]!;
       }
       if (key === "rss_feeds" && flags["rss_feeds"] === undefined && flags["feeds_page"] !== undefined) {
         return flags["feeds_page"]!;
+      }
+      if (
+        key === "topic_dismissal" &&
+        flags["topic_dismissal"] === undefined &&
+        flags["trending_topic_dismissal"] !== undefined
+      ) {
+        return flags["trending_topic_dismissal"]!;
+      }
+      if (
+        key === "trending_topic_dismissal" &&
+        flags["trending_topic_dismissal"] === undefined &&
+        flags["topic_dismissal"] !== undefined
+      ) {
+        return flags["topic_dismissal"]!;
       }
       return flags[key] ?? DEFAULT_FRONTEND_FLAGS[key] ?? false;
     },
@@ -290,12 +348,18 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
   );
 }
 
-export function useFeatureFlag(key: string): boolean {
+export function useFeatureFlag(key: string | readonly string[]): boolean {
   const ctx = useContext(FeatureFlagContext);
-  if (!ctx) {
-    return DEFAULT_FRONTEND_FLAGS[key] ?? false;
+  if (Array.isArray(key)) {
+    if (!ctx) {
+      return key.some((k) => DEFAULT_FRONTEND_FLAGS[k] ?? false);
+    }
+    return key.some((k) => ctx.isEnabled(k));
   }
-  return ctx.isEnabled(key);
+  if (!ctx) {
+    return DEFAULT_FRONTEND_FLAGS[key as string] ?? false;
+  }
+  return ctx.isEnabled(key as string);
 }
 
 export function useFeatureFlags(): FeatureFlagContextType {

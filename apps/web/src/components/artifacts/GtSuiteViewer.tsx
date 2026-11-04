@@ -2,7 +2,7 @@
 
 import { renderSimulinkSvg, type SimulinkBlockLike, type SimulinkLineLike } from "@modelscript/diagram";
 import { FlameIcon, PlayIcon } from "@primer/octicons-react";
-import { Button, SegmentedControl, Spinner } from "@primer/react";
+import { Button, SegmentedControl } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -10,6 +10,7 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 import {
   highlightPolyglotLine,
   InteractiveSvgStage,

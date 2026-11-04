@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { GraphIcon, PencilIcon, XIcon } from "@primer/octicons-react";
+import { BeakerIcon, GearIcon, GraphIcon, PencilIcon, XIcon } from "@primer/octicons-react";
 import { IconButton } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getArtifactView } from "../../api";
 import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../util/editor-routing";
 import { isTabularDataArtifact } from "../../util/tabular-data-parser";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
-import { VegaWizardModal } from "./VegaWizardModal";
+import {
+  type AttachArtifactSummary,
+  type AttachEditableView,
+  findEditProfile,
+  getAttachProfile,
+  toEditableView,
+} from "./attach";
 
 export interface ComposeAttachedArtifactProps {
   artifactId: number | null;
@@ -20,7 +26,20 @@ export interface ComposeAttachedArtifactProps {
   onReplaceArtifact?:
     | ((newArtifactId: number, title?: string, createdView?: Record<string, unknown>) => void)
     | undefined;
+  /**
+   * Open the chart wizard for this (tabular) artifact. `onDone` receives the new chart artifact. Returns false when
+   * the attach flow is busy. Provide it to enable the "Visualize Data" actions.
+   */
+  onVisualize?:
+    | ((onDone: (newArtifactId: number, title: string, createdView: Record<string, unknown>) => void) => boolean)
+    | undefined;
+  /** Reopen the attach wizard on this artifact. Offered only when its language has customization options. */
+  onCustomize?: ((view: AttachEditableView) => void) | undefined;
+  /** Attach a QIF inspection report that references this (STEP) artifact as its 3D model. */
+  onAddInspection?: ((file: File, linked: AttachArtifactSummary) => void) | undefined;
 }
+
+const STEP_MODEL_TYPES = new Set(["cad-step", "cad_step", "step", "stp"]);
 
 export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = ({
   artifactId,
@@ -30,12 +49,16 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
   aiDrafting,
   onArtifactViewLoaded,
   onReplaceArtifact,
+  onVisualize,
+  onCustomize,
+  onAddInspection,
 }) => {
   const navigate = useNavigate();
   const [artifactView, setArtifactView] = useState<Record<string, unknown> | null>(null);
   const [isMultiFile, setIsMultiFile] = useState(false);
-  const [showVegaWizard, setShowVegaWizard] = useState(false);
   const [dismissedVizPromptId, setDismissedVizPromptId] = useState<number | null>(null);
+  const [dismissedInspectionPromptId, setDismissedInspectionPromptId] = useState<number | null>(null);
+  const inspectionInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (artifactId === null) {
@@ -71,13 +94,29 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
 
   const viewType = String(artifactView?.view_type || artifactView?.artifact_type || "").toLowerCase();
   const isVegaPlot = viewType === "vega" || viewType === "vega-plot";
-  const canVisualizeTabular = isTabularDataArtifact(artifactView);
+  const canVisualizeTabular = isTabularDataArtifact(artifactView) && Boolean(onVisualize);
+  const openVisualizer = () =>
+    onVisualize?.((newArtifactId, title, createdView) => {
+      setArtifactView(createdView);
+      onArtifactViewLoaded?.(createdView);
+      onReplaceArtifact?.(newArtifactId, title, createdView);
+    });
   const showQuickVizBanner = canVisualizeTabular && !isVegaPlot && dismissedVizPromptId !== artifactId;
 
   const numericEditPostId =
     editPostId !== null && editPostId !== undefined && !Number.isNaN(Number(editPostId))
       ? Number(editPostId)
       : undefined;
+
+  const isStepModel = STEP_MODEL_TYPES.has(viewType);
+  const showInspectionBanner =
+    Boolean(onAddInspection) &&
+    isStepModel &&
+    Boolean(getAttachProfile("qif")?.withLinkedArtifact) &&
+    dismissedInspectionPromptId !== artifactId;
+
+  const editableView = onCustomize && artifactView ? toEditableView(artifactView) : undefined;
+  const canCustomize = Boolean(editableView && findEditProfile(editableView));
 
   const targetUrl = buildEditorUrlForArtifact({
     artifactId,
@@ -96,6 +135,106 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
         marginBottom: "8px",
       }}
     >
+      {showInspectionBanner && (
+        <div
+          data-testid="step-add-inspection-prompt"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "10px",
+            flexWrap: "wrap",
+            padding: "9px 12px",
+            marginBottom: "8px",
+            borderRadius: "10px",
+            background: "linear-gradient(90deg, rgba(6, 182, 212, 0.14) 0%, rgba(34, 197, 94, 0.08) 100%)",
+            border: "1px solid rgba(6, 182, 212, 0.38)",
+            fontSize: "12.5px",
+            color: "var(--color-fg-default, #e6edf3)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "24px",
+                height: "24px",
+                borderRadius: "6px",
+                background: "rgba(6, 182, 212, 0.22)",
+                color: "#22d3ee",
+              }}
+            >
+              <BeakerIcon size={13} />
+            </span>
+            <span>
+              <strong>3D model attached</strong> — Add inspection results (QIF) measured on this part?
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <button
+              type="button"
+              data-testid="step-add-inspection-btn"
+              onClick={() => inspectionInputRef.current?.click()}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "5px 11px",
+                borderRadius: "999px",
+                border: "1px solid rgba(6, 182, 212, 0.55)",
+                background: "rgba(6, 182, 212, 0.25)",
+                color: "#cffafe",
+                fontSize: "11.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              <BeakerIcon size={12} />
+              <span>Choose QIF file</span>
+            </button>
+            <button
+              type="button"
+              data-testid="step-dismiss-inspection-btn"
+              onClick={() => setDismissedInspectionPromptId(artifactId)}
+              style={{
+                padding: "4px 9px",
+                borderRadius: "999px",
+                border: "1px solid rgba(255, 255, 255, 0.14)",
+                background: "transparent",
+                color: "var(--color-fg-muted, #8b949e)",
+                fontSize: "11px",
+                cursor: "pointer",
+              }}
+            >
+              Not now
+            </button>
+            <input
+              ref={inspectionInputRef}
+              type="file"
+              accept=".qif,.xml"
+              aria-label="Choose QIF inspection report"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file || artifactId === null) return;
+                setDismissedInspectionPromptId(artifactId);
+                onAddInspection?.(file, {
+                  id: artifactId,
+                  title:
+                    typeof artifactView?.title === "string" && artifactView.title
+                      ? artifactView.title
+                      : `Artifact ${artifactId}`,
+                  viewType,
+                });
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {showQuickVizBanner && (
         <div
           data-testid="vega-quick-viz-prompt"
@@ -138,7 +277,7 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
             <button
               type="button"
               data-testid="open-vega-wizard-banner-btn"
-              onClick={() => setShowVegaWizard(true)}
+              onClick={openVisualizer}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -195,7 +334,7 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
               data-testid="open-vega-wizard-pill-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                setShowVegaWizard(true);
+                openVisualizer();
               }}
               style={{
                 display: "inline-flex",
@@ -246,6 +385,34 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
               <span>{aiDrafting ? "Drafting..." : "Draft Post"}</span>
             </button>
           )}
+          {canCustomize && editableView && (
+            <button
+              type="button"
+              data-testid="customize-attachment-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCustomize?.(editableView);
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                backgroundColor: "rgba(0, 0, 0, 0.78)",
+                color: "var(--color-accent-cyan, #06b6d4)",
+                border: "1px solid rgba(6, 182, 212, 0.4)",
+                borderRadius: "999px",
+                padding: "5px 11px",
+                fontSize: "11.5px",
+                fontFamily: "var(--font-mono, monospace)",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+              title="Change how this attachment is shown (for example its 3D model)"
+            >
+              <GearIcon size={12} />
+              <span>Customize</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {
@@ -288,22 +455,6 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
           />
         </div>
       </div>
-
-      {showVegaWizard && (
-        <VegaWizardModal
-          isOpen={showVegaWizard}
-          onClose={() => setShowVegaWizard(false)}
-          artifactId={artifactId}
-          artifactView={artifactView}
-          onApplyVisualization={(newArtifactId, title, createdView) => {
-            if (createdView) {
-              setArtifactView(createdView);
-              onArtifactViewLoaded?.(createdView);
-            }
-            onReplaceArtifact?.(newArtifactId, title, createdView);
-          }}
-        />
-      )}
     </div>
   );
 };

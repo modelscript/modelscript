@@ -112,8 +112,8 @@ interface KeyboardShortcutsModalProps {
 const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ isOpen, onClose }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const hasCae = useFeatureFlag("cae_cloud_solver");
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
+  const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   useFocusTrap(modalRef, isOpen, { onEscape: onClose });
 
   const filteredShortcuts = React.useMemo(() => {
@@ -122,11 +122,14 @@ const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({ isOpen,
       return {
         ...category,
         items: category.items.filter(
-          (item) => (hasCae || !item.keys.includes("j")) && (hasFeeds || !item.keys.includes("f")),
+          (item) =>
+            (hasCae || !item.keys.includes("j")) &&
+            (hasFeeds || !item.keys.includes("f")) &&
+            (hasRepos || !item.keys.includes("r")),
         ),
       };
     });
-  }, [hasCae, hasFeeds]);
+  }, [hasCae, hasFeeds, hasRepos]);
 
   if (!isOpen) return null;
 

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { CheckIcon, CodeIcon, CopyIcon, GraphIcon, PlayIcon, StackIcon, WorkflowIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Text } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
+import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
+import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 const MonacoEditor = React.lazy(() => import("@monaco-editor/react"));
@@ -20,6 +23,7 @@ interface ModelicaCodeViewerProps {
 type CodeViewerTab = "code" | "diagram" | "simulate" | "3d" | "split";
 
 const Wrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
+  position: relative;
   width: 100%;
   height: ${(props) => (props.$isFullScreen ? "100%" : "360px")};
   background: var(--color-canvas-default);
@@ -85,6 +89,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
   };
 
   const codeLines = useMemo(() => code.split(/\r?\n/), [code]);
+  const hasFooter = useHasFooterSlot();
 
   const usesMorselRuntime =
     viewMode === "simulate" ||
@@ -103,116 +108,70 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
 
   return (
     <Wrapper $isFullScreen={isFullScreen}>
-      <Toolbar>
-        <Box display="flex" alignItems="center" gap={2}>
-          {!isFullScreen && (
-            <>
-              <CodeIcon size={16} fill="var(--color-accent-fg)" />
-              <Text style={{ fontWeight: "bold", fontSize: "13px", color: "var(--color-text-primary)" }}>{title}</Text>
-            </>
-          )}
-          <Box
-            display="flex"
-            bg="var(--color-canvas-default)"
-            borderRadius="6px"
-            p="2px"
-            border="1px solid var(--color-border-default)"
-            role="tablist"
-            aria-label="Modelica viewer mode"
-          >
-            <button
+      {hasFooter && !isFullScreen ? (
+        <>
+          <FooterTabs>
+            <CompactTabStrip
+              ariaLabel="Modelica viewer mode"
+              active={viewMode}
+              onChange={(id) => setViewMode(id as typeof viewMode)}
+              tabs={[
+                { id: "code", label: "Code", icon: <CodeIcon size={14} /> },
+                { id: "diagram", label: "Diagram", icon: <WorkflowIcon size={14} /> },
+                { id: "simulate", label: "Simulate", icon: <GraphIcon size={14} /> },
+                { id: "3d", label: "3D", icon: <StackIcon size={14} /> },
+              ]}
+            />
+          </FooterTabs>
+          <FloatingTools>
+            {viewMode === "diagram" && svgMarkup && !isInteractiveDiagram && (
+              <FloatingToolBtn
+                type="button"
+                title="Open interactive canvas"
+                onClick={() => setIsInteractiveDiagram(true)}
+              >
+                Interactive
+              </FloatingToolBtn>
+            )}
+            <FloatingToolBtn
               type="button"
-              role="tab"
-              aria-selected={viewMode === "code"}
-              onClick={() => setViewMode("code")}
-              style={{
-                background: viewMode === "code" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                color: viewMode === "code" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
+              $success={copied}
+              title={copied ? "Copied" : "Copy source"}
+              aria-label="Copy source"
+              onClick={handleCopy}
             >
-              <CodeIcon size={12} /> Code
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === "diagram"}
-              onClick={() => setViewMode("diagram")}
-              style={{
-                background: viewMode === "diagram" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                color: viewMode === "diagram" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
+              {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+            </FloatingToolBtn>
+          </FloatingTools>
+        </>
+      ) : (
+        <Toolbar>
+          <Box display="flex" alignItems="center" gap={2}>
+            {!isFullScreen && (
+              <>
+                <CodeIcon size={16} fill="var(--color-accent-fg)" />
+                <Text style={{ fontWeight: "bold", fontSize: "13px", color: "var(--color-text-primary)" }}>
+                  {title}
+                </Text>
+              </>
+            )}
+            <Box
+              display="flex"
+              bg="var(--color-canvas-default)"
+              borderRadius="6px"
+              p="2px"
+              border="1px solid var(--color-border-default)"
+              role="tablist"
+              aria-label="Modelica viewer mode"
             >
-              <WorkflowIcon size={12} /> Diagram
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === "simulate"}
-              onClick={() => setViewMode("simulate")}
-              style={{
-                background: viewMode === "simulate" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                color: viewMode === "simulate" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <GraphIcon size={12} /> Simulate
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === "3d"}
-              onClick={() => setViewMode("3d")}
-              style={{
-                background: viewMode === "3d" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                color: viewMode === "3d" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
-                border: "none",
-                borderRadius: "4px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <StackIcon size={12} /> 3D
-            </button>
-            {isFullScreen && (
               <button
                 type="button"
                 role="tab"
-                aria-selected={viewMode === "split"}
-                onClick={() => setViewMode("split")}
+                aria-selected={viewMode === "code"}
+                onClick={() => setViewMode("code")}
                 style={{
-                  background: viewMode === "split" ? "rgba(6, 182, 212, 0.2)" : "transparent",
-                  color: viewMode === "split" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                  background: viewMode === "code" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                  color: viewMode === "code" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
                   border: "none",
                   borderRadius: "4px",
                   padding: "2px 8px",
@@ -224,41 +183,127 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
                   gap: "4px",
                 }}
               >
-                Split
+                <CodeIcon size={12} /> Code
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === "diagram"}
+                onClick={() => setViewMode("diagram")}
+                style={{
+                  background: viewMode === "diagram" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                  color: viewMode === "diagram" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <WorkflowIcon size={12} /> Diagram
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === "simulate"}
+                onClick={() => setViewMode("simulate")}
+                style={{
+                  background: viewMode === "simulate" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                  color: viewMode === "simulate" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <GraphIcon size={12} /> Simulate
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === "3d"}
+                onClick={() => setViewMode("3d")}
+                style={{
+                  background: viewMode === "3d" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                  color: viewMode === "3d" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <StackIcon size={12} /> 3D
+              </button>
+              {isFullScreen && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === "split"}
+                  onClick={() => setViewMode("split")}
+                  style={{
+                    background: viewMode === "split" ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                    color: viewMode === "split" ? "var(--ms-accent-cyan)" : "var(--color-fg-muted)",
+                    border: "none",
+                    borderRadius: "4px",
+                    padding: "2px 8px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  Split
+                </button>
+              )}
+            </Box>
+          </Box>
+          <Box display="flex" alignItems="center" gap={2}>
+            {viewMode === "diagram" && svgMarkup && !isInteractiveDiagram && !isFullScreen && (
+              <Button size="small" onClick={() => setIsInteractiveDiagram(true)}>
+                Interactive Canvas
+              </Button>
+            )}
+            <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            {Boolean(viewConfig?.standalone) && !isFullScreen && (
+              <Button
+                size="small"
+                variant="primary"
+                leadingVisual={PlayIcon}
+                onClick={() => {
+                  const hash = compressMorselPayload({
+                    v: 1,
+                    lang: dialect as any,
+                    code,
+                    title,
+                  });
+                  const fromArtifact = viewConfig?.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
+                  navigate(`/playground${fromArtifact}#m=${hash}`);
+                }}
+              >
+                Open in Playground
+              </Button>
             )}
           </Box>
-        </Box>
-        <Box display="flex" alignItems="center" gap={2}>
-          {viewMode === "diagram" && svgMarkup && !isInteractiveDiagram && !isFullScreen && (
-            <Button size="small" onClick={() => setIsInteractiveDiagram(true)}>
-              Interactive Canvas
-            </Button>
-          )}
-          <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
-            {copied ? "Copied" : "Copy"}
-          </Button>
-          {Boolean(viewConfig?.standalone) && !isFullScreen && (
-            <Button
-              size="small"
-              variant="primary"
-              leadingVisual={PlayIcon}
-              onClick={() => {
-                const hash = compressMorselPayload({
-                  v: 1,
-                  lang: dialect as any,
-                  code,
-                  title,
-                });
-                const fromArtifact = viewConfig?.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-                navigate(`/playground${fromArtifact}#m=${hash}`);
-              }}
-            >
-              Open in Playground
-            </Button>
-          )}
-        </Box>
-      </Toolbar>
+        </Toolbar>
+      )}
 
       <Box flex={1} style={{ minHeight: "220px", height: "100%", overflow: "auto", position: "relative" }}>
         {usesMorselRuntime ? (
@@ -336,7 +381,8 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
             <MonacoEditor
               height="100%"
               language="modelica"
-              theme={isDark ? "vs-dark" : "light"}
+              theme={getMonacoThemeName(isDark ? "dark" : "light")}
+              beforeMount={ensureMonacoThemesDefined}
               value={code}
               options={{
                 readOnly: true,

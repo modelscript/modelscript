@@ -43,7 +43,7 @@ export const ModalCard = styled.div`
   flex-direction: column;
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(139, 92, 246, 0.14);
+    0 0 0 1px color-mix(in srgb, var(--ms-brand) 30%, transparent);
   overflow: hidden;
   animation: ${fadeIn} 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 `;
@@ -64,9 +64,9 @@ export const BoundArtifactBar = styled.div`
   border-bottom: 1px solid var(--color-border-default, #30363d);
   background: linear-gradient(
     90deg,
-    rgba(6, 182, 212, 0.08) 0%,
-    rgba(139, 92, 246, 0.08) 50%,
-    rgba(6, 182, 212, 0.04) 100%
+    color-mix(in srgb, var(--ms-brand) 10%, transparent) 0%,
+    color-mix(in srgb, var(--hue-cyan) 8%, transparent) 50%,
+    color-mix(in srgb, var(--ms-brand) 5%, transparent) 100%
   );
   display: flex;
   align-items: center;
@@ -90,17 +90,10 @@ export const WizardStepperBar = styled.div`
 
 export const WizardStepTab = styled.button<{ $active: boolean; $completed: boolean }>`
   background: ${(props) =>
-    props.$active
-      ? "linear-gradient(180deg, rgba(139, 92, 246, 0.12) 0%, rgba(6, 182, 212, 0.06) 100%)"
-      : "transparent"};
+    props.$active ? "linear-gradient(180deg, var(--ms-brand-soft) 0%, transparent 100%)" : "transparent"};
   border: none;
   border-bottom: 2.5px solid
-    ${(props) =>
-      props.$active
-        ? "var(--color-accent-purple, #8b5cf6)"
-        : props.$completed
-          ? "rgba(16, 185, 129, 0.45)"
-          : "transparent"};
+    ${(props) => (props.$active ? "var(--ms-brand)" : props.$completed ? "var(--ms-status-pass-fg)" : "transparent")};
   border-right: 1px solid var(--color-border-muted, rgba(128, 128, 128, 0.15));
   padding: 11px 14px;
   display: flex;

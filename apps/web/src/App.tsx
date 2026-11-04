@@ -145,8 +145,8 @@ function GlobalModals() {
   const navigate = useNavigate();
   const location = useLocation();
   const hasCae = useFeatureFlag("cae_cloud_solver");
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
+  const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
 
   React.useEffect(() => {
     let pendingG = false;
@@ -231,8 +231,10 @@ function GlobalModals() {
           e.preventDefault();
           navWithScroll("/packages");
         } else if (k === "r") {
-          e.preventDefault();
-          navWithScroll("/repos");
+          if (hasRepos) {
+            e.preventDefault();
+            navWithScroll("/repos");
+          }
         } else if (k === "i") {
           e.preventDefault();
           navWithScroll("/ide");
@@ -269,7 +271,7 @@ function GlobalModals() {
       window.removeEventListener("modelscript:close-shortcuts-modal", handleCloseShortcuts);
       if (pendingGTimer) clearTimeout(pendingGTimer);
     };
-  }, [navigate, hasCae, hasFeeds, location.pathname]);
+  }, [navigate, hasCae, hasFeeds, hasRepos, location.pathname]);
 
   return (
     <>
@@ -524,8 +526,9 @@ function App() {
   const { user, isLoading, setSession, justLoggedOut } = useAuth();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
+  const hasReferences = useFeatureFlag(["references", "scientific_references"]);
+  const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);
 
   return (
     <ThemeProvider colorMode={theme === "dark" ? "night" : "day"}>
@@ -625,22 +628,42 @@ function App() {
                     <Route path="/packages/:name/:version/classes/:className" element={<PackageDetailPage />} />
                     <Route path="/packages/:scope/:name/:version/classes/:className" element={<PackageDetailPage />} />
 
-                    {/* ModelScript IDE Workbench */}
+                    {/* ModelScript Studio */}
                     <Route path="/ide" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
                     <Route path="/ide/:templateId" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
-
-                    {/* Repositories */}
-                    <Route path="/repos" element={<RepositoryListPage />} />
+                    <Route path="/studio" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
                     <Route
-                      path="/repos/:provider/:namespace/:project/ide"
+                      path="/studio/:templateId"
                       element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
                     />
-                    <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
+
+                    {/* Repositories */}
+                    <Route
+                      path="/repos"
+                      element={hasRepos ? <RepositoryListPage /> : <Navigate to="/packages" replace />}
+                    />
+                    <Route
+                      path="/repos/:provider/:namespace/:project/ide"
+                      element={hasRepos && hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
+                    />
+                    <Route
+                      path="/repos/:provider/:namespace/:project/*"
+                      element={hasRepos ? <WorkspacePage /> : <Navigate to="/packages" replace />}
+                    />
 
                     {/* Scholarly Reference Manager & Source URN Resolver */}
-                    <Route path="/references" element={<ReferencesPage />} />
-                    <Route path="/sources/:identifier" element={<SourceDetailPage />} />
-                    <Route path="/sources/*" element={<SourceDetailPage />} />
+                    <Route
+                      path="/references"
+                      element={hasReferences ? <ReferencesPage /> : <Navigate to="/packages" replace />}
+                    />
+                    <Route
+                      path="/sources/:identifier"
+                      element={hasReferences ? <SourceDetailPage /> : <Navigate to="/packages" replace />}
+                    />
+                    <Route
+                      path="/sources/*"
+                      element={hasReferences ? <SourceDetailPage /> : <Navigate to="/packages" replace />}
+                    />
 
                     {/* Cloud Jobs & HPC Queue */}
                     <Route path="/jobs" element={hasCae ? <ScriptsListPage /> : <Navigate to="/packages" replace />} />

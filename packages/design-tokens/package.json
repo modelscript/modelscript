@@ -25,6 +25,7 @@
   "exports": {
     "./tokens.css": "./src/tokens.css",
     "./components.css": "./src/components.css",
+    "./runtime": "./src/runtime.ts",
     "./package.json": "./package.json"
   },
   "files": [

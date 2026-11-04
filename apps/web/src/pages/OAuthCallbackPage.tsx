@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import Box from "../components/Box";
+import Spinner from "../components/Spinner";
 import { TwoFactorForm } from "./login/components/TwoFactorForm";
 
 const OAuthCallbackPage: React.FC = () => {

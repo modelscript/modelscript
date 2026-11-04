@@ -14,7 +14,7 @@ import {
   SyncIcon,
   VerifiedIcon,
 } from "@primer/octicons-react";
-import { Button, Label, Spinner, Text } from "@primer/react";
+import { Button, Label, Text } from "@primer/react";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -26,6 +26,7 @@ import {
   type StudyStandardFormat,
 } from "../../../api/compute";
 import Box from "../../../components/Box";
+import Spinner from "../../../components/Spinner";
 import { GlassCard, SectionTitle, timeAgo } from "../types";
 
 const STANDARD_BADGE_META: Record<
@@ -35,23 +36,23 @@ const STANDARD_BADGE_META: Record<
   sedml: {
     label: "SED-ML L1V4",
     ext: ".sedml",
-    color: "#38bdf8",
-    bg: "rgba(56, 189, 248, 0.12)",
-    border: "rgba(56, 189, 248, 0.35)",
+    color: "var(--domain-bio)",
+    bg: "var(--domain-bio-bg)",
+    border: "var(--domain-bio-border)",
   },
   "ssp-ssv": {
     label: "ASAM SSP 2.0",
     ext: ".ssv",
-    color: "#a855f7",
-    bg: "rgba(168, 85, 247, 0.12)",
-    border: "rgba(168, 85, 247, 0.35)",
+    color: "var(--domain-core)",
+    bg: "var(--domain-core-bg)",
+    border: "var(--domain-core-border)",
   },
   dakota: {
     label: "Sandia Dakota",
     ext: ".dakota",
-    color: "#f59e0b",
-    bg: "rgba(245, 158, 11, 0.12)",
-    border: "rgba(245, 158, 11, 0.35)",
+    color: "var(--domain-power)",
+    bg: "var(--domain-power-bg)",
+    border: "var(--domain-power-border)",
   },
 };
 

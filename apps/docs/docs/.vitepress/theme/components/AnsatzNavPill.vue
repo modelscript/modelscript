@@ -19,12 +19,6 @@ const hostLabel = ref("ansatz.social");
 
 const exploreHref = computed(() => `${ansatzOrigin.value}/explore`);
 
-const quickLinks = computed(() => [
-  { label: "Explore", href: `${ansatzOrigin.value}/explore` },
-  { label: "Packages", href: `${ansatzOrigin.value}/packages` },
-  { label: "Repositories", href: `${ansatzOrigin.value}/repos` },
-]);
-
 let openTimer: ReturnType<typeof setTimeout> | undefined;
 let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -211,20 +205,6 @@ onBeforeUnmount(() => {
         <p class="ansatz-tooltip-desc">
           Federated engineering network and package registry powered by ModelScript.
         </p>
-
-        <div class="ansatz-tooltip-links">
-          <a
-            v-for="link in quickLinks"
-            :key="link.label"
-            :href="link.href"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="ansatz-quick-link"
-            @click="closeCard"
-          >
-            {{ link.label }} <span aria-hidden="true">↗</span>
-          </a>
-        </div>
       </div>
     </Transition>
   </div>
@@ -381,39 +361,12 @@ onBeforeUnmount(() => {
 
 /* Description */
 .ansatz-tooltip-desc {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.45;
   white-space: normal;
   overflow-wrap: break-word;
   color: var(--vp-c-text-2, #475569);
-}
-
-/* Quick links */
-.ansatz-tooltip-links {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-top: 8px;
-  border-top: 1px solid var(--vp-c-divider, rgba(15, 23, 42, 0.08));
-}
-
-.ansatz-quick-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--vp-c-brand-1, #0e7490);
-  text-decoration: none;
-  white-space: nowrap;
-  transition: opacity 0.15s ease;
-}
-
-.ansatz-quick-link:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 /* Transition */

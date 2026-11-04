@@ -184,7 +184,8 @@ describe("Vega-Lite Visualization Wizard & Multi-Format Tabular Data Parser", ()
     );
     assert.ok(attachedSrc.includes('data-testid="vega-quick-viz-prompt"'));
     assert.ok(attachedSrc.includes("Choose Vega-Lite Template"));
-    assert.ok(attachedSrc.includes("VegaWizardModal"));
+    assert.ok(attachedSrc.includes("onVisualize"), "the card opens the chart wizard through the attach flow");
+    assert.ok(!attachedSrc.includes("VegaWizardModal"), "the bespoke modal was replaced by the attach wizard");
 
     const notebookEditorSrc = fs.readFileSync(
       path.resolve(__dirname, "../src/components/compose/ComposeNotebookCellsEditor.tsx"),
@@ -192,15 +193,21 @@ describe("Vega-Lite Visualization Wizard & Multi-Format Tabular Data Parser", ()
     );
     assert.ok(notebookEditorSrc.includes("Data Visualization (Vega-Lite)"));
     assert.ok(notebookEditorSrc.includes("notebook-cell-vega-btn-"));
-    assert.ok(notebookEditorSrc.includes("onReplaceArtifactCell"));
+    assert.ok(notebookEditorSrc.includes("onVisualizeCell"));
 
     const wizardSrc = fs.readFileSync(
-      path.resolve(__dirname, "../src/components/compose/VegaWizardModal.tsx"),
+      path.resolve(__dirname, "../src/components/compose/attach/profiles/VegaProfile.tsx"),
       "utf-8",
     );
     assert.ok(wizardSrc.includes('data-testid="vega-template-gallery"'));
-    assert.ok(wizardSrc.includes('data-testid="vega-wizard-apply-btn"'));
     assert.ok(wizardSrc.includes("Apply Visualization to Post"));
+    assert.ok(wizardSrc.includes("Keep Raw Table Only"));
+
+    const shellSrc = fs.readFileSync(
+      path.resolve(__dirname, "../src/components/compose/attach/AttachWizard.tsx"),
+      "utf-8",
+    );
+    assert.ok(shellSrc.includes('data-testid="attach-wizard-submit"'));
 
     const vegaViewerSrc = fs.readFileSync(
       path.resolve(__dirname, "../src/components/artifacts/VegaViewer.tsx"),

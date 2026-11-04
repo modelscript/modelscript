@@ -8,12 +8,6 @@ import { LANGUAGES, PLATFORM_GROUPS, type LanguageGroupId } from "./theme/data/l
 
 const SITE_DESCRIPTION = `Open-core computable digital thread that imports ${LANGUAGES.length} simulation and CAE formats, links them to requirements, and lets you simulate, verify, and export — in the browser, CLI, VS Code, or air-gapped enterprise appliances.`;
 
-/** Feature flag: Pricing page and nav are visible in dev mode or when SHOW_PRICING=true */
-const isPricingVisible =
-  process.env["NODE_ENV"] !== "production" ||
-  process.env["SHOW_PRICING"] === "true" ||
-  process.env["VITE_SHOW_PRICING"] === "true";
-
 /** Maps a language's primary group to the industry slug whose name labels the sidebar group. */
 const GROUP_TO_INDUSTRY: Partial<Record<LanguageGroupId, string>> = {
   aerospace: "aerospace",
@@ -301,9 +295,8 @@ export default defineConfig({
     nav: [
       { component: "IndustriesMegaMenu" },
       { component: "PlatformMegaMenu" },
-      { component: "LanguagesMegaMenu" },
       { component: "DocsMegaMenu" },
-      ...(isPricingVisible ? [{ text: "Pricing", link: "/pricing" }] : []),
+      { text: "Pricing", link: "/pricing" },
       { component: "AnsatzNavPill" },
     ],
     sidebar: (() => {
@@ -323,6 +316,7 @@ export default defineConfig({
             { text: "CI/CD & GitHub Actions", link: "/guide/ci-cd" },
             { text: "Embedding Artifacts", link: "/guide/embedding" },
             { text: "Enterprise Administration", link: "/guide/administration" },
+            { text: "Pricing & Licensing", link: "/pricing" },
             { text: "Trademark Policy", link: "/trademark" },
           ],
         },
@@ -331,6 +325,7 @@ export default defineConfig({
           items: [
             { text: "CLI Overview", link: "/cli/overview" },
             { text: "CLI Command Reference", link: "/cli/commands" },
+            { text: "Polyglot Languages Matrix", link: "/languages/overview" },
             { text: "Compiler Linter Rules", link: "/reference/linter-rules" },
             { text: "Radiology & Surgical CAS", link: "/reference/radiology-and-surgery" },
             { text: "Standards & Export Formats", link: "/reference/export-formats" },
@@ -364,6 +359,7 @@ export default defineConfig({
           text: "Guides & Operations",
           items: [
             { text: "Enterprise Administration", link: "/guide/administration" },
+            { text: "Pricing & Licensing", link: "/pricing" },
             { text: "Embedding Artifacts", link: "/guide/embedding" },
             { text: "CI/CD & GitHub Actions", link: "/guide/ci-cd" },
             { text: "Trademark Policy", link: "/trademark" },
@@ -425,8 +421,8 @@ export default defineConfig({
     ],
     footer: {
       message:
-        'Open-Core under the GNU AGPL v3 License; Enterprise Edition (ee/) under the ModelScript Enterprise License. • <a href="/trademark">Trademark Policy</a>',
-      copyright: "Copyright © 2026-present Mohamad Omar Nachawati and ModelScript Contributors.",
+        'Open-Core under the GNU AGPL v3 License; Enterprise Edition (ee/) under the ModelScript Enterprise License. • <a href="/pricing">Pricing</a> • <a href="/trademark">Trademark Policy</a>',
+      copyright: "Copyright © 2026-present ModelScript Contributors.",
     },
   },
 });

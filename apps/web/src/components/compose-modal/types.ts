@@ -24,6 +24,7 @@ export interface DraftPost {
   notebookSeries?: string | undefined;
   notebookDialect?: string | undefined;
   notebookCompanionRepo?: string | undefined;
+  notebookTopics?: string[] | undefined;
   notebookCells?: NotebookCell[] | undefined;
   quotePost?: any;
   replyToPost?: any;

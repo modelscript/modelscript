@@ -137,7 +137,7 @@ test("Universal Citations, OpenAlex Scholarly Reference Manager & Source URN Res
     },
   );
 
-  await t.test("renders CiteButton, CitationModal, ComposeToolbar citation trigger, and snippet builder", () => {
+  await t.test("renders CiteButton, CitationModal, ComposeToolbar citation trigger, and snippet builder", async () => {
     const pkgCitation = buildCitationFromPackage({
       name: "Modelica",
       version: "4.1.0",
@@ -235,7 +235,49 @@ test("Universal Citations, OpenAlex Scholarly Reference Manager & Source URN Res
         hasNotebookContent: false,
       }),
     );
-    assert.ok(toolbarHtml.includes('data-testid="composer-insert-citation-btn"'));
+    // Hidden by default when references feature flag is false
+    assert.ok(!toolbarHtml.includes('data-testid="composer-insert-citation-btn"'));
+
+    const { FeatureFlagContext, DEFAULT_FRONTEND_FLAGS } = await import("../src/FeatureFlagContext.js");
+    const enabledToolbarHtml = renderToStaticMarkup(
+      React.createElement(
+        FeatureFlagContext.Provider,
+        {
+          value: {
+            flags: { ...DEFAULT_FRONTEND_FLAGS, references: true },
+            overrides: {},
+            isLoading: false,
+            refreshFlags: async () => {},
+            isEnabled: (k: string) => k === "references",
+            setFlagOverride: () => {},
+            resetAllOverrides: () => {},
+          },
+        },
+        React.createElement(ComposeToolbar, {
+          isNotebookMode: false,
+          content: "",
+          setContent: () => {},
+          setShowMorselModal: () => {},
+          setShowPackageRepoPicker: () => {},
+          setShowCodeSnippetModal: () => {},
+          setShowHpcPicker: () => {},
+          setShowCitationPicker: () => {},
+          hasHpc: false,
+          fileInputRef: { current: null },
+          handleFileUpload: () => {},
+          uploadingFile: false,
+          showContentWarning: false,
+          setShowContentWarning: () => {},
+          showEmojiPicker: false,
+          setShowEmojiPicker: () => {},
+          handleSubmit: () => {},
+          submitting: false,
+          artifactId: null,
+          hasNotebookContent: false,
+        }),
+      ),
+    );
+    assert.ok(enabledToolbarHtml.includes('data-testid="composer-insert-citation-btn"'));
   });
 
   await t.test("registers /references, /sources/*, and /admin/openalex S3 Partition Manager routes", async () => {
@@ -265,11 +307,26 @@ test("Universal Citations, OpenAlex Scholarly Reference Manager & Source URN Res
     assert.ok(openAlexAdminHtml.includes("Rebuild &amp; Optimize FTS5"));
 
     const { ReferencesPage } = await import("../src/pages/ReferencesPage.js");
+    const { FeatureFlagContext, DEFAULT_FRONTEND_FLAGS } = await import("../src/FeatureFlagContext.js");
     const refsHtml = renderToStaticMarkup(
       React.createElement(
         MemoryRouter,
         { initialEntries: ["/references?tab=browse"] },
-        React.createElement(ReferencesPage),
+        React.createElement(
+          FeatureFlagContext.Provider,
+          {
+            value: {
+              flags: { ...DEFAULT_FRONTEND_FLAGS, references: true },
+              overrides: {},
+              isLoading: false,
+              refreshFlags: async () => {},
+              isEnabled: (k: string) => k === "references",
+              setFlagOverride: () => {},
+              resetAllOverrides: () => {},
+            },
+          },
+          React.createElement(ReferencesPage),
+        ),
       ),
     );
     assert.ok(refsHtml.includes('data-testid="references-quick-resolve-form"'));

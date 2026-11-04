@@ -517,6 +517,8 @@ export interface Qif3dMbdScene {
     radius: number;
   };
   stepSource: string;
+  /** "external-step" when a user-paired STEP backs the scene; "none" when no real part geometry is available. */
+  geometry: "external-step" | "none";
   reconciliation: StepReconciliationResult;
   spcSummary: Qif3dSpcSummary;
 }
@@ -712,85 +714,6 @@ function pushQuad(
   indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
 
-function pushBoxGeometry(
-  vertices: number[],
-  normals: number[],
-  indices: number[],
-  minX: number,
-  maxX: number,
-  minY: number,
-  maxY: number,
-  minZ: number,
-  maxZ: number,
-): void {
-  // Bottom (-Z)
-  pushQuad(
-    vertices,
-    normals,
-    indices,
-    [minX, minY, minZ],
-    [maxX, minY, minZ],
-    [maxX, maxY, minZ],
-    [minX, maxY, minZ],
-    [0, 0, -1],
-  );
-  // Top (+Z)
-  pushQuad(
-    vertices,
-    normals,
-    indices,
-    [minX, minY, maxZ],
-    [minX, maxY, maxZ],
-    [maxX, maxY, maxZ],
-    [maxX, minY, maxZ],
-    [0, 0, 1],
-  );
-  // Front (-Y)
-  pushQuad(
-    vertices,
-    normals,
-    indices,
-    [minX, minY, minZ],
-    [minX, minY, maxZ],
-    [maxX, minY, maxZ],
-    [maxX, minY, minZ],
-    [0, -1, 0],
-  );
-  // Back (+Y)
-  pushQuad(
-    vertices,
-    normals,
-    indices,
-    [maxX, maxY, minZ],
-    [maxX, maxY, maxZ],
-    [minX, maxY, maxZ],
-    [minX, maxY, minZ],
-    [0, 1, 0],
-  );
-  // Left (-X)
-  pushQuad(
-    vertices,
-    normals,
-    indices,
-    [minX, maxY, minZ],
-    [minX, maxY, maxZ],
-    [minX, minY, maxZ],
-    [minX, minY, minZ],
-    [-1, 0, 0],
-  );
-  // Right (+X)
-  pushQuad(
-    vertices,
-    normals,
-    indices,
-    [maxX, minY, minZ],
-    [maxX, minY, maxZ],
-    [maxX, maxY, maxZ],
-    [maxX, maxY, minZ],
-    [1, 0, 0],
-  );
-}
-
 /**
  * Builds a complete 3D MBD inspection scene (CAD body envelope, individual STEP B-Rep
  * feature surface meshes, 3D CMM touch-probe point clouds, Datum badges, and collision-free
@@ -836,33 +759,9 @@ export function buildQif3dMbdScene(doc: QifDocument, externalStepSource?: string
     actualsByChar.set(act.characteristicId, list);
   }
 
-  // 1. Construct Machined 3D CAD Body Envelope (Stepped Fir-Tree Root + Platform Deck)
-  const bodyVerts: number[] = [];
-  const bodyNorms: number[] = [];
-  const bodyIndices: number[] = [];
-
-  const midZ1 = minZ + (maxZ - minZ) * 0.35;
-  const midZ2 = minZ + (maxZ - minZ) * 0.7;
-  // Lower root lobe (narrower Y)
-  pushBoxGeometry(bodyVerts, bodyNorms, bodyIndices, minX + 4, maxX - 4, minY * 0.62, maxY * 0.62, minZ, midZ1);
-  // Middle fir-tree serration lobe (medium Y)
-  pushBoxGeometry(bodyVerts, bodyNorms, bodyIndices, minX + 2, maxX - 2, minY * 0.82, maxY * 0.82, midZ1, midZ2);
-  // Upper platform shroud deck (full Y)
-  pushBoxGeometry(bodyVerts, bodyNorms, bodyIndices, minX, maxX, minY, maxY, midZ2, maxZ);
-
-  const meshes: Qif3dMeshPayload[] = [
-    {
-      id: "CAD_BODY_ENVELOPE",
-      name: doc.header.partName ?? "Machined_CAD_Body_Envelope",
-      isBodyEnvelope: true,
-      color: [0.27, 0.35, 0.46],
-      deviationStatus: "UNINSPECTED",
-      worstToleranceRatio: 0,
-      vertices: bodyVerts,
-      normals: bodyNorms,
-      indices: bodyIndices,
-    },
-  ];
+  // 1. No fabricated part body: only feature surfaces derived from the QIF are emitted.
+  //    Real part geometry must come from a paired STEP (see `geometry` on the returned scene).
+  const meshes: Qif3dMeshPayload[] = [];
 
   const probeHits: Qif3dProbeHit[] = [];
 
@@ -1263,6 +1162,7 @@ export function buildQif3dMbdScene(doc: QifDocument, externalStepSource?: string
       radius,
     },
     stepSource,
+    geometry: externalStepSource && externalStepSource.trim().length > 0 ? "external-step" : "none",
     reconciliation,
     spcSummary: {
       metrics: spcMetrics,

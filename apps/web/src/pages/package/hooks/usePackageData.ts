@@ -265,26 +265,26 @@ export function usePackageData(
         label: "All",
         icon: GlobeIcon,
         count: totalCount,
-        color: "var(--color-accent-cyan, #06b6d4)",
+        color: "var(--domain-core)",
       });
     }
     if (mCount > 0) {
-      list.push({ id: "modelica", label: "Modelica", icon: FileCodeIcon, count: mCount, color: "#eab308" });
+      list.push({ id: "modelica", label: "Modelica", icon: FileCodeIcon, count: mCount, color: "var(--domain-core)" });
     }
     if (sCount > 0) {
-      list.push({ id: "sysml2", label: "SysML v2", icon: WorkflowIcon, count: sCount, color: "#a855f7" });
+      list.push({ id: "sysml2", label: "SysML v2", icon: WorkflowIcon, count: sCount, color: "var(--domain-core)" });
     }
     if (cCount > 0) {
-      list.push({ id: "cad", label: "3D CAD", icon: PackageIcon, count: cCount, color: "#06b6d4" });
+      list.push({ id: "cad", label: "3D CAD", icon: PackageIcon, count: cCount, color: "var(--domain-cad)" });
     }
     if (dCount > 0) {
-      list.push({ id: "dataset", label: "Datasets", icon: DatabaseIcon, count: dCount, color: "#3b82f6" });
+      list.push({ id: "dataset", label: "Datasets", icon: DatabaseIcon, count: dCount, color: "var(--domain-fluid)" });
     }
     if (fCount > 0) {
-      list.push({ id: "fmu", label: "FMUs", icon: CpuIcon, count: fCount, color: "#f43f5e" });
+      list.push({ id: "fmu", label: "FMUs", icon: CpuIcon, count: fCount, color: "var(--domain-aero)" });
     }
     if (oCount > 0 && domainTypesPresent > 1) {
-      list.push({ id: "other", label: "Files", icon: FileIcon, count: oCount, color: "#9ca3af" });
+      list.push({ id: "other", label: "Files", icon: FileIcon, count: oCount, color: "var(--ms-text-3)" });
     }
     return list;
   }, [

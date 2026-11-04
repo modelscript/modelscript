@@ -800,7 +800,11 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
           style={{ cursor: col.editable ? "pointer" : "default" }}
         >
           {strVal ? (
-            <BadgePill $bg="rgba(6, 182, 212, 0.14)" $color="#22d3ee" $border="rgba(6, 182, 212, 0.4)">
+            <BadgePill
+              $bg="var(--ms-brand-soft, rgba(6, 182, 212, 0.14))"
+              $color="var(--ms-brand, #0891b2)"
+              $border="var(--ms-brand-border, rgba(6, 182, 212, 0.4))"
+            >
               ⊨ {strVal}
             </BadgePill>
           ) : (
@@ -1194,7 +1198,11 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
       {/* Top Header & Primary Mode Switcher */}
       <TopBar $isDark={isDark}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <BadgePill $bg="rgba(2, 132, 199, 0.16)" $color="#38bdf8" $border="rgba(56, 189, 248, 0.4)">
+          <BadgePill
+            $bg="var(--domain-core-bg, rgba(2, 132, 199, 0.16))"
+            $color="var(--domain-core, #0284c7)"
+            $border="var(--domain-core-border, rgba(56, 189, 248, 0.4))"
+          >
             OMG ReqIF 1.2
           </BadgePill>
           {!isFullScreen && (
@@ -1203,7 +1211,11 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
             </span>
           )}
           {isEdited && (
-            <BadgePill $bg="rgba(245, 158, 11, 0.16)" $color="#fbbf24" $border="rgba(245, 158, 11, 0.45)">
+            <BadgePill
+              $bg="var(--ms-status-warn-bg, rgba(245, 158, 11, 0.16))"
+              $color="var(--ms-status-warn-fg, #b45309)"
+              $border="var(--ms-status-warn-border, rgba(245, 158, 11, 0.45))"
+            >
               ● Edited (Synced to XML)
             </BadgePill>
           )}

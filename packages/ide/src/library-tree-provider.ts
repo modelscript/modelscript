@@ -224,6 +224,7 @@ export class LibraryTreeProvider
   private pendingRefreshElements = new Set<LibraryTreeItem | undefined>();
 
   private refreshTimeout: ReturnType<typeof setTimeout> | null = null;
+  private docChangeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly client: LanguageClient,
@@ -234,10 +235,30 @@ export class LibraryTreeProvider
     });
     if (this.context) {
       this.context.subscriptions.push(sub);
+      this.context.subscriptions.push(
+        vscode.workspace.onDidSaveTextDocument((doc) => {
+          if (doc.uri.scheme !== "output" && !doc.uri.path.includes(".git")) {
+            this.refresh(doc.uri.toString());
+          }
+        }),
+        vscode.workspace.onDidChangeTextDocument((e) => {
+          if (e.document.uri.scheme !== "output" && !e.document.uri.path.includes(".git")) {
+            if (this.docChangeDebounceTimer) clearTimeout(this.docChangeDebounceTimer);
+            this.docChangeDebounceTimer = setTimeout(() => {
+              this.docChangeDebounceTimer = null;
+              this.refresh(e.document.uri.toString());
+            }, 300);
+          }
+        }),
+      );
     }
   }
 
   refresh(uri?: string): void {
+    if (this.docChangeDebounceTimer) {
+      clearTimeout(this.docChangeDebounceTimer);
+      this.docChangeDebounceTimer = null;
+    }
     if (uri) this.documentUri = uri;
     this.parentMap.clear();
     this.itemMap.clear();
@@ -290,9 +311,6 @@ export class LibraryTreeProvider
     if (lastDot > 0) {
       const parentName = element.info.compositeName.substring(0, lastDot);
       return this.itemMap.get(parentName);
-    }
-    if (element.info.language === "modelica") {
-      return this.itemMap.get("__LIB__:Modelica") ?? this.itemMap.get("__LIB__:Modelica Standard Library");
     }
     return undefined;
   }

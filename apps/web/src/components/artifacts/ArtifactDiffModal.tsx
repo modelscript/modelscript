@@ -2,14 +2,16 @@
 
 import { DiffEditor } from "@monaco-editor/react";
 import { GitCompareIcon, XIcon } from "@primer/octicons-react";
-import { Button, IconButton, Spinner, Text } from "@primer/react";
+import { Button, IconButton, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { getArtifactView } from "../../api";
 import { useTheme } from "../../theme";
+import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
 import { getCachedArtifact } from "../../util/offline-storage";
 import Box from "../Box";
+import Spinner from "../Spinner";
 
 interface ArtifactDiffModalProps {
   isOpen: boolean;
@@ -299,7 +301,12 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   if (!isOpen) return null;
 
   const modal = (
-    <Overlay onClick={onClose}>
+    <Overlay
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+    >
       <ModalContainer onClick={(e) => e.stopPropagation()}>
         <ModalHeader>
           <Box display="flex" alignItems="center" gap={2}>
@@ -373,7 +380,8 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
               original={parentCode}
               modified={currentCode}
               language={diffLanguage}
-              theme={theme === "dark" ? "vs-dark" : "light"}
+              theme={getMonacoThemeName(theme)}
+              beforeMount={ensureMonacoThemesDefined}
               options={{
                 readOnly: true,
                 minimap: { enabled: false },

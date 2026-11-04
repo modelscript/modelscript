@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BaseStyles, Spinner, ThemeProvider } from "@primer/react";
+import { BaseStyles, ThemeProvider } from "@primer/react";
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getArtifactView } from "../api";
@@ -11,6 +11,7 @@ import {
   resolveThumbnailUrls,
 } from "../components/artifacts/card";
 import Box from "../components/Box";
+import Spinner from "../components/Spinner";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import type { ArtifactViewDTO } from "../types/api";
 import { buildEditorUrlForArtifact } from "../util/editor-routing";

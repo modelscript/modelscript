@@ -949,7 +949,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OLGA Multiphase Flow Assurance Editor</title>
   <style>
@@ -1615,6 +1615,17 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
 
   <script>
     const vscode = acquireVsCodeApi();
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     let currentData = null;
     let isPlaying = false;
     let playInterval = null;
@@ -2583,10 +2594,10 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
         const diags = currentData.diagnostics || [];
         const dRows = diags.map(d => \`
           <tr>
-            <td><strong style="color: #38bdf8;">\${d.code}</strong></td>
-            <td><span style="color: \${d.severity === 'error' ? '#ef4444' : '#f59e0b'};">\${d.severity.toUpperCase()}</span></td>
-            <td>\${d.message}</td>
-            <td style="color: #94a3b8;">\${d.recommendation || '—'}</td>
+            <td><strong style="color: #38bdf8;">\${escapeHtml(d.code)}</strong></td>
+            <td><span style="color: \${d.severity === 'error' ? '#ef4444' : '#f59e0b'};">\${escapeHtml(d.severity.toUpperCase())}</span></td>
+            <td>\${escapeHtml(d.message)}</td>
+            <td style="color: #94a3b8;">\${escapeHtml(d.recommendation || '—')}</td>
           </tr>
         \`).join('');
         document.getElementById('diagnosticsBody').innerHTML = dRows || '<tr><td colspan="4" style="text-align:center; color:#10b981;">No flow assurance rule violations detected.</td></tr>';
@@ -2603,8 +2614,8 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
       const badgeText = passed ? 'PASSED' : 'VIOLATION';
       const rows = metrics.map(m => \`
         <div class="metric-item">
-          <span class="metric-name">\${m.name}</span>
-          <span class="metric-value">\${m.val}</span>
+          <span class="metric-name">\${escapeHtml(m.name)}</span>
+          <span class="metric-value">\${escapeHtml(m.val)}</span>
         </div>
       \`).join('');
 

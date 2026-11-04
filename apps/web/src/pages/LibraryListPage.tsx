@@ -9,6 +9,7 @@ import { acceptPackageTransfer, cancelPackageTransfer, getLibraries, getPendingP
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import PublishPackageModal from "../components/PublishPackageModal";
+import Spinner from "../components/Spinner";
 import { filterAndSortLibraries, type SortOption } from "../util/package-helpers";
 import { usePageTitle } from "../util/title";
 import { CardList, LibraryFilterBar, PackageCardItem, PendingTransfersBanner } from "./libraries";
@@ -220,7 +221,7 @@ const LibraryListPage: React.FC = () => {
       {/* Content */}
       {loading && libraries.length === 0 ? (
         <Box display="flex" justifyContent="center" p={12}>
-          <SyncIcon size={32} className="spinner-spin" fill="var(--color-text-muted)" />
+          <Spinner size="large" />
         </Box>
       ) : error ? (
         <Box

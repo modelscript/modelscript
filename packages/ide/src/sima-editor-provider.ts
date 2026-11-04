@@ -146,7 +146,7 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SIMA Offshore Custom Editor</title>
   <style>
@@ -574,6 +574,16 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
   </div>
 
   <script>
+    function escapeHtml(str) {
+      if (str == null) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
     var gl = null;
     var glInitialized = false;
     var simRunning = true;
@@ -1569,7 +1579,7 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
           tbodyLines.innerHTML = msg.lines.map(function(l) {
             var seg = l.segments[0] || {};
             return '<tr>' +
-              '<td><b>' + l.name + '</b></td>' +
+              '<td><b>' + escapeHtml(l.name) + '</b></td>' +
               '<td>' + l.totalLength.toFixed(1) + '</td>' +
               '<td>' + (seg.submergedWeightPerMeter || 2500).toFixed(0) + '</td>' +
               '<td>' + (seg.axialStiffnessEA ? seg.axialStiffnessEA.toExponential(2) : '1.25e9') + '</td>' +
@@ -1583,7 +1593,7 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
         if (tbodyDnv && msg.dnvReport && msg.dnvReport.lines) {
           tbodyDnv.innerHTML = msg.dnvReport.lines.map(function(l) {
             return '<tr>' +
-              '<td><b>' + l.lineName + '</b></td>' +
+              '<td><b>' + escapeHtml(l.lineName) + '</b></td>' +
               '<td>' + (l.mbl / 1000).toFixed(0) + '</td>' +
               '<td>' + (l.tensionIntact / 1000).toFixed(0) + '</td>' +
               '<td><b>' + l.safetyFactorIntact.toFixed(2) + '</b></td>' +
@@ -1600,7 +1610,7 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
         if (tbodyVessel && msg.vessel) {
           var v = msg.vessel;
           tbodyVessel.innerHTML = 
-            '<tr><th>Vessel ID / Name</th><td>' + v.id + ' (' + v.name + ')</td></tr>' +
+            '<tr><th>Vessel ID / Name</th><td>' + escapeHtml(v.id) + ' (' + escapeHtml(v.name) + ')</td></tr>' +
             '<tr><th>Structural Mass</th><td>' + (v.mass / 1000).toFixed(1) + ' tonnes</td></tr>' +
             '<tr><th>Displacement Volume</th><td>' + v.displacement.toFixed(1) + ' m³</td></tr>' +
             '<tr><th>Transverse GM (GMt)</th><td><b>' + v.gmTransverse.toFixed(2) + ' m</b></td></tr>' +
@@ -1613,7 +1623,7 @@ export class SimaEditorProvider extends BaseCustomEditorProvider {
         if (tbodyEnv && msg.environment) {
           var e = msg.environment;
           tbodyEnv.innerHTML = 
-            '<tr><th>Wave Spectrum</th><td>' + e.wave.spectrum.toUpperCase() + ' (Hs=' + e.wave.hs + 'm, Tp=' + e.wave.tp + 's, Dir=' + e.wave.direction + '°)</td></tr>' +
+            '<tr><th>Wave Spectrum</th><td>' + escapeHtml(e.wave.spectrum.toUpperCase()) + ' (Hs=' + e.wave.hs + 'm, Tp=' + e.wave.tp + 's, Dir=' + e.wave.direction + '°)</td></tr>' +
             '<tr><th>Mean Wind</th><td>' + e.wind.speed + ' m/s @ ' + e.wind.direction + '°</td></tr>' +
             '<tr><th>Surface Current</th><td>' + e.current.surfaceSpeed + ' m/s @ ' + e.current.direction + '°</td></tr>' +
             '<tr><th>Water Density</th><td>' + e.waterDensity + ' kg/m³</td></tr>' +

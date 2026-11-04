@@ -211,7 +211,8 @@ let cursorsEnabled = false;
 let cursorA: number | null = null;
 let cursorB: number | null = null;
 let draggingCursor: "A" | "B" | null = null;
-let pinnedRun: SimulationData | null = null;
+let pinnedRuns: { id: number; name: string; visible: boolean; data: SimulationData }[] = [];
+let pinnedRunSeq = 0;
 
 function escapeHtmlSim(unsafe: string): string {
   if (!unsafe) return "";
@@ -277,11 +278,49 @@ checkboxSmooth?.addEventListener("change", (e) => {
   }
 });
 
+// ── Sidebar State Persistence & Accordion Toggles ──
+const sidebarEl = document.getElementById("sidebar");
+try {
+  const savedWidth = localStorage.getItem("modelscript.sim_sidebar_width");
+  if (savedWidth && sidebarEl) {
+    sidebarEl.style.width = savedWidth;
+  }
+  const collapsed = JSON.parse(localStorage.getItem("modelscript.sim_sidebar_collapsed") || "[]");
+  if (Array.isArray(collapsed)) {
+    collapsed.forEach((id: string) => {
+      document.getElementById(id)?.classList.add("collapsed");
+    });
+  }
+} catch {}
+
+if (sidebarEl && typeof ResizeObserver !== "undefined") {
+  let saveTimer: number | null = null;
+  new ResizeObserver(() => {
+    if (saveTimer) window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => {
+      try {
+        if (sidebarEl.style.width) {
+          localStorage.setItem("modelscript.sim_sidebar_width", sidebarEl.style.width);
+        }
+      } catch {}
+    }, 200);
+  }).observe(sidebarEl);
+}
+
 // Setup accordion toggles for sidebar sections
 document.querySelectorAll(".sidebar-header").forEach((header) => {
   header.addEventListener("click", (e) => {
     if ((e.target as HTMLElement).closest(".header-actions")) return;
-    header.parentElement?.classList.toggle("collapsed");
+    const parent = header.parentElement;
+    if (!parent) return;
+    parent.classList.toggle("collapsed");
+    try {
+      const collapsedIds: string[] = [];
+      document.querySelectorAll(".sidebar-section.collapsed").forEach((s) => {
+        if (s.id) collapsedIds.push(s.id);
+      });
+      localStorage.setItem("modelscript.sim_sidebar_collapsed", JSON.stringify(collapsedIds));
+    } catch {}
   });
 });
 
@@ -647,6 +686,29 @@ btnCopyCsv?.addEventListener("click", () => {
   if (btnCopyCsv) copyCsvToClipboard(btnCopyCsv);
 });
 
+// Export dropdown menu
+const exportMenuWrap = document.getElementById("export-menu-wrap");
+const btnExportMenu = document.getElementById("btn-export-menu");
+const setExportMenuOpen = (open: boolean) => {
+  exportMenuWrap?.classList.toggle("open", open);
+  btnExportMenu?.setAttribute("aria-expanded", String(open));
+};
+btnExportMenu?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  setExportMenuOpen(!exportMenuWrap?.classList.contains("open"));
+});
+document.getElementById("export-menu")?.addEventListener("click", (e) => {
+  const item = (e.target as HTMLElement).closest("button");
+  if (!item) return;
+  setTimeout(() => setExportMenuOpen(false), item.id === "btn-copy-csv" ? 900 : 0);
+});
+document.addEventListener("click", (e) => {
+  if (exportMenuWrap && !exportMenuWrap.contains(e.target as Node)) setExportMenuOpen(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") setExportMenuOpen(false);
+});
+
 btnToggleCursors?.addEventListener("click", () => {
   cursorsEnabled = !cursorsEnabled;
   if (cursorsEnabled) {
@@ -668,26 +730,94 @@ btnToggleCursors?.addEventListener("click", () => {
   else draw();
 });
 
+const runsBarEl = document.getElementById("runs-bar");
+const RUN_ACCENT_COLORS = ["#38bdf8", "#f59e0b", "#ec4899", "#10b981", "#a855f7", "#06b6d4"];
+
+function redrawChart() {
+  if (isLiveMode) drawLive();
+  else draw();
+}
+
+function renderRunChips() {
+  if (!runsBarEl) return;
+  runsBarEl.textContent = "";
+  runsBarEl.classList.toggle("has-runs", pinnedRuns.length > 0);
+  for (const run of pinnedRuns) {
+    const chip = document.createElement("span");
+    chip.className = "run-chip" + (run.visible ? "" : " off");
+    const runColor = RUN_ACCENT_COLORS[(run.id - 1) % RUN_ACCENT_COLORS.length];
+    chip.style.setProperty("--run-color", runColor);
+    chip.title = (run.visible ? "Click to hide this run" : "Click to show this run") + " (double-click name to rename)";
+
+    const dot = document.createElement("span");
+    dot.className = "run-dot";
+    chip.appendChild(dot);
+
+    const label = document.createElement("span");
+    label.textContent = run.name;
+    label.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "run-rename";
+      input.value = run.name;
+      let done = false;
+      const finish = (commit: boolean) => {
+        if (done) return;
+        done = true;
+        if (commit && input.value.trim()) run.name = input.value.trim();
+        renderRunChips();
+      };
+      input.addEventListener("click", (ev) => ev.stopPropagation());
+      input.addEventListener("keydown", (ev) => {
+        ev.stopPropagation();
+        if (ev.key === "Enter") finish(true);
+        else if (ev.key === "Escape") finish(false);
+      });
+      input.addEventListener("blur", () => finish(true));
+      label.replaceWith(input);
+      input.focus();
+      input.select();
+    });
+    chip.appendChild(label);
+
+    const close = document.createElement("button");
+    close.className = "run-close";
+    close.title = "Remove run";
+    close.textContent = "✕";
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      pinnedRuns = pinnedRuns.filter((r) => r.id !== run.id);
+      renderRunChips();
+      redrawChart();
+    });
+    chip.appendChild(close);
+
+    chip.addEventListener("click", () => {
+      run.visible = !run.visible;
+      chip.classList.toggle("off", !run.visible);
+      chip.title = run.visible ? "Click to hide this run (double-click name to rename)" : "Click to show this run";
+      redrawChart();
+    });
+    runsBarEl.appendChild(chip);
+  }
+}
+
 btnPinRun?.addEventListener("click", () => {
-  if (!pinnedRun && currentData) {
-    pinnedRun = {
+  if (!currentData) return;
+  pinnedRunSeq++;
+  pinnedRuns.push({
+    id: pinnedRunSeq,
+    name: `Run ${pinnedRunSeq}`,
+    visible: true,
+    data: {
       t: [...currentData.t],
       y: currentData.y.map((row) => [...row]),
       states: [...currentData.states],
-    };
-    btnPinRun.textContent = "📍 Unpin";
-    btnPinRun.classList.add("active");
-    btnPinRun.style.background = "var(--vscode-button-secondaryBackground, #3a3d41)";
-    btnPinRun.style.borderColor = "#f59e0b";
-  } else {
-    pinnedRun = null;
-    btnPinRun.textContent = "📌 Pin Run";
-    btnPinRun.classList.remove("active");
-    btnPinRun.style.background = "";
-    btnPinRun.style.borderColor = "";
-  }
-  if (isLiveMode) drawLive();
-  else draw();
+    },
+  });
+  renderRunChips();
+  redrawChart();
 });
 
 selectXAxis?.addEventListener("change", () => {
@@ -1664,6 +1794,10 @@ function triggerSimulation(sweepConfig?: { parameterName: string; start: number;
 }
 
 btnSimulate?.addEventListener("click", () => {
+  triggerSimulation();
+});
+
+document.getElementById("btn-empty-simulate")?.addEventListener("click", () => {
   triggerSimulation();
 });
 
@@ -2934,10 +3068,18 @@ function draw() {
     }
   }
 
-  // ── Pinned Run Baseline (Ghost Curves) ──
-  if (pinnedRun && pinnedRun.t.length > 0) {
+  // ── Pinned Run Baselines (Ghost Curves) ──
+  const GHOST_DASHES: number[][] = [
+    [4, 4],
+    [8, 3],
+    [2, 3],
+    [10, 3, 2, 3],
+  ];
+  for (let ri = 0; ri < pinnedRuns.length; ri++) {
+    const pinnedRun = pinnedRuns[ri].data;
+    if (!pinnedRuns[ri].visible || pinnedRun.t.length === 0) continue;
     ctx.save();
-    ctx.setLineDash([4, 4]);
+    ctx.setLineDash(GHOST_DASHES[ri % GHOST_DASHES.length]);
     ctx.lineWidth = 1.2;
     ctx.globalAlpha = 0.45;
 

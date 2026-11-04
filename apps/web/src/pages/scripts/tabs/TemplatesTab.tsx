@@ -63,20 +63,20 @@ const STANDARD_BADGES: Record<
   sedml: {
     label: "SED-ML L1V4 (.sedml)",
     ext: ".sedml",
-    color: "#38bdf8",
-    bg: "rgba(56, 189, 248, 0.14)",
+    color: "var(--domain-bio)",
+    bg: "var(--domain-bio-bg)",
   },
   "ssp-ssv": {
     label: "ASAM SSP 2.0 (.ssv)",
     ext: ".ssv",
-    color: "#34d399",
-    bg: "rgba(52, 211, 153, 0.14)",
+    color: "var(--domain-core)",
+    bg: "var(--domain-core-bg)",
   },
   dakota: {
     label: "Sandia Dakota (.dakota)",
     ext: ".dakota",
-    color: "#fb923c",
-    bg: "rgba(251, 146, 60, 0.14)",
+    color: "var(--domain-power)",
+    bg: "var(--domain-power-bg)",
   },
 };
 
@@ -524,10 +524,30 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
           </span>
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             {[
-              { id: "all", label: `All Standards (${counts.byStandard["all"] || 0})` },
-              { id: "sedml", label: `SED-ML .sedml (${counts.byStandard["sedml"] || 0})`, color: "#38bdf8" },
-              { id: "ssp-ssv", label: `SSP 2.0 .ssv (${counts.byStandard["ssp-ssv"] || 0})`, color: "#34d399" },
-              { id: "dakota", label: `Sandia Dakota .dakota (${counts.byStandard["dakota"] || 0})`, color: "#fb923c" },
+              {
+                id: "all",
+                label: `All Standards (${counts.byStandard["all"] || 0})`,
+                color: "var(--domain-core)",
+                bg: "var(--domain-core-bg)",
+              },
+              {
+                id: "sedml",
+                label: `SED-ML .sedml (${counts.byStandard["sedml"] || 0})`,
+                color: "var(--domain-bio)",
+                bg: "var(--domain-bio-bg)",
+              },
+              {
+                id: "ssp-ssv",
+                label: `SSP 2.0 .ssv (${counts.byStandard["ssp-ssv"] || 0})`,
+                color: "var(--domain-core)",
+                bg: "var(--domain-core-bg)",
+              },
+              {
+                id: "dakota",
+                label: `Sandia Dakota .dakota (${counts.byStandard["dakota"] || 0})`,
+                color: "var(--domain-power)",
+                bg: "var(--domain-power-bg)",
+              },
             ].map((std) => {
               const active = selectedStandard === std.id;
               return (
@@ -541,9 +561,9 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                     fontSize: "11px",
                     fontWeight: 700,
                     cursor: "pointer",
-                    border: active ? `1px solid ${std.color || "#60a5fa"}` : "1px solid rgba(255, 255, 255, 0.1)",
-                    background: active ? "rgba(59, 130, 246, 0.18)" : "rgba(255, 255, 255, 0.03)",
-                    color: active ? std.color || "#93c5fd" : "#94a3b8",
+                    border: active ? `1px solid ${std.color}` : "1px solid var(--ms-border)",
+                    background: active ? std.bg : "var(--ms-surface-hover)",
+                    color: active ? std.color : "var(--color-text-muted)",
                   }}
                 >
                   {std.label}
@@ -570,9 +590,9 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "6px",
-                  border: active ? "1px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
-                  background: active ? "rgba(56, 189, 248, 0.16)" : "rgba(255, 255, 255, 0.025)",
-                  color: active ? "#e0f2fe" : "#cbd5e1",
+                  border: active ? "1px solid var(--domain-core)" : "1px solid var(--ms-border)",
+                  background: active ? "var(--domain-core-bg)" : "var(--ms-surface-hover)",
+                  color: active ? "var(--domain-core)" : "var(--color-text-muted)",
                 }}
               >
                 <span>{lang.label}</span>
@@ -581,8 +601,8 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                     fontSize: "10px",
                     padding: "1px 5px",
                     borderRadius: "4px",
-                    background: "rgba(0, 0, 0, 0.3)",
-                    color: active ? "#7dd3fc" : "#64748b",
+                    background: "var(--ms-surface-hover)",
+                    color: active ? "var(--domain-core)" : "var(--color-text-muted)",
                   }}
                 >
                   {lang.extHint}

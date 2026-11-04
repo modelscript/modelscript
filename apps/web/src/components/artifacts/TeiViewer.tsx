@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
+import Spinner from "../Spinner";
 
 // Provide some document-like typography styling
 const TeiContainer = styled.div<{ $isFullScreen?: boolean | undefined }>`

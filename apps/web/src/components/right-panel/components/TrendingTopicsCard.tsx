@@ -5,10 +5,12 @@ import { Text } from "@primer/react";
 import React, { useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { updateUserTopic } from "../../../api";
-import { useLanguageEnabled } from "../../../FeatureFlagContext";
+import { useAuth } from "../../../AuthContext";
+import { useFeatureFlag, useLanguageEnabled } from "../../../FeatureFlagContext";
 import { useClickOutside } from "../../../hooks/useClickOutside";
 import { CURATED_ENGINEERING_DOMAINS } from "../../../pages/explore/constants";
 import Box from "../../Box";
+import { scrollToTop } from "../../ScrollToTop";
 import { useToast } from "../../ToastContext";
 import {
   Card,
@@ -26,6 +28,7 @@ export interface TrendingTopicsCardProps {
   trending: any[];
   activeTrendMenu: number | null;
   setActiveTrendMenu: (id: number | null) => void;
+  maxItems?: number;
 }
 
 const DISMISSED_TRENDS_STORAGE_KEY = "modelscript:dismissed_trends";
@@ -36,7 +39,12 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
   trending,
   activeTrendMenu,
   setActiveTrendMenu,
+  maxItems = 4,
 }) => {
+  const { user } = useAuth();
+  const hasTopicDismissal = useFeatureFlag(["topic_dismissal", "trending_topic_dismissal"]);
+  const canDismiss = Boolean(user && hasTopicDismissal);
+
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -60,6 +68,7 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
   });
 
   const handleDismissTopic = (topicKey: number | string, concept?: string) => {
+    if (!canDismiss) return;
     setDismissedIds((prev) => {
       const next = new Set(prev).add(topicKey);
       if (concept) next.add(concept);
@@ -92,9 +101,11 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
     }
     return true;
   });
-  const visibleTrending = activeTrending.filter(
-    (t) => !dismissedIds.has(t.id ?? t.concept) && !dismissedIds.has(t.concept),
-  );
+  const visibleTrending = activeTrending.filter((t) => {
+    if (!canDismiss) return true;
+    return !dismissedIds.has(t.id ?? t.concept) && !dismissedIds.has(t.concept);
+  });
+  const displayedTrending = visibleTrending.slice(0, maxItems);
 
   return (
     <Card>
@@ -102,8 +113,8 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
         <CardTitle>Topics</CardTitle>
       </CardHeader>
       <PanelList>
-        {visibleTrending.length > 0 ? (
-          visibleTrending.map((topic) => {
+        {displayedTrending.length > 0 ? (
+          displayedTrending.map((topic) => {
             const topicKey = topic.id ?? topic.concept;
             const postCount = Number(topic.post_count ?? topic.postsCount ?? 0);
             const targetTopic = String(topic.display_name || topic.concept || "").replace(/^#/, "");
@@ -141,86 +152,89 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
                     </Box>
                   </Box>
                 </Box>
-                <Box
-                  ref={activeTrendMenu === topicKey ? menuContainerRef : undefined}
-                  position="relative"
-                  style={{ flexShrink: 0 }}
-                >
-                  <KebabButton
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      setActiveTrendMenu(activeTrendMenu === topicKey ? null : topicKey);
-                    }}
+                {canDismiss && (
+                  <Box
+                    ref={activeTrendMenu === topicKey ? menuContainerRef : undefined}
+                    position="relative"
+                    style={{ flexShrink: 0 }}
                   >
-                    <KebabHorizontalIcon size={15} />
-                  </KebabButton>
-                  {activeTrendMenu === topicKey && (
-                    <Box
-                      position="absolute"
-                      top="100%"
-                      right="0"
-                      bg="var(--color-bg-primary)"
-                      border="1px solid var(--color-border)"
-                      borderRadius="12px"
-                      boxShadow="0 4px 12px rgba(0,0,0,0.15)"
-                      p={2}
-                      zIndex={100}
-                      minWidth="280px"
-                      display="flex"
-                      flexDirection="column"
-                      gap={1}
+                    <KebabButton
+                      aria-label="Topic options"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setActiveTrendMenu(activeTrendMenu === topicKey ? null : topicKey);
+                      }}
                     >
-                      {[
-                        "Not interested in this",
-                        "The associated content is not relevant",
-                        "This trend is a duplicate",
-                        "This trend is abusive or harmful",
-                        "This trend is spam",
-                      ].map((label, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDismissTopic(topicKey, topic.concept || targetTopic);
-                            setActiveTrendMenu(null);
-                            toast.info("Thanks for your feedback — trend hidden.");
-                          }}
-                          style={{
-                            padding: "8px 10px",
-                            background: "none",
-                            border: "none",
-                            textAlign: "left",
-                            cursor: "pointer",
-                            fontSize: "13px",
-                            lineHeight: "18px",
-                            fontWeight: 600,
-                            color: "var(--color-text-primary)",
-                            borderRadius: "8px",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "10px",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                        >
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              color: "var(--color-text-muted)",
-                              lineHeight: 1,
+                      <KebabHorizontalIcon size={15} />
+                    </KebabButton>
+                    {activeTrendMenu === topicKey && (
+                      <Box
+                        position="absolute"
+                        top="100%"
+                        right="0"
+                        bg="var(--color-bg-primary)"
+                        border="1px solid var(--color-border)"
+                        borderRadius="12px"
+                        boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+                        p={2}
+                        zIndex={100}
+                        minWidth="280px"
+                        display="flex"
+                        flexDirection="column"
+                        gap={1}
+                      >
+                        {[
+                          "Not interested in this",
+                          "The associated content is not relevant",
+                          "This trend is a duplicate",
+                          "This trend is abusive or harmful",
+                          "This trend is spam",
+                        ].map((label, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDismissTopic(topicKey, topic.concept || targetTopic);
+                              setActiveTrendMenu(null);
+                              toast.info("Thanks for your feedback — trend hidden.");
                             }}
+                            style={{
+                              padding: "8px 10px",
+                              background: "none",
+                              border: "none",
+                              textAlign: "left",
+                              cursor: "pointer",
+                              fontSize: "13px",
+                              lineHeight: "18px",
+                              fontWeight: 600,
+                              color: "var(--color-text-primary)",
+                              borderRadius: "8px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--surface-row-hover)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           >
-                            <EyeClosedIcon size={14} />
-                          </span>
-                          {label}
-                        </button>
-                      ))}
-                    </Box>
-                  )}
-                </Box>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                color: "var(--color-text-muted)",
+                                lineHeight: 1,
+                              }}
+                            >
+                              <EyeClosedIcon size={14} />
+                            </span>
+                            {label}
+                          </button>
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
+                )}
               </TrendingItem>
             );
           })
@@ -234,7 +248,19 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
           </Box>
         )}
 
-        {!isExplore && <ShowMoreLink to="/explore">Explore all topics →</ShowMoreLink>}
+        <ShowMoreLink
+          to="/explore?tab=trending"
+          onClick={() => {
+            if (
+              location.pathname.startsWith("/explore") &&
+              (searchParams.get("tab") || "").toLowerCase() === "trending"
+            ) {
+              scrollToTop({ smooth: true });
+            }
+          }}
+        >
+          Explore all topics →
+        </ShowMoreLink>
       </PanelList>
     </Card>
   );

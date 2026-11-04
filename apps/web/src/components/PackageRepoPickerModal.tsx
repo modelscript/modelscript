@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { GitBranchIcon, MarkGithubIcon, PackageIcon, RepoIcon, SearchIcon, XIcon } from "@primer/octicons-react";
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { createArtifactView, getLibraries, getRepos, type LibraryListItem } from "../api";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import Box from "./Box";
+import Spinner from "./Spinner";
 
 const ModalOverlay = styled.div`
   position: fixed;
@@ -128,7 +130,9 @@ interface PackageRepoPickerModalProps {
 }
 
 export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ isOpen, onClose, onSelect }) => {
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const [activeTab, setActiveTab] = useState<"packages" | "repositories">("packages");
+  const effectiveTab = hasRepos ? activeTab : "packages";
   const [searchQuery, setSearchQuery] = useState("");
   const [packages, setPackages] = useState<LibraryListItem[]>([]);
   const [repos, setRepos] = useState<any[]>([]);
@@ -141,7 +145,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
     let mounted = true;
     setLoading(true);
 
-    if (activeTab === "packages") {
+    if (effectiveTab === "packages") {
       getLibraries(searchQuery)
         .then((pkgs) => {
           if (mounted) setPackages(pkgs || []);
@@ -164,7 +168,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
     return () => {
       mounted = false;
     };
-  }, [isOpen, activeTab, searchQuery]);
+  }, [isOpen, effectiveTab, searchQuery]);
 
   const filteredRepos = useMemo(() => {
     if (!searchQuery) return repos;
@@ -276,7 +280,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
           </span>
           <StyledInput
             placeholder={
-              activeTab === "packages" ? "Search packages (e.g. Modelica, Buildings)..." : "Search repositories..."
+              effectiveTab === "packages" ? "Search packages (e.g. Modelica, Buildings)..." : "Search repositories..."
             }
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -284,21 +288,23 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
           />
         </SearchInputWrapper>
 
-        <TabContainer>
-          <TabButton $active={activeTab === "packages"} onClick={() => setActiveTab("packages")}>
-            <PackageIcon size={14} /> Packages
-          </TabButton>
-          <TabButton $active={activeTab === "repositories"} onClick={() => setActiveTab("repositories")}>
-            <RepoIcon size={14} /> Repositories
-          </TabButton>
-        </TabContainer>
+        {hasRepos && (
+          <TabContainer>
+            <TabButton $active={effectiveTab === "packages"} onClick={() => setActiveTab("packages")}>
+              <PackageIcon size={14} /> Packages
+            </TabButton>
+            <TabButton $active={effectiveTab === "repositories"} onClick={() => setActiveTab("repositories")}>
+              <RepoIcon size={14} /> Repositories
+            </TabButton>
+          </TabContainer>
+        )}
 
         <ItemList>
           {loading ? (
             <Box display="flex" justifyContent="center" alignItems="center" p={6}>
               <Spinner size="medium" />
             </Box>
-          ) : activeTab === "packages" ? (
+          ) : effectiveTab === "packages" ? (
             packages.length === 0 ? (
               <Box textAlign="center" p={6} color="var(--color-text-muted)">
                 No packages found.

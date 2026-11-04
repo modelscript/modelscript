@@ -64,7 +64,58 @@
   --hue-rose: #e11d48;
   --hue-violet: #7c3aed;
 
+  /* ── High-Contrast Semantic Status (WCAG 2.1 AA Compliant on Both Themes) ── */
+  --ms-status-pass-fg: #047857;
+  --ms-status-pass-bg: color-mix(in srgb, #059669 12%, transparent);
+  --ms-status-pass-border: color-mix(in srgb, #059669 32%, transparent);
+
+  --ms-status-warn-fg: #92400e;
+  --ms-status-warn-bg: color-mix(in srgb, #d97706 12%, transparent);
+  --ms-status-warn-border: color-mix(in srgb, #d97706 32%, transparent);
+
+  --ms-status-fail-fg: #be123c;
+  --ms-status-fail-bg: color-mix(in srgb, #e11d48 12%, transparent);
+  --ms-status-fail-border: color-mix(in srgb, #e11d48 32%, transparent);
+
+  --ms-status-info-fg: #0369a1;
+  --ms-status-info-bg: color-mix(in srgb, #0891b2 12%, transparent);
+  --ms-status-info-border: color-mix(in srgb, #0891b2 32%, transparent);
+
+  /* ── 8 Canonical Polyglot Domain Clusters (Light: Deep Contrast) ── */
+  --domain-core: #0e7490;
+  --domain-core-bg: color-mix(in srgb, #0e7490 12%, transparent);
+  --domain-core-border: color-mix(in srgb, #0e7490 32%, transparent);
+
+  --domain-power: #b45309;
+  --domain-power-bg: color-mix(in srgb, #b45309 12%, transparent);
+  --domain-power-border: color-mix(in srgb, #b45309 32%, transparent);
+
+  --domain-fluid: #0369a1;
+  --domain-fluid-bg: color-mix(in srgb, #0369a1 12%, transparent);
+  --domain-fluid-border: color-mix(in srgb, #0369a1 32%, transparent);
+
+  --domain-mechanics: #047857;
+  --domain-mechanics-bg: color-mix(in srgb, #047857 12%, transparent);
+  --domain-mechanics-border: color-mix(in srgb, #047857 32%, transparent);
+
+  --domain-aero: #4338ca;
+  --domain-aero-bg: color-mix(in srgb, #4338ca 12%, transparent);
+  --domain-aero-border: color-mix(in srgb, #4338ca 32%, transparent);
+
+  --domain-cad: #7e22ce;
+  --domain-cad-bg: color-mix(in srgb, #7e22ce 12%, transparent);
+  --domain-cad-border: color-mix(in srgb, #7e22ce 32%, transparent);
+
+  --domain-bio: #be123c;
+  --domain-bio-bg: color-mix(in srgb, #be123c 12%, transparent);
+  --domain-bio-border: color-mix(in srgb, #be123c 32%, transparent);
+
+  --domain-med: #c2410c;
+  --domain-med-bg: color-mix(in srgb, #c2410c 12%, transparent);
+  --domain-med-border: color-mix(in srgb, #c2410c 32%, transparent);
+
   /* ── Atmosphere (CAD grid + glows) ── */
+  --ms-bg-inset: #f8fafc;
   --ms-grid-line: rgba(15, 23, 42, 0.045);
   --ms-grid-sub: rgba(15, 23, 42, 0.02);
   --ms-dot-matrix: rgba(15, 23, 42, 0.08);
@@ -108,6 +159,7 @@
   --ms-bg-alt: #070b15;
   --ms-bg-elv: #0f1626;
   --ms-bg-soft: #0f1728;
+  --ms-bg-inset: #050811;
   --ms-surface-glass: rgba(10, 15, 28, 0.86);
   --ms-surface-hover: rgba(148, 163, 184, 0.08);
   --ms-surface-selected: rgba(34, 211, 238, 0.1);
@@ -126,6 +178,56 @@
   --ms-warning: #fbbf24;
   --ms-danger: #fb7185;
   --ms-info: #22d3ee;
+
+  /* ── High-Contrast Semantic Status (Dark: Luminous) ── */
+  --ms-status-pass-fg: #34d399;
+  --ms-status-pass-bg: color-mix(in srgb, #34d399 15%, transparent);
+  --ms-status-pass-border: color-mix(in srgb, #34d399 38%, transparent);
+
+  --ms-status-warn-fg: #fbbf24;
+  --ms-status-warn-bg: color-mix(in srgb, #fbbf24 15%, transparent);
+  --ms-status-warn-border: color-mix(in srgb, #fbbf24 38%, transparent);
+
+  --ms-status-fail-fg: #fb7185;
+  --ms-status-fail-bg: color-mix(in srgb, #fb7185 15%, transparent);
+  --ms-status-fail-border: color-mix(in srgb, #fb7185 38%, transparent);
+
+  --ms-status-info-fg: #38bdf8;
+  --ms-status-info-bg: color-mix(in srgb, #38bdf8 15%, transparent);
+  --ms-status-info-border: color-mix(in srgb, #38bdf8 38%, transparent);
+
+  /* ── 8 Canonical Polyglot Domain Clusters (Dark: Luminous) ── */
+  --domain-core: #22d3ee;
+  --domain-core-bg: color-mix(in srgb, #22d3ee 14%, transparent);
+  --domain-core-border: color-mix(in srgb, #22d3ee 36%, transparent);
+
+  --domain-power: #fbbf24;
+  --domain-power-bg: color-mix(in srgb, #fbbf24 14%, transparent);
+  --domain-power-border: color-mix(in srgb, #fbbf24 36%, transparent);
+
+  --domain-fluid: #38bdf8;
+  --domain-fluid-bg: color-mix(in srgb, #38bdf8 14%, transparent);
+  --domain-fluid-border: color-mix(in srgb, #38bdf8 36%, transparent);
+
+  --domain-mechanics: #34d399;
+  --domain-mechanics-bg: color-mix(in srgb, #34d399 14%, transparent);
+  --domain-mechanics-border: color-mix(in srgb, #34d399 36%, transparent);
+
+  --domain-aero: #818cf8;
+  --domain-aero-bg: color-mix(in srgb, #818cf8 14%, transparent);
+  --domain-aero-border: color-mix(in srgb, #818cf8 36%, transparent);
+
+  --domain-cad: #c084fc;
+  --domain-cad-bg: color-mix(in srgb, #c084fc 14%, transparent);
+  --domain-cad-border: color-mix(in srgb, #c084fc 36%, transparent);
+
+  --domain-bio: #fb7185;
+  --domain-bio-bg: color-mix(in srgb, #fb7185 14%, transparent);
+  --domain-bio-border: color-mix(in srgb, #fb7185 36%, transparent);
+
+  --domain-med: #fb923c;
+  --domain-med-bg: color-mix(in srgb, #fb923c 14%, transparent);
+  --domain-med-border: color-mix(in srgb, #fb923c 36%, transparent);
 
   /* Luminous -400 hues for contrast on dark surfaces. */
   --hue-indigo: #818cf8;

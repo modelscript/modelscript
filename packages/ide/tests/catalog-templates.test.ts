@@ -55,27 +55,40 @@ describe("66-Language Catalog & 2-Level Example Templates Suite", () => {
   ];
 
   for (const tpl of allTemplates) {
-    it(`scaffolds template '${tpl}' and resolves an existing non-empty primary file`, () => {
-      const memFs = new MemoryFsMock();
-      const workspaceUri = { scheme: "memfs", path: "/" + tpl } as any;
+    if (tpl === "empty" || tpl === "blank" || tpl === "unknown-fallback-template") {
+      it(`scaffolds empty template '${tpl}' with zero files and empty primary file`, () => {
+        const memFs = new MemoryFsMock();
+        const workspaceUri = { scheme: "memfs", path: "/" + tpl } as any;
 
-      scaffoldTemplateFiles(memFs, workspaceUri);
-      assert.ok(memFs.files.size > 0, `Template '${tpl}' must scaffold at least one file`);
+        scaffoldTemplateFiles(memFs, workspaceUri);
+        assert.strictEqual(memFs.files.size, 0, `Template '${tpl}' must be completely empty`);
 
-      const primary = getTemplatePrimaryFile(tpl);
-      assert.ok(primary, `Template '${tpl}' must have a non-empty primary file`);
+        const primary = getTemplatePrimaryFile(tpl);
+        assert.strictEqual(primary, "", `Template '${tpl}' must have empty string primary file`);
+      });
+    } else {
+      it(`scaffolds template '${tpl}' and resolves an existing non-empty primary file`, () => {
+        const memFs = new MemoryFsMock();
+        const workspaceUri = { scheme: "memfs", path: "/" + tpl } as any;
 
-      const expectedFullPath = "/" + tpl + "/" + primary;
-      const fileNames = Array.from(memFs.files.keys());
-      assert.ok(
-        memFs.files.has(expectedFullPath),
-        `Primary file '${primary}' for template '${tpl}' does not exist in scaffolded files: [${fileNames.join(", ")}]`,
-      );
+        scaffoldTemplateFiles(memFs, workspaceUri);
+        assert.ok(memFs.files.size > 0, `Template '${tpl}' must scaffold at least one file`);
 
-      for (const [filePath, content] of memFs.files.entries()) {
-        assert.ok(content.byteLength > 0, `File '${filePath}' in template '${tpl}' must not be empty`);
-      }
-    });
+        const primary = getTemplatePrimaryFile(tpl);
+        assert.ok(primary, `Template '${tpl}' must have a non-empty primary file`);
+
+        const expectedFullPath = "/" + tpl + "/" + primary;
+        const fileNames = Array.from(memFs.files.keys());
+        assert.ok(
+          memFs.files.has(expectedFullPath),
+          `Primary file '${primary}' for template '${tpl}' does not exist in scaffolded files: [${fileNames.join(", ")}]`,
+        );
+
+        for (const [filePath, content] of memFs.files.entries()) {
+          assert.ok(content.byteLength > 0, `File '${filePath}' in template '${tpl}' must not be empty`);
+        }
+      });
+    }
   }
 
   it("scaffolds and mounts artifact workspaces for various engineering modalities", () => {

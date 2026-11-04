@@ -2,10 +2,10 @@
 
 import {
   CodeIcon,
+  CodeSquareIcon,
   DownloadIcon,
   FileIcon,
   PencilIcon,
-  PulseIcon,
   RepoForkedIcon,
   SearchIcon,
   ShareIcon,
@@ -16,7 +16,6 @@ import { ActionList, ActionMenu, Button, IconButton } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
-import { AnsatzMark } from "../../../components/AnsatzLogo";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { getExtensionForDialect } from "../../../util/editor-routing";
@@ -58,7 +57,6 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   const { theme } = useTheme();
   const branding = useInstanceBranding();
   const visiblePlaygroundLanguages = useVisiblePlaygroundLanguages();
-  const brandName = branding.instanceName || "Ansatz";
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(currentTitle);
@@ -90,32 +88,24 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   return (
     <NavbarContainer>
       <NavLeft>
-        <BrandLink to={user ? "/home" : "/explore"}>
-          <AnsatzMark size={24} logoUrl={customLogoSrc} alt={brandName} accentColor={branding.brandAccentColor} />
-          <span className="nav-hide-sm">{brandName}</span>
+        <BrandLink to={user ? "/home" : "/explore"} title="ModelScript Playground" aria-label="ModelScript Playground">
+          <img
+            src={customLogoSrc || (theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png")}
+            alt="ModelScript"
+            width={24}
+            height={24}
+            style={{ borderRadius: "5px", flexShrink: 0, display: "block" }}
+          />
           <span
             className="nav-hide-sm"
-            data-testid="playground-brand-badge"
-            style={{
-              fontSize: "9.5px",
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              padding: "1px 5px",
-              borderRadius: "4px",
-              background: "var(--ms-brand-soft)",
-              border: "1px solid var(--color-accent-blue-border)",
-              color: "var(--ms-brand)",
-              lineHeight: 1.3,
-              flexShrink: 0,
-            }}
+            style={{ fontWeight: 700, letterSpacing: "-0.01em", color: "var(--color-fg-default)" }}
           >
-            {branding.instanceBadge?.trim() || "Beta"}
+            ModelScript
           </span>
+          <Badge data-testid="playground-brand-badge">
+            <CodeSquareIcon size={14} /> Playground
+          </Badge>
         </BrandLink>
-        <Badge>
-          <PulseIcon size={12} /> Playground
-        </Badge>
 
         {fromArtifactParam && (
           <Link

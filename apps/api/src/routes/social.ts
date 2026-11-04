@@ -49,6 +49,7 @@ interface RawNotebookInput {
   seriesPart?: unknown;
   dialect?: unknown;
   companionRepo?: unknown;
+  topics?: unknown;
   estimatedReadMinutes?: unknown;
   cells?: RawNotebookCell[] | undefined;
 }
@@ -68,6 +69,7 @@ function parseNotebookPayload(
     seriesPart?: number | undefined;
     dialect?: string | undefined;
     companionRepo?: string | undefined;
+    topics?: string[] | undefined;
     estimatedReadMinutes?: number | undefined;
     cells: NormalizedNotebookCell[];
     artifactIds: (number | string)[];
@@ -76,6 +78,16 @@ function parseNotebookPayload(
   const inputCells = Array.isArray(rawNotebook?.cells) ? rawNotebook.cells : null;
   const notebookTitle =
     typeof rawNotebook?.title === "string" && rawNotebook.title.trim() ? rawNotebook.title.trim() : undefined;
+  const normalizedTopics: string[] = Array.isArray(rawNotebook?.topics)
+    ? Array.from(
+        new Set(
+          (rawNotebook.topics as unknown[])
+            .filter((t): t is string => typeof t === "string")
+            .map((t) => t.trim().replace(/\s+/g, " ").toLowerCase().slice(0, 40))
+            .filter(Boolean),
+        ),
+      ).slice(0, 8)
+    : [];
   const extraTutorialFields = {
     ...(typeof rawNotebook?.summary === "string" && rawNotebook.summary.trim()
       ? { summary: rawNotebook.summary.trim() }
@@ -95,6 +107,7 @@ function parseNotebookPayload(
     ...(typeof rawNotebook?.companionRepo === "string" && rawNotebook.companionRepo.trim()
       ? { companionRepo: rawNotebook.companionRepo.trim() }
       : {}),
+    ...(normalizedTopics.length > 0 ? { topics: normalizedTopics } : {}),
     ...(Number.isFinite(Number(rawNotebook?.estimatedReadMinutes)) && Number(rawNotebook?.estimatedReadMinutes) > 0
       ? { estimatedReadMinutes: Number(rawNotebook?.estimatedReadMinutes) }
       : {}),
@@ -1268,7 +1281,7 @@ export function socialRouter(
   router.get("/users/:username/posts", optionalAuth, (req: Request, res: Response) => {
     const username = req.params["username"] as string;
     const currentUserId = req.user?.id;
-    const limit = Number(req.query["limit"]) || 20;
+    const limit = Math.min(Math.max(Number(req.query["limit"]) || 20, 1), 500);
     const type = req.query["type"] as string | undefined;
 
     try {
@@ -1717,6 +1730,27 @@ export function socialRouter(
       thumbnailUrl,
     };
   }
+
+  /**
+   * GET /api/v1/social/artifact-views?mine=1&types=cad-step,step&limit=50
+   * Lists the caller's own artifact views (metadata only) so composers can link to them.
+   */
+  router.get("/artifact-views", requireAuth, (req: Request, res: Response): void => {
+    try {
+      const types =
+        typeof req.query["types"] === "string"
+          ? req.query["types"]
+              .split(",")
+              .map((t) => t.trim().toLowerCase())
+              .filter(Boolean)
+          : [];
+      const limit = Number(req.query["limit"] ?? 50);
+      const rows = database.listArtifactViewsByCreator(req.user!.id, types, Number.isFinite(limit) ? limit : 50);
+      res.json({ items: rows });
+    } catch {
+      res.status(500).json({ error: "Failed to list artifact views" });
+    }
+  });
 
   /**
    * POST /api/v1/social/artifact-views

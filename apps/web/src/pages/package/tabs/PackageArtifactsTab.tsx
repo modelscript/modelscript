@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BeakerIcon, PlayIcon } from "@primer/octicons-react";
-import { Button, Label, Spinner, Text } from "@primer/react";
+import { Button, Label, Text } from "@primer/react";
 import React, { Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ArtifactViewerInfo } from "../../../api";
 import type { LinkedStudyJobItemPayload, StudyDefinitionPayload } from "../../../api/compute";
 import Box from "../../../components/Box";
 import DatasetTableViewer from "../../../components/DatasetTableViewer";
+import Spinner from "../../../components/Spinner";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { ArtifactBadge, ArtifactCard, DomainPill, SectionTitle, type PolyglotDomain } from "../types";
 

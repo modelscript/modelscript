@@ -1,18 +1,23 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
+import { LANGUAGE_COUNT } from "../data/languages";
 import lintRules from "../data/lint-rules.generated.json";
 import mcpData from "../data/mcp-tools.generated.json";
 import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFooterLink } from "./NavMegaMenu.vue";
 
 const props = defineProps<{ screenMenu?: boolean }>();
 
-const totalRules = lintRules.totalRules.toLocaleString();
-const totalLangs = lintRules.totalLanguages;
+const totalRules = (
+  Array.isArray(lintRules)
+    ? lintRules.reduce((acc, l) => acc + (l.rules?.length || 0), 0)
+    : (lintRules as any)?.totalRules ?? 0
+).toLocaleString();
+const totalLangs = Array.isArray(lintRules) ? lintRules.length : ((lintRules as any)?.totalLanguages ?? LANGUAGE_COUNT);
 
 const columns: MegaMenuColumn[] = [
   {
     id: "getting-started",
-    label: "Getting Started",
+    label: "Getting Started & Guides",
     items: [
       {
         name: "Introduction",
@@ -36,19 +41,6 @@ const columns: MegaMenuColumn[] = [
         accent: "#38bdf8",
       },
       {
-        name: "CLI Overview",
-        tagline: "Architecture and global workflows of the msx toolchain",
-        href: "/cli/overview",
-        icon: "terminal",
-        accent: "#818cf8",
-      },
-    ],
-  },
-  {
-    id: "guides-operations",
-    label: "Guides & Operations",
-    items: [
-      {
         name: "AI Agents & MCP Workflows",
         tagline: "Configure Claude, Cursor & closed-loop synthesis pipelines",
         href: "/guide/ai-agents",
@@ -63,31 +55,65 @@ const columns: MegaMenuColumn[] = [
         accent: "#fbbf24",
       },
       {
-        name: "Embedding Artifacts",
-        tagline: "Embed interactive 3D CAD, schematics & plots in web apps",
-        href: "/guide/embedding",
-        icon: "code",
-        accent: "#2dd4bf",
-      },
-      {
         name: "Enterprise Administration",
-        tagline: "Self-hosted deployment, RBAC, SSO, billing & audit logs",
+        tagline: "Air-gapped deployment, RBAC, SSO, billing & audit logs",
         href: "/guide/administration",
         icon: "shield",
         accent: "#818cf8",
       },
+    ],
+  },
+  {
+    id: "languages",
+    label: `Polyglot Languages (${totalLangs} Formats)`,
+    items: [
       {
-        name: "Self-Hosting Guide",
-        tagline: "Docker Compose profiles, Cloudflare Tunnels & backups",
-        href: "/ansatz/self-hosting",
-        icon: "database",
+        name: "Overview & Matrix",
+        tagline: `Interactive matrix across all ${totalLangs} simulation & CAE formats`,
+        href: "/languages/overview",
+        icon: "grid",
+        accent: "#22d3ee",
+      },
+      {
+        name: "Modelica (.mo)",
+        tagline: "Acausal multi-domain physical systems & MSL 4.x · Stable",
+        href: "/languages/modelica",
+        icon: "activity",
+        accent: "#818cf8",
+      },
+      {
+        name: "SysML v2, ReqIF & OSCAL",
+        tagline: "Systems architecture, KerML, requirements & NIST OSCAL",
+        href: "/languages/sysml2",
+        icon: "workflow",
         accent: "#38bdf8",
+      },
+      {
+        name: "Simulink & SSP / FMI",
+        tagline: "Block diagrams, state machines & FMU system packaging",
+        href: "/languages/simulink",
+        icon: "box",
+        accent: "#34d399",
+      },
+      {
+        name: "STEP CAD, QIF & OpenSCAD",
+        tagline: "ISO 10303 AP242 B-Rep, QIF metrology & CSG solids",
+        href: "/languages/step",
+        icon: "cube",
+        accent: "#2dd4bf",
+      },
+      {
+        name: "Power Systems & EMT",
+        tagline: "PSCAD EMT, Siemens PSS/E, OpenDSS & SPICE netlists",
+        href: "/languages/pscad",
+        icon: "zap",
+        accent: "#facc15",
       },
     ],
   },
   {
     id: "toolchain-reference",
-    label: "Toolchain & Ansatz",
+    label: "Toolchain & Reference",
     items: [
       {
         name: "CLI Command Reference",
@@ -125,30 +151,30 @@ const columns: MegaMenuColumn[] = [
         accent: "#a78bfa",
       },
       {
-        name: "Ansatz Platform Overview",
-        tagline: "Federated social graph, CAS registry, citations & cloud HPC",
-        href: "/ansatz/overview",
-        icon: "globe",
-        accent: "#22d3ee",
+        name: "Pricing & Licensing",
+        tagline: "Commercial SDK, enterprise appliances & open-core tiers",
+        href: "/pricing",
+        icon: "shield",
+        accent: "#34d399",
       },
     ],
   },
 ];
 
 const feature: MegaMenuFeature = {
-  eyebrow: "Quickstart in 30 seconds",
+  eyebrow: `Polyglot Compiler Matrix (${totalLangs} Formats)`,
   title: "Simulate & verify from the CLI",
-  body: "Flatten hierarchical models, run stiff DAE solvers, and emit SARIF verification proofs from your terminal.",
+  body: `Flatten hierarchical models, run stiff DAE solvers, and emit SARIF verification proofs across ${totalLangs} formats.`,
   code: "msx simulate BouncingBall model.mo --stop-time 5",
-  ctaLabel: "Read Getting Started",
-  ctaHref: "/guide/getting-started",
+  ctaLabel: `Browse all ${totalLangs} languages`,
+  ctaHref: "/languages/overview",
 };
 
 const footerLinks: MegaMenuFooterLink[] = [
   { label: "Documentation Home", href: "/guide/introduction", icon: "globe" },
-  { label: "ActivityPub Federation", href: "/ansatz/federation", icon: "link" },
-  { label: "Package Registry", href: "/ansatz/package-registry", icon: "box" },
-  { label: "Cloud HPC Simulation", href: "/ansatz/cloud-hpc", icon: "zap" },
+  { label: `All ${totalLangs} Languages Matrix`, href: "/languages/overview", icon: "grid" },
+  { label: "Compiler Architecture", href: "/architecture/overview", icon: "cpu" },
+  { label: "Algorithms Catalog", href: "/algorithms/overview", icon: "activity" },
   {
     label: "PDF Reference Manual",
     href: "/modelscript-reference-manual.pdf",
@@ -163,7 +189,7 @@ const footerLinks: MegaMenuFooterLink[] = [
   <NavMegaMenu
     menu-id="docs"
     label="Docs"
-    :active-prefixes="['/guide/', '/ansatz/', '/cli/', '/reference/']"
+    :active-prefixes="['/guide/', '/ansatz/', '/cli/', '/reference/', '/languages/']"
     :columns="columns"
     :feature="feature"
     :footer-links="footerLinks"

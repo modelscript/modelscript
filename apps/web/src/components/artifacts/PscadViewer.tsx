@@ -19,12 +19,14 @@ import {
   XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { Button, Spinner } from "@primer/react";
+import { Button } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
+import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface PscadViewerProps {
@@ -149,21 +151,21 @@ const PillBadge = styled.span<{ $variant?: "pscad" | "ieee" | "warning" }>`
     switch (props.$variant) {
       case "pscad":
         return `
-          background: rgba(14, 165, 233, 0.15);
-          color: var(--color-accent-fg, var(--color-fg-default));
-          border: 1px solid rgba(14, 165, 233, 0.35);
+          background: var(--domain-power-bg, rgba(234, 179, 8, 0.12));
+          color: var(--domain-power, #ca8a04);
+          border: 1px solid var(--domain-power-border, rgba(234, 179, 8, 0.35));
         `;
       case "ieee":
         return `
-          background: rgba(16, 185, 129, 0.15);
-          color: var(--color-success-fg, var(--color-fg-default));
-          border: 1px solid rgba(16, 185, 129, 0.35);
+          background: var(--ms-status-pass-bg, rgba(16, 185, 129, 0.15));
+          color: var(--ms-status-pass-fg, #047857);
+          border: 1px solid var(--ms-status-pass-border, rgba(16, 185, 129, 0.35));
         `;
       default:
         return `
-          background: rgba(245, 158, 11, 0.15);
-          color: var(--color-attention-fg, var(--color-fg-default));
-          border: 1px solid rgba(245, 158, 11, 0.35);
+          background: var(--ms-status-warn-bg, rgba(245, 158, 11, 0.15));
+          color: var(--ms-status-warn-fg, #b45309);
+          border: 1px solid var(--ms-status-warn-border, rgba(245, 158, 11, 0.35));
         `;
     }
   }}
@@ -801,56 +803,93 @@ export const PscadViewer: React.FC<PscadViewerProps> = ({ viewConfig, isFullScre
       ? waveformData.pts[hoverSampleIdx]!
       : waveformData.pts[Math.floor(waveformData.pts.length * 0.42)]!;
 
+  const hasFooter = useHasFooterSlot();
+
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
-      <Toolbar>
-        <HeaderLeft>
-          <ZapIcon size={16} fill="var(--color-accent-fg, currentColor)" />
-          <PillBadge $variant="pscad">PSCAD / EMT</PillBadge>
-          {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
-          {viewConfig.ieee2800Compliant === true && (
-            <PillBadge $variant="ieee">
-              <ShieldCheckIcon size={12} /> IEEE 2800
-            </PillBadge>
-          )}
-        </HeaderLeft>
-        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
+      {hasFooter ? (
+        <>
           {sanitizedSvg && (
-            <SegmentedControl>
-              <SegmentBtn
-                type="button"
-                $active={effectiveViewMode === "diagram"}
-                onClick={() => setViewMode("diagram")}
-              >
-                <ZapIcon size={12} /> Schematic
-              </SegmentBtn>
-              <SegmentBtn
-                type="button"
-                $active={effectiveViewMode === "waveforms"}
-                onClick={() => setViewMode("waveforms")}
-              >
-                <GraphIcon size={12} /> EMT Traces
-              </SegmentBtn>
-              <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
-                <CodeIcon size={12} /> Source
-              </SegmentBtn>
-            </SegmentedControl>
+            <FooterTabs>
+              <CompactTabStrip
+                ariaLabel="PSCAD views"
+                active={effectiveViewMode}
+                onChange={(id) => setViewMode(id as typeof effectiveViewMode)}
+                tabs={[
+                  { id: "diagram", label: "Schematic", icon: <ZapIcon size={14} /> },
+                  { id: "waveforms", label: "EMT Traces", icon: <GraphIcon size={14} /> },
+                  { id: "code", label: "Source", icon: <CodeIcon size={14} /> },
+                ]}
+              />
+            </FooterTabs>
           )}
-          {sanitizedSvg && (
-            <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
-              SVG
+          <FloatingTools>
+            {sanitizedSvg && effectiveViewMode === "diagram" && (
+              <FloatingToolBtn type="button" title="Download SVG" aria-label="Download SVG" onClick={handleExportSvg}>
+                <DownloadIcon size={14} />
+              </FloatingToolBtn>
+            )}
+            <FloatingToolBtn
+              type="button"
+              $success={copied}
+              title={copied ? "Copied" : "Copy source"}
+              aria-label="Copy source"
+              onClick={handleCopy}
+            >
+              {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+            </FloatingToolBtn>
+          </FloatingTools>
+        </>
+      ) : (
+        <Toolbar>
+          <HeaderLeft>
+            <ZapIcon size={16} fill="var(--color-accent-fg, currentColor)" />
+            <PillBadge $variant="pscad">PSCAD / EMT</PillBadge>
+            {!isFullScreen && <ModelTitle title={title}>{title}</ModelTitle>}
+            {viewConfig.ieee2800Compliant === true && (
+              <PillBadge $variant="ieee">
+                <ShieldCheckIcon size={12} /> IEEE 2800
+              </PillBadge>
+            )}
+          </HeaderLeft>
+          <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
+            {sanitizedSvg && (
+              <SegmentedControl>
+                <SegmentBtn
+                  type="button"
+                  $active={effectiveViewMode === "diagram"}
+                  onClick={() => setViewMode("diagram")}
+                >
+                  <ZapIcon size={12} /> Schematic
+                </SegmentBtn>
+                <SegmentBtn
+                  type="button"
+                  $active={effectiveViewMode === "waveforms"}
+                  onClick={() => setViewMode("waveforms")}
+                >
+                  <GraphIcon size={12} /> EMT Traces
+                </SegmentBtn>
+                <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
+                  <CodeIcon size={12} /> Source
+                </SegmentBtn>
+              </SegmentedControl>
+            )}
+            {sanitizedSvg && (
+              <Button size="small" leadingVisual={DownloadIcon} onClick={handleExportSvg}>
+                SVG
+              </Button>
+            )}
+            <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
+              {copied ? "Copied" : "Copy"}
             </Button>
-          )}
-          <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
-            {copied ? "Copied" : "Copy"}
-          </Button>
-          {Boolean(viewConfig?.standalone) && !isFullScreen && (
-            <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
-              Open in Playground
-            </Button>
-          )}
-        </Box>
-      </Toolbar>
+            {Boolean(viewConfig?.standalone) && !isFullScreen && (
+              <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
+                Open in Playground
+              </Button>
+            )}
+          </Box>
+        </Toolbar>
+      )}
 
       <TelemetryStrip>
         <Box display="flex" alignItems="center" gap={3}>

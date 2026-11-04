@@ -12,7 +12,7 @@ import {
   ShieldCheckIcon,
   TrashIcon,
 } from "@primer/octicons-react";
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import {
@@ -29,6 +29,7 @@ import {
 } from "../../../api";
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
+import Spinner from "../../../components/Spinner";
 import { DetailSubtitle, DetailTitle, Header } from "../settingsStyles";
 
 const OrgCard = styled.div`

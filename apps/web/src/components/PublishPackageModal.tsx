@@ -10,7 +10,7 @@ import {
   UploadIcon,
   VerifiedIcon,
 } from "@primer/octicons-react";
-import { Button, Dialog, Flash, FormControl, Label, Select, Spinner, Text, TextInput } from "@primer/react";
+import { Button, Dialog, Flash, FormControl, Label, Select, Text, TextInput } from "@primer/react";
 import React, { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { Link, useNavigate } from "react-router-dom";
@@ -18,6 +18,7 @@ import { publishPackageArchive } from "../api";
 import { useAuth } from "../AuthContext";
 import { inspectPackageZip, isValidSemver } from "../util/package-helpers";
 import Box from "./Box";
+import Spinner from "./Spinner";
 
 async function computeSha256Hex(buffer: ArrayBuffer): Promise<string> {
   const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);

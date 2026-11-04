@@ -168,7 +168,7 @@ export class RocetsEditorProvider extends BaseCustomEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ROCETS Liquid Rocket Propulsion Editor</title>
   <style>
@@ -500,6 +500,16 @@ export class RocetsEditorProvider extends BaseCustomEditorProvider {
     const vscode = acquireVsCodeApi();
     let currentData = null;
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     function showTab(id) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -536,11 +546,11 @@ export class RocetsEditorProvider extends BaseCustomEditorProvider {
           const tr = document.createElement('tr');
           tr.style.cursor = 'pointer';
           tr.onclick = () => vscode.postMessage({ type: 'jumpToLine', line: d.line });
-          tr.innerHTML = '<td><b>' + (d.id || d.code) + '</b></td>' +
-            '<td><span class="diag-pill ' + (d.severity || 'error') + '">' + d.severity + '</span></td>' +
-            '<td>' + (d.componentId || '-') + '</td>' +
-            '<td>' + d.message + '</td>' +
-            '<td>' + (d.line || '-') + '</td>';
+          tr.innerHTML = '<td><b>' + escapeHtml(d.id || d.code) + '</b></td>' +
+            '<td><span class="diag-pill ' + escapeHtml(d.severity || 'error') + '">' + escapeHtml(d.severity) + '</span></td>' +
+            '<td>' + escapeHtml(d.componentId || '-') + '</td>' +
+            '<td>' + escapeHtml(d.message) + '</td>' +
+            '<td>' + escapeHtml(d.line || '-') + '</td>';
           diagTbody.appendChild(tr);
         }
 
@@ -563,14 +573,14 @@ export class RocetsEditorProvider extends BaseCustomEditorProvider {
             const tr = document.createElement('tr');
             const p = (b.componentPressuresPa?.[id] || 0) / 1e6;
             const t = (b.componentTemperaturesK?.[id] || 0).toFixed(0);
-            tr.innerHTML = '<td><b>' + id + '</b></td><td>PUMP</td><td>' + (pow / 1e3).toFixed(1) + '</td><td>' + p.toFixed(2) + '</td><td>' + t + '</td>';
+            tr.innerHTML = '<td><b>' + escapeHtml(id) + '</b></td><td>PUMP</td><td>' + (pow / 1e3).toFixed(1) + '</td><td>' + p.toFixed(2) + '</td><td>' + t + '</td>';
             pTbody.appendChild(tr);
           }
           for (const [id, pow] of Object.entries(b.turbinePowersW || {})) {
             const tr = document.createElement('tr');
             const p = (b.componentPressuresPa?.[id] || 0) / 1e6;
             const t = (b.componentTemperaturesK?.[id] || 0).toFixed(0);
-            tr.innerHTML = '<td><b>' + id + '</b></td><td>TURBINE</td><td>' + (pow / 1e3).toFixed(1) + '</td><td>' + p.toFixed(2) + '</td><td>' + t + '</td>';
+            tr.innerHTML = '<td><b>' + escapeHtml(id) + '</b></td><td>TURBINE</td><td>' + (pow / 1e3).toFixed(1) + '</td><td>' + p.toFixed(2) + '</td><td>' + t + '</td>';
             pTbody.appendChild(tr);
           }
         }
@@ -599,7 +609,7 @@ export class RocetsEditorProvider extends BaseCustomEditorProvider {
           const tr = document.createElement('tr');
           const ports = Object.keys(c.ports || {}).join(', ');
           const params = Object.entries(c.parameters || {}).map(([k, v]) => k + '=' + v).join(', ');
-          tr.innerHTML = '<td><b>' + c.id + '</b></td><td>' + c.type + '</td><td>' + (c.title || '') + '</td><td>' + ports + '</td><td>' + params + '</td>';
+          tr.innerHTML = '<td><b>' + escapeHtml(c.id) + '</b></td><td>' + escapeHtml(c.type) + '</td><td>' + escapeHtml(c.title || '') + '</td><td>' + escapeHtml(ports) + '</td><td>' + escapeHtml(params) + '</td>';
           compTbody.appendChild(tr);
         }
 

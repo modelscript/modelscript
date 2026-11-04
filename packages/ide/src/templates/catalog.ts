@@ -4533,26 +4533,7 @@ export const EXAMPLE_TEMPLATES: ExampleWorkspaceDescriptor[] = [
 
 // ── Lookup Maps & Empty Workspace Definition ───────────────────────────────
 
-export const EMPTY_WORKSPACE_FILES: Record<string, string> = {
-  "HelloWorld.mo": [
-    'model HelloWorld "Empty Workspace Starter Model"',
-    '  parameter Real a = -1.0 "Decay rate [1/s]";',
-    '  Real x(start = 1.0, fixed = true) "State variable";',
-    "equation",
-    "  der(x) = a * x;",
-    "end HelloWorld;",
-    "",
-  ].join("\n"),
-  "README.md": [
-    "# ModelScript Empty Workspace",
-    "",
-    "Welcome to your clean ModelScript polyglot engineering workspace (`memfs://`).",
-    "",
-    "- Create files in any of the **66 supported engineering languages** (`.mo`, `.sysml`, `.msx`, `.scad`, `.step`, `.inp`, `.cfg`, `.pscx`, `.raw`, `.dss`, `.opi`, `.lps`, `.data`, `.r5`, `.sima`, `.cir`, `.va`, `.ibs`, `.s2p`, `.urdf`, `.st`, `.adm`, `.idf`, `.epanet`, `.swmm`, `.bkp`, `.sbml`, `.osim`, `.feb`, `.dcm.json`, `.nii.json`, `.topas`, `.3mf`, `.igtl.json`, etc.).",
-    "- Click any **CodeLens** action above declarations to simulate, verify, or open interactive diagrams.",
-    "",
-  ].join("\n"),
-};
+export const EMPTY_WORKSPACE_FILES: Record<string, string> = {};
 
 export const EXAMPLE_BY_ID = new Map<string, ExampleWorkspaceDescriptor>(EXAMPLE_TEMPLATES.map((ex) => [ex.id, ex]));
 
@@ -5393,7 +5374,7 @@ export function scaffoldTemplateFiles(memFs: IMemoryFileSystemProvider, workspac
 export function getTemplatePrimaryFile(rawTemplate: string): string {
   const template = (rawTemplate || "empty").split("?")[0] || "empty";
   if (template === "empty" || template === "blank") {
-    return "HelloWorld.mo";
+    return "";
   }
   if (template === "stress-test") {
     return "MassiveModel.mo";
@@ -5465,5 +5446,5 @@ export function getTemplatePrimaryFile(rawTemplate: string): string {
     if (langEx) return langEx.primaryFile;
   }
 
-  return "HelloWorld.mo";
+  return "";
 }

@@ -2,14 +2,13 @@
 
 import {
   DownloadIcon,
-  KebabHorizontalIcon,
   LinkExternalIcon,
   PlayIcon,
   RepoForkedIcon,
   ScreenFullIcon,
   ServerIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, IconButton, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
@@ -25,25 +24,112 @@ import { sanitizeHttpUrl } from "../../../util/url";
 import Box from "../../Box";
 import { CiteButton } from "../../citations/CiteButton";
 import { VsCodeIcon } from "../../icons/VsCodeIcon";
+import { useCardFooterSlotRegister } from "./CardFooterSlot";
 
 const CardFooterBar = styled(Box)`
-  .card-footer-mobile-menu {
-    display: none;
+  container-type: inline-size;
+  container-name: card-footer;
+
+  .card-footer-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    flex-shrink: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-fg-muted);
+    cursor: pointer;
+    transition:
+      background 0.12s ease,
+      color 0.12s ease;
+  }
+  .card-footer-ghost:hover {
+    background: var(--color-neutral-muted, rgba(128, 128, 128, 0.15));
+    color: var(--color-fg-default);
+  }
+  .card-footer-ghost:focus-visible {
+    outline: 2px solid var(--ms-brand, #0e7490);
+    outline-offset: 1px;
   }
 
-  @media (max-width: 767px) {
-    padding-left: 10px !important;
-    padding-right: 10px !important;
+  .card-footer-ghost.is-primary {
+    color: var(--ms-brand, #0e7490);
+  }
+  .card-footer-ghost.is-primary:hover {
+    background: var(--ms-brand-soft, rgba(14, 116, 144, 0.12));
+    color: var(--ms-brand, #0e7490);
+  }
 
-    .card-footer-hide-mobile {
-      display: none !important;
-    }
+  /* Tabbed viewers portal their tab strip here; when present it replaces the title/type label. */
+  .card-footer-slot {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .card-footer-slot:empty {
+    display: none;
+  }
+  .card-footer-slot:not(:empty) ~ .card-footer-title-group {
+    display: none;
+  }
+  .card-footer-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+  }
 
-    .card-footer-mobile-menu {
-      display: inline-flex;
-    }
+  .card-footer-divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: var(--color-border-default);
+    flex-shrink: 0;
+  }
 
-    .card-footer-playground-label-full {
+  /* Lightweight tooltip: label + one-line description */
+  [data-tip] {
+    position: relative;
+  }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    right: -4px;
+    bottom: calc(100% + 8px);
+    width: max-content;
+    max-width: 220px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    background: var(--color-neutral-emphasis-plus, #24292f);
+    color: #ffffff;
+    font-size: 11px;
+    line-height: 15px;
+    font-weight: 500;
+    text-align: left;
+    white-space: pre-line;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(2px);
+    transition:
+      opacity 0.12s ease,
+      transform 0.12s ease;
+    z-index: 20;
+  }
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after {
+    opacity: 1;
+    transform: none;
+    transition-delay: 0.25s;
+  }
+
+  @container card-footer (max-width: 360px) {
+    .card-footer-provenance {
       display: none;
     }
   }
@@ -67,6 +153,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
   onRunOnHpc,
 }) => {
   const navigate = useNavigate();
+  const registerSlot = useCardFooterSlotRegister();
   const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
 
   const artifactDescriptor = {
@@ -147,374 +234,175 @@ export const CardFooter: React.FC<CardFooterProps> = ({
 
   return (
     <CardFooterBar
-      px={3}
-      py={1}
-      borderTop="1px solid var(--color-accent-blue-border, var(--color-border-default))"
+      px={2}
+      borderTop="1px solid var(--color-border-default)"
       backgroundColor="var(--ms-brand-soft, var(--color-canvas-subtle))"
       display="flex"
       justifyContent="space-between"
       alignItems="center"
-      style={{ gap: "8px", minHeight: "40px", flexShrink: 0, marginTop: "auto" }}
+      style={{ gap: "8px", minHeight: "36px", flexShrink: 0, marginTop: "auto" }}
     >
       <Box display="flex" alignItems="center" gap={2} style={{ minWidth: 0, flex: 1 }}>
-        {isPdf && (
-          <span
-            style={{
-              fontSize: "10px",
-              lineHeight: "14px",
-              background: "var(--color-canvas-default)",
-              color: "var(--ms-brand, #0e7490)",
-              border: "1px solid var(--color-border-default)",
-              padding: "1px 6px",
-              borderRadius: "9999px",
-              fontWeight: 700,
-              fontFamily: "var(--font-mono, monospace)",
-              whiteSpace: "nowrap",
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-              flexShrink: 0,
-            }}
-          >
-            PDF
-          </span>
-        )}
-        {isUntitledMediaOr3dViewer ? (
+        <div ref={registerSlot} className="card-footer-slot" />
+        <div className="card-footer-title-group">
+          {!isUntitledMediaOr3dViewer && (
+            <span
+              style={{
+                fontSize: "10.5px",
+                lineHeight: "14px",
+                color: "var(--color-fg-muted)",
+                fontWeight: 700,
+                fontFamily: "var(--font-mono, monospace)",
+                whiteSpace: "nowrap",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                paddingLeft: 4,
+                flexShrink: 0,
+              }}
+            >
+              {rawViewType || "ARTIFACT"}
+            </span>
+          )}
           <Text
             style={{
-              fontSize: "12.5px",
+              fontSize: "12px",
               lineHeight: "18px",
               fontWeight: 600,
               color: "var(--color-fg-default)",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
+              minWidth: 0,
             }}
             title={artifact.title || viewConfig.title || ""}
           >
             {artifact.title || viewConfig.title || ""}
           </Text>
-        ) : (
-          <span
-            style={{
-              fontSize: "10.5px",
-              lineHeight: "14px",
-              background: "var(--color-canvas-default)",
-              color: "var(--color-fg-default)",
-              border: "1px solid var(--color-border-default)",
-              padding: "2px 8px",
-              borderRadius: "9999px",
-              fontWeight: 700,
-              fontFamily: "var(--font-mono, monospace)",
-              whiteSpace: "nowrap",
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-            }}
-          >
-            {rawViewType || "ARTIFACT"}
-          </span>
-        )}
-        {viewConfig.provenance && (
-          <span
-            className="card-footer-hide-mobile"
-            style={{
-              fontSize: "11px",
-              lineHeight: "14px",
-              background: "var(--ms-brand-soft)",
-              color: "var(--ms-brand)",
-              border: "1px solid var(--color-border-default)",
-              padding: "2px 7px",
-              borderRadius: "6px",
-              fontWeight: 600,
-              fontFamily: "var(--font-mono)",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
-            }}
-          >
-            ⚡ {viewConfig.provenance.solver?.toUpperCase()} • {viewConfig.provenance.profile}
-          </span>
-        )}
+          {viewConfig.provenance && (
+            <span
+              className="card-footer-provenance"
+              style={{
+                fontSize: "11px",
+                lineHeight: "14px",
+                color: "var(--ms-brand)",
+                fontFamily: "var(--font-mono)",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              ⚡ {viewConfig.provenance.solver?.toUpperCase()} • {viewConfig.provenance.profile}
+            </span>
+          )}
+        </div>
       </Box>
-      <Box display="flex" alignItems="center" gap="6px" style={{ flexShrink: 0 }}>
-        {viewConfig.provenance && viewConfig.jobId && (
-          <button
-            type="button"
-            className="card-footer-hide-mobile"
-            onClick={handleReproduce}
-            style={{
-              background: "var(--color-canvas-default)",
-              color: "var(--color-fg-default)",
-              border: "1px solid var(--color-border-default)",
-              borderRadius: "6px",
-              height: "28px",
-              padding: "0 10px",
-              fontSize: "12px",
-              lineHeight: "16px",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "5px",
-              whiteSpace: "nowrap",
-            }}
-            title="Inspect execution recipe and reproduction parameters"
-          >
-            ⚡ Fork &amp; Reproduce
-          </button>
-        )}
-        {hasCloudSolverFlag && onRunOnHpc && (
-          <button
-            type="button"
-            className="card-footer-hide-mobile"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRunOnHpc();
-            }}
-            style={{
-              background: "var(--color-canvas-default)",
-              color: "var(--color-success-fg, #059669)",
-              border: "1px solid var(--color-border-default)",
-              borderRadius: "6px",
-              height: "28px",
-              padding: "0 10px",
-              fontSize: "12px",
-              lineHeight: "16px",
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "5px",
-              whiteSpace: "nowrap",
-            }}
-            title="Dispatch simulation job against this model artifact on Cloud HPC"
-          >
-            Run on HPC
-          </button>
-        )}
+      <Box display="flex" alignItems="center" gap="2px" style={{ flexShrink: 0 }}>
+        {/* Info / reference actions */}
+        <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex" }}>
+          <CiteButton
+            target={buildCitationFromArtifact({
+              id: Number(artifactId || artifact?.id || 0),
+              title: artifact?.title || viewConfig?.title,
+              viewType: artifact?.view_type,
+              authorUsername: artifact?.username,
+              authorDisplayName: artifact?.display_name,
+              createdAt: artifact?.created_at,
+              description: viewConfig?.description || viewConfig?.caption,
+              localPdfUrl: pdfUrl,
+            })}
+            label="Cite"
+            variant="icon-only"
+            testId={`artifact-card-cite-btn-${artifactId}`}
+          />
+        </span>
         {isPdf && pdfUrl && (
           <>
             <a
               href={pdfUrl}
               target="_blank"
               rel="noopener noreferrer"
+              className="card-footer-ghost"
+              data-tip="Open PDF in a new tab"
+              aria-label="Open PDF in a new tab"
               onClick={(e) => e.stopPropagation()}
-              style={{
-                background: "var(--color-canvas-default)",
-                color: "var(--color-fg-default)",
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "6px",
-                height: "28px",
-                padding: "0 10px",
-                fontSize: "12px",
-                lineHeight: "16px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                whiteSpace: "nowrap",
-                textDecoration: "none",
-              }}
-              title="Open PDF in a new browser tab"
             >
-              <LinkExternalIcon size={12} /> Open in Tab
+              <LinkExternalIcon size={14} />
             </a>
             <a
               href={pdfUrl}
               download
-              className="card-footer-hide-mobile"
+              className="card-footer-ghost"
+              data-tip="Download PDF"
+              aria-label="Download PDF"
               onClick={(e) => e.stopPropagation()}
-              style={{
-                background: "var(--color-canvas-default)",
-                color: "var(--color-fg-default)",
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "6px",
-                height: "28px",
-                padding: "0 10px",
-                fontSize: "12px",
-                lineHeight: "16px",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                whiteSpace: "nowrap",
-                textDecoration: "none",
-              }}
-              title="Download PDF document"
             >
-              <DownloadIcon size={12} /> Download
+              <DownloadIcon size={14} />
             </a>
           </>
         )}
+        {viewConfig.provenance && viewConfig.jobId && (
+          <button
+            type="button"
+            className="card-footer-ghost"
+            onClick={handleReproduce}
+            data-tip={"Fork & Reproduce\nInspect the run recipe"}
+            aria-label="Fork and reproduce"
+          >
+            <RepoForkedIcon size={14} />
+          </button>
+        )}
+        {hasCloudSolverFlag && onRunOnHpc && (
+          <button
+            type="button"
+            className="card-footer-ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRunOnHpc();
+            }}
+            data-tip={"Run on Cloud HPC\nDispatch a simulation job"}
+            aria-label="Run on Cloud HPC"
+          >
+            <ServerIcon size={14} />
+          </button>
+        )}
+        {isLoaded && (
+          <button
+            type="button"
+            className="card-footer-ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenFullScreen();
+            }}
+            title="Full screen"
+            aria-label="Full Screen"
+            data-tip={"Full Screen\nView larger here (read-only)"}
+          >
+            <ScreenFullIcon size={14} />
+          </button>
+        )}
+        {/* "Open in…" actions: leave the page to edit and run */}
+        {isEditable && <span className="card-footer-divider" aria-hidden="true" />}
         {isEditable && !isMultiFile && (
           <button
             type="button"
+            className="card-footer-ghost is-primary"
             onClick={handleOpenEditor}
-            style={{
-              background: "var(--ms-brand, #0e7490)",
-              color: "#ffffff",
-              border: "1px solid var(--ms-brand, #0e7490)",
-              borderRadius: "6px",
-              height: "28px",
-              padding: "0 11px",
-              fontSize: "12px",
-              lineHeight: "16px",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "5px",
-              whiteSpace: "nowrap",
-              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.08)",
-            }}
-            title="Open model in interactive Playground"
+            data-tip={"Playground\nEdit and run in the browser"}
+            aria-label="Open in Playground"
           >
-            <PlayIcon size={12} /> <span className="card-footer-playground-label-full">Open in </span>Playground
+            <PlayIcon size={14} />
           </button>
         )}
         {isEditable && (
           <button
             type="button"
-            className="card-footer-hide-mobile"
+            className="card-footer-ghost"
             onClick={handleOpenVsCode}
-            style={{
-              background: "var(--color-canvas-default)",
-              color: "var(--color-fg-default)",
-              border: "1px solid var(--color-border-default)",
-              borderRadius: "6px",
-              height: "28px",
-              padding: "0 10px",
-              fontSize: "12px",
-              lineHeight: "16px",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "5px",
-              whiteSpace: "nowrap",
-            }}
-            title="Open in VS Code (New Window)"
+            data-tip={"VS Code\nFull IDE in a new window"}
+            aria-label="Open in VS Code"
           >
-            <VsCodeIcon size={12} color="#0284c7" /> VS Code ↗
+            <VsCodeIcon size={14} color="#0284c7" />
           </button>
         )}
-        <CiteButton
-          target={buildCitationFromArtifact({
-            id: Number(artifactId || artifact?.id || 0),
-            title: artifact?.title || viewConfig?.title,
-            viewType: artifact?.view_type,
-            authorUsername: artifact?.username,
-            authorDisplayName: artifact?.display_name,
-            createdAt: artifact?.created_at,
-            description: viewConfig?.description || viewConfig?.caption,
-            localPdfUrl: pdfUrl,
-          })}
-          label="Cite"
-          variant="button"
-          testId={`artifact-card-cite-btn-${artifactId}`}
-        />
-        {isLoaded && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenFullScreen();
-            }}
-            style={{
-              background: "var(--color-canvas-default)",
-              color: "var(--color-fg-default)",
-              border: "1px solid var(--color-border-default)",
-              borderRadius: "6px",
-              width: "28px",
-              height: "28px",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-              flexShrink: 0,
-            }}
-            title="Full screen Studio"
-            aria-label="Full screen Studio"
-          >
-            <ScreenFullIcon size={14} />
-          </button>
-        )}
-
-        <div className="card-footer-mobile-menu" onClick={(e) => e.stopPropagation()}>
-          <ActionMenu>
-            <ActionMenu.Anchor>
-              <IconButton
-                icon={KebabHorizontalIcon}
-                size="small"
-                variant="invisible"
-                aria-label="More artifact actions"
-                title="More artifact actions"
-                style={{ width: 28, height: 28 }}
-              />
-            </ActionMenu.Anchor>
-            <ActionMenu.Overlay width="medium" align="end">
-              <ActionList>
-                {isLoaded && (
-                  <ActionList.Item onSelect={() => onOpenFullScreen()}>
-                    <ActionList.LeadingVisual>
-                      <ScreenFullIcon />
-                    </ActionList.LeadingVisual>
-                    Full Screen Studio
-                  </ActionList.Item>
-                )}
-                {isPdf && pdfUrl && (
-                  <>
-                    <ActionList.LinkItem href={pdfUrl} target="_blank" rel="noopener noreferrer">
-                      <ActionList.LeadingVisual>
-                        <LinkExternalIcon />
-                      </ActionList.LeadingVisual>
-                      Open PDF in Tab
-                    </ActionList.LinkItem>
-                    <ActionList.LinkItem href={pdfUrl} download>
-                      <ActionList.LeadingVisual>
-                        <DownloadIcon />
-                      </ActionList.LeadingVisual>
-                      Download PDF
-                    </ActionList.LinkItem>
-                  </>
-                )}
-                {isEditable && !isMultiFile && (
-                  <ActionList.Item onSelect={(e) => handleOpenEditor(e)}>
-                    <ActionList.LeadingVisual>
-                      <PlayIcon />
-                    </ActionList.LeadingVisual>
-                    Open in Playground
-                  </ActionList.Item>
-                )}
-                {hasCloudSolverFlag && onRunOnHpc && (
-                  <ActionList.Item onSelect={() => onRunOnHpc()}>
-                    <ActionList.LeadingVisual>
-                      <ServerIcon />
-                    </ActionList.LeadingVisual>
-                    Run on Cloud HPC
-                  </ActionList.Item>
-                )}
-                {viewConfig.provenance && viewConfig.jobId && (
-                  <ActionList.Item onSelect={(e) => handleReproduce(e)}>
-                    <ActionList.LeadingVisual>
-                      <RepoForkedIcon />
-                    </ActionList.LeadingVisual>
-                    Fork &amp; Reproduce
-                  </ActionList.Item>
-                )}
-                {isEditable && (
-                  <ActionList.Item onSelect={(e) => handleOpenVsCode(e)}>
-                    <ActionList.LeadingVisual>
-                      <VsCodeIcon size={14} color="#0284c7" />
-                    </ActionList.LeadingVisual>
-                    Open in VS Code
-                  </ActionList.Item>
-                )}
-              </ActionList>
-            </ActionMenu.Overlay>
-          </ActionMenu>
-        </div>
       </Box>
     </CardFooterBar>
   );

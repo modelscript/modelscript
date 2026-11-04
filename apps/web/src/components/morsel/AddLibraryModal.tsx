@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DownloadIcon, GlobeIcon, PackageIcon, SearchIcon, UploadIcon } from "@primer/octicons-react";
-import { Button, Dialog, FormControl, Heading, Label, Spinner, Text, TextInput, UnderlineNav } from "@primer/react";
+import { Button, Dialog, FormControl, Heading, Label, Text, TextInput, UnderlineNav } from "@primer/react";
 import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import Spinner from "../Spinner";
 import { useToast } from "../ToastContext";
 import type { Translations } from "./util/i18n";
 

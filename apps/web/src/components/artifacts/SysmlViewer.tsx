@@ -3,10 +3,12 @@
 import {
   CheckCircleFillIcon,
   CheckIcon,
+  ChecklistIcon,
   CodeIcon,
   CopyIcon,
   CpuIcon,
   DotFillIcon,
+  PackageIcon,
   SearchIcon,
   ShieldCheckIcon,
   WorkflowIcon,
@@ -19,6 +21,7 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 export interface SysmlPart {
@@ -147,33 +150,33 @@ const Badge = styled.span<{ $variant?: "sysml" | "req-pass" | "req-warn" | "kerm
     switch (props.$variant) {
       case "sysml":
         return `
-          background: rgba(59, 130, 246, 0.15);
-          color: var(--color-accent-blue, #60a5fa);
-          border: 1px solid rgba(59, 130, 246, 0.4);
+          background: var(--domain-core-bg);
+          color: var(--domain-core);
+          border: 1px solid var(--domain-core-border);
         `;
       case "kerml":
         return `
-          background: rgba(168, 85, 247, 0.15);
-          color: var(--color-accent-purple, #c084fc);
-          border: 1px solid rgba(168, 85, 247, 0.4);
+          background: var(--domain-cad-bg);
+          color: var(--domain-cad);
+          border: 1px solid var(--domain-cad-border);
         `;
       case "req-pass":
         return `
-          background: rgba(16, 185, 129, 0.15);
-          color: #34d399;
-          border: 1px solid rgba(16, 185, 129, 0.4);
+          background: var(--ms-status-pass-bg);
+          color: var(--ms-status-pass-fg);
+          border: 1px solid var(--ms-status-pass-border);
         `;
       case "req-warn":
         return `
-          background: rgba(245, 158, 11, 0.15);
-          color: #fbbf24;
-          border: 1px solid rgba(245, 158, 11, 0.4);
+          background: var(--ms-status-warn-bg);
+          color: var(--ms-status-warn-fg);
+          border: 1px solid var(--ms-status-warn-border);
         `;
       default:
         return `
-          background: rgba(255, 255, 255, 0.05);
-          color: var(--color-text-muted, #8b949e);
-          border: 1px solid rgba(255, 255, 255, 0.08);
+          background: var(--ms-surface-hover);
+          color: var(--ms-text-2);
+          border: 1px solid var(--ms-border);
         `;
     }
   }}
@@ -1191,128 +1194,201 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
 
   const codeLines = useMemo(() => (sourceCode ? sourceCode.split(/\r?\n/) : []), [sourceCode]);
 
+  const hasFooter = useHasFooterSlot();
+
   return (
     <CardWrapper $isFullScreen={isFullScreen}>
-      {!isFullScreen && (
-        <Toolbar>
-          <HeaderLeft>
-            <CpuIcon size={15} fill="var(--color-accent-blue, #60a5fa)" />
-            <SystemTitle title={systemName}>{systemName}</SystemTitle>
-            <Badge $variant={format === "KerML" ? "kerml" : "sysml"}>{format}</Badge>
-            {requirements.length > 0 && (
-              <Badge
-                $variant={
-                  verifiedWithConstraintsCount === requirements.length && verifiedWithConstraintsCount > 0
-                    ? "req-pass"
-                    : "req-warn"
-                }
-                title={
-                  verifiedWithConstraintsCount > 0
-                    ? "Formal SysML v2 'require constraint' inequalities & 'satisfy by' links verified against model parameters"
-                    : "Requirements declared as prose doc blocks without formal constraint equations"
-                }
-              >
-                <ShieldCheckIcon size={12} />{" "}
-                {verifiedWithConstraintsCount > 0
-                  ? `${verifiedWithConstraintsCount}/${requirements.length} Constraints Verified`
-                  : `${requirements.length} Reqs (Doc Only)`}
-              </Badge>
+      {hasFooter ? (
+        <>
+          <FooterTabs>
+            <CompactTabStrip
+              ariaLabel="SysML views"
+              active={effectiveTab}
+              onChange={(id) => setActiveTab(id as typeof effectiveTab)}
+              tabs={[
+                ...(svgMarkup ? [{ id: "diagram", label: "Diagram", icon: <WorkflowIcon size={14} /> }] : []),
+                {
+                  id: "architecture",
+                  label: "Architecture",
+                  icon: <PackageIcon size={14} />,
+                  count: parts.length,
+                },
+                {
+                  id: "requirements",
+                  label: "Requirements",
+                  icon: <ChecklistIcon size={14} />,
+                  count: requirements.length,
+                  title:
+                    requirements.length > 0
+                      ? verifiedWithConstraintsCount > 0
+                        ? `Requirements & Constraints · ${verifiedWithConstraintsCount}/${requirements.length} verified`
+                        : "Requirements & Constraints · doc only"
+                      : "Requirements & Constraints",
+                },
+                { id: "source", label: "Source", icon: <CodeIcon size={14} />, title: "SysML v2 Source" },
+              ]}
+            />
+          </FooterTabs>
+          <FloatingTools>
+            {effectiveTab === "diagram" && parts.length > 0 && (
+              <>
+                <FloatingToolBtn
+                  type="button"
+                  $active={diagramMode === "ibd"}
+                  title="IBD — internal block (port flows)"
+                  onClick={() => setDiagramMode("ibd")}
+                >
+                  IBD
+                </FloatingToolBtn>
+                <FloatingToolBtn
+                  type="button"
+                  $active={diagramMode === "bdd"}
+                  title="BDD — block definition (hierarchy)"
+                  onClick={() => setDiagramMode("bdd")}
+                >
+                  BDD
+                </FloatingToolBtn>
+              </>
             )}
-          </HeaderLeft>
-
-          <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
             {sourceCode && (
-              <Button size="small" onClick={handleCopyCode} title="Copy SysML v2 source">
-                {copiedCode ? <CheckIcon size={13} fill="var(--color-accent-cyan)" /> : <CopyIcon size={13} />}
-                <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedCode ? "Copied" : "Copy"}</Text>
-              </Button>
-            )}
-            {Boolean(viewConfig?.standalone) && (
-              <Button
-                size="small"
-                variant="primary"
-                onClick={handleOpenPlayground}
-                title="Open SysML v2 model in Playground"
+              <FloatingToolBtn
+                type="button"
+                $success={copiedCode}
+                title={copiedCode ? "Copied" : "Copy SysML v2 source"}
+                aria-label="Copy SysML v2 source"
+                onClick={handleCopyCode}
               >
-                <CodeIcon size={13} />
-                <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
-              </Button>
+                {copiedCode ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+              </FloatingToolBtn>
             )}
-          </Box>
-        </Toolbar>
+          </FloatingTools>
+        </>
+      ) : (
+        <>
+          {!isFullScreen && (
+            <Toolbar>
+              <HeaderLeft>
+                <CpuIcon size={15} fill="var(--color-accent-blue, #60a5fa)" />
+                <SystemTitle title={systemName}>{systemName}</SystemTitle>
+                <Badge $variant={format === "KerML" ? "kerml" : "sysml"}>{format}</Badge>
+                {requirements.length > 0 && (
+                  <Badge
+                    $variant={
+                      verifiedWithConstraintsCount === requirements.length && verifiedWithConstraintsCount > 0
+                        ? "req-pass"
+                        : "req-warn"
+                    }
+                    title={
+                      verifiedWithConstraintsCount > 0
+                        ? "Formal SysML v2 'require constraint' inequalities & 'satisfy by' links verified against model parameters"
+                        : "Requirements declared as prose doc blocks without formal constraint equations"
+                    }
+                  >
+                    <ShieldCheckIcon size={12} />{" "}
+                    {verifiedWithConstraintsCount > 0
+                      ? `${verifiedWithConstraintsCount}/${requirements.length} Constraints Verified`
+                      : `${requirements.length} Reqs (Doc Only)`}
+                  </Badge>
+                )}
+              </HeaderLeft>
+
+              <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
+                {sourceCode && (
+                  <Button size="small" onClick={handleCopyCode} title="Copy SysML v2 source">
+                    {copiedCode ? <CheckIcon size={13} fill="var(--color-accent-cyan)" /> : <CopyIcon size={13} />}
+                    <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedCode ? "Copied" : "Copy"}</Text>
+                  </Button>
+                )}
+                {Boolean(viewConfig?.standalone) && (
+                  <Button
+                    size="small"
+                    variant="primary"
+                    onClick={handleOpenPlayground}
+                    title="Open SysML v2 model in Playground"
+                  >
+                    <CodeIcon size={13} />
+                    <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
+                  </Button>
+                )}
+              </Box>
+            </Toolbar>
+          )}
+
+          <TabNav>
+            <TabGroup>
+              {svgMarkup && (
+                <TabButton $active={effectiveTab === "diagram"} onClick={() => setActiveTab("diagram")}>
+                  <WorkflowIcon size={13} />
+                  <span>Diagram</span>
+                </TabButton>
+              )}
+              <TabButton $active={effectiveTab === "architecture"} onClick={() => setActiveTab("architecture")}>
+                <span>Architecture</span>
+                <TabCount $active={effectiveTab === "architecture"}>{parts.length}</TabCount>
+              </TabButton>
+              <TabButton $active={effectiveTab === "requirements"} onClick={() => setActiveTab("requirements")}>
+                <span>Requirements &amp; Constraints</span>
+                <TabCount $active={effectiveTab === "requirements"}>{requirements.length}</TabCount>
+              </TabButton>
+              <TabButton $active={effectiveTab === "source"} onClick={() => setActiveTab("source")}>
+                <CodeIcon size={13} />
+                <span>SysML v2 Source</span>
+              </TabButton>
+            </TabGroup>
+
+            <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
+              {effectiveTab === "diagram" && parts.length > 0 && (
+                <SubViewSwitch>
+                  <SubViewButton $active={diagramMode === "ibd"} onClick={() => setDiagramMode("ibd")}>
+                    IBD (Internal Flow)
+                  </SubViewButton>
+                  <SubViewButton $active={diagramMode === "bdd"} onClick={() => setDiagramMode("bdd")}>
+                    BDD (Hierarchy)
+                  </SubViewButton>
+                </SubViewSwitch>
+              )}
+              {isFullScreen && requirements.length > 0 && (
+                <Badge
+                  $variant={
+                    verifiedWithConstraintsCount === requirements.length && verifiedWithConstraintsCount > 0
+                      ? "req-pass"
+                      : "req-warn"
+                  }
+                >
+                  <ShieldCheckIcon size={12} />{" "}
+                  {verifiedWithConstraintsCount > 0
+                    ? `${verifiedWithConstraintsCount}/${requirements.length} Constraints Verified`
+                    : `${requirements.length} Reqs (Doc Only)`}
+                </Badge>
+              )}
+              {isFullScreen && sourceCode && (
+                <Button size="small" onClick={handleCopyCode} title="Copy SysML v2 source">
+                  {copiedCode ? <CheckIcon size={13} fill="var(--color-accent-cyan)" /> : <CopyIcon size={13} />}
+                  <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedCode ? "Copied" : "Copy"}</Text>
+                </Button>
+              )}
+            </Box>
+          </TabNav>
+        </>
       )}
-
-      <TabNav>
-        <TabGroup>
-          {svgMarkup && (
-            <TabButton $active={effectiveTab === "diagram"} onClick={() => setActiveTab("diagram")}>
-              <WorkflowIcon size={13} />
-              <span>Diagram</span>
-            </TabButton>
-          )}
-          <TabButton $active={effectiveTab === "architecture"} onClick={() => setActiveTab("architecture")}>
-            <span>Architecture</span>
-            <TabCount $active={effectiveTab === "architecture"}>{parts.length}</TabCount>
-          </TabButton>
-          <TabButton $active={effectiveTab === "requirements"} onClick={() => setActiveTab("requirements")}>
-            <span>Requirements &amp; Constraints</span>
-            <TabCount $active={effectiveTab === "requirements"}>{requirements.length}</TabCount>
-          </TabButton>
-          <TabButton $active={effectiveTab === "source"} onClick={() => setActiveTab("source")}>
-            <CodeIcon size={13} />
-            <span>SysML v2 Source</span>
-          </TabButton>
-        </TabGroup>
-
-        <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
-          {effectiveTab === "diagram" && parts.length > 0 && (
-            <SubViewSwitch>
-              <SubViewButton $active={diagramMode === "ibd"} onClick={() => setDiagramMode("ibd")}>
-                IBD (Internal Flow)
-              </SubViewButton>
-              <SubViewButton $active={diagramMode === "bdd"} onClick={() => setDiagramMode("bdd")}>
-                BDD (Hierarchy)
-              </SubViewButton>
-            </SubViewSwitch>
-          )}
-          {isFullScreen && requirements.length > 0 && (
-            <Badge
-              $variant={
-                verifiedWithConstraintsCount === requirements.length && verifiedWithConstraintsCount > 0
-                  ? "req-pass"
-                  : "req-warn"
-              }
-            >
-              <ShieldCheckIcon size={12} />{" "}
-              {verifiedWithConstraintsCount > 0
-                ? `${verifiedWithConstraintsCount}/${requirements.length} Constraints Verified`
-                : `${requirements.length} Reqs (Doc Only)`}
-            </Badge>
-          )}
-          {isFullScreen && sourceCode && (
-            <Button size="small" onClick={handleCopyCode} title="Copy SysML v2 source">
-              {copiedCode ? <CheckIcon size={13} fill="var(--color-accent-cyan)" /> : <CopyIcon size={13} />}
-              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>{copiedCode ? "Copied" : "Copy"}</Text>
-            </Button>
-          )}
-        </Box>
-      </TabNav>
 
       <ContentBody $noPadding={effectiveTab === "diagram"}>
         {effectiveTab === "diagram" && svgMarkup && (
           <DiagramStage>
-            <DiagramHudBar>
-              <Text style={{ fontSize: "11px", color: "#94a3b8", fontFamily: "var(--font-mono, monospace)" }}>
-                {diagramMode === "ibd"
-                  ? `ibd [part def] ${rootPartDef} — ${parts.length} parts · ${connections.length} port flows${states.length > 0 ? ` · ${states[0]!.states.length} modal states` : ""}`
-                  : `bdd [package] ${systemName} — ${parts.length} part definitions · ${parsedModel.portDefs.length} port interfaces`}
-              </Text>
-              <Text style={{ fontSize: "10.5px", color: "#6ee7b7", fontFamily: "var(--font-mono, monospace)" }}>
-                {verifiedWithConstraintsCount > 0
-                  ? `✓ ${verifiedWithConstraintsCount}/${requirements.length} formal constraints satisfied`
-                  : ""}
-              </Text>
-            </DiagramHudBar>
+            {!hasFooter && (
+              <DiagramHudBar>
+                <Text style={{ fontSize: "11px", color: "#94a3b8", fontFamily: "var(--font-mono, monospace)" }}>
+                  {diagramMode === "ibd"
+                    ? `ibd [part def] ${rootPartDef} — ${parts.length} parts · ${connections.length} port flows${states.length > 0 ? ` · ${states[0]!.states.length} modal states` : ""}`
+                    : `bdd [package] ${systemName} — ${parts.length} part definitions · ${parsedModel.portDefs.length} port interfaces`}
+                </Text>
+                <Text style={{ fontSize: "10.5px", color: "#6ee7b7", fontFamily: "var(--font-mono, monospace)" }}>
+                  {verifiedWithConstraintsCount > 0
+                    ? `✓ ${verifiedWithConstraintsCount}/${requirements.length} formal constraints satisfied`
+                    : ""}
+                </Text>
+              </DiagramHudBar>
+            )}
             <InteractiveSvgStage
               svgMarkup={svgMarkup}
               isFullScreen={isFullScreen}

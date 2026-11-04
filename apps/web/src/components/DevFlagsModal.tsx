@@ -87,6 +87,23 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     category: "Core",
     description: "Git repository catalog, GitHub/GitLab integration, and repository workspaces.",
   },
+  repositories: {
+    title: "Repositories [Alias]",
+    category: "Core",
+    description: "Alias for git_repositories — enable repository catalog and workspaces.",
+  },
+  references: {
+    title: "Scholarly References & Citations",
+    category: "Community & Federation",
+    description:
+      "Scientific literature exploration, OpenAlex indexing, BibTeX/CSL citation manager, and /references library.",
+  },
+  scientific_references: {
+    title: "Scientific References [Alias]",
+    category: "Community & Federation",
+    description:
+      "Alias for references — enable scientific literature explorer, citation manager, and /references library.",
+  },
   community_social: {
     title: "Community Social & Feeds",
     category: "Community & Federation",
@@ -96,6 +113,17 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     title: "ActivityPub Federation",
     category: "Community & Federation",
     description: "Federated social networking protocol for cross-instance model discovery.",
+  },
+  topic_dismissal: {
+    title: "Trending Topic Dismissal Menu",
+    category: "Community & Federation",
+    description:
+      "Enables the three-dot kebab action menu on trending topics in the right sidebar to hide/dismiss topics.",
+  },
+  trending_topic_dismissal: {
+    title: "Trending Topic Dismissal Menu [Alias]",
+    category: "Community & Federation",
+    description: "Alias for topic_dismissal — enables the three-dot kebab menu on trending topics.",
   },
   sysml2_omg_api: {
     title: "SysML v2 OMG API Endpoints",

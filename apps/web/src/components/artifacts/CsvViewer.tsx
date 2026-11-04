@@ -8,11 +8,12 @@ import {
   SearchIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
-import { Button, Spinner, Text, TextInput } from "@primer/react";
+import { Button, Text, TextInput } from "@primer/react";
 import Papa from "papaparse";
 import React, { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
+import Spinner from "../Spinner";
 
 export interface DatasetColumn {
   name: string;

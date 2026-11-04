@@ -39,6 +39,40 @@ export const createArtifactView = async (artifactData: Record<string, any>): Pro
   return data;
 };
 
+/** Update an artifact view you own (e.g. after customizing it in the attach wizard). */
+export const updateArtifactView = async (
+  id: string | number,
+  patch: { view_config: Record<string, unknown> | string; artifact_type?: string; title?: string },
+): Promise<any> => {
+  const { data } = await api.put(`/social/artifact-views/${encodeURIComponent(String(id))}`, {
+    ...patch,
+    view_config: typeof patch.view_config === "string" ? patch.view_config : JSON.stringify(patch.view_config),
+  });
+  return data;
+};
+
+export interface ArtifactViewSummary {
+  id: number | string;
+  view_type: string;
+  title?: string | null;
+  thumbnail_url?: string | null;
+  created_at?: string;
+}
+
+/** The caller's own artifact views (metadata only), optionally filtered by view type. */
+export const listMyArtifactViews = async (options?: {
+  types?: string[];
+  limit?: number;
+}): Promise<ArtifactViewSummary[]> => {
+  const { data } = await api.get("/social/artifact-views", {
+    params: {
+      types: options?.types?.join(","),
+      limit: options?.limit,
+    },
+  });
+  return (data?.items ?? []) as ArtifactViewSummary[];
+};
+
 export const getArtifactView = async (id: string | number, embedToken?: string | null): Promise<any> => {
   const { data } = await api.get(`/social/artifact-views/${encodeURIComponent(String(id))}`, {
     params: embedToken ? { embed_token: embedToken } : undefined,

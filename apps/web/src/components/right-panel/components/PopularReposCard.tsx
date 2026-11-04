@@ -5,7 +5,7 @@ import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { RepoAvatarBadge } from "../../../pages/RepositoryListPage";
 import Box from "../../Box";
-import { Card, CardHeader, CardTitle, PanelList, TrendingItem } from "../styles";
+import { Card, CardHeader, CardTitle, PanelList, ShowMoreLink, TrendingItem } from "../styles";
 
 export interface PopularReposCardProps {
   popularRepos: any[];
@@ -14,6 +14,7 @@ export interface PopularReposCardProps {
 export const PopularReposCard: React.FC<PopularReposCardProps> = ({ popularRepos }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const isRepos = location.pathname.replace(/\/$/, "") === "/repos";
 
   if (popularRepos.length === 0) return null;
 
@@ -89,6 +90,7 @@ export const PopularReposCard: React.FC<PopularReposCardProps> = ({ popularRepos
             </TrendingItem>
           );
         })}
+        {!isRepos && <ShowMoreLink to="/repos">Explore all repositories →</ShowMoreLink>}
       </PanelList>
     </Card>
   );

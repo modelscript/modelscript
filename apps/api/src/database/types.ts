@@ -145,6 +145,7 @@ export interface PostMetadata {
         seriesPart?: number | undefined;
         dialect?: string | undefined;
         companionRepo?: string | undefined;
+        topics?: string[] | undefined;
         estimatedReadMinutes?: number | undefined;
         artifactIds?: (number | string)[] | undefined;
         cells?: PostNotebookCell[] | undefined;

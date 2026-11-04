@@ -16763,10 +16763,6 @@ CANONICAL URL: https://modelscript.org/pricing
 
 ModelScript is an **open-core** computable digital thread for engineering. The core compilers, WebAssembly DAE arena, numerical solvers, and IDE tooling (`packages/`, `languages/`, `apps/`) are licensed under the **AGPL-3.0-or-later**, while enterprise governance, air-gapped compliance, Slurm HPC orchestration, operational digital twins, HIL codegen, and PLM connectors (`ee/`) are licensed under the **ModelScript Enterprise License (`LicenseRef-ModelScript-Enterprise`)**. We also provide Commercial OEM dual-license exemptions for teams embedding ModelScript into proprietary software.
 
-::: tip DEVELOPMENT DRAFT
-**Internal Development Preview**: The commercial tiers, dual-licensing models, and appliance packages below represent our proposed commercial offerings. The AGPL-3.0 Community Edition core is always free and open source.
-:::
-
 ---
 
 ## Plan Overview

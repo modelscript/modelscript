@@ -448,6 +448,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
             notebookSeries: notebookData?.series || "",
             notebookDialect: notebookData?.dialect || "",
             notebookCompanionRepo: notebookData?.companionRepo || "",
+            notebookTopics: notebookData?.topics || [],
             notebookCells: notebookData?.cells,
           }}
           onClose={() => setShowEditModal(false)}

@@ -230,6 +230,20 @@ export function findCrossLanguageDefinition(
     // 2. Resolve candidates via Salsa resolvePolyglotSymbol
     if (typeof qe.resolvePolyglotSymbol === "function") {
       for (const cand of uniqueCandidates) {
+        const isQualified =
+          cand.includes("::") ||
+          cand.includes("//") ||
+          cand.includes("#") ||
+          (cand.includes(".") && !cand.startsWith("."));
+        const isExplicitMeta =
+          cand === refEntry?.metadata?.twin ||
+          cand === refEntry?.metadata?.counterpart ||
+          cand === refEntry?.metadata?.implements ||
+          cand === refEntry?.metadata?.cadBinding ||
+          cand === twinMatch?.[1] ||
+          cand === partTypeMatch?.[1] ||
+          cand === cadPartMatch?.[1];
+        if (!isQualified && !isExplicitMeta) continue;
         try {
           const symId = qe.resolvePolyglotSymbol(cand);
           if (symId !== null && symId !== undefined) {

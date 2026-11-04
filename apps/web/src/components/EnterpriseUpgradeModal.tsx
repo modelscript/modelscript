@@ -95,7 +95,7 @@ export default function EnterpriseUpgradeModal(): React.ReactElement | null {
   if (!detail) return null;
 
   const isCeMode = detail.edition === "ce" || detail.code === "EE_EDITION_REQUIRED" || detail.status === 501;
-  const pricingUrl = detail.pricingUrl || "https://ansatz.social/pricing";
+  const pricingUrl = detail.pricingUrl || "https://modelscript.org/pricing";
 
   return (
     <div

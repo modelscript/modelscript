@@ -431,6 +431,50 @@ Model {
       );
     });
 
+    it("renders full screen mode in a bordered modal with side margins, backdrop dismiss, and 'Exit Full Screen' button", () => {
+      const cardSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/ArtifactViewCard.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        cardSrc.includes("FullScreenBackdrop") &&
+          cardSrc.includes("FullScreenContainer") &&
+          cardSrc.includes("setIsFullScreen(false)"),
+        "ArtifactViewCard must render full screen mode within a backdrop that allows clicking outside to close",
+      );
+      assert.ok(
+        cardSrc.includes("e.stopPropagation()") && cardSrc.includes("setIsFullScreen(false)"),
+        "ArtifactViewCard backdrop onClick must call e.stopPropagation() so clicking outside does not bubble to Post container",
+      );
+      assert.ok(
+        cardSrc.includes("padding: 24px 40px") && cardSrc.includes("max-width: 1400px"),
+        "ArtifactViewCard full screen modal must leave side margins for clicking outside to dismiss",
+      );
+
+      const studioHeaderSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/StudioHeader.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        studioHeaderSrc.includes("Exit Full Screen"),
+        "StudioHeader must display 'Exit Full Screen' button instead of confusing 'Exit Studio'",
+      );
+      assert.ok(!studioHeaderSrc.includes("Exit Studio"), "StudioHeader must not contain obsolete 'Exit Studio' label");
+
+      const cardFooterSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/CardFooter.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        cardFooterSrc.includes('title="Full screen"') && cardFooterSrc.includes("Full Screen"),
+        "CardFooter must use 'Full screen' instead of 'Full screen Studio'",
+      );
+      assert.ok(
+        !cardFooterSrc.includes("Full screen Studio"),
+        "CardFooter must not contain obsolete 'Full screen Studio' label",
+      );
+    });
+
     it("supports multi-file maps, stateful view permalinks, and ?morsel=<id> parity across Playground and Embed", async () => {
       const { compressMorselPayload, decompressMorselPayload, resolveMorselShortlink } =
         await import("../src/components/morsel/util/permalink");

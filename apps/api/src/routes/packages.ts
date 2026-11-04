@@ -362,6 +362,8 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   router.get("/", optionalAuth, (req: Request, res: Response): void => {
     const q = req.query["q"];
     const query = typeof q === "string" ? q.trim() : undefined;
+    const rawAuthor = typeof req.query["author"] === "string" ? req.query["author"].trim().toLowerCase() : undefined;
+    const authorFilter = rawAuthor ? rawAuthor.replace(/^@/, "") : undefined;
     const rawSort = typeof req.query["sort"] === "string" ? req.query["sort"].trim().toLowerCase() : undefined;
 
     const snapshot = database.getLibraryDiscoverySnapshot(req.user?.id);
@@ -591,9 +593,17 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       : [];
     const queryLower = queryTokens.join(" ");
 
+    const scopedPackages = authorFilter
+      ? allPackages.filter((pkg) => {
+          const auth = pkg.author ? pkg.author.replace(/^@/, "").toLowerCase() : undefined;
+          const scp = pkg.scope ? pkg.scope.replace(/^@/, "").toLowerCase() : undefined;
+          return auth === authorFilter || scp === authorFilter;
+        })
+      : allPackages;
+
     const filteredPackages =
       queryTokens.length > 0
-        ? allPackages
+        ? scopedPackages
             .filter((pkg) => {
               const haystack = [pkg.name, pkg.description, pkg.author, pkg.scope, ...(pkg.domains || [])]
                 .filter(Boolean)
@@ -619,7 +629,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                 recommendationScore: Math.round((pkg.recommendationScore + queryBoost) * 100) / 100,
               };
             })
-        : allPackages;
+        : scopedPackages;
 
     const packages = [...filteredPackages].sort((a, b) => {
       if (rawSort === "name") {

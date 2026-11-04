@@ -67,6 +67,10 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     assert.strictEqual(guestRes.body.heavy_vscode_ide, true);
 
     // Gated flags must be false for guest
+    assert.strictEqual(guestRes.body.git_repositories, false);
+    assert.strictEqual(guestRes.body.repositories, false);
+    assert.strictEqual(guestRes.body.references, false);
+    assert.strictEqual(guestRes.body.scientific_references, false);
     assert.strictEqual(guestRes.body.cae_cloud_solver, false);
     assert.strictEqual(guestRes.body.billing_stripe_live, false);
     assert.strictEqual(guestRes.body.digital_twins, false);
@@ -81,6 +85,8 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
 
     // Regular user evaluation
     const userRes = await request(app).get("/api/v1/flags").set("Authorization", `Bearer ${regularToken}`).expect(200);
+    assert.strictEqual(userRes.body.git_repositories, false);
+    assert.strictEqual(userRes.body.references, false);
     assert.strictEqual(userRes.body.cae_cloud_solver, false);
     assert.strictEqual(userRes.body.billing_stripe_live, false);
     assert.strictEqual(userRes.body.composer_ai_polish, false);
@@ -89,6 +95,8 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
 
     // Admin user evaluation (default-disabled flags must be false for everyone including admin)
     const adminRes = await request(app).get("/api/v1/flags").set("Authorization", `Bearer ${adminToken}`).expect(200);
+    assert.strictEqual(adminRes.body.git_repositories, false);
+    assert.strictEqual(adminRes.body.references, false);
     assert.strictEqual(adminRes.body.cae_cloud_solver, false);
     assert.strictEqual(adminRes.body.billing_stripe_live, false);
     assert.strictEqual(adminRes.body.feeds_page, false);

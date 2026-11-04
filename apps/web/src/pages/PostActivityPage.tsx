@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
@@ -9,6 +9,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import PageHeader from "../components/PageHeader";
 import Post from "../components/Post";
+import Spinner from "../components/Spinner";
 import type { PostItem } from "../types/api";
 import { usePageTitle } from "../util/title";
 

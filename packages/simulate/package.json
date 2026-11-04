@@ -114,7 +114,8 @@
       "test": {
         "dependsOn": [
           "build",
-          "@modelscript/scad:build"
+          "@modelscript/scad:build",
+          "@modelscript/sysml2:build"
         ]
       }
     }

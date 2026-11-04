@@ -21,6 +21,16 @@ import { ReasonerService } from "./reasoner-service.js";
 
 import { globalLanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
 
+export interface WasmLintDiagnostic {
+  startOffset?: number;
+  endOffset?: number;
+  range?: Range;
+  message?: string;
+  code?: string | number;
+  lintName?: string;
+  severity?: number;
+}
+
 /**
  * Canonical error code information extracted from diagnostic code or lint name.
  */
@@ -448,6 +458,11 @@ export class ValidationService {
   private wasmParserMutex: Promise<void> = Promise.resolve();
 
   /**
+   * Raw WASM linear-memory linter diagnostic captured during initial CST parsing.
+   */
+  public static readonly WASM_LINT_SCHEMA = true;
+
+  /**
    * Collect syntax errors and lint diagnostics from the WASM parser.
    *
    * IMPORTANT: This is called synchronously right after parsing, while the WASM
@@ -461,10 +476,10 @@ export class ValidationService {
     rootNode: any,
     textDocument: TextDocument,
     plugin?: LanguagePlugin,
-  ): { syntaxDiags: Diagnostic[]; wasmLintDiags: any[] } {
+  ): { syntaxDiags: Diagnostic[]; wasmLintDiags: WasmLintDiagnostic[] } {
     const t0 = performance.now();
     const syntaxDiags: Diagnostic[] = [];
-    const wasmLintDiags: any[] = [];
+    const wasmLintDiags: WasmLintDiagnostic[] = [];
     if (!rootNode) return { syntaxDiags, wasmLintDiags };
 
     const clampRangeToLine = (r: Range): Range => {
@@ -615,6 +630,188 @@ export class ValidationService {
       );
     }
     return { syntaxDiags, wasmLintDiags };
+  }
+
+  /**
+   * Converts raw WASM GLR parser linter diagnostics into LSP `Diagnostic` instances,
+   * calculating accurate source ranges, descriptive messages from error code definitions,
+   * and compiler severity levels.
+   */
+  public convertWasmLintDiagnostics(
+    wasmLintDiags: readonly WasmLintDiagnostic[],
+    textDocument?:
+      | TextDocument
+      | { getText?(): string; languageId?: string; positionAt?(offset: number): { line: number; character: number } },
+    plugin?: LanguagePlugin,
+    currentText?: string,
+    bridge?: unknown,
+  ): Diagnostic[] {
+    const diagnostics: Diagnostic[] = [];
+    if (!wasmLintDiags || wasmLintDiags.length === 0) return diagnostics;
+
+    const text =
+      currentText ?? (textDocument && typeof textDocument.getText === "function" ? textDocument.getText() : "");
+    const langId = plugin?.id ?? (textDocument?.languageId || "modelica");
+    const pluginLints = plugin?.languageDef?.lints;
+    const pluginSource = plugin?.name ? plugin.name.toLowerCase() : "modelscript";
+
+    for (const d of wasmLintDiags) {
+      const startOff = d.startOffset;
+      const endOff = d.endOffset;
+
+      let range = d.range;
+      if (startOff !== undefined && endOff !== undefined) {
+        const bridgePositions = (
+          bridge as { positions?: { rangeFromOffsets?: (start: number, end: number) => Range } } | null | undefined
+        )?.positions;
+        if (bridgePositions?.rangeFromOffsets) {
+          range = bridgePositions.rangeFromOffsets(startOff, endOff);
+        } else if (textDocument?.positionAt) {
+          range = {
+            start: textDocument.positionAt(startOff),
+            end: textDocument.positionAt(endOff),
+          };
+        }
+      }
+      if (!range) continue;
+
+      if (range.start.line === range.end.line && range.start.character === range.end.character) {
+        range = {
+          start: range.start,
+          end: { line: range.start.line, character: range.start.character + 1 },
+        };
+      }
+
+      const tokenText =
+        startOff !== undefined && endOff !== undefined && endOff > startOff ? text.slice(startOff, endOff).trim() : "";
+
+      let message = d.message;
+      const code = d.code;
+      type MatchedLintDef = {
+        code?: unknown;
+        severity?: string;
+        message?: (target: { text: string }, extra: { text: string }) => string;
+      };
+      let matchedLint: MatchedLintDef | null = null;
+
+      if (pluginLints && code) {
+        for (const lint of Object.values(pluginLints)) {
+          if ((lint as { code?: unknown })?.code === code) {
+            matchedLint = lint as MatchedLintDef;
+            break;
+          }
+        }
+      }
+
+      const codeNum = typeof code === "number" ? code : typeof code === "string" ? Number(code) : undefined;
+
+      // Modelica M4004: Do not flag models as unbalanced if exogenous 'input' variables account for the difference
+      if (codeNum === 4004 && langId === "modelica") {
+        const inputMatches = text.match(/\binput\s+(?:Real|Integer|Boolean|String)\b/g);
+        const inputCount = inputMatches ? inputMatches.length : 0;
+        const msgToCheck = message || d.message || "";
+        const m = msgToCheck.match(/\b(\d+)\s+equations\s+for\s+(\d+)\s+variables\b/);
+        if (m && inputCount > 0) {
+          const eqCount = Number(m[1]);
+          const rawVarCount = Number(m[2]);
+          if (eqCount === rawVarCount - inputCount) {
+            continue;
+          }
+        }
+      }
+
+      const errorCodes = plugin?.languageDef?.errorCodes as
+        | Record<
+            string | number,
+            { code: number; rule?: string; severity?: string; message: (param: string) => string }
+          >
+        | undefined;
+      const matchedCodeDef =
+        codeNum !== undefined ? (errorCodes?.[codeNum] ?? getModelicaErrorCodeDef(codeNum)) : undefined;
+
+      if (
+        !message ||
+        message.startsWith("Linter Rule ") ||
+        message.startsWith("Linter rule ") ||
+        message.startsWith("Syntax Error")
+      ) {
+        if (matchedLint && typeof matchedLint.message === "function") {
+          try {
+            message = matchedLint.message({ text: tokenText }, { text: "" });
+          } catch {
+            // Fallback
+          }
+        }
+
+        if (!message || message.startsWith("Linter Rule ") || message.startsWith("Linter rule ")) {
+          if (codeNum === 2001 || codeNum === 2002) {
+            message = tokenText ? `Variable '${tokenText}' not found in scope.` : "Variable not found in scope.";
+          } else if (codeNum === 2003) {
+            message = tokenText
+              ? `Class or type '${tokenText}' not found in scope.`
+              : "Class or type not found in scope.";
+          } else if (codeNum === 3001) {
+            message = tokenText
+              ? `Type mismatch in binding or modification expression '${tokenText}'.`
+              : "Type mismatch in binding.";
+          } else if (codeNum === 3009) {
+            message = tokenText
+              ? `Array index '${tokenText}' has invalid type: expected Integer or Boolean.`
+              : "Invalid array index type.";
+          } else if (codeNum === 4031) {
+            message = tokenText ? `Subscript '${tokenText}' is out of bounds.` : "Array index out of bounds.";
+          } else if (codeNum === 5001) {
+            message = tokenText ? `Type mismatch in equation '${tokenText}'.` : "Type mismatch in equation.";
+          } else if (codeNum === 5005) {
+            message = tokenText ? `Division by literal zero in '${tokenText}'.` : "Division by literal zero.";
+          } else if (codeNum === 5006) {
+            message = tokenText ? `Type mismatch in assignment in '${tokenText}'.` : "Type mismatch in assignment.";
+          } else if (matchedCodeDef) {
+            try {
+              const formatted = matchedCodeDef.message(tokenText || "");
+              if (formatted && !formatted.includes("undefined")) {
+                message = formatted;
+              }
+            } catch {
+              // Fallback
+            }
+            if (!message || message.startsWith("Linter Rule ") || message.startsWith("Linter rule ")) {
+              const ruleDisplay = matchedCodeDef.rule ? matchedCodeDef.rule.replace(/-/g, " ") : `rule ${code}`;
+              const capitalizedRule = ruleDisplay.charAt(0).toUpperCase() + ruleDisplay.slice(1);
+              message = tokenText ? `${capitalizedRule} for '${tokenText}'.` : `${capitalizedRule}.`;
+            }
+          } else {
+            message = `Linter rule ${code}`;
+          }
+        }
+      }
+
+      // Determine severity dynamically
+      let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
+      const defSeverity = matchedCodeDef?.severity ?? matchedLint?.severity;
+
+      if (d.severity === 1 || defSeverity === "error") {
+        severity = DiagnosticSeverity.Error;
+      } else if (defSeverity === "info") {
+        severity = DiagnosticSeverity.Information;
+      } else if (defSeverity === "warning") {
+        severity = DiagnosticSeverity.Warning;
+      } else if (typeof codeNum === "number" && codeNum >= 1000 && codeNum < 6000) {
+        // Standard compiler error code numbering ranges (1xxx-5xxx)
+        severity = DiagnosticSeverity.Error;
+      }
+
+      const diagCode = code ?? d.lintName;
+      diagnostics.push({
+        severity,
+        range,
+        message,
+        source: pluginSource,
+        ...(diagCode !== undefined ? { code: diagCode } : {}),
+      });
+    }
+
+    return diagnostics;
   }
 
   /**
@@ -1020,8 +1217,12 @@ export class ValidationService {
     } finally {
       releaseLock();
     }
-    const cachedSemantic = this.lastSemanticDiagnostics.get(uri) || [];
-    const initialDiags = [...syntaxDiags, ...cachedSemantic];
+    const wasmLspDiags = this.convertWasmLintDiagnostics(wasmLintDiags, textDocument, plugin, text);
+    const cachedSemantic = (this.lastSemanticDiagnostics.get(uri) || []).filter(
+      (d) => typeof d.code !== "number" || d.code < 1000 || d.code >= 6000,
+    );
+    const initialDiags = deduplicateAllDiagnostics([...syntaxDiags, ...wasmLspDiags, ...cachedSemantic]);
+    this.lastSemanticDiagnostics.set(uri, initialDiags);
     if (initialDiags.length > 1000) initialDiags.length = 1000;
     this.connection.sendDiagnostics({ uri, diagnostics: initialDiags });
 
@@ -1258,162 +1459,14 @@ export class ValidationService {
       // cause the linter to read garbled text at the old CST byte offsets.
       if (!hasSyntaxErrors && wasmLintDiags && wasmLintDiags.length > 0) {
         try {
-          const pluginLints = plugin?.languageDef?.lints;
-          const pluginSource = plugin?.name ? plugin.name.toLowerCase() : "modelscript";
-
-          for (const d of wasmLintDiags) {
-            // Resolve character offsets — prefer startOffset (new), fall back to startOffset / startOffset (deprecated)
-            const startOff = d.startOffset;
-            const endOff = d.endOffset;
-
-            // Compute range from character offsets
-            let range = d.range;
-            if (startOff !== undefined && endOff !== undefined) {
-              if (bridge) {
-                range = (bridge as any).positions.rangeFromOffsets(startOff, endOff);
-              } else if (currentDoc) {
-                range = {
-                  start: currentDoc.positionAt(startOff),
-                  end: currentDoc.positionAt(endOff),
-                };
-              }
-            }
-            if (!range) continue;
-
-            // Ensure non-zero-width range
-            if (range.start.line === range.end.line && range.start.character === range.end.character) {
-              range = {
-                start: range.start,
-                end: { line: range.start.line, character: range.start.character + 1 },
-              };
-            }
-
-            // Extract token text from character offsets
-            const tokenText =
-              startOff !== undefined && endOff !== undefined && endOff > startOff
-                ? currentText.slice(startOff, endOff).trim()
-                : "";
-
-            // Determine message — use the WASM-provided message if available,
-            // otherwise look up the lint rule or dynamic error code definition.
-            let message = d.message;
-            const code = d.code;
-            let matchedLint: any = null;
-
-            if (pluginLints && code) {
-              for (const lint of Object.values(pluginLints)) {
-                if ((lint as any)?.code === code) {
-                  matchedLint = lint;
-                  break;
-                }
-              }
-            }
-
-            const codeNum = typeof code === "number" ? code : typeof code === "string" ? Number(code) : undefined;
-
-            // Modelica M4004: Do not flag models as unbalanced if exogenous 'input' variables account for the difference
-            if (codeNum === 4004 && langId === "modelica") {
-              const inputMatches = currentText.match(/\binput\s+(?:Real|Integer|Boolean|String)\b/g);
-              const inputCount = inputMatches ? inputMatches.length : 0;
-              const msgToCheck = message || d.message || "";
-              const m = msgToCheck.match(/\b(\d+)\s+equations\s+for\s+(\d+)\s+variables\b/);
-              if (m && inputCount > 0) {
-                const eqCount = Number(m[1]);
-                const rawVarCount = Number(m[2]);
-                if (eqCount === rawVarCount - inputCount) {
-                  continue;
-                }
-              }
-            }
-
-            const matchedCodeDef =
-              codeNum !== undefined
-                ? ((plugin?.languageDef?.errorCodes ? (plugin.languageDef.errorCodes as any)[codeNum] : undefined) ??
-                  getModelicaErrorCodeDef(codeNum))
-                : undefined;
-
-            if (
-              !message ||
-              message.startsWith("Linter Rule ") ||
-              message.startsWith("Linter rule ") ||
-              message.startsWith("Syntax Error")
-            ) {
-              if (matchedLint && typeof matchedLint.message === "function") {
-                try {
-                  message = matchedLint.message({ text: tokenText }, { text: "" });
-                } catch {
-                  // Fallback
-                }
-              }
-
-              if (!message || message.startsWith("Linter Rule ") || message.startsWith("Linter rule ")) {
-                if (codeNum === 2001 || codeNum === 2002) {
-                  message = tokenText ? `Variable '${tokenText}' not found in scope.` : "Variable not found in scope.";
-                } else if (codeNum === 2003) {
-                  message = tokenText
-                    ? `Class or type '${tokenText}' not found in scope.`
-                    : "Class or type not found in scope.";
-                } else if (codeNum === 3001) {
-                  message = tokenText
-                    ? `Type mismatch in binding or modification expression '${tokenText}'.`
-                    : "Type mismatch in binding.";
-                } else if (codeNum === 3009) {
-                  message = tokenText
-                    ? `Array index '${tokenText}' has invalid type: expected Integer or Boolean.`
-                    : "Invalid array index type.";
-                } else if (codeNum === 4031) {
-                  message = tokenText ? `Subscript '${tokenText}' is out of bounds.` : "Array index out of bounds.";
-                } else if (codeNum === 5001) {
-                  message = tokenText ? `Type mismatch in equation '${tokenText}'.` : "Type mismatch in equation.";
-                } else if (codeNum === 5005) {
-                  message = tokenText ? `Division by literal zero in '${tokenText}'.` : "Division by literal zero.";
-                } else if (codeNum === 5006) {
-                  message = tokenText
-                    ? `Type mismatch in assignment in '${tokenText}'.`
-                    : "Type mismatch in assignment.";
-                } else if (matchedCodeDef) {
-                  try {
-                    const formatted = matchedCodeDef.message(tokenText || "");
-                    if (formatted && !formatted.includes("undefined")) {
-                      message = formatted;
-                    }
-                  } catch {
-                    // Fallback
-                  }
-                  if (!message || message.startsWith("Linter Rule ") || message.startsWith("Linter rule ")) {
-                    const ruleDisplay = matchedCodeDef.rule ? matchedCodeDef.rule.replace(/-/g, " ") : `rule ${code}`;
-                    const capitalizedRule = ruleDisplay.charAt(0).toUpperCase() + ruleDisplay.slice(1);
-                    message = tokenText ? `${capitalizedRule} for '${tokenText}'.` : `${capitalizedRule}.`;
-                  }
-                } else {
-                  message = `Linter rule ${code}`;
-                }
-              }
-            }
-
-            // Determine severity dynamically
-            let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
-            const defSeverity = matchedCodeDef?.severity ?? matchedLint?.severity;
-
-            if (d.severity === 1 || defSeverity === "error") {
-              severity = DiagnosticSeverity.Error;
-            } else if (defSeverity === "info") {
-              severity = DiagnosticSeverity.Information;
-            } else if (defSeverity === "warning") {
-              severity = DiagnosticSeverity.Warning;
-            } else if (typeof codeNum === "number" && codeNum >= 1000 && codeNum < 6000) {
-              // Standard compiler error code numbering ranges (1xxx-5xxx)
-              severity = DiagnosticSeverity.Error;
-            }
-
-            newSemanticDiagnostics.push({
-              severity,
-              range,
-              message,
-              source: pluginSource,
-              code: code ?? d.lintName,
-            });
-          }
+          const wasmLspDiags = this.convertWasmLintDiagnostics(
+            wasmLintDiags,
+            currentDoc ?? textDocument,
+            plugin,
+            currentText,
+            bridge,
+          );
+          newSemanticDiagnostics.push(...wasmLspDiags);
         } catch (e: any) {
           this.connection.console.warn(`[runUnifiedSemanticPipeline] CST linter error for ${uri}: ${e?.message ?? e}`);
         }
@@ -1595,6 +1648,7 @@ export class ValidationService {
         const diagnostics = deduplicateAllDiagnostics(rawDiagnostics);
         if (diagnostics.length > 1000) diagnostics.length = 1000;
         this.connection.sendDiagnostics({ uri, diagnostics });
+        this.sendProjectTreeChanged();
       }
     }
   }

@@ -60,18 +60,26 @@ interface TemplateStepItem {
 }
 
 const ARCHETYPE_BADGE_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  "time-domain": { label: "Transient DAE", color: "#3b82f6", bg: "rgba(59, 130, 246, 0.14)" },
-  "time-course": { label: "Transient DAE", color: "#3b82f6", bg: "rgba(59, 130, 246, 0.14)" },
-  "parameter-sweep": { label: "Parametric DOE Sweep", color: "#06b6d4", bg: "rgba(6, 182, 212, 0.14)" },
-  "monte-carlo": { label: "Monte Carlo & UQ", color: "#a855f7", bg: "rgba(168, 85, 247, 0.14)" },
-  optimization: { label: "Multi-Objective Optimization", color: "#f59e0b", bg: "rgba(245, 158, 11, 0.14)" },
-  "frequency-modal": { label: "Eigenvalue / Modal Audit", color: "#10b981", bg: "rgba(16, 185, 129, 0.14)" },
-  "eigen-frequency": { label: "Eigenvalue / Modal Audit", color: "#10b981", bg: "rgba(16, 185, 129, 0.14)" },
-  verification: { label: "Standards Verification", color: "#10b981", bg: "rgba(16, 185, 129, 0.14)" },
-  "steady-state": { label: "3D Continuum FEA / CFD", color: "#ec4899", bg: "rgba(236, 72, 153, 0.14)" },
-  "continuum-cae": { label: "3D Continuum FEA / CFD", color: "#ec4899", bg: "rgba(236, 72, 153, 0.14)" },
-  surrogate: { label: "AI Surrogate / ROM", color: "#8b5cf6", bg: "rgba(139, 92, 246, 0.14)" },
-  "surrogate-rom": { label: "AI Surrogate / ROM", color: "#8b5cf6", bg: "rgba(139, 92, 246, 0.14)" },
+  "time-domain": { label: "Transient DAE", color: "var(--domain-core)", bg: "var(--domain-core-bg)" },
+  "time-course": { label: "Transient DAE", color: "var(--domain-core)", bg: "var(--domain-core-bg)" },
+  "parameter-sweep": { label: "Parametric DOE Sweep", color: "var(--domain-fluid)", bg: "var(--domain-fluid-bg)" },
+  "monte-carlo": { label: "Monte Carlo & UQ", color: "var(--domain-aero)", bg: "var(--domain-aero-bg)" },
+  optimization: { label: "Multi-Objective Optimization", color: "var(--domain-power)", bg: "var(--domain-power-bg)" },
+  "frequency-modal": {
+    label: "Eigenvalue / Modal Audit",
+    color: "var(--domain-mechanics)",
+    bg: "var(--domain-mechanics-bg)",
+  },
+  "eigen-frequency": {
+    label: "Eigenvalue / Modal Audit",
+    color: "var(--domain-mechanics)",
+    bg: "var(--domain-mechanics-bg)",
+  },
+  verification: { label: "Standards Verification", color: "var(--ms-status-pass-fg)", bg: "var(--ms-status-pass-bg)" },
+  "steady-state": { label: "3D Continuum FEA / CFD", color: "var(--domain-cad)", bg: "var(--domain-cad-bg)" },
+  "continuum-cae": { label: "3D Continuum FEA / CFD", color: "var(--domain-cad)", bg: "var(--domain-cad-bg)" },
+  surrogate: { label: "AI Surrogate / ROM", color: "var(--domain-bio)", bg: "var(--domain-bio-bg)" },
+  "surrogate-rom": { label: "AI Surrogate / ROM", color: "var(--domain-bio)", bg: "var(--domain-bio-bg)" },
 };
 
 const TemplateDetailPage: React.FC = () => {

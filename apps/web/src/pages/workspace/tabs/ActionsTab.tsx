@@ -13,7 +13,7 @@ import {
   TerminalIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
-import { Button, Dialog, Heading, Label, Select, Spinner, Text } from "@primer/react";
+import { Button, Dialog, Heading, Label, Select, Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useEffect, useState } from "react";
@@ -26,6 +26,7 @@ import {
   triggerRepoBotReviewApi,
 } from "../../../api";
 import Box from "../../../components/Box";
+import Spinner from "../../../components/Spinner";
 import { useToast } from "../../../components/ToastContext";
 import { CommitRow, MarkdownBody, StyledBox } from "../styles";
 import { getRelativeTime } from "../utils";
@@ -300,9 +301,7 @@ export const ActionsTab: React.FC<ActionsTabProps> = ({ projectId, provider, def
                     <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
                       {job.status === "success" && <CheckCircleFillIcon fill="var(--color-success-fg)" />}
                       {job.status === "failed" && <XCircleFillIcon fill="var(--color-danger-fg)" />}
-                      {job.status === "running" && (
-                        <SyncIcon size={16} fill="var(--color-accent-fg)" className="spinner-spin" />
-                      )}
+                      {job.status === "running" && <Spinner size="small" fill="var(--color-accent-fg)" />}
                       <Text style={{ fontWeight: "bold", fontSize: "14px" }}>{job.name}</Text>
                       <Label variant="secondary">{job.stage}</Label>
                     </Box>

@@ -43,6 +43,7 @@ export interface NotebookMetadata {
   seriesPart?: number | undefined;
   dialect?: string | undefined;
   companionRepo?: string | undefined;
+  topics?: string[] | undefined;
   estimatedReadMinutes?: number | undefined;
   cells: NotebookCell[];
   artifactIds: number[];
@@ -383,6 +384,7 @@ function parseNotebookFromContentUncached(
         seriesPart: existingNotebookMeta.seriesPart,
         dialect: existingNotebookMeta.dialect,
         companionRepo: existingNotebookMeta.companionRepo,
+        topics: existingNotebookMeta.topics,
         estimatedReadMinutes,
         cells: validCells,
         artifactIds,
@@ -479,6 +481,7 @@ function parseNotebookFromContentUncached(
     seriesPart: existingNotebookMeta?.seriesPart,
     dialect: existingNotebookMeta?.dialect,
     companionRepo: existingNotebookMeta?.companionRepo,
+    topics: existingNotebookMeta?.topics,
     estimatedReadMinutes: existingNotebookMeta?.estimatedReadMinutes ?? estimateReadingTimeMinutes(cells),
     cells,
     artifactIds,

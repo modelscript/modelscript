@@ -6,7 +6,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { PackageIcon } from "../../../pages/libraries/components/PackageIcon";
 import { formatDomainLabel, inferPackageDomains, splitScopedPackageName } from "../../../pages/libraries/constants";
 import Box from "../../Box";
-import { Card, CardHeader, CardTitle, PanelBadge, PanelList, TrendingItem } from "../styles";
+import { Card, CardHeader, CardTitle, PanelBadge, PanelList, ShowMoreLink, TrendingItem } from "../styles";
 
 export interface PopularPackagesCardProps {
   popularPackages: any[];
@@ -15,6 +15,8 @@ export interface PopularPackagesCardProps {
 export const PopularPackagesCard: React.FC<PopularPackagesCardProps> = ({ popularPackages }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const isPackages =
+    location.pathname.replace(/\/$/, "") === "/packages" || location.pathname.replace(/\/$/, "") === "/libraries";
 
   if (popularPackages.length === 0) return null;
 
@@ -99,6 +101,7 @@ export const PopularPackagesCard: React.FC<PopularPackagesCardProps> = ({ popula
             </TrendingItem>
           );
         })}
+        {!isPackages && <ShowMoreLink to="/packages">Explore all packages →</ShowMoreLink>}
       </PanelList>
     </Card>
   );

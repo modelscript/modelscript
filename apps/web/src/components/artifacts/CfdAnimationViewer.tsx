@@ -8,11 +8,12 @@
  * a timeline scrubber, playback controls, and a color legend.
  */
 
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import SafeOrbitControls from "./SafeOrbitControls";
 

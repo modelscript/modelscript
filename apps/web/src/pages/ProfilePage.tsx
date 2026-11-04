@@ -1,22 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Flash, Heading, Spinner, Text } from "@primer/react";
+import { Flash, Heading, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { blockUser, getUserProfile, muteUser, reportUser, unblockUser, unmuteUser } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import ProfileArticles from "../components/ProfileArticles";
+import ProfilePackages from "../components/ProfilePackages";
 import ProfilePosts from "../components/ProfilePosts";
 import ProfileRepos from "../components/ProfileRepos";
-import ProfileSolutions from "../components/ProfileSolutions";
+import Spinner from "../components/Spinner";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { usePageTitle } from "../util/title";
 import { ProfileHeader, ReportModal, Tab, TabBar, UnblockModal, type LinkedAccount, type ProfileData } from "./profile";
+
+const PROFILE_TABS = ["Posts", "Articles", "Packages", "Replies", "Repos"];
 
 const ProfilePage: React.FC = () => {
   const { username: rawUsername } = useParams();
   const username = rawUsername?.startsWith("@") ? rawUsername.slice(1) : rawUsername;
   const navigate = useNavigate();
   const { user, token } = useAuth();
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   usePageTitle(
     profile?.display_name ? `${profile.display_name} (@${username})` : username ? `@${username}` : "Profile",
@@ -24,7 +30,10 @@ const ProfilePage: React.FC = () => {
   const [isFollowing, setIsFollowing] = useState(false);
   const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("Posts");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab")?.toLowerCase();
+  const activeTab = PROFILE_TABS.find((t) => t.toLowerCase() === tabParam) ?? "Posts";
+  const setActiveTab = (tab: string) => setSearchParams(tab === "Posts" ? {} : { tab: tab.toLowerCase() });
 
   const [isBlocked, setIsBlocked] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -94,7 +103,6 @@ const ProfilePage: React.FC = () => {
   const isOwnProfile = user?.username === username;
 
   useEffect(() => {
-    setActiveTab("Posts");
     setShowBlockMenu(false);
     setShowUnblockModal(false);
     setShowReportModal(false);
@@ -170,19 +178,22 @@ const ProfilePage: React.FC = () => {
       />
 
       <TabBar role="tablist" aria-label="Profile tabs">
-        {["Posts", "Solutions", ...(profile.account_type === "rss" ? [] : ["Replies", "Artifacts", "Repos"])].map(
-          (tab) => (
-            <Tab
-              key={tab}
-              role="tab"
-              aria-selected={activeTab === tab}
-              $active={activeTab === tab}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab}
-            </Tab>
-          ),
-        )}
+        {[
+          "Posts",
+          ...(profile.account_type === "rss"
+            ? []
+            : ["Articles", "Packages", "Replies", ...(hasRepos ? ["Repos"] : [])]),
+        ].map((tab) => (
+          <Tab
+            key={tab}
+            role="tab"
+            aria-selected={activeTab === tab}
+            $active={activeTab === tab}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab}
+          </Tab>
+        ))}
       </TabBar>
 
       {reportSuccess && (
@@ -196,10 +207,10 @@ const ProfilePage: React.FC = () => {
         </Box>
       )}
 
-      {activeTab === "Repos" ? (
+      {activeTab === "Repos" && hasRepos ? (
         <ProfileRepos username={profile.username} isOwnProfile={isOwnProfile} />
-      ) : activeTab === "Solutions" ? (
-        <ProfileSolutions username={profile.username} isOwnProfile={isOwnProfile} />
+      ) : activeTab === "Articles" ? (
+        <ProfileArticles username={profile.username} isOwnProfile={isOwnProfile} />
       ) : activeTab === "Posts" ? (
         <ProfilePosts
           username={profile.username}
@@ -219,8 +230,8 @@ const ProfilePage: React.FC = () => {
         />
       ) : activeTab === "Replies" ? (
         <ProfilePosts username={profile.username} type="replies" isOwnProfile={isOwnProfile} />
-      ) : activeTab === "Artifacts" ? (
-        <ProfilePosts username={profile.username} type="artifacts" isOwnProfile={isOwnProfile} />
+      ) : activeTab === "Packages" ? (
+        <ProfilePackages username={profile.username} isOwnProfile={isOwnProfile} />
       ) : (
         <Box p={4} textAlign="center">
           <Heading as="h2" style={{ fontSize: "20px" }}>

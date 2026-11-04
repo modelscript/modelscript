@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { PlusIcon, TrashIcon } from "@primer/octicons-react";
-import { Button, Dialog, Flash, Label, Select, Spinner, Text, TextInput } from "@primer/react";
+import { Button, Dialog, Flash, Label, Select, Text, TextInput } from "@primer/react";
 import React from "react";
 import type { CollaboratorPermission, PackageCollaborator } from "../../../api";
 import Box from "../../../components/Box";
+import Spinner from "../../../components/Spinner";
 
 export type ManageModalType = "yank" | "deprecate" | "collaborators" | "transfer" | "unpublish" | null;
 

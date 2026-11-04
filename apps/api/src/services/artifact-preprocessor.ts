@@ -11,6 +11,12 @@ export interface PreprocessResult {
   viewConfigAdditions?: Record<string, unknown>;
 }
 
+/** Optional, user-chosen hints supplied at upload time (e.g. by the composer's attach wizard). */
+export interface PreprocessOptions {
+  /** Modelica: the class to render when a file declares several. */
+  primaryClass?: string | undefined;
+}
+
 const DEFAULT_UPLOAD_DIR = path.resolve(process.cwd(), "data", "uploads");
 
 /**
@@ -173,6 +179,7 @@ export async function pregenerateServerSvgThumbnail(
   viewType: string,
   originalFilename: string,
   uploadDir?: string,
+  options: PreprocessOptions = {},
 ): Promise<PreprocessResult> {
   const result: PreprocessResult = {};
 
@@ -967,11 +974,12 @@ export async function pregenerateServerSvgThumbnail(
       case "morsel":
       case "polyglot-morsel": {
         const { preprocessModelicaArtifact } = await import("./modelica-artifact-renderer.js");
-        const moRes = await preprocessModelicaArtifact(content, baseTitle);
+        const moRes = await preprocessModelicaArtifact(content, baseTitle, { primaryClass: options.primaryClass });
         result.svg = moRes.svg;
         result.metadata = moRes.metadata;
         result.viewConfigAdditions = {
           ...moRes.viewConfigAdditions,
+          ...(options.primaryClass ? { primaryClass: options.primaryClass } : {}),
           code: inlineCode,
           title: moRes.title || baseTitle,
         };
@@ -1055,11 +1063,10 @@ export async function pregenerateServerSvgThumbnail(
       }
 
       case "qif": {
-        const { parseQif, evaluateQifSpc, synthesizeStepAp242FromQif } = await import("@modelscript/qif");
+        const { parseQif, evaluateQifSpc } = await import("@modelscript/qif");
         const { renderQifMbdHeatmapSvg } = await import("@modelscript/diagram/qif-diagram-builder");
         const doc = parseQif(content, originalFilename);
         const spc = evaluateQifSpc(doc);
-        const stepSource = synthesizeStepAp242FromQif(doc);
         const cpks = spc.characteristics.map((c) => c.cpk).filter((v) => Number.isFinite(v));
         const minCpk = cpks.length > 0 ? Math.min(...cpks) : 0;
         const meanCpk = cpks.length > 0 ? cpks.reduce((a, b) => a + b, 0) / cpks.length : 0;
@@ -1095,7 +1102,6 @@ export async function pregenerateServerSvgThumbnail(
         };
         result.viewConfigAdditions = {
           code: inlineCode,
-          stepSource,
           title: baseTitle,
           dialect: "qif",
           qpId: doc.qpId,

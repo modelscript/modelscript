@@ -90,13 +90,13 @@ const TopBarRoot = styled.header`
   z-index: 1000;
   background: linear-gradient(
     90deg,
-    rgba(76, 29, 149, 0.94) 0%,
-    rgba(109, 40, 217, 0.94) 50%,
-    rgba(88, 28, 135, 0.94) 100%
+    color-mix(in srgb, var(--ms-brand) 92%, #080c16) 0%,
+    color-mix(in srgb, var(--ms-brand-hover) 88%, #080c16) 50%,
+    color-mix(in srgb, var(--ms-brand) 92%, #080c16) 100%
   );
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(192, 132, 252, 0.32);
+  border-bottom: 1px solid color-mix(in srgb, var(--ms-brand) 40%, transparent);
   box-shadow:
     0 4px 20px rgba(15, 23, 42, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.14);

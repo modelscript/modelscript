@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckCircleFillIcon, CheckIcon, CpuIcon, FlameIcon, PlayIcon, PulseIcon, XIcon } from "@primer/octicons-react";
-import { Button, Flash, Heading, Label, Spinner, Text } from "@primer/react";
+import { Button, Flash, Heading, Label, Text } from "@primer/react";
 import axios from "axios";
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../../api";
 import { useAuth } from "../../AuthContext";
 import Box from "../Box";
+import Spinner from "../Spinner";
 
 export interface TelemetryPoint {
   t: number;

@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { PlayIcon, SquareFillIcon } from "@primer/octicons-react";
-import { IconButton, Spinner, Text } from "@primer/react";
+import { IconButton, Text } from "@primer/react";
 import { Environment, Html, useProgress } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import React, { Suspense, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GCodeLoader } from "three/examples/jsm/loaders/GCodeLoader.js";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import SafeOrbitControls from "./SafeOrbitControls";
 import ViewportCameraControls, { type CameraPreset } from "./ViewportCameraControls";

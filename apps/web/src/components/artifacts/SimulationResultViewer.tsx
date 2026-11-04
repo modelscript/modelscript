@@ -9,7 +9,7 @@
  * deformation scaling, and a color legend bar.
  */
 
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import { Html, useProgress } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +17,7 @@ import * as THREE from "three";
 import { type ColormapPreset, createColormapTexture } from "../../util/colormap";
 import { type VtuField, type VtuParseResult, parseVtu } from "../../util/vtu-parser";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import SafeOrbitControls from "./SafeOrbitControls";
 import {

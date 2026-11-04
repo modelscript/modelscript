@@ -2,12 +2,13 @@
 
 import { renderKinematicDiagramSvg, type KinematicBodyLike, type KinematicJointLike } from "@modelscript/diagram";
 import { CheckCircleIcon, PlayIcon } from "@primer/octicons-react";
-import { Button, SegmentedControl, Spinner, Text } from "@primer/react";
+import { Button, SegmentedControl, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 import MultibodyViewport3D, { type MultibodyLink3D, type MultibodyNode3D } from "./MultibodyViewport3D";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 

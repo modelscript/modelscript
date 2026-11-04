@@ -140,6 +140,10 @@ describe("Timeline Performance, Artifact Lifecycle & Memory Efficiency", () => {
         src.includes("!entry.isIntersecting"),
         "PdfViewer must hibernate/unmount iframe when scrolled out of view",
       );
+      assert.ok(
+        !src.includes("$expanded") && !src.includes("580px"),
+        "PdfViewer must maintain fixed height and not expand vertical post height when previewing inline",
+      );
     });
 
     it("ensures ViewerDispatcher wraps missing 3D/physics viewers in LazyHeavyViewer", () => {

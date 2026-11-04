@@ -55,6 +55,7 @@ import { DraftsView } from "./compose-modal/DraftsView";
 import { ModalPanel, Overlay } from "./compose-modal/styles";
 import { TutorialPreview } from "./compose-modal/TutorialPreview";
 import type { DraftPost } from "./compose-modal/types";
+import { AttachWizard, getAttachAcceptList } from "./compose/attach";
 import type { ComposeBoxProps } from "./compose/types";
 
 const HpcArtifactPickerModal = React.lazy(() => import("./HpcArtifactPickerModal"));
@@ -157,6 +158,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const hasComposerAiPolish = useFeatureFlag("composer_ai_polish");
   const hasAiPolishAlias = useFeatureFlag("ai_polish");
   const hasAiPolish = hasComposerAiPolish || hasAiPolishAlias;
+  const hasReferences = useFeatureFlag(["references", "scientific_references"]);
 
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(Boolean(autoFocus));
@@ -385,6 +387,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
     notebook.setNotebookSummary("");
     notebook.setNotebookSeries("");
     notebook.setNotebookCompanionRepo("");
+    notebook.setNotebookTopics([]);
     notebook.setNotebookCells([{ id: createCellId("md"), type: "markdown", content: "" }]);
   }, [setContent, setArtifactId, notebook]);
 
@@ -417,6 +420,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
         notebookSeries: notebook.notebookSeries,
         notebookDialect: notebook.notebookDialect,
         notebookCompanionRepo: notebook.notebookCompanionRepo,
+        notebookTopics: notebook.notebookTopics,
         notebookCells: notebook.notebookCells,
         quotePost,
         replyToPost,
@@ -501,6 +505,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
       notebook.setNotebookSeries(draft.notebookSeries || "");
       notebook.setNotebookDialect(draft.notebookDialect || "Modelica 3.4");
       notebook.setNotebookCompanionRepo(draft.notebookCompanionRepo || "");
+      notebook.setNotebookTopics(draft.notebookTopics || []);
       notebook.setNotebookCells(
         draft.notebookCells || [{ id: createCellId("md"), type: "markdown", content: draft.content }],
       );
@@ -510,7 +515,10 @@ export default function ComposeBox(props: ComposeBoxProps) {
   );
 
   // Submission & uploads
+  // Bumped after the attach wizard saves a customization so the attached artifact card remounts and refetches.
+  const [artifactRevision, setArtifactRevision] = useState(0);
   const submitHandler = useComposeSubmit({
+    onArtifactEdited: () => setArtifactRevision((n) => n + 1),
     token,
     content,
     setContent,
@@ -528,6 +536,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
     notebookDialect: notebook.notebookDialect,
     notebookCompanionRepo: notebook.notebookCompanionRepo,
     setNotebookCompanionRepo: notebook.setNotebookCompanionRepo,
+    notebookTopics: notebook.notebookTopics,
+    setNotebookTopics: notebook.setNotebookTopics,
     notebookCells: notebook.notebookCells,
     setNotebookCells: notebook.setNotebookCells,
     attachArtifactToComposer: notebook.attachArtifactToComposer,
@@ -551,6 +561,13 @@ export default function ComposeBox(props: ComposeBoxProps) {
     },
     fileInputRef,
   });
+
+  // Notebook "Visualize Data": derive a chart from the cell's table, then swap the cell's artifact for the chart.
+  const handleVisualizeCell = (cellId: string, artifactId: number) => {
+    submitHandler.attachFlow.startDerive(artifactId, (newArtifactId, title) =>
+      notebook.replaceArtifactCell(cellId, newArtifactId, `📊 ${title}`),
+    );
+  };
 
   const handleInsertEmoji = (emoji: string) => {
     if (notebook.isNotebookMode) {
@@ -877,11 +894,9 @@ export default function ComposeBox(props: ComposeBoxProps) {
     (files: FileList | File[]) => {
       const fileArray = Array.from(files);
       if (fileArray.length === 0) return;
-      for (const file of fileArray) {
-        void submitHandler.handleFileUpload({
-          target: { files: [file] as unknown as FileList },
-        } as React.ChangeEvent<HTMLInputElement>);
-      }
+      void submitHandler.handleFileUpload({
+        target: { files: fileArray as unknown as FileList },
+      } as React.ChangeEvent<HTMLInputElement>);
     },
     [submitHandler],
   );
@@ -1066,15 +1081,17 @@ export default function ComposeBox(props: ComposeBoxProps) {
 
         {/* Right: Actions & Publish */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <NotionGhostButton
-            type="button"
-            onClick={() => setShowCitationPicker(true)}
-            title="Insert scholarly citation (OpenAlex, DOI, ArXiv, URN)"
-            data-testid="notebook-insert-citation-btn"
-          >
-            <BookIcon size={12} />
-            <span>Cite</span>
-          </NotionGhostButton>
+          {hasReferences && (
+            <NotionGhostButton
+              type="button"
+              onClick={() => setShowCitationPicker(true)}
+              title="Insert scholarly citation (OpenAlex, DOI, ArXiv, URN)"
+              data-testid="notebook-insert-citation-btn"
+            >
+              <BookIcon size={12} />
+              <span>Cite</span>
+            </NotionGhostButton>
+          )}
 
           <NotionGhostButton
             type="button"
@@ -1122,6 +1139,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
 
       <NotebookCanvasScroll>
         <NotebookDocumentColumn $wide={activeEditorLayout === "split"}>
+          <AttachWizard flow={submitHandler.attachFlow} />
           {activeEditorLayout === "preview" ? (
             <TutorialPreview
               notebookMode={true}
@@ -1157,6 +1175,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   setNotebookDialect={notebook.setNotebookDialect}
                   notebookCompanionRepo={notebook.notebookCompanionRepo}
                   setNotebookCompanionRepo={notebook.setNotebookCompanionRepo}
+                  notebookTopics={notebook.notebookTopics}
+                  setNotebookTopics={notebook.setNotebookTopics}
                   showTutorialMetaEditor={notebook.showTutorialMetaEditor}
                   setShowTutorialMetaEditor={notebook.setShowTutorialMetaEditor}
                   handleLoadStarterTemplate={notebook.handleLoadStarterTemplate}
@@ -1181,7 +1201,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   removeCell={notebook.removeCell}
                   updateMarkdownCell={notebook.updateMarkdownCell}
                   updateArtifactCellCaption={notebook.updateArtifactCellCaption}
-                  onReplaceArtifactCell={notebook.replaceArtifactCell}
+                  onVisualizeCell={handleVisualizeCell}
                   updateTokenState={autocomplete.updateTokenState}
                   handleInteraction={handleInteraction}
                   handleSubmit={submitHandler.handleSubmit}
@@ -1236,6 +1256,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
                 setNotebookDialect={notebook.setNotebookDialect}
                 notebookCompanionRepo={notebook.notebookCompanionRepo}
                 setNotebookCompanionRepo={notebook.setNotebookCompanionRepo}
+                notebookTopics={notebook.notebookTopics}
+                setNotebookTopics={notebook.setNotebookTopics}
                 showTutorialMetaEditor={notebook.showTutorialMetaEditor}
                 setShowTutorialMetaEditor={notebook.setShowTutorialMetaEditor}
                 handleLoadStarterTemplate={notebook.handleLoadStarterTemplate}
@@ -1261,7 +1283,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                 removeCell={notebook.removeCell}
                 updateMarkdownCell={notebook.updateMarkdownCell}
                 updateArtifactCellCaption={notebook.updateArtifactCellCaption}
-                onReplaceArtifactCell={notebook.replaceArtifactCell}
+                onVisualizeCell={handleVisualizeCell}
                 updateTokenState={autocomplete.updateTokenState}
                 handleInteraction={handleInteraction}
                 handleSubmit={submitHandler.handleSubmit}
@@ -1315,7 +1337,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
             type="file"
             style={{ display: "none" }}
             ref={fileInputRef}
-            accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.tsv,.json,.yaml,.yml,.h5,.hdf5,.mo,.mos,.sysml,.sysml2,.kerml,.pscx,.pslx,.psout,.raw,.con,.inl,.opi,.key,.tpl,.olga,.ez5,.ezm,.roc,.deck,.lps,.tgx,.sima,.sys,.gtm,.gtd,.inp,.inpt,.bdf,.cfg,.cfgt,.su2,.fmu,.ssp,.ssd,.owl,.ttl,.ofn,.tei,.xml"
+            accept={getAttachAcceptList()}
             onChange={submitHandler.handleFileUpload}
             disabled={submitHandler.uploadingFile}
           />
@@ -1526,6 +1548,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
                     )}
                   </div>
 
+                  {!notebook.isNotebookMode && <AttachWizard flow={submitHandler.attachFlow} />}
+
                   {!notebook.isNotebookMode && shortPostArtifacts.length > 0 && (
                     <Box mb={2}>
                       {shortPostArtifacts.length > 1 && (
@@ -1543,8 +1567,11 @@ export default function ComposeBox(props: ComposeBoxProps) {
                       <Box display="flex" flexDirection="column" gap={2}>
                         {shortPostArtifacts.map((item, index) => (
                           <ComposeAttachedArtifact
-                            key={item.cellId || item.artifactId}
+                            key={`${item.cellId || item.artifactId}:${artifactRevision}`}
                             artifactId={item.artifactId}
+                            onVisualize={(onDone) => submitHandler.attachFlow.startDerive(item.artifactId, onDone)}
+                            onCustomize={(view) => submitHandler.attachFlow.startEdit(item.artifactId, view)}
+                            onAddInspection={(file, linked) => submitHandler.attachFlow.startWithLinked(file, linked)}
                             editPostId={editPostId}
                             onRemove={() => {
                               if (item.cellId) {
@@ -1747,11 +1774,13 @@ export default function ComposeBox(props: ComposeBoxProps) {
         }
       />
 
-      <ComposeCitationPickerModal
-        isOpen={showCitationPicker}
-        onClose={() => setShowCitationPicker(false)}
-        onInsertCitation={handleInsertCitation}
-      />
+      {hasReferences && (
+        <ComposeCitationPickerModal
+          isOpen={showCitationPicker}
+          onClose={() => setShowCitationPicker(false)}
+          onInsertCitation={handleInsertCitation}
+        />
+      )}
 
       <Suspense fallback={null}>
         {showHpcPicker && (

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { CheckIcon, CodeIcon, CopyIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Text } from "@primer/react";
 import { Environment, Html, useProgress } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import DOMPurify from "dompurify";
@@ -11,6 +11,7 @@ import { convertCadGeometry } from "../../api";
 import { useTheme } from "../../theme";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import { useToast } from "../ToastContext";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import { adaptSvgMarkupForTheme } from "./PolyglotArtifactViewer";

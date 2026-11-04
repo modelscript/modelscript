@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon, SearchIcon, ServerIcon, XIcon } from "@primer/octicons-react";
-import { Button, IconButton, Spinner, TextInput } from "@primer/react";
+import { Button, IconButton, TextInput } from "@primer/react";
 import React, { useRef, useState } from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
+import Spinner from "../../Spinner";
 import ComponentList from "../ComponentList";
 import {
   SimulationExperimentSettings,

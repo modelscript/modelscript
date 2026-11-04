@@ -251,7 +251,7 @@ export interface TwinAdaptationRow {
 export interface TwinProposalRow {
   id: number;
   twin_id: number;
-  post_id: number | null;
+  post_id: string | null;
   adaptation_id: number;
   status: string; // 'open' | 'approved' | 'rejected'
   reviewer_id: number | null;
@@ -654,6 +654,44 @@ export class LibraryDatabase {
         );
         UPDATE components SET causality = NULL WHERE type_name = 'import' AND causality = 'connector';
       `);
+    } catch {}
+
+    // Reconcile feature flags table with code-level definitions and reset legacy defaults
+    try {
+      const insertFlagStmt = this.#db.prepare(
+        `INSERT OR IGNORE INTO feature_flags (flag_key, is_enabled, rollout_percentage, allowed_roles, updated_at)
+         VALUES (?, ?, 100, ?, datetime('now'))`,
+      );
+      for (const flag of Object.values(FEATURE_FLAGS)) {
+        const allowedRoles = flag.allowedRoles ? flag.allowedRoles.join(",") : "";
+        insertFlagStmt.run(flag.key, flag.defaultValue ? 1 : 0, allowedRoles);
+      }
+
+      // Reconcile git_repositories and repositories flags in existing databases where pre-0.1.0 seeded them as enabled
+      this.#db
+        .prepare(
+          `UPDATE feature_flags
+           SET is_enabled = 0, allowed_roles = 'admin,beta_tester', updated_at = datetime('now')
+           WHERE flag_key IN ('git_repositories', 'repositories')
+             AND (allowed_roles = '' OR allowed_roles IS NULL)`,
+        )
+        .run();
+
+      // Ensure references and scientific_references are initialized and disabled
+      this.#db
+        .prepare(
+          `INSERT INTO feature_flags (flag_key, is_enabled, rollout_percentage, allowed_roles, updated_at)
+           VALUES ('references', 0, 100, 'admin,beta_tester', datetime('now'))
+           ON CONFLICT(flag_key) DO NOTHING`,
+        )
+        .run();
+      this.#db
+        .prepare(
+          `INSERT INTO feature_flags (flag_key, is_enabled, rollout_percentage, allowed_roles, updated_at)
+           VALUES ('scientific_references', 0, 100, 'admin,beta_tester', datetime('now'))
+           ON CONFLICT(flag_key) DO NOTHING`,
+        )
+        .run();
     } catch {}
 
     // Initialize Dedicated OpenAlex Database (openalex.db) with FTS5 & S3 Partition Manager
@@ -4194,6 +4232,9 @@ export class LibraryDatabase {
       typeFilter = "AND p.reply_to_id IS NOT NULL";
     } else if (type === "artifacts") {
       typeFilter = "AND p.artifact_view_id IS NOT NULL";
+    } else if (type === "articles") {
+      typeFilter = `AND p.reply_to_id IS NULL AND p.repost_of_id IS NULL
+        AND CASE WHEN json_valid(p.metadata) THEN json_extract(p.metadata, '$.notebook.isNotebook') END = 1`;
     } else if (type === "posts") {
       typeFilter = "AND p.reply_to_id IS NULL";
     }
@@ -8915,6 +8956,24 @@ export class LibraryDatabase {
         remoteOriginUrl || null,
       );
     return idToUse;
+  }
+
+  /** Lightweight listing (no view_config) of a user's own artifact views, newest first. */
+  listArtifactViewsByCreator(
+    creatorId: number,
+    viewTypes: string[],
+    limit = 50,
+  ): Pick<ArtifactViewRow, "id" | "view_type" | "title" | "thumbnail_url" | "created_at">[] {
+    const cappedLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+    const typeClause = viewTypes.length > 0 ? ` AND view_type IN (${viewTypes.map(() => "?").join(",")})` : "";
+    return this.#db
+      .prepare(
+        `SELECT CAST(id AS TEXT) as id, view_type, title, thumbnail_url, created_at FROM artifact_views WHERE creator_id = ?${typeClause} ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(creatorId, ...viewTypes, cappedLimit) as Pick<
+      ArtifactViewRow,
+      "id" | "view_type" | "title" | "thumbnail_url" | "created_at"
+    >[];
   }
 
   getAllArtifactViews(): ArtifactViewRow[] {
@@ -13758,7 +13817,7 @@ export class LibraryDatabase {
     | undefined {
     return this.#db
       .prepare(
-        `SELECT p.*, t.name as twin_name, a.prior_parameters, a.updated_parameters
+        `SELECT p.*, CAST(p.post_id AS TEXT) as post_id, t.name as twin_name, a.prior_parameters, a.updated_parameters
          FROM twin_proposals p
          JOIN twins t ON t.id = p.twin_id
          JOIN twin_adaptations a ON a.id = p.adaptation_id
@@ -13783,7 +13842,7 @@ export class LibraryDatabase {
     updated_parameters: string;
   })[] {
     let query = `
-      SELECT p.*, t.name as twin_name, a.prior_parameters, a.updated_parameters
+      SELECT p.*, CAST(p.post_id AS TEXT) as post_id, t.name as twin_name, a.prior_parameters, a.updated_parameters
       FROM twin_proposals p
       JOIN twins t ON t.id = p.twin_id
       JOIN twin_adaptations a ON a.id = p.adaptation_id

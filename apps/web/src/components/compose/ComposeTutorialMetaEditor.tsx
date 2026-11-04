@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BookIcon, GearIcon, PlusIcon, RepoIcon, SlidersIcon, SparklesFillIcon } from "@primer/octicons-react";
+import { BookIcon, GearIcon, PlusIcon, RepoIcon, SlidersIcon, SparklesFillIcon, TagIcon } from "@primer/octicons-react";
 import React, { useEffect, useRef, useState } from "react";
 import type { TutorialDifficulty } from "../../util/notebook";
 import {
@@ -12,6 +12,8 @@ import {
   NotionPropertyTable,
   NotionPropertyValueInput,
 } from "./styles";
+
+const MAX_TOPICS = 8;
 
 export interface ComposeTutorialMetaEditorProps {
   notebookTitle: string;
@@ -26,6 +28,8 @@ export interface ComposeTutorialMetaEditorProps {
   setNotebookDialect: (val: string) => void;
   notebookCompanionRepo: string;
   setNotebookCompanionRepo: (val: string) => void;
+  notebookTopics: string[];
+  setNotebookTopics: (val: string[]) => void;
   showTutorialMetaEditor: boolean;
   setShowTutorialMetaEditor: (val: boolean) => void;
   handleLoadStarterTemplate: () => void;
@@ -48,6 +52,8 @@ export const ComposeTutorialMetaEditor: React.FC<ComposeTutorialMetaEditorProps>
   setNotebookDialect,
   notebookCompanionRepo,
   setNotebookCompanionRepo,
+  notebookTopics,
+  setNotebookTopics,
   showTutorialMetaEditor,
   setShowTutorialMetaEditor,
   handleLoadStarterTemplate,
@@ -79,11 +85,22 @@ export const ComposeTutorialMetaEditor: React.FC<ComposeTutorialMetaEditorProps>
     }
   }, [notebookSummary, showSubtitle]);
 
+  const [topicDraft, setTopicDraft] = useState("");
+
+  const commitTopic = (raw: string) => {
+    const normalized = raw.replace(/,/g, " ").trim().replace(/\s+/g, " ").toLowerCase().slice(0, 40);
+    setTopicDraft("");
+    if (!normalized) return;
+    if (notebookTopics.includes(normalized) || notebookTopics.length >= MAX_TOPICS) return;
+    setNotebookTopics([...notebookTopics, normalized]);
+  };
+
   const activePropertyCount = [
     notebookDifficulty,
     notebookSeries.trim(),
     notebookDialect.trim(),
     notebookCompanionRepo.trim(),
+    notebookTopics.length > 0,
   ].filter(Boolean).length;
 
   return (
@@ -249,6 +266,81 @@ export const ComposeTutorialMetaEditor: React.FC<ComposeTutorialMetaEditorProps>
               value={notebookCompanionRepo}
               onChange={(e) => setNotebookCompanionRepo(e.target.value)}
             />
+          </NotionPropertyRow>
+
+          <NotionPropertyRow>
+            <NotionPropertyLabel>
+              <TagIcon size={13} />
+              <span>Topics</span>
+            </NotionPropertyLabel>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "4px",
+                paddingLeft: "4px",
+                flex: 1,
+              }}
+            >
+              {notebookTopics.map((topic) => (
+                <span
+                  key={topic}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    padding: "1px 8px",
+                    fontSize: "12px",
+                    borderRadius: "999px",
+                    background: "var(--ms-surface-selected)",
+                    color: "var(--ms-text-1)",
+                  }}
+                >
+                  {topic}
+                  <button
+                    type="button"
+                    aria-label={`Remove topic ${topic}`}
+                    onClick={() => setNotebookTopics(notebookTopics.filter((t) => t !== topic))}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--ms-text-3)",
+                      cursor: "pointer",
+                      padding: 0,
+                      fontSize: "13px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <NotionPropertyValueInput
+                type="text"
+                placeholder={notebookTopics.length >= MAX_TOPICS ? "Topic limit reached" : "Add topic and press Enter"}
+                disabled={notebookTopics.length >= MAX_TOPICS}
+                value={topicDraft}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val.endsWith(",")) {
+                    commitTopic(val);
+                  } else {
+                    setTopicDraft(val);
+                  }
+                }}
+                onBlur={() => commitTopic(topicDraft)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitTopic(topicDraft);
+                  } else if (e.key === "Backspace" && !topicDraft && notebookTopics.length > 0) {
+                    setNotebookTopics(notebookTopics.slice(0, -1));
+                  }
+                }}
+                style={{ flex: 1, minWidth: "140px" }}
+              />
+            </div>
           </NotionPropertyRow>
         </NotionPropertyTable>
       )}

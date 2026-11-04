@@ -58,6 +58,10 @@ export function useComposeNotebookState({
     props.notebookCompanionRepo !== undefined ? props.notebookCompanionRepo : internalNotebookCompanionRepo;
   const setNotebookCompanionRepo = props.setNotebookCompanionRepo || setInternalNotebookCompanionRepo;
 
+  const [internalNotebookTopics, setInternalNotebookTopics] = useState<string[]>([]);
+  const notebookTopics = props.notebookTopics !== undefined ? props.notebookTopics : internalNotebookTopics;
+  const setNotebookTopics = props.setNotebookTopics || setInternalNotebookTopics;
+
   const [internalNotebookCells, setInternalNotebookCells] = useState<NotebookCell[]>([
     { id: createCellId("md"), type: "markdown", content: "" },
   ]);
@@ -306,6 +310,8 @@ export function useComposeNotebookState({
     setNotebookDialect,
     notebookCompanionRepo,
     setNotebookCompanionRepo,
+    notebookTopics,
+    setNotebookTopics,
     notebookCells,
     setNotebookCells,
     activeCellId,

@@ -24,6 +24,7 @@ export interface ComposeInitialState {
   notebookSeries?: string | undefined;
   notebookDialect?: string | undefined;
   notebookCompanionRepo?: string | undefined;
+  notebookTopics?: string[] | undefined;
   notebookCells?: NotebookCell[] | undefined;
   initialDialect?: string | undefined;
   initialTitle?: string | undefined;

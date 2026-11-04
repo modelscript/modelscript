@@ -28,6 +28,7 @@ export interface PostNotebookHeaderProps {
     dialect?: string | undefined;
     title?: string | undefined;
     summary?: string | undefined;
+    topics?: string[] | undefined;
   };
   readTimeMinutes: number;
   wasUpdated: boolean;
@@ -81,7 +82,11 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
   const hasSeries = Boolean(notebookData.series?.trim());
   const hasDifficulty = Boolean(notebookData.difficulty?.trim() && diffColor);
   const hasDialect = Boolean(notebookData.dialect?.trim());
-  const hasEyebrowBadges = hasSeries || hasDifficulty || hasDialect;
+  const topics = Array.isArray(notebookData.topics)
+    ? notebookData.topics.filter((t): t is string => typeof t === "string" && Boolean(t.trim()))
+    : [];
+  const hasTopics = topics.length > 0;
+  const hasEyebrowBadges = hasSeries || hasDifficulty || hasDialect || hasTopics;
 
   const displayPost = authorHeaderProps?.displayPost;
   const postMeta =
@@ -213,6 +218,34 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
                 {notebookData.dialect}
               </span>
             )}
+
+            {hasTopics &&
+              topics.map((topic) => {
+                const authorUsername = authorHeaderProps?.parsedAuthor?.localUsername;
+                const targetUrl = authorUsername
+                  ? `/@${encodeURIComponent(authorUsername)}?tab=articles&topic=${encodeURIComponent(topic)}`
+                  : `/explore?q=%23${encodeURIComponent(topic)}`;
+                return (
+                  <Link
+                    key={topic}
+                    to={targetUrl}
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 500,
+                      padding: isDetailView ? "3px 10px" : "2px 8px",
+                      borderRadius: isDetailView ? "999px" : "6px",
+                      background: "var(--color-neutral-muted, rgba(128,128,128,0.15))",
+                      color: "var(--color-fg-muted)",
+                      textDecoration: "none",
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    #{topic}
+                  </Link>
+                );
+              })}
 
             {(!isDetailView || !authorHeaderProps) && (
               <>

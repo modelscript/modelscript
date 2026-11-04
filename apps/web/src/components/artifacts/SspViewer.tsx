@@ -12,7 +12,7 @@ import {
   SlidersIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
-import { Button, Spinner } from "@primer/react";
+import { Button } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -20,6 +20,7 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 import { adaptSvgMarkupForTheme, highlightPolyglotLine } from "./PolyglotArtifactViewer";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
@@ -142,18 +143,23 @@ const PillBadge = styled.span<{ $tone?: "emerald" | "purple" | "cyan" }>`
   flex-shrink: 0;
   background: ${(p) =>
     p.$tone === "emerald"
-      ? "rgba(16, 185, 129, 0.16)"
+      ? "var(--ms-status-pass-bg)"
       : p.$tone === "cyan"
-        ? "rgba(56, 189, 248, 0.15)"
-        : "rgba(139, 92, 246, 0.16)"};
-  color: ${(p) => (p.$tone === "emerald" ? "#10b981" : p.$tone === "cyan" ? "#0284c7" : "#7c3aed")};
+        ? "var(--domain-core-bg)"
+        : "var(--domain-cad-bg)"};
+  color: ${(p) =>
+    p.$tone === "emerald"
+      ? "var(--ms-status-pass-fg)"
+      : p.$tone === "cyan"
+        ? "var(--domain-core)"
+        : "var(--domain-cad)"};
   border: 1px solid
     ${(p) =>
       p.$tone === "emerald"
-        ? "rgba(16, 185, 129, 0.38)"
+        ? "var(--ms-status-pass-border)"
         : p.$tone === "cyan"
-          ? "rgba(56, 189, 248, 0.35)"
-          : "rgba(139, 92, 246, 0.38)"};
+          ? "var(--domain-core-border)"
+          : "var(--domain-cad-border)"};
 `;
 
 const TabGroup = styled.div`

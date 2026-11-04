@@ -351,6 +351,18 @@ export class LSPBridge {
     );
   }
 
+  /** Checks whether a symbol entry is declared at the top-level of a file/workspace (or is predefined). */
+  private isTopLevel(entry: SymbolEntry): boolean {
+    if (entry.metadata?.["isPredefined"]) return true;
+    if (entry.parentId === null || entry.parentId === undefined || entry.parentId === 0) return true;
+    const parent = this.index.symbols.get(entry.parentId);
+    if (!parent) return true;
+    if (parent.ruleName === "SourceFile" || parent.ruleName === "source_file" || parent.kind === "SourceFile") {
+      return true;
+    }
+    return false;
+  }
+
   /** Computes the dot-separated or `::`-separated qualified name for `entry` by walking its parent chain. */
   private getQualifiedName(entry: SymbolEntry, sep = "."): string {
     const parts: string[] = [];
@@ -463,7 +475,7 @@ export class LSPBridge {
       const results: SymbolEntry[] = [];
       for (const id of globalIds) {
         const entry = this.index.symbols.get(id);
-        if (entry && this.isDecl(entry)) {
+        if (entry && this.isDecl(entry) && this.isTopLevel(entry)) {
           results.push(entry);
         }
       }
@@ -1059,7 +1071,11 @@ export class LSPBridge {
       if (globalIds) {
         for (const id of globalIds) {
           const entry = this.index.symbols.get(id);
-          if (entry && this.isDecl(entry)) {
+          if (
+            entry &&
+            this.isDecl(entry) &&
+            (this.isTopLevel(entry) || !entry.resourceId || entry.resourceId === this.documentUri)
+          ) {
             varDecls.push(entry);
           }
         }
@@ -1157,7 +1173,17 @@ export class LSPBridge {
             if (globalIds) {
               for (const id of globalIds) {
                 const globalEntry = this.index.symbols.get(id);
-                if (globalEntry && this.isDecl(globalEntry)) {
+                if (
+                  globalEntry &&
+                  this.isDecl(globalEntry) &&
+                  (globalEntry.kind === "Class" ||
+                    globalEntry.kind === "Type" ||
+                    globalEntry.kind === "Package" ||
+                    globalEntry.kind === "Interface" ||
+                    globalEntry.kind === "Struct" ||
+                    globalEntry.kind === "Definition" ||
+                    Boolean(globalEntry.metadata?.["isPredefined"]))
+                ) {
                   typeDecls.push(globalEntry);
                 }
               }
@@ -1341,7 +1367,14 @@ export class LSPBridge {
     }
 
     if (!targetDecl && entry) {
-      if (entry.kind === "Class" || entry.ruleName === "SourceFile" || entry.ruleName === "source_file") {
+      if (
+        entry.kind === "Class" ||
+        entry.kind === "Package" ||
+        entry.kind === "Module" ||
+        entry.kind === "Namespace" ||
+        entry.ruleName === "SourceFile" ||
+        entry.ruleName === "source_file"
+      ) {
         const nameRange = entry.fieldRanges?.["name"];
         const isOverClassName = nameRange
           ? wordStart >= nameRange.startOffset && wordEnd <= nameRange.endOffset
@@ -1385,7 +1418,7 @@ export class LSPBridge {
             targetDecl = refResolved[0]!;
           }
         }
-      } else {
+      } else if (word === entry.name) {
         targetDecl = entry;
       }
     }

@@ -99,29 +99,15 @@ const columns: MegaMenuColumn[] = [
     ],
   },
   {
-    id: "ai-automation",
-    label: "AI, Automation & HIL",
+    id: "cloud-hil",
+    label: "HIL, Cloud & Network",
     items: [
       {
-        name: `MCP Server (${mcpData.toolCount} Tools)`,
+        name: `MCP Tool Server (${mcpData.toolCount} Tools)`,
         tagline: "Closed-loop tool calling for Claude, Cursor & agents",
         href: "/reference/mcp-and-ide",
         icon: "sparkles",
         accent: "#a78bfa",
-      },
-      {
-        name: "AI Agents & Synthesis",
-        tagline: "Counterexample-guided tuning & autonomous PR bots",
-        href: "/guide/ai-agents",
-        icon: "bot",
-        accent: "#22d3ee",
-      },
-      {
-        name: "CI/CD & GitHub Actions",
-        tagline: "Headless SARIF gates, FMU export & schematic PR diffs",
-        href: "/guide/ci-cd",
-        icon: "git",
-        accent: "#fbbf24",
       },
       {
         name: "SIL & Real-Time HIL",
@@ -131,11 +117,25 @@ const columns: MegaMenuColumn[] = [
         accent: "#fb7185",
       },
       {
-        name: "Ansatz Platform & Hub",
-        tagline: "Federated engineering network, registry & cloud HPC",
+        name: "Ansatz Network & Hub",
+        tagline: "Federated engineering network, registry & CAS",
         href: "/ansatz/overview",
         icon: "globe",
         accent: "#38bdf8",
+      },
+      {
+        name: "Cloud HPC Simulation",
+        tagline: "Slurm cluster offload & batched parameter sweeps",
+        href: "/ansatz/cloud-hpc",
+        icon: "zap",
+        accent: "#fbbf24",
+      },
+      {
+        name: "ActivityPub Federation",
+        tagline: "Decentralized model graphs, peer remotes & follow",
+        href: "/ansatz/federation",
+        icon: "link",
+        accent: "#34d399",
       },
     ],
   },
@@ -153,12 +153,10 @@ const feature: MegaMenuFeature = {
 const footerLinks = computed<MegaMenuFooterLink[]>(() => [
   { label: ansatzLabel.value, href: ansatzHref.value, icon: "globe", target: "_blank" },
   { label: "Self-Hosting Guide", href: "/ansatz/self-hosting", icon: "database" },
-  { label: "ActivityPub Federation", href: "/ansatz/federation", icon: "link" },
   { label: "Package Registry", href: "/ansatz/package-registry", icon: "box" },
-  { label: "Cloud HPC Simulation", href: "/ansatz/cloud-hpc", icon: "zap" },
   { label: "Compiler Architecture", href: "/architecture/overview", icon: "cpu" },
   { label: "Algorithms Catalog (16 engines)", href: "/algorithms/overview", icon: "activity" },
-  { label: "LLM Context (llms.txt)", href: "/llms.txt", icon: "sparkles", target: "_blank" },
+  { label: "Documentation Home", href: "/guide/introduction", icon: "globe" },
 ]);
 </script>
 

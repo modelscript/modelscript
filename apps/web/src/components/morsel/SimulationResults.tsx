@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner } from "@primer/react";
 import Papa from "papaparse";
 import { useEffect, useMemo, useState } from "react";
 import { getSimulationJobResult } from "../../api";
 import { useTheme } from "../../theme";
 import { downloadParquetFile } from "../../util/binary-export";
+import Spinner from "../Spinner";
 import { SIMULATION_COLORS } from "./constants";
 import {
   InteractiveLegend,

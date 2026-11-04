@@ -335,3 +335,118 @@ export function parseRepositoryInput(
   const repo_full_name = `${parts[0]}/${parts[1]}`.replace(/\.git$/i, "");
   return { provider, repo_full_name };
 }
+
+export interface ParsedStudioGitTarget {
+  provider: "github" | "gitlab" | "local";
+  owner: string;
+  repo: string;
+  ref: string;
+  fullRepo: string;
+  workbenchUrl: string;
+  repoPageUrl: string;
+}
+
+export function parseStudioGitTarget(
+  rawInput: string,
+  branchOverride?: string,
+  providerOverride?: "github" | "gitlab" | "local",
+): ParsedStudioGitTarget {
+  const trimmed = rawInput.trim();
+  if (!trimmed) {
+    throw new Error("Please enter a GitHub or GitLab repository URL or owner/name.");
+  }
+
+  let ref = branchOverride?.trim() || "";
+  let baseInput = trimmed;
+
+  if (!ref && baseInput.includes("@")) {
+    const atParts = baseInput.split("@");
+    baseInput = atParts[0]!;
+    ref = atParts[1] || "";
+  }
+
+  baseInput = baseInput.replace(/\.git$/i, "").replace(/\/+$/, "");
+
+  if (!baseInput.includes("/")) {
+    throw new Error("Invalid repository URL or format. Expected: owner/repo or https://github.com/owner/repo");
+  }
+
+  let provider: "github" | "gitlab" | "local" = providerOverride || "github";
+  let owner = "";
+  let repo = "";
+
+  const isExplicitUrl =
+    baseInput.startsWith("http://") ||
+    baseInput.startsWith("https://") ||
+    baseInput.startsWith("github.com/") ||
+    baseInput.startsWith("gitlab.com/");
+
+  const slashIdx = baseInput.indexOf("/");
+  const firstSegment = baseInput.slice(0, slashIdx);
+  const secondSegment = baseInput.slice(slashIdx + 1);
+
+  if (!isExplicitUrl && !firstSegment.includes(".") && secondSegment.length > 0) {
+    owner = firstSegment;
+    repo = secondSegment;
+    provider = providerOverride || "github";
+  } else {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(baseInput.startsWith("http") ? baseInput : `https://${baseInput}`);
+    } catch {
+      throw new Error("Invalid URL format. Expected: https://github.com/owner/repo or https://gitlab.com/owner/repo");
+    }
+
+    const host = parsedUrl.hostname.toLowerCase();
+    if (host === "github.com" || host.endsWith(".github.com")) {
+      provider = "github";
+    } else if (host === "gitlab.com" || host.endsWith(".gitlab.com")) {
+      provider = "gitlab";
+    } else if (
+      host === "ansatz.social" ||
+      host.endsWith(".ansatz.social") ||
+      host === "modelscript.org" ||
+      host.endsWith(".modelscript.org") ||
+      host === "localhost" ||
+      host.endsWith(".local")
+    ) {
+      provider = "local";
+    } else {
+      throw new Error("Supported providers are GitHub (github.com) or GitLab (gitlab.com).");
+    }
+
+    const pathSegments = parsedUrl.pathname.split("/").filter(Boolean);
+    const cleanSegments = pathSegments.filter((s) => s !== "git" && s !== "repos");
+    if (cleanSegments.length < 2) {
+      throw new Error("Invalid repository URL. Expected format: https://github.com/owner/repository");
+    }
+    owner = cleanSegments[0]!;
+    repo = cleanSegments[1]!.replace(/\.git$/i, "");
+
+    if (!ref) {
+      const treeIdx = cleanSegments.findIndex((s) => s === "tree");
+      if (treeIdx !== -1 && cleanSegments[treeIdx + 1]) {
+        ref = cleanSegments.slice(treeIdx + 1).join("/");
+      }
+    }
+  }
+
+  if (!owner || !repo) {
+    throw new Error("Could not parse repository owner and repository name.");
+  }
+
+  const effectiveRef = ref || "main";
+  const fullRepo = `${owner}/${repo}`;
+  const workbenchUrl = `/vscode/workbench#${fullRepo}@${effectiveRef}`;
+  const repoPageUrl = `/repos/${provider}/${owner}/${repo}`;
+
+  return {
+    provider,
+    owner,
+    repo,
+    ref: effectiveRef,
+    fullRepo,
+    workbenchUrl,
+    repoPageUrl,
+  };
+}

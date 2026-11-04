@@ -202,7 +202,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PSS/E Power Flow Case Editor</title>
   <style>
@@ -613,6 +613,15 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
 
   <script>
     const vscode = acquireVsCodeApi();
+    function escapeHtml(str) {
+      if (str == null) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
     let currentData = null;
     let currentGridTab = "buses";
     let sldZoom = 1.0;
@@ -851,7 +860,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             const nextSt = g.stat === 1 ? 0 : 1;
             return '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
               '<div style="display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; color:#4ade80;">' +
-                "<span>Gen ID: '" + g.id + "'</span>" +
+                "<span>Gen ID: '" + escapeHtml(g.id) + "'</span>" +
                 '<button style="font-size:10px; padding:2px 7px;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (g.stat === 1 ? '🟢 Online (Trip)' : '🔴 Offline (Close)') + '</button>' +
               '</div>' +
               '<div class="telemetry-grid" style="margin-top:4px;">' +
@@ -860,7 +869,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                 '<div class="telemetry-item"><span class="telemetry-label">Qmin / Qmax</span><span class="telemetry-val">' + g.qb.toFixed(1) + ' / ' + g.qt.toFixed(1) + '</span></div>' +
                 '<div class="telemetry-item"><span class="telemetry-label">MBASE</span><span class="telemetry-val">' + g.mbase.toFixed(1) + ' MVA</span></div>' +
               '</div>' +
-            '</div>';
+              '</div>';
           }).join('') +
         '</div>';
       }
@@ -874,7 +883,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             const nextSt = l.status === 1 ? 0 : 1;
             return '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
               '<div style="display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; color:#fbbf24;">' +
-                "<span>Load ID: '" + l.id + "'</span>" +
+                "<span>Load ID: '" + escapeHtml(l.id) + "'</span>" +
                 '<button style="font-size:10px; padding:2px 7px;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (l.status === 1 ? '🟢 Online (Shed)' : '🔴 Shed (Restore)') + '</button>' +
               '</div>' +
               '<div class="telemetry-grid" style="margin-top:4px;">' +
@@ -895,7 +904,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             const nextSt = s.status === 1 ? 0 : 1;
             return '<div style="padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
               '<div style="display:flex; justify-content:space-between; align-items:center; font-weight:600; font-size:12px; color:#67e8f9;">' +
-                "<span>Shunt ID: '" + s.id + "'</span>" +
+                "<span>Shunt ID: '" + escapeHtml(s.id) + "'</span>" +
                 '<button style="font-size:10px; padding:2px 7px;" onclick="toggleEquipmentStatus(&apos;' + cellId + '&apos;, ' + nextSt + ')">' + (s.status === 1 ? '🟢 In-Service' : '🔴 Out') + '</button>' +
               '</div>' +
               '<div class="telemetry-grid" style="margin-top:4px;">' +
@@ -924,8 +933,8 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
             const barColor = loadPct !== null && loadPct > 100 ? '#ef4444' : loadPct !== null && loadPct > 80 ? '#f59e0b' : '#22c55e';
             return '<div style="padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);">' +
               '<div style="display:flex; justify-content:space-between; font-size:12px;">' +
-                '<b>' + (isFrom ? '→' : '←') + ' Bus ' + remoteBusNum + ' (' + remoteName + ')</b>' +
-                '<span style="color:#94a3b8;">ckt ' + br.ckt + '</span>' +
+                '<b>' + (isFrom ? '→' : '←') + ' Bus ' + remoteBusNum + ' (' + escapeHtml(remoteName) + ')</b>' +
+                '<span style="color:#94a3b8;">ckt ' + escapeHtml(br.ckt) + '</span>' +
               '</div>' +
               '<div style="display:flex; justify-content:space-between; font-size:11px; margin-top:4px;">' +
                 '<span>Flow: ' + (mvaFlow !== null ? mvaFlow.toFixed(1) + ' MVA' : '-') + '</span>' +
@@ -1105,7 +1114,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                   : isOver ? ' <span class="badge" style="background:#5a3e1b;color:#f0883e;">High V</span>' : '';
                 return \`<tr class="clickable-row" onclick="selectBusFromTable(\${b.i})">
                   <td><b>\${b.i}</b></td>
-                  <td>\${b.name.trim()}</td>
+                  <td>\${escapeHtml(b.name.trim())}</td>
                   <td>\${b.baseKv.toFixed(1)} kV</td>
                   <td>\${typeBadge}</td>
                   <td \${vmStyle}>\${vm.toFixed(4)}\${violationBadge}</td>
@@ -1127,7 +1136,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
               .filter(g => !filter || String(g.i).includes(filter) || g.id.toLowerCase().includes(filter))
               .map(g => \`<tr class="clickable-row" onclick="selectBusFromTable(\${g.i})">
                 <td><b>\${g.i}</b></td>
-                <td>\${g.id}</td>
+                <td>\${escapeHtml(g.id)}</td>
                 <td>\${g.pg.toFixed(1)}</td>
                 <td>\${g.qg.toFixed(1)}</td>
                 <td>\${g.qt.toFixed(1)}</td>
@@ -1158,7 +1167,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
                 return \`<tr class="clickable-row" onclick="selectBranchFromTable(\${br.i}, \${br.j}, '\${br.ckt.trim()}')">
                   <td><b>\${br.i}</b></td>
                   <td><b>\${br.j}</b></td>
-                  <td>\${br.ckt}</td>
+                  <td>\${escapeHtml(br.ckt)}</td>
                   <td>\${br.r.toFixed(5)}</td>
                   <td>\${br.x.toFixed(5)}</td>
                   <td>\${br.rateA > 0 ? br.rateA.toFixed(1) : '-'}</td>
@@ -1181,7 +1190,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
               .map(t => \`<tr class="clickable-row" onclick="selectBranchFromTable(\${t.i}, \${t.j}, '\${t.ckt.trim()}')">
                 <td><b>\${t.i}</b></td>
                 <td><b>\${t.j}</b></td>
-                <td>\${t.ckt}</td>
+                <td>\${escapeHtml(t.ckt)}</td>
                 <td>\${t.r12.toFixed(5)}</td>
                 <td>\${t.x12.toFixed(5)}</td>
                 <td>\${t.sbase12.toFixed(1)}</td>
@@ -1201,7 +1210,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
               .filter(l => !filter || String(l.i).includes(filter) || l.id.toLowerCase().includes(filter))
               .map(l => \`<tr class="clickable-row" onclick="selectBusFromTable(\${l.i})">
                 <td><b>\${l.i}</b></td>
-                <td>\${l.id}</td>
+                <td>\${escapeHtml(l.id)}</td>
                 <td>\${l.pl.toFixed(1)}</td>
                 <td>\${l.ql.toFixed(1)}</td>
                 <td>\${l.status === 1 ? 'In-Service' : 'Out'}</td>

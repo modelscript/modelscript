@@ -19,6 +19,7 @@ import { Link, useNavigate } from "react-router-dom";
 import styled, { keyframes } from "styled-components";
 import { useAuth } from "../AuthContext";
 import { AnsatzMark } from "../components/AnsatzLogo";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { useTheme } from "../theme";
 import { usePageTitle } from "../util/title";
@@ -597,6 +598,7 @@ export const LogoutPage: React.FC = () => {
   const branding = useInstanceBranding();
   const { theme, toggleTheme } = useTheme();
   const brandName = branding.instanceName || "Ansatz";
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
 
   // If a signed-in user navigates directly to /logout, sign them out immediately.
   useEffect(() => {
@@ -790,11 +792,15 @@ export const LogoutPage: React.FC = () => {
         <Link to="/explore" onClick={() => clearJustLoggedOut()}>
           Explore {brandName}
         </Link>
-        <span>·</span>
-        <Link to="/repos" onClick={() => clearJustLoggedOut()}>
-          <RepoIcon size={12} style={{ marginRight: "4px", verticalAlign: "-1px" }} />
-          Repositories
-        </Link>
+        {hasRepos && (
+          <>
+            <span>·</span>
+            <Link to="/repos" onClick={() => clearJustLoggedOut()}>
+              <RepoIcon size={12} style={{ marginRight: "4px", verticalAlign: "-1px" }} />
+              Repositories
+            </Link>
+          </>
+        )}
         <span>·</span>
         <Link to="/terms" onClick={() => clearJustLoggedOut()}>
           Terms

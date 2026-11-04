@@ -369,9 +369,9 @@ const AppShell: React.FC = () => {
   const hasCaeJobs = useFeatureFlag("cae_cloud_solver");
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasPackages = useFeatureFlag("package_browser");
-  const hasRepos = useFeatureFlag("git_repositories");
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
+  const hasReferences = useFeatureFlag(["references", "scientific_references"]);
+  const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
 
@@ -485,7 +485,11 @@ const AppShell: React.FC = () => {
         return;
       }
 
-      if (location.pathname.startsWith("/playground") || location.pathname.startsWith("/ide")) {
+      if (
+        location.pathname.startsWith("/playground") ||
+        location.pathname.startsWith("/ide") ||
+        location.pathname.startsWith("/studio")
+      ) {
         return;
       }
       const activeEl = document.activeElement;
@@ -814,6 +818,11 @@ const AppShell: React.FC = () => {
                   {hasRepos && (
                     <Link to="/repos" onClick={() => handleMoreLinkClick("/repos")}>
                       <RepoIcon size={20} /> Repositories
+                    </Link>
+                  )}
+                  {hasReferences && (
+                    <Link to="/references" onClick={() => handleMoreLinkClick("/references")}>
+                      <BookIcon size={20} /> References
                     </Link>
                   )}
                   <Link

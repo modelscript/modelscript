@@ -24,6 +24,7 @@ import MermaidBlock from "./components/MermaidBlock.vue";
 import ModelScriptViewer from "./components/ModelScriptViewer.vue";
 import MsIcon from "./components/MsIcon.vue";
 import PlatformMegaMenu from "./components/PlatformMegaMenu.vue";
+import PricingPlans from "./components/PricingPlans.vue";
 import Layout from "./Layout.vue";
 import "./style.css";
 
@@ -64,6 +65,7 @@ export default {
     app.component("IndustriesIndex", IndustriesIndex);
     app.component("IndustryPage", IndustryPage);
     app.component("MsIcon", MsIcon);
+    app.component("PricingPlans", PricingPlans);
     app.component("LanguageExplorer", LanguageExplorer);
     app.component("MermaidBlock", MermaidBlock);
     app.component("ModelScriptViewer", ModelScriptViewer);

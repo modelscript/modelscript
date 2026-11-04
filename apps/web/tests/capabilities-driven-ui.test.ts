@@ -147,7 +147,10 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
       const { DEFAULT_FRONTEND_FLAGS } = await import("../src/FeatureFlagContext.js");
 
       assert.equal(DEFAULT_FRONTEND_FLAGS.package_browser, true);
-      assert.equal(DEFAULT_FRONTEND_FLAGS.git_repositories, true);
+      assert.equal(DEFAULT_FRONTEND_FLAGS.git_repositories, false);
+      assert.equal(DEFAULT_FRONTEND_FLAGS.repositories, false);
+      assert.equal(DEFAULT_FRONTEND_FLAGS.references, false);
+      assert.equal(DEFAULT_FRONTEND_FLAGS.scientific_references, false);
 
       const exploreLandingSrc = fs.readFileSync(
         path.resolve(import.meta.dirname, "../src/pages/explore/ExploreLandingView.tsx"),

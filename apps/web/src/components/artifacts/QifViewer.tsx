@@ -9,7 +9,15 @@ import {
   type Qif3dMeshPayload,
 } from "@modelscript/qif/step-bridge";
 import type { QifDocument } from "@modelscript/qif/types";
-import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon } from "@primer/octicons-react";
+import {
+  CheckIcon,
+  ChecklistIcon,
+  CodeIcon,
+  CopyIcon,
+  DownloadIcon,
+  GraphIcon,
+  StackIcon,
+} from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import { Environment, Html, Line } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
@@ -21,8 +29,11 @@ import { useTheme } from "../../theme";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
+import { CompactTabStrip, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { adaptSvgMarkupForTheme, highlightPolyglotLine } from "./PolyglotArtifactViewer";
+import { isSynthesizedStep, unionBounds } from "./qif-step-geometry";
 import SafeOrbitControls from "./SafeOrbitControls";
+import { useQifGeometry } from "./useQifGeometry";
 import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
 
 export interface QifViewerProps {
@@ -32,136 +43,6 @@ export interface QifViewerProps {
 }
 
 export type QifViewTab = "3d" | "boc" | "spc" | "code";
-
-const DEFAULT_QIF_XML = `<?xml version="1.0" encoding="UTF-8"?>
-<QIFDocument versionQIF="3.0.0" qpId="f47ac10b-58cc-4372-a567-0e02b2c3d479">
-  <Header>
-    <Author><Name>Dr. Kenji Takahashi — Precision Metrology Lab</Name></Author>
-    <Application><Name>ModelScript QIF 3.0 MBD &amp; SPC Engine</Name></Application>
-    <FileUnits>
-      <PrimaryUnits>
-        <LinearUnit><UnitName>mm</UnitName></LinearUnit>
-      </PrimaryUnits>
-    </FileUnits>
-  </Header>
-  <DatumDefinitions>
-    <DatumDefinition id="D_A" qpId="11000000-0000-4000-8000-000000000001">
-      <DatumLabel>A</DatumLabel>
-      <FeatureNominalIds><Id>F_ROOT_BASE</Id></FeatureNominalIds>
-    </DatumDefinition>
-    <DatumDefinition id="D_B" qpId="11000000-0000-4000-8000-000000000002">
-      <DatumLabel>B</DatumLabel>
-      <FeatureNominalIds><Id>F_COOLING_BORE</Id></FeatureNominalIds>
-    </DatumDefinition>
-    <DatumDefinition id="D_C" qpId="11000000-0000-4000-8000-000000000003">
-      <DatumLabel>C</DatumLabel>
-      <FeatureNominalIds><Id>F_RETENTION_SLOT</Id></FeatureNominalIds>
-    </DatumDefinition>
-  </DatumDefinitions>
-  <FeatureNominals>
-    <PlaneFeatureNominal id="F_ROOT_BASE" qpId="22000000-0000-4000-8000-000000000001">
-      <Name>FirTreePlatformDatumPlaneA</Name>
-      <Location>0.0 0.0 0.0</Location>
-      <Normal>0.0 0.0 1.0</Normal>
-      <StepEntityId>#101</StepEntityId>
-      <ProbingPoints>9</ProbingPoints>
-    </PlaneFeatureNominal>
-    <CylinderFeatureNominal id="F_COOLING_BORE" qpId="22000000-0000-4000-8000-000000000002">
-      <Name>RootInternalCoolingBoreB</Name>
-      <Diameter>12.000</Diameter>
-      <Location>24.0 0.0 15.0</Location>
-      <AxisVector>0.0 0.0 1.0</AxisVector>
-      <StepEntityId>#108</StepEntityId>
-      <ProbingPoints>12</ProbingPoints>
-    </CylinderFeatureNominal>
-    <SlotFeatureNominal id="F_RETENTION_SLOT" qpId="22000000-0000-4000-8000-000000000003">
-      <Name>AxialLockingPinSlotC</Name>
-      <Width>6.000</Width>
-      <Location>-18.0 0.0 8.0</Location>
-      <Normal>0.0 1.0 0.0</Normal>
-      <StepEntityId>#112</StepEntityId>
-      <ProbingPoints>8</ProbingPoints>
-    </SlotFeatureNominal>
-    <CylinderFeatureNominal id="F_PIN_HOLE" qpId="22000000-0000-4000-8000-000000000004">
-      <Name>DamperWirePinBore</Name>
-      <Diameter>4.500</Diameter>
-      <Location>42.0 12.5 15.0</Location>
-      <AxisVector>0.0 0.0 1.0</AxisVector>
-      <StepEntityId>#118</StepEntityId>
-      <ProbingPoints>10</ProbingPoints>
-    </CylinderFeatureNominal>
-  </FeatureNominals>
-  <CharacteristicNominals>
-    <FlatnessCharacteristicNominal id="CHAR_FLAT_A" qpId="33000000-0000-4000-8000-000000000001" balloonNumber="1">
-      <Name>PlatformBase_Flatness</Name>
-      <ToleranceValue>0.025</ToleranceValue>
-      <FeatureNominalIds><Id>F_ROOT_BASE</Id></FeatureNominalIds>
-      <MeasurementDeviceId>CMM_HEXAGON_01</MeasurementDeviceId>
-    </FlatnessCharacteristicNominal>
-    <CylindricityCharacteristicNominal id="CHAR_CYL_B" qpId="33000000-0000-4000-8000-000000000002" balloonNumber="2">
-      <Name>CoolingBore_Cylindricity</Name>
-      <ToleranceValue>0.030</ToleranceValue>
-      <FeatureNominalIds><Id>F_COOLING_BORE</Id></FeatureNominalIds>
-      <MeasurementDeviceId>CMM_HEXAGON_01</MeasurementDeviceId>
-    </CylindricityCharacteristicNominal>
-    <PositionCharacteristicNominal id="CHAR_POS_BORE" qpId="33000000-0000-4000-8000-000000000003" balloonNumber="3">
-      <Name>CoolingBore_TruePosition</Name>
-      <ToleranceValue>0.050</ToleranceValue>
-      <DiametricalZone>true</DiametricalZone>
-      <MaterialCondition>MMC</MaterialCondition>
-      <DatumReferenceFrame>
-        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>
-        <DatumReference precedence="2"><DatumLabel>C</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>
-      </DatumReferenceFrame>
-      <FeatureNominalIds><Id>F_COOLING_BORE</Id></FeatureNominalIds>
-      <MeasurementDeviceId>CMM_HEXAGON_01</MeasurementDeviceId>
-    </PositionCharacteristicNominal>
-    <PositionCharacteristicNominal id="CHAR_POS_PIN" qpId="33000000-0000-4000-8000-000000000004" balloonNumber="4">
-      <Name>DamperPinBore_TruePosition</Name>
-      <ToleranceValue>0.040</ToleranceValue>
-      <DiametricalZone>true</DiametricalZone>
-      <MaterialCondition>MMC</MaterialCondition>
-      <DatumReferenceFrame>
-        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>
-        <DatumReference precedence="2"><DatumLabel>B</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>
-        <DatumReference precedence="3"><DatumLabel>C</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>
-      </DatumReferenceFrame>
-      <FeatureNominalIds><Id>F_PIN_HOLE</Id></FeatureNominalIds>
-      <MeasurementDeviceId>CMM_HEXAGON_01</MeasurementDeviceId>
-    </PositionCharacteristicNominal>
-  </CharacteristicNominals>
-  <MeasurementResources>
-    <MeasurementDevice id="CMM_HEXAGON_01" deviceType="CMM">
-      <Name>Hexagon_Global_S_07_10_07</Name>
-      <CalibrationUncertainty>0.0018</CalibrationUncertainty>
-    </MeasurementDevice>
-  </MeasurementResources>
-  <Results>
-    <GeometricCharacteristicActual id="ACT_01" characteristicNominalId="CHAR_FLAT_A" partSerialNumber="HPT-2026-001">
-      <MeasuredValue>0.011</MeasuredValue>
-      <DeviationVector>0.0 0.0 0.011</DeviationVector>
-      <Status>PASS</Status>
-    </GeometricCharacteristicActual>
-    <GeometricCharacteristicActual id="ACT_02" characteristicNominalId="CHAR_CYL_B" partSerialNumber="HPT-2026-001">
-      <MeasuredValue>0.012</MeasuredValue>
-      <ActualFeatureSize>12.015</ActualFeatureSize>
-      <DeviationVector>0.008 0.009 0.0</DeviationVector>
-      <Status>PASS</Status>
-    </GeometricCharacteristicActual>
-    <GeometricCharacteristicActual id="ACT_03" characteristicNominalId="CHAR_POS_BORE" partSerialNumber="HPT-2026-001">
-      <MeasuredValue>0.034</MeasuredValue>
-      <ActualFeatureSize>12.012</ActualFeatureSize>
-      <DeviationVector>0.024 0.024 0.0</DeviationVector>
-      <Status>PASS</Status>
-    </GeometricCharacteristicActual>
-    <GeometricCharacteristicActual id="ACT_04" characteristicNominalId="CHAR_POS_PIN" partSerialNumber="HPT-2026-001">
-      <MeasuredValue>0.022</MeasuredValue>
-      <ActualFeatureSize>4.510</ActualFeatureSize>
-      <DeviationVector>0.015 0.016 0.0</DeviationVector>
-      <Status>PASS</Status>
-    </GeometricCharacteristicActual>
-  </Results>
-</QIFDocument>`;
 
 function formatMaterialModifier(mod?: "RFS" | "MMC" | "LMC"): string {
   if (mod === "MMC") return "Ⓜ";
@@ -294,11 +175,12 @@ function QifFeatureMesh({
   );
 }
 
-export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFullScreen = false }) => {
+const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFullScreen = false }) => {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const navigate = useNavigate();
 
+  const hasFooter = useHasFooterSlot();
   const [viewTab, setViewTab] = useState<QifViewTab>("3d");
   const [sourceSubTab, setSourceSubTab] = useState<"qif" | "step">("qif");
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
@@ -319,13 +201,18 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
   const rawQifText: string = useMemo(() => {
     const cfg = (viewConfig && typeof viewConfig === "object" ? viewConfig : {}) as Record<string, unknown>;
     const candidate = cfg["code"] || cfg["qifCode"] || cfg["source"] || cfg["content"] || "";
-    return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : DEFAULT_QIF_XML;
+    return typeof candidate === "string" ? candidate : "";
   }, [viewConfig]);
 
   const externalStepText: string | undefined = useMemo(() => {
     const candidate = viewConfig?.stepCode || viewConfig?.stepSource;
-    return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : undefined;
+    return typeof candidate === "string" && candidate.trim().length > 0 && !isSynthesizedStep(candidate)
+      ? candidate
+      : undefined;
   }, [viewConfig]);
+
+  const geometryState = useQifGeometry(viewConfig, externalStepText);
+  const pairedStepText = geometryState.status === "ready" ? geometryState.stepText : undefined;
 
   const baseParsedData = useMemo((): {
     doc: QifDocument;
@@ -333,13 +220,8 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
     rawSpcSvg: string;
     rawHeatmapSvg: string;
   } => {
-    let doc: QifDocument;
-    try {
-      doc = parseQif(rawQifText);
-    } catch {
-      doc = parseQif(DEFAULT_QIF_XML);
-    }
-    const scene = buildQif3dMbdScene(doc, externalStepText);
+    const doc: QifDocument = parseQif(rawQifText);
+    const scene = buildQif3dMbdScene(doc, pairedStepText);
     const rawSpcSvg = DOMPurify.sanitize(renderQifSpcChartSvg(scene.spcSummary));
     const rawHeatmapSvg = DOMPurify.sanitize(renderQifMbdHeatmapSvg(doc, scene.spcSummary));
     return {
@@ -348,7 +230,7 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
       rawSpcSvg,
       rawHeatmapSvg,
     };
-  }, [rawQifText, externalStepText]);
+  }, [rawQifText, pairedStepText]);
 
   const spcSvg = useMemo(
     () => adaptSvgMarkupForTheme(baseParsedData.rawSpcSvg, isDark),
@@ -359,7 +241,37 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
     [baseParsedData.rawHeatmapSvg, isDark],
   );
 
-  const { doc, scene } = baseParsedData;
+  const { doc, scene: sceneBase } = baseParsedData;
+  const partGeometry = geometryState.status === "ready" ? geometryState.geometry : null;
+  const scene = useMemo(
+    () =>
+      partGeometry
+        ? {
+            ...sceneBase,
+            meshes: [partGeometry.payload, ...sceneBase.meshes],
+            boundingBox: unionBounds(sceneBase.boundingBox, partGeometry.bounds),
+          }
+        : sceneBase,
+    [sceneBase, partGeometry],
+  );
+
+  const geometryTitle = geometryState.status !== "none" ? geometryState.title : undefined;
+  const geometryNotice =
+    geometryState.status === "none"
+      ? "No 3D model attached"
+      : geometryState.status === "loading"
+        ? "Loading 3D model…"
+        : geometryState.status === "error"
+          ? "3D model unavailable"
+          : geometryState.geometry
+            ? `Model: ${geometryTitle ?? "STEP part"}`
+            : "STEP has no displayable surfaces";
+  const geometryNoticeDetail =
+    geometryState.status === "error"
+      ? geometryState.message
+      : geometryState.status === "none"
+        ? "No STEP model is paired with this inspection report. Showing GD&T features and measurements only."
+        : (geometryTitle ?? "");
 
   const activeClippingPlanes = useMemo(() => {
     if (clipAxis === "none") return [];
@@ -376,8 +288,10 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
 
   const sceneCenter = scene.boundingBox.center;
 
-  const title: string =
-    viewConfig?.title || viewConfig?.filename || doc.header.partName || "TurbineBladeRoot_MBD_Inspection.qif";
+  const configTitle = [viewConfig?.title, viewConfig?.filename].find(
+    (v): v is string => typeof v === "string" && v.length > 0,
+  );
+  const title: string = configTitle || doc.header.partName || "QIF Inspection.qif";
 
   const activeCallout = useMemo(() => {
     if (selectedCharId) {
@@ -397,7 +311,7 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
   };
 
   const handleCopySource = async () => {
-    const textToCopy = sourceSubTab === "qif" ? rawQifText : scene.stepSource;
+    const textToCopy = sourceSubTab === "qif" ? rawQifText : (pairedStepText ?? "");
     try {
       await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
@@ -410,7 +324,7 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
   const handleDownloadQif = () => {
     const ext = sourceSubTab === "qif" ? ".qif" : ".step";
     const mime = sourceSubTab === "qif" ? "application/xml" : "application/step";
-    const text = sourceSubTab === "qif" ? rawQifText : scene.stepSource;
+    const text = sourceSubTab === "qif" ? rawQifText : (pairedStepText ?? "");
     const blob = new Blob([text], { type: `${mime};charset=utf-8` });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -433,13 +347,14 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
   };
 
   const activeSourceLines = useMemo(() => {
-    const text = sourceSubTab === "qif" ? rawQifText : scene.stepSource;
+    const text = sourceSubTab === "qif" ? rawQifText : (pairedStepText ?? "");
     return text.split(/\r?\n/);
-  }, [sourceSubTab, rawQifText, scene.stepSource]);
+  }, [sourceSubTab, rawQifText, pairedStepText]);
 
   return (
     <Box
       data-testid="qif-viewer"
+      position="relative"
       display="flex"
       flexDirection="column"
       width="100%"
@@ -447,103 +362,129 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
       bg="var(--color-canvas-default, #0d1117)"
       overflow="hidden"
     >
-      {/* Compact Single-Row Top Toolbar */}
-      <Box
-        height="44px"
-        minHeight="44px"
-        px={3}
-        display="flex"
-        alignItems="center"
-        justifyContent="space-between"
-        gap={2}
-        borderBottom="1px solid var(--color-border-default, #30363d)"
-        bg="var(--surface-hud, var(--color-canvas-subtle, #161b22))"
-        zIndex={20}
-      >
-        <Box display="flex" alignItems="center" gap={2} minWidth={0}>
-          {!isFullScreen && (
-            <Text
-              style={{
-                fontSize: "13px",
-                fontWeight: 600,
-                color: "var(--color-fg-default, #e6edf3)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {title}
-            </Text>
-          )}
-          <span
-            style={{
-              fontSize: "10px",
-              fontWeight: 600,
-              padding: "2px 7px",
-              borderRadius: "999px",
-              background: "rgba(56, 189, 248, 0.15)",
-              color: "#38bdf8",
-              border: "1px solid rgba(56, 189, 248, 0.35)",
-              fontFamily: "var(--font-mono, monospace)",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
-            }}
+      {hasFooter ? (
+        <FooterTabs>
+          <CompactTabStrip
+            ariaLabel="QIF MBD Viewer Mode"
+            active={viewTab}
+            onChange={(id) => setViewTab(id as QifViewTab)}
+            tabs={[
+              { id: "3d", label: "3D + GD&T", icon: <StackIcon size={14} />, title: "3D CAD + GD&T" },
+              {
+                id: "boc",
+                label: "BoC",
+                icon: <ChecklistIcon size={14} />,
+                count: doc.characteristics.length,
+                title: "Bill of Characteristics",
+              },
+              { id: "spc", label: "SPC", icon: <GraphIcon size={14} />, title: "SPC & Heatmap" },
+              { id: "code", label: "Code", icon: <CodeIcon size={14} />, title: "QIF XML source" },
+            ]}
+          />
+        </FooterTabs>
+      ) : (
+        <>
+          {/* Compact Single-Row Top Toolbar */}
+          <Box
+            height="44px"
+            minHeight="44px"
+            px={3}
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+            gap={2}
+            borderBottom="1px solid var(--color-border-default, #30363d)"
+            bg="var(--surface-hud, var(--color-canvas-subtle, #161b22))"
+            zIndex={20}
           >
-            QIF 3.0 · STEP AP242
-          </span>
-        </Box>
-
-        <Box display="flex" alignItems="center" gap={2} flexShrink={0}>
-          <div
-            role="tablist"
-            aria-label="QIF MBD Viewer Mode"
-            style={{
-              display: "inline-flex",
-              background: "var(--color-canvas-default, rgba(15, 23, 42, 0.75))",
-              border: "1px solid var(--color-border-default, #30363d)",
-              borderRadius: "6px",
-              padding: "2px",
-              gap: "2px",
-            }}
-          >
-            {[
-              { id: "3d" as const, label: "3D CAD + GD&T" },
-              { id: "boc" as const, label: `BoC (${doc.characteristics.length})` },
-              { id: "spc" as const, label: "SPC & Heatmap" },
-              { id: "code" as const, label: "Code" },
-            ].map((tab) => {
-              const active = viewTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setViewTab(tab.id)}
+            <Box display="flex" alignItems="center" gap={2} minWidth={0}>
+              {!isFullScreen && (
+                <Text
                   style={{
-                    background: active ? "rgba(56, 189, 248, 0.2)" : "transparent",
-                    color: active ? "#38bdf8" : "var(--color-fg-muted, #8b949e)",
-                    border: active ? "1px solid rgba(56, 189, 248, 0.4)" : "1px solid transparent",
-                    borderRadius: "4px",
-                    padding: "3px 9px",
-                    fontSize: "11px",
+                    fontSize: "13px",
                     fontWeight: 600,
-                    cursor: "pointer",
+                    color: "var(--color-fg-default, #e6edf3)",
                     whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}
                 >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-          {Boolean(viewConfig?.standalone) && (
-            <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
-              Open in Playground
-            </Button>
-          )}
-        </Box>
-      </Box>
+                  {title}
+                </Text>
+              )}
+              <span
+                style={{
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  padding: "2px 7px",
+                  borderRadius: "999px",
+                  background: "var(--domain-cad-bg, rgba(234, 88, 12, 0.12))",
+                  color: "var(--domain-cad, #ea580c)",
+                  border: "1px solid var(--domain-cad-border, rgba(234, 88, 12, 0.35))",
+                  fontFamily: "var(--font-mono, monospace)",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                QIF 3.0 · STEP AP242
+              </span>
+            </Box>
+
+            <Box display="flex" alignItems="center" gap={2} flexShrink={0}>
+              <div
+                role="tablist"
+                aria-label="QIF MBD Viewer Mode"
+                style={{
+                  display: "inline-flex",
+                  background: "var(--color-canvas-default, rgba(15, 23, 42, 0.75))",
+                  border: "1px solid var(--color-border-default, #30363d)",
+                  borderRadius: "6px",
+                  padding: "2px",
+                  gap: "2px",
+                }}
+              >
+                {[
+                  { id: "3d" as const, label: "3D CAD + GD&T" },
+                  { id: "boc" as const, label: `BoC (${doc.characteristics.length})` },
+                  { id: "spc" as const, label: "SPC & Heatmap" },
+                  { id: "code" as const, label: "Code" },
+                ].map((tab) => {
+                  const active = viewTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setViewTab(tab.id)}
+                      style={{
+                        background: active ? "var(--ms-brand-soft, rgba(56, 189, 248, 0.2))" : "transparent",
+                        color: active ? "var(--ms-brand, #38bdf8)" : "var(--color-fg-muted, #8b949e)",
+                        border: active
+                          ? "1px solid var(--ms-brand-border, rgba(56, 189, 248, 0.4))"
+                          : "1px solid transparent",
+                        borderRadius: "4px",
+                        padding: "3px 9px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {Boolean(viewConfig?.standalone) && (
+                <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
+                  Open in Playground
+                </Button>
+              )}
+            </Box>
+          </Box>
+        </>
+      )}
 
       {/* Main Content Area */}
       <Box flex={1} position="relative" overflow="hidden" display="flex">
@@ -652,6 +593,28 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
                 </button>
               </Box>
             )}
+
+            {
+              <Box
+                data-testid="qif-no-geometry-notice"
+                position="absolute"
+                top="52px"
+                right="12px"
+                zIndex={5}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "999px",
+                  background: "rgba(15, 23, 42, 0.78)",
+                  border: "1px solid rgba(148, 163, 184, 0.35)",
+                  color: "#cbd5e1",
+                  fontSize: "11px",
+                  pointerEvents: "none",
+                }}
+                title={geometryNoticeDetail}
+              >
+                {geometryNotice}
+              </Box>
+            }
 
             <Canvas
               gl={{ preserveDrawingBuffer: true, localClippingEnabled: true }}
@@ -1137,22 +1100,24 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
                 >
                   ISO 23952 QIF 3.0 XML
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSourceSubTab("step")}
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    padding: "2px 8px",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                    background: sourceSubTab === "step" ? "rgba(56, 189, 248, 0.2)" : "transparent",
-                    color: sourceSubTab === "step" ? "#38bdf8" : "#94a3b8",
-                    border: sourceSubTab === "step" ? "1px solid rgba(56, 189, 248, 0.4)" : "1px solid transparent",
-                  }}
-                >
-                  Paired STEP AP242 B-Rep (#101–#118)
-                </button>
+                {pairedStepText && (
+                  <button
+                    type="button"
+                    onClick={() => setSourceSubTab("step")}
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      cursor: "pointer",
+                      background: sourceSubTab === "step" ? "rgba(56, 189, 248, 0.2)" : "transparent",
+                      color: sourceSubTab === "step" ? "#38bdf8" : "#94a3b8",
+                      border: sourceSubTab === "step" ? "1px solid rgba(56, 189, 248, 0.4)" : "1px solid transparent",
+                    }}
+                  >
+                    Paired STEP{geometryTitle ? ` · ${geometryTitle}` : ""}
+                  </button>
+                )}
               </Box>
               <Box display="flex" alignItems="center" gap={2}>
                 <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadQif}>
@@ -1200,6 +1165,47 @@ export const QifViewer: React.FC<QifViewerProps> = ({ artifactId, viewConfig, is
       </Box>
     </Box>
   );
+};
+
+export const QifViewer: React.FC<QifViewerProps> = (props) => {
+  const { viewConfig } = props;
+  const validation = useMemo((): { ok: true } | { ok: false; message: string } => {
+    const cfg = (viewConfig && typeof viewConfig === "object" ? viewConfig : {}) as Record<string, unknown>;
+    const candidate = cfg["code"] || cfg["qifCode"] || cfg["source"] || cfg["content"] || "";
+    const text = typeof candidate === "string" ? candidate : "";
+    if (text.trim().length === 0) {
+      return { ok: false, message: "This artifact has no QIF content." };
+    }
+    try {
+      const doc = parseQif(text);
+      if (doc.features.length === 0 && doc.characteristics.length === 0) {
+        return { ok: false, message: "No features or characteristics were found in this QIF file." };
+      }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: `Could not parse QIF: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }, [viewConfig]);
+
+  if (!validation.ok) {
+    return (
+      <Box
+        data-testid="qif-viewer-error"
+        role="alert"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        width="100%"
+        height={props.isFullScreen ? "100%" : "480px"}
+        bg="var(--color-canvas-default, #0d1117)"
+        color="var(--color-fg-muted, #8b949e)"
+        style={{ padding: "24px", textAlign: "center", fontSize: "13px" }}
+      >
+        {validation.message}
+      </Box>
+    );
+  }
+  return <QifViewerInner {...props} />;
 };
 
 export default QifViewer;

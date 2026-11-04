@@ -50,7 +50,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
   const hasBilling = useFeatureFlag("billing_stripe_live");
   const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   const hasPackages = useFeatureFlag("package_browser");
-  const hasRepos = useFeatureFlag("git_repositories");
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [trending, setTrending] = useState<any[]>([]);
   const [popularPackages, setPopularPackages] = useState<any[]>([]);
@@ -162,7 +162,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
   useEffect(() => {
     async function fetchTrending() {
       try {
-        const data = await getTrending(isExplore ? 8 : 4);
+        const data = await getTrending(8);
         setTrending(data.topics || []);
       } catch (err) {
         console.error(err);
@@ -171,7 +171,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
     fetchTrending();
     window.addEventListener("modelscript:post-created", fetchTrending);
     return () => window.removeEventListener("modelscript:post-created", fetchTrending);
-  }, [isExplore]);
+  }, []);
 
   useEffect(() => {
     if (!hasPackages) return;
@@ -187,6 +187,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
   }, [hasPackages]);
 
   useEffect(() => {
+    if (!hasRepos) return;
     async function fetchPopularRepos() {
       try {
         const data = await getPopularRepos(7);
@@ -196,7 +197,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
       }
     }
     fetchPopularRepos();
-  }, []);
+  }, [hasRepos]);
 
   return (
     <PanelContainer
@@ -239,6 +240,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
             trending={trending}
             activeTrendMenu={activeTrendMenu}
             setActiveTrendMenu={setActiveTrendMenu}
+            maxItems={4}
           />
 
           {(user || (isExplore && suggestions.length > 0)) && (

@@ -153,9 +153,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               fontFamily: "var(--font-mono, monospace)",
               flexShrink: 0,
             }}
-            title="Exit studio mode (Esc)"
+            title="Exit full screen (Esc)"
           >
-            <XIcon size={14} /> <span className="studio-hide-mobile">Exit Studio</span>
+            <XIcon size={14} /> <span className="studio-hide-mobile">Exit Full Screen</span>
           </button>
         )}
         <Text
@@ -585,9 +585,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               alignItems: "center",
               gap: "6px",
             }}
-            title="Full screen Studio"
+            title="Full screen"
           >
-            <ScreenFullIcon size={14} /> Studio
+            <ScreenFullIcon size={14} /> Full Screen
           </button>
         )}
       </Box>

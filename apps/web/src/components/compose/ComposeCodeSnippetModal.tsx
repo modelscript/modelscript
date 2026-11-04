@@ -11,7 +11,7 @@ import {
   XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { Heading, IconButton, Spinner, Text, useTheme } from "@primer/react";
+import { Heading, IconButton, Text, useTheme } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -20,6 +20,7 @@ import type { NotebookCell } from "../../util/notebook";
 import Box from "../Box";
 import type { CodeEditorHandle } from "../morsel/Code";
 import { getLanguageInfo, useVisibleMorselLanguages } from "../morsel/constants";
+import Spinner from "../Spinner";
 import {
   analyzeSnippetDiagnostics,
   extractPrimaryConstructInfo,
@@ -538,7 +539,7 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
               border: errorCount > 0 ? "1px solid var(--color-danger-emphasis, #ef4444)" : `1px solid ${controlBorder}`,
               overflow: "hidden",
               position: "relative",
-              background: isDark ? "#1e1e1e" : "#ffffff",
+              background: "var(--color-canvas-default)",
             }}
           >
             <Suspense

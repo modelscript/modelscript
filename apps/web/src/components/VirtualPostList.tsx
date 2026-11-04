@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner } from "@primer/react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLanguageEnabled } from "../FeatureFlagContext";
 import { estimatePostHeight } from "../util/post-layout";
 import Box from "./Box";
 import Post from "./Post";
+import Spinner from "./Spinner";
 
 export interface PostListItem {
   id?: string | number | undefined;

@@ -50,14 +50,14 @@ export const AuthPromptCard: React.FC = () => {
       <Box
         mt={3}
         style={{
-          paddingTop: "8px",
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent: "center",
           alignItems: "center",
-          borderTop: "1px solid var(--color-border-subtle)",
+          gap: "6px",
+          fontSize: "12px",
         }}
       >
-        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>Have an account?</span>
+        <span style={{ color: "var(--color-text-muted)" }}>Already have an account?</span>
         <button
           onClick={() => navigate("/login")}
           style={{
@@ -68,6 +68,9 @@ export const AuthPromptCard: React.FC = () => {
             fontWeight: 600,
             cursor: "pointer",
             padding: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "2px",
           }}
         >
           Sign in →

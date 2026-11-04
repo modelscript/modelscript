@@ -5,6 +5,7 @@ import {
   BookIcon,
   BookmarkIcon,
   CodeIcon,
+  ComposeIcon,
   GearIcon,
   HomeIcon,
   KebabHorizontalIcon,
@@ -13,7 +14,6 @@ import {
   MoonIcon,
   PackageIcon,
   PersonIcon,
-  PlayIcon,
   PlusIcon,
   RepoIcon,
   RssIcon,
@@ -273,6 +273,23 @@ const AdminNavBadge = styled.span`
   }
 `;
 
+const BrandRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 6px;
+  gap: 6px;
+  box-sizing: border-box;
+
+  @media (max-width: 1280px) {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+`;
+
 const BrandHeader = styled(Link)`
   display: flex;
   align-items: center;
@@ -280,9 +297,9 @@ const BrandHeader = styled(Link)`
   padding: 6px;
   border-radius: 12px;
   text-decoration: none;
-  margin-bottom: 6px;
   color: var(--color-text-heading);
   outline: none;
+  min-width: 0;
   transition: background-color 0.16s ease;
 
   &:hover {
@@ -301,6 +318,7 @@ const BrandHeader = styled(Link)`
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
   }
 
   &:hover .ansatz-mark:not(.ansatz-mark--custom),
@@ -326,7 +344,79 @@ const BrandHeader = styled(Link)`
   @media (max-width: 1280px) {
     justify-content: center;
     padding: 4px;
-    margin-bottom: 6px;
+    width: 42px;
+    height: 42px;
+  }
+`;
+
+const BrandPlaygroundLink = styled(Link)<{ $active?: boolean | undefined }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 10px;
+  margin-left: auto;
+  flex-shrink: 0;
+  text-decoration: none;
+  color: var(--ansatz-facet-accent, #38bdf8);
+  background: ${(props) =>
+    props.$active ? "color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 16%, transparent)" : "transparent"};
+  border: 1px solid
+    ${(props) =>
+      props.$active ? "color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 42%, transparent)" : "transparent"};
+  outline: none;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.18s ease,
+    transform 0.14s ease;
+
+  img,
+  svg {
+    display: block;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  &:hover {
+    text-decoration: none;
+    color: var(--ansatz-facet-accent, #38bdf8);
+    background-color: color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 12%, transparent);
+    border-color: color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 35%, transparent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 22%, transparent);
+
+    img,
+    svg {
+      transform: scale(1.08);
+    }
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--ansatz-facet-accent, #38bdf8);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    img,
+    svg {
+      transition: none;
+      transform: none;
+    }
+  }
+
+  @media (max-width: 1280px) {
+    margin-left: 0;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
   }
 `;
 
@@ -408,23 +498,10 @@ const BrandTitle = styled.div`
   }
 `;
 
-const WorkbenchSection = styled.div`
-  margin-top: auto;
-  padding-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-
-  @media (max-width: 1280px) {
-    align-items: center;
-  }
-`;
-
-const FooterSection = styled.div`
-  padding-top: 10px;
-  margin-top: 6px;
-  border-top: 1px solid var(--color-border);
+const FooterSection = styled.div<{ $isGuest?: boolean }>`
+  padding-top: ${(props) => (props.$isGuest ? "4px" : "10px")};
+  margin-top: ${(props) => (props.$isGuest ? "auto" : "6px")};
+  border-top: ${(props) => (props.$isGuest ? "none" : "1px solid var(--color-border)")};
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -432,7 +509,8 @@ const FooterSection = styled.div`
   box-sizing: border-box;
 
   @media (max-width: 1280px) {
-    padding-top: 8px;
+    padding-top: ${(props) => (props.$isGuest ? "2px" : "8px")};
+    border-top: ${(props) => (props.$isGuest ? "none" : "1px solid var(--color-border)")};
     align-items: center;
     gap: 8px;
   }
@@ -903,13 +981,13 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
   const hasPackages = useFeatureFlag("package_browser");
-  const hasRepos = useFeatureFlag("git_repositories");
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
+  const hasReferences = useFeatureFlag(["references", "scientific_references"]);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
   const branding = useInstanceBranding();
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
   const docsBase = (branding.docsBaseUrl || "").trim().replace(/\/+$/, "");
-  const docsHref = docsBase && !docsBase.startsWith("/") ? `${docsBase}/guide/introduction` : "/guide/introduction";
   const nodeDomainLabel = React.useMemo(() => {
     if (typeof window !== "undefined" && window.location?.hostname) {
       const h = window.location.hostname;
@@ -917,6 +995,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     }
     return "ansatz.social";
   }, []);
+
+  const isPlaygroundActive = location.pathname === "/playground" || location.pathname.startsWith("/playground/");
 
   // 1. Primary in-shell social / community links
   const communityLinks: SidebarLinkItem[] = [];
@@ -936,31 +1016,21 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   if (hasPackages) {
     registryLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
   }
+  if (hasIde) {
+    registryLinks.push({ to: "/ide", icon: CodeIcon, label: "Studio" });
+  }
   if (hasRepos) {
     registryLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
   }
-  registryLinks.push({ to: "/references", icon: BookIcon, label: "References" });
+  if (hasReferences) {
+    registryLinks.push({ to: "/references", icon: BookIcon, label: "References" });
+  }
   if (hasCae) {
     registryLinks.push({ to: "/jobs", icon: ServerIcon, label: "Jobs" });
   }
   if (user && isAdmin) {
     registryLinks.push({ to: "/admin", icon: ShieldLockIcon, label: "Admin" });
   }
-
-  // 3. Standalone workbenches & external documentation (leave or launch outside the feed shell)
-  const workbenchLinks: SidebarLinkItem[] = [
-    { to: "/playground", icon: PlayIcon, label: "Playground", isExternalSurface: true },
-  ];
-  if (hasIde) {
-    workbenchLinks.push({ to: "/ide", icon: CodeIcon, label: "IDE Workbench", isExternalSurface: true });
-  }
-  workbenchLinks.push({
-    to: docsHref,
-    icon: BookIcon,
-    label: "Documentation",
-    reloadDocument: true,
-    isExternalSurface: true,
-  });
 
   const renderLinkItem = (link: SidebarLinkItem, compact = false) => {
     const isActive = location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
@@ -1034,39 +1104,54 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
   return (
     <SidebarContainer>
-      <BrandHeader
-        to={user ? "/home" : "/explore"}
-        title={branding.instanceTagline || branding.instanceName}
-        onClick={() => {
-          const homeTarget = user ? "/home" : "/explore";
-          if (location.pathname === homeTarget) {
-            scrollToTop({ smooth: true });
-          } else {
-            scrollToTop({ smooth: false });
-          }
-        }}
-      >
-        <div className="brand-icon-wrap">
-          <AnsatzMark
-            size={34}
-            logoUrl={customLogoSrc}
-            alt={branding.instanceName || "Ansatz"}
-            accentColor={branding.brandAccentColor}
-          />
-        </div>
-        <BrandTitle className="nav-label" data-testid="sidebar-brand-title">
-          <div className="brand-top-row">
-            <span className="brand-name">{branding.instanceName || "Ansatz"}</span>
-            <span className="brand-badge" data-testid="sidebar-brand-badge">
-              {branding.instanceBadge?.trim() || "Beta"}
-            </span>
+      <BrandRow>
+        <BrandHeader
+          to={user ? "/home" : "/explore"}
+          title={branding.instanceTagline || branding.instanceName}
+          onClick={() => {
+            const homeTarget = user ? "/home" : "/explore";
+            if (location.pathname === homeTarget) {
+              scrollToTop({ smooth: true });
+            } else {
+              scrollToTop({ smooth: false });
+            }
+          }}
+        >
+          <div className="brand-icon-wrap">
+            <AnsatzMark
+              size={34}
+              logoUrl={customLogoSrc}
+              alt={branding.instanceName || "Ansatz"}
+              accentColor={branding.brandAccentColor}
+            />
           </div>
-          <div className="brand-domain-sub" data-testid="sidebar-brand-domain">
-            <span className="brand-status-dot" aria-hidden="true" />
-            <span>{nodeDomainLabel}</span>
-          </div>
-        </BrandTitle>
-      </BrandHeader>
+          <BrandTitle className="nav-label" data-testid="sidebar-brand-title">
+            <div className="brand-top-row">
+              <span className="brand-name">{branding.instanceName || "Ansatz"}</span>
+              <span className="brand-badge" data-testid="sidebar-brand-badge">
+                {branding.instanceBadge?.trim() || "Beta"}
+              </span>
+            </div>
+            <div className="brand-domain-sub" data-testid="sidebar-brand-domain">
+              <span className="brand-status-dot" aria-hidden="true" />
+              <span>{nodeDomainLabel}</span>
+            </div>
+          </BrandTitle>
+        </BrandHeader>
+
+        <BrandPlaygroundLink
+          to="/playground"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="ModelScript Playground"
+          aria-label="ModelScript Playground"
+          data-testid="sidebar-playground-link"
+          data-tour-id="tour-workbenches"
+          $active={isPlaygroundActive}
+        >
+          <ComposeIcon size={20} />
+        </BrandPlaygroundLink>
+      </BrandRow>
 
       <Box
         display="flex"
@@ -1102,14 +1187,9 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
             </button>
           </Box>
         )}
-
-        <WorkbenchSection data-tour-id="tour-workbenches">
-          <SectionDivider />
-          {workbenchLinks.map((link) => renderLinkItem(link, true))}
-        </WorkbenchSection>
       </Box>
 
-      <FooterSection>
+      <FooterSection $isGuest={!user}>
         {user ? (
           <Box className="profile-footer-container" position="relative" zIndex={20}>
             {showLogoutMenu && (

@@ -11,12 +11,12 @@ import {
   PlusIcon,
   SparkleFillIcon,
 } from "@primer/octicons-react";
-import { Spinner } from "@primer/react";
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 import { generateUserInvite, getUserInvites } from "../../../api/admin";
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
+import Spinner from "../../../components/Spinner";
 import { useToast } from "../../../components/ToastContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { DetailSubtitle, FormInput, FormLabel, Header, SaveButton } from "../settingsStyles";

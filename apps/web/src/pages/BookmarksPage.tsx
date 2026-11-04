@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BookmarkIcon, SearchIcon, XIcon } from "@primer/octicons-react";
-import { Spinner } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
 import { getBookmarks } from "../api";
@@ -9,6 +8,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import EmptyState from "../components/EmptyState";
 import PageHeader from "../components/PageHeader";
+import Spinner from "../components/Spinner";
 import VirtualPostList from "../components/VirtualPostList";
 import type { PostItem } from "../types/api";
 import { usePageTitle } from "../util/title";

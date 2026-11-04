@@ -20,13 +20,15 @@ import {
   PlayIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
-import { Button, Label, Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
+import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import { registerAllModelscriptLanguages } from "../morsel/util/monaco-lsp-adapter";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import FortranViewer from "./FortranViewer";
@@ -861,34 +863,46 @@ export const InteractiveSvgStage: React.FC<InteractiveSvgStageProps> = ({
 };
 
 const Container = styled(Box)<{ $isFullScreen?: boolean | undefined; $standalone?: boolean | undefined }>`
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
   height: ${(p) => (p.$isFullScreen ? "100%" : "440px")};
-  background-color: var(--color-canvas-subtle);
-  border-radius: ${(p) => (p.$isFullScreen || !p.$standalone ? "0" : "6px")};
+  background-color: var(--color-canvas-default);
+  border-radius: ${(p) => (p.$isFullScreen || !p.$standalone ? "0" : "12px")};
   overflow: hidden;
   border: ${(p) => (p.$isFullScreen || !p.$standalone ? "none" : "1px solid var(--color-border-default)")};
 `;
 
-const Toolbar = styled(Box)`
-  display: flex;
+const glass = `
+  background: color-mix(in srgb, var(--color-canvas-default) 82%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--color-border-default);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+`;
+
+const FloatingControls = styled.div`
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  height: 36px;
-  min-height: 36px;
-  padding: 0 12px;
-  background-color: var(--ms-brand-soft, var(--color-canvas-subtle));
-  border-bottom: 1px solid var(--color-accent-blue-border, var(--color-border-default));
-  gap: 8px;
-  overflow: hidden;
+  gap: 4px;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+
+  ${Container}:hover &,
+  ${Container}:focus-within & {
+    opacity: 1;
+  }
 `;
 
 const ToggleGroup = styled.div`
+  ${glass}
   display: inline-flex;
-  background: var(--color-canvas-subtle);
-  border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 2px;
   gap: 2px;
 `;
@@ -896,24 +910,49 @@ const ToggleGroup = styled.div`
 const ToggleBtn = styled.button<{ $active: boolean }>`
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
   border: none;
-  border-radius: 4px;
-  padding: 3px 8px;
-  font-size: 11px;
-  line-height: 16px;
-  font-weight: 600;
+  border-radius: 6px;
   cursor: pointer;
-  white-space: nowrap;
   background: ${(p) => (p.$active ? "var(--ms-brand, #0e7490)" : "transparent")};
-  color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default)")};
-  opacity: ${(p) => (p.$active ? 1 : 0.82)};
-  box-shadow: ${(p) => (p.$active ? "0 1px 2px rgba(0, 0, 0, 0.12)" : "none")};
-  transition: all 0.15s ease;
+  color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-muted)")};
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 
   &:hover {
-    opacity: 1;
     color: ${(p) => (p.$active ? "#ffffff" : "var(--color-fg-default)")};
+  }
+  &:focus-visible {
+    outline: 2px solid var(--ms-brand, #0e7490);
+    outline-offset: 1px;
+  }
+`;
+
+const IconBtn = styled.button<{ $primary?: boolean; $success?: boolean }>`
+  ${glass}
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: ${(p) => (p.$primary ? "#ffffff" : p.$success ? "var(--color-success-fg, #059669)" : "var(--color-fg-muted)")};
+  ${(p) => (p.$primary ? "background: var(--ms-brand, #0e7490); border-color: var(--ms-brand, #0e7490);" : "")}
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+
+  &:hover {
+    color: ${(p) => (p.$primary ? "#ffffff" : "var(--color-fg-default)")};
+    background: ${(p) => (p.$primary ? "var(--ms-brand, #0e7490)" : "var(--color-canvas-subtle)")};
+  }
+  &:focus-visible {
+    outline: 2px solid var(--ms-brand, #0e7490);
+    outline-offset: 1px;
   }
 `;
 
@@ -922,7 +961,7 @@ const ContentGrid = styled(Box)<{ $isFullScreen?: boolean | undefined }>`
   flex: 1;
   grid-template-columns: 1fr;
   min-height: 0;
-  height: calc(100% - 36px);
+  height: 100%;
   overflow: hidden;
 `;
 
@@ -1402,65 +1441,66 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
 
   return (
     <Container $isFullScreen={isFullScreen} $standalone={Boolean(viewConfig?.standalone)}>
-      <Toolbar>
-        <Box style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1, overflow: "hidden" }}>
-          {isCodeOnlyDialect ? (
-            <CodeIcon size={14} fill={meta.accent} />
-          ) : (
-            <WorkflowIcon size={14} fill={meta.accent} />
-          )}
-          <Label size="small" variant="accent" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>
-            {meta.badge}
-          </Label>
-          {!isFullScreen && (
-            <Text
-              style={{
-                fontWeight: 600,
-                fontSize: "13px",
-                lineHeight: "16px",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-              title={title}
+      <FloatingControls>
+        {!isCodeOnlyDialect && svgMarkup && (
+          <ToggleGroup role="tablist" aria-label="View mode">
+            <ToggleBtn
+              type="button"
+              role="tab"
+              aria-selected={effectiveViewMode === "diagram"}
+              aria-label="Diagram view"
+              title="Diagram"
+              $active={effectiveViewMode === "diagram"}
+              onClick={() => setViewMode("diagram")}
             >
-              {title}
-            </Text>
-          )}
-        </Box>
-        <Box style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          {!isCodeOnlyDialect && svgMarkup && (
-            <ToggleGroup>
-              <ToggleBtn type="button" $active={effectiveViewMode === "diagram"} onClick={() => setViewMode("diagram")}>
-                <WorkflowIcon size={12} /> Diagram
-              </ToggleBtn>
-              <ToggleBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
-                <CodeIcon size={12} /> Code{codeLines.length > 0 ? ` (${codeLines.length}L)` : ""}
-              </ToggleBtn>
-            </ToggleGroup>
-          )}
-          {!isCodeOnlyDialect && svgMarkup && effectiveViewMode === "diagram" && (
-            <Button size="small" leadingVisual={DownloadIcon} onClick={handleDownloadSvg} title="Download SVG">
-              SVG
-            </Button>
-          )}
-          {rawCode && (
-            <Button size="small" leadingVisual={copied ? CheckIcon : CopyIcon} onClick={handleCopy}>
-              {copied ? "Copied" : "Copy"}
-            </Button>
-          )}
-          {Boolean(viewConfig?.standalone) && !isFullScreen && (
-            <>
-              <Button size="small" leadingVisual={BeakerIcon} onClick={handleRunStudy}>
-                Run Study
-              </Button>
-              <Button size="small" variant="primary" leadingVisual={PlayIcon} onClick={handleOpenAction}>
-                {isMultiFile ? "Open in VS Code" : "Open in Playground"}
-              </Button>
-            </>
-          )}
-        </Box>
-      </Toolbar>
+              <WorkflowIcon size={14} />
+            </ToggleBtn>
+            <ToggleBtn
+              type="button"
+              role="tab"
+              aria-selected={effectiveViewMode === "code"}
+              aria-label="Code view"
+              title={`Code${codeLines.length > 0 ? ` · ${codeLines.length} lines` : ""}`}
+              $active={effectiveViewMode === "code"}
+              onClick={() => setViewMode("code")}
+            >
+              <CodeIcon size={14} />
+            </ToggleBtn>
+          </ToggleGroup>
+        )}
+        {!isCodeOnlyDialect && svgMarkup && effectiveViewMode === "diagram" && (
+          <IconBtn type="button" onClick={handleDownloadSvg} title="Download SVG" aria-label="Download SVG">
+            <DownloadIcon size={14} />
+          </IconBtn>
+        )}
+        {rawCode && (
+          <IconBtn
+            type="button"
+            onClick={handleCopy}
+            title={copied ? "Copied" : "Copy source"}
+            aria-label="Copy source"
+            $success={copied}
+          >
+            {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+          </IconBtn>
+        )}
+        {Boolean(viewConfig?.standalone) && !isFullScreen && (
+          <>
+            <IconBtn type="button" onClick={handleRunStudy} title="Run Study" aria-label="Run Study">
+              <BeakerIcon size={14} />
+            </IconBtn>
+            <IconBtn
+              type="button"
+              $primary
+              onClick={handleOpenAction}
+              title={isMultiFile ? "Open in VS Code" : "Open in Playground"}
+              aria-label={isMultiFile ? "Open in VS Code" : "Open in Playground"}
+            >
+              <PlayIcon size={14} />
+            </IconBtn>
+          </>
+        )}
+      </FloatingControls>
 
       <ContentGrid $isFullScreen={isFullScreen}>
         {loadingText ? (
@@ -1482,9 +1522,12 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
             <MonacoEditor
               height="100%"
               language={dialect}
-              theme={isDark ? "vs-dark" : "vs"}
+              theme={getMonacoThemeName(isDark ? "dark" : "light")}
               value={rawCode}
-              beforeMount={(m) => registerAllModelscriptLanguages(m)}
+              beforeMount={(m) => {
+                ensureMonacoThemesDefined(m);
+                registerAllModelscriptLanguages(m);
+              }}
               options={{
                 readOnly: true,
                 minimap: { enabled: false },

@@ -12,6 +12,7 @@ interface TutorialPreviewProps {
   notebookDifficulty: TutorialDifficulty | undefined;
   notebookSeries: string;
   notebookDialect: string;
+  notebookTopics?: string[] | undefined;
   notebookCells: NotebookCell[];
   content: string;
 }
@@ -23,6 +24,7 @@ export const TutorialPreview: React.FC<TutorialPreviewProps> = ({
   notebookDifficulty,
   notebookSeries,
   notebookDialect,
+  notebookTopics,
   notebookCells,
   content,
 }) => {
@@ -109,6 +111,22 @@ export const TutorialPreview: React.FC<TutorialPreviewProps> = ({
                     {notebookDialect}
                   </span>
                 )}
+                {notebookTopics &&
+                  notebookTopics.length > 0 &&
+                  notebookTopics.map((topic) => (
+                    <span
+                      key={topic}
+                      style={{
+                        fontSize: "11px",
+                        padding: "2px 8px",
+                        borderRadius: "999px",
+                        background: "var(--color-neutral-muted, rgba(128,128,128,0.15))",
+                        color: "var(--ms-text-2)",
+                      }}
+                    >
+                      #{topic}
+                    </span>
+                  ))}
               </div>
             )}
             <h1

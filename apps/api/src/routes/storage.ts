@@ -5,11 +5,26 @@ import multer from "multer";
 import fs from "node:fs";
 import path from "node:path";
 import { requireAuth } from "../middleware/auth-middleware.js";
-import { pregenerateServerSvgThumbnail, preprocessPdfFile } from "../services/artifact-preprocessor.js";
+import {
+  pregenerateServerSvgThumbnail,
+  type PreprocessOptions,
+  preprocessPdfFile,
+} from "../services/artifact-preprocessor.js";
 
 const uploadDir = path.join(process.cwd(), "data", "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+/** Only accept a plain (dotted) Modelica identifier path as a class hint; anything else is ignored. */
+const CLASS_HINT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
+
+function preprocessOptionsFromBody(body: unknown): PreprocessOptions {
+  const raw = body && typeof body === "object" ? (body as Record<string, unknown>)["primary_class"] : undefined;
+  if (typeof raw === "string" && raw.length <= 200 && CLASS_HINT_PATTERN.test(raw)) {
+    return { primaryClass: raw };
+  }
+  return {};
 }
 
 const storage = multer.diskStorage({
@@ -226,7 +241,13 @@ export function storageRouter(): Router {
     } = {};
     if (safeFilePath.startsWith(uploadDir + path.sep)) {
       try {
-        preprocessed = await pregenerateServerSvgThumbnail(safeFilePath, viewType, req.file.originalname, uploadDir);
+        preprocessed = await pregenerateServerSvgThumbnail(
+          safeFilePath,
+          viewType,
+          req.file.originalname,
+          uploadDir,
+          preprocessOptionsFromBody(req.body),
+        );
       } catch (err) {
         console.warn("[Storage] Server SVG thumbnail pre-generation skipped:", err);
       }

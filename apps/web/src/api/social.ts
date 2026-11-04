@@ -125,10 +125,14 @@ export const getUserSuggestions = async (limit = 4): Promise<{ suggestions: any[
 
 export const getUserPosts = async (
   username: string,
-  type?: "posts" | "replies" | "artifacts",
+  type?: "posts" | "replies" | "artifacts" | "articles",
+  limit?: number,
 ): Promise<{ posts: any[] }> => {
+  const params: Record<string, string | number> = {};
+  if (type) params["type"] = type;
+  if (limit !== undefined) params["limit"] = limit;
   const { data } = await api.get(`/social/users/${encodeURIComponent(username)}/posts`, {
-    params: type ? { type } : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   });
   return data;
 };

@@ -17,11 +17,12 @@ import {
   UnwrapIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
-import { Button, IconButton, SegmentedControl, Spinner } from "@primer/react";
+import { Button, IconButton, SegmentedControl } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
+import Spinner from "../../Spinner";
 import type { CadComponent } from "../cad-viewer";
 import type { AnimationController } from "../cad-viewer/animation-controller";
 import { getLanguageInfo } from "../constants";

@@ -383,7 +383,16 @@ export function buildGlbDataUri(
  * Extracts PRODUCT, MANIFOLD_SOLID_BREP, ADVANCED_FACE, EDGE_LOOP, VERTEX_POINT,
  * CARTESIAN_POINT, AXIS2_PLACEMENT_3D, and NEXT_ASSEMBLY_USAGE_OCCURRENCE entities.
  */
-export function tessellateStepSource(stepCode: string): {
+export function tessellateStepSource(
+  stepCode: string,
+  options?: {
+    /**
+     * Rescale large (millimeter) models to fit a unit viewport. Defaults to true; pass `false` to keep
+     * native STEP coordinates, e.g. when registering the model against QIF inspection coordinates.
+     */
+    normalize?: boolean;
+  },
+): {
   vtkBuffer: Uint8Array;
   stlBuffer: Uint8Array;
   components: CadComponent[];
@@ -483,7 +492,7 @@ export function tessellateStepSource(stepCode: string): {
   for (const pt of cartesianPoints.values()) {
     maxCoord = Math.max(maxCoord, Math.abs(pt[0]), Math.abs(pt[1]), Math.abs(pt[2]));
   }
-  const scaleFactor = maxCoord > 10 ? (1 / maxCoord) * 1.5 : 1.0;
+  const scaleFactor = options?.normalize !== false && maxCoord > 10 ? (1 / maxCoord) * 1.5 : 1.0;
 
   const getPoint = (ptOrVertexId: number): [number, number, number] | null => {
     const direct = cartesianPoints.get(ptOrVertexId);

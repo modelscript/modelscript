@@ -17,13 +17,14 @@ import {
   WorkflowIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
@@ -1143,8 +1144,8 @@ const SegmentedGroup = styled.div`
 
 const SegmentedBtn = styled.button<{ $active: boolean }>`
   border: none;
-  background: ${(p) => (p.$active ? "rgba(139, 92, 246, 0.18)" : "transparent")};
-  color: ${(p) => (p.$active ? "var(--color-done-fg, #8b5cf6)" : "var(--color-fg-muted)")};
+  background: ${(p) => (p.$active ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.18))" : "transparent")};
+  color: ${(p) => (p.$active ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)")};
   font-size: 11px;
   font-weight: 600;
   padding: 3px 9px;
@@ -1318,9 +1319,9 @@ const TreeInspectorPane = styled.div`
 const TreeRowBtn = styled.button<{ $selected: boolean; $depth: number }>`
   width: 100%;
   border: none;
-  background: ${(p) => (p.$selected ? "rgba(139, 92, 246, 0.16)" : "transparent")};
+  background: ${(p) => (p.$selected ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.16))" : "transparent")};
   color: ${(p) => (p.$selected ? "var(--color-fg-default)" : "var(--color-fg-default)")};
-  border-left: 2px solid ${(p) => (p.$selected ? "#8b5cf6" : "transparent")};
+  border-left: 2px solid ${(p) => (p.$selected ? "var(--ms-brand, #0891b2)" : "transparent")};
   padding: 5px 10px 5px ${(p) => 10 + p.$depth * 16}px;
   display: flex;
   align-items: center;
@@ -1331,7 +1332,10 @@ const TreeRowBtn = styled.button<{ $selected: boolean; $depth: number }>`
   text-align: left;
 
   &:hover {
-    background: ${(p) => (p.$selected ? "rgba(139, 92, 246, 0.22)" : "var(--color-canvas-default)")};
+    background: ${(p) =>
+      p.$selected
+        ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.22))"
+        : "var(--ms-surface-hover, rgba(15, 23, 42, 0.045))"};
   }
 `;
 
@@ -1781,8 +1785,9 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
               }}
               style={{
                 border: "1px solid var(--color-border-default)",
-                background: focusIri === ent.iri ? "rgba(139, 92, 246, 0.18)" : "var(--color-canvas-subtle)",
-                color: focusIri === ent.iri ? "#8b5cf6" : "var(--color-fg-default)",
+                background:
+                  focusIri === ent.iri ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.18))" : "var(--color-canvas-subtle)",
+                color: focusIri === ent.iri ? "var(--ms-brand, #0891b2)" : "var(--color-fg-default)",
                 padding: "0 8px",
                 height: "22px",
               }}
@@ -2745,8 +2750,8 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                     style={{
                       display: "flex",
                       padding: "0 14px",
-                      background: isHighlighted ? "rgba(139, 92, 246, 0.18)" : "transparent",
-                      borderLeft: isHighlighted ? "2px solid #8b5cf6" : "2px solid transparent",
+                      background: isHighlighted ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.18))" : "transparent",
+                      borderLeft: isHighlighted ? "2px solid var(--ms-brand, #0891b2)" : "2px solid transparent",
                     }}
                   >
                     <span
@@ -2756,7 +2761,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                         minWidth: "36px",
                         textAlign: "right",
                         paddingRight: "12px",
-                        color: isHighlighted ? "#c084fc" : "var(--color-fg-subtle)",
+                        color: isHighlighted ? "var(--ms-brand, #0891b2)" : "var(--color-fg-subtle)",
                         fontSize: "11px",
                       }}
                     >

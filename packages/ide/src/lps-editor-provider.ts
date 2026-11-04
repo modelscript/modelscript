@@ -161,7 +161,7 @@ export class LpsEditorProvider extends BaseCustomEditorProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline' https:; script-src 'unsafe-inline' 'unsafe-eval' https:; connect-src https: http: ws: wss:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; script-src 'unsafe-inline'; font-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PipelineStudio Visual Workspace</title>
   <style>
@@ -445,6 +445,16 @@ export class LpsEditorProvider extends BaseCustomEditorProvider {
   <script>
     const vscode = acquireVsCodeApi();
 
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
     // Tab switching
     document.querySelectorAll(".tab").forEach(tab => {
       tab.addEventListener("click", () => {
@@ -468,7 +478,7 @@ export class LpsEditorProvider extends BaseCustomEditorProvider {
       if (msg.type === "update") {
         document.getElementById("title").textContent = msg.title || msg.id;
         document.getElementById("simTypeBadge").textContent = msg.simType;
-        document.getElementById("assetBadge").textContent = \`\${msg.pipeCount} Pipes | \${msg.nodeCount} Nodes | \${msg.compressorCount} Comps\`;
+        document.getElementById("assetBadge").textContent = msg.pipeCount + " Pipes | " + msg.nodeCount + " Nodes | " + msg.compressorCount + " Comps";
 
         // SVGs
         document.getElementById("schematicSvgBox").innerHTML = msg.schematicSvg;
@@ -481,12 +491,12 @@ export class LpsEditorProvider extends BaseCustomEditorProvider {
         if (msg.linePack) {
           const mmsm3 = (msg.linePack.totalLinePackSm3 / 1e6).toFixed(2);
           const delMmsm3 = (msg.linePack.deliverableLinePackSm3 / 1e6).toFixed(2);
-          document.getElementById("lpTotalSm3").textContent = \`\${mmsm3} MMSm³\`;
-          document.getElementById("lpTotalKg").textContent = \`\${(msg.linePack.totalLinePackKg / 1000).toFixed(0)} Metric Tonnes\`;
-          document.getElementById("lpDeliverableSm3").textContent = \`\${delMmsm3} MMSm³\`;
-          document.getElementById("lpEnergyGwh").textContent = \`\${msg.linePack.totalEnergyStoredGWh.toFixed(1)} GWh\`;
-          document.getElementById("lpH2Frac").textContent = \`H₂ Blend: \${(msg.linePack.hydrogenVolumePercent).toFixed(1)}%\`;
-          document.getElementById("lpExhaustion").textContent = \`\${msg.linePack.exhaustionTimeHours.toFixed(1)} Hours\`;
+          document.getElementById("lpTotalSm3").textContent = mmsm3 + " MMSm³";
+          document.getElementById("lpTotalKg").textContent = (msg.linePack.totalLinePackKg / 1000).toFixed(0) + " Metric Tonnes";
+          document.getElementById("lpDeliverableSm3").textContent = delMmsm3 + " MMSm³";
+          document.getElementById("lpEnergyGwh").textContent = msg.linePack.totalEnergyStoredGWh.toFixed(1) + " GWh";
+          document.getElementById("lpH2Frac").textContent = "H₂ Blend: " + (msg.linePack.hydrogenVolumePercent).toFixed(1) + "%";
+          document.getElementById("lpExhaustion").textContent = msg.linePack.exhaustionTimeHours.toFixed(1) + " Hours";
         }
 
         // Pipe table
@@ -495,18 +505,17 @@ export class LpsEditorProvider extends BaseCustomEditorProvider {
         for (const p of msg.pipes || []) {
           const st = (msg.pipeStates && msg.pipeStates[p.name]) || {};
           const row = document.createElement("tr");
-          row.innerHTML = \`
-            <td style="font-weight: 600; color: #fff;">\${p.name}</td>
-            <td>\${p.fromNode}</td>
-            <td>\${p.toNode}</td>
-            <td>\${Math.round(p.diameter * 1000)} mm</td>
-            <td>\${(p.length / 1000).toFixed(1)} km</td>
-            <td>\${(st.inletPressure ? st.inletPressure / 1e5 : 0).toFixed(1)} bar</td>
-            <td>\${(st.outletPressure ? st.outletPressure / 1e5 : 0).toFixed(1)} bar</td>
-            <td>\${(st.massFlow || 0).toFixed(1)} kg/s</td>
-            <td>\${(st.velocity || 0).toFixed(1)} m/s</td>
-            <td>\${(st.linePackKg ? st.linePackKg / 1000 : 0).toFixed(1)} t</td>
-          \`;
+          row.innerHTML =
+            '<td style="font-weight: 600; color: #fff;">' + escapeHtml(p.name) + '</td>' +
+            '<td>' + escapeHtml(p.fromNode) + '</td>' +
+            '<td>' + escapeHtml(p.toNode) + '</td>' +
+            '<td>' + Math.round(p.diameter * 1000) + ' mm</td>' +
+            '<td>' + (p.length / 1000).toFixed(1) + ' km</td>' +
+            '<td>' + (st.inletPressure ? st.inletPressure / 1e5 : 0).toFixed(1) + ' bar</td>' +
+            '<td>' + (st.outletPressure ? st.outletPressure / 1e5 : 0).toFixed(1) + ' bar</td>' +
+            '<td>' + (st.massFlow || 0).toFixed(1) + ' kg/s</td>' +
+            '<td>' + (st.velocity || 0).toFixed(1) + ' m/s</td>' +
+            '<td>' + (st.linePackKg ? st.linePackKg / 1000 : 0).toFixed(1) + ' t</td>';
           tbody.appendChild(row);
         }
 

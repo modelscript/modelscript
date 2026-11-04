@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DeviceCameraIcon, LinkIcon, TrashIcon, UploadIcon } from "@primer/octicons-react";
-import { Button, Flash, Spinner, TextInput, Textarea } from "@primer/react";
+import { Button, Flash, TextInput, Textarea } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getUserProfile, updateUserProfile } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import PageHeader from "../components/PageHeader";
+import Spinner from "../components/Spinner";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
 

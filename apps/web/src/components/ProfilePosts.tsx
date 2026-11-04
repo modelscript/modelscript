@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../AuthContext";
 import { getUserPosts, updatePost } from "../api";
 import type { PostItem } from "../types/api";
 import Box from "./Box";
 import Post from "./Post";
+import Spinner from "./Spinner";
 import VirtualPostList from "./VirtualPostList";
 
 function getStoredPinnedIds(username: string): { pinned: string[]; unpinned: string[] } {

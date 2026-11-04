@@ -11,12 +11,13 @@ import {
   SearchIcon,
   StarIcon,
 } from "@primer/octicons-react";
-import { Heading, Label, Spinner, Text } from "@primer/react";
+import { Heading, Label, Text } from "@primer/react";
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { getRepoFallbackStars } from "../../api";
 import Box from "../../components/Box";
 import { scrollToTop } from "../../components/ScrollToTop";
+import Spinner from "../../components/Spinner";
 import VirtualPostList from "../../components/VirtualPostList";
 import { PackageIcon } from "../libraries/components/PackageIcon";
 import { formatDomainLabel, formatTimeAgo, inferPackageDomains, splitScopedPackageName } from "../libraries/constants";
@@ -65,7 +66,7 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
   activeTab,
   setActiveTab,
   hasPackages = true,
-  hasRepos = true,
+  hasRepos = false,
   packages = [],
   packagesLoading = false,
   repos = [],

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Spinner } from "@primer/react";
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import styled from "styled-components";
 import { getArtifactView } from "../../api";
 import { useFeatureFlag } from "../../FeatureFlagContext";
 import { useTheme } from "../../theme";
@@ -12,6 +12,7 @@ import { safeJsonParse } from "../../util/json";
 import { parseModelicaParameters } from "../../util/modelica-params";
 import { cacheArtifact, getCachedArtifact } from "../../util/offline-storage";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import ArtifactPlaceholder from "./ArtifactPlaceholder";
 import {
   type ArtifactViewCardProps,
@@ -23,9 +24,50 @@ import {
   StudioInspectorSidebar,
   ViewerDispatcher,
 } from "./card";
+import { CardFooterSlotDisabled, CardFooterSlotProvider } from "./card/CardFooterSlot";
 
 const ArtifactDiffModal = React.lazy(() => import("./ArtifactDiffModal"));
 const CloudSimulationModal = React.lazy(() => import("../cloud-sim/CloudSimulationModal"));
+
+const FullScreenBackdrop = styled.div`
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 40px;
+  box-sizing: border-box;
+
+  @media (max-width: 768px) {
+    padding: 16px 12px;
+  }
+`;
+
+const FullScreenContainer = styled.div`
+  width: 100%;
+  max-width: 1400px;
+  height: 100%;
+  max-height: calc(100vh - 48px);
+  background-color: var(--color-canvas-default, #090d16);
+  border: 1px solid var(--color-border-default, #30363d);
+  border-radius: 14px;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+
+  @media (max-width: 768px) {
+    max-height: calc(100vh - 32px);
+    border-radius: 10px;
+  }
+`;
 
 export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   artifactId,
@@ -417,49 +459,44 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       : resolvedThumbnailUrlLight || resolvedThumbnailUrl;
 
     const fullScreenOverlay = (
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "var(--color-canvas-default, #090d16)",
-          zIndex: 9999,
-          display: "flex",
-          flexDirection: "column",
+      <FullScreenBackdrop
+        data-testid="artifact-fullscreen-backdrop"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsFullScreen(false);
         }}
-        onClick={(e) => e.stopPropagation()}
       >
-        <StudioHeader
-          artifact={artifact}
-          artifactId={artifactId}
-          viewConfig={viewConfig}
-          resolvedForkedFromId={resolvedForkedFromId}
-          paramDeltaCount={paramDeltaCount}
-          copiedLink={copiedLink}
-          isStudioSidebarOpen={isStudioSidebarOpen}
-          onExitFullScreen={() => setIsFullScreen(false)}
-          onCopyLink={handleCopyLink}
-          onOpenDiff={() => setIsDiffOpen(true)}
-          onToggleSidebar={() => setIsStudioSidebarOpen((prev) => !prev)}
-          {...(isSimulatableArtifact ? { onRunOnHpc: () => setIsHpcModalOpen(true) } : {})}
-        />
-
-        <Box flex={1} display="flex" overflow="hidden" position="relative">
-          <Box flex={1} height="100%" bg="var(--color-canvas-default)" overflow="auto" position="relative">
-            {viewerContent}
-          </Box>
-
-          <StudioInspectorSidebar
-            isOpen={isStudioSidebarOpen}
+        <FullScreenContainer data-testid="artifact-fullscreen-container" onClick={(e) => e.stopPropagation()}>
+          <StudioHeader
             artifact={artifact}
             artifactId={artifactId}
             viewConfig={viewConfig}
-            onClose={() => setIsStudioSidebarOpen(false)}
+            resolvedForkedFromId={resolvedForkedFromId}
+            paramDeltaCount={paramDeltaCount}
+            copiedLink={copiedLink}
+            isStudioSidebarOpen={isStudioSidebarOpen}
+            onExitFullScreen={() => setIsFullScreen(false)}
+            onCopyLink={handleCopyLink}
+            onOpenDiff={() => setIsDiffOpen(true)}
+            onToggleSidebar={() => setIsStudioSidebarOpen((prev) => !prev)}
+            {...(isSimulatableArtifact ? { onRunOnHpc: () => setIsHpcModalOpen(true) } : {})}
           />
-        </Box>
-      </div>
+
+          <Box flex={1} display="flex" overflow="hidden" position="relative">
+            <Box flex={1} height="100%" bg="var(--color-canvas-default)" overflow="auto" position="relative">
+              <CardFooterSlotDisabled>{viewerContent}</CardFooterSlotDisabled>
+            </Box>
+
+            <StudioInspectorSidebar
+              isOpen={isStudioSidebarOpen}
+              artifact={artifact}
+              artifactId={artifactId}
+              viewConfig={viewConfig}
+              onClose={() => setIsStudioSidebarOpen(false)}
+            />
+          </Box>
+        </FullScreenContainer>
+      </FullScreenBackdrop>
     );
 
     const resolvedTitle = String(artifact?.title || artifact?.name || viewConfig?.title || "").trim();
@@ -557,75 +594,77 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     caption && caption.trim() !== "" && caption.trim() !== resolvedTitle ? caption.trim() : undefined;
 
   return (
-    <Box
-      borderRadius="12px"
-      border="1px solid var(--color-accent-blue-border, var(--color-border-default))"
-      background="var(--ms-brand-soft)"
-      overflow="hidden"
-      position="relative"
-      style={{
-        width: "100%",
-        maxWidth: "100%",
-        minWidth: 0,
-        boxSizing: "border-box",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-      }}
-    >
-      {viewerContent}
-      <CardFooter
-        artifact={artifact}
-        artifactId={artifactId}
-        viewConfig={viewConfig}
-        isLoaded={isLoaded}
-        onOpenFullScreen={() => setIsFullScreen(true)}
-        {...(isSimulatableArtifact ? { onRunOnHpc: () => setIsHpcModalOpen(true) } : {})}
-      />
-      {distinctCaption && (
-        <div
-          style={{
-            padding: "6px 12px",
-            fontSize: "12px",
-            color: "var(--color-fg-muted)",
-            borderTop: "1px solid var(--color-accent-blue-border, var(--color-border-default))",
-            background: "var(--ms-brand-soft)",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            flexShrink: 0,
-          }}
-        >
-          {figureNumber !== undefined && (
-            <span
-              style={{
-                fontFamily: "var(--font-mono, monospace)",
-                fontWeight: 700,
-                color: "var(--ms-brand, #0e7490)",
-                fontSize: "11px",
-              }}
-            >
-              Fig. {figureNumber}:
-            </span>
-          )}
-          <span>{distinctCaption}</span>
-        </div>
-      )}
-      {hpcModalElement}
-      {isDiffOpen && resolvedForkedFromId && (
-        <Suspense fallback={null}>
-          <ArtifactDiffModal
-            isOpen={isDiffOpen}
-            onClose={() => setIsDiffOpen(false)}
-            currentArtifact={artifact}
-            forkedFromArtifactId={resolvedForkedFromId}
-          />
-        </Suspense>
-      )}
-    </Box>
+    <CardFooterSlotProvider>
+      <Box
+        borderRadius="12px"
+        border="1px solid var(--color-accent-blue-border, var(--color-border-default))"
+        background="var(--ms-brand-soft)"
+        overflow="hidden"
+        position="relative"
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+        }}
+      >
+        {viewerContent}
+        <CardFooter
+          artifact={artifact}
+          artifactId={artifactId}
+          viewConfig={viewConfig}
+          isLoaded={isLoaded}
+          onOpenFullScreen={() => setIsFullScreen(true)}
+          {...(isSimulatableArtifact ? { onRunOnHpc: () => setIsHpcModalOpen(true) } : {})}
+        />
+        {distinctCaption && (
+          <div
+            style={{
+              padding: "6px 12px",
+              fontSize: "12px",
+              color: "var(--color-fg-muted)",
+              borderTop: "1px solid var(--color-accent-blue-border, var(--color-border-default))",
+              background: "var(--ms-brand-soft)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              flexShrink: 0,
+            }}
+          >
+            {figureNumber !== undefined && (
+              <span
+                style={{
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontWeight: 700,
+                  color: "var(--ms-brand, #0e7490)",
+                  fontSize: "11px",
+                }}
+              >
+                Fig. {figureNumber}:
+              </span>
+            )}
+            <span>{distinctCaption}</span>
+          </div>
+        )}
+        {hpcModalElement}
+        {isDiffOpen && resolvedForkedFromId && (
+          <Suspense fallback={null}>
+            <ArtifactDiffModal
+              isOpen={isDiffOpen}
+              onClose={() => setIsDiffOpen(false)}
+              currentArtifact={artifact}
+              forkedFromArtifactId={resolvedForkedFromId}
+            />
+          </Suspense>
+        )}
+      </Box>
+    </CardFooterSlotProvider>
   );
 };
 

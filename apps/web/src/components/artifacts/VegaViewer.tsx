@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { GraphIcon, TableIcon } from "@primer/octicons-react";
-import { Spinner, Text } from "@primer/react";
+import { Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { VegaEmbed } from "react-vega";
 import styled from "styled-components";
-import { useTheme } from "../../theme";
+import { useThemeTokens } from "../../theme-tokens";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import CsvViewer from "./CsvViewer";
 
 interface VegaViewerProps {
@@ -49,9 +50,9 @@ const Badge = styled.span`
   font-family: var(--font-mono, monospace);
   padding: 2px 7px;
   border-radius: 4px;
-  background: rgba(168, 85, 247, 0.12);
-  color: var(--color-accent-purple, #a855f7);
-  border: 1px solid rgba(168, 85, 247, 0.25);
+  background: var(--ms-brand-soft, rgba(8, 145, 178, 0.12));
+  color: var(--ms-brand, #0891b2);
+  border: 1px solid var(--color-border-default, #30363d);
   font-weight: 600;
 `;
 
@@ -61,7 +62,7 @@ const ModeToggleGroup = styled.div`
   gap: 2px;
   padding: 2px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.04));
   border: 1px solid var(--color-border-default, #30363d);
 `;
 
@@ -76,8 +77,8 @@ const ModeToggleButton = styled.button<{ $active: boolean }>`
   font-weight: ${(p) => (p.$active ? 600 : 500)};
   font-family: var(--font-mono, monospace);
   cursor: pointer;
-  background: ${(p) => (p.$active ? "rgba(168, 85, 247, 0.2)" : "transparent")};
-  color: ${(p) => (p.$active ? "var(--color-accent-purple, #c084fc)" : "var(--color-fg-muted, #8b949e)")};
+  background: ${(p) => (p.$active ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.18))" : "transparent")};
+  color: ${(p) => (p.$active ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted, #8b949e)")};
   transition:
     background 0.12s ease,
     color 0.12s ease;
@@ -112,13 +113,12 @@ const PlotContainer = styled.div`
 `;
 
 const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => {
-  const { theme } = useTheme();
+  const tokens = useThemeTokens();
   const [spec, setSpec] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"chart" | "table">("chart");
 
-  const isDark = theme === "dark";
   const title = viewConfig?.title || "Statistical Visualization";
 
   useEffect(() => {
@@ -196,7 +196,6 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
 
   const embedOptions = useMemo(() => {
     return {
-      theme: isDark ? ("dark" as const) : undefined,
       renderer: "svg" as const,
       actions: {
         export: true,
@@ -206,25 +205,38 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
       },
       config: {
         background: "transparent",
+        font: "var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)",
         autosize: { type: "fit", contains: "padding" },
-        axis: isDark
-          ? {
-              domainColor: "#30363d",
-              gridColor: "rgba(255, 255, 255, 0.08)",
-              labelColor: "#8b949e",
-              tickColor: "#30363d",
-              titleColor: "#f1f5f9",
-            }
-          : undefined,
-        legend: isDark
-          ? {
-              labelColor: "#8b949e",
-              titleColor: "#f1f5f9",
-            }
-          : undefined,
+        axis: {
+          domainColor: tokens.borderStrong,
+          gridColor: tokens.divider,
+          labelColor: tokens.textSecondary,
+          tickColor: tokens.borderStrong,
+          titleColor: tokens.textPrimary,
+          labelFont: "var(--font-sans, sans-serif)",
+          titleFont: "var(--font-sans, sans-serif)",
+        },
+        legend: {
+          labelColor: tokens.textSecondary,
+          titleColor: tokens.textPrimary,
+          labelFont: "var(--font-sans, sans-serif)",
+          titleFont: "var(--font-sans, sans-serif)",
+        },
+        range: {
+          category: [
+            tokens.domains.core.color,
+            tokens.domains.power.color,
+            tokens.domains.fluid.color,
+            tokens.domains.mechanics.color,
+            tokens.domains.aero.color,
+            tokens.domains.cad.color,
+            tokens.domains.bio.color,
+            tokens.domains.med.color,
+          ],
+        },
       },
     };
-  }, [isDark]);
+  }, [tokens]);
 
   if (loading) {
     return (

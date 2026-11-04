@@ -21,13 +21,15 @@ import {
   WorkflowIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
-import { Button, Dialog, Flash, FormControl, Heading, Select, Spinner, Text, TextInput } from "@primer/react";
+import { Button, Dialog, Flash, FormControl, Heading, Select, Text, TextInput } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { createRepo, deleteRepo, getPopularRepos, getRepoFallbackStars, getRepos } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import Spinner from "../components/Spinner";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import type { RepositoryDTO } from "../types/api";
 import { usePageTitle } from "../util/title";
@@ -126,48 +128,38 @@ const ActionPillButton = styled.button<{ $danger?: boolean; $active?: boolean }>
   }
 `;
 
-const SpinAnimation = styled.div`
-  @keyframes spin {
-    100% {
-      transform: rotate(360deg);
-    }
-  }
-  animation: spin 1s linear infinite;
-  display: flex;
-`;
-
 const REPO_DOMAIN_OPTIONS: {
   id: string;
   label: string;
   color: string;
   icon: React.ComponentType<{ size?: number | undefined }>;
 }[] = [
-  { id: "All Domains", label: "All Domains", color: "#06b6d4", icon: GlobeIcon },
-  { id: "Modelica", label: "Modelica", color: "#eab308", icon: FileCodeIcon },
-  { id: "SysML v2", label: "SysML v2", color: "#a855f7", icon: WorkflowIcon },
-  { id: "3D CAD / CSG", label: "3D CAD", color: "#06b6d4", icon: OcticonPackageIcon },
-  { id: "FMI / SSP", label: "FMU / SSP", color: "#f43f5e", icon: CpuIcon },
-  { id: "CFD / Multiphysics", label: "CFD & Solvers", color: "#3b82f6", icon: DatabaseIcon },
+  { id: "All Domains", label: "All Domains", color: "var(--domain-core)", icon: GlobeIcon },
+  { id: "Modelica", label: "Modelica", color: "var(--domain-core)", icon: FileCodeIcon },
+  { id: "SysML v2", label: "SysML v2", color: "var(--domain-core)", icon: WorkflowIcon },
+  { id: "3D CAD / CSG", label: "3D CAD", color: "var(--domain-cad)", icon: OcticonPackageIcon },
+  { id: "FMI / SSP", label: "FMU / SSP", color: "var(--domain-aero)", icon: CpuIcon },
+  { id: "CFD / Multiphysics", label: "CFD & Solvers", color: "var(--domain-fluid)", icon: DatabaseIcon },
 ];
 
 export function inferRepoDomainTags(repo: RepositoryDTO): { label: string; color: string }[] {
   const hay = `${repo.namespace}/${repo.project} ${repo.description || ""}`.toLowerCase();
   const tags: { label: string; color: string }[] = [];
-  if (hay.includes("modelica")) tags.push({ label: "Modelica", color: "#0284c7" });
-  if (hay.includes("sysml") || hay.includes("kerml")) tags.push({ label: "SysML v2", color: "#7c3aed" });
+  if (hay.includes("modelica")) tags.push({ label: "Modelica", color: "var(--domain-core)" });
+  if (hay.includes("sysml") || hay.includes("kerml")) tags.push({ label: "SysML v2", color: "var(--domain-core)" });
   if (hay.includes("fmi") || hay.includes("fmu") || hay.includes("ssp"))
-    tags.push({ label: "FMI / SSP", color: "#0f766e" });
+    tags.push({ label: "FMI / SSP", color: "var(--domain-aero)" });
   if (hay.includes("openscad") || hay.includes("cad") || hay.includes("csg"))
-    tags.push({ label: "3D CAD / CSG", color: "#d97706" });
+    tags.push({ label: "3D CAD / CSG", color: "var(--domain-cad)" });
   if (hay.includes("su2") || hay.includes("cfd") || hay.includes("aerodynamic"))
-    tags.push({ label: "CFD / Multiphysics", color: "#2563eb" });
+    tags.push({ label: "CFD / Multiphysics", color: "var(--domain-fluid)" });
   if (hay.includes("eigen") || hay.includes("linear algebra") || hay.includes("solver"))
-    tags.push({ label: "Numerical Solvers", color: "#059669" });
+    tags.push({ label: "Numerical Solvers", color: "var(--domain-mechanics)" });
   if (hay.includes("graphviz") || hay.includes("svg") || hay.includes("inkscape") || hay.includes("schematic")) {
-    tags.push({ label: "Schematic & Vector", color: "#db2777" });
+    tags.push({ label: "Schematic & Vector", color: "var(--domain-core)" });
   }
   if (tags.length === 0) {
-    tags.push({ label: "Engineering", color: "#0f766e" });
+    tags.push({ label: "Engineering", color: "var(--domain-core)" });
   }
   return tags.slice(0, 3);
 }
@@ -425,6 +417,7 @@ function parseRepositoryInput(
 
 const RepositoryListPage: React.FC = () => {
   usePageTitle("Repositories");
+  const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const { token, user } = useAuth();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
@@ -464,6 +457,7 @@ const RepositoryListPage: React.FC = () => {
   const [followedRepos, setFollowedRepos] = useState<Record<string, boolean>>(() => getFollowedReposMap());
 
   useEffect(() => {
+    if (!hasRepos) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const active = document.activeElement;
@@ -482,9 +476,10 @@ const RepositoryListPage: React.FC = () => {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [hasRepos]);
 
   useEffect(() => {
+    if (!hasRepos) return;
     const syncEngagement = () => {
       setFollowedRepos(getFollowedReposMap());
     };
@@ -494,16 +489,18 @@ const RepositoryListPage: React.FC = () => {
       window.removeEventListener("modelscript:repo-engagement-changed", syncEngagement);
       window.removeEventListener("storage", syncEngagement);
     };
-  }, []);
+  }, [hasRepos]);
 
   const query = searchParams.get("q") || "";
   const [searchInput, setSearchInput] = useState(query);
 
   useEffect(() => {
+    if (!hasRepos) return;
     setSearchInput(query);
-  }, [query]);
+  }, [hasRepos, query]);
 
   useEffect(() => {
+    if (!hasRepos) return;
     const handler = setTimeout(() => {
       if (searchInput.trim() !== query) {
         const next = new URLSearchParams(searchParams);
@@ -516,9 +513,10 @@ const RepositoryListPage: React.FC = () => {
       }
     }, 250);
     return () => clearTimeout(handler);
-  }, [searchInput, query, searchParams, setSearchParams]);
+  }, [hasRepos, searchInput, query, searchParams, setSearchParams]);
 
   useEffect(() => {
+    if (!hasRepos) return;
     let cancelled = false;
     const fetchRepos = async () => {
       try {
@@ -567,7 +565,7 @@ const RepositoryListPage: React.FC = () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query, token, refreshKey]);
+  }, [hasRepos, query, token, refreshKey]);
 
   const activeSourceRepos = useMemo(() => {
     if (activeTab === "my") return myRepos;
@@ -687,6 +685,10 @@ const RepositoryListPage: React.FC = () => {
 
   const activeDomainObj = REPO_DOMAIN_OPTIONS.find((d) => d.id === domainFilter) ?? REPO_DOMAIN_OPTIONS[0];
   const ActiveDomainIcon = activeDomainObj?.icon ?? GlobeIcon;
+
+  if (!hasRepos) {
+    return <Navigate to="/packages" replace />;
+  }
 
   return (
     <Box>
@@ -959,9 +961,7 @@ const RepositoryListPage: React.FC = () => {
         {/* Content */}
         {loading && activeSourceRepos.length === 0 ? (
           <Box display="flex" justifyContent="center" p={12}>
-            <SpinAnimation>
-              <Spinner size="large" />
-            </SpinAnimation>
+            <Spinner size="large" />
           </Box>
         ) : error ? (
           <Box

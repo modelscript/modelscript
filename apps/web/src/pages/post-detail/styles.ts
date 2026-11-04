@@ -13,13 +13,13 @@ export const BotTypingContainer = styled.div`
   margin: 12px 16px;
   padding: 14px 18px;
   border-radius: 12px;
-  background: var(--color-bg-card, rgba(15, 23, 42, 0.7));
+  background: var(--color-bg-card, var(--ms-bg-elv));
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(139, 92, 246, 0.35);
+  border: 1px solid color-mix(in srgb, var(--ms-brand) 35%, transparent);
   box-shadow:
-    0 0 20px rgba(139, 92, 246, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 0 20px color-mix(in srgb, var(--ms-brand) 15%, transparent),
+    var(--glow-card);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -44,7 +44,7 @@ export const BotTypingContainer = styled.div`
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, transparent, #8b5cf6, #06b6d4, transparent);
+    background: linear-gradient(90deg, transparent, var(--ms-brand), var(--hue-cyan), transparent);
     background-size: 200% 100%;
     animation: botShimmer 1.8s infinite linear;
   }
@@ -74,13 +74,13 @@ export const BotIdentity = styled.div`
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(6, 182, 212, 0.25));
-    border: 1px solid rgba(139, 92, 246, 0.4);
+    background: var(--ms-brand-soft);
+    border: 1px solid color-mix(in srgb, var(--ms-brand) 40%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-accent-purple, #a78bfa);
-    box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
+    color: var(--ms-brand);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--ms-brand) 25%, transparent);
   }
 
   .bot-name {
@@ -96,9 +96,9 @@ export const BotAgentBadge = styled.span`
   font-weight: 600;
   padding: 1px 7px;
   border-radius: 4px;
-  background: var(--gradient-ai-subtle, rgba(139, 92, 246, 0.15));
-  border: 1px solid var(--color-accent-purple-border, rgba(139, 92, 246, 0.35));
-  color: var(--color-accent-purple, #a78bfa);
+  background: var(--ms-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--ms-brand) 30%, transparent);
+  color: var(--ms-brand);
   display: inline-flex;
   align-items: center;
   gap: 4px;

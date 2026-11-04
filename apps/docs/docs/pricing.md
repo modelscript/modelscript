@@ -1,108 +1,26 @@
 ---
 title: Pricing & Licensing
-description: Flexible licensing options for open-source physical modeling, proprietary software embedding, and air-gapped utility appliances.
+description: Plans for individuals, teams, vendors embedding ModelScript, and air-gapped enterprise deployments.
 ---
 
-# Pricing & Commercial Licensing
+# Pricing
 
-ModelScript is an **open-core** computable digital thread for engineering. The core compilers, WebAssembly DAE arena, numerical solvers, and IDE tooling (`packages/`, `languages/`, `apps/`) are licensed under the **AGPL-3.0-or-later**, while enterprise governance, air-gapped compliance, Slurm HPC orchestration, operational digital twins, HIL codegen, and PLM connectors (`ee/`) are licensed under the **ModelScript Enterprise License (`LicenseRef-ModelScript-Enterprise`)**. We also provide Commercial OEM dual-license exemptions for teams embedding ModelScript into proprietary software.
+Start free, and move up when you need more compute, collaboration, or a commercial license. The core compilers, solvers, and IDE are open source under the **AGPL-3.0-or-later**. Cloud compute, team features, and enterprise deployments will be paid plans. They are still in development (see the notice below), so only Community is available today.
 
-::: tip DEVELOPMENT DRAFT
-**Internal Development Preview**: The commercial tiers, dual-licensing models, and appliance packages below represent our proposed commercial offerings. The AGPL-3.0 Community Edition core is always free and open source.
-:::
-
----
-
-## Plan Overview
-
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin: 32px 0;">
-
-<div style="border: 1px solid var(--vp-c-divider); border-radius: 12px; padding: 28px; background: var(--vp-c-bg-soft); display: flex; flex-direction: column; justify-content: space-between;">
-<div>
-<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--vp-c-brand-1); letter-spacing: 0.05em; margin-bottom: 8px;">Community (Open Core)</div>
-<div style="font-size: 32px; font-weight: 800; color: var(--vp-c-text-1); margin-bottom: 8px;">$0 <span style="font-size: 14px; font-weight: 500; color: var(--vp-c-text-2);">/ forever</span></div>
-<p style="font-size: 14px; color: var(--vp-c-text-2); margin-bottom: 20px; line-height: 1.5;">Ideal for individual engineers, researchers, and open-source projects using ModelScript.</p>
-<ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.8; color: var(--vp-c-text-1);">
-  <li>✓ AGPL-3.0 open-core compiler &amp; solvers</li>
-  <li>✓ In-browser WebAssembly DAE simulation</li>
-  <li>✓ Core engineering language parsers</li>
-  <li>✓ Local CLI toolchain (<code>msx</code>)</li>
-  <li>✓ Nelson-Oppen multi-solver verification</li>
-  <li>✓ Local stdio Model Context Protocol (MCP)</li>
-  <li>✓ Public package registry access</li>
-  <li>✓ Community GitHub Discussions &amp; Issues</li>
-</ul>
-</div>
-<div style="margin-top: 24px;">
-  <a href="/guide/getting-started" style="display: block; text-align: center; background: var(--vp-c-bg-elv); border: 1px solid var(--vp-c-border); color: var(--vp-c-text-1); padding: 10px 16px; border-radius: 8px; font-weight: 600; text-decoration: none;">Get Started Free</a>
-</div>
-</div>
-
-<div style="border: 2px solid var(--vp-c-brand-1); border-radius: 12px; padding: 28px; background: var(--vp-c-bg-soft); display: flex; flex-direction: column; justify-content: space-between; position: relative;">
-<div style="position: absolute; top: -12px; right: 20px; background: var(--vp-c-brand-1); color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 2px 10px; border-radius: 10px;">Recommended for Vendors</div>
-<div>
-<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--vp-c-brand-1); letter-spacing: 0.05em; margin-bottom: 8px;">Commercial SDK</div>
-<div style="font-size: 32px; font-weight: 800; color: var(--vp-c-text-1); margin-bottom: 8px;">$12,000 <span style="font-size: 14px; font-weight: 500; color: var(--vp-c-text-2);">/ year</span></div>
-<p style="font-size: 14px; color: var(--vp-c-text-2); margin-bottom: 20px; line-height: 1.5;">Dual-license exemption for vendors, AI agents, and CAD/CAE tools embedding ModelScript into closed software.</p>
-<ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.8; color: var(--vp-c-text-1);">
-  <li>✓ <strong>AGPL-3.0 Copyleft Exemption</strong></li>
-  <li>✓ Embed into proprietary SaaS and desktop apps</li>
-  <li>✓ Royalty-free redistribution</li>
-  <li>✓ Hosted MCP SSE &amp; OMG SysML v2 REST APIs</li>
-  <li>✓ Private Slack channel with core compiler team</li>
-  <li>✓ 48-hour response time SLA on blocker issues</li>
-  <li>✓ Backported security &amp; solver stability patches</li>
-  <li>✓ Annual commercial license renewal</li>
-</ul>
-</div>
-<div style="margin-top: 24px;">
-  <a href="mailto:omar@modelscript.org?subject=%5BCommercial%20SDK%20Inquiry%5D%20ModelScript%20Evaluation" style="display: block; text-align: center; background: var(--vp-c-brand-1); color: #ffffff; padding: 10px 16px; border-radius: 8px; font-weight: 600; text-decoration: none;">Request Commercial Pilot</a>
-</div>
-</div>
-
-<div style="border: 1px solid var(--vp-c-divider); border-radius: 12px; padding: 28px; background: var(--vp-c-bg-soft); display: flex; flex-direction: column; justify-content: space-between;">
-<div>
-<div style="font-size: 13px; font-weight: 700; text-transform: uppercase; color: var(--vp-c-brand-1); letter-spacing: 0.05em; margin-bottom: 8px;">Enterprise Appliance (ee/)</div>
-<div style="font-size: 32px; font-weight: 800; color: var(--vp-c-text-1); margin-bottom: 8px;">$18,000 <span style="font-size: 14px; font-weight: 500; color: var(--vp-c-text-2);">/ year</span></div>
-<p style="font-size: 14px; color: var(--vp-c-text-2); margin-bottom: 20px; line-height: 1.5;">Air-gapped on-premise deployment for electric utilities, civil aerospace, automotive, and critical infrastructure with strict regulatory firewalls.</p>
-<ul style="list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.8; color: var(--vp-c-text-1);">
-  <li>✓ <strong>100% Air-Gapped Container Image (<code>ee/deploy/</code>)</strong></li>
-  <li>✓ Offline Ed25519 license key (<code>MSX_LICENSE_KEY</code>)</li>
-  <li>✓ NERC CIP, FERC CEII, ITAR/EAR &amp; FDA 21 CFR Part 11 DHF</li>
-  <li>✓ SAML 2.0 / OIDC SSO &amp; Multi-Org RBAC</li>
-  <li>✓ On-premise Slurm HPC &amp; Distributed CAE Sweeps</li>
-  <li>✓ Operational Digital Twins &amp; TimescaleDB Historian</li>
-  <li>✓ Real-Time HIL (dSPACE/Speedgoat/AUTOSAR/PLCopen)</li>
-  <li>✓ Enterprise PLM/CAE Bridges (OSLC, ReqIF, DDP, Simulink)</li>
-</ul>
-</div>
-<div style="margin-top: 24px;">
-  <a href="mailto:omar@modelscript.org?subject=%5BEnterprise%20Appliance%20Inquiry%5D%20Utility%20Evaluation" style="display: block; text-align: center; background: var(--vp-c-bg-elv); border: 1px solid var(--vp-c-border); color: var(--vp-c-text-1); padding: 10px 16px; border-radius: 8px; font-weight: 600; text-decoration: none;">Request Appliance Demo</a>
-</div>
-</div>
-
-</div>
+<PricingPlans />
 
 ---
 
-## Detailed Capability Comparison
+## Which plan do I need?
 
-| Feature                                   | Community (`MSX_EDITION=ce`) |       Commercial SDK       |   Enterprise Appliance (`MSX_EDITION=ee`)   |
-| :---------------------------------------- | :--------------------------: | :------------------------: | :-----------------------------------------: |
-| **License Type**                          |     `AGPL-3.0-or-later`      | Proprietary Commercial OEM |     `LicenseRef-ModelScript-Enterprise`     |
-| **Copyleft Exemption (Section 13)**       |              —               |        **Included**        |                **Included**                 |
-| **Embed in Closed-Source SaaS**           |    Requires AGPL release     |       **Permitted**        |                **Permitted**                |
-| **WASM GLR Parser & Arena DAE**           |             Yes              |            Yes             |                     Yes                     |
-| **Nelson-Oppen Multi-Solver**             |             Yes              |            Yes             |                     Yes                     |
-| **Air-Gapped Deployment (`ee/deploy/`)**  |              —               |             —              |    **Turnkey Containers (Docker / K8s)**    |
-| **Regulatory & DHF Attestations**         |              —               |             —              | **NERC CIP, FERC CEII, ITAR & FDA Part 11** |
-| **Enterprise SSO & Multi-Org RBAC**       |          Basic JWT           |      Scoped API Keys       |       **SAML 2.0 / OIDC & Org RBAC**        |
-| **Slurm HPC & Distributed 3D CAE Sweeps** |              —               |     Priority Dispatch      |     **Dedicated On-Premise Partition**      |
-| **Operational Digital Twins & Historian** |              —               |          Optional          |      **Included (MHE + TimescaleDB)**       |
-| **Digital Thread Governance & Approvals** |              —               |          Optional          |    **Included (Proposals + Audit Log)**     |
-| **Real-Time HIL, AUTOSAR & PLC Codegen**  |         Baseline FMI         |        **Included**        |   **dSPACE, Speedgoat, AUTOSAR, PLCopen**   |
-| **Enterprise PLM & Legacy CAE Bridges**   |              —               |        **Included**        | **OSLC, ReqIF, DDP, AASX, Simulink, OLGA**  |
-| **Support SLA**                           |         Best-effort          |    48-Hour Business SLA    |        24-Hour Mission-Critical SLA         |
+| If you are...                                                          | Choose                                          |
+| :--------------------------------------------------------------------- | :---------------------------------------------- |
+| Learning, doing research, or building open-source models               | **Community**                                   |
+| An engineer who needs cloud compute for large models                   | **Pro**                                         |
+| A team that shares compute, private packages, and access control       | **Team**                                        |
+| Shipping a closed-source product that includes ModelScript             | **Commercial SDK**                              |
+| Running ModelScript internally with SSO, air-gapped or regulated needs | **Enterprise Appliance**                        |
+| Not sure                                                               | [Contact us](mailto:enterprise@modelscript.org) |
 
 ---
 
@@ -110,27 +28,73 @@ ModelScript is an **open-core** computable digital thread for engineering. The c
 
 ### How is ModelScript licensed?
 
-ModelScript uses an **open-core and dual-license** structure:
+ModelScript is **open core** with a dual license:
 
-- **Open Core (`AGPL-3.0-or-later`)**: The core language parsers, WebAssembly DAE arena, numerical solvers, LSP, and IDE under `packages/`, `languages/`, and `apps/` are open source under the GNU Affero General Public License v3.0.
-- **Enterprise Edition (`LicenseRef-ModelScript-Enterprise`)**: Enterprise governance, air-gapped security headers, FDA/NERC compliance attestations, corporate OIDC/SAML SSO, Slurm HPC offload, operational digital twins, HIL codegen, and PLM connectors reside in the `ee/` directory and require a valid `MSX_LICENSE_KEY`.
+- **Open core (`AGPL-3.0-or-later`).** The language parsers, runtime, solvers, language server, and IDE are open source.
+- **Enterprise Edition (`LicenseRef-ModelScript-Enterprise`).** Governance, air-gapped deployment, single sign-on, on-premise HPC, digital twins, hardware-in-the-loop code generation, and PLM connectors are in the `ee/` directory. They need a valid license key.
 
-### When do I need the Commercial SDK license?
+### Can my team use the Community edition internally without paying?
 
-You require a Commercial SDK license if:
+**Yes.** Internal use inside your company, academic research, and evaluation do not trigger the AGPL's source-sharing requirements, as long as you don't offer the software as a service to people outside your organization.
 
-1. You are embedding ModelScript libraries (e.g. `@modelscript/modelica`, `@modelscript/runtime`, `@modelscript/mcp`) into a closed-source commercial SaaS application or desktop product.
-2. You cannot disclose the source code of your proprietary application under the terms of the AGPL-3.0.
-3. Your corporate legal policy prohibits AGPL-3.0 dependencies in commercial products.
+### When do I need the Commercial SDK?
 
-### Can my team use the Community Edition internally without paying?
+You need it if any of these apply:
 
-**Yes.** Under copyright law and the AGPL-3.0, private internal use within your company, academic research, and evaluation do not trigger copyleft distribution obligations as long as the service is not provided to third parties outside your organization.
+1. You embed ModelScript libraries (for example `@modelscript/modelica`, `@modelscript/runtime`, `@modelscript/mcp`) in a closed-source SaaS or desktop product.
+2. You can't publish your application's source under the AGPL.
+3. Your company's legal policy prohibits AGPL dependencies.
 
-### How does the Enterprise Appliance work in zero-internet networks?
+### How is the Commercial SDK priced?
 
-The Enterprise Appliance is distributed as a self-contained container bundle (`ghcr.io/modelscript/appliance`) accompanied by Docker Compose and Kubernetes manifests (`ee/deploy/`). It operates completely disconnected from the public internet, storing all user credentials, models, and simulation trajectories in an encrypted local volume.
+It is priced per product per year. If you ship several distinct products, or have a large user base, [contact us](mailto:enterprise@modelscript.org?subject=%5BCommercial%20SDK%20Inquiry%5D%20Pricing) for a quote.
 
-### Can we evaluate the Commercial SDK or Appliance before purchasing?
+### How is the Enterprise Appliance priced?
 
-**Yes.** We offer 30-day proof-of-concept evaluation agreements with direct technical support to verify that ModelScript meets your simulation, verification, and integration requirements. Contact [omar@modelscript.org](mailto:omar@modelscript.org?subject=%5BEvaluation%20Request%5D%20ModelScript%2030-Day%20Evaluation) to initiate a pilot.
+The listed price is a starting point. The final price depends on the number of sites and seats and on the support level. We quote it after a short scoping call.
+
+### I'm a large company using ModelScript internally. Do I need the Commercial SDK?
+
+**No.** The Commercial SDK is a redistribution license for vendors who ship ModelScript inside a product. Internal use is already covered by the AGPL. What a large organization usually needs are the Enterprise Edition features (single sign-on, air-gapped deployment, on-premise HPC, compliance documentation, hardware-in-the-loop and PLM integrations). Those come with the Enterprise Appliance, not the SDK. The SDK does not include any `ee/` code.
+
+### Can an enterprise just buy the Commercial SDK instead of the Enterprise Appliance?
+
+Not to get Enterprise Edition features. The `ee/` code is under a separate license and needs an Enterprise license key. The SDK only removes the AGPL obligations for the open-core code.
+
+### What if I'm a vendor and I also want Enterprise features?
+
+The Commercial SDK and the Enterprise Appliance are separate licenses. The Enterprise license is for internal use. If you want Enterprise features in a product you ship, [contact us](mailto:enterprise@modelscript.org?subject=%5BCombined%20License%5D%20ModelScript) about a combined agreement.
+
+### Can I use Pro or Team for commercial work?
+
+**Yes.** Pro and Team are service subscriptions. They cover cloud compute and collaboration features. They don't license you to embed ModelScript in a closed-source product. For that, you need the Commercial SDK.
+
+### How do the credits in Pro and Team work?
+
+Credits pay for cloud HPC and GPU jobs. Pro includes 200 credits per month and Team includes 600 shared across the organization. You can buy more from **Settings → Billing**.
+
+### What happens if I cancel or my license lapses?
+
+- **Pro and Team:** you drop back to Community at the end of the billing period. Your public work and local tools keep working.
+- **Commercial SDK:** the license is annual. Versions you received during the term remain covered for the term. After it ends you need to renew to ship new releases that include ModelScript.
+- **Enterprise Appliance:** an expired offline license key switches enterprise features off. Contact us before the renewal date to get a new key.
+
+### Do you offer academic, startup, or nonprofit discounts?
+
+Academic research can use Community at no cost. For startups and nonprofits who need paid features, [get in touch](mailto:founders@modelscript.org?subject=%5BDiscount%20Request%5D%20ModelScript) and we'll work something out.
+
+### How does the Enterprise Appliance work without internet access?
+
+It is a self-contained container bundle (`ghcr.io/modelscript/appliance`) with Docker Compose and Kubernetes manifests (`ee/deploy/`). It runs fully disconnected from the internet. User credentials, models, and simulation results are stored on an encrypted local volume.
+
+### Does the Enterprise Appliance make us compliant with NERC CIP, FERC CEII, ITAR, or FDA 21 CFR Part 11?
+
+No product can do that on its own. The appliance provides the technical controls (offline operation, audit logs, access control, approvals) and supporting documentation that help your compliance program. Compliance itself depends on how you deploy and operate it. Please have your compliance or legal team review the documentation.
+
+### Can we try the Commercial SDK or Enterprise Appliance first?
+
+**Yes.** We offer 30-day evaluation agreements with direct technical support. [Contact us](mailto:enterprise@modelscript.org?subject=%5BEvaluation%20Request%5D%20ModelScript%2030-Day%20Evaluation) to start.
+
+### What is the refund policy?
+
+Pro and Team can be cancelled at any time. Annual plans can be refunded within 14 days of purchase if you haven't used the included credits. Commercial SDK and Enterprise contracts are covered by the evaluation period instead.

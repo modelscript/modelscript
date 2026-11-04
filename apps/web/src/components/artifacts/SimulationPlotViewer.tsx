@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DownloadIcon, GraphIcon, SearchIcon } from "@primer/octicons-react";
-import { Button, Spinner, Text } from "@primer/react";
+import { Button, Text } from "@primer/react";
 import Papa from "papaparse";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import styled from "styled-components";
 import Box from "../Box";
+import Spinner from "../Spinner";
 import VegaViewer from "./VegaViewer";
 
 const SIM_COLORS = ["#06b6d4", "#a855f7", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#ec4899", "#8b5cf6"];

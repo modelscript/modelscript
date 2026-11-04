@@ -28,7 +28,7 @@ import {
   UploadIcon as Upload,
 } from "@primer/octicons-react";
 import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   attachLocalPdfToWork,
   resolveCitationSource,
@@ -39,6 +39,7 @@ import {
 import { useAuth } from "../AuthContext";
 import { CiteButton } from "../components/citations/CiteButton";
 import { ToastContext } from "../components/ToastContext";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import {
   buildCitationFromScholarlyWork,
   buildSourcePageUrl,
@@ -90,6 +91,8 @@ import {
 } from "./sourceDetailUi";
 
 export const SourceDetailPage: React.FC = () => {
+  const hasReferences = useFeatureFlag(["references", "scientific_references"]);
+
   const params = useParams<{ identifier?: string; "*"?: string }>();
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -175,7 +178,7 @@ export const SourceDetailPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [rawIdentifier]);
+  }, [rawIdentifier, navigate, normalizedUrn]);
 
   const work: ScholarlyWorkDto | null = resolved?.work ?? null;
 
@@ -241,6 +244,10 @@ export const SourceDetailPage: React.FC = () => {
     navigate(`/?cite=${encodeURIComponent(work.urn)}`);
     addToast(`Prepared post citation ${tag}`, "info");
   };
+
+  if (!hasReferences) {
+    return <Navigate to="/packages" replace />;
+  }
 
   if (loading) {
     return (

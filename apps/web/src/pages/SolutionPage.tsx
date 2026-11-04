@@ -10,12 +10,13 @@ import {
   ScreenFullIcon,
   ScreenNormalIcon,
 } from "@primer/octicons-react";
-import { Button, Heading, Spinner, Text } from "@primer/react";
+import { Button, Heading, Text } from "@primer/react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import styled from "styled-components";
 import { getSolution, type Solution, type SolutionRelease } from "../api";
 import Box from "../components/Box";
+import Spinner from "../components/Spinner";
 import { usePageTitle } from "../util/title";
 
 const SolutionHeader = styled.header`

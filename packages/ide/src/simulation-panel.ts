@@ -962,6 +962,10 @@ export class SimulationPanel {
     .sidebar-section.collapsed {
       flex: 0 0 auto;
     }
+    #settings-section {
+      flex: 0 0 auto;
+      max-height: 50vh;
+    }
     .sidebar-header {
       padding: 8px 16px;
       font-size: 11px;
@@ -972,10 +976,10 @@ export class SimulationPanel {
       user-select: none;
       display: flex;
       align-items: center;
-      background: rgba(0,0,0,0.1);
+      background: transparent;
     }
     .sidebar-header:hover {
-      background: rgba(0,0,0,0.2);
+      background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.12));
     }
     .sidebar-header::before {
       content: "▼";
@@ -999,7 +1003,7 @@ export class SimulationPanel {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 4px 16px;
+      padding: 5px 16px;
       font-size: 12px;
       gap: 8px;
     }
@@ -1021,18 +1025,27 @@ export class SimulationPanel {
       margin-right: 4px;
     }
     .settings-row input, .settings-row select {
-      width: 95px;
+      width: 100px;
       background: var(--vscode-input-background, #3c3c3c);
       color: var(--vscode-input-foreground, #ccc);
       border: 1px solid var(--vscode-input-border, transparent);
-      padding: 2px 4px;
+      padding: 4px 6px;
       font-family: inherit;
-      font-size: 12px;
-      border-radius: 2px;
+      font-size: 11px;
+      border-radius: 6px;
+      box-sizing: border-box;
+      transition: border-color 0.15s, outline 0.15s;
     }
     .settings-row input:focus, .settings-row select:focus {
       outline: 1px solid var(--vscode-focusBorder);
       outline-offset: -1px;
+    }
+    .settings-row select.settings-select {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 0;
+      max-width: 170px;
+      text-overflow: ellipsis;
     }
     .section-badge {
       margin-left: 6px;
@@ -1056,7 +1069,7 @@ export class SimulationPanel {
       cursor: pointer;
       font-size: 10px;
       padding: 2px 4px;
-      border-radius: 2px;
+      border-radius: 6px;
     }
     .icon-btn:hover {
       color: var(--vscode-foreground, #fff);
@@ -1079,10 +1092,12 @@ export class SimulationPanel {
       background: var(--vscode-input-background, #3c3c3c);
       color: var(--vscode-input-foreground, #ccc);
       border: 1px solid var(--vscode-input-border, transparent);
-      padding: 3px 20px 3px 6px;
+      padding: 5px 22px 5px 8px;
       font-family: inherit;
       font-size: 11px;
-      border-radius: 2px;
+      border-radius: 6px;
+      box-sizing: border-box;
+      transition: border-color 0.15s, outline 0.15s;
     }
     .search-box input:focus {
       outline: 1px solid var(--vscode-focusBorder);
@@ -1104,13 +1119,15 @@ export class SimulationPanel {
     }
     .bulk-actions button {
       flex: 1;
-      padding: 2px 4px;
+      padding: 3px 6px;
       font-size: 10px;
+      font-weight: 500;
       background: var(--vscode-button-secondaryBackground, #3a3d41);
       color: var(--vscode-button-secondaryForeground, #ffffff);
       border: 1px solid transparent;
-      border-radius: 2px;
+      border-radius: 999px;
       cursor: pointer;
+      transition: background 0.15s;
     }
     .bulk-actions button:hover {
       background: var(--vscode-button-secondaryHoverBackground, #45494e);
@@ -1138,7 +1155,7 @@ export class SimulationPanel {
       padding: 2px 0;
     }
     .sidebar-footer {
-      padding: 10px 14px;
+      padding: 12px 14px;
       background: var(--vscode-sideBar-background, #252526);
       border-top: 1px solid var(--vscode-panel-border, #333);
       flex-shrink: 0;
@@ -1152,11 +1169,11 @@ export class SimulationPanel {
     }
     .simulate-btn {
       width: 100%;
-      padding: 6px;
+      padding: 8px;
       background: var(--vscode-button-background, #0e639c);
       color: var(--vscode-button-foreground, #ffffff);
       border: none;
-      border-radius: 2px;
+      border-radius: 6px;
       cursor: pointer;
       font-size: 12px;
       font-weight: 600;
@@ -1328,6 +1345,7 @@ export class SimulationPanel {
       display: flex;
       flex-direction: column;
       position: relative;
+      container-type: inline-size;
     }
     canvas {
       flex: 1;
@@ -1363,31 +1381,71 @@ export class SimulationPanel {
     #toolbar select {
       background: var(--vscode-dropdown-background);
       color: var(--vscode-dropdown-foreground);
-      border: 1px solid var(--vscode-dropdown-border);
-      padding: 3px 6px;
+      border: 1px solid var(--vscode-dropdown-border, transparent);
+      padding: 3px 8px;
       font-family: inherit;
       font-size: 11px;
-      border-radius: 2px;
+      border-radius: 6px;
       cursor: pointer;
     }
-    #toolbar select:focus {
+    #toolbar select:focus-visible {
       outline: 1px solid var(--vscode-focusBorder);
       outline-offset: -1px;
     }
     #toolbar button {
-      padding: 3px 8px;
-      border: 1px solid var(--vscode-button-border, transparent);
-      border-radius: 2px;
-      background: var(--vscode-button-secondaryBackground, #333);
-      color: var(--vscode-button-secondaryForeground, #ccc);
+      padding: 4px 10px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--vscode-foreground, #ccc);
       cursor: pointer;
       font-size: 11px;
       display: inline-flex;
       align-items: center;
       gap: 4px;
       white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s;
     }
-    #toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground, #444); }
+    #toolbar button:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
+    #toolbar button:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: -1px;
+    }
+    /* Active toggle state (JS adds .active and inline border colors; neutralize the inline look) */
+    #toolbar button.active {
+      background: var(--vscode-toolbar-activeBackground, rgba(128,128,128,0.28)) !important;
+      border-color: var(--vscode-focusBorder, #38bdf8) !important;
+    }
+    /* Option toggles rendered as pills */
+    #toolbar .toggle-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.35));
+      color: var(--vscode-foreground);
+      cursor: pointer;
+      font-size: 11px;
+      user-select: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    #toolbar .toggle-pill:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
+    #toolbar .toggle-pill:has(input:checked) {
+      background: var(--vscode-badge-background, #0e639c);
+      color: var(--vscode-badge-foreground, #fff);
+      border-color: transparent;
+    }
+    #toolbar .toggle-pill input { display: none; }
+    #toolbar .toolbar-label {
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+      font-weight: 500;
+    }
+    #toolbar .toolbar-primary {
+      background: var(--vscode-button-background, #0e639c) !important;
+      color: var(--vscode-button-foreground, #fff) !important;
+    }
     #toolbar .status-indicator {
       width: 8px;
       height: 8px;
@@ -1400,6 +1458,59 @@ export class SimulationPanel {
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     #toolbar .status-text { color: var(--vscode-descriptionForeground); }
     #toolbar .spacer { flex: 1; }
+    @container (max-width: 640px) {
+      #toolbar .lbl { display: none; }
+      #toolbar button { padding: 4px 7px; }
+    }
+    #toolbar .menu { position: relative; display: inline-block; }
+    #runs-bar { display: none; flex-wrap: wrap; gap: 6px; padding: 4px 12px; border-bottom: 1px solid var(--vscode-panel-border, #333); }
+    #runs-bar.has-runs { display: flex; }
+    .run-chip {
+      --run-color: var(--vscode-focusBorder, #38bdf8);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 4px 2px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--vscode-foreground);
+      border: 1px dashed var(--run-color);
+      transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+    }
+    .run-chip:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
+    .run-chip.off { opacity: 0.45; border-color: var(--vscode-panel-border, #555) !important; text-decoration: line-through; }
+    .run-chip .run-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--run-color); }
+    .run-chip.off .run-dot { background: transparent !important; border: 1px solid currentColor; box-sizing: border-box; }
+    .run-chip .run-close {
+      border: none; background: transparent; color: inherit; cursor: pointer;
+      font-size: 10px; width: 16px; height: 16px; border-radius: 50%; padding: 0; line-height: 16px;
+    }
+    .run-chip .run-close:hover { background: rgba(128,128,128,0.3); }
+    .run-chip .run-rename {
+      width: 90px; font: inherit; padding: 0 4px; border-radius: 4px;
+      background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+      border: 1px solid var(--vscode-focusBorder);
+    }
+    #toolbar .menu-panel {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      z-index: 50;
+      min-width: 150px;
+      padding: 4px;
+      flex-direction: column;
+      gap: 2px;
+      background: var(--vscode-menu-background, var(--vscode-editorWidget-background, #252526));
+      color: var(--vscode-menu-foreground, var(--vscode-foreground));
+      border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, rgba(128,128,128,0.35)));
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    }
+    #toolbar .menu.open .menu-panel { display: flex; }
+    #toolbar .menu-panel button { justify-content: flex-start; width: 100%; box-sizing: border-box; }
     /* Tree View Native Controls */
     .tree-node {
       list-style: none;
@@ -1462,42 +1573,69 @@ export class SimulationPanel {
       flex: 1;
     }
     #placeholder {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      width: 100%;
-      height: 100%;
-      opacity: 0.6;
-      font-size: 14px;
+      gap: 10px;
+      background: var(--vscode-editor-background, #1e1e1e);
+      color: var(--vscode-descriptionForeground);
+      font-size: 13px;
+      text-align: center;
+      pointer-events: none;
+    }
+    #placeholder .empty-icon { font-size: 36px; opacity: 0.5; }
+    #placeholder .empty-title { color: var(--vscode-foreground); font-size: 14px; font-weight: 500; }
+    #placeholder button {
+      pointer-events: auto;
+      margin-top: 6px;
+      padding: 6px 16px;
+      border: none;
+      border-radius: 6px;
+      background: var(--vscode-button-background, #0e639c);
+      color: var(--vscode-button-foreground, #fff);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #placeholder button:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+    #placeholder kbd {
+      font-family: inherit;
+      font-size: 10px;
+      opacity: 0.75;
+      margin-left: 6px;
     }
     #tooltip {
       position: absolute;
       display: none;
       background: var(--vscode-editorWidget-background, #252526);
       border: 1px solid var(--vscode-editorWidget-border, #454545);
-      border-radius: 4px;
-      padding: 6px 10px;
+      border-radius: 8px;
+      padding: 8px 12px;
       font-size: 12px;
       pointer-events: none;
       z-index: 10;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+      backdrop-filter: blur(8px);
     }
     #cursor-hud {
       display: none;
       position: absolute;
       bottom: 45px;
       left: 70px;
-      background: rgba(30, 30, 30, 0.92);
-      backdrop-filter: blur(8px);
+      background: var(--vscode-editorWidget-background, rgba(30, 30, 30, 0.92));
+      backdrop-filter: blur(12px);
       border: 1px solid var(--vscode-editorWidget-border, #454545);
-      border-radius: 4px;
-      padding: 6px 14px;
+      border-radius: 8px;
+      padding: 8px 16px;
       font-size: 11px;
       font-family: var(--vscode-editor-font-family, monospace);
-      color: #eee;
+      color: var(--vscode-foreground, #eee);
       z-index: 5;
       pointer-events: none;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.45);
       flex-wrap: wrap;
       gap: 16px;
     }
@@ -1625,7 +1763,7 @@ export class SimulationPanel {
         <span class="status-text live-only" id="live-status-text">Disconnected</span>
         
         <div class="toolbar-group">
-          <label for="select-xaxis" style="color: var(--vscode-foreground); font-size: 11px; font-weight: 500;">X:</label>
+          <label for="select-xaxis" class="toolbar-label">X</label>
           <select id="select-xaxis" title="Select X-Axis (Time or State Variable for Phase Portrait)">
             <option value="__time__">Time (s)</option>
           </select>
@@ -1633,44 +1771,55 @@ export class SimulationPanel {
 
         <div class="toolbar-divider"></div>
 
-        <label style="display: flex; align-items: center; gap: 4px; color: var(--vscode-foreground); cursor: pointer;" title="Normalize curves to 0-100% to compare different units and magnitudes">
-          <input type="checkbox" id="checkbox-normalize"> Normalize (0-100%)
+        <label class="toggle-pill" title="Normalize curves to 0-100% to compare different units and magnitudes">
+          <input type="checkbox" id="checkbox-normalize"> Normalize
         </label>
 
-        <label style="display: flex; align-items: center; gap: 4px; color: var(--vscode-foreground); cursor: pointer;" title="Dual Y-Axis (Left and Right axes for primary vs secondary variables)">
+        <label class="toggle-pill" title="Dual Y-Axis (Left and Right axes for primary vs secondary variables)">
           <input type="checkbox" id="checkbox-dual-y"> Dual Y
         </label>
 
-        <label style="display: flex; align-items: center; gap: 4px; color: var(--vscode-foreground); cursor: pointer;">
+        <label class="toggle-pill" title="Smooth curves">
           <input type="checkbox" id="checkbox-smooth" checked> Smooth
         </label>
 
         <div class="toolbar-divider"></div>
 
-        <button id="btn-toggle-cursors" title="Toggle measurement cursors A & B to inspect delta-time and delta-y">📐 Cursors</button>
-        <button id="btn-pin-run" title="Pin current trajectory as ghost baseline for comparison">📌 Pin Run</button>
+        <button id="btn-toggle-cursors" title="Toggle measurement cursors A & B to inspect delta-time and delta-y">📐<span class="lbl"> Cursors</span></button>
+        <button id="btn-pin-run" title="Pin current trajectory as ghost baseline for comparison">📌<span class="lbl"> Pin Run</span></button>
 
         <span class="spacer"></span>
 
-        <button id="btn-export-csv" title="Download trajectory as CSV">📥 CSV</button>
-        <button id="btn-export-comtrade" style="display: none;" title="Download IEEE C37.111 COMTRADE (.cfg + .dat)">⚡ COMTRADE</button>
-        <button id="btn-export-out" style="display: none;" title="Download PSCAD (.inf + .out)">📄 OUT</button>
-        <button id="btn-export-psout" style="display: none;" title="Download PSCAD V5 Binary Waveform (.psout)">💾 PSOUT</button>
-        <button id="btn-export-png" title="Download chart snapshot as PNG">📷 PNG</button>
-        <button id="btn-copy-csv" title="Copy trajectory data to clipboard">📋 Copy</button>
+        <div class="menu" id="export-menu-wrap">
+          <button id="btn-export-menu" title="Export or copy results" aria-haspopup="true" aria-expanded="false">⬇<span class="lbl"> Export ▾</span></button>
+          <div class="menu-panel" id="export-menu" role="menu">
+            <button id="btn-export-csv" role="menuitem" title="Download trajectory as CSV">📥 CSV</button>
+            <button id="btn-export-comtrade" role="menuitem" style="display: none;" title="Download IEEE C37.111 COMTRADE (.cfg + .dat)">⚡ COMTRADE</button>
+            <button id="btn-export-out" role="menuitem" style="display: none;" title="Download PSCAD (.inf + .out)">📄 OUT</button>
+            <button id="btn-export-psout" role="menuitem" style="display: none;" title="Download PSCAD V5 Binary Waveform (.psout)">💾 PSOUT</button>
+            <button id="btn-export-png" role="menuitem" title="Download chart snapshot as PNG">📷 PNG</button>
+            <button id="btn-copy-csv" role="menuitem" title="Copy trajectory data to clipboard">📋 Copy</button>
+          </div>
+        </div>
 
         <button id="btn-pause" class="live-only">⏸ Pause</button>
         <button id="btn-clear" class="live-only">Clear</button>
-        <button id="btn-3d-animation" style="display: none; background: #2da44e; color: white;">🎬 3D Animation</button>
-        <button id="btn-reset-view" title="Reset View Bounds">⌂ Reset</button>
+        <button id="btn-3d-animation" class="toolbar-primary" style="display: none;">🎬 3D Animation</button>
+        <button id="btn-reset-view" title="Reset View Bounds">⌂<span class="lbl"> Reset</span></button>
       </div>
+      <div id="runs-bar" aria-label="Pinned runs"></div>
       <!-- legend was removed -->
       <canvas id="canvas"></canvas>
       <div id="tooltip"></div>
       <div id="cursor-hud"></div>
+      <div id="placeholder">
+        <div class="empty-icon">📈</div>
+        <div class="empty-title">No results yet</div>
+        <div>Run a simulation to see results</div>
+        <button id="btn-empty-simulate">Simulate <kbd>Ctrl+Enter</kbd></button>
+      </div>
     </div>
   </div>
-  <div id="placeholder">Run a simulation to see results</div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
