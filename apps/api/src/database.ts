@@ -4856,6 +4856,7 @@ export class LibraryDatabase {
       .prepare(
         `
       SELECT n.*, 
+             CAST(n.post_id AS TEXT) as post_id,
              u.username as actor_username, 
              u.display_name as actor_display_name, 
              u.avatar_url as actor_avatar_url,
@@ -5508,7 +5509,7 @@ export class LibraryDatabase {
   getUserOutboxPosts(userId: number, limit: number = 20, offset: number = 0): PostRow[] {
     const posts = this.#db
       .prepare(
-        `SELECT id, author_id, content, artifact_view_id, ap_id, url, metadata, visibility, created_at, updated_at
+        `SELECT CAST(id AS TEXT) as id, author_id, content, CAST(artifact_view_id AS TEXT) as artifact_view_id, ap_id, url, metadata, visibility, created_at, updated_at
          FROM posts 
          WHERE author_id = ? AND repost_of_id IS NULL AND is_silenced = 0
            AND COALESCE(visibility, 'public') IN ('public', 'unlisted')
@@ -8983,7 +8984,7 @@ export class LibraryDatabase {
     try {
       posts = this.#db
         .prepare(
-          `SELECT p.id, p.content, p.created_at,
+          `SELECT CAST(p.id AS TEXT) as id, p.content, p.created_at,
              (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
              (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
              (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count
@@ -9027,7 +9028,7 @@ export class LibraryDatabase {
     try {
       bookmarks = this.#db
         .prepare(
-          `SELECT b.post_id, p.content, b.created_at FROM bookmarks b LEFT JOIN posts p ON b.post_id = p.id WHERE b.user_id = ? ORDER BY b.id DESC`,
+          `SELECT CAST(b.post_id AS TEXT) as post_id, p.content, b.created_at FROM bookmarks b LEFT JOIN posts p ON b.post_id = p.id WHERE b.user_id = ? ORDER BY b.id DESC`,
         )
         .all(userId) as UserArchiveData["bookmarks"];
     } catch {}

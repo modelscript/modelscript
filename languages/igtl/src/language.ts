@@ -16,10 +16,10 @@ import { igtlToModelica, igtlToUrdf } from "./projections/index.js";
 
 export const igtlLanguage = language({
   name: "igtl",
-  fileExtensions: [".igtl", ".plus.xml"],
+  fileExtensions: [".igtl.json", ".igtl", ".plus.xml"],
   maturity: "experimental",
   lsp: {
-    fileExtensions: [".igtl", ".plus.xml"],
+    fileExtensions: [".igtl.json", ".igtl", ".plus.xml"],
   },
   rules: {
     Root: () => "igtl",

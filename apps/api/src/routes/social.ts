@@ -678,9 +678,12 @@ export function socialRouter(
 
                   const allArtifactIds = Array.from(
                     new Set(
-                      [artifact_view_id, ...(notebookMeta?.artifactIds || [])].filter(
-                        (aid): aid is number => typeof aid === "number" && Number.isFinite(aid),
-                      ),
+                      [artifact_view_id, ...(notebookMeta?.artifactIds || [])]
+                        .filter(
+                          (aid): aid is string | number =>
+                            aid !== undefined && aid !== null && String(aid).trim().length > 0,
+                        )
+                        .map((aid) => String(aid).trim()),
                     ),
                   );
                   if (allArtifactIds.length > 0) {

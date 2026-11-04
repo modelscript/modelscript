@@ -1577,16 +1577,16 @@ The ModelScript engine is designed to be completely headless and can run inside 
 
 ## Platform Surfaces
 
-| Surface                  | Route               | Description                                                                                    |
-| :----------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |
-| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, executable simulation morsels, and discussion threads.          |
-| **Playground**           | `/playground`       | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.         |
-| **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.           |
-| **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.            |
-| **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.      |
-| **Personal Git Vault**   | `/settings`         | Cloneable, signed Git repository backing all personal morsels, models, and scholarly records.  |
-| **Administration**       | `/admin`            | Instance governance, moderation queues, S2S federation policies, and database backups.         |
-| **Setup Wizard**         | `/setup`            | First-boot guided configuration for initializing standalone or enterprise nodes.               |
+| Surface                  | Route               | Description                                                                                   |
+| :----------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
+| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, executable simulation morsels, and discussion threads.         |
+| **Playground**           | `/playground`       | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.        |
+| **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.          |
+| **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.           |
+| **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.     |
+| **Personal Git Vault**   | `/settings`         | Cloneable, signed Git repository backing all personal morsels, models, and scholarly records. |
+| **Administration**       | `/admin`            | Instance governance, moderation queues, S2S federation policies, and database backups.        |
+| **Setup Wizard**         | `/setup`            | First-boot guided configuration for initializing standalone or enterprise nodes.              |
 
 ================================================================================
 DOCUMENT: ActivityPub Federation
@@ -6493,11 +6493,11 @@ ModelScript is not a single-language compiler—it is a **polyglot systems engin
 
 Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint-package-manifests.ts`:
 
-| Tier | Badge | Criteria & Guarantees |
-| :--- | :---: | :--- |
-| **Stable** | `Stable` | Production-ready with complete Ahead-of-Time WASM GLR parser, static domain linter, `DAEBuilder` / solver lowering, and verification against official industry benchmarks, standard library snapshots, or homologation suites (e.g., OpenModelica & MSL 4.1.0, OMG KerML standard library, EN 14363 Manchester Benchmark, IEEE 2800-2022, NIST STEP AP242). |
-| **Beta** | `Beta` | Domain-complete with native WASM GLR parser, static domain linter, `DAEBuilder` / domain solver lowering, cross-language projections, and $\ge 5$ unit and integration test suites (including AUTOSAR, Simulink, SIMPACK, ADAMS, URDF, PLCopen, AutomationML, NIST OSCAL, ISO 23952 QIF, and the Radiology / Oncology / Surgical CAS suite). |
-| **Preview** | `Preview` | Specialized domain and dialect support with native WASM parser, static diagnostics, core AST/DAE lowering, and baseline verification test suites (including CFD, FEA, PSS/E, OpenDSS, Aspen Plus, gPROMS, Cantera, PHREEQC, SMILES, and the Systems & Synthetic Biology suite). |
+| Tier        |   Badge   | Criteria & Guarantees                                                                                                                                                                                                                                                                                                                                       |
+| :---------- | :-------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stable**  | `Stable`  | Production-ready with complete Ahead-of-Time WASM GLR parser, static domain linter, `DAEBuilder` / solver lowering, and verification against official industry benchmarks, standard library snapshots, or homologation suites (e.g., OpenModelica & MSL 4.1.0, OMG KerML standard library, EN 14363 Manchester Benchmark, IEEE 2800-2022, NIST STEP AP242). |
+| **Beta**    |  `Beta`   | Domain-complete with native WASM GLR parser, static domain linter, `DAEBuilder` / domain solver lowering, cross-language projections, and $\ge 5$ unit and integration test suites (including AUTOSAR, Simulink, SIMPACK, ADAMS, URDF, PLCopen, AutomationML, NIST OSCAL, ISO 23952 QIF, and the Radiology / Oncology / Surgical CAS suite).                |
+| **Preview** | `Preview` | Specialized domain and dialect support with native WASM parser, static diagnostics, core AST/DAE lowering, and baseline verification test suites (including CFD, FEA, PSS/E, OpenDSS, Aspen Plus, gPROMS, Cantera, PHREEQC, SMILES, and the Systems & Synthetic Biology suite).                                                                             |
 
 ---
 
@@ -7543,17 +7543,18 @@ CANONICAL URL: https://modelscript.org/languages/oscal
 
 ## Supported Extensions & Document Models
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
+| Extension              | Format     | Description                                                                                             |
+| :--------------------- | :--------- | :------------------------------------------------------------------------------------------------------ |
 | `.oscal.json`, `.json` | OSCAL JSON | Standard NIST OSCAL 1.1 JSON representation for Catalogs, Profiles, SSPs, Assessment Results, and POA&M |
-| `.oscal.yaml`, `.yaml` | OSCAL YAML | Human-readable YAML representation of OSCAL security artifacts |
-| `.oscal.xml`, `.xml` | OSCAL XML | XML serialization of NIST OSCAL security control catalogs and system security plans |
+| `.oscal.yaml`, `.yaml` | OSCAL YAML | Human-readable YAML representation of OSCAL security artifacts                                          |
+| `.oscal.xml`, `.xml`   | OSCAL XML  | XML serialization of NIST OSCAL security control catalogs and system security plans                     |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Full OSCAL 1.1 Lifecycle Support
+
 - Parses and serializes all core NIST OSCAL document layers:
   - **Catalog (`catalog`)**: Hierarchical security control families (e.g., `AC`, `AU`, `CM`, `IA`, `SC`, `SI`), control enhancements, parameters, and assessment objectives.
   - **Profile (`profile`)**: Baseline imports (`imports`), parameter setting (`modify.set-parameters`), and control tailoring (`alter`).
@@ -7561,10 +7562,12 @@ CANONICAL URL: https://modelscript.org/languages/oscal
   - **Assessment Results & POA&M (`assessment-results`, `plan-of-action-and-milestones`)**: Security findings, risk observations, and remediation milestones.
 
 ### 2. Cyber-Physical Systems (CPS) Security Auditing
+
 - Evaluates NIST SP 800-82 Industrial Control Systems (ICS) and safety-critical cyber-physical architecture rules across hardware components, network zones, and control implementations.
 - Resolves profile baselines to verify that every imported mandatory control has a corresponding implementation statement and parameter assignment.
 
 ### 3. Bidirectional SysML v2 & ReqIF Projections
+
 - **OMG SysML v2 (`oscalToSysML2`)**: Projects OSCAL controls and system components into formal `requirement def` and `part def` blocks with `@satisfies` links.
 - **OMG ReqIF 1.2 (`oscalToReqif`)**: Exports security control catalogs and SSP implementations into structured ReqIF specifications for traceability alongside functional safety requirements.
 
@@ -7974,27 +7977,30 @@ CANONICAL URL: https://modelscript.org/languages/qif
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.qif` | ISO 23952 QIF 3.0 | XML document encoding QIF MBD features, datum reference frames, GD&T characteristics, measurement plans, and CMM actual results |
-| `.xml` | QIF XML | Standard QIF XML schema document with persistent QPID UUIDs |
+| Extension | Format            | Description                                                                                                                     |
+| :-------- | :---------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| `.qif`    | ISO 23952 QIF 3.0 | XML document encoding QIF MBD features, datum reference frames, GD&T characteristics, measurement plans, and CMM actual results |
+| `.xml`    | QIF XML           | Standard QIF XML schema document with persistent QPID UUIDs                                                                     |
 
 ---
 
 ## Key Capabilities
 
 ### 1. MBD Features, Datums & GD&T Characteristics
+
 - Parses QIF Model-Based Definition (`QIFDocument`) sections:
   - **Datum Definitions & Reference Frames (`DatumDefinitions`, `DatumReferenceFrames`)**: Primary, secondary, and tertiary datum precedence with material condition modifiers (`MMC`, `LMC`, `RFS`).
   - **Features (`FeatureDefinitions`, `FeatureItems`)**: Cylindrical, planar, spherical, and point geometric features with nominal locations and normals.
   - **Characteristics (`CharacteristicDefinitions`, `CharacteristicItems`)**: Dimensional tolerances, flatness, cylindricity, perpendicularity, true position, and surface profile tolerances.
 
 ### 2. Statistical Process Control (SPC) & Test Uncertainty Ratio (TUR)
+
 - Evaluates measured Coordinate Measuring Machine (CMM) actuals (`MeasurementsResults`) against nominal tolerances:
   $$C_p = \frac{\text{USL} - \text{LSL}}{6\sigma}, \qquad C_{pk} = \min\left(\frac{\text{USL} - \mu}{3\sigma}, \frac{\mu - \text{LSL}}{3\sigma}\right), \qquad \text{TUR} = \frac{\text{Tolerance}}{2 U_{\text{cal}}}$$
 - Flags processes with $C_{pk} < 1.33$ or measurement devices violating the $4:1$ $\text{TUR}$ metrology rule.
 
 ### 3. STEP AP242 Reconciliation & DAE Lowering
+
 - Reconciles QIF inspection characteristics directly against ISO 10303-21 STEP AP242 CAD geometry (`reconcileStepWithQif`) or synthesizes baseline QIF inspection plans from STEP PMI (`synthesizeQifFromStep`).
 - Lowers tolerance stack-ups and CMM measurement equations into `@modelscript/runtime`'s `DAEBuilder` arena and projects them into Modelica and SysML v2 verification models.
 
@@ -11889,17 +11895,18 @@ CANONICAL URL: https://modelscript.org/languages/automationml
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.aml` | IEC 62714 AutomationML | XML document combining CAEX plant topology, COLLADA 3D geometry/kinematics references, and PLCopen logic links |
-| `.caex` | IEC 62424 CAEX | Computer Aided Engineering Exchange XML (CAEX 2.15 & 3.0) |
-| `.amlx` | AutomationML Container | Packaged AutomationML archive bundling `.aml` topologies with referenced `.dae` and `.plcxml` artifacts |
+| Extension | Format                 | Description                                                                                                    |
+| :-------- | :--------------------- | :------------------------------------------------------------------------------------------------------------- |
+| `.aml`    | IEC 62714 AutomationML | XML document combining CAEX plant topology, COLLADA 3D geometry/kinematics references, and PLCopen logic links |
+| `.caex`   | IEC 62424 CAEX         | Computer Aided Engineering Exchange XML (CAEX 2.15 & 3.0)                                                      |
+| `.amlx`   | AutomationML Container | Packaged AutomationML archive bundling `.aml` topologies with referenced `.dae` and `.plcxml` artifacts        |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Four-Pillar CAEX Plant Architecture
+
 - Parses and validates all four CAEX object-oriented libraries inside `CAEXFile`:
   - **`InstanceHierarchy`**: Concrete plant cells, robots, conveyors, sensors, and PLC controllers (`InternalElement`).
   - **`SystemUnitClassLib`**: Reusable mechatronic equipment templates and vendor device catalogs.
@@ -11907,10 +11914,12 @@ CANONICAL URL: https://modelscript.org/languages/automationml
   - **`InterfaceClassLib`**: Typed external connectors (`ExternalInterface`: `COLLADAInterface`, `PLCopenXmlInterface`, `SignalInterface`, `Order`).
 
 ### 2. Virtual Commissioning & Scan-Cycle Simulation
+
 - Executes deterministic discrete-time scan-cycle virtual commissioning (`runAmlVirtualCommissioning`) across linked actuators, sensors, and controller interfaces.
 - Lowers continuous and discrete mechatronic state equations directly into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
 
 ### 3. Multi-Domain Projections (SSP, SysML v2, Modelica)
+
 - **SSP 1.0 (`amlToSsp`)**: Generates `SystemStructure.ssd` co-simulation topologies from AutomationML `InstanceHierarchy` and `InternalLink` connections.
 - **OMG SysML v2 (`amlToSysML2`)**: Maps `InternalElement` hierarchies and `ExternalInterface` ports to SysML v2 `part` and `port` usages.
 - **Modelica 3.x (`amlToModelica`)**: Synthesizes connected acausal Modelica plant models.
@@ -12382,16 +12391,17 @@ CANONICAL URL: https://modelscript.org/languages/gproms
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.gproms` | gPROMS Model File | Equation-oriented process model defining `PARAMETER`, `DISTRIBUTION_DOMAIN`, `VARIABLE`, `EQUATION`, and `PROCESS` entities |
-| `.pml` | Process Modeling Language | Modular PML entity and flowsheet specification |
+| Extension | Format                    | Description                                                                                                                 |
+| :-------- | :------------------------ | :-------------------------------------------------------------------------------------------------------------------------- |
+| `.gproms` | gPROMS Model File         | Equation-oriented process model defining `PARAMETER`, `DISTRIBUTION_DOMAIN`, `VARIABLE`, `EQUATION`, and `PROCESS` entities |
+| `.pml`    | Process Modeling Language | Modular PML entity and flowsheet specification                                                                              |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Equation-Oriented & Distributed-Parameter Modeling (`PDAE`)
+
 - Parses `MODEL` and `PROCESS` blocks including:
   - **`DISTRIBUTION_DOMAIN`**: Axial, radial, or particle-size spatial domains (e.g., `Axial AS [0 : L]`) for tubular reactors, packed adsorption columns, and crystallizers.
   - **`PARTIAL(u, z)` & `INTEGRAL`**: First- and second-order spatial derivatives $\frac{\partial C}{\partial z}$ and $\frac{\partial^2 C}{\partial z^2}$ alongside time derivatives `$C` ($\frac{dC}{dt}$).
@@ -12399,10 +12409,12 @@ CANONICAL URL: https://modelscript.org/languages/gproms
   - **`ASSIGN`, `INITIAL`, & `SCHEDULE`**: Degrees-of-freedom specifications, initial conditions, and sequential operating procedures (`CONTINUE FOR`, `SWITCH`, `RESET`).
 
 ### 2. Method-of-Lines (MOL) Discretization & Dynamic Solver
+
 - Automatically discretizes `DISTRIBUTION_DOMAIN` spatial grids into coupled ODE/DAE node equations using upwind and central finite-difference stencils.
 - Integrates transient startup, changeover, and reaction trajectories and lowers the resulting equation system into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
 
 ### 3. Bidirectional Modelica 3.x Projection
+
 - Projects gPROMS `MODEL` and `PROCESS` definitions into equation-based Modelica 3.x models (`gpromsToModelica`) with explicit `der(...)` equations and parameter bindings.
 
 ---
@@ -12451,16 +12463,17 @@ CANONICAL URL: https://modelscript.org/languages/cantera
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.yaml` | Cantera YAML | Modern Cantera 2.5+ / 3.x YAML mechanism format (`phases`, `species`, `reactions`, `thermo: NASA7`) |
-| `.cti` | Legacy Cantera CTI | Classic Cantera `ideal_gas`, `species`, and `reaction` mechanism definitions |
+| Extension | Format             | Description                                                                                         |
+| :-------- | :----------------- | :-------------------------------------------------------------------------------------------------- |
+| `.yaml`   | Cantera YAML       | Modern Cantera 2.5+ / 3.x YAML mechanism format (`phases`, `species`, `reactions`, `thermo: NASA7`) |
+| `.cti`    | Legacy Cantera CTI | Classic Cantera `ideal_gas`, `species`, and `reaction` mechanism definitions                        |
 
 ---
 
 ## Key Capabilities
 
 ### 1. NASA-7 Thermochemical Polynomials
+
 - Evaluates two-range (low-$T$ / high-$T$) 7-coefficient NASA polynomials for every species:
   $$\frac{C_p^\circ(T)}{R} = a_0 + a_1 T + a_2 T^2 + a_3 T^3 + a_4 T^4$$
   $$\frac{H^\circ(T)}{RT} = a_0 + \frac{a_1}{2}T + \frac{a_2}{3}T^2 + \frac{a_3}{4}T^3 + \frac{a_4}{5}T^4 + \frac{a_5}{T}$$
@@ -12468,11 +12481,13 @@ CANONICAL URL: https://modelscript.org/languages/cantera
 - Verifies continuity of $C_p^\circ$, $H^\circ$, and $S^\circ$ across the midpoint splitting temperature $T_{\text{mid}}$.
 
 ### 2. Elementary, Three-Body & Troe Falloff Kinetics
+
 - Computes forward and reverse rate constants via modified Arrhenius expressions and thermodynamic equilibrium constants $K_c(T) = \exp(-\Delta G^\circ / RT)$:
   $$k_f(T) = A \, T^\beta \exp\!\left(-\frac{E_a}{RT}\right)$$
 - Supports third-body collision efficiencies (`+ M`) and pressure-dependent Lindemann / Troe falloff formulations.
 
 ### 3. Batch Reactor ODE Solver & DAE Lowering
+
 - Integrates constant-volume or constant-pressure gas-phase reactor species and temperature evolution and lowers the kinetic network into `@modelscript/runtime`'s `DAEBuilder` arena, Modelica 3.x, or SBML.
 
 ---
@@ -12518,25 +12533,28 @@ CANONICAL URL: https://modelscript.org/languages/phreeqc
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.pqi` | PHREEQC Input Deck | Keyword data blocks (`TITLE`, `SOLUTION`, `EQUILIBRIUM_PHASES`, `REACTION`, `KINETICS`, `MIX`, `SELECTED_OUTPUT`, `END`) |
-| `.dat` | Thermodynamic Database | Aqueous species (`SOLUTION_SPECIES`) and mineral solubility (`PHASES`) database definitions |
+| Extension | Format                 | Description                                                                                                              |
+| :-------- | :--------------------- | :----------------------------------------------------------------------------------------------------------------------- |
+| `.pqi`    | PHREEQC Input Deck     | Keyword data blocks (`TITLE`, `SOLUTION`, `EQUILIBRIUM_PHASES`, `REACTION`, `KINETICS`, `MIX`, `SELECTED_OUTPUT`, `END`) |
+| `.dat`    | Thermodynamic Database | Aqueous species (`SOLUTION_SPECIES`) and mineral solubility (`PHASES`) database definitions                              |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Ionic Strength & Activity Coefficients
+
 - Computes solution ionic strength $I = \frac{1}{2}\sum_i m_i z_i^2$, charge balance error (% CBE), and ion activity coefficients $\gamma_i$ using the **Davies** or **WATEQ Extended Debye-Hückel** equation:
   $$\log_{10} \gamma_i = -A z_i^2 \left(\frac{\sqrt{I}}{1 + \sqrt{I}} - 0.3 I\right)$$
 
 ### 2. Mineral Saturation Indices ($\text{SI}$) & Equilibrium Phases
+
 - Evaluates Ion Activity Products ($\text{IAP}$) and mineral Saturation Indices across carbonate, sulfate, and silicate phases (`Calcite`, `Dolomite`, `Gypsum`, `Anhydrite`, `Barite`, `Halite`, `Quartz`):
   $$\text{SI} = \log_{10}\!\left(\frac{\text{IAP}}{K_{\text{sp}}(T)}\right)$$
   identifying supersaturated scaling hazards ($\text{SI} > 0$) and undersaturated dissolution regimes ($\text{SI} < 0$).
 
 ### 3. DAE Arena Lowering & Modelica Projection
+
 - Lowers aqueous mass-action, charge-balance, and kinetic mineral dissolution/precipitation equations into `@modelscript/runtime`'s `DAEBuilder` arena and projects them into Modelica 3.x hydrochemical blocks.
 
 ---
@@ -12582,20 +12600,22 @@ CANONICAL URL: https://modelscript.org/languages/smiles
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.smi`, `.smiles` | OpenSMILES | Line notation encoding molecular graphs, ring closures, branches, stereochemistry (`@`/`@@`), and aromatic atoms |
-| `.smarts` | SMARTS | Substructure query patterns for functional-group matching |
-| `.mol`, `.sdf` | MDL V2000 / SDF | 2D/3D atomic coordinate tables, bond orders, and associated structure-data property tags (`> <Property>`) |
+| Extension         | Format          | Description                                                                                                      |
+| :---------------- | :-------------- | :--------------------------------------------------------------------------------------------------------------- |
+| `.smi`, `.smiles` | OpenSMILES      | Line notation encoding molecular graphs, ring closures, branches, stereochemistry (`@`/`@@`), and aromatic atoms |
+| `.smarts`         | SMARTS          | Substructure query patterns for functional-group matching                                                        |
+| `.mol`, `.sdf`    | MDL V2000 / SDF | 2D/3D atomic coordinate tables, bond orders, and associated structure-data property tags (`> <Property>`)        |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Molecular Graph Topology & Valence Verification
+
 - Constructs typed molecular graphs with implicit/explicit hydrogen counting, ring-closure matching (including `%nn` two-digit rings), disconnected salts/mixtures (`.`), formal charges, isotopes, and Kekulé/aromatic conjugation.
 
 ### 2. Joback & Reid Group-Contribution Property Estimator
+
 - Automatically decomposes molecular graphs into functional groups (`-CH3`, `-CH2-`, `>C=O`, `-OH`, `-COOH`, `-NH2`, aromatic ring carbons, halogens) to estimate pure-component physical properties:
   - Normal boiling point $T_b$ and freezing point $T_m$ ($\text{K}$)
   - Critical temperature $T_c$ ($\text{K}$), critical pressure $P_c$ ($\text{bar}$), and critical molar volume $V_c$ ($\text{cm}^3/\text{mol}$)
@@ -12603,6 +12623,7 @@ CANONICAL URL: https://modelscript.org/languages/smiles
   - Ideal-gas heat capacity polynomial $C_p^\circ(T) = A + BT + CT^2 + DT^3$ and Lee-Kesler acentric factor $\omega$.
 
 ### 3. Aspen Plus, Modelica & DAE Lowering
+
 - Projects estimated critical and thermochemical parameters directly into **Aspen Plus** pure-component property cards (`smilesToAspen`), **Modelica** media records (`smilesToModelica`), and `@modelscript/runtime`'s `DAEBuilder`.
 
 ---
@@ -12742,15 +12763,16 @@ CANONICAL URL: https://modelscript.org/languages/antimony
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.ant` | Antimony Model | Modular text language (`model ... end`) for biochemical reactions, compartments, species, events, and submodel imports |
+| Extension | Format         | Description                                                                                                            |
+| :-------- | :------------- | :--------------------------------------------------------------------------------------------------------------------- |
+| `.ant`    | Antimony Model | Modular text language (`model ... end`) for biochemical reactions, compartments, species, events, and submodel imports |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Human-Readable Biochemical Reactions & Rules
+
 - Parses concise Antimony syntax:
   - **Compartments & Species**: `compartment cell = 1.0; species S1 in cell = 10.0, $S_ext in cell = 5.0;` (including boundary species `$`).
   - **Reactions**: `J1: S1 + E -> ES; k_on * S1 * E - k_off * ES;` with named reaction IDs, stoichiometric weights, and arbitrary kinetic rate laws.
@@ -12758,9 +12780,11 @@ CANONICAL URL: https://modelscript.org/languages/antimony
   - **State Events**: `E1: at (S1 < 0.5): S1 = 10.0, k1 = 0.2;`.
 
 ### 2. Modular Composition (`model` & `is`)
+
 - Supports reusable `model` definitions instantiated as submodels (`A: Oscillator();`) with shared variable bindings (`A.S1 is Cytosol_S1;`) and unit declarations (`unit mM = 1e-3 mole / litre;`).
 
 ### 3. RK4 Solver, DAE Lowering & SBML / Modelica Projection
+
 - Simulates coupled reaction networks and state events (`solveAntimony`), lowers equations into `@modelscript/runtime`'s `DAEBuilder` arena, and exports to **SBML Level 3 Core** (`antimonyToSbml`) and **Modelica 3.x** (`antimonyToModelica`).
 
 ---
@@ -12806,15 +12830,16 @@ CANONICAL URL: https://modelscript.org/languages/bngl
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.bngl` | BioNetGen Model | Block-structured rule-based biochemical specification (`parameters`, `molecule types`, `seed species`, `observables`, `reaction rules`, `actions`) |
+| Extension | Format          | Description                                                                                                                                        |
+| :-------- | :-------------- | :------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.bngl`   | BioNetGen Model | Block-structured rule-based biochemical specification (`parameters`, `molecule types`, `seed species`, `observables`, `reaction rules`, `actions`) |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Site-Specific Molecule Types & Bond Graphs
+
 - Parses structured BNGL blocks:
   - **`molecule types`**: Multi-component proteins with internal phosphorylation/conformational states (e.g., `EGFR(L,CR1,Y1068~U~P)`).
   - **`seed species`**: Initial molecular complexes with explicit site bonds (`!1`, `!+`, `!?`, `!.`).
@@ -12822,6 +12847,7 @@ CANONICAL URL: https://modelscript.org/languages/bngl
   - **`reaction rules`**: Unidirectional (`->`) and bidirectional (`<->`) site-transformation and binding rules without combinatorial manual enumeration.
 
 ### 2. Automated Network Expansion & ODE Simulation
+
 - Iteratively applies reaction rules to seed species to generate the reachable species and elementary reaction network (`generateNetwork` / `solveBngl`).
 - Integrates species concentration trajectories and observable outputs, and lowers the expanded network into `@modelscript/runtime`'s `DAEBuilder` arena, **SBML** (`bnglToSbml`), and **Modelica 3.x** (`bnglToModelica`).
 
@@ -12868,27 +12894,30 @@ CANONICAL URL: https://modelscript.org/languages/sbol
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
+| Extension               | Format       | Description                                                                                                      |
+| :---------------------- | :----------- | :--------------------------------------------------------------------------------------------------------------- |
 | `.sbol`, `.rdf`, `.xml` | SBOL RDF/XML | Standard RDF/XML serialization of `sbol:Component`, `sbol:Sequence`, `sbol:SubComponent`, and `sbol:Interaction` |
-| `.ttl` | SBOL3 Turtle | Compact RDF Turtle representation of SBOL3 genetic circuits and sequence constraints |
+| `.ttl`                  | SBOL3 Turtle | Compact RDF Turtle representation of SBOL3 genetic circuits and sequence constraints                             |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Genetic Parts, Sequence Constraints & Interactions
+
 - Parses `Component` definitions typed with Sequence Ontology (`SO`) roles:
   - **Promoter (`SO:0000167`)**, **RBS (`SO:0000139`)**, **CDS (`SO:0000316`)**, **Terminator (`SO:0000141`)**, and **Engineered Region (`SO:0000804`)**.
 - Extracts `Interaction` and `Participation` graphs typed with Systems Biology Ontology (`SBO`) terms:
   - **Genetic Production (`SBO:0000589`)**, **Transcriptional Stimulation (`SBO:0000170`)**, **Transcriptional Inhibition (`SBO:0000169`)**, and **Degradation (`SBO:0000179`)**.
 
 ### 2. Hill-Function Genetic Circuit ODE Solver
+
 - Automatically synthesizes and integrates coupled mRNA and protein concentration ODEs using cooperative Hill kinetics:
   $$\frac{d[P_i]}{dt} = \alpha_{0,i} + \alpha_i \frac{[A]^n}{K_A^n + [A]^n} \cdot \frac{K_R^m}{K_R^m + [R]^m} - \gamma_i [P_i]$$
   supporting toggle switches, repressilators, and inducible biosensors.
 
 ### 3. DAE Lowering & SBML / Modelica Projection
+
 - Lowers synthetic genetic circuit dynamics into `@modelscript/runtime`'s `DAEBuilder` arena and exports to **SBML Level 3** (`sbolToSbml`) and **Modelica 3.x** (`sbolToModelica`).
 
 ---
@@ -12934,8 +12963,8 @@ CANONICAL URL: https://modelscript.org/languages/sedml
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
+| Extension        | Format         | Description                                                                                                          |
+| :--------------- | :------------- | :------------------------------------------------------------------------------------------------------------------- |
 | `.sedml`, `.xml` | COMBINE SED-ML | XML specification of `listOfModels`, `listOfSimulations`, `listOfTasks`, `listOfDataGenerators`, and `listOfOutputs` |
 
 ---
@@ -12943,12 +12972,14 @@ CANONICAL URL: https://modelscript.org/languages/sedml
 ## Key Capabilities
 
 ### 1. Reproducible Simulation Protocols & KiSAO Solvers
+
 - Parses SED-ML elements:
   - **Models & Changes (`model`, `changeAttribute`, `computeChange`)**: Base model references (SBML, CellML, Modelica) and parameter overrides.
   - **Simulations (`uniformTimeCourse`, `oneStep`, `steadyState`)**: Initial time, output start/end times, number of points, and **KiSAO** algorithm identifiers (`KISAO:0000019` CVODE, `KISAO:0000032` RK4, `KISAO:0000029` Gillespie SSA).
   - **Tasks & Data Generators (`task`, `repeatedTask`, `dataGenerator`)**: MathML/infix normalization and scaling of raw simulation variables for `plot2D`, `plot3D`, and `report` outputs.
 
 ### 2. Protocol Execution & Modelica Experiment Projection
+
 - Executes time-course and parameter-sweep tasks (`executeSedml`), lowers the experiment schedule into `@modelscript/runtime`'s `DAEBuilder` arena, and generates Modelica models annotated with `annotation(experiment(StartTime=..., StopTime=..., NumberOfIntervals=..., Tolerance=...))` (`sedmlToModelica`).
 
 ---
@@ -12994,24 +13025,27 @@ CANONICAL URL: https://modelscript.org/languages/nmtran
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.ctl` | NMTRAN Control Stream | NONMEM control file (`$PROBLEM`, `$INPUT`, `$DATA`, `$SUBROUTINES`, `$PK`, `$DES`, `$ERROR`, `$THETA`, `$OMEGA`, `$SIGMA`, `$ESTIMATION`) |
-| `.mod` | PsN / NONMEM Model | Perl-speaks-NONMEM (PsN) and Pirana pharmacometric model file |
+| Extension | Format                | Description                                                                                                                               |
+| :-------- | :-------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| `.ctl`    | NMTRAN Control Stream | NONMEM control file (`$PROBLEM`, `$INPUT`, `$DATA`, `$SUBROUTINES`, `$PK`, `$DES`, `$ERROR`, `$THETA`, `$OMEGA`, `$SIGMA`, `$ESTIMATION`) |
+| `.mod`    | PsN / NONMEM Model    | Perl-speaks-NONMEM (PsN) and Pirana pharmacometric model file                                                                             |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Standard PREDPP Compartmental Library (`ADVAN`) & General ODEs (`$DES`)
+
 - Parses `$SUBROUTINES` (`ADVAN1` 1-compartment IV bolus, `ADVAN2` 1-compartment oral first-order absorption, `ADVAN3`/`ADVAN4` 2-compartment, `ADVAN11`/`ADVAN12` 3-compartment, and `ADVAN6`/`ADVAN13` general non-linear differential equations `$DES` with `DADT(i)`).
 - Evaluates typical parameter transformations in `$PK` (e.g., `CL = THETA(1) * EXP(ETA(1))`, `V = THETA(2)`) and proportional/additive residual error models in `$ERROR`.
 
 ### 2. Multi-Dose Regimen Simulation & Exposure Metrics
+
 - Simulates intravenous bolus, zero-order infusion, and extravascular oral dosing regimens (`II` inter-dose interval, `ADDL` additional doses) and automatically computes clinical exposure metrics:
   $$\text{AUC}_{0\to t} = \int_0^t C_p(\tau)\,d\tau, \qquad t_{1/2} = \frac{\ln 2}{k_e}, \qquad C_{\max}, \quad T_{\max}$$
 
 ### 3. DAE Lowering & Modelica / SBML Projection
+
 - Lowers PK/PD compartmental differential equations into `@modelscript/runtime`'s `DAEBuilder` arena and projects them into **Modelica 3.x** (`nmtranToModelica`) and **SBML** (`nmtranToSbml`).
 
 ---
@@ -13057,23 +13091,26 @@ CANONICAL URL: https://modelscript.org/languages/pdb
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.pdb`, `.ent` | Legacy PDB Format | Fixed-column records (`HEADER`, `TITLE`, `SEQRES`, `HELIX`, `SHEET`, `SSBOND`, `ATOM`, `HETATM`, `CONECT`, `END`) |
-| `.cif`, `.mmcif` | PDBx / mmCIF | Macromolecular Crystallographic Information File (`data_`, `loop_`, `_atom_site.*`) |
+| Extension        | Format            | Description                                                                                                       |
+| :--------------- | :---------------- | :---------------------------------------------------------------------------------------------------------------- |
+| `.pdb`, `.ent`   | Legacy PDB Format | Fixed-column records (`HEADER`, `TITLE`, `SEQRES`, `HELIX`, `SHEET`, `SSBOND`, `ATOM`, `HETATM`, `CONECT`, `END`) |
+| `.cif`, `.mmcif` | PDBx / mmCIF      | Macromolecular Crystallographic Information File (`data_`, `loop_`, `_atom_site.*`)                               |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Atomic Coordinates, Secondary Structure & Disulfide Bridges
+
 - Extracts multi-chain 3D atomic coordinates $(x, y, z)$, occupancy, isotropic temperature factors ($B$-factors), $\alpha$-helices (`HELIX`), $\beta$-sheets (`SHEET`), disulfide bonds (`SSBOND`), and ligand connectivity (`CONECT`).
 - Computes backbone torsion angles $(\phi, \psi, \omega)$, center of mass, and mass-weighted radius of gyration $R_g$.
 
 ### 2. Gaussian Network Model (GNM) Elastic Normal Modes
+
 - Constructs the $C_\alpha$ Kirchhoff contact matrix $\boldsymbol{\Gamma}$ ($r_c = 7.0\text{ \AA}$) to compute theoretical residue mean-square fluctuations $\langle (\Delta \mathbf{R}_i)^2 \rangle \propto [\boldsymbol{\Gamma}^{-1}]_{ii}$ and correlate them against crystallographic $B$-factors.
 
 ### 3. DAE Arena Lowering & 3D CSG / Modelica Export
+
 - Lowers coarse-grained $C_\alpha$ harmonic spring networks into `@modelscript/runtime`'s `DAEBuilder` arena and projects structures into **Modelica** (`pdbToModelica`) and **OpenSCAD** 3D ball-and-stick CSG geometry (`pdbToScad`).
 
 ---
@@ -13119,24 +13156,27 @@ CANONICAL URL: https://modelscript.org/languages/genbank
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
+| Extension                 | Format                 | Description                                                                                           |
+| :------------------------ | :--------------------- | :---------------------------------------------------------------------------------------------------- |
 | `.gb`, `.gbk`, `.genbank` | NCBI GenBank Flat File | Annotated nucleotide sequence record (`LOCUS`, `DEFINITION`, `ACCESSION`, `FEATURES`, `ORIGIN`, `//`) |
-| `.fasta`, `.fa`, `.fna` | FASTA Sequence | Multi-sequence nucleotide or peptide FASTA records (`>header`) |
+| `.fasta`, `.fa`, `.fna`   | FASTA Sequence         | Multi-sequence nucleotide or peptide FASTA records (`>header`)                                        |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Annotated Feature Tables & Location Operators
+
 - Parses `LOCUS` topology (`linear` / `circular`), molecular type (`DNA`, `RNA`, `mRNA`), and `FEATURES` annotations (`CDS`, `promoter`, `RBS`, `terminator`, `gene`, `rep_origin`, `misc_feature`) with `complement(...)`, `join(...)`, and `/translation` qualifiers.
 
 ### 2. Sequence Analysis, ORFs, Restriction Maps & CAI
+
 - **6-Frame ORF Finder**: Identifies start (`ATG`, `GTG`, `TTG`) to stop (`TAA`, `TAG`, `TGA`) open reading frames across forward and reverse-complement strands.
 - **Restriction Enzyme Mapper**: Computes cleavage coordinates and fragment lengths for common Type II endonucleases (`EcoRI`, `BamHI`, `HindIII`, `NotI`, `XbaI`, `SpeI`, `PstI`, `BsaI`).
-- **GC Content, Melting Temperature ($T_m$) & CAI**: Evaluates GC fraction, primer $T_m$, and *E. coli* / mammalian codon usage bias.
+- **GC Content, Melting Temperature ($T_m$) & CAI**: Evaluates GC fraction, primer $T_m$, and _E. coli_ / mammalian codon usage bias.
 
 ### 3. SBOL3, Modelica & DAE Lowering
+
 - Projects annotated `CDS`, `promoter`, `RBS`, and `terminator` features into **SBOL3** genetic circuit components (`genbankToSbol`), **Modelica 3.x** gene expression ODEs (`genbankToModelica`), and `@modelscript/runtime`'s `DAEBuilder`.
 
 ---
@@ -13182,8 +13222,8 @@ CANONICAL URL: https://modelscript.org/languages/cellml
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
+| Extension         | Format                 | Description                                                                                                          |
+| :---------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------- |
 | `.cellml`, `.xml` | CellML 1.0 / 1.1 / 2.0 | Modular XML specification of `units`, `component`, `variable`, MathML `math` ODEs, `connection`, and `encapsulation` |
 
 ---
@@ -13191,14 +13231,17 @@ CANONICAL URL: https://modelscript.org/languages/cellml
 ## Key Capabilities
 
 ### 1. Modular Components, Encapsulation & 7-Base SI Units
+
 - Parses `<units>` definitions (`prefix`, `multiplier`, `exponent` over SI base units `ampere`, `candela`, `kelvin`, `kilogram`, `metre`, `mole`, `second`) and verifies dimensional homogeneity across `<map_variables>` component connections.
 - Enforces `public_interface` and `private_interface` (`in` / `out` / `none`) encapsulation rules.
 
 ### 2. Cardiac Action Potential & Microvascular Hemodynamics Solver
+
 - Integrates membrane voltage $V_m$ and ionic gating variables ($m, h, n, d, f, x_r$) across Hodgkin-Huxley, Noble, Luo-Rudy, and ten Tusscher cardiac electrophysiology models alongside 0D Windkessel arterial/venous perfusion loops:
   $$C_m \frac{dV_m}{dt} = -\left(I_{\text{Na}} + I_{\text{K}} + I_{\text{CaL}} + I_{\text{leak}} - I_{\text{stim}}(t)\right), \qquad \frac{dy}{dt} = \alpha_y(V_m)(1 - y) - \beta_y(V_m)y$$
 
 ### 3. DAE Arena Lowering & Modelica / SBML Projection
+
 - Lowers modular CellML equations into `@modelscript/runtime`'s `DAEBuilder` arena and projects models into **Modelica 3.x** (`cellmlToModelica`) and **SBML** (`cellmlToSbml`).
 
 ---
@@ -13251,22 +13294,25 @@ CANONICAL URL: https://modelscript.org/languages/opensim
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.osim` | OpenSim Document | XML specification of `BodySet`, `JointSet`, `ForceSet` (Hill muscles, ligaments, coordinate actuators), `MarkerSet`, and `WrapObjectSet` |
+| Extension | Format           | Description                                                                                                                              |
+| :-------- | :--------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| `.osim`   | OpenSim Document | XML specification of `BodySet`, `JointSet`, `ForceSet` (Hill muscles, ligaments, coordinate actuators), `MarkerSet`, and `WrapObjectSet` |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Multibody Skeletal Kinematics & Wrapping Surfaces
+
 - Parses `OpenSimDocument` (versions 3.x & 4.x) including rigid segments (`Body`), anatomical joints (`PinJoint`, `SliderJoint`, `CustomJoint`, `WeldJoint`, `FreeJoint`), generalized coordinates (`Coordinate` with range-of-motion bounds), motion-capture fiducial markers (`MarkerSet`), and cylindrical/ellipsoidal muscle wrapping surfaces (`WrapCylinder`, `WrapSphere`, `WrapEllipsoid`).
 
 ### 2. Hill-Type Muscle-Tendon Activation & Contraction Solver
+
 - Integrates first-order neural excitation-to-activation dynamics ($u(t) \to a(t)$) coupled with active force-length $f_L(\tilde{l}^M)$, force-velocity $f_V(\tilde{v}^M)$, passive parallel elastic $f_{PE}(\tilde{l}^M)$, and pennation angle $\alpha$ tendon equilibrium:
   $$\frac{da}{dt} = \frac{u - a}{\tau(a, u)}, \qquad F^T = F_0^M \left(a \, f_L(\tilde{l}^M) f_V(\tilde{v}^M) + f_{PE}(\tilde{l}^M)\right)\cos\alpha$$
 
 ### 3. DAE Lowering & Modelica / URDF Projection
+
 - Lowers skeletal equations of motion and muscle-tendon ODEs into `@modelscript/runtime`'s `DAEBuilder` arena and projects models to **Modelica.Mechanics.MultiBody** (`openSimToModelica`) and **ROS 2 URDF** (`openSimToUrdf`).
 
 ---
@@ -13319,16 +13365,17 @@ CANONICAL URL: https://modelscript.org/languages/febio
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.feb` | FEBio Specification | XML specification of `Material`, `Mesh` / `Geometry`, `Boundary`, `Loads`, `Contact`, and `Step` blocks |
-| `.scn` | SOFA Scene Graph | Simulation Open Framework Architecture (`Node`, `MechanicalObject`, `TetrahedronFEMForceField`, `CollisionPipeline`) |
+| Extension | Format              | Description                                                                                                          |
+| :-------- | :------------------ | :------------------------------------------------------------------------------------------------------------------- |
+| `.feb`    | FEBio Specification | XML specification of `Material`, `Mesh` / `Geometry`, `Boundary`, `Loads`, `Contact`, and `Step` blocks              |
+| `.scn`    | SOFA Scene Graph    | Simulation Open Framework Architecture (`Node`, `MechanicalObject`, `TetrahedronFEMForceField`, `CollisionPipeline`) |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Hyperelastic, Viscoelastic & Biphasic Constitutive Models
+
 - Parses and evaluates soft-tissue strain energy density functions $W(\mathbf{C})$ across biological constitutive laws:
   - **Neo-Hookean & Mooney-Rivlin**: $W = C_1(I_1 - 3) + C_2(I_2 - 3) + \frac{1}{2}K(\ln J)^2$
   - **Ogden Hyperelastic**: $W = \sum_{p=1}^N \frac{\mu_p}{\alpha_p}\left(\lambda_1^{\alpha_p} + \lambda_2^{\alpha_p} + \lambda_3^{\alpha_p} - 3\right)$
@@ -13336,6 +13383,7 @@ CANONICAL URL: https://modelscript.org/languages/febio
 - Enforces **Drucker stability** ($\mu_p \alpha_p > 0$), positive bulk/shear moduli, and positive element Jacobians ($\det \mathbf{J} > 0$).
 
 ### 2. CalculiX FEA, Modelica & DAE Lowering
+
 - Solves Principal stretches, Cauchy stresses, and strain energy densities (`solveHyperelasticMechanics`), exports to **CalculiX / Abaqus `.inp`** (`febioToCalculixInp`) and **Modelica** (`febioToModelica`), and lowers lumped compliance dynamics into `DAEBuilder`.
 
 ---
@@ -13388,25 +13436,28 @@ CANONICAL URL: https://modelscript.org/languages/dicom-rt
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.rtplan` | DICOM RT Plan | External-beam photon/electron/proton beam geometry, gantry/couch/collimator angles, MLC control points, and fraction groups |
-| `.rtstruct` | DICOM RT Structure Set | 3D anatomical contours for Planning Target Volumes (`PTV`, `CTV`, `GTV`) and Organs at Risk (`OAR`) |
-| `.rtdose` | DICOM RT Dose | 3D dose grid arrays and cumulative/differential Dose-Volume Histogram (`DVH`) curves |
+| Extension   | Format                 | Description                                                                                                                 |
+| :---------- | :--------------------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| `.rtplan`   | DICOM RT Plan          | External-beam photon/electron/proton beam geometry, gantry/couch/collimator angles, MLC control points, and fraction groups |
+| `.rtstruct` | DICOM RT Structure Set | 3D anatomical contours for Planning Target Volumes (`PTV`, `CTV`, `GTV`) and Organs at Risk (`OAR`)                         |
+| `.rtdose`   | DICOM RT Dose          | 3D dose grid arrays and cumulative/differential Dose-Volume Histogram (`DVH`) curves                                        |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Cumulative DVH, ICRU 83 Homogeneity & Paddick Conformity
+
 - Evaluates $D_{98\%}$, $D_{95\%}$, $D_{50\%}$, $D_{2\%}$, $D_{\text{mean}}$, and $V_{x\text{Gy}}$ across Target and OAR structures:
   $$\text{HI}_{\text{ICRU 83}} = \frac{D_{2\%} - D_{98\%}}{D_{50\%}}, \qquad \text{CI}_{\text{Paddick}} = \frac{(TV_{\text{PIV}})^2}{TV \times PIV}$$
 
 ### 2. Linear-Quadratic Biological Dose ($\text{BED}$ & $\text{EQD2}$)
+
 - Computes Biologically Effective Dose and Equivalent Dose in $2\text{ Gy}$ fractions for tumor targets ($\alpha/\beta \approx 10\text{ Gy}$) and late-responding normal tissues ($\alpha/\beta \approx 2\text{–}3\text{ Gy}$):
   $$\text{BED} = n d \left(1 + \frac{d}{\alpha/\beta}\right), \qquad \text{EQD2} = \frac{\text{BED}}{1 + \frac{2}{\alpha/\beta}}$$
 
 ### 3. QUANTEC Safety Verification & OpenSCAD / SysML v2 Projections
+
 - Checks spinal cord, brainstem, optic chiasm, parotid, lung, heart, rectum, and bladder doses against clinical **QUANTEC** limits, verifies MLC leaf bank non-interdigitation/overtravel, and projects beam apertures to **OpenSCAD** (`dicomRtToScad`) and **SysML v2** (`dicomRtToSysML2`).
 
 ---
@@ -13459,22 +13510,25 @@ CANONICAL URL: https://modelscript.org/languages/topas
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
+| Extension        | Format               | Description                                                                                                                                             |
+| :--------------- | :------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `.topas`, `.txt` | TOPAS Parameter File | Typed Geant4 parameter system (`s:` string, `d:` double with units, `i:` integer, `b:` boolean, `dv:`/`sv:` vectors) for `Ge/`, `So/`, `Sc/`, and `Ph/` |
-| `.mac` | GATE / Geant4 Macro | Command-stream macro (`/gate/world/daughters/...`, `/gate/source/...`, `/gate/actor/...`) for medical physics Monte Carlo |
+| `.mac`           | GATE / Geant4 Macro  | Command-stream macro (`/gate/world/daughters/...`, `/gate/source/...`, `/gate/actor/...`) for medical physics Monte Carlo                               |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Typed Geometry (`Ge/`), Beam Sources (`So/`) & Dose Scorers (`Sc/`)
+
 - Parses hierarchical CSG beamline components (`TsBox`, `TsCylinder`, `TsSphere`, `TsRangeModulator`, `TsPropeller`, `TsMultiLeafCollimator`, water phantoms, and patient CT volumes), particle sources (`Proton`, `Carbon12`, `Electron`, `Photon`), and `DoseToMedium` / `LETd` scorers.
 
 ### 2. Analytical Bortfeld Bragg Peak & Range Calculation
+
 - Computes the continuous-slowing-down range $R_0 = \alpha E_0^p$ in water ($\alpha \approx 0.0022\text{ cm}\cdot\text{MeV}^{-p}$, $p \approx 1.77$ for protons), distal $80\%$ dose falloff ($R_{80}$), peak-to-plateau ratio, and full depth-dose curves $D(z)$ (`computeBraggPeakDepthDose`).
 
 ### 3. 3D Nozzle CSG & Modelica Projections
+
 - Projects TOPAS/GATE treatment nozzles and water phantoms into **OpenSCAD** 3D CSG geometry (`topasToScad`) and **Modelica** beamline dosimetry models (`topasToModelica`).
 
 ---
@@ -13527,23 +13581,26 @@ CANONICAL URL: https://modelscript.org/languages/nifti
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.nii` | NIfTI-1 / NIfTI-2 | Neuroimaging & clinical volumetric format encoding 3D/4D voxel grids, `pixdim` spacings, and `qform`/`sform` RAS affines |
-| `.nrrd`, `.nhdr` | Teem / 3D Slicer NRRD | Nearly Raw Raster Data header/volume with `space directions`, `space origin`, and anatomical segmentation labelmaps |
+| Extension        | Format                | Description                                                                                                              |
+| :--------------- | :-------------------- | :----------------------------------------------------------------------------------------------------------------------- |
+| `.nii`           | NIfTI-1 / NIfTI-2     | Neuroimaging & clinical volumetric format encoding 3D/4D voxel grids, `pixdim` spacings, and `qform`/`sform` RAS affines |
+| `.nrrd`, `.nhdr` | Teem / 3D Slicer NRRD | Nearly Raw Raster Data header/volume with `space directions`, `space origin`, and anatomical segmentation labelmaps      |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Voxel-to-RAS Affine Geometry & Orientation Auditing
+
 - Parses voxel dimensions $(N_x, N_y, N_z, N_t)$, millimeter spacings $(\Delta x, \Delta y, \Delta z)$, unit quaternion parameters $(b, c, d)$ with `qfac` $\in \{-1, +1\}$, and $4 \times 4$ `sform` homogeneous transformation matrices $\mathbf{T}_{\text{voxel}\to\text{RAS}}$.
 - Detects singular affine matrices ($\det(\mathbf{M}_{3\times 3}) = 0$), left-right radiological/neurological handedness mismatches between `qform` and `sform`, and anisotropic slice gaps.
 
 ### 2. Segmentation Labelmaps & Marching Tetrahedra Iso-Surfacing
+
 - Extracts organ and tumor volumes ($\text{mm}^3$ / $\text{cm}^3$), bounding boxes, and centroids for segmented ROIs, and triangulates watertight 3D surface meshes (`extractIsoSurfaceMesh`).
 
 ### 3. CAD Reconstruction (STEP AP242 & OpenSCAD)
+
 - Projects extracted anatomical iso-surfaces directly into **ISO 10303-21 STEP** B-Rep shells (`niftiToStep`) and **OpenSCAD** `polyhedron(...)` CSG modules (`niftiToScad`) for patient-specific implant and surgical guide design.
 
 ---
@@ -13596,24 +13653,27 @@ CANONICAL URL: https://modelscript.org/languages/three-mf
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.3mf` | ISO/ASTM 52915 3MF | 3D Manufacturing Format (`<model>`, `<resources>`, `<mesh>`, `<vertices>`, `<triangles>`, `<build>`, and surgical guide/implant metadata) |
+| Extension | Format             | Description                                                                                                                               |
+| :-------- | :----------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| `.3mf`    | ISO/ASTM 52915 3MF | 3D Manufacturing Format (`<model>`, `<resources>`, `<mesh>`, `<vertices>`, `<triangles>`, `<build>`, and surgical guide/implant metadata) |
 
 ---
 
 ## Key Capabilities
 
 ### 1. Watertight 2-Manifold Topology & Signed Divergence Volume
+
 - Constructs the mesh half-edge incidence graph to verify that every triangle edge is shared by exactly two oppositely oriented faces (zero boundary holes, zero non-manifold edges, zero degenerate zero-area triangles).
 - Computes exact signed divergence volume, surface area, connected shells, genus $g$, and Euler characteristic $\chi = V - E + F = 2(1 - g)$.
 
 ### 2. Surgical Cutting Guide & Drill-Sleeve Verification
+
 - Validates patient-specific osteotomy cutting guides and pedicle/dental drill sleeves:
   - Enforces minimum structural wall thickness ($\ge 1.2\text{ mm}$ for biocompatible PA12 / Formlabs BioMed resins) and positive drill-guide sleeve radial wall thickness ($r_{\text{outer}} - r_{\text{inner}} \ge 1.0\text{ mm}$).
   - Verifies unit-normalized osteotomy cutting-plane normals ($\|\mathbf{n}\| = 1$) and drill trajectory vectors.
 
 ### 3. ISO 10303-21 STEP & OpenSCAD Export
+
 - Exports verified surgical guides and implants to **ISO 10303-21 STEP** (`threeMfToStep`) and **OpenSCAD** (`threeMfToScad`).
 
 ---
@@ -13666,24 +13726,27 @@ CANONICAL URL: https://modelscript.org/languages/igtl
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
+| Extension           | Format              | Description                                                                                                                                                                             |
+| :------------------ | :------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `.plus.xml`, `.xml` | PLUS Toolkit Config | `PlusConfiguration` XML defining optical/EM trackers (`DataCollection`), `<CoordinateDefinitions>` $SE(3)$ transforms, pivot/phantom calibration, and `<PlusOpenIGTLinkServer>` streams |
-| `.igtl` | OpenIGTLink Stream | Surgical navigation `TRANSFORM`, `POSITION`, `TRACKING_DATA`, `IMAGE`, and `STATUS` message definitions |
+| `.igtl`             | OpenIGTLink Stream  | Surgical navigation `TRANSFORM`, `POSITION`, `TRACKING_DATA`, `IMAGE`, and `STATUS` message definitions                                                                                 |
 
 ---
 
 ## Key Capabilities
 
 ### 1. $SE(3)$ Coordinate Frame Graph & Matrix Orthogonality
+
 - Parses $4 \times 4$ homogeneous transformations $\mathbf{T}_{\text{From}\to\text{To}} \in SE(3)$ across surgical coordinate frames (`Tracker`, `Patient`, `Reference`, `Stylus`, `StylusTip`, `Probe`, `UltrasoundImage`, `RAS`) and computes composite chains via breadth-first graph traversal with automatic matrix inversion $\mathbf{T}^{-1} = \begin{bmatrix} \mathbf{R}^\top & -\mathbf{R}^\top\mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix}$.
 
 ### 2. Stylus Pivot Calibration & Fitzpatrick Target Registration Error ($\text{TRE}$)
+
 - Solves least-squares spherical pivot calibration (`solveTransformChainAndPivot`) to determine stylus tip offset $\mathbf{p}_{\text{tip}}$, pivot point $\mathbf{p}_{\text{pivot}}$, and RMS calibration residual ($< 1.5\text{ mm}$).
 - Evaluates expected surgical Target Registration Error at target $\mathbf{r}$ from $N$ fiducial markers with Fiducial Localization Error ($\text{FLE}$) using **Fitzpatrick's formula**:
   $$\langle \text{TRE}^2(\mathbf{r}) \rangle = \frac{\langle \text{FLE}^2 \rangle}{N}\left(1 + \frac{1}{3}\sum_{k=1}^{3}\frac{d_k^2}{f_k^2}\right)$$
 
 ### 3. ROS 2 URDF & Modelica Projections
+
 - Projects surgical tracker coordinate trees into **ROS 2 URDF** (`igtlToUrdf`) and **Modelica 3.x** (`igtlToModelica`).
 
 ---
@@ -16364,17 +16427,17 @@ ModelScript provides first-class polyglot compilation, static safety verificatio
 
 ## 1. Domain Package Matrix
 
-| Package | Clinical Domain | File Extensions | Diagnostic Range | Primary Projections |
-| :--- | :--- | :--- | :--- | :--- |
-| `@modelscript/opensim` | Musculoskeletal Biomechanics & Surgical Rehabilitation | `.osim` | `M9101`–`M9110` | Modelica 3.x (`.mo`), ROS/Gazebo URDF (`.urdf`), DAE Arena |
-| `@modelscript/dicom-rt` | Clinical Radiotherapy (RTSTRUCT, RTPLAN, RTDOSE) | `.rtplan`, `.rtstruct`, `.rtdose`, `.dicom-rt` | `M9201`–`M9210` | OpenSCAD 3D CSG (`.scad`), SysML v2 (`.sysml`), DAE Arena |
-| `@modelscript/cellml` | Physiological & Electrophysiology Modeling (CellML 1.0/1.1/2.0) | `.cellml` | `M9301`–`M9310` | Modelica 3.x (`.mo`), SBML Level 3 (`.sbml`), DAE Arena |
-| `@modelscript/febio` | Soft-Tissue Hyperelastic/Biphasic FEA & SOFA Surgical Scenes | `.feb`, `.scn` | `M9401`–`M9410` | CalculiX/Abaqus (`.inp`), Modelica 3.x (`.mo`), DAE Arena |
-| `@modelscript/nifti` | Volumetric Medical Imaging & Segmentation (NIfTI-1/2 & NRRD) | `.nii`, `.nrrd`, `.nhdr` | `M9501`–`M9510` | OpenSCAD (`.scad`), ISO 10303-21 STEP (`.stp`), DAE Arena |
-| `@modelscript/topas` | Monte Carlo Proton/Hadrontherapy & Radiotherapy Physics | `.topas`, `.mac` | `M9601`–`M9610` | OpenSCAD (`.scad`), Modelica 3.x (`.mo`), DAE Arena |
-| `@modelscript/three-mf` | Patient-Specific Surgical Guides & 3D-Printed Implants (ISO/ASTM 52915) | `.3mf` | `M9701`–`M9710` | ISO 10303-21 STEP (`.stp`), OpenSCAD (`.scad`), DAE Arena |
-| `@modelscript/igtl` | OpenIGTLink & PLUS Toolkit Surgical Navigation & Tracking | `.igtl`, `.plus.xml` | `M9801`–`M9810` | ROS URDF (`.urdf`), Modelica 3.x (`.mo`), DAE Arena |
-| `@modelscript/owl2` (`ontospm`) | OntoSPM / LapOntoSPM Surgical Process & Safety Ontology | `.ofn`, `.owl`, `.ontospm` | `M9901`–`M9910` | SysML v2 (`.sysml`), OWL 2 Functional Syntax (`.ofn`) |
+| Package                         | Clinical Domain                                                         | File Extensions                                | Diagnostic Range | Primary Projections                                        |
+| :------------------------------ | :---------------------------------------------------------------------- | :--------------------------------------------- | :--------------- | :--------------------------------------------------------- |
+| `@modelscript/opensim`          | Musculoskeletal Biomechanics & Surgical Rehabilitation                  | `.osim`                                        | `M9101`–`M9110`  | Modelica 3.x (`.mo`), ROS/Gazebo URDF (`.urdf`), DAE Arena |
+| `@modelscript/dicom-rt`         | Clinical Radiotherapy (RTSTRUCT, RTPLAN, RTDOSE)                        | `.rtplan`, `.rtstruct`, `.rtdose`, `.dicom-rt` | `M9201`–`M9210`  | OpenSCAD 3D CSG (`.scad`), SysML v2 (`.sysml`), DAE Arena  |
+| `@modelscript/cellml`           | Physiological & Electrophysiology Modeling (CellML 1.0/1.1/2.0)         | `.cellml`                                      | `M9301`–`M9310`  | Modelica 3.x (`.mo`), SBML Level 3 (`.sbml`), DAE Arena    |
+| `@modelscript/febio`            | Soft-Tissue Hyperelastic/Biphasic FEA & SOFA Surgical Scenes            | `.feb`, `.scn`                                 | `M9401`–`M9410`  | CalculiX/Abaqus (`.inp`), Modelica 3.x (`.mo`), DAE Arena  |
+| `@modelscript/nifti`            | Volumetric Medical Imaging & Segmentation (NIfTI-1/2 & NRRD)            | `.nii`, `.nrrd`, `.nhdr`                       | `M9501`–`M9510`  | OpenSCAD (`.scad`), ISO 10303-21 STEP (`.stp`), DAE Arena  |
+| `@modelscript/topas`            | Monte Carlo Proton/Hadrontherapy & Radiotherapy Physics                 | `.topas`, `.mac`                               | `M9601`–`M9610`  | OpenSCAD (`.scad`), Modelica 3.x (`.mo`), DAE Arena        |
+| `@modelscript/three-mf`         | Patient-Specific Surgical Guides & 3D-Printed Implants (ISO/ASTM 52915) | `.3mf`                                         | `M9701`–`M9710`  | ISO 10303-21 STEP (`.stp`), OpenSCAD (`.scad`), DAE Arena  |
+| `@modelscript/igtl`             | OpenIGTLink & PLUS Toolkit Surgical Navigation & Tracking               | `.igtl`, `.plus.xml`                           | `M9801`–`M9810`  | ROS URDF (`.urdf`), Modelica 3.x (`.mo`), DAE Arena        |
+| `@modelscript/owl2` (`ontospm`) | OntoSPM / LapOntoSPM Surgical Process & Safety Ontology                 | `.ofn`, `.owl`, `.ontospm`                     | `M9901`–`M9910`  | SysML v2 (`.sysml`), OWL 2 Functional Syntax (`.ofn`)      |
 
 ```mermaid
 flowchart LR
@@ -16404,18 +16467,18 @@ Parses OpenSim 3.x and 4.x XML (`<OpenSimDocument>`, `<Model>`, `<BodySet>`, `<J
 
 ### Diagnostic Rules (`M9101`–`M9110`)
 
-| Code | Rule ID | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `M9101` | `opensim-unresolved-body-frame` | `error` | Joint, marker, wrap object, or muscle path point references an undefined body frame. |
-| `M9102` | `opensim-non-positive-body-mass` | `error` | Body specifies $\text{mass} \le 0$ or non-positive principal moments of inertia ($I_{xx}, I_{yy}, I_{zz} \le 0$). |
-| `M9103` | `opensim-kinematic-tree-cycle` | `error` | Kinematic joint graph contains a directed cycle or multiple parent joints without a `<ConstraintSet>` loop constraint. |
-| `M9104` | `opensim-invalid-coordinate-range` | `error` | Coordinate `rangeMin >= rangeMax` or `defaultValue` lies outside `[rangeMin, rangeMax]`. |
-| `M9105` | `opensim-invalid-muscle-parameters` | `error` | Muscle `maxIsometricForce <= 0`, `optimalFiberLength <= 0`, or `tendonSlackLength <= 0`. |
-| `M9106` | `opensim-excessive-pennation-angle` | `error` | Muscle `pennationAngleAtOptimal` is outside $[0, \pi/2)$ radians. |
-| `M9107` | `opensim-insufficient-muscle-path-points` | `error` | Muscle has fewer than 2 path points or all path points attach to the exact same body frame. |
-| `M9108` | `opensim-unresolved-wrap-object` | `error` | Muscle `<PathWrap>` references an undefined `<WrapObject>` identifier. |
-| `M9109` | `opensim-invalid-time-constants` | `warning` | Muscle $\tau_{\text{act}} \le 0$, $\tau_{\text{deact}} \le 0$, or $\tau_{\text{act}} > \tau_{\text{deact}}$. |
-| `M9110` | `opensim-duplicate-component-name` | `error` | Duplicate body, joint, coordinate, or muscle name declared in the model. |
+| Code    | Rule ID                                   | Severity  | Description                                                                                                            |
+| :------ | :---------------------------------------- | :-------- | :--------------------------------------------------------------------------------------------------------------------- |
+| `M9101` | `opensim-unresolved-body-frame`           | `error`   | Joint, marker, wrap object, or muscle path point references an undefined body frame.                                   |
+| `M9102` | `opensim-non-positive-body-mass`          | `error`   | Body specifies $\text{mass} \le 0$ or non-positive principal moments of inertia ($I_{xx}, I_{yy}, I_{zz} \le 0$).      |
+| `M9103` | `opensim-kinematic-tree-cycle`            | `error`   | Kinematic joint graph contains a directed cycle or multiple parent joints without a `<ConstraintSet>` loop constraint. |
+| `M9104` | `opensim-invalid-coordinate-range`        | `error`   | Coordinate `rangeMin >= rangeMax` or `defaultValue` lies outside `[rangeMin, rangeMax]`.                               |
+| `M9105` | `opensim-invalid-muscle-parameters`       | `error`   | Muscle `maxIsometricForce <= 0`, `optimalFiberLength <= 0`, or `tendonSlackLength <= 0`.                               |
+| `M9106` | `opensim-excessive-pennation-angle`       | `error`   | Muscle `pennationAngleAtOptimal` is outside $[0, \pi/2)$ radians.                                                      |
+| `M9107` | `opensim-insufficient-muscle-path-points` | `error`   | Muscle has fewer than 2 path points or all path points attach to the exact same body frame.                            |
+| `M9108` | `opensim-unresolved-wrap-object`          | `error`   | Muscle `<PathWrap>` references an undefined `<WrapObject>` identifier.                                                 |
+| `M9109` | `opensim-invalid-time-constants`          | `warning` | Muscle $\tau_{\text{act}} \le 0$, $\tau_{\text{deact}} \le 0$, or $\tau_{\text{act}} > \tau_{\text{deact}}$.           |
+| `M9110` | `opensim-duplicate-component-name`        | `error`   | Duplicate body, joint, coordinate, or muscle name declared in the model.                                               |
 
 ---
 
@@ -16434,18 +16497,18 @@ Models DICOM-RT treatment plans, anatomical ROI contour stacks, linac Multi-Leaf
 
 ### Diagnostic Rules (`M9201`–`M9210`)
 
-| Code | Rule ID | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `M9201` | `dicom-rt-missing-target-volume` | `error` | Plan contains no clinical target volume ROI (`PTV`, `CTV`, or `GTV`). |
-| `M9202` | `dicom-rt-mlc-leaf-overlap` | `error` | Opposite MLC leaf pair violates minimum physical gap ($\text{bankB} - \text{bankA} < 0.5\text{ mm}$). |
-| `M9203` | `dicom-rt-mlc-speed-exceeded` | `error` | MLC leaf speed between consecutive control points exceeds physical motor limit ($25.0\text{ mm/s}$). |
-| `M9204` | `dicom-rt-gantry-couch-collision` | `error` | Non-coplanar couch angle ($|\theta_{\text{couch}}| > 15^\circ$) combined with lateral/posterior gantry angle enters the collision hazard zone. |
-| `M9205` | `dicom-rt-oar-dose-constraint-violated` | `error` | Organ-at-Risk (`ORGAN`) DVH exceeds clinical QUANTEC `maxDoseLimitGy` or `meanDoseLimitGy`. |
-| `M9206` | `dicom-rt-non-monotonic-cum-meterset` | `error` | Control point `cumulativeMetersetWeight` sequence is not monotonically non-decreasing from `0.0` to `1.0`. |
-| `M9207` | `dicom-rt-unclosed-roi-contour` | `error` | `CLOSED_PLANAR` contour slice contains fewer than 3 vertices. |
-| `M9208` | `dicom-rt-unresolved-frame-of-reference` | `error` | `RTSTRUCT` or `RTDOSE` `FrameOfReferenceUID` does not match the `RTPLAN` `FrameOfReferenceUID`. |
-| `M9209` | `dicom-rt-invalid-beam-meterset` | `error` | `TREATMENT` beam specifies `metersetMu <= 0` or `energyMeV <= 0`. |
-| `M9210` | `dicom-rt-ptv-underdosage` | `warning` | Target PTV $D_{95\%}$ is less than $95\%$ of `prescribedDoseGy`. |
+| Code    | Rule ID                                  | Severity  | Description                                                                                                |
+| :------ | :--------------------------------------- | :-------- | :--------------------------------------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- |
+| `M9201` | `dicom-rt-missing-target-volume`         | `error`   | Plan contains no clinical target volume ROI (`PTV`, `CTV`, or `GTV`).                                      |
+| `M9202` | `dicom-rt-mlc-leaf-overlap`              | `error`   | Opposite MLC leaf pair violates minimum physical gap ($\text{bankB} - \text{bankA} < 0.5\text{ mm}$).      |
+| `M9203` | `dicom-rt-mlc-speed-exceeded`            | `error`   | MLC leaf speed between consecutive control points exceeds physical motor limit ($25.0\text{ mm/s}$).       |
+| `M9204` | `dicom-rt-gantry-couch-collision`        | `error`   | Non-coplanar couch angle ($                                                                                | \theta\_{\text{couch}} | > 15^\circ$) combined with lateral/posterior gantry angle enters the collision hazard zone. |
+| `M9205` | `dicom-rt-oar-dose-constraint-violated`  | `error`   | Organ-at-Risk (`ORGAN`) DVH exceeds clinical QUANTEC `maxDoseLimitGy` or `meanDoseLimitGy`.                |
+| `M9206` | `dicom-rt-non-monotonic-cum-meterset`    | `error`   | Control point `cumulativeMetersetWeight` sequence is not monotonically non-decreasing from `0.0` to `1.0`. |
+| `M9207` | `dicom-rt-unclosed-roi-contour`          | `error`   | `CLOSED_PLANAR` contour slice contains fewer than 3 vertices.                                              |
+| `M9208` | `dicom-rt-unresolved-frame-of-reference` | `error`   | `RTSTRUCT` or `RTDOSE` `FrameOfReferenceUID` does not match the `RTPLAN` `FrameOfReferenceUID`.            |
+| `M9209` | `dicom-rt-invalid-beam-meterset`         | `error`   | `TREATMENT` beam specifies `metersetMu <= 0` or `energyMeV <= 0`.                                          |
+| `M9210` | `dicom-rt-ptv-underdosage`               | `warning` | Target PTV $D_{95\%}$ is less than $95\%$ of `prescribedDoseGy`.                                           |
 
 ---
 
@@ -16459,18 +16522,18 @@ $$\mathbf{d}(u) = \begin{bmatrix} d_{\text{A}} & d_{\text{K}} & d_{\text{kg}} & 
 
 ### Diagnostic Rules (`M9301`–`M9310`)
 
-| Code | Rule ID | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `M9301` | `cellml-missing-model-name` | `error` | `<model>` element is missing a non-empty `name` attribute. |
-| `M9302` | `cellml-unresolved-units` | `error` | Variable or `<unit>` references an undeclared or non-standard CellML unit name. |
-| `M9303` | `cellml-interface-direction-conflict` | `error` | `<map_variables>` connects variables with incompatible interface directions (e.g. both `in` or `none`). |
-| `M9304` | `cellml-unit-dimensional-mismatch` | `warning` | Mapped variables in `<map_variables>` have incompatible 7-element SI base unit dimension vectors. |
-| `M9305` | `cellml-uninitialized-state-variable` | `warning` | Differential state variable ($\text{ODE}$) lacks an `initial_value` attribute. |
-| `M9306` | `cellml-encapsulation-hierarchy-cycle` | `error` | Circular component reference detected in `<encapsulation>` hierarchy. |
-| `M9307` | `cellml-unresolved-connection-member` | `error` | `<connection>` references an undeclared component or variable name. |
-| `M9308` | `cellml-overconstrained-variable` | `error` | Variable with an `in` interface or prior assignment is assigned by an equation or ODE. |
-| `M9309` | `cellml-undefined-math-ci` | `error` | Content MathML `<ci>` references an identifier not declared in the enclosing `<component>`. |
-| `M9310` | `cellml-duplicate-variable-or-component` | `error` | Duplicate `<component>` or `<variable>` name declared within the same scope. |
+| Code    | Rule ID                                  | Severity  | Description                                                                                             |
+| :------ | :--------------------------------------- | :-------- | :------------------------------------------------------------------------------------------------------ |
+| `M9301` | `cellml-missing-model-name`              | `error`   | `<model>` element is missing a non-empty `name` attribute.                                              |
+| `M9302` | `cellml-unresolved-units`                | `error`   | Variable or `<unit>` references an undeclared or non-standard CellML unit name.                         |
+| `M9303` | `cellml-interface-direction-conflict`    | `error`   | `<map_variables>` connects variables with incompatible interface directions (e.g. both `in` or `none`). |
+| `M9304` | `cellml-unit-dimensional-mismatch`       | `warning` | Mapped variables in `<map_variables>` have incompatible 7-element SI base unit dimension vectors.       |
+| `M9305` | `cellml-uninitialized-state-variable`    | `warning` | Differential state variable ($\text{ODE}$) lacks an `initial_value` attribute.                          |
+| `M9306` | `cellml-encapsulation-hierarchy-cycle`   | `error`   | Circular component reference detected in `<encapsulation>` hierarchy.                                   |
+| `M9307` | `cellml-unresolved-connection-member`    | `error`   | `<connection>` references an undeclared component or variable name.                                     |
+| `M9308` | `cellml-overconstrained-variable`        | `error`   | Variable with an `in` interface or prior assignment is assigned by an equation or ODE.                  |
+| `M9309` | `cellml-undefined-math-ci`               | `error`   | Content MathML `<ci>` references an identifier not declared in the enclosing `<component>`.             |
+| `M9310` | `cellml-duplicate-variable-or-component` | `error`   | Duplicate `<component>` or `<variable>` name declared within the same scope.                            |
 
 ---
 
@@ -16484,18 +16547,18 @@ $$\Psi_{\text{MR}}(\bar{I}_1, \bar{I}_2, J) = c_1 (\bar{I}_1 - 3) + c_2 (\bar{I}
 
 ### Diagnostic Rules (`M9401`–`M9410`)
 
-| Code | Rule ID | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `M9401` | `febio-invalid-material-constant` | `error` | Non-physical material constant ($E \le 0$, $\nu \notin (-1, 0.5)$, $\rho \le 0$, or $c_1 + c_2 \le 0$). |
-| `M9402` | `febio-inverted-element-jacobian` | `error` | Tetrahedral (`tet4`) or hexahedral (`hex8`) element has non-positive Jacobian determinant ($\det(\mathbf{J}) \le 0$). |
-| `M9403` | `febio-unresolved-node-or-set` | `error` | Element connectivity, boundary condition, or load references an undefined node ID, `<NodeSet>`, or `<Surface>`. |
-| `M9404` | `febio-unconstrained-rigid-body` | `warning` | Model defines no fixed or prescribed displacement boundary conditions to constrain rigid-body motion. |
-| `M9405` | `febio-invalid-biphasic-permeability` | `error` | Biphasic/poroelastic tissue material specifies permeability $k \le 0$ or solid volume fraction $\phi^s \notin (0, 1)$. |
-| `M9406` | `febio-invalid-time-stepper` | `error` | `<Control>` specifies `time_steps <= 0` or `step_size <= 0`. |
-| `M9407` | `febio-unresolved-material-id` | `error` | `<SolidDomain>` or element block references an undeclared material ID. |
-| `M9408` | `febio-contact-penalty-invalid` | `error` | Contact interface specifies a non-positive penalty factor or empty primary/secondary surface. |
-| `M9409` | `febio-sofa-missing-mechanical-object` | `error` | SOFA `<Node>` contains a force field without a `<MechanicalObject>` state container. |
-| `M9410` | `febio-duplicate-entity-id` | `error` | Duplicate node, element, or material identifier. |
+| Code    | Rule ID                                | Severity  | Description                                                                                                            |
+| :------ | :------------------------------------- | :-------- | :--------------------------------------------------------------------------------------------------------------------- |
+| `M9401` | `febio-invalid-material-constant`      | `error`   | Non-physical material constant ($E \le 0$, $\nu \notin (-1, 0.5)$, $\rho \le 0$, or $c_1 + c_2 \le 0$).                |
+| `M9402` | `febio-inverted-element-jacobian`      | `error`   | Tetrahedral (`tet4`) or hexahedral (`hex8`) element has non-positive Jacobian determinant ($\det(\mathbf{J}) \le 0$).  |
+| `M9403` | `febio-unresolved-node-or-set`         | `error`   | Element connectivity, boundary condition, or load references an undefined node ID, `<NodeSet>`, or `<Surface>`.        |
+| `M9404` | `febio-unconstrained-rigid-body`       | `warning` | Model defines no fixed or prescribed displacement boundary conditions to constrain rigid-body motion.                  |
+| `M9405` | `febio-invalid-biphasic-permeability`  | `error`   | Biphasic/poroelastic tissue material specifies permeability $k \le 0$ or solid volume fraction $\phi^s \notin (0, 1)$. |
+| `M9406` | `febio-invalid-time-stepper`           | `error`   | `<Control>` specifies `time_steps <= 0` or `step_size <= 0`.                                                           |
+| `M9407` | `febio-unresolved-material-id`         | `error`   | `<SolidDomain>` or element block references an undeclared material ID.                                                 |
+| `M9408` | `febio-contact-penalty-invalid`        | `error`   | Contact interface specifies a non-positive penalty factor or empty primary/secondary surface.                          |
+| `M9409` | `febio-sofa-missing-mechanical-object` | `error`   | SOFA `<Node>` contains a force field without a `<MechanicalObject>` state container.                                   |
+| `M9410` | `febio-duplicate-entity-id`            | `error`   | Duplicate node, element, or material identifier.                                                                       |
 
 ---
 
@@ -16509,18 +16572,18 @@ $$\begin{bmatrix} x_{\text{RAS}} \\ y_{\text{RAS}} \\ z_{\text{RAS}} \\ 1 \end{b
 
 ### Diagnostic Rules (`M9501`–`M9510`)
 
-| Code | Rule ID | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `M9501` | `nifti-invalid-dimensions` | `error` | Volume dimension `dim[0]` is outside `[1, 7]` or spatial dimensions $n_x, n_y, n_z \le 0$. |
-| `M9502` | `nifti-non-positive-voxel-spacing` | `error` | Voxel spacing `pixdim[1..3]` or NRRD `space directions` norm is $\le 0\text{ mm}$. |
-| `M9503` | `nifti-singular-affine-transform` | `error` | $4 \times 4$ `sform` affine transformation matrix is singular ($|\det(\mathbf{A})| < 10^{-9}$). |
-| `M9504` | `nifti-invalid-quaternion-norm` | `error` | Quaternion parameters satisfy $b^2 + c^2 + d^2 > 1.0$. |
-| `M9505` | `nifti-qform-sform-handedness-mismatch` | `error` | Active `qform` and `sform` transforms have opposite coordinate handedness ($\text{sign}(q_{\text{fac}}) \ne \text{sign}(\det(\mathbf{A}_{\text{sform}}))$). |
-| `M9506` | `nifti-zero-intensity-scale-slope` | `error` | `scl_slope` is explicitly `0` while intensity scaling is active. |
-| `M9507` | `nifti-unsupported-datatype` | `error` | Unrecognized or unsupported NIfTI/NRRD voxel datatype code. |
-| `M9508` | `nifti-voxel-data-size-mismatch` | `error` | Voxel payload count does not match $n_x \times n_y \times n_z \times n_t$. |
-| `M9509` | `nifti-empty-segmentation-mask` | `warning` | Segmentation labelmap contains zero foreground voxels across all anatomical labels. |
-| `M9510` | `nifti-anisotropic-slice-gap-warning` | `warning` | Slice thickness $\Delta z$ exceeds in-plane resolution $\min(\Delta x, \Delta y)$ by more than $5\times$. |
+| Code    | Rule ID                                 | Severity  | Description                                                                                                                                                 |
+| :------ | :-------------------------------------- | :-------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------ |
+| `M9501` | `nifti-invalid-dimensions`              | `error`   | Volume dimension `dim[0]` is outside `[1, 7]` or spatial dimensions $n_x, n_y, n_z \le 0$.                                                                  |
+| `M9502` | `nifti-non-positive-voxel-spacing`      | `error`   | Voxel spacing `pixdim[1..3]` or NRRD `space directions` norm is $\le 0\text{ mm}$.                                                                          |
+| `M9503` | `nifti-singular-affine-transform`       | `error`   | $4 \times 4$ `sform` affine transformation matrix is singular ($                                                                                            | \det(\mathbf{A}) | < 10^{-9}$). |
+| `M9504` | `nifti-invalid-quaternion-norm`         | `error`   | Quaternion parameters satisfy $b^2 + c^2 + d^2 > 1.0$.                                                                                                      |
+| `M9505` | `nifti-qform-sform-handedness-mismatch` | `error`   | Active `qform` and `sform` transforms have opposite coordinate handedness ($\text{sign}(q_{\text{fac}}) \ne \text{sign}(\det(\mathbf{A}_{\text{sform}}))$). |
+| `M9506` | `nifti-zero-intensity-scale-slope`      | `error`   | `scl_slope` is explicitly `0` while intensity scaling is active.                                                                                            |
+| `M9507` | `nifti-unsupported-datatype`            | `error`   | Unrecognized or unsupported NIfTI/NRRD voxel datatype code.                                                                                                 |
+| `M9508` | `nifti-voxel-data-size-mismatch`        | `error`   | Voxel payload count does not match $n_x \times n_y \times n_z \times n_t$.                                                                                  |
+| `M9509` | `nifti-empty-segmentation-mask`         | `warning` | Segmentation labelmap contains zero foreground voxels across all anatomical labels.                                                                         |
+| `M9510` | `nifti-anisotropic-slice-gap-warning`   | `warning` | Slice thickness $\Delta z$ exceeds in-plane resolution $\min(\Delta x, \Delta y)$ by more than $5\times$.                                                   |
 
 ---
 
@@ -16534,18 +16597,18 @@ $$R_0 = \alpha E_0^p \quad (\alpha \approx 0.0022\text{ cm}\cdot\text{MeV}^{-p},
 
 ### Diagnostic Rules (`M9601`–`M9610`)
 
-| Code | Rule ID | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `M9601` | `topas-type-prefix-mismatch` | `error` | Parameter value does not match its declared TOPAS type prefix (`d:`, `i:`, `b:`, `s:`, `dv:`, `iv:`, `sv:`). |
-| `M9602` | `topas-unresolved-parent-component` | `error` | Geometry component `Parent` references an undeclared parent volume. |
-| `M9603` | `topas-non-positive-geometry-dimension` | `error` | Box/Cylinder/Sphere dimension (`HLX`, `HLY`, `HLZ`, `RMax`, `HL`) is $\le 0$, or `RMin >= RMax`. |
-| `M9604` | `topas-child-exceeds-parent-bounds` | `error` | Child geometry translation plus half-lengths protrude outside the parent volume bounding box. |
-| `M9605` | `topas-undefined-material` | `error` | Component `Material` references an unknown material not in Geant4/NIST or custom `Ma/<Name>` definitions. |
-| `M9606` | `topas-invalid-beam-energy` | `error` | Particle source `BeamEnergy <= 0` MeV or negative energy spread. |
-| `M9607` | `topas-circular-include-file` | `error` | Circular or self-referential `includeFile` chain detected. |
-| `M9608` | `topas-scorer-missing-component` | `error` | Scorer `Sc/<Name>/Component` or `Quantity` is missing or references an undeclared geometry volume. |
-| `M9609` | `topas-vector-length-mismatch` | `error` | Vector parameter (`dv:`, `iv:`, `sv:`) element count does not match its declared length token. |
-| `M9610` | `topas-duplicate-parameter-assignment` | `warning` | Identical parameter path is assigned multiple times in the same file without an override qualifier. |
+| Code    | Rule ID                                 | Severity  | Description                                                                                                  |
+| :------ | :-------------------------------------- | :-------- | :----------------------------------------------------------------------------------------------------------- |
+| `M9601` | `topas-type-prefix-mismatch`            | `error`   | Parameter value does not match its declared TOPAS type prefix (`d:`, `i:`, `b:`, `s:`, `dv:`, `iv:`, `sv:`). |
+| `M9602` | `topas-unresolved-parent-component`     | `error`   | Geometry component `Parent` references an undeclared parent volume.                                          |
+| `M9603` | `topas-non-positive-geometry-dimension` | `error`   | Box/Cylinder/Sphere dimension (`HLX`, `HLY`, `HLZ`, `RMax`, `HL`) is $\le 0$, or `RMin >= RMax`.             |
+| `M9604` | `topas-child-exceeds-parent-bounds`     | `error`   | Child geometry translation plus half-lengths protrude outside the parent volume bounding box.                |
+| `M9605` | `topas-undefined-material`              | `error`   | Component `Material` references an unknown material not in Geant4/NIST or custom `Ma/<Name>` definitions.    |
+| `M9606` | `topas-invalid-beam-energy`             | `error`   | Particle source `BeamEnergy <= 0` MeV or negative energy spread.                                             |
+| `M9607` | `topas-circular-include-file`           | `error`   | Circular or self-referential `includeFile` chain detected.                                                   |
+| `M9608` | `topas-scorer-missing-component`        | `error`   | Scorer `Sc/<Name>/Component` or `Quantity` is missing or references an undeclared geometry volume.           |
+| `M9609` | `topas-vector-length-mismatch`          | `error`   | Vector parameter (`dv:`, `iv:`, `sv:`) element count does not match its declared length token.               |
+| `M9610` | `topas-duplicate-parameter-assignment`  | `warning` | Identical parameter path is assigned multiple times in the same file without an override qualifier.          |
 
 ---
 
@@ -16559,18 +16622,18 @@ $$\chi = V - E + F = 2 - 2g, \quad V_{\text{signed}} = \frac{1}{6} \sum_{k=1}^{F
 
 ### Diagnostic Rules (`M9701`–`M9710`)
 
-| Code | Rule ID | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `M9701` | `three-mf-non-manifold-edge` | `error` | Mesh is not a closed 2-manifold (contains open boundary edges or edges shared by $\ne 2$ triangles). |
-| `M9702` | `three-mf-degenerate-triangle` | `error` | Triangle has duplicate vertex indices or zero surface area ($\|\mathbf{e}_1 \times \mathbf{e}_2\| < 10^{-12}$). |
-| `M9703` | `three-mf-negative-mesh-volume` | `error` | Mesh has inverted outward face normals resulting in non-positive signed volume ($V \le 0$). |
-| `M9704` | `three-mf-unresolved-build-object` | `error` | `<build><item objectid="..."/>` references an undefined `<object>` ID. |
-| `M9705` | `three-mf-wall-thickness-violation` | `error` | Surgical guide or cannula wall thickness is below the $0.8\text{ mm}$ additive manufacturing safety threshold. |
-| `M9706` | `three-mf-invalid-osteotomy-guide-axis` | `error` | Osteotomy cutting plane normal or drill sleeve axis vector has zero length. |
-| `M9707` | `three-mf-missing-biocompatible-material` | `error` | Medical implant or surgical guide lacks an approved ISO 10993 / USP Class VI biocompatible material (`Ti-6Al-4V`, `PEEK`, `BioMed Amber`, etc.). |
-| `M9708` | `three-mf-singular-item-transform` | `error` | `<item transform="..."/>` $4 \times 3$ affine transformation matrix has $\det(\mathbf{M}) \le 0$. |
-| `M9709` | `three-mf-out-of-bounds-vertex-index` | `error` | Triangle vertex index $v_i < 0$ or $v_i \ge N_{\text{vertices}}$. |
-| `M9710` | `three-mf-duplicate-object-id` | `error` | Duplicate `<object id="..."/>` declared in `<resources>`. |
+| Code    | Rule ID                                   | Severity | Description                                                                                                                                      |
+| :------ | :---------------------------------------- | :------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `M9701` | `three-mf-non-manifold-edge`              | `error`  | Mesh is not a closed 2-manifold (contains open boundary edges or edges shared by $\ne 2$ triangles).                                             |
+| `M9702` | `three-mf-degenerate-triangle`            | `error`  | Triangle has duplicate vertex indices or zero surface area ($\|\mathbf{e}_1 \times \mathbf{e}_2\| < 10^{-12}$).                                  |
+| `M9703` | `three-mf-negative-mesh-volume`           | `error`  | Mesh has inverted outward face normals resulting in non-positive signed volume ($V \le 0$).                                                      |
+| `M9704` | `three-mf-unresolved-build-object`        | `error`  | `<build><item objectid="..."/>` references an undefined `<object>` ID.                                                                           |
+| `M9705` | `three-mf-wall-thickness-violation`       | `error`  | Surgical guide or cannula wall thickness is below the $0.8\text{ mm}$ additive manufacturing safety threshold.                                   |
+| `M9706` | `three-mf-invalid-osteotomy-guide-axis`   | `error`  | Osteotomy cutting plane normal or drill sleeve axis vector has zero length.                                                                      |
+| `M9707` | `three-mf-missing-biocompatible-material` | `error`  | Medical implant or surgical guide lacks an approved ISO 10993 / USP Class VI biocompatible material (`Ti-6Al-4V`, `PEEK`, `BioMed Amber`, etc.). |
+| `M9708` | `three-mf-singular-item-transform`        | `error`  | `<item transform="..."/>` $4 \times 3$ affine transformation matrix has $\det(\mathbf{M}) \le 0$.                                                |
+| `M9709` | `three-mf-out-of-bounds-vertex-index`     | `error`  | Triangle vertex index $v_i < 0$ or $v_i \ge N_{\text{vertices}}$.                                                                                |
+| `M9710` | `three-mf-duplicate-object-id`            | `error`  | Duplicate `<object id="..."/>` declared in `<resources>`.                                                                                        |
 
 ---
 
@@ -16588,18 +16651,18 @@ Parses PLUS Toolkit (`<PlusConfiguration>`, `<DeviceSet>`, `<CoordinateDefinitio
 
 ### Diagnostic Rules (`M9801`–`M9810`)
 
-| Code | Rule ID | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `M9801` | `igtl-non-orthogonal-rotation` | `error` | Upper-left $3 \times 3$ rotation block $\mathbf{R}$ violates $\|\mathbf{R}^T \mathbf{R} - \mathbf{I}_3\|_F > 10^{-3}$ or $\det(\mathbf{R}) \le 0$. |
-| `M9802` | `igtl-invalid-homogeneous-bottom-row` | `error` | Bottom row of $4 \times 4$ homogeneous matrix is not `[0, 0, 0, 1]`. |
-| `M9803` | `igtl-disconnected-coordinate-frame` | `error` | Coordinate frame graph is disconnected or lacks a path for a requested `<Transform Name="...To..."/>`. |
-| `M9804` | `igtl-cyclic-transform-chain` | `error` | `<CoordinateDefinitions>` contains a directed cycle in frame definitions. |
-| `M9805` | `igtl-excessive-registration-error` | `warning` | Calibration or fiducial registration RMS error ($\text{FRE}$ / $\text{TRE}$) exceeds $2.0\text{ mm}$. |
-| `M9806` | `igtl-invalid-acquisition-rate` | `error` | Tracker or ultrasound device `AcquisitionRate <= 0` Hz. |
-| `M9807` | `igtl-unresolved-device-or-channel` | `error` | `<Device>` or `<PlusOpenIGTLinkServer>` references an undeclared device or channel ID. |
-| `M9808` | `igtl-self-transform-identity-mismatch` | `error` | Transform with `From == To` is not the $4 \times 4$ identity matrix. |
-| `M9809` | `igtl-invalid-server-port` | `error` | OpenIGTLink server `ListeningPort` is outside the valid TCP range `[1024, 65535]`. |
-| `M9810` | `igtl-duplicate-transform-edge` | `error` | Duplicate `<Transform>` declared for the same `(From, To)` coordinate frame pair. |
+| Code    | Rule ID                                 | Severity  | Description                                                                                                                                        |
+| :------ | :-------------------------------------- | :-------- | :------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `M9801` | `igtl-non-orthogonal-rotation`          | `error`   | Upper-left $3 \times 3$ rotation block $\mathbf{R}$ violates $\|\mathbf{R}^T \mathbf{R} - \mathbf{I}_3\|_F > 10^{-3}$ or $\det(\mathbf{R}) \le 0$. |
+| `M9802` | `igtl-invalid-homogeneous-bottom-row`   | `error`   | Bottom row of $4 \times 4$ homogeneous matrix is not `[0, 0, 0, 1]`.                                                                               |
+| `M9803` | `igtl-disconnected-coordinate-frame`    | `error`   | Coordinate frame graph is disconnected or lacks a path for a requested `<Transform Name="...To..."/>`.                                             |
+| `M9804` | `igtl-cyclic-transform-chain`           | `error`   | `<CoordinateDefinitions>` contains a directed cycle in frame definitions.                                                                          |
+| `M9805` | `igtl-excessive-registration-error`     | `warning` | Calibration or fiducial registration RMS error ($\text{FRE}$ / $\text{TRE}$) exceeds $2.0\text{ mm}$.                                              |
+| `M9806` | `igtl-invalid-acquisition-rate`         | `error`   | Tracker or ultrasound device `AcquisitionRate <= 0` Hz.                                                                                            |
+| `M9807` | `igtl-unresolved-device-or-channel`     | `error`   | `<Device>` or `<PlusOpenIGTLinkServer>` references an undeclared device or channel ID.                                                             |
+| `M9808` | `igtl-self-transform-identity-mismatch` | `error`   | Transform with `From == To` is not the $4 \times 4$ identity matrix.                                                                               |
+| `M9809` | `igtl-invalid-server-port`              | `error`   | OpenIGTLink server `ListeningPort` is outside the valid TCP range `[1024, 65535]`.                                                                 |
+| `M9810` | `igtl-duplicate-transform-edge`         | `error`   | Duplicate `<Transform>` declared for the same `(From, To)` coordinate frame pair.                                                                  |
 
 ---
 
@@ -16609,18 +16672,18 @@ Models surgical workflows (`Procedure` $\to$ `Phase` $\to$ `Step` $\to$ `Action`
 
 ### Diagnostic Rules (`M9901`–`M9910`)
 
-| Code | Rule ID | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `M9901` | `ontospm-missing-critical-safety-view` | `error` | Irreversible action (`Clipping`, `Cutting`, `Transection`, `Resection`) on a critical neurovascular or biliary structure executes without a verified `SafetyCheckpoint` (Critical View of Safety). |
-| `M9902` | `ontospm-instrument-action-incompatibility` | `error` | Surgical step pairs an instrument category with an incompatible surgical action verb (e.g. `ClipApplier` performing `Suturing`). |
-| `M9903` | `ontospm-phase-transition-cycle` | `error` | Surgical phase transition graph contains a directed cycle. |
-| `M9904` | `ontospm-unresolved-anatomical-target` | `error` | Surgical step references an undeclared anatomical structure ID. |
-| `M9905` | `ontospm-unresolved-instrument-reference` | `error` | Surgical step references an undeclared surgical instrument ID. |
-| `M9906` | `ontospm-missing-hemostasis-or-closure` | `warning` | Invasive surgical procedure lacks a terminal `Hemostasis` or `Closure` phase. |
-| `M9907` | `ontospm-bipolar-monopolar-energized-near-nerve` | `error` | Monopolar electrosurgical instrument is energized within $5.0\text{ mm}$ of a critical nerve or artery. |
-| `M9908` | `ontospm-non-positive-step-duration` | `error` | Surgical step specifies an expected duration $\le 0\text{ s}$. |
-| `M9909` | `ontospm-unreachable-surgical-phase` | `warning` | Surgical phase is unreachable from the initial preparation/exposure phase. |
-| `M9910` | `ontospm-duplicate-entity-iri` | `error` | Duplicate OntoSPM entity identifier declared in the surgical procedure. |
+| Code    | Rule ID                                          | Severity  | Description                                                                                                                                                                                        |
+| :------ | :----------------------------------------------- | :-------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `M9901` | `ontospm-missing-critical-safety-view`           | `error`   | Irreversible action (`Clipping`, `Cutting`, `Transection`, `Resection`) on a critical neurovascular or biliary structure executes without a verified `SafetyCheckpoint` (Critical View of Safety). |
+| `M9902` | `ontospm-instrument-action-incompatibility`      | `error`   | Surgical step pairs an instrument category with an incompatible surgical action verb (e.g. `ClipApplier` performing `Suturing`).                                                                   |
+| `M9903` | `ontospm-phase-transition-cycle`                 | `error`   | Surgical phase transition graph contains a directed cycle.                                                                                                                                         |
+| `M9904` | `ontospm-unresolved-anatomical-target`           | `error`   | Surgical step references an undeclared anatomical structure ID.                                                                                                                                    |
+| `M9905` | `ontospm-unresolved-instrument-reference`        | `error`   | Surgical step references an undeclared surgical instrument ID.                                                                                                                                     |
+| `M9906` | `ontospm-missing-hemostasis-or-closure`          | `warning` | Invasive surgical procedure lacks a terminal `Hemostasis` or `Closure` phase.                                                                                                                      |
+| `M9907` | `ontospm-bipolar-monopolar-energized-near-nerve` | `error`   | Monopolar electrosurgical instrument is energized within $5.0\text{ mm}$ of a critical nerve or artery.                                                                                            |
+| `M9908` | `ontospm-non-positive-step-duration`             | `error`   | Surgical step specifies an expected duration $\le 0\text{ s}$.                                                                                                                                     |
+| `M9909` | `ontospm-unreachable-surgical-phase`             | `warning` | Surgical phase is unreachable from the initial preparation/exposure phase.                                                                                                                         |
+| `M9910` | `ontospm-duplicate-entity-iri`                   | `error`   | Duplicate OntoSPM entity identifier declared in the surgical procedure.                                                                                                                            |
 
 ---
 
@@ -16683,13 +16746,13 @@ npx msx igtl to-urdf LaparoscopicTracker.plus.xml > SurgicalTracker.urdf
 
 ### Model Context Protocol (`@modelscript/mcp`) Tools
 
-| MCP Tool Name | Input Schema | Capabilities |
-| :--- | :--- | :--- |
-| `opensim_analyze` | `{ opensimContent, duration?, dt? }` | Parses `.osim` models, runs `M9101`–`M9110` lints, lowers to `DAEBuilder`, and integrates Hill-type muscle & coordinate trajectories. |
-| `dicom_rt_verify_dvh` | `{ dicomRtContent }` | Evaluates RTPLAN/RTSTRUCT/RTDOSE documents, checks `M9201`–`M9210` QUANTEC & MLC safety rules, and computes DVH, BED, EQD2, HI, and CI. |
-| `cellml_simulate` | `{ cellmlContent, duration?, dt? }` | Verifies 7-dimensional SI unit consistency (`M9301`–`M9310`), lowers to `DAEBuilder`, and integrates cellular electrophysiology ODEs. |
-| `igtl_verify_calibration` | `{ igtlContent }` | Audits $SE(3)$ transforms (`M9801`–`M9810`), solves shortest transform chains, stylus pivot calibration RMS error, and Fitzpatrick $\text{TRE}$. |
-| `three_mf_verify_guide` | `{ threeMfContent }` | Verifies 3MF surgical guides & implants (`M9701`–`M9710`) for 2-manifold watertightness, Euler characteristic $\chi$, wall thickness, and osteotomy axes. |
+| MCP Tool Name             | Input Schema                         | Capabilities                                                                                                                                              |
+| :------------------------ | :----------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `opensim_analyze`         | `{ opensimContent, duration?, dt? }` | Parses `.osim` models, runs `M9101`–`M9110` lints, lowers to `DAEBuilder`, and integrates Hill-type muscle & coordinate trajectories.                     |
+| `dicom_rt_verify_dvh`     | `{ dicomRtContent }`                 | Evaluates RTPLAN/RTSTRUCT/RTDOSE documents, checks `M9201`–`M9210` QUANTEC & MLC safety rules, and computes DVH, BED, EQD2, HI, and CI.                   |
+| `cellml_simulate`         | `{ cellmlContent, duration?, dt? }`  | Verifies 7-dimensional SI unit consistency (`M9301`–`M9310`), lowers to `DAEBuilder`, and integrates cellular electrophysiology ODEs.                     |
+| `igtl_verify_calibration` | `{ igtlContent }`                    | Audits $SE(3)$ transforms (`M9801`–`M9810`), solves shortest transform chains, stylus pivot calibration RMS error, and Fitzpatrick $\text{TRE}$.          |
+| `three_mf_verify_guide`   | `{ threeMfContent }`                 | Verifies 3MF surgical guides & implants (`M9701`–`M9710`) for 2-manifold watertightness, Euler characteristic $\chi$, wall thickness, and osteotomy axes. |
 
 ================================================================================
 DOCUMENT: Pricing & Commercial Licensing

@@ -17,10 +17,10 @@ import { dicomRtToScad, dicomRtToSysML2 } from "./projections/index.js";
 
 export const dicomRtLanguage = language({
   name: "dicom-rt",
-  fileExtensions: [".dcm.xml", ".rtplan", ".rtstruct", ".rtdose", ".dicom-rt"],
+  fileExtensions: [".dcm.json", ".dcm.xml", ".rtplan", ".rtstruct", ".rtdose", ".dicom-rt"],
   maturity: "experimental",
   lsp: {
-    fileExtensions: [".dcm.xml", ".rtplan", ".rtstruct", ".rtdose", ".dicom-rt"],
+    fileExtensions: [".dcm.json", ".dcm.xml", ".rtplan", ".rtstruct", ".rtdose", ".dicom-rt"],
   },
   rules: {
     Root: () => "dicom-rt",

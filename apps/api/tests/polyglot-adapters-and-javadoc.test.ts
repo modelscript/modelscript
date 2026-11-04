@@ -27,6 +27,9 @@ function expect<T>(actual: T, message?: string) {
     toBe(expected: T) {
       assert.strictEqual(actual, expected, message);
     },
+    toBeGreaterThanOrEqual(expected: number) {
+      assert.ok((actual as unknown as number) >= expected, message ?? `Expected ${actual} >= ${expected}`);
+    },
     toEqual(expected: unknown) {
       assert.deepStrictEqual(actual, expected, message);
     },

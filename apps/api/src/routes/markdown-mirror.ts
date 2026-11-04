@@ -72,8 +72,8 @@ export function markdownMirrorRouter(database: LibraryDatabase): Router {
   // ── Post Markdown Mirror: /posts/:id.md or /p/:id.md ──
   const handlePostMarkdown = (req: Request, res: Response): void => {
     const rawId = getParam(req.params["id"]).replace(/\.md$/, "");
-    const postId = Number(rawId);
-    if (!postId || isNaN(postId)) {
+    const postId = rawId.trim();
+    if (!postId || !/^\d+$/.test(postId)) {
       res.status(400).send("Invalid post ID");
       return;
     }

@@ -451,6 +451,15 @@ export class LanguageRegistry {
     ) {
       return this.getPluginById("oscal");
     }
+    if (lowerUri.endsWith(".dcm.json") || lowerUri.endsWith(".dcm.xml")) return this.getPluginById("dicom-rt");
+    if (lowerUri.endsWith(".nii.json")) return this.getPluginById("nifti");
+    if (lowerUri.endsWith(".igtl.json")) return this.getPluginById("igtl");
+
+    for (const [candidateExt, plugin] of this.extMap.entries()) {
+      if (candidateExt.indexOf(".", 1) !== -1 && lowerUri.endsWith(candidateExt)) {
+        return plugin;
+      }
+    }
 
     const dotIdx = cleanUri.lastIndexOf(".");
     if (dotIdx === -1) return undefined;
