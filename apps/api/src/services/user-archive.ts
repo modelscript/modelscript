@@ -33,7 +33,7 @@ export interface UserArchiveBundle {
     created_at?: string | undefined;
   };
   posts: {
-    id: number;
+    id: number | string;
     content: string;
     created_at: string;
     like_count?: number | undefined;
@@ -61,7 +61,7 @@ export interface UserArchiveBundle {
   }[];
   bookmarks?:
     | {
-        post_id: number;
+        post_id: number | string;
         content?: string | undefined;
         created_at?: string | undefined;
       }[]

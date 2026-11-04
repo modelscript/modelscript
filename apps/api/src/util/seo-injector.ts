@@ -83,7 +83,7 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
   // 1. Post Detail Route: /posts/:id, /p/:id, /:username/status/:id, /users/:username/status/:id
   const postMatch = path.match(/(?:\/(?:posts|p)\/|(?:\/[^/]+)?\/status\/)(\d+)/);
   if (postMatch && postMatch[1]) {
-    const postId = Number(postMatch[1]);
+    const postId = postMatch[1];
     const post = database.getPost(postId);
     if (post && (!post.visibility || post.visibility === "public" || post.visibility === "unlisted")) {
       const author = post.display_name || post.username || `${brandName} Engineer`;

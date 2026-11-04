@@ -16,10 +16,10 @@ import { niftiToScad, niftiToStep } from "./projections/index.js";
 
 export const niftiLanguage = language({
   name: "nifti",
-  fileExtensions: [".nii", ".nrrd", ".nhdr"],
+  fileExtensions: [".nii.json", ".nii", ".nrrd", ".nhdr"],
   maturity: "experimental",
   lsp: {
-    fileExtensions: [".nii", ".nrrd", ".nhdr"],
+    fileExtensions: [".nii.json", ".nii", ".nrrd", ".nhdr"],
   },
   rules: {
     Root: () => "nifti",

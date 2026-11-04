@@ -436,6 +436,11 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
 
     // 2. Private artifact enforcement with ?embed_token=
     const otherUser = db.createUser("private_author", "author@corp.internal", "pw");
+    const authorToken = jwt.sign(
+      { id: Number(otherUser.id), username: "private_author", email: "author@corp.internal", tokenVersion: 1 },
+      JWT_SECRET,
+      { expiresIn: "1h" },
+    );
     const privArtId = db.createArtifactView(
       Number(otherUser.id),
       "modelica-code",
@@ -453,7 +458,7 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${userToken}`,
+        Authorization: `Bearer ${authorToken}`,
       },
       body: JSON.stringify({
         allowedOrigins: ["https://intranet.corp.internal"],

@@ -452,7 +452,7 @@ export interface SolutionReleaseRow {
 
 export interface UserArchiveData {
   posts: {
-    id: number;
+    id: number | string;
     content: string;
     created_at: string;
     like_count?: number | undefined;

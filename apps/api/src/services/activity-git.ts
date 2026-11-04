@@ -375,7 +375,10 @@ function computeBundleState(bundle: UserArchiveBundle): {
   studyPaths: Record<string, string>;
 } {
   const postHashes: Record<string, string> = {};
-  const sortedPosts = [...bundle.posts].sort((a, b) => a.id - b.id);
+  const sortedPosts = [...bundle.posts].sort((a, b) => {
+    const diff = BigInt(a.id) - BigInt(b.id);
+    return diff < 0n ? -1 : diff > 0n ? 1 : 0;
+  });
   for (const post of sortedPosts) {
     postHashes[String(post.id)] = sha256(formatPostMarkdown(post, bundle.user.username));
   }
@@ -500,7 +503,10 @@ function buildColdFastImportStream(
   // Sort chronologically ascending
   allEvents.sort((a, b) => {
     if (a.timestampSec !== b.timestampSec) return a.timestampSec - b.timestampSec;
-    if (a.kind === "post" && b.kind === "post") return a.post.id - b.post.id;
+    if (a.kind === "post" && b.kind === "post") {
+      const diff = BigInt(a.post.id) - BigInt(b.post.id);
+      return diff < 0n ? -1 : diff > 0n ? 1 : 0;
+    }
     if (a.kind === "study" && b.kind === "study") return a.study.id - b.study.id;
     return 0;
   });
@@ -640,8 +646,8 @@ function buildIncrementalFastImportStream(
   const authorEmail = bundle.user.email || `${bundle.user.username}@modelscript.local`;
   const nowSec = Math.floor(Date.now() / 1000);
 
-  const addedPosts: number[] = [];
-  const editedPosts: number[] = [];
+  const addedPosts: string[] = [];
+  const editedPosts: string[] = [];
   const deletedPostIds: string[] = [];
 
   const postMap = new Map<string, UserArchiveBundle["posts"][number]>();
@@ -651,9 +657,9 @@ function buildIncrementalFastImportStream(
 
   for (const [idStr, hash] of Object.entries(nextState.postHashes)) {
     if (!(idStr in prevState.postHashes)) {
-      addedPosts.push(Number(idStr));
+      addedPosts.push(idStr);
     } else if (prevState.postHashes[idStr] !== hash) {
-      editedPosts.push(Number(idStr));
+      editedPosts.push(idStr);
     }
   }
 
