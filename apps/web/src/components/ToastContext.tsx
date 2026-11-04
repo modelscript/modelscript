@@ -33,7 +33,7 @@ interface ToastTimerEntry {
   startedAt: number;
 }
 
-interface ToastContextValue {
+export interface ToastContextValue {
   toast: (options: string | ToastOptions) => string;
   show: (message: string, options?: { type?: ToastType | undefined; title?: string | undefined }) => string;
   showToast: (message: string, type?: ToastType, title?: string) => string;
@@ -44,7 +44,7 @@ interface ToastContextValue {
   dismiss: (id: string) => void;
 }
 
-const ToastContext = createContext<ToastContextValue | null>(null);
+export const ToastContext = createContext<ToastContextValue | null>(null);
 
 const slideIn = keyframes`
   from {

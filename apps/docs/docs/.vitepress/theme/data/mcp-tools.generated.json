@@ -1,5 +1,5 @@
 {
-  "toolCount": 52,
+  "toolCount": 55,
   "tools": [
     {
       "name": "modelica_load",
@@ -260,6 +260,21 @@
       "name": "twin_discover_sindy_and_rom",
       "description": "Discover sparse nonlinear governing differential equations (SINDy) from hardware telemetry residuals and calibrate a Reduced-Order Model (ROM) digital twin.",
       "category": "Cross-Domain Certification & Digital Twin"
+    },
+    {
+      "name": "qif_inspect_and_spc",
+      "description": "Evaluates an ISO 23952 Quality Information Framework (QIF) document, runs NIST QIF & ASME Y14.5 GD&T lint checks, computes SPC capability (Cp/Cpk, TUR, MMC/LMC bonus tolerances), and optionally reconciles STEP AP242 entities.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "oscal_audit_cps_compliance",
+      "description": "Audits a NIST OSCAL document (Catalog, Profile, Component Definition, SSP, SAR, or POA&M) against NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS overlays, resolves profile baselines, and verifies cyber-physical architectural component coverage.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "aml_run_virtual_commissioning",
+      "description": "Parses an IEC 62714 AutomationML / CAEX workcell topology, runs semantic port & PPR role verification, and executes closed-loop virtual commissioning coupling VirtualPlc logic and mechatronic plant dynamics.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
     }
   ]
 }

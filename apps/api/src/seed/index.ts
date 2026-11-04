@@ -246,7 +246,11 @@ export interface SeedPolyglotSummary {
  */
 export async function seedPolyglotSocialData(
   db: LibraryDatabase,
-  options?: { uploadDir?: string | undefined; force?: boolean | undefined },
+  options?: {
+    uploadDir?: string | undefined;
+    force?: boolean | undefined;
+    includeDisabledLanguages?: boolean | undefined;
+  },
 ): Promise<SeedPolyglotSummary> {
   const userIds = seedPolyglotUsers(db);
   const uploadDir = options?.uploadDir ?? path.join(API_ROOT, "data", "uploads");
@@ -259,6 +263,19 @@ export async function seedPolyglotSocialData(
   const createdPostByLanguage = new Map<string, { postId: number; artifactViewId: number; spec: SeedPostSpec }>();
 
   for (const spec of ALL_44_LANGUAGE_SEED_POSTS) {
+    const specRec = spec as unknown as Record<string, unknown>;
+    const lang = String(spec.language ?? specRec["languageId"] ?? "")
+      .trim()
+      .toLowerCase();
+    const isModelScript =
+      lang === "modelscript" || specRec["viewType"] === "modelscript" || spec.filename.endsWith(".msx");
+    if (isModelScript && !options?.force && !options?.includeDisabledLanguages) {
+      const isEnabled = db.isFeatureFlagEnabled("lang_modelscript") || db.isFeatureFlagEnabled("lang_modelscript_msx");
+      if (!isEnabled) {
+        continue;
+      }
+    }
+
     const existingArtifact = db.getArtifactViewByTitle(spec.title);
     if (existingArtifact && !options?.force) {
       if (!existingArtifact.thumbnail_url) {

@@ -78,6 +78,7 @@ const BookmarksPage: React.FC = () => {
 
   useEffect(() => {
     if (!token) {
+      setPosts([]);
       setLoading(false);
       return;
     }

@@ -973,7 +973,7 @@ export function buildPscadDiagram(project: PscadProjectLike, moduleName?: string
     const stripUnitBracket = (raw: string | number | undefined): string | undefined => {
       if (raw === undefined || raw === null || raw === "") return undefined;
       return String(raw)
-        .replace(/\s*\[[^\]]*\]\s*/g, "")
+        .replace(/\s*\[[^\][]*\]\s*/g, "")
         .trim();
     };
 

@@ -901,14 +901,34 @@ export async function pregenerateServerSvgThumbnail(
       }
 
       case "qif": {
-        const { parseQif, evaluateQifSpc } = await import("@modelscript/qif");
+        const { parseQif, evaluateQifSpc, synthesizeStepAp242FromQif } = await import("@modelscript/qif");
         const { renderQifMbdHeatmapSvg } = await import("@modelscript/diagram/qif-diagram-builder");
         const doc = parseQif(content, originalFilename);
         const spc = evaluateQifSpc(doc);
+        const stepSource = synthesizeStepAp242FromQif(doc);
         const cpks = spc.characteristics.map((c) => c.cpk).filter((v) => Number.isFinite(v));
         const minCpk = cpks.length > 0 ? Math.min(...cpks) : 0;
         const meanCpk = cpks.length > 0 ? cpks.reduce((a, b) => a + b, 0) / cpks.length : 0;
-        result.svg = renderQifMbdHeatmapSvg(doc);
+        const spcSummaryLike = {
+          minCpk,
+          overallPassRate: spc.overallPassRate,
+          metrics: spc.characteristics.map((c) => ({
+            characteristicId: c.characteristicId,
+            characteristicName: c.characteristicName,
+            nominalValue: (c.lsl + c.usl) / 2,
+            toleranceZone: c.baseTolerance,
+            effectiveTolerance: c.effectiveTolerance,
+            bonusTolerance: c.meanBonusTolerance,
+            mean: c.mean,
+            stdDev: c.stdDev,
+            cp: c.cp,
+            cpk: c.cpk,
+            tur: c.tur,
+            passRate: c.passRate,
+            sampleCount: c.sampleCount,
+          })),
+        };
+        result.svg = renderQifMbdHeatmapSvg(doc, spcSummaryLike);
         result.metadata = {
           dialect: "qif",
           qpId: doc.qpId,
@@ -921,6 +941,7 @@ export async function pregenerateServerSvgThumbnail(
         };
         result.viewConfigAdditions = {
           code: inlineCode,
+          stepSource,
           title: baseTitle,
           dialect: "qif",
           qpId: doc.qpId,

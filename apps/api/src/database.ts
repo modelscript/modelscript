@@ -49,6 +49,7 @@ import type {
   UserRow,
   WaitlistSubmissionRow,
 } from "./database/types.js";
+import { FEATURE_FLAGS, getLanguageFeatureFlagKey } from "./feature-flags.js";
 import { SqliteMigrationRunner, allMigrations } from "./migrations/index.js";
 import { AnalyticsBuffer, type BatchAnalyticsPayload } from "./services/analytics-buffer.js";
 import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
@@ -2873,6 +2874,12 @@ export class LibraryDatabase {
     const extraArtifactIds = new Set<number>();
     if (p.artifact_view_id) {
       extraArtifactIds.add(Number(p.artifact_view_id));
+    }
+    const customArtifactIds = meta?.["artifactIds"];
+    if (Array.isArray(customArtifactIds)) {
+      for (const aid of customArtifactIds) {
+        if (Number.isFinite(Number(aid))) extraArtifactIds.add(Number(aid));
+      }
     }
     if (Array.isArray(meta?.notebook?.artifactIds)) {
       for (const aid of meta.notebook.artifactIds) {
@@ -13418,6 +13425,23 @@ export class LibraryDatabase {
       | undefined;
   }
 
+  isFeatureFlagEnabled(key: string): boolean {
+    const envKey = `FEATURE_FLAG_${key.toUpperCase()}`;
+    const envVal = process.env[envKey];
+    if (envVal !== undefined) {
+      const normalized = envVal.toLowerCase().trim();
+      if (normalized === "true" || normalized === "1") return true;
+      if (normalized === "false" || normalized === "0") return false;
+    }
+
+    const flag = this.getFeatureFlag(key);
+    if (flag !== undefined) {
+      return flag.is_enabled === 1;
+    }
+    const def = FEATURE_FLAGS[key];
+    return def ? def.defaultValue : false;
+  }
+
   setFeatureFlag(key: string, isEnabled: boolean, allowedRoles?: string, rolloutPercentage = 100): void {
     const roles = allowedRoles !== undefined ? allowedRoles : "";
     this.#db
@@ -14843,16 +14867,80 @@ export class LibraryDatabase {
     currentUserId?: number,
   ): PostRow[] {
     if (posts.length === 0) return posts;
+
+    // Filter out posts whose language feature flag is disabled
+    const isModelScriptEnabled =
+      this.isFeatureFlagEnabled("lang_modelscript") || this.isFeatureFlagEnabled("lang_modelscript_msx");
+
+    const languageFilteredPosts: PostRow[] = [];
+    for (const post of posts) {
+      let meta: Record<string, unknown> | undefined =
+        typeof post.metadata === "object" && post.metadata !== null
+          ? (post.metadata as Record<string, unknown>)
+          : undefined;
+      if (typeof post.metadata === "string") {
+        try {
+          meta = JSON.parse(post.metadata) as Record<string, unknown>;
+        } catch {
+          meta = undefined;
+        }
+      }
+      const postRec = post as unknown as Record<string, unknown>;
+      const artifactView = post.artifact_view as Record<string, unknown> | undefined;
+      const metaLang = String(meta?.["language"] || postRec["language"] || "")
+        .trim()
+        .toLowerCase();
+      const metaDialect = String(meta?.["dialect"] || "")
+        .trim()
+        .toLowerCase();
+      const viewType = String(artifactView?.["view_type"] || postRec["view_type"] || "")
+        .trim()
+        .toLowerCase();
+      const filename = String(meta?.["filename"] || artifactView?.["name"] || artifactView?.["title"] || "")
+        .trim()
+        .toLowerCase();
+      const title = String(meta?.["artifactTitle"] || artifactView?.["title"] || postRec["title"] || "")
+        .trim()
+        .toLowerCase();
+      const content = String(post.content || "").toLowerCase();
+
+      const isMsx =
+        metaLang === "modelscript" ||
+        metaLang === "msx" ||
+        metaDialect === "modelscript" ||
+        metaDialect === "msx" ||
+        viewType === "modelscript" ||
+        viewType === "msx" ||
+        filename.endsWith(".msx") ||
+        filename.endsWith(".modelscript") ||
+        title.includes(".msx") ||
+        content.includes("tiltrotortransitioncontroller.msx") ||
+        (content.includes("#modelscript") && (content.includes(".msx") || viewType === "modelscript"));
+
+      if (isMsx && !isModelScriptEnabled) {
+        continue;
+      }
+
+      if (metaLang) {
+        const flagKey = getLanguageFeatureFlagKey(metaLang);
+        if (flagKey in FEATURE_FLAGS && !this.isFeatureFlagEnabled(flagKey)) {
+          continue;
+        }
+      }
+
+      languageFilteredPosts.push(post);
+    }
+
     let filters: ContentFilterRow[] = [];
     try {
       filters = this.listContentFilters(currentUserId).filter((f) => f.context.includes(context));
     } catch {
-      return posts;
+      return languageFilteredPosts;
     }
-    if (filters.length === 0) return posts;
+    if (filters.length === 0) return languageFilteredPosts;
 
     const result: PostRow[] = [];
-    for (const post of posts) {
+    for (const post of languageFilteredPosts) {
       const haystack = `${post.content || ""} ${post.content_warning || ""}`.toLowerCase();
       const matched: ContentFilterMatch[] = [];
       let shouldDrop = false;

@@ -1,76 +1,5 @@
 [
   {
-    "slug": "modelscript",
-    "name": "ModelScript",
-    "packageName": "@modelscript/modelscript",
-    "sources": [
-      "languages/modelscript/src/errors.ts"
-    ],
-    "cli": null,
-    "rules": [
-      {
-        "code": "M1001",
-        "rule": "parse-error",
-        "severity": "error",
-        "message": "Parse error."
-      },
-      {
-        "code": "M2001",
-        "rule": "undefined-variable",
-        "severity": "error",
-        "message": "Variable '<name>' is not declared in current scope."
-      },
-      {
-        "code": "M2002",
-        "rule": "duplicate-declaration",
-        "severity": "error",
-        "message": "Identifier '<name>' is already declared in this scope."
-      },
-      {
-        "code": "M2003",
-        "rule": "unknown-type",
-        "severity": "error",
-        "message": "Type '<typeName>' is not recognized."
-      },
-      {
-        "code": "M3001",
-        "rule": "type-mismatch",
-        "severity": "error",
-        "message": "Type mismatch: cannot assign '<sourceType>' to '<targetType>'."
-      },
-      {
-        "code": "M3002",
-        "rule": "invalid-binary-operand",
-        "severity": "error",
-        "message": "Operator '<op>' cannot be applied to operands of type '<type>'."
-      },
-      {
-        "code": "M4001",
-        "rule": "non-iterable-collection",
-        "severity": "error",
-        "message": "Expression '<expr>' in 'for' clause is not iterable."
-      },
-      {
-        "code": "M4002",
-        "rule": "flwor-unbound-variable",
-        "severity": "error",
-        "message": "Variable '<varName>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses."
-      },
-      {
-        "code": "M5001",
-        "rule": "argument-count-mismatch",
-        "severity": "error",
-        "message": "Function '<fnName>' expects <expected> arguments, but got <actual>."
-      },
-      {
-        "code": "M5002",
-        "rule": "unknown-struct-field",
-        "severity": "error",
-        "message": "Struct '<structName>' has no field named '<fieldName>'."
-      }
-    ]
-  },
-  {
     "slug": "modelica",
     "name": "Modelica",
     "packageName": "@modelscript/modelica",
@@ -5294,6 +5223,254 @@
         "rule": "circular-species-assignment",
         "severity": "info",
         "message": "Reaction '<reactionId>' lists '<speciesId>' as both reactant and product with identical stoichiometry; consider defining as modifier."
+      }
+    ]
+  },
+  {
+    "slug": "automationml",
+    "name": "automationml",
+    "packageName": "@modelscript/automationml",
+    "sources": [
+      "languages/automationml/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M8301",
+        "rule": "aml-unresolved-base-class",
+        "severity": "error",
+        "message": "Base class reference '<path>' in '<elementName>' does not resolve to a declared or standard AutomationML class."
+      },
+      {
+        "code": "M8302",
+        "rule": "aml-inheritance-cycle",
+        "severity": "error",
+        "message": "Circular inheritance detected in class '<className>': '<cyclePath>'."
+      },
+      {
+        "code": "M8303",
+        "rule": "aml-invalid-internal-link",
+        "severity": "error",
+        "message": "InternalLink '<linkName>' endpoint '<partnerRef>' does not resolve to a valid InternalElement and ExternalInterface."
+      },
+      {
+        "code": "M8304",
+        "rule": "aml-port-direction-conflict",
+        "severity": "error",
+        "message": "InternalLink '<linkName>' connects incompatible ports: <detail>."
+      },
+      {
+        "code": "M8305",
+        "rule": "aml-unsatisfied-role-requirement",
+        "severity": "error",
+        "message": "InternalElement '<elementName>' is missing required <missingItem> mandated by RoleRequirement '<rolePath>'."
+      },
+      {
+        "code": "M8306",
+        "rule": "aml-broken-external-ref-uri",
+        "severity": "warning",
+        "message": "External reference URI '<uri>' on interface '<interfaceName>' in '<elementName>' is empty or unresolved."
+      },
+      {
+        "code": "M8307",
+        "rule": "aml-invalid-frame-transform",
+        "severity": "error",
+        "message": "Invalid 6-DOF Frame transformation on InternalElement '<elementName>': <reason>."
+      }
+    ]
+  },
+  {
+    "slug": "modelscript",
+    "name": "modelscript",
+    "packageName": "@modelscript/modelscript",
+    "sources": [
+      "languages/modelscript/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "parse-error",
+        "severity": "error",
+        "message": "Parse error."
+      },
+      {
+        "code": "M2001",
+        "rule": "undefined-variable",
+        "severity": "error",
+        "message": "Variable '<name>' is not declared in current scope."
+      },
+      {
+        "code": "M2002",
+        "rule": "duplicate-declaration",
+        "severity": "error",
+        "message": "Identifier '<name>' is already declared in this scope."
+      },
+      {
+        "code": "M2003",
+        "rule": "unknown-type",
+        "severity": "error",
+        "message": "Type '<typeName>' is not recognized."
+      },
+      {
+        "code": "M3001",
+        "rule": "type-mismatch",
+        "severity": "error",
+        "message": "Type mismatch: cannot assign '<sourceType>' to '<targetType>'."
+      },
+      {
+        "code": "M3002",
+        "rule": "invalid-binary-operand",
+        "severity": "error",
+        "message": "Operator '<op>' cannot be applied to operands of type '<type>'."
+      },
+      {
+        "code": "M4001",
+        "rule": "non-iterable-collection",
+        "severity": "error",
+        "message": "Expression '<expr>' in 'for' clause is not iterable."
+      },
+      {
+        "code": "M4002",
+        "rule": "flwor-unbound-variable",
+        "severity": "error",
+        "message": "Variable '<varName>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses."
+      },
+      {
+        "code": "M5001",
+        "rule": "argument-count-mismatch",
+        "severity": "error",
+        "message": "Function '<fnName>' expects <expected> arguments, but got <actual>."
+      },
+      {
+        "code": "M5002",
+        "rule": "unknown-struct-field",
+        "severity": "error",
+        "message": "Struct '<structName>' has no field named '<fieldName>'."
+      }
+    ]
+  },
+  {
+    "slug": "oscal",
+    "name": "oscal",
+    "packageName": "@modelscript/oscal",
+    "sources": [
+      "languages/oscal/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M8201",
+        "rule": "oscal-invalid-uuid",
+        "severity": "error",
+        "message": ""
+      },
+      {
+        "code": "M8202",
+        "rule": "oscal-unresolved-control-id",
+        "severity": "error",
+        "message": "Referenced control '<controlId>' does not exist in the catalog or built-in NIST SP 800-53 / 800-82 baseline."
+      },
+      {
+        "code": "M8203",
+        "rule": "oscal-unset-required-parameter",
+        "severity": "warning",
+        "message": "Required parameter '<paramId>' in '<contextName>' has no value assigned in 'set-parameter'."
+      },
+      {
+        "code": "M8204",
+        "rule": "oscal-unimplemented-baseline-control",
+        "severity": "error",
+        "message": "Control '<controlId>' required by baseline profile '<profileHref>' is missing an 'implemented-requirement' in 'control-implementation'."
+      },
+      {
+        "code": "M8205",
+        "rule": "oscal-orphaned-by-component",
+        "severity": "error",
+        "message": "Implementation 'by-component' in control '<controlId>' references component UUID '<componentUuid>' which is not declared in 'system-implementation.components'."
+      },
+      {
+        "code": "M8206",
+        "rule": "oscal-cps-unmapped-architecture-block",
+        "severity": "warning",
+        "message": "Architectural component '<blockName>' from linked SysML v2 / AutomationML model is missing from 'system-implementation.components'."
+      },
+      {
+        "code": "M8207",
+        "rule": "oscal-ot-ics-overlay-violation",
+        "severity": "error",
+        "message": "OT/ICS component '<componentTitle>' (type '<componentType>') is missing mandatory NIST SP 800-82 controls: '<missingControls>'."
+      },
+      {
+        "code": "M8208",
+        "rule": "oscal-unmitigated-high-finding",
+        "severity": "error",
+        "message": "Open '<severity>' finding '<findingTitle>' on control '<controlId>' lacks a linked remediation entry in POA&M."
+      }
+    ]
+  },
+  {
+    "slug": "qif",
+    "name": "qif",
+    "packageName": "@modelscript/qif",
+    "sources": [
+      "languages/qif/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M8101",
+        "rule": "qif-unresolved-qpid",
+        "severity": "error",
+        "message": "Unresolved <refKind> reference '<refId>' in '<contextName>'."
+      },
+      {
+        "code": "M8102",
+        "rule": "qif-duplicate-qpid",
+        "severity": "error",
+        "message": "Duplicate identifier or QPId '<idOrQpId>' declared on '<elementName>'."
+      },
+      {
+        "code": "M8103",
+        "rule": "qif-invalid-datum-precedence",
+        "severity": "error",
+        "message": "Duplicate datum label '<datumLabel>' in DatumReferenceFrame of characteristic '<charName>'."
+      },
+      {
+        "code": "M8104",
+        "rule": "qif-invalid-material-modifier",
+        "severity": "error",
+        "message": "Material condition modifier '<modifier>' cannot be applied to '<targetDesc>' in characteristic '<charName>'."
+      },
+      {
+        "code": "M8105",
+        "rule": "qif-composite-frame-mismatch",
+        "severity": "error",
+        "message": "Composite lower-tier tolerance '<lowerTol>' must be strictly less than upper-tier tolerance '<upperTol>' in characteristic '<charName>'."
+      },
+      {
+        "code": "M8106",
+        "rule": "qif-insufficient-probing-points",
+        "severity": "error",
+        "message": "Probing point count '<actualPoints>' is below minimum required '<requiredPoints>' for '<featureType>' in '<targetName>'."
+      },
+      {
+        "code": "M8107",
+        "rule": "qif-tur-uncertainty-warning",
+        "severity": "warning",
+        "message": "Test Uncertainty Ratio '<tur>:1' is below required minimum '<minTur>:1' for device '<deviceName>' on characteristic '<charName>'."
+      },
+      {
+        "code": "M8108",
+        "rule": "qif-out-of-tolerance-actual",
+        "severity": "error",
+        "message": "Actual '<actualId>' has measured value '<measuredVal>' against effective tolerance '<effTol>' but is marked '<status>' for characteristic '<charName>'."
+      },
+      {
+        "code": "M8109",
+        "rule": "qif-unresolved-step-entity",
+        "severity": "error",
+        "message": "Referenced STEP AP242 entity '<stepEntityId>' on feature '<featureName>' was not found in the CAD model."
       }
     ]
   }

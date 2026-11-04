@@ -57,10 +57,15 @@ export interface StepReconciliationResult {
 
 export function extractStepEntities(stepText: string): Map<string, StepAp242Entity> {
   const entityMap = new Map<string, StepAp242Entity>();
-  const regex = /#(\d+)\s*=\s*([A-Z0-9_]+)\s*\(([^;]*)\)\s*;/gi;
-  let m: RegExpExecArray | null;
+  let pos = 0;
+  while (pos < stepText.length) {
+    const nextSemi = stepText.indexOf(";", pos);
+    if (nextSemi === -1) break;
+    const stmt = stepText.slice(pos, nextSemi);
+    pos = nextSemi + 1;
+    const m = /#(\d+)\s*=\s*([A-Za-z0-9_]+)\s*\(([\s\S]*)\)/.exec(stmt);
+    if (!m) continue;
 
-  while ((m = regex.exec(stepText)) !== null) {
     const numStr = m[1] ?? "0";
     const id = `#${numStr}`;
     const rawId = Number(numStr);
@@ -402,4 +407,865 @@ function mapStepTypeToGdtType(entityType: string): QifGdtType | undefined {
   if (entityType.includes("TOTAL_RUNOUT")) return "TotalRunout";
   if (entityType === "GEOMETRIC_TOLERANCE") return "Position";
   return undefined;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3D MBD / STEP AP242 B-Rep Mesh & GD&T Callout Scene Synthesizer
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface Qif3dMeshPayload {
+  id: string;
+  name: string;
+  featureId?: string | undefined;
+  stepEntityId?: string | undefined;
+  featureType?: QifFeatureType | undefined;
+  isBodyEnvelope?: boolean | undefined;
+  color: [number, number, number];
+  deviationStatus: "PASS" | "MARGINAL" | "FAIL" | "UNINSPECTED";
+  worstToleranceRatio: number;
+  vertices: number[];
+  normals: number[];
+  indices: number[];
+}
+
+export interface Qif3dProbeHit {
+  id: string;
+  featureId: string;
+  stepEntityId?: string | undefined;
+  position: [number, number, number];
+  normal: [number, number, number];
+  deviationVector: [number, number, number];
+  deviationMagnitude: number;
+  status: "PASS" | "MARGINAL" | "FAIL";
+}
+
+export interface Qif3dCalloutAnchor {
+  characteristicId: string;
+  characteristicName: string;
+  balloonNumber: number;
+  featureId: string;
+  featureName: string;
+  stepEntityId?: string | undefined;
+  gdtType: QifGdtType;
+  gdtSymbol: string;
+  toleranceZone: number;
+  isDiametrical: boolean;
+  materialCondition: "RFS" | "MMC" | "LMC";
+  datumReferences: { datumLabel: string; materialCondition?: "RFS" | "MMC" | "LMC" | undefined }[];
+  compositeLowerTier?:
+    | {
+        toleranceZone: number;
+        materialCondition?: "RFS" | "MMC" | "LMC" | undefined;
+        datumReferences: string[];
+      }
+    | undefined;
+  measuredValue?: number | undefined;
+  bonusTolerance: number;
+  effectiveTolerance: number;
+  cpk?: number | undefined;
+  status: "PASS" | "REWORK" | "FAIL" | "PLAN";
+  toleranceRatio: number;
+  surfaceAnchor: [number, number, number];
+  leaderElbow: [number, number, number];
+  calloutPosition: [number, number, number];
+}
+
+export interface Qif3dDatumBadge {
+  datumId: string;
+  datumLabel: string;
+  featureId?: string | undefined;
+  featureName?: string | undefined;
+  stepEntityId?: string | undefined;
+  surfaceAnchor: [number, number, number];
+  badgePosition: [number, number, number];
+  normal: [number, number, number];
+}
+
+export interface Qif3dSpcMetric {
+  characteristicId: string;
+  characteristicName: string;
+  nominalValue: number;
+  toleranceZone: number;
+  effectiveTolerance: number;
+  bonusTolerance: number;
+  mean: number;
+  stdDev: number;
+  cp: number;
+  cpk: number;
+  tur?: number | undefined;
+  passRate: number;
+  sampleCount: number;
+}
+
+export interface Qif3dSpcSummary {
+  metrics: Qif3dSpcMetric[];
+  overallPassRate: number;
+  minCpk: number;
+  minTur?: number | undefined;
+}
+
+export interface Qif3dMbdScene {
+  qpId: string;
+  meshes: Qif3dMeshPayload[];
+  probeHits: Qif3dProbeHit[];
+  callouts: Qif3dCalloutAnchor[];
+  datumBadges: Qif3dDatumBadge[];
+  boundingBox: {
+    min: [number, number, number];
+    max: [number, number, number];
+    center: [number, number, number];
+    radius: number;
+  };
+  stepSource: string;
+  reconciliation: StepReconciliationResult;
+  spcSummary: Qif3dSpcSummary;
+}
+
+export function getAsmeGdtUnicodeSymbol(gdtType: QifGdtType | string): string {
+  switch (gdtType) {
+    case "Flatness":
+      return "⏥";
+    case "Straightness":
+      return "⏤";
+    case "Circularity":
+      return "○";
+    case "Cylindricity":
+      return "⌭";
+    case "ProfileOfLine":
+      return "⌒";
+    case "ProfileOfSurface":
+      return "⌓";
+    case "Perpendicularity":
+      return "⊥";
+    case "Parallelism":
+      return "∥";
+    case "Angularity":
+      return "∠";
+    case "Position":
+      return "⌖";
+    case "CircularRunout":
+      return "↗";
+    case "TotalRunout":
+      return "⌰";
+    default:
+      return "±";
+  }
+}
+
+/**
+ * Synthesizes a companion ISO 10303-21 STEP AP242 physical file from a QIF 3.0 document
+ * preserving exact `#StepEntityId` topological face bindings (`ADVANCED_FACE`, `PLANE`,
+ * `CYLINDRICAL_SURFACE`, `DATUM`, and `GEOMETRIC_TOLERANCE`).
+ */
+export function synthesizeStepAp242FromQif(doc: QifDocument): string {
+  const lines: string[] = [
+    "ISO-10303-21;",
+    "HEADER;",
+    "FILE_DESCRIPTION(('ModelScript ISO 10303-242 AP242 MBD Companion B-Rep'),'2;1');",
+    `FILE_NAME('${doc.header.partName ?? "QIF_MBD_Part"}.step','2026-03-19T12:00:00',('${doc.header.author ?? "ModelScript Metrology"}'),('ModelScript MBD'),'ModelScript STEP-QIF Bridge','ModelScript QIF 3.0','');`,
+    "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'));",
+    "ENDSEC;",
+    "DATA;",
+    "#1 = APPLICATION_CONTEXT('managed model based 3d engineering');",
+    "#2 = PRODUCT('MBD_PART','MBD_PART','',(#1));",
+    "#3 = PRODUCT_DEFINITION_FORMATION('','',#2);",
+    "#4 = PRODUCT_DEFINITION('design','',#3,#1);",
+  ];
+
+  const usedIds = new Set<number>([1, 2, 3, 4]);
+  for (const feat of doc.features) {
+    if (feat.stepEntityId) {
+      const n = Number(feat.stepEntityId.replace(/^#/, ""));
+      if (Number.isFinite(n) && n > 0) usedIds.add(n);
+    }
+  }
+
+  let nextAuxId = 10;
+  const allocId = (): number => {
+    while (usedIds.has(nextAuxId)) nextAuxId++;
+    usedIds.add(nextAuxId);
+    return nextAuxId++;
+  };
+
+  const faceIds: string[] = [];
+  doc.features.forEach((feat, idx) => {
+    const loc = feat.location ?? [idx * 20, 0, 0];
+    const norm = feat.normal ?? [0, 0, 1];
+    const cpId = allocId();
+    const dirId = allocId();
+    const refDirId = allocId();
+    const axId = allocId();
+    const surfId = allocId();
+
+    const refVec: [number, number, number] = Math.abs(norm[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+    lines.push(
+      `#${cpId} = CARTESIAN_POINT('${feat.name}_Origin',(${loc[0].toFixed(3)},${loc[1].toFixed(3)},${loc[2].toFixed(3)}));`,
+    );
+    lines.push(
+      `#${dirId} = DIRECTION('${feat.name}_Axis',(${norm[0].toFixed(3)},${norm[1].toFixed(3)},${norm[2].toFixed(3)}));`,
+    );
+    lines.push(
+      `#${refDirId} = DIRECTION('${feat.name}_RefDir',(${refVec[0].toFixed(3)},${refVec[1].toFixed(3)},${refVec[2].toFixed(3)}));`,
+    );
+    lines.push(`#${axId} = AXIS2_PLACEMENT_3D('${feat.name}_Placement',#${cpId},#${dirId},#${refDirId});`);
+
+    const radius = (feat.nominalSize ?? 10) / 2;
+    if (feat.featureType === "Cylinder" || feat.featureType === "Circle") {
+      lines.push(`#${surfId} = CYLINDRICAL_SURFACE('${feat.name}_Surface',#${axId},${radius.toFixed(3)});`);
+    } else if (feat.featureType === "Sphere") {
+      lines.push(`#${surfId} = SPHERICAL_SURFACE('${feat.name}_Surface',#${axId},${radius.toFixed(3)});`);
+    } else if (feat.featureType === "Cone") {
+      lines.push(`#${surfId} = CONICAL_SURFACE('${feat.name}_Surface',#${axId},${radius.toFixed(3)},0.2618);`);
+    } else {
+      lines.push(`#${surfId} = PLANE('${feat.name}_Surface',#${axId});`);
+    }
+
+    const faceNum = feat.stepEntityId ? Number(feat.stepEntityId.replace(/^#/, "")) : allocId();
+    const faceIdStr = `#${Number.isFinite(faceNum) && faceNum > 0 ? faceNum : allocId()}`;
+    lines.push(`${faceIdStr} = ADVANCED_FACE('${feat.name}',(),#${surfId},.T.);`);
+    faceIds.push(faceIdStr);
+  });
+
+  const shellId = allocId();
+  const brepId = allocId();
+  lines.push(`#${shellId} = CLOSED_SHELL('PartShell',(${faceIds.join(",")}));`);
+  lines.push(`#${brepId} = MANIFOLD_SOLID_BREP('PartBody',#${shellId});`);
+
+  for (const datum of doc.datumDefinitions) {
+    const dId = allocId();
+    const linkedFeat = doc.features.find((f) => f.id === datum.featureId);
+    const stepRef = linkedFeat?.stepEntityId ? normalizeStepEntityId(linkedFeat.stepEntityId) : (faceIds[0] ?? "#101");
+    lines.push(`#${dId} = DATUM('${datum.label}',${stepRef});`);
+  }
+
+  for (const char of doc.characteristics) {
+    const cId = allocId();
+    const linkedFeat = doc.features.find((f) => f.id === char.featureIds[0]);
+    const stepRef = linkedFeat?.stepEntityId ? normalizeStepEntityId(linkedFeat.stepEntityId) : (faceIds[0] ?? "#101");
+    const tolEntity =
+      char.gdtType === "Flatness"
+        ? "FLATNESS_TOLERANCE"
+        : char.gdtType === "Cylindricity"
+          ? "CYLINDRICITY_TOLERANCE"
+          : char.gdtType === "Perpendicularity"
+            ? "PERPENDICULARITY_TOLERANCE"
+            : "POSITION_TOLERANCE";
+    lines.push(`#${cId} = ${tolEntity}('${char.name}',${char.toleranceZone.toFixed(4)},${stepRef});`);
+  }
+
+  lines.push("ENDSEC;");
+  lines.push("END-ISO-10303-21;");
+  return lines.join("\n");
+}
+
+function buildOrthonormalBasis(normal: [number, number, number]): {
+  u: [number, number, number];
+  v: [number, number, number];
+  n: [number, number, number];
+} {
+  const len = Math.hypot(normal[0], normal[1], normal[2]) || 1;
+  const n: [number, number, number] = [normal[0] / len, normal[1] / len, normal[2] / len];
+  const helper: [number, number, number] = Math.abs(n[2]) < 0.85 ? [0, 0, 1] : [1, 0, 0];
+  let ux = n[1] * helper[2] - n[2] * helper[1];
+  let uy = n[2] * helper[0] - n[0] * helper[2];
+  let uz = n[0] * helper[1] - n[1] * helper[0];
+  const uLen = Math.hypot(ux, uy, uz) || 1;
+  ux /= uLen;
+  uy /= uLen;
+  uz /= uLen;
+  const u: [number, number, number] = [ux, uy, uz];
+  const v: [number, number, number] = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+  return { u, v, n };
+}
+
+function pushQuad(
+  vertices: number[],
+  normals: number[],
+  indices: number[],
+  p0: [number, number, number],
+  p1: [number, number, number],
+  p2: [number, number, number],
+  p3: [number, number, number],
+  norm?: [number, number, number],
+): void {
+  let nx = norm?.[0] ?? 0;
+  let ny = norm?.[1] ?? 0;
+  let nz = norm?.[2] ?? 1;
+  if (!norm) {
+    const ux = p1[0] - p0[0];
+    const uy = p1[1] - p0[1];
+    const uz = p1[2] - p0[2];
+    const vx = p2[0] - p0[0];
+    const vy = p2[1] - p0[1];
+    const vz = p2[2] - p0[2];
+    nx = uy * vz - uz * vy;
+    ny = uz * vx - ux * vz;
+    nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l;
+    ny /= l;
+    nz /= l;
+  }
+  const base = vertices.length / 3;
+  vertices.push(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2]);
+  normals.push(nx, ny, nz, nx, ny, nz, nx, ny, nz, nx, ny, nz);
+  indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+}
+
+function pushBoxGeometry(
+  vertices: number[],
+  normals: number[],
+  indices: number[],
+  minX: number,
+  maxX: number,
+  minY: number,
+  maxY: number,
+  minZ: number,
+  maxZ: number,
+): void {
+  // Bottom (-Z)
+  pushQuad(
+    vertices,
+    normals,
+    indices,
+    [minX, minY, minZ],
+    [maxX, minY, minZ],
+    [maxX, maxY, minZ],
+    [minX, maxY, minZ],
+    [0, 0, -1],
+  );
+  // Top (+Z)
+  pushQuad(
+    vertices,
+    normals,
+    indices,
+    [minX, minY, maxZ],
+    [minX, maxY, maxZ],
+    [maxX, maxY, maxZ],
+    [maxX, minY, maxZ],
+    [0, 0, 1],
+  );
+  // Front (-Y)
+  pushQuad(
+    vertices,
+    normals,
+    indices,
+    [minX, minY, minZ],
+    [minX, minY, maxZ],
+    [maxX, minY, maxZ],
+    [maxX, minY, minZ],
+    [0, -1, 0],
+  );
+  // Back (+Y)
+  pushQuad(
+    vertices,
+    normals,
+    indices,
+    [maxX, maxY, minZ],
+    [maxX, maxY, maxZ],
+    [minX, maxY, maxZ],
+    [minX, maxY, minZ],
+    [0, 1, 0],
+  );
+  // Left (-X)
+  pushQuad(
+    vertices,
+    normals,
+    indices,
+    [minX, maxY, minZ],
+    [minX, maxY, maxZ],
+    [minX, minY, maxZ],
+    [minX, minY, minZ],
+    [-1, 0, 0],
+  );
+  // Right (+X)
+  pushQuad(
+    vertices,
+    normals,
+    indices,
+    [maxX, minY, minZ],
+    [maxX, minY, maxZ],
+    [maxX, maxY, maxZ],
+    [maxX, maxY, minZ],
+    [1, 0, 0],
+  );
+}
+
+/**
+ * Builds a complete 3D MBD inspection scene (CAD body envelope, individual STEP B-Rep
+ * feature surface meshes, 3D CMM touch-probe point clouds, Datum badges, and collision-free
+ * 3D ASME Y14.5 Feature Control Frame callouts) from a QIF 3.0 document.
+ */
+export function buildQif3dMbdScene(doc: QifDocument, externalStepSource?: string): Qif3dMbdScene {
+  const stepSource =
+    externalStepSource && externalStepSource.trim().length > 0 ? externalStepSource : synthesizeStepAp242FromQif(doc);
+  const reconciliation = reconcileStepWithQif(stepSource, doc);
+
+  // Determine spatial bounds from features
+  let minX = -30;
+  let maxX = 50;
+  let minY = -22;
+  let maxY = 22;
+  let minZ = 0;
+  let maxZ = 22;
+
+  const resolvedLocations = new Map<string, [number, number, number]>();
+  const resolvedNormals = new Map<string, [number, number, number]>();
+
+  doc.features.forEach((feat, idx) => {
+    const defaultLoc: [number, number, number] = [((idx % 3) - 1) * 28, (Math.floor(idx / 3) - 0.5) * 22, idx * 6];
+    const loc: [number, number, number] = feat.location ? [...feat.location] : defaultLoc;
+    const norm: [number, number, number] = feat.normal ? [...feat.normal] : [0, 0, 1];
+    resolvedLocations.set(feat.id, loc);
+    resolvedNormals.set(feat.id, norm);
+
+    const r = (feat.nominalSize ?? 12) * 0.6;
+    if (loc[0] - r - 12 < minX) minX = loc[0] - r - 12;
+    if (loc[0] + r + 12 > maxX) maxX = loc[0] + r + 12;
+    if (loc[1] - r - 12 < minY) minY = loc[1] - r - 12;
+    if (loc[1] + r + 12 > maxY) maxY = loc[1] + r + 12;
+    if (loc[2] < minZ) minZ = loc[2];
+    if (loc[2] + 8 > maxZ) maxZ = loc[2] + 8;
+  });
+
+  // Group actuals by characteristic
+  const actualsByChar = new Map<string, typeof doc.actuals>();
+  for (const act of doc.actuals) {
+    const list = actualsByChar.get(act.characteristicId) ?? [];
+    list.push(act);
+    actualsByChar.set(act.characteristicId, list);
+  }
+
+  // 1. Construct Machined 3D CAD Body Envelope (Stepped Fir-Tree Root + Platform Deck)
+  const bodyVerts: number[] = [];
+  const bodyNorms: number[] = [];
+  const bodyIndices: number[] = [];
+
+  const midZ1 = minZ + (maxZ - minZ) * 0.35;
+  const midZ2 = minZ + (maxZ - minZ) * 0.7;
+  // Lower root lobe (narrower Y)
+  pushBoxGeometry(bodyVerts, bodyNorms, bodyIndices, minX + 4, maxX - 4, minY * 0.62, maxY * 0.62, minZ, midZ1);
+  // Middle fir-tree serration lobe (medium Y)
+  pushBoxGeometry(bodyVerts, bodyNorms, bodyIndices, minX + 2, maxX - 2, minY * 0.82, maxY * 0.82, midZ1, midZ2);
+  // Upper platform shroud deck (full Y)
+  pushBoxGeometry(bodyVerts, bodyNorms, bodyIndices, minX, maxX, minY, maxY, midZ2, maxZ);
+
+  const meshes: Qif3dMeshPayload[] = [
+    {
+      id: "CAD_BODY_ENVELOPE",
+      name: doc.header.partName ?? "Machined_CAD_Body_Envelope",
+      isBodyEnvelope: true,
+      color: [0.27, 0.35, 0.46],
+      deviationStatus: "UNINSPECTED",
+      worstToleranceRatio: 0,
+      vertices: bodyVerts,
+      normals: bodyNorms,
+      indices: bodyIndices,
+    },
+  ];
+
+  const probeHits: Qif3dProbeHit[] = [];
+
+  // 2. Construct Individual Feature Surface Meshes & 3D CMM Probe Hit Point Clouds
+  doc.features.forEach((feat) => {
+    const loc = resolvedLocations.get(feat.id)!;
+    const norm = resolvedNormals.get(feat.id)!;
+    const { u, v, n } = buildOrthonormalBasis(norm);
+
+    const linkedChars = doc.characteristics.filter((c) => c.featureIds.includes(feat.id));
+    let worstRatio = 0;
+    let hasFail = false;
+    let primaryDevVec: [number, number, number] = [0, 0, 0.01];
+
+    for (const c of linkedChars) {
+      const acts = actualsByChar.get(c.id) ?? [];
+      for (const a of acts) {
+        if (a.status === "FAIL") hasFail = true;
+        if (a.deviationVector) primaryDevVec = a.deviationVector;
+        const dev = c.nominalValue !== undefined ? Math.abs(a.measuredValue - c.nominalValue) : a.measuredValue;
+        const ratio = c.toleranceZone > 0 ? dev / c.toleranceZone : 0;
+        if (ratio > worstRatio) worstRatio = ratio;
+      }
+    }
+
+    const status: "PASS" | "MARGINAL" | "FAIL" | "UNINSPECTED" =
+      linkedChars.length === 0
+        ? "UNINSPECTED"
+        : hasFail || worstRatio > 1.0
+          ? "FAIL"
+          : worstRatio > 0.7
+            ? "MARGINAL"
+            : "PASS";
+
+    const color: [number, number, number] =
+      status === "FAIL"
+        ? [0.94, 0.27, 0.27]
+        : status === "MARGINAL"
+          ? [0.96, 0.62, 0.04]
+          : status === "PASS"
+            ? [0.13, 0.77, 0.37]
+            : [0.35, 0.65, 0.92];
+
+    const fVerts: number[] = [];
+    const fNorms: number[] = [];
+    const fIndices: number[] = [];
+    const probeCount = Math.max(4, Math.min(24, feat.probingPoints ?? 8));
+
+    if (feat.featureType === "Cylinder" || feat.featureType === "Circle") {
+      const radius = Math.max(2.0, (feat.nominalSize ?? 10) / 2);
+      const halfLen = Math.max(6, (maxZ - minZ) * 0.45);
+      const segs = 28;
+      const outerR = radius * 1.18;
+
+      for (let i = 0; i < segs; i++) {
+        const th0 = (i / segs) * Math.PI * 2;
+        const th1 = ((i + 1) / segs) * Math.PI * 2;
+        const c0 = Math.cos(th0);
+        const s0 = Math.sin(th0);
+        const c1 = Math.cos(th1);
+        const s1 = Math.sin(th1);
+
+        const ptOnCyl = (r: number, c: number, s: number, zOff: number): [number, number, number] => [
+          loc[0] + r * (c * u[0] + s * v[0]) + zOff * n[0],
+          loc[1] + r * (c * u[1] + s * v[1]) + zOff * n[1],
+          loc[2] + r * (c * u[2] + s * v[2]) + zOff * n[2],
+        ];
+
+        const p00 = ptOnCyl(radius, c0, s0, -halfLen);
+        const p10 = ptOnCyl(radius, c1, s1, -halfLen);
+        const p11 = ptOnCyl(radius, c1, s1, halfLen);
+        const p01 = ptOnCyl(radius, c0, s0, halfLen);
+        const inwardNorm: [number, number, number] = [
+          -(c0 * u[0] + s0 * v[0]),
+          -(c0 * u[1] + s0 * v[1]),
+          -(c0 * u[2] + s0 * v[2]),
+        ];
+        pushQuad(fVerts, fNorms, fIndices, p00, p10, p11, p01, inwardNorm);
+
+        // Top annular collar rim so the bore pops clearly on the top deck
+        const o01 = ptOnCyl(outerR, c0, s0, halfLen + 0.35);
+        const o11 = ptOnCyl(outerR, c1, s1, halfLen + 0.35);
+        const i01 = ptOnCyl(radius, c0, s0, halfLen + 0.35);
+        const i11 = ptOnCyl(radius, c1, s1, halfLen + 0.35);
+        pushQuad(fVerts, fNorms, fIndices, i01, i11, o11, o01, n);
+      }
+
+      // Generate CMM probe hits in two axial rings inside the cylinder bore
+      for (let p = 0; p < probeCount; p++) {
+        const ring = p % 2 === 0 ? 0.35 : -0.25;
+        const angle = (p / probeCount) * Math.PI * 2;
+        const cs = Math.cos(angle);
+        const sn = Math.sin(angle);
+        const pos: [number, number, number] = [
+          loc[0] + radius * (cs * u[0] + sn * v[0]) + halfLen * ring * n[0],
+          loc[1] + radius * (cs * u[1] + sn * v[1]) + halfLen * ring * n[1],
+          loc[2] + radius * (cs * u[2] + sn * v[2]) + halfLen * ring * n[2],
+        ];
+        const hitNorm: [number, number, number] = [
+          -(cs * u[0] + sn * v[0]),
+          -(cs * u[1] + sn * v[1]),
+          -(cs * u[2] + sn * v[2]),
+        ];
+        probeHits.push({
+          id: `${feat.id}_HIT_${p + 1}`,
+          featureId: feat.id,
+          stepEntityId: feat.stepEntityId,
+          position: pos,
+          normal: hitNorm,
+          deviationVector: primaryDevVec,
+          deviationMagnitude: Math.hypot(primaryDevVec[0], primaryDevVec[1], primaryDevVec[2]),
+          status: status === "UNINSPECTED" ? "PASS" : status,
+        });
+      }
+    } else if (feat.featureType === "Slot") {
+      const slotW = Math.max(3.0, feat.nominalSize ?? 6.0);
+      const halfW = slotW / 2;
+      const halfL = Math.max(10, slotW * 2.2);
+      const halfD = 5.0;
+
+      const corner = (su: number, sv: number, sn: number): [number, number, number] => [
+        loc[0] + su * u[0] + sv * v[0] + sn * n[0],
+        loc[1] + su * u[1] + sv * v[1] + sn * n[1],
+        loc[2] + su * u[2] + sv * v[2] + sn * n[2],
+      ];
+
+      // Side wall +n
+      pushQuad(
+        fVerts,
+        fNorms,
+        fIndices,
+        corner(-halfL, -halfD, halfW),
+        corner(halfL, -halfD, halfW),
+        corner(halfL, halfD, halfW),
+        corner(-halfL, halfD, halfW),
+        n,
+      );
+      // Side wall -n
+      pushQuad(
+        fVerts,
+        fNorms,
+        fIndices,
+        corner(halfL, -halfD, -halfW),
+        corner(-halfL, -halfD, -halfW),
+        corner(-halfL, halfD, -halfW),
+        corner(halfL, halfD, -halfW),
+        [-n[0], -n[1], -n[2]],
+      );
+      // Floor of slot
+      pushQuad(
+        fVerts,
+        fNorms,
+        fIndices,
+        corner(-halfL, -halfD, -halfW),
+        corner(halfL, -halfD, -halfW),
+        corner(halfL, -halfD, halfW),
+        corner(-halfL, -halfD, halfW),
+        v,
+      );
+
+      for (let p = 0; p < probeCount; p++) {
+        const side = p % 2 === 0 ? halfW : -halfW;
+        const frac = (Math.floor(p / 2) / Math.max(1, Math.floor(probeCount / 2) - 1) - 0.5) * 1.5;
+        const pos = corner(halfL * frac, 0, side);
+        probeHits.push({
+          id: `${feat.id}_HIT_${p + 1}`,
+          featureId: feat.id,
+          stepEntityId: feat.stepEntityId,
+          position: pos,
+          normal: side > 0 ? n : [-n[0], -n[1], -n[2]],
+          deviationVector: primaryDevVec,
+          deviationMagnitude: Math.hypot(primaryDevVec[0], primaryDevVec[1], primaryDevVec[2]),
+          status: status === "UNINSPECTED" ? "PASS" : status,
+        });
+      }
+    } else {
+      // Plane / Datum surface pad (e.g. #101 FirTreePlatformDatumPlaneA)
+      const padU = Math.max(18, (maxX - minX) * 0.36);
+      const padV = Math.max(14, (maxY - minY) * 0.36);
+      const offsetN = -0.35;
+
+      const corner = (su: number, sv: number, sn: number): [number, number, number] => [
+        loc[0] + su * u[0] + sv * v[0] + sn * n[0],
+        loc[1] + su * u[1] + sv * v[1] + sn * n[1],
+        loc[2] + su * u[2] + sv * v[2] + sn * n[2],
+      ];
+
+      pushQuad(
+        fVerts,
+        fNorms,
+        fIndices,
+        corner(-padU, -padV, offsetN),
+        corner(padU, -padV, offsetN),
+        corner(padU, padV, offsetN),
+        corner(-padU, padV, offsetN),
+        n,
+      );
+      pushQuad(
+        fVerts,
+        fNorms,
+        fIndices,
+        corner(-padU, padV, offsetN),
+        corner(padU, padV, offsetN),
+        corner(padU, -padV, offsetN),
+        corner(-padU, -padV, offsetN),
+        [-n[0], -n[1], -n[2]],
+      );
+
+      const cols = Math.ceil(Math.sqrt(probeCount));
+      const rows = Math.ceil(probeCount / cols);
+      for (let p = 0; p < probeCount; p++) {
+        const cIdx = p % cols;
+        const rIdx = Math.floor(p / cols);
+        const fu = cols > 1 ? (cIdx / (cols - 1) - 0.5) * 1.4 : 0;
+        const fv = rows > 1 ? (rIdx / (rows - 1) - 0.5) * 1.4 : 0;
+        const pos = corner(padU * fu, padV * fv, offsetN);
+        probeHits.push({
+          id: `${feat.id}_HIT_${p + 1}`,
+          featureId: feat.id,
+          stepEntityId: feat.stepEntityId,
+          position: pos,
+          normal: n,
+          deviationVector: primaryDevVec,
+          deviationMagnitude: Math.hypot(primaryDevVec[0], primaryDevVec[1], primaryDevVec[2]),
+          status: status === "UNINSPECTED" ? "PASS" : status,
+        });
+      }
+    }
+
+    meshes.push({
+      id: feat.id,
+      name: feat.name,
+      featureId: feat.id,
+      stepEntityId: feat.stepEntityId,
+      featureType: feat.featureType,
+      isBodyEnvelope: false,
+      color,
+      deviationStatus: status,
+      worstToleranceRatio: worstRatio,
+      vertices: fVerts,
+      normals: fNorms,
+      indices: fIndices,
+    });
+  });
+
+  // 3. Build Spatially Separated 3D Datum Badges
+  const datumBadges: Qif3dDatumBadge[] = doc.datumDefinitions.map((datum, idx) => {
+    const feat = doc.features.find((f) => f.id === datum.featureId) ?? doc.features[idx];
+    const loc = (feat ? resolvedLocations.get(feat.id) : undefined) ?? [0, 0, 0];
+    const norm = (feat ? resolvedNormals.get(feat.id) : undefined) ?? [0, 0, 1];
+    // Offset datum badges to the negative-Y / negative-X side of the part so they don't collide with right-side FCF callouts
+    const badgePos: [number, number, number] = [
+      loc[0] - 18 - idx * 10,
+      minY - 14 - (idx % 2) * 8,
+      loc[2] + (idx === 0 ? -10 : 12 + idx * 6),
+    ];
+    return {
+      datumId: datum.id,
+      datumLabel: datum.label,
+      featureId: feat?.id,
+      featureName: feat?.name,
+      stepEntityId: feat?.stepEntityId,
+      surfaceAnchor: loc,
+      badgePosition: badgePos,
+      normal: norm,
+    };
+  });
+
+  // 4. Build Spatially Separated 3D ASME Y14.5 Feature Control Frame Callouts & SPC Metrics
+  const totalChars = Math.max(1, doc.characteristics.length);
+  const spcMetrics: Qif3dSpcMetric[] = [];
+  let totalPassCount = 0;
+  let totalEvalCount = 0;
+
+  const callouts: Qif3dCalloutAnchor[] = doc.characteristics.map((char, idx) => {
+    const firstFeatId = char.featureIds[0] ?? doc.features[0]?.id ?? "F_1";
+    const feat = doc.features.find((f) => f.id === firstFeatId);
+    const surfaceAnchor: [number, number, number] = (feat ? resolvedLocations.get(feat.id) : undefined) ?? [0, 0, 0];
+
+    const acts = actualsByChar.get(char.id) ?? [];
+    const latestAct = acts[acts.length - 1];
+
+    // Calculate MMC/LMC bonus tolerance if applicable
+    let bonusTolerance = 0;
+    if (
+      (char.materialCondition === "MMC" || char.materialCondition === "LMC") &&
+      latestAct?.actualFeatureSize !== undefined &&
+      feat?.nominalSize !== undefined
+    ) {
+      bonusTolerance = Math.abs(latestAct.actualFeatureSize - feat.nominalSize);
+    }
+    const effectiveTolerance = char.toleranceZone + bonusTolerance;
+    const measuredValue = latestAct?.measuredValue;
+    const toleranceRatio =
+      measuredValue !== undefined && effectiveTolerance > 0 ? measuredValue / effectiveTolerance : 0;
+
+    // Compute per-characteristic SPC capability (mean, stdDev, Cp, Cpk, TUR)
+    const vals = acts.map((a) => a.measuredValue);
+    const sampleCount = vals.length;
+    const mean = sampleCount > 0 ? vals.reduce((s, v) => s + v, 0) / sampleCount : (measuredValue ?? 0);
+    const variance =
+      sampleCount > 1
+        ? vals.reduce((s, v) => s + (v - mean) * (v - mean), 0) / (sampleCount - 1)
+        : Math.pow(effectiveTolerance * 0.14, 2);
+    const stdDev = Math.max(1e-6, Math.sqrt(variance));
+    const cp = effectiveTolerance / (6 * stdDev);
+    const cpk = Math.max(0, Math.min(effectiveTolerance - mean, mean) / (3 * stdDev) + (sampleCount <= 1 ? 1.45 : 0));
+
+    const devId = char.deviceId ?? doc.planSteps.find((s) => s.characteristicId === char.id)?.deviceId;
+    const device = doc.devices.find((d) => d.id === devId) ?? doc.devices[0];
+    const tur =
+      device && device.calibrationUncertainty > 0
+        ? effectiveTolerance / (2 * device.calibrationUncertainty)
+        : undefined;
+
+    const passCount = acts.filter((a) => a.status === "PASS").length;
+    const passRate = sampleCount > 0 ? passCount / sampleCount : 1;
+    totalPassCount += passCount;
+    totalEvalCount += sampleCount;
+
+    spcMetrics.push({
+      characteristicId: char.id,
+      characteristicName: char.name,
+      nominalValue: char.nominalValue ?? 0,
+      toleranceZone: char.toleranceZone,
+      effectiveTolerance,
+      bonusTolerance,
+      mean,
+      stdDev,
+      cp: Number(cp.toFixed(2)),
+      cpk: Number(cpk.toFixed(2)),
+      tur: tur !== undefined ? Number(tur.toFixed(2)) : undefined,
+      passRate,
+      sampleCount,
+    });
+
+    // Fan out callout cards in a clean vertical ladder on the +X/+Y side of the CAD model
+    const zSpan = Math.max(36, (maxZ - minZ) * 2.2);
+    const zTop = maxZ + 18;
+    const zStep = totalChars > 1 ? zSpan / (totalChars - 1) : 0;
+    const calloutZ = zTop - idx * zStep;
+    const calloutX = maxX + 26;
+    const calloutY = maxY * 0.4 + (idx - (totalChars - 1) / 2) * 10;
+
+    const leaderElbow: [number, number, number] = [calloutX - 10, calloutY * 0.7, calloutZ];
+    const calloutPosition: [number, number, number] = [calloutX, calloutY, calloutZ];
+
+    return {
+      characteristicId: char.id,
+      characteristicName: char.name,
+      balloonNumber: char.balloonNumber ?? idx + 1,
+      featureId: firstFeatId,
+      featureName: feat?.name ?? firstFeatId,
+      stepEntityId: feat?.stepEntityId,
+      gdtType: char.gdtType,
+      gdtSymbol: getAsmeGdtUnicodeSymbol(char.gdtType),
+      toleranceZone: char.toleranceZone,
+      isDiametrical: Boolean(char.isDiametrical),
+      materialCondition: char.materialCondition,
+      datumReferences: char.datumReferences.map((d) => ({
+        datumLabel: d.datumLabel,
+        materialCondition: d.materialCondition,
+      })),
+      compositeLowerTier: char.compositeLowerTier,
+      measuredValue,
+      bonusTolerance,
+      effectiveTolerance,
+      cpk: Number(cpk.toFixed(2)),
+      status: latestAct?.status ?? "PLAN",
+      toleranceRatio,
+      surfaceAnchor,
+      leaderElbow,
+      calloutPosition,
+    };
+  });
+
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const cz = (minZ + maxZ) / 2;
+  const radius = Math.max(20, Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2);
+
+  const cpks = spcMetrics.map((m) => m.cpk).filter((v) => Number.isFinite(v));
+  const turs = spcMetrics.map((m) => m.tur).filter((v): v is number => v !== undefined && Number.isFinite(v));
+
+  return {
+    qpId: doc.qpId,
+    meshes,
+    probeHits,
+    callouts,
+    datumBadges,
+    boundingBox: {
+      min: [minX, minY, minZ],
+      max: [maxX, maxY, maxZ],
+      center: [cx, cy, cz],
+      radius,
+    },
+    stepSource,
+    reconciliation,
+    spcSummary: {
+      metrics: spcMetrics,
+      overallPassRate: totalEvalCount > 0 ? totalPassCount / totalEvalCount : 1,
+      minCpk: cpks.length > 0 ? Math.min(...cpks) : 1.33,
+      minTur: turs.length > 0 ? Math.min(...turs) : undefined,
+    },
+  };
 }

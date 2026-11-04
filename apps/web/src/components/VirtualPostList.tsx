@@ -2,7 +2,8 @@
 
 import { Spinner } from "@primer/react";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLanguageEnabled } from "../FeatureFlagContext";
 import { estimatePostHeight } from "../util/post-layout";
 import Box from "./Box";
 import Post from "./Post";
@@ -41,6 +42,49 @@ export const VirtualPostList = <T extends PostListItem = PostListItem>({
   loadMoreAction,
   headerRef,
 }: VirtualPostListProps<T>): React.ReactElement => {
+  const isModelScriptEnabled = useLanguageEnabled("modelscript");
+
+  const visiblePosts = useMemo(() => {
+    if (isModelScriptEnabled) return posts;
+    return posts.filter((post) => {
+      const p = post as unknown as Record<string, unknown>;
+      const meta =
+        p["metadata"] && typeof p["metadata"] === "object" ? (p["metadata"] as Record<string, unknown>) : undefined;
+      const artifactView = p["artifact_view"] as Record<string, unknown> | undefined;
+      const metaLang = String(meta?.["language"] || p["language"] || "")
+        .trim()
+        .toLowerCase();
+      const metaDialect = String(meta?.["dialect"] || "")
+        .trim()
+        .toLowerCase();
+      const viewType = String(artifactView?.["view_type"] || p["view_type"] || "")
+        .trim()
+        .toLowerCase();
+      const filename = String(meta?.["filename"] || artifactView?.["name"] || artifactView?.["title"] || "")
+        .trim()
+        .toLowerCase();
+      const title = String(meta?.["artifactTitle"] || artifactView?.["title"] || p["title"] || "")
+        .trim()
+        .toLowerCase();
+      const content = String(p["content"] || "").toLowerCase();
+
+      const isMsx =
+        metaLang === "modelscript" ||
+        metaLang === "msx" ||
+        metaDialect === "modelscript" ||
+        metaDialect === "msx" ||
+        viewType === "modelscript" ||
+        viewType === "msx" ||
+        filename.endsWith(".msx") ||
+        filename.endsWith(".modelscript") ||
+        title.includes(".msx") ||
+        content.includes("tiltrotortransitioncontroller.msx") ||
+        (content.includes("#modelscript") && (content.includes(".msx") || viewType === "modelscript"));
+
+      return !isMsx;
+    });
+  }, [posts, isModelScriptEnabled]);
+
   const [scrollMargin, setScrollMargin] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
@@ -73,18 +117,18 @@ export const VirtualPostList = <T extends PostListItem = PostListItem>({
       ro.disconnect();
       window.removeEventListener("resize", updateScrollMargin);
     };
-  }, [headerRef, posts.length]);
+  }, [headerRef, visiblePosts.length]);
 
   const rowVirtualizer = useWindowVirtualizer({
-    count: posts.length,
-    estimateSize: (index) => estimatePostHeight(posts[index]),
+    count: visiblePosts.length,
+    estimateSize: (index) => estimatePostHeight(visiblePosts[index]),
     overscan: 10,
     scrollMargin,
   });
 
   useEffect(() => {
     const sentinel = loadMoreSentinelRef.current;
-    if (!sentinel || loadingMore || !hasMore || posts.length === 0 || !onLoadMore) return;
+    if (!sentinel || loadingMore || !hasMore || visiblePosts.length === 0 || !onLoadMore) return;
     if (typeof IntersectionObserver === "undefined") return;
 
     const io = new IntersectionObserver(
@@ -97,9 +141,9 @@ export const VirtualPostList = <T extends PostListItem = PostListItem>({
     );
     io.observe(sentinel);
     return () => io.disconnect();
-  }, [loadingMore, hasMore, posts.length, onLoadMore]);
+  }, [loadingMore, hasMore, visiblePosts.length, onLoadMore]);
 
-  if (posts.length === 0) {
+  if (visiblePosts.length === 0) {
     return <>{emptyState ?? null}</>;
   }
 
@@ -113,7 +157,7 @@ export const VirtualPostList = <T extends PostListItem = PostListItem>({
         }}
       >
         {rowVirtualizer.getVirtualItems().map((virtualItem) => {
-          const post = posts[virtualItem.index];
+          const post = visiblePosts[virtualItem.index];
           if (!post) return null;
           const isPinned = isPinnedEvaluator ? isPinnedEvaluator(post) : Boolean(post.is_pinned || post.pinned);
           return (

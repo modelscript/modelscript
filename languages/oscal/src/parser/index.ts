@@ -339,8 +339,22 @@ function parseXmlAttributes(attrStr: string): Record<string, string> {
   return attrs;
 }
 
+function stripXmlCommentsAndProlog(xml: string): string {
+  let cleaned = xml.replace(/^\s*<\?xml[^?]*\?>/i, "");
+  let startIdx: number;
+  while ((startIdx = cleaned.indexOf("<!--")) !== -1) {
+    const endIdx = cleaned.indexOf("-->", startIdx + 4);
+    if (endIdx === -1) {
+      cleaned = cleaned.slice(0, startIdx);
+      break;
+    }
+    cleaned = cleaned.slice(0, startIdx) + cleaned.slice(endIdx + 3);
+  }
+  return cleaned;
+}
+
 function parseXmlTree(xml: string): XmlNode {
-  const cleaned = xml.replace(/<\?xml[\s\S]*?\?>/gi, "").replace(/<!--[\s\S]*?-->/g, "");
+  const cleaned = stripXmlCommentsAndProlog(xml);
   const tagRe = /<\/?([A-Za-z0-9_:-]+)([^>]*?)(\/?)>/g;
   const stack: XmlNode[] = [];
   let root: XmlNode | null = null;

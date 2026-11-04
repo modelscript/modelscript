@@ -1047,7 +1047,25 @@ export function parsePlcopenTextToProject(source: string, fallbackTitle = "PLC_P
       .replace(/&apos;/g, "'")
       .replace(/&amp;/g, "&");
 
-  const stripStComments = (s: string) => s.replace(/\(\*[\s\S]*?\*\)/g, " ").replace(/\/\/[^\r\n]*/g, " ");
+  const stripStComments = (s: string) => {
+    let result = "";
+    let i = 0;
+    while (i < s.length) {
+      if (s[i] === "(" && s[i + 1] === "*") {
+        const end = s.indexOf("*)", i + 2);
+        i = end === -1 ? s.length : end + 2;
+        result += " ";
+      } else if (s[i] === "/" && s[i + 1] === "/") {
+        const nl = s.indexOf("\n", i + 2);
+        i = nl === -1 ? s.length : nl + 1;
+        result += " ";
+      } else {
+        result += s[i];
+        i++;
+      }
+    }
+    return result;
+  };
 
   const parseSimpleExpr = (raw: string): PlcExprLike => {
     const trimmed = raw.trim();

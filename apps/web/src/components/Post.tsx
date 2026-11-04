@@ -59,11 +59,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
     token && user && (user.username === displayPost.username || (user as any)?.role === "admin"),
   );
 
-  const [liked, setLiked] = useState(Boolean(displayPost.liked));
+  const [liked, setLiked] = useState(Boolean(token && displayPost.liked));
   const [likeCount, setLikeCount] = useState(displayPost.like_count);
-  const [reposted, setReposted] = useState(Boolean(displayPost.reposted));
+  const [reposted, setReposted] = useState(Boolean(token && displayPost.reposted));
   const [repostCount, setRepostCount] = useState(displayPost.repost_count);
-  const [bookmarked, setBookmarked] = useState(Boolean(displayPost.bookmarked));
+  const [bookmarked, setBookmarked] = useState(Boolean(token && displayPost.bookmarked));
   const [bookmarkCount, setBookmarkCount] = useState(displayPost.bookmark_count || 0);
   const [impressions, setImpressions] = useState<number>(
     displayPost.view_count ?? (displayPost as any).views_count ?? 0,
@@ -72,14 +72,15 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
 
   const legacyViewsCount = (displayPost as { views_count?: number }).views_count;
   useEffect(() => {
-    setLiked(Boolean(displayPost.liked));
+    setLiked(Boolean(token && displayPost.liked));
     setLikeCount(displayPost.like_count);
-    setReposted(Boolean(displayPost.reposted));
+    setReposted(Boolean(token && displayPost.reposted));
     setRepostCount(displayPost.repost_count);
-    setBookmarked(Boolean(displayPost.bookmarked));
+    setBookmarked(Boolean(token && displayPost.bookmarked));
     setBookmarkCount(displayPost.bookmark_count || 0);
     setImpressions(displayPost.view_count ?? legacyViewsCount ?? 0);
   }, [
+    token,
     displayPost.id,
     displayPost.liked,
     displayPost.like_count,
@@ -377,11 +378,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
 
   const actionsBarProps = {
     displayPost,
-    reposted,
+    reposted: Boolean(token && reposted),
     repostCount,
-    liked,
+    liked: Boolean(token && liked),
     likeCount,
-    bookmarked,
+    bookmarked: Boolean(token && bookmarked),
     bookmarkCount,
     impressions,
     hasAttachment,

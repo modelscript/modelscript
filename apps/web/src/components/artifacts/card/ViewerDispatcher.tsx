@@ -66,6 +66,7 @@ const SimpackViewer = React.lazy(() => import("../SimpackViewer"));
 const SolutionViewCard = React.lazy(() => import("../SolutionViewCard"));
 const FortranViewer = React.lazy(() => import("../FortranViewer"));
 const ReqifViewer = React.lazy(() => import("../ReqifViewer"));
+const QifViewer = React.lazy(() => import("../QifViewer"));
 const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewer"));
 
 export function getViewerExpectedHeight(
@@ -123,6 +124,8 @@ export function getViewerExpectedHeight(
     case "reqif":
     case "reqifz":
       return "430px";
+    case "qif":
+      return "480px";
     case "package":
     case "library":
     case "repository":
@@ -495,6 +498,8 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "reqif":
       case "reqifz":
         return <ReqifViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "qif":
+        return <QifViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "aspen":
       case "swmm":
       case "touchstone":
@@ -519,7 +524,6 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "spice":
       case "urdf":
       case "verilog-a":
-      case "qif":
       case "oscal":
       case "automationml":
       case "aml":

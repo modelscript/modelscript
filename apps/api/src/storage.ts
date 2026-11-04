@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -103,23 +103,31 @@ export class LibraryStorage {
     const modelicaDir = path.resolve(this.#dataDir, "Modelica");
     if (!fs.existsSync(modelicaDir)) return false;
 
-    const versions = targetVersion
-      ? [targetVersion]
-      : fs
-          .readdirSync(modelicaDir)
-          .filter((f) => f.endsWith(".zip"))
-          .map((f) => f.replace(/\.zip$/, ""))
-          .filter((v) => semver.valid(v) !== null);
+    const safeVersionRegex = /^[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9.-]+)?$/;
+    if (targetVersion && (!safeVersionRegex.test(targetVersion) || semver.valid(targetVersion) === null)) {
+      return false;
+    }
+
+    const versions = (
+      targetVersion
+        ? [targetVersion]
+        : fs
+            .readdirSync(modelicaDir)
+            .filter((f) => f.endsWith(".zip"))
+            .map((f) => f.replace(/\.zip$/, ""))
+    ).filter((v) => safeVersionRegex.test(v) && semver.valid(v) !== null);
 
     let createdAny = false;
     for (const ver of versions) {
-      const targetZip = this.#filePath(pkgName, ver);
+      const safeVer = this.#safe(ver);
+      const targetZip = this.#filePath(pkgName, safeVer);
       if (fs.existsSync(targetZip)) {
         createdAny = true;
         continue;
       }
 
-      const mslZip = path.join(modelicaDir, `${ver}.zip`);
+      const mslZip = path.resolve(modelicaDir, `${safeVer}.zip`);
+      if (!mslZip.startsWith(modelicaDir + path.sep)) continue;
       if (!fs.existsSync(mslZip)) continue;
 
       try {
@@ -129,42 +137,59 @@ export class LibraryStorage {
         try {
           if (pkgName === "Complex") {
             try {
-              execSync(`unzip -q -p "${mslZip}" Complex.mo > "${path.join(tmpDir, "Complex.mo")}"`, { stdio: "pipe" });
+              const compMo = execFileSync("unzip", ["-q", "-p", mslZip, "Complex.mo"], {
+                stdio: ["ignore", "pipe", "ignore"],
+                maxBuffer: 20 * 1024 * 1024,
+              });
+              fs.writeFileSync(path.join(tmpDir, "Complex.mo"), compMo);
             } catch {
               continue;
             }
             try {
-              execSync(`unzip -q -p "${mslZip}" LICENSE > "${path.join(tmpDir, "LICENSE")}"`, { stdio: "pipe" });
+              const lic = execFileSync("unzip", ["-q", "-p", mslZip, "LICENSE"], {
+                stdio: ["ignore", "pipe", "ignore"],
+                maxBuffer: 5 * 1024 * 1024,
+              });
+              fs.writeFileSync(path.join(tmpDir, "LICENSE"), lic);
             } catch {}
             if (
               fs.existsSync(path.join(tmpDir, "Complex.mo")) &&
               fs.statSync(path.join(tmpDir, "Complex.mo")).size > 0
             ) {
-              execSync(`cd "${tmpDir}" && zip -q -r "${targetZip}" .`, { stdio: "pipe" });
+              execFileSync("zip", ["-q", "-r", targetZip, "."], { cwd: tmpDir, stdio: "ignore" });
             }
           } else if (pkgName === "ModelicaServices") {
             const svcSubDir = path.join(tmpDir, "ModelicaServices");
             fs.mkdirSync(svcSubDir, { recursive: true });
             try {
-              execSync(
-                `unzip -q -j "${mslZip}" "ModelicaServices ${ver}/*" -d "${svcSubDir}" 2>/dev/null || unzip -q -j "${mslZip}" "ModelicaServices/*" -d "${svcSubDir}"`,
-                { stdio: "pipe" },
-              );
+              execFileSync("unzip", ["-q", "-j", mslZip, `ModelicaServices ${safeVer}/*`, "-d", svcSubDir], {
+                stdio: "ignore",
+              });
             } catch {
-              continue;
+              try {
+                execFileSync("unzip", ["-q", "-j", mslZip, "ModelicaServices/*", "-d", svcSubDir], {
+                  stdio: "ignore",
+                });
+              } catch {
+                continue;
+              }
             }
             try {
-              execSync(`unzip -q -p "${mslZip}" LICENSE > "${path.join(tmpDir, "LICENSE")}"`, { stdio: "pipe" });
+              const lic = execFileSync("unzip", ["-q", "-p", mslZip, "LICENSE"], {
+                stdio: ["ignore", "pipe", "ignore"],
+                maxBuffer: 5 * 1024 * 1024,
+              });
+              fs.writeFileSync(path.join(tmpDir, "LICENSE"), lic);
             } catch {}
             const files = fs.readdirSync(svcSubDir);
             if (files.length > 0) {
-              execSync(`cd "${tmpDir}" && zip -q -r "${targetZip}" .`, { stdio: "pipe" });
+              execFileSync("zip", ["-q", "-r", targetZip, "."], { cwd: tmpDir, stdio: "ignore" });
             }
           }
 
           if (fs.existsSync(targetZip) && fs.statSync(targetZip).size > 50) {
             const hash = crypto.createHash("sha256").update(fs.readFileSync(targetZip)).digest("hex");
-            fs.writeFileSync(path.join(pkgDir, `${this.#safe(ver)}.sha256`), hash, "utf-8");
+            fs.writeFileSync(path.join(pkgDir, `${safeVer}.sha256`), hash, "utf-8");
             createdAny = true;
           }
         } finally {

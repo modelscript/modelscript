@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { getUserTopics, updateUserTopic } from "../../../api";
 import { useCapabilities } from "../../../CapabilitiesContext";
 import Box from "../../../components/Box";
+import { useLanguageEnabled } from "../../../FeatureFlagContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import {
@@ -77,6 +78,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
   const navigate = useNavigate();
   const branding = useInstanceBranding();
   const { tier, edition, airgapEnforced, capabilities } = useCapabilities();
+  const isModelScriptEnabled = useLanguageEnabled("modelscript");
   const brandName = branding.instanceName || "Ansatz";
 
   const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
@@ -401,7 +403,9 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
                 },
                 {
                   title: "ModelScript Package Registry",
-                  desc: "Browse reusable .msx and .mo Modelica libraries, SysML v2 packages, and FMI 2.0/3.0 FMUs.",
+                  desc: isModelScriptEnabled
+                    ? "Browse reusable .msx and .mo Modelica libraries, SysML v2 packages, and FMI 2.0/3.0 FMUs."
+                    : "Browse reusable .mo Modelica libraries, SysML v2 packages, and FMI 2.0/3.0 FMUs.",
                   link: "/packages",
                   label: "Browse Packages →",
                   external: false,

@@ -9,6 +9,7 @@ import { renderKinematicDiagramSvg } from "@modelscript/diagram/kinematic-diagra
 import { renderOlgaSchematicSvg } from "@modelscript/diagram/olga-diagram-builder";
 import { renderPscadSvg } from "@modelscript/diagram/pscad-diagram-builder";
 import { renderPsseSldSvg } from "@modelscript/diagram/psse-diagram-builder";
+import { renderQifMbdHeatmapSvg } from "@modelscript/diagram/qif-diagram-builder";
 import {
   buildSimulinkDiagram,
   parseSimulinkTextToSystem,
@@ -996,6 +997,109 @@ end DoublePendulum3D;
           `${file} must verify the primary mouse button is still pressed during move events to recover if mouseup occurred outside the window`,
         );
       }
+    });
+  });
+
+  describe("11. 3D MBD / QIF + STEP AP242 CAD Overlay Viewer & Non-Overlapping GD&T Schematic", () => {
+    it("renders collision-free radial STEP #ID callout badges and multi-tiered 3D CAD geometry in renderQifMbdHeatmapSvg", () => {
+      const svg = renderQifMbdHeatmapSvg({
+        qpId: "9f8e7d6c-5b4a-4f3e-8d2c-1a0b9c8d7e6f",
+        datumDefinitions: [
+          { id: "DAT_A", label: "A", featureId: "FEAT_DATUM_A" },
+          { id: "DAT_B", label: "B", featureId: "FEAT_BORE_B" },
+          { id: "DAT_C", label: "C", featureId: "FEAT_SLOT_C" },
+        ],
+        features: [
+          {
+            id: "FEAT_DATUM_A",
+            name: "FirTreePlatformDatumPlaneA",
+            featureType: "Plane",
+            stepEntityId: 101,
+            location: [0, 0, 0],
+            normal: [0, 0, 1],
+          },
+          {
+            id: "FEAT_BORE_B",
+            name: "RootInternalCoolingBoreB",
+            featureType: "Cylinder",
+            stepEntityId: 108,
+            location: [12.5, 0, -15],
+            normal: [0, 0, 1],
+            nominalSize: 8.5,
+          },
+          {
+            id: "FEAT_SLOT_C",
+            name: "AxialLockingPinSlotC",
+            featureType: "OppositeParallelPlanes",
+            stepEntityId: 114,
+            location: [-18, 0, -8],
+            normal: [0, 1, 0],
+            nominalSize: 4.0,
+          },
+          {
+            id: "FEAT_PIN_HOLE_1",
+            name: "DamperWirePinBore",
+            featureType: "Cylinder",
+            stepEntityId: 118,
+            location: [24, 6.5, -4],
+            normal: [1, 0, 0],
+            nominalSize: 3.2,
+          },
+        ],
+        characteristics: [
+          {
+            id: "CHAR_FLAT_A",
+            name: "Datum A Flatness",
+            gdtType: "Flatness",
+            featureIds: ["FEAT_DATUM_A"],
+            toleranceZone: 0.008,
+          },
+          {
+            id: "CHAR_POS_PIN",
+            name: "Damper Pin Bore True Position",
+            gdtType: "Position",
+            featureIds: ["FEAT_PIN_HOLE_1"],
+            toleranceZone: 0.025,
+            materialCondition: "MMC",
+            datumReferences: [{ datumLabel: "A" }, { datumLabel: "B", materialCondition: "MMC" }, { datumLabel: "C" }],
+          },
+        ],
+        actuals: [
+          { id: "ACT_1", characteristicId: "CHAR_FLAT_A", measuredValue: 0.0031, status: "PASS" },
+          { id: "ACT_2", characteristicId: "CHAR_POS_PIN", measuredValue: 0.011, status: "PASS" },
+        ],
+      });
+
+      assert.ok(svg.includes("STEP #101"), "Must render STEP AP242 entity #101 badge in FCF panel");
+      assert.ok(svg.includes("STEP #118"), "Must render STEP AP242 entity #118 badge in FCF panel");
+      assert.ok(svg.includes("#101 · Datum A"), "Must render compact radial callout badge for Datum A");
+      assert.ok(svg.includes("#108 · Datum B"), "Must render compact radial callout badge for Datum B");
+    });
+
+    it("dispatches qif artifacts to dedicated 3D MBD QifViewer with STEP AP242 B-Rep pairing", () => {
+      const dispatcherSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        dispatcherSrc.includes('case "qif":') && dispatcherSrc.includes("<QifViewer"),
+        "ViewerDispatcher must route 'qif' artifacts to dedicated <QifViewer />",
+      );
+
+      const qifViewerSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/artifacts/QifViewer.tsx"),
+        "utf8",
+      );
+      assert.ok(
+        qifViewerSrc.includes('useState<QifViewTab>("3d")') &&
+          qifViewerSrc.includes("buildQif3dMbdScene") &&
+          qifViewerSrc.includes("STEP AP242"),
+        "QifViewer must default to the 3D CAD + GD&T tab and synthesize STEP AP242 B-Rep surface meshes via buildQif3dMbdScene",
+      );
+      assert.ok(
+        qifViewerSrc.includes("Boolean(viewConfig?.standalone)"),
+        "QifViewer must gate Open in Playground header button behind viewConfig.standalone",
+      );
     });
   });
 });

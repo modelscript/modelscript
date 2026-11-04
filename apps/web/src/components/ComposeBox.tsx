@@ -324,7 +324,16 @@ export default function ComposeBox(props: ComposeBoxProps) {
       if (anchor.target && anchor.target !== "_self") return;
       if (anchor.hasAttribute("download")) return;
       const rawHref = anchor.getAttribute("href");
-      if (!rawHref || rawHref.startsWith("#") || rawHref.startsWith("javascript:") || rawHref.startsWith("mailto:")) {
+      if (!rawHref || rawHref.startsWith("#")) {
+        return;
+      }
+      const lowerHref = rawHref.trim().toLowerCase();
+      if (
+        lowerHref.startsWith("javascript:") ||
+        lowerHref.startsWith("data:") ||
+        lowerHref.startsWith("vbscript:") ||
+        lowerHref.startsWith("mailto:")
+      ) {
         return;
       }
       try {
@@ -758,6 +767,20 @@ export default function ComposeBox(props: ComposeBoxProps) {
       void handleAiDraft(artifactId, null);
     }
   }, [artifactId, editPostId, notebook.isNotebookMode, notebook.notebookCells, content, handleAiDraft]);
+
+  const shortPostArtifacts = useMemo(() => {
+    if (notebook.isNotebookMode) return [];
+    const cells = notebook.notebookCells.filter(
+      (c: any) => c.type === "artifact" && Number.isFinite(Number(c.artifactId)),
+    );
+    if (cells.length > 0) {
+      return cells.map((c: any) => ({ cellId: c.id, artifactId: Number(c.artifactId), title: c.title }));
+    }
+    if (artifactId !== null) {
+      return [{ artifactId }];
+    }
+    return [];
+  }, [notebook.isNotebookMode, notebook.notebookCells, artifactId]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -1437,19 +1460,53 @@ export default function ComposeBox(props: ComposeBoxProps) {
                     )}
                   </div>
 
-                  {!notebook.isNotebookMode && (
-                    <ComposeAttachedArtifact
-                      artifactId={artifactId}
-                      editPostId={editPostId}
-                      onRemove={() => setArtifactId(null)}
-                      onDraftWithAi={(view) => void handleAiDraft(artifactId, view)}
-                      aiDrafting={aiBusy === "drafting"}
-                      onArtifactViewLoaded={setAttachedArtifactView}
-                      onReplaceArtifact={(newId, _title, createdView) => {
-                        setArtifactId(newId);
-                        if (createdView) setAttachedArtifactView(createdView);
-                      }}
-                    />
+                  {!notebook.isNotebookMode && shortPostArtifacts.length > 0 && (
+                    <Box mb={2}>
+                      {shortPostArtifacts.length > 1 && (
+                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1} px={1}>
+                          <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-text-secondary)" }}>
+                            Attached Artifacts ({shortPostArtifacts.length}/4)
+                          </span>
+                          {shortPostArtifacts.length >= 4 && (
+                            <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
+                              Max 4 reached for short posts
+                            </span>
+                          )}
+                        </Box>
+                      )}
+                      <Box display="flex" flexDirection="column" gap={2}>
+                        {shortPostArtifacts.map((item, index) => (
+                          <ComposeAttachedArtifact
+                            key={item.cellId || item.artifactId}
+                            artifactId={item.artifactId}
+                            editPostId={editPostId}
+                            onRemove={() => {
+                              if (item.cellId) {
+                                notebook.removeCell(item.cellId);
+                                const remaining = shortPostArtifacts.filter((a) => a.cellId !== item.cellId);
+                                setArtifactId(remaining[0]?.artifactId ?? null);
+                              } else {
+                                setArtifactId(null);
+                              }
+                            }}
+                            onDraftWithAi={
+                              index === 0 ? (view) => void handleAiDraft(item.artifactId, view) : undefined
+                            }
+                            aiDrafting={aiBusy === "drafting"}
+                            onArtifactViewLoaded={index === 0 ? setAttachedArtifactView : undefined}
+                            onReplaceArtifact={(newId, _title, createdView) => {
+                              if (item.cellId) {
+                                notebook.replaceArtifactCell(item.cellId, newId);
+                              }
+                              if (index === 0) {
+                                setArtifactId(newId);
+                                if (createdView) setAttachedArtifactView(createdView);
+                              }
+                            }}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
                   )}
 
                   <ComposeQuoteAndPin pendingPin={pendingPin} quotePost={quotePost} />

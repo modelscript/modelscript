@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AnimationController } from "./cad-viewer/animation-controller";
-import CadViewer, { type CadComponent, type GizmoCommitPayload } from "./cad-viewer/cad-viewer";
+import CadViewer, { type CadComponent, type GizmoCommitPayload, type QifOverlayPayload } from "./cad-viewer/cad-viewer";
 import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
 import type { FeaMeshPayload } from "./cad-viewer/fea-mesh-renderer";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
@@ -25,6 +25,7 @@ function App() {
   const animationControllerRef = useRef<AnimationController | null>(null);
   const [cfdPayload, setCfdPayload] = useState<CfdMeshPayload | null>(null);
   const [feaPayload, setFeaPayload] = useState<FeaMeshPayload | null>(null);
+  const [qifOverlay, setQifOverlay] = useState<QifOverlayPayload | null>(null);
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -128,6 +129,15 @@ function App() {
         } catch (e) {
           console.warn("[CadWebview] Failed to handle FEA_PAYLOAD:", e);
         }
+      } else if (message.type === "QIF_INSPECTION_OVERLAY") {
+        try {
+          const payload = (message.data?.payload || message.data) as QifOverlayPayload;
+          if (payload && Array.isArray(payload.features)) {
+            setQifOverlay(payload);
+          }
+        } catch (e) {
+          console.warn("[CadWebview] Failed to handle QIF_INSPECTION_OVERLAY:", e);
+        }
       }
     };
     window.addEventListener("message", handleMessage);
@@ -177,6 +187,7 @@ function App() {
         animationController={animationControllerRef.current}
         cfdPayload={cfdPayload}
         feaPayload={feaPayload}
+        qifOverlay={qifOverlay}
       />
     </div>
   );

@@ -15,6 +15,15 @@ import type { Request } from "express";
 import type { LibraryDatabase } from "../database.js";
 import { escapeXml, extractPostTitle } from "./og-renderer.js";
 
+export function escapeHtml(str: unknown): string {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function resolveRequestHost(req: Request, fallback: string = "https://ansatz.social"): string {
   const forwardedProto = req.headers["x-forwarded-proto"];
   const forwardedHost = req.headers["x-forwarded-host"];
@@ -53,7 +62,8 @@ export function resolveSeoMetadata(req: Request, database: LibraryDatabase): Seo
   const settings = database.getInstanceSettings();
   const brandName = settings.instanceName || "Ansatz";
   const host = resolveRequestHost(req);
-  const path = req.path;
+  const rawPath = String(req.path || "/");
+  const path = encodeURI(rawPath).replace(/[<>'"]/g, "");
 
   // Default fallback metadata
   const defaultMeta: SeoPageMetadata = {
@@ -330,45 +340,47 @@ export function injectSeoIntoHtml(baseHtml: string, meta: SeoPageMetadata): stri
 
   // Construct new Head Tags block
   const headElements: string[] = [
-    `<meta name="description" content="${escapeXml(meta.description)}" />`,
-    `<link rel="canonical" href="${escapeXml(meta.canonicalUrl)}" />`,
-    `<meta property="og:title" content="${escapeXml(meta.ogTitle)}" />`,
-    `<meta property="og:description" content="${escapeXml(meta.ogDescription)}" />`,
-    `<meta property="og:image" content="${escapeXml(meta.ogImage)}" />`,
+    `<meta name="description" content="${escapeHtml(meta.description)}" />`,
+    `<link rel="canonical" href="${escapeHtml(meta.canonicalUrl)}" />`,
+    `<meta property="og:title" content="${escapeHtml(meta.ogTitle)}" />`,
+    `<meta property="og:description" content="${escapeHtml(meta.ogDescription)}" />`,
+    `<meta property="og:image" content="${escapeHtml(meta.ogImage)}" />`,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
-    `<meta property="og:url" content="${escapeXml(meta.canonicalUrl)}" />`,
-    `<meta property="og:type" content="${escapeXml(meta.ogType)}" />`,
-    `<meta name="twitter:card" content="${escapeXml(meta.twitterCard)}" />`,
-    `<meta name="twitter:title" content="${escapeXml(meta.ogTitle)}" />`,
-    `<meta name="twitter:description" content="${escapeXml(meta.ogDescription)}" />`,
-    `<meta name="twitter:image" content="${escapeXml(meta.ogImage)}" />`,
+    `<meta property="og:url" content="${escapeHtml(meta.canonicalUrl)}" />`,
+    `<meta property="og:type" content="${escapeHtml(meta.ogType)}" />`,
+    `<meta name="twitter:card" content="${escapeHtml(meta.twitterCard)}" />`,
+    `<meta name="twitter:title" content="${escapeHtml(meta.ogTitle)}" />`,
+    `<meta name="twitter:description" content="${escapeHtml(meta.ogDescription)}" />`,
+    `<meta name="twitter:image" content="${escapeHtml(meta.ogImage)}" />`,
   ];
 
   if (meta.oembedUrl) {
     headElements.push(
-      `<link rel="alternate" type="application/json+oembed" href="${escapeXml(meta.oembedUrl)}" title="${escapeXml(meta.title)}" />`,
+      `<link rel="alternate" type="application/json+oembed" href="${escapeHtml(meta.oembedUrl)}" title="${escapeHtml(meta.title)}" />`,
     );
   }
 
   if (meta.markdownUrl) {
     headElements.push(
-      `<link rel="alternate" type="text/markdown" href="${escapeXml(meta.markdownUrl)}" title="AI Markdown Mirror" />`,
+      `<link rel="alternate" type="text/markdown" href="${escapeHtml(meta.markdownUrl)}" title="AI Markdown Mirror" />`,
     );
   }
 
   if (meta.citationTitle) {
-    headElements.push(`<meta name="citation_title" content="${escapeXml(meta.citationTitle)}" />`);
+    headElements.push(`<meta name="citation_title" content="${escapeHtml(meta.citationTitle)}" />`);
   }
   if (meta.citationAuthor) {
-    headElements.push(`<meta name="citation_author" content="${escapeXml(meta.citationAuthor)}" />`);
+    headElements.push(`<meta name="citation_author" content="${escapeHtml(meta.citationAuthor)}" />`);
   }
   if (meta.citationDate) {
-    headElements.push(`<meta name="citation_publication_date" content="${escapeXml(meta.citationDate)}" />`);
+    headElements.push(`<meta name="citation_publication_date" content="${escapeHtml(meta.citationDate)}" />`);
   }
 
   if (meta.jsonLd) {
-    headElements.push(`<script type="application/ld+json">${JSON.stringify(meta.jsonLd)}</script>`);
+    headElements.push(
+      `<script type="application/ld+json">${JSON.stringify(meta.jsonLd).replace(/</g, "\\u003c")}</script>`,
+    );
   }
 
   // Inject before </head>

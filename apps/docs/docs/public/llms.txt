@@ -60,7 +60,6 @@
 
 ## Polyglot Languages (44 Formats)
 - [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 44 formats.
-- [ModelScript (.msx)](https://modelscript.org/languages/modelscript): Native systems modeling & query language.
 - [Modelica (.mo)](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
 - [SysML v2 / KerML (.sysml)](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
 - [ReqIF (.reqif)](https://modelscript.org/languages/reqif): Requirements interchange & contract entailment.

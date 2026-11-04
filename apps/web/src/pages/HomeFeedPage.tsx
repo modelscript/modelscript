@@ -73,6 +73,7 @@ const HomeFeedPage: React.FC = () => {
 
   useEffect(() => {
     if (!token) {
+      setPosts([]);
       setLoading(false);
       return;
     }

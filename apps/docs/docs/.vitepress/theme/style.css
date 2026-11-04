@@ -38,6 +38,9 @@ body {
   --vp-button-brand-bg: var(--ms-brand);
   --vp-button-brand-hover-bg: var(--ms-brand-hover);
   --vp-button-brand-active-bg: var(--ms-brand-active);
+
+  --vp-c-divider: var(--ms-divider);
+  --vp-c-border: var(--ms-border);
 }
 
 .dark {
@@ -89,7 +92,8 @@ body {
 }
 
 /* ───────────────────────── Highlighted 'Ansatz' Pill CTA in Top Navbar ───────────────────────── */
-.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] {
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"],
+.VPNavBarMenu .ansatz-nav-pill {
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
@@ -101,34 +105,63 @@ body {
   border-radius: 999px;
   font-size: 13px !important;
   font-weight: 650 !important;
-  color: #f8fafc !important;
+  text-decoration: none !important;
+
+  /* Light mode default: high-contrast dark text and clean luminous backdrop */
+  color: #0f172a !important;
   background:
-    radial-gradient(circle at 20% 20%, rgba(129, 140, 248, 0.3), transparent 70%),
-    radial-gradient(circle at 80% 80%, rgba(34, 211, 238, 0.22), transparent 70%),
-    var(--vp-c-bg-elv, rgba(15, 23, 42, 0.8));
-  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1, #22d3ee) 45%, #818cf8 55%);
+    radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.12), transparent 70%),
+    radial-gradient(circle at 80% 80%, rgba(6, 182, 212, 0.12), transparent 70%), #ffffff !important;
+  border: 1px solid color-mix(in srgb, var(--ms-brand, #0e7490) 35%, #818cf8 45%) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 4px 16px -4px rgba(129, 140, 248, 0.45),
-    0 0 12px -2px rgba(34, 211, 238, 0.3);
+    0 1px 3px rgba(15, 23, 42, 0.06),
+    0 4px 12px -2px rgba(99, 102, 241, 0.14) !important;
   transition:
     transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
     border-color 0.2s ease,
     box-shadow 0.2s ease,
-    background 0.2s ease !important;
+    background 0.2s ease,
+    color 0.2s ease !important;
+}
+
+/* Dark mode overrides for the pill CTA */
+.dark .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"],
+.dark .VPNavBarMenu .ansatz-nav-pill {
+  color: #f8fafc !important;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(129, 140, 248, 0.3), transparent 70%),
+    radial-gradient(circle at 80% 80%, rgba(34, 211, 238, 0.22), transparent 70%),
+    var(--vp-c-bg-elv, rgba(15, 23, 42, 0.8)) !important;
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1, #22d3ee) 45%, #818cf8 55%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 4px 16px -4px rgba(129, 140, 248, 0.45),
+    0 0 12px -2px rgba(34, 211, 238, 0.3) !important;
 }
 
 /* Pulsing live activity indicator pip */
-.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]::before {
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]::before,
+.VPNavBarMenu .ansatz-nav-pill .ansatz-pip {
   content: "";
   display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: #34d399;
-  box-shadow: 0 0 8px #34d399;
+  background-color: #059669;
+  box-shadow: 0 0 8px rgba(5, 150, 105, 0.75);
   animation: ansatz-pip-pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   flex-shrink: 0;
+}
+
+/* Avoid duplicate pip on component which has explicit .ansatz-pip child */
+.VPNavBarMenu .ansatz-nav-pill::before {
+  display: none !important;
+}
+
+.dark .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]::before,
+.dark .VPNavBarMenu .ansatz-nav-pill .ansatz-pip {
+  background-color: #34d399;
+  box-shadow: 0 0 8px #34d399;
 }
 
 @keyframes ansatz-pip-pulse {
@@ -145,28 +178,110 @@ body {
   }
 }
 
-.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover {
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover,
+.VPNavBarMenu .ansatz-nav-pill:hover,
+.VPNavBarMenu .ansatz-nav-pill.has-hover,
+.VPNavBarMenu .ansatz-nav-pill.has-focus {
   transform: translateY(-1px);
+  color: #020617 !important;
+  border-color: color-mix(in srgb, var(--ms-brand, #0e7490) 55%, #6366f1 65%) !important;
+  box-shadow:
+    0 2px 6px rgba(15, 23, 42, 0.08),
+    0 6px 18px -2px rgba(99, 102, 241, 0.25) !important;
+}
+
+.dark .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover,
+.dark .VPNavBarMenu .ansatz-nav-pill:hover,
+.dark .VPNavBarMenu .ansatz-nav-pill.has-hover,
+.dark .VPNavBarMenu .ansatz-nav-pill.has-focus {
   color: #ffffff !important;
-  border-color: var(--vp-c-brand-1, #22d3ee);
+  border-color: var(--vp-c-brand-1, #22d3ee) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.3),
     0 8px 24px -4px rgba(129, 140, 248, 0.65),
-    0 0 18px rgba(34, 211, 238, 0.55);
+    0 0 18px rgba(34, 211, 238, 0.55) !important;
 }
 
 .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] .vpi-external-link,
-.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] svg {
-  opacity: 0.75;
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] svg,
+.VPNavBarMenu .ansatz-nav-pill .ansatz-external {
+  opacity: 0.85;
+  color: #475569 !important;
   transition:
     opacity 0.2s ease,
+    color 0.2s ease,
     transform 0.2s ease;
 }
 
+.dark .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] .vpi-external-link,
+.dark .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"] svg,
+.dark .VPNavBarMenu .ansatz-nav-pill .ansatz-external {
+  color: inherit !important;
+  opacity: 0.75;
+}
+
 .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover .vpi-external-link,
-.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover svg {
+.VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover svg,
+.VPNavBarMenu .ansatz-nav-pill:hover .ansatz-external,
+.VPNavBarMenu .ansatz-nav-pill.has-hover .ansatz-external,
+.VPNavBarMenu .ansatz-nav-pill.has-focus .ansatz-external {
   opacity: 1;
+  color: #0f172a !important;
   transform: translate(1px, -1px);
+}
+
+.dark .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover .vpi-external-link,
+.dark .VPNavBarMenu .VPNavBarMenuLink[href*="ansatz.social"]:hover svg,
+.dark .VPNavBarMenu .ansatz-nav-pill:hover .ansatz-external,
+.dark .VPNavBarMenu .ansatz-nav-pill.has-hover .ansatz-external,
+.dark .VPNavBarMenu .ansatz-nav-pill.has-focus .ansatz-external {
+  color: #ffffff !important;
+  transform: translate(1px, -1px);
+}
+
+/* ───────────────────────── Top Navbar Search Bar ───────────────────────── */
+@media (min-width: 768px) {
+  .DocSearch-Button {
+    width: 220px !important;
+    justify-content: space-between !important;
+    border: 1px solid var(--ms-border) !important;
+    background-color: var(--vp-c-bg-alt) !important;
+    border-radius: var(--ms-radius-md, 8px) !important;
+    padding: 0 10px 0 12px !important;
+    cursor: pointer;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      background-color 0.2s ease !important;
+  }
+
+  .DocSearch-Button:hover {
+    border-color: var(--vp-c-brand-1) !important;
+    background-color: var(--vp-c-bg-alt) !important;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--vp-c-brand-1) 25%, transparent) !important;
+  }
+
+  .DocSearch-Button:focus-visible {
+    outline: none !important;
+    border-color: var(--vp-c-brand-1) !important;
+    box-shadow: var(--ms-focus-ring) !important;
+  }
+
+  .DocSearch-Button-Container {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .DocSearch-Button-Keys {
+    margin-left: auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .DocSearch-Button {
+    width: 240px !important;
+  }
 }
 
 /* ───────────────────────── Atmospheric CAD Grid & Radial Mesh ───────────────────────── */

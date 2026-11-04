@@ -27,6 +27,7 @@
     "@modelscript/exchange": "*",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
+    "@modelscript/qif": "*",
     "@modelscript/reqif": "*",
     "@modelscript/sima": "*",
     "@modelscript/simulate": "*",

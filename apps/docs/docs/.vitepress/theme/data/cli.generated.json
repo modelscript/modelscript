@@ -135,6 +135,67 @@
     "subcommands": []
   },
   {
+    "name": "aml",
+    "specs": [
+      "aml <action> [files..]"
+    ],
+    "aliases": [
+      "automationml",
+      "caex"
+    ],
+    "describe": "Inspect, validate, virtually commission, lower to DAE, and project IEC 62714 AutomationML / CAEX models (.aml, .caex, .amlx)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | lint | commission | to-ssp | to-sysml | to-modelica | to-dae",
+        "choices": [
+          "inspect",
+          "lint",
+          "commission",
+          "to-ssp",
+          "to-sysml",
+          "to-modelica",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input AutomationML / CAEX files (.aml, .caex, .amlx)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path"
+      },
+      {
+        "name": "cycles",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of scan cycles for virtual commissioning",
+        "default": 20
+      },
+      {
+        "name": "dt",
+        "aliases": [],
+        "type": "number",
+        "description": "Cycle time step in milliseconds for virtual commissioning",
+        "default": 10
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "archive",
     "specs": [
       "archive [action] [users..]"
@@ -4512,6 +4573,62 @@
     "subcommands": []
   },
   {
+    "name": "oscal",
+    "specs": [
+      "oscal <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, resolve profiles, verify NIST SP 800-53 / SP 800-82 CPS compliance, and project NIST OSCAL models (.oscal.json, .oscal.yaml, .oscal.xml)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | verify | resolve | audit-cps | convert | to-sysml | to-reqif",
+        "choices": [
+          "inspect",
+          "verify",
+          "resolve",
+          "audit-cps",
+          "convert",
+          "to-sysml",
+          "to-reqif"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input OSCAL files (.oscal.json, .oscal.yaml, .oscal.xml, .oscal)",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path"
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "type": "string",
+        "description": "Target serialization format for 'convert'",
+        "choices": [
+          "json",
+          "yaml",
+          "xml"
+        ],
+        "default": "json"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "oslc",
     "specs": [
       "oslc <action>"
@@ -5287,6 +5404,57 @@
         "type": "boolean",
         "description": "Skip pre-flight syntax and manifest verification",
         "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "qif",
+    "specs": [
+      "qif <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, validate ASME Y14.5 GD&T & NIST QIF rules, compute SPC capability, and project ISO 23952 QIF models (.qif)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform: inspect | validate | spc | reconcile-step | from-step | to-sysml | to-modelica | to-dae",
+        "choices": [
+          "inspect",
+          "validate",
+          "spc",
+          "reconcile-step",
+          "from-step",
+          "to-sysml",
+          "to-modelica",
+          "to-dae"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "Input QIF (.qif) or STEP (.step) files",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "string",
+        "description": "Companion STEP AP242 file for 'reconcile-step'"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path"
       }
     ],
     "subcommands": []

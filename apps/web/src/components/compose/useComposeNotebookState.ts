@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useState } from "react";
+import { useContext, useState } from "react";
 import {
   createCellId,
   createStarterNotebookCells,
@@ -10,6 +10,7 @@ import {
   parseNotebookFromContent,
   serializeCellsToMarkdown,
 } from "../../util/notebook";
+import { ToastContext } from "../ToastContext";
 import type { ComposeBoxProps } from "./types";
 
 export interface UseComposeNotebookStateParams {
@@ -66,6 +67,8 @@ export function useComposeNotebookState({
   const [activeCellId, setActiveCellId] = useState<string | null>(null);
   const [pendingInsertAfterCellId, setPendingInsertAfterCellId] = useState<string | null>(null);
   const [showTutorialMetaEditor, setShowTutorialMetaEditor] = useState(false);
+  const toastCtx = useContext(ToastContext);
+  const toast = toastCtx ?? { error: () => {} };
 
   const syncNotebookToContentAndArtifact = (cells: NotebookCell[], title?: string) => {
     setNotebookCells(cells);
@@ -207,11 +210,45 @@ export function useComposeNotebookState({
   };
 
   const attachArtifactToComposer = (newArtifactId: number, title?: string, suggestedCaption?: string) => {
-    if (!isNotebookMode && artifactId === null && !hasArtifactDirectives(content)) {
+    // Limit to max 4 artifacts for short posts (unless longer article)
+    if (!isNotebookMode) {
+      const existingArtifactIds = new Set<number>();
+      if (artifactId !== null) existingArtifactIds.add(artifactId);
+      for (const cell of notebookCells) {
+        if (cell.type === "artifact" && Number.isFinite(cell.artifactId)) {
+          existingArtifactIds.add(cell.artifactId);
+        }
+      }
+      if (existingArtifactIds.has(newArtifactId)) return;
+      if (existingArtifactIds.size >= 4) {
+        toast.error(
+          "Short posts are limited to a maximum of 4 artifacts. Switch to Article mode for longer articles with unlimited artifacts.",
+        );
+        return;
+      }
+    }
+
+    if (
+      !isNotebookMode &&
+      artifactId === null &&
+      !hasArtifactDirectives(content) &&
+      notebookCells.filter((c) => c.type === "artifact").length === 0
+    ) {
       setArtifactId(newArtifactId);
       if (!content.trim() && suggestedCaption) {
         setContent(suggestedCaption);
       }
+      const initialCells: NotebookCell[] = [
+        { id: createCellId("md"), type: "markdown", content: content || suggestedCaption || "" },
+        {
+          id: createCellId("art"),
+          type: "artifact",
+          artifactId: newArtifactId,
+          ...(title ? { title } : {}),
+          ...(suggestedCaption ? { caption: suggestedCaption } : {}),
+        },
+      ];
+      setNotebookCells(initialCells);
       return;
     }
 
@@ -237,15 +274,21 @@ export function useComposeNotebookState({
       baseCells.push(newArtCell);
     }
 
-    if (baseCells.length === 0 || baseCells[baseCells.length - 1]!.type === "artifact") {
-      baseCells.push({ id: createCellId("md"), type: "markdown", content: "" });
+    if (isNotebookMode) {
+      if (baseCells.length === 0 || baseCells[baseCells.length - 1]!.type === "artifact") {
+        baseCells.push({ id: createCellId("md"), type: "markdown", content: "" });
+      }
     }
 
     setPendingInsertAfterCellId(null);
-    if (!isNotebookMode) {
-      setIsNotebookMode(true);
+    if (isNotebookMode) {
+      syncNotebookToContentAndArtifact(baseCells, notebookTitle);
+    } else {
+      setNotebookCells(baseCells);
+      if (artifactId === null) {
+        setArtifactId(newArtifactId);
+      }
     }
-    syncNotebookToContentAndArtifact(baseCells, notebookTitle);
   };
 
   return {

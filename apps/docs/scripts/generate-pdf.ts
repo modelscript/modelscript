@@ -6,6 +6,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isModelScriptLangVisible } from "../docs/.vitepress/theme/data/languages.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,7 +56,9 @@ const DOCUMENT_STRUCTURE: DocSection[] = [
     partTitle: "Part III: Polyglot Languages & Formats",
     files: [
       { title: "Language Support Overview", relativePath: "languages/overview.md" },
-      { title: "ModelScript (.msx) Native Language", relativePath: "languages/modelscript.md" },
+      ...(isModelScriptLangVisible
+        ? [{ title: "ModelScript (.msx) Native Language", relativePath: "languages/modelscript.md" }]
+        : []),
       { title: "Modelica Physical Modeling", relativePath: "languages/modelica.md" },
       { title: "SysML v2 & KerML", relativePath: "languages/sysml2.md" },
       { title: "MATLAB Simulink", relativePath: "languages/simulink.md" },

@@ -21,32 +21,9 @@ for (const entry of lintRulesData) {
   rulesBySlug[entry.slug] = entry.rules.length;
 }
 
-const languagesTsPath = path.resolve(__dirname, "../docs/.vitepress/theme/data/languages.ts");
-const languagesTsContent = fs.readFileSync(languagesTsPath, "utf8");
+import { LANGUAGES } from "../docs/.vitepress/theme/data/languages.js";
 
-// Parse LANGUAGES array from languages.ts
-const langRegex =
-  /slug:\s*"([^"]+)",\s*name:\s*"([^"]+)",\s*sidebar:\s*"([^"]+)",\s*ext:\s*"([^"]+)",\s*role:\s*"([^"]+)",\s*group:\s*"([^"]+)"/g;
-let match: RegExpExecArray | null;
-const declaredLanguages: {
-  slug: string;
-  name: string;
-  sidebar: string;
-  ext: string;
-  role: string;
-  group: string;
-}[] = [];
-
-while ((match = langRegex.exec(languagesTsContent)) !== null) {
-  declaredLanguages.push({
-    slug: match[1] ?? "",
-    name: match[2] ?? "",
-    sidebar: match[3] ?? "",
-    ext: match[4] ?? "",
-    role: match[5] ?? "",
-    group: match[6] ?? "",
-  });
-}
+const declaredLanguages = LANGUAGES;
 
 export interface GeneratedLanguageData {
   slug: string;

@@ -392,7 +392,15 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
         }
         return out;
       }
-      return Array.from({ length: nrow }, () => new Array<number>(ncol).fill(0.0));
+      const out: number[][] = [];
+      for (let r = 0; r < nrow; r++) {
+        const row: number[] = [];
+        for (let c = 0; c < ncol; c++) {
+          row.push(0.0);
+        }
+        out.push(row);
+      }
+      return out;
     }
     case "ModelicaIO_writeRealMatrix": {
       const fileName = String(args[0] ?? "");

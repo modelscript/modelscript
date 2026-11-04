@@ -60,7 +60,7 @@ describe("Polyglot 44-Language Social Seed Catalog", () => {
 
   it("seeds 20 personas, 47 language artifacts + 1 fork, comments, likes, and is idempotent", async () => {
     const uploadDir = path.join(tmpDir, "uploads");
-    const summary1 = await seedPolyglotSocialData(db, { uploadDir });
+    const summary1 = await seedPolyglotSocialData(db, { uploadDir, includeDisabledLanguages: true });
 
     assert.equal(summary1.usersSeeded, SEED_PERSONAS.length);
     assert.equal(summary1.artifactsCreated, 48); // 47 languages + 1 forked Modelica post
@@ -97,10 +97,23 @@ describe("Polyglot 44-Language Social Seed Catalog", () => {
     }
 
     // Second invocation must be a no-op (idempotent)
-    const summary2 = await seedPolyglotSocialData(db, { uploadDir });
+    const summary2 = await seedPolyglotSocialData(db, { uploadDir, includeDisabledLanguages: true });
     assert.equal(summary2.artifactsCreated, 0);
     assert.equal(summary2.postsCreated, 0);
     assert.equal(summary2.commentsCreated, 0);
+  });
+
+  it("skips modelscript artifact when lang_modelscript flag is disabled by default", async () => {
+    const cleanDbPath = path.join(tmpDir, "clean.db");
+    const cleanDb = new LibraryDatabase(cleanDbPath);
+    try {
+      const summary = await seedPolyglotSocialData(cleanDb, { uploadDir: path.join(tmpDir, "clean_uploads") });
+      assert.equal(summary.artifactsCreated, 47); // 46 languages + 1 forked Modelica post (modelscript excluded)
+      const msxArtifact = cleanDb.getArtifactViewByTitle("Tilt-Rotor Transition Corridor Controller");
+      assert.equal(msxArtifact, undefined, "ModelScript artifact should not be seeded when flag is disabled");
+    } finally {
+      cleanDb.close();
+    }
   });
 
   it("seeds real GitHub and GitLab repositories with avatars and default branches", () => {

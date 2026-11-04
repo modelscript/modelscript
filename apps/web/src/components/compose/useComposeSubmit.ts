@@ -229,11 +229,17 @@ export function useComposeSubmit({
 
       const effectiveCells = isNotebookMode
         ? notebookCells.filter((c) => (c.type === "markdown" ? c.content.trim().length > 0 : Boolean(c.artifactId)))
-        : hasArtifactDirectives(content)
-          ? parseNotebookFromContent(content, resolvedArtifactId).cells
-          : null;
+        : notebookCells.some((c) => Boolean(c.artifactId))
+          ? notebookCells.filter((c) => Boolean(c.artifactId))
+          : hasArtifactDirectives(content)
+            ? parseNotebookFromContent(content, resolvedArtifactId).cells
+            : null;
 
-      const effectiveArtIds = effectiveCells ? extractArtifactIdsFromCells(effectiveCells) : [];
+      const effectiveArtIds = effectiveCells
+        ? extractArtifactIdsFromCells(effectiveCells)
+        : resolvedArtifactId
+          ? [resolvedArtifactId]
+          : [];
       const primaryArtifactId = effectiveArtIds[0] ?? resolvedArtifactId ?? undefined;
       const text = isNotebookMode
         ? serializeCellsToMarkdown(effectiveCells || [], notebookTitle).trim()
@@ -242,7 +248,7 @@ export function useComposeSubmit({
       const signatureObj = await signContent(text);
 
       const notebookPayload =
-        effectiveCells && (isNotebookMode || effectiveArtIds.length > 1 || hasArtifactDirectives(text))
+        isNotebookMode && effectiveCells
           ? {
               isNotebook: true,
               ...(notebookTitle.trim() ? { title: notebookTitle.trim() } : {}),
@@ -273,6 +279,7 @@ export function useComposeSubmit({
           ...(pendingPin ? { spatialPin: pendingPin } : {}),
           ...(contentWarning.trim() ? { contentWarning: contentWarning.trim() } : {}),
           ...(notebookPayload ? { notebook: notebookPayload } : {}),
+          ...(!isNotebookMode && effectiveArtIds.length > 0 ? { artifactIds: effectiveArtIds.slice(0, 4) } : {}),
           ...(forkedFromArtifactId ? { forkedFromArtifactId } : {}),
           ...(excludedList ? { excludedMentions: excludedList } : {}),
         },

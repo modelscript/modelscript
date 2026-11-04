@@ -1,44 +1,50 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { LANGUAGE_COUNT } from "../data/languages";
+import { LANGUAGE_COUNT, isModelScriptLangVisible } from "../data/languages";
 import NavMegaMenu, { type MegaMenuColumn, type MegaMenuFeature, type MegaMenuFooterLink } from "./NavMegaMenu.vue";
 
 const props = defineProps<{ screenMenu?: boolean }>();
+
+const systemsItems = [
+  ...(isModelScriptLangVisible
+    ? [
+        {
+          name: "ModelScript (.msx)",
+          tagline: "Native systems modeling, cross-domain bindings & queries",
+          href: "/languages/modelscript",
+          icon: "sparkles",
+          accent: "#22d3ee",
+        },
+      ]
+    : []),
+  {
+    name: "Modelica (.mo)",
+    tagline: "Acausal multi-domain physical systems & MSL 4.x",
+    href: "/languages/modelica",
+    icon: "activity",
+    accent: "#818cf8",
+  },
+  {
+    name: "SysML v2 & ReqIF",
+    tagline: "Systems architecture, KerML semantics & requirements",
+    href: "/languages/sysml2",
+    icon: "workflow",
+    accent: "#38bdf8",
+  },
+  {
+    name: "Simulink & SSP / FMI",
+    tagline: "Block diagrams, state machines & FMU system packaging",
+    href: "/languages/simulink",
+    icon: "box",
+    accent: "#34d399",
+  },
+];
 
 const columns: MegaMenuColumn[] = [
   {
     id: "systems-physics",
     label: "Systems, Physics & MBSE",
-    items: [
-      {
-        name: "ModelScript (.msx)",
-        tagline: "Native systems modeling, cross-domain bindings & queries",
-        href: "/languages/modelscript",
-        icon: "sparkles",
-        accent: "#22d3ee",
-      },
-      {
-        name: "Modelica (.mo)",
-        tagline: "Acausal multi-domain physical systems & MSL 4.x",
-        href: "/languages/modelica",
-        icon: "activity",
-        accent: "#818cf8",
-      },
-      {
-        name: "SysML v2 & ReqIF",
-        tagline: "Systems architecture, KerML semantics & requirements",
-        href: "/languages/sysml2",
-        icon: "workflow",
-        accent: "#38bdf8",
-      },
-      {
-        name: "Simulink & SSP / FMI",
-        tagline: "Block diagrams, state machines & FMU system packaging",
-        href: "/languages/simulink",
-        icon: "box",
-        accent: "#34d399",
-      },
-    ],
+    items: systemsItems,
   },
   {
     id: "geometry-cae",

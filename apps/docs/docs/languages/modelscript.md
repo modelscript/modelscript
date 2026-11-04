@@ -1,5 +1,9 @@
 # ModelScript (`.msx`, `.modelscript`)
 
+::: tip EXPERIMENTAL ALPHA LANGUAGE
+The native ModelScript (`.msx`) language compiler and query runtime is currently in **experimental alpha** and is gated behind the `lang_modelscript` / `lang_modelscript_msx` feature flag (disabled by default in production). To enable it in your local environment, set the `FEATURE_FLAG_LANG_MODELSCRIPT=true` environment variable or toggle it in **Developer Settings**.
+:::
+
 `@modelscript/modelscript` (`languages/modelscript`) is the native **ModelScript** systems modeling and query language. It combines zero-cost linear-memory data layout control (`@unmanaged struct`), WebAssembly/C++ native compilation, and declarative XQuery-inspired **FLWOR** (`for`–`let`–`where`–`order by`–`return`) queries over polyglot engineering graphs.
 
 ---

@@ -35,6 +35,7 @@ import {
 } from "../api";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
+import { useLanguageEnabled } from "../FeatureFlagContext";
 import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
 
@@ -77,6 +78,7 @@ const TemplateDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const isModelScriptEnabled = useLanguageEnabled("modelscript");
 
   const [template, setTemplate] = useState<ScriptTemplate | null>(null);
   const [studyDef, setStudyDef] = useState<StudyDefinitionPayload | null>(null);
@@ -1006,7 +1008,11 @@ const TemplateDetailPage: React.FC = () => {
                     />
                   </FormControl>
                   <FormControl>
-                    <FormControl.Label>Modelica / ModelScript Source (`.mo` / `.msx`)</FormControl.Label>
+                    <FormControl.Label>
+                      {isModelScriptEnabled
+                        ? "Modelica / ModelScript Source (`.mo` / `.msx`)"
+                        : "Modelica Source (`.mo`)"}
+                    </FormControl.Label>
                     <textarea
                       rows={7}
                       value={customCode}

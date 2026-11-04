@@ -1,26 +1,5 @@
 [
   {
-    "slug": "modelscript",
-    "name": "ModelScript",
-    "sidebar": "ModelScript (.msx)",
-    "ext": ".msx",
-    "role": "Native systems modeling & query language",
-    "group": "core",
-    "pkgName": "@modelscript/modelscript",
-    "version": "0.1.0",
-    "tier": "stable",
-    "cliCommand": "msx compile",
-    "actions": [],
-    "capabilities": {
-      "parse": true,
-      "lint": true,
-      "dae": true,
-      "simulate": false,
-      "projections": []
-    },
-    "ruleCount": 10
-  },
-  {
     "slug": "modelica",
     "name": "Modelica",
     "sidebar": "Modelica",

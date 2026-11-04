@@ -525,6 +525,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // ignore storage errors
       }
+      delete api.defaults.headers.common["Authorization"];
       setToken(null);
       setUser(null);
       setUnreadCount(0);

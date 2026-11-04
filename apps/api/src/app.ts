@@ -1053,12 +1053,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     app.use((req, res, next) => {
       if (req.method !== "GET" && req.method !== "HEAD") return next();
       if (!req.accepts("html")) return next();
+      const safePath = req.path || "";
       if (
-        req.path.startsWith("/posts/") ||
-        req.path.startsWith("/p/") ||
-        req.path.startsWith("/packages") ||
-        req.path.startsWith("/package") ||
-        req.path.startsWith("/u/")
+        /^\/(?:posts|p)\/\d+/.test(safePath) ||
+        /^\/packages?\/(@[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+|[a-zA-Z0-9_.-]+)/.test(safePath) ||
+        /^\/u\/[a-zA-Z0-9_.-]+/.test(safePath)
       ) {
         try {
           const meta = resolveSeoMetadata(req, database);

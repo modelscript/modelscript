@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { safeJsonParse } from "./json";
+
 export interface NotebookMarkdownCell {
   id: string;
   type: "markdown";
@@ -493,3 +495,45 @@ export const parseArticleFromContent = parseNotebookFromContent;
 export const createStarterArticleCells = createStarterNotebookCells;
 export const extractArticleHeadings = extractNotebookHeadings;
 export const serializeArticleToMarkdown = serializeCellsToMarkdown;
+
+/**
+ * Determines whether a post is a genuine long-form article / notebook
+ * rather than a short social post with attached artifacts.
+ */
+export function isLongFormArticle(post: unknown, notebookData?: unknown): boolean {
+  if (!post) return false;
+  const p = (typeof post === "object" ? post : {}) as Record<string, unknown>;
+
+  // Heading pattern in content: # Heading \n## Subheading
+  if (typeof p["content"] === "string" && /^#\s+[^\n]+\n+[\s\S]*\n##\s+/m.test(p["content"] as string)) {
+    return true;
+  }
+
+  const meta =
+    typeof p["metadata"] === "string"
+      ? safeJsonParse<Record<string, unknown>>(p["metadata"] as string, {})
+      : ((p["metadata"] && typeof p["metadata"] === "object" ? p["metadata"] : {}) as Record<string, unknown>);
+  const nb = (notebookData || meta["notebook"]) as Record<string, unknown> | undefined;
+  if (!nb) return false;
+
+  // Explicit title => article
+  if (typeof nb["title"] === "string" && (nb["title"] as string).trim().length > 0) return true;
+  // Explicit series or difficulty or companion repository => article
+  if (nb["series"] || nb["difficulty"] || nb["companionRepo"]) return true;
+
+  // Has headings (H1/H2/H3 sections)
+  if (Array.isArray(nb["cells"])) {
+    const cells = nb["cells"] as NotebookCell[];
+    const headings = extractNotebookHeadings(cells);
+    if (headings.length > 0) return true;
+    const mdCells = cells.filter((c) => c.type === "markdown") as NotebookMarkdownCell[];
+    const totalMdLen = mdCells.reduce(
+      (acc: number, c) => acc + (typeof c.content === "string" ? c.content.length : 0),
+      0,
+    );
+    // If it has multiple markdown cells with substantial prose (> 500 chars)
+    if (mdCells.length > 1 && totalMdLen > 500) return true;
+  }
+
+  return false;
+}

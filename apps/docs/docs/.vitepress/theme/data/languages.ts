@@ -43,7 +43,27 @@ export interface LanguageInfo {
   group: LanguageGroupId;
 }
 
-export const LANGUAGES: LanguageInfo[] = [
+/**
+ * Whether the experimental native ModelScript (.msx) language is visible
+ * in the documentation, navigation, stats, and sidebar.
+ * Controlled by SHOW_MODELSCRIPT_LANG / ENABLE_MODELSCRIPT_LANG env vars. Default: false.
+ */
+export const isModelScriptLangVisible: boolean = (() => {
+  if (typeof process !== "undefined" && process.env) {
+    const val =
+      process.env["SHOW_MODELSCRIPT_LANG"] ??
+      process.env["ENABLE_MODELSCRIPT_LANG"] ??
+      process.env["VITE_SHOW_MODELSCRIPT_LANG"] ??
+      process.env["FEATURE_FLAG_LANG_MODELSCRIPT"];
+    if (val !== undefined) {
+      const normalized = val.trim().toLowerCase();
+      return normalized === "true" || normalized === "1";
+    }
+  }
+  return false;
+})();
+
+const ALL_LANGUAGES: LanguageInfo[] = [
   // ── Core & systems engineering ──────────────────────────────────────────
   {
     slug: "modelscript",
@@ -427,7 +447,15 @@ export const LANGUAGES: LanguageInfo[] = [
   },
 ];
 
-export const LANGUAGE_BY_SLUG: Record<string, LanguageInfo> = Object.fromEntries(LANGUAGES.map((l) => [l.slug, l]));
+export const ALL_POLYGLOT_LANGUAGES: LanguageInfo[] = ALL_LANGUAGES;
+
+export const LANGUAGES: LanguageInfo[] = isModelScriptLangVisible
+  ? ALL_LANGUAGES
+  : ALL_LANGUAGES.filter((l) => l.slug !== "modelscript");
+
+export const LANGUAGE_BY_SLUG: Record<string, LanguageInfo> = Object.fromEntries(
+  ALL_LANGUAGES.map((l) => [l.slug, l]),
+);
 
 export const LANGUAGE_COUNT = LANGUAGES.length;
 

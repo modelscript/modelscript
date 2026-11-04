@@ -5,6 +5,7 @@ import { Text } from "@primer/react";
 import React, { useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { updateUserTopic } from "../../../api";
+import { useLanguageEnabled } from "../../../FeatureFlagContext";
 import { useClickOutside } from "../../../hooks/useClickOutside";
 import { CURATED_ENGINEERING_DOMAINS } from "../../../pages/explore/constants";
 import Box from "../../Box";
@@ -78,7 +79,19 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
     }
   };
 
-  const activeTrending = trending.filter((t) => Number(t.post_count ?? t.postsCount ?? 0) > 0);
+  const isModelScriptEnabled = useLanguageEnabled("modelscript");
+
+  const activeTrending = trending.filter((t) => {
+    if (Number(t.post_count ?? t.postsCount ?? 0) <= 0) return false;
+    const tag = String(t.concept || t.display_name || "")
+      .replace(/^#/, "")
+      .trim()
+      .toLowerCase();
+    if (!isModelScriptEnabled && (tag === "modelscript" || tag === "msx")) {
+      return false;
+    }
+    return true;
+  });
   const visibleTrending = activeTrending.filter(
     (t) => !dismissedIds.has(t.id ?? t.concept) && !dismissedIds.has(t.concept),
   );

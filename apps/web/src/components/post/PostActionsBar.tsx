@@ -73,6 +73,10 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
   const repostContainerRef = useRef<HTMLDivElement>(null);
   const shareContainerRef = useRef<HTMLDivElement>(null);
 
+  const isLiked = Boolean(token && liked);
+  const isReposted = Boolean(token && reposted);
+  const isBookmarked = Boolean(token && bookmarked);
+
   useClickOutside(repostContainerRef, () => setShowRepostMenu(false), showRepostMenu);
   useClickOutside(shareContainerRef, () => setShowShareMenu(false), showShareMenu);
 
@@ -103,10 +107,10 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
 
   const repostButtonAndMenu = (
     <Box ref={repostContainerRef} position="relative" style={{ zIndex: showRepostMenu ? 200 : undefined }}>
-      <Tooltip text={reposted ? "Undo repost" : "Repost"} direction="n">
+      <Tooltip text={isReposted ? "Undo repost" : "Repost"} direction="n">
         <ActionButton
-          aria-label={reposted ? "Undo repost" : "Repost"}
-          $active={reposted}
+          aria-label={isReposted ? "Undo repost" : "Repost"}
+          $active={isReposted}
           $color="#00ba7c"
           onClick={(e) => {
             e.stopPropagation();
@@ -168,7 +172,7 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
           >
             <SyncIcon size={14} />
-            {reposted ? "Undo Repost" : "Repost"}
+            {isReposted ? "Undo Repost" : "Repost"}
           </button>
           <button
             onClick={(e) => {
@@ -203,9 +207,22 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
   );
 
   const likeButton = (
-    <Tooltip text={liked ? "Unlike" : "Like"} direction="n">
-      <ActionButton aria-label={liked ? "Unlike" : "Like"} $active={liked} $color="#f91880" onClick={onLike}>
-        <div className="icon-wrapper">{liked ? <HeartFillIcon size={18} /> : <HeartIcon size={18} />}</div>
+    <Tooltip text={isLiked ? "Unlike" : "Like"} direction="n">
+      <ActionButton
+        aria-label={isLiked ? "Unlike" : "Like"}
+        $active={isLiked}
+        $color="#f91880"
+        onClick={(e) => {
+          if (!token) {
+            e.stopPropagation();
+            e.preventDefault();
+            onOpenLogin();
+            return;
+          }
+          onLike(e);
+        }}
+      >
+        <div className="icon-wrapper">{isLiked ? <HeartFillIcon size={18} /> : <HeartIcon size={18} />}</div>
         <span className="action-count">
           <AnimatedCount count={likeCount || 0} />
         </span>
@@ -214,14 +231,22 @@ export const PostActionsBar: React.FC<PostActionsBarProps> = ({
   );
 
   const bookmarkButton = (
-    <Tooltip text={bookmarked ? "Remove bookmark" : "Bookmark"} direction="n">
+    <Tooltip text={isBookmarked ? "Remove bookmark" : "Bookmark"} direction="n">
       <ActionButton
-        aria-label={bookmarked ? "Remove bookmark" : "Bookmark"}
-        $active={bookmarked}
+        aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}
+        $active={isBookmarked}
         $color="var(--color-accent-cyan)"
-        onClick={onBookmark}
+        onClick={(e) => {
+          if (!token) {
+            e.stopPropagation();
+            e.preventDefault();
+            onOpenLogin();
+            return;
+          }
+          onBookmark(e);
+        }}
       >
-        <div className="icon-wrapper">{bookmarked ? <BookmarkFillIcon size={18} /> : <BookmarkIcon size={18} />}</div>
+        <div className="icon-wrapper">{isBookmarked ? <BookmarkFillIcon size={18} /> : <BookmarkIcon size={18} />}</div>
         {isDetail && (
           <span className="action-count">
             <AnimatedCount count={bookmarkCount ?? displayPost.bookmark_count ?? 0} />

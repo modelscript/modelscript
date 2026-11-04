@@ -450,61 +450,14 @@ function parseSimpleYamlTabular(text: string, defaultName = "yaml_data"): Tabula
 /**
  * Parses repeating XML elements or attributes into tabular records.
  */
-function parseXmlTabular(text: string, defaultName = "xml_data"): TabularTable[] {
-  if (typeof DOMParser !== "undefined") {
-    try {
-      const doc = new DOMParser().parseFromString(text, "text/xml");
-      const root = doc.documentElement;
-      if (root && root.nodeName !== "parsererror") {
-        // Group children by tagName to find repeating row elements
-        const tagBuckets = new Map<string, Element[]>();
-        const collectRepeating = (parent: Element) => {
-          const byTag = new Map<string, Element[]>();
-          for (const child of Array.from(parent.children)) {
-            const list = byTag.get(child.tagName) || [];
-            list.push(child);
-            byTag.set(child.tagName, list);
-          }
-          for (const [tag, elems] of byTag.entries()) {
-            if (elems.length >= 2) {
-              tagBuckets.set(tag, elems);
-            } else if (elems.length === 1) {
-              collectRepeating(elems[0]!);
-            }
-          }
-        };
-        collectRepeating(root);
+function parseXmlTabular(text: string, _defaultName = "xml_data"): TabularTable[] {
+  const tagBuckets = new Map<string, Record<string, unknown>[]>();
 
-        const tables: TabularTable[] = [];
-        for (const [tag, elems] of tagBuckets.entries()) {
-          const rows: Record<string, unknown>[] = elems.map((el) => {
-            const rec: Record<string, unknown> = {};
-            for (const attr of Array.from(el.attributes)) {
-              const num = Number(attr.value);
-              rec[attr.name] = attr.value !== "" && !Number.isNaN(num) ? num : attr.value;
-            }
-            for (const child of Array.from(el.children)) {
-              const txt = (child.textContent || "").trim();
-              const num = Number(txt);
-              rec[child.tagName] = txt !== "" && !Number.isNaN(num) ? num : txt;
-            }
-            return rec;
-          });
-          const extracted = extractTablesFromStructuredObject(rows, tag);
-          tables.push(...extracted);
-        }
-        if (tables.length > 0) return tables;
-      }
-    } catch {
-      // Fall through to regex parser
-    }
-  }
-
-  // Regex fallback for repeating tags with attributes or simple child tags
-  const rows: Record<string, unknown>[] = [];
+  // A. Attributes-based elements: <tag attr1="val1" attr2="val2" ... />
   const rowRegex = /<([a-zA-Z0-9_:-]+)((?:\s+[a-zA-Z0-9_:-]+="[^"]*")+)[^>]*\/?>/g;
   let match: RegExpExecArray | null;
   while ((match = rowRegex.exec(text)) !== null) {
+    const tagName = match[1]!;
     const attrsText = match[2] || "";
     const attrRegex = /([a-zA-Z0-9_:-]+)="([^"]*)"/g;
     const rec: Record<string, unknown> = {};
@@ -516,10 +469,45 @@ function parseXmlTabular(text: string, defaultName = "xml_data"): TabularTable[]
       rec[k] = v !== "" && !Number.isNaN(num) ? num : v;
     }
     if (Object.keys(rec).length >= 2) {
-      rows.push(rec);
+      const bucket = tagBuckets.get(tagName) || [];
+      bucket.push(rec);
+      tagBuckets.set(tagName, bucket);
     }
   }
-  return extractTablesFromStructuredObject(rows, defaultName);
+
+  // B. Elements with child text tags: <tag><child1>val1</child1><child2>val2</child2></tag>
+  const blockRegex = /<([a-zA-Z0-9_:-]+)[^>]*>([\s\S]*?)<\/\1>/g;
+  while ((match = blockRegex.exec(text)) !== null) {
+    const tagName = match[1]!;
+    const inner = match[2]!;
+    if (inner.includes("<")) {
+      const childRegex = /<([a-zA-Z0-9_:-]+)>([^<]*)<\/\1>/g;
+      const rec: Record<string, unknown> = {};
+      let childMatch: RegExpExecArray | null;
+      while ((childMatch = childRegex.exec(inner)) !== null) {
+        const k = childMatch[1]!;
+        const rawVal = childMatch[2]!.trim();
+        const num = Number(rawVal);
+        rec[k] = rawVal !== "" && !Number.isNaN(num) ? num : rawVal;
+      }
+      if (Object.keys(rec).length >= 2) {
+        const bucket = tagBuckets.get(tagName) || [];
+        bucket.push(rec);
+        tagBuckets.set(tagName, bucket);
+      }
+    }
+  }
+
+  const tables: TabularTable[] = [];
+  for (const [tag, rows] of tagBuckets.entries()) {
+    if (rows.length >= 2) {
+      const extracted = extractTablesFromStructuredObject(rows, tag);
+      tables.push(...extracted);
+    }
+  }
+  if (tables.length > 0) return tables;
+
+  return [];
 }
 
 const HDF5_INTERNAL_TOKENS = new Set([

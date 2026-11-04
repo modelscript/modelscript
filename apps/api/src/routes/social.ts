@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import path from "path";
 import Parser from "rss-parser";
 import type { LibraryDatabase, PostVisibility } from "../database.js";
+import { FEATURE_FLAGS, getLanguageFeatureFlagKey } from "../feature-flags.js";
 import { optionalAuth, requireAuth, requireTokenScope } from "../middleware/auth-middleware.js";
 import { ComposerAIService, type ComposerDraftTone, type ComposerPolishMode } from "../services/ai/composer-ai.js";
 import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
@@ -223,6 +224,66 @@ function parseNotebookPayload(
   return { effectiveContent: rawContent, notebookMeta: null };
 }
 
+function isPostLanguageAllowed(
+  post: unknown,
+  featureFlagService?: FeatureFlagService,
+  user?: Parameters<FeatureFlagService["isEnabled"]>[1],
+): boolean {
+  if (!featureFlagService) return true;
+  const p = (post && typeof post === "object" ? post : {}) as Record<string, unknown>;
+  const meta =
+    p["metadata"] && typeof p["metadata"] === "object" ? (p["metadata"] as Record<string, unknown>) : undefined;
+  const artifactView =
+    p["artifact_view"] && typeof p["artifact_view"] === "object"
+      ? (p["artifact_view"] as Record<string, unknown>)
+      : undefined;
+  const metaLang = String(meta?.["language"] || p["language"] || "")
+    .trim()
+    .toLowerCase();
+  const metaDialect = String(meta?.["dialect"] || "")
+    .trim()
+    .toLowerCase();
+  const viewType = String(artifactView?.["view_type"] || p["view_type"] || "")
+    .trim()
+    .toLowerCase();
+  const filename = String(meta?.["filename"] || artifactView?.["name"] || artifactView?.["title"] || "")
+    .trim()
+    .toLowerCase();
+  const title = String(meta?.["artifactTitle"] || artifactView?.["title"] || "")
+    .trim()
+    .toLowerCase();
+  const content = String(p["content"] || "").toLowerCase();
+
+  const isMsx =
+    metaLang === "modelscript" ||
+    metaLang === "msx" ||
+    metaDialect === "modelscript" ||
+    metaDialect === "msx" ||
+    viewType === "modelscript" ||
+    viewType === "msx" ||
+    filename.endsWith(".msx") ||
+    filename.endsWith(".modelscript") ||
+    title.includes(".msx") ||
+    content.includes("tiltrotortransitioncontroller.msx") ||
+    (content.includes("#modelscript") && (content.includes(".msx") || viewType === "modelscript"));
+
+  if (isMsx) {
+    return (
+      featureFlagService.isEnabled("lang_modelscript", user) ||
+      featureFlagService.isEnabled("lang_modelscript_msx", user)
+    );
+  }
+
+  if (metaLang) {
+    const flagKey = getLanguageFeatureFlagKey(metaLang);
+    if (flagKey in FEATURE_FLAGS) {
+      return featureFlagService.isEnabled(flagKey, user);
+    }
+  }
+
+  return true;
+}
+
 export function socialRouter(
   database: LibraryDatabase,
   worker?: FederationWorker,
@@ -334,6 +395,17 @@ export function socialRouter(
             return;
           }
         }
+      }
+
+      const candidatePost = {
+        content,
+        metadata,
+        artifact_view_id,
+        artifact_view: artifact_view_id ? database.getArtifactView(Number(artifact_view_id)) : undefined,
+      };
+      if (!isPostLanguageAllowed(candidatePost, featureFlagService, req.user)) {
+        res.status(403).json({ error: "The language for this post is currently disabled by a feature flag" });
+        return;
       }
 
       if (reply_to_id) {
@@ -821,7 +893,7 @@ export function socialRouter(
 
     const postId = Number(req.params["id"]);
     const post = database.getPost(postId);
-    if (!post) {
+    if (!post || !isPostLanguageAllowed(post, featureFlagService, req.user)) {
       res.status(404).send("Post not found");
       return;
     }
@@ -887,7 +959,7 @@ export function socialRouter(
     const currentUserId = req.user?.id;
     try {
       const post = database.getPost(postId, currentUserId);
-      if (!post) {
+      if (!post || !isPostLanguageAllowed(post, featureFlagService, req.user)) {
         res.status(404).json({ error: "Post not found" });
         return;
       }
@@ -994,7 +1066,7 @@ export function socialRouter(
     const limit = Number(req.query["limit"]) || 50;
     try {
       const posts = database.getReplies(postId, currentUserId, limit);
-      res.json({ posts });
+      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
     } catch {
       res.status(500).json({ error: "Failed to fetch replies" });
     }
@@ -1008,7 +1080,7 @@ export function socialRouter(
     const currentUserId = req.user?.id;
     try {
       const posts = database.getPostParents(postId, currentUserId);
-      res.json({ posts });
+      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
     } catch {
       res.status(500).json({ error: "Failed to fetch parents" });
     }
@@ -1025,7 +1097,7 @@ export function socialRouter(
     const tag = (req.query["tag"] as string) || undefined;
     try {
       const posts = database.getHomeTimeline(userId, limit, offset, artifactType, tag);
-      res.json({ posts });
+      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
     } catch {
       res.status(500).json({ error: "Failed to get timeline" });
     }
@@ -1043,7 +1115,7 @@ export function socialRouter(
     const tag = (req.query["tag"] as string) || undefined;
     try {
       const posts = database.getFollowingTimeline(userId, limit, sort, offset, artifactType, tag);
-      res.json({ posts });
+      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
     } catch {
       res.status(500).json({ error: "Failed to get following timeline" });
     }
@@ -1064,7 +1136,7 @@ export function socialRouter(
     const tag = (req.query["tag"] as string) || undefined;
     try {
       const posts = database.getFederatedTimeline(currentUserId, limit, offset, artifactType, tag);
-      res.json({ posts });
+      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
     } catch {
       res.status(500).json({ error: "Failed to get federated timeline" });
     }
@@ -1082,7 +1154,7 @@ export function socialRouter(
     const q = (req.query["q"] as string) || undefined;
     try {
       const posts = database.getExploreTimeline(currentUserId, limit, offset, artifactType, tag, q);
-      res.json({ posts });
+      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
     } catch {
       res.status(500).json({ error: "Failed to get explore timeline" });
     }
@@ -1099,7 +1171,7 @@ export function socialRouter(
 
     try {
       const posts = database.getUserTimeline(username, currentUserId, limit, type);
-      res.json({ posts });
+      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
     } catch {
       res.status(500).json({ error: "Failed to get user timeline" });
     }
@@ -1288,7 +1360,9 @@ export function socialRouter(
     const postId = Number(req.params["id"]);
     const userId = req.user?.id;
     try {
-      const quotes = database.getQuotes(postId, userId);
+      const quotes = database
+        .getQuotes(postId, userId)
+        .filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user));
       res.json({ quotes, posts: quotes });
     } catch (err: unknown) {
       console.error("GET /posts/:id/quotes error:", err);
@@ -1303,7 +1377,9 @@ export function socialRouter(
     const postId = Number(req.params["id"]);
     const userId = req.user?.id;
     try {
-      const reposts = database.getReposts(postId, userId);
+      const reposts = database
+        .getReposts(postId, userId)
+        .filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user));
       res.json({ reposts, posts: reposts });
     } catch (err: unknown) {
       console.error("GET /posts/:id/reposts error:", err);
@@ -1331,6 +1407,23 @@ export function socialRouter(
 
       const artifactView = database.getArtifactView(id);
       if (!artifactView) {
+        res.status(404).json({ error: "Artifact view not found" });
+        return;
+      }
+
+      const isMsx =
+        artifactView.view_type?.toLowerCase() === "modelscript" ||
+        artifactView.view_type?.toLowerCase() === "msx" ||
+        artifactView.title?.toLowerCase().includes(".msx") ||
+        (typeof artifactView.view_config === "string" &&
+          (artifactView.view_config.includes('"language":"modelscript"') ||
+            artifactView.view_config.includes('"dialect":"msx"')));
+      if (
+        isMsx &&
+        featureFlagService &&
+        !featureFlagService.isEnabled("lang_modelscript", req.user) &&
+        !featureFlagService.isEnabled("lang_modelscript_msx", req.user)
+      ) {
         res.status(404).json({ error: "Artifact view not found" });
         return;
       }
@@ -1639,7 +1732,7 @@ export function socialRouter(
     const limit = Number(req.query["limit"]) || 20;
     try {
       const posts = database.getBookmarks(userId, limit);
-      res.json({ posts });
+      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
     } catch {
       res.status(500).json({ error: "Failed to fetch bookmarks" });
     }
@@ -1693,7 +1786,11 @@ export function socialRouter(
     const limit = Number(req.query["limit"]) || 10;
     try {
       const topics = database.getTopTrendingTopics(limit);
-      res.json({ topics });
+      const isMsxEnabled =
+        featureFlagService?.isEnabled("lang_modelscript", req.user) ||
+        featureFlagService?.isEnabled("lang_modelscript_msx", req.user);
+      const filtered = isMsxEnabled ? topics : topics.filter((t) => t.concept?.toLowerCase() !== "modelscript");
+      res.json({ topics: filtered });
     } catch {
       res.status(500).json({ error: "Failed to fetch trending topics" });
     }
@@ -1705,6 +1802,14 @@ export function socialRouter(
   router.get("/topics/:concept/posts", optionalAuth, (req: Request, res: Response) => {
     const concept = req.params["concept"] as string;
     const currentUserId = req.user?.id;
+    const isMsx = concept.toLowerCase() === "modelscript";
+    const isMsxEnabled =
+      featureFlagService?.isEnabled("lang_modelscript", req.user) ||
+      featureFlagService?.isEnabled("lang_modelscript_msx", req.user);
+    if (isMsx && !isMsxEnabled) {
+      res.json({ posts: [] });
+      return;
+    }
     const limit = Number(req.query["limit"]) || 20;
     const offset = Number(req.query["offset"]) || 0;
     const artifactType = (req.query["artifactType"] as string) || undefined;
@@ -1712,7 +1817,7 @@ export function socialRouter(
 
     try {
       const posts = database.getTopicPosts(concept, currentUserId, limit, offset, artifactType, sort);
-      res.json({ posts });
+      res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
     } catch {
       res.status(500).json({ error: "Failed to get topic posts" });
     }

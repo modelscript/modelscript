@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import { isModelScriptLangVisible } from "../data/languages";
 
 interface LanguageItem {
   name: string;
@@ -49,13 +50,17 @@ const languages: LanguageItem[] = [
     role: "Requirements Interchange Format",
     link: "/languages/reqif",
   },
-  {
-    name: "ModelScript",
-    category: "systems",
-    badge: ".msx",
-    role: "Native Multi-Paradigm Thread",
-    link: "/languages/modelscript",
-  },
+  ...(isModelScriptLangVisible
+    ? [
+        {
+          name: "ModelScript",
+          category: "systems" as const,
+          badge: ".msx",
+          role: "Native Multi-Paradigm Thread",
+          link: "/languages/modelscript",
+        },
+      ]
+    : []),
 
   // Multi-Body & Kinematics
   {
@@ -243,14 +248,14 @@ const languages: LanguageItem[] = [
   },
 ];
 
-const categories = [
-  { id: "all", label: "All Dialects (33)" },
+const categories = computed(() => [
+  { id: "all", label: `All Dialects (${languages.length})` },
   { id: "systems", label: "Systems & Architecture" },
   { id: "kinematics", label: "Multi-Body & Kinematics" },
   { id: "fluids", label: "Fluids & Propulsion" },
   { id: "power", label: "Power & Electronics" },
   { id: "cad", label: "CAD & Continuum" },
-];
+]);
 
 const filteredLanguages = computed(() => {
   if (activeCategory.value === "all") return languages;

@@ -1218,12 +1218,9 @@ function createDefaultArray(dims: number[], defaultScalar: ArenaValue = 0.0): Ar
   const MAX_ARRAY_DIM = 1_000_000;
   const rawLen = dims[0]! > 0 ? dims[0]! : 0;
   const len = Math.min(rawLen, MAX_ARRAY_DIM);
-  if (dims.length === 1) {
-    return new Array(len).fill(defaultScalar);
-  }
   const result: ArenaValue[] = [];
   for (let k = 0; k < len; k++) {
-    result.push(createDefaultArray(dims.slice(1), defaultScalar));
+    result.push(dims.length === 1 ? defaultScalar : createDefaultArray(dims.slice(1), defaultScalar));
   }
   return result;
 }

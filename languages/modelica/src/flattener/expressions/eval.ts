@@ -931,7 +931,7 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
         const computeDbDims = (): number[] | null => {
           const hasDot = vName.includes(".");
           const simpleName = hasDot ? vName.split(".").pop()! : vName;
-          const cleanVName = vName.replace(/\[[^\]]*\]/g, "");
+          const cleanVName = vName.replace(/\[[^\][]*\]/g, "");
           let sym: any = null;
           if (currentScopeId) {
             const resolver = ((db as any).query("resolveName", currentScopeId) ??
@@ -975,7 +975,7 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
                 }
                 if (dims) {
                   const lastSeg = vName.split(".").pop()!;
-                  const subMatches = [...lastSeg.matchAll(/\[([^\]]*)\]/g)];
+                  const subMatches = [...lastSeg.matchAll(/\[([^\][]*)\]/g)];
                   if (subMatches.length > 0) {
                     const remaining: number[] = [];
                     let dIdx = 0;

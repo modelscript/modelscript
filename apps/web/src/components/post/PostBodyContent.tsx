@@ -5,8 +5,10 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../util/editor-routing";
 import { safeJsonParse } from "../../util/json";
+import { isLongFormArticle } from "../../util/notebook";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
 import Box from "../Box";
+import PostArtifactSlider, { extractShortPostSlides } from "./PostArtifactSlider";
 import type { PostAuthorHeaderProps } from "./PostAuthorHeader";
 import { PostMarkdownContent } from "./PostMarkdownContent";
 import { PostNotebookHeader } from "./PostNotebookHeader";
@@ -30,7 +32,7 @@ export interface PostBodyContentProps {
 export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   displayPost,
   isDetailView,
-  isNotebook,
+  _isNotebook,
   notebookData,
   notebookHeadings,
   readTimeMinutes,
@@ -84,7 +86,9 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
     </ContentWarningBox>
   ) : null;
 
-  if (isNotebook && notebookData && notebookData.cells.length > 0) {
+  const isArticle = isLongFormArticle(displayPost, notebookData);
+
+  if (isArticle && notebookData && notebookData.cells.length > 0) {
     let previewEndIdx = notebookData.cells.length;
     if (!isDetailView && !isNotebookExpanded) {
       const firstArtIdx = notebookData.cells.findIndex((c: any) => c.type === "artifact");
@@ -414,20 +418,31 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
     return cwBanner;
   }
 
+  const { proseText, slides } = extractShortPostSlides(displayPost, notebookData);
+  const dpObj = displayPost as Record<string, unknown>;
+  const forkedFromId =
+    (dpObj["forked_from_post_id"] as number | undefined) ||
+    (dpObj["forked_from_artifact_id"] as number | undefined) ||
+    (safeJsonParse<Record<string, unknown>>(typeof dpObj["metadata"] === "string" ? dpObj["metadata"] : "", {})?.[
+      "forkedFromArtifactId"
+    ] as number | undefined);
+
   // Standard Post Body
   return (
     <>
       {cwBanner}
-      <Box
-        mt={0}
-        style={{
-          wordBreak: "break-word",
-          lineHeight: isDetailView ? "24px" : "20px",
-          fontSize: isDetailView ? "17px" : "15px",
-        }}
-      >
-        <PostMarkdownContent text={displayPost.content} />
-      </Box>
+      {proseText.length > 0 && (
+        <Box
+          mt={0}
+          style={{
+            wordBreak: "break-word",
+            lineHeight: isDetailView ? "24px" : "20px",
+            fontSize: isDetailView ? "17px" : "15px",
+          }}
+        >
+          <PostMarkdownContent text={proseText} />
+        </Box>
+      )}
 
       {displayPost.metadata?.spatialPin && (
         <Box
@@ -462,20 +477,18 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
         </Box>
       )}
 
-      {displayPost.artifact_view_id && (
+      {slides.length > 0 ? (
+        <PostArtifactSlider slides={slides} forkedFromId={forkedFromId} onPinCreated={onPinCreated} />
+      ) : displayPost.artifact_view_id ? (
         <Box mt={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
           <ArtifactViewCard
             artifactId={displayPost.artifact_view_id}
             initialArtifactView={displayPost.artifact_view}
-            forkedFromId={
-              (displayPost as any)?.forked_from_post_id ||
-              (displayPost as any)?.forked_from_artifact_id ||
-              safeJsonParse<Record<string, any>>((displayPost as any)?.metadata, {})?.["forkedFromArtifactId"]
-            }
+            forkedFromId={forkedFromId}
             onPinCreated={onPinCreated}
           />
         </Box>
-      )}
+      ) : null}
     </>
   );
 };

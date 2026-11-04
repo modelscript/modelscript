@@ -6496,7 +6496,6 @@ Filter by platform group, industry, or search across all 44 engineering language
 ModelScript supports 44 modeling, simulation, and engineering formats across 5 pipeline capabilities:
 | Language | Extension | Role | Parse | Lint | DAE Arena | Simulate | Projections |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| ModelScript | `.msx` | Native systems modeling & query language | ✓ | ✓ | ✓ | — | — |
 | Modelica | `.mo` | Acausal multi-domain physics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | SysML v2 / KerML | `.sysml` | Systems architecture & requirements | ✓ | ✓ | — | ✓ | ✓ |
 | ReqIF | `.reqif` | Requirements interchange & contract entailment | ✓ | ✓ | — | — | ✓ |
@@ -6552,170 +6551,6 @@ Every language plugin implements the `LanguageDefinition` interface (`packages/d
 3. **Salsa Queries (`queries`)**: Memoized semantic analyses (type resolution, unit inference, structural validation).
 4. **Compiler Lints (`lints`)**: Real-time diagnostics surfaced identically in the CLI (`msx lint`), LSP server, and Web IDE.
 5. **TGG Rules (`tggRules`)**: Declarative bidirectional synchronization rules linking AST nodes across languages (e.g., `SysMLv2 PartUsage` $\leftrightarrow$ `Modelica Component` $\leftrightarrow$ `STEP Product` $\leftrightarrow$ `ModelScript Struct`).
-
-================================================================================
-DOCUMENT: ModelScript (.msx) Language Reference
-CANONICAL URL: https://modelscript.org/languages/modelscript
-================================================================================
-
-# ModelScript (`.msx`, `.modelscript`)
-
-`@modelscript/modelscript` (`languages/modelscript`) is the native **ModelScript** systems modeling and query language. It combines zero-cost linear-memory data layout control (`@unmanaged struct`), WebAssembly/C++ native compilation, and declarative XQuery-inspired **FLWOR** (`for`–`let`–`where`–`order by`–`return`) queries over polyglot engineering graphs.
-
----
-
-## Supported Extensions & Dialects
-
-| Extension      | Description                         |
-| :------------- | :---------------------------------- |
-| `.msx`         | Canonical ModelScript source module |
-| `.modelscript` | Long-form ModelScript source module |
-
----
-
-## Language Features & Grammar
-
-The native WebAssembly GLR parser (`languages/modelscript/src/language.ts`) parses `.msx` modules into a compact Concrete Syntax Tree (CST) with five primary syntactic constructs:
-
-### 1. Module Imports
-
-Import declarations bind symbols from external ModelScript modules or polyglot engineering artifacts:
-
-```ts
-import { ThermalNode, Conductance as G } from "./thermal_kernel.msx";
-```
-
-### 2. Unmanaged Linear-Memory Structs (`@unmanaged struct`)
-
-Structs annotated with `@unmanaged` are packed directly into 32-bit WebAssembly linear memory without garbage-collected wrapper allocation:
-
-```ts
-@unmanaged struct StateVector {
-  id: u32;
-  temperature: f64;
-  pressure: f64;
-  active: bool;
-}
-```
-
-### 3. Type System
-
-- **Primitive Types**: `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, `bool`, `string`, `usize`, `void`
-- **Generic & Pointer Types**: `Array<T>`, `Slice<T>`, `ptr<T>`
-- **User-Defined Structs**: Any declared `struct` identifier
-
-### 4. Functions, Statements & Control Flow
-
-Functions declare strongly typed parameters and return types, supporting `let` and `const` variable bindings, `if`/`else` branches, `while` loops, C-style `for` loops, and member/index expressions:
-
-```ts
-const BOLTZMANN: f64 = 1.380649e-23;
-
-function computeHeatFlux(k: f64, area: f64, dT: f64, dx: f64): f64 {
-  if (dx <= 0.0) {
-    return 0.0;
-  }
-  let flux: f64 = -k * area * (dT / dx);
-  return flux;
-}
-```
-
-### 5. Declarative FLWOR Queries
-
-ModelScript embeds first-class **FLWOR** (`for`–`let`–`where`–`order by`–`return`) expressions directly in the expression grammar for querying collections, CST nodes, and simulation trajectories:
-
-```ts
-let criticalNodes =
-  for node in nodes
-  let margin := node.limit - node.temperature
-  where margin < 15.0 && node.active == true
-  order by margin asc
-  return { id: node.id, margin: margin };
-```
-
----
-
-## Multi-Target Compiler (`ModelScriptCompiler`)
-
-`ModelScriptCompiler` (`languages/modelscript/src/index.ts`) lowers the linear-memory CST across three code generation backends:
-
-| Backend           | Emitter Class   | API Methods                                                                        | Target Output                                                                                   |
-| :---------------- | :-------------- | :--------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------- |
-| **JavaScript**    | `JsEmitter`     | `compileToJs(source)` / `executeJs(source, context)`                               | Executable ES module with lowered FLWOR pipelines (`.filter().sort().map()`)                    |
-| **WebAssembly**   | `WasmEmitter`   | `compileToWat(source)` / `compileToWasm(source)` / `executeWasm(source, fn, args)` | Textual WAT S-expressions and binary `.wasm` modules with `@unmanaged` linear-memory offsets    |
-| **Native Binary** | `NativeEmitter` | `compileToNative(source, { outPath, entryFn?, cc?, cflags? })`                     | WASM lowered to C via `wasm2c`, then compiled with the host C compiler (`$CC`, default `clang`) |
-
-```ts
-import fs from "node:fs";
-import { ModelScriptCompiler } from "@modelscript/modelscript";
-
-const compiler = new ModelScriptCompiler();
-await compiler.init();
-
-const source = fs.readFileSync("kernel.msx", "utf8");
-const { js } = compiler.compileToJs(source); // ES module source
-const wasm = await compiler.compileToWasm(source); // Uint8Array
-const result = await compiler.executeWasm(source, "main", []);
-const binary = await compiler.compileToNative(source, { outPath: "build/kernel" }); // requires wasm2c + clang
-```
-
----
-
-## Command Line Interface (`msx compile` & `msx lint`)
-
-Compile, lint, and run ModelScript source modules directly from the terminal:
-
-```bash
-# Lint ModelScript modules for syntax, type errors, and unmanaged struct layout
-msx lint kernel.msx
-
-# Compile a ModelScript module into flattened DAE or WebAssembly bytecode
-msx compile MainModule kernel.msx --flattener=wasm --timing
-```
-
----
-
-## Salsa Query Engine & Linear-Memory Struct Layout
-
-`ModelScriptQueryEngine` (`languages/modelscript/src/queries.ts`) provides memoized semantic queries over the CST:
-
-- **`structLayout(rawStructNode)`**: Computes deterministic 32-bit WebAssembly linear-memory byte layouts (`StructLayout`) for every `struct_declaration`:
-  - `bool`: 1 byte (alignment 1)
-  - `i32`, `u32`, `f32`, `usize`, `string`, `ptr<T>`, `Array<T>`, `Slice<T>`: 4 bytes (alignment 4)
-  - `i64`, `u64`, `f64`: 8 bytes (alignment 8)
-  - Automatically inserts natural alignment padding (`alignOffset`) between fields and aligns the total struct byte size to the maximum field alignment (`maxAlign`).
-- **`inferExpressionType(rawNode, scope)`**: Infers static types across literals, binary/unary expressions, struct field access, function calls, and FLWOR `return` clauses (`Array<ReturnType>`).
-
----
-
-## Semantic Linter & Error Codes
-
-`ModelScriptLinter` (`languages/modelscript/src/linter.ts` and `languages/modelscript/src/errors.ts`) enforces 10 static analysis rules across syntax, name resolution, type checking, FLWOR clauses, and struct/function calls:
-
-### Diagnostics for ModelScript (10 rules)
-| Code | Severity | Identifier | Summary |
-| :--- | :--- | :--- | :--- |
-| `M1001` | error | `parse-error` | Parse error. |
-| `M2001` | error | `undefined-variable` | Variable '<name>' is not declared in current scope. |
-| `M2002` | error | `duplicate-declaration` | Identifier '<name>' is already declared in this scope. |
-| `M2003` | error | `unknown-type` | Type '<typeName>' is not recognized. |
-| `M3001` | error | `type-mismatch` | Type mismatch: cannot assign '<sourceType>' to '<targetType>'. |
-| `M3002` | error | `invalid-binary-operand` | Operator '<op>' cannot be applied to operands of type '<type>'. |
-| `M4001` | error | `non-iterable-collection` | Expression '<expr>' in 'for' clause is not iterable. |
-| `M4002` | error | `flwor-unbound-variable` | Variable '<varName>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses. |
-| `M5001` | error | `argument-count-mismatch` | Function '<fnName>' expects <expected> arguments, but got <actual>. |
-| `M5002` | error | `unknown-struct-field` | Struct '<structName>' has no field named '<fieldName>'. |
-
----
-
-## Polyglot TGG Rules
-
-`@modelscript/modelscript` registers two Triple Graph Grammar (TGG) synchronization rules in `languages/modelscript/src/language.ts` for bidirectional projection with Modelica:
-
-| Rule Name                           | Source Pattern        | Target Pattern (`modelica`)     | Semantics                                                                                              |
-| :---------------------------------- | :-------------------- | :------------------------------ | :----------------------------------------------------------------------------------------------------- |
-| `ModelScriptStructToModelicaRecord` | `StructDeclaration`   | `ClassDefinition` (`record`)    | Synchronizes a `@unmanaged struct` declaration with a Modelica `record` definition                     |
-| `ModelScriptParamToModelicaMod`     | `VariableDeclaration` | `ComponentClause` (`parameter`) | Synchronizes a top-level constant or variable binding with a Modelica component parameter modification |
 
 ================================================================================
 DOCUMENT: Modelica (.mo) Language Reference
@@ -12833,7 +12668,7 @@ CANONICAL URL: https://modelscript.org/reference/linter-rules
 
 # Linter Rules Reference
 
-ModelScript ships **804 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **828 diagnostic rules** across **46 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -12854,7 +12689,6 @@ The **CLI** column below shows which command reports each language's rules.
 
 | Language                                  | Package                     | Rules | CLI                     |
 | :---------------------------------------- | :-------------------------- | ----: | :---------------------- |
-| [ModelScript](#modelscript)               | `@modelscript/modelscript`  |    10 | Language server / API   |
 | [Modelica](#modelica)                     | `@modelscript/modelica`     |   307 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    48 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    10 | `msx reqif lint`        |
@@ -12897,23 +12731,10 @@ The **CLI** column below shows which command reports each language's rules.
 | [EPA SWMM](#swmm)                         | `@modelscript/swmm`         |    13 | `msx swmm lint`         |
 | [Aspen Plus / HYSYS](#aspen)              | `@modelscript/aspen`        |    15 | `msx aspen lint`        |
 | [SBML](#sbml)                             | `@modelscript/sbml`         |    10 | `msx sbml lint`         |
-
-## ModelScript {#modelscript}
-
-Native systems modeling & query language. **10 rules** · `@modelscript/modelscript` · Source: `languages/modelscript/src/errors.ts` · [Language guide](../languages/modelscript.md)
-
-| Code                                        | Rule                      | Severity                             | Message                                                                                                                      |
-| :------------------------------------------ | :------------------------ | :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------------- |
-| <span id="modelscript-m1001"></span>`M1001` | `parse-error`             | [error] | Parse error.                                                                                                                 |
-| <span id="modelscript-m2001"></span>`M2001` | `undefined-variable`      | [error] | Variable '<code>&lt;name&gt;</code>' is not declared in current scope.                                                       |
-| <span id="modelscript-m2002"></span>`M2002` | `duplicate-declaration`   | [error] | Identifier '<code>&lt;name&gt;</code>' is already declared in this scope.                                                    |
-| <span id="modelscript-m2003"></span>`M2003` | `unknown-type`            | [error] | Type '<code>&lt;typeName&gt;</code>' is not recognized.                                                                      |
-| <span id="modelscript-m3001"></span>`M3001` | `type-mismatch`           | [error] | Type mismatch: cannot assign '<code>&lt;sourceType&gt;</code>' to '<code>&lt;targetType&gt;</code>'.                         |
-| <span id="modelscript-m3002"></span>`M3002` | `invalid-binary-operand`  | [error] | Operator '<code>&lt;op&gt;</code>' cannot be applied to operands of type '<code>&lt;type&gt;</code>'.                        |
-| <span id="modelscript-m4001"></span>`M4001` | `non-iterable-collection` | [error] | Expression '<code>&lt;expr&gt;</code>' in 'for' clause is not iterable.                                                      |
-| <span id="modelscript-m4002"></span>`M4002` | `flwor-unbound-variable`  | [error] | Variable '<code>&lt;varName&gt;</code>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses.                    |
-| <span id="modelscript-m5001"></span>`M5001` | `argument-count-mismatch` | [error] | Function '<code>&lt;fnName&gt;</code>' expects <code>&lt;expected&gt;</code> arguments, but got <code>&lt;actual&gt;</code>. |
-| <span id="modelscript-m5002"></span>`M5002` | `unknown-struct-field`    | [error] | Struct '<code>&lt;structName&gt;</code>' has no field named '<code>&lt;fieldName&gt;</code>'.                                |
+| [automationml](#automationml)             | `@modelscript/automationml` |     7 | Language server / API   |
+| [modelscript](#modelscript)               | `@modelscript/modelscript`  |    10 | Language server / API   |
+| [oscal](#oscal)                           | `@modelscript/oscal`        |     8 | Language server / API   |
+| [qif](#qif)                               | `@modelscript/qif`          |     9 | Language server / API   |
 
 ## Modelica {#modelica}
 
@@ -14051,6 +13872,68 @@ Biochemical reaction networks. **10 rules** · `@modelscript/sbml` · Source: `l
 | <span id="sbml-m8808"></span>`M8808` | `negative-stoichiometry`                | [error]    | Species reference for '<code>&lt;speciesId&gt;</code>' in reaction '<code>&lt;reactionId&gt;</code>' specifies non-positive stoichiometry (<code>&lt;stoich&gt;</code>).    |
 | <span id="sbml-m8809"></span>`M8809` | `undefined-kinetic-parameter`           | [warning] | Kinetic law formula in reaction '<code>&lt;reactionId&gt;</code>' references identifier '<code>&lt;id&gt;</code>' not found in parameters or species.                       |
 | <span id="sbml-m8810"></span>`M8810` | `circular-species-assignment`           | [info]       | Reaction '<code>&lt;reactionId&gt;</code>' lists '<code>&lt;speciesId&gt;</code>' as both reactant and product with identical stoichiometry; consider defining as modifier. |
+
+## automationml {#automationml}
+
+**7 rules** · `@modelscript/automationml` · Source: `languages/automationml/src/lints/rules.ts`
+
+| Code                                         | Rule                               | Severity                                | Message                                                                                                                                                              |
+| :------------------------------------------- | :--------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="automationml-m8301"></span>`M8301` | `aml-unresolved-base-class`        | [error]    | Base class reference '<code>&lt;path&gt;</code>' in '<code>&lt;elementName&gt;</code>' does not resolve to a declared or standard AutomationML class.                |
+| <span id="automationml-m8302"></span>`M8302` | `aml-inheritance-cycle`            | [error]    | Circular inheritance detected in class '<code>&lt;className&gt;</code>': '<code>&lt;cyclePath&gt;</code>'.                                                           |
+| <span id="automationml-m8303"></span>`M8303` | `aml-invalid-internal-link`        | [error]    | InternalLink '<code>&lt;linkName&gt;</code>' endpoint '<code>&lt;partnerRef&gt;</code>' does not resolve to a valid InternalElement and ExternalInterface.           |
+| <span id="automationml-m8304"></span>`M8304` | `aml-port-direction-conflict`      | [error]    | InternalLink '<code>&lt;linkName&gt;</code>' connects incompatible ports: <code>&lt;detail&gt;</code>.                                                               |
+| <span id="automationml-m8305"></span>`M8305` | `aml-unsatisfied-role-requirement` | [error]    | InternalElement '<code>&lt;elementName&gt;</code>' is missing required <code>&lt;missingItem&gt;</code> mandated by RoleRequirement '<code>&lt;rolePath&gt;</code>'. |
+| <span id="automationml-m8306"></span>`M8306` | `aml-broken-external-ref-uri`      | [warning] | External reference URI '<code>&lt;uri&gt;</code>' on interface '<code>&lt;interfaceName&gt;</code>' in '<code>&lt;elementName&gt;</code>' is empty or unresolved.    |
+| <span id="automationml-m8307"></span>`M8307` | `aml-invalid-frame-transform`      | [error]    | Invalid 6-DOF Frame transformation on InternalElement '<code>&lt;elementName&gt;</code>': <code>&lt;reason&gt;</code>.                                               |
+
+## modelscript {#modelscript}
+
+**10 rules** · `@modelscript/modelscript` · Source: `languages/modelscript/src/errors.ts`
+
+| Code                                        | Rule                      | Severity                             | Message                                                                                                                      |
+| :------------------------------------------ | :------------------------ | :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------------- |
+| <span id="modelscript-m1001"></span>`M1001` | `parse-error`             | [error] | Parse error.                                                                                                                 |
+| <span id="modelscript-m2001"></span>`M2001` | `undefined-variable`      | [error] | Variable '<code>&lt;name&gt;</code>' is not declared in current scope.                                                       |
+| <span id="modelscript-m2002"></span>`M2002` | `duplicate-declaration`   | [error] | Identifier '<code>&lt;name&gt;</code>' is already declared in this scope.                                                    |
+| <span id="modelscript-m2003"></span>`M2003` | `unknown-type`            | [error] | Type '<code>&lt;typeName&gt;</code>' is not recognized.                                                                      |
+| <span id="modelscript-m3001"></span>`M3001` | `type-mismatch`           | [error] | Type mismatch: cannot assign '<code>&lt;sourceType&gt;</code>' to '<code>&lt;targetType&gt;</code>'.                         |
+| <span id="modelscript-m3002"></span>`M3002` | `invalid-binary-operand`  | [error] | Operator '<code>&lt;op&gt;</code>' cannot be applied to operands of type '<code>&lt;type&gt;</code>'.                        |
+| <span id="modelscript-m4001"></span>`M4001` | `non-iterable-collection` | [error] | Expression '<code>&lt;expr&gt;</code>' in 'for' clause is not iterable.                                                      |
+| <span id="modelscript-m4002"></span>`M4002` | `flwor-unbound-variable`  | [error] | Variable '<code>&lt;varName&gt;</code>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses.                    |
+| <span id="modelscript-m5001"></span>`M5001` | `argument-count-mismatch` | [error] | Function '<code>&lt;fnName&gt;</code>' expects <code>&lt;expected&gt;</code> arguments, but got <code>&lt;actual&gt;</code>. |
+| <span id="modelscript-m5002"></span>`M5002` | `unknown-struct-field`    | [error] | Struct '<code>&lt;structName&gt;</code>' has no field named '<code>&lt;fieldName&gt;</code>'.                                |
+
+## oscal {#oscal}
+
+**8 rules** · `@modelscript/oscal` · Source: `languages/oscal/src/lints/rules.ts`
+
+| Code                                  | Rule                                    | Severity                                | Message                                                                                                                                                                                               |
+| :------------------------------------ | :-------------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="oscal-m8201"></span>`M8201` | `oscal-invalid-uuid`                    | [error]    |                                                                                                                                                                                                       |
+| <span id="oscal-m8202"></span>`M8202` | `oscal-unresolved-control-id`           | [error]    | Referenced control '<code>&lt;controlId&gt;</code>' does not exist in the catalog or built-in NIST SP 800-53 / 800-82 baseline.                                                                       |
+| <span id="oscal-m8203"></span>`M8203` | `oscal-unset-required-parameter`        | [warning] | Required parameter '<code>&lt;paramId&gt;</code>' in '<code>&lt;contextName&gt;</code>' has no value assigned in 'set-parameter'.                                                                     |
+| <span id="oscal-m8204"></span>`M8204` | `oscal-unimplemented-baseline-control`  | [error]    | Control '<code>&lt;controlId&gt;</code>' required by baseline profile '<code>&lt;profileHref&gt;</code>' is missing an 'implemented-requirement' in 'control-implementation'.                         |
+| <span id="oscal-m8205"></span>`M8205` | `oscal-orphaned-by-component`           | [error]    | Implementation 'by-component' in control '<code>&lt;controlId&gt;</code>' references component UUID '<code>&lt;componentUuid&gt;</code>' which is not declared in 'system-implementation.components'. |
+| <span id="oscal-m8206"></span>`M8206` | `oscal-cps-unmapped-architecture-block` | [warning] | Architectural component '<code>&lt;blockName&gt;</code>' from linked SysML v2 / AutomationML model is missing from 'system-implementation.components'.                                                |
+| <span id="oscal-m8207"></span>`M8207` | `oscal-ot-ics-overlay-violation`        | [error]    | OT/ICS component '<code>&lt;componentTitle&gt;</code>' (type '<code>&lt;componentType&gt;</code>') is missing mandatory NIST SP 800-82 controls: '<code>&lt;missingControls&gt;</code>'.              |
+| <span id="oscal-m8208"></span>`M8208` | `oscal-unmitigated-high-finding`        | [error]    | Open '<code>&lt;severity&gt;</code>' finding '<code>&lt;findingTitle&gt;</code>' on control '<code>&lt;controlId&gt;</code>' lacks a linked remediation entry in POA&amp;M.                           |
+
+## qif {#qif}
+
+**9 rules** · `@modelscript/qif` · Source: `languages/qif/src/lints/rules.ts`
+
+| Code                                | Rule                              | Severity                                | Message                                                                                                                                                                                                                                                |
+| :---------------------------------- | :-------------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="qif-m8101"></span>`M8101` | `qif-unresolved-qpid`             | [error]    | Unresolved <code>&lt;refKind&gt;</code> reference '<code>&lt;refId&gt;</code>' in '<code>&lt;contextName&gt;</code>'.                                                                                                                                  |
+| <span id="qif-m8102"></span>`M8102` | `qif-duplicate-qpid`              | [error]    | Duplicate identifier or QPId '<code>&lt;idOrQpId&gt;</code>' declared on '<code>&lt;elementName&gt;</code>'.                                                                                                                                           |
+| <span id="qif-m8103"></span>`M8103` | `qif-invalid-datum-precedence`    | [error]    | Duplicate datum label '<code>&lt;datumLabel&gt;</code>' in DatumReferenceFrame of characteristic '<code>&lt;charName&gt;</code>'.                                                                                                                      |
+| <span id="qif-m8104"></span>`M8104` | `qif-invalid-material-modifier`   | [error]    | Material condition modifier '<code>&lt;modifier&gt;</code>' cannot be applied to '<code>&lt;targetDesc&gt;</code>' in characteristic '<code>&lt;charName&gt;</code>'.                                                                                  |
+| <span id="qif-m8105"></span>`M8105` | `qif-composite-frame-mismatch`    | [error]    | Composite lower-tier tolerance '<code>&lt;lowerTol&gt;</code>' must be strictly less than upper-tier tolerance '<code>&lt;upperTol&gt;</code>' in characteristic '<code>&lt;charName&gt;</code>'.                                                      |
+| <span id="qif-m8106"></span>`M8106` | `qif-insufficient-probing-points` | [error]    | Probing point count '<code>&lt;actualPoints&gt;</code>' is below minimum required '<code>&lt;requiredPoints&gt;</code>' for '<code>&lt;featureType&gt;</code>' in '<code>&lt;targetName&gt;</code>'.                                                   |
+| <span id="qif-m8107"></span>`M8107` | `qif-tur-uncertainty-warning`     | [warning] | Test Uncertainty Ratio '<code>&lt;tur&gt;</code>:1' is below required minimum '<code>&lt;minTur&gt;</code>:1' for device '<code>&lt;deviceName&gt;</code>' on characteristic '<code>&lt;charName&gt;</code>'.                                          |
+| <span id="qif-m8108"></span>`M8108` | `qif-out-of-tolerance-actual`     | [error]    | Actual '<code>&lt;actualId&gt;</code>' has measured value '<code>&lt;measuredVal&gt;</code>' against effective tolerance '<code>&lt;effTol&gt;</code>' but is marked '<code>&lt;status&gt;</code>' for characteristic '<code>&lt;charName&gt;</code>'. |
+| <span id="qif-m8109"></span>`M8109` | `qif-unresolved-step-entity`      | [error]    | Referenced STEP AP242 entity '<code>&lt;stepEntityId&gt;</code>' on feature '<code>&lt;featureName&gt;</code>' was not found in the CAD model.                                                                                                         |
 
 ================================================================================
 DOCUMENT: Export Formats

@@ -99,6 +99,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
     viewConfig,
     title: artifact?.title || artifact?.name || viewConfig?.title,
   });
+  const safeEditorUrl = typeof editorUrl === "string" && editorUrl.startsWith("/") ? editorUrl : "#";
 
   return (
     <InspectorContainer>
@@ -296,6 +297,19 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
             <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
               <span style={{ color: "var(--color-fg-muted)" }}>Specification</span>
               <span style={{ color: "#38bdf8" }}>OMG ReqIF 1.2 + ISO 26262</span>
+            </Box>
+          </>
+        )}
+
+        {["qif", "qif-viewer"].includes(artifact.view_type?.toLowerCase()) && (
+          <>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>Metrology Standard</span>
+              <span style={{ color: "#38bdf8" }}>ISO 23952 QIF 3.0 + STEP AP242</span>
+            </Box>
+            <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">
+              <span style={{ color: "var(--color-fg-muted)" }}>GD&amp;T Authority</span>
+              <span style={{ color: "#4ade80" }}>ASME Y14.5-2018 MBD</span>
             </Box>
           </>
         )}
@@ -523,7 +537,7 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: "4px", paddingTop: "4px" }}>
             ⌨️ <b>Hotkeys:</b> [Esc] Exit &bull; [I] Inspector &bull;{" "}
             <a
-              href={editorUrl}
+              href={safeEditorUrl}
               style={{ color: "#38bdf8", textDecoration: "none" }}
               title={isMultiFile ? "Open in VS Code IDE (R)" : "Open in Playground (R)"}
             >

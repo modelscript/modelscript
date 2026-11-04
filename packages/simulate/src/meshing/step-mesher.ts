@@ -269,7 +269,8 @@ export class StepMesher {
       });
     }
 
-    const oeRegex = /#(\d+)\s*=\s*ORIENTED_EDGE\s*\([^,]*,[^,]*,[^,]*,\s*#(\d+)\s*,\s*\.(T|F)\.\s*\)/gi;
+    const oeRegex =
+      /#(\d+)\s*=\s*ORIENTED_EDGE\s*\([^,()#\r\n]*,[^,()#\r\n]*,[^,()#\r\n]*,\s*#(\d+)\s*,\s*\.(T|F)\.\s*\)/gi;
     while ((m = oeRegex.exec(text)) !== null) {
       orientedEdges.set(parseInt(m[1]!, 10), {
         edge: parseInt(m[2]!, 10),

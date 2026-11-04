@@ -141,6 +141,8 @@ describe("Long List Incremental Reparse Benchmark Suite", () => {
     const tHead = performance.now() - tHead0;
     expect(astHead).toBeGreaterThan(0);
     console.log(`[LongListDSL N=${N}] Incremental Head Edit (eq 0): ${tHead.toFixed(2)} ms`);
+    const treeHead = new TreeClass(activeFacade, astHead, codeHead);
+    expect(treeHead.rootNode.endIndex).toBe(codeHead.length);
 
     // 2b. Incremental edit at Equation 2500 (Middle of list)
     const midIdx = Math.floor(N / 2);
@@ -161,6 +163,8 @@ describe("Long List Incremental Reparse Benchmark Suite", () => {
     const tMid = performance.now() - tMid0;
     expect(astMid).toBeGreaterThan(0);
     console.log(`[LongListDSL N=${N}] Incremental Middle Edit (eq ${midIdx}): ${tMid.toFixed(2)} ms`);
+    const treeMid = new TreeClass(activeFacade, astMid, codeMid);
+    expect(treeMid.rootNode.endIndex).toBe(codeMid.length);
 
     // 3. Incremental edit at Equation N-1 (Tail of list)
     const targetTail = `eq x_${N - 1} = ${N - 1}.0;`;
@@ -180,13 +184,6 @@ describe("Long List Incremental Reparse Benchmark Suite", () => {
     const tTail = performance.now() - tTail0;
     expect(astTail).toBeGreaterThan(0);
     console.log(`[LongListDSL N=${N}] Incremental Tail Edit (eq ${N - 1}): ${tTail.toFixed(2)} ms`);
-
-    const treeHead = new TreeClass(activeFacade, astHead, codeHead);
-    expect(treeHead.rootNode.endIndex).toBe(codeHead.length);
-
-    const treeMid = new TreeClass(activeFacade, astMid, codeMid);
-    expect(treeMid.rootNode.endIndex).toBe(codeMid.length);
-
     const treeTail = new TreeClass(activeFacade, astTail, codeTail);
     expect(treeTail.rootNode.endIndex).toBe(codeTail.length);
   }, 60000);

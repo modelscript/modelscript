@@ -131,6 +131,55 @@ interface CadViewerProps {
   cfdPayload?: CfdMeshPayload | null | undefined;
   /** FEA structural mesh payload from co-simulation stream */
   feaPayload?: FeaMeshPayload | null | undefined;
+  /** ISO 23952 QIF MBD GD&T inspection overlay payload */
+  qifOverlay?: QifOverlayPayload | null | undefined;
+}
+
+export interface QifOverlayPayload {
+  qpId?: string | undefined;
+  features?:
+    | Array<{
+        id: string;
+        name: string;
+        type: string;
+        datumLabel?: string | undefined;
+        entityId?: string | undefined;
+        location?: [number, number, number] | undefined;
+        normal?: [number, number, number] | undefined;
+        nominalSize?: number | undefined;
+      }>
+    | undefined;
+  characteristics?:
+    | Array<{
+        id: string;
+        name: string;
+        type: string;
+        featureId: string;
+        toleranceValue: number;
+        nominalValue?: number | undefined;
+        materialCondition?: string | undefined;
+        datumRefs?: string[] | undefined;
+      }>
+    | undefined;
+  actuals?:
+    | Array<{
+        characteristicId: string;
+        measuredValue: number;
+        deviation?: number | undefined;
+        status?: string | undefined;
+      }>
+    | undefined;
+  spc?:
+    | {
+        overallPassRate?: number | undefined;
+        characteristics?:
+          | Array<{
+              characteristicId: string;
+              cpk: number;
+            }>
+          | undefined;
+      }
+    | undefined;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -574,6 +623,7 @@ function SceneContents({
   animationController,
   cfdPayload,
   feaPayload,
+  qifOverlay,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
@@ -585,6 +635,7 @@ function SceneContents({
   animationController?: AnimationController | null | undefined;
   cfdPayload?: CfdMeshPayload | null | undefined;
   feaPayload?: FeaMeshPayload | null | undefined;
+  qifOverlay?: QifOverlayPayload | null | undefined;
 }) {
   const { gl, camera } = useThree();
   const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
@@ -741,6 +792,9 @@ function SceneContents({
       {/* FEA Mesh Visualization (structural stress & deformation) */}
       {feaPayload && <FeaMeshRenderer payload={feaPayload} />}
 
+      {/* ISO 23952 QIF MBD GD&T 3D Overlay (CMM probe hits + STEP entity callouts) */}
+      {qifOverlay && <QifInspectionOverlay3D overlay={qifOverlay} sceneRadius={r} />}
+
       {/* Controls */}
       <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.1} />
 
@@ -749,6 +803,71 @@ function SceneContents({
         <GizmoViewport labelColor="white" axisHeadScale={1} />
       </GizmoHelper>
     </>
+  );
+}
+
+/**
+ * 3D ISO 23952 QIF + STEP AP242 MBD Inspection Overlay:
+ * Renders 3D CMM probe points and ASME Y14.5 Feature Control Frame callouts in the 3D scene.
+ */
+function QifInspectionOverlay3D({ overlay, sceneRadius }: { overlay: QifOverlayPayload; sceneRadius: number }) {
+  const features = overlay.features ?? [];
+  const characteristics = overlay.characteristics ?? [];
+  const actuals = overlay.actuals ?? [];
+  const spcChars = overlay.spc?.characteristics ?? [];
+
+  const scaleFactor = Math.max(0.02, sceneRadius / 50);
+
+  return (
+    <group name="QifInspectionOverlay3D">
+      {features.map((feat, idx) => {
+        const loc = feat.location ?? [(idx - 1.5) * 18, 0, 0];
+        const pos: [number, number, number] = [loc[0] * scaleFactor, loc[2] * scaleFactor + 0.15, loc[1] * scaleFactor];
+        const char = characteristics.find((c) => c.featureId === feat.id);
+        const charActuals = char ? actuals.filter((a) => a.characteristicId === char.id) : [];
+        const hasFail = charActuals.some((a) => a.status === "FAIL");
+        const spcMetric = char ? spcChars.find((s) => s.characteristicId === char.id) : undefined;
+        const cpk = spcMetric?.cpk ?? 1.5;
+        const color = hasFail ? "#ef4444" : cpk < 1.33 ? "#f59e0b" : "#10b981";
+        const entityTag = feat.entityId ? `#${feat.entityId.replace(/^#/, "")}` : `#${101 + idx * 7}`;
+
+        return (
+          <group key={feat.id} position={pos}>
+            <mesh>
+              <sphereGeometry args={[Math.max(0.04, sceneRadius * 0.03), 16, 16]} />
+              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.65} />
+            </mesh>
+            <Html position={[0, Math.max(0.22, sceneRadius * 0.14), 0]} center distanceFactor={8}>
+              <div
+                style={{
+                  background: "rgba(15, 23, 42, 0.92)",
+                  border: `1.5px solid ${color}`,
+                  borderRadius: "6px",
+                  padding: "3px 7px",
+                  color: "#f8fafc",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: "10px",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.45)",
+                  pointerEvents: "none",
+                }}
+              >
+                <span style={{ color: "#38bdf8", fontWeight: 700 }}>{entityTag}</span>{" "}
+                <span style={{ fontWeight: 600 }}>{feat.name}</span>
+                {feat.datumLabel ? (
+                  <span style={{ color: "#fbbf24", marginLeft: 4 }}>[-{feat.datumLabel}-]</span>
+                ) : null}
+                {char ? (
+                  <span style={{ color, marginLeft: 6 }}>
+                    ±{char.toleranceValue} (Cpk {cpk.toFixed(2)})
+                  </span>
+                ) : null}
+              </div>
+            </Html>
+          </group>
+        );
+      })}
+    </group>
   );
 }
 
@@ -795,6 +914,7 @@ export default function CadViewer({
   animationController = null,
   cfdPayload = null,
   feaPayload = null,
+  qifOverlay = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [contextLost, setContextLost] = useState<boolean>(false);
@@ -847,7 +967,7 @@ export default function CadViewer({
     );
   }
 
-  if (components.length === 0 && !cfdPayload && !feaPayload) {
+  if (components.length === 0 && !cfdPayload && !feaPayload && !qifOverlay) {
     return (
       <div style={{ height: "100%", position: "relative", background: dark ? "#1e1e1e" : "#f5f5f5" }}>
         <EmptyState dark={dark} />
@@ -1048,6 +1168,7 @@ export default function CadViewer({
           animationController={animationController}
           cfdPayload={cfdPayload}
           feaPayload={feaPayload}
+          qifOverlay={qifOverlay}
         />
       </Canvas>
 

@@ -342,7 +342,7 @@ export async function hydrateArtifactDescriptor(
           registerPackageDescriptor(pkgName, descriptor);
         }
       } catch (err) {
-        console.warn(`[artifact-hydrate] Failed to fetch package files for ${pkgName}@${pkgVersion}:`, err);
+        console.warn("[artifact-hydrate] Failed to fetch package files for %s@%s:", pkgName, pkgVersion, err);
       }
     }
     return descriptor;

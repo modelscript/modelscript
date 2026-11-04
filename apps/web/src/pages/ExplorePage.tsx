@@ -136,7 +136,7 @@ const ExplorePage: React.FC = () => {
       }
       fetchTopicPosts();
     }
-  }, [topic, topicFilter]);
+  }, [topic, topicFilter, token]);
 
   useEffect(() => {
     async function fetchExplore() {
@@ -151,7 +151,7 @@ const ExplorePage: React.FC = () => {
       }
     }
     fetchExplore();
-  }, []);
+  }, [token]);
 
   const [backendMatchedIds, setBackendMatchedIds] = useState<Set<string>>(new Set());
   const [searchLoading, setSearchLoading] = useState(false);
@@ -193,7 +193,7 @@ const ExplorePage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [query, topic]);
+  }, [query, topic, token]);
 
   const shouldFetchPackages = hasPackages && !topic && (query ? activeTab === "Packages" : landingTab === "packages");
 

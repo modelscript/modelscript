@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { parsePlcopenTextToProject, renderPlcopenSvg } from "@modelscript/diagram/plcopen-diagram-builder";
+import { renderQifMbdHeatmapSvg } from "@modelscript/diagram/qif-diagram-builder";
 import { parseSimulinkTextToSystem, renderSimulinkSvg } from "@modelscript/diagram/simulink-diagram-builder";
 import { renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
+import { parseQif } from "@modelscript/qif/parser";
 import {
   BeakerIcon,
   CheckIcon,
@@ -22,6 +24,7 @@ import Box from "../Box";
 import { registerAllModelscriptLanguages } from "../morsel/util/monaco-lsp-adapter";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import FortranViewer from "./FortranViewer";
+import QifViewer from "./QifViewer";
 import ReqifViewer from "./ReqifViewer";
 import StudyTemplateViewer from "./StudyTemplateViewer";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
@@ -130,6 +133,22 @@ export function renderSourceToDiagramSvg(
       }
     } catch {
       // Fall through to generic polyglot extractor if PLCopen parse fails
+    }
+  }
+
+  if (normalizedLang === "qif") {
+    try {
+      const doc = parseQif(content, _fallbackTitle);
+      if (doc.features.length > 0 || doc.characteristics.length > 0) {
+        const rawSvg = renderQifMbdHeatmapSvg(doc);
+        return {
+          svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
+          nodeCount: Math.max(1, doc.features.length),
+          edgeCount: Math.max(1, doc.characteristics.length),
+        };
+      }
+    } catch {
+      // Fall through to generic polyglot extractor if QIF parse fails
     }
   }
 
@@ -1128,6 +1147,19 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
   if (dialect === "reqif" || dialect === "reqifz") {
     return (
       <ReqifViewer
+        viewConfig={{
+          ...viewConfig,
+          code: rawCode || inlineCode,
+        }}
+        isFullScreen={isFullScreen}
+      />
+    );
+  }
+
+  if (dialect === "qif") {
+    return (
+      <QifViewer
+        artifactId={artifactId}
         viewConfig={{
           ...viewConfig,
           code: rawCode || inlineCode,

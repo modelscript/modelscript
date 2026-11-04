@@ -1,6 +1,6 @@
 ---
 title: Linter Rules Reference
-description: Every diagnostic rule ModelScript ships — 804 rules across 43 languages, with codes, severities and message templates generated from the source.
+description: Every diagnostic rule ModelScript ships — 828 rules across 46 languages, with codes, severities and message templates generated from the source.
 outline: [2, 2]
 pageClass: lint-reference
 ---
@@ -9,7 +9,7 @@ pageClass: lint-reference
 
 # Linter Rules Reference
 
-ModelScript ships **804 diagnostic rules** across **43 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **828 diagnostic rules** across **46 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -30,7 +30,6 @@ The **CLI** column below shows which command reports each language's rules.
 
 | Language                                  | Package                     | Rules | CLI                     |
 | :---------------------------------------- | :-------------------------- | ----: | :---------------------- |
-| [ModelScript](#modelscript)               | `@modelscript/modelscript`  |    10 | Language server / API   |
 | [Modelica](#modelica)                     | `@modelscript/modelica`     |   307 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    48 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    10 | `msx reqif lint`        |
@@ -73,23 +72,10 @@ The **CLI** column below shows which command reports each language's rules.
 | [EPA SWMM](#swmm)                         | `@modelscript/swmm`         |    13 | `msx swmm lint`         |
 | [Aspen Plus / HYSYS](#aspen)              | `@modelscript/aspen`        |    15 | `msx aspen lint`        |
 | [SBML](#sbml)                             | `@modelscript/sbml`         |    10 | `msx sbml lint`         |
-
-## ModelScript {#modelscript}
-
-Native systems modeling & query language. **10 rules** · `@modelscript/modelscript` · Source: `languages/modelscript/src/errors.ts` · [Language guide](../languages/modelscript.md)
-
-| Code                                        | Rule                      | Severity                             | Message                                                                                                                      |
-| :------------------------------------------ | :------------------------ | :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------------- |
-| <span id="modelscript-m1001"></span>`M1001` | `parse-error`             | <Badge type="danger" text="error" /> | Parse error.                                                                                                                 |
-| <span id="modelscript-m2001"></span>`M2001` | `undefined-variable`      | <Badge type="danger" text="error" /> | Variable '<code>&lt;name&gt;</code>' is not declared in current scope.                                                       |
-| <span id="modelscript-m2002"></span>`M2002` | `duplicate-declaration`   | <Badge type="danger" text="error" /> | Identifier '<code>&lt;name&gt;</code>' is already declared in this scope.                                                    |
-| <span id="modelscript-m2003"></span>`M2003` | `unknown-type`            | <Badge type="danger" text="error" /> | Type '<code>&lt;typeName&gt;</code>' is not recognized.                                                                      |
-| <span id="modelscript-m3001"></span>`M3001` | `type-mismatch`           | <Badge type="danger" text="error" /> | Type mismatch: cannot assign '<code>&lt;sourceType&gt;</code>' to '<code>&lt;targetType&gt;</code>'.                         |
-| <span id="modelscript-m3002"></span>`M3002` | `invalid-binary-operand`  | <Badge type="danger" text="error" /> | Operator '<code>&lt;op&gt;</code>' cannot be applied to operands of type '<code>&lt;type&gt;</code>'.                        |
-| <span id="modelscript-m4001"></span>`M4001` | `non-iterable-collection` | <Badge type="danger" text="error" /> | Expression '<code>&lt;expr&gt;</code>' in 'for' clause is not iterable.                                                      |
-| <span id="modelscript-m4002"></span>`M4002` | `flwor-unbound-variable`  | <Badge type="danger" text="error" /> | Variable '<code>&lt;varName&gt;</code>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses.                    |
-| <span id="modelscript-m5001"></span>`M5001` | `argument-count-mismatch` | <Badge type="danger" text="error" /> | Function '<code>&lt;fnName&gt;</code>' expects <code>&lt;expected&gt;</code> arguments, but got <code>&lt;actual&gt;</code>. |
-| <span id="modelscript-m5002"></span>`M5002` | `unknown-struct-field`    | <Badge type="danger" text="error" /> | Struct '<code>&lt;structName&gt;</code>' has no field named '<code>&lt;fieldName&gt;</code>'.                                |
+| [automationml](#automationml)             | `@modelscript/automationml` |     7 | Language server / API   |
+| [modelscript](#modelscript)               | `@modelscript/modelscript`  |    10 | Language server / API   |
+| [oscal](#oscal)                           | `@modelscript/oscal`        |     8 | Language server / API   |
+| [qif](#qif)                               | `@modelscript/qif`          |     9 | Language server / API   |
 
 ## Modelica {#modelica}
 
@@ -1227,3 +1213,65 @@ Biochemical reaction networks. **10 rules** · `@modelscript/sbml` · Source: `l
 | <span id="sbml-m8808"></span>`M8808` | `negative-stoichiometry`                | <Badge type="danger" text="error" />    | Species reference for '<code>&lt;speciesId&gt;</code>' in reaction '<code>&lt;reactionId&gt;</code>' specifies non-positive stoichiometry (<code>&lt;stoich&gt;</code>).    |
 | <span id="sbml-m8809"></span>`M8809` | `undefined-kinetic-parameter`           | <Badge type="warning" text="warning" /> | Kinetic law formula in reaction '<code>&lt;reactionId&gt;</code>' references identifier '<code>&lt;id&gt;</code>' not found in parameters or species.                       |
 | <span id="sbml-m8810"></span>`M8810` | `circular-species-assignment`           | <Badge type="info" text="info" />       | Reaction '<code>&lt;reactionId&gt;</code>' lists '<code>&lt;speciesId&gt;</code>' as both reactant and product with identical stoichiometry; consider defining as modifier. |
+
+## automationml {#automationml}
+
+**7 rules** · `@modelscript/automationml` · Source: `languages/automationml/src/lints/rules.ts`
+
+| Code                                         | Rule                               | Severity                                | Message                                                                                                                                                              |
+| :------------------------------------------- | :--------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="automationml-m8301"></span>`M8301` | `aml-unresolved-base-class`        | <Badge type="danger" text="error" />    | Base class reference '<code>&lt;path&gt;</code>' in '<code>&lt;elementName&gt;</code>' does not resolve to a declared or standard AutomationML class.                |
+| <span id="automationml-m8302"></span>`M8302` | `aml-inheritance-cycle`            | <Badge type="danger" text="error" />    | Circular inheritance detected in class '<code>&lt;className&gt;</code>': '<code>&lt;cyclePath&gt;</code>'.                                                           |
+| <span id="automationml-m8303"></span>`M8303` | `aml-invalid-internal-link`        | <Badge type="danger" text="error" />    | InternalLink '<code>&lt;linkName&gt;</code>' endpoint '<code>&lt;partnerRef&gt;</code>' does not resolve to a valid InternalElement and ExternalInterface.           |
+| <span id="automationml-m8304"></span>`M8304` | `aml-port-direction-conflict`      | <Badge type="danger" text="error" />    | InternalLink '<code>&lt;linkName&gt;</code>' connects incompatible ports: <code>&lt;detail&gt;</code>.                                                               |
+| <span id="automationml-m8305"></span>`M8305` | `aml-unsatisfied-role-requirement` | <Badge type="danger" text="error" />    | InternalElement '<code>&lt;elementName&gt;</code>' is missing required <code>&lt;missingItem&gt;</code> mandated by RoleRequirement '<code>&lt;rolePath&gt;</code>'. |
+| <span id="automationml-m8306"></span>`M8306` | `aml-broken-external-ref-uri`      | <Badge type="warning" text="warning" /> | External reference URI '<code>&lt;uri&gt;</code>' on interface '<code>&lt;interfaceName&gt;</code>' in '<code>&lt;elementName&gt;</code>' is empty or unresolved.    |
+| <span id="automationml-m8307"></span>`M8307` | `aml-invalid-frame-transform`      | <Badge type="danger" text="error" />    | Invalid 6-DOF Frame transformation on InternalElement '<code>&lt;elementName&gt;</code>': <code>&lt;reason&gt;</code>.                                               |
+
+## modelscript {#modelscript}
+
+**10 rules** · `@modelscript/modelscript` · Source: `languages/modelscript/src/errors.ts`
+
+| Code                                        | Rule                      | Severity                             | Message                                                                                                                      |
+| :------------------------------------------ | :------------------------ | :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------------- |
+| <span id="modelscript-m1001"></span>`M1001` | `parse-error`             | <Badge type="danger" text="error" /> | Parse error.                                                                                                                 |
+| <span id="modelscript-m2001"></span>`M2001` | `undefined-variable`      | <Badge type="danger" text="error" /> | Variable '<code>&lt;name&gt;</code>' is not declared in current scope.                                                       |
+| <span id="modelscript-m2002"></span>`M2002` | `duplicate-declaration`   | <Badge type="danger" text="error" /> | Identifier '<code>&lt;name&gt;</code>' is already declared in this scope.                                                    |
+| <span id="modelscript-m2003"></span>`M2003` | `unknown-type`            | <Badge type="danger" text="error" /> | Type '<code>&lt;typeName&gt;</code>' is not recognized.                                                                      |
+| <span id="modelscript-m3001"></span>`M3001` | `type-mismatch`           | <Badge type="danger" text="error" /> | Type mismatch: cannot assign '<code>&lt;sourceType&gt;</code>' to '<code>&lt;targetType&gt;</code>'.                         |
+| <span id="modelscript-m3002"></span>`M3002` | `invalid-binary-operand`  | <Badge type="danger" text="error" /> | Operator '<code>&lt;op&gt;</code>' cannot be applied to operands of type '<code>&lt;type&gt;</code>'.                        |
+| <span id="modelscript-m4001"></span>`M4001` | `non-iterable-collection` | <Badge type="danger" text="error" /> | Expression '<code>&lt;expr&gt;</code>' in 'for' clause is not iterable.                                                      |
+| <span id="modelscript-m4002"></span>`M4002` | `flwor-unbound-variable`  | <Badge type="danger" text="error" /> | Variable '<code>&lt;varName&gt;</code>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses.                    |
+| <span id="modelscript-m5001"></span>`M5001` | `argument-count-mismatch` | <Badge type="danger" text="error" /> | Function '<code>&lt;fnName&gt;</code>' expects <code>&lt;expected&gt;</code> arguments, but got <code>&lt;actual&gt;</code>. |
+| <span id="modelscript-m5002"></span>`M5002` | `unknown-struct-field`    | <Badge type="danger" text="error" /> | Struct '<code>&lt;structName&gt;</code>' has no field named '<code>&lt;fieldName&gt;</code>'.                                |
+
+## oscal {#oscal}
+
+**8 rules** · `@modelscript/oscal` · Source: `languages/oscal/src/lints/rules.ts`
+
+| Code                                  | Rule                                    | Severity                                | Message                                                                                                                                                                                               |
+| :------------------------------------ | :-------------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="oscal-m8201"></span>`M8201` | `oscal-invalid-uuid`                    | <Badge type="danger" text="error" />    |                                                                                                                                                                                                       |
+| <span id="oscal-m8202"></span>`M8202` | `oscal-unresolved-control-id`           | <Badge type="danger" text="error" />    | Referenced control '<code>&lt;controlId&gt;</code>' does not exist in the catalog or built-in NIST SP 800-53 / 800-82 baseline.                                                                       |
+| <span id="oscal-m8203"></span>`M8203` | `oscal-unset-required-parameter`        | <Badge type="warning" text="warning" /> | Required parameter '<code>&lt;paramId&gt;</code>' in '<code>&lt;contextName&gt;</code>' has no value assigned in 'set-parameter'.                                                                     |
+| <span id="oscal-m8204"></span>`M8204` | `oscal-unimplemented-baseline-control`  | <Badge type="danger" text="error" />    | Control '<code>&lt;controlId&gt;</code>' required by baseline profile '<code>&lt;profileHref&gt;</code>' is missing an 'implemented-requirement' in 'control-implementation'.                         |
+| <span id="oscal-m8205"></span>`M8205` | `oscal-orphaned-by-component`           | <Badge type="danger" text="error" />    | Implementation 'by-component' in control '<code>&lt;controlId&gt;</code>' references component UUID '<code>&lt;componentUuid&gt;</code>' which is not declared in 'system-implementation.components'. |
+| <span id="oscal-m8206"></span>`M8206` | `oscal-cps-unmapped-architecture-block` | <Badge type="warning" text="warning" /> | Architectural component '<code>&lt;blockName&gt;</code>' from linked SysML v2 / AutomationML model is missing from 'system-implementation.components'.                                                |
+| <span id="oscal-m8207"></span>`M8207` | `oscal-ot-ics-overlay-violation`        | <Badge type="danger" text="error" />    | OT/ICS component '<code>&lt;componentTitle&gt;</code>' (type '<code>&lt;componentType&gt;</code>') is missing mandatory NIST SP 800-82 controls: '<code>&lt;missingControls&gt;</code>'.              |
+| <span id="oscal-m8208"></span>`M8208` | `oscal-unmitigated-high-finding`        | <Badge type="danger" text="error" />    | Open '<code>&lt;severity&gt;</code>' finding '<code>&lt;findingTitle&gt;</code>' on control '<code>&lt;controlId&gt;</code>' lacks a linked remediation entry in POA&amp;M.                           |
+
+## qif {#qif}
+
+**9 rules** · `@modelscript/qif` · Source: `languages/qif/src/lints/rules.ts`
+
+| Code                                | Rule                              | Severity                                | Message                                                                                                                                                                                                                                                |
+| :---------------------------------- | :-------------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="qif-m8101"></span>`M8101` | `qif-unresolved-qpid`             | <Badge type="danger" text="error" />    | Unresolved <code>&lt;refKind&gt;</code> reference '<code>&lt;refId&gt;</code>' in '<code>&lt;contextName&gt;</code>'.                                                                                                                                  |
+| <span id="qif-m8102"></span>`M8102` | `qif-duplicate-qpid`              | <Badge type="danger" text="error" />    | Duplicate identifier or QPId '<code>&lt;idOrQpId&gt;</code>' declared on '<code>&lt;elementName&gt;</code>'.                                                                                                                                           |
+| <span id="qif-m8103"></span>`M8103` | `qif-invalid-datum-precedence`    | <Badge type="danger" text="error" />    | Duplicate datum label '<code>&lt;datumLabel&gt;</code>' in DatumReferenceFrame of characteristic '<code>&lt;charName&gt;</code>'.                                                                                                                      |
+| <span id="qif-m8104"></span>`M8104` | `qif-invalid-material-modifier`   | <Badge type="danger" text="error" />    | Material condition modifier '<code>&lt;modifier&gt;</code>' cannot be applied to '<code>&lt;targetDesc&gt;</code>' in characteristic '<code>&lt;charName&gt;</code>'.                                                                                  |
+| <span id="qif-m8105"></span>`M8105` | `qif-composite-frame-mismatch`    | <Badge type="danger" text="error" />    | Composite lower-tier tolerance '<code>&lt;lowerTol&gt;</code>' must be strictly less than upper-tier tolerance '<code>&lt;upperTol&gt;</code>' in characteristic '<code>&lt;charName&gt;</code>'.                                                      |
+| <span id="qif-m8106"></span>`M8106` | `qif-insufficient-probing-points` | <Badge type="danger" text="error" />    | Probing point count '<code>&lt;actualPoints&gt;</code>' is below minimum required '<code>&lt;requiredPoints&gt;</code>' for '<code>&lt;featureType&gt;</code>' in '<code>&lt;targetName&gt;</code>'.                                                   |
+| <span id="qif-m8107"></span>`M8107` | `qif-tur-uncertainty-warning`     | <Badge type="warning" text="warning" /> | Test Uncertainty Ratio '<code>&lt;tur&gt;</code>:1' is below required minimum '<code>&lt;minTur&gt;</code>:1' for device '<code>&lt;deviceName&gt;</code>' on characteristic '<code>&lt;charName&gt;</code>'.                                          |
+| <span id="qif-m8108"></span>`M8108` | `qif-out-of-tolerance-actual`     | <Badge type="danger" text="error" />    | Actual '<code>&lt;actualId&gt;</code>' has measured value '<code>&lt;measuredVal&gt;</code>' against effective tolerance '<code>&lt;effTol&gt;</code>' but is marked '<code>&lt;status&gt;</code>' for characteristic '<code>&lt;charName&gt;</code>'. |
+| <span id="qif-m8109"></span>`M8109` | `qif-unresolved-step-entity`      | <Badge type="danger" text="error" />    | Referenced STEP AP242 entity '<code>&lt;stepEntityId&gt;</code>' on feature '<code>&lt;featureName&gt;</code>' was not found in the CAD model.                                                                                                         |

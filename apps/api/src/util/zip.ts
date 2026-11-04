@@ -328,8 +328,13 @@ function hasDirectManifestInDir(dir: string, preferredName?: string): boolean {
     if (fs.existsSync(path.join(dir, name))) return true;
   }
   if (preferredName) {
-    const cleanPref = preferredName.split("/").pop()!;
-    if (fs.existsSync(path.join(dir, `${cleanPref}.mo`))) return true;
+    const cleanPref = path.basename(preferredName).replace(/[^a-zA-Z0-9_.-]/g, "");
+    if (cleanPref && cleanPref !== "." && cleanPref !== "..") {
+      const targetPath = path.resolve(dir, `${cleanPref}.mo`);
+      if (targetPath.startsWith(path.resolve(dir) + path.sep)) {
+        if (fs.existsSync(targetPath)) return true;
+      }
+    }
   }
   return false;
 }

@@ -135,7 +135,7 @@ function createEmptyDocument(range: QifSourceRange, uri?: string): QifDocument {
 function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRange, uri?: string): QifDocument {
   if (
     !text.includes(">") ||
-    (text.includes("<QIFDocument") && !text.includes("</QIFDocument>") && !/QIFDocument[^>]*\/>/.test(text))
+    (text.includes("<QIFDocument") && !text.includes("</QIFDocument>") && !/<QIFDocument\b[^<>]*\/>/i.test(text))
   ) {
     throw new Error("Malformed QIF XML document: unclosed <QIFDocument> element.");
   }
@@ -1048,7 +1048,7 @@ function findFirstSectionIndex(text: string): number {
 
 function parseXmlAttributes(attrString: string): Map<string, string> {
   const result = new Map<string, string>();
-  const regex = /([a-zA-Z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  const regex = /\b([a-zA-Z_][a-zA-Z0-9_:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
   let m: RegExpExecArray | null;
   while ((m = regex.exec(attrString)) !== null) {
     const key = m[1];
@@ -1068,7 +1068,7 @@ function extractTagText(xml: string, tagName: string): string | undefined {
 
 function stripTags(xml: string): string {
   return xml
-    .replace(/<[^>]+>/g, " ")
+    .replace(/<[^<>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -1274,7 +1274,7 @@ function parseListString(raw: string): string[] {
 
 function tokenizeDslLine(line: string): string[] {
   const tokens: string[] = [];
-  const regex = /"[^"]*"|'[^']*'|\([^)]*\)|\[[^\]]*\]|\S+/g;
+  const regex = /"[^"]*"|'[^']*'|\([^()]*\)|\[[^[\]]*\]|\S+/g;
   let m: RegExpExecArray | null;
   while ((m = regex.exec(line)) !== null) {
     tokens.push(m[0]);
@@ -1284,7 +1284,7 @@ function tokenizeDslLine(line: string): string[] {
 
 function parseKeyValuePairs(line: string): Map<string, string> {
   const kv = new Map<string, string>();
-  const regex = /([a-zA-Z0-9_]+)\s*=\s*("[^"]*"|'[^']*'|\([^)]*\)|\[[^\]]*\]|\S+)/g;
+  const regex = /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*("[^"]*"|'[^']*'|\([^()]*\)|\[[^[\]]*\]|\S+)/g;
   let m: RegExpExecArray | null;
   while ((m = regex.exec(line)) !== null) {
     const k = m[1];

@@ -304,7 +304,7 @@ export default defineConfig({
       { component: "LanguagesMegaMenu" },
       { component: "DocsMegaMenu" },
       ...(isPricingVisible ? [{ text: "Pricing", link: "/pricing" }] : []),
-      { text: "Explore on Ansatz", link: "https://ansatz.social", target: "_blank" },
+      { component: "AnsatzNavPill" },
     ],
     sidebar: (() => {
       const docsSidebar: DefaultTheme.SidebarItem[] = [

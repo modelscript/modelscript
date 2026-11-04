@@ -92,12 +92,12 @@ export function markdownMirrorRouter(database: LibraryDatabase): Router {
     const pubDate = post.created_at || new Date().toISOString();
 
     let md = `---
-title: "${title.replace(/"/g, '\\"')}"
-author: "${author.replace(/"/g, '\\"')}"
-author_url: "${authorUrl}"
-date: "${pubDate}"
-canonical_url: "${postUrl}"
-platform: "${brandName}"
+title: ${JSON.stringify(title)}
+author: ${JSON.stringify(author)}
+author_url: ${JSON.stringify(authorUrl)}
+date: ${JSON.stringify(pubDate)}
+canonical_url: ${JSON.stringify(postUrl)}
+platform: ${JSON.stringify(brandName)}
 format: "text/markdown"
 ---
 
@@ -168,11 +168,13 @@ ${post.content || "(No textual content)"}
     const cls = database.getClass(fullPkgName, targetVersion, className);
 
     if (!cls) {
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      const safeClass = String(className).replace(/[^\w.-]/g, "");
+      const safePkg = String(fullPkgName).replace(/[^\w.@/-]/g, "");
+      const safeVer = String(targetVersion).replace(/[^\w.-]/g, "");
       res
         .status(404)
-        .send(
-          `# 404 Not Found\n\nClass \`${className}\` not found in package \`${fullPkgName}\` version \`${targetVersion}\`.`,
-        );
+        .send(`# 404 Not Found\n\nClass \`${safeClass}\` not found in package \`${safePkg}\` version \`${safeVer}\`.`);
       return;
     }
 

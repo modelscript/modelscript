@@ -5,6 +5,7 @@ import "@modelscript/design-tokens/tokens.css";
 import type { Theme } from "vitepress";
 import DefaultTheme from "vitepress/theme";
 import { defineAsyncComponent } from "vue";
+import AnsatzNavPill from "./components/AnsatzNavPill.vue";
 import DocsMegaMenu from "./components/DocsMegaMenu.vue";
 import HomeAiAgent from "./components/HomeAiAgent.vue";
 import HomeCapabilities from "./components/HomeCapabilities.vue";
@@ -59,6 +60,7 @@ export default {
     app.component("PlatformMegaMenu", PlatformMegaMenu);
     app.component("LanguagesMegaMenu", LanguagesMegaMenu);
     app.component("DocsMegaMenu", DocsMegaMenu);
+    app.component("AnsatzNavPill", AnsatzNavPill);
     app.component("IndustriesIndex", IndustriesIndex);
     app.component("IndustryPage", IndustryPage);
     app.component("MsIcon", MsIcon);
