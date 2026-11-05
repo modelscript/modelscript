@@ -200,11 +200,19 @@ export function checkRootOverrides(pruneStale = false): {
   return { violations, staleOverrides, pruned };
 }
 
+export function hasCompiledDist(distDir: string): boolean {
+  if (!fs.existsSync(distDir)) return false;
+  return fs.readdirSync(distDir, { recursive: true }).some((f) => {
+    const s = String(f);
+    return s.endsWith(".js") || s.endsWith(".mjs") || s.endsWith(".cjs");
+  });
+}
+
 export function verifyNpmPackDryRun(pkgDir: string): PackViolation[] {
   const violations: PackViolation[] = [];
   const pkgJsonPath = path.join(pkgDir, "package.json");
   const distDir = path.join(pkgDir, "dist");
-  if (!fs.existsSync(pkgJsonPath) || !fs.existsSync(distDir)) return violations;
+  if (!fs.existsSync(pkgJsonPath) || !fs.existsSync(distDir) || !hasCompiledDist(distDir)) return violations;
 
   const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8")) as Record<string, unknown>;
   const pkgName = (pkg["name"] as string) || path.relative(REPO_ROOT, pkgDir).replace(/\\/g, "/");
@@ -353,7 +361,8 @@ async function run(): Promise<void> {
   const corePublishableDirs = CORE_PACK_TARGETS.map((rel) => path.join(REPO_ROOT, rel));
   let packedChecked = 0;
   for (const dir of corePublishableDirs) {
-    if (fs.existsSync(path.join(dir, "dist"))) {
+    const distDir = path.join(dir, "dist");
+    if (fs.existsSync(distDir) && hasCompiledDist(distDir)) {
       allViolations.push(...verifyNpmPackDryRun(dir));
       packedChecked++;
     }
