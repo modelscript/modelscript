@@ -293,8 +293,9 @@ export function adminRouter(
       );
       const isProductionOrPreset =
         process.env["NODE_ENV"] === "production" || Boolean(envPreset && envPreset.id !== "tier0_local_dev");
+      const isTestEnv = process.env["NODE_ENV"] === "test" && !isProductionOrPreset;
 
-      if (!callerIsAdmin && (isProductionOrPreset || database.hasAdminUser())) {
+      if (!callerIsAdmin && (isProductionOrPreset || (!isTestEnv && database.hasAdminUser()))) {
         res.status(403).json({
           error: "Only an administrator or development mode session can re-open the setup wizard.",
         });

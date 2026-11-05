@@ -337,6 +337,7 @@ export function usersRouter(
         : null,
       usernameChanges: {
         count: usernameChanges.count,
+        lastChangedAt: usernameChanges.lastChangedAt,
         history: usernameChanges.history.map((h) => ({
           oldUsername: h.oldUsername,
           newUsername: h.newUsername,

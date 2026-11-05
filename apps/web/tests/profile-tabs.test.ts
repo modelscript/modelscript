@@ -64,13 +64,11 @@ describe("Profile Page Tab Bar & Reposts Tab Suite", () => {
 
   it("verifies ProfilePosts renders correct empty state when type='reposts'", () => {
     assert.ok(
-      profilePostsSrc.includes('type === "reposts" ? "reposts" :'),
+      /type === "reposts"\s*\?\s*"reposts"/.test(profilePostsSrc),
       "ProfilePosts empty state heading must display 'No reposts yet' for type='reposts'",
     );
     assert.ok(
-      profilePostsSrc.includes(
-        'When @{username} has {type === "replies" ? "replies" : type === "reposts" ? "reposts" :',
-      ),
+      /When @\{username\} has[\s\S]*?type === "reposts"\s*\?\s*"reposts"/.test(profilePostsSrc),
       "ProfilePosts empty state description must mention reposts for type='reposts'",
     );
   });

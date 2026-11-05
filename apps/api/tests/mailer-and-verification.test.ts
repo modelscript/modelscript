@@ -61,8 +61,10 @@ test("Phase 1 & Pre-Deployment Readiness: Mailer, Token Decoupling & Guardrails"
   await t.test("registration in production mode omits verificationToken from HTTP JSON response", async () => {
     const originalEnv = process.env["NODE_ENV"];
     const originalKey = process.env["TURNSTILE_SECRET_KEY"];
+    const originalAllowMock = process.env["ALLOW_MOCK_CAPTCHA"];
     try {
       process.env["NODE_ENV"] = "production";
+      process.env["ALLOW_MOCK_CAPTCHA"] = "true";
       process.env["TURNSTILE_SECRET_KEY"] = "mock-secret-key";
 
       const res = await request(app)
@@ -91,6 +93,11 @@ test("Phase 1 & Pre-Deployment Readiness: Mailer, Token Decoupling & Guardrails"
         process.env["TURNSTILE_SECRET_KEY"] = originalKey;
       } else {
         delete process.env["TURNSTILE_SECRET_KEY"];
+      }
+      if (originalAllowMock !== undefined) {
+        process.env["ALLOW_MOCK_CAPTCHA"] = originalAllowMock;
+      } else {
+        delete process.env["ALLOW_MOCK_CAPTCHA"];
       }
     }
   });

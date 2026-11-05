@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import assert from "node:assert";
 import fs from "node:fs";
 import os from "node:os";
@@ -12,6 +13,7 @@ process.env["NODE_ENV"] = "test";
 
 import { createApp } from "../src/app.js";
 import { LibraryDatabase } from "../src/database.js";
+import { JWT_SECRET } from "../src/middleware/auth-middleware.js";
 import { LibraryStorage } from "../src/storage.js";
 import { generateTotpCode } from "../src/util/totp.js";
 
@@ -207,17 +209,24 @@ test("Phase 3 Enterprise & Compliance Maturity Suite", async (t) => {
 
   // 11. Disable 2FA
   await t.test("POST /api/v1/auth/2fa/disable requires password and code", async () => {
+    // Generate fresh session token with current token_version after logout
+    const updatedUser = db.getUserById(user.id);
+    const activeSessionToken = jwt.sign(
+      { id: user.id, username: user.username, email: user.email, tokenVersion: updatedUser?.token_version ?? 1 },
+      JWT_SECRET,
+    );
+
     // Wrong password fails
     const failRes = await request(app)
       .post("/api/v1/auth/2fa/disable")
-      .set("Authorization", `Bearer ${sessionToken}`)
+      .set("Authorization", `Bearer ${activeSessionToken}`)
       .send({ password: "WrongPassword!", code: generateTotpCode(totpSecret) });
     assert.strictEqual(failRes.status, 401);
 
     // Correct password and TOTP code succeeds
     const okRes = await request(app)
       .post("/api/v1/auth/2fa/disable")
-      .set("Authorization", `Bearer ${sessionToken}`)
+      .set("Authorization", `Bearer ${activeSessionToken}`)
       .send({ password: "SecurePassword123!", code: generateTotpCode(totpSecret) });
     assert.strictEqual(okRes.status, 200);
     assert.strictEqual(okRes.body.success, true);

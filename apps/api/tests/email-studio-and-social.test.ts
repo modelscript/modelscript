@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import jwt from "jsonwebtoken";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -11,6 +12,7 @@ process.env["NODE_ENV"] = "test";
 
 import { createApp } from "../src/app.js";
 import { LibraryDatabase } from "../src/database.js";
+import { JWT_SECRET } from "../src/middleware/auth-middleware.js";
 import { defaultMailer } from "../src/services/mailer.js";
 import { LibraryStorage } from "../src/storage.js";
 
@@ -19,12 +21,21 @@ describe("Admin Email & SMTP Studio, Template Engine, Rich Social Emails & Diges
   let db: LibraryDatabase;
   let storage: LibraryStorage;
   let app: ReturnType<typeof createApp>;
+  let adminToken: string;
 
   before(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msx-email-studio-test-"));
     db = new LibraryDatabase(path.join(tmpDir, "db"));
     storage = new LibraryStorage(path.join(tmpDir, "storage"));
     app = createApp({ database: db, storage });
+    const adminUser = db.createUser("admin_email", "admin_email@acme.internal", "hash", {
+      accountType: "admin",
+      emailVerified: true,
+    });
+    adminToken = jwt.sign(
+      { id: adminUser.id, username: adminUser.username, email: adminUser.email, accountType: "admin", role: "admin" },
+      JWT_SECRET,
+    );
     defaultMailer.clearSentMails();
   });
 
@@ -36,12 +47,16 @@ describe("Admin Email & SMTP Studio, Template Engine, Rich Social Emails & Diges
   });
 
   it("1. Persists SMTP & provider credentials encrypted at rest (AES-256-GCM) and hot-reloads defaultMailer", async () => {
-    const getRes = await request(app).get("/api/v1/admin/email/config").expect(200);
+    const getRes = await request(app)
+      .get("/api/v1/admin/email/config")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
     assert.equal(getRes.body.config.driver, "auto");
     assert.equal(getRes.body.config.smtpPassConfigured, false);
 
     const putRes = await request(app)
       .put("/api/v1/admin/email/config")
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({
         driver: "smtp",
         fromName: "Acme Engineering Hub",
@@ -87,6 +102,7 @@ describe("Admin Email & SMTP Studio, Template Engine, Rich Social Emails & Diges
   it("2. Runs interactive SMTP handshake diagnostics step-by-step via POST /api/v1/admin/email/test-connection", async () => {
     const diagRes = await request(app)
       .post("/api/v1/admin/email/test-connection")
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({
         driver: "smtp",
         smtpHost: "smtp.acme.internal",
@@ -109,6 +125,7 @@ describe("Admin Email & SMTP Studio, Template Engine, Rich Social Emails & Diges
     // Update verification template and theme
     const updateRes = await request(app)
       .put("/api/v1/admin/email/config")
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({
         driver: "console",
         theme: {
@@ -137,6 +154,7 @@ describe("Admin Email & SMTP Studio, Template Engine, Rich Social Emails & Diges
     // Live preview with XSS attempt in username variable
     const previewRes = await request(app)
       .post("/api/v1/admin/email/preview")
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({
         templateId: "verification",
         variables: {
@@ -157,6 +175,7 @@ describe("Admin Email & SMTP Studio, Template Engine, Rich Social Emails & Diges
     // Reset verification template back to default
     const resetRes = await request(app)
       .put("/api/v1/admin/email/config")
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({
         resetTemplateId: "verification",
       })
@@ -254,6 +273,7 @@ describe("Admin Email & SMTP Studio, Template Engine, Rich Social Emails & Diges
     // Now trigger daily digest compilation via admin endpoint
     const digestRes = await request(app)
       .post("/api/v1/admin/email/dispatch-digests")
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ frequency: "daily" })
       .expect(200);
 
@@ -271,12 +291,16 @@ describe("Admin Email & SMTP Studio, Template Engine, Rich Social Emails & Diges
   });
 
   it("6. Inspects the outbound delivery outbox and supports one-click redelivery retry", async () => {
-    const outboxRes = await request(app).get("/api/v1/admin/email/outbox").expect(200);
+    const outboxRes = await request(app)
+      .get("/api/v1/admin/email/outbox")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
     assert.ok(outboxRes.body.count >= 1);
     const firstMsgId = outboxRes.body.items[0].id as string;
 
     const retryRes = await request(app)
       .post(`/api/v1/admin/email/outbox/${encodeURIComponent(firstMsgId)}/retry`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({})
       .expect(200);
 

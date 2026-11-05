@@ -66,6 +66,7 @@ test("Package Unpublish RBAC Security & Cascade Deletion", async (t) => {
     const res = await request(app)
       .post(`/api/v1/libraries/${pkgName}/${pkgVersion}`)
       .set("Authorization", `Bearer ${aliceToken}`)
+      .set("x-test-allow-unscoped", "true")
       .attach("file", zipBuffer, "library.zip");
 
     assert.strictEqual(res.status, 201);
@@ -110,6 +111,7 @@ test("Package Unpublish RBAC Security & Cascade Deletion", async (t) => {
     const resPub = await request(app)
       .post(`/api/v1/libraries/${pkgName}/${pkgVersion}`)
       .set("Authorization", `Bearer ${aliceToken}`)
+      .set("x-test-allow-unscoped", "true")
       .attach("file", zipBuffer, "library.zip");
     assert.strictEqual(resPub.status, 201);
 

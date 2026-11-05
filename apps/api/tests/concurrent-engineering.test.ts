@@ -25,6 +25,13 @@ test("Concurrent Engineering: SysML v2 Branching, Diff, 3-Way Merge & Persistent
   const omgService = new SysML2OmgService(db);
   const app = express();
   app.use(express.json());
+  app.use((req, _res, next) => {
+    (req as { user?: { username: string; email: string } }).user = {
+      username: "engineer",
+      email: "engineer@modelscript.org",
+    };
+    next();
+  });
   app.use("/api/v1/sysml2", sysml2OmgRouter(omgService));
   app.use("/api/v1/threads", threadRouter(db));
 
@@ -276,6 +283,13 @@ part def PropulsionUnit {
       // 4. Mount a fresh Express app and threadRouter backed by the SAME SQLite database (simulating process restart)
       const restartedApp = express();
       restartedApp.use(express.json());
+      restartedApp.use((req, _res, next) => {
+        (req as { user?: { username: string; email: string } }).user = {
+          username: "engineer",
+          email: "engineer@modelscript.org",
+        };
+        next();
+      });
       restartedApp.use("/api/v1/threads", threadRouter(db));
 
       const graphAfterRestart = await request(restartedApp).get("/api/v1/threads/graph").expect(200);

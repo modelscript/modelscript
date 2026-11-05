@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import assert from "node:assert";
 import fs from "node:fs";
@@ -45,7 +46,8 @@ test("Web Admin UI Integration & Client API Verification", async (t) => {
     { expiresIn: "1h" },
   );
 
-  const adminUser = db.createUser("super_admin", "admin@modelscript.test", "hash456", {
+  const adminPasswordHash = bcrypt.hashSync("hash456", 10);
+  const adminUser = db.createUser("super_admin", "admin@modelscript.test", adminPasswordHash, {
     accountType: "admin",
     emailVerified: true,
   });

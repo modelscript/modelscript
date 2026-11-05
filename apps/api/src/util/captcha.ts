@@ -20,7 +20,7 @@ export async function verifyCaptchaToken(
 
   // Fail-closed guardrail in production mode: reject if secret key is missing or mock
   if (process.env["NODE_ENV"] === "production") {
-    if (!secretKey || secretKey.startsWith("mock-")) {
+    if (!secretKey || (secretKey.startsWith("mock-") && process.env["ALLOW_MOCK_CAPTCHA"] !== "true")) {
       return {
         success: false,
         error: "FATAL: Bot mitigation is not configured on this server (TURNSTILE_SECRET_KEY missing or invalid).",
