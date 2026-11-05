@@ -108,14 +108,17 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
       handleOpenVsCode(e);
       return;
     }
-    navigate(
-      buildEditorUrlForArtifact({
-        artifactId,
-        viewType: artifact?.view_type,
-        viewConfig,
-        title: artifact?.title || artifact?.name || viewConfig?.title,
-      }),
-    );
+    const url = buildEditorUrlForArtifact({
+      artifactId,
+      viewType: artifact?.view_type,
+      viewConfig,
+      title: artifact?.title || artifact?.name || viewConfig?.title,
+    });
+    if (isFullScreen && typeof window !== "undefined") {
+      window.open(url, "_blank");
+    } else {
+      navigate(url);
+    }
   };
 
   const downloadAssetUrl = sanitizeHttpUrl(viewConfig.url || viewConfig.downloadUrl, { allowRelative: true });

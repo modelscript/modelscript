@@ -562,7 +562,7 @@ export function polishLocally(
  * and Remote LLM (`POST /api/v1/social/ai/draft` backed by Ollama / OpenAI / Gemini / BYOK).
  */
 export async function runComposerAiDraft(options: {
-  artifactId?: number | null | undefined;
+  artifactId?: number | string | null | undefined;
   artifactView?: Record<string, unknown> | null | undefined;
   existingText?: string | undefined;
   tone?: AiDraftTone | undefined;
@@ -655,7 +655,7 @@ export async function runComposerAiDraft(options: {
 export async function runComposerAiPolish(options: {
   content: string;
   mode?: AiPolishMode | undefined;
-  artifactId?: number | null | undefined;
+  artifactId?: number | string | null | undefined;
   artifactView?: Record<string, unknown> | null | undefined;
   engine?: ComposerAiEngineMode | undefined;
 }): Promise<AiPolishResponse> {

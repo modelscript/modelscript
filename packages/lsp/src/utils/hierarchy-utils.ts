@@ -328,21 +328,18 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
         seen.add(compositeName);
 
         const kind = classKindFromEntry(entry);
-        // Only top-level packages belong in the library root tree (individual models belong in project/component views)
-        if (kind === "package") {
-          workspaceNodes.push({
-            id: compositeName,
-            name: entry.name,
-            compositeName,
-            classKind: kind,
-            description: `${kind} · workspace`,
-            icon: iconFromEntry(entry),
-            iconSvg: entry.metadata?.iconSvg,
-            hasChildren: hasClassChildren(index, id, compositeName, workspace),
-            language: entry.language,
-            uri: entry.resourceId,
-          });
-        }
+        workspaceNodes.push({
+          id: compositeName,
+          name: entry.name,
+          compositeName,
+          classKind: kind,
+          description: `${kind} · workspace`,
+          icon: iconFromEntry(entry),
+          iconSvg: entry.metadata?.iconSvg,
+          hasChildren: hasClassChildren(index, id, compositeName, workspace),
+          language: entry.language,
+          uri: entry.resourceId,
+        });
         fqnCacheState.cache.set(compositeName, id);
       }
     }

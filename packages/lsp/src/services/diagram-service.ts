@@ -233,7 +233,13 @@ export class DiagramService {
     }
 
     const t0 = performance.now();
-    const classInstance = this.workspaceManager.resolveClassInstance(params.uri, params.className);
+    let classInstance = this.workspaceManager.resolveClassInstance(params.uri, params.className);
+
+    if (!classInstance && params.className) {
+      // Requested class was not found in this document (e.g. stale class name from previously open model).
+      // Fall back to resolving the primary class instance in this document.
+      classInstance = this.workspaceManager.resolveClassInstance(params.uri);
+    }
 
     if (!classInstance) {
       // Dependencies are ready but class instance not yet available (re-validation in progress).

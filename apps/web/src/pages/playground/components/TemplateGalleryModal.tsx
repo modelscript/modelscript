@@ -266,6 +266,10 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
               return (
                 <div
                   key={template.id}
+                  onDoubleClick={() => {
+                    onSelectTemplate(template);
+                    onClose();
+                  }}
                   style={{
                     display: "flex",
                     flexDirection: "column",

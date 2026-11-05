@@ -96,6 +96,41 @@ describe("Compose Modal Multi-Level Blur & Stacking Hierarchy", () => {
     );
   });
 
+  it("ComposeAttachedArtifact provides in-place Full Screen modal and does not auto-draft posts on attach", () => {
+    const attachedArtifactPath = path.resolve(__dirname, "../src/components/compose/ComposeAttachedArtifact.tsx");
+    const attachedArtifactSrc = fs.readFileSync(attachedArtifactPath, "utf-8");
+    const composeBoxPath = path.resolve(__dirname, "../src/components/ComposeBox.tsx");
+    const composeBoxSrc = fs.readFileSync(composeBoxPath, "utf-8");
+
+    // 1. Must offer Full Screen instead of "Edit in Playground" navigation
+    assert.ok(
+      attachedArtifactSrc.includes("<span>Full Screen</span>"),
+      "ComposeAttachedArtifact must provide a 'Full Screen' button",
+    );
+    assert.ok(
+      !attachedArtifactSrc.includes("Edit in Playground"),
+      "ComposeAttachedArtifact must NOT have 'Edit in Playground' button that triggers route navigation and save dialogs",
+    );
+    assert.ok(
+      attachedArtifactSrc.includes("isFullScreen={isFullScreen}") &&
+        attachedArtifactSrc.includes("onFullScreenChange={setIsFullScreen}"),
+      "ComposeAttachedArtifact must wire isFullScreen state to ArtifactViewCard for in-modal expansion",
+    );
+
+    // 2. Draft Post button in light mode must be theme-adaptive and not hardcoded black
+    assert.ok(
+      !attachedArtifactSrc.includes("rgba(0, 0, 0, 0.82)"),
+      "Draft post button must not use hardcoded black rgba(0, 0, 0, 0.82) in light mode",
+    );
+    assert.ok(attachedArtifactSrc.includes("isDark ?"), "Buttons must adapt colors dynamically based on theme mode");
+
+    // 3. ComposeBox must NOT automatically trigger handleAiDraft on artifact attachment
+    assert.ok(
+      !composeBoxSrc.includes("void handleAiDraft(artifactId, null)"),
+      "ComposeBox must NOT automatically draft posts on artifact attachment",
+    );
+  });
+
   it("interactive runtime flow: typing in Home ComposeBox and clicking Explore tab opens Save post modal, preserves text on cancel, saves draft on Save, and navigates on Discard", async () => {
     const { JSDOM } = await import("jsdom");
     const dom = new JSDOM(`<!DOCTYPE html><html><body><div id="root"></div></body></html>`, {

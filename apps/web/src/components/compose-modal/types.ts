@@ -16,7 +16,7 @@ export interface ComposeModalProps {
 export interface DraftPost {
   id: string;
   content: string;
-  artifactId: number | null;
+  artifactId: number | string | null;
   notebookMode?: boolean | undefined;
   notebookTitle?: string | undefined;
   notebookSummary?: string | undefined;

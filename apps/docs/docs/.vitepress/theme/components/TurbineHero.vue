@@ -31,12 +31,16 @@ const MODES: ReadonlyArray<{ id: ViewMode; label: string; icon: IconName; hint: 
 let resizeObs: ResizeObserver | undefined;
 let interObs: IntersectionObserver | undefined;
 let motionQuery: MediaQueryList | undefined;
+let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
 const onMotionChange = (e: MediaQueryListEvent) => scene.value?.setReducedMotion(e.matches);
 
 function webglAvailable(): boolean {
   try {
     const c = document.createElement("canvas");
-    return !!c.getContext("webgl2");
+    const gl = c.getContext("webgl2");
+    if (!gl) return false;
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+    return true;
   } catch {
     return false;
   }
@@ -47,41 +51,95 @@ onMounted(async () => {
     fallback.value = true;
     return;
   }
+
+  // Safety net: if the 3D scene never signals first frame within 2.5s,
+  // gracefully fall back to the digital twin illustration so the hero is never blank.
+  fallbackTimer = setTimeout(() => {
+    if (!ready.value && !fallback.value) {
+      fallback.value = true;
+    }
+  }, 2500);
+
   await nextTick();
-  motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const { TurbineScene } = await import("./turbine/scene");
-  if (!canvas.value || !stage.value) return;
+  if (!canvas.value || !stage.value) {
+    fallback.value = true;
+    return;
+  }
+
   try {
+    motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const { TurbineScene } = await import("./turbine/scene");
+    if (!canvas.value || !stage.value) return;
+
     scene.value = new TurbineScene({
       canvas: canvas.value,
       dark: isDark.value,
-      reducedMotion: motionQuery.matches,
+      reducedMotion: motionQuery?.matches ?? false,
       callouts: CALLOUTS.map((_, i) => ({
         label: labelEls.value[i],
         line: lineEls.value[i],
         dot: dotEls.value[i],
       })),
-      onFirstFrame: () => (ready.value = true),
+      onFirstFrame: () => {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+        ready.value = true;
+      },
+      onError: () => {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+        fallback.value = true;
+      },
     });
   } catch {
+    if (fallbackTimer) clearTimeout(fallbackTimer);
     fallback.value = true;
     return;
   }
-  motionQuery.addEventListener("change", onMotionChange);
+
+  // WebKit on older iOS only implements .addListener / .removeListener on MediaQueryList
+  if (motionQuery) {
+    if (typeof motionQuery.addEventListener === "function") {
+      motionQuery.addEventListener("change", onMotionChange);
+    } else if (typeof (motionQuery as any).addListener === "function") {
+      (motionQuery as any).addListener(onMotionChange);
+    }
+  }
 
   const s = scene.value;
+  if (!s || !stage.value) return;
+
   const rect = stage.value.getBoundingClientRect();
-  s.resize(rect.width, rect.height);
-  resizeObs = new ResizeObserver(([entry]) => s.resize(entry.contentRect.width, entry.contentRect.height));
+  if (rect.width > 0 && rect.height > 0) {
+    s.resize(rect.width, rect.height);
+  }
+
+  resizeObs = new ResizeObserver(([entry]) => {
+    if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+      s.resize(entry.contentRect.width, entry.contentRect.height);
+    }
+  });
   resizeObs.observe(stage.value);
+
   interObs = new IntersectionObserver(([entry]) => s.setVisible(entry.isIntersecting), { threshold: 0.01 });
   if (root.value) interObs.observe(root.value);
+
+  canvas.value.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    if (fallbackTimer) clearTimeout(fallbackTimer);
+    fallback.value = true;
+  });
 });
 
 onBeforeUnmount(() => {
+  if (fallbackTimer) clearTimeout(fallbackTimer);
   resizeObs?.disconnect();
   interObs?.disconnect();
-  motionQuery?.removeEventListener("change", onMotionChange);
+  if (motionQuery) {
+    if (typeof motionQuery.removeEventListener === "function") {
+      motionQuery.removeEventListener("change", onMotionChange);
+    } else if (typeof (motionQuery as any).removeListener === "function") {
+      (motionQuery as any).removeListener(onMotionChange);
+    }
+  }
   scene.value?.dispose();
   scene.value = null;
 });

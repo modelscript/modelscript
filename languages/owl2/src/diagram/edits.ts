@@ -166,12 +166,14 @@ export function computeOWL2NameEdit(docText: string, oldName: string, newName: s
   const cleanOld = oldName.replace(/^:/, "");
   const cleanNew = newName.replace(/^:/, "");
 
-  const pattern = new RegExp(`(?<=[:#<]|^|\\s)(${escapeRegex(cleanOld)})(?=[>\\s\\)]|$)`, "g");
+  const pattern = new RegExp(`([:#<]|^|\\s)(${escapeRegex(cleanOld)})(?=[>\\s\\)]|$)`, "g");
 
   lines.forEach((line, i) => {
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(line)) !== null) {
-      edits.push(TextEdit.replace(Range.create(i, match.index, i, match.index + match[0].length), cleanNew));
+      const prefixLen = match[1] ? match[1].length : 0;
+      const startCol = match.index + prefixLen;
+      edits.push(TextEdit.replace(Range.create(i, startCol, i, startCol + cleanOld.length), cleanNew));
     }
   });
 

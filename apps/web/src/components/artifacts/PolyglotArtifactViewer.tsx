@@ -1074,8 +1074,9 @@ const POLYGLOT_KEYWORD_RE =
 const POLYGLOT_TYPE_OR_BUILTIN_RE =
   /^(?:BOOL|BYTE|WORD|DWORD|LWORD|SINT|INT|DINT|LINT|USINT|UINT|UDINT|ULINT|REAL|LREAL|TIME|DATE|TOD|DT|STRING|WSTRING|TRUE|FALSE|TON|TOF|TP|CTU|CTD|CTUD|R_TRIG|F_TRIG|SR|RS|Real|Integer|Boolean|String|StateSelect|electrical|voltage|current|void|float|double|char|long|short|unsigned|signed|size_t|bool|precision)$/i;
 
+// Note: Avoid regex lookbehind assertions (?<!...) or (?<=...) for compatibility with Safari < 16.4 / iOS 15 (e.g. iPhone 7)
 const POLYGLOT_TOKEN_SCANNER_RE =
-  /(<!--[\s\S]*?(?:-->|$)|\(\*[\s\S]*?(?:\*\)|$)|\/\*[\s\S]*?(?:\*\/|$)|\/\/.*$)|(<\?[A-Za-z_][\w:.-]*|\?>|<!\[CDATA\[|\]\]>|<!DOCTYPE[^>]*>)|(<\/?)([A-Za-z_][\w:.-]*)|(\/?>)|([A-Za-z_][\w:.-]*)(\s*=\s*)(?=["'])|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(&(?:[a-zA-Z0-9]+|#\d+|#x[0-9a-fA-F]+);)|(\b(?:T|TIME|D|DATE|TOD|DT|BOOL|BYTE|WORD|DWORD|LWORD|SINT|INT|DINT|LINT|USINT|UINT|UDINT|ULINT|REAL|LREAL)#[A-Za-z0-9_.:+-]+\b|\b(?:2|8|16)#[0-9A-Fa-f_]+\b)|((?<![\w:.-])-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[fFpPnNuUmMkKgGtT]|Meg|meg)?\b)|(:=|=>|<=|>=|<>|==|!=|\*\*|<->|->)|(\.[A-Za-z_]\w*\b|\b[A-Za-z_]\w*\b)/g;
+  /(<!--[\s\S]*?(?:-->|$)|\(\*[\s\S]*?(?:\*\)|$)|\/\*[\s\S]*?(?:\*\/|$)|\/\/.*$)|(<\?[A-Za-z_][\w:.-]*|\?>|<!\[CDATA\[|\]\]>|<!DOCTYPE[^>]*>)|(<\/?)([A-Za-z_][\w:.-]*)|(\/?>)|([A-Za-z_][\w:.-]*)(\s*=\s*)(?=["'])|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|(&(?:[a-zA-Z0-9]+|#\d+|#x[0-9a-fA-F]+);)|(\b(?:T|TIME|D|DATE|TOD|DT|BOOL|BYTE|WORD|DWORD|LWORD|SINT|INT|DINT|LINT|USINT|UINT|UDINT|ULINT|REAL|LREAL)#[A-Za-z0-9_.:+-]+\b|\b(?:2|8|16)#[0-9A-Fa-f_]+\b)|(\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?:[fFpPnNuUmMkKgGtT]|Meg|meg)?\b)|(:=|=>|<=|>=|<>|==|!=|\*\*|<->|->)|(\.[A-Za-z_]\w*\b|\b[A-Za-z_]\w*\b)/g;
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function highlightPolyglotLine(line: string, dialect: string): React.ReactNode {

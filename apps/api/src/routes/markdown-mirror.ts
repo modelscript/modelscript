@@ -113,7 +113,7 @@ ${post.content || "(No textual content)"}
 
     if (post.artifact_view_id) {
       try {
-        const art = database.getArtifactView(Number(post.artifact_view_id));
+        const art = database.getArtifactView(post.artifact_view_id);
         if (art) {
           md += `\n## Attached Engineering Artifact: ${art.title || art.view_type}
 - **Artifact Type**: \`${art.view_type}\`

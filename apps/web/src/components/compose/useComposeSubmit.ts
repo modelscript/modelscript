@@ -34,8 +34,8 @@ export interface UseComposeSubmitParams {
   token: string | null;
   content: string;
   setContent: (val: string) => void;
-  artifactId: number | null;
-  setArtifactId: (val: number | null) => void;
+  artifactId: number | string | null;
+  setArtifactId: (val: number | string | null) => void;
   attachedMorsel?: AttachedMorselDraft | null | undefined;
   setAttachedMorsel?: ((val: AttachedMorselDraft | null) => void) | undefined;
   isNotebookMode: boolean;
@@ -54,7 +54,7 @@ export interface UseComposeSubmitParams {
   setNotebookTopics: (val: string[]) => void;
   notebookCells: NotebookCell[];
   setNotebookCells: (cells: NotebookCell[]) => void;
-  attachArtifactToComposer: (newArtifactId: number, title?: string, suggestedCaption?: string) => void;
+  attachArtifactToComposer: (newArtifactId: number | string, title?: string, suggestedCaption?: string) => void;
   contentWarning: string;
   setContentWarning: (val: string) => void;
   setShowContentWarning: (val: boolean) => void;
@@ -63,7 +63,7 @@ export interface UseComposeSubmitParams {
   quotePost?: any;
   replyToPost?: any;
   editPostId?: string | number | null | undefined;
-  forkedFromArtifactId?: number | null | undefined;
+  forkedFromArtifactId?: number | string | null | undefined;
   pendingPin?: SpatialPin | undefined;
   excludedUsers?: Set<string> | undefined;
   onPostCreated?: ((post: any) => void) | undefined;

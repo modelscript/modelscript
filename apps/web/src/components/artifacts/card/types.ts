@@ -10,6 +10,8 @@ export interface ArtifactViewCardProps {
   caption?: string | undefined;
   onPinCreated?: ((pin: AnySpatialPin) => void) | undefined;
   onThreadNodeSelected?: ((threadId: string | number) => void) | undefined;
+  isFullScreen?: boolean | undefined;
+  onFullScreenChange?: ((isFullScreen: boolean) => void) | undefined;
 }
 
 export type PlaceholderType =

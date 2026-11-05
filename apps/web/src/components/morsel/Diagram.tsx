@@ -241,10 +241,17 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   useEffect(() => {
     if (props.diagramData && containerRef.current) {
-      syncDiagramOptions();
-      renderDiagram(props.diagramData, props.theme === "vs-dark");
-      attachGraphListeners();
-      if (props.onRenderComplete) props.onRenderComplete(props.diagramData);
+      try {
+        syncDiagramOptions();
+        renderDiagram(props.diagramData, props.theme === "vs-dark");
+        attachGraphListeners();
+      } catch (err) {
+        console.error("Failed to render diagram:", err);
+      } finally {
+        if (props.onRenderComplete) props.onRenderComplete(props.diagramData);
+      }
+    } else if (!props.diagramData && props.onRenderComplete) {
+      props.onRenderComplete(null);
     }
   }, [props.diagramData, props.theme]);
 

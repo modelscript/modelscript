@@ -8,6 +8,7 @@ import { useAuth } from "../AuthContext";
 import { ComposeContext } from "../components/ComposeContext";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
+import { extractPrimaryModelicaClassName } from "../components/morsel/util/lsp-bridge";
 import {
   compressMorselPayload,
   decompressMorselPayload,
@@ -94,8 +95,8 @@ export const PlaygroundPage: React.FC = () => {
     (location.hash &&
       (location.hash.startsWith("#memfs:artifact-") ||
         location.hash.startsWith("#m=artifact-") ||
-        /^#memfs:\d+/.test(location.hash) ||
-        /^#m=\d+/.test(location.hash))),
+        /^#memfs:\d+$/.test(location.hash) ||
+        /^#m=\d+$/.test(location.hash))),
   );
 
   const hasInitialTarget = Boolean(
@@ -205,7 +206,7 @@ export const PlaygroundPage: React.FC = () => {
     let hashArtifactId: string | null = null;
     if (location.hash && location.hash.startsWith("#m=artifact-")) {
       hashArtifactId = decodeURIComponent(location.hash.slice("#m=artifact-".length));
-    } else if (location.hash && /^#m=\d+/.test(location.hash)) {
+    } else if (location.hash && /^#m=\d+$/.test(location.hash)) {
       hashArtifactId = decodeURIComponent(location.hash.slice("#m=".length));
     } else if (location.hash && location.hash.startsWith("#memfs:")) {
       const memfsTarget = decodeURIComponent(location.hash.slice("#memfs:".length));
@@ -319,7 +320,7 @@ export const PlaygroundPage: React.FC = () => {
       location.hash.length > 1 &&
       !location.hash.startsWith("#memfs:") &&
       !location.hash.startsWith("#m=artifact-") &&
-      !/^#m=\d+/.test(location.hash)
+      !/^#m=\d+$/.test(location.hash)
     ) {
       const p = decompressMorselPayload(location.hash) as
         | (MorselDecodedPayload & {
@@ -1152,6 +1153,7 @@ export const PlaygroundPage: React.FC = () => {
             embed={false}
             initialDialect={currentLang}
             initialView={currentView}
+            initialClassName={extractPrimaryModelicaClassName(currentCode) || undefined}
             initialAnchor={payload?.anchor}
             externalParams={payload?.params}
             simulateTriggerCount={simulateTriggerCount}

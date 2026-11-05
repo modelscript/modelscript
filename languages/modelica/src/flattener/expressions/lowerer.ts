@@ -846,8 +846,13 @@ function lowerPreBinaryCSTExpression(
                           ) {
                             const inText = inNode.text ?? "";
                             const assignIdx = inText.indexOf(":=");
-                            const eqMatch = assignIdx < 0 ? inText.match(/(?<!:|=|<|>|!)=(?!=)/) : null;
-                            const opIdx = assignIdx >= 0 ? assignIdx : (eqMatch?.index ?? -1);
+                            const eqMatch = assignIdx < 0 ? /(?:^|[^:=<>!])=([^=]|$)/.exec(inText) : null;
+                            const opIdx =
+                              assignIdx >= 0
+                                ? assignIdx
+                                : eqMatch
+                                  ? eqMatch.index + (eqMatch[0].startsWith("=") ? 0 : 1)
+                                  : -1;
                             if (opIdx >= 0) {
                               const lhs = inText.slice(0, opIdx);
                               if (re.test(lhs)) {

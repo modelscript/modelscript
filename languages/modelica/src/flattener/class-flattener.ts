@@ -489,10 +489,11 @@ export class ModelicaFlattener {
         const cleanChildPrefix = childPrefix.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
         const cleanChildText = childText.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
         const cleanRecPrefix = recPrefix.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
+        const checkEncapsulated = (s: string) => /\bencapsulated\b/.test(s) && !/\bnon-encapsulated\b/.test(s);
         const isEncapsulated =
-          /(?<!non-)\bencapsulated\b/.test(cleanRecPrefix) ||
-          /(?<!non-)\bencapsulated\b/.test(cleanChildPrefix) ||
-          /(?<!non-)\bencapsulated\b/.test(cleanChildText) ||
+          checkEncapsulated(cleanRecPrefix) ||
+          checkEncapsulated(cleanChildPrefix) ||
+          checkEncapsulated(cleanChildText) ||
           this.db.childrenOf(child.id).some((c) => {
             if (c.kind !== "Class") return false;
             const meta = (c.metadata as any) || {};
@@ -500,7 +501,7 @@ export class ModelicaFlattener {
               /\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,
               "",
             );
-            return /(?<!non-)\bencapsulated\b/.test(pfx);
+            return checkEncapsulated(pfx);
           });
 
         if (!isOldFrontend && !isEncapsulated) {

@@ -107,9 +107,7 @@ export const uploadArtifactThumbnail = async (
 };
 
 export const uploadStorageFile = async (formData: FormData): Promise<any> => {
-  const { data } = await api.post("/storage/upload", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const { data } = await api.post("/storage/upload", formData);
   return data;
 };
 

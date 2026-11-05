@@ -441,7 +441,7 @@ export default defineConfig({
     ),
   ],
   build: {
-    target: "esnext",
+    target: ["es2020", "safari15"],
     minify: "esbuild",
     rollupOptions: {
       output: {

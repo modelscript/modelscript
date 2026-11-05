@@ -43,7 +43,7 @@ export interface ComposeToolbarProps {
   setShowEmojiPicker: React.Dispatch<React.SetStateAction<boolean>>;
   handleSubmit: () => void;
   submitting: boolean;
-  artifactId: number | null;
+  artifactId: number | string | null;
   hasNotebookContent: boolean;
   editPostId?: string | number | null | undefined;
   replyToPost?: unknown;

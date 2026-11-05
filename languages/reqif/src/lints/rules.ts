@@ -198,7 +198,7 @@ export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
     } else if (!obj.contract && obj.text) {
       const normalizedText = obj.text.replace(/<[^<>]+>/g, " ").trim();
       const badCompMatch =
-        /\b([a-zA-Z_][a-zA-Z0-9_.\s]*?)\s*(===|!==|=<|=>|<>|~=|><|<<|>>|(?<![<>!=])=(?!=))\s*[-+]?[0-9]*\.?[0-9]+/.exec(
+        /\b([a-zA-Z_][a-zA-Z0-9_.\s]*?)\s*(===|!==|<=|>=|!=|==|=<|=>|<>|~=|><|<<|>>|=)\s*[-+]?[0-9]*\.?[0-9]+/.exec(
           normalizedText,
         );
       if (badCompMatch && badCompMatch[2]) {

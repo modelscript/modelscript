@@ -361,6 +361,11 @@ void main() {
 }`;
 
 const CAP_FRAG = /* glsl */ `
+#ifdef GL_OES_standard_derivatives
+#extension GL_OES_standard_derivatives : enable
+#endif
+
+precision highp float;
 uniform vec2 uIv[${MAX_INTERVALS}];
 uniform int uCount;
 uniform vec3 uColor;
@@ -375,11 +380,20 @@ void main() {
     if (r >= iv.x && r <= iv.y) edge = min(r - iv.x, iv.y - r);
   }
   if (edge < 0.0) discard;
+#if defined(GL_OES_standard_derivatives) || __VERSION__ >= 300
   float aa = fwidth(r);
+#else
+  float aa = 0.005;
+#endif
   float h = (vLocal.y + vLocal.z) * 0.70710678;
   float period = 0.045;
   float d = abs(fract(h / period) - 0.5) * period;
-  float hatch = 1.0 - smoothstep(0.0, fwidth(h) * 1.25, d - 0.0035);
+#if defined(GL_OES_standard_derivatives) || __VERSION__ >= 300
+  float fwH = fwidth(h);
+#else
+  float fwH = 0.0035;
+#endif
+  float hatch = 1.0 - smoothstep(0.0, fwH * 1.25, d - 0.0035);
   float border = 1.0 - smoothstep(aa * 0.5, aa * 2.0, edge);
   float a = 0.12 + 0.5 * hatch + 0.88 * border;
   gl_FragColor = vec4(uColor, uOpacity * clamp(a, 0.0, 1.0));
@@ -394,13 +408,23 @@ void main() {
 }`;
 
 const GRID_FRAG = /* glsl */ `
+#ifdef GL_OES_standard_derivatives
+#extension GL_OES_standard_derivatives : enable
+#endif
+
+precision highp float;
 uniform vec3 uColor;
 uniform float uOpacity;
 varying vec3 vWorld;
 float grid(vec2 p, float size) {
   vec2 q = p / size;
+#if defined(GL_OES_standard_derivatives) || __VERSION__ >= 300
   vec2 g = abs(fract(q - 0.5) - 0.5) / fwidth(q);
   return 1.0 - min(min(g.x, g.y), 1.0);
+#else
+  vec2 g = abs(fract(q - 0.5) - 0.5);
+  return (g.x < 0.04 || g.y < 0.04) ? 1.0 : 0.0;
+#endif
 }
 void main() {
   vec2 p = vWorld.xz;
@@ -424,6 +448,7 @@ export interface TurbineSceneOptions {
   dark: boolean;
   reducedMotion: boolean;
   onFirstFrame?: () => void;
+  onError?: (err: unknown) => void;
 }
 
 type SolidMaterialKey = BodyMaterial | BladeMaterial;
@@ -500,6 +525,7 @@ export class TurbineScene {
   private disposed = false;
   private firstFrame = true;
   private onFirstFrame: (() => void) | undefined;
+  private onError: ((err: unknown) => void) | undefined;
   private width = 1;
   private height = 1;
   private distance = 16;
@@ -518,6 +544,7 @@ export class TurbineScene {
     this.dark = opts.dark;
     this.reducedMotion = opts.reducedMotion;
     this.onFirstFrame = opts.onFirstFrame;
+    this.onError = opts.onError;
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: opts.canvas,
@@ -940,13 +967,20 @@ export class TurbineScene {
     );
     this.camera.lookAt(TARGET);
 
-    this.updateSection();
-    this.renderer.render(this.scene, this.camera);
-    this.updateCallouts();
+    try {
+      this.updateSection();
+      this.renderer.render(this.scene, this.camera);
+      this.updateCallouts();
 
-    if (this.firstFrame) {
-      this.firstFrame = false;
-      this.onFirstFrame?.();
+      if (this.firstFrame) {
+        this.firstFrame = false;
+        this.onFirstFrame?.();
+      }
+    } catch (err) {
+      console.warn("TurbineScene render failed:", err);
+      this.onError?.(err);
+      this.dispose();
+      return;
     }
 
     const cameraSettled = !this.dragging && this.dragAz === 0 && this.dragEl === 0;
@@ -988,7 +1022,7 @@ export class TurbineScene {
     for (let i = 0; i < CALLOUTS.length; i++) {
       const c = CALLOUTS[i]!;
       const els = this.callouts[i];
-      if (!els) continue;
+      if (!els || !els.line || !els.dot || !els.label) continue;
       // Interior parts are only labelled once the section has revealed them.
       const reveal = c.key === "fan" ? 1 : smoothstep(0.02, 0.22, c.x - this.s);
       const p = this.tmp.copy(this.anchors[i]!).project(this.camera);

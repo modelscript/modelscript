@@ -77,6 +77,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   caption,
   onPinCreated,
   onThreadNodeSelected,
+  isFullScreen: propIsFullScreen,
+  onFullScreenChange: propOnFullScreenChange,
 }) => {
   const validArtifactId =
     artifactId !== null && artifactId !== undefined && String(artifactId).trim() !== "" && String(artifactId) !== "0"
@@ -85,7 +87,16 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   const [artifact, setArtifact] = useState<any>(initialArtifactView || null);
   const [loading, setLoading] = useState(Boolean(!initialArtifactView && validArtifactId));
   const [isLoaded] = useState(true);
-  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [internalFullScreen, setInternalFullScreen] = useState(false);
+  const isFullScreen = propIsFullScreen !== undefined ? propIsFullScreen : internalFullScreen;
+  const setIsFullScreen = useCallback(
+    (action: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof action === "function" ? action(isFullScreen) : action;
+      setInternalFullScreen(next);
+      propOnFullScreenChange?.(next);
+    },
+    [isFullScreen, propOnFullScreenChange],
+  );
   const [isStudioSidebarOpen, setIsStudioSidebarOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
@@ -167,6 +178,14 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   ]);
 
   useEffect(() => {
+    if (initialArtifactView) {
+      setArtifact(initialArtifactView);
+      cacheArtifact(initialArtifactView);
+      setLoading(false);
+    }
+  }, [initialArtifactView]);
+
+  useEffect(() => {
     if (!validArtifactId) {
       if (initialArtifactView) {
         setArtifact(initialArtifactView);
@@ -188,9 +207,10 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       }
       try {
         const data = await getArtifactView(validArtifactId);
-        if (data?.artifactView) {
-          setArtifact(data.artifactView);
-          cacheArtifact(data.artifactView);
+        const resolved = data?.artifactView ?? data?.artifact_view ?? data;
+        if (resolved && (resolved.view_type || resolved.view_config || resolved.title)) {
+          setArtifact(resolved);
+          cacheArtifact(resolved);
         }
       } catch (err) {
         console.warn("[ArtifactViewCard] Network fetch failed, reading from offline cache:", err);

@@ -218,6 +218,10 @@ export default function MorselEditor(props: MorselEditorProps) {
         editor.setValue(props.initialCode);
         didOpen(documentUriRef.current, props.initialCode, dialect);
         codeEditorRef.current?.sync();
+        const primary = dialect === "modelica" || !dialect ? extractPrimaryModelicaClassName(props.initialCode) : null;
+        if (primary) {
+          setSelectedTreeClassName(primary);
+        }
         setContextVersion((v) => v + 1);
       }
     }
@@ -860,6 +864,10 @@ export default function MorselEditor(props: MorselEditorProps) {
       }
       setLastLoadedContent(nextCode);
       didOpen(nextUri, nextCode, nextInfo.id);
+      const primary = nextInfo.id === "modelica" || !nextInfo.id ? extractPrimaryModelicaClassName(nextCode) : null;
+      if (primary) {
+        setSelectedTreeClassName(primary);
+      }
       setContextVersion((v) => v + 1);
       props.onDialectChange?.(nextInfo.id);
     },
@@ -900,7 +908,11 @@ export default function MorselEditor(props: MorselEditorProps) {
         setLastLoadedContent(fetchedContent);
         didOpen(`${instanceDocPrefix}.mo`, fetchedContent, "modelica");
         codeEditorRef.current?.sync();
+        const primaryClassName =
+          extractPrimaryModelicaClassName(fetchedContent) || className.split(".").pop() || className;
+        setSelectedTreeClassName(primaryClassName);
         setContextVersion((v) => v + 1);
+        props.onCodeChange?.(fetchedContent);
       } else if (error) {
         console.warn("Failed to fetch source for %s:", className, error);
       }
@@ -971,6 +983,9 @@ export default function MorselEditor(props: MorselEditorProps) {
       .then((data) => {
         if (cancelled) return;
         setDiagramData(data);
+        if (!data || (!data.isLoading && (!data.nodes || data.nodes.length === 0))) {
+          setIsDiagramLoading(false);
+        }
       })
       .catch((e) => {
         console.error("Failed to fetch diagram data:", e);
@@ -1016,6 +1031,8 @@ export default function MorselEditor(props: MorselEditorProps) {
       setLastLoadedContent(defaultCode);
       setSidecarContent(undefined);
       didOpen(documentUri, defaultCode, dialect);
+      const primary = dialect === "modelica" || !dialect ? extractPrimaryModelicaClassName(defaultCode) : null;
+      setSelectedTreeClassName(primary);
       setContextVersion((v) => v + 1);
     },
     [dialect, documentUri],

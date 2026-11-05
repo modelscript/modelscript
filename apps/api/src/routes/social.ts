@@ -2147,9 +2147,9 @@ export function socialRouter(
     const userId = req.user!.id;
     const { artifactId, artifact_id, artifactIds, artifactMeta, artifact_view, existingText, tone, isNotebook } =
       req.body as {
-        artifactId?: number | undefined;
-        artifact_id?: number | undefined;
-        artifactIds?: number[] | undefined;
+        artifactId?: number | string | undefined;
+        artifact_id?: number | string | undefined;
+        artifactIds?: (number | string)[] | undefined;
         artifactMeta?: {
           viewType?: string | undefined;
           title?: string | undefined;
@@ -2161,14 +2161,13 @@ export function socialRouter(
         isNotebook?: boolean | undefined;
       };
 
+    const rawArtId = artifactId ?? artifact_id;
     const resolvedArtifactId =
-      typeof artifactId === "number"
-        ? artifactId
-        : typeof artifact_id === "number"
-          ? artifact_id
-          : Number.isFinite(Number(artifactId ?? artifact_id)) && (artifactId ?? artifact_id) !== undefined
-            ? Number(artifactId ?? artifact_id)
-            : undefined;
+      rawArtId !== undefined && rawArtId !== null && String(rawArtId).trim().length > 0
+        ? typeof rawArtId === "number"
+          ? rawArtId
+          : String(rawArtId).trim()
+        : undefined;
 
     const resolvedMeta =
       artifactMeta ||
@@ -2202,7 +2201,9 @@ export function socialRouter(
       const result = await composerAi.draftFromArtifact({
         userId,
         artifactId: resolvedArtifactId,
-        artifactIds: Array.isArray(artifactIds) ? artifactIds.map(Number).filter(Number.isFinite) : undefined,
+        artifactIds: Array.isArray(artifactIds)
+          ? artifactIds.map((id) => (typeof id === "number" ? id : String(id).trim()))
+          : undefined,
         artifactMeta: resolvedMeta,
         existingText: typeof existingText === "string" ? existingText : undefined,
         tone: mappedTone,
@@ -2224,8 +2225,8 @@ export function socialRouter(
       content?: string | undefined;
       text?: string | undefined;
       mode?: ComposerPolishMode | undefined;
-      artifactId?: number | undefined;
-      artifact_id?: number | undefined;
+      artifactId?: number | string | undefined;
+      artifact_id?: number | string | undefined;
     };
 
     const textContent = typeof content === "string" ? content : typeof text === "string" ? text : "";
@@ -2235,14 +2236,13 @@ export function socialRouter(
       return;
     }
 
+    const rawPolishArtId = artifactId ?? artifact_id;
     const resolvedArtifactId =
-      typeof artifactId === "number"
-        ? artifactId
-        : typeof artifact_id === "number"
-          ? artifact_id
-          : Number.isFinite(Number(artifactId ?? artifact_id)) && (artifactId ?? artifact_id) !== undefined
-            ? Number(artifactId ?? artifact_id)
-            : undefined;
+      rawPolishArtId !== undefined && rawPolishArtId !== null && String(rawPolishArtId).trim().length > 0
+        ? typeof rawPolishArtId === "number"
+          ? rawPolishArtId
+          : String(rawPolishArtId).trim()
+        : undefined;
 
     const validMode: ComposerPolishMode =
       mode === "concise" || mode === "expand" || mode === "hashtags" || mode === "polish" ? mode : "polish";

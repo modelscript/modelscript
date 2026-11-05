@@ -6,7 +6,7 @@ import type { SpatialPin } from "../artifacts/spatial-pin";
 export interface ComposeBoxProps {
   onPostCreated?: ((post: any) => void) | undefined;
   editPostId?: string | number | null | undefined;
-  forkedFromArtifactId?: number | null | undefined;
+  forkedFromArtifactId?: number | string | null | undefined;
   quotePost?: any;
   replyToPost?: any;
   placeholder?: string | undefined;
@@ -15,8 +15,8 @@ export interface ComposeBoxProps {
   pendingPin?: SpatialPin | undefined;
   content?: string | undefined;
   setContent?: ((val: string) => void) | undefined;
-  artifactId?: number | null | undefined;
-  setArtifactId?: ((val: number | null) => void) | undefined;
+  artifactId?: number | string | null | undefined;
+  setArtifactId?: ((val: number | string | null) => void) | undefined;
   isModal?: boolean | undefined;
   hideInput?: boolean | undefined;
   notebookMode?: boolean | undefined;

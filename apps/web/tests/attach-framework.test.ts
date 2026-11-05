@@ -208,4 +208,27 @@ describe("generic attach profile", () => {
     const b = await genericAttachProfile.analyze(step, ctx());
     assert.equal((await genericAttachProfile.build(b.draft, ctx("cad-step"))).artifact_type, "cad-step");
   });
+
+  it("preserves 64-bit snowflake artifact IDs across directives, serialization, and extraction without precision loss", async () => {
+    const { extractArtifactIdsFromCells, formatArtifactDirective, parseNotebookFromContent, serializeCellsToMarkdown } =
+      await import("../src/util/notebook.js");
+
+    const snowflakeId = "2117825138435453369";
+    const directive = formatArtifactDirective({ artifactId: snowflakeId, title: "Telemetry CSV" });
+    assert.ok(directive.includes('id="2117825138435453369"') || directive.includes("id=2117825138435453369"));
+
+    const parsed = parseNotebookFromContent(`Here is telemetry:\n\n${directive}\nConclusion.`);
+    assert.equal(parsed.isNotebook, true);
+    const artifactCell = parsed.cells.find((c) => c.type === "artifact");
+    assert.ok(artifactCell && artifactCell.type === "artifact");
+    assert.equal(String(artifactCell.artifactId), snowflakeId);
+    // Crucial check: make sure IEEE-754 precision loss did not happen
+    assert.notEqual(String(artifactCell.artifactId), "2117825138435453400");
+
+    const extracted = extractArtifactIdsFromCells(parsed.cells);
+    assert.deepEqual(extracted, [snowflakeId]);
+
+    const serialized = serializeCellsToMarkdown(parsed.cells);
+    assert.ok(serialized.includes(snowflakeId));
+  });
 });

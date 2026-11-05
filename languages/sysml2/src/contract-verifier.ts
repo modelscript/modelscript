@@ -1228,11 +1228,14 @@ function extractClausesFromBody(
 
   // 5. Named or anonymous constraint <name>? { ... } inside analysis/part/req
   const constraintBraceRegex =
-    /\b(?<!assume\s+)(?<!require\s+)(?<!guarantee\s+)(?<!assert\s+)constraint(?:\s+(?!def\b)[A-Za-z_]\w*)?\s*\{/g;
+    /\b(?:(assume|require|guarantee|assert)\s+)?constraint(?:\s+(?!def\b)[A-Za-z_]\w*)?\s*\{/g;
   while ((m = constraintBraceRegex.exec(clean)) !== null) {
+    const isPrefixed = !!m[1];
     const openPos = m.index + m[0].length - 1;
     const block = extractBalancedBlock(clean, openPos);
-    pushSplitClauses(guarantees, block.body);
+    if (!isPrefixed) {
+      pushSplitClauses(guarantees, block.body);
+    }
     constraintBraceRegex.lastIndex = block.endPos;
   }
 

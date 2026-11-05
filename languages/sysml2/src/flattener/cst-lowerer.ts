@@ -2142,9 +2142,9 @@ export class SysML2CstFlattener {
         eqSplitIndex = dblEqIdx;
         eqOpLen = 2;
       } else {
-        const singleEqMatch = /(?<![:<>!])=(?!=)/.exec(stmt);
+        const singleEqMatch = /(?:^|[^:<>!])=(?!=)/.exec(stmt);
         if (singleEqMatch && singleEqMatch.index !== undefined) {
-          eqSplitIndex = singleEqMatch.index;
+          eqSplitIndex = singleEqMatch.index + (singleEqMatch[0].startsWith("=") ? 0 : 1);
           eqOpLen = 1;
         }
       }

@@ -93,7 +93,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const content = controlledContent !== undefined ? controlledContent : internalContent;
   const setContent = setControlledContent || setInternalContent;
 
-  const [internalArtifactId, setInternalArtifactId] = useState<number | null>(null);
+  const [internalArtifactId, setInternalArtifactId] = useState<number | string | null>(null);
   const artifactId = controlledArtifactId !== undefined ? controlledArtifactId : internalArtifactId;
   const setArtifactId = setControlledArtifactId || setInternalArtifactId;
 
@@ -563,7 +563,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   });
 
   // Notebook "Visualize Data": derive a chart from the cell's table, then swap the cell's artifact for the chart.
-  const handleVisualizeCell = (cellId: string, artifactId: number) => {
+  const handleVisualizeCell = (cellId: string, artifactId: number | string) => {
     submitHandler.attachFlow.startDerive(artifactId, (newArtifactId, title) =>
       notebook.replaceArtifactCell(cellId, newArtifactId, `📊 ${title}`),
     );
@@ -659,7 +659,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
   } | null>(null);
   const [attachedArtifactView, setAttachedArtifactView] = useState<Record<string, unknown> | null>(null);
   const [aiLastSourceLabel, setAiLastSourceLabel] = useState<string | null>(null);
-  const lastAutoDraftedArtifactIdRef = useRef<number | null>(editPostId && artifactId ? artifactId : null);
+  const lastAutoDraftedArtifactIdRef = useRef<number | string | null>(editPostId && artifactId ? artifactId : null);
 
   const formatAiSourceLabel = (provider: string): string => {
     if (provider === "local-window-ai") return "Local Browser LLM";
@@ -699,7 +699,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
 
   const handleAiDraft = useCallback(
     async (
-      overrideArtifactId?: number | null,
+      overrideArtifactId?: number | string | null,
       overrideView?: Record<string, unknown> | null,
       targetArtifactCellId?: string,
     ) => {
@@ -816,40 +816,23 @@ export default function ComposeBox(props: ComposeBoxProps) {
     [notebook, artifactId, attachedArtifactView, aiEngine, content, saveUndoSnapshot, setContent],
   );
 
-  // Automatically draft a post when a user attaches an artifact and the composer text is empty
+  // Reset attached artifact view when artifactId is cleared
   useEffect(() => {
     if (artifactId === null) {
       lastAutoDraftedArtifactIdRef.current = null;
       setAttachedArtifactView(null);
-      return;
     }
-    if (editPostId) {
-      lastAutoDraftedArtifactIdRef.current = artifactId;
-      return;
-    }
-    if (lastAutoDraftedArtifactIdRef.current === artifactId) {
-      return;
-    }
-    lastAutoDraftedArtifactIdRef.current = artifactId;
-
-    const isTextEmpty = notebook.isNotebookMode
-      ? !notebook.notebookCells.some((c) => c.type === "markdown" && c.content.trim().length > 0)
-      : !content.trim();
-
-    if (isTextEmpty) {
-      void handleAiDraft(artifactId, null);
-    }
-  }, [artifactId, editPostId, notebook.isNotebookMode, notebook.notebookCells, content, handleAiDraft]);
+  }, [artifactId]);
 
   const shortPostArtifacts = useMemo(() => {
     if (notebook.isNotebookMode) return [];
     const cells = notebook.notebookCells.filter(
-      (c: any) => c.type === "artifact" && Number.isFinite(Number(c.artifactId)),
+      (c: any) => c.type === "artifact" && c.artifactId !== undefined && c.artifactId !== null && c.artifactId !== "",
     );
     if (cells.length > 0) {
-      return cells.map((c: any) => ({ cellId: c.id, artifactId: Number(c.artifactId), title: c.title }));
+      return cells.map((c: any) => ({ cellId: c.id, artifactId: c.artifactId as number | string, title: c.title }));
     }
-    if (artifactId !== null) {
+    if (artifactId !== null && artifactId !== undefined && artifactId !== "") {
       return [{ artifactId }];
     }
     return [];

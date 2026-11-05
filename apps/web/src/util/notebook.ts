@@ -11,7 +11,7 @@ export interface NotebookMarkdownCell {
 export interface NotebookArtifactCell {
   id: string;
   type: "artifact";
-  artifactId: number;
+  artifactId: number | string;
   title?: string | undefined;
   caption?: string | undefined;
 }
@@ -46,7 +46,7 @@ export interface NotebookMetadata {
   topics?: string[] | undefined;
   estimatedReadMinutes?: number | undefined;
   cells: NotebookCell[];
-  artifactIds: number[];
+  artifactIds: (number | string)[];
 }
 
 let cellCounter = 0;
@@ -238,14 +238,15 @@ export function hasArtifactDirectives(text: string | null | undefined): boolean 
 }
 
 function parseDirectiveAttributes(attrString: string): {
-  id?: number | undefined;
+  id?: number | string | undefined;
   title?: string | undefined;
   caption?: string | undefined;
 } {
-  const result: { id?: number | undefined; title?: string | undefined; caption?: string | undefined } = {};
+  const result: { id?: number | string | undefined; title?: string | undefined; caption?: string | undefined } = {};
   const idMatch = attrString.match(/(?:^|\s)id\s*=\s*["']?(\d+)["']?/);
   if (idMatch && idMatch[1]) {
-    result.id = Number(idMatch[1]);
+    const raw = idMatch[1];
+    result.id = !Number.isSafeInteger(Number(raw)) ? raw : Number(raw);
   }
   const titleMatch = attrString.match(/(?:^|\s)title\s*=\s*(?:"([^"]*)"|'([^']*)')/);
   if (titleMatch) {
@@ -259,7 +260,7 @@ function parseDirectiveAttributes(attrString: string): {
 }
 
 export function formatArtifactDirective(cell: {
-  artifactId: number;
+  artifactId: number | string;
   title?: string | undefined;
   caption?: string | undefined;
 }): string {
@@ -273,13 +274,19 @@ export function formatArtifactDirective(cell: {
   return `::artifact${labelPart}{${attrs.join(" ")}}`;
 }
 
-export function extractArtifactIdsFromCells(cells: NotebookCell[]): number[] {
-  const seen = new Set<number>();
-  const result: number[] = [];
+export function extractArtifactIdsFromCells(cells: NotebookCell[]): (number | string)[] {
+  const seen = new Set<string>();
+  const result: (number | string)[] = [];
   for (const cell of cells) {
-    if (cell.type === "artifact" && Number.isFinite(cell.artifactId) && cell.artifactId > 0) {
-      if (!seen.has(cell.artifactId)) {
-        seen.add(cell.artifactId);
+    if (
+      cell.type === "artifact" &&
+      cell.artifactId !== undefined &&
+      cell.artifactId !== null &&
+      String(cell.artifactId).trim() !== ""
+    ) {
+      const strId = String(cell.artifactId);
+      if (!seen.has(strId)) {
+        seen.add(strId);
         result.push(cell.artifactId);
       }
     }
@@ -310,7 +317,12 @@ export function serializeCellsToMarkdown(cells: NotebookCell[], notebookTitle?: 
       if (text) {
         blocks.push(text);
       }
-    } else if (cell.type === "artifact" && Number.isFinite(cell.artifactId) && cell.artifactId > 0) {
+    } else if (
+      cell.type === "artifact" &&
+      cell.artifactId !== undefined &&
+      cell.artifactId !== null &&
+      String(cell.artifactId).trim() !== ""
+    ) {
       blocks.push(formatArtifactDirective(cell));
     }
   }
@@ -327,7 +339,7 @@ const MAX_NOTEBOOK_CACHE_SIZE = 250;
  */
 export function parseNotebookFromContent(
   content: string | null | undefined,
-  fallbackArtifactId?: number | null,
+  fallbackArtifactId?: number | string | null,
   existingNotebookMeta?: Partial<NotebookMetadata> | null,
 ): NotebookMetadata {
   const cacheKey = `${content || ""}::${fallbackArtifactId ?? ""}::${existingNotebookMeta?.title ?? ""}::${existingNotebookMeta?.cells?.length ?? 0}`;
@@ -346,7 +358,7 @@ export function parseNotebookFromContent(
 
 function parseNotebookFromContentUncached(
   content: string | null | undefined,
-  fallbackArtifactId?: number | null,
+  fallbackArtifactId?: number | string | null,
   existingNotebookMeta?: Partial<NotebookMetadata> | null,
 ): NotebookMetadata {
   if (existingNotebookMeta && Array.isArray(existingNotebookMeta.cells) && existingNotebookMeta.cells.length > 0) {
@@ -359,11 +371,23 @@ function parseNotebookFromContentUncached(
             content: typeof c.content === "string" ? c.content : "",
           };
         }
-        if (c.type === "artifact" && c.artifactId !== null && c.artifactId !== undefined && Number(c.artifactId) > 0) {
+        if (
+          c.type === "artifact" &&
+          c.artifactId !== null &&
+          c.artifactId !== undefined &&
+          String(c.artifactId).trim() !== ""
+        ) {
+          const rawId = c.artifactId;
+          const id =
+            typeof rawId === "string" && /^\d+$/.test(rawId) && !Number.isSafeInteger(Number(rawId))
+              ? rawId
+              : Number.isFinite(Number(rawId))
+                ? Number(rawId)
+                : rawId;
           return {
             id: c.id || createCellId(`art-${idx}`),
             type: "artifact",
-            artifactId: Number(c.artifactId),
+            artifactId: id,
             title: c.title,
             caption: c.caption,
           };
@@ -420,7 +444,7 @@ function parseNotebookFromContentUncached(
 
     const bracketTitle = match[1]?.trim();
     const attrs = parseDirectiveAttributes(match[2] || "");
-    if (attrs.id && Number.isFinite(attrs.id)) {
+    if (attrs.id && (typeof attrs.id === "string" || Number.isFinite(attrs.id))) {
       cells.push({
         id: createCellId("art"),
         type: "artifact",
@@ -452,10 +476,12 @@ function parseNotebookFromContentUncached(
 
   const artifactIds = extractArtifactIdsFromCells(cells);
   const validFallbackId =
-    fallbackArtifactId !== null && fallbackArtifactId !== undefined && Number(fallbackArtifactId) > 0
-      ? Number(fallbackArtifactId)
+    fallbackArtifactId !== null && fallbackArtifactId !== undefined && String(fallbackArtifactId).trim() !== ""
+      ? !Number.isSafeInteger(Number(fallbackArtifactId))
+        ? String(fallbackArtifactId)
+        : Number(fallbackArtifactId)
       : null;
-  if (validFallbackId && !artifactIds.includes(validFallbackId)) {
+  if (validFallbackId && !artifactIds.some((id) => String(id) === String(validFallbackId))) {
     cells.push({
       id: createCellId("art"),
       type: "artifact",

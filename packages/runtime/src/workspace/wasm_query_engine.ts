@@ -1437,12 +1437,13 @@ export class WasmQueryEngine {
 
         // Extract statements inside non-initial `equation` sections, or top-level equations
         const eqSectionRegex =
-          /(?<!initial\s)\bequation\b([\s\S]*?)(?=\b(?:initial\s+equation|algorithm|initial\s+algorithm|end)\b|$)/g;
+          /\b(initial\s+)?equation\b([\s\S]*?)(?=\b(?:initial\s+equation|algorithm|initial\s+algorithm|end)\b|$)/g;
         let secMatch: RegExpExecArray | null;
         let foundSection = false;
         while ((secMatch = eqSectionRegex.exec(cleanText)) !== null) {
+          if (secMatch[1]) continue;
           foundSection = true;
-          const body = secMatch[1] ?? "";
+          const body = secMatch[2] ?? "";
           const stmts = body
             .split(";")
             .map((s) => s.trim())

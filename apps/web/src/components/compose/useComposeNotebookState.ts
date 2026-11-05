@@ -16,8 +16,8 @@ import type { ComposeBoxProps } from "./types";
 export interface UseComposeNotebookStateParams {
   content: string;
   setContent: (val: string) => void;
-  artifactId: number | null;
-  setArtifactId: (val: number | null) => void;
+  artifactId: number | string | null;
+  setArtifactId: (val: number | string | null) => void;
   props: ComposeBoxProps;
 }
 
@@ -140,7 +140,7 @@ export function useComposeNotebookState({
     syncNotebookToContentAndArtifact(nextCells, notebookTitle);
   };
 
-  const replaceArtifactCell = (cellId: string, newArtifactId: number, newTitle?: string) => {
+  const replaceArtifactCell = (cellId: string, newArtifactId: number | string, newTitle?: string) => {
     const nextCells = notebookCells.map((c) =>
       c.id === cellId && c.type === "artifact"
         ? { ...c, artifactId: newArtifactId, ...(newTitle ? { title: newTitle } : {}) }
@@ -213,17 +213,22 @@ export function useComposeNotebookState({
     syncNotebookToContentAndArtifact(nextCells, notebookTitle);
   };
 
-  const attachArtifactToComposer = (newArtifactId: number, title?: string, suggestedCaption?: string) => {
+  const attachArtifactToComposer = (newArtifactId: number | string, title?: string, suggestedCaption?: string) => {
     // Limit to max 4 artifacts for short posts (unless longer article)
     if (!isNotebookMode) {
-      const existingArtifactIds = new Set<number>();
-      if (artifactId !== null) existingArtifactIds.add(artifactId);
+      const existingArtifactIds = new Set<string>();
+      if (artifactId !== null) existingArtifactIds.add(String(artifactId));
       for (const cell of notebookCells) {
-        if (cell.type === "artifact" && Number.isFinite(cell.artifactId)) {
-          existingArtifactIds.add(cell.artifactId);
+        if (
+          cell.type === "artifact" &&
+          cell.artifactId !== undefined &&
+          cell.artifactId !== null &&
+          String(cell.artifactId).trim() !== ""
+        ) {
+          existingArtifactIds.add(String(cell.artifactId));
         }
       }
-      if (existingArtifactIds.has(newArtifactId)) return;
+      if (existingArtifactIds.has(String(newArtifactId))) return;
       if (existingArtifactIds.size >= 4) {
         toast.error(
           "Short posts are limited to a maximum of 4 artifacts. Switch to Article mode for longer articles with unlimited artifacts.",

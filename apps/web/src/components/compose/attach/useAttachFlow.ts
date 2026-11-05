@@ -20,12 +20,16 @@ import type {
 } from "./types";
 
 /** Called when a derived artifact (e.g. a chart made from a table) has been created. */
-export type DeriveDone = (newArtifactId: number, displayTitle: string, createdView: Record<string, unknown>) => void;
+export type DeriveDone = (
+  newArtifactId: number | string,
+  displayTitle: string,
+  createdView: Record<string, unknown>,
+) => void;
 
 export interface UseAttachFlowParams {
   ctx: AttachContext;
   /** Called with the created artifact once the user finishes (or immediately for step-less profiles). */
-  onAttached: (artifactId: number, title: string, suggestedCaption?: string) => void;
+  onAttached: (artifactId: number | string, title: string, suggestedCaption?: string) => void;
   /** Called after a customization was saved to an existing artifact. */
   onEdited?: ((artifactId: number | string) => void) | undefined;
 }
@@ -96,7 +100,7 @@ export function useAttachFlow({ ctx, onAttached, onEdited }: UseAttachFlowParams
           view_config: result.view_config,
           title: result.title,
         });
-        onAttached(Number(created.id), result.title, result.suggestedCaption);
+        onAttached(created.id, result.title, result.suggestedCaption);
         dispatch({ type: "reset" });
         drain();
       } catch (err) {
@@ -235,7 +239,7 @@ export function useAttachFlow({ ctx, onAttached, onEdited }: UseAttachFlowParams
             view_config: result.view_config,
             title: result.title,
           });
-          s.onDone?.(Number(created.id), result.displayTitle ?? result.title, {
+          s.onDone?.(created.id, result.displayTitle ?? result.title, {
             id: created.id,
             view_type: result.artifact_type,
             artifact_type: result.artifact_type,

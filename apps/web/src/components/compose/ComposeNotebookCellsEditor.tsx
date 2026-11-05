@@ -53,7 +53,7 @@ export interface ComposeNotebookCellsEditorProps {
   updateMarkdownCell: (cellId: string, content: string) => void;
   updateArtifactCellCaption: (cellId: string, caption: string) => void;
   /** Open the chart wizard for the artifact in this cell; the caller replaces the cell with the result. */
-  onVisualizeCell?: ((cellId: string, artifactId: number) => void) | undefined;
+  onVisualizeCell?: ((cellId: string, artifactId: number | string) => void) | undefined;
   updateTokenState: (value: string, cursorPosition: number) => void;
   handleInteraction: (e: React.SyntheticEvent<HTMLTextAreaElement>) => void;
   handleSubmit: () => void;
@@ -65,7 +65,7 @@ export interface ComposeNotebookCellsEditorProps {
   setShowPackageRepoPicker?: ((show: boolean) => void) | undefined;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onPolishCell?: ((cellId: string) => void) | undefined;
-  onDraftFromArtifactCell?: ((artifactId: number, cellId: string) => void) | undefined;
+  onDraftFromArtifactCell?: ((artifactId: number | string, cellId: string) => void) | undefined;
   onEditCodeCellInModal?: ((cellId: string, lang: string, filename: string, code: string) => void) | undefined;
   aiBusy?: "drafting" | "polishing" | null | undefined;
 }
@@ -1039,8 +1039,8 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                   }}
                 >
                   <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--ms-text-2)" }}>
-                    {(cell as { title?: string; artifactId?: number }).title ||
-                      `Embedded Artifact #${(cell as { artifactId?: number }).artifactId}`}
+                    {(cell as { title?: string; artifactId?: number | string }).title ||
+                      `Embedded Artifact #${(cell as { artifactId?: number | string }).artifactId}`}
                   </span>
                   <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                     <NotionGhostButton
@@ -1048,7 +1048,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                       data-testid={`notebook-cell-vega-btn-${cell.id}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onVisualizeCell?.(cell.id, (cell as { artifactId: number }).artifactId);
+                        onVisualizeCell?.(cell.id, (cell as { artifactId: number | string }).artifactId);
                       }}
                       title="Open Vega-Lite Visualization Wizard for this dataset"
                     >
@@ -1061,7 +1061,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                         disabled={Boolean(aiBusy)}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDraftFromArtifactCell((cell as { artifactId: number }).artifactId, cell.id);
+                          onDraftFromArtifactCell((cell as { artifactId: number | string }).artifactId, cell.id);
                         }}
                         title="Generate an explanation section below using AI"
                       >
@@ -1104,7 +1104,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                   </div>
                 </div>
                 <div style={{ padding: "8px" }}>
-                  <ArtifactViewCard artifactId={(cell as { artifactId: number }).artifactId} />
+                  <ArtifactViewCard artifactId={(cell as { artifactId: number | string }).artifactId} />
                 </div>
                 <div style={{ padding: "0 12px 6px" }}>
                   <ArtifactCaptionInput

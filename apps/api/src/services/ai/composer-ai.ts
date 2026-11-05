@@ -16,7 +16,7 @@ export type ComposerPolishMode = "polish" | "concise" | "expand" | "hashtags";
 export type ComposerDraftTone = "technical" | "concise" | "expand" | "hashtags";
 
 export interface ArtifactSummaryContext {
-  artifactId?: number | undefined;
+  artifactId?: number | string | undefined;
   viewType: string;
   title: string;
   domain: string;
@@ -28,8 +28,8 @@ export interface ArtifactSummaryContext {
 
 export interface DraftFromArtifactInput {
   userId?: number | undefined;
-  artifactId?: number | undefined;
-  artifactIds?: number[] | undefined;
+  artifactId?: number | string | undefined;
+  artifactIds?: (number | string)[] | undefined;
   artifactMeta?:
     | {
         viewType?: string | undefined;
@@ -59,7 +59,7 @@ export interface PolishContentInput {
   userId?: number | undefined;
   content: string;
   mode?: ComposerPolishMode | undefined;
-  artifactId?: number | undefined;
+  artifactId?: number | string | undefined;
 }
 
 export interface PolishContentResult {
@@ -254,7 +254,7 @@ function parseViewConfig(raw: unknown): Record<string, unknown> {
 }
 
 export function classifyArtifactAndExtractSummary(input: {
-  artifactId?: number | undefined;
+  artifactId?: number | string | undefined;
   viewType?: string | undefined;
   title?: string | undefined;
   viewConfig?: unknown;
@@ -705,14 +705,14 @@ export class ComposerAIService {
   }
 
   #loadArtifactContext(
-    artifactId?: number,
+    artifactId?: number | string,
     artifactMeta?: DraftFromArtifactInput["artifactMeta"],
   ): ArtifactSummaryContext {
-    if (artifactId && Number.isFinite(artifactId)) {
-      const row = this.#database.getArtifactView(Number(artifactId));
+    if (artifactId !== undefined && artifactId !== null && String(artifactId).trim().length > 0) {
+      const row = this.#database.getArtifactView(artifactId);
       if (row) {
         return classifyArtifactAndExtractSummary({
-          artifactId: Number(artifactId),
+          artifactId,
           viewType: row.view_type,
           title: row.title || undefined,
           viewConfig: row.view_config,

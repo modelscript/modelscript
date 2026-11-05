@@ -81,7 +81,11 @@
       }
       #root {
         min-height: 100vh;
-        min-height: 100dvh;
+      }
+      @supports (min-height: 100dvh) {
+        #root {
+          min-height: 100dvh;
+        }
       }
     </style>
     <link rel="icon" type="image/svg+xml" href="/ansatz-logo.svg" />
