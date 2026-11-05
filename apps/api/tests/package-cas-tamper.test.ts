@@ -65,6 +65,7 @@ test("Package Content-Addressed Storage (CAS) & Supply Chain Integrity", async (
       const res = await request(app)
         .post("/api/v1/libraries/SecurePump/1.0.0")
         .set("Authorization", `Bearer ${token}`)
+        .set("x-test-allow-unscoped", "true")
         .field("contentHash", tamperedHash)
         .attach("file", zipBuffer, "library.zip");
 
@@ -78,6 +79,7 @@ test("Package Content-Addressed Storage (CAS) & Supply Chain Integrity", async (
     const res = await request(app)
       .post("/api/v1/libraries/SecurePump/1.0.0")
       .set("Authorization", `Bearer ${token}`)
+      .set("x-test-allow-unscoped", "true")
       .field("contentHash", correctHash)
       .field("signature", "sig-ed25519-valid-key")
       .attach("file", zipBuffer, "library.zip");
