@@ -8,7 +8,6 @@ import {
   FileZipIcon,
   GitCommitIcon,
   PackageIcon,
-  PlayIcon,
   SlidersIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
@@ -19,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { adaptSvgMarkupForTheme, highlightPolyglotLine } from "./PolyglotArtifactViewer";
@@ -1045,7 +1045,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
             <Button
               size="small"
               variant="primary"
-              leadingVisual={PlayIcon}
+              leadingVisual={DraftingTriangleIcon}
               onClick={() => {
                 const hash = compressMorselPayload({
                   v: 1,
@@ -1054,10 +1054,10 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
                   title,
                 });
                 const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-                navigate(`/playground${fromArtifact}#m=${hash}`);
+                navigate(`/sketch${fromArtifact}#m=${hash}`);
               }}
             >
-              Open in Playground
+              Open in Sketch
             </Button>
           )}
         </Box>

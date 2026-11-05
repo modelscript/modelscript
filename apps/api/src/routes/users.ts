@@ -31,6 +31,19 @@ function isHubModelscriptUrl(urlStr: string): boolean {
   }
 }
 
+export function isSafeProfileUrl(u: unknown): boolean {
+  if (u === undefined || u === null || u === "") return true;
+  if (typeof u !== "string" || u.length > 2048) return false;
+  const trimmed = u.trim();
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return true;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function getRequestBaseUrl(req: Request): string {
   if (process.env["PUBLIC_URL"]) {
     return stripTrailingSlashes(process.env["PUBLIC_URL"]);
@@ -286,6 +299,10 @@ export function usersRouter(
    * PUT /api/v1/users/me
    */
   router.put("/me", requireAuth, (req: Request, res: Response) => {
+    if (req.tokenScopes && !req.tokenScopes.includes("*") && !req.tokenScopes.includes("admin")) {
+      res.status(403).json({ error: "Restricted personal access tokens cannot update user profiles" });
+      return;
+    }
     const userId = req.user!.id;
     const {
       display_name,
@@ -303,19 +320,6 @@ export function usersRouter(
       profile_fields,
       profileFields,
     } = req.body;
-
-    const isSafeProfileUrl = (u: unknown): boolean => {
-      if (u === undefined || u === null || u === "") return true;
-      if (typeof u !== "string" || u.length > 2048) return false;
-      const trimmed = u.trim();
-      if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return true;
-      try {
-        const parsed = new URL(trimmed);
-        return parsed.protocol === "http:" || parsed.protocol === "https:";
-      } catch {
-        return false;
-      }
-    };
 
     if (!isSafeProfileUrl(website) || !isSafeProfileUrl(avatar_url) || !isSafeProfileUrl(banner_url)) {
       res.status(400).json({ error: "Profile URLs must use http://, https://, or a relative path" });
@@ -843,6 +847,14 @@ export function usersRouter(
    * and enqueues ActivityPub Delete tombstone if federated.
    */
   router.delete("/me", requireAuth, (req: Request, res: Response) => {
+    if (req.tokenScopes && !req.tokenScopes.includes("*") && !req.tokenScopes.includes("admin")) {
+      res.status(403).json({ error: "Restricted personal access tokens cannot delete user accounts" });
+      return;
+    }
+    if (req.user?.accountType === "bot") {
+      res.status(403).json({ error: "Bot accounts cannot delete primary user accounts" });
+      return;
+    }
     const userId = req.user!.id;
     const { success, actorUrl } = database.anonymizeUser(userId);
     if (!success) {
@@ -1437,6 +1449,11 @@ export function usersRouter(
       return;
     }
 
+    if (!isSafeProfileUrl(avatar_url)) {
+      res.status(400).json({ error: "Bot avatar URL must use http://, https://, or a relative path" });
+      return;
+    }
+
     const scopeCheck = sanitizeBotScopes(scopes);
     if (!scopeCheck.valid) {
       res.status(400).json({
@@ -1507,6 +1524,10 @@ export function usersRouter(
     }
 
     const { display_name, bio, avatar_url, scopes, system_prompt, model, api_key, endpoint_url } = req.body;
+    if (avatar_url !== undefined && !isSafeProfileUrl(avatar_url)) {
+      res.status(400).json({ error: "Bot avatar URL must use http://, https://, or a relative path" });
+      return;
+    }
     let validatedScopes: string | undefined;
     if (scopes !== undefined) {
       const scopeCheck = sanitizeBotScopes(scopes);

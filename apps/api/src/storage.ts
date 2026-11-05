@@ -502,7 +502,24 @@ export class LibraryStorage {
         }
       }
 
-      this.#copyTreeViaCas(libraryRoot, extPath);
+      if (fs.existsSync(extPath)) {
+        return extPath;
+      }
+
+      const stagingPath = `${extPath}.tmp.${process.pid}.${Date.now()}`;
+      try {
+        this.#copyTreeViaCas(libraryRoot, stagingPath);
+        if (!fs.existsSync(extPath)) {
+          fs.renameSync(stagingPath, extPath);
+        } else {
+          fs.rmSync(stagingPath, { recursive: true, force: true });
+        }
+      } catch (err) {
+        fs.rmSync(stagingPath, { recursive: true, force: true });
+        if (!fs.existsSync(extPath)) {
+          throw err;
+        }
+      }
 
       return extPath;
     } finally {

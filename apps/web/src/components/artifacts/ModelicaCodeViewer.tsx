@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { CheckIcon, CodeIcon, CopyIcon, GraphIcon, PlayIcon, StackIcon, WorkflowIcon } from "@primer/octicons-react";
+import { CheckIcon, CodeIcon, CopyIcon, GraphIcon, StackIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
-import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
@@ -286,7 +286,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
               <Button
                 size="small"
                 variant="primary"
-                leadingVisual={PlayIcon}
+                leadingVisual={DraftingTriangleIcon}
                 onClick={() => {
                   const hash = compressMorselPayload({
                     v: 1,
@@ -295,10 +295,10 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
                     title,
                   });
                   const fromArtifact = viewConfig?.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-                  navigate(`/playground${fromArtifact}#m=${hash}`);
+                  navigate(`/sketch${fromArtifact}#m=${hash}`);
                 }}
               >
-                Open in Playground
+                Open in Sketch
               </Button>
             )}
           </Box>

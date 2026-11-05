@@ -199,7 +199,7 @@ The MCP server exposes live workspace state as URI-addressable resources (`packa
 
 ## Part II: VS Code Extension & Web IDE Workbench
 
-The official ModelScript extension (`modelscript.modelscript`, source in `apps/ide/` and `packages/lsp/`) runs both in **VS Code Desktop** (Node.js extension host) and **VS Code for the Web / `ide.modelscript.org`** (100% browser WebWorker host).
+The official ModelScript extension (`modelscript.modelscript`, source in `apps/ide/` and `packages/lsp/`) runs both in **VS Code Desktop** (Node.js extension host) and **VS Code for the Web / Studio (`https://ansatz.social/studio`)** (100% browser WebWorker host).
 
 ### 1. Polyglot Language Server (`@modelscript/lsp`)
 
@@ -239,7 +239,7 @@ ModelScript registers a full **Debug Adapter Protocol** implementation (`"type":
 
 - **Virtual FileSystem Providers**:
   - `modelica://`: Read-only browsable virtual filesystem mounting the bundled Modelica Standard Library (MSL) and installed registry packages (`modelica_modules/`).
-  - `memfs://`: Ephemeral in-memory workspace used in the browser IDE (`ide.modelscript.org`).
+  - `memfs://`: Ephemeral in-memory workspace used in the browser Studio (`ansatz.social/studio`).
   - `github://`: Zero-clone direct browsing and editing of remote GitHub repositories.
 - **ModelScript Interactive Notebooks (`modelscript.monbNotebook`)**:
   - Native VS Code `NotebookSerializer` and `NotebookController` for `.monb` files.

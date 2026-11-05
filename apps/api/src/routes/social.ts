@@ -325,6 +325,16 @@ export function socialRouter(
     next();
   };
 
+  const clampLimit = (val: unknown, fallback = 20, max = 100): number => {
+    const n = Number(val);
+    return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : fallback;
+  };
+
+  const clampOffset = (val: unknown): number => {
+    const n = Number(val);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  };
+
   const canViewPost = (
     post: {
       visibility?: string | null | undefined;
@@ -341,7 +351,9 @@ export function socialRouter(
       return Boolean(currentUserId && post.author_id && database.isFollowing(currentUserId, post.author_id));
     }
     if (post.visibility === "direct") {
-      return Boolean(req.user?.username && new RegExp(`@${req.user.username}\\b`, "i").test(post.content || ""));
+      if (!req.user?.username || !post.content) return false;
+      const escaped = req.user.username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(?:^|[^a-zA-Z0-9_.-])@${escaped}(?:[^a-zA-Z0-9_.-]|$)`, "i").test(post.content);
     }
     return true;
   };
@@ -477,7 +489,8 @@ export function socialRouter(
           }
         } else if (parentPost.reply_visibility === "mentioned") {
           if (parentPost.author_id !== authorId && author) {
-            const mentionRegex = new RegExp(`@${author.username}\\b`, "i");
+            const escaped = author.username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const mentionRegex = new RegExp(`(?:^|[^a-zA-Z0-9_.-])@${escaped}(?:[^a-zA-Z0-9_.-]|$)`, "i");
             if (!mentionRegex.test(parentPost.content || "")) {
               res.status(403).json({ error: "Only accounts mentioned in the post can reply" });
               return;
@@ -1206,8 +1219,8 @@ export function socialRouter(
    */
   router.get("/timeline", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const limit = Number(req.query["limit"]) || 20;
-    const offset = Number(req.query["offset"]) || 0;
+    const limit = clampLimit(req.query["limit"], 20, 100);
+    const offset = clampOffset(req.query["offset"]);
     const artifactType = (req.query["artifactType"] as string) || undefined;
     const tag = (req.query["tag"] as string) || undefined;
     try {
@@ -1223,9 +1236,9 @@ export function socialRouter(
    */
   router.get("/timeline/following", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const limit = Number(req.query["limit"]) || 20;
+    const limit = clampLimit(req.query["limit"], 20, 100);
     const sort = req.query["sort"] as string;
-    const offset = Number(req.query["offset"]) || 0;
+    const offset = clampOffset(req.query["offset"]);
     const artifactType = (req.query["artifactType"] as string) || undefined;
     const tag = (req.query["tag"] as string) || undefined;
     try {
@@ -1245,8 +1258,8 @@ export function socialRouter(
       res.status(401).json({ error: "Authentication required to view federated timeline on this instance" });
       return;
     }
-    const limit = Number(req.query["limit"]) || 20;
-    const offset = Number(req.query["offset"]) || 0;
+    const limit = clampLimit(req.query["limit"], 20, 100);
+    const offset = clampOffset(req.query["offset"]);
     const artifactType = (req.query["artifactType"] as string) || undefined;
     const tag = (req.query["tag"] as string) || undefined;
     try {
@@ -1262,8 +1275,8 @@ export function socialRouter(
    */
   router.get("/explore", optionalAuth, (req: Request, res: Response) => {
     const currentUserId = req.user?.id;
-    const limit = Number(req.query["limit"]) || 20;
-    const offset = Number(req.query["offset"]) || 0;
+    const limit = clampLimit(req.query["limit"], 20, 100);
+    const offset = clampOffset(req.query["offset"]);
     const artifactType = (req.query["artifactType"] as string) || undefined;
     const tag = (req.query["tag"] as string) || undefined;
     const q = (req.query["q"] as string) || undefined;
@@ -1298,6 +1311,19 @@ export function socialRouter(
   router.post("/posts/:id/like", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const postId = String(req.params["id"] || "");
+    const post = database.getPost(postId);
+    if (!post) {
+      res.status(404).json({ error: "Post not found" });
+      return;
+    }
+    if (!canViewPost(post, req)) {
+      res.status(403).json({ error: "Forbidden: You do not have permission to view or like this post" });
+      return;
+    }
+    if (database.isUserBlocked(post.author_id, userId) || database.isUserBlocked(userId, post.author_id)) {
+      res.status(403).json({ error: "Cannot interact with this post due to block relationship" });
+      return;
+    }
     try {
       const liked = database.toggleLike(userId, postId);
       res.json({ liked });
@@ -1312,6 +1338,19 @@ export function socialRouter(
   router.post("/posts/:id/bookmark", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const postId = String(req.params["id"] || "");
+    const post = database.getPost(postId);
+    if (!post) {
+      res.status(404).json({ error: "Post not found" });
+      return;
+    }
+    if (!canViewPost(post, req)) {
+      res.status(403).json({ error: "Forbidden: You do not have permission to view or bookmark this post" });
+      return;
+    }
+    if (database.isUserBlocked(post.author_id, userId) || database.isUserBlocked(userId, post.author_id)) {
+      res.status(403).json({ error: "Cannot interact with this post due to block relationship" });
+      return;
+    }
     try {
       const bookmarked = database.toggleBookmark(userId, postId);
       res.json({ bookmarked });
@@ -1326,6 +1365,23 @@ export function socialRouter(
   router.post("/posts/:id/repost", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
     const postId = String(req.params["id"] || "");
+    const post = database.getPost(postId);
+    if (!post) {
+      res.status(404).json({ error: "Post not found" });
+      return;
+    }
+    if (!canViewPost(post, req)) {
+      res.status(403).json({ error: "Forbidden: You do not have permission to view or repost this post" });
+      return;
+    }
+    if (post.visibility === "direct" || post.visibility === "followers") {
+      res.status(403).json({ error: "Cannot publicly repost a private or direct post" });
+      return;
+    }
+    if (database.isUserBlocked(post.author_id, userId) || database.isUserBlocked(userId, post.author_id)) {
+      res.status(403).json({ error: "Cannot interact with this post due to block relationship" });
+      return;
+    }
     try {
       const reposted = database.toggleRepost(userId, postId);
       res.json({ reposted });
@@ -1875,7 +1931,7 @@ export function socialRouter(
    */
   router.get("/bookmarks", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const limit = Number(req.query["limit"]) || 20;
+    const limit = clampLimit(req.query["limit"], 20, 100);
     try {
       const posts = database.getBookmarks(userId, limit);
       res.json({ posts: posts.filter((p) => isPostLanguageAllowed(p, featureFlagService, req.user)) });
@@ -1889,7 +1945,7 @@ export function socialRouter(
    */
   router.get("/notifications", requireAuth, (req: Request, res: Response) => {
     const userId = req.user!.id;
-    const limit = Number(req.query["limit"]) || 50;
+    const limit = clampLimit(req.query["limit"], 50, 100);
     const category = typeof req.query["category"] === "string" ? req.query["category"] : undefined;
     try {
       const notifications = database.getNotifications(userId, limit, category);
@@ -1914,8 +1970,21 @@ export function socialRouter(
         : req.body?.notification_id !== undefined
           ? [req.body.notification_id]
           : undefined);
+
+    if (Array.isArray(rawIds) && rawIds.length > 500) {
+      res.status(400).json({ error: "Batch size exceeds maximum limit of 500 notifications" });
+      return;
+    }
+
     const ids = Array.isArray(rawIds)
-      ? rawIds.map((v: unknown) => Number(v)).filter((n: number) => Number.isFinite(n))
+      ? Array.from(
+          new Set(
+            rawIds
+              .slice(0, 100)
+              .map((v: unknown) => Number(v))
+              .filter((n: number) => Number.isFinite(n)),
+          ),
+        )
       : undefined;
     try {
       database.markNotificationsRead(userId, category, ids);
@@ -1929,7 +1998,7 @@ export function socialRouter(
    * GET /api/v1/social/trending
    */
   router.get("/trending", optionalAuth, (req: Request, res: Response) => {
-    const limit = Number(req.query["limit"]) || 10;
+    const limit = clampLimit(req.query["limit"], 10, 50);
     try {
       const topics = database.getTopTrendingTopics(limit);
       const isMsxEnabled =

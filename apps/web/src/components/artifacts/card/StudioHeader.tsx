@@ -7,7 +7,6 @@ import {
   InfoIcon,
   KebabHorizontalIcon,
   LinkIcon,
-  PlayIcon,
   RepoForkedIcon,
   ScreenFullIcon,
   ServerIcon,
@@ -28,6 +27,7 @@ import {
 import { sanitizeHttpUrl } from "../../../util/url";
 import Box from "../../Box";
 import { CiteButton } from "../../citations/CiteButton";
+import { DraftingTriangleIcon } from "../../icons";
 import { VsCodeIcon } from "../../icons/VsCodeIcon";
 
 const StudioHeaderBar = styled(Box)`
@@ -422,9 +422,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                   alignItems: "center",
                   gap: "6px",
                 }}
-                title="Open model in interactive Playground"
+                title="Open model in interactive Sketch"
               >
-                <PlayIcon size={14} /> Open in Playground
+                <DraftingTriangleIcon size={14} /> Open in Sketch
               </button>
             )}
             {isEditable && (
@@ -510,9 +510,9 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                   {isEditable && !isMultiFile && (
                     <ActionList.Item onSelect={(e) => handleOpenEditor(e)}>
                       <ActionList.LeadingVisual>
-                        <PlayIcon />
+                        <DraftingTriangleIcon />
                       </ActionList.LeadingVisual>
-                      Open in Playground
+                      Open in Sketch
                     </ActionList.Item>
                   )}
                   {hasCloudSolverFlag && onRunOnHpc && (

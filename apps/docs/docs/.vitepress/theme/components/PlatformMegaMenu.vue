@@ -31,17 +31,17 @@ const columns: MegaMenuColumn[] = [
     label: "Workbenches & Surfaces",
     items: [
       {
-        name: "Browser Playground",
-        tagline: "Zero-install editor, linter & live simulator",
-        href: "/playground",
+        name: "Ansatz Sketch",
+        tagline: "Zero-install drafting, schematics & live simulator",
+        href: "/sketch",
         icon: "play",
         accent: "#22d3ee",
         target: "_self",
       },
       {
-        name: "Web IDE",
+        name: "Studio",
         tagline: "VS Code workbench with schematics, 3D CAD & plots",
-        href: "/ide",
+        href: "/studio",
         icon: "layers",
         accent: "#818cf8",
         target: "_self",

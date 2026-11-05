@@ -77,8 +77,17 @@ export function npmRegistryRouter(database: LibraryDatabase, storage?: LibrarySt
           if (tarballFile.startsWith(prefix) && suffix) {
             const version = tarballFile.slice(prefix.length, tarballFile.length - suffix.length);
             if (version && storage.exists(tarballPkg, version)) {
+              const release = database.getLibraryRelease(tarballPkg, version);
+              if (release?.is_yanked) {
+                return res.status(410).json({ error: `Package version ${tarballPkg}@${version} has been yanked` });
+              }
               const archive = storage.read(tarballPkg, version);
               if (archive) {
+                try {
+                  database.recordPackageDownload(tarballPkg, version);
+                } catch {
+                  // ignore analytics failure
+                }
                 res.setHeader("Content-Type", "application/octet-stream");
                 res.setHeader(
                   "Content-Disposition",
@@ -173,8 +182,12 @@ export function npmRegistryRouter(database: LibraryDatabase, storage?: LibrarySt
       // Forward client's Authorization header only if it is not a ModelScript token
       if (req.headers.authorization && !isModelScriptAuthHeader(req.headers.authorization)) {
         headers.set("Authorization", req.headers.authorization);
-      } else if (gitlabToken) {
+      } else if (gitlabToken && req.headers.authorization && isModelScriptAuthHeader(req.headers.authorization)) {
+        // Authenticated to ModelScript: use server GitLab bridge token
         headers.set("Authorization", `Bearer ${gitlabToken}`);
+      } else {
+        // Unauthenticated client: do not leak access to private GitLab packages
+        return res.status(404).json({ error: "Package not found" });
       }
 
       if (req.headers["content-type"]) {

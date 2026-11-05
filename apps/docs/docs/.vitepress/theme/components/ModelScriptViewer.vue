@@ -23,11 +23,11 @@ const props = withDefaults(
 
 const iframeSrc = computed(() => {
   if (props.token) {
-    return `/embed/playground#m=${props.token}`;
+    return `/embed/sketch#m=${props.token}`;
   }
   const dialectKey = encodeURIComponent(props.dialect || "modelica");
   const encodedCode = encodeURIComponent(props.code.trim());
-  return `/embed/playground#${dialectKey}=${encodedCode}`;
+  return `/embed/sketch#${dialectKey}=${encodedCode}`;
 });
 </script>
 

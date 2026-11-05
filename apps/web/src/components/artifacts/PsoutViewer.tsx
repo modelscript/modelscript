@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CodeIcon, PlayIcon, PulseIcon } from "@primer/octicons-react";
+import { CodeIcon, PulseIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import styled from "styled-components";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { highlightPolyglotLine } from "./PolyglotArtifactViewer";
@@ -231,7 +232,7 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
             <Button
               size="small"
               variant="primary"
-              leadingVisual={PlayIcon}
+              leadingVisual={DraftingTriangleIcon}
               onClick={() => {
                 const hash = compressMorselPayload({
                   v: 1,
@@ -240,10 +241,10 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
                   title,
                 });
                 const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-                navigate(`/playground${fromArtifact}#m=${hash}`);
+                navigate(`/sketch${fromArtifact}#m=${hash}`);
               }}
             >
-              Open in Playground
+              Open in Sketch
             </Button>
           )}
         </Box>

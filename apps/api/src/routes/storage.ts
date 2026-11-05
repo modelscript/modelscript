@@ -64,8 +64,13 @@ export function storageRouter(): Router {
 
       if (lowerBase.endsWith(".pdf")) {
         // Chromium disables PDF plugins in sandboxed contexts.
-        // For PDFs, serve inline without sandbox directive so the native PDF reader can load.
+        // For PDFs, serve inline without sandbox directive so the native PDF reader can load,
+        // but restrict script and plugin execution via Content-Security-Policy.
         res.setHeader("Content-Disposition", "inline");
+        res.setHeader(
+          "Content-Security-Policy",
+          "default-src 'none'; script-src 'none'; object-src 'none'; style-src 'unsafe-inline'",
+        );
       } else {
         res.setHeader("Content-Security-Policy", "sandbox");
       }
@@ -119,6 +124,63 @@ export function storageRouter(): Router {
         const bytesRead = fs.readSync(fd, buf, 0, 4096, 0);
         fs.closeSync(fd);
         headerSnippet = buf.toString("utf8", 0, bytesRead);
+
+        // 1. Prohibit executable binaries
+        const isPeExe = bytesRead >= 2 && buf[0] === 0x4d && buf[1] === 0x5a; // MZ
+        const isElf = bytesRead >= 4 && buf[0] === 0x7f && buf[1] === 0x45 && buf[2] === 0x4c && buf[3] === 0x46; // .ELF
+        const isMachO =
+          bytesRead >= 4 &&
+          ((buf[0] === 0xfe && buf[1] === 0xed && buf[2] === 0xfa && (buf[3] === 0xce || buf[3] === 0xcf)) ||
+            (buf[3] === 0xfe && buf[2] === 0xed && buf[1] === 0xfa && (buf[0] === 0xce || buf[0] === 0xcf)));
+        if (isPeExe || isElf || isMachO) {
+          try {
+            fs.unlinkSync(safeFilePath);
+          } catch {}
+          res.status(400).json({ error: "Executable binaries (.exe, .elf, Mach-O) are strictly prohibited" });
+          return;
+        }
+
+        // 2. Validate declared documents and images against known magic bytes
+        if (originalExt === ".pdf" || mimeType === "application/pdf") {
+          if (bytesRead < 4 || buf.toString("ascii", 0, 4) !== "%PDF") {
+            try {
+              fs.unlinkSync(safeFilePath);
+            } catch {}
+            res.status(400).json({ error: "Invalid PDF format: missing %PDF header" });
+            return;
+          }
+        } else if (originalExt === ".png" || mimeType === "image/png") {
+          if (
+            bytesRead < 8 ||
+            buf[0] !== 0x89 ||
+            buf[1] !== 0x50 ||
+            buf[2] !== 0x4e ||
+            buf[3] !== 0x47 ||
+            buf[4] !== 0x0d ||
+            buf[5] !== 0x0a ||
+            buf[6] !== 0x1a ||
+            buf[7] !== 0x0a
+          ) {
+            try {
+              fs.unlinkSync(safeFilePath);
+            } catch {}
+            res.status(400).json({ error: "Invalid PNG format: invalid magic header" });
+            return;
+          }
+        } else if (
+          originalExt === ".jpg" ||
+          originalExt === ".jpeg" ||
+          mimeType === "image/jpeg" ||
+          mimeType === "image/jpg"
+        ) {
+          if (bytesRead < 3 || buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) {
+            try {
+              fs.unlinkSync(safeFilePath);
+            } catch {}
+            res.status(400).json({ error: "Invalid JPEG format: invalid magic header" });
+            return;
+          }
+        }
       } catch {
         // Ignore read error for header snippet
       }

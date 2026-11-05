@@ -58,7 +58,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
     if (isSimulation || isSimFailed) {
       const targetModel = meta.name;
       if (targetModel) {
-        navigate(`/playground?model=${encodeURIComponent(targetModel)}`);
+        navigate(`/sketch?model=${encodeURIComponent(targetModel)}`);
       } else {
         navigate(meta.jobId || notif.job_id ? `/jobs/${meta.jobId || notif.job_id}` : "/jobs");
       }
@@ -215,10 +215,10 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                   onClick={(e) => {
                     e.stopPropagation();
                     if (!notif.read) onMarkRead?.(notif.id);
-                    navigate(meta.name ? `/playground?model=${encodeURIComponent(meta.name)}` : "/playground");
+                    navigate(meta.name ? `/sketch?model=${encodeURIComponent(meta.name)}` : "/sketch");
                   }}
                 >
-                  Open in Playground
+                  Open in Sketch
                 </Button>
                 {meta.jobId && (
                   <Button
@@ -257,7 +257,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                   onClick={(e) => {
                     e.stopPropagation();
                     if (!notif.read) onMarkRead?.(notif.id);
-                    navigate(meta.name ? `/playground?model=${encodeURIComponent(meta.name)}` : "/playground");
+                    navigate(meta.name ? `/sketch?model=${encodeURIComponent(meta.name)}` : "/sketch");
                   }}
                 >
                   Open in Editor

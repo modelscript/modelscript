@@ -130,11 +130,27 @@ export const EmbedPlaygroundPage: React.FC = () => {
     };
   }, []);
 
+  const getTargetOrigin = (): string => {
+    if (typeof document !== "undefined" && document.referrer) {
+      try {
+        const refUrl = new URL(document.referrer);
+        return refUrl.origin;
+      } catch {
+        // invalid referrer URL
+      }
+    }
+    return "*";
+  };
+
   // Bidirectional postMessage RPC bridge with parent host page (@modelscript/embed)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    const targetOrigin = getTargetOrigin();
+
     const handleMessage = (ev: MessageEvent) => {
+      if (ev.source !== window.parent) return;
+      if (targetOrigin !== "*" && ev.origin !== targetOrigin) return;
       if (!ev.data || typeof ev.data !== "object" || typeof ev.data.type !== "string") return;
       const msg = ev.data;
       switch (msg.type) {
@@ -165,14 +181,27 @@ export const EmbedPlaygroundPage: React.FC = () => {
           }
           break;
         case "SET_PARAM":
-          if (typeof msg.name === "string" && msg.value !== undefined) {
+          if (
+            typeof msg.name === "string" &&
+            !["__proto__", "constructor", "prototype"].includes(msg.name) &&
+            (typeof msg.value === "string" || typeof msg.value === "number" || typeof msg.value === "boolean")
+          ) {
             setExternalParams((prev) => ({ ...(prev || {}), [msg.name]: msg.value }));
           }
           break;
         case "SET_PARAMETERS":
-          if (msg.params && typeof msg.params === "object") {
-            setExternalParams((prev) => ({ ...(prev || {}), ...msg.params }));
-            setPayload((prev: any) => ({ ...(prev || { v: 1 }), params: msg.params }));
+          if (msg.params && typeof msg.params === "object" && !Array.isArray(msg.params)) {
+            const sanitizedParams: Record<string, string | number | boolean> = {};
+            for (const [k, v] of Object.entries(msg.params)) {
+              if (
+                !["__proto__", "constructor", "prototype"].includes(k) &&
+                (typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+              ) {
+                sanitizedParams[k] = v;
+              }
+            }
+            setExternalParams((prev) => ({ ...(prev || {}), ...sanitizedParams }));
+            setPayload((prev: any) => ({ ...(prev || { v: 1 }), params: sanitizedParams }));
           }
           break;
         case "TRIGGER_SIMULATE":
@@ -183,7 +212,7 @@ export const EmbedPlaygroundPage: React.FC = () => {
           if (svgEl && window.parent && window.parent !== window) {
             window.parent.postMessage(
               { namespace: "modelscript-embed", type: "EXPORTED_SVG", svg: svgEl.outerHTML },
-              "*",
+              targetOrigin,
             );
           }
           break;
@@ -212,7 +241,7 @@ export const EmbedPlaygroundPage: React.FC = () => {
             "REQUEST_EXPORT_SVG",
           ],
         },
-        "*",
+        targetOrigin,
       );
     }
 
@@ -224,21 +253,28 @@ export const EmbedPlaygroundPage: React.FC = () => {
   const handleCodeChange = (nextCode: string) => {
     setCurrentCode(nextCode);
     if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-      window.parent.postMessage({ namespace: "modelscript-embed", type: "CODE_CHANGED", code: nextCode }, "*");
+      window.parent.postMessage(
+        { namespace: "modelscript-embed", type: "CODE_CHANGED", code: nextCode },
+        getTargetOrigin(),
+      );
     }
   };
 
   const handleAnchorClick = (anchor: { elementId: string; kind: "component" }) => {
     if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-      window.parent.postMessage({ namespace: "modelscript-embed", type: "ANCHOR_CLICKED", anchor }, "*");
+      window.parent.postMessage({ namespace: "modelscript-embed", type: "ANCHOR_CLICKED", anchor }, getTargetOrigin());
     }
   };
 
   const handleSimulationStatus = (status: string, data?: unknown) => {
     if (typeof window !== "undefined" && window.parent && window.parent !== window) {
-      window.parent.postMessage({ namespace: "modelscript-embed", type: "SIMULATION_STATUS", status }, "*");
+      const targetOrigin = getTargetOrigin();
+      window.parent.postMessage({ namespace: "modelscript-embed", type: "SIMULATION_STATUS", status }, targetOrigin);
       if (status === "completed" && data) {
-        window.parent.postMessage({ namespace: "modelscript-embed", type: "SIMULATION_RESULTS", results: data }, "*");
+        window.parent.postMessage(
+          { namespace: "modelscript-embed", type: "SIMULATION_RESULTS", results: data },
+          targetOrigin,
+        );
       }
     }
   };

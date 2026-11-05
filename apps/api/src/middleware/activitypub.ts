@@ -51,6 +51,68 @@ export function setCachedPublicKey(
   });
 }
 
+const signatureReplayCache = new Map<string, number>();
+
+export function clearReplayCache(): void {
+  signatureReplayCache.clear();
+}
+
+function checkAndRecordReplay(sigKey: string, ttlMs = 300_000): boolean {
+  if (process.env["NODE_ENV"] === "test" && process.env["DISABLE_REPLAY_GUARD"] === "true") {
+    return false;
+  }
+  const now = Date.now();
+  if (signatureReplayCache.size > 10_000) {
+    for (const [k, ts] of signatureReplayCache.entries()) {
+      if (now - ts > ttlMs) {
+        signatureReplayCache.delete(k);
+      }
+    }
+  }
+  const prev = signatureReplayCache.get(sigKey);
+  if (prev !== undefined && now - prev < ttlMs) {
+    return true; // Replay detected
+  }
+  signatureReplayCache.set(sigKey, now);
+  return false;
+}
+
+export function verifyDigestHeader(headerValue: string | undefined, rawBody: string | Buffer): boolean {
+  if (!headerValue) return false;
+  const parts = headerValue.split(",").map((p) => p.trim());
+  for (const part of parts) {
+    const eqIdx = part.indexOf("=");
+    if (eqIdx === -1) continue;
+    const alg = part.slice(0, eqIdx).trim().toLowerCase();
+    let val = part.slice(eqIdx + 1).trim();
+    if (val.startsWith(":") && val.endsWith(":")) {
+      val = val.slice(1, -1);
+    }
+    if (alg === "sha-256" || alg === "sha256") {
+      const expected = crypto.createHash("sha256").update(rawBody).digest();
+      try {
+        const received = Buffer.from(val, "base64");
+        if (expected.length === received.length && crypto.timingSafeEqual(expected, received)) {
+          return true;
+        }
+      } catch {
+        // continue
+      }
+    } else if (alg === "sha-512" || alg === "sha512") {
+      const expected = crypto.createHash("sha512").update(rawBody).digest();
+      try {
+        const received = Buffer.from(val, "base64");
+        if (expected.length === received.length && crypto.timingSafeEqual(expected, received)) {
+          return true;
+        }
+      } catch {
+        // continue
+      }
+    }
+  }
+  return false;
+}
+
 interface RateLimitRecord {
   count: number;
   resetAt: number;
@@ -307,8 +369,7 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
               : req.body
                 ? JSON.stringify(req.body)
                 : "";
-          const expectedHash = crypto.createHash("sha256").update(rawBody).digest("base64");
-          if (!contentDigestHeader.includes(expectedHash)) {
+          if (!verifyDigestHeader(contentDigestHeader, rawBody)) {
             res.status(401).json({ error: "Content-Digest mismatch" });
             return;
           }
@@ -428,15 +489,16 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           return;
         }
 
-        if (
-          actorDomain &&
-          typeof (databaseInstance as { recordDomainDeliverySuccess?: (d: string) => void })
-            .recordDomainDeliverySuccess === "function"
-        ) {
+        const sigId = `${keyId}:${signatureValue}`;
+        if (checkAndRecordReplay(sigId)) {
+          res.status(401).json({ error: "Replay detected: signature already processed" });
+          return;
+        }
+
+        const dbWithDelivery = db as unknown as { recordDomainDeliverySuccess?: (d: string) => void } | undefined;
+        if (actorDomain && dbWithDelivery && typeof dbWithDelivery.recordDomainDeliverySuccess === "function") {
           try {
-            (
-              databaseInstance as unknown as { recordDomainDeliverySuccess: (d: string) => void }
-            ).recordDomainDeliverySuccess(actorDomain);
+            dbWithDelivery.recordDomainDeliverySuccess(actorDomain);
           } catch {
             // ignore
           }
@@ -577,8 +639,7 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
             : req.body
               ? JSON.stringify(req.body)
               : "";
-        const expectedHash = crypto.createHash("sha256").update(rawBody).digest("base64");
-        if (!digestHeader.includes(expectedHash)) {
+        if (!verifyDigestHeader(digestHeader, rawBody)) {
           res.status(401).json({ error: "Digest header mismatch" });
           return;
         }
@@ -634,6 +695,12 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
 
       if (!isValid) {
         res.status(401).json({ error: "Invalid signature" });
+        return;
+      }
+
+      const sigId = `${parts["keyId"]}:${parts["signature"]}`;
+      if (checkAndRecordReplay(sigId)) {
+        res.status(401).json({ error: "Replay detected: signature already processed" });
         return;
       }
 

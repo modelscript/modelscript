@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, FlameIcon, PlayIcon } from "@primer/octicons-react";
+import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, FlameIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import {
@@ -235,7 +236,7 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
       title,
     });
     const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
-    navigate(`/playground${fromParam}#m=${hash}`);
+    navigate(`/sketch${fromParam}#m=${hash}`);
   };
 
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
@@ -273,8 +274,8 @@ export const RocetsViewer: React.FC<RocetsViewerProps> = ({ viewConfig, isFullSc
             {copied ? "Copied" : "Copy"}
           </Button>
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
-            <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
-              Open in Playground
+            <Button size="small" leadingVisual={DraftingTriangleIcon} onClick={handleOpenInPlayground}>
+              Open in Sketch
             </Button>
           )}
         </Box>

@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { createDefaultCadStudyParameters, solveCadStudySync } from "./cad-study-solver";
@@ -327,7 +328,7 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
             <Button
               size="small"
               variant="primary"
-              leadingVisual={CodeIcon}
+              leadingVisual={DraftingTriangleIcon}
               onClick={() => {
                 const hash = compressMorselPayload({
                   v: 1,
@@ -337,10 +338,10 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
                 });
                 const resolvedId = artifactId ?? viewConfig.artifactId;
                 const fromArtifact = resolvedId ? `?fromArtifact=${resolvedId}` : "";
-                navigate(`/playground${fromArtifact}#m=${hash}`);
+                navigate(`/sketch${fromArtifact}#m=${hash}`);
               }}
             >
-              Open in Playground
+              Open in Sketch
             </Button>
           )}
         </Box>

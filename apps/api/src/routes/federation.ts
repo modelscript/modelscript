@@ -13,6 +13,7 @@ import {
 import { optionalAuth } from "../middleware/auth-middleware.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { computeFollowersSyncDigest, sendSignedGetRequest, sendSignedRequest } from "../util/activitypub-crypto.js";
+import { sanitizeRemoteHtml } from "../util/html-sanitizer.js";
 import { ed25519PemToMultibase } from "../util/multikey.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { isCorporateOrAirgapTier, isFederationDisabled } from "../util/tier-presets.js";
@@ -955,7 +956,8 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     const existing = db.getPostByApId(noteId);
     if (existing) return { id: existing.id };
 
-    const content = typeof note["content"] === "string" ? note["content"] : "";
+    const rawContent = typeof note["content"] === "string" ? note["content"] : "";
+    const content = sanitizeRemoteHtml(rawContent);
     const domainPolicy = db.getDomainTier(remoteDomain);
     const isSilenced = isSilencedFlag || domainPolicy.tier === "silence" ? 1 : 0;
 
@@ -1067,15 +1069,21 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
           (o) => o.title.toLowerCase() === String(note["name"]).trim().toLowerCase(),
         );
         if (optionIdx !== -1) {
-          try {
-            const voterActor = typeof note["attributedTo"] === "string" ? note["attributedTo"] : undefined;
+          const voterActor =
+            typeof parentActivity?.["actor"] === "string" && parentActivity["actor"].trim()
+              ? (parentActivity["actor"] as string).trim()
+              : typeof note["attributedTo"] === "string"
+                ? (note["attributedTo"] as string).trim()
+                : undefined;
+          if (voterActor) {
             db.votePostPoll(replyToId, [optionIdx], null, voterActor);
-          } catch {}
+          }
         }
       }
     }
 
-    const contentWarning = typeof note["summary"] === "string" ? note["summary"].trim() : undefined;
+    const rawSummary = typeof note["summary"] === "string" ? note["summary"].trim() : undefined;
+    const contentWarning = rawSummary ? sanitizeRemoteHtml(rawSummary) : undefined;
     const postMetadata = contentWarning ? { contentWarning } : undefined;
     const visibility = inferVisibilityFromAddressing(note, parentActivity);
 
@@ -1357,8 +1365,29 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
             const attributedTo = typeof noteObj["attributedTo"] === "string" ? noteObj["attributedTo"] : remoteActorUrl;
             let originDomain = remoteDomain;
             try {
-              originDomain = new URL(attributedTo).hostname.toLowerCase();
-            } catch {}
+              const parsedAuthor = new URL(attributedTo);
+              if (parsedAuthor.protocol !== "https:" && parsedAuthor.protocol !== "http:") {
+                return;
+              }
+              originDomain = parsedAuthor.hostname.toLowerCase();
+            } catch {
+              return;
+            }
+
+            // Block relays from relaying notes attributed to local users on this instance
+            const localHost = req.get("host")?.toLowerCase();
+            const publicHost = process.env["PUBLIC_URL"]
+              ? new URL(process.env["PUBLIC_URL"]).hostname.toLowerCase()
+              : undefined;
+            if (
+              originDomain === localHost ||
+              originDomain === publicHost ||
+              originDomain === "localhost" ||
+              originDomain === "127.0.0.1"
+            ) {
+              return;
+            }
+
             if (!db.isDomainSuspended(originDomain)) {
               const noteAuthor = db.getOrCreateRemoteUser(attributedTo);
               const isSilenced = Boolean((req as Request & { isDomainSilenced?: boolean }).isDomainSilenced);

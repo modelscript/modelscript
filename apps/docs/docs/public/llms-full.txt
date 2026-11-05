@@ -101,7 +101,7 @@ Large language models struggle with physical engineering when left to guess diff
 
 ## Ready to Get Started?
 
-- **[Installation](./installation.md)** — Set up the zero-install Browser Playground, VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
+- **[Installation](./installation.md)** — Set up the zero-install Ansatz Sketch, VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
 - **[Getting Started Tutorial](./getting-started.md)** — Build, verify, bind to 3D CAD, simulate, and export your first end-to-end computable digital thread.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Connect Claude Code, Cursor, or custom LLM orchestrators to the deterministic compiler and solver loop.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with polyglot linting, SARIF formal verification reports, visual schematic diffs, and FDA/ISO compliance dossiers.
@@ -119,12 +119,12 @@ ModelScript runs from the same WebAssembly compiler core across browsers, deskto
 
 ## For Users & Engineers
 
-### 1. Zero-Install Browser Playground & Web IDE
+### 1. Zero-Install Ansatz Sketch & Web IDE
 
 To explore ModelScript without installing anything locally:
 
-- **[Interactive Playground (`/playground`)](https://modelscript.org/playground)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
-- **Full Web Studio (`https://ide.modelscript.org`)**: Multi-file workspace explorer, dockable 2D schematic and 3D OpenCASCADE CAD viewports, requirements traceability matrix, and in-browser WebWorker compilation.
+- **[Ansatz Sketch (`/sketch`)](https://modelscript.org/sketch)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
+- **Studio (`https://ansatz.social/studio`)**: Multi-file workspace explorer, dockable 2D schematic and 3D OpenCASCADE CAD viewports, requirements traceability matrix, and in-browser WebWorker compilation.
 
 ### 2. Command-Line Interface (`msx`)
 
@@ -872,7 +872,7 @@ CANONICAL URL: https://modelscript.org/guide/embedding
 
 # Embedding Artifacts & Models
 
-The **ModelScript Embed Service** allows you to embed interactive 2D schematics, 3D CAD/STEP models, simulation trajectory charts, and editable playgrounds directly into external websites, blogs, Notion, and documentation portals.
+The **ModelScript Embed Service** allows you to embed interactive 2D schematics, 3D CAD/STEP models, simulation trajectory charts, and editable Ansatz Sketch canvases directly into external websites, blogs, Notion, and documentation portals.
 
 ---
 
@@ -906,7 +906,7 @@ end RLC;"
 | `anchor`      | `undefined`    | Target component element ID to visually highlight and auto-center (e.g. `"R1"` or `"chassis"`).                                                |
 | `controls`    | `"none"`       | Set to `"parameters"` to display an interactive live parameter slider ribbon below the model.                                                  |
 | `zoom-mode`   | `"ctrl-wheel"` | Scroll protection mode: `"ctrl-wheel"` (requires Ctrl/⌘ to zoom, preventing iframe page wheel-trapping), `"always"`, or `"click-to-interact"`. |
-| `multi-file`  | `false`        | If set, the watermark pill routes the user to the **ModelScript IDE** instead of the Playground.                                               |
+| `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of Ansatz Sketch.                                                            |
 | `artifact-id` | `undefined`    | Numerical ID of a published artifact on the ModelScript Hub.                                                                                   |
 
 ---
@@ -1053,7 +1053,7 @@ Every ModelScript post (`https://modelscript.org/p/:id`) includes standard auto-
 
 ### Direct oEmbed Query
 
-Clients can query the oEmbed endpoint directly using either a post URL or a playground permalink hash (`#m=...`):
+Clients can query the oEmbed endpoint directly using either a post URL or a sketch permalink hash (`#m=...`):
 
 ```bash
 curl "https://api.modelscript.org/api/v1/oembed?url=https%3A%2F%2Fmodelscript.org%2F%23m%3DeJy...&maxwidth=800&format=json"
@@ -1409,7 +1409,7 @@ curl -s http://localhost:8080/api/v1/compliance/airgap | jq .
 
 ### Scenario C: Official `modelscript.org` & `ansatz.social` Cloud Production Deployment
 
-`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/playground`) on `ansatz.social`, alongside the WebGPU IDE (`/ide`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
+`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/sketch`) on `ansatz.social`, alongside the WebGPU IDE (`/ide`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
 
 #### C.1 Initial Server Provisioning (`/opt/modelscript`)
 
@@ -1557,7 +1557,7 @@ The monorepo maintains a clear boundary between the engine and the platform:
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Ansatz Platform (apps/)                         │
-│   • apps/web: React 19 SPA (ansatz.social, /playground, /references)   │
+│   • apps/web: React 19 SPA (ansatz.social, /sketch, /references)       │
 │   • apps/api: Express, GraphQL, SPARQL, Git Smart HTTP, ActivityPub   │
 ├────────────────────────────────────────────────────────────────────────┤
 │             Enterprise Edition (ee/ — LicenseRef-Enterprise)           │
@@ -1580,7 +1580,7 @@ The ModelScript engine is designed to be completely headless and can run inside 
 | Surface                  | Route               | Description                                                                                   |
 | :----------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
 | **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, executable simulation morsels, and discussion threads.         |
-| **Playground**           | `/playground`       | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.        |
+| **Ansatz Sketch**        | `/sketch`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.        |
 | **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.          |
 | **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.           |
 | **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.     |
@@ -1606,7 +1606,7 @@ In conventional social networks, posts consist of plain text, images, or static 
 1. **Simulation Runs:** Encapsulated DAE/ODE trajectory datasets with time-series plots, parameter configurations, and solver settings.
 2. **Interactive 3D CAD/FEA/CFD Views:** Compressed STEP geometries or VTK Unstructured Grid (`.vtu`) stress fields viewable directly in the feed using Three.js and WebXR.
 3. **Schematic & Architecture Diffs:** Visual diffs (`PolyglotVersionDiffView`) showing added, modified, or removed components across Modelica and SysML diagrams.
-4. **Executable Scripts:** Self-contained ModelScript scripts that other engineers can open in `/playground` with a single click.
+4. **Executable Scripts:** Self-contained ModelScript scripts that other engineers can open in `/sketch` with a single click.
 
 ---
 
@@ -1743,7 +1743,7 @@ flowchart LR
 
 ### 1. Job Configuration
 
-Engineers configure compute parameters using the **Cloud Simulation Modal** in `/playground`:
+Engineers configure compute parameters using the **Cloud Simulation Modal** in `/sketch`:
 
 - **Solvers:** SUNDIALS CVODE, IDA stiff DAE, CalculiX FEA, or SU2 CFD.
 - **Resources:** Number of CPU cores, GPU acceleration (CUDA/OpenCL), and RAM limits.
@@ -2093,7 +2093,7 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                   |
 | `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (`flatten`, `simulate`, `verify`, `align`, `polyglot`, `fmu`, `csg`, `surrogate`, `mc`, `hil`)                               |
 | `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, and WebSocket simulation backend server                                                                                              |
-| `@modelscript/web`        | `apps/web`          | Browser-native WebAssembly Polyglot Playground and visual modeling environment                                                                              |
+| `@modelscript/web`        | `apps/web`          | Browser-native WebAssembly Ansatz Sketch and visual modeling environment                                                                                     |
 | `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL  |
 
 ================================================================================
@@ -2287,7 +2287,7 @@ The parser compiler is implemented in `@modelscript/dsl` under `packages/dsl/src
 
 1. **Handling Complex Engineering Grammars**: Engineering modeling languages like Modelica and SysML v2 possess ambiguities that cannot be parsed by strict deterministic LR(1) or LALR parsers. The GLR algorithm handles non-deterministic grammar paths by branching parse stacks and pruning invalid branches dynamically.
 2. **Zero-Allocation Memory Footprint**: Rather than allocating JavaScript AST object wrappers for every identifier and operator, tokens and CST nodes are laid out in a flat WebAssembly linear memory arena.
-3. **Web-Native Performance**: The compiled `parser.wasm` executes at near-native speeds in both Node.js server environments and client-side browser contexts (such as the IDE and the Web Playground).
+3. **Web-Native Performance**: The compiled `parser.wasm` executes at near-native speeds in both Node.js server environments and client-side browser contexts (such as the IDE and Ansatz Sketch).
 
 ---
 
@@ -16301,7 +16301,7 @@ The MCP server exposes live workspace state as URI-addressable resources (`packa
 
 ## Part II: VS Code Extension & Web IDE Workbench
 
-The official ModelScript extension (`modelscript.modelscript`, source in `apps/ide/` and `packages/lsp/`) runs both in **VS Code Desktop** (Node.js extension host) and **VS Code for the Web / `ide.modelscript.org`** (100% browser WebWorker host).
+The official ModelScript extension (`modelscript.modelscript`, source in `apps/ide/` and `packages/lsp/`) runs both in **VS Code Desktop** (Node.js extension host) and **VS Code for the Web / Studio (`https://ansatz.social/studio`)** (100% browser WebWorker host).
 
 ### 1. Polyglot Language Server (`@modelscript/lsp`)
 
@@ -16341,7 +16341,7 @@ ModelScript registers a full **Debug Adapter Protocol** implementation (`"type":
 
 - **Virtual FileSystem Providers**:
   - `modelica://`: Read-only browsable virtual filesystem mounting the bundled Modelica Standard Library (MSL) and installed registry packages (`modelica_modules/`).
-  - `memfs://`: Ephemeral in-memory workspace used in the browser IDE (`ide.modelscript.org`).
+  - `memfs://`: Ephemeral in-memory workspace used in the browser Studio (`ansatz.social/studio`).
   - `github://`: Zero-clone direct browsing and editing of remote GitHub repositories.
 - **ModelScript Interactive Notebooks (`modelscript.monbNotebook`)**:
   - Native VS Code `NotebookSerializer` and `NotebookController` for `.monb` files.

@@ -226,7 +226,7 @@ function GlobalModals() {
           }
         } else if (k === "p") {
           e.preventDefault();
-          navWithScroll("/playground");
+          navWithScroll("/sketch");
         } else if (k === "k") {
           e.preventDefault();
           navWithScroll("/packages");
@@ -237,7 +237,7 @@ function GlobalModals() {
           }
         } else if (k === "i") {
           e.preventDefault();
-          navWithScroll("/ide");
+          navWithScroll("/studio");
         } else if (k === "j") {
           if (hasCae) {
             e.preventDefault();
@@ -309,7 +309,7 @@ function IdeFallbackNavigate() {
     searchParams.set("repo", `${params.provider}/${params.namespace}/${params.project}`);
   }
   const qs = searchParams.toString();
-  return <Navigate to={`/playground${qs ? `?${qs}` : ""}${location.hash}`} replace />;
+  return <Navigate to={`/sketch${qs ? `?${qs}` : ""}${location.hash}`} replace />;
 }
 
 function LegacyUserRedirect() {
@@ -607,12 +607,14 @@ function App() {
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
                   <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
                   <Route path="/embed/playground" element={<EmbedPlaygroundPage />} />
-                  <Route path="/morsel" element={<PreserveParamsNavigate to="/playground" />} />
-                  <Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/playground" />} />
+                  <Route path="/embed/sketch" element={<EmbedPlaygroundPage />} />
+                  <Route path="/morsel" element={<PreserveParamsNavigate to="/sketch" />} />
+                  <Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/sketch" />} />
                   <Route path="/solutions/:username/:slug" element={<SolutionPage />} />
 
                   {/* Social shell routes */}
                   <Route element={<AppShell />}>
+                    <Route path="/sketch" element={<PlaygroundPage />} />
                     <Route path="/playground" element={<PlaygroundPage />} />
                     <Route
                       path="/home"
@@ -659,19 +661,23 @@ function App() {
                     <Route path="/packages/:name/:version/classes/:className" element={<PackageDetailPage />} />
                     <Route path="/packages/:scope/:name/:version/classes/:className" element={<PackageDetailPage />} />
 
-                    {/* ModelScript Studio */}
-                    <Route path="/ide" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
-                    <Route path="/ide/:templateId" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
+                    {/* Studio */}
                     <Route path="/studio" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
                     <Route
                       path="/studio/:templateId"
                       element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
                     />
+                    <Route path="/ide" element={<PreserveParamsNavigate to="/studio" />} />
+                    <Route path="/ide/:templateId" element={<PreserveParamsNavigate to="/studio" />} />
 
                     {/* Repositories */}
                     <Route
                       path="/repos"
                       element={hasRepos ? <RepositoryListPage /> : <Navigate to="/packages" replace />}
+                    />
+                    <Route
+                      path="/repos/:provider/:namespace/:project/studio"
+                      element={hasRepos && hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
                     />
                     <Route
                       path="/repos/:provider/:namespace/:project/ide"

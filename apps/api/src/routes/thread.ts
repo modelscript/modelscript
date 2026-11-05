@@ -612,7 +612,7 @@ export function threadRouter(
   // ── POST /api/v1/threads/proposals ────────────────────────────────────
   router.post("/proposals", (req, res) => {
     const authUser = (req as { user?: { username?: string | undefined; email?: string | undefined } | undefined }).user;
-    if (!authUser && process.env["NODE_ENV"] === "production") {
+    if (!authUser) {
       return res.status(401).json({ error: "Authentication required" });
     }
     const { threadId, title, description, diffSummary, safetyStandard } = req.body;
@@ -661,7 +661,7 @@ export function threadRouter(
   // ── POST /api/v1/threads/proposals/:id/review ─────────────────────────
   router.post("/proposals/:id/review", (req, res) => {
     const authUser = (req as { user?: { username?: string | undefined; email?: string | undefined } | undefined }).user;
-    if (!authUser && process.env["NODE_ENV"] === "production") {
+    if (!authUser) {
       return res.status(401).json({ error: "Authentication required" });
     }
     const id = parseInt(req.params.id, 10);
@@ -705,6 +705,10 @@ export function threadRouter(
 
   // ── POST /api/v1/threads/nodes ────────────────────────────────────────
   router.post("/nodes", (req, res) => {
+    const authUser = (req as { user?: { username?: string | undefined; email?: string | undefined } | undefined }).user;
+    if (!authUser) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
     const { threadId, revision, relation, branchId, status, domains, metadata, conflict } = req.body ?? {};
     const tIdNum = typeof threadId === "number" ? threadId : parseInt(String(threadId || "0").replace(/\D/g, ""), 10);
     if (!tIdNum || Number.isNaN(tIdNum)) {
@@ -810,6 +814,11 @@ export function threadRouter(
 
   // ── POST /api/v1/threads/import ───────────────────────────────────────
   router.post("/import", (req, res) => {
+    const authUser = (req as { user?: { username?: string | undefined; email?: string | undefined } | undefined }).user;
+    if (!authUser) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
     try {
       const payload = req.body?.threadFile ?? req.body;
       const jsonStr = typeof payload === "string" ? payload : JSON.stringify(payload);

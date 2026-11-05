@@ -33,6 +33,7 @@ import { useInstanceBranding } from "../InstanceBrandingContext";
 import { getSearchCompletions } from "../api";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { useTheme } from "../theme";
+import { AnsatzSketchIcon } from "./icons";
 
 interface CommandItem {
   id: string;
@@ -369,13 +370,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         },
       },
       {
-        id: "nav-playground",
+        id: "nav-sketch",
         category: "Navigation",
-        title: "Playground",
-        subtitle: "Edit, simulate, and visualize models in the browser",
-        icon: <PlayIcon size={16} />,
+        title: "Ansatz Sketch",
+        subtitle: "Draft, simulate, and visualize engineering models in the browser",
+        icon: <AnsatzSketchIcon size={16} variant="outline" />,
         action: () => {
-          navigate("/playground");
+          navigate("/sketch");
           onClose();
         },
       },
@@ -423,13 +424,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       ...(hasIde
         ? [
             {
-              id: "nav-ide",
+              id: "nav-studio",
               category: "Navigation" as const,
-              title: `${brandName} IDE Workbench`,
-              subtitle: "Launch VS Code Web editor with WASM solvers and CAD viewers",
+              title: "Studio",
+              subtitle: "Launch VS Code Web editor with WASM solvers and CAD viewers (/studio)",
               icon: <CodeIcon size={16} />,
               action: () => {
-                navigate("/ide");
+                navigate("/studio");
                 onClose();
               },
             },
@@ -610,6 +611,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
 
     const isEngineeringRoute =
       location.pathname.startsWith("/playground") ||
+      location.pathname.startsWith("/sketch") ||
       location.pathname.startsWith("/morsel") ||
       location.pathname.startsWith("/render-artifact");
 

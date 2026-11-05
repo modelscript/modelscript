@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PlayIcon } from "@primer/octicons-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getTimeline } from "../api";
@@ -9,6 +8,7 @@ import { AnsatzMark } from "../components/AnsatzLogo";
 import Box from "../components/Box";
 import ComposeBox from "../components/ComposeBox";
 import { ComposeContext } from "../components/ComposeContext";
+import { AnsatzSketchIcon } from "../components/icons";
 import PostSkeleton from "../components/PostSkeleton";
 import { scrollToTop } from "../components/ScrollToTop";
 import Spinner from "../components/Spinner";
@@ -203,9 +203,9 @@ const HomeFeedPage: React.FC = () => {
           <span>{brandName}</span>
         </button>
         <Link
-          to="/playground"
-          title="Open Playground"
-          aria-label="Open Playground"
+          to="/sketch"
+          title="Open Ansatz Sketch"
+          aria-label="Open Ansatz Sketch"
           style={{
             width: 30,
             height: 30,
@@ -219,7 +219,7 @@ const HomeFeedPage: React.FC = () => {
             flexShrink: 0,
           }}
         >
-          <PlayIcon size={14} />
+          <AnsatzSketchIcon size={16} variant="outline" />
         </Link>
       </MobileFeedTopBar>
 

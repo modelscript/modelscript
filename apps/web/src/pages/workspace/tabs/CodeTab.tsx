@@ -872,12 +872,12 @@ git push -u origin ${defaultBranch}`}
                           const dialect = getDialectForFileName(currentFile) || "modelica";
                           const title = currentFile.split("/").pop() || "Model";
                           navigate(
-                            `/playground?dialect=${encodeURIComponent(dialect)}&title=${encodeURIComponent(title)}&code=${encodeURIComponent(fileContent)}`,
+                            `/sketch?dialect=${encodeURIComponent(dialect)}&title=${encodeURIComponent(title)}&code=${encodeURIComponent(fileContent)}`,
                           );
                         }}
-                        title="Simulate or inspect this model in the interactive Playground"
+                        title="Simulate or inspect this model in interactive Ansatz Sketch"
                       >
-                        Open in Playground
+                        Open in Sketch
                       </Button>
                     )}
 

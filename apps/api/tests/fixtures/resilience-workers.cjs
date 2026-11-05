@@ -46,7 +46,7 @@ process.on("message", (data) => {
         process.send?.({ type: "complete", classesProcessed: processed });
         process.exit(0);
       }
-    }, 150);
+    }, 250);
     return;
   }
 

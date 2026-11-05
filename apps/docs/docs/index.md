@@ -16,8 +16,8 @@ hero:
       text: Get Started
       link: /guide/getting-started
     - theme: alt
-      text: Try the Playground
-      link: /playground
+      text: Try Ansatz Sketch
+      link: /sketch
       target: _self
     - theme: alt
       text: Explore Industries

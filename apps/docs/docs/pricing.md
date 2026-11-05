@@ -1,6 +1,7 @@
 ---
 title: Pricing & Licensing
 description: Plans for individuals, teams, vendors embedding ModelScript, and air-gapped enterprise deployments.
+pageClass: pricing-page
 ---
 
 # Pricing

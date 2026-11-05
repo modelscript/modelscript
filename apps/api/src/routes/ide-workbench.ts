@@ -120,7 +120,7 @@ export function renderWorkbenchHtml(
   const productConfiguration: Record<string, unknown> = {
     enableTelemetry: false,
     nameShort: "ModelScript",
-    nameLong: "ModelScript Studio",
+    nameLong: "Studio",
     webEndpointUrlTemplate: webEndpoint,
     chatParticipantRegistry: "",
     extensionAllowedProposedApi: ["modelscript.modelscript", "vscode.mermaid-markdown-features"],
@@ -285,11 +285,11 @@ export function renderWorkbenchHtml(
             if (parsed && parsed.title) cachedTitle = parsed.title;
           }
         } catch (e) {}
-        document.title = (cachedTitle || ('Workspace #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript Studio';
+        document.title = (cachedTitle || ('Workspace #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Studio';
       } else if (template.startsWith('package-')) {
-        document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript Studio';
+        document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Studio';
       } else {
-        document.title = 'New Project — ModelScript Studio';
+        document.title = 'New Project — Studio';
       }
       config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template };
     } else {
@@ -299,7 +299,7 @@ export function renderWorkbenchHtml(
       var p = ownerRepo.split('/');
       var owner = p[0] || 'modelscript';
       var repo = p[1] || 'modelscript';
-      document.title = owner + '/' + repo + ' — ModelScript Studio';
+      document.title = owner + '/' + repo + ' — Studio';
       config.folderUri = { scheme: 'github', authority: '', path: '/' + owner + '/' + repo, query: 'ref=' + ref };
     }
   }
@@ -330,7 +330,7 @@ export function renderWorkbenchHtml(
         localStorage.setItem('modelscript:ide:memfs:' + data.artifactId, JSON.stringify(data));
         localStorage.setItem('modelscript:ide:memfs:artifact-' + data.artifactId, JSON.stringify(data));
         if (data.title) {
-          document.title = data.title + ' — ModelScript Studio';
+          document.title = data.title + ' — Studio';
         }
       } catch (e) {}
     }
@@ -450,7 +450,7 @@ function renderWrapper(provider: string, owner: string, repo: string, ref: strin
 
   return `<!DOCTYPE html>
 <html><head>
-<title>${safeOwner}/${safeRepo} — ModelScript Studio</title>
+<title>${safeOwner}/${safeRepo} — Studio</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }

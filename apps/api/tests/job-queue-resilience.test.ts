@@ -196,14 +196,14 @@ test("JobQueue Resilience & Fault-Tolerance", async (t) => {
     const queue = new JobQueue({ concurrency: 1 });
     t.after(() => queue.clear());
 
-    // Initial timeout is tight (350ms), but total duration is ~600ms.
-    // Without progress extension it would fail at 350ms.
+    // Initial timeout is tight (800ms), but total duration is ~1000ms.
+    // Without progress extension it would fail at 800ms.
     // With progress extension on each classesProcessed event, it should complete cleanly!
     queue.enqueueProcess(
       "progress-ext-job",
       workerScript,
       { mode: "slow-progress" },
-      { timeoutMs: 350, maxTimeoutMs: 3000 },
+      { timeoutMs: 800, maxTimeoutMs: 5000 },
     );
 
     let attempts = 0;

@@ -28,8 +28,9 @@ import { inspectClassSource } from "../util/class-source-inspector.js";
 import { getPackageVersionResources, resolveDataPackageLockfile } from "../util/datapackage-indexer.js";
 import { getLanguageIconSvg } from "../util/language-icons.js";
 import { parsePackageMo } from "../util/package-mo.js";
+import { scanPackageArchive } from "../util/package-scanner.js";
 import { renderPolyglotClassDiagramSvg } from "../util/polyglot-doc-indexer.js";
-import { extractPackageMoFromZip } from "../util/zip.js";
+import { extractManifestFromZip, extractPackageMoFromZip } from "../util/zip.js";
 
 function isValidPackageName(name: string): boolean {
   return /^(@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(name);
@@ -1476,8 +1477,46 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           );
           const upstreamRes = await fetch(upstreamUrl.toString());
           if (upstreamRes.ok) {
+            const contentLength = Number(upstreamRes.headers.get("content-length"));
+            if (contentLength > 50 * 1024 * 1024) {
+              res.status(502).json({ error: "Upstream package exceeds 50MB limit" });
+              return;
+            }
             const buffer = await upstreamRes.arrayBuffer();
             const nodeBuffer = Buffer.from(buffer);
+            if (nodeBuffer.length > 50 * 1024 * 1024) {
+              res.status(502).json({ error: "Upstream package exceeds 50MB limit" });
+              return;
+            }
+
+            const scanResult = await scanPackageArchive(nodeBuffer);
+            if (!scanResult.valid) {
+              res.status(502).json({
+                error: `Upstream package failed security screening: ${scanResult.violations.join(", ")}`,
+              });
+              return;
+            }
+
+            const manifestResult = await extractManifestFromZip(nodeBuffer, {
+              fallbackName: name,
+              fallbackVersion: version,
+            });
+            let manifestName: string | undefined;
+            if (manifestResult.type === "json") {
+              try {
+                const parsed = JSON.parse(manifestResult.content);
+                manifestName = parsed?.name;
+              } catch {}
+            } else if (manifestResult.type === "mo") {
+              manifestName = parsePackageMo(manifestResult.content)?.name ?? undefined;
+            }
+            const baseName = name.includes("/") ? name.split("/")[1] : name;
+            if (manifestName && manifestName !== name && manifestName !== baseName) {
+              res.status(502).json({
+                error: `Upstream package name mismatch: expected '${name}', found '${manifestName}'`,
+              });
+              return;
+            }
 
             // Cache locally
             try {

@@ -12,7 +12,6 @@ import { ComposeContext } from "../components/ComposeContext";
 import { VsCodeIcon } from "../components/icons/VsCodeIcon";
 import Spinner from "../components/Spinner";
 import { useFeatureFlag } from "../FeatureFlagContext";
-import { useInstanceBranding } from "../InstanceBrandingContext";
 import { useTheme } from "../theme";
 import type { RepositoryDTO } from "../types/api";
 import {
@@ -318,8 +317,6 @@ export const IdeWorkspacePage: React.FC = () => {
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const { theme } = useTheme();
-  const branding = useInstanceBranding();
-  const brandName = branding.instanceName || "Ansatz";
   const { openCompose } = useContext(ComposeContext);
   const hasGitRepos = useFeatureFlag("git_repositories");
   const hasLegacyRepos = useFeatureFlag("repositories");
@@ -518,7 +515,7 @@ export const IdeWorkspacePage: React.FC = () => {
     titleParam,
   ]);
 
-  usePageTitle(hasSpecificHandoff ? `${displayTitle} — ModelScript Studio` : "ModelScript Studio");
+  usePageTitle(hasSpecificHandoff ? `${displayTitle} — Studio` : "Studio");
 
   const workbenchUrl = useMemo(() => `/vscode/workbench${folderHash}`, [folderHash]);
 
@@ -613,8 +610,8 @@ export const IdeWorkspacePage: React.FC = () => {
           ? `Here is my updated **${cleanTitle}** workspace:`
           : incomingPayload?.content ||
             (forkedId
-              ? `Forked and modified **${cleanTitle}** (from Artifact #${forkedId}) in ModelScript Studio! 🚀`
-              : `Check out my workspace in ModelScript Studio: **${cleanTitle}** 🚀`);
+              ? `Forked and modified **${cleanTitle}** (from Artifact #${forkedId}) in Studio! 🚀`
+              : `Check out my workspace in Studio: **${cleanTitle}** 🚀`);
 
       const composeInit: any = {
         ...(defaultContent !== undefined ? { content: defaultContent } : {}),
@@ -638,7 +635,7 @@ export const IdeWorkspacePage: React.FC = () => {
 
       openCompose(composeInit);
     },
-    [artifactMetadata, brandName, displayTitle, editPostId, langParam, openCompose, replyToPostId, resolveForkedFromId],
+    [artifactMetadata, displayTitle, editPostId, langParam, openCompose, replyToPostId, resolveForkedFromId],
   );
 
   // Listen to messages from standalone VS Code window via BroadcastChannel
@@ -823,7 +820,7 @@ export const IdeWorkspacePage: React.FC = () => {
         <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
           <Box display="flex" flexDirection="column">
             <Heading as="h1" style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>
-              ModelScript Studio
+              Studio
             </Heading>
             <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
               Launch a dedicated engineering workspace in VS Code Web (powered by ModelScript)

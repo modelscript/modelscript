@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, CodeIcon, CopyIcon, PlayIcon, SearchIcon, ZapIcon } from "@primer/octicons-react";
+import { CheckIcon, CopyIcon, PlayIcon, SearchIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Heading, Text, TextInput } from "@primer/react";
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import api from "../../api";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 
@@ -467,7 +468,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     const artifactId = viewConfig.artifactId
       ? `?fromArtifact=${encodeURIComponent(String(viewConfig.artifactId))}`
       : "";
-    navigate(`/playground${artifactId}#m=${hash}`);
+    navigate(`/sketch${artifactId}#m=${hash}`);
   };
 
   return (
@@ -498,10 +499,10 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               size="small"
               variant="primary"
               onClick={handleOpenInPlayground}
-              title="Open FMU interface wrapper in ModelScript Playground"
+              title="Open FMU interface wrapper in ModelScript Sketch"
             >
-              <CodeIcon size={14} />
-              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
+              <DraftingTriangleIcon size={14} />
+              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Sketch</Text>
             </Button>
           )}
         </ActionButtons>

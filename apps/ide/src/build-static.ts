@@ -184,7 +184,7 @@ function renderStaticWorkbench(): string {
     productConfiguration: {
       enableTelemetry: false,
       nameShort: "ModelScript",
-      nameLong: "ModelScript IDE",
+      nameLong: "Studio",
       chatParticipantRegistry: "",
       extensionAllowedProposedApi: ["modelscript.modelscript", "vscode.mermaid-markdown-features"],
       extensionEnabledApiProposals: {
@@ -326,11 +326,11 @@ function renderStaticWorkbench(): string {
           if (parsed && parsed.title) cachedTitle = parsed.title;
         }
       } catch (e) {}
-      document.title = (cachedTitle || ('Artifact #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript IDE';
+      document.title = (cachedTitle || ('Artifact #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Studio';
     } else if (template.startsWith('package-')) {
-      document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — ModelScript IDE';
+      document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Studio';
     } else {
-      document.title = 'New Project — ModelScript IDE';
+      document.title = 'New Project — Studio';
     }
     config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template, query: query };
   } else {
@@ -340,7 +340,7 @@ function renderStaticWorkbench(): string {
     var p = ownerRepo.split('/');
     var owner = p[0] || 'modelscript';
     var repo = p[1] || 'modelscript';
-    document.title = owner + '/' + repo + ' — ModelScript IDE';
+    document.title = owner + '/' + repo + ' — Studio';
     config.folderUri = { scheme: 'github', authority: '', path: '/' + owner + '/' + repo, query: 'ref=' + ref };
   }
   
@@ -370,7 +370,7 @@ function renderStaticWorkbench(): string {
         localStorage.setItem('modelscript.artifact_' + data.artifactId, JSON.stringify(data));
         localStorage.setItem('modelscript:ide:memfs:artifact-' + data.artifactId, JSON.stringify(data));
         if (data.title) {
-          document.title = data.title + ' — ModelScript IDE';
+          document.title = data.title + ' — Studio';
         }
       } catch (e) {}
     }

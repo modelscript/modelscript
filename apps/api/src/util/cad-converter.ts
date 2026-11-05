@@ -659,6 +659,7 @@ export async function convertStepToJson(url: string, database: LibraryDatabase):
   }
 
   console.log(`[CAD] Fetching and converting STEP: ${url}`);
+  const MAX_STEP_BYTES = 50 * 1024 * 1024; // 50 MB
   let fileData = resolveLocalUploadBuffer(url);
   if (!fileData) {
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
@@ -668,8 +669,17 @@ export async function convertStepToJson(url: string, database: LibraryDatabase):
     if (!response.ok) {
       throw new Error(`Failed to fetch STEP file: ${response.status} ${response.statusText}`);
     }
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_STEP_BYTES) {
+      throw new Error(`STEP file exceeds maximum allowed size (50 MB)`);
+    }
     const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > MAX_STEP_BYTES) {
+      throw new Error(`STEP file exceeds maximum allowed size (50 MB)`);
+    }
     fileData = new Uint8Array(buffer);
+  } else if (fileData.byteLength > MAX_STEP_BYTES) {
+    throw new Error(`STEP file exceeds maximum allowed size (50 MB)`);
   }
 
   const text = new TextDecoder().decode(fileData);

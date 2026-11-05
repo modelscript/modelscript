@@ -5,7 +5,7 @@ import mcpData from "../data/mcp-tools.generated.json";
 import { type Tone, toneStyle } from "../data/tones";
 import MsIcon from "./MsIcon.vue";
 
-type SurfaceId = "playground" | "webide" | "vscode" | "cli" | "mcp" | "desktop";
+type SurfaceId = "sketch" | "playground" | "webide" | "vscode" | "cli" | "mcp" | "desktop";
 
 interface Surface {
   id: SurfaceId;
@@ -21,13 +21,13 @@ interface Surface {
 
 const surfaces: Surface[] = [
   {
-    id: "playground",
+    id: "sketch",
     icon: "globe",
     tone: ["cyan", "emerald"],
-    title: "Playground",
-    body: "Edit, lint, and simulate models in your browser. Nothing to install.",
-    cta: "Open Playground",
-    link: "/playground",
+    title: "Ansatz Sketch",
+    body: "Draft, simulate, and visualize models in your browser. Nothing to install.",
+    cta: "Open Sketch",
+    link: "/sketch",
     tag: "Zero install",
     target: "_self",
   },
@@ -35,10 +35,10 @@ const surfaces: Surface[] = [
     id: "webide",
     icon: "layers",
     tone: ["indigo", "cyan"],
-    title: "Web IDE",
+    title: "Studio",
     body: "A full VS Code-based workbench with diagrams, plots, and a simulation debugger.",
-    cta: "Launch IDE",
-    link: "/ide",
+    cta: "Launch Studio",
+    link: "/studio",
     target: "_self",
   },
   {
@@ -103,8 +103,8 @@ const surfaces: Surface[] = [
         >
           <div class="ms-schematic surf-schematic" aria-hidden="true">
             <svg viewBox="0 0 280 100" fill="none" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-              <!-- 1. Browser Playground: editor + live plot -->
-              <template v-if="s.id === 'playground'">
+              <!-- 1. Browser Sketch: editor + live plot -->
+              <template v-if="s.id === 'sketch' || s.id === 'playground'">
                 <rect class="sx-ink-f" x="16" y="10" width="248" height="80" rx="7" />
                 <path class="sx-ink" d="M16 26 H264 M140 26 V90" />
                 <circle class="sx-ink-d" cx="27" cy="18" r="2.5" />

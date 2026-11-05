@@ -521,8 +521,8 @@ export interface BuildEditorUrlOptions {
 
 /**
  * Builds the canonical URL to open, fork, edit, or reply to an artifact:
- * - Single-file artifacts route to `/playground`
- * - Multi-file artifacts route to `/ide`
+ * - Single-file artifacts route to `/sketch`
+ * - Multi-file artifacts route to `/studio`
  */
 export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): string {
   const parsedViewConfig =
@@ -591,10 +591,10 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
     const qs = params.toString();
     const hash =
       artifactId !== undefined && artifactId !== null && String(artifactId) !== "" ? `#memfs:${artifactId}` : "";
-    return `/ide${qs ? `?${qs}` : ""}${hash}`;
+    return `/studio${qs ? `?${qs}` : ""}${hash}`;
   }
 
-  // Single-file -> /playground
+  // Single-file -> /sketch
   const params = new URLSearchParams();
   if (artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
     params.set("fromArtifact", String(artifactId));
@@ -625,7 +625,7 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
   }
 
   const qs = params.toString();
-  return `/playground${qs ? `?${qs}` : ""}${hash}`;
+  return `/sketch${qs ? `?${qs}` : ""}${hash}`;
 }
 
 /**

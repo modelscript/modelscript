@@ -36,6 +36,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
@@ -636,7 +637,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
     const fromParam = viewConfig?.artifactId
       ? `?fromArtifact=${encodeURIComponent(String(viewConfig.artifactId))}`
       : "";
-    navigate(`/playground${fromParam}#m=${encoded}`);
+    navigate(`/sketch${fromParam}#m=${encoded}`);
   }, [xmlText, viewConfig, diagramData.model.title, navigate]);
 
   const renderCellContent = (row: TabularRow, col: SerializedTabularColumn) => {
@@ -1438,9 +1439,10 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
               <PillButton
                 $isDark={isDark}
                 onClick={handleOpenInPlayground}
-                title="Open in Ansatz Polyglot Playground (powered by ModelScript)"
+                title="Open in Ansatz Polyglot Sketch (powered by ModelScript)"
               >
-                Playground
+                <DraftingTriangleIcon size={12} style={{ verticalAlign: -1, marginRight: 4 }} />
+                Sketch
               </PillButton>
             )}
           </div>

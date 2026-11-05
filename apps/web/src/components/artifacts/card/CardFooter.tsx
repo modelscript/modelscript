@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  DownloadIcon,
-  LinkExternalIcon,
-  PlayIcon,
-  RepoForkedIcon,
-  ScreenFullIcon,
-  ServerIcon,
-} from "@primer/octicons-react";
+import { DownloadIcon, LinkExternalIcon, RepoForkedIcon, ScreenFullIcon, ServerIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
@@ -23,6 +16,7 @@ import {
 import { sanitizeHttpUrl } from "../../../util/url";
 import Box from "../../Box";
 import { CiteButton } from "../../citations/CiteButton";
+import { DraftingTriangleIcon } from "../../icons";
 import { VsCodeIcon } from "../../icons/VsCodeIcon";
 import { useCardFooterSlotRegister } from "./CardFooterSlot";
 
@@ -386,10 +380,10 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             type="button"
             className="card-footer-ghost is-primary"
             onClick={handleOpenEditor}
-            data-tip={"Playground\nEdit and run in the browser"}
-            aria-label="Open in Playground"
+            data-tip={"Sketch\nEdit and run in the browser"}
+            aria-label="Open in Sketch"
           >
-            <PlayIcon size={14} />
+            <DraftingTriangleIcon size={14} />
           </button>
         )}
         {isEditable && (

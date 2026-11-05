@@ -392,7 +392,7 @@ export default function SolutionPage() {
             "/static/solutions/",
           )}
           title={solution.name}
-          sandbox="allow-scripts allow-downloads allow-forms allow-same-origin"
+          sandbox="allow-scripts allow-downloads allow-forms"
           onLoad={() => setIframeLoaded(true)}
           style={{
             width: "100%",

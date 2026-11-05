@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 
 import type { LibraryDatabase } from "../database.js";
-import { JWT_SECRET, isAccountBlocked, requireAuth } from "../middleware/auth-middleware.js";
+import { JWT_SECRET, isAccountBlocked, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 
 import { defaultLoginLimiter } from "../middleware/login-limiter.js";
 import { defaultRegistrationLimiter } from "../middleware/registration-limiter.js";
@@ -155,12 +155,15 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      if (!username || !email || !password) {
+      const cleanUsername = typeof username === "string" ? username.trim() : "";
+      const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+
+      if (!cleanUsername || !cleanEmail || !password) {
         res.status(400).json({ error: "Username, email, and password are required" });
         return;
       }
 
-      if (typeof username !== "string" || username.length < 3) {
+      if (cleanUsername.length < 3) {
         res.status(400).json({ error: "Username must be at least 3 characters" });
         return;
       }
@@ -176,13 +179,13 @@ export function authRouter(database: LibraryDatabase): Router {
 
       const emailRegex =
         /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-      if (!emailRegex.test(email)) {
+      if (!emailRegex.test(cleanEmail)) {
         res.status(400).json({ error: "Invalid email address" });
         return;
       }
 
       // 3. Anti-Sybil: Reject disposable / temporary burner emails & canonical email blocks
-      if (isDisposableEmail(email)) {
+      if (isDisposableEmail(cleanEmail)) {
         res.status(403).json({
           error: "Disposable and temporary email addresses are not permitted. Please use a permanent email address.",
         });
@@ -197,7 +200,7 @@ export function authRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      const emailBlock = database.isCanonicalEmailBlocked(email);
+      const emailBlock = database.isCanonicalEmailBlocked(cleanEmail);
       if (emailBlock.blocked) {
         res.status(403).json({
           error: emailBlock.reason || "This email address is blocked from registration on this instance.",
@@ -215,19 +218,19 @@ export function authRouter(database: LibraryDatabase): Router {
       try {
         const inviteCode = typeof req.body?.inviteCode === "string" ? req.body.inviteCode.trim() : "";
 
-        const existing = database.getUserByEmail(email);
+        const existing = database.getUserByEmail(cleanEmail);
         if (existing) {
           res.status(409).json({ error: "An account with this email already exists" });
           return;
         }
 
-        const existingUsername = database.getUserByUsername(username);
+        const existingUsername = database.getUserByUsername(cleanUsername);
         if (existingUsername) {
           res.status(409).json({ error: "This username is already taken" });
           return;
         }
 
-        const policy = evaluateRegistrationPolicy(database, { email, inviteCode });
+        const policy = evaluateRegistrationPolicy(database, { email: cleanEmail, inviteCode });
         if (!policy.allowed) {
           res.status(policy.status ?? 403).json({
             error: policy.error || "Registration is restricted on this instance.",
@@ -245,7 +248,7 @@ export function authRouter(database: LibraryDatabase): Router {
         const passwordHash = await bcrypt.hash(password, 10);
 
         // Create user with compute credits withheld until verification (unless invited or airgap-auto-verified)
-        let user = database.createUser(username, email, passwordHash, {
+        let user = database.createUser(cleanUsername, cleanEmail, passwordHash, {
           emailVerified: preVerified,
           initialCredits,
           status: preVerified ? "active" : "pending_verification",
@@ -1229,9 +1232,14 @@ export function authRouter(database: LibraryDatabase): Router {
    *
    * Clears the HttpOnly session cookie and logs audit event.
    */
-  router.post("/logout", (req: Request, res: Response): void => {
+  router.post("/logout", optionalAuth, (req: Request, res: Response): void => {
     clearSessionCookie(res);
     const clientIp = getClientIp(req);
+    if (req.user?.id) {
+      try {
+        database.incrementTokenVersion(req.user.id);
+      } catch {}
+    }
     database.logAudit({
       actorId: req.user?.id ?? null,
       action: "auth_logout",
@@ -1343,6 +1351,7 @@ export function authRouter(database: LibraryDatabase): Router {
 
       const newHash = await bcrypt.hash(newPassword, 10);
       database.updatePassword(user.id, newHash);
+      database.incrementTokenVersion(user.id);
 
       database.logAudit({
         actorId: user.id,
@@ -1884,10 +1893,17 @@ export function authRouter(database: LibraryDatabase): Router {
         username = cleanUser;
         email = `${cleanUser}@${targetDomain}`;
         remoteDomain = targetDomain;
-        remoteDisplayName = accountData.display_name || accountData.username;
-        remoteAvatar = accountData.avatar || "";
         remoteBio = accountData.note || "";
-        actorUrl = accountData.url || `https://${targetDomain}/users/${cleanUser}`;
+        let resolvedActorUrl = `https://${targetDomain}/users/${cleanUser}`;
+        if (typeof accountData.url === "string" && accountData.url.trim()) {
+          try {
+            const parsed = new URL(accountData.url.trim());
+            if (parsed.hostname.toLowerCase() === targetDomain.toLowerCase()) {
+              resolvedActorUrl = parsed.href;
+            }
+          } catch {}
+        }
+        actorUrl = resolvedActorUrl;
         verifiedLiveProfile = true;
       } else if (provider === "github") {
         const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
@@ -2029,7 +2045,9 @@ export function authRouter(database: LibraryDatabase): Router {
         }
         database.updateOAuthTokens(userId, provider, accessToken, refreshToken, expiresAt);
       } else {
-        // Ensure email/username are not already taken by a regular account
+        // Pre-Account Takeover Defense:
+        // Do not auto-link unauthenticated logins to existing accounts by remote actorUrl or email.
+        // If an account already exists with that email or actorUrl, require logging in with existing credentials first.
         const existingByActor = provider === "fediverse" && actorUrl ? database.getUserByActorUrl(actorUrl) : undefined;
         const existing = existingByActor || database.getUserByEmail(email);
         if (existing) {
@@ -2037,14 +2055,12 @@ export function authRouter(database: LibraryDatabase): Router {
             res.status(403).json({ error: `Account is ${existing.status}. Please contact support.` });
             return;
           }
-          // Pre-Account Takeover Defense:
-          // If the account has a password, do NOT auto-link on unauthenticated login!
           if (existing.password_hash) {
             res.redirect(`${frontendUrl}/login?error=AccountExistsWithPassword&email=${encodeURIComponent(email)}`);
             return;
           }
-          user = existing;
-          database.linkOAuthAccount(user.id, provider, providerUserId, accessToken, refreshToken, expiresAt);
+          res.redirect(`${frontendUrl}/login?error=AccountAlreadyExists&email=${encodeURIComponent(email)}`);
+          return;
         } else {
           const inviteParam = typeof req.query["invite"] === "string" ? req.query["invite"].trim() : undefined;
           const policy = evaluateRegistrationPolicy(database, { email, inviteCode: inviteParam, provider });
@@ -2345,6 +2361,24 @@ export function authRouter(database: LibraryDatabase): Router {
     const { password, totpCode, username, email, display_name, avatar_url, banner_url } = req.body;
     const userId = req.user!.id;
 
+    const isSafeProfileUrl = (u: unknown): boolean => {
+      if (u === undefined || u === null || u === "") return true;
+      if (typeof u !== "string" || u.length > 2048) return false;
+      const trimmed = u.trim();
+      if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return true;
+      try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    };
+
+    if (!isSafeProfileUrl(avatar_url) || !isSafeProfileUrl(banner_url)) {
+      res.status(400).json({ error: "Profile URLs must use http://, https://, or a relative path" });
+      return;
+    }
+
     try {
       const hash = database.getPasswordHash(userId);
       // Require password confirmation only if account has a password set (i.e. not OAuth-only)
@@ -2613,6 +2647,10 @@ export function authRouter(database: LibraryDatabase): Router {
    * POST /api/v1/auth/keys
    */
   router.post("/keys", requireAuth, (req: Request, res: Response): void => {
+    if (isScopedApiToken(req)) {
+      res.status(403).json({ error: "Restricted personal access tokens cannot manage public keys" });
+      return;
+    }
     const { key_id_string, public_key_pem, device_name } = req.body;
     if (!key_id_string || !public_key_pem) {
       res.status(400).json({ error: "key_id_string and public_key_pem are required" });
@@ -2631,6 +2669,10 @@ export function authRouter(database: LibraryDatabase): Router {
    * DELETE /api/v1/auth/keys/:id
    */
   router.delete("/keys/:id", requireAuth, (req: Request, res: Response): void => {
+    if (isScopedApiToken(req)) {
+      res.status(403).json({ error: "Restricted personal access tokens cannot revoke public keys" });
+      return;
+    }
     try {
       database.revokePublicKey(req.user!.id, Number(req.params["id"]));
       res.json({ success: true });
@@ -2685,6 +2727,10 @@ export function authRouter(database: LibraryDatabase): Router {
    * DELETE /api/v1/auth/connected-accounts/:provider
    */
   router.delete("/connected-accounts/:provider", requireAuth, (req: Request, res: Response): void => {
+    if (isScopedApiToken(req)) {
+      res.status(403).json({ error: "Restricted personal access tokens cannot unlink connected accounts" });
+      return;
+    }
     const rawProvider = req.params["provider"];
     const provider = (Array.isArray(rawProvider) ? rawProvider[0] : rawProvider)?.toLowerCase();
     if (!provider) {

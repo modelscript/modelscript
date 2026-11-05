@@ -13,7 +13,6 @@ import {
   CodeIcon,
   CopyIcon,
   DownloadIcon,
-  PlayIcon,
   PulseIcon,
 } from "@primer/octicons-react";
 import { Button } from "@primer/react";
@@ -21,6 +20,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -380,7 +380,7 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
       title,
     });
     const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
-    navigate(`/playground${fromParam}#m=${hash}`);
+    navigate(`/sketch${fromParam}#m=${hash}`);
   };
 
   const slugRisk = viewConfig.slugRisk;
@@ -425,8 +425,8 @@ export const OlgaFlowViewer: React.FC<OlgaFlowViewerProps> = ({ viewConfig, isFu
             {copied ? "Copied" : "Copy"}
           </Button>
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
-            <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
-              Open in Playground
+            <Button size="small" leadingVisual={DraftingTriangleIcon} onClick={handleOpenInPlayground}>
+              Open in Sketch
             </Button>
           )}
         </Box>

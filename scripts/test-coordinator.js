@@ -152,18 +152,38 @@ function countTestFiles(dir) {
   return count;
 }
 
-export function partitionProjectsIntoShards(projects, totalShards, projectDirMap = buildWorkspaceTestProjectMap()) {
-  const weighted = projects.map((name) => {
-    const pkgDir = projectDirMap.get(name);
-    let weight = 1;
-    if (pkgDir) {
-      const testsCount = countTestFiles(path.join(pkgDir, "tests")) + countTestFiles(path.join(pkgDir, "validation"));
-      // Integration test suites with full Express server lifecycle, SQLite database migrations,
-      // and cryptography (@modelscript/api) have higher wall-clock duration per test file.
-      const multiplier = name === "@modelscript/api" ? 2 : 1;
-      weight = Math.max(1, Math.round(testsCount * multiplier));
+let cachedDurations = null;
+export function loadProjectDurations() {
+  if (cachedDurations) return cachedDurations;
+  const durationsPath = path.resolve(__dirname, "test-durations.json");
+  try {
+    if (fs.existsSync(durationsPath)) {
+      cachedDurations = JSON.parse(fs.readFileSync(durationsPath, "utf8"));
+      return cachedDurations;
     }
-    return { name, weight };
+  } catch {}
+  return {};
+}
+
+export function partitionProjectsIntoShards(
+  projects,
+  totalShards,
+  projectDirMap = buildWorkspaceTestProjectMap(),
+  durationsMap = loadProjectDurations(),
+) {
+  const weighted = projects.map((name) => {
+    let weight = durationsMap ? durationsMap[name] : undefined;
+    if (typeof weight !== "number" || weight <= 0) {
+      const pkgDir = projectDirMap.get(name);
+      if (pkgDir) {
+        const testsCount = countTestFiles(path.join(pkgDir, "tests")) + countTestFiles(path.join(pkgDir, "validation"));
+        // Fallback: estimate 4s per test file when empirical baseline duration is not recorded
+        weight = Math.max(1, Math.round(testsCount * 4));
+      } else {
+        weight = 1;
+      }
+    }
+    return { name, weight: Math.round(weight) };
   });
 
   // Sort deterministically: largest test suites first, tie-break alphabetically
@@ -296,7 +316,7 @@ export function runCoordinator(argv = process.argv.slice(2)) {
     const chosenShard = shards[shardIndex - 1] || { weight: 0, projects: [] };
     console.log(
       `[test-coordinator] 🧩 Shard ${shardIndex}/${totalShards}: assigned ${chosenShard.projects.length}/${candidateProjects.length} projects ` +
-        `(~${chosenShard.weight} test files): ${chosenShard.projects.join(", ") || "(none)"}`,
+        `(~${chosenShard.weight}s / ${(chosenShard.weight / 60).toFixed(1)}m est. execution time): ${chosenShard.projects.join(", ") || "(none)"}`,
     );
     if (chosenShard.projects.length === 0) {
       if (dryRun) {

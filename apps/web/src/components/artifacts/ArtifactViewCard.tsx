@@ -178,6 +178,15 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   ]);
 
   useEffect(() => {
+    if (!isFullScreen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isFullScreen]);
+
+  useEffect(() => {
     if (initialArtifactView) {
       setArtifact(initialArtifactView);
       cacheArtifact(initialArtifactView);

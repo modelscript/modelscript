@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Request } from "express";
+import net from "node:net";
+
+function isValidIp(ip: string | undefined): boolean {
+  return Boolean(ip && net.isIP(ip.trim()) !== 0);
+}
 
 /**
  * Extracts the real client IP address from an incoming Express request,
@@ -15,23 +20,26 @@ export function getClientIp(req: Request): string {
 
   if (trustForwarded) {
     const cfIp = req.headers["cf-connecting-ip"];
-    if (typeof cfIp === "string" && cfIp.trim()) {
+    if (typeof cfIp === "string" && isValidIp(cfIp)) {
       return cfIp.trim();
     }
 
     const xff = req.headers["x-forwarded-for"];
     if (typeof xff === "string" && xff.trim()) {
-      const first = xff.split(",")[0]?.trim();
-      if (first) {
-        return first;
+      const parts = xff.split(",").map((s) => s.trim());
+      for (const part of parts) {
+        if (isValidIp(part)) {
+          return part;
+        }
       }
     }
 
     const xRealIp = req.headers["x-real-ip"];
-    if (typeof xRealIp === "string" && xRealIp.trim()) {
+    if (typeof xRealIp === "string" && isValidIp(xRealIp)) {
       return xRealIp.trim();
     }
   }
 
-  return req.ip || req.socket.remoteAddress || "127.0.0.1";
+  const fallback = req.ip || req.socket?.remoteAddress || "127.0.0.1";
+  return isValidIp(fallback) ? fallback.trim() : "127.0.0.1";
 }

@@ -10,7 +10,6 @@ import {
   FilterIcon,
   ListUnorderedIcon,
   OrganizationIcon,
-  PlayIcon,
   PlusIcon,
   SearchIcon,
   SyncIcon,
@@ -23,6 +22,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -2120,7 +2120,7 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
             <Button
               size="small"
               variant="primary"
-              leadingVisual={PlayIcon}
+              leadingVisual={DraftingTriangleIcon}
               onClick={() => {
                 const hash = compressMorselPayload({
                   v: 1,
@@ -2128,10 +2128,10 @@ export const Owl2Viewer: React.FC<Owl2ViewerProps> = ({ viewConfig, isFullScreen
                   code: rawText || `Ontology(<http://example.org/ontology>\n)\n`,
                   title: displayTitle,
                 });
-                navigate(`/playground#m=${hash}`);
+                navigate(`/sketch#m=${hash}`);
               }}
             >
-              Open in Playground
+              Open in Sketch
             </Button>
           )}
         </Box>

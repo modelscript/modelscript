@@ -11,6 +11,7 @@ import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
@@ -1393,7 +1394,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
             <Button
               size="small"
               variant="primary"
-              leadingVisual={CodeIcon}
+              leadingVisual={DraftingTriangleIcon}
               onClick={() => {
                 const hash = compressMorselPayload({
                   v: 1,
@@ -1403,10 +1404,10 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                 });
                 const resolvedId = artifactId ?? viewConfig.artifactId;
                 const fromArtifact = resolvedId ? `?fromArtifact=${resolvedId}` : "";
-                navigate(`/playground${fromArtifact}#m=${hash}`);
+                navigate(`/sketch${fromArtifact}#m=${hash}`);
               }}
             >
-              Open in Playground
+              Open in Sketch
             </Button>
           )}
         </Box>

@@ -416,6 +416,18 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     }
   }
 
+  // Reject oversized payloads on auth endpoints before body buffering to prevent unauthenticated JSON DOS
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api/v1/auth") || req.path.startsWith("/auth")) {
+      const cl = req.headers["content-length"];
+      if (cl && parseInt(cl, 10) > 256 * 1024) {
+        res.status(413).json({ error: "Payload too large for authentication endpoint (max 256KB)" });
+        return;
+      }
+    }
+    next();
+  });
+
   // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
   app.use(
     express.json({

@@ -69,9 +69,9 @@ const activeSvg = computed<string>(() => {
   return isDark.value ? example.value.svgDark : example.value.svgLight;
 });
 
-const playgroundHref = computed<string>(() => {
-  if (!example.value) return "/playground";
-  return `/playground#m=${example.value.permalinkToken}`;
+const sketchHref = computed<string>(() => {
+  if (!example.value) return "/sketch";
+  return `/sketch#m=${example.value.permalinkToken}`;
 });
 
 const canvasTransform = computed<string>(() => {
@@ -206,13 +206,13 @@ function onPointerUp(e: PointerEvent) {
         </div>
 
         <a
-          :href="playgroundHref"
+          :href="sketchHref"
           target="_blank"
           rel="noopener noreferrer"
           class="open-playground-link"
-          title="Open this model in the full-screen ModelScript Playground"
+          title="Open this model in Ansatz Sketch"
         >
-          <span>Playground</span>
+          <span>Sketch</span>
           <MsIcon name="arrow-up-right" :size="13" />
         </a>
       </div>

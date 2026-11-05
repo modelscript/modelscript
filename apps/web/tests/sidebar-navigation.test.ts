@@ -20,14 +20,14 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
     );
   });
 
-  it("moves IDE link up to a proper nav link below packages titled 'Studio'", () => {
+  it("moves IDE link up to a proper nav link below packages titled 'Studio' pointing to /studio", () => {
     assert.ok(
-      content.includes('registryLinks.push({ to: "/ide", icon: CodeIcon, label: "Studio" });'),
-      "Sidebar.tsx must push Studio nav link to registryLinks",
+      content.includes('registryLinks.push({ to: "/studio", icon: CodeIcon, label: "Studio" });'),
+      "Sidebar.tsx must push Studio nav link to registryLinks pointing to /studio",
     );
 
     const packagesIndex = content.indexOf('registryLinks.push({ to: "/packages"');
-    const studioIndex = content.indexOf('registryLinks.push({ to: "/ide", icon: CodeIcon, label: "Studio" });');
+    const studioIndex = content.indexOf('registryLinks.push({ to: "/studio", icon: CodeIcon, label: "Studio" });');
     const reposIndex = content.indexOf('registryLinks.push({ to: "/repos"');
 
     assert.ok(packagesIndex !== -1, "Packages link must exist in registryLinks");
@@ -36,24 +36,19 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
     assert.ok(studioIndex < reposIndex, "Studio link must be placed above Repositories");
   });
 
-  it("moves Playground link up as a right-aligned icon link next to the Ansatz brand", () => {
+  it("removes redundant top-left sketch icon in favor of the split Post | Sketch button and makes BrandHeader full width", () => {
+    assert.ok(content.includes("<BrandRow>"), "Sidebar.tsx must render BrandRow container wrapping brand");
     assert.ok(
-      content.includes("<BrandRow>"),
-      "Sidebar.tsx must render BrandRow container wrapping brand and playground icon link",
-    );
-    assert.ok(content.includes("<BrandPlaygroundLink"), "Sidebar.tsx must render BrandPlaygroundLink");
-    assert.ok(content.includes('to="/playground"'), "BrandPlaygroundLink must point to /playground");
-    assert.ok(
-      content.includes("ComposeIcon") && content.includes("<ComposeIcon"),
-      "BrandPlaygroundLink must render Octicon ComposeIcon",
+      !content.includes("<BrandSketchLink") && !content.includes("<BrandPlaygroundLink"),
+      "Sidebar.tsx must not render redundant BrandSketchLink in brand header",
     );
     assert.ok(
-      content.includes('target="_blank"'),
-      "BrandPlaygroundLink must open in a new window with target='_blank'",
+      content.includes("<SplitPostButtonContainer") && content.includes("<SplitSketchButtonLink"),
+      "Sidebar.tsx must provide Sketch action via split button",
     );
     assert.ok(
-      content.includes('rel="noopener noreferrer"'),
-      "BrandPlaygroundLink must specify rel='noopener noreferrer' for security",
+      content.includes("const BrandHeader = styled(Link)`") && content.includes("width: 100%"),
+      "Sidebar.tsx BrandHeader must span full width for hover and click states",
     );
   });
 
@@ -65,6 +60,37 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
     assert.ok(
       content.includes('border-top: ${(props) => (props.$isGuest ? "none" : "1px solid var(--color-border)")}'),
       "FooterSection must not render a top border when $isGuest is true",
+    );
+  });
+
+  it("converts big blue post button into a split button for Post | Sketch", () => {
+    assert.ok(
+      content.includes("<SplitPostButtonContainer") && content.includes("post-split-btn-group"),
+      "Sidebar.tsx must render SplitPostButtonContainer with class post-split-btn-group",
+    );
+    assert.ok(
+      content.includes('data-testid="sidebar-split-post-button"'),
+      "Sidebar.tsx must provide data-testid='sidebar-split-post-button' on the split button container",
+    );
+    assert.ok(
+      content.includes('data-testid="sidebar-post-button"'),
+      "Sidebar.tsx must provide data-testid='sidebar-post-button' for the Post action",
+    );
+    assert.ok(
+      content.includes('data-testid="sidebar-sketch-button"'),
+      "Sidebar.tsx must provide data-testid='sidebar-sketch-button' for the Sketch action",
+    );
+    assert.ok(
+      content.includes("<SplitPostButtonDivider") && content.includes("post-split-divider"),
+      "Sidebar.tsx must render SplitPostButtonDivider separating Post and Sketch",
+    );
+    assert.ok(content.includes("onClick={onPostClick}"), "Sidebar.tsx Post button must invoke onPostClick");
+    assert.ok(content.includes('to="/sketch"'), "Sidebar.tsx Sketch button must point to /sketch");
+    assert.ok(content.includes("AnsatzSketchIcon"), "Sidebar.tsx Sketch button must render AnsatzSketchIcon");
+    assert.ok(content.includes("PlusIcon"), "Sidebar.tsx Post button must render PlusIcon");
+    assert.ok(
+      content.includes("onSketchClick?: (() => void) | undefined"),
+      "SidebarProps must accept optional onSketchClick handler",
     );
   });
 });

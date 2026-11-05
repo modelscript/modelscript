@@ -10,12 +10,13 @@ import {
   type PsseSwitchedShuntLike,
   type PsseTransformerLike,
 } from "@modelscript/diagram";
-import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, PlayIcon, ZapIcon } from "@primer/octicons-react";
+import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, ZapIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -477,7 +478,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
       title,
     });
     const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
-    navigate(`/playground${fromParam}#m=${hash}`);
+    navigate(`/sketch${fromParam}#m=${hash}`);
   };
 
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
@@ -515,8 +516,8 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
             {copied ? "Copied" : "Copy"}
           </Button>
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
-            <Button size="small" leadingVisual={PlayIcon} onClick={handleOpenInPlayground}>
-              Open in Playground
+            <Button size="small" leadingVisual={DraftingTriangleIcon} onClick={handleOpenInPlayground}>
+              Open in Sketch
             </Button>
           )}
         </Box>

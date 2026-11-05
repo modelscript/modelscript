@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="512" height="512" fill="none">
+  <defs>
+    <!-- Deep Blueprint Gradients -->
+    <linearGradient id="blueprintBg" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#081e3a" />
+      <stop offset="60%" stop-color="#051428" />
+      <stop offset="100%" stop-color="#030b17" />
+    </linearGradient>
+    <radialGradient id="blueprintGlow" cx="65%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.25" />
+      <stop offset="60%" stop-color="#0284c7" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#0284c7" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="pencilSpark" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="40%" stop-color="#38bdf8" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Blueprint Paper / Squircle Canvas -->
+  <rect width="48" height="48" rx="11" fill="url(#blueprintBg)" />
+  <rect width="48" height="48" rx="11" fill="url(#blueprintGlow)" />
+  <rect x="0.75" y="0.75" width="46.5" height="46.5" rx="10.25" stroke="#38bdf8" stroke-opacity="0.32" stroke-width="1.5" />
+
+  <!-- Blueprint Drafting Grid -->
+  <g stroke="#38bdf8" stroke-opacity="0.13" stroke-width="0.75">
+    <line x1="8" y1="4" x2="8" y2="44" />
+    <line x1="16" y1="4" x2="16" y2="44" />
+    <line x1="24" y1="4" x2="24" y2="44" />
+    <line x1="32" y1="4" x2="32" y2="44" />
+    <line x1="40" y1="4" x2="40" y2="44" />
+    <line x1="4" y1="8" x2="44" y2="8" />
+    <line x1="4" y1="16" x2="44" y2="16" />
+    <line x1="4" y1="24" x2="44" y2="24" />
+    <line x1="4" y1="32" x2="44" y2="32" />
+    <line x1="4" y1="40" x2="44" y2="40" />
+  </g>
+
+  <!-- Technical Registration Corner Ticks -->
+  <g stroke="#38bdf8" stroke-opacity="0.45" stroke-width="1.1" stroke-linecap="round">
+    <path d="M 4 8 L 7 8 M 7 5 L 7 8" />
+    <path d="M 44 8 L 41 8 M 41 5 L 41 8" />
+    <path d="M 4 40 L 7 40 M 7 43 L 7 40" />
+    <path d="M 44 40 L 41 40 M 41 43 L 41 40" />
+  </g>
+
+  <!-- Hidden Projection / Dashed Construction Lines -->
+  <g stroke="#38bdf8" stroke-opacity="0.45" stroke-width="1.1" stroke-dasharray="2 1.5">
+    <path d="M 11 31 L 22 25 L 33 31" />
+    <line x1="22" y1="25" x2="22" y2="13" />
+  </g>
+
+  <!-- Isometric Engineering Block -->
+  <!-- Top Face -->
+  <polygon points="22,13 33,19 22,25 11,19" fill="#38bdf8" fill-opacity="0.14" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round" />
+  
+  <!-- Cylindrical Bore on Top Face -->
+  <ellipse cx="22" cy="19" rx="5" ry="2.6" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="2.5 1.5" stroke-opacity="0.9" />
+  <g stroke="#38bdf8" stroke-width="0.8" stroke-opacity="0.75">
+    <line x1="19.5" y1="19" x2="24.5" y2="19" />
+    <line x1="22" y1="17.5" x2="22" y2="20.5" />
+  </g>
+
+  <!-- Left Face -->
+  <polygon points="11,19 22,25 22,37 11,31" fill="#0284c7" fill-opacity="0.22" stroke="#38bdf8" stroke-width="1.6" stroke-linejoin="round" />
+
+  <!-- Right Face -->
+  <polygon points="22,25 33,19 33,31 22,37" fill="#0369a1" fill-opacity="0.35" stroke="#38bdf8" stroke-width="1.6" stroke-linejoin="round" />
+
+  <!-- Dimension Witness Lines (Left Side) -->
+  <g stroke="#38bdf8" stroke-opacity="0.75" stroke-width="0.9">
+    <line x1="10" y1="19" x2="6.5" y2="19" />
+    <line x1="10" y1="31" x2="6.5" y2="31" />
+    <line x1="7.5" y1="19" x2="7.5" y2="31" />
+    <!-- Dimension Ticks -->
+    <path d="M 6 20.5 L 9 17.5 M 6 32.5 L 9 29.5" stroke-width="1" />
+  </g>
+
+  <!-- Compass Construction Arc (Top Right) -->
+  <path d="M 28 8.5 A 13 13 0 0 1 39 19.5" fill="none" stroke="#38bdf8" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="2 2" />
+
+  <!-- Drafting Pencil / Technical Stylus -->
+  <g id="drafting-stylus">
+    <!-- Active Sketched Line Spark / Glow -->
+    <circle cx="33" cy="31" r="3.5" fill="url(#pencilSpark)" />
+    <circle cx="33" cy="31" r="1.2" fill="#ffffff" />
+
+    <!-- Graphite Lead Tip -->
+    <polygon points="33,31 34.8,28.8 36.6,30.6" fill="#0f172a" stroke="#38bdf8" stroke-width="0.4" />
+
+    <!-- Wood Collar / Sharpened Cone -->
+    <polygon points="34.8,28.8 36.6,30.6 38.6,28.6 36.8,26.8" fill="#fed7aa" stroke="#d97706" stroke-width="0.5" />
+
+    <!-- Brass Ferrule Ring -->
+    <polygon points="36.8,26.8 38.6,28.6 39.8,27.4 38,25.6" fill="#f59e0b" />
+
+    <!-- Pencil Barrel (Ansatz Blue) -->
+    <polygon points="38,25.6 39.8,27.4 44.4,22.8 42.6,21" fill="#0284c7" stroke="#38bdf8" stroke-width="0.6" />
+    <!-- Barrel Facet Highlight -->
+    <line x1="38.9" y1="26.5" x2="43.5" y2="21.9" stroke="#7dd3fc" stroke-width="0.6" />
+  </g>
+</svg>

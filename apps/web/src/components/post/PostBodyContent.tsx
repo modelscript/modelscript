@@ -8,6 +8,7 @@ import { safeJsonParse } from "../../util/json";
 import { isLongFormArticle } from "../../util/notebook";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import PostArtifactSlider, { extractShortPostSlides } from "./PostArtifactSlider";
 import type { PostAuthorHeaderProps } from "./PostAuthorHeader";
 import { PostMarkdownContent } from "./PostMarkdownContent";
@@ -333,8 +334,8 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                 </span>
                 <span style={{ fontSize: "12.5px", color: "var(--color-text-secondary)" }}>
                   {notebookData.companionRepo
-                    ? `Full source available in ${notebookData.companionRepo} — or launch directly in the Playground.`
-                    : "All code snippets and equations in this article can be compiled and simulated directly in the Playground."}
+                    ? `Full source available in ${notebookData.companionRepo} — or launch directly in Sketch.`
+                    : "All code snippets and equations in this article can be compiled and simulated directly in Sketch."}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -403,9 +404,19 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                     fontWeight: 650,
                     cursor: "pointer",
                     fontFamily: "inherit",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
                   }}
                 >
-                  {isMultiFileArticle ? "▶ Open in Web IDE" : "▶ Open in Playground"}
+                  {isMultiFileArticle ? (
+                    "▶ Open in Web IDE"
+                  ) : (
+                    <>
+                      <DraftingTriangleIcon size={13} />
+                      Open in Sketch
+                    </>
+                  )}
                 </button>
               </div>
             </div>

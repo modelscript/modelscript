@@ -470,7 +470,7 @@ export default function SolutionViewCard({ viewConfig, isFullScreen }: SolutionV
             <iframe
               title={name}
               src={bundleUrl || `/embed/solution/${solution?.id || 1}`}
-              sandbox="allow-scripts allow-downloads allow-forms allow-same-origin"
+              sandbox="allow-scripts allow-downloads allow-forms"
               style={{
                 width: "100%",
                 height: "100%",

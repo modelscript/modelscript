@@ -119,7 +119,7 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
     );
   });
 
-  it("routes single-file artifacts to /playground and multi-file artifacts to /ide while preserving fork/edit/reply context", () => {
+  it("routes single-file artifacts to /sketch and multi-file artifacts to /ide while preserving fork/edit/reply context", () => {
     const singleFileUrl = buildEditorUrlForArtifact({
       artifactId: 42,
       viewType: "sysml2",
@@ -130,7 +130,7 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
       replyToPostId: 202,
     });
 
-    assert.ok(singleFileUrl.startsWith("/playground?"), `Expected /playground URL, got ${singleFileUrl}`);
+    assert.ok(singleFileUrl.startsWith("/sketch?"), `Expected /sketch URL, got ${singleFileUrl}`);
     assert.ok(singleFileUrl.includes("fromArtifact=42"));
     assert.ok(singleFileUrl.includes("lang=sysml2"));
     assert.ok(singleFileUrl.includes("editPostId=101"));
@@ -159,7 +159,7 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
       replyToPostId: 404,
     });
 
-    assert.ok(multiFileUrl.startsWith("/ide?"), `Expected /ide URL for multi-file artifact, got ${multiFileUrl}`);
+    assert.ok(multiFileUrl.startsWith("/studio?"), `Expected /studio URL for multi-file artifact, got ${multiFileUrl}`);
     assert.ok(multiFileUrl.includes("fromArtifact=99"));
     assert.ok(multiFileUrl.includes("editPostId=303"));
     assert.ok(multiFileUrl.includes("replyToPostId=404"));
@@ -183,23 +183,28 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
     const nginxConfPath = path.resolve(import.meta.dirname, "../nginx.conf");
     const nginxConf = fs.readFileSync(nginxConfPath, "utf-8");
 
-    // Must have explicit location for /playground, /ide, /studio
+    // Must have explicit location for /playground, /sketch, /ide, /studio
     assert.ok(
-      nginxConf.includes("location ~ ^/(playground|ide|studio)(/|$)"),
-      "nginx.conf must contain regex location block for playground, ide, and studio",
+      nginxConf.includes("location ~ ^/(playground|sketch|ide|studio)(/|$)") ||
+        nginxConf.includes("location ~ ^/(playground|ide|studio)(/|$)"),
+      "nginx.conf must contain regex location block for playground, sketch, ide, and studio",
     );
     assert.ok(nginxConf.includes("root /usr/share/nginx/html;"), "nginx.conf must specify SPA root for web surfaces");
 
     // Verify regex matches intended paths
-    const playgroundRegex = /^\/(playground|ide|studio)(\/|$)/;
+    const playgroundRegex = /^\/(playground|sketch|ide|studio)(\/|$)/;
     assert.ok(playgroundRegex.test("/playground"), "Must match /playground");
     assert.ok(playgroundRegex.test("/playground/"), "Must match /playground/");
     assert.ok(playgroundRegex.test("/playground/subpath"), "Must match /playground/subpath");
+    assert.ok(playgroundRegex.test("/sketch"), "Must match /sketch");
+    assert.ok(playgroundRegex.test("/sketch/"), "Must match /sketch/");
+    assert.ok(playgroundRegex.test("/sketch/subpath"), "Must match /sketch/subpath");
     assert.ok(playgroundRegex.test("/ide"), "Must match /ide");
     assert.ok(playgroundRegex.test("/ide/"), "Must match /ide/");
     assert.ok(playgroundRegex.test("/studio"), "Must match /studio");
     assert.ok(playgroundRegex.test("/studio/"), "Must match /studio/");
     assert.ok(!playgroundRegex.test("/playgrounds"), "Must not match /playgrounds");
+    assert.ok(!playgroundRegex.test("/sketchbook"), "Must not match /sketchbook");
     assert.ok(!playgroundRegex.test("/identifier"), "Must not match /identifier");
 
     // Verify docs regex includes trademark

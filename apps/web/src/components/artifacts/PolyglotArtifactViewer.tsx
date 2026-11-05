@@ -11,15 +11,7 @@ import { parseDicomRt } from "@modelscript/dicom-rt/parser";
 import { parseIgtl } from "@modelscript/igtl/parser";
 import { parseOpenSim } from "@modelscript/opensim/parser";
 import { parseQif } from "@modelscript/qif/parser";
-import {
-  BeakerIcon,
-  CheckIcon,
-  CodeIcon,
-  CopyIcon,
-  DownloadIcon,
-  PlayIcon,
-  WorkflowIcon,
-} from "@primer/octicons-react";
+import { BeakerIcon, CheckIcon, CodeIcon, CopyIcon, DownloadIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
@@ -28,9 +20,10 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
 import Box from "../Box";
-import Spinner from "../Spinner";
+import { DraftingTriangleIcon } from "../icons";
 import { registerAllModelscriptLanguages } from "../morsel/util/monaco-lsp-adapter";
 import { compressMorselPayload } from "../morsel/util/permalink";
+import Spinner from "../Spinner";
 import FortranViewer from "./FortranViewer";
 import QifViewer from "./QifViewer";
 import ReqifViewer from "./ReqifViewer";
@@ -85,12 +78,19 @@ export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions):
   if (baseSanitized === undefined) {
     // Strip any @import rules from embedded SVG styles to prevent font-swapping and CSSOM reflows
     const noImportSvg = rawSvg.replace(/@import\s+(?:url\([^)]+\)|['"][^'"]+['"])\s*;?/gi, "");
-    const sanitized = DOMPurify.sanitize(noImportSvg, {
+    // Restrict <use> tags to local fragment identifiers (#id) only
+    const safeUseSvg = noImportSvg.replace(/<(?:svg:)?use\b([^>]*?)>/gi, (match) => {
+      return match.replace(/\b(?:xlink:)?href\s*=\s*["']([^"']*)["']/gi, (attrMatch, hrefVal) => {
+        return hrefVal.startsWith("#") ? attrMatch : "";
+      });
+    });
+    const sanitized = DOMPurify.sanitize(safeUseSvg, {
       USE_PROFILES: { svg: true, svgFilters: true },
       ALLOW_DATA_ATTR: true,
-      ADD_TAGS: ["use", "foreignObject"],
+      ADD_TAGS: ["use"],
       ADD_ATTR: [
         "target",
+        "href",
         "xlink:href",
         "viewBox",
         "preserveAspectRatio",
@@ -1383,7 +1383,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
       code: rawCode || `// ${title}\n`,
       title: resolvedTitle,
     });
-    navigate(`/playground?fromArtifact=${resolvedId}#m=${hash}`);
+    navigate(`/sketch?fromArtifact=${resolvedId}#m=${hash}`);
   };
 
   const handleRunStudy = () => {
@@ -1494,10 +1494,10 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
               type="button"
               $primary
               onClick={handleOpenAction}
-              title={isMultiFile ? "Open in VS Code" : "Open in Playground"}
-              aria-label={isMultiFile ? "Open in VS Code" : "Open in Playground"}
+              title={isMultiFile ? "Open in VS Code" : "Open in Sketch"}
+              aria-label={isMultiFile ? "Open in VS Code" : "Open in Sketch"}
             >
-              <PlayIcon size={14} />
+              <DraftingTriangleIcon size={14} />
             </IconBtn>
           </>
         )}

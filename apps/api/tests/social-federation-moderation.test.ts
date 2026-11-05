@@ -50,6 +50,16 @@ test("Social & Federation Moderation, Domain Tiering, and Rate Limiting", async 
   });
   const testUserToken = jwt.sign({ id: testUser.id, username: testUser.username, email: testUser.email }, JWT_SECRET);
 
+  const adminUser = db.createUser("admin_bob", "admin_bob@modelscript.test", "hashed_pwd", {
+    accountType: "admin",
+    emailVerified: true,
+  });
+  const adminToken = jwt.sign(
+    { id: adminUser.id, username: adminUser.username, email: adminUser.email, accountType: "admin" },
+    JWT_SECRET,
+    { expiresIn: "1h" },
+  );
+
   await t.test("ActivityPub Public Key Cache caches keys and reduces redundant network lookups", () => {
     clearPublicKeyCache();
     assert.strictEqual(getPublicKeyCacheSize(), 0);
@@ -229,7 +239,10 @@ test("Social & Federation Moderation, Domain Tiering, and Rate Limiting", async 
 
   await t.test("Admin Moderation Queue & Domain Tiering REST endpoints", async () => {
     // 1. GET /api/v1/admin/moderation/queue
-    const queueRes = await request(app).get("/api/v1/admin/moderation/queue").expect(200);
+    const queueRes = await request(app)
+      .get("/api/v1/admin/moderation/queue")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
     assert.ok(Array.isArray(queueRes.body.reports));
     assert.ok(queueRes.body.count >= 1);
 
@@ -238,6 +251,7 @@ test("Social & Federation Moderation, Domain Tiering, and Rate Limiting", async 
     // 2. POST /api/v1/admin/moderation/reports/:id/resolve with delete_post action
     const resolveRes = await request(app)
       .post(`/api/v1/admin/moderation/reports/${pendingReport.id}/resolve`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({
         status: "resolved",
         resolutionNotes: "Confirmed proprietary IP violation, post removed",
@@ -257,6 +271,7 @@ test("Social & Federation Moderation, Domain Tiering, and Rate Limiting", async 
     // 3. POST /api/v1/admin/federation/domains sets domain tier
     const addDomainRes = await request(app)
       .post("/api/v1/admin/federation/domains")
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({
         domain: "malicious-bot.world",
         tier: "suspend",
@@ -272,11 +287,17 @@ test("Social & Federation Moderation, Domain Tiering, and Rate Limiting", async 
     assert.strictEqual(db.isDomainSuspended("malicious-bot.world"), true);
 
     // 4. GET /api/v1/admin/federation/domains lists domains
-    const listDomainRes = await request(app).get("/api/v1/admin/federation/domains").expect(200);
+    const listDomainRes = await request(app)
+      .get("/api/v1/admin/federation/domains")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
     assert.ok(listDomainRes.body.domains.some((d: any) => d.domain === "malicious-bot.world"));
 
     // 5. DELETE /api/v1/admin/federation/domains/:domain
-    await request(app).delete("/api/v1/admin/federation/domains/malicious-bot.world").expect(200);
+    await request(app)
+      .delete("/api/v1/admin/federation/domains/malicious-bot.world")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
     assert.strictEqual(db.isDomainSuspended("malicious-bot.world"), false);
   });
 
@@ -293,7 +314,10 @@ test("Social & Federation Moderation, Domain Tiering, and Rate Limiting", async 
         "https://hub.modelscript.org/users/alice/posts/777",
       );
 
-      const deleteRes = await request(app).delete(`/api/v1/admin/posts/${federatedPost.id}`).expect(200);
+      const deleteRes = await request(app)
+        .delete(`/api/v1/admin/posts/${federatedPost.id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .expect(200);
 
       assert.strictEqual(deleteRes.body.success, true);
       assert.strictEqual(deleteRes.body.tombstonePropagated, true);
@@ -312,7 +336,10 @@ test("Social & Federation Moderation, Domain Tiering, and Rate Limiting", async 
       details: { test: true },
     });
 
-    const logsRes = await request(app).get("/api/v1/admin/audit-logs").expect(200);
+    const logsRes = await request(app)
+      .get("/api/v1/admin/audit-logs")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
     assert.ok(Array.isArray(logsRes.body.logs));
     assert.ok(logsRes.body.logs.length >= 1);
     assert.ok(logsRes.body.logs.some((l: any) => l.action === "security_event_test"));
@@ -338,12 +365,16 @@ test("Social & Federation Moderation, Domain Tiering, and Rate Limiting", async 
     assert.ok(noticeId > 0);
 
     // 2. List notices
-    const listRes = await request(app).get("/api/v1/admin/dmca/notices?status=pending").expect(200);
+    const listRes = await request(app)
+      .get("/api/v1/admin/dmca/notices?status=pending")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
     assert.ok(listRes.body.notices.some((n: any) => n.id === noticeId));
 
     // 3. Resolve notice
     const resolveRes = await request(app)
       .post(`/api/v1/admin/dmca/notices/${noticeId}/resolve`)
+      .set("Authorization", `Bearer ${adminToken}`)
       .send({ actionTaken: "Package unlisted and quarantined pending counter-notice" })
       .expect(200);
 

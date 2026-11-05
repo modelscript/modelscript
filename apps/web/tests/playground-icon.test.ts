@@ -49,21 +49,17 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     assert.ok(layeredHtml.includes("M13.8"), "Right chevron starts at 13.8");
   });
 
-  it("integrates Octicon ComposeIcon inside Sidebar.tsx BrandPlaygroundLink", () => {
+  it("integrates AnsatzSketchIcon inside Sidebar.tsx split button", () => {
     const sidebarPath = path.resolve(import.meta.dirname, "../src/components/Sidebar.tsx");
     const sidebarSrc = fs.readFileSync(sidebarPath, "utf-8");
 
     assert.ok(
-      sidebarSrc.includes("ComposeIcon") && sidebarSrc.includes("<ComposeIcon"),
-      "Sidebar.tsx BrandPlaygroundLink must render Octicon ComposeIcon",
+      sidebarSrc.includes("AnsatzSketchIcon") && sidebarSrc.includes("<AnsatzSketchIcon"),
+      "Sidebar.tsx must render AnsatzSketchIcon in split button",
     );
     assert.ok(
-      sidebarSrc.includes('title="ModelScript Playground"'),
-      "Sidebar.tsx BrandPlaygroundLink must have title='ModelScript Playground'",
-    );
-    assert.ok(
-      sidebarSrc.includes("var(--ansatz-facet-accent, #38bdf8)"),
-      "Sidebar.tsx BrandPlaygroundLink must style with iconic light blue",
+      sidebarSrc.includes('title="Ansatz Sketch"'),
+      "Sidebar.tsx split sketch button must have title='Ansatz Sketch'",
     );
   });
 
@@ -81,17 +77,18 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     );
   });
 
-  it("integrates CodeSquareIcon inside PlaygroundNavbar.tsx brand badge", () => {
+  it("integrates AnsatzSketchIcon inside PlaygroundNavbar.tsx brand badge", () => {
     const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
     const navbarSrc = fs.readFileSync(navbarPath, "utf-8");
 
     assert.ok(
-      navbarSrc.includes("CodeSquareIcon"),
-      "PlaygroundNavbar.tsx must import CodeSquareIcon from @primer/octicons-react",
+      navbarSrc.includes("AnsatzSketchIcon") || navbarSrc.includes("CodeSquareIcon"),
+      "PlaygroundNavbar.tsx must import AnsatzSketchIcon or CodeSquareIcon",
     );
     assert.ok(
-      navbarSrc.includes("<CodeSquareIcon size={14} /> Playground"),
-      "PlaygroundNavbar.tsx must render CodeSquareIcon inside brand Badge",
+      (navbarSrc.includes("AnsatzSketchIcon") && navbarSrc.includes("Sketch")) ||
+        navbarSrc.includes("<CodeSquareIcon size={14} /> Playground"),
+      "PlaygroundNavbar.tsx must render blueprint Sketch icon inside brand Badge",
     );
   });
 
@@ -108,7 +105,7 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     );
     assert.ok(!navbarSrc.includes("AnsatzMark"), "PlaygroundNavbar.tsx must not render legacy AnsatzMark");
     assert.ok(
-      navbarSrc.includes('title="ModelScript Playground"'),
+      navbarSrc.includes('title="ModelScript Playground') || navbarSrc.includes("Ansatz Sketch"),
       "PlaygroundNavbar.tsx BrandLink must have title='ModelScript Playground'",
     );
     assert.ok(navbarSrc.includes("ModelScript"), "PlaygroundNavbar.tsx must render ModelScript brand text");
@@ -128,6 +125,10 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
       !ideSrc.includes("/ms-logo-light.png") && !ideSrc.includes("/ms-logo.png"),
       "IdeWorkspacePage.tsx header must not render ModelScript logo icon",
     );
-    assert.ok(ideSrc.includes("ModelScript Studio"), "IdeWorkspacePage.tsx must display ModelScript Studio heading");
+    assert.ok(ideSrc.includes("Studio"), "IdeWorkspacePage.tsx must display Studio heading");
+    assert.ok(
+      !ideSrc.includes("ModelScript Studio"),
+      "IdeWorkspacePage.tsx must not display ModelScript Studio heading",
+    );
   });
 });

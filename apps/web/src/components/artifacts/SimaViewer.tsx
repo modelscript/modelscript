@@ -11,13 +11,14 @@ import {
   type OffsetLimitReport,
   type SimaModel,
 } from "@modelscript/sima";
-import { AlertIcon, CheckCircleIcon, CheckIcon, CopyIcon, PlayIcon, ShieldCheckIcon } from "@primer/octicons-react";
+import { AlertIcon, CheckCircleIcon, CheckIcon, CopyIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -589,7 +590,7 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
             <Button
               size="small"
               variant="primary"
-              leadingVisual={PlayIcon}
+              leadingVisual={DraftingTriangleIcon}
               onClick={() => {
                 const hash = compressMorselPayload({
                   v: 1,
@@ -598,10 +599,10 @@ export const SimaViewer: React.FC<SimaViewerProps> = ({ viewConfig, isFullScreen
                   title,
                 });
                 const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-                navigate(`/playground${fromArtifact}#m=${hash}`);
+                navigate(`/sketch${fromArtifact}#m=${hash}`);
               }}
             >
-              Open in Playground
+              Open in Sketch
             </Button>
           )}
         </Box>

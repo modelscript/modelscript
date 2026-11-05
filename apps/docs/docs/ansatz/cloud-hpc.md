@@ -18,7 +18,7 @@ flowchart LR
 
 ### 1. Job Configuration
 
-Engineers configure compute parameters using the **Cloud Simulation Modal** in `/playground`:
+Engineers configure compute parameters using the **Cloud Simulation Modal** in `/sketch`:
 
 - **Solvers:** SUNDIALS CVODE, IDA stiff DAE, CalculiX FEA, or SU2 CFD.
 - **Resources:** Number of CPU cores, GPU acceleration (CUDA/OpenCL), and RAM limits.

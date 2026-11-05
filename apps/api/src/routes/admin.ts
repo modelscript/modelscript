@@ -36,14 +36,6 @@ import { verifyAndConsumeBackupCode, verifyTotpCode } from "../util/totp.js";
 function createStaffGuard(...roles: StaffRole[]) {
   const middleware = roles.length === 0 ? requireAdmin : requireStaffRole(...roles);
   return (req: Request, res: Response, next: express.NextFunction) => {
-    if (req.headers.authorization) {
-      return middleware(req, res, next);
-    }
-    // In test mode without authorization header, allow test fallback
-    if (process.env["NODE_ENV"] === "test") {
-      req.user = { id: 1, username: "admin", email: "admin@modelscript.org", accountType: "admin", role: "admin" };
-      return next();
-    }
     return middleware(req, res, next);
   };
 }
@@ -52,10 +44,9 @@ function verifyAdminSudo(req: Request, res: Response, next: express.NextFunction
   const rawSudoToken =
     (req.headers["x-admin-sudo-token"] as string | undefined) ||
     (typeof req.body?.sudoToken === "string" ? req.body.sudoToken : undefined);
+  const isProd = process.env["NODE_ENV"] === "production";
   const enforceSudo =
-    process.env["REQUIRE_ADMIN_SUDO"] === "true" ||
-    req.headers["x-enforce-sudo"] === "true" ||
-    (process.env["NODE_ENV"] === "production" && req.headers["x-test-bypass-sudo"] !== "true");
+    process.env["REQUIRE_ADMIN_SUDO"] === "true" || req.headers["x-enforce-sudo"] === "true" || isProd;
 
   if (!rawSudoToken) {
     if (enforceSudo) {
@@ -302,9 +293,8 @@ export function adminRouter(
       );
       const isProductionOrPreset =
         process.env["NODE_ENV"] === "production" || Boolean(envPreset && envPreset.id !== "tier0_local_dev");
-      const isTestEnv = process.env["NODE_ENV"] === "test" && !isProductionOrPreset;
 
-      if (!callerIsAdmin && (isProductionOrPreset || (!isTestEnv && database.hasAdminUser()))) {
+      if (!callerIsAdmin && (isProductionOrPreset || database.hasAdminUser())) {
         res.status(403).json({
           error: "Only an administrator or development mode session can re-open the setup wizard.",
         });
@@ -2782,10 +2772,8 @@ export function adminRouter(
         if (userRecord!.password_hash!.startsWith("$2")) {
           passwordValid = await bcrypt.compare(password, userRecord!.password_hash!);
         } else {
-          passwordValid = password === userRecord!.password_hash;
+          passwordValid = false;
         }
-      } else if (!hasPassword && process.env["NODE_ENV"] === "test" && password) {
-        passwordValid = password.length >= 4;
       }
 
       let totpValid = false;
@@ -2813,8 +2801,6 @@ export function adminRouter(
         valid = passwordValid;
       } else if (hasTotp) {
         valid = totpValid;
-      } else if (process.env["NODE_ENV"] === "test") {
-        valid = passwordValid;
       }
 
       if (!valid) {

@@ -25,7 +25,7 @@ The monorepo maintains a clear boundary between the engine and the platform:
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Ansatz Platform (apps/)                         │
-│   • apps/web: React 19 SPA (ansatz.social, /playground, /references)   │
+│   • apps/web: React 19 SPA (ansatz.social, /sketch, /references)       │
 │   • apps/api: Express, GraphQL, SPARQL, Git Smart HTTP, ActivityPub   │
 ├────────────────────────────────────────────────────────────────────────┤
 │             Enterprise Edition (ee/ — LicenseRef-Enterprise)           │
@@ -48,7 +48,7 @@ The ModelScript engine is designed to be completely headless and can run inside 
 | Surface                  | Route               | Description                                                                                   |
 | :----------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
 | **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, executable simulation morsels, and discussion threads.         |
-| **Playground**           | `/playground`       | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.        |
+| **Ansatz Sketch**        | `/sketch`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.        |
 | **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.          |
 | **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.           |
 | **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.     |

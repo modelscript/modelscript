@@ -94,20 +94,21 @@ export function publishRouter(
       }
 
       // 1.5 Scoped namespace check to prevent dependency confusion attacks
-      const isCoreOrTestNamespace =
-        name.startsWith("Modelica") ||
-        name.startsWith("Complex") ||
-        name.startsWith("BioChem") ||
-        name.startsWith("Test") ||
-        name.startsWith("My") ||
-        name.startsWith("Secure");
+      const isCoreReserved = /^(?:modelica|complex|modelscript|sysml|ansatz)/i.test(name);
       const isScoped = name.startsWith("@");
-      if (
-        !isScoped &&
-        !isCoreOrTestNamespace &&
-        !(process.env["NODE_ENV"] !== "production" && req.headers["x-test-allow-unscoped"] === "true") &&
-        req.user?.username !== "admin"
-      ) {
+      const reqUser = req.user as { username?: string; account_type?: string; role?: string } | undefined;
+      const isAdmin = req.user?.username === "admin" || reqUser?.account_type === "admin" || reqUser?.role === "admin";
+      const isTestUnscopedAllowed =
+        process.env["NODE_ENV"] !== "production" && req.headers["x-test-allow-unscoped"] === "true";
+
+      if (isCoreReserved && !isAdmin) {
+        res.status(403).json({
+          error: `Reserved package name '${name}' can only be published by system administrators.`,
+        });
+        return;
+      }
+
+      if (!isScoped && !isTestUnscopedAllowed && !isAdmin) {
         const existing = database.getLibraryReleases(name);
         if (existing.length === 0) {
           res.status(403).json({

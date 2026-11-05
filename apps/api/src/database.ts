@@ -71,6 +71,7 @@ import { WebPushService } from "./services/web-push-service.js";
 import { S3StorageDriver } from "./storage/s3-driver.js";
 import { canonicalizeEmail, hashCanonicalEmail, ipMatchesCidr, redactEmailHint } from "./util/email-filter.js";
 import { PERSONA_SEED_TOPICS, extractHashtags } from "./util/extract-topics.js";
+import { sanitizeRemoteHtml } from "./util/html-sanitizer.js";
 import { generateSnowflakeId } from "./util/snowflake.js";
 import {
   decryptSecretAtRest,
@@ -1189,8 +1190,11 @@ export class LibraryDatabase {
     // Create a unique username for remote to avoid collision with local
     const remoteUsername = `${username}@${domain}`;
 
-    const keys = this.#generateRSAKeys();
-    const edKeys = this.#generateEd25519Keys();
+    const rawPublicKey = profileData?.["publicKey"];
+    const remotePublicKey =
+      typeof rawPublicKey === "string"
+        ? rawPublicKey
+        : (rawPublicKey as { publicKeyPem?: string } | undefined)?.publicKeyPem || null;
     const sharedInbox =
       profileData?.endpoints?.sharedInbox || profileData?.sharedInbox || profileData?.endpoints?.shared_inbox || null;
 
@@ -1209,6 +1213,9 @@ export class LibraryDatabase {
       }))
       .slice(0, 8);
 
+    const displayName = sanitizeRemoteHtml(profileData?.name || username);
+    const bio = sanitizeRemoteHtml(profileData?.summary || "");
+
     const result = this.#db
       .prepare(
         `INSERT INTO users (username, email, account_type, display_name, bio, avatar_url, rsa_private_key, rsa_public_key, ed25519_private_key, ed25519_public_key, actor_url, inbox_url, outbox_url, remote_domain, shared_inbox_url, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1217,13 +1224,13 @@ export class LibraryDatabase {
         remoteUsername,
         `remote-${crypto.randomUUID()}@${domain}`, // fake email for unique constraint
         "remote",
-        profileData?.name || username,
-        profileData?.summary || "",
+        displayName,
+        bio,
         profileData?.icon?.url || "",
-        keys.privateKey,
-        keys.publicKey,
-        edKeys.privateKey,
-        edKeys.publicKey,
+        null,
+        remotePublicKey,
+        null,
+        null,
         actorUrl,
         profileData?.inbox || `${actorUrl}/inbox`,
         profileData?.outbox || `${actorUrl}/outbox`,
@@ -1250,11 +1257,11 @@ export class LibraryDatabase {
 
     if (typeof profileData.name === "string") {
       updates.push("display_name = ?");
-      params.push(profileData.name);
+      params.push(sanitizeRemoteHtml(profileData.name));
     }
     if (typeof profileData.summary === "string") {
       updates.push("bio = ?");
-      params.push(profileData.summary);
+      params.push(sanitizeRemoteHtml(profileData.summary));
     }
     if (profileData.icon?.url) {
       updates.push("avatar_url = ?");
@@ -1404,12 +1411,14 @@ export class LibraryDatabase {
     status?: string | undefined;
     token_version?: number | undefined;
   } {
+    const cleanUsername = username.trim();
+    const cleanEmail = email.trim().toLowerCase();
     const avatarUrl = "";
     const bannerUrl = "";
 
     const edKeys = this.#generateEd25519Keys();
     const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
-    const actorUrl = `${publicUrl}/users/${username}`;
+    const actorUrl = `${publicUrl}/users/${cleanUsername}`;
     const inboxUrl = `${actorUrl}/inbox`;
     const outboxUrl = `${actorUrl}/outbox`;
 
@@ -1426,8 +1435,8 @@ export class LibraryDatabase {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       )
       .run(
-        username,
-        email,
+        cleanUsername,
+        cleanEmail,
         passwordHash,
         accountType,
         avatarUrl,
@@ -1460,8 +1469,8 @@ export class LibraryDatabase {
     }
     return {
       id: userId,
-      username,
-      email,
+      username: cleanUsername,
+      email: cleanEmail,
       account_type: accountType,
       email_verified: emailVerified,
       credit_balance: initialCredits,
@@ -2190,11 +2199,12 @@ export class LibraryDatabase {
   }
 
   getUserByEmail(email: string): UserRow | undefined {
+    const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
     return this.#db
       .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE email = ?`,
+        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE LOWER(email) = LOWER(?)`,
       )
-      .get(email) as UserRow | undefined;
+      .get(cleanEmail) as UserRow | undefined;
   }
 
   getUserByUsername(username: string): UserRow | undefined {
@@ -2391,7 +2401,9 @@ export class LibraryDatabase {
   }
 
   updateAccount(userId: number, username: string, email: string) {
-    this.#db.prepare(`UPDATE users SET username = ?, email = ? WHERE id = ?`).run(username, email, userId);
+    this.#db
+      .prepare(`UPDATE users SET username = ?, email = ? WHERE id = ?`)
+      .run(username.trim(), email.trim().toLowerCase(), userId);
   }
 
   updatePassword(userId: number, passwordHash: string) {
@@ -3830,7 +3842,18 @@ export class LibraryDatabase {
         OR p.author_id = ?
         OR (COALESCE(p.visibility, 'public') = 'followers' AND p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?))
         OR (COALESCE(p.visibility, 'public') = 'direct' AND EXISTS (
-          SELECT 1 FROM users uv WHERE uv.id = ? AND LOWER(COALESCE(p.content, '')) LIKE '%@' || LOWER(uv.username) || '%'
+          SELECT 1 FROM users uv WHERE uv.id = ? AND (
+            ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+            LIKE '% @' || LOWER(uv.username) || ' %'
+            OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+            LIKE '% @' || LOWER(uv.username) || '.%'
+            OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+            LIKE '% @' || LOWER(uv.username) || '!%'
+            OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+            LIKE '% @' || LOWER(uv.username) || '?%'
+            OR ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+            LIKE '% @' || LOWER(uv.username) || ':%'
+          )
         ))
       )`,
       params: [currentUserId, currentUserId, currentUserId],
@@ -4084,21 +4107,21 @@ export class LibraryDatabase {
     const clauses: string[] = [];
     const params: (string | number)[] = [];
     for (const token of tokens) {
-      const like = `%${token}%`;
+      const escaped = token.replace(/([%_\\])/g, "\\$1");
+      const like = `%${escaped}%`;
       clauses.push(`(
-        LOWER(COALESCE(p.content, '')) LIKE ?
-        OR LOWER(COALESCE(u.username, '')) LIKE ?
-        OR LOWER(COALESCE(u.display_name, '')) LIKE ?
-        OR LOWER(COALESCE(a.title, '')) LIKE ?
-        OR LOWER(COALESCE(a.view_type, '')) LIKE ?
-        OR LOWER(COALESCE(p.metadata, '')) LIKE ?
+        LOWER(COALESCE(p.content, '')) LIKE ? ESCAPE '\\'
+        OR LOWER(COALESCE(u.username, '')) LIKE ? ESCAPE '\\'
+        OR LOWER(COALESCE(u.display_name, '')) LIKE ? ESCAPE '\\'
+        OR LOWER(COALESCE(a.title, '')) LIKE ? ESCAPE '\\'
+        OR LOWER(COALESCE(a.view_type, '')) LIKE ? ESCAPE '\\'
         OR EXISTS (
           SELECT 1 FROM post_topics pt
           JOIN trending_topics t ON pt.topic_id = t.id
-          WHERE pt.post_id = p.id AND (LOWER(t.concept) LIKE ? OR LOWER(t.display_name) LIKE ?)
+          WHERE pt.post_id = p.id AND (LOWER(t.concept) LIKE ? ESCAPE '\\' OR LOWER(t.display_name) LIKE ? ESCAPE '\\')
         )
       )`);
-      params.push(like, like, like, like, like, like, like, like);
+      params.push(like, like, like, like, like, like, like);
     }
     return {
       sql: ` AND ${clauses.join(" AND ")}`,
@@ -4335,112 +4358,149 @@ export class LibraryDatabase {
   }
 
   toggleLike(userId: number, postId: number | string): boolean {
-    const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
-    if (existing) {
-      this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
-      this.#db
-        .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'like'`)
-        .run(userId, postId);
-      return false; // unliked
-    } else {
-      this.#db.prepare(`INSERT INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
-      try {
-        this.deriveUserTopics(userId);
-      } catch {}
-      const post = this.#db.prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
-        | { author_id: number; visibility?: string | null; is_silenced?: number | null }
-        | undefined;
-      if (post && post.author_id !== userId) {
-        this.createNotification(post.author_id, userId, "like", postId);
-        if ((post.visibility ?? "public") === "public" && !post.is_silenced) {
-          this.boostPostTopics(postId, 0.25);
+    return this.#db.transaction(() => {
+      const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
+      if (existing) {
+        this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
+        this.#db
+          .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'like'`)
+          .run(userId, postId);
+        const post = this.#db.prepare(`SELECT visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
+          | { visibility?: string | null; is_silenced?: number | null }
+          | undefined;
+        if (post && (post.visibility ?? "public") === "public" && !post.is_silenced) {
+          this.boostPostTopics(postId, -0.25);
         }
+        return false; // unliked
+      } else {
+        this.#db.prepare(`INSERT OR IGNORE INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
+        try {
+          this.deriveUserTopics(userId);
+        } catch {}
+        const post = this.#db
+          .prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`)
+          .get(postId) as { author_id: number; visibility?: string | null; is_silenced?: number | null } | undefined;
+        if (post && post.author_id !== userId) {
+          this.createNotification(post.author_id, userId, "like", postId);
+          if ((post.visibility ?? "public") === "public" && !post.is_silenced) {
+            this.boostPostTopics(postId, 0.25);
+          }
+        }
+        return true; // liked
       }
-      return true; // liked
-    }
+    })();
   }
 
   likePost(userId: number, postId: number | string): boolean {
-    const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
-    if (!existing) {
-      this.#db.prepare(`INSERT INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
-      try {
-        this.deriveUserTopics(userId);
-      } catch {}
-      const post = this.#db.prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
-        | { author_id: number; visibility?: string | null; is_silenced?: number | null }
-        | undefined;
-      if (post && post.author_id !== userId) {
-        this.createNotification(post.author_id, userId, "like", postId);
-        if ((post.visibility ?? "public") === "public" && !post.is_silenced) {
-          this.boostPostTopics(postId, 0.25);
+    return this.#db.transaction(() => {
+      const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
+      if (!existing) {
+        this.#db.prepare(`INSERT OR IGNORE INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
+        try {
+          this.deriveUserTopics(userId);
+        } catch {}
+        const post = this.#db
+          .prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`)
+          .get(postId) as { author_id: number; visibility?: string | null; is_silenced?: number | null } | undefined;
+        if (post && post.author_id !== userId) {
+          this.createNotification(post.author_id, userId, "like", postId);
+          if ((post.visibility ?? "public") === "public" && !post.is_silenced) {
+            this.boostPostTopics(postId, 0.25);
+          }
         }
+        return true;
       }
-      return true;
-    }
-    return false;
+      return false;
+    })();
   }
 
   unlikePost(userId: number, postId: number | string): boolean {
-    const res = this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
-    if (res.changes > 0) {
-      this.#db
-        .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'like'`)
-        .run(userId, postId);
-      return true;
-    }
-    return false;
+    return this.#db.transaction(() => {
+      const res = this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
+      if (res.changes > 0) {
+        this.#db
+          .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'like'`)
+          .run(userId, postId);
+        const post = this.#db.prepare(`SELECT visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
+          | { visibility?: string | null; is_silenced?: number | null }
+          | undefined;
+        if (post && (post.visibility ?? "public") === "public" && !post.is_silenced) {
+          this.boostPostTopics(postId, -0.25);
+        }
+        return true;
+      }
+      return false;
+    })();
   }
 
   toggleBookmark(userId: number, postId: number | string): boolean {
-    const existing = this.#db.prepare(`SELECT 1 FROM bookmarks WHERE user_id = ? AND post_id = ?`).get(userId, postId);
-    if (existing) {
-      this.#db.prepare(`DELETE FROM bookmarks WHERE user_id = ? AND post_id = ?`).run(userId, postId);
-      return false;
-    } else {
-      this.#db.prepare(`INSERT INTO bookmarks (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
-      try {
-        this.deriveUserTopics(userId);
-      } catch {}
-      const post = this.#db.prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
-        | { author_id: number; visibility?: string | null; is_silenced?: number | null }
-        | undefined;
-      if (post && post.author_id !== userId && (post.visibility ?? "public") === "public" && !post.is_silenced) {
-        this.boostPostTopics(postId, 0.35);
+    return this.#db.transaction(() => {
+      const existing = this.#db
+        .prepare(`SELECT 1 FROM bookmarks WHERE user_id = ? AND post_id = ?`)
+        .get(userId, postId);
+      if (existing) {
+        this.#db.prepare(`DELETE FROM bookmarks WHERE user_id = ? AND post_id = ?`).run(userId, postId);
+        const post = this.#db.prepare(`SELECT visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
+          | { visibility?: string | null; is_silenced?: number | null }
+          | undefined;
+        if (post && (post.visibility ?? "public") === "public" && !post.is_silenced) {
+          this.boostPostTopics(postId, -0.35);
+        }
+        return false;
+      } else {
+        this.#db.prepare(`INSERT OR IGNORE INTO bookmarks (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
+        try {
+          this.deriveUserTopics(userId);
+        } catch {}
+        const post = this.#db
+          .prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`)
+          .get(postId) as { author_id: number; visibility?: string | null; is_silenced?: number | null } | undefined;
+        if (post && post.author_id !== userId && (post.visibility ?? "public") === "public" && !post.is_silenced) {
+          this.boostPostTopics(postId, 0.35);
+        }
+        return true;
       }
-      return true;
-    }
+    })();
   }
 
   toggleRepost(userId: number, postId: number | string): boolean {
-    const existing = this.#db
-      .prepare(`SELECT CAST(id AS TEXT) as id FROM posts WHERE author_id = ? AND repost_of_id = ?`)
-      .get(userId, postId) as { id: string } | undefined;
-    if (existing) {
-      this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(existing.id);
-      this.#db
-        .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'repost'`)
-        .run(userId, postId);
-      return false; // un-reposted
-    } else {
-      this.createPost(userId, null, undefined, undefined, undefined, postId);
-      try {
-        this.deriveUserTopics(userId);
-      } catch {}
-      const post = this.#db.prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
-        | { author_id: number; visibility?: string | null; is_silenced?: number | null }
-        | undefined;
-      if (post && post.author_id !== userId) {
-        this.createNotification(post.author_id, userId, "repost", postId);
-        if ((post.visibility ?? "public") === "public" && !post.is_silenced) {
-          this.boostPostTopics(postId, 0.5);
+    return this.#db.transaction(() => {
+      const existing = this.#db
+        .prepare(`SELECT CAST(id AS TEXT) as id FROM posts WHERE author_id = ? AND repost_of_id = ?`)
+        .get(userId, postId) as { id: string } | undefined;
+      if (existing) {
+        this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(existing.id);
+        this.#db
+          .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'repost'`)
+          .run(userId, postId);
+        const post = this.#db.prepare(`SELECT visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
+          | { visibility?: string | null; is_silenced?: number | null }
+          | undefined;
+        if (post && (post.visibility ?? "public") === "public" && !post.is_silenced) {
+          this.boostPostTopics(postId, -0.5);
         }
+        return false; // un-reposted
+      } else {
+        this.createPost(userId, null, undefined, undefined, undefined, postId);
+        try {
+          this.deriveUserTopics(userId);
+        } catch {}
+        const post = this.#db
+          .prepare(`SELECT author_id, visibility, is_silenced FROM posts WHERE id = ?`)
+          .get(postId) as { author_id: number; visibility?: string | null; is_silenced?: number | null } | undefined;
+        if (post && post.author_id !== userId) {
+          this.createNotification(post.author_id, userId, "repost", postId);
+          if ((post.visibility ?? "public") === "public" && !post.is_silenced) {
+            this.boostPostTopics(postId, 0.5);
+          }
+        }
+        return true; // reposted
       }
-      return true; // reposted
-    }
+    })();
   }
 
   getBookmarks(userId: number, limit: number = 20): PostRow[] {
+    const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
     const posts = this.#db
       .prepare(
         `
@@ -4461,11 +4521,24 @@ export class LibraryDatabase {
       JOIN posts p ON b.post_id = p.id
       JOIN users u ON p.author_id = u.id
       WHERE b.user_id = ?
+        AND (
+          COALESCE(p.visibility, 'public') IN ('public', 'unlisted')
+          OR p.author_id = ?
+          OR (COALESCE(p.visibility, 'public') = 'followers' AND p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?))
+          OR (COALESCE(p.visibility, 'public') = 'direct' AND EXISTS (
+            SELECT 1 FROM users uv WHERE uv.id = ? AND (
+              ' ' || LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(p.content, ''), char(10), ' '), char(13), ' '), char(9), ' '), ',', ' ')) || ' '
+              LIKE '% @' || LOWER(uv.username) || ' %'
+            )
+          ))
+        )
+        AND p.author_id NOT IN (SELECT blocked_id FROM blocks WHERE blocker_id = ?)
+        AND p.author_id NOT IN (SELECT blocker_id FROM blocks WHERE blocked_id = ?)
       ORDER BY b.created_at DESC
       LIMIT ?
     `,
       )
-      .all(userId, userId, userId, limit) as (Omit<PostRow, "metadata"> & {
+      .all(userId, userId, userId, userId, userId, userId, userId, userId, safeLimit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
     return posts.map((p) => this.hydratePost(p, userId)!);
@@ -5031,7 +5104,7 @@ export class LibraryDatabase {
     lastSeenAt?: string | null | undefined;
   } {
     const cleanDomain = domain.toLowerCase().trim();
-    const row = this.#db
+    let row = this.#db
       .prepare(
         `SELECT domain, tier, reason, reject_media, reject_reports, obfuscate, public_comment, private_comment,
                 unavailable_since, consecutive_failures, last_seen_at
@@ -5052,6 +5125,25 @@ export class LibraryDatabase {
           last_seen_at?: string | null;
         }
       | undefined;
+
+    if (!row && cleanDomain.includes(".")) {
+      const parts = cleanDomain.split(".");
+      for (let i = 1; i < parts.length; i++) {
+        const parent = parts.slice(i).join(".");
+        const wildcard = `*.${parent}`;
+        const match = this.#db
+          .prepare(
+            `SELECT domain, tier, reason, reject_media, reject_reports, obfuscate, public_comment, private_comment,
+                    unavailable_since, consecutive_failures, last_seen_at
+             FROM federation_domains WHERE domain = ? OR domain = ?`,
+          )
+          .get(parent, wildcard) as typeof row;
+        if (match) {
+          row = match;
+          break;
+        }
+      }
+    }
     if (!row) {
       return {
         domain: cleanDomain,
@@ -6118,60 +6210,66 @@ export class LibraryDatabase {
   }
 
   deletePost(postId: number | string): { success: boolean; apId?: string | undefined; authorId?: number | undefined } {
-    const post = this.#db
-      .prepare(
-        `SELECT CAST(p.id AS TEXT) as id, p.author_id, p.ap_id, p.content, p.created_at, u.username, u.remote_domain
-         FROM posts p
-         LEFT JOIN users u ON p.author_id = u.id
-         WHERE p.id = ?`,
-      )
-      .get(postId) as
-      | {
-          id: string | number;
-          author_id: number;
-          ap_id: string | null;
-          content: string | null;
-          created_at: string;
-          username: string | null;
-          remote_domain: string | null;
-        }
-      | undefined;
-    if (!post) {
-      return { success: false };
-    }
-    const fallbackSnapshot = JSON.stringify({
-      targetType: "post",
-      postId: post.id,
-      postContent: post.content,
-      authorId: post.author_id,
-      authorUsername: post.username,
-      authorDomain: post.remote_domain,
-      apId: post.ap_id,
-      postCreatedAt: post.created_at,
-      deletedAt: new Date().toISOString(),
-    });
-    this.#db
-      .prepare(
-        `UPDATE content_reports
-         SET post_id = NULL,
-             target_user_id = COALESCE(target_user_id, ?),
-             content_snapshot = COALESCE(content_snapshot, ?)
-         WHERE post_id = ?`,
-      )
-      .run(post.author_id, fallbackSnapshot, postId);
-    const affectedTopics = this.#db.prepare(`SELECT topic_id FROM post_topics WHERE post_id = ?`).all(postId) as {
-      topic_id: number;
-    }[];
-    this.#db.prepare(`DELETE FROM notifications WHERE post_id = ?`).run(postId);
-    this.#db.prepare(`DELETE FROM likes WHERE post_id = ?`).run(postId);
-    this.#db.prepare(`DELETE FROM bookmarks WHERE post_id = ?`).run(postId);
-    this.#db.prepare(`DELETE FROM post_topics WHERE post_id = ?`).run(postId);
-    this.#db.prepare(`DELETE FROM post_location_stats WHERE post_id = ?`).run(postId);
-    this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(postId);
-    if (affectedTopics.length > 0) {
-      this.cleanupOrphanedTopics(affectedTopics.map((r) => r.topic_id));
-    }
-    return { success: true, apId: post.ap_id ?? undefined, authorId: post.author_id };
+    return this.#db.transaction(() => {
+      const post = this.#db
+        .prepare(
+          `SELECT CAST(p.id AS TEXT) as id, p.author_id, p.ap_id, p.content, p.created_at, u.username, u.remote_domain
+           FROM posts p
+           LEFT JOIN users u ON p.author_id = u.id
+           WHERE p.id = ?`,
+        )
+        .get(postId) as
+        | {
+            id: string | number;
+            author_id: number;
+            ap_id: string | null;
+            content: string | null;
+            created_at: string;
+            username: string | null;
+            remote_domain: string | null;
+          }
+        | undefined;
+      if (!post) {
+        return { success: false };
+      }
+      const fallbackSnapshot = JSON.stringify({
+        targetType: "post",
+        postId: post.id,
+        postContent: post.content,
+        authorId: post.author_id,
+        authorUsername: post.username,
+        authorDomain: post.remote_domain,
+        apId: post.ap_id,
+        postCreatedAt: post.created_at,
+        deletedAt: new Date().toISOString(),
+      });
+      this.#db
+        .prepare(
+          `UPDATE content_reports
+           SET post_id = NULL,
+               target_user_id = COALESCE(target_user_id, ?),
+               content_snapshot = COALESCE(content_snapshot, ?)
+           WHERE post_id = ?`,
+        )
+        .run(post.author_id, fallbackSnapshot, postId);
+      const affectedTopics = this.#db.prepare(`SELECT topic_id FROM post_topics WHERE post_id = ?`).all(postId) as {
+        topic_id: number;
+      }[];
+      this.#db.prepare(`DELETE FROM notifications WHERE post_id = ?`).run(postId);
+      this.#db.prepare(`DELETE FROM likes WHERE post_id = ?`).run(postId);
+      this.#db.prepare(`DELETE FROM bookmarks WHERE post_id = ?`).run(postId);
+      this.#db.prepare(`DELETE FROM post_topics WHERE post_id = ?`).run(postId);
+      this.#db.prepare(`DELETE FROM post_location_stats WHERE post_id = ?`).run(postId);
+      // Clean up child relationships to prevent orphans
+      this.#db.prepare(`DELETE FROM posts WHERE repost_of_id = ?`).run(postId);
+      this.#db.prepare(`UPDATE posts SET quote_post_id = NULL WHERE quote_post_id = ?`).run(postId);
+      this.#db.prepare(`UPDATE posts SET reply_to_id = NULL WHERE reply_to_id = ?`).run(postId);
+      this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(postId);
+      if (affectedTopics.length > 0) {
+        this.cleanupOrphanedTopics(affectedTopics.map((r) => r.topic_id));
+      }
+      return { success: true, apId: post.ap_id ?? undefined, authorId: post.author_id };
+    })();
   }
 
   // ── DMCA Notices & Universal Resource Quarantine ──────────────────
@@ -10176,13 +10274,17 @@ export class LibraryDatabase {
       return { topics: [], users: [], packages: [], repositories: [] };
     }
 
-    const primaryToken = tokens[0]!.toLowerCase();
-    const prefixPattern = `${primaryToken}%`;
+    const escapeWildcards = (str: string) => str.replace(/([%_\\])/g, "\\$1");
+    const escapedTokens = tokens.map(escapeWildcards);
 
-    const topicClauses = tokens
-      .map(() => `(t.display_name LIKE ? COLLATE NOCASE OR t.concept LIKE ? COLLATE NOCASE)`)
+    const primaryToken = tokens[0]!.toLowerCase();
+    const escapedPrimary = escapeWildcards(primaryToken);
+    const prefixPattern = `${escapedPrimary}%`;
+
+    const topicClauses = escapedTokens
+      .map(() => `(t.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE OR t.concept LIKE ? ESCAPE '\\' COLLATE NOCASE)`)
       .join(" AND ");
-    const topicParams = tokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`]);
+    const topicParams = escapedTokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`]);
 
     const topics = this.#db
       .prepare(
@@ -10202,7 +10304,7 @@ export class LibraryDatabase {
       ORDER BY
         CASE
           WHEN LOWER(t.concept) = ? OR LOWER(t.display_name) = ? THEN 2
-          WHEN LOWER(t.concept) LIKE ? OR LOWER(t.display_name) LIKE ? THEN 1
+          WHEN LOWER(t.concept) LIKE ? ESCAPE '\\' OR LOWER(t.display_name) LIKE ? ESCAPE '\\' THEN 1
           ELSE 0
         END DESC,
         current_score DESC
@@ -10211,13 +10313,13 @@ export class LibraryDatabase {
       )
       .all(...topicParams, primaryToken, primaryToken, prefixPattern, prefixPattern, limitPerCategory);
 
-    const userClauses = tokens
+    const userClauses = escapedTokens
       .map(
         () =>
-          `(username LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE OR COALESCE(bio, '') LIKE ? COLLATE NOCASE)`,
+          `(username LIKE ? ESCAPE '\\' COLLATE NOCASE OR display_name LIKE ? ESCAPE '\\' COLLATE NOCASE OR COALESCE(bio, '') LIKE ? ESCAPE '\\' COLLATE NOCASE)`,
       )
       .join(" AND ");
-    const userParams = tokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`, `%${tok}%`]);
+    const userParams = escapedTokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`, `%${tok}%`]);
 
     const users = this.#db
       .prepare(
@@ -10230,8 +10332,8 @@ export class LibraryDatabase {
       ORDER BY
         CASE
           WHEN LOWER(username) = ? OR LOWER(COALESCE(display_name, '')) = ? THEN 3
-          WHEN LOWER(username) LIKE ? OR LOWER(COALESCE(display_name, '')) LIKE ? THEN 2
-          WHEN LOWER(username) LIKE ? THEN 1
+          WHEN LOWER(username) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(display_name, '')) LIKE ? ESCAPE '\\' THEN 2
+          WHEN LOWER(username) LIKE ? ESCAPE '\\' THEN 1
           ELSE 0
         END DESC,
         (SELECT COUNT(*) FROM follows f WHERE f.following_id = users.id AND (f.state = 'accepted' OR f.state IS NULL)) DESC,
@@ -10245,14 +10347,16 @@ export class LibraryDatabase {
         primaryToken,
         prefixPattern,
         prefixPattern,
-        `%${primaryToken}%`,
+        `%${escapedPrimary}%`,
         limitPerCategory,
       );
 
-    const pkgClauses = tokens
-      .map(() => `(name LIKE ? COLLATE NOCASE OR COALESCE(description, '') LIKE ? COLLATE NOCASE)`)
+    const pkgClauses = escapedTokens
+      .map(
+        () => `(name LIKE ? ESCAPE '\\' COLLATE NOCASE OR COALESCE(description, '') LIKE ? ESCAPE '\\' COLLATE NOCASE)`,
+      )
       .join(" AND ");
-    const pkgParams = tokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`]);
+    const pkgParams = escapedTokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`]);
 
     const packages = this.#db
       .prepare(
@@ -10263,8 +10367,8 @@ export class LibraryDatabase {
       ORDER BY
         CASE
           WHEN LOWER(name) = ? THEN 3
-          WHEN LOWER(name) LIKE ? THEN 2
-          WHEN LOWER(name) LIKE ? THEN 1
+          WHEN LOWER(name) LIKE ? ESCAPE '\\' THEN 2
+          WHEN LOWER(name) LIKE ? ESCAPE '\\' THEN 1
           ELSE 0
         END DESC,
         (SELECT COUNT(*) FROM package_versions pv WHERE pv.package_id = packages.id) DESC,
@@ -10272,15 +10376,15 @@ export class LibraryDatabase {
       LIMIT ?
     `,
       )
-      .all(...pkgParams, primaryToken, prefixPattern, `%${primaryToken}%`, limitPerCategory);
+      .all(...pkgParams, primaryToken, prefixPattern, `%${escapedPrimary}%`, limitPerCategory);
 
-    const repoClauses = tokens
+    const repoClauses = escapedTokens
       .map(
         () =>
-          `(namespace LIKE ? COLLATE NOCASE OR project LIKE ? COLLATE NOCASE OR COALESCE(description, '') LIKE ? COLLATE NOCASE)`,
+          `(namespace LIKE ? ESCAPE '\\' COLLATE NOCASE OR project LIKE ? ESCAPE '\\' COLLATE NOCASE OR COALESCE(description, '') LIKE ? ESCAPE '\\' COLLATE NOCASE)`,
       )
       .join(" AND ");
-    const repoParams = tokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`, `%${tok}%`]);
+    const repoParams = escapedTokens.flatMap((tok) => [`%${tok}%`, `%${tok}%`, `%${tok}%`]);
 
     const repositories = this.#db
       .prepare(
@@ -10293,8 +10397,8 @@ export class LibraryDatabase {
       ORDER BY
         CASE
           WHEN LOWER(project) = ? THEN 3
-          WHEN LOWER(project) LIKE ? OR LOWER(namespace) LIKE ? THEN 2
-          WHEN LOWER(project) LIKE ? THEN 1
+          WHEN LOWER(project) LIKE ? ESCAPE '\\' OR LOWER(namespace) LIKE ? ESCAPE '\\' THEN 2
+          WHEN LOWER(project) LIKE ? ESCAPE '\\' THEN 1
           ELSE 0
         END DESC,
         MAX(COALESCE(pinned, 0)) DESC,
@@ -10303,7 +10407,7 @@ export class LibraryDatabase {
       LIMIT ?
     `,
       )
-      .all(...repoParams, primaryToken, prefixPattern, prefixPattern, `%${primaryToken}%`, limitPerCategory);
+      .all(...repoParams, primaryToken, prefixPattern, prefixPattern, `%${escapedPrimary}%`, limitPerCategory);
 
     return { topics, users, packages, repositories };
   }
@@ -11103,6 +11207,14 @@ export class LibraryDatabase {
       return {
         allowed: false,
         reason: `You do not have permission to publish new versions of package '${libraryName}'`,
+      };
+    }
+
+    // Reserved standard/core prefixes
+    if (/^(?:modelica|complex|modelscript|sysml|ansatz)/i.test(libraryName)) {
+      return {
+        allowed: false,
+        reason: `Reserved package name '${libraryName}' can only be published by system administrators.`,
       };
     }
 
@@ -12003,6 +12115,19 @@ export class LibraryDatabase {
       )
       .run(name, status, type, triggerSource, repositoryId, metadata ? JSON.stringify(metadata) : null, userId);
     return result.lastInsertRowid as number;
+  }
+
+  getJobByMetadataKey(
+    key: string,
+    value: unknown,
+  ): { id: number; name: string; status: string; user_id: number | null; metadata: string | null } | undefined {
+    return this.#db
+      .prepare(
+        `SELECT id, name, status, user_id, metadata FROM jobs WHERE json_extract(metadata, '$.' || ?) = ? ORDER BY id DESC LIMIT 1`,
+      )
+      .get(key, String(value)) as
+      | { id: number; name: string; status: string; user_id: number | null; metadata: string | null }
+      | undefined;
   }
 
   updateJobStatus(jobId: number, status: string): void {

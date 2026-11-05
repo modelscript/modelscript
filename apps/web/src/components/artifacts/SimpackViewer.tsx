@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { renderKinematicDiagramSvg, type KinematicBodyLike, type KinematicJointLike } from "@modelscript/diagram";
-import { CheckCircleIcon, PlayIcon } from "@primer/octicons-react";
+import { CheckCircleIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import MultibodyViewport3D, { type MultibodyLink3D, type MultibodyNode3D } from "./MultibodyViewport3D";
@@ -304,7 +305,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
       title: modelName,
     });
     const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-    navigate(`/playground${fromArtifact}#m=${hash}`);
+    navigate(`/sketch${fromArtifact}#m=${hash}`);
   };
 
   const codeLines = rawDeck ? rawDeck.split(/\r?\n/) : [];
@@ -341,11 +342,11 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
             <Button
               size="small"
               variant="primary"
-              leadingVisual={PlayIcon}
+              leadingVisual={DraftingTriangleIcon}
               onClick={handleOpenPlayground}
-              title="Open in Playground"
+              title="Open in Sketch"
             >
-              Open in Playground
+              Open in Sketch
             </Button>
           )}
         </Box>

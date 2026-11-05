@@ -9,13 +9,13 @@ import {
   StackIcon,
   TableIcon,
   WorkflowIcon,
-  ZapIcon,
 } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -421,7 +421,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
       title,
     });
     const fromArtifact = viewConfig?.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-    return `/playground${fromArtifact}#m=${hash}`;
+    return `/sketch${fromArtifact}#m=${hash}`;
   };
 
   const handleFork = () => {
@@ -593,8 +593,8 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({ vi
               <span>{copied ? "Copied" : "Copy"}</span>
             </IconActionButton>
             {Boolean(viewConfig?.standalone) && (
-              <Button size="small" variant="primary" leadingVisual={ZapIcon} onClick={handleFork}>
-                Playground
+              <Button size="small" variant="primary" leadingVisual={DraftingTriangleIcon} onClick={handleFork}>
+                Sketch
               </Button>
             )}
           </ToolbarRight>

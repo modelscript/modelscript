@@ -107,14 +107,14 @@ const maturity = computed(() => {
           <span>Source</span>
         </a>
         <a
-          :href="`/playground?lang=${lang.slug}`"
+          :href="`/sketch?lang=${lang.slug}`"
           target="_blank"
           rel="noopener noreferrer"
           class="lang-action-btn lang-action-primary"
-          title="Open ModelScript interactive WebAssembly playground"
+          title="Open interactive WebAssembly Ansatz Sketch"
         >
           <MsIcon name="play" :size="13" />
-          <span>Playground</span>
+          <span>Sketch</span>
         </a>
       </div>
     </div>

@@ -28,6 +28,7 @@ import * as THREE from "three";
 import { useTheme } from "../../theme";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import { CompactTabStrip, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { adaptSvgMarkupForTheme, highlightPolyglotLine } from "./PolyglotArtifactViewer";
@@ -477,8 +478,13 @@ const QifViewerInner: React.FC<QifViewerProps> = ({ artifactId, viewConfig, isFu
                 })}
               </div>
               {Boolean(viewConfig?.standalone) && (
-                <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
-                  Open in Playground
+                <Button
+                  size="small"
+                  variant="primary"
+                  leadingVisual={DraftingTriangleIcon}
+                  onClick={handleOpenInPlayground}
+                >
+                  Open in Sketch
                 </Button>
               )}
             </Box>

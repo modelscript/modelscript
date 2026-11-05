@@ -20,6 +20,7 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
@@ -1178,7 +1179,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
       title: systemName,
     });
     const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-    navigate(`/playground${fromArtifact}#m=${hash}`);
+    navigate(`/sketch${fromArtifact}#m=${hash}`);
   };
 
   const filteredParts = useMemo(() => {
@@ -1304,10 +1305,10 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                     size="small"
                     variant="primary"
                     onClick={handleOpenPlayground}
-                    title="Open SysML v2 model in Playground"
+                    title="Open SysML v2 model in Sketch"
                   >
-                    <CodeIcon size={13} />
-                    <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Playground</Text>
+                    <DraftingTriangleIcon size={13} />
+                    <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Sketch</Text>
                   </Button>
                 )}
               </Box>

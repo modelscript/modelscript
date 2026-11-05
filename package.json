@@ -94,6 +94,7 @@
     "test:benchmarks": "npx tsx testsuite/benchmarks/cae-parity.test.ts",
     "test:compiler": "node scripts/test-coordinator.js run-many --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate,@modelscript/cad,@modelscript/diagram",
     "test:consolidate": "npx tsx scripts/consolidate-test-reports.ts",
+    "test:durations:sync": "node scripts/sync-test-durations.js",
     "test:fast": "node scripts/test-coordinator.js affected",
     "test:modelica": "npx tsx languages/modelica/tests/testsuite-runner.ts",
     "test:modelica:both": "npx tsx languages/modelica/tests/testsuite-runner.ts --flattener=both",

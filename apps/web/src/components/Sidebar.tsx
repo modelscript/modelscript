@@ -5,7 +5,6 @@ import {
   BookIcon,
   BookmarkIcon,
   CodeIcon,
-  ComposeIcon,
   GearIcon,
   HomeIcon,
   KebabHorizontalIcon,
@@ -34,6 +33,7 @@ import { useTheme } from "../theme";
 import { safeCssImageUrl } from "../util/url";
 import AnsatzMark from "./AnsatzLogo";
 import Box from "./Box";
+import { AnsatzSketchIcon } from "./icons";
 import { scrollToTop } from "./ScrollToTop";
 
 const SidebarContainer = styled.header`
@@ -84,26 +84,9 @@ const SidebarContainer = styled.header`
     @media (max-width: 1280px) {
       padding: 0;
       width: 44px;
-      height: 44px;
+      height: auto;
       display: flex;
       justify-content: center;
-    }
-  }
-
-  .post-btn {
-    font-size: 16px;
-    font-weight: 650;
-    border-radius: 10px;
-    height: 40px;
-
-    @media (max-width: 1280px) {
-      width: 44px !important;
-      height: 44px !important;
-      border-radius: 12px !important;
-      padding: 0 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
     }
   }
 
@@ -113,9 +96,10 @@ const SidebarContainer = styled.header`
     }
   }
 
-  .post-icon {
+  .post-split-icon {
+    flex-shrink: 0;
     @media (max-width: 1280px) {
-      display: flex !important;
+      transform: scale(1.15);
     }
   }
 
@@ -276,16 +260,12 @@ const AdminNavBadge = styled.span`
 const BrandRow = styled.div`
   display: flex;
   align-items: center;
-  justify-content: space-between;
   width: 100%;
   margin-bottom: 6px;
-  gap: 6px;
   box-sizing: border-box;
 
   @media (max-width: 1280px) {
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
+    justify-content: center;
     margin-bottom: 6px;
   }
 `;
@@ -294,17 +274,27 @@ const BrandHeader = styled(Link)`
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
   border-radius: 12px;
   text-decoration: none;
   color: var(--color-text-heading);
   outline: none;
   min-width: 0;
-  transition: background-color 0.16s ease;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.16s ease,
+    transform 0.1s ease;
 
   &:hover {
     text-decoration: none;
     background-color: var(--surface-row-hover);
+  }
+
+  &:active {
+    transform: scale(0.985);
   }
 
   &:focus-visible {
@@ -346,77 +336,6 @@ const BrandHeader = styled(Link)`
     padding: 4px;
     width: 42px;
     height: 42px;
-  }
-`;
-
-const BrandPlaygroundLink = styled(Link)<{ $active?: boolean | undefined }>`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  border-radius: 10px;
-  margin-left: auto;
-  flex-shrink: 0;
-  text-decoration: none;
-  color: var(--ansatz-facet-accent, #38bdf8);
-  background: ${(props) =>
-    props.$active ? "color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 16%, transparent)" : "transparent"};
-  border: 1px solid
-    ${(props) =>
-      props.$active ? "color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 42%, transparent)" : "transparent"};
-  outline: none;
-  transition:
-    background-color 0.16s ease,
-    border-color 0.16s ease,
-    color 0.16s ease,
-    box-shadow 0.18s ease,
-    transform 0.14s ease;
-
-  img,
-  svg {
-    display: block;
-    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-
-  &:hover {
-    text-decoration: none;
-    color: var(--ansatz-facet-accent, #38bdf8);
-    background-color: color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 12%, transparent);
-    border-color: color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 35%, transparent);
-    box-shadow: 0 0 12px color-mix(in srgb, var(--ansatz-facet-accent, #38bdf8) 22%, transparent);
-
-    img,
-    svg {
-      transform: scale(1.08);
-    }
-  }
-
-  &:focus-visible {
-    box-shadow: 0 0 0 2px var(--ansatz-facet-accent, #38bdf8);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-    img,
-    svg {
-      transition: none;
-      transform: none;
-    }
-  }
-
-  @media (max-width: 1280px) {
-    margin-left: 0;
-    width: 42px;
-    height: 42px;
-    min-width: 42px;
-    min-height: 42px;
   }
 `;
 
@@ -861,6 +780,139 @@ const ProfileFooterContainer = styled.div`
   }
 `;
 
+const SplitPostButtonContainer = styled.div`
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  height: 40px;
+  background: var(--ms-brand);
+  border-radius: 10px;
+  box-shadow: var(--ms-brand-shadow);
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid var(--color-accent-blue-border, transparent);
+  transition:
+    box-shadow 0.16s ease,
+    transform 0.12s ease;
+
+  &:hover {
+    box-shadow: 0 10px 28px -6px color-mix(in srgb, var(--ms-brand) 55%, transparent);
+  }
+
+  @media (max-width: 1280px) {
+    flex-direction: column;
+    width: 44px;
+    height: auto;
+    border-radius: 12px;
+  }
+`;
+
+const SplitPostButtonAction = styled.button`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 8px;
+  background: transparent;
+  border: none;
+  color: var(--ms-brand-contrast, #ffffff);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: var(--ms-brand-contrast, #ffffff);
+  }
+
+  &:active {
+    background-color: rgba(0, 0, 0, 0.12);
+  }
+
+  &:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: -2px;
+    z-index: 2;
+  }
+
+  @media (max-width: 1280px) {
+    width: 44px;
+    height: 42px;
+    padding: 0;
+    gap: 0;
+  }
+`;
+
+const SplitSketchButtonLink = styled(Link)`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 8px;
+  background: transparent;
+  border: none;
+  color: var(--ms-brand-contrast, #ffffff);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: var(--ms-brand-contrast, #ffffff);
+    text-decoration: none;
+  }
+
+  &:active {
+    background-color: rgba(0, 0, 0, 0.12);
+  }
+
+  &:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: -2px;
+    z-index: 2;
+  }
+
+  @media (max-width: 1280px) {
+    width: 44px;
+    height: 42px;
+    padding: 0;
+    gap: 0;
+  }
+`;
+
+const SplitPostButtonDivider = styled.div`
+  width: 1px;
+  height: 22px;
+  align-self: center;
+  background-color: rgba(255, 255, 255, 0.28);
+  flex-shrink: 0;
+
+  @media (max-width: 1280px) {
+    width: 26px;
+    height: 1px;
+    margin: 0 auto;
+  }
+`;
+
 interface SidebarLinkItem {
   to: string;
   icon: any;
@@ -871,12 +923,13 @@ interface SidebarLinkItem {
 
 interface SidebarProps {
   onPostClick?: (() => void) | undefined;
+  onSketchClick?: (() => void) | undefined;
 }
 
 const THEME_THUMB_TRAVEL_PX = 26;
 const THEME_DRAG_THRESHOLD_PX = 6;
 
-const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
+const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onSketchClick }) => {
   const { user, isAdmin, logout, unreadCount, setUnreadCount, adminPendingCount } = useAuth();
   const { theme, toggleTheme, setTheme } = useTheme();
   const ThemeIcon = theme === "dark" ? SunIcon : MoonIcon;
@@ -996,7 +1049,19 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     return "ansatz.social";
   }, []);
 
-  const isPlaygroundActive = location.pathname === "/playground" || location.pathname.startsWith("/playground/");
+  const handleSketchClick = (e: React.MouseEvent) => {
+    if (onSketchClick) {
+      e.preventDefault();
+      onSketchClick();
+      return;
+    }
+    if (location.pathname === "/sketch" || location.pathname.startsWith("/sketch/")) {
+      e.preventDefault();
+      scrollToTop({ smooth: true });
+    } else {
+      scrollToTop({ smooth: false });
+    }
+  };
 
   // 1. Primary in-shell social / community links
   const communityLinks: SidebarLinkItem[] = [];
@@ -1017,7 +1082,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
     registryLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
   }
   if (hasIde) {
-    registryLinks.push({ to: "/ide", icon: CodeIcon, label: "Studio" });
+    registryLinks.push({ to: "/studio", icon: CodeIcon, label: "Studio" });
   }
   if (hasRepos) {
     registryLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
@@ -1138,19 +1203,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
             </div>
           </BrandTitle>
         </BrandHeader>
-
-        <BrandPlaygroundLink
-          to="/playground"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="ModelScript Playground"
-          aria-label="ModelScript Playground"
-          data-testid="sidebar-playground-link"
-          data-tour-id="tour-workbenches"
-          $active={isPlaygroundActive}
-        >
-          <ComposeIcon size={20} />
-        </BrandPlaygroundLink>
       </BrandRow>
 
       <Box
@@ -1174,17 +1226,31 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
         {user && (
           <Box mt={2} width="100%" px={1} className="post-btn-container">
-            <button
-              type="button"
-              onClick={onPostClick}
-              className="ms-btn ms-btn-primary ms-btn-block post-btn"
-              aria-label="New post"
-            >
-              <span className="post-text">Post</span>
-              <span className="post-icon" style={{ display: "none" }}>
-                <PlusIcon size={20} />
-              </span>
-            </button>
+            <SplitPostButtonContainer className="post-split-btn-group" data-testid="sidebar-split-post-button">
+              <SplitPostButtonAction
+                type="button"
+                onClick={onPostClick}
+                className="post-split-btn post-split-btn-primary"
+                aria-label="New post"
+                title="Create new post"
+                data-testid="sidebar-post-button"
+              >
+                <PlusIcon size={16} className="post-split-icon" />
+                <span className="post-text">Post</span>
+              </SplitPostButtonAction>
+              <SplitPostButtonDivider aria-hidden="true" className="post-split-divider" />
+              <SplitSketchButtonLink
+                to="/sketch"
+                onClick={handleSketchClick}
+                className="post-split-btn post-split-btn-sketch"
+                aria-label="New sketch"
+                title="Ansatz Sketch"
+                data-testid="sidebar-sketch-button"
+              >
+                <AnsatzSketchIcon size={16} variant="triangle" color="currentColor" className="post-split-icon" />
+                <span className="post-text">Sketch</span>
+              </SplitSketchButtonLink>
+            </SplitPostButtonContainer>
           </Box>
         )}
       </Box>

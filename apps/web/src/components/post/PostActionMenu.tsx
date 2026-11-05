@@ -2,7 +2,6 @@
 
 import {
   BlockedIcon,
-  CodeIcon,
   GraphIcon,
   LinkExternalIcon,
   MuteIcon,
@@ -19,6 +18,7 @@ import { useAuth } from "../../AuthContext";
 import { useClickOutside } from "../../hooks/useClickOutside";
 import { buildEditorUrlForArtifact, isEditableCodeOrModelArtifact } from "../../util/editor-routing";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { useToast } from "../ToastContext";
 import { MenuButton } from "./styles";
 
@@ -328,7 +328,7 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
                   );
                 }}
               >
-                <CodeIcon size={16} /> Edit Artifact in Playground / VS Code
+                <DraftingTriangleIcon size={16} /> Edit Artifact in Sketch / VS Code
               </MenuButton>
             )}
           {canDeletePost && (

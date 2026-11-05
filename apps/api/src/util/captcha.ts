@@ -18,12 +18,12 @@ export async function verifyCaptchaToken(
     return { success: true };
   }
 
-  // Fail-closed guardrail in production mode: reject if secret key is missing
+  // Fail-closed guardrail in production mode: reject if secret key is missing or mock
   if (process.env["NODE_ENV"] === "production") {
-    if (!secretKey) {
+    if (!secretKey || secretKey.startsWith("mock-")) {
       return {
         success: false,
-        error: "FATAL: Bot mitigation is not configured on this server (TURNSTILE_SECRET_KEY missing).",
+        error: "FATAL: Bot mitigation is not configured on this server (TURNSTILE_SECRET_KEY missing or invalid).",
       };
     }
   }

@@ -4,7 +4,6 @@ import {
   ArrowLeftIcon,
   BookmarkIcon,
   CodeIcon,
-  CodeSquareIcon,
   ColumnsIcon,
   CrossReferenceIcon,
   DownloadIcon,
@@ -25,6 +24,7 @@ import { ActionList, ActionMenu, Button, IconButton, SegmentedControl } from "@p
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
+import { AnsatzSketchIcon } from "../../../components/icons";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { getExtensionForDialect } from "../../../util/editor-routing";
@@ -126,7 +126,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           href={branding.docsBaseUrl || "https://modelscript.org"}
           target="_blank"
           rel="noopener noreferrer"
-          title="ModelScript Playground"
+          title="ModelScript Playground — Ansatz Sketch"
           aria-label="ModelScript Homepage"
         >
           <img
@@ -142,8 +142,9 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           >
             ModelScript
           </span>
-          <Badge data-testid="playground-brand-badge">
-            <CodeSquareIcon size={14} /> Playground
+          <Badge data-testid="playground-brand-badge" title="Ansatz Sketch">
+            <AnsatzSketchIcon size={14} variant="outline" style={{ marginRight: "3px" }} />
+            <span>Sketch</span>
           </Badge>
         </BrandLink>
 
@@ -172,7 +173,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
 
         {fromArtifactParam && (
           <Link
-            to={`/playground?fromArtifact=${fromArtifactParam}`}
+            to={`/sketch?fromArtifact=${fromArtifactParam}`}
             style={{
               display: "inline-flex",
               alignItems: "center",

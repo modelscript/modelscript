@@ -336,6 +336,42 @@ body {
   z-index: 0;
 }
 
+/* ───────────────────────── Pricing Page CAD Blueprint Grid ───────────────────────── */
+.pricing-page .VPDoc,
+.VPDoc:has(._pricing),
+.VPDoc:has(.pricing) {
+  position: relative;
+  isolation: isolate;
+}
+
+.pricing-page .VPDoc::before,
+.VPDoc:has(._pricing)::before,
+.VPDoc:has(.pricing)::before {
+  content: "";
+  position: absolute;
+  inset: -80px 0 auto 0;
+  width: 100%;
+  height: 1100px;
+  background-image:
+    radial-gradient(ellipse 55% 60% at 72% 35%, var(--ms-glow-cyan), transparent 70%),
+    radial-gradient(ellipse 45% 50% at 22% 22%, var(--ms-glow-indigo), transparent 70%),
+    linear-gradient(var(--ms-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ms-grid-line) 1px, transparent 1px),
+    linear-gradient(var(--ms-grid-sub) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ms-grid-sub) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    64px 64px,
+    64px 64px,
+    16px 16px,
+    16px 16px;
+  mask-image: radial-gradient(ellipse 90% 75% at 50% 30%, #000 35%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 75% at 50% 30%, #000 35%, transparent 85%);
+  pointer-events: none;
+  z-index: -1;
+}
+
 /* ───────────────────────── Utilities ───────────────────────── */
 .ms-container {
   position: relative;

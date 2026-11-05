@@ -21,6 +21,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { getArtifactRegistry } from "../artifacts/index.js";
 import type { LibraryDatabase } from "../database.js";
+import { optionalAuth } from "../middleware/auth-middleware.js";
 import { convertStepToJson } from "../util/cad-converter.js";
 import { verifySignedEmbedToken } from "./oembed.js";
 
@@ -50,10 +51,9 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
 
   // ── GET /artifacts/view/:id & GET /artifacts/:id ───────────────
   // Fetch social artifact view by ID (supports direct workbench & viewer hydration)
-  router.get(["/artifacts/view/:id", "/artifacts/:id"], (req: Request, res: Response): void => {
+  router.get(["/artifacts/view/:id", "/artifacts/:id"], optionalAuth, (req: Request, res: Response): void => {
     const rawId = param(req, "id");
-    const id = Number(rawId);
-    if (isNaN(id) || !Number.isFinite(id)) {
+    if (!rawId || !/^\d+$/.test(rawId)) {
       res.status(400).json({ error: "Invalid artifact ID" });
       return;
     }
@@ -62,29 +62,79 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
       (typeof req.query["embed_token"] === "string" ? req.query["embed_token"] : undefined) ||
       (typeof req.headers["x-embed-token"] === "string" ? req.headers["x-embed-token"] : undefined);
 
+    let hasValidEmbedToken = false;
     if (embedToken) {
-      const verification = verifySignedEmbedToken(embedToken, String(id), req.headers.origin);
+      const verification = verifySignedEmbedToken(embedToken, rawId, req.headers.origin);
       if (!verification.valid) {
         res.status(403).json({ error: verification.reason || "Invalid embed token" });
         return;
       }
+      hasValidEmbedToken = true;
     }
 
-    const artifactView = database.getArtifactView(id);
+    const artifactView = database.getArtifactView(rawId);
     if (!artifactView) {
       res.status(404).json({ error: "Artifact view not found" });
       return;
     }
 
+    // Access control: check if artifact view is private
+    let isPrivate = false;
+    try {
+      const parsedConfig = JSON.parse(artifactView.view_config || "{}");
+      if (
+        parsedConfig.private === true ||
+        parsedConfig.visibility === "private" ||
+        parsedConfig.visibility === "direct"
+      ) {
+        isPrivate = true;
+      }
+    } catch {
+      // ignore
+    }
+
+    if (isPrivate) {
+      const reqUser = (
+        req as Request & {
+          user?: { id?: number; accountType?: string; role?: string; is_admin?: number } | undefined;
+        }
+      ).user;
+      const isOwner = reqUser && reqUser.id === artifactView.creator_id;
+      const isAdmin =
+        reqUser && (reqUser.accountType === "admin" || reqUser.role === "admin" || reqUser.is_admin === 1);
+      if (!hasValidEmbedToken && !isOwner && !isAdmin) {
+        res.status(403).json({ error: "Access denied: private artifact" });
+        return;
+      }
+    }
+
     res.json({ artifactView });
   });
+
+  // In-memory rate limiting map for CAD conversions (60 req/min per IP)
+  const cadConvertHits = new Map<string, number[]>();
 
   // ── GET /cad/convert ───────────────────────────────────────────
   // Fetch a STEP file, convert it to JSON (web-optimized), and cache it.
   router.get("/cad/convert", async (req: Request, res: Response) => {
+    const clientIp = req.socket?.remoteAddress || req.ip || "unknown";
+    const now = Date.now();
+    const timestamps = (cadConvertHits.get(clientIp) || []).filter((t) => now - t < 60_000);
+    if (timestamps.length >= 60) {
+      res.status(429).json({ error: "Too many CAD conversion requests. Please try again later." });
+      return;
+    }
+    timestamps.push(now);
+    cadConvertHits.set(clientIp, timestamps);
+    if (cadConvertHits.size > 10_000) {
+      for (const [k, v] of cadConvertHits.entries()) {
+        if (v.every((t) => now - t >= 60_000)) cadConvertHits.delete(k);
+      }
+    }
+
     const url = req.query["url"] as string;
-    if (!url) {
-      res.status(400).json({ error: "Missing 'url' query parameter" });
+    if (!url || typeof url !== "string" || url.length > 2048 || /[\0\r\n]/.test(url)) {
+      res.status(400).json({ error: "Missing or invalid 'url' query parameter" });
       return;
     }
 

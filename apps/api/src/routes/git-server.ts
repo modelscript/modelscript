@@ -208,12 +208,19 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     user: NonNullable<ReturnType<LibraryDatabase["getUserById"]>>,
     namespace: string,
   ): boolean {
-    if (process.env["NODE_ENV"] === "test") {
-      return true;
-    }
     const cleanNs = namespace.toLowerCase();
     const isAdmin = user.account_type === "admin" || (user as { role?: string | undefined }).role === "admin";
-    return user.username.toLowerCase() === cleanNs || isAdmin;
+    if (user.username.toLowerCase() === cleanNs || isAdmin) {
+      return true;
+    }
+    const org = database.getOrganizationBySlug(cleanNs);
+    if (org) {
+      const role = database.getOrganizationMemberRole(org.id, user.id);
+      if (role === "owner" || role === "maintainer") {
+        return true;
+      }
+    }
+    return false;
   }
 
   function ensureBareRepo(repoPath: string): void {
@@ -358,7 +365,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
       return;
     }
 
-    const { user } = authenticate(req);
+    const { user, tokenScopes } = authenticate(req);
 
     // Push discovery requires authentication
     if (service === "git-receive-pack") {
@@ -368,6 +375,15 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
           `Basic realm="${database.getInstanceSettings().instanceName || "Ansatz"} Git"`,
         );
         res.status(401).send("Authentication required for push");
+        return;
+      }
+      if (
+        tokenScopes &&
+        !tokenScopes.includes("*") &&
+        !tokenScopes.includes("admin") &&
+        !tokenScopes.includes("repos:write")
+      ) {
+        res.status(403).send("Forbidden: Personal access token lacks 'repos:write' scope");
         return;
       }
       if (!isAuthorizedToPush(user, namespace)) {
@@ -494,10 +510,19 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
       return;
     }
 
-    const { user } = authenticate(req);
+    const { user, tokenScopes } = authenticate(req);
     if (!user) {
       res.setHeader("WWW-Authenticate", `Basic realm="${database.getInstanceSettings().instanceName || "Ansatz"} Git"`);
       res.status(401).send("Authentication required for push");
+      return;
+    }
+    if (
+      tokenScopes &&
+      !tokenScopes.includes("*") &&
+      !tokenScopes.includes("admin") &&
+      !tokenScopes.includes("repos:write")
+    ) {
+      res.status(403).send("Forbidden: Personal access token lacks 'repos:write' scope");
       return;
     }
     if (!isAuthorizedToPush(user, namespace)) {

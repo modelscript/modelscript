@@ -32,9 +32,11 @@ export function isPrivateIp(ip: string): boolean {
     if (
       lower === "::1" ||
       lower === "::" ||
-      /^fe[89ab][0-9a-f]:/i.test(lower) || // link-local fe80::/10
+      /^fe[89a-f][0-9a-f]:/i.test(lower) || // link-local fe80::/10 & site-local fec0::/10
       /^f[cd][0-9a-f]{1,2}:/i.test(lower) || // unique local fc00::/7
       /^ff[0-9a-f]{2}:/i.test(lower) || // multicast ff00::/8
+      lower.startsWith("2001:0:") || // Teredo tunneling
+      lower.startsWith("2001::") || // Teredo tunneling / anycast
       lower.startsWith("2001:db8:") || // documentation
       lower.startsWith("2001:2:") || // benchmarking
       lower.startsWith("100::") || // discard prefix 100::/64
@@ -80,7 +82,7 @@ export function isLoopbackOrMetadataIp(ip: string): boolean {
   }
   if (net.isIPv6(ip)) {
     const lower = ip.toLowerCase();
-    if (lower === "::1" || lower === "::" || /^fe[89ab][0-9a-f]:/i.test(lower)) {
+    if (lower === "::1" || lower === "::" || /^fe[89a-f][0-9a-f]:/i.test(lower)) {
       return true;
     }
     if (lower.startsWith("::ffff:") || (lower.startsWith("::") && lower.slice(2).includes("."))) {
@@ -200,7 +202,8 @@ export async function resolveAndValidatePublicHost(
   hostname: string,
   resolver?: (host: string) => Promise<{ address: string; family: number }[]>,
 ): Promise<string[]> {
-  const cleanHost = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+  const rawClean = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+  const cleanHost = rawClean.toLowerCase().replace(/\.+$/, "");
   const hostAllowlisted = isAllowedIntranetHost(cleanHost);
   const airgapEnforced = process.env["AIRGAP_ENFORCED"] === "true" || process.env["ENTERPRISE_APPLIANCE"] === "true";
 
@@ -271,7 +274,7 @@ export function assertSafePublicUrl(rawUrl: string): URL {
     throw new Error(`Forbidden protocol: ${parsed.protocol}`);
   }
 
-  const rawHostname = parsed.hostname.toLowerCase();
+  const rawHostname = parsed.hostname.toLowerCase().replace(/\.+$/, "");
   // Strip IPv6 brackets if present for IP checking
   const hostname = rawHostname.startsWith("[") && rawHostname.endsWith("]") ? rawHostname.slice(1, -1) : rawHostname;
 
@@ -381,11 +384,15 @@ export async function safePublicFetch(
   const doFetch = (globalThis as Record<string, unknown>)["f" + "etch"] as typeof fetch;
   let currentUrl = typeof targetUrl === "string" ? targetUrl : targetUrl.href;
   const maxRedirects = 5;
+  let currentInit: RequestInit = {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(15_000),
+  };
 
   for (let hop = 0; hop <= maxRedirects; hop++) {
     const urlObj = await assertSafePublicUrlAsync(currentUrl, resolver);
     const response = await doFetch(urlObj.href, {
-      ...init,
+      ...currentInit,
       redirect: "manual",
     });
 
@@ -397,7 +404,20 @@ export async function safePublicFetch(
       if (hop === maxRedirects) {
         throw new Error("Too many redirects in safePublicFetch");
       }
-      currentUrl = new URL(location, urlObj.href).href;
+      const nextUrlObj = new URL(location, urlObj.href);
+      if (nextUrlObj.origin !== urlObj.origin) {
+        // Strip sensitive credentials/signatures on cross-origin redirects
+        if (currentInit.headers) {
+          const strippedHeaders = new Headers(currentInit.headers);
+          strippedHeaders.delete("authorization");
+          strippedHeaders.delete("signature");
+          strippedHeaders.delete("signature-input");
+          strippedHeaders.delete("cookie");
+          strippedHeaders.delete("x-api-key");
+          currentInit = { ...currentInit, headers: strippedHeaders };
+        }
+      }
+      currentUrl = nextUrlObj.href;
       continue;
     }
 

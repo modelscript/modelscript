@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, CodeIcon, CopyIcon, PlayIcon } from "@primer/octicons-react";
+import { CheckIcon, CodeIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 
@@ -337,7 +338,7 @@ export const FortranViewer: React.FC<FortranViewerProps> = ({ artifactId, viewCo
       code: rawCode,
       title: resolvedTitle,
     });
-    navigate(`/playground?fromArtifact=${resolvedId}#m=${hash}`);
+    navigate(`/sketch?fromArtifact=${resolvedId}#m=${hash}`);
   };
 
   if (loadingText) {
@@ -383,8 +384,8 @@ export const FortranViewer: React.FC<FortranViewerProps> = ({ artifactId, viewCo
             </Button>
           )}
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
-            <Button size="small" variant="primary" leadingVisual={PlayIcon} onClick={handleOpenPlayground}>
-              Open in Playground
+            <Button size="small" variant="primary" leadingVisual={DraftingTriangleIcon} onClick={handleOpenPlayground}>
+              Open in Sketch
             </Button>
           )}
         </Box>

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { CheckIcon, CodeIcon, CopyIcon } from "@primer/octicons-react";
+import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import { Environment, Html, useProgress } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
@@ -11,13 +11,14 @@ import { convertCadGeometry } from "../../api";
 import { useTheme } from "../../theme";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
+import { DraftingTriangleIcon } from "../icons";
 import Spinner from "../Spinner";
 import { useToast } from "../ToastContext";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import { adaptSvgMarkupForTheme } from "./PolyglotArtifactViewer";
 import SafeOrbitControls from "./SafeOrbitControls";
-import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
 import type { SpatialPin } from "./spatial-pin";
+import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
 
 interface CadStepViewerProps {
   artifactId?: number | undefined;
@@ -1381,8 +1382,13 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                 ))}
               </Box>
               {Boolean(viewConfig?.standalone) && (
-                <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
-                  Open in Playground
+                <Button
+                  size="small"
+                  variant="primary"
+                  leadingVisual={DraftingTriangleIcon}
+                  onClick={handleOpenInPlayground}
+                >
+                  Open in Sketch
                 </Button>
               )}
             </Box>
@@ -1445,8 +1451,13 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ artifactId, viewConfig, i
                   {copied ? "Copied" : "Copy"}
                 </Button>
                 {Boolean(viewConfig?.standalone) && (
-                  <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={handleOpenInPlayground}>
-                    Open in Playground
+                  <Button
+                    size="small"
+                    variant="primary"
+                    leadingVisual={DraftingTriangleIcon}
+                    onClick={handleOpenInPlayground}
+                  >
+                    Open in Sketch
                   </Button>
                 )}
               </Box>

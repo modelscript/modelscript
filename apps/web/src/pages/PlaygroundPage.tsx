@@ -124,7 +124,7 @@ export const PlaygroundPage: React.FC = () => {
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
   const baselineCodeRef = useRef<string>(defaultInitialCode);
 
-  usePageTitle(currentTitle ? `${currentTitle} — ModelScript Playground` : "ModelScript Playground");
+  usePageTitle(currentTitle ? `${currentTitle} — Ansatz Sketch` : "Ansatz Sketch — ModelScript Playground");
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isCreateRepoModalOpen, setIsCreateRepoModalOpen] = useState(false);
@@ -137,6 +137,54 @@ export const PlaygroundPage: React.FC = () => {
       setResolvedFromArtifact(fromArtifactParam);
     }
   }, [fromArtifactParam]);
+
+  // Protect against accidental tab close or navigation when sketch has unsaved modifications
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
+  // Debounced auto-save draft to local storage so crashes or reloads can be recovered
+  useEffect(() => {
+    if (!isDirty || !currentCode) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          "ansatz_sketch_draft",
+          JSON.stringify({
+            code: currentCode,
+            title: currentTitle,
+            lang: currentLang,
+            timestamp: Date.now(),
+          }),
+        );
+      } catch {}
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [currentCode, currentTitle, currentLang, isDirty]);
+
+  // Recover draft if opened cleanly without query parameters or initial target
+  useEffect(() => {
+    if (hasInitialTarget) return;
+    try {
+      const saved = localStorage.getItem("ansatz_sketch_draft");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.code && typeof parsed.code === "string" && Date.now() - (parsed.timestamp || 0) < 86_400_000) {
+          setCurrentCode(parsed.code);
+          baselineCodeRef.current = parsed.code;
+          if (parsed.title) setCurrentTitle(parsed.title);
+          if (parsed.lang) setCurrentLang(parsed.lang);
+        }
+      }
+    } catch {}
+  }, [hasInitialTarget]);
 
   // Initialize from URL hash, query params, location.state, ?morsel=<id>, or ?fromArtifact=<id>
   useEffect(() => {
@@ -774,7 +822,8 @@ export const PlaygroundPage: React.FC = () => {
       anchor: payload?.anchor,
       ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
     });
-    return `${window.location.origin}/playground#m=${hash}`;
+    const basePath = location.pathname.startsWith("/playground") ? "/playground" : "/sketch";
+    return `${window.location.origin}${basePath}#m=${hash}`;
   };
 
   const getEmbedCode = (format: "iframe" | "custom-tag" | "morsel-tag" = "iframe") => {
@@ -793,7 +842,8 @@ export const PlaygroundPage: React.FC = () => {
       anchor: payload?.anchor,
       ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
     });
-    const embedSrc = `${window.location.origin}/embed/playground#m=${hash}`;
+    const embedBase = location.pathname.startsWith("/playground") ? "/embed/playground" : "/embed/sketch";
+    const embedSrc = `${window.location.origin}${embedBase}#m=${hash}`;
     if (format === "morsel-tag") {
       return `<script type="module" src="https://cdn.modelscript.org/embed/v1/modelscript-embed.js"></script>\n<modelscript-morsel src="${embedSrc}" height="500px" theme="dark"></modelscript-morsel>`;
     }

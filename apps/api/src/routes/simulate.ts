@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import express from "express";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -31,15 +32,26 @@ export function simulateRouter(
   const jobOwners = new Map<string, number>();
 
   const isAuthorizedForSimJob = (req: express.Request, jobId: string): boolean => {
-    if (process.env["NODE_ENV"] === "test") return true;
-    const ownerId = jobOwners.get(jobId);
-    if (!ownerId) return true;
+    if (process.env["NODE_ENV"] === "test" && !process.env["STRICT_SIM_AUTH"]) return true;
     const reqAny = req as {
       user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
     };
     if (reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin") return true;
     const reqUserId = database ? resolveRequestUserId(req, database) : (reqAny.user?.id ?? null);
-    return reqUserId === ownerId;
+
+    let ownerId = jobOwners.get(jobId);
+    if (ownerId === undefined && database) {
+      const dbJob = database.getJobByMetadataKey("jobId", jobId);
+      if (dbJob && dbJob.user_id !== null) {
+        ownerId = dbJob.user_id;
+        jobOwners.set(jobId, ownerId);
+      }
+    }
+    if (ownerId !== undefined) {
+      return reqUserId === ownerId;
+    }
+    const allowAnonymous = process.env["ALLOW_ANONYMOUS_SIMULATION"] === "true";
+    return allowAnonymous;
   };
 
   // POST /api/v1/simulate
@@ -73,7 +85,10 @@ export function simulateRouter(
       // Pre-flight quota check
       const profile = getComputeProfile(req.body.profile as string | undefined);
       const userId = database ? resolveRequestUserId(req, database) : null;
-      if (process.env["NODE_ENV"] === "production" && !userId) {
+      const allowAnonymous =
+        process.env["ALLOW_ANONYMOUS_SIMULATION"] === "true" ||
+        (process.env["NODE_ENV"] === "test" && !process.env["STRICT_SIM_AUTH"]);
+      if (!allowAnonymous && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
 
@@ -143,7 +158,7 @@ export function simulateRouter(
       const safeLibNamePart = String(libraryName || "adhoc").replace(/[^a-zA-Z0-9_.-]/g, "_");
       const safeLibVerPart = String(libraryVersion || "0.0").replace(/[^a-zA-Z0-9_.-]/g, "_");
       const safeModelJobPart = String(modelName).replace(/[^a-zA-Z0-9_.-]/g, "_");
-      const jobId = `simulate-${safeLibNamePart}-${safeLibVerPart}-${safeModelJobPart}-${Date.now()}`;
+      const jobId = `simulate-${safeLibNamePart}-${safeLibVerPart}-${safeModelJobPart}-${crypto.randomUUID()}`;
       if (userId) {
         if (jobOwners.size >= 5000) {
           const oldest = jobOwners.keys().next().value;
@@ -245,16 +260,29 @@ getErrorString();
             const safeStopTime = Number.isFinite(Number(req.body.stopTime))
               ? Math.min(Math.max(Number(req.body.stopTime), (safeStartTime ?? 0) + 1e-6), 86_400)
               : undefined;
+
+            const duration = (safeStopTime ?? 1) - (safeStartTime ?? 0);
+            let safeStepSize: number | undefined = undefined;
+            if (req.body.stepSize !== undefined && Number.isFinite(Number(req.body.stepSize))) {
+              const rawStep = Math.abs(Number(req.body.stepSize));
+              const minStep = duration > 0 ? duration / 500_000 : 1e-6;
+              safeStepSize = Math.max(rawStep, minStep);
+            }
+            let safeTolerance: number | undefined = undefined;
+            if (req.body.tolerance !== undefined && Number.isFinite(Number(req.body.tolerance))) {
+              safeTolerance = Math.min(Math.max(Number(req.body.tolerance), 1e-12), 1.0);
+            }
+
             prep = await prepareNativeSimulation(tmpDir, {
               modelName: qualifiedModelName,
               sourceFiles: [...loadFiles, ...(adhocMoPath ? [adhocMoPath] : [])],
               libraryPaths,
               startTime: safeStartTime,
               stopTime: safeStopTime,
-              stepSize: req.body.stepSize,
+              stepSize: safeStepSize,
               numberOfIntervals: boundedIntervals,
               solver: req.body.solver === "cvode" ? "cvode" : "rk4",
-              tolerance: req.body.tolerance,
+              tolerance: safeTolerance,
             });
           }
 

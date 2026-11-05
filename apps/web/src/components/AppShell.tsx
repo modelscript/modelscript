@@ -12,7 +12,6 @@ import {
   MoonIcon,
   PackageIcon,
   PersonIcon,
-  PlayIcon,
   PlusIcon,
   RepoIcon,
   RssIcon,
@@ -31,6 +30,7 @@ import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
 import DevModeBar from "./DevModeBar";
 import ErrorBoundary from "./ErrorBoundary";
+import { AnsatzSketchIcon } from "./icons";
 import RightPanel from "./RightPanel";
 import { scrollToTop } from "./ScrollToTop";
 import Sidebar from "./Sidebar";
@@ -417,8 +417,8 @@ const AppShell: React.FC = () => {
 
   const isDev = import.meta.env.DEV;
 
-  // Standalone full-bleed layout for /playground (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
-  const isStandaloneRoute = location.pathname.startsWith("/playground");
+  // Standalone full-bleed layout for /playground and /sketch (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
+  const isStandaloneRoute = location.pathname.startsWith("/playground") || location.pathname.startsWith("/sketch");
 
   // Make wide layout for /settings/* and /admin/* (no right panel)
   const isWideLayout = location.pathname.startsWith("/settings") || location.pathname.startsWith("/admin");
@@ -487,6 +487,7 @@ const AppShell: React.FC = () => {
 
       if (
         location.pathname.startsWith("/playground") ||
+        location.pathname.startsWith("/sketch") ||
         location.pathname.startsWith("/ide") ||
         location.pathname.startsWith("/studio")
       ) {
@@ -809,8 +810,8 @@ const AppShell: React.FC = () => {
                       <hr />
                     </>
                   )}
-                  <Link to="/playground" onClick={() => handleMoreLinkClick("/playground")}>
-                    <PlayIcon size={20} /> Playground
+                  <Link to="/sketch" onClick={() => handleMoreLinkClick("/sketch")}>
+                    <AnsatzSketchIcon size={20} variant="outline" /> Ansatz Sketch
                   </Link>
                   {hasPackages && (
                     <Link to="/packages" onClick={() => handleMoreLinkClick("/packages")}>
@@ -838,8 +839,8 @@ const AppShell: React.FC = () => {
                     <BookIcon size={20} /> Docs
                   </Link>
                   {hasIde && (
-                    <Link to="/ide" onClick={() => handleMoreLinkClick("/ide")}>
-                      <CodeIcon size={20} /> IDE
+                    <Link to="/studio" onClick={() => handleMoreLinkClick("/studio")}>
+                      <CodeIcon size={20} /> Studio
                     </Link>
                   )}
                   {hasCaeJobs && (

@@ -15,15 +15,22 @@ describe("Studio Landing Page UI/UX & Git Target Resolution", () => {
   const idePagePath = path.resolve(__dirname, "../src/pages/IdeWorkspacePage.tsx");
   const content = fs.readFileSync(idePagePath, "utf-8");
 
-  it("renames 'Ansatz IDE' to 'ModelScript Studio' in page header and title", () => {
-    assert.ok(content.includes("ModelScript Studio"), "IdeWorkspacePage must use 'ModelScript Studio' as header title");
+  it("uses 'Studio' in page header and title", () => {
     assert.ok(
-      !content.includes("{brandName} IDE") && !content.includes("Ansatz IDE"),
-      "IdeWorkspacePage must not contain legacy IDE header",
+      content.includes(
+        '<Heading as="h1" style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>\n              Studio\n            </Heading>',
+      ),
+      "IdeWorkspacePage must use 'Studio' as header title",
     );
     assert.ok(
-      content.includes('`${displayTitle} — ModelScript Studio` : "ModelScript Studio"'),
-      "IdeWorkspacePage must format page title with ModelScript Studio suffix",
+      !content.includes("{brandName} IDE") &&
+        !content.includes("Ansatz IDE") &&
+        !content.includes("ModelScript Studio"),
+      "IdeWorkspacePage must not contain legacy IDE or ModelScript Studio header",
+    );
+    assert.ok(
+      content.includes('`${displayTitle} — Studio` : "Studio"'),
+      "IdeWorkspacePage must format page title with Studio suffix",
     );
   });
 
